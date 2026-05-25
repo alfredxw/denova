@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, switchInteractiveBranch, updateInteractiveStory } from '../api'
@@ -17,19 +17,25 @@ export function InteractiveLayout() {
     setStories, setTellers, setBranches, setSnapshot, setCurrentStoryId, setCurrentBranchId, setSubmode,
   } = useInteractiveStore()
   const currentStory = stories.find((story) => story.id === currentStoryId)
+  const snapshotStoryIdRef = useRef('')
+
+  useEffect(() => {
+    snapshotStoryIdRef.current = snapshot?.story_id || ''
+  }, [snapshot?.story_id])
 
   const reloadStories = useCallback(async () => {
     const index = await getInteractiveStories()
     setStories(index.stories || [], index.current_story_id)
   }, [setStories])
 
-  const reloadSnapshot = useCallback(async () => {
+  const reloadSnapshot = useCallback(async (branchOverride?: string) => {
     if (!currentStoryId) {
       setSnapshot(null)
       return
     }
+    const branchId = branchOverride ?? (snapshotStoryIdRef.current === currentStoryId ? currentBranchId : '')
     const [nextSnapshot, nextBranches] = await Promise.all([
-      getInteractiveSnapshot(currentStoryId, currentBranchId),
+      getInteractiveSnapshot(currentStoryId, branchId),
       getInteractiveBranches(currentStoryId),
     ])
     setSnapshot(nextSnapshot)
@@ -65,14 +71,14 @@ export function InteractiveLayout() {
     if (!currentStoryId) return
     await switchInteractiveBranch(currentStoryId, branchId)
     setCurrentBranchId(branchId)
-    await reloadSnapshot()
+    await reloadSnapshot(branchId)
   }
 
   const handleCreateBranch = async (turnId: string) => {
     if (!currentStoryId) return
     const branch = await createInteractiveBranch(currentStoryId, { parent_event_id: turnId, title: `分支 ${branches.length + 1}` })
     setCurrentBranchId(branch.id)
-    await reloadSnapshot()
+    await reloadSnapshot(branch.id)
   }
 
   return (

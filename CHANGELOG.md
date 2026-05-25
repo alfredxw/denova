@@ -6,8 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 互动模式：修复前端刷新后故事舞台未加载已持久化回合内容的问题，首次加载时按故事元信息的当前分支获取快照，避免强制请求 `branch=main` 导致空结果
+- 后端 `interactive`：修复长篇回合持久化后快照读取失败（`bufio.Scanner: token too long`）的问题，故事 JSONL 读取 scanner buffer 上限提升至 16 MB
+
 ### Changed
 
+- WebUI：聊天历史首次加载时直接定位到底部，避免刷新页面后 Chat 面板从顶部平滑滚动到末尾
 - 互动模式：修复 story 子模式 Agent 上下文注入，按故事标题、开端、讲述者、共享设定和当前快照构造本轮 prompt；同一轮 `/api/interactive/chat` 完成后原子写入 `turn` 与可选 `state_delta`，故事舞台流式展示 narrative 并隐藏状态元数据
 - 互动模式：story 子模式改用独立 Agent Runner 与专用系统 prompt，和 IDE 模式隔离；互动故事 Agent 禁止调用 `write_file` / `edit_file` / `delete_file` 等写文件工具，故事正文只能流式输出到主屏幕并由后端写入 story jsonl
 - 工程配置：忽略本地 `.worktrees/` 目录，便于在隔离 worktree 中开发大功能而不污染主工作区

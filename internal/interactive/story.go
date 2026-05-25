@@ -15,6 +15,7 @@ import (
 )
 
 const schemaVersion = 1
+const maxStoryLineBytes = 16 * 1024 * 1024
 
 // Store manages interactive story data inside a workspace.
 type Store struct {
@@ -697,6 +698,7 @@ func (s *Store) readStoryLocked(storyID string) (StoryMeta, []map[string]any, er
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), maxStoryLineBytes)
 	if !scanner.Scan() {
 		return StoryMeta{}, nil, fmt.Errorf("故事文件为空: %s", storyID)
 	}

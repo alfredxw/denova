@@ -165,6 +165,34 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	}
 }
 
+func TestSnapshotReadsLargePersistedTurn(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:         "长篇回合",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+	longNarrative := strings.Repeat("很长的正文。", 20000)
+	_, err = store.AppendTurn(story.ID, AppendTurnRequest{
+		BranchID:  "main",
+		User:      "继续",
+		Narrative: longNarrative,
+	})
+	if err != nil {
+		t.Fatalf("AppendTurn failed: %v", err)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if len(snapshot.Turns) != 1 || snapshot.Turns[0].Narrative != longNarrative {
+		t.Fatalf("large turn was not restored")
+	}
+}
+
 func TestCreateAndSwitchBranch(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "分支故事", StoryTellerID: "classic"})

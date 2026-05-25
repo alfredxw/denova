@@ -14,6 +14,7 @@ export function MessageList({ messages, isStreaming, activityContent }: MessageL
   const bottomRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
   const mountedRef = useRef(false)
+  const hasRenderedContentRef = useRef(false)
   const scrollRafRef = useRef<number | null>(null)
 
   /** 主列表：用户上滑时暂停自动滚动，回到底部后恢复。 */
@@ -30,9 +31,19 @@ export function MessageList({ messages, isStreaming, activityContent }: MessageL
       if (scrollRafRef.current !== null) {
         cancelAnimationFrame(scrollRafRef.current)
       }
+      const hasContent = messages.length > 0 || activityContent.length > 0 || isStreaming
+      const shouldJumpToBottom = hasContent && !hasRenderedContentRef.current
       scrollRafRef.current = requestAnimationFrame(() => {
         scrollRafRef.current = null
-        bottomRef.current?.scrollIntoView({ behavior: isStreaming ? 'instant' : (mountedRef.current ? 'smooth' : 'instant') })
+        const el = containerRef.current
+        if (shouldJumpToBottom && el) {
+          el.scrollTop = el.scrollHeight
+        } else {
+          bottomRef.current?.scrollIntoView({ behavior: isStreaming ? 'instant' : (mountedRef.current ? 'smooth' : 'instant') })
+        }
+        if (hasContent) {
+          hasRenderedContentRef.current = true
+        }
       })
     }
     mountedRef.current = true
