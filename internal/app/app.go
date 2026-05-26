@@ -192,6 +192,16 @@ func (a *App) SwitchInteractiveBranch(storyID, branchID string) error {
 	return store.SwitchBranch(storyID, branchID)
 }
 
+func (a *App) DeleteInteractiveBranch(storyID, branchID string) error {
+	a.mu.RLock()
+	store := a.interactive
+	a.mu.RUnlock()
+	if store == nil {
+		return ErrNoWorkspace
+	}
+	return store.DeleteBranch(storyID, branchID)
+}
+
 func (a *App) InteractiveBranches(storyID string) ([]interactive.BranchSummary, error) {
 	a.mu.RLock()
 	store := a.interactive

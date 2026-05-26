@@ -54,6 +54,10 @@ export function createInteractiveBranch(storyId: string, input: { parent_event_i
   })
 }
 
+export function deleteInteractiveBranch(storyId: string, branchId: string): Promise<void> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/branches/${encodeURIComponent(branchId)}`, { method: 'DELETE' })
+}
+
 export function switchInteractiveBranch(storyId: string, branchId: string): Promise<void> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/switch-branch`, {
     method: 'POST',

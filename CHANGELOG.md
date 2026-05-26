@@ -8,7 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- 互动模式：剧情分支基于 story JSONL 的 `parent_id` 构建剧情节点图，snapshot 新增 `graph.nodes` / `graph.branches`，底部时间线改为 git graph 风格节点展示，并支持从任意剧情节点确认创建新剧情线后自动切换
+- 互动模式：新增删除空剧情线能力，后端提供分支删除接口并保护主线和已有独立剧情的分支不被删除
+- WebUI：互动模式场景记忆面板支持结构化渲染角色状态与关键事件，将状态对象展示为可读中文字段、标签和事件卡片，并保留复杂值兜底展示
+- 互动模式：剧情分支基于 story JSONL 的 `parent_id` 构建剧情节点图，snapshot 新增 `graph.nodes` / `graph.branches`，底部时间线改为可横向拖动滚动的 macOS 风格 Git Graph 视图，用 SVG 曲线连接父子与分叉节点；点击节点先选中并切换到对应剧情线，再由用户确认是否创建新剧情线
 - 互动模式：故事舞台对话框支持 Enter 直接发送、Shift+Enter 换行，并新增生成中的中断按钮与 `/api/interactive/chat/abort` 后端中断接口
 - 互动模式：故事舞台对话内容新增随主题文字色变化的对白文字高亮，支持 `“”`、`「」` 和英文双引号 `""` 包裹的对白，历史回合与流式输出均生效
 - 后端 API：新增 `GET /api/workspace/summary`，统计当前书籍标题、章节数、全书字数以及每章标题、字数、状态和更新时间，供 WebUI 写作工作台展示进度

@@ -88,6 +88,14 @@ func (s *Server) handleInteractiveBranchCreate(ctx context.Context, c *app.Reque
 	writeJSON(c, consts.StatusOK, branch)
 }
 
+func (s *Server) handleInteractiveBranchDelete(ctx context.Context, c *app.RequestContext) {
+	if err := s.app.DeleteInteractiveBranch(c.Param("id"), c.Param("branch")); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (s *Server) handleInteractiveBranchSwitch(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		BranchID string `json:"branch_id"`

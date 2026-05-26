@@ -550,6 +550,63 @@ func (s *Store) SwitchBranch(storyID, branchID string) error {
 	return s.rewriteStoryLocked(storyID, meta, lines)
 }
 
+func (s *Store) DeleteBranch(storyID, branchID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	branchID = strings.TrimSpace(branchID)
+	if branchID == "" {
+		return fmt.Errorf("分支不能为空")
+	}
+	if branchID == "main" {
+		return fmt.Errorf("主线不能删除")
+	}
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return err
+	}
+	branch, ok := meta.Branches[branchID]
+	if !ok {
+		return fmt.Errorf("分支不存在: %s", branchID)
+	}
+	if branch.Head != branch.FromEvent {
+		return fmt.Errorf("只能删除尚未产生独立剧情的空分支")
+	}
+	for id, candidate := range meta.Branches {
+		if id != branchID && candidate.From == branchID {
+			return fmt.Errorf("该分支已有子分支，不能删除")
+		}
+	}
+	nextLines := make([]map[string]any, 0, len(lines))
+	removedEvents := 0
+	for _, raw := range lines {
+		eventType, _ := raw["type"].(string)
+		rawBranchID, _ := raw["branch_id"].(string)
+		if eventType == "branch" && rawBranchID == branchID {
+			removedEvents++
+			continue
+		}
+		nextLines = append(nextLines, raw)
+	}
+	if removedEvents == 0 {
+		return fmt.Errorf("分支记录不存在: %s", branchID)
+	}
+	delete(meta.Branches, branchID)
+	if meta.CurrentBranch == branchID {
+		if branch.From != "" {
+			meta.CurrentBranch = branch.From
+		} else {
+			meta.CurrentBranch = "main"
+		}
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	meta.UpdatedAt = now
+	if err := s.rewriteStoryLocked(storyID, meta, nextLines); err != nil {
+		return err
+	}
+	return s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, -removedEvents)
+}
+
 func (s *Store) Branches(storyID string) ([]BranchSummary, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

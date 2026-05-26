@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { BookOpen, CheckCircle2, Layers3, Lightbulb, PenLine, ScrollText } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { createInteractiveBranch, createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, switchInteractiveBranch, updateInteractiveStory } from '../api'
+import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import type { InteractiveSubmode } from '../types'
 import { BranchTimeline } from './BranchTimeline'
@@ -90,6 +90,14 @@ export function InteractiveLayout({
     await reloadSnapshot(branch.id)
   }
 
+  const handleDeleteBranch = async (branchId: string) => {
+    if (!currentStoryId) return
+    await deleteInteractiveBranch(currentStoryId, branchId)
+    if (branchId === currentBranchId) setCurrentBranchId('main')
+    await reloadSnapshot(branchId === currentBranchId ? 'main' : undefined)
+    await reloadStories()
+  }
+
   const workflow = [
     { label: '灵感', icon: Lightbulb },
     { label: '设定', icon: ScrollText },
@@ -135,7 +143,7 @@ export function InteractiveLayout({
           <StoryStage storyId={currentStoryId} branchId={currentBranchId} snapshot={snapshot} onDone={reloadSnapshot} />
           {rightPanelVisible && <SnapshotPanel snapshot={snapshot} />}
         </div>
-        <BranchTimeline snapshot={snapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} />
+        <BranchTimeline snapshot={snapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} />
       </div>
     </div>
   )

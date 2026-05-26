@@ -33,6 +33,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/interactive/stories/:id/snapshot", s.handleInteractiveSnapshot)
 		api.GET("/interactive/stories/:id/branches", s.handleInteractiveBranches)
 		api.POST("/interactive/stories/:id/branches", s.handleInteractiveBranchCreate)
+		api.DELETE("/interactive/stories/:id/branches/:branch", s.handleInteractiveBranchDelete)
 		api.POST("/interactive/stories/:id/switch-branch", s.handleInteractiveBranchSwitch)
 		api.GET("/interactive/tellers", s.handleInteractiveTellers)
 		api.GET("/interactive/tellers/:id", s.handleInteractiveTeller)

@@ -225,6 +225,54 @@ func TestCreateAndSwitchBranch(t *testing.T) {
 	}
 }
 
+func TestDeleteEmptyBranch(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "清理分支", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "向左走", Narrative: "你走向左侧长廊。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch, err := store.CreateBranch(story.ID, CreateBranchRequest{ParentEventID: turn.ID, Title: "空分支"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteBranch(story.ID, branch.ID); err != nil {
+		t.Fatalf("DeleteBranch failed: %v", err)
+	}
+	branches, err := store.Branches(story.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(branches) != 1 || branches[0].ID != "main" {
+		t.Fatalf("unexpected branches after delete: %#v", branches)
+	}
+}
+
+func TestDeleteBranchWithOwnTurnFails(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "保护分支", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "向左走", Narrative: "你走向左侧长廊。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch, err := store.CreateBranch(story.ID, CreateBranchRequest{ParentEventID: turn.ID, Title: "已有内容"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: branch.ID, User: "改走右边", Narrative: "你看见另一扇门。"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteBranch(story.ID, branch.ID); err == nil {
+		t.Fatal("expected non-empty branch delete to fail")
+	}
+}
+
 func TestBranchSnapshotFollowsParentChain(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "父链故事", StoryTellerID: "classic"})
