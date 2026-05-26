@@ -1,6 +1,7 @@
 .trae/
 playground
 output/
+log/
 config.toml
 data/
 web/node_modules/

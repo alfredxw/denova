@@ -119,23 +119,28 @@ type StoryMeta struct {
 }
 
 type TurnEvent struct {
-	V         int             `json:"v"`
-	Type      string          `json:"type"`
-	ID        string          `json:"id"`
-	ParentID  any             `json:"parent_id"`
-	BranchID  string          `json:"branch_id"`
-	Ts        string          `json:"ts"`
-	User      string          `json:"user"`
-	Narrative string          `json:"narrative"`
-	Thinking  string          `json:"thinking,omitempty"`
-	Alts      []TurnAlt       `json:"alts,omitempty"`
-	AltIdx    int             `json:"alt_idx"`
-	Flags     map[string]bool `json:"flags,omitempty"`
+	V          int             `json:"v"`
+	Type       string          `json:"type"`
+	ID         string          `json:"id"`
+	ParentID   any             `json:"parent_id"`
+	BranchID   string          `json:"branch_id"`
+	Ts         string          `json:"ts"`
+	User       string          `json:"user"`
+	Narrative  string          `json:"narrative"`
+	Thinking   string          `json:"thinking,omitempty"`
+	StateDelta *StateDelta     `json:"state_delta,omitempty"`
+	Alts       []TurnAlt       `json:"alts,omitempty"`
+	AltIdx     int             `json:"alt_idx,omitempty"`
+	Flags      map[string]bool `json:"flags,omitempty"`
 }
 
 type TurnAlt struct {
 	Narrative string `json:"narrative"`
 	Ts        string `json:"ts"`
+}
+
+type StateDelta struct {
+	Ops []StateOp `json:"ops"`
 }
 
 type StateDeltaEvent struct {
@@ -166,11 +171,12 @@ type StateOp struct {
 }
 
 type Snapshot struct {
-	StoryID  string         `json:"story_id"`
-	BranchID string         `json:"branch_id"`
-	Turns    []TurnEvent    `json:"turns"`
-	State    map[string]any `json:"state"`
-	Graph    StoryGraph     `json:"graph"`
+	StoryID     string         `json:"story_id"`
+	BranchID    string         `json:"branch_id"`
+	Turns       []TurnEvent    `json:"turns"`
+	CurrentTurn *TurnEvent     `json:"current_turn,omitempty"`
+	State       map[string]any `json:"state"`
+	Graph       StoryGraph     `json:"graph"`
 }
 
 type StoryGraph struct {
@@ -370,7 +376,6 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 		User:      req.User,
 		Narrative: req.Narrative,
 		Thinking:  strings.TrimSpace(req.Thinking),
-		Alts:      []TurnAlt{{Narrative: req.Narrative, Ts: now}},
 		Flags:     map[string]bool{"pinned": false, "locked": false},
 	}
 	branch.Head = event.ID
@@ -416,36 +421,31 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		User:      req.User,
 		Narrative: req.Narrative,
 		Thinking:  strings.TrimSpace(req.Thinking),
-		Alts:      []TurnAlt{{Narrative: req.Narrative, Ts: now}},
 		Flags:     map[string]bool{"pinned": false, "locked": false},
 	}
-	newEvents := []any{turn}
-	eventDelta := 1
 	branch.Head = turn.ID
 
 	var delta *StateDeltaEvent
 	if len(req.Ops) > 0 {
+		turn.StateDelta = &StateDelta{Ops: req.Ops}
 		stateDelta := StateDeltaEvent{
 			V:        schemaVersion,
 			Type:     "state_delta",
-			ID:       newID("ev"),
-			ParentID: turn.ID,
+			ID:       turn.ID,
+			ParentID: parentIDString(parentID),
 			BranchID: branchID,
 			Ts:       now,
 			Ops:      req.Ops,
 		}
-		newEvents = append(newEvents, stateDelta)
-		eventDelta++
-		branch.Head = stateDelta.ID
 		delta = &stateDelta
 	}
 
 	meta.Branches[branchID] = branch
 	meta.UpdatedAt = now
-	if err := s.rewriteStoryLocked(storyID, meta, lines, newEvents...); err != nil {
+	if err := s.rewriteStoryLocked(storyID, meta, lines, turn); err != nil {
 		return TurnEvent{}, nil, err
 	}
-	if err := s.touchIndexLocked(storyID, now, eventDelta); err != nil {
+	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
 		return TurnEvent{}, nil, err
 	}
 	return turn, delta, nil
@@ -467,23 +467,52 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 	if !ok {
 		return StateDeltaEvent{}, fmt.Errorf("分支不存在: %s", branchID)
 	}
+	parentID := strings.TrimSpace(req.ParentID)
+	if parentID == "" {
+		parentID = branch.Head
+	}
+	if parentID == "" {
+		return StateDeltaEvent{}, fmt.Errorf("状态变化缺少所属回合")
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	event := StateDeltaEvent{
 		V:        schemaVersion,
 		Type:     "state_delta",
-		ID:       newID("ev"),
-		ParentID: req.ParentID,
+		ID:       parentID,
+		ParentID: parentID,
 		BranchID: branchID,
 		Ts:       now,
 		Ops:      req.Ops,
 	}
-	branch.Head = event.ID
+	updated := false
+	for _, raw := range lines {
+		id, _ := raw["id"].(string)
+		eventType, _ := raw["type"].(string)
+		if id != parentID || eventType != "turn" {
+			continue
+		}
+		var turn TurnEvent
+		if err := mapToStruct(raw, &turn); err != nil {
+			return StateDeltaEvent{}, err
+		}
+		ops := append([]StateOp(nil), req.Ops...)
+		if turn.StateDelta != nil && len(turn.StateDelta.Ops) > 0 {
+			ops = append(append([]StateOp(nil), turn.StateDelta.Ops...), req.Ops...)
+		}
+		raw["state_delta"] = StateDelta{Ops: ops}
+		updated = true
+		break
+	}
+	if !updated {
+		return StateDeltaEvent{}, fmt.Errorf("状态变化所属回合不存在: %s", parentID)
+	}
+	branch.Head = parentID
 	meta.Branches[branchID] = branch
 	meta.UpdatedAt = now
-	if err := s.rewriteStoryLocked(storyID, meta, lines, event); err != nil {
+	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
 		return StateDeltaEvent{}, err
 	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+	if err := s.touchIndexLocked(storyID, now, 0); err != nil {
 		return StateDeltaEvent{}, err
 	}
 	return event, nil
@@ -642,18 +671,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[str
 	if !ok {
 		return Snapshot{}, fmt.Errorf("分支不存在: %s", branchID)
 	}
-	state := map[string]any{
-		"on_stage":     []any{},
-		"characters":   map[string]any{},
-		"events":       []any{},
-		"scene":        map[string]any{},
-		"inventory":    map[string]any{},
-		"resources":    map[string]any{},
-		"world_flags":  []any{},
-		"rules":        []any{},
-		"threads":      []any{},
-		"action_space": []any{},
-	}
+	state := initialStoryState()
 	snapshot := Snapshot{StoryID: storyID, BranchID: branchID, State: state}
 	eventsByID := eventsByID(lines)
 	path, pathSet := eventPath(branch.Head, eventsByID)
@@ -666,6 +684,13 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[str
 				return Snapshot{}, err
 			}
 			snapshot.Turns = append(snapshot.Turns, turn)
+			currentTurn := turn
+			snapshot.CurrentTurn = &currentTurn
+			if turn.StateDelta != nil {
+				for _, op := range turn.StateDelta.Ops {
+					applyStateOp(state, op)
+				}
+			}
 		case "state_delta":
 			var delta StateDeltaEvent
 			if err := mapToStruct(raw, &delta); err != nil {
@@ -678,6 +703,21 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[str
 	}
 	snapshot.Graph = buildStoryGraph(meta, lines, eventsByID, pathSet)
 	return snapshot, nil
+}
+
+func initialStoryState() map[string]any {
+	return map[string]any{
+		"on_stage":     []any{},
+		"characters":   map[string]any{},
+		"events":       []any{},
+		"scene":        map[string]any{},
+		"inventory":    map[string]any{},
+		"resources":    map[string]any{},
+		"world_flags":  []any{},
+		"rules":        []any{},
+		"threads":      []any{},
+		"action_space": []any{},
+	}
 }
 
 func eventsByID(lines []map[string]any) map[string]map[string]any {
@@ -784,6 +824,17 @@ func branchSummaries(meta StoryMeta) []BranchSummary {
 
 func parentIDFromRaw(raw map[string]any) string {
 	switch value := raw["parent_id"].(type) {
+	case string:
+		return value
+	case nil:
+		return ""
+	default:
+		return strings.TrimSpace(fmt.Sprint(value))
+	}
+}
+
+func parentIDString(parentID any) string {
+	switch value := parentID.(type) {
 	case string:
 		return value
 	case nil:

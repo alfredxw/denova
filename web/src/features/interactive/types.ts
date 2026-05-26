@@ -38,12 +38,24 @@ export interface TurnEvent {
   user: string
   narrative: string
   thinking?: string
+  state_delta?: StateDelta
+}
+
+export interface StateDelta {
+  ops: StateOp[]
+}
+
+export interface StateOp {
+  op: string
+  path: string
+  value?: unknown
 }
 
 export interface Snapshot {
   story_id: string
   branch_id: string
   turns: TurnEvent[]
+  current_turn?: TurnEvent
   state: Record<string, unknown>
   graph?: StoryGraph
 }

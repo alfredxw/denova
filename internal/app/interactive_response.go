@@ -27,7 +27,7 @@ func parseInteractiveAssistantOutput(content string) (string, []interactive.Stat
 
 	stateBlock, ok := extractBetween(content, stateDeltaStartTag, stateDeltaEndTag)
 	if !ok || strings.TrimSpace(stateBlock) == "" {
-		return strings.TrimSpace(narrative), nil, nil
+		return strings.TrimSpace(narrative), nil, fmt.Errorf("互动状态变化不能为空：请在正文后输出非空 <STATE_DELTA> JSON")
 	}
 	var payload interactiveStatePayload
 	if err := json.Unmarshal([]byte(strings.TrimSpace(stateBlock)), &payload); err != nil {
@@ -63,6 +63,9 @@ func extractBetween(content, startTag, endTag string) (string, bool) {
 }
 
 func validateStateOps(ops []interactive.StateOp) error {
+	if len(ops) == 0 {
+		return fmt.Errorf("互动状态变化不能为空：STATE_DELTA.ops 至少需要一条本回合状态变化")
+	}
 	for _, op := range ops {
 		switch op.Op {
 		case "set", "merge", "push", "pull", "inc", "unset":

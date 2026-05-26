@@ -1,11 +1,15 @@
 package app
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/schema"
 
@@ -42,6 +46,8 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	if err != nil {
 		return nil, fmt.Errorf("序列化互动状态失败: %w", err)
 	}
+	characters := c.readSettingFile("characters.md")
+	worldBuilding := c.readSettingFile("world-building.md")
 	contextMessage := prompts.InteractiveStoryContext(prompts.InteractiveStoryPromptInput{
 		Title:             storyCtx.Meta.Title,
 		Origin:            storyCtx.Meta.Origin,
@@ -49,8 +55,8 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		StoryTeller:       tellerPrompt,
 		BranchID:          storyCtx.Snapshot.BranchID,
 		ReplyTargetChars:  c.replyTargetChars,
-		Characters:        c.readSettingFile("characters.md"),
-		WorldBuilding:     c.readSettingFile("world-building.md"),
+		Characters:        characters,
+		WorldBuilding:     worldBuilding,
 		SnapshotStateJSON: string(stateJSON),
 	})
 	history := make([]*schema.Message, 0, len(storyCtx.Snapshot.Turns)*2+2)
@@ -60,6 +66,21 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		history = append(history, schema.AssistantMessage(turn.Narrative, nil))
 	}
 	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage)))
+	log.Printf(
+		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s teller_prompt=%s characters=%s world_building=%s snapshot_state=%s turns=%d history=%s turn_instruction=%s",
+		c.storyID,
+		storyCtx.Snapshot.BranchID,
+		interactivePartSummary(storyCtx.Meta.Title),
+		interactivePartSummary(storyCtx.Meta.Origin),
+		storyCtx.Meta.StoryTellerID,
+		interactivePartSummary(tellerPrompt),
+		interactivePartSummary(characters),
+		interactivePartSummary(worldBuilding),
+		interactivePartSummary(string(stateJSON)),
+		len(storyCtx.Snapshot.Turns),
+		interactiveMessageListSummary(history),
+		interactivePartSummary(history[len(history)-1].Content),
+	)
 	return history, nil
 }
 
@@ -71,13 +92,13 @@ func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking 
 	if c == nil || c.store == nil {
 		return fmt.Errorf("互动故事不存在")
 	}
+	log.Printf("[interactive-agent] parse assistant output content story_id=%s branch_id=%s content=%q", c.storyID, c.branchID, content)
 	narrative, ops, parseErr := parseInteractiveAssistantOutput(content)
 	if parseErr != nil {
-		if narrative == "" {
-			return parseErr
-		}
-		log.Printf("[interactive-agent] state delta parse skipped story_id=%s branch_id=%s err=%v", c.storyID, c.branchID, parseErr)
+		log.Printf("[interactive-agent] parse assistant output failed story_id=%s branch_id=%s err=%v content=%q", c.storyID, c.branchID, parseErr, content)
+		return parseErr
 	}
+	log.Printf("[interactive-agent] parse assistant output result story_id=%s branch_id=%s narrative=%q ops=%s", c.storyID, c.branchID, narrative, interactiveStateOpsLogJSON(ops))
 	_, _, err := c.store.AppendTurnWithState(c.storyID, interactive.AppendTurnWithStateRequest{
 		BranchID:  c.branchID,
 		User:      c.user,
@@ -127,4 +148,80 @@ func (c *interactiveConversation) PendingInterruption() *session.Interruption {
 
 func (c *interactiveConversation) ResolveInterruption(id string) error {
 	return nil
+}
+
+func interactiveStateOpsLogJSON(ops []interactive.StateOp) string {
+	data, err := json.Marshal(ops)
+	if err != nil {
+		return fmt.Sprintf("<marshal error: %v>", err)
+	}
+	return string(data)
+}
+
+func interactiveMessageListSummary(messages []*schema.Message) string {
+	if len(messages) == 0 {
+		return "count=0"
+	}
+	parts := make([]string, 0, interactiveMinInt(len(messages), 8)+1)
+	if len(messages) <= 8 {
+		for i, msg := range messages {
+			parts = append(parts, interactiveMessageSummary(i, msg))
+		}
+	} else {
+		for i := 0; i < 4; i++ {
+			parts = append(parts, interactiveMessageSummary(i, messages[i]))
+		}
+		parts = append(parts, fmt.Sprintf("... omitted=%d ...", len(messages)-8))
+		for i := len(messages) - 4; i < len(messages); i++ {
+			parts = append(parts, interactiveMessageSummary(i, messages[i]))
+		}
+	}
+	return fmt.Sprintf("count=%d parts=[%s]", len(messages), strings.Join(parts, "; "))
+}
+
+func interactiveMessageSummary(index int, msg *schema.Message) string {
+	if msg == nil {
+		return fmt.Sprintf("%d:<nil>", index)
+	}
+	return fmt.Sprintf("%d:%s(%s)", index, msg.Role, interactivePartSummary(msg.Content))
+}
+
+func interactivePartSummary(s string) string {
+	s = strings.TrimSpace(s)
+	return strings.Join([]string{
+		"present=" + interactiveBoolString(s != ""),
+		"bytes=" + fmt.Sprint(len(s)),
+		"chars=" + fmt.Sprint(utf8.RuneCountInString(s)),
+		"lines=" + fmt.Sprint(interactiveLineCount(s)),
+		"sha=" + interactiveShortSHA256(s),
+	}, ",")
+}
+
+func interactiveBoolString(v bool) string {
+	if v {
+		return "true"
+	}
+	return "false"
+}
+
+func interactiveLineCount(s string) int {
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
+}
+
+func interactiveShortSHA256(s string) string {
+	if s == "" {
+		return "-"
+	}
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func interactiveMinInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

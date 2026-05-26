@@ -142,8 +142,11 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	if delta == nil {
 		t.Fatal("expected state_delta event")
 	}
-	if delta.ParentID != turn.ID {
-		t.Fatalf("delta parent = %q, want %q", delta.ParentID, turn.ID)
+	if delta.ID != turn.ID {
+		t.Fatalf("delta id = %q, want turn id %q", delta.ID, turn.ID)
+	}
+	if turn.StateDelta == nil || len(turn.StateDelta.Ops) != 2 {
+		t.Fatalf("expected turn to carry embedded state delta: %#v", turn.StateDelta)
 	}
 
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -152,6 +155,9 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	}
 	if len(snapshot.Turns) != 1 || snapshot.Turns[0].Narrative != "火光照亮了墙上的新线索。" || snapshot.Turns[0].Thinking != "先判断现场风险。" {
 		t.Fatalf("unexpected turns: %+v", snapshot.Turns)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turn.ID {
+		t.Fatalf("current turn = %#v, want %s", snapshot.CurrentTurn, turn.ID)
 	}
 	onStage, ok := snapshot.State["on_stage"].([]any)
 	if !ok || len(onStage) != 1 || onStage[0] != "林川" {
@@ -168,28 +174,42 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 		t.Fatalf("read story file failed: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("jsonl line count = %d, want 3\n%s", len(lines), string(data))
+	if len(lines) != 2 {
+		t.Fatalf("jsonl line count = %d, want 2\n%s", len(lines), string(data))
 	}
-	var turnLine, deltaLine map[string]any
+	var turnLine map[string]any
 	if err := json.Unmarshal([]byte(lines[1]), &turnLine); err != nil {
 		t.Fatalf("parse turn line failed: %v", err)
 	}
-	if err := json.Unmarshal([]byte(lines[2]), &deltaLine); err != nil {
-		t.Fatalf("parse delta line failed: %v", err)
-	}
-	if turnLine["type"] != "turn" || deltaLine["type"] != "state_delta" {
-		t.Fatalf("unexpected event order: turn=%#v delta=%#v", turnLine["type"], deltaLine["type"])
+	if turnLine["type"] != "turn" {
+		t.Fatalf("unexpected event type: %#v", turnLine["type"])
 	}
 	if turnLine["thinking"] != "先判断现场风险。" {
 		t.Fatalf("thinking in file = %q, want persisted thinking", turnLine["thinking"])
 	}
-	if deltaLine["parent_id"] != turn.ID {
-		t.Fatalf("delta parent in file = %q, want %q", deltaLine["parent_id"], turn.ID)
+	if _, ok := turnLine["alts"]; ok {
+		t.Fatalf("fresh generated turn should not persist alts: %#v", turnLine["alts"])
+	}
+	if _, ok := turnLine["alt_idx"]; ok {
+		t.Fatalf("fresh generated turn should not persist alt_idx: %#v", turnLine["alt_idx"])
+	}
+	stateDelta, ok := turnLine["state_delta"].(map[string]any)
+	if !ok {
+		t.Fatalf("turn should embed state_delta: %#v", turnLine)
+	}
+	ops, ok := stateDelta["ops"].([]any)
+	if !ok || len(ops) != 2 {
+		t.Fatalf("embedded state_delta ops = %#v, want 2 ops", stateDelta["ops"])
+	}
+	if _, ok := turnLine["state_delta"].(map[string]any)["narrative"]; ok {
+		t.Fatalf("state_delta should not contain narrative: %#v", turnLine["state_delta"])
+	}
+	if _, ok := turnLine["state"]; ok {
+		t.Fatalf("turn should not persist copied full state: %#v", turnLine["state"])
 	}
 }
 
-func TestStoryGraphUsesNearestVisibleTurnParent(t *testing.T) {
+func TestStoryGraphLinksTurnsDirectlyWhenStateDeltaIsEmbedded(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{
 		Title:         "可见父节点",
@@ -220,8 +240,8 @@ func TestStoryGraphUsesNearestVisibleTurnParent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AppendTurn failed: %v", err)
 	}
-	if second.ParentID != delta.ID {
-		t.Fatalf("persisted turn parent = %q, want hidden delta %q", second.ParentID, delta.ID)
+	if second.ParentID != first.ID {
+		t.Fatalf("persisted turn parent = %q, want previous turn %q", second.ParentID, first.ID)
 	}
 
 	snapshot, err := store.Snapshot(story.ID, "main")

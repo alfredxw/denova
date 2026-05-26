@@ -9,11 +9,11 @@ function asArray(value: unknown): unknown[] {
 }
 
 export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
-  const onStage = asArray(snapshot?.state?.on_stage)
-  const events = asArray(snapshot?.state?.events)
   const state = snapshot?.state || {}
-  const characters = snapshot?.state?.characters && typeof snapshot.state.characters === 'object'
-    ? Object.entries(snapshot.state.characters as Record<string, unknown>)
+  const onStage = asArray(state.on_stage)
+  const events = asArray(state.events)
+  const characters = state.characters && typeof state.characters === 'object'
+    ? Object.entries(state.characters as Record<string, unknown>)
     : []
   const scene = isPlainObject(state.scene) ? state.scene : {}
   const inventory = isPlainObject(state.inventory) ? state.inventory : null

@@ -89,6 +89,9 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if last.Thinking != "先判断现场风险。" {
 		t.Fatalf("last thinking = %q, want persisted thinking", last.Thinking)
 	}
+	if last.StateDelta == nil || len(last.StateDelta.Ops) != 2 {
+		t.Fatalf("last turn should persist state_delta: %#v", last.StateDelta)
+	}
 	onStage := snapshot.State["on_stage"].([]any)
 	if len(onStage) != 1 || onStage[0] != "林川" {
 		t.Fatalf("unexpected on_stage: %#v", onStage)
@@ -140,19 +143,13 @@ func TestParseInteractiveAssistantOutput(t *testing.T) {
 	}
 
 	narrative, ops, err = parseInteractiveAssistantOutput("<NARRATIVE>只有正文。</NARRATIVE>")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if narrative != "只有正文。" || len(ops) != 0 {
-		t.Fatalf("unexpected no-state output narrative=%q ops=%#v", narrative, ops)
+	if err == nil || narrative != "只有正文。" || len(ops) != 0 {
+		t.Fatalf("expected missing state delta error, narrative=%q ops=%#v err=%v", narrative, ops, err)
 	}
 
 	narrative, ops, err = parseInteractiveAssistantOutput("旧格式正文\n<STATE_DELTA>{\"ops\":[]}</STATE_DELTA>")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if narrative != "旧格式正文" || len(ops) != 0 {
-		t.Fatalf("unexpected legacy output narrative=%q ops=%#v", narrative, ops)
+	if err == nil || narrative != "旧格式正文" || len(ops) != 0 {
+		t.Fatalf("expected empty ops error, narrative=%q ops=%#v err=%v", narrative, ops, err)
 	}
 
 	narrative, ops, err = parseInteractiveAssistantOutput("旧格式正文\n<STATE_DELTA>{bad json}</STATE_DELTA>")

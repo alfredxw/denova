@@ -51,12 +51,13 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 	sb.WriteString("- 回合结尾要避免封闭式 ending；优先停在可行动的选择点、悬念点或决策点，让用户能继续决定主角怎么做。\n")
 	sb.WriteString("- 可以在正文结尾自然露出 2 到 4 个可选行动方向，但不要写成游戏 UI 菜单，也不要替用户决定下一步选择。\n\n")
 	fmt.Fprintf(&sb, "- 本轮回复目标长度约为 %d 个中文字以内；你需要主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。\n\n", normalizeInteractiveReplyTargetChars(in.ReplyTargetChars))
-	sb.WriteString("- 若本回合出现角色位置、状态、关系、在场人物、地点、时间、物品资源、世界规则、线索、风险或关键事件变化，必须在正文后追加完整 <STATE_DELTA> JSON；不要把状态变化只写在正文里。\n\n")
+	sb.WriteString("- 每一回合都必须在正文后追加完整 <STATE_DELTA> JSON，由你根据本轮故事生成后的结果记录状态变化；不要把状态变化只写在正文里。\n")
+	sb.WriteString("- STATE_DELTA 只能记录本回合造成的变化，不要复制上一轮旧状态，也不要写未来计划。\n\n")
 	sb.WriteString("## 输出协议\n")
 	sb.WriteString("必须只输出以下结构，不要输出计划、解释、工具说明或 Markdown 标题：\n")
 	sb.WriteString("<NARRATIVE>\n本回合展示在故事舞台上的正文\n</NARRATIVE>\n")
 	sb.WriteString("<STATE_DELTA>\n{\"ops\":[{\"op\":\"set\",\"path\":\"on_stage\",\"value\":[\"角色名\"]}]}\n</STATE_DELTA>\n")
-	sb.WriteString("如果没有明确状态变化，可以省略整个 <STATE_DELTA> 块。\n")
+	sb.WriteString("STATE_DELTA 不能为空；即使场面很平稳，也至少更新 scene、events、threads 或 action_space 中和本回合直接相关的变化。\n")
 	if ws := strings.TrimSpace(in.Workspace); ws != "" {
 		sb.WriteString("\n## 作品工作目录\n")
 		sb.WriteString(ws)
@@ -77,7 +78,7 @@ func InteractiveStoryContext(in InteractiveStoryPromptInput) string {
 	sb.WriteString("<STATE_DELTA>\n")
 	sb.WriteString("{\"ops\":[{\"op\":\"set\",\"path\":\"on_stage\",\"value\":[\"角色名\"]}]}\n")
 	sb.WriteString("</STATE_DELTA>\n\n")
-	sb.WriteString("如果本回合没有明确状态变化，可以省略整个 <STATE_DELTA> 块。STATE_DELTA 只记录本回合已经发生、确定成立的变化，不要记录未来计划。\n")
+	sb.WriteString("STATE_DELTA 必须存在且 ops 不能为空；STATE_DELTA 只记录本回合已经发生、确定成立的变化，不要记录未来计划，也不要复制当前快照里没有变化的旧状态。\n")
 	sb.WriteString("状态 path 仅允许 on_stage、characters.<角色名>、events、location、time、pov、scene、inventory、resources、world_flags、rules、threads、action_space 及其子路径；op 仅允许 set、merge、push、pull、inc、unset。\n\n")
 	sb.WriteString("## 回合裁定循环（必须隐式执行，不要输出分析）\n")
 	sb.WriteString("1. 识别用户行动：区分行动、对白、观察、等待、追问、计划、元指令；提取目标、手段、风险、涉及对象和隐含意图。\n")
@@ -95,7 +96,7 @@ func InteractiveStoryContext(in InteractiveStoryPromptInput) string {
 	sb.WriteString("- threads：记录尚未解决的线索、危机、承诺、倒计时和暗线压力。\n")
 	sb.WriteString("- action_space：记录当前已暴露的可行动入口，只写客观可行性，不写成给用户看的菜单。\n\n")
 	fmt.Fprintf(&sb, "本轮 NARRATIVE 目标长度约为 %d 个中文字以内。请主动控制篇幅，保证结尾完整收束到开放选择点。\n\n", normalizeInteractiveReplyTargetChars(in.ReplyTargetChars))
-	sb.WriteString("如果本回合改变了角色状态、在场角色、地点、时间、物品资源、世界规则、未解决线索、危险态势或关键事件，请追加完整 STATE_DELTA。常用路径：on_stage、characters.<角色名>、events、location、time、pov、scene、inventory、resources、world_flags、rules、threads、action_space。\n\n")
+	sb.WriteString("每回合必须追加完整 STATE_DELTA。常用路径：on_stage、characters.<角色名>、events、location、time、pov、scene、inventory、resources、world_flags、rules、threads、action_space。ops 只写本轮新增、改变或确认的状态，不要整段复制上一轮快照。\n\n")
 	sb.WriteString("## 故事信息\n")
 	writeField(&sb, "标题", in.Title)
 	writeField(&sb, "开端", in.Origin)
@@ -124,7 +125,7 @@ func InteractiveStoryTurnInstruction(message string) string {
 本回合必须隐式完成：识别用户行动、判断相关角色和世界规则、裁定后果、更新状态、制造新的可行动空间、保持角色和世界一致性；不要输出这些分析过程。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
 其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。
-必须使用 <NARRATIVE>...</NARRATIVE> 包裹正文；如有状态变化，再追加 <STATE_DELTA>...</STATE_DELTA> JSON。`, strings.TrimSpace(message))
+必须使用 <NARRATIVE>...</NARRATIVE> 包裹正文，并且必须追加非空 <STATE_DELTA>...</STATE_DELTA> JSON。STATE_DELTA 由你在生成本轮故事后根据本轮结果生成，只记录本轮变化，不要复制旧状态。`, strings.TrimSpace(message))
 }
 
 func writeField(sb *strings.Builder, name, value string) {

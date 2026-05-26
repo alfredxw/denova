@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sort"
 	"strings"
 	"unicode/utf8"
 
@@ -111,6 +112,18 @@ func (s *ChatService) Run(
 		emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return
 	}
+	log.Printf(
+		"[agent-run] context composition history=%s original=%s agent_message=%s references=%s style_references=%s style_rules=%d selections=%s plan_mode=%v resumed=%v",
+		messageListSummary(history),
+		promptPartSummary(originalMessage),
+		promptPartSummary(agentMessage),
+		stringListSummary(req.References),
+		stringListSummary(req.StyleReferences),
+		len(req.StyleRules),
+		selectionListSummary(req.Selections),
+		req.PlanMode,
+		resumeInterruption != nil,
+	)
 
 	events := runner.Run(ctx, history)
 	var fullContent strings.Builder
@@ -621,6 +634,104 @@ func appendPlanModeInstruction(message string) string {
 // 历史对话只能用于辅助理解，不能直接成为本轮执行依据。
 func appendContextBoundaryInstruction(message string) string {
 	return prompts.ContextBoundary(message)
+}
+
+func messageListSummary(messages []*schema.Message) string {
+	if len(messages) == 0 {
+		return "count=0"
+	}
+	roleCounts := make(map[string]int)
+	totalBytes := 0
+	totalChars := 0
+	for _, msg := range messages {
+		if msg == nil {
+			roleCounts["<nil>"]++
+			continue
+		}
+		role := fmt.Sprint(msg.Role)
+		roleCounts[role]++
+		totalBytes += len(msg.Content)
+		totalChars += utf8.RuneCountInString(msg.Content)
+	}
+
+	parts := make([]string, 0, minInt(len(messages), 8)+1)
+	if len(messages) <= 8 {
+		for i, msg := range messages {
+			parts = append(parts, messageSummary(i, msg))
+		}
+	} else {
+		for i := 0; i < 4; i++ {
+			parts = append(parts, messageSummary(i, messages[i]))
+		}
+		parts = append(parts, fmt.Sprintf("... omitted=%d ...", len(messages)-8))
+		for i := len(messages) - 4; i < len(messages); i++ {
+			parts = append(parts, messageSummary(i, messages[i]))
+		}
+	}
+
+	return fmt.Sprintf("count=%d roles=%s total_bytes=%d total_chars=%d parts=[%s]", len(messages), roleCountSummary(roleCounts), totalBytes, totalChars, strings.Join(parts, "; "))
+}
+
+func messageSummary(index int, msg *schema.Message) string {
+	if msg == nil {
+		return fmt.Sprintf("%d:<nil>", index)
+	}
+	return fmt.Sprintf("%d:%s(%s)", index, msg.Role, promptPartSummary(msg.Content))
+}
+
+func roleCountSummary(counts map[string]int) string {
+	if len(counts) == 0 {
+		return "{}"
+	}
+	roles := make([]string, 0, len(counts))
+	for role := range counts {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	parts := make([]string, 0, len(roles))
+	for _, role := range roles {
+		parts = append(parts, fmt.Sprintf("%s:%d", role, counts[role]))
+	}
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
+func stringListSummary(values []string) string {
+	if len(values) == 0 {
+		return "count=0"
+	}
+	totalBytes := 0
+	for _, value := range values {
+		totalBytes += len(value)
+	}
+	display := values
+	if len(display) > 6 {
+		display = append(append([]string(nil), values[:3]...), append([]string{fmt.Sprintf("... omitted=%d ...", len(values)-6)}, values[len(values)-3:]...)...)
+	}
+	return fmt.Sprintf("count=%d total_bytes=%d items=%q", len(values), totalBytes, display)
+}
+
+func selectionListSummary(selections []TextSelectionRef) string {
+	if len(selections) == 0 {
+		return "count=0"
+	}
+	totalBytes := 0
+	parts := make([]string, 0, minInt(len(selections), 6)+1)
+	for i, sel := range selections {
+		totalBytes += len(sel.Content)
+		if i < 3 || i >= len(selections)-3 {
+			parts = append(parts, fmt.Sprintf("%s:%d-%d(%s)", sel.FileName, sel.StartLine, sel.EndLine, promptPartSummary(sel.Content)))
+		} else if i == 3 {
+			parts = append(parts, fmt.Sprintf("... omitted=%d ...", len(selections)-6))
+		}
+	}
+	return fmt.Sprintf("count=%d total_content_bytes=%d items=[%s]", len(selections), totalBytes, strings.Join(parts, "; "))
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // EventError 创建标准错误事件。

@@ -75,7 +75,7 @@ func isInteractiveStoryWriteTool(name string) bool {
 }
 
 func interactiveStoryWriteToolBlockedMessage(name string) string {
-	return fmt.Sprintf("[tool error] 互动故事模式禁止使用写文件工具 %q。请不要修改 workspace 文件，直接输出 <NARRATIVE> 正文与可选 <STATE_DELTA> JSON；后端会写入 story jsonl。", name)
+	return fmt.Sprintf("[tool error] 互动故事模式禁止使用写文件工具 %q。请不要修改 workspace 文件，直接输出 <NARRATIVE> 正文与非空 <STATE_DELTA> JSON；后端会写入 story jsonl。", name)
 }
 
 func (m *safeToolMiddleware) WrapInvokableToolCall(

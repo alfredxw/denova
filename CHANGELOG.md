@@ -21,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 后端 `interactive`：增加 Agent 输出解析日志，记录原始 content、解析后的 narrative 与 state_delta ops，解析失败时同步打印错误和原始 content 便于排查状态缺失
+- 后端 `interactive`：修正 story JSONL 回合格式，普通生成回合不再写入与顶层正文重复的 `alts`，并强制 Agent 每轮在同一条 `turn` 记录中生成非空 `state_delta`；后端不再把旧状态复制成最新回合状态，右侧场景记忆按当前分支回合链应用 Agent 生成的 delta 恢复
 - 后端 `interactive`：修复剧情路线图在 `turn` 后存在隐藏 `state_delta` 事件时，后续可见节点父级指向隐藏事件导致分支节点列号回退、连线反向的问题
 - WebUI：修复输入框、对话框和互动模式输入态下工作台全局快捷键抢占原生文本操作的问题；`Cmd/Ctrl+S` 现在会在表单和编辑器中统一拦截浏览器“保存网页”行为，互动资料库编辑框支持快捷保存
 - WebUI：修复互动故事回合流式输出完成并刷新快照后，故事舞台会在用户向上浏览历史内容时强制跳回底部的问题
