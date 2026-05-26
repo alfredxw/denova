@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MessageList } from './MessageList'
@@ -94,6 +94,64 @@ describe('MessageList', () => {
     )
 
     await waitFor(() => expect(scroller.scrollTop).toBe(1200))
+  })
+
+  it('用户向上浏览时消息更新不会自动拉回底部', () => {
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    })
+    try {
+      const { container, rerender } = render(
+        <MessageList
+          isStreaming={false}
+          activityContent=""
+          messages={[
+            { type: 'message', role: 'user', content: '第一条消息' },
+            { type: 'message', role: 'assistant', content: '历史回复' },
+          ]}
+          scrollResetKey="session-a"
+        />,
+      )
+      const scroller = container.firstElementChild as HTMLDivElement
+      let scrollTop = 0
+      Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => 1200 })
+      Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 320 })
+      Object.defineProperty(scroller, 'scrollTop', {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value) => {
+          scrollTop = value
+        },
+      })
+
+      scroller.scrollTop = 200
+      fireEvent.scroll(scroller)
+      scrollIntoView.mockClear()
+
+      rerender(
+        <MessageList
+          isStreaming={false}
+          activityContent=""
+          messages={[
+            { type: 'message', role: 'user', content: '第一条消息' },
+            { type: 'message', role: 'assistant', content: '历史回复' },
+            { type: 'message', role: 'assistant', content: '新增回复' },
+          ]}
+          scrollResetKey="session-a"
+        />,
+      )
+
+      expect(scroller.scrollTop).toBe(200)
+      expect(scrollIntoView).not.toHaveBeenCalled()
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: originalScrollIntoView,
+      })
+    }
   })
 
   it('展示 /clear 产生的上下文清理分界且保留前后消息', () => {

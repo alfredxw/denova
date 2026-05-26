@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 
 import type { TextSelection as QuoteSelection } from '@/lib/api'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
+import { isEditableTarget } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
@@ -318,8 +319,8 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // 当焦点在 chat 输入框等 textarea/input 时，不拦截快捷键
-      const tag = (document.activeElement as HTMLElement)?.tagName
-      if (tag === 'TEXTAREA' || tag === 'INPUT') return
+      const inCurrentEditor = e.target instanceof globalThis.Node && editor?.view.dom.contains(e.target)
+      if (isEditableTarget(e.target) && !inCurrentEditor) return
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
         e.preventDefault()
@@ -346,6 +347,9 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
   // Cmd+Shift+L 快捷键：引用选区到 Chat
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const inCurrentEditor = e.target instanceof globalThis.Node && editor?.view.dom.contains(e.target)
+      if (isEditableTarget(e.target) && !inCurrentEditor) return
+
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
         e.preventDefault()
         quoteCurrentSelection()

@@ -64,6 +64,10 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 }
 
 func (c *interactiveConversation) AppendAssistant(content string) error {
+	return c.AppendAssistantWithThinking(content, "")
+}
+
+func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking string) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("互动故事不存在")
 	}
@@ -78,6 +82,7 @@ func (c *interactiveConversation) AppendAssistant(content string) error {
 		BranchID:  c.branchID,
 		User:      c.user,
 		Narrative: narrative,
+		Thinking:  thinking,
 		Ops:       ops,
 	})
 	return err

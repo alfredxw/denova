@@ -78,15 +78,28 @@ func validateStateOps(ops []interactive.StateOp) error {
 
 func isAllowedStatePath(path string) bool {
 	path = strings.TrimSpace(path)
-	return path == "on_stage" ||
-		path == "events" ||
-		path == "location" ||
-		path == "time" ||
-		path == "pov" ||
-		strings.HasPrefix(path, "characters.") ||
-		strings.HasPrefix(path, "events.") ||
-		strings.HasPrefix(path, "on_stage.") ||
-		strings.HasPrefix(path, "location.") ||
-		strings.HasPrefix(path, "time.") ||
-		strings.HasPrefix(path, "pov.")
+	if path == "" {
+		return false
+	}
+	allowedRoots := []string{
+		"on_stage",
+		"characters",
+		"events",
+		"location",
+		"time",
+		"pov",
+		"scene",
+		"inventory",
+		"resources",
+		"world_flags",
+		"rules",
+		"threads",
+		"action_space",
+	}
+	for _, root := range allowedRoots {
+		if path == root || strings.HasPrefix(path, root+".") {
+			return true
+		}
+	}
+	return false
 }

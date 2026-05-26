@@ -1,4 +1,4 @@
-import { Activity, MapPin, Sparkles, UserRoundCheck } from 'lucide-react'
+import { Activity, Compass, Flag, MapPin, Package, Sparkles, UserRoundCheck } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -15,9 +15,18 @@ export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
   const characters = snapshot?.state?.characters && typeof snapshot.state.characters === 'object'
     ? Object.entries(snapshot.state.characters as Record<string, unknown>)
     : []
+  const scene = isPlainObject(state.scene) ? state.scene : {}
+  const inventory = isPlainObject(state.inventory) ? state.inventory : null
+  const resources = isPlainObject(state.resources) ? state.resources : null
+  const worldFlags = asArray(state.world_flags)
+  const rules = asArray(state.rules)
+  const threads = asArray(state.threads)
+  const actionSpace = asArray(state.action_space)
   const location = pickString(state, ['location', 'place', 'scene', '地点'])
+    || pickString(scene, ['location', 'place', 'name', '地点', '场景'])
   const time = pickString(state, ['time', 'moment', '时间'])
   const pov = pickString(state, ['pov', 'viewpoint', '视角'])
+  const sceneEntries = Object.entries(scene).filter(([key]) => !SCENE_METRIC_KEYS.has(key))
 
   return (
     <aside className="flex h-full min-w-0 flex-col border-l border-[#2f3540] bg-[#1b1e24] p-4">
@@ -39,6 +48,11 @@ export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
             <SnapshotMetric label="时间" value={time || '未记录'} />
             <SnapshotMetric label="视角" value={pov || '未记录'} />
           </div>
+          {sceneEntries.length ? (
+            <div className="mt-3 border-t border-[#29313c] pt-3">
+              <StateValue value={Object.fromEntries(sceneEntries)} />
+            </div>
+          ) : null}
         </section>
 
         <section className="mb-3 rounded-lg border border-[#343b47] bg-[#111318] p-3">
@@ -53,6 +67,14 @@ export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
 
         <section className="mb-3 rounded-lg border border-[#343b47] bg-[#111318] p-3">
           <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-[#7fb7e8]">
+            <Compass className="h-3.5 w-3.5" />
+            可行动空间
+          </div>
+          <CompactList items={actionSpace} empty="暂无可行动入口" />
+        </section>
+
+        <section className="mb-3 rounded-lg border border-[#343b47] bg-[#111318] p-3">
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-[#7fb7e8]">
             <Activity className="h-3.5 w-3.5" />
             角色状态
           </div>
@@ -63,6 +85,39 @@ export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
                 <StateValue value={state} />
               </div>
             )) : '暂无角色状态'}
+          </div>
+        </section>
+
+        <section className="mb-3 rounded-lg border border-[#343b47] bg-[#111318] p-3">
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-[#7fb7e8]">
+            <Package className="h-3.5 w-3.5" />
+            物品与资源
+          </div>
+          <div className="space-y-2 text-xs text-[#a8adb7]">
+            {inventory ? (
+              <div className="rounded-md border border-[#303743] bg-[#191d24] p-2">
+                <div className="mb-1 font-medium text-[#d6dbe5]">物品</div>
+                <StateValue value={inventory} />
+              </div>
+            ) : null}
+            {resources ? (
+              <div className="rounded-md border border-[#303743] bg-[#191d24] p-2">
+                <div className="mb-1 font-medium text-[#d6dbe5]">资源</div>
+                <StateValue value={resources} />
+              </div>
+            ) : null}
+            {!inventory && !resources ? '暂无物品或资源变化' : null}
+          </div>
+        </section>
+
+        <section className="mb-3 rounded-lg border border-[#343b47] bg-[#111318] p-3">
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-[#7fb7e8]">
+            <Flag className="h-3.5 w-3.5" />
+            规则与暗线
+          </div>
+          <div className="space-y-3 text-xs text-[#a8adb7]">
+            <LabeledList label="世界规则" items={[...worldFlags, ...rules]} empty="暂无已激活规则" />
+            <LabeledList label="未解决线索" items={threads} empty="暂无未解决线索" />
           </div>
         </section>
 
@@ -152,6 +207,28 @@ function EventItem({ event, index }: { event: unknown; index: number }) {
         </dl>
       ) : null}
     </article>
+  )
+}
+
+function CompactList({ items, empty }: { items: unknown[]; empty: string }) {
+  if (!items.length) return <div className="text-xs text-[#a8adb7]">{empty}</div>
+  return (
+    <div className="space-y-1.5 text-xs text-[#a8adb7]">
+      {items.map((item, index) => (
+        <div key={index} className="rounded-md border border-[#303743] bg-[#191d24] px-2 py-1.5">
+          {renderReadableValue(item)}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function LabeledList({ label, items, empty }: { label: string; items: unknown[]; empty: string }) {
+  return (
+    <div>
+      <div className="mb-1 text-[10px] font-medium text-[#747f91]">{label}</div>
+      <CompactList items={items} empty={empty} />
+    </div>
   )
 }
 
@@ -246,6 +323,29 @@ function formatLabel(key: string) {
     item: '物品',
     items: '物品',
     inventory: '物品',
+    resources: '资源',
+    resource: '资源',
+    danger: '危险',
+    danger_level: '危险度',
+    tension: '紧张度',
+    atmosphere: '氛围',
+    obstacle: '阻碍',
+    obstacles: '阻碍',
+    exits: '出口',
+    interactive_objects: '可交互物',
+    action_space: '可行动空间',
+    world_flags: '世界标记',
+    rules: '世界规则',
+    threads: '未解决线索',
+    hook: '钩子',
+    hooks: '钩子',
+    clue: '线索',
+    clues: '线索',
+    cost: '代价',
+    consequence: '后果',
+    known_info: '已知信息',
+    stance: '立场',
+    injury: '伤势',
     ts: '时间',
     time: '时间',
     moment: '时刻',
@@ -290,6 +390,12 @@ const FIELD_WORDS: Record<string, string> = {
   created: '创建',
   updated: '更新',
   stage: '在场',
+  flags: '标记',
+  space: '空间',
+  world: '世界',
+  danger: '危险',
+  action: '行动',
 }
 
 const EVENT_PRIMARY_KEYS = new Set(['title', 'name', 'flag', 'event', '事件名', 'description', 'summary', 'content', 'text', '事件', '描述', 'type'])
+const SCENE_METRIC_KEYS = new Set(['location', 'place', 'name', '地点', '场景'])

@@ -1,8 +1,9 @@
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import { preserveNativeTextEditingShortcut } from "@/lib/keyboard"
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+function Input({ className, type, onKeyDownCapture, ...props }: React.ComponentProps<"input">) {
   return (
     <input
       type={type}
@@ -13,6 +14,10 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
         "aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
         className
       )}
+      onKeyDownCapture={(event) => {
+        preserveNativeTextEditingShortcut(event)
+        onKeyDownCapture?.(event)
+      }}
       {...props}
     />
   )

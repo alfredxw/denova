@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { BookMarked, FileText, Globe2, UserRound } from 'lucide-react'
 import { readFile, saveFile } from '@/lib/api'
+import { isSaveShortcut } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -64,6 +65,13 @@ export function SettingPanel() {
           className="min-h-[calc(100vh-350px)] resize-none border-0 bg-transparent font-mono text-xs leading-6 text-[#b6bdca] shadow-none focus-visible:ring-0"
           value={content}
           onChange={(event) => setContent(event.target.value)}
+          onKeyDown={(event) => {
+            if (isSaveShortcut(event)) {
+              event.preventDefault()
+              event.stopPropagation()
+              void handleSave()
+            }
+          }}
         />
       </ScrollArea>
       <div className="pt-3">

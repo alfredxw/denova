@@ -29,6 +29,7 @@ export function InteractiveLayout({
   } = useInteractiveStore()
   const currentStory = stories.find((story) => story.id === currentStoryId)
   const snapshotStoryIdRef = useRef('')
+  const snapshotRequestSeqRef = useRef(0)
   const [timelineExpanded, setTimelineExpanded] = useState(false)
   const timelinePanelRef = useRef<PanelImperativeHandle | null>(null)
   const timelineExpandedHeightRef = useRef(360)
@@ -43,6 +44,8 @@ export function InteractiveLayout({
   }, [setStories])
 
   const reloadSnapshot = useCallback(async (branchOverride?: string) => {
+    const requestSeq = snapshotRequestSeqRef.current + 1
+    snapshotRequestSeqRef.current = requestSeq
     if (!currentStoryId) {
       setSnapshot(null)
       return
@@ -52,6 +55,7 @@ export function InteractiveLayout({
       getInteractiveSnapshot(currentStoryId, branchId),
       getInteractiveBranches(currentStoryId),
     ])
+    if (requestSeq !== snapshotRequestSeqRef.current) return
     setSnapshot(nextSnapshot)
     setBranches(nextBranches)
   }, [currentBranchId, currentStoryId, setBranches, setSnapshot])
@@ -85,6 +89,7 @@ export function InteractiveLayout({
     if (!currentStoryId) return
     await switchInteractiveBranch(currentStoryId, branchId)
     setCurrentBranchId(branchId)
+    setSnapshot(null)
     await reloadSnapshot(branchId)
   }
 
@@ -92,13 +97,17 @@ export function InteractiveLayout({
     if (!currentStoryId) return
     const branch = await createInteractiveBranch(currentStoryId, { parent_event_id: turnId, title })
     setCurrentBranchId(branch.id)
+    setSnapshot(null)
     await reloadSnapshot(branch.id)
   }
 
   const handleDeleteBranch = async (branchId: string) => {
     if (!currentStoryId) return
     await deleteInteractiveBranch(currentStoryId, branchId)
-    if (branchId === currentBranchId) setCurrentBranchId('main')
+    if (branchId === currentBranchId) {
+      setCurrentBranchId('main')
+      setSnapshot(null)
+    }
     await reloadSnapshot(branchId === currentBranchId ? 'main' : undefined)
     await reloadStories()
   }

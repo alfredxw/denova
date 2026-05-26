@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { MessageSquareText, PenLine, Route, Send, Square } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -24,29 +24,52 @@ export function StoryStage({ storyId, branchId, snapshot, onDone }: StoryStagePr
   const [activityContent, setActivityContent] = useState('')
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([])
   const abortControllerRef = useRef<AbortController | null>(null)
+  const snapshotKey = `${storyId || 'none'}:${snapshot?.branch_id || branchId || 'main'}:${snapshot?.turns?.[snapshot.turns.length - 1]?.id || 'empty'}`
+  const previousSnapshotKeyRef = useRef(snapshotKey)
 
-  const historyMessages = useMemo<ChatMessage[]>(() => {
-    return (snapshot?.turns || []).flatMap((turn) => [
-      { id: `${turn.id}-user`, role: 'user' as const, content: turn.user },
-      { id: `${turn.id}-assistant`, role: 'assistant' as const, content: turn.narrative },
-    ])
-  }, [snapshot?.turns])
+  useEffect(() => {
+    if (previousSnapshotKeyRef.current === snapshotKey) return
+    if (streaming) return
+    previousSnapshotKeyRef.current = snapshotKey
+    setActivityContent('')
+    setLiveMessages([])
+  }, [snapshotKey, streaming])
 
-  const visibleLiveMessages = useMemo(() => {
-    if (streaming || liveMessages.length === 0) return liveMessages
-    const lastTurn = snapshot?.turns?.[snapshot.turns.length - 1]
-    const liveUser = liveMessages.find((msg) => msg.role === 'user')?.content || ''
-    const liveAssistant = liveMessages
+  const latestLiveTurn = useMemo(() => {
+    if (liveMessages.length === 0) return null
+    const user = liveMessages.find((msg) => msg.role === 'user')?.content || ''
+    const narrative = liveMessages
       .filter((msg) => msg.role === 'assistant')
       .map((msg) => msg.content || '')
       .join('')
-    if (lastTurn && lastTurn.user === liveUser && lastTurn.narrative === liveAssistant) return []
-    return liveMessages
-  }, [liveMessages, snapshot?.turns, streaming])
+    if (!user && !narrative) return null
+    return { user, narrative }
+  }, [liveMessages])
 
-  const messages = useMemo(() => [...historyMessages, ...visibleLiveMessages], [historyMessages, visibleLiveMessages])
-  const latestTurnId = snapshot?.turns?.[snapshot.turns.length - 1]?.id || 'empty'
-  const scrollResetKey = `${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}:${latestTurnId}`
+  const duplicatePersistedLiveTurn = useMemo(() => {
+    const lastTurn = snapshot?.turns?.[snapshot.turns.length - 1]
+    if (!lastTurn || !latestLiveTurn) return false
+    return normalizeMessageContent(lastTurn.user) === normalizeMessageContent(latestLiveTurn.user) &&
+      normalizeMessageContent(lastTurn.narrative) === normalizeMessageContent(latestLiveTurn.narrative)
+  }, [latestLiveTurn, snapshot?.turns])
+
+  const historyMessages = useMemo<ChatMessage[]>(() => {
+    const turns = snapshot?.turns || []
+    const visibleTurns = duplicatePersistedLiveTurn ? turns.slice(0, -1) : turns
+    return visibleTurns.flatMap((turn) => {
+      const messages: ChatMessage[] = [
+        { id: `${turn.id}-user`, role: 'user', content: turn.user },
+      ]
+      if (turn.thinking?.trim()) {
+        messages.push({ id: `${turn.id}-thinking`, role: 'thinking', content: turn.thinking, streaming: false })
+      }
+      messages.push({ id: `${turn.id}-assistant`, role: 'assistant', content: turn.narrative })
+      return messages
+    })
+  }, [duplicatePersistedLiveTurn, snapshot?.turns])
+
+  const messages = useMemo(() => [...historyMessages, ...liveMessages], [historyMessages, liveMessages])
+  const scrollResetKey = `${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
 
   const send = async () => {
     const message = input.trim()
@@ -240,4 +263,8 @@ export function StoryStage({ storyId, branchId, snapshot, onDone }: StoryStagePr
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function normalizeMessageContent(value: string) {
+  return value.replace(/\r\n/g, '\n').trim()
 }

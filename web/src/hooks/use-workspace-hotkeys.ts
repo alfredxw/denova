@@ -1,4 +1,5 @@
 import { useHotkeys } from 'react-hotkeys-hook'
+import { isEditableTarget, isNativeTextEditingShortcut } from '@/lib/keyboard'
 
 interface WorkspaceHotkeysOptions {
   onSave?: () => void | Promise<void>
@@ -16,25 +17,32 @@ export function useWorkspaceHotkeys({
   onOpenDiff,
   onEscape,
 }: WorkspaceHotkeysOptions) {
+  const shouldSkipWorkspaceAction = (event: KeyboardEvent) => {
+    return isEditableTarget(event.target) || isNativeTextEditingShortcut(event)
+  }
+
   useHotkeys('meta+s, ctrl+s', (event) => {
     event.preventDefault()
     void onSave?.()
-  }, { enableOnFormTags: false }, [onSave])
+  }, { enableOnFormTags: true, enableOnContentEditable: true }, [onSave])
 
   useHotkeys('meta+k, ctrl+k', (event) => {
+    if (shouldSkipWorkspaceAction(event)) return
     event.preventDefault()
     onOpenCommand?.()
-  }, { enableOnFormTags: true }, [onOpenCommand])
+  }, { enableOnFormTags: true, enableOnContentEditable: true }, [onOpenCommand])
 
   useHotkeys('meta+enter, ctrl+enter', (event) => {
+    if (shouldSkipWorkspaceAction(event)) return
     event.preventDefault()
     onGenerate?.()
-  }, { enableOnFormTags: true }, [onGenerate])
+  }, { enableOnFormTags: true, enableOnContentEditable: true }, [onGenerate])
 
   useHotkeys('meta+shift+d, ctrl+shift+d', (event) => {
+    if (shouldSkipWorkspaceAction(event)) return
     event.preventDefault()
     onOpenDiff?.()
-  }, { enableOnFormTags: true }, [onOpenDiff])
+  }, { enableOnFormTags: true, enableOnContentEditable: true }, [onOpenDiff])
 
   useHotkeys('esc', () => {
     onEscape?.()

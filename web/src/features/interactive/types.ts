@@ -37,6 +37,7 @@ export interface TurnEvent {
   ts: string
   user: string
   narrative: string
+  thinking?: string
 }
 
 export interface Snapshot {

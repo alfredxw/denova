@@ -24,11 +24,22 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
   const resetScrollTimerRef = useRef<number | null>(null)
   const bottomThreshold = 8
 
+  const isNearBottom = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= bottomThreshold
+  }, [])
+
   const forceScrollToBottom = useCallback(() => {
     const el = containerRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
   }, [])
+
+  const forceScrollToBottomIfAllowed = useCallback(() => {
+    if (!shouldAutoScrollRef.current) return
+    forceScrollToBottom()
+  }, [forceScrollToBottom])
 
   const cancelResetScroll = useCallback(() => {
     for (const id of resetScrollRafRef.current) {
@@ -45,11 +56,11 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     cancelResetScroll()
     forceScrollToBottom()
     resetScrollRafRef.current.push(requestAnimationFrame(() => {
-      forceScrollToBottom()
-      resetScrollRafRef.current.push(requestAnimationFrame(forceScrollToBottom))
+      forceScrollToBottomIfAllowed()
+      resetScrollRafRef.current.push(requestAnimationFrame(forceScrollToBottomIfAllowed))
     }))
-    resetScrollTimerRef.current = window.setTimeout(forceScrollToBottom, 80)
-  }, [cancelResetScroll, forceScrollToBottom])
+    resetScrollTimerRef.current = window.setTimeout(forceScrollToBottomIfAllowed, 80)
+  }, [cancelResetScroll, forceScrollToBottom, forceScrollToBottomIfAllowed])
 
   const cancelPendingAutoScroll = useCallback(() => {
     if (scrollRafRef.current !== null) {
@@ -84,6 +95,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       }
       scrollRafRef.current = requestAnimationFrame(() => {
         scrollRafRef.current = null
+        if (!shouldAutoScrollRef.current) return
         bottomRef.current?.scrollIntoView({ behavior: isStreaming ? 'instant' : (mountedRef.current ? 'smooth' : 'instant') })
         if (hasContent) {
           hasRenderedContentRef.current = true
@@ -97,10 +109,9 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
   const handleContainerScroll = useCallback(() => {
     const el = containerRef.current
     if (!el) return
-    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    shouldAutoScrollRef.current = distanceToBottom <= bottomThreshold
+    shouldAutoScrollRef.current = isNearBottom()
     if (!shouldAutoScrollRef.current) cancelPendingAutoScroll()
-  }, [cancelPendingAutoScroll])
+  }, [cancelPendingAutoScroll, isNearBottom])
 
   const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
     if (event.deltaY < 0) {
@@ -120,15 +131,11 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
   useEffect(() => {
     if (isStreaming) {
       // 检查当前是否在底部附近，如果是则确保跟随
-      const el = containerRef.current
-      if (el) {
-        const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-        if (distanceToBottom <= bottomThreshold) {
-          shouldAutoScrollRef.current = true
-        }
+      if (isNearBottom()) {
+        shouldAutoScrollRef.current = true
       }
     }
-  }, [isStreaming])
+  }, [isNearBottom, isStreaming])
 
   return (
     <div

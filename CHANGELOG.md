@@ -8,9 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 互动模式：新增“故事主持人”式回合裁定提示与状态空间，Agent 每轮隐式识别用户行动、绑定相关角色和世界规则、裁定后果、更新状态并制造新的可行动空间；`STATE_DELTA` 支持 `scene`、`inventory`、`resources`、`world_flags`、`rules`、`threads`、`action_space` 等路径
 - 互动模式：新增工作区级 TOML 配置 `interactive_reply_target_chars`，默认 1200 个中文字；新增可选 `interactive_max_tokens`，默认不限制以优先避免非自然截断；设置页可在「当前工作区 / 互动模式」中调整，下一轮互动对话立即生效
 - 互动模式：新增删除空剧情线能力，后端提供分支删除接口并保护主线和已有独立剧情的分支不被删除
 - WebUI：互动模式场景记忆面板支持结构化渲染角色状态与关键事件，将状态对象展示为可读中文字段、标签和事件卡片，并保留复杂值兜底展示
+- WebUI：互动模式场景记忆面板新增场景态势、可行动空间、物品资源、世界规则和未解决线索展示，让互动状态变化在故事舞台外也持续可见
 - 互动模式：剧情分支基于 story JSONL 的 `parent_id` 构建剧情节点图，snapshot 新增 `graph.nodes` / `graph.branches`，底部时间线改为可横向拖动滚动的 macOS 风格 Git Graph 视图，用 SVG 曲线连接父子与分叉节点；点击节点先选中并切换到对应剧情线，再由用户确认是否创建新剧情线
 - 互动模式：故事舞台对话框支持 Enter 直接发送、Shift+Enter 换行，并新增生成中的中断按钮与 `/api/interactive/chat/abort` 后端中断接口
 - 互动模式：故事舞台对话内容新增随主题文字色变化的对白文字高亮，支持 `“”`、`「」` 和英文双引号 `""` 包裹的对白，历史回合与流式输出均生效
@@ -18,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 后端 `interactive`：修复剧情路线图在 `turn` 后存在隐藏 `state_delta` 事件时，后续可见节点父级指向隐藏事件导致分支节点列号回退、连线反向的问题
+- WebUI：修复输入框、对话框和互动模式输入态下工作台全局快捷键抢占原生文本操作的问题；`Cmd/Ctrl+S` 现在会在表单和编辑器中统一拦截浏览器“保存网页”行为，互动资料库编辑框支持快捷保存
+- WebUI：修复互动故事回合流式输出完成并刷新快照后，故事舞台会在用户向上浏览历史内容时强制跳回底部的问题
+- WebUI：修复互动模式切换剧情分支后故事舞台仍显示上一分支实时消息、场景记忆可能被旧快照响应覆盖的问题，分支切换会以最新快照同步刷新舞台内容和右侧聚合状态
+- WebUI：修复互动故事回合完成后已落盘历史和本轮流式消息同时显示，导致用户输入与 Agent 回复重复出现的问题；同一回合刷新快照时优先保留底部实时消息
 - WebUI：优化互动模式剧情路线图的布局计算与渲染，避免打开分支面板时因重复回溯节点父链产生卡顿；窄屏下改为自适应画布布局，并补齐同分支连续节点连接线
 - WebUI：互动模式左右资料面板、场景记忆面板和底部剧情路线图改为可拖拽调整尺寸，并持久化互动工作台面板布局
 - 后端 `interactive`：修复分支快照按分支名粗过滤导致从旧节点分叉时带入原分支后续剧情的问题，改为从目标 head 沿 `parent_id` 父链恢复 turn 与 state_delta
@@ -25,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 后端 `app`：每次启动普通对话或互动故事对话前刷新 Agent Runner，重新读取当前 workspace 的 `CREATOR.md` 与作品状态，确保用户修改创作者指令后下一轮对话立即生效
 - WebUI：修复作品统计接口返回 `chapters: null` 时编辑区 Tab 标题渲染崩溃的问题，前端会将空章节列表标准化为空数组并回退显示文件名
 - 互动模式：修复前端刷新后故事舞台未加载已持久化回合内容的问题，首次加载时按故事元信息的当前分支获取快照，避免强制请求 `branch=main` 导致空结果
+- 互动模式：修复思考过程在回合完成或刷新后消失的问题，Agent thinking 现在会随 turn 写入 story JSONL，并在故事舞台历史中以默认折叠块恢复展示
 - 后端 `interactive`：修复长篇回合持久化后快照读取失败（`bufio.Scanner: token too long`）的问题，故事 JSONL 读取 scanner buffer 上限提升至 16 MB
 
 ### Changed

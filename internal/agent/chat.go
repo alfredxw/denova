@@ -114,12 +114,13 @@ func (s *ChatService) Run(
 
 	events := runner.Run(ctx, history)
 	var fullContent strings.Builder
+	var fullThinking strings.Builder
 	log.Printf("[agent-run] started history=%d message_len=%d agent_message_len=%d plan_mode=%v style_references=%d style_rules=%d", len(history), len(req.Message), len(agentMessage), req.PlanMode, len(req.StyleReferences), len(req.StyleRules))
 
 	for {
 		if err := ctx.Err(); err != nil {
 			log.Printf("[agent-run] interrupted reason=context err=%v generated_bytes=%d", err, fullContent.Len())
-			appendAssistantIfAny(conversation, &fullContent)
+			appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 			emit(Event{Type: "aborted", Data: map[string]string{}})
 			return
 		}
@@ -129,7 +130,7 @@ func (s *ChatService) Run(
 		}
 		if event.Err != nil {
 			log.Printf("[agent-run] interrupted reason=runner_error err=%v generated_bytes=%d", event.Err, fullContent.Len())
-			generated := appendAssistantIfAny(conversation, &fullContent)
+			generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 			markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, event.Err.Error())
 			emit(Event{Type: "error", Data: map[string]string{"message": event.Err.Error()}})
 			return
@@ -165,19 +166,19 @@ func (s *ChatService) Run(
 			continue
 		}
 		if mv.IsStreaming && mv.MessageStream != nil {
-			if !processStreamingEvent(mv, &fullContent, emit) {
-				generated := appendAssistantIfAny(conversation, &fullContent)
+			if !processStreamingEvent(mv, &fullContent, &fullThinking, emit) {
+				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 				markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, "stream recv error")
 				return
 			}
 			continue
 		}
 		if mv.Message != nil {
-			processNonStreamingEvent(mv, &fullContent, emit)
+			processNonStreamingEvent(mv, &fullContent, &fullThinking, emit)
 		}
 	}
 
-	appendAssistantIfAny(conversation, &fullContent)
+	appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 	if resumeInterruption != nil {
 		if err := conversation.ResolveInterruption(resumeInterruption.ID); err != nil {
 			log.Printf("[agent-run] resolve interruption failed id=%s err=%v", resumeInterruption.ID, err)
@@ -188,16 +189,29 @@ func (s *ChatService) Run(
 }
 
 // appendAssistantIfAny 将已生成的正文持久化，避免异常中断后刷新丢失输出。
-func appendAssistantIfAny(conversation Conversation, content *strings.Builder) string {
+func appendAssistantIfAny(conversation Conversation, content, thinking *strings.Builder) string {
 	if content == nil || content.Len() == 0 {
 		return ""
 	}
 	generated := content.String()
-	if err := conversation.AppendAssistant(generated); err != nil {
+	reasoning := ""
+	if thinking != nil && thinking.Len() > 0 {
+		reasoning = thinking.String()
+	}
+	if appender, ok := conversation.(interface {
+		AppendAssistantWithThinking(content, thinking string) error
+	}); ok {
+		if err := appender.AppendAssistantWithThinking(generated, reasoning); err != nil {
+			log.Printf("[agent-run] persist assistant message failed err=%v", err)
+		}
+	} else if err := conversation.AppendAssistant(generated); err != nil {
 		log.Printf("[agent-run] persist assistant message failed err=%v", err)
 	}
-	log.Printf("[agent-run] persisted assistant message bytes=%d", len(generated))
+	log.Printf("[agent-run] persisted assistant message bytes=%d thinking_bytes=%d", len(generated), len(reasoning))
 	content.Reset()
+	if thinking != nil {
+		thinking.Reset()
+	}
 	return generated
 }
 
@@ -401,7 +415,7 @@ func readStyleReferencedFile(bookService *book.Service, stylePath string, fileLi
 // processStreamingEvent 处理流式助手消息，输出领域事件。
 // 工具调用在流中一检测到名称就立即 emit，让前端尽早展示 running 卡片。
 // 参数在流中逐帧 emit tool_args_delta，前端可实时展示 write_file 内容。
-func processStreamingEvent(mv *adk.MessageVariant, fullContent *strings.Builder, emit func(Event)) bool {
+func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, emit func(Event)) bool {
 	mv.MessageStream.SetAutomaticClose()
 	var accumulatedToolCalls []schema.ToolCall
 	emittedTools := make(map[int]bool) // 按 index 记录已 emit tool_call 的工具
@@ -421,6 +435,9 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent *strings.Builder,
 			continue
 		}
 		if frame.ReasoningContent != "" {
+			if fullThinking != nil {
+				fullThinking.WriteString(frame.ReasoningContent)
+			}
 			emit(Event{Type: "thinking", Data: map[string]string{"content": frame.ReasoningContent}})
 		}
 		if frame.Content != "" {
@@ -470,8 +487,11 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent *strings.Builder,
 }
 
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。
-func processNonStreamingEvent(mv *adk.MessageVariant, fullContent *strings.Builder, emit func(Event)) {
+func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, emit func(Event)) {
 	if mv.Message.ReasoningContent != "" {
+		if fullThinking != nil {
+			fullThinking.WriteString(mv.Message.ReasoningContent)
+		}
 		emit(Event{Type: "thinking", Data: map[string]string{"content": mv.Message.ReasoningContent}})
 	}
 	if mv.Message.Content != "" {

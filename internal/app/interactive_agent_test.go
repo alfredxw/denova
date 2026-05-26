@@ -67,12 +67,12 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatalf("history[3] mismatch: %#v", history[3])
 	}
 
-	if err := conversation.AppendAssistant(`<NARRATIVE>
+	if err := conversation.AppendAssistantWithThinking(`<NARRATIVE>
 火光照亮了墙上的新线索。
 </NARRATIVE>
 <STATE_DELTA>
 {"ops":[{"op":"set","path":"on_stage","value":["林川"]},{"op":"merge","path":"characters.林川","value":{"location":"黄泉酒馆"}}]}
-</STATE_DELTA>`); err != nil {
+</STATE_DELTA>`, "先判断现场风险。"); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "")
@@ -86,6 +86,9 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if last.User != "我点燃火把" || last.Narrative != "火光照亮了墙上的新线索。" {
 		t.Fatalf("last turn mismatch: %#v", last)
 	}
+	if last.Thinking != "先判断现场风险。" {
+		t.Fatalf("last thinking = %q, want persisted thinking", last.Thinking)
+	}
 	onStage := snapshot.State["on_stage"].([]any)
 	if len(onStage) != 1 || onStage[0] != "林川" {
 		t.Fatalf("unexpected on_stage: %#v", onStage)
@@ -94,6 +97,31 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	linchuan := characters["林川"].(map[string]any)
 	if linchuan["location"] != "黄泉酒馆" {
 		t.Fatalf("unexpected character state: %#v", linchuan)
+	}
+
+	if err := conversation.AppendAssistant(`<NARRATIVE>
+柜台后的影子露出一道能通往地窖的缝。
+</NARRATIVE>
+<STATE_DELTA>
+{"ops":[{"op":"merge","path":"scene","value":{"danger_level":"升高","interactive_objects":["柜台","地窖门"]}},{"op":"push","path":"action_space","value":{"target":"地窖门","risk":"可能惊动柜台后的影子"}},{"op":"push","path":"threads","value":{"title":"柜台后的影子","status":"未解决"}},{"op":"push","path":"world_flags","value":"黄泉酒馆会回应火光"}]}
+</STATE_DELTA>`); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = store.Snapshot(story.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scene := snapshot.State["scene"].(map[string]any)
+	if scene["danger_level"] != "升高" {
+		t.Fatalf("unexpected scene state: %#v", scene)
+	}
+	actionSpace := snapshot.State["action_space"].([]any)
+	if len(actionSpace) != 1 {
+		t.Fatalf("unexpected action_space: %#v", actionSpace)
+	}
+	threads := snapshot.State["threads"].([]any)
+	if len(threads) != 1 {
+		t.Fatalf("unexpected threads: %#v", threads)
 	}
 }
 

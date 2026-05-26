@@ -67,6 +67,10 @@ func TestSnapshotAppliesTurnAndStateDelta(t *testing.T) {
 			{Op: "set", Path: "on_stage", Value: []any{"林川", "酒保老李"}},
 			{Op: "merge", Path: "characters.林川", Value: map[string]any{"hp": 80, "location": "黄泉酒馆"}},
 			{Op: "push", Path: "events", Value: map[string]any{"flag": "遇到神秘老人"}},
+			{Op: "merge", Path: "scene", Value: map[string]any{"danger_level": "低", "interactive_objects": []any{"柜台"}}},
+			{Op: "push", Path: "action_space", Value: map[string]any{"target": "柜台", "approach": "询问酒保"}},
+			{Op: "push", Path: "threads", Value: map[string]any{"title": "神秘老人留下的暗号"}},
+			{Op: "push", Path: "world_flags", Value: "黄泉酒馆午夜后只进不出"},
 		},
 	})
 	if err != nil {
@@ -93,6 +97,22 @@ func TestSnapshotAppliesTurnAndStateDelta(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("unexpected events: %#v", events)
 	}
+	scene := snapshot.State["scene"].(map[string]any)
+	if scene["danger_level"] != "低" {
+		t.Fatalf("unexpected scene: %#v", scene)
+	}
+	actionSpace := snapshot.State["action_space"].([]any)
+	if len(actionSpace) != 1 {
+		t.Fatalf("unexpected action_space: %#v", actionSpace)
+	}
+	threads := snapshot.State["threads"].([]any)
+	if len(threads) != 1 {
+		t.Fatalf("unexpected threads: %#v", threads)
+	}
+	worldFlags := snapshot.State["world_flags"].([]any)
+	if len(worldFlags) != 1 {
+		t.Fatalf("unexpected world_flags: %#v", worldFlags)
+	}
 }
 
 func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
@@ -110,6 +130,7 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 		BranchID:  "main",
 		User:      "我点燃火把",
 		Narrative: "火光照亮了墙上的新线索。",
+		Thinking:  "先判断现场风险。",
 		Ops: []StateOp{
 			{Op: "set", Path: "on_stage", Value: []any{"林川"}},
 			{Op: "merge", Path: "characters.林川", Value: map[string]any{"location": "黄泉酒馆"}},
@@ -129,7 +150,7 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot failed: %v", err)
 	}
-	if len(snapshot.Turns) != 1 || snapshot.Turns[0].Narrative != "火光照亮了墙上的新线索。" {
+	if len(snapshot.Turns) != 1 || snapshot.Turns[0].Narrative != "火光照亮了墙上的新线索。" || snapshot.Turns[0].Thinking != "先判断现场风险。" {
 		t.Fatalf("unexpected turns: %+v", snapshot.Turns)
 	}
 	onStage, ok := snapshot.State["on_stage"].([]any)
@@ -160,8 +181,59 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	if turnLine["type"] != "turn" || deltaLine["type"] != "state_delta" {
 		t.Fatalf("unexpected event order: turn=%#v delta=%#v", turnLine["type"], deltaLine["type"])
 	}
+	if turnLine["thinking"] != "先判断现场风险。" {
+		t.Fatalf("thinking in file = %q, want persisted thinking", turnLine["thinking"])
+	}
 	if deltaLine["parent_id"] != turn.ID {
 		t.Fatalf("delta parent in file = %q, want %q", deltaLine["parent_id"], turn.ID)
+	}
+}
+
+func TestStoryGraphUsesNearestVisibleTurnParent(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:         "可见父节点",
+		Origin:        "岔路口",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+
+	first, delta, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		BranchID:  "main",
+		User:      "检查石门",
+		Narrative: "石门上的符文被逐一点亮。",
+		Ops:       []StateOp{{Op: "set", Path: "scene.mood", Value: "紧张"}},
+	})
+	if err != nil {
+		t.Fatalf("AppendTurnWithState failed: %v", err)
+	}
+	if delta == nil {
+		t.Fatal("expected state delta")
+	}
+	second, err := store.AppendTurn(story.ID, AppendTurnRequest{
+		BranchID:  "main",
+		User:      "推开石门",
+		Narrative: "门后传来潮湿的风。",
+	})
+	if err != nil {
+		t.Fatalf("AppendTurn failed: %v", err)
+	}
+	if second.ParentID != delta.ID {
+		t.Fatalf("persisted turn parent = %q, want hidden delta %q", second.ParentID, delta.ID)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	nodesByID := make(map[string]PlotNode, len(snapshot.Graph.Nodes))
+	for _, node := range snapshot.Graph.Nodes {
+		nodesByID[node.ID] = node
+	}
+	if nodesByID[second.ID].ParentID != first.ID {
+		t.Fatalf("graph parent = %q, want nearest visible turn %q; nodes=%#v", nodesByID[second.ID].ParentID, first.ID, snapshot.Graph.Nodes)
 	}
 }
 

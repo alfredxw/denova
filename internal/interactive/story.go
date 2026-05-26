@@ -44,12 +44,14 @@ type AppendTurnRequest struct {
 	BranchID  string `json:"branch_id"`
 	User      string `json:"user"`
 	Narrative string `json:"narrative"`
+	Thinking  string `json:"thinking,omitempty"`
 }
 
 type AppendTurnWithStateRequest struct {
 	BranchID  string    `json:"branch_id"`
 	User      string    `json:"user"`
 	Narrative string    `json:"narrative"`
+	Thinking  string    `json:"thinking,omitempty"`
 	Ops       []StateOp `json:"ops,omitempty"`
 }
 
@@ -125,6 +127,7 @@ type TurnEvent struct {
 	Ts        string          `json:"ts"`
 	User      string          `json:"user"`
 	Narrative string          `json:"narrative"`
+	Thinking  string          `json:"thinking,omitempty"`
 	Alts      []TurnAlt       `json:"alts,omitempty"`
 	AltIdx    int             `json:"alt_idx"`
 	Flags     map[string]bool `json:"flags,omitempty"`
@@ -366,6 +369,7 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 		Ts:        now,
 		User:      req.User,
 		Narrative: req.Narrative,
+		Thinking:  strings.TrimSpace(req.Thinking),
 		Alts:      []TurnAlt{{Narrative: req.Narrative, Ts: now}},
 		Flags:     map[string]bool{"pinned": false, "locked": false},
 	}
@@ -411,6 +415,7 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		Ts:        now,
 		User:      req.User,
 		Narrative: req.Narrative,
+		Thinking:  strings.TrimSpace(req.Thinking),
 		Alts:      []TurnAlt{{Narrative: req.Narrative, Ts: now}},
 		Flags:     map[string]bool{"pinned": false, "locked": false},
 	}
@@ -638,9 +643,16 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[str
 		return Snapshot{}, fmt.Errorf("分支不存在: %s", branchID)
 	}
 	state := map[string]any{
-		"on_stage":   []any{},
-		"characters": map[string]any{},
-		"events":     []any{},
+		"on_stage":     []any{},
+		"characters":   map[string]any{},
+		"events":       []any{},
+		"scene":        map[string]any{},
+		"inventory":    map[string]any{},
+		"resources":    map[string]any{},
+		"world_flags":  []any{},
+		"rules":        []any{},
+		"threads":      []any{},
+		"action_space": []any{},
 	}
 	snapshot := Snapshot{StoryID: storyID, BranchID: branchID, State: state}
 	eventsByID := eventsByID(lines)
@@ -713,9 +725,13 @@ func buildStoryGraph(meta StoryMeta, lines []map[string]any, events map[string]m
 		if err := mapToStruct(raw, &turn); err != nil {
 			continue
 		}
+		parentID := parentIDFromRaw(raw)
+		if parentID != "" {
+			parentID = nearestTurnAncestor(parentID, events)
+		}
 		nodes = append(nodes, PlotNode{
 			ID:       turn.ID,
-			ParentID: parentIDFromRaw(raw),
+			ParentID: parentID,
 			BranchID: turn.BranchID,
 			Title:    compactText(turn.User, 24),
 			Summary:  compactText(turn.Narrative, 72),
