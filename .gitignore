@@ -1,11 +1,15 @@
-.trae/
+.codex/
+.agents/
 playground
 output/
+log/
 config.toml
 data/
 web/node_modules/
 web/dist/
 plan.md
 docs/
-
+.worktrees/
 .DS_Store
+.nova
+prd

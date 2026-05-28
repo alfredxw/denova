@@ -20,10 +20,31 @@ import (
 
 // Build 构建小说创作 Agent（deep agent + 文件系统工具 + Skill 中间件）。
 func Build(ctx context.Context, cfg *config.Config, state *book.State) (adk.Agent, error) {
+	return buildDeepAgent(ctx, cfg, "NovaAgent", "AI 小说创作助手", BuildInstruction(cfg, state), true, false, nil, nil)
+}
+
+func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (adk.Agent, error) {
+	return buildDeepAgent(ctx, cfg, "NovaInteractiveStoryAgent", "AI 互动故事叙事助手", BuildInteractiveStoryInstruction(cfg, state, teller), false, true, []adk.ChatModelAgentMiddleware{
+		newInteractiveStoryToolMiddleware(),
+	}, interactiveMaxTokens(cfg))
+}
+
+func buildDeepAgent(
+	ctx context.Context,
+	cfg *config.Config,
+	name string,
+	description string,
+	instruction string,
+	enableSkills bool,
+	disableWriteTodos bool,
+	extraHandlers []adk.ChatModelAgentMiddleware,
+	maxTokens *int,
+) (adk.Agent, error) {
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		APIKey:  cfg.OpenAIAPIKey,
-		Model:   cfg.OpenAIModel,
-		BaseURL: cfg.OpenAIBaseURL,
+		APIKey:    cfg.OpenAIAPIKey,
+		Model:     cfg.OpenAIModel,
+		BaseURL:   cfg.OpenAIBaseURL,
+		MaxTokens: maxTokens,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("创建模型失败: %w", err)
@@ -35,29 +56,33 @@ func Build(ctx context.Context, cfg *config.Config, state *book.State) (adk.Agen
 	}
 
 	var handlers []adk.ChatModelAgentMiddleware
-	if skillsDir := ResolveSkillsDir(cfg.SkillsDir); skillsDir != "" {
-		skillBackend, sbErr := skill.NewBackendFromFilesystem(ctx, &skill.BackendFromFilesystemConfig{
-			Backend: backend,
-			BaseDir: skillsDir,
-		})
-		if sbErr == nil {
-			skillMw, smErr := skill.NewMiddleware(ctx, &skill.Config{Backend: skillBackend})
-			if smErr == nil {
-				handlers = append(handlers, skillMw)
+	if enableSkills {
+		if skillsDir := ResolveSkillsDir(cfg.SkillsDir); skillsDir != "" {
+			skillBackend, sbErr := skill.NewBackendFromFilesystem(ctx, &skill.BackendFromFilesystemConfig{
+				Backend: backend,
+				BaseDir: skillsDir,
+			})
+			if sbErr == nil {
+				skillMw, smErr := skill.NewMiddleware(ctx, &skill.Config{Backend: skillBackend})
+				if smErr == nil {
+					handlers = append(handlers, skillMw)
+				}
 			}
 		}
 	}
+	handlers = append(handlers, extraHandlers...)
 	handlers = append(handlers, &safeToolMiddleware{})
 
 	return deep.New(ctx, &deep.Config{
-		Name:           "NovaAgent",
-		Description:    "AI 小说创作助手",
-		ChatModel:      cm,
-		Instruction:    BuildInstruction(cfg, state),
-		Backend:        backend,
-		StreamingShell: backend,
-		MaxIteration:   50,
-		Handlers:       handlers,
+		Name:              name,
+		Description:       description,
+		ChatModel:         cm,
+		Instruction:       instruction,
+		Backend:           backend,
+		StreamingShell:    backend,
+		WithoutWriteTodos: disableWriteTodos,
+		MaxIteration:      50,
+		Handlers:          handlers,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
 				// 当 LLM 幻觉出不存在的工具时，把错误信息以 ToolMessage 形式回传，
@@ -74,6 +99,14 @@ func Build(ctx context.Context, cfg *config.Config, state *book.State) (adk.Agen
 			},
 		},
 	})
+}
+
+func interactiveMaxTokens(cfg *config.Config) *int {
+	if cfg == nil || cfg.InteractiveMaxTokens <= 0 {
+		return nil
+	}
+	tokens := cfg.InteractiveMaxTokens
+	return &tokens
 }
 
 // handleUnknownTool 拦截 LLM 调用未知工具的错误，把可读提示作为工具结果回传给模型，

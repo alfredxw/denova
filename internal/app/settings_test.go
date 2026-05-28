@@ -56,7 +56,9 @@ func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
 		workspace: ws,
 	}
-	in := config.Settings{OpenAIModel: "ws-model"}
+	targetChars := 900
+	maxTokens := 0
+	in := config.Settings{OpenAIModel: "ws-model", InteractiveReplyTargetChars: &targetChars, InteractiveMaxTokens: &maxTokens}
 	if _, err := a.UpdateWorkspaceSettings(in); err != nil {
 		t.Fatal(err)
 	}
@@ -66,5 +68,11 @@ func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
 	}
 	if out.OpenAIModel != "ws-model" {
 		t.Fatalf("workspace model not persisted: %s", out.OpenAIModel)
+	}
+	if out.InteractiveReplyTargetChars == nil || *out.InteractiveReplyTargetChars != 900 {
+		t.Fatalf("interactive reply target not persisted: %v", out.InteractiveReplyTargetChars)
+	}
+	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 0 {
+		t.Fatalf("interactive max tokens not persisted: %v", out.InteractiveMaxTokens)
 	}
 }

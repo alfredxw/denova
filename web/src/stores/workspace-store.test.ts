@@ -7,7 +7,7 @@ describe('useWorkspaceStore', () => {
       selectedProjectId: undefined,
       selectedChapterId: undefined,
       rightPanel: 'ai',
-      bottomPanel: 'tasks',
+      bottomPanel: null,
       commandOpen: false,
     })
   })
@@ -16,5 +16,9 @@ describe('useWorkspaceStore', () => {
     useWorkspaceStore.getState().setSelectedChapterId('chapters/ch01.md')
 
     expect(useWorkspaceStore.getState().selectedChapterId).toBe('chapters/ch01.md')
+  })
+
+  it('keeps the bottom panel closed by default', () => {
+    expect(useWorkspaceStore.getInitialState().bottomPanel).toBeNull()
   })
 })

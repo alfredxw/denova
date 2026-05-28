@@ -102,7 +102,7 @@ export function SessionManager({
           type="button"
           disabled={disabled}
           onClick={() => void onCreate()}
-          className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-[#8fb5ff] hover:bg-[#303238] disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-[#aeb4bf] hover:bg-[#303238] disabled:cursor-not-allowed disabled:opacity-50"
           aria-label="新建会话"
         >
           <Plus className="h-3 w-3" />

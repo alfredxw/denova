@@ -29,7 +29,7 @@ export function WorkspaceLayout({
   bottomPanelVisible = true,
 }: WorkspaceLayoutProps) {
   return (
-    <div data-nova-app-shell="true" className="h-screen w-screen overflow-hidden bg-[#18191b] text-[#d7dbe2]">
+    <div data-nova-app-shell="true" className="h-screen w-screen overflow-hidden">
       <div className="flex h-full flex-col">
         {topBar}
         <div className="flex min-h-0 flex-1">
@@ -87,8 +87,8 @@ export function WorkspaceLayout({
 
 function WorkspaceResizeHandle({ direction, label }: { direction: 'horizontal' | 'vertical'; label: string }) {
   const className = direction === 'vertical'
-    ? '-mx-1 w-2 cursor-col-resize bg-transparent transition-colors hover:bg-[#2f7dd3]/40 data-[resize-handle-active]:bg-[#2f7dd3]/60'
-    : '-my-1 h-2 cursor-row-resize bg-transparent transition-colors hover:bg-[#2f7dd3]/40 data-[resize-handle-active]:bg-[#2f7dd3]/60'
+    ? 'nova-resize-handle -mx-1 w-2 cursor-col-resize bg-transparent transition-colors'
+    : 'nova-resize-handle -my-1 h-2 cursor-row-resize bg-transparent transition-colors'
 
   return <Separator aria-label={label} className={className} />
 }

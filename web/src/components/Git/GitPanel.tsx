@@ -160,12 +160,12 @@ export function GitPanel({ workspace, refreshSignal, visible, onClose }: GitPane
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#202124] text-xs text-[#c5c9d1]">
-      <div className="flex h-9 shrink-0 items-center border-b border-[#303238] px-3">
-        <span className="font-semibold">Source Control</span>
+    <div className="nova-sidebar flex h-full min-h-0 flex-col text-xs text-[var(--nova-text-muted)]">
+      <div className="nova-topbar flex h-9 shrink-0 items-center border-b px-3">
+        <span className="font-semibold text-[var(--nova-text)]">版本管理</span>
         <TooltipIconButton
           label="刷新版本状态"
-          className="ml-auto text-[#858b96] hover:bg-[#303238] hover:text-[#d7dbe2]"
+          className="ml-auto text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           onClick={refresh}
           disabled={loading}
         >
@@ -173,7 +173,7 @@ export function GitPanel({ workspace, refreshSignal, visible, onClose }: GitPane
         </TooltipIconButton>
         <TooltipIconButton
           label="关闭版本管理"
-          className="text-[#858b96] hover:bg-[#303238] hover:text-[#d7dbe2]"
+          className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           onClick={onClose}
         >
           <MoreHorizontal className="h-3.5 w-3.5" />
@@ -185,13 +185,13 @@ export function GitPanel({ workspace, refreshSignal, visible, onClose }: GitPane
           <RepositoryHeader workspace={workspace} status={status} changesCount={changes.length} />
 
         {!initialized ? (
-          <div className="mt-3 rounded border border-[#303238] bg-[#1b1c1f] p-3">
-            <div className="text-[#d7dbe2]">尚未初始化版本仓库</div>
-            <div className="mt-1 leading-5 text-[#858b96]">初始化后可创建版本、查看历史并安全回滚。</div>
+          <div className="mt-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">
+            <div className="text-[var(--nova-text)]">尚未初始化版本仓库</div>
+            <div className="mt-1 leading-5 text-[var(--nova-text-faint)]">初始化后可创建版本、查看历史并安全回滚。</div>
             <Button
               type="button"
               size="sm"
-              className="mt-3 w-full bg-[#d7dbe2] font-medium text-[#18191b] hover:bg-white"
+              className="mt-3 w-full border border-[var(--nova-border)] bg-[var(--nova-active)] font-medium text-[var(--nova-text)] hover:bg-[var(--nova-hover)]"
               onClick={() => initMutation.mutate()}
               disabled={loading || !workspace}
             >
@@ -201,7 +201,7 @@ export function GitPanel({ workspace, refreshSignal, visible, onClose }: GitPane
         ) : (
           <>
             <div className="mt-3">
-              <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wide text-[#858b96]">
+              <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-wide text-[var(--nova-text-faint)]">
                 <GitCommit className="h-3.5 w-3.5" />
                 <span>Commit Changes</span>
               </div>
@@ -210,13 +210,13 @@ export function GitPanel({ workspace, refreshSignal, visible, onClose }: GitPane
                 onChange={(event) => setMessage(event.target.value)}
                 placeholder={clean ? '暂无可提交变更' : '输入本次版本说明'}
                 rows={2}
-                className="min-h-0 resize-none border-[#3a3d44] bg-[#1b1c1f] px-2 py-1.5 text-xs leading-5 text-[#d7dbe2] placeholder:text-[#666d78] focus-visible:ring-0"
+                className="nova-field min-h-0 resize-none px-2 py-1.5 text-xs leading-5 placeholder:text-[var(--nova-text-faint)] focus-visible:ring-0"
                 disabled={loading || clean}
               />
               <Button
                 type="button"
                 size="sm"
-                className="mt-2 flex w-full items-center justify-center gap-2 bg-[#d7dbe2] font-medium text-[#18191b] hover:bg-white disabled:opacity-45"
+                className="mt-2 flex w-full items-center justify-center gap-2 border border-[var(--nova-border)] bg-[var(--nova-active)] font-medium text-[var(--nova-text)] hover:bg-[var(--nova-hover)] disabled:opacity-45"
                 onClick={createVersion}
                 disabled={!canCommit}
               >
@@ -228,7 +228,7 @@ export function GitPanel({ workspace, refreshSignal, visible, onClose }: GitPane
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="flex items-center justify-center gap-1 border-[#3a3d44] bg-transparent text-[#aeb4bf] hover:border-[#7aa2f7] hover:bg-[#25262a] hover:text-[#d7dbe2] disabled:opacity-40"
+                  className="nova-nav-item flex items-center justify-center gap-1 border-[var(--nova-border)] bg-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-40"
                   onClick={() => stashMutation.mutate()}
                   disabled={loading || clean}
                   title={clean ? '当前没有可暂存的未提交变更' : '暂存当前未提交内容'}
@@ -240,7 +240,7 @@ export function GitPanel({ workspace, refreshSignal, visible, onClose }: GitPane
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="flex items-center justify-center gap-1 border-[#3a3d44] bg-transparent text-[#aeb4bf] hover:border-[#7aa2f7] hover:bg-[#25262a] hover:text-[#d7dbe2] disabled:opacity-40"
+                  className="nova-nav-item flex items-center justify-center gap-1 border-[var(--nova-border)] bg-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-40"
                   onClick={() => popMutation.mutate()}
                   disabled={loading}
                   title="恢复最近一次暂存内容"
@@ -282,17 +282,17 @@ export function GitPanel({ workspace, refreshSignal, visible, onClose }: GitPane
           </div>
         )}
 
-          <div className="mt-3 rounded border border-[#303238] bg-[#1b1c1f]">
+          <div className="mt-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[#aeb4bf] hover:bg-[#25262a]"
+              className="nova-nav-item flex w-full items-center gap-2 px-2 py-1.5 text-left text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]"
               onClick={() => setOutputExpanded(value => !value)}
             >
               {outputExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
               <span className="truncate">{operationSummary}</span>
             </button>
             {outputExpanded && (
-              <pre className="max-h-40 overflow-auto border-t border-[#303238] p-2 font-mono text-[11px] leading-5 text-[#858b96] whitespace-pre-wrap">
+              <pre className="max-h-40 overflow-auto border-t border-[var(--nova-border)] p-2 font-mono text-[11px] leading-5 text-[var(--nova-text-faint)] whitespace-pre-wrap">
                 {operationOutput || '暂无原始输出'}
               </pre>
             )}
@@ -317,14 +317,14 @@ function RepositoryHeader({ workspace, status, changesCount }: { workspace: stri
   const clean = status?.clean ?? true
 
   return (
-    <div className="rounded border border-[#303238] bg-[#1b1c1f] p-2">
+    <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
       <div className="flex items-center gap-2">
-        <GitBranch className="h-3.5 w-3.5 text-[#7aa2f7]" />
-        <span className="min-w-0 flex-1 truncate font-medium text-[#d7dbe2]">{workspaceName(workspace) || '未选择书籍'}</span>
-        {initialized && <span className="rounded-full bg-[#0e639c] px-2 py-0.5 text-[11px] text-white">{branch}</span>}
+        <GitBranch className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
+        <span className="min-w-0 flex-1 truncate font-medium text-[var(--nova-text)]">{workspaceName(workspace) || '未选择书籍'}</span>
+        {initialized && <span className="rounded-full bg-[var(--nova-active)] px-2 py-0.5 text-[11px] text-[var(--nova-text)]">{branch}</span>}
       </div>
-      <div className="mt-2 flex items-center gap-2 text-[11px] text-[#858b96]">
-        <span className={initialized ? clean ? 'text-[#6cc477]' : 'text-[#ffbd5e]' : 'text-[#858b96]'}>
+      <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
+        <span className={initialized ? clean ? 'text-[var(--nova-accent-green)]' : 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-faint)]'}>
           {!initialized ? '未初始化' : clean ? '工作区干净' : `${changesCount} 个变更`}
         </span>
         {workspace && <span className="min-w-0 flex-1 truncate" title={workspace}>{workspace}</span>}
@@ -337,27 +337,27 @@ function SectionHeader({ title, count, expanded, onToggle }: { title: string; co
   return (
     <button
       type="button"
-      className="mt-3 flex w-full items-center gap-1 py-1 text-left font-semibold text-[#c5c9d1] hover:text-white"
+      className="nova-nav-item mt-3 flex w-full items-center gap-1 rounded-[var(--nova-radius)] py-1 text-left font-semibold text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
       onClick={onToggle}
     >
       {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
       <span>{title}</span>
-      <span className="ml-auto rounded-full bg-[#303238] px-1.5 py-0.5 text-[10px] text-[#aeb4bf]">{count}</span>
+      <span className="ml-auto rounded-full bg-[var(--nova-active)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{count}</span>
     </button>
   )
 }
 
 function ChangesList({ changes }: { changes: GitChange[] }) {
   if (changes.length === 0) {
-    return <div className="rounded bg-[#1b1c1f] px-2 py-2 text-[#666d78]">暂无变更</div>
+    return <div className="rounded bg-[var(--nova-surface)] px-2 py-2 text-[var(--nova-text-faint)]">暂无变更</div>
   }
   return (
     <div className="space-y-0.5">
       {changes.map(change => (
-        <div key={`${change.status}:${change.path}`} className="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-[#2a2d33]" title={change.path}>
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-[#3a5f8f] bg-[#1f2d3f] text-[9px] text-[#8fb5ff]">M</span>
-          <span className="min-w-0 flex-1 truncate text-[#c5c9d1]">{fileName(change.path)}</span>
-          <span className="truncate text-[10px] text-[#666d78]">{dirName(change.path)}</span>
+        <div key={`${change.status}:${change.path}`} className="group flex items-center gap-2 rounded px-1.5 py-1 hover:bg-[var(--nova-hover)]" title={change.path}>
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[9px] text-[var(--nova-text-muted)]">M</span>
+          <span className="min-w-0 flex-1 truncate text-[var(--nova-text-muted)]">{fileName(change.path)}</span>
+          <span className="truncate text-[10px] text-[var(--nova-text-faint)]">{dirName(change.path)}</span>
           <span className={`shrink-0 text-[11px] ${statusColor(change.status)}`}>{change.status.trim() || 'M'}</span>
         </div>
       ))}
@@ -407,8 +407,8 @@ function shortHash(hash: string) {
 }
 
 function statusColor(status: string) {
-  if (status.includes('D')) return 'text-[#ff6b6b]'
-  if (status.includes('U') || status.includes('?')) return 'text-[#6cc477]'
-  if (status.includes('A')) return 'text-[#7aa2f7]'
-  return 'text-[#ffbd5e]'
+  if (status.includes('D')) return 'text-red-300'
+  if (status.includes('U') || status.includes('?')) return 'text-[var(--nova-accent-green)]'
+  if (status.includes('A')) return 'text-[var(--nova-text-muted)]'
+  return 'text-[var(--nova-accent)]'
 }

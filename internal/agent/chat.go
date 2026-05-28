@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -67,7 +69,7 @@ func NewChatService() *ChatService {
 func (s *ChatService) Run(
 	ctx context.Context,
 	runner *adk.Runner,
-	sess *session.Session,
+	conversation Conversation,
 	bookService *book.Service,
 	req ChatRequest,
 	emit func(Event),
@@ -75,7 +77,7 @@ func (s *ChatService) Run(
 	originalMessage := req.Message
 	var resumeInterruption *session.Interruption
 	if shouldResumeInterruptedRequest(req.Message) {
-		resumeInterruption = sess.PendingInterruption()
+		resumeInterruption = conversation.PendingInterruption()
 		if resumeInterruption != nil {
 			req.Message = buildInterruptedResumeMessage(req.Message, resumeInterruption)
 		}
@@ -83,42 +85,71 @@ func (s *ChatService) Run(
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			log.Printf("[agent-run] panic recovered err=%v", recovered)
-			markInterruptionIfNeeded(sess, resumeInterruption, originalMessage, "", fmt.Sprint(recovered))
+			markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, "", fmt.Sprint(recovered))
 			emit(Event{Type: "error", Data: map[string]string{"message": "Agent 异常中断"}})
 		}
 	}()
 
 	agentMessage := req.Message
+	contextLog := newContextBuildLog()
+	contextLog.add("用户输入", "本轮原始请求", originalMessage, "")
+	if resumeInterruption != nil {
+		contextLog.add("运行时恢复", "异常中断恢复上下文", req.Message, "包含上一轮原始请求、已生成助手内容和中断原因")
+	}
 	if req.PlanMode {
 		agentMessage = appendPlanModeInstruction(agentMessage)
+		contextLog.add("注入规则", "规划模式", "[规划模式] 请你先制定计划，不要执行任何写操作。", "")
 	}
 	if len(req.References) > 0 {
-		agentMessage = appendReferenceContext(bookService, req.Message, req.References)
+		agentMessage = appendReferenceContext(bookService, agentMessage, req.References, contextLog)
 	}
 	if len(req.StyleReferences) > 0 {
-		agentMessage = appendStyleReferenceContext(bookService, agentMessage, req.StyleReferences)
+		agentMessage = appendStyleReferenceContext(bookService, agentMessage, req.StyleReferences, contextLog)
 	} else if len(req.StyleRules) > 0 {
 		agentMessage = appendStyleRulesHint(agentMessage, req.StyleRules)
+		contextLog.addStyleRules(req.StyleRules)
 	}
 	if len(req.Selections) > 0 {
 		agentMessage = appendSelectionContext(agentMessage, req.Selections)
+		contextLog.addSelections(req.Selections)
 	}
 	agentMessage = appendContextBoundaryInstruction(agentMessage)
+	contextLog.add("注入规则", "上下文边界", "[上下文边界] 当前用户请求是“这次要做什么”", "")
 
-	_ = sess.Append(schema.UserMessage(originalMessage))
-	history := append([]*schema.Message(nil), sess.GetEffectiveMessages()...)
-	if len(history) > 0 {
-		history[len(history)-1] = schema.UserMessage(agentMessage)
+	history, err := conversation.PrepareMessages(originalMessage, agentMessage)
+	if err != nil {
+		log.Printf("[agent-run] prepare messages failed err=%v", err)
+		emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+		return
+	}
+	log.Printf(
+		"[agent-run] context composition history=%s original=%s agent_message=%s references=%s style_references=%s style_rules=%d selections=%s plan_mode=%v resumed=%v",
+		messageListSummary(history),
+		promptPartSummary(originalMessage),
+		promptPartSummary(agentMessage),
+		stringListSummary(req.References),
+		stringListSummary(req.StyleReferences),
+		len(req.StyleRules),
+		selectionListSummary(req.Selections),
+		req.PlanMode,
+		resumeInterruption != nil,
+	)
+	log.Printf("[agent-run] context sources %s", contextLog.String())
+	if reporter, ok := conversation.(ContextSourceReporter); ok {
+		if sources := strings.TrimSpace(reporter.ContextSourceSummary()); sources != "" {
+			log.Printf("[agent-run] conversation context sources %s", sources)
+		}
 	}
 
 	events := runner.Run(ctx, history)
 	var fullContent strings.Builder
+	var fullThinking strings.Builder
 	log.Printf("[agent-run] started history=%d message_len=%d agent_message_len=%d plan_mode=%v style_references=%d style_rules=%d", len(history), len(req.Message), len(agentMessage), req.PlanMode, len(req.StyleReferences), len(req.StyleRules))
 
 	for {
 		if err := ctx.Err(); err != nil {
 			log.Printf("[agent-run] interrupted reason=context err=%v generated_bytes=%d", err, fullContent.Len())
-			appendAssistantIfAny(sess, &fullContent)
+			appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 			emit(Event{Type: "aborted", Data: map[string]string{}})
 			return
 		}
@@ -128,8 +159,8 @@ func (s *ChatService) Run(
 		}
 		if event.Err != nil {
 			log.Printf("[agent-run] interrupted reason=runner_error err=%v generated_bytes=%d", event.Err, fullContent.Len())
-			generated := appendAssistantIfAny(sess, &fullContent)
-			markInterruptionIfNeeded(sess, resumeInterruption, originalMessage, generated, event.Err.Error())
+			generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+			markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, event.Err.Error())
 			emit(Event{Type: "error", Data: map[string]string{"message": event.Err.Error()}})
 			return
 		}
@@ -164,21 +195,21 @@ func (s *ChatService) Run(
 			continue
 		}
 		if mv.IsStreaming && mv.MessageStream != nil {
-			if !processStreamingEvent(mv, &fullContent, emit) {
-				generated := appendAssistantIfAny(sess, &fullContent)
-				markInterruptionIfNeeded(sess, resumeInterruption, originalMessage, generated, "stream recv error")
+			if !processStreamingEvent(mv, &fullContent, &fullThinking, emit) {
+				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+				markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, "stream recv error")
 				return
 			}
 			continue
 		}
 		if mv.Message != nil {
-			processNonStreamingEvent(mv, &fullContent, emit)
+			processNonStreamingEvent(mv, &fullContent, &fullThinking, emit)
 		}
 	}
 
-	appendAssistantIfAny(sess, &fullContent)
+	appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 	if resumeInterruption != nil {
-		if err := sess.ResolveInterruption(resumeInterruption.ID); err != nil {
+		if err := conversation.ResolveInterruption(resumeInterruption.ID); err != nil {
 			log.Printf("[agent-run] resolve interruption failed id=%s err=%v", resumeInterruption.ID, err)
 		}
 	}
@@ -187,22 +218,37 @@ func (s *ChatService) Run(
 }
 
 // appendAssistantIfAny 将已生成的正文持久化，避免异常中断后刷新丢失输出。
-func appendAssistantIfAny(sess *session.Session, content *strings.Builder) string {
+func appendAssistantIfAny(conversation Conversation, content, thinking *strings.Builder) string {
 	if content == nil || content.Len() == 0 {
 		return ""
 	}
 	generated := content.String()
-	_ = sess.Append(schema.AssistantMessage(generated, nil))
-	log.Printf("[agent-run] persisted assistant message bytes=%d", len(generated))
+	reasoning := ""
+	if thinking != nil && thinking.Len() > 0 {
+		reasoning = thinking.String()
+	}
+	if appender, ok := conversation.(interface {
+		AppendAssistantWithThinking(content, thinking string) error
+	}); ok {
+		if err := appender.AppendAssistantWithThinking(generated, reasoning); err != nil {
+			log.Printf("[agent-run] persist assistant message failed err=%v", err)
+		}
+	} else if err := conversation.AppendAssistant(generated); err != nil {
+		log.Printf("[agent-run] persist assistant message failed err=%v", err)
+	}
+	log.Printf("[agent-run] persisted assistant message bytes=%d thinking_bytes=%d", len(generated), len(reasoning))
 	content.Reset()
+	if thinking != nil {
+		thinking.Reset()
+	}
 	return generated
 }
 
-func markInterruptionIfNeeded(sess *session.Session, resumed *session.Interruption, userMessage, assistantContent, reason string) {
+func markInterruptionIfNeeded(conversation Conversation, resumed *session.Interruption, userMessage, assistantContent, reason string) {
 	if resumed != nil {
 		return
 	}
-	if err := sess.MarkInterrupted(userMessage, assistantContent, reason); err != nil {
+	if err := conversation.MarkInterrupted(userMessage, assistantContent, reason); err != nil {
 		log.Printf("[agent-run] mark interruption failed err=%v", err)
 	}
 }
@@ -231,7 +277,7 @@ func buildInterruptedResumeMessage(current string, interrupted *session.Interrup
 }
 
 // appendReferenceContext 将用户引用的文件内容追加到本次 Agent 输入。
-func appendReferenceContext(bookService *book.Service, message string, references []string) string {
+func appendReferenceContext(bookService *book.Service, message string, references []string, logs ...*contextBuildLog) string {
 	var sb strings.Builder
 	sb.WriteString(message)
 	sb.WriteString(prompts.ReferenceHeader)
@@ -251,6 +297,7 @@ func appendReferenceContext(bookService *book.Service, message string, reference
 
 		if total >= maxReferenceTotalBytes {
 			sb.WriteString(prompts.ReferenceOverflowHint)
+			addContextLog(logs, "文件引用", "@"+ref, prompts.ReferenceOverflowHint, "未读取：引用内容总量已超过限制")
 			continue
 		}
 
@@ -260,8 +307,10 @@ func appendReferenceContext(bookService *book.Service, message string, reference
 			sb.WriteString("读取失败：")
 			sb.WriteString(err.Error())
 			sb.WriteString("\n")
+			addContextLog(logs, "文件引用", "@"+ref, err.Error(), "读取失败")
 			continue
 		}
+		addContextLog(logs, "文件引用", "@"+ref, content, "")
 
 		sb.WriteString("```markdown\n")
 		sb.WriteString(content)
@@ -272,7 +321,7 @@ func appendReferenceContext(bookService *book.Service, message string, reference
 }
 
 // appendStyleReferenceContext 将本轮指定的风格参考追加到 Agent 输入。
-func appendStyleReferenceContext(bookService *book.Service, message string, styleReferences []string) string {
+func appendStyleReferenceContext(bookService *book.Service, message string, styleReferences []string, logs ...*contextBuildLog) string {
 	var sb strings.Builder
 	sb.WriteString(message)
 	sb.WriteString(prompts.StyleReferenceHeader)
@@ -292,6 +341,7 @@ func appendStyleReferenceContext(bookService *book.Service, message string, styl
 
 		if total >= maxStyleReferenceTotalBytes {
 			sb.WriteString(prompts.StyleReferenceOverflowHint)
+			addContextLog(logs, "风格参考", "#"+ref, prompts.StyleReferenceOverflowHint, "未读取：风格参考内容总量已超过限制")
 			continue
 		}
 
@@ -301,8 +351,10 @@ func appendStyleReferenceContext(bookService *book.Service, message string, styl
 			sb.WriteString("读取失败：")
 			sb.WriteString(err.Error())
 			sb.WriteString("\n")
+			addContextLog(logs, "风格参考", "#"+ref, err.Error(), "读取失败")
 			continue
 		}
+		addContextLog(logs, "风格参考", "#"+ref, content, "")
 
 		sb.WriteString("```markdown\n")
 		sb.WriteString(content)
@@ -398,7 +450,7 @@ func readStyleReferencedFile(bookService *book.Service, stylePath string, fileLi
 // processStreamingEvent 处理流式助手消息，输出领域事件。
 // 工具调用在流中一检测到名称就立即 emit，让前端尽早展示 running 卡片。
 // 参数在流中逐帧 emit tool_args_delta，前端可实时展示 write_file 内容。
-func processStreamingEvent(mv *adk.MessageVariant, fullContent *strings.Builder, emit func(Event)) bool {
+func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, emit func(Event)) bool {
 	mv.MessageStream.SetAutomaticClose()
 	var accumulatedToolCalls []schema.ToolCall
 	emittedTools := make(map[int]bool) // 按 index 记录已 emit tool_call 的工具
@@ -418,6 +470,9 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent *strings.Builder,
 			continue
 		}
 		if frame.ReasoningContent != "" {
+			if fullThinking != nil {
+				fullThinking.WriteString(frame.ReasoningContent)
+			}
 			emit(Event{Type: "thinking", Data: map[string]string{"content": frame.ReasoningContent}})
 		}
 		if frame.Content != "" {
@@ -467,8 +522,11 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent *strings.Builder,
 }
 
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。
-func processNonStreamingEvent(mv *adk.MessageVariant, fullContent *strings.Builder, emit func(Event)) {
+func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, emit func(Event)) {
 	if mv.Message.ReasoningContent != "" {
+		if fullThinking != nil {
+			fullThinking.WriteString(mv.Message.ReasoningContent)
+		}
 		emit(Event{Type: "thinking", Data: map[string]string{"content": mv.Message.ReasoningContent}})
 	}
 	if mv.Message.Content != "" {
@@ -598,6 +656,198 @@ func appendPlanModeInstruction(message string) string {
 // 历史对话只能用于辅助理解，不能直接成为本轮执行依据。
 func appendContextBoundaryInstruction(message string) string {
 	return prompts.ContextBoundary(message)
+}
+
+type contextBuildLog struct {
+	parts []contextLogPart
+}
+
+type contextLogPart struct {
+	Source  string
+	Title   string
+	Content string
+	Note    string
+}
+
+func newContextBuildLog() *contextBuildLog {
+	return &contextBuildLog{parts: []contextLogPart{}}
+}
+
+func (l *contextBuildLog) add(source, title, content, note string) {
+	if l == nil {
+		return
+	}
+	source = strings.TrimSpace(source)
+	title = strings.TrimSpace(title)
+	if source == "" && title == "" && strings.TrimSpace(content) == "" {
+		return
+	}
+	l.parts = append(l.parts, contextLogPart{
+		Source:  source,
+		Title:   title,
+		Content: content,
+		Note:    strings.TrimSpace(note),
+	})
+}
+
+func (l *contextBuildLog) addStyleRules(rules []StyleRule) {
+	for _, rule := range rules {
+		scene := strings.TrimSpace(rule.Scene)
+		if scene == "" || len(rule.Styles) == 0 {
+			continue
+		}
+		styles := trimmedNonEmpty(rule.Styles)
+		if len(styles) == 0 {
+			continue
+		}
+		l.add("注入规则", "场景化默认风格规则："+scene, strings.Join(styles, "、"), "Agent 将按场景自行判断是否 read_file")
+	}
+}
+
+func (l *contextBuildLog) addSelections(selections []TextSelectionRef) {
+	for _, sel := range selections {
+		title := strings.TrimSpace(sel.FileName)
+		if title == "" {
+			title = "未命名选区"
+		}
+		if sel.StartLine > 0 || sel.EndLine > 0 {
+			title = fmt.Sprintf("%s:L%d-L%d", title, sel.StartLine, sel.EndLine)
+		}
+		l.add("编辑器选区", title, sel.Content, "")
+	}
+}
+
+func (l *contextBuildLog) String() string {
+	if l == nil || len(l.parts) == 0 {
+		return "count=0"
+	}
+	parts := make([]string, 0, len(l.parts))
+	for i, part := range l.parts {
+		content := strings.TrimSpace(part.Content)
+		fields := []string{
+			fmt.Sprintf("%d:source=%q", i, part.Source),
+			fmt.Sprintf("title=%q", part.Title),
+			"bytes=" + intString(len(content)),
+			"chars=" + intString(utf8.RuneCountInString(content)),
+			"preview=" + strconv.Quote(safeLogPreview(content, 100)),
+		}
+		if part.Note != "" {
+			fields = append(fields, "note="+strconv.Quote(part.Note))
+		}
+		parts = append(parts, strings.Join(fields, ","))
+	}
+	return fmt.Sprintf("count=%d parts=[%s]", len(l.parts), strings.Join(parts, "; "))
+}
+
+func addContextLog(logs []*contextBuildLog, source, title, content, note string) {
+	for _, l := range logs {
+		if l != nil {
+			l.add(source, title, content, note)
+		}
+	}
+}
+
+func trimmedNonEmpty(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func messageListSummary(messages []*schema.Message) string {
+	if len(messages) == 0 {
+		return "count=0"
+	}
+	roleCounts := make(map[string]int)
+	totalBytes := 0
+	totalChars := 0
+	for _, msg := range messages {
+		if msg == nil {
+			roleCounts["<nil>"]++
+			continue
+		}
+		role := fmt.Sprint(msg.Role)
+		roleCounts[role]++
+		totalBytes += len(msg.Content)
+		totalChars += utf8.RuneCountInString(msg.Content)
+	}
+
+	parts := make([]string, 0, len(messages))
+	for i, msg := range messages {
+		parts = append(parts, messageSummary(i, len(messages), msg))
+	}
+
+	return fmt.Sprintf("count=%d roles=%s total_bytes=%d total_chars=%d parts=[%s]", len(messages), roleCountSummary(roleCounts), totalBytes, totalChars, strings.Join(parts, "; "))
+}
+
+func messageSummary(index, total int, msg *schema.Message) string {
+	if msg == nil {
+		return fmt.Sprintf("%d:<nil>", index)
+	}
+	source := "会话历史"
+	if index == total-1 {
+		source = "本轮增强后用户输入"
+	}
+	return fmt.Sprintf("%d:source=%s role=%s(%s)", index, source, msg.Role, promptPartSummary(msg.Content))
+}
+
+func roleCountSummary(counts map[string]int) string {
+	if len(counts) == 0 {
+		return "{}"
+	}
+	roles := make([]string, 0, len(counts))
+	for role := range counts {
+		roles = append(roles, role)
+	}
+	sort.Strings(roles)
+	parts := make([]string, 0, len(roles))
+	for _, role := range roles {
+		parts = append(parts, fmt.Sprintf("%s:%d", role, counts[role]))
+	}
+	return "{" + strings.Join(parts, ",") + "}"
+}
+
+func stringListSummary(values []string) string {
+	if len(values) == 0 {
+		return "count=0"
+	}
+	totalBytes := 0
+	for _, value := range values {
+		totalBytes += len(value)
+	}
+	display := values
+	if len(display) > 6 {
+		display = append(append([]string(nil), values[:3]...), append([]string{fmt.Sprintf("... omitted=%d ...", len(values)-6)}, values[len(values)-3:]...)...)
+	}
+	return fmt.Sprintf("count=%d total_bytes=%d items=%q", len(values), totalBytes, display)
+}
+
+func selectionListSummary(selections []TextSelectionRef) string {
+	if len(selections) == 0 {
+		return "count=0"
+	}
+	totalBytes := 0
+	parts := make([]string, 0, minInt(len(selections), 6)+1)
+	for i, sel := range selections {
+		totalBytes += len(sel.Content)
+		if i < 3 || i >= len(selections)-3 {
+			parts = append(parts, fmt.Sprintf("%s:%d-%d(%s)", sel.FileName, sel.StartLine, sel.EndLine, promptPartSummary(sel.Content)))
+		} else if i == 3 {
+			parts = append(parts, fmt.Sprintf("... omitted=%d ...", len(selections)-6))
+		}
+	}
+	return fmt.Sprintf("count=%d total_content_bytes=%d items=[%s]", len(selections), totalBytes, strings.Join(parts, "; "))
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // EventError 创建标准错误事件。

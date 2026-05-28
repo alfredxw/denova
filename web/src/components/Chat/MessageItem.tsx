@@ -1,4 +1,5 @@
-import { memo, useEffect, useState } from 'react'
+import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Bot, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo } from 'lucide-react'
@@ -6,17 +7,19 @@ import type { ChatMessage } from '@/lib/api'
 
 interface MessageItemProps {
   message: ChatMessage
+  highlightDialogue?: boolean
+  messageStyle?: CSSProperties
 }
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle }: MessageItemProps) {
   const { role, content = '' } = message
 
   switch (role) {
     case 'user':
       return (
         <div className="flex justify-end">
-          <div className="max-w-[88%] rounded bg-[#2f7dd3] px-3 py-2 text-sm text-white whitespace-pre-wrap">
+          <div className="max-w-[88%] rounded bg-[#4a4d54] px-3 py-2 text-sm text-white whitespace-pre-wrap" style={messageStyle}>
             {content}
           </div>
         </div>
@@ -25,17 +28,17 @@ export const MessageItem = memo(function MessageItem({ message }: MessageItemPro
     case 'assistant':
       return (
         <div className="flex justify-start">
-          <div className="chat-agent-message w-full text-sm text-[#c8ccd4]">
+          <div className="chat-agent-message w-full text-sm text-[#c8ccd4]" style={messageStyle}>
             <div className="mb-2 flex items-center gap-2 text-xs font-medium text-[#d7dbe2]">
-              <span className="flex h-5 w-5 items-center justify-center rounded border border-[#7c5cff]/50 bg-[#1b1c1f] text-[#b69cff]">
+              <span className="flex h-5 w-5 items-center justify-center rounded border border-[#5a5d64]/50 bg-[#1b1c1f] text-[#d7dbe2]">
                 <Bot className="h-3.5 w-3.5" />
               </span>
               Nova
             </div>
             {message.streaming ? (
-              <StreamingMarkdown content={content} />
+              <StreamingMarkdown content={content} highlightDialogue={highlightDialogue} />
             ) : (
-              <MarkdownContent content={content} />
+              <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
             )}
           </div>
         </div>
@@ -82,16 +85,16 @@ export function ToolActivityBlock({ content }: { content: string }) {
 
   return (
     <div className="flex justify-start">
-      <div className="w-full rounded-lg border border-[#3a314f] bg-[#211f2b] px-3 py-2 text-xs shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
+      <div className="w-full rounded-lg border border-[#303238] bg-[#202124] px-3 py-2 text-xs shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#7c5cff]/40 bg-[#2b2440] text-[#b69cff]">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#5a5d64]/40 bg-[#25262a] text-[#d7dbe2]">
             <Clock3 className="h-3.5 w-3.5 animate-pulse" />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 text-[#d7dbe2]">
               <span className="font-medium">{activity.title}</span>
               {activity.toolName && (
-                <code className="rounded border border-[#454956] bg-[#1b1c20] px-1.5 py-0.5 font-mono text-[11px] text-[#c9b8ff]">
+                <code className="rounded border border-[#454956] bg-[#1b1c20] px-1.5 py-0.5 font-mono text-[11px] text-[#d7dbe2]">
                   {activity.toolName}
                 </code>
               )}
@@ -126,7 +129,7 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
         <div className="flex h-9 min-w-0 items-center gap-2 px-2.5">
           <ToolStatusIcon status={status} />
           <span className="shrink-0 font-medium text-[#d7dbe2]">调用工具</span>
-          <code className="shrink-0 rounded border border-[#454956] bg-[#1b1c20] px-1.5 py-0.5 font-mono text-[11px] text-[#c9b8ff]">
+          <code className="shrink-0 rounded border border-[#454956] bg-[#1b1c20] px-1.5 py-0.5 font-mono text-[11px] text-[#d7dbe2]">
             {name}
           </code>
           <span className="min-w-0 flex-1 truncate text-[#9aa1ad]">
@@ -135,7 +138,7 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
           {hasDetail && !isStreamingContent && (
             <button
               type="button"
-              className="shrink-0 text-[#8fb5ff] hover:text-[#c7d9ff]"
+              className="shrink-0 text-[#aeb4bf] hover:text-[#f0f2f5]"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? '收起' : '详情'}
@@ -179,7 +182,7 @@ export function TodoListBlock({ message }: { message: ChatMessage }) {
     <div className="flex justify-start">
       <div className="w-full overflow-hidden rounded-md border border-[#303238] bg-[#23252a] text-xs">
         <div className="flex h-9 min-w-0 items-center gap-2 px-2.5">
-          <ListTodo className="h-3.5 w-3.5 shrink-0 text-[#7aa2f7]" />
+          <ListTodo className="h-3.5 w-3.5 shrink-0 text-[#a8adb7]" />
           <span className="shrink-0 font-medium text-[#d7dbe2]">待办列表</span>
           {total > 0 && (
             <span className="shrink-0 rounded-full border border-[#454956] bg-[#1b1c20] px-1.5 py-0.5 font-mono text-[11px] text-[#9aa1ad]">
@@ -218,7 +221,7 @@ function TodoListItem({ todo }: { todo: TodoItem }) {
   if (todo.status === 'in_progress') {
     return (
       <li className="flex items-start gap-2 py-0.5 leading-6">
-        <CircleDot className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-pulse text-[#b69cff]" />
+        <CircleDot className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-pulse text-[#d7dbe2]" />
         <span className="text-[#e4e7ee]">{text}</span>
       </li>
     )
@@ -284,7 +287,7 @@ function ToolStatusIcon({ status }: { status: ChatMessage['status'] }) {
   if (status === 'error') {
     return <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-[#ff6b6b] text-[10px] text-[#ff6b6b]">!</span>
   }
-  return <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-[#7c5cff]/35 border-t-[#b69cff]" />
+  return <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-[#5a5d64]/35 border-t-[#d7dbe2]" />
 }
 
 /** 工具结果卡片，默认展示摘要，避免大段结果挤占对话区 */
@@ -313,7 +316,7 @@ function ToolResultBlock({ content }: { content: string }) {
               {canExpand && (
                 <button
                   type="button"
-                  className="shrink-0 text-[#8fb5ff] hover:text-[#c7d9ff]"
+                  className="shrink-0 text-[#aeb4bf] hover:text-[#f0f2f5]"
                   onClick={() => setExpanded(!expanded)}
                 >
                   {expanded ? '收起' : '展开'}
@@ -425,16 +428,23 @@ function extractStreamingContent(rawArgs: string): string {
 }
 
 /** 流式 Markdown 渲染，避免高频重建完整 Markdown AST。 */
-function StreamingMarkdown({ content }: { content: string }) {
-  return <StreamingMarkdownContent content={content} />
+function StreamingMarkdown({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {
+  return <StreamingMarkdownContent content={content} highlightDialogue={highlightDialogue} />
 }
 
-const MarkdownContent = memo(function MarkdownContent({ content }: { content: string }) {
-  return <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+const MarkdownContent = memo(function MarkdownContent({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={highlightDialogue ? dialogueMarkdownComponents : undefined}
+    >
+      {content}
+    </ReactMarkdown>
+  )
 })
 
 /** 轻量流式 Markdown，只处理常见块级语法，保证输出即时不卡顿。 */
-const StreamingMarkdownContent = memo(function StreamingMarkdownContent({ content }: { content: string }) {
+const StreamingMarkdownContent = memo(function StreamingMarkdownContent({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {
   const lines = content.split('\n')
   const nodes = []
   let codeLines: string[] = []
@@ -465,7 +475,7 @@ const StreamingMarkdownContent = memo(function StreamingMarkdownContent({ conten
       continue
     }
 
-    nodes.push(renderStreamingMarkdownLine(line, index))
+    nodes.push(renderStreamingMarkdownLine(line, index, highlightDialogue))
   }
 
   if (inCodeBlock) {
@@ -479,7 +489,7 @@ const StreamingMarkdownContent = memo(function StreamingMarkdownContent({ conten
   return <div className="streaming-markdown">{nodes}</div>
 })
 
-function renderStreamingMarkdownLine(line: string, index: number) {
+function renderStreamingMarkdownLine(line: string, index: number, highlightDialogue: boolean) {
   if (!line.trim()) {
     return <div key={`blank-${index}`} className="h-3" />
   }
@@ -490,7 +500,7 @@ function renderStreamingMarkdownLine(line: string, index: number) {
     const className = level <= 2
       ? 'mt-3 mb-1 text-base font-semibold text-[#e4e7ee]'
       : 'mt-2 mb-1 text-sm font-semibold text-[#d7dbe2]'
-    return <div key={`h-${index}`} className={className}>{renderInlineMarkdown(heading[2])}</div>
+    return <div key={`h-${index}`} className={className}>{renderInlineMarkdown(heading[2], highlightDialogue)}</div>
   }
 
   const listItem = line.match(/^(\s*)([-*+]|\d+\.)\s+(.+)$/)
@@ -499,30 +509,76 @@ function renderStreamingMarkdownLine(line: string, index: number) {
     return (
       <div key={`li-${index}`} className="flex gap-2 leading-7 text-[#c8ccd4]" style={{ paddingLeft: `${depth * 1.25}rem` }}>
         <span className="shrink-0 text-[#858b96]">{listItem[2].match(/\d+\./) ? listItem[2] : '•'}</span>
-        <span>{renderInlineMarkdown(listItem[3])}</span>
+        <span>{renderInlineMarkdown(listItem[3], highlightDialogue)}</span>
       </div>
     )
   }
 
   const quote = line.match(/^>\s?(.*)$/)
   if (quote) {
-    return <div key={`quote-${index}`} className="border-l border-[#454956] pl-3 leading-7 text-[#aeb4bf]">{renderInlineMarkdown(quote[1])}</div>
+    return <div key={`quote-${index}`} className="border-l border-[#454956] pl-3 leading-7 text-[#aeb4bf]">{renderInlineMarkdown(quote[1], highlightDialogue)}</div>
   }
 
-  return <div key={`p-${index}`} className="leading-7 text-[#c8ccd4]">{renderInlineMarkdown(line)}</div>
+  return <div key={`p-${index}`} className="leading-7 text-[#c8ccd4]">{renderInlineMarkdown(line, highlightDialogue)}</div>
 }
 
-function renderInlineMarkdown(text: string) {
+function renderInlineMarkdown(text: string, highlightDialogue = false): ReactNode[] {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g)
   return parts.map((part, index) => {
     if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={index} className="rounded bg-[#1b1c20] px-1 py-0.5 font-mono text-[0.9em] text-[#c9b8ff]">{part.slice(1, -1)}</code>
+      return <code key={index} className="rounded bg-[#1b1c20] px-1 py-0.5 font-mono text-[0.9em] text-[#d7dbe2]">{part.slice(1, -1)}</code>
     }
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={index} className="font-semibold text-[#e4e7ee]">{part.slice(2, -2)}</strong>
+      return <strong key={index} className="font-semibold text-[#e4e7ee]">{highlightDialogueText(part.slice(2, -2), highlightDialogue, `strong-${index}`)}</strong>
     }
-    return part
+    return highlightDialogueText(part, highlightDialogue, `text-${index}`)
   })
+}
+
+const dialogueMarkdownComponents = {
+  p: ({ children }: { children?: ReactNode }) => <p>{highlightDialogueNodes(children)}</p>,
+  li: ({ children }: { children?: ReactNode }) => <li>{highlightDialogueNodes(children)}</li>,
+  h1: ({ children }: { children?: ReactNode }) => <h1>{highlightDialogueNodes(children)}</h1>,
+  h2: ({ children }: { children?: ReactNode }) => <h2>{highlightDialogueNodes(children)}</h2>,
+  h3: ({ children }: { children?: ReactNode }) => <h3>{highlightDialogueNodes(children)}</h3>,
+  h4: ({ children }: { children?: ReactNode }) => <h4>{highlightDialogueNodes(children)}</h4>,
+  h5: ({ children }: { children?: ReactNode }) => <h5>{highlightDialogueNodes(children)}</h5>,
+  h6: ({ children }: { children?: ReactNode }) => <h6>{highlightDialogueNodes(children)}</h6>,
+  blockquote: ({ children }: { children?: ReactNode }) => <blockquote>{highlightDialogueNodes(children)}</blockquote>,
+}
+
+function highlightDialogueNodes(children: ReactNode): ReactNode {
+  return Children.map(children, (child, index) => {
+    if (typeof child === 'string') return highlightDialogueText(child, true, `md-${index}`)
+    if (!isValidElement(child)) return child
+    const props = child.props as { children?: ReactNode }
+    if (props.children === undefined) return child
+    return cloneElement(child, undefined, highlightDialogueNodes(props.children))
+  })
+}
+
+function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string): ReactNode {
+  if (!enabled || !text) return text
+  const nodes: ReactNode[] = []
+  const pattern = /("([^"\n]+)"|“([^”\n]+)”|「([^」\n]+)」)/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  let index = 0
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index))
+    nodes.push(
+      <span key={`${keyPrefix}-dialogue-${index}`} className="nova-dialogue-highlight">
+        {match[0]}
+      </span>,
+    )
+    lastIndex = pattern.lastIndex
+    index += 1
+  }
+
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex))
+  if (nodes.length === 0) return text
+  return <Fragment>{nodes}</Fragment>
 }
 
 /** 思考过程折叠块，流式思考中自动展开，结束后自动折叠。 */

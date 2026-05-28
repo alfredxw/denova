@@ -137,6 +137,50 @@ func TestDeleteRejectsOnlySession(t *testing.T) {
 	}
 }
 
+func TestListAndDeleteByPrefixForInteractiveSessions(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetOrCreate("default"); err != nil {
+		t.Fatal(err)
+	}
+	matching, err := store.GetOrCreate("interactive-story-st_001-main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := matching.Append(schema.UserMessage("互动故事")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetOrCreate("interactive-story-st_002-main"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.GetOrCreate("interactive-setting-main"); err != nil {
+		t.Fatal(err)
+	}
+
+	metas, err := store.ListByPrefix("interactive-story-st_001-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metas) != 1 || metas[0].ID != "interactive-story-st_001-main" {
+		t.Fatalf("unexpected prefix sessions: %#v", metas)
+	}
+
+	if err := store.DeleteByPrefix("interactive-story-st_001-"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Get("interactive-story-st_001-main"); err == nil {
+		t.Fatal("matching interactive session should be deleted")
+	}
+	if _, err := store.Get("interactive-story-st_002-main"); err != nil {
+		t.Fatalf("other story session should remain: %v", err)
+	}
+	if _, err := store.Get("default"); err != nil {
+		t.Fatalf("default session should remain: %v", err)
+	}
+}
+
 func TestInterruptionPersistsPendingRecordAndCanResolve(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

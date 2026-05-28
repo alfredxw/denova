@@ -22,7 +22,10 @@ func NewServer(application *app.App, port string) *Server {
 		port: port,
 	}
 
-	h := hertzserver.Default(hertzserver.WithHostPorts("0.0.0.0:" + port))
+	h := hertzserver.Default(
+		hertzserver.WithHostPorts("0.0.0.0:"+port),
+		hertzserver.WithMaxRequestBodySize(int(maxCharacterCardUploadBytes)),
+	)
 	h.Use(corsMiddleware)
 	s.registerRoutes(h)
 	s.engine = h

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import type { CSSProperties, WheelEvent } from 'react'
 import { MessageItem, ToolActivityBlock } from './MessageItem'
 import type { ChatMessage } from '@/lib/api'
 
@@ -6,63 +7,143 @@ interface MessageListProps {
   messages: ChatMessage[]
   isStreaming: boolean
   activityContent: string
+  highlightDialogue?: boolean
+  scrollResetKey?: string
+  bottomPaddingClassName?: string
+  messageStyle?: CSSProperties
 }
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
-export function MessageList({ messages, isStreaming, activityContent }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', messageStyle }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
   const mountedRef = useRef(false)
+  const hasRenderedContentRef = useRef(false)
   const scrollRafRef = useRef<number | null>(null)
+  const resetScrollRafRef = useRef<number[]>([])
+  const resetScrollTimerRef = useRef<number | null>(null)
+  const bottomThreshold = 8
 
-  /** 主列表：用户上滑时暂停自动滚动，回到底部后恢复。 */
-  const handleContainerScroll = useCallback(() => {
+  const isNearBottom = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= bottomThreshold
+  }, [])
+
+  const forceScrollToBottom = useCallback(() => {
     const el = containerRef.current
     if (!el) return
-    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-    shouldAutoScrollRef.current = distanceToBottom < 50
+    el.scrollTop = el.scrollHeight
   }, [])
+
+  const forceScrollToBottomIfAllowed = useCallback(() => {
+    if (!shouldAutoScrollRef.current) return
+    forceScrollToBottom()
+  }, [forceScrollToBottom])
+
+  const cancelResetScroll = useCallback(() => {
+    for (const id of resetScrollRafRef.current) {
+      cancelAnimationFrame(id)
+    }
+    resetScrollRafRef.current = []
+    if (resetScrollTimerRef.current !== null) {
+      window.clearTimeout(resetScrollTimerRef.current)
+      resetScrollTimerRef.current = null
+    }
+  }, [])
+
+  const scheduleForceScrollToBottom = useCallback(() => {
+    cancelResetScroll()
+    forceScrollToBottom()
+    resetScrollRafRef.current.push(requestAnimationFrame(() => {
+      forceScrollToBottomIfAllowed()
+      resetScrollRafRef.current.push(requestAnimationFrame(forceScrollToBottomIfAllowed))
+    }))
+    resetScrollTimerRef.current = window.setTimeout(forceScrollToBottomIfAllowed, 80)
+  }, [cancelResetScroll, forceScrollToBottom, forceScrollToBottomIfAllowed])
+
+  const cancelPendingAutoScroll = useCallback(() => {
+    if (scrollRafRef.current !== null) {
+      cancelAnimationFrame(scrollRafRef.current)
+      scrollRafRef.current = null
+    }
+    cancelResetScroll()
+  }, [cancelResetScroll])
+
+  useLayoutEffect(() => {
+    hasRenderedContentRef.current = false
+    shouldAutoScrollRef.current = true
+    scheduleForceScrollToBottom()
+    return cancelResetScroll
+  }, [cancelResetScroll, scheduleForceScrollToBottom, scrollResetKey])
 
   // 自动滚动到底部（仅在用户未上滑时）
   useLayoutEffect(() => {
+    const hasContent = messages.length > 0 || activityContent.length > 0 || isStreaming
+    const shouldJumpToBottom = hasContent && !hasRenderedContentRef.current
+    if (shouldJumpToBottom) {
+      shouldAutoScrollRef.current = true
+      scheduleForceScrollToBottom()
+      hasRenderedContentRef.current = true
+      mountedRef.current = true
+      return
+    }
+
     if (shouldAutoScrollRef.current) {
       if (scrollRafRef.current !== null) {
         cancelAnimationFrame(scrollRafRef.current)
       }
       scrollRafRef.current = requestAnimationFrame(() => {
         scrollRafRef.current = null
+        if (!shouldAutoScrollRef.current) return
         bottomRef.current?.scrollIntoView({ behavior: isStreaming ? 'instant' : (mountedRef.current ? 'smooth' : 'instant') })
+        if (hasContent) {
+          hasRenderedContentRef.current = true
+        }
       })
     }
     mountedRef.current = true
-  }, [messages, activityContent, isStreaming])
+  }, [messages, activityContent, isStreaming, scheduleForceScrollToBottom])
+
+  /** 主列表：用户上滑时暂停自动滚动，回到底部后恢复。 */
+  const handleContainerScroll = useCallback(() => {
+    const el = containerRef.current
+    if (!el) return
+    shouldAutoScrollRef.current = isNearBottom()
+    if (!shouldAutoScrollRef.current) cancelPendingAutoScroll()
+  }, [cancelPendingAutoScroll, isNearBottom])
+
+  const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    if (event.deltaY < 0) {
+      shouldAutoScrollRef.current = false
+      cancelPendingAutoScroll()
+    }
+  }, [cancelPendingAutoScroll])
 
   useEffect(() => () => {
     if (scrollRafRef.current !== null) {
       cancelAnimationFrame(scrollRafRef.current)
     }
+    cancelResetScroll()
   }, [])
 
   // 新一轮对话开始时重置跟随状态
   useEffect(() => {
     if (isStreaming) {
       // 检查当前是否在底部附近，如果是则确保跟随
-      const el = containerRef.current
-      if (el) {
-        const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
-        if (distanceToBottom < 50) {
-          shouldAutoScrollRef.current = true
-        }
+      if (isNearBottom()) {
+        shouldAutoScrollRef.current = true
       }
     }
-  }, [isStreaming])
+  }, [isNearBottom, isStreaming])
 
   return (
     <div
       ref={containerRef}
       onScroll={handleContainerScroll}
-      className="flex-1 overflow-y-auto space-y-3 bg-[#202124] px-4 py-4"
+      onWheel={handleWheel}
+      className={`min-h-0 flex-1 space-y-4 overflow-y-auto bg-[var(--nova-surface-2)] px-6 py-5 ${bottomPaddingClassName}`}
     >
       {messages.length === 0 && !isStreaming && (
         <div className="flex h-full items-center justify-center text-sm text-[#858b96]">
@@ -73,7 +154,7 @@ export function MessageList({ messages, isStreaming, activityContent }: MessageL
       {messages.map((msg, i) => (
         msg.type === 'clear'
           ? <ContextClearDivider key={msg.id || msg.created_at || i} createdAt={msg.created_at} />
-          : <MessageItem key={msg.id || i} message={msg} />
+          : <MessageItem key={msg.id || i} message={msg} highlightDialogue={highlightDialogue} messageStyle={messageStyle} />
       ))}
 
       {isStreaming && (

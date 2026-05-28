@@ -9,13 +9,15 @@ import (
 
 // Config 保存 Nova 的全局配置
 type Config struct {
-	OpenAIAPIKey        string `toml:"openai_api_key"`
-	OpenAIBaseURL       string `toml:"openai_base_url"`
-	OpenAIModel         string `toml:"openai_model"`
-	SkillsDir           string `toml:"skills_dir"`
-	NovaDir             string `toml:"nova_dir"`
-	Workspace           string `toml:"workspace"`
-	ResumeLastWorkspace bool   `toml:"-"`
+	OpenAIAPIKey                string `toml:"openai_api_key"`
+	OpenAIBaseURL               string `toml:"openai_base_url"`
+	OpenAIModel                 string `toml:"openai_model"`
+	SkillsDir                   string `toml:"skills_dir"`
+	NovaDir                     string `toml:"nova_dir"`
+	Workspace                   string `toml:"workspace"`
+	InteractiveReplyTargetChars int    `toml:"-"`
+	InteractiveMaxTokens        int    `toml:"-"`
+	ResumeLastWorkspace         bool   `toml:"-"`
 }
 
 // LoadWithWorkspace 在已知 workspace 时读取分层配置（默认 < 用户级 < 工作区级 < 环境变量）。
@@ -43,13 +45,15 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 
 	s := layered.Effective
 	cfg := &Config{
-		OpenAIAPIKey:        s.OpenAIAPIKey,
-		OpenAIBaseURL:       s.OpenAIBaseURL,
-		OpenAIModel:         s.OpenAIModel,
-		SkillsDir:           s.SkillsDir,
-		NovaDir:             novaDir,
-		Workspace:           workspace,
-		ResumeLastWorkspace: true,
+		OpenAIAPIKey:                s.OpenAIAPIKey,
+		OpenAIBaseURL:               s.OpenAIBaseURL,
+		OpenAIModel:                 s.OpenAIModel,
+		SkillsDir:                   s.SkillsDir,
+		NovaDir:                     novaDir,
+		Workspace:                   workspace,
+		InteractiveReplyTargetChars: settingsInt(s.InteractiveReplyTargetChars, 1200),
+		InteractiveMaxTokens:        settingsInt(s.InteractiveMaxTokens, 0),
+		ResumeLastWorkspace:         true,
 	}
 
 	// 环境变量始终最高优先级
@@ -114,11 +118,13 @@ func Load() *Config {
 		// fallback：返回纯默认值 + env，保持启动不挂
 		d := DefaultSettings()
 		cfg = &Config{
-			OpenAIBaseURL:       d.OpenAIBaseURL,
-			OpenAIModel:         d.OpenAIModel,
-			SkillsDir:           d.SkillsDir,
-			NovaDir:             normalizePath(d.NovaDir),
-			ResumeLastWorkspace: true,
+			OpenAIBaseURL:               d.OpenAIBaseURL,
+			OpenAIModel:                 d.OpenAIModel,
+			SkillsDir:                   d.SkillsDir,
+			NovaDir:                     normalizePath(d.NovaDir),
+			InteractiveReplyTargetChars: settingsInt(d.InteractiveReplyTargetChars, 1200),
+			InteractiveMaxTokens:        settingsInt(d.InteractiveMaxTokens, 0),
+			ResumeLastWorkspace:         true,
 		}
 		overrideFromEnv(cfg)
 		if cfg.Workspace != "" {
@@ -131,6 +137,13 @@ func Load() *Config {
 		}
 	}
 	return cfg
+}
+
+func settingsInt(v *int, fallback int) int {
+	if v == nil || *v <= 0 {
+		return fallback
+	}
+	return *v
 }
 
 // LoadForWorkspace 加载配置并明确指定 workspace，用于 CLI 参数场景。
@@ -171,7 +184,7 @@ func overrideFromEnv(cfg *Config) {
 }
 
 func defaultNovaDir() string {
-	return "~/.nova"
+	return "./.nova"
 }
 
 func normalizePath(path string) string {

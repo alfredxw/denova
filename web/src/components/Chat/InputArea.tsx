@@ -260,7 +260,7 @@ export function InputArea({
                     onSelect={() => selectCommand(cmd)}
                     className="cursor-pointer text-[#d7dbe2] data-[selected=true]:bg-[#303238]"
                   >
-                    <span className="font-mono text-[#7aa2f7]">{cmd}</span>
+                    <span className="font-mono text-[#a8adb7]">{cmd}</span>
                     <span className="text-[#858b96]">{desc}</span>
                   </CommandItem>
                 ))}
@@ -297,7 +297,7 @@ export function InputArea({
           placeholder={disabled ? 'AI 正在回复…' : '输入消息，Enter 发送，Shift+Enter 换行'}
           disabled={disabled}
           rows={1}
-          className="min-h-0 flex-1 resize-none border-[#3a3d44] bg-[#1b1c1f] px-3 py-2 text-sm text-[#d7dbe2] placeholder:text-[#6f7682] focus-visible:border-[#2f7dd3] focus-visible:ring-0 disabled:opacity-50"
+          className="min-h-0 flex-1 resize-none border-[#3a3d44] bg-[#1b1c1f] px-3 py-2 text-sm text-[#d7dbe2] placeholder:text-[#6f7682] focus-visible:border-[#4a4d54] focus-visible:ring-0 disabled:opacity-50"
         />
         <Button
           type="button"
@@ -305,7 +305,7 @@ export function InputArea({
           disabled={disabled ? !onStop : !value.trim()}
           size="icon-sm"
           className={`shrink-0 text-white ${
-            disabled ? 'bg-[#c95050] hover:bg-[#e05d5d]' : 'bg-[#2f7dd3] hover:bg-[#3b8eea]'
+            disabled ? 'bg-[#c95050] hover:bg-[#e05d5d]' : 'bg-[#4a4d54] hover:bg-[#5a5d64]'
           }`}
           aria-label={disabled ? '中断 AI 执行' : '发送'}
         >

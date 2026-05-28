@@ -28,7 +28,7 @@ func corsMiddleware(ctx context.Context, c *app.RequestContext) {
 	if allowed {
 		c.Response.Header.Set("Access-Control-Allow-Origin", origin)
 	}
-	c.Response.Header.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	c.Response.Header.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, PUT, OPTIONS")
 	c.Response.Header.Set("Access-Control-Allow-Headers", "Content-Type")
 
 	if string(c.Request.Method()) == "OPTIONS" {

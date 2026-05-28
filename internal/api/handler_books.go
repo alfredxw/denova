@@ -18,7 +18,6 @@ func (s *Server) handleBooks(ctx context.Context, c *app.RequestContext) {
 // handleCreateBook POST /api/books/create — 创建新书籍工作区。
 func (s *Server) handleCreateBook(ctx context.Context, c *app.RequestContext) {
 	var req struct {
-		ParentDir   string `json:"parent_dir"`
 		Title       string `json:"title"`
 		Author      string `json:"author,omitempty"`
 		Description string `json:"description,omitempty"`
@@ -27,11 +26,20 @@ func (s *Server) handleCreateBook(ctx context.Context, c *app.RequestContext) {
 		writeError(c, consts.StatusBadRequest, "请求参数无效")
 		return
 	}
-	if req.ParentDir == "" || req.Title == "" {
-		writeError(c, consts.StatusBadRequest, "parent_dir 和 title 不能为空")
+	if req.Title == "" {
+		writeError(c, consts.StatusBadRequest, "title 不能为空")
 		return
 	}
-	workspace, meta, err := s.app.CreateBook(ctx, req.ParentDir, req.Title, req.Author, req.Description)
+	layered, err := s.app.Settings()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	if layered.Paths.NovaDir == "" {
+		writeError(c, consts.StatusInternalServerError, "Nova 数据目录未配置")
+		return
+	}
+	workspace, meta, err := s.app.CreateBook(ctx, layered.Paths.NovaDir, req.Title, req.Author, req.Description)
 	if err != nil {
 		status := consts.StatusInternalServerError
 		if strings.Contains(err.Error(), "已存在") {

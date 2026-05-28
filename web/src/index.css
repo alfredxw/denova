@@ -1,11 +1,195 @@
 @import "tailwindcss";
 
+:root {
+  --nova-bg: #1a1a1a;
+  --nova-bg-deep: #050505;
+  --nova-surface: #111111;
+  --nova-surface-2: #171717;
+  --nova-surface-3: #202020;
+  --nova-hover: #262626;
+  --nova-active: #2f2f2f;
+  --nova-border: #2a2a2a;
+  --nova-border-soft: #222222;
+  --nova-text: #f5f5f5;
+  --nova-text-muted: #a3a3a3;
+  --nova-text-faint: #737373;
+  --nova-accent: #d6aa62;
+  --nova-accent-blue: #7fa7d9;
+  --nova-accent-green: #81b38d;
+  --nova-radius: 8px;
+  --nova-ease: cubic-bezier(0.25, 1.1, 0.4, 1);
+  --nova-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
+  --nova-ui-font-size: 12px;
+  --nova-ui-line-height: 18px;
+  --nova-ui-caption-size: 11px;
+  --nova-ui-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --nova-reading-font-family: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif;
+  color-scheme: dark;
+}
+
 html,
 body,
 #root {
   margin: 0;
   height: 100%;
-  background: #18191b;
+  background: var(--nova-bg);
+  color: var(--nova-text);
+  font-family: var(--nova-ui-font-family);
+  font-feature-settings: "kern";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  transition-property: color, background-color, border-color, opacity, transform, box-shadow;
+  transition-duration: 360ms;
+  transition-timing-function: var(--nova-ease);
+}
+
+[data-nova-app-shell="true"] {
+  background:
+    radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.035), transparent 26%),
+    var(--nova-bg);
+  color: var(--nova-text);
+  font-size: var(--nova-ui-font-size);
+  line-height: var(--nova-ui-line-height);
+}
+
+[data-nova-app-shell="true"] input,
+[data-nova-app-shell="true"] select,
+[data-nova-app-shell="true"] textarea,
+[data-nova-app-shell="true"] [data-slot="button"] {
+  font-size: var(--nova-ui-font-size);
+  line-height: var(--nova-ui-line-height);
+}
+
+.nova-topbar {
+  border-color: var(--nova-border);
+  background: color-mix(in srgb, var(--nova-surface) 92%, transparent);
+  color: var(--nova-text-muted);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.025);
+  backdrop-filter: blur(18px);
+  font-size: var(--nova-ui-font-size);
+  line-height: var(--nova-ui-line-height);
+}
+
+.nova-activity-bar {
+  border-color: var(--nova-border);
+  background: var(--nova-bg-deep);
+  color: var(--nova-text-faint);
+}
+
+.nova-sidebar {
+  border-color: var(--nova-border);
+  background: var(--nova-surface);
+}
+
+.nova-panel {
+  border-color: var(--nova-border);
+  background: var(--nova-surface-2);
+  font-size: var(--nova-ui-font-size);
+  line-height: var(--nova-ui-line-height);
+}
+
+.nova-subpanel {
+  border-color: var(--nova-border);
+  background: var(--nova-surface);
+}
+
+.nova-icon-button {
+  height: 40px;
+  width: 40px;
+  min-width: 40px;
+  border-radius: var(--nova-radius);
+  color: var(--nova-text-faint);
+}
+
+.nova-icon-button:hover {
+  background: var(--nova-surface);
+  color: var(--nova-text-muted);
+}
+
+.nova-icon-button.is-active,
+.nova-nav-item.is-active {
+  background: var(--nova-active);
+  color: var(--nova-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+}
+
+.nova-nav-item {
+  border-radius: var(--nova-radius);
+  color: var(--nova-text-muted);
+  font-size: var(--nova-ui-font-size);
+  line-height: var(--nova-ui-line-height);
+  transition: color 360ms var(--nova-ease), background-color 360ms var(--nova-ease), border-color 360ms var(--nova-ease), transform 360ms var(--nova-ease);
+}
+
+.nova-nav-item:hover {
+  background: var(--nova-hover);
+  color: var(--nova-text);
+}
+
+.nova-field {
+  border-color: var(--nova-border);
+  background: var(--nova-surface-2);
+  color: var(--nova-text);
+  font-size: var(--nova-ui-font-size);
+  line-height: var(--nova-ui-line-height);
+}
+
+.nova-field:hover,
+.nova-field:focus-within {
+  border-color: #3a3a3a;
+  background: var(--nova-surface-3);
+}
+
+.nova-muted {
+  color: var(--nova-text-muted);
+}
+
+.nova-faint {
+  color: var(--nova-text-faint);
+}
+
+.nova-resize-handle:hover,
+.nova-resize-handle[data-resize-handle-active] {
+  background: color-mix(in srgb, var(--nova-active) 78%, transparent);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f3f #0f0f0f;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #0f0f0f;
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid #0f0f0f;
+  border-radius: 999px;
+  background: #3f3f3f;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #5a5a5a;
+}
+
+*::-webkit-scrollbar-corner {
+  background: #0f0f0f;
 }
 
 /* TipTap 编辑器内容样式 */
@@ -13,11 +197,9 @@ body,
   outline: none;
   min-height: 100%;
   color: var(--nova-editor-color, #d7dbe2);
-  font-family:
-    "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC",
-    Georgia, serif;
+  font-family: var(--nova-reading-font-family);
   font-size: var(--nova-editor-font-size, 18px);
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   line-height: var(--nova-editor-line-height, 1.9);
   max-width: 760px;
   margin: 0 auto;
@@ -138,7 +320,7 @@ body,
 }
 
 .editor-content .tiptap a {
-  color: #7aa2f7;
+  color: #a8adb7;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -259,4 +441,9 @@ body,
 .chat-agent-message th {
   background: #25262a;
   color: #d7dbe2;
+}
+
+.nova-dialogue-highlight {
+  color: color-mix(in srgb, currentColor 35%, #ffd166);
+  text-shadow: 0 0 14px color-mix(in srgb, currentColor 22%, transparent);
 }

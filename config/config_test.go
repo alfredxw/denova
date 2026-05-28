@@ -11,7 +11,7 @@ func TestLoadDefaultsNovaDirToHomeNova(t *testing.T) {
 	t.Setenv("NOVA_DIR", "")
 
 	cfg := Load()
-	want := normalizePath("~/.nova")
+	want := normalizePath("./.nova")
 	if cfg.NovaDir != want {
 		t.Fatalf("默认 NovaDir 不符合预期: want=%s got=%s", want, cfg.NovaDir)
 	}

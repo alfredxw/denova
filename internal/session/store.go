@@ -398,6 +398,44 @@ func (s *Store) List(activeID string) ([]SessionMeta, error) {
 	return result, nil
 }
 
+// ListByPrefix 返回 ID 匹配指定前缀的会话摘要，用于互动模式按子模式筛选会话。
+func (s *Store) ListByPrefix(prefix string) ([]SessionMeta, error) {
+	if err := validateSessionID(prefix); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	activeID, _ := s.ActiveID()
+	files, err := filepath.Glob(filepath.Join(s.dir, prefix+"*.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	result := make([]SessionMeta, 0, len(files))
+	for _, file := range files {
+		id := strings.TrimSuffix(filepath.Base(file), ".jsonl")
+		if !strings.HasPrefix(id, prefix) {
+			continue
+		}
+		sess, err := s.loadLocked(id)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, SessionMeta{
+			ID:           sess.ID,
+			Title:        sess.Title(),
+			CreatedAt:    sess.CreatedAt,
+			UpdatedAt:    sess.UpdatedAt,
+			Active:       sess.ID == activeID,
+			MessageCount: sess.MessageCount(),
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].UpdatedAt.After(result[j].UpdatedAt)
+	})
+	return result, nil
+}
+
 // Rename 修改指定会话标题。
 func (s *Store) Rename(id, title string) error {
 	sess, err := s.GetOrCreate(id)
@@ -425,6 +463,31 @@ func (s *Store) Delete(id string) error {
 	delete(s.cache, id)
 	if err := os.Remove(s.sessionPath(id)); err != nil {
 		return fmt.Errorf("删除会话失败: %w", err)
+	}
+	return nil
+}
+
+// DeleteByPrefix 删除 ID 匹配指定前缀的会话文件，用于删除互动故事线时级联清理会话。
+func (s *Store) DeleteByPrefix(prefix string) error {
+	if err := validateSessionID(prefix); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	files, err := filepath.Glob(filepath.Join(s.dir, prefix+"*.jsonl"))
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		id := strings.TrimSuffix(filepath.Base(file), ".jsonl")
+		if !strings.HasPrefix(id, prefix) {
+			continue
+		}
+		delete(s.cache, id)
+		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("删除会话失败: %w", err)
+		}
 	}
 	return nil
 }

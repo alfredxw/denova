@@ -15,6 +15,7 @@ import {
   AtSign,
 } from 'lucide-react'
 import type { FileNode } from '@/hooks/useWorkspace'
+import type { ChapterSummary } from '@/lib/api'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -44,6 +45,7 @@ interface FileTreeProps {
   onRenameItem?: (path: string, newName: string) => Promise<void>
   onCopyItem?: (from: string, to: string) => Promise<void>
   onMoveItem?: (from: string, to: string) => Promise<void>
+  chapterStats?: Record<string, ChapterSummary>
 }
 
 /** 内联编辑状态 */
@@ -63,7 +65,7 @@ const DEFAULT_EXPANDED = new Set(['setting', 'chapters'])
 const MENU_CONTENT_CLASS =
   'min-w-[180px] rounded-lg border-[#303238] bg-[#202124]/95 p-1 text-[#d7dbe2] shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur'
 const MENU_ITEM_CLASS =
-  'cursor-pointer rounded-md px-2 py-1.5 text-xs text-[#c5c9d1] transition-colors focus:bg-[#2f7dd3]/25 focus:text-[#e6f1ff] data-[highlighted]:bg-[#2f7dd3]/25 data-[highlighted]:text-[#e6f1ff] [&_svg]:text-[#858b96] focus:[&_svg]:text-[#9fc7ff] data-[highlighted]:[&_svg]:text-[#9fc7ff]'
+  'cursor-pointer rounded-md px-2 py-1.5 text-xs text-[#c5c9d1] transition-colors focus:bg-[#4a4d54]/25 focus:text-[#f0f2f5] data-[highlighted]:bg-[#4a4d54]/25 data-[highlighted]:text-[#f0f2f5] [&_svg]:text-[#858b96] focus:[&_svg]:text-[#c5c9d1] data-[highlighted]:[&_svg]:text-[#c5c9d1]'
 const MENU_DANGER_CLASS =
   'text-red-300 focus:bg-red-500/15 focus:text-red-200 data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-200 [&_svg]:text-red-300'
 const MENU_SEPARATOR_CLASS = 'mx-1 my-1 h-px bg-[#303238]'
@@ -80,6 +82,7 @@ export function FileTree({
   onRenameItem,
   onCopyItem,
   onMoveItem,
+  chapterStats = {},
 }: FileTreeProps) {
   // 内联编辑状态（新建 / 重命名）
   const [inlineEdit, setInlineEdit] = useState<InlineEditState | null>(null)
@@ -153,6 +156,7 @@ export function FileTree({
           setOperation({ open: true, mode, targetPath, defaultValue })
         }
         onDeleteTarget={setDeleteTarget}
+        chapterStats={chapterStats}
       />
       <FileOperationDialog
         open={operation.open}
@@ -190,6 +194,7 @@ interface FileTreeListProps {
   onInlineCancel: () => void
   onOpenOperation: (mode: FileOperationMode, targetPath: string, defaultValue: string) => void
   onDeleteTarget: (path: string) => void
+  chapterStats: Record<string, ChapterSummary>
 }
 
 /** 递归树列表 */
@@ -208,7 +213,7 @@ function FileTreeList(props: FileTreeListProps) {
         <li className="flex items-center gap-1 px-2 py-0.5">
           <span className="w-3.5 shrink-0" />
           {inlineEdit!.type === 'create-dir'
-            ? <Folder className="h-4 w-4 shrink-0 text-[#7aa2f7]" />
+            ? <Folder className="h-4 w-4 shrink-0 text-[#a8adb7]" />
             : <FileText className="h-4 w-4 shrink-0 text-[#858b96]" />
           }
           <InlineInput
@@ -240,6 +245,7 @@ interface FileTreeNodeProps {
   onInlineCancel: () => void
   onOpenOperation: (mode: FileOperationMode, targetPath: string, defaultValue: string) => void
   onDeleteTarget: (path: string) => void
+  chapterStats: Record<string, ChapterSummary>
 }
 
 interface TreeAction {
@@ -263,12 +269,14 @@ function FileTreeNode({
   onInlineCancel,
   onOpenOperation,
   onDeleteTarget,
+  chapterStats,
 }: FileTreeNodeProps) {
   const [expanded, setExpanded] = useState(DEFAULT_EXPANDED.has(node.name))
   const isDir = node.type === 'dir'
   const isSelected = selectedFile === path
   const parentPath = getParentPath(path)
   const defaultCopyPath = `${path}-copy`
+  const chapter = chapterStats[path]
 
   // 是否正在重命名此节点
   const isRenaming = inlineEdit?.type === 'rename' && inlineEdit.renamePath === path
@@ -344,9 +352,9 @@ function FileTreeNode({
                   <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#6f7682]" />
                 )}
                 {expanded ? (
-                  <FolderOpen className="h-4 w-4 shrink-0 text-[#7aa2f7]" />
+                  <FolderOpen className="h-4 w-4 shrink-0 text-[#a8adb7]" />
                 ) : (
-                  <Folder className="h-4 w-4 shrink-0 text-[#7aa2f7]" />
+                  <Folder className="h-4 w-4 shrink-0 text-[#a8adb7]" />
                 )}
                 {isRenaming ? (
                   <InlineInput
@@ -380,6 +388,7 @@ function FileTreeNode({
               onInlineCancel={onInlineCancel}
               onOpenOperation={onOpenOperation}
               onDeleteTarget={onDeleteTarget}
+              chapterStats={chapterStats}
             />
           </div>
         )}
@@ -394,7 +403,7 @@ function FileTreeNode({
           <div
             className={`group flex w-full items-center rounded ${
               isSelected
-                ? 'bg-[#2f7dd3]/25 text-[#d7e8ff]'
+                ? 'bg-[#4a4d54]/25 text-[#f0f2f5]'
                 : 'text-[#aeb4bf] hover:bg-[#2a2c31]'
             }`}
           >
@@ -413,7 +422,15 @@ function FileTreeNode({
                   onCancel={onInlineCancel}
                 />
               ) : (
-                <span className="truncate">{node.name}</span>
+                <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+                  <span className="truncate">{chapter?.display_title || node.name}</span>
+                  {chapter && (
+                    <span className="flex shrink-0 items-center gap-1 text-[10px] text-[#7f8794]">
+                      <span>{formatCompactWords(chapter.words)}</span>
+                      <span className="rounded border border-[#3a4658] bg-[#1c2430] px-1 text-[#c5c9d1]">{chapter.status}</span>
+                    </span>
+                  )}
+                </span>
               )}
             </button>
             {!isRenaming && <NodeDropdown actions={actions} />}
@@ -487,4 +504,10 @@ function sortFileNodesForDisplay(nodes: FileNode[]) {
     }
     return a.name.localeCompare(b.name, 'zh-Hans-CN')
   })
+}
+
+function formatCompactWords(words: number) {
+  if (words >= 10000) return `${(words / 10000).toFixed(1)}w`
+  if (words >= 1000) return `${(words / 1000).toFixed(1)}k`
+  return String(words)
 }

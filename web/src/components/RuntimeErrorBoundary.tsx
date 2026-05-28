@@ -44,7 +44,7 @@ export class RuntimeErrorBoundary extends Component<RuntimeErrorBoundaryProps, R
             <Button
               type="button"
               size="sm"
-              className="mt-4 bg-[#2f7dd3] text-white hover:bg-[#3b8eea]"
+              className="mt-4 bg-[#4a4d54] text-white hover:bg-[#5a5d64]"
               onClick={() => window.location.reload()}
             >
               刷新页面

@@ -19,6 +19,39 @@ describe('MessageItem', () => {
     expect(screen.getByText('cmd')).toBeInTheDocument()
   })
 
+  it('互动模式 assistant 消息高亮常见对白引号', () => {
+    const { container } = render(
+      <MessageItem
+        highlightDialogue
+        message={{ role: 'assistant', content: '他说：“走吧。”\n\n她答：「等等。」\n\n旁白写道 "now".' }}
+      />,
+    )
+
+    const highlights = container.querySelectorAll('.nova-dialogue-highlight')
+    expect(highlights).toHaveLength(3)
+    expect(highlights[0]).toHaveTextContent('“走吧。”')
+    expect(highlights[1]).toHaveTextContent('「等等。」')
+    expect(highlights[2]).toHaveTextContent('"now"')
+  })
+
+  it('普通 assistant 消息默认不高亮对白', () => {
+    const { container } = render(<MessageItem message={{ role: 'assistant', content: '他说：“走吧。”' }} />)
+
+    expect(container.querySelector('.nova-dialogue-highlight')).toBeNull()
+  })
+
+  it('流式互动消息同样高亮对白', () => {
+    const { container } = render(
+      <MessageItem
+        highlightDialogue
+        message={{ role: 'assistant', content: '他说：“走吧。”\n她答：「等等。」', streaming: true }}
+      />,
+    )
+
+    const highlights = container.querySelectorAll('.nova-dialogue-highlight')
+    expect(highlights).toHaveLength(2)
+  })
+
   it('思考过程流式时默认展开，结束后默认折叠但可手动展开', async () => {
     const user = userEvent.setup()
     const { rerender } = render(<MessageItem message={{ role: 'thinking', content: '正在分析', streaming: true }} />)

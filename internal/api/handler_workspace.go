@@ -23,6 +23,26 @@ func (s *Server) handleWorkspaceTree(ctx context.Context, c *app.RequestContext)
 	writeJSON(c, consts.StatusOK, tree)
 }
 
+// handleWorkspaceSummary GET /api/workspace/summary — 返回作品章节统计和写作进度。
+func (s *Server) handleWorkspaceSummary(ctx context.Context, c *app.RequestContext) {
+	if !s.app.HasWorkspace() {
+		writeJSON(c, consts.StatusOK, map[string]any{
+			"title":         "",
+			"author":        "",
+			"chapter_count": 0,
+			"total_words":   0,
+			"chapters":      []any{},
+		})
+		return
+	}
+	summary, err := s.app.BookService().Summary()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, "统计作品进度失败: "+err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, summary)
+}
+
 // handleWorkspaceFile GET /api/workspace/file?path=xxx — 读取文件内容。
 func (s *Server) handleWorkspaceFile(ctx context.Context, c *app.RequestContext) {
 	if !s.requireWorkspace(c) {

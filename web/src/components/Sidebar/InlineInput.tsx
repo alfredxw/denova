@@ -61,7 +61,7 @@ export function InlineInput({ defaultValue, isRename, onConfirm, onCancel }: Inl
         }
         e.stopPropagation()
       }}
-      className="h-5 w-full min-w-[80px] rounded border border-[#2f7dd3] bg-[#1b1c1f] px-1 text-xs text-[#d7dbe2] outline-none"
+      className="h-5 w-full min-w-[80px] rounded border border-[#4a4d54] bg-[#1b1c1f] px-1 text-xs text-[#d7dbe2] outline-none"
     />
   )
 }

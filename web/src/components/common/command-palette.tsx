@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import {
   Bot,
   GitBranch,
-  ListTodo,
   Save,
   Sparkles,
   X,
@@ -29,12 +28,10 @@ type CommandAction = {
 interface CommandPaletteProps {
   open: boolean
   isStreaming?: boolean
-  taskPanelOpen?: boolean
   onOpenChange: (open: boolean) => void
   onSave: () => void
   onOpenAgent: () => void
   onOpenVersions: () => void
-  onToggleTasks: () => void
   onContinueWriting: () => void
   onClosePanels: () => void
 }
@@ -43,12 +40,10 @@ interface CommandPaletteProps {
 export function CommandPalette({
   open,
   isStreaming = false,
-  taskPanelOpen = false,
   onOpenChange,
   onSave,
   onOpenAgent,
   onOpenVersions,
-  onToggleTasks,
   onContinueWriting,
   onClosePanels,
 }: CommandPaletteProps) {
@@ -71,12 +66,6 @@ export function CommandPalette({
       label: '打开版本管理',
       icon: <GitBranch className="h-4 w-4" />,
       onSelect: onOpenVersions,
-    },
-    {
-      id: 'tasks',
-      label: taskPanelOpen ? '关闭任务面板' : '打开任务面板',
-      icon: <ListTodo className="h-4 w-4" />,
-      onSelect: onToggleTasks,
     },
     {
       id: 'continue',

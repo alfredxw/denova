@@ -41,6 +41,11 @@ func (s *State) BackupDir() string {
 	return filepath.Join(s.NovaDir(), "backups")
 }
 
+// LoreDir 返回 .nova/lore/ 目录路径（结构化资料库）。
+func (s *State) LoreDir() string {
+	return filepath.Join(s.NovaDir(), "lore")
+}
+
 // SettingDir 返回 setting/ 目录路径（作品设定，用户可查看和编辑）。
 func (s *State) SettingDir() string {
 	return filepath.Join(s.workspace, "setting")
@@ -60,6 +65,7 @@ func (s *State) InitWorkspace() error {
 		s.NovaDir(),
 		s.BackupDir(),
 		s.SessionDir(),
+		s.LoreDir(),
 		s.SettingDir(),
 		s.StyleDir(),
 		filepath.Join(s.workspace, "chapters"),
@@ -82,6 +88,9 @@ func (s *State) InitWorkspace() error {
 	if err := ensureCreatorTemplate(s.workspace); err != nil {
 		return err
 	}
+	if err := NewLoreStore(s.workspace).Ensure(); err != nil {
+		return fmt.Errorf("初始化资料库失败: %w", err)
+	}
 	return nil
 }
 
@@ -93,6 +102,7 @@ func (s *State) BrainstormPath() string {
 // CompactContext 读取 setting/ 下所有状态文件，构建分级注入的上下文字符串。
 func (s *State) CompactContext() string {
 	var sb strings.Builder
+	loreContext := s.LoreContext()
 
 	sections := []struct {
 		file  string
@@ -105,6 +115,9 @@ func (s *State) CompactContext() string {
 	}
 
 	for _, sec := range sections {
+		if loreContext != "" && (sec.file == "characters.md" || sec.file == "world-building.md") {
+			continue
+		}
 		content := s.readSettingFile(sec.file)
 		if content == "" {
 			continue
@@ -114,7 +127,22 @@ func (s *State) CompactContext() string {
 		sb.WriteString("\n\n")
 	}
 
+	if loreContext != "" {
+		sb.WriteString("## 资料库\n\n")
+		sb.WriteString(loreContext)
+		sb.WriteString("\n\n")
+	}
+
 	return sb.String()
+}
+
+// LoreContext 返回结构化资料库中的 Markdown 上下文。
+func (s *State) LoreContext() string {
+	context, err := NewLoreStore(s.workspace).ContextMarkdown()
+	if err != nil {
+		return ""
+	}
+	return context
 }
 
 // HasState 检查 setting/ 目录是否已存在状态文件。

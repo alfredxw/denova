@@ -55,6 +55,41 @@ export interface BookRecord {
   last_opened_at: string
 }
 
+export interface ChapterSummary {
+  path: string
+  file_name: string
+  display_title: string
+  index: number
+  words: number
+  status: string
+  updated_at: string
+}
+
+export interface WorkspaceSummary {
+  title: string
+  author: string
+  chapter_count: number
+  total_words: number
+  chapters: ChapterSummary[]
+}
+
+export interface CharacterCardImportResult {
+  name: string
+  target_path: string
+  entry_count: number
+  item_count: number
+  item_ids: string[]
+  workspace?: string
+  book_meta?: BookMeta
+  message: string
+}
+
+export interface CharacterCardPreview {
+  name: string
+  entry_count: number
+  tags: string[]
+}
+
 /** 书籍元信息 */
 export interface BookMeta {
   title: string
@@ -88,6 +123,35 @@ export interface GitCommandResult {
   command: string
   output: string
   status?: GitStatus
+}
+
+export interface LoreItem {
+  id: string
+  type: 'character' | 'world' | 'location' | 'faction' | 'rule' | 'item' | 'other'
+  name: string
+  importance: 'major' | 'important' | 'minor'
+  tags: string[]
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at'>
+
+export interface LoreVersion {
+  id: string
+  message: string
+  created_at: string
+  item_count: number
+}
+
+export interface LoreAgentResult {
+  message: string
+  version?: LoreVersion
+  items: LoreItem[]
+  created: LoreItem[]
+  updated: LoreItem[]
+  deleted_ids: string[]
 }
 
 async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -296,6 +360,15 @@ export async function getCurrentWorkspace(): Promise<{ workspace: string; has_st
   return requestJSON('/api/workspace/current')
 }
 
+/** 获取当前作品章节统计 */
+export async function getWorkspaceSummary(): Promise<WorkspaceSummary> {
+  const summary = await requestJSON<WorkspaceSummary>('/api/workspace/summary')
+  return {
+    ...summary,
+    chapters: Array.isArray(summary.chapters) ? summary.chapters : [],
+  }
+}
+
 /** 读取文件内容 */
 export async function readFile(path: string): Promise<{ path: string; content: string }> {
   return requestJSON(`/api/workspace/file?path=${encodeURIComponent(path)}`)
@@ -308,6 +381,87 @@ export async function saveFile(path: string, content: string): Promise<{ message
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path, content }),
   })
+}
+
+export async function getLoreItems(): Promise<LoreItem[]> {
+  const data = await requestJSON<{ items: LoreItem[] }>('/api/lore/items')
+  return data.items || []
+}
+
+export async function createLoreItem(item: Partial<LoreItemInput>): Promise<LoreItem> {
+  return requestJSON('/api/lore/items', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item),
+  })
+}
+
+export async function updateLoreItem(id: string, item: Partial<LoreItemInput>): Promise<LoreItem> {
+  return requestJSON(`/api/lore/items/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item),
+  })
+}
+
+export async function deleteLoreItem(id: string): Promise<void> {
+  await requestJSON(`/api/lore/items/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function runLoreAgent(instruction: string, references: string[] = []): Promise<LoreAgentResult> {
+  return requestJSON('/api/lore/agent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instruction, references }),
+  })
+}
+
+export async function runLoreAgentStream(instruction: string, references: string[] = []): Promise<ReadableStream<SSEEvent>> {
+  const res = await fetch('/api/lore/agent/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ instruction, references }),
+  })
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`
+    try {
+      const data = await res.json()
+      message = data.error || message
+    } catch {
+      // keep HTTP fallback
+    }
+    throw new Error(message)
+  }
+  if (!res.body) throw new Error('No response body')
+  return parseSSEStream(res.body)
+}
+
+export async function getLoreAgentMessages(): Promise<ChatMessage[]> {
+  return requestJSON('/api/lore/agent/messages')
+}
+
+export async function clearLoreAgentSession(): Promise<void> {
+  await requestJSON('/api/lore/agent/clear', { method: 'POST' })
+}
+
+export async function getLoreVersions(): Promise<LoreVersion[]> {
+  const data = await requestJSON<{ versions: LoreVersion[] }>('/api/lore/versions')
+  return data.versions || []
+}
+
+export async function createLoreVersion(message: string): Promise<LoreVersion> {
+  return requestJSON('/api/lore/versions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })
+}
+
+export async function restoreLoreVersion(id: string): Promise<LoreItem[]> {
+  const data = await requestJSON<{ items: LoreItem[] }>(`/api/lore/versions/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+  })
+  return data.items || []
 }
 
 /** 新建文件或目录 */
@@ -355,12 +509,37 @@ export async function moveWorkspaceItem(req: CopyMoveRequest): Promise<FileOpera
   })
 }
 
+/** 预览酒馆角色卡 PNG/JSON，不写入资料库 */
+export async function previewCharacterCard(file: File): Promise<CharacterCardPreview> {
+  const form = new FormData()
+  form.append('file', file)
+  return requestJSON('/api/workspace/import-character-card/preview', {
+    method: 'POST',
+    body: form,
+  })
+}
+
+/** 导入酒馆角色卡 PNG/JSON 到互动资料库 */
+export async function importCharacterCard(
+  file: File,
+  options: { targetMode?: 'current' | 'new_book'; bookTitle?: string } = {},
+): Promise<CharacterCardImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  if (options.targetMode) form.append('target_mode', options.targetMode)
+  if (options.bookTitle) form.append('book_title', options.bookTitle)
+  return requestJSON('/api/workspace/import-character-card', {
+    method: 'POST',
+    body: form,
+  })
+}
+
 /** 新建书籍工作区 */
-export async function createBook(parentDir: string, title: string, author?: string, description?: string): Promise<{ workspace: string; book_meta: BookMeta }> {
+export async function createBook(title: string, author?: string, description?: string): Promise<{ workspace: string; book_meta: BookMeta }> {
   return requestJSON('/api/books/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ parent_dir: parentDir, title, author: author ?? '', description: description ?? '' }),
+    body: JSON.stringify({ title, author: author ?? '', description: description ?? '' }),
   })
 }
 

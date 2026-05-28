@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"runtime"
@@ -25,6 +26,10 @@ func main() {
 	flag.BoolVar(&dev, "dev", false, "开发模式：同时启动 Vite 前端 dev server")
 	flag.BoolVar(&noOpen, "no-open", false, "启动服务后不自动打开浏览器")
 	flag.Parse()
+
+	logPath, closeLog := setupLogging("./log")
+	defer closeLog()
+	log.Printf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath)
 
 	cfg := config.Load()
 	if workspace != "" {

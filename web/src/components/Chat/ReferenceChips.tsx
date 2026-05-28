@@ -13,8 +13,8 @@ export function ReferenceChips({ files, onRemove, prefix = '@', tone = 'file' }:
   if (files.length === 0) return null
   const toneClass = tone === 'style'
     ? 'bg-[#8b5cf6]/20 text-[#ddd6fe] hover:bg-[#8b5cf6]/25'
-    : 'bg-[#2f7dd3]/20 text-[#b9d8ff] hover:bg-[#2f7dd3]/25'
-  const closeClass = tone === 'style' ? 'text-[#c4b5fd] hover:text-white' : 'text-[#9fc7ff] hover:text-white'
+    : 'bg-[#4a4d54]/20 text-[#d7dbe2] hover:bg-[#4a4d54]/25'
+  const closeClass = tone === 'style' ? 'text-[#c5c9d1] hover:text-white' : 'text-[#c5c9d1] hover:text-white'
 
   return (
     <div className="mb-2 flex flex-wrap gap-1.5">

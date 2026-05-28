@@ -26,10 +26,20 @@ type Settings struct {
 	ChapterFilenameFormat string `toml:"chapter_filename_format,omitempty" json:"chapter_filename_format,omitempty"`
 	MaxOpenTabs           *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
 
+	// 外观
+	UIFontFamily      string `toml:"ui_font_family,omitempty" json:"ui_font_family,omitempty"`
+	ReadingFontFamily string `toml:"reading_font_family,omitempty" json:"reading_font_family,omitempty"`
+
 	// Agent
 	MaxIteration    *int  `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
 	ModelMaxRetries *int  `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
 	PlanModeDefault *bool `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
+
+	// 互动模式
+	InteractiveReplyTargetChars *int     `toml:"interactive_reply_target_chars,omitempty" json:"interactive_reply_target_chars,omitempty"`
+	InteractiveMaxTokens        *int     `toml:"interactive_max_tokens,omitempty" json:"interactive_max_tokens,omitempty"`
+	InteractiveStageFontSize    *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
+	InteractiveStageLineHeight  *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
 
 	// 风格：场景化默认风格规则（仅工作区级生效）。
 	// 每条规则关联一个自然语言场景描述与若干 setting/styles/ 下的风格文件，
@@ -46,23 +56,29 @@ type StyleRule struct {
 	Styles []string `toml:"styles" json:"styles"`
 }
 
-func boolPtr(v bool) *bool { return &v }
-func intPtr(v int) *int    { return &v }
+func boolPtr(v bool) *bool        { return &v }
+func intPtr(v int) *int           { return &v }
+func floatPtr(v float64) *float64 { return &v }
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
 func DefaultSettings() Settings {
 	return Settings{
-		OpenAIBaseURL:         "https://api.deepseek.com",
-		OpenAIModel:           "deepseek-v4-pro",
-		SkillsDir:             "./skills",
-		NovaDir:               "~/.nova",
-		AutoSaveEnabled:       boolPtr(true),
-		AutoSaveIntervalMs:    intPtr(1500),
-		ChapterFilenameFormat: "ch{NN}-{title}.md",
-		MaxOpenTabs:           intPtr(5),
-		MaxIteration:          intPtr(50),
-		ModelMaxRetries:       intPtr(5),
-		PlanModeDefault:       boolPtr(false),
+		OpenAIBaseURL:               "https://api.deepseek.com",
+		OpenAIModel:                 "deepseek-v4-pro",
+		SkillsDir:                   "./skills",
+		NovaDir:                     "./.nova",
+		AutoSaveEnabled:             boolPtr(true),
+		AutoSaveIntervalMs:          intPtr(1500),
+		ChapterFilenameFormat:       "ch{NN}-{title}.md",
+		MaxOpenTabs:                 intPtr(5),
+		UIFontFamily:                "system-sans",
+		ReadingFontFamily:           "source-han-serif",
+		MaxIteration:                intPtr(50),
+		ModelMaxRetries:             intPtr(5),
+		PlanModeDefault:             boolPtr(false),
+		InteractiveReplyTargetChars: intPtr(1200),
+		InteractiveStageFontSize:    intPtr(16),
+		InteractiveStageLineHeight:  floatPtr(1.78),
 	}
 }
 
@@ -97,6 +113,12 @@ func Merge(parent, child Settings) Settings {
 	if child.MaxOpenTabs != nil {
 		out.MaxOpenTabs = child.MaxOpenTabs
 	}
+	if child.UIFontFamily != "" {
+		out.UIFontFamily = child.UIFontFamily
+	}
+	if child.ReadingFontFamily != "" {
+		out.ReadingFontFamily = child.ReadingFontFamily
+	}
 	if child.MaxIteration != nil {
 		out.MaxIteration = child.MaxIteration
 	}
@@ -105,6 +127,18 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.PlanModeDefault != nil {
 		out.PlanModeDefault = child.PlanModeDefault
+	}
+	if child.InteractiveReplyTargetChars != nil {
+		out.InteractiveReplyTargetChars = child.InteractiveReplyTargetChars
+	}
+	if child.InteractiveMaxTokens != nil {
+		out.InteractiveMaxTokens = child.InteractiveMaxTokens
+	}
+	if child.InteractiveStageFontSize != nil {
+		out.InteractiveStageFontSize = child.InteractiveStageFontSize
+	}
+	if child.InteractiveStageLineHeight != nil {
+		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight
 	}
 	// 场景化风格规则：工作区级覆盖，nil 视为未设置；空切片表示显式清空。
 	if child.StyleRules != nil {
@@ -173,7 +207,7 @@ func WriteSettingsFile(path string, s Settings) error {
 // UserConfigPath 计算用户级配置路径。novaDir 已经过 normalizePath 处理。
 func UserConfigPath(novaDir string) string {
 	if novaDir == "" {
-		novaDir = normalizePath("~/.nova")
+		novaDir = normalizePath("./.nova")
 	}
 	return filepath.Join(novaDir, UserConfigFilename)
 }
@@ -184,7 +218,7 @@ func WorkspaceConfigPath(workspace string) string {
 }
 
 // LoadLayered 读取用户级 + 工作区级配置并与默认值合并。
-// novaDir 为空时使用默认 ~/.nova。
+// novaDir 为空时使用默认 ./.nova（后端运行目录下）。
 func LoadLayered(novaDir, workspace string) (LayeredSettings, error) {
 	return LoadLayeredWithGlobal(novaDir, workspace, Settings{})
 }

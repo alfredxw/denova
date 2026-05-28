@@ -1,0 +1,444 @@
+import { BookOpen, Bot, FileText, RefreshCw, SearchCheck, Sparkles, WandSparkles, PenLine } from 'lucide-react'
+import { FileTree } from '@/components/Sidebar/FileTree'
+import { MessageList } from '@/components/Chat/MessageList'
+import { InputArea } from '@/components/Chat/InputArea'
+import { SessionManager } from '@/components/Chat/SessionManager'
+import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
+import { GitPanel } from '@/components/Git/GitPanel'
+import { InteractiveLayout } from '@/features/interactive/components/InteractiveLayout'
+import type { FileNode } from '@/hooks/useWorkspace'
+import type { ChapterSummary, ChatMessage, SessionSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
+import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
+import type { Tab } from './TabController'
+import { TabController, tabKey } from './TabController'
+import { WorkbenchShell } from './WorkbenchShell'
+import { flattenFileTree, formatNumber } from './workbench-utils'
+
+interface ModeRouterProps {
+  mode: WorkspaceMode
+  currentBookName: string
+  workspace: string
+  appVersion: string
+  summary: WorkspaceSummary | null
+  currentChapter?: ChapterSummary
+  chapterStats: Record<string, ChapterSummary>
+  isStreaming: boolean
+  projectVisible: boolean
+  rightPanel: RightPanel
+  bookManagerOpen: boolean
+  settingsOpen: boolean
+  interactiveLeftVisible: boolean
+  interactiveRightVisible: boolean
+  tree: FileNode[]
+  loading: boolean
+  selectedFile: string | null
+  fileContent: string
+  styles: string[]
+  openTabs: Tab[]
+  activeTabKey: string | null
+  sidebarView: 'outline' | 'files'
+  saveSignal: number
+  gitRefreshSignal: number
+  messages: ChatMessage[]
+  sessions: SessionSummary[]
+  activeSessionId: string
+  activityContent: string
+  references: string[]
+  styleReferences: string[]
+  textSelections: TextSelection[]
+  onSetMode: (mode: WorkspaceMode) => void
+  onToggleProjectVisible: () => void
+  onSetRightPanel: (panel: RightPanel) => void
+  onToggleBookManager: () => void
+  onOpenCharacterCardDialog: () => void
+  onToggleSettings: () => void
+  onToggleInteractiveLeftPanel: () => void
+  onToggleInteractiveRightPanel: () => void
+  onSetSidebarView: (view: 'outline' | 'files') => void
+  onRefreshTree: () => void
+  onSelectFile: (path: string) => void | Promise<void>
+  onReferenceFile: (path: string) => void
+  onCreateItem: (path: string, type: 'file' | 'dir') => Promise<void>
+  onDeleteItem: (path: string) => Promise<void>
+  onRenameItem: (path: string, newName: string) => Promise<void>
+  onCopyItem: (from: string, to: string) => Promise<void>
+  onMoveItem: (from: string, to: string) => Promise<void>
+  onActivateTab: (tab: Tab) => void
+  onCloseTab: (tab: Tab) => void
+  onSaveCurrentFile: (content: string) => Promise<boolean>
+  onQuoteSelection: (selection: TextSelection) => void
+  onCreateChatSession: (title?: string) => void | Promise<void>
+  onSwitchChatSession: (id: string) => void | Promise<void>
+  onRenameChatSession: (id: string, title: string) => void | Promise<void>
+  onDeleteChatSession: (id: string) => void | Promise<void>
+  onSend: (message: string) => void
+  onStop: () => void
+  onReferenceRemove: (path: string) => void
+  onStyleReferenceAdd: (path: string) => void
+  onStyleReferenceRemove: (path: string) => void
+  onTextSelectionRemove: (index: number) => void
+}
+
+export function ModeRouter(props: ModeRouterProps) {
+  const {
+    mode,
+    currentBookName,
+    workspace,
+    appVersion,
+    summary,
+    currentChapter,
+    chapterStats,
+    isStreaming,
+    projectVisible,
+    rightPanel,
+    bookManagerOpen,
+    settingsOpen,
+    interactiveLeftVisible,
+    interactiveRightVisible,
+    tree,
+    loading,
+    selectedFile,
+    fileContent,
+    styles,
+    openTabs,
+    activeTabKey,
+    sidebarView,
+    saveSignal,
+    gitRefreshSignal,
+    messages,
+    sessions,
+    activeSessionId,
+    activityContent,
+    references,
+    styleReferences,
+    textSelections,
+    onSetMode,
+    onToggleProjectVisible,
+    onSetRightPanel,
+    onToggleBookManager,
+    onOpenCharacterCardDialog,
+    onToggleSettings,
+    onToggleInteractiveLeftPanel,
+    onToggleInteractiveRightPanel,
+    onSetSidebarView,
+    onRefreshTree,
+    onSelectFile,
+    onReferenceFile,
+    onCreateItem,
+    onDeleteItem,
+    onRenameItem,
+    onCopyItem,
+    onMoveItem,
+    onActivateTab,
+    onCloseTab,
+    onSaveCurrentFile,
+    onQuoteSelection,
+    onCreateChatSession,
+    onSwitchChatSession,
+    onRenameChatSession,
+    onDeleteChatSession,
+    onSend,
+    onStop,
+    onReferenceRemove,
+    onStyleReferenceAdd,
+    onStyleReferenceRemove,
+    onTextSelectionRemove,
+  } = props
+
+  const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
+  const versionsVisible = rightPanel === 'versions'
+
+  const sidebar = (
+    <section className="nova-sidebar flex h-full flex-col border-r">
+      <div className="flex min-h-[92px] flex-col gap-2 border-b border-[var(--nova-border)] px-3 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-xs font-medium text-[var(--nova-text)]">{summary?.title || '作品'}</div>
+            <div className="mt-0.5 text-[11px] text-[var(--nova-text-faint)]">
+              {summary ? `${summary.chapter_count} 章 · ${formatNumber(summary.total_words)} 字` : '正在加载作品进度'}
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onRefreshTree}
+              className="nova-nav-item rounded p-1"
+              title="刷新目录"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleProjectVisible}
+              className="nova-nav-item rounded px-1"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onSetSidebarView('outline')}
+            className={`nova-nav-item flex-1 px-2 py-1 text-xs ${sidebarView === 'outline' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
+          >
+            作品目录
+          </button>
+          <button
+            type="button"
+            onClick={() => onSetSidebarView('files')}
+            className={`nova-nav-item flex-1 px-2 py-1 text-xs ${sidebarView === 'files' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
+          >
+            项目文件
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 text-xs">
+        {loading ? (
+          <div className="py-4 text-center text-[#858b96]">加载中…</div>
+        ) : sidebarView === 'outline' ? (
+          <ChapterOutline
+            chapters={summary?.chapters || []}
+            selectedFile={selectedFile}
+            onSelectFile={onSelectFile}
+          />
+        ) : tree.length === 0 ? (
+          <div className="py-4 text-center text-[#858b96]">暂无文件</div>
+        ) : (
+          <FileTree
+            nodes={tree}
+            selectedFile={selectedFile}
+            onSelectFile={onSelectFile}
+            onReferenceFile={onReferenceFile}
+            chapterStats={chapterStats}
+            onCreateItem={onCreateItem}
+            onDeleteItem={onDeleteItem}
+            onRenameItem={onRenameItem}
+            onCopyItem={onCopyItem}
+            onMoveItem={onMoveItem}
+          />
+        )}
+      </div>
+    </section>
+  )
+
+  const main = (
+    <main className={`flex h-full min-w-0 flex-col bg-[var(--nova-bg)] ${mode === 'ide' ? 'border-r border-[var(--nova-border)]' : ''}`}>
+      {mode === 'interactive' ? (
+        <InteractiveLayout
+          workspace={workspace}
+          leftPanelVisible={interactiveLeftVisible}
+          rightPanelVisible={interactiveRightVisible}
+          onToggleLeftPanel={onToggleInteractiveLeftPanel}
+          onToggleRightPanel={onToggleInteractiveRightPanel}
+        />
+      ) : (
+        <>
+          <TabController
+            tabs={openTabs}
+            activeTabKey={activeTabKey}
+            summary={summary}
+            onActivateTab={onActivateTab}
+            onCloseTab={onCloseTab}
+          />
+          <div className="flex min-h-0 flex-1 flex-col">
+            {activeTab ? (
+              <MarkdownEditor
+                fileName={selectedFile}
+                content={fileContent}
+                onSave={onSaveCurrentFile}
+                onQuoteSelection={onQuoteSelection}
+                saveSignal={saveSignal}
+                chapterSummary={currentChapter}
+                workspaceSummary={summary}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs text-[#7f8590]">
+                请从左侧目录树选择文件，或打开「书籍管理」选择书籍
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </main>
+  )
+
+  const rightPanelContent = rightPanel === 'ai' ? (
+    <aside className="nova-sidebar flex h-full flex-col">
+      <div className="flex h-10 items-center gap-3 border-b border-[var(--nova-border)] px-3">
+        <div className="flex shrink-0 items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
+          <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
+          创作Agent
+        </div>
+        <SessionManager
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          disabled={isStreaming}
+          onCreate={onCreateChatSession}
+          onSwitch={onSwitchChatSession}
+          onRename={onRenameChatSession}
+          onDelete={onDeleteChatSession}
+        />
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-[11px] text-[var(--nova-text-faint)]">{isStreaming ? '创作中…' : '等待'}</span>
+          <button
+            type="button"
+            onClick={() => onSetRightPanel(null)}
+            className="nova-nav-item rounded px-1 text-xs"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+      {messages.length === 0 && !isStreaming && (
+        <AgentQuickActions
+          chapter={currentChapter}
+          selectedFile={selectedFile}
+          onSend={onSend}
+        />
+      )}
+      <MessageList
+        messages={messages}
+        isStreaming={isStreaming}
+        activityContent={activityContent}
+        scrollResetKey={`${workspace || 'none'}:${activeSessionId || 'current'}`}
+      />
+      <InputArea
+        onSend={onSend}
+        onStop={onStop}
+        disabled={isStreaming}
+        referencedFiles={references}
+        onReferenceRemove={onReferenceRemove}
+        fileSuggestions={flattenFileTree(tree)}
+        styleReferences={styleReferences}
+        onStyleReferenceAdd={onStyleReferenceAdd}
+        onStyleReferenceRemove={onStyleReferenceRemove}
+        styleSuggestions={styles}
+        textSelections={textSelections}
+        onTextSelectionRemove={onTextSelectionRemove}
+      />
+    </aside>
+  ) : rightPanel === 'versions' ? (
+    <GitPanel
+      workspace={workspace}
+      refreshSignal={gitRefreshSignal}
+      visible={versionsVisible}
+      onClose={() => onSetRightPanel(null)}
+    />
+  ) : null
+
+  return (
+    <WorkbenchShell
+      mode={mode}
+      currentBookName={currentBookName}
+      workspace={workspace}
+      appVersion={appVersion}
+      summary={summary}
+      currentChapter={currentChapter}
+      isStreaming={isStreaming}
+      projectVisible={projectVisible}
+      rightPanel={rightPanel}
+      bookManagerOpen={bookManagerOpen}
+      settingsOpen={settingsOpen}
+      sidebar={sidebar}
+      main={main}
+      rightPanelContent={rightPanelContent}
+      onSetMode={onSetMode}
+      onToggleProjectVisible={onToggleProjectVisible}
+      onSetRightPanel={onSetRightPanel}
+      onToggleBookManager={onToggleBookManager}
+      onOpenCharacterCardDialog={onOpenCharacterCardDialog}
+      onToggleSettings={onToggleSettings}
+    />
+  )
+}
+
+function ChapterOutline({
+  chapters,
+  selectedFile,
+  onSelectFile,
+}: {
+  chapters: ChapterSummary[]
+  selectedFile: string | null
+  onSelectFile: (path: string) => void | Promise<void>
+}) {
+  if (chapters.length === 0) {
+    return (
+      <div className="rounded-lg border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-4 text-center text-xs text-[var(--nova-text-faint)]">
+        chapters/ 下还没有章节
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {chapters.map((chapter) => {
+        const active = selectedFile === chapter.path
+        return (
+          <button
+            key={chapter.path}
+            type="button"
+            className={`nova-nav-item w-full border px-3 py-2 text-left ${
+              active
+                ? 'is-active border-[var(--nova-border)]'
+                : 'border-transparent bg-[var(--nova-surface)]'
+            }`}
+            onClick={() => onSelectFile(chapter.path)}
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <BookOpen className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
+              <span className="truncate text-xs font-medium">{chapter.display_title}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--nova-text-faint)]">
+              <span>{formatNumber(chapter.words)} 字</span>
+              <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{chapter.status}</span>
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function AgentQuickActions({
+  chapter,
+  selectedFile,
+  onSend,
+}: {
+  chapter?: ChapterSummary
+  selectedFile: string | null
+  onSend: (message: string) => void
+}) {
+  const target = chapter ? `当前章节《${chapter.display_title}》` : (selectedFile ? `当前文件 ${selectedFile}` : '当前作品')
+  const actions = [
+    { label: '续写下一段', icon: PenLine, prompt: `请基于${target}的上下文，续写下一段正文，保持原有叙事节奏和人物状态。` },
+    { label: '润色当前章', icon: WandSparkles, prompt: `请检查并润色${target}，重点优化语句节奏、动作描写和情绪推进，不改变核心剧情。` },
+    { label: '提取本章摘要', icon: FileText, prompt: `请为${target}提取章节摘要，包含关键事件、角色状态变化、伏笔和下一章衔接点。` },
+    { label: '一致性检查', icon: SearchCheck, prompt: `请对${target}做一致性检查，重点关注人物动机、时间线、道具、地点和前后文冲突。` },
+  ]
+
+  return (
+    <div className="border-b border-[var(--nova-border)] bg-[var(--nova-bg)] p-3">
+      <div className="mb-2 flex items-center gap-2 text-xs font-medium text-[var(--nova-text-muted)]">
+        <Sparkles className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
+        快捷创作
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {actions.map((action) => {
+          const Icon = action.icon
+          return (
+            <button
+              key={action.label}
+              type="button"
+              className="nova-nav-item flex items-center gap-2 border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-left text-xs"
+              onClick={() => onSend(action.prompt)}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+              <span className="truncate">{action.label}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}

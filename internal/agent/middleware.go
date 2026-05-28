@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
@@ -15,6 +16,66 @@ import (
 // safeToolMiddleware 将工具执行错误转为可读的错误消息返回给模型。
 type safeToolMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
+}
+
+type interactiveStoryToolMiddleware struct {
+	*adk.BaseChatModelAgentMiddleware
+}
+
+func newInteractiveStoryToolMiddleware() *interactiveStoryToolMiddleware {
+	return &interactiveStoryToolMiddleware{}
+}
+
+func (m *interactiveStoryToolMiddleware) WrapInvokableToolCall(
+	_ context.Context,
+	endpoint adk.InvokableToolCallEndpoint,
+	toolCtx *adk.ToolContext,
+) (adk.InvokableToolCallEndpoint, error) {
+	return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
+		if isInteractiveStoryWriteTool(toolName(toolCtx)) {
+			return interactiveStoryWriteToolBlockedMessage(toolName(toolCtx)), nil
+		}
+		return endpoint(ctx, args, opts...)
+	}, nil
+}
+
+func (m *interactiveStoryToolMiddleware) WrapStreamableToolCall(
+	_ context.Context,
+	endpoint adk.StreamableToolCallEndpoint,
+	toolCtx *adk.ToolContext,
+) (adk.StreamableToolCallEndpoint, error) {
+	return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
+		if isInteractiveStoryWriteTool(toolName(toolCtx)) {
+			return singleChunkReader(interactiveStoryWriteToolBlockedMessage(toolName(toolCtx))), nil
+		}
+		return endpoint(ctx, args, opts...)
+	}, nil
+}
+
+func toolName(toolCtx *adk.ToolContext) string {
+	if toolCtx == nil {
+		return ""
+	}
+	return toolCtx.Name
+}
+
+func isInteractiveStoryWriteTool(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	switch name {
+	case "write_file", "edit_file", "delete_file", "create_file", "move_file", "copy_file", "rename_file", "mkdir", "remove_file":
+		return true
+	}
+	return strings.HasPrefix(name, "write_") ||
+		strings.HasPrefix(name, "edit_") ||
+		strings.HasPrefix(name, "delete_") ||
+		strings.HasPrefix(name, "create_") ||
+		strings.HasPrefix(name, "move_") ||
+		strings.HasPrefix(name, "copy_") ||
+		strings.HasPrefix(name, "rename_")
+}
+
+func interactiveStoryWriteToolBlockedMessage(name string) string {
+	return fmt.Sprintf("[tool error] 互动故事模式禁止使用写文件工具 %q。请不要修改 workspace 文件，只输出本回合故事正文；状态变化由后端状态 Agent 异步写入 story jsonl。", name)
 }
 
 func (m *safeToolMiddleware) WrapInvokableToolCall(

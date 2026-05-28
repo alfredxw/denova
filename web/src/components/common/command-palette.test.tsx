@@ -10,7 +10,6 @@ function renderCommandPalette(overrides: Partial<React.ComponentProps<typeof Com
     onSave: vi.fn(),
     onOpenAgent: vi.fn(),
     onOpenVersions: vi.fn(),
-    onToggleTasks: vi.fn(),
     onContinueWriting: vi.fn(),
     onClosePanels: vi.fn(),
     ...overrides,
@@ -26,6 +25,8 @@ describe('CommandPalette', () => {
     expect(screen.getByText('保存当前章节')).toBeInTheDocument()
     expect(screen.getByText('打开创作Agent')).toBeInTheDocument()
     expect(screen.getByText('打开版本管理')).toBeInTheDocument()
+    expect(screen.queryByText('打开任务面板')).not.toBeInTheDocument()
+    expect(screen.queryByText('关闭任务面板')).not.toBeInTheDocument()
   })
 
   it('点击打开版本管理时调用 handler', async () => {

@@ -21,17 +21,44 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.MaxIteration == nil || *s.MaxIteration != 50 {
 		t.Fatalf("MaxIteration default")
 	}
+	if s.InteractiveReplyTargetChars == nil || *s.InteractiveReplyTargetChars != 1200 {
+		t.Fatalf("InteractiveReplyTargetChars default")
+	}
+	if s.InteractiveStageFontSize == nil || *s.InteractiveStageFontSize != 16 {
+		t.Fatalf("InteractiveStageFontSize default")
+	}
+	if s.InteractiveStageLineHeight == nil || *s.InteractiveStageLineHeight != 1.78 {
+		t.Fatalf("InteractiveStageLineHeight default")
+	}
+	if s.UIFontFamily != "system-sans" {
+		t.Fatalf("UIFontFamily default: %s", s.UIFontFamily)
+	}
+	if s.ReadingFontFamily != "source-han-serif" {
+		t.Fatalf("ReadingFontFamily default: %s", s.ReadingFontFamily)
+	}
 }
 
 func TestMergeOverridesNonZero(t *testing.T) {
 	parent := Settings{
-		OpenAIBaseURL: "https://parent",
-		OpenAIModel:   "p-model",
-		MaxIteration:  intPtr(10),
+		OpenAIBaseURL:               "https://parent",
+		OpenAIModel:                 "p-model",
+		MaxIteration:                intPtr(10),
+		UIFontFamily:                "system-sans",
+		ReadingFontFamily:           "source-han-serif",
+		InteractiveReplyTargetChars: intPtr(1200),
+		InteractiveMaxTokens:        intPtr(0),
+		InteractiveStageFontSize:    intPtr(16),
+		InteractiveStageLineHeight:  floatPtr(1.78),
 	}
 	child := Settings{
-		OpenAIModel:  "c-model", // override
-		MaxIteration: nil,       // 继承 parent
+		OpenAIModel:                 "c-model", // override
+		MaxIteration:                nil,       // 继承 parent
+		UIFontFamily:                "humanist-sans",
+		ReadingFontFamily:           "system-serif",
+		InteractiveReplyTargetChars: intPtr(800),
+		InteractiveMaxTokens:        intPtr(4000),
+		InteractiveStageFontSize:    intPtr(18),
+		InteractiveStageLineHeight:  floatPtr(1.95),
 	}
 	out := Merge(parent, child)
 	if out.OpenAIBaseURL != "https://parent" {
@@ -42,6 +69,24 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.MaxIteration == nil || *out.MaxIteration != 10 {
 		t.Fatalf("MaxIteration should inherit parent")
+	}
+	if out.UIFontFamily != "humanist-sans" {
+		t.Fatalf("UIFontFamily should override parent: %s", out.UIFontFamily)
+	}
+	if out.ReadingFontFamily != "system-serif" {
+		t.Fatalf("ReadingFontFamily should override parent: %s", out.ReadingFontFamily)
+	}
+	if out.InteractiveReplyTargetChars == nil || *out.InteractiveReplyTargetChars != 800 {
+		t.Fatalf("InteractiveReplyTargetChars should override parent")
+	}
+	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 4000 {
+		t.Fatalf("InteractiveMaxTokens should override parent")
+	}
+	if out.InteractiveStageFontSize == nil || *out.InteractiveStageFontSize != 18 {
+		t.Fatalf("InteractiveStageFontSize should override parent")
+	}
+	if out.InteractiveStageLineHeight == nil || *out.InteractiveStageLineHeight != 1.95 {
+		t.Fatalf("InteractiveStageLineHeight should override parent")
 	}
 }
 
