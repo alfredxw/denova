@@ -99,11 +99,12 @@ const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
 
 interface SettingPanelProps {
   mode?: SettingPanelMode
+  workspace?: string
   tellers?: Teller[]
   onTellersChange?: (tellers: Teller[]) => void
 }
 
-export function SettingPanel({ mode, tellers: externalTellers = [], onTellersChange }: SettingPanelProps) {
+export function SettingPanel({ mode, workspace = '', tellers: externalTellers = [], onTellersChange }: SettingPanelProps) {
   const activeMode = mode || 'lore'
   const [items, setItems] = useState<LoreItem[]>([])
   const [activeId, setActiveId] = useState('')
@@ -123,11 +124,19 @@ export function SettingPanel({ mode, tellers: externalTellers = [], onTellersCha
 
   useEffect(() => {
     let cancelled = false
+    setItems([])
+    setActiveId(LORE_AGENT_ENTRY_ID)
+    setDraft(null)
+    setTagDraft('')
+    setQuery('')
+    setVersions([])
+    setVersionsVisible(false)
+    if (!workspace) return () => { cancelled = true }
     getLoreItems()
       .then((data) => {
         if (cancelled) return
         setItems(data)
-        setActiveId((current) => current || LORE_AGENT_ENTRY_ID)
+        setActiveId(LORE_AGENT_ENTRY_ID)
       })
       .catch(() => {
         if (!cancelled) {
@@ -136,12 +145,24 @@ export function SettingPanel({ mode, tellers: externalTellers = [], onTellersCha
         }
       })
     return () => { cancelled = true }
-  }, [])
+  }, [workspace])
 
   useEffect(() => {
     if (activeMode !== 'lore') return
-    void refreshVersions()
-  }, [activeMode])
+    let cancelled = false
+    if (!workspace) {
+      setVersions([])
+      return () => { cancelled = true }
+    }
+    getLoreVersions()
+      .then((data) => {
+        if (!cancelled) setVersions(data)
+      })
+      .catch(() => {
+        if (!cancelled) setVersions([])
+      })
+    return () => { cancelled = true }
+  }, [activeMode, workspace])
 
   useEffect(() => {
     const item = items.find((entry) => entry.id === activeId) || null
@@ -152,17 +173,28 @@ export function SettingPanel({ mode, tellers: externalTellers = [], onTellersCha
   useEffect(() => {
     if (activeMode !== 'creator') return
     let cancelled = false
+    setCreatorContent('')
+    if (!workspace) return () => { cancelled = true }
     readFile(CREATOR_PATH)
       .then((data) => { if (!cancelled) setCreatorContent(data.content) })
       .catch(() => { if (!cancelled) setCreatorContent('') })
     return () => { cancelled = true }
-  }, [activeMode])
+  }, [activeMode, workspace])
 
   useEffect(() => {
     setTellers(externalTellers)
     setActiveTellerId((current) => current || externalTellers[0]?.id || '')
     setTellerAgentTargetId((current) => current || externalTellers[0]?.id || '')
   }, [externalTellers])
+
+  useEffect(() => {
+    setTellers([])
+    setActiveTellerId('')
+    setTellerAgentTargetId('')
+    setTellerDraft(null)
+    setTellerTagDraft('')
+    setActiveSlotId('')
+  }, [workspace])
 
   useEffect(() => {
     if (activeTellerId === TELLER_AGENT_ENTRY_ID) {
@@ -397,6 +429,7 @@ export function SettingPanel({ mode, tellers: externalTellers = [], onTellersCha
           <>
             {activeId === LORE_AGENT_ENTRY_ID ? (
               <LoreAgentChat
+                workspace={workspace}
                 items={items}
                 versions={versions}
                 versionsVisible={versionsVisible}
@@ -414,6 +447,7 @@ export function SettingPanel({ mode, tellers: externalTellers = [], onTellersCha
           <CreatorEditor content={creatorContent} setContent={setCreatorContent} onSave={handleSave} />
         ) : isTellerAgentActive ? (
           <TellerAgentChat
+            workspace={workspace}
             tellers={tellers}
             targetTellerId={tellerAgentTargetId}
             onTargetTellerIdChange={setTellerAgentTargetId}
@@ -474,6 +508,7 @@ interface LoreToolPayload {
 }
 
 function LoreAgentChat({
+  workspace,
   items,
   versions,
   versionsVisible,
@@ -483,6 +518,7 @@ function LoreAgentChat({
   onCreateVersion,
   onRestoreVersion,
 }: {
+  workspace: string
   items: LoreItem[]
   versions: LoreVersion[]
   versionsVisible: boolean
@@ -494,7 +530,8 @@ function LoreAgentChat({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messageEndRef = useRef<HTMLDivElement>(null)
-  const historyLoadedRef = useRef(false)
+  const historyWorkspaceRef = useRef<string | null>(null)
+  const workspaceRef = useRef(workspace)
   const [value, setValue] = useState('')
   const [referenceIds, setReferenceIds] = useState<string[]>([])
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
@@ -522,8 +559,15 @@ function LoreAgentChat({
   }, [messages, running])
 
   useEffect(() => {
-    if (historyLoadedRef.current) return
-    historyLoadedRef.current = true
+    workspaceRef.current = workspace
+    if (historyWorkspaceRef.current === workspace) return
+    historyWorkspaceRef.current = workspace || null
+    setValue('')
+    setReferenceIds([])
+    setReferenceQuery(null)
+    setMessages([])
+    setRunning(false)
+    if (!workspace) return
     let cancelled = false
     getLoreAgentMessages()
       .then((history) => {
@@ -536,7 +580,7 @@ function LoreAgentChat({
         }
       })
     return () => { cancelled = true }
-  }, [items])
+  }, [workspace])
 
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = event.target.value
@@ -617,18 +661,21 @@ function LoreAgentChat({
   const send = async () => {
     const instruction = value.trim()
     if (!instruction || running) return
+    const activeWorkspace = workspace
     if (instruction === '/clear') {
       setRunning(true)
       try {
         await clearLoreAgentSession()
+        if (workspaceRef.current !== activeWorkspace) return
         appendMessage({ role: 'clear', content: '已清理资料库 Agent 上下文，历史消息仍保留。' })
         setValue('')
         setReferenceIds([])
         setReferenceQuery(null)
       } catch (error) {
+        if (workspaceRef.current !== activeWorkspace) return
         appendMessage({ role: 'error', content: error instanceof Error ? error.message : '资料库 Agent 上下文清理失败' })
       } finally {
-        setRunning(false)
+        if (workspaceRef.current === activeWorkspace) setRunning(false)
       }
       return
     }
@@ -647,13 +694,17 @@ function LoreAgentChat({
       while (true) {
         const { done, value: event } = await reader.read()
         if (done) break
+        if (workspaceRef.current !== activeWorkspace) break
         handleLoreAgentEvent(event)
       }
     } catch (error) {
+      if (workspaceRef.current !== activeWorkspace) return
       appendMessage({ role: 'error', content: error instanceof Error ? error.message : '资料库 Agent 执行失败' })
     } finally {
-      setRunning(false)
-      textareaRef.current?.focus()
+      if (workspaceRef.current === activeWorkspace) {
+        setRunning(false)
+        textareaRef.current?.focus()
+      }
     }
   }
 
@@ -863,11 +914,13 @@ function LoreAgentChat({
 }
 
 function TellerAgentChat({
+  workspace,
   tellers,
   targetTellerId,
   onTargetTellerIdChange,
   onResult,
 }: {
+  workspace: string
   tellers: Teller[]
   targetTellerId: string
   onTargetTellerIdChange: (id: string) => void
@@ -875,7 +928,8 @@ function TellerAgentChat({
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messageEndRef = useRef<HTMLDivElement>(null)
-  const historyLoadedRef = useRef(false)
+  const historyWorkspaceRef = useRef<string | null>(null)
+  const workspaceRef = useRef(workspace)
   const [value, setValue] = useState('')
   const [messages, setMessages] = useState<TellerAgentChatMessage[]>([])
   const [running, setRunning] = useState(false)
@@ -894,8 +948,14 @@ function TellerAgentChat({
   }, [targetTellerId])
 
   useEffect(() => {
-    if (historyLoadedRef.current) return
-    historyLoadedRef.current = true
+    workspaceRef.current = workspace
+    if (historyWorkspaceRef.current === workspace) return
+    historyWorkspaceRef.current = workspace || null
+    setValue('')
+    setMessages([])
+    setRunning(false)
+    setUpdateCurrent(Boolean(targetTellerId))
+    if (!workspace) return
     let cancelled = false
     getInteractiveTellerAgentMessages()
       .then((history) => {
@@ -908,7 +968,7 @@ function TellerAgentChat({
         }
       })
     return () => { cancelled = true }
-  }, [tellers])
+  }, [workspace])
 
   const appendMessage = (message: Omit<TellerAgentChatMessage, 'id'>) => {
     setMessages((current) => [...current, { ...message, id: `${Date.now()}-${current.length}` }])
@@ -967,16 +1027,19 @@ function TellerAgentChat({
   const send = async () => {
     const instruction = value.trim()
     if (!instruction || running) return
+    const activeWorkspace = workspace
     if (instruction === '/clear') {
       setRunning(true)
       try {
         await clearInteractiveTellerAgentSession()
+        if (workspaceRef.current !== activeWorkspace) return
         appendMessage({ role: 'clear', content: '已清理讲述者 Agent 上下文，历史消息仍保留。' })
         setValue('')
       } catch (error) {
+        if (workspaceRef.current !== activeWorkspace) return
         appendMessage({ role: 'error', content: error instanceof Error ? error.message : '讲述者 Agent 上下文清理失败' })
       } finally {
-        setRunning(false)
+        if (workspaceRef.current === activeWorkspace) setRunning(false)
       }
       return
     }
@@ -989,13 +1052,17 @@ function TellerAgentChat({
       while (true) {
         const { done, value: event } = await reader.read()
         if (done) break
+        if (workspaceRef.current !== activeWorkspace) break
         handleTellerAgentEvent(event)
       }
     } catch (error) {
+      if (workspaceRef.current !== activeWorkspace) return
       appendMessage({ role: 'error', content: error instanceof Error ? error.message : '讲述者 Agent 执行失败' })
     } finally {
-      setRunning(false)
-      textareaRef.current?.focus()
+      if (workspaceRef.current === activeWorkspace) {
+        setRunning(false)
+        textareaRef.current?.focus()
+      }
     }
   }
 
