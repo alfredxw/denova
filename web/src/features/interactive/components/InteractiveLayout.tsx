@@ -207,6 +207,7 @@ export function InteractiveLayout({
             {settingsWorkspaceVisible ? (
               <SettingPanel
                 mode={settingMode}
+                workspace={workspace}
                 tellers={tellers}
                 onTellersChange={setTellers}
               />
