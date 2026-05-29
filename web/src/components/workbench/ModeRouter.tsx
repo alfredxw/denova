@@ -1,4 +1,4 @@
-import { BookOpen, Bot, Database, FileText, RefreshCw, SearchCheck, SlidersHorizontal, Sparkles, WandSparkles, PenLine } from 'lucide-react'
+import { BookMarked, BookOpen, Bot, Database, FileText, FolderTree, RefreshCw, SearchCheck, SlidersHorizontal, Sparkles, WandSparkles, PenLine } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { FileTree } from '@/components/Sidebar/FileTree'
@@ -7,13 +7,15 @@ import { InputArea } from '@/components/Chat/InputArea'
 import { SessionManager } from '@/components/Chat/SessionManager'
 import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
 import { GitPanel } from '@/components/Git/GitPanel'
+import { HomeView } from '@/components/Home/HomeView'
 import { InteractiveLayout } from '@/features/interactive/components/InteractiveLayout'
 import { SettingPanel } from '@/features/interactive/components/SettingPanel'
 import { getInteractiveTellers } from '@/features/interactive/api'
+import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { ChapterSummary, ChatMessage, LoreItem, SessionSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
+import type { BookRecord, ChapterSummary, ChatMessage, LoreItem, SessionSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
@@ -30,11 +32,12 @@ interface ModeRouterProps {
   chapterStats: Record<string, ChapterSummary>
   isStreaming: boolean
   projectVisible: boolean
+  activityBarExpanded: boolean
   rightPanel: RightPanel
-  bookManagerOpen: boolean
   settingsOpen: boolean
-  interactiveLeftVisible: boolean
   interactiveRightVisible: boolean
+  novaDir: string
+  books: BookRecord[]
   tree: FileNode[]
   loading: boolean
   selectedFile: string | null
@@ -55,12 +58,14 @@ interface ModeRouterProps {
   styleReferences: string[]
   textSelections: TextSelection[]
   onSetMode: (mode: WorkspaceMode) => void
+  onToggleActivityBarExpanded: () => void
   onToggleProjectVisible: () => void
   onSetRightPanel: (panel: RightPanel) => void
-  onToggleBookManager: () => void
   onToggleSettings: () => void
-  onToggleInteractiveLeftPanel: () => void
   onToggleInteractiveRightPanel: () => void
+  onSwitchBook: (path: string) => void
+  onBooksChange: () => void | Promise<void>
+  onOpenCharacterCardImport: () => void
   onSetSidebarView: (view: 'outline' | 'files') => void
   onRefreshTree: () => void
   onSelectFile: (path: string) => void | Promise<void>
@@ -99,11 +104,12 @@ export function ModeRouter(props: ModeRouterProps) {
     chapterStats,
     isStreaming,
     projectVisible,
+    activityBarExpanded,
     rightPanel,
-    bookManagerOpen,
     settingsOpen,
-    interactiveLeftVisible,
     interactiveRightVisible,
+    novaDir,
+    books,
     tree,
     loading,
     selectedFile,
@@ -124,12 +130,14 @@ export function ModeRouter(props: ModeRouterProps) {
     styleReferences,
     textSelections,
     onSetMode,
+    onToggleActivityBarExpanded,
     onToggleProjectVisible,
     onSetRightPanel,
-    onToggleBookManager,
     onToggleSettings,
-    onToggleInteractiveLeftPanel,
     onToggleInteractiveRightPanel,
+    onSwitchBook,
+    onBooksChange,
+    onOpenCharacterCardImport,
     onSetSidebarView,
     onRefreshTree,
     onSelectFile,
@@ -159,7 +167,9 @@ export function ModeRouter(props: ModeRouterProps) {
 
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
   const versionsVisible = rightPanel === 'versions'
-  const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'teller') ? rightPanel : null
+  const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'creator' || rightPanel === 'teller') ? rightPanel : null
+  const interactiveSubmode = useInteractiveStore((state) => state.submode)
+  const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
   const [tellers, setTellers] = useState<Teller[]>([])
 
   useEffect(() => {
@@ -184,6 +194,7 @@ export function ModeRouter(props: ModeRouterProps) {
     label: item.name,
     description: `${loreTypeLabel(item.type)} · ${loreImportanceLabel(item.importance)}${item.tags?.length ? ` · ${item.tags.join('、')}` : ''}`,
   })), [loreItems])
+  const aiVisible = rightPanel === 'ai'
 
   const sidebar = (
     <section className="nova-sidebar flex h-full flex-col border-r">
@@ -261,13 +272,19 @@ export function ModeRouter(props: ModeRouterProps) {
 
   const main = (
     <main className={`flex h-full min-w-0 flex-col bg-[var(--nova-bg)] ${mode === 'ide' && !ideWorkspacePanel ? 'border-r border-[var(--nova-border)]' : ''}`}>
-      {mode === 'interactive' ? (
+      {mode === 'books' ? (
+        <HomeView
+          workspace={workspace}
+          novaDir={novaDir}
+          books={books}
+          onSwitch={onSwitchBook}
+          onBooksChange={onBooksChange}
+          onOpenCharacterCardImport={onOpenCharacterCardImport}
+        />
+      ) : mode === 'interactive' ? (
         <InteractiveLayout
           workspace={workspace}
-          leftPanelVisible={interactiveLeftVisible}
           rightPanelVisible={interactiveRightVisible}
-          onToggleLeftPanel={onToggleInteractiveLeftPanel}
-          onToggleRightPanel={onToggleInteractiveRightPanel}
         />
       ) : ideWorkspacePanel === 'lore' ? (
         <IdeWorkspacePanel
@@ -276,6 +293,14 @@ export function ModeRouter(props: ModeRouterProps) {
           onClose={() => onSetRightPanel(null)}
         >
           <SettingPanel mode="lore" workspace={workspace} />
+        </IdeWorkspacePanel>
+      ) : ideWorkspacePanel === 'creator' ? (
+        <IdeWorkspacePanel
+          title="创作者"
+          icon={<BookMarked className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
+          onClose={() => onSetRightPanel(null)}
+        >
+          <SettingPanel mode="creator" workspace={workspace} />
         </IdeWorkspacePanel>
       ) : ideWorkspacePanel === 'teller' ? (
         <IdeWorkspacePanel
@@ -287,6 +312,12 @@ export function ModeRouter(props: ModeRouterProps) {
         </IdeWorkspacePanel>
       ) : (
         <>
+          <IdeWritingToolbar
+            projectVisible={projectVisible}
+            aiVisible={aiVisible}
+            onToggleProjectVisible={onToggleProjectVisible}
+            onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
+          />
           <TabController
             tabs={openTabs}
             activeTabKey={activeTabKey}
@@ -396,18 +427,56 @@ export function ModeRouter(props: ModeRouterProps) {
       currentChapter={currentChapter}
       isStreaming={isStreaming}
       projectVisible={projectVisible}
+      activityBarExpanded={activityBarExpanded}
       rightPanel={rightPanel}
-      bookManagerOpen={bookManagerOpen}
       settingsOpen={settingsOpen}
+      interactiveSubmode={interactiveSubmode}
+      interactiveRightPanelVisible={interactiveRightVisible}
       sidebar={sidebar}
       main={main}
       rightPanelContent={rightPanelContent}
       onSetMode={onSetMode}
-      onToggleProjectVisible={onToggleProjectVisible}
+      onToggleActivityBarExpanded={onToggleActivityBarExpanded}
+      onSetInteractiveSubmode={setInteractiveSubmode}
+      onToggleInteractiveRightPanel={onToggleInteractiveRightPanel}
       onSetRightPanel={onSetRightPanel}
-      onToggleBookManager={onToggleBookManager}
       onToggleSettings={onToggleSettings}
     />
+  )
+}
+
+function IdeWritingToolbar({
+  projectVisible,
+  aiVisible,
+  onToggleProjectVisible,
+  onToggleAgent,
+}: {
+  projectVisible: boolean
+  aiVisible: boolean
+  onToggleProjectVisible: () => void
+  onToggleAgent: () => void
+}) {
+  return (
+    <div className="nova-topbar flex h-9 shrink-0 items-center gap-1 border-b border-[var(--nova-border)] px-3 text-xs">
+      <button
+        type="button"
+        onClick={onToggleProjectVisible}
+        className={`nova-nav-item flex items-center gap-1.5 px-2 py-1 ${projectVisible ? 'is-active' : ''}`}
+        title={projectVisible ? '隐藏目录' : '显示目录'}
+      >
+        <FolderTree className="h-3.5 w-3.5" />
+        目录
+      </button>
+      <button
+        type="button"
+        onClick={onToggleAgent}
+        className={`nova-nav-item flex items-center gap-1.5 px-2 py-1 ${aiVisible ? 'is-active' : ''}`}
+        title={aiVisible ? '隐藏创作 Agent' : '显示创作 Agent'}
+      >
+        <Bot className="h-3.5 w-3.5" />
+        Agent
+      </button>
+    </div>
   )
 }
 

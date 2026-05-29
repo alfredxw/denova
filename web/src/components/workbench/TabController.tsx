@@ -4,7 +4,7 @@ import type { WorkspaceSummary } from '@/lib/api'
 const TABS_STORAGE_PREFIX = 'nova.layout.tabs:'
 const ACTIVE_TAB_STORAGE_PREFIX = 'nova.layout.activeTab:'
 
-/** 编辑区 Tab：承载已打开文件。书籍管理使用全局弹窗，不占用编辑区 Tab。 */
+/** 编辑区 Tab：承载已打开文件。 */
 export type Tab = { kind: 'file'; path: string }
 
 /** Tab 唯一标识，用于 React key 与持久化匹配 */

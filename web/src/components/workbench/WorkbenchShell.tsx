@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react'
-import { BookOpen, Bot, Database, FolderTree, GitBranch, MessageSquareText, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
+import { BookMarked, BookOpen, Database, GitBranch, MessageSquareText, PanelLeft, PanelRight, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
+import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
 
 interface WorkbenchShellProps {
@@ -15,16 +16,19 @@ interface WorkbenchShellProps {
   currentChapter?: ChapterSummary
   isStreaming: boolean
   projectVisible: boolean
+  activityBarExpanded: boolean
   rightPanel: RightPanel
-  bookManagerOpen: boolean
   settingsOpen: boolean
+  interactiveSubmode: InteractiveSubmode
+  interactiveRightPanelVisible: boolean
   sidebar: ReactNode
   main: ReactNode
   rightPanelContent: ReactNode
   onSetMode: (mode: WorkspaceMode) => void
-  onToggleProjectVisible: () => void
+  onToggleActivityBarExpanded: () => void
+  onSetInteractiveSubmode: (mode: InteractiveSubmode) => void
+  onToggleInteractiveRightPanel: () => void
   onSetRightPanel: (panel: RightPanel) => void
-  onToggleBookManager: () => void
   onToggleSettings: () => void
 }
 
@@ -37,23 +41,27 @@ export function WorkbenchShell({
   currentChapter,
   isStreaming,
   projectVisible,
+  activityBarExpanded,
   rightPanel,
-  bookManagerOpen,
   settingsOpen,
+  interactiveSubmode,
+  interactiveRightPanelVisible,
   sidebar,
   main,
   rightPanelContent,
   onSetMode,
-  onToggleProjectVisible,
+  onToggleActivityBarExpanded,
+  onSetInteractiveSubmode,
+  onToggleInteractiveRightPanel,
   onSetRightPanel,
-  onToggleBookManager,
   onToggleSettings,
 }: WorkbenchShellProps) {
-  const aiVisible = rightPanel === 'ai'
   const loreVisible = rightPanel === 'lore'
+  const creatorVisible = rightPanel === 'creator'
   const tellerVisible = rightPanel === 'teller'
   const versionsVisible = rightPanel === 'versions'
-  const fullWorkspacePanelVisible = mode === 'ide' && (loreVisible || tellerVisible)
+  const fullWorkspacePanelVisible = mode === 'ide' && (loreVisible || creatorVisible || tellerVisible)
+  const modeLabel = mode === 'interactive' ? '互动工作台' : mode === 'books' ? '书籍管理' : '小说 IDE'
 
   const topBar = (
     <header className="nova-topbar grid h-10 shrink-0 grid-cols-[auto_1fr_auto] items-center border-b px-3 text-xs">
@@ -65,82 +73,147 @@ export function WorkbenchShell({
         <span className="truncate font-medium text-[var(--nova-text)]">{currentBookName}</span>
       </div>
       <div className="flex items-center justify-end gap-2 text-[11px] text-[var(--nova-text-faint)]">
-        <span>{mode === 'interactive' ? '互动工作台' : '小说 IDE'}</span>
+        <span>{modeLabel}</span>
       </div>
     </header>
   )
 
   const ideActivityButtons = (
     <>
-      <TooltipIconButton
-        label="显示/隐藏项目结构"
-        onClick={onToggleProjectVisible}
-        className={`nova-icon-button mb-2 ${projectVisible ? 'is-active' : ''}`}
-      >
-        <FolderTree className="h-4 w-4" />
-      </TooltipIconButton>
-      <TooltipIconButton
-        label="显示/隐藏 创作Agent"
-        onClick={() => onSetRightPanel(aiVisible ? null : 'ai')}
-        className={`nova-icon-button mb-2 ${aiVisible ? 'is-active' : ''}`}
-      >
-        <Bot className="h-4 w-4" />
-      </TooltipIconButton>
-      <TooltipIconButton
+      <ActivityButton
+        expanded={activityBarExpanded}
         label="资料库"
         onClick={() => onSetRightPanel(loreVisible ? null : 'lore')}
         className={`nova-icon-button mb-2 ${loreVisible ? 'is-active' : ''}`}
       >
         <Database className="h-4 w-4" />
-      </TooltipIconButton>
-      <TooltipIconButton
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
+        label="创作者"
+        onClick={() => onSetRightPanel(creatorVisible ? null : 'creator')}
+        className={`nova-icon-button mb-2 ${creatorVisible ? 'is-active' : ''}`}
+      >
+        <BookMarked className="h-4 w-4" />
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
         label="讲述者"
         onClick={() => onSetRightPanel(tellerVisible ? null : 'teller')}
         className={`nova-icon-button mb-2 ${tellerVisible ? 'is-active' : ''}`}
       >
         <SlidersHorizontal className="h-4 w-4" />
-      </TooltipIconButton>
-      <TooltipIconButton
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
         label="版本管理"
         onClick={() => onSetRightPanel(versionsVisible ? null : 'versions')}
         className={`nova-icon-button mb-2 ${versionsVisible ? 'is-active' : ''}`}
       >
         <GitBranch className="h-4 w-4" />
-      </TooltipIconButton>
+      </ActivityButton>
+    </>
+  )
+
+  const interactiveActivityButtons = (
+    <>
+      <ActivityButton
+        expanded={activityBarExpanded}
+        label="剧情"
+        onClick={() => onSetInteractiveSubmode('story')}
+        className={`nova-icon-button mb-2 ${interactiveSubmode === 'story' ? 'is-active' : ''}`}
+      >
+        <MessageSquareText className="h-4 w-4" />
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
+        label="剧情路线图"
+        onClick={() => onSetInteractiveSubmode('timeline')}
+        className={`nova-icon-button mb-2 ${interactiveSubmode === 'timeline' ? 'is-active' : ''}`}
+      >
+        <GitBranch className="h-4 w-4" />
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
+        label="资料库"
+        onClick={() => onSetInteractiveSubmode('lore')}
+        className={`nova-icon-button mb-2 ${interactiveSubmode === 'lore' ? 'is-active' : ''}`}
+      >
+        <Database className="h-4 w-4" />
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
+        label="创作者"
+        onClick={() => onSetInteractiveSubmode('creator')}
+        className={`nova-icon-button mb-2 ${interactiveSubmode === 'creator' ? 'is-active' : ''}`}
+      >
+        <BookMarked className="h-4 w-4" />
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
+        label="讲述者"
+        onClick={() => onSetInteractiveSubmode('teller')}
+        className={`nova-icon-button mb-2 ${interactiveSubmode === 'teller' ? 'is-active' : ''}`}
+      >
+        <SlidersHorizontal className="h-4 w-4" />
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
+        label={interactiveRightPanelVisible ? '隐藏场景记忆' : '显示场景记忆'}
+        onClick={onToggleInteractiveRightPanel}
+        className={`nova-icon-button mb-2 ${interactiveRightPanelVisible ? 'is-active' : ''}`}
+      >
+        <PanelRight className="h-4 w-4" />
+      </ActivityButton>
     </>
   )
 
   const activityBar = (
-    <aside className="nova-activity-bar flex w-16 shrink-0 flex-col items-center gap-2 border-r p-3">
-      <TooltipIconButton
+    <aside className={`nova-activity-bar flex shrink-0 flex-col gap-2 border-r p-3 transition-[width] duration-500 ease-[var(--nova-ease)] ${activityBarExpanded ? 'is-expanded w-48 items-stretch' : 'w-16 items-center'}`}>
+      <ActivityButton
+        expanded={activityBarExpanded}
         label="写作"
         onClick={() => onSetMode('ide')}
         className={`nova-icon-button ${mode === 'ide' ? 'is-active' : ''}`}
       >
         <PenLine className="h-4 w-4" />
-      </TooltipIconButton>
-      <TooltipIconButton
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
         label="互动"
         onClick={() => onSetMode('interactive')}
         className={`nova-icon-button ${mode === 'interactive' ? 'is-active' : ''}`}
       >
         <MessageSquareText className="h-4 w-4" />
-      </TooltipIconButton>
-      <TooltipIconButton
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
         label="书籍管理"
-        onClick={onToggleBookManager}
-        className={`nova-icon-button ${bookManagerOpen ? 'is-active' : ''}`}
+        onClick={() => onSetMode('books')}
+        className={`nova-icon-button ${mode === 'books' ? 'is-active' : ''}`}
       >
         <BookOpen className="h-4 w-4" />
-      </TooltipIconButton>
+      </ActivityButton>
       {mode === 'ide' ? ideActivityButtons : null}
-      <TooltipIconButton
-        label="设置"
-        onClick={onToggleSettings}
-        className={`nova-icon-button mt-auto ${settingsOpen ? 'is-active' : ''}`}
-      >
-        <Settings className="h-4 w-4" />
-      </TooltipIconButton>
+      {mode === 'interactive' ? interactiveActivityButtons : null}
+      <div className="mt-auto flex flex-col gap-2">
+        <ActivityButton
+          expanded={activityBarExpanded}
+          label={activityBarExpanded ? '收起一级菜单' : '展开一级菜单'}
+          onClick={onToggleActivityBarExpanded}
+          className="nova-icon-button"
+        >
+          <PanelLeft className={`h-4 w-4 transition-transform ${activityBarExpanded ? '' : 'rotate-180'}`} />
+        </ActivityButton>
+        <ActivityButton
+          expanded={activityBarExpanded}
+          label="设置"
+          onClick={onToggleSettings}
+          className={`nova-icon-button ${settingsOpen ? 'is-active' : ''}`}
+        >
+          <Settings className="h-4 w-4" />
+        </ActivityButton>
+      </div>
     </aside>
   )
 
@@ -168,5 +241,28 @@ export function WorkbenchShell({
       rightPanelVisible={mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)}
       statusBar={statusBar}
     />
+  )
+}
+
+function ActivityButton({
+  expanded,
+  label,
+  children,
+  className,
+  ...props
+}: React.ComponentProps<'button'> & {
+  expanded: boolean
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <TooltipIconButton
+      label={label}
+      className={`${className || ''} ${expanded ? 'gap-3 px-3' : ''}`}
+      {...props}
+    >
+      {children}
+      {expanded && <span className="min-w-0 truncate text-xs font-medium">{label}</span>}
+    </TooltipIconButton>
   )
 }

@@ -12,13 +12,22 @@ import { abortInteractiveChat, sendInteractiveMessage } from '../api'
 import { createInteractiveNarrativeFilter } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
-import type { Snapshot } from '../types'
+import type { Snapshot, StorySummary, Teller } from '../types'
+import { StoryPicker } from './StoryPicker'
+import { TellerPicker } from './TellerPicker'
 
 interface StoryStageProps {
   workspace?: string
+  stories?: StorySummary[]
+  story?: StorySummary
+  tellers?: Teller[]
   storyId: string
   branchId: string
   snapshot: Snapshot | null
+  onStorySelect?: (storyId: string) => void
+  onStoryCreate?: (input: { title: string; origin: string; story_teller_id: string }) => void
+  onStoryDelete?: (storyId: string) => void
+  onTellerChange?: (tellerId: string) => void
   onDone: () => void
 }
 
@@ -28,7 +37,20 @@ const DEFAULT_READING_FONT = 'source-han-serif'
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 const stageAbortControllers = new Map<string, AbortController>()
 
-export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: StoryStageProps) {
+export function StoryStage({
+  workspace,
+  stories = [],
+  story,
+  tellers = [],
+  storyId,
+  branchId,
+  snapshot,
+  onStorySelect = noop,
+  onStoryCreate = noop,
+  onStoryDelete = noop,
+  onTellerChange = noop,
+  onDone,
+}: StoryStageProps) {
   const [input, setInput] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -247,12 +269,14 @@ export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: S
   return (
     <main className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
       <div data-testid="story-stage-card" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
-        <div className="nova-topbar flex min-h-10 items-center justify-between gap-3 border-b px-4">
+        <div className="nova-topbar flex min-h-14 flex-wrap items-center justify-between gap-3 border-b px-4 py-2">
           <div className="min-w-0">
             <div className="text-[10px] font-medium leading-4 text-[var(--nova-text-faint)]">故事舞台 · 当前分支 {branchId || 'main'}</div>
             <div className="truncate text-xs font-semibold leading-5 text-[var(--nova-text)]">{title}</div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+            <StoryPicker stories={stories} currentStoryId={storyId} tellers={tellers} onSelect={onStorySelect} onCreate={onStoryCreate} onDelete={onStoryDelete} />
+            <TellerPicker story={story} tellers={tellers} onChange={onTellerChange} />
             <div className="flex h-7 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] text-[var(--nova-text-muted)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
               <MessageSquareText className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
               互动创作
@@ -402,6 +426,8 @@ export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: S
     )))
   }
 }
+
+function noop() {}
 
 function useStageTypography() {
   const [typography, setTypography] = useState({

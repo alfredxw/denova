@@ -13,15 +13,13 @@ describe('InteractiveLayout', () => {
     expect(screen.getByText('场景记忆')).toBeInTheDocument()
     expect(container.querySelector('[data-slot="select-trigger"]')).toBeInTheDocument()
     expect(container.querySelector('[data-slot="button"]')).toBeInTheDocument()
-    expect(container.querySelector('[data-slot="tabs-list"]')).toBeInTheDocument()
-    expect(screen.getByText('创作者')).toBeInTheDocument()
     expect(screen.getByTestId('interactive-shell')).not.toHaveClass('rounded-xl')
     expect(screen.getByTestId('story-stage-card')).not.toHaveClass('rounded-xl')
     expect(screen.queryByTestId('branch-graph-canvas')).not.toBeInTheDocument()
   })
 
   it('can hide interactive side panels independently', async () => {
-    render(<InteractiveLayout leftPanelVisible={false} rightPanelVisible={false} />)
+    render(<InteractiveLayout rightPanelVisible={false} />)
 
     expect(await screen.findByText('故事舞台 · 当前分支 main')).toBeInTheDocument()
     expect(screen.queryByText('设定条目与 Markdown 正文')).not.toBeInTheDocument()

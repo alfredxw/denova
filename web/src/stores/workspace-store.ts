@@ -1,14 +1,15 @@
 import { create } from 'zustand'
 
-export type RightPanel = 'ai' | 'lore' | 'teller' | 'outline' | 'characters' | 'versions' | null
+export type RightPanel = 'ai' | 'lore' | 'creator' | 'teller' | 'outline' | 'characters' | 'versions' | null
 export type BottomPanel = 'versions' | 'problems' | null
-export type WorkspaceMode = 'ide' | 'interactive'
+export type WorkspaceMode = 'ide' | 'interactive' | 'books'
 
 const MODE_STORAGE_KEY = 'nova:mode'
 
 function readInitialMode(): WorkspaceMode {
   if (typeof window === 'undefined') return 'ide'
-  return window.localStorage.getItem(MODE_STORAGE_KEY) === 'interactive' ? 'interactive' : 'ide'
+  const stored = window.localStorage.getItem(MODE_STORAGE_KEY)
+  return stored === 'interactive' || stored === 'books' ? stored : 'ide'
 }
 
 type WorkspaceStore = {

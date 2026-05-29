@@ -112,6 +112,11 @@ button {
   color: var(--nova-text-faint);
 }
 
+.nova-activity-bar.is-expanded .nova-icon-button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
 .nova-icon-button:hover {
   background: var(--nova-surface);
   color: var(--nova-text-muted);

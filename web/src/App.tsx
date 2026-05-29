@@ -23,26 +23,24 @@ import {
   type Tab,
 } from '@/components/workbench/TabController'
 import { ModeRouter } from '@/components/workbench/ModeRouter'
-import { BookDialog } from '@/components/workbench/BookDialog'
 import {
   CharacterCardImportDialog,
   type CharacterCardTargetMode,
 } from '@/components/workbench/CharacterCardImportDialog'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
-const INTERACTIVE_LEFT_VISIBLE_KEY = 'nova.layout.interactiveLeftVisible'
+const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
 const INTERACTIVE_RIGHT_VISIBLE_KEY = 'nova.layout.interactiveRightVisible'
 const APP_VERSION = __APP_VERSION__
 const MAX_OPEN_TABS_FALLBACK = 5
 
 function App() {
   const [projectVisible, setProjectVisible] = useState(() => readLayoutBoolean(PROJECT_VISIBLE_KEY, true))
-  const [interactiveLeftVisible, setInteractiveLeftVisible] = useState(() => readLayoutBoolean(INTERACTIVE_LEFT_VISIBLE_KEY, true))
+  const [activityBarExpanded, setActivityBarExpanded] = useState(() => readLayoutBoolean(ACTIVITY_BAR_EXPANDED_KEY, false))
   const [interactiveRightVisible, setInteractiveRightVisible] = useState(() => readLayoutBoolean(INTERACTIVE_RIGHT_VISIBLE_KEY, true))
   const [saveSignal, setSaveSignal] = useState(0)
   const [gitRefreshSignal, setGitRefreshSignal] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [bookManagerOpen, setBookManagerOpen] = useState(false)
   const [openTabs, setOpenTabs] = useState<Tab[]>([])
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null)
   const [maxOpenTabs, setMaxOpenTabs] = useState<number>(MAX_OPEN_TABS_FALLBACK)
@@ -187,7 +185,7 @@ function App() {
   }, [maxOpenTabs, activeTabKey, limitTabs])
 
   useEffect(() => { window.localStorage.setItem(PROJECT_VISIBLE_KEY, String(projectVisible)) }, [projectVisible])
-  useEffect(() => { window.localStorage.setItem(INTERACTIVE_LEFT_VISIBLE_KEY, String(interactiveLeftVisible)) }, [interactiveLeftVisible])
+  useEffect(() => { window.localStorage.setItem(ACTIVITY_BAR_EXPANDED_KEY, String(activityBarExpanded)) }, [activityBarExpanded])
   useEffect(() => { window.localStorage.setItem(INTERACTIVE_RIGHT_VISIBLE_KEY, String(interactiveRightVisible)) }, [interactiveRightVisible])
 
   useEffect(() => {
@@ -196,7 +194,7 @@ function App() {
       setOpenTabs([])
       setActiveTabKey(null)
       clearSelectedFile()
-      setBookManagerOpen(true)
+      setMode('books')
       return
     }
     const tabs = readTabsFor(workspace)
@@ -247,7 +245,7 @@ function App() {
 
   const handleWorkspaceSwitch = (newPath: string) => {
     setWorkspace(newPath)
-    setBookManagerOpen(false)
+    setMode('ide')
     refreshAll()
     notifyGitChange()
     void Promise.all([loadSessions(), loadHistory()]).then(() => resumeActiveChat())
@@ -328,7 +326,6 @@ function App() {
   }, [resetCharacterCardImport, workspace])
 
   const handleOpenCharacterCardImportFromBooks = useCallback(() => {
-    setBookManagerOpen(false)
     handleCharacterCardDialogOpenChange(true)
   }, [handleCharacterCardDialogOpenChange])
 
@@ -451,11 +448,12 @@ function App() {
         chapterStats={chapterStats}
         isStreaming={isStreaming}
         projectVisible={projectVisible}
+        activityBarExpanded={activityBarExpanded}
         rightPanel={rightPanel}
-        bookManagerOpen={bookManagerOpen}
         settingsOpen={settingsOpen}
-        interactiveLeftVisible={interactiveLeftVisible}
         interactiveRightVisible={interactiveRightVisible}
+        novaDir={novaDir}
+        books={books}
         tree={tree}
         loading={loading}
         selectedFile={selectedFile}
@@ -476,12 +474,14 @@ function App() {
         styleReferences={styleReferences}
         textSelections={textSelections}
         onSetMode={handleSetMode}
+        onToggleActivityBarExpanded={() => setActivityBarExpanded((value) => !value)}
         onToggleProjectVisible={() => setProjectVisible((value) => !value)}
         onSetRightPanel={handleSetRightPanel}
-        onToggleBookManager={() => setBookManagerOpen((open) => !open)}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
-        onToggleInteractiveLeftPanel={() => setInteractiveLeftVisible((value) => !value)}
         onToggleInteractiveRightPanel={() => setInteractiveRightVisible((value) => !value)}
+        onSwitchBook={handleWorkspaceSwitch}
+        onBooksChange={refreshBooks}
+        onOpenCharacterCardImport={handleOpenCharacterCardImportFromBooks}
         onSetSidebarView={setSidebarView}
         onRefreshTree={refresh}
         onSelectFile={handleSelectFile}
@@ -513,7 +513,10 @@ function App() {
         isStreaming={isStreaming}
         onOpenChange={setCommandOpen}
         onSave={triggerSave}
-        onOpenAgent={() => setRightPanel('ai')}
+        onOpenAgent={() => {
+          setMode('ide')
+          setRightPanel('ai')
+        }}
         onOpenVersions={() => setRightPanel('versions')}
         onContinueWriting={continueWriting}
         onClosePanels={() => {
@@ -538,16 +541,6 @@ function App() {
         onTargetModeChange={setCharacterCardTargetMode}
         onBookTitleChange={setCharacterCardBookTitle}
         onImport={handleCharacterCardImport}
-      />
-      <BookDialog
-        open={bookManagerOpen}
-        workspace={workspace}
-        novaDir={novaDir}
-        books={books}
-        onOpenChange={setBookManagerOpen}
-        onSwitch={handleWorkspaceSwitch}
-        onBooksChange={refreshBooks}
-        onOpenCharacterCardImport={handleOpenCharacterCardImportFromBooks}
       />
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent

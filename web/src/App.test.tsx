@@ -81,7 +81,9 @@ describe('App', () => {
 
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('最近书籍')).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: '导入酒馆角色卡' })).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: '导入酒馆角色卡' }))
+    expect(screen.getByText('选择 PNG 或 JSON 角色卡，并决定写入当前书还是创建一本新书。')).toBeInTheDocument()
+    expect(within(dialog).getByText('最近书籍')).toBeInTheDocument()
     expect(within(dialog).queryByText('打开其他目录')).not.toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: '关闭书籍管理' })).toBeInTheDocument()
     expect(within(dialog).queryByPlaceholderText('输入工作区目录路径...')).not.toBeInTheDocument()
