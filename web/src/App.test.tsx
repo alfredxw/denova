@@ -76,10 +76,12 @@ describe('App', () => {
     )
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    expect(screen.queryByRole('button', { name: '导入酒馆角色卡' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '书籍管理' }))
 
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText('最近书籍')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: '导入酒馆角色卡' })).toBeInTheDocument()
     expect(within(dialog).queryByText('打开其他目录')).not.toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: '关闭书籍管理' })).toBeInTheDocument()
     expect(within(dialog).queryByPlaceholderText('输入工作区目录路径...')).not.toBeInTheDocument()

@@ -327,6 +327,11 @@ function App() {
     if (open && !workspace) setCharacterCardTargetMode('new_book')
   }, [resetCharacterCardImport, workspace])
 
+  const handleOpenCharacterCardImportFromBooks = useCallback(() => {
+    setBookManagerOpen(false)
+    handleCharacterCardDialogOpenChange(true)
+  }, [handleCharacterCardDialogOpenChange])
+
   const handleCharacterCardSelected = useCallback(async (file: File | undefined) => {
     if (!file) return
     setCharacterCardFile(file)
@@ -474,7 +479,6 @@ function App() {
         onToggleProjectVisible={() => setProjectVisible((value) => !value)}
         onSetRightPanel={handleSetRightPanel}
         onToggleBookManager={() => setBookManagerOpen((open) => !open)}
-        onOpenCharacterCardDialog={() => handleCharacterCardDialogOpenChange(true)}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
         onToggleInteractiveLeftPanel={() => setInteractiveLeftVisible((value) => !value)}
         onToggleInteractiveRightPanel={() => setInteractiveRightVisible((value) => !value)}
@@ -543,6 +547,7 @@ function App() {
         onOpenChange={setBookManagerOpen}
         onSwitch={handleWorkspaceSwitch}
         onBooksChange={refreshBooks}
+        onOpenCharacterCardImport={handleOpenCharacterCardImportFromBooks}
       />
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BookOpen, Bot, Database, FolderTree, GitBranch, MessageSquareText, PenLine, Settings, SlidersHorizontal, Upload } from 'lucide-react'
+import { BookOpen, Bot, Database, FolderTree, GitBranch, MessageSquareText, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
@@ -25,7 +25,6 @@ interface WorkbenchShellProps {
   onToggleProjectVisible: () => void
   onSetRightPanel: (panel: RightPanel) => void
   onToggleBookManager: () => void
-  onOpenCharacterCardDialog: () => void
   onToggleSettings: () => void
 }
 
@@ -48,13 +47,13 @@ export function WorkbenchShell({
   onToggleProjectVisible,
   onSetRightPanel,
   onToggleBookManager,
-  onOpenCharacterCardDialog,
   onToggleSettings,
 }: WorkbenchShellProps) {
   const aiVisible = rightPanel === 'ai'
   const loreVisible = rightPanel === 'lore'
   const tellerVisible = rightPanel === 'teller'
   const versionsVisible = rightPanel === 'versions'
+  const fullWorkspacePanelVisible = mode === 'ide' && (loreVisible || tellerVisible)
 
   const topBar = (
     <header className="nova-topbar grid h-10 shrink-0 grid-cols-[auto_1fr_auto] items-center border-b px-3 text-xs">
@@ -134,13 +133,6 @@ export function WorkbenchShell({
       >
         <BookOpen className="h-4 w-4" />
       </TooltipIconButton>
-      <TooltipIconButton
-        label="导入酒馆角色卡"
-        onClick={onOpenCharacterCardDialog}
-        className="nova-icon-button"
-      >
-        <Upload className="h-4 w-4" />
-      </TooltipIconButton>
       {mode === 'ide' ? ideActivityButtons : null}
       <TooltipIconButton
         label="设置"
@@ -170,10 +162,10 @@ export function WorkbenchShell({
       topBar={topBar}
       activityBar={activityBar}
       sidebar={sidebar}
-      sidebarVisible={mode === 'ide' && projectVisible}
+      sidebarVisible={mode === 'ide' && projectVisible && !fullWorkspacePanelVisible}
       main={main}
-      rightPanel={mode === 'ide' ? rightPanelContent : null}
-      rightPanelVisible={mode === 'ide' && Boolean(rightPanelContent)}
+      rightPanel={mode === 'ide' && !fullWorkspacePanelVisible ? rightPanelContent : null}
+      rightPanelVisible={mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)}
       statusBar={statusBar}
     />
   )

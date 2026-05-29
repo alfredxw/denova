@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BookOpen, Check, Clock3, Folder, LibraryBig, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { BookOpen, Check, Clock3, Folder, LibraryBig, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,8 @@ interface HomeViewProps {
   onSwitch: (path: string) => void
   /** 书籍记录有变更时通知父组件刷新列表 */
   onBooksChange: () => void
+  /** 打开酒馆角色卡导入弹窗 */
+  onOpenCharacterCardImport?: () => void
   /** 关闭全局书籍管理弹窗 */
   onClose?: () => void
 }
@@ -52,7 +54,7 @@ const primaryButtonCls = 'border border-[var(--nova-border)] bg-[var(--nova-acti
 const iconButtonCls = 'nova-nav-item text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 
 /** 书籍管理视图：集中展示、创建、打开和编辑最近书籍。 */
-export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, onClose }: HomeViewProps) {
+export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, onOpenCharacterCardImport, onClose }: HomeViewProps) {
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [createTitle, setCreateTitle] = useState('')
   const [createAuthor, setCreateAuthor] = useState('')
@@ -199,23 +201,37 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
 
           {/* 书籍列表 */}
           <section>
-            <div className="mb-3 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-[11px] font-medium uppercase text-[var(--nova-text-faint)]">
                 <Folder className="h-3.5 w-3.5" />
                 最近书籍
               </div>
-              {!showCreateForm && (
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  className={ghostButtonCls}
-                  onClick={openCreateForm}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  新建书籍
-                </Button>
-              )}
+              <div className="flex shrink-0 items-center gap-2">
+                {onOpenCharacterCardImport && (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    className={ghostButtonCls}
+                    onClick={onOpenCharacterCardImport}
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    导入酒馆角色卡
+                  </Button>
+                )}
+                {!showCreateForm && (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    className={ghostButtonCls}
+                    onClick={openCreateForm}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    新建书籍
+                  </Button>
+                )}
+              </div>
             </div>
 
             {showCreateForm && (

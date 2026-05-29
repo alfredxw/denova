@@ -1,5 +1,6 @@
 import { BookOpen, Bot, Database, FileText, RefreshCw, SearchCheck, SlidersHorizontal, Sparkles, WandSparkles, PenLine } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { FileTree } from '@/components/Sidebar/FileTree'
 import { MessageList } from '@/components/Chat/MessageList'
 import { InputArea } from '@/components/Chat/InputArea'
@@ -57,7 +58,6 @@ interface ModeRouterProps {
   onToggleProjectVisible: () => void
   onSetRightPanel: (panel: RightPanel) => void
   onToggleBookManager: () => void
-  onOpenCharacterCardDialog: () => void
   onToggleSettings: () => void
   onToggleInteractiveLeftPanel: () => void
   onToggleInteractiveRightPanel: () => void
@@ -127,7 +127,6 @@ export function ModeRouter(props: ModeRouterProps) {
     onToggleProjectVisible,
     onSetRightPanel,
     onToggleBookManager,
-    onOpenCharacterCardDialog,
     onToggleSettings,
     onToggleInteractiveLeftPanel,
     onToggleInteractiveRightPanel,
@@ -160,6 +159,7 @@ export function ModeRouter(props: ModeRouterProps) {
 
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
   const versionsVisible = rightPanel === 'versions'
+  const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'teller') ? rightPanel : null
   const [tellers, setTellers] = useState<Teller[]>([])
 
   useEffect(() => {
@@ -260,7 +260,7 @@ export function ModeRouter(props: ModeRouterProps) {
   )
 
   const main = (
-    <main className={`flex h-full min-w-0 flex-col bg-[var(--nova-bg)] ${mode === 'ide' ? 'border-r border-[var(--nova-border)]' : ''}`}>
+    <main className={`flex h-full min-w-0 flex-col bg-[var(--nova-bg)] ${mode === 'ide' && !ideWorkspacePanel ? 'border-r border-[var(--nova-border)]' : ''}`}>
       {mode === 'interactive' ? (
         <InteractiveLayout
           workspace={workspace}
@@ -269,6 +269,22 @@ export function ModeRouter(props: ModeRouterProps) {
           onToggleLeftPanel={onToggleInteractiveLeftPanel}
           onToggleRightPanel={onToggleInteractiveRightPanel}
         />
+      ) : ideWorkspacePanel === 'lore' ? (
+        <IdeWorkspacePanel
+          title="资料库"
+          icon={<Database className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
+          onClose={() => onSetRightPanel(null)}
+        >
+          <SettingPanel mode="lore" workspace={workspace} />
+        </IdeWorkspacePanel>
+      ) : ideWorkspacePanel === 'teller' ? (
+        <IdeWorkspacePanel
+          title="讲述者"
+          icon={<SlidersHorizontal className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
+          onClose={() => onSetRightPanel(null)}
+        >
+          <SettingPanel mode="teller" workspace={workspace} tellers={tellers} onTellersChange={setTellers} />
+        </IdeWorkspacePanel>
       ) : (
         <>
           <TabController
@@ -368,28 +384,6 @@ export function ModeRouter(props: ModeRouterProps) {
       visible={versionsVisible}
       onClose={() => onSetRightPanel(null)}
     />
-  ) : rightPanel === 'lore' ? (
-    <aside className="nova-sidebar flex h-full min-h-0 flex-col">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
-        <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
-          <Database className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-          资料库
-        </div>
-        <button type="button" onClick={() => onSetRightPanel(null)} className="nova-nav-item rounded px-1 text-xs">×</button>
-      </div>
-      <SettingPanel mode="lore" workspace={workspace} embedded />
-    </aside>
-  ) : rightPanel === 'teller' ? (
-    <aside className="nova-sidebar flex h-full min-h-0 flex-col">
-      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
-        <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
-          <SlidersHorizontal className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-          讲述者
-        </div>
-        <button type="button" onClick={() => onSetRightPanel(null)} className="nova-nav-item rounded px-1 text-xs">×</button>
-      </div>
-      <SettingPanel mode="teller" workspace={workspace} tellers={tellers} onTellersChange={setTellers} embedded />
-    </aside>
   ) : null
 
   return (
@@ -412,9 +406,35 @@ export function ModeRouter(props: ModeRouterProps) {
       onToggleProjectVisible={onToggleProjectVisible}
       onSetRightPanel={onSetRightPanel}
       onToggleBookManager={onToggleBookManager}
-      onOpenCharacterCardDialog={onOpenCharacterCardDialog}
       onToggleSettings={onToggleSettings}
     />
+  )
+}
+
+function IdeWorkspacePanel({
+  title,
+  icon,
+  children,
+  onClose,
+}: {
+  title: string
+  icon: ReactNode
+  children: ReactNode
+  onClose: () => void
+}) {
+  return (
+    <section className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
+      <div className="nova-topbar flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
+        <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
+          {icon}
+          {title}
+        </div>
+        <button type="button" onClick={onClose} className="nova-nav-item rounded px-1 text-xs" aria-label={`关闭${title}`}>×</button>
+      </div>
+      <div className="min-h-0 flex-1">
+        {children}
+      </div>
+    </section>
   )
 }
 
