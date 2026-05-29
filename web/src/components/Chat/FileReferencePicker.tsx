@@ -8,10 +8,16 @@ import {
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
+export interface ReferencePickerItem {
+  value: string
+  label: string
+  description?: string
+}
+
 interface FileReferencePickerProps {
   open: boolean
   query: string
-  files: string[]
+  files: Array<string | ReferencePickerItem>
   onSelect: (path: string) => void
   trigger?: '@' | '#'
   placeholder?: string
@@ -32,7 +38,8 @@ export function FileReferencePicker({
 }: FileReferencePickerProps) {
   const normalizedQuery = query.toLowerCase()
   const visibleFiles = files
-    .filter((file) => file.toLowerCase().includes(normalizedQuery))
+    .map(normalizeItem)
+    .filter((file) => `${file.label}\n${file.value}\n${file.description || ''}`.toLowerCase().includes(normalizedQuery))
     .slice(0, 30)
 
   return (
@@ -53,12 +60,13 @@ export function FileReferencePicker({
             <CommandGroup heading={heading}>
               {visibleFiles.map((file) => (
                 <CommandItem
-                  key={file}
-                  value={file}
-                  onSelect={() => onSelect(file)}
-                  className="cursor-pointer"
+                  key={file.value}
+                  value={file.value}
+                  onSelect={() => onSelect(file.value)}
+                  className="flex cursor-pointer flex-col items-start gap-0.5"
                 >
-                  {trigger}{file}
+                  <span>{trigger}{file.label}</span>
+                  {file.description && <span className="text-[11px] text-[#858b96]">{file.description}</span>}
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -67,4 +75,8 @@ export function FileReferencePicker({
       </PopoverContent>
     </Popover>
   )
+}
+
+function normalizeItem(item: string | ReferencePickerItem): ReferencePickerItem {
+  return typeof item === 'string' ? { value: item, label: item } : item
 }

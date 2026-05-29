@@ -6,6 +6,7 @@ export interface StoryStageRunState {
   streaming: boolean
   activityContent: string
   liveMessages: ChatMessage[]
+  rewindTurnId?: string
 }
 
 interface InteractiveStore {

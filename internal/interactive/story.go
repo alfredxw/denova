@@ -57,6 +57,11 @@ type AppendTurnWithStateRequest struct {
 	HotState  *HotState `json:"hot_state,omitempty"`
 }
 
+type RewindTurnRequest struct {
+	BranchID string `json:"branch_id"`
+	TurnID   string `json:"turn_id"`
+}
+
 type AppendStateDeltaRequest struct {
 	ParentID string    `json:"parent_id"`
 	BranchID string    `json:"branch_id"`
@@ -469,6 +474,53 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		return TurnEvent{}, nil, err
 	}
 	return turn, delta, nil
+}
+
+func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	turnID := strings.TrimSpace(req.TurnID)
+	if turnID == "" {
+		return fmt.Errorf("回合 ID 不能为空")
+	}
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return err
+	}
+	branchID := req.BranchID
+	if branchID == "" {
+		branchID = meta.CurrentBranch
+	}
+	branch, ok := meta.Branches[branchID]
+	if !ok {
+		return fmt.Errorf("分支不存在: %s", branchID)
+	}
+	events := eventsByID(lines)
+	path, pathSet := eventPath(branch.Head, events)
+	if !pathSet[turnID] {
+		return fmt.Errorf("只能编辑当前剧情路径上的回合: %s", turnID)
+	}
+	var target map[string]any
+	for _, raw := range path {
+		id, _ := raw["id"].(string)
+		eventType, _ := raw["type"].(string)
+		if id == turnID && eventType == "turn" {
+			target = raw
+			break
+		}
+	}
+	if target == nil {
+		return fmt.Errorf("回合不存在: %s", turnID)
+	}
+	branch.Head = parentIDFromRaw(target)
+	meta.Branches[branchID] = branch
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	meta.UpdatedAt = now
+	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
+		return err
+	}
+	return s.touchIndexLocked(storyID, now, 0)
 }
 
 func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (StateDeltaEvent, error) {

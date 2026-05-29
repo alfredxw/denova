@@ -168,6 +168,18 @@ func (a *App) StartInteractiveTask(storyID, branchID, message string) *Task {
 }
 
 func (s *InteractiveAppService) StartInteractiveTask(storyID, branchID, message string) *Task {
+	return s.startInteractiveTask(storyID, branchID, message, "")
+}
+
+func (a *App) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string) *Task {
+	return a.interactiveService().StartInteractiveRegenerateTask(storyID, branchID, turnID, message)
+}
+
+func (s *InteractiveAppService) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string) *Task {
+	return s.startInteractiveTask(storyID, branchID, message, turnID)
+}
+
+func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message, rewindTurnID string) *Task {
 	a := s.app
 	a.mu.Lock()
 	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
@@ -191,6 +203,7 @@ func (s *InteractiveAppService) StartInteractiveTask(storyID, branchID, message 
 	a.mu.Unlock()
 
 	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
+		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 		runtimeCfg.InteractiveReplyTargetChars = appSettingsInt(layered.Effective.InteractiveReplyTargetChars, 1200)
 		runtimeCfg.InteractiveMaxTokens = appSettingsInt(layered.Effective.InteractiveMaxTokens, 0)
 		log.Printf("[interactive-agent-task] load interactive settings target_chars=%d max_tokens=%d workspace=%s", runtimeCfg.InteractiveReplyTargetChars, runtimeCfg.InteractiveMaxTokens, workspace)
@@ -215,12 +228,20 @@ func (s *InteractiveAppService) StartInteractiveTask(storyID, branchID, message 
 	}
 	a.mu.Unlock()
 
+	if strings.TrimSpace(rewindTurnID) != "" {
+		if err := store.RewindToTurnParent(storyID, interactive.RewindTurnRequest{BranchID: branchID, TurnID: rewindTurnID}); err != nil {
+			log.Printf("[interactive-agent-task] 回退互动故事分支失败 story_id=%s branch_id=%s turn_id=%s err=%v", storyID, branchID, rewindTurnID, err)
+			return nil
+		}
+		log.Printf("[interactive-agent-task] rewind branch for regeneration story_id=%s branch_id=%s turn_id=%s", storyID, branchID, rewindTurnID)
+	}
+
 	req := agent.ChatRequest{
 		Message: message,
 	}
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars)
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
-		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s message_len=%d", task.ID(), storyID, branchID, len(message))
+		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d", task.ID(), storyID, branchID, rewindTurnID, len(message))
 		chatService.Run(ctx, runner, conversation, bookService, req, emit)
 		if turn, stateReady, ok := conversation.LastTurnForState(); ok && !stateReady && ctx.Err() == nil {
 			startInteractiveStateTask(&runtimeCfg, conversation, turn)

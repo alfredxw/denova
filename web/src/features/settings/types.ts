@@ -17,6 +17,7 @@ export interface Settings {
   max_iteration?: number | null
   model_max_retries?: number | null
   plan_mode_default?: boolean | null
+  ide_story_teller_id?: string
   interactive_reply_target_chars?: number | null
   interactive_max_tokens?: number | null
   interactive_stage_font_size?: number | null

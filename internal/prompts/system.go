@@ -13,6 +13,14 @@ type SystemInstructionInput struct {
 	Workspace string
 	// StateContext 已确认的小说状态摘要（outline/characters/world-building/progress 等）。
 	StateContext string
+	// StoryTellerID 是 IDE 模式默认讲述者 ID；为空则不注入讲述者规则。
+	StoryTellerID string
+	// StoryTellerName 是 IDE 模式默认讲述者名称。
+	StoryTellerName string
+	// StoryTellerDescription 是 IDE 模式默认讲述者说明。
+	StoryTellerDescription string
+	// StoryTellerPrompt 是 IDE 模式可复用的讲述者 system/turn_context 规则。
+	StoryTellerPrompt string
 }
 
 // BuildSystemInstruction 拼装 Nova Agent 的系统指令：
@@ -24,6 +32,18 @@ func BuildSystemInstruction(in SystemInstructionInput) string {
 		sb.WriteString("# 创作者指令（最高优先级）\n\n")
 		sb.WriteString(creator)
 		sb.WriteString("\n\n---\n\n")
+	}
+
+	if tellerPrompt := strings.TrimSpace(in.StoryTellerPrompt); tellerPrompt != "" {
+		sb.WriteString("# IDE 默认讲述者规则\n\n")
+		writeField(&sb, "讲述者 ID", in.StoryTellerID)
+		writeField(&sb, "讲述者名称", in.StoryTellerName)
+		writeField(&sb, "讲述者说明", in.StoryTellerDescription)
+		sb.WriteString("\n")
+		sb.WriteString(tellerPrompt)
+		sb.WriteString("\n\n")
+		sb.WriteString("以上讲述者规则只用于章节正文、续写、重写、润色和场景生成；当用户要求资料整理、大纲规划、文件问答或工具操作时，以用户本轮请求和创作者指令为先，不要为了套用讲述者风格而偏离任务。\n")
+		sb.WriteString("\n---\n\n")
 	}
 
 	ws := in.Workspace

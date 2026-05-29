@@ -32,6 +32,8 @@ reading_font_family = "apple-system"
 max_iteration = 50
 model_max_retries = 5
 plan_mode_default = false
+# IDE 创作 Agent 默认讲述者 ID（当前工作区级配置）
+ide_story_teller_id = "classic"
 
 # 互动模式
 interactive_reply_target_chars = 1200

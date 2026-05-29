@@ -72,7 +72,7 @@ export function WorkspaceLayout({
             {rightPanelVisible && rightPanel && (
               <>
                 <WorkspaceResizeHandle direction="vertical" label="调整右侧面板宽度" />
-                <Panel id="right" defaultSize="28%" minSize="300px" maxSize="45%" className="min-w-[300px]">
+                <Panel id="right" defaultSize="34%" minSize="360px" maxSize="55%" className="min-w-[360px]">
                   {rightPanel}
                 </Panel>
               </>

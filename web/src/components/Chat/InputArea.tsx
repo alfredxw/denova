@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Send, Square } from 'lucide-react'
-import { FileReferencePicker } from './FileReferencePicker'
+import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
 import { ReferenceChips } from './ReferenceChips'
 import type { TextSelection } from '@/lib/api'
 import { Textarea } from '@/components/ui/textarea'
@@ -32,6 +32,11 @@ interface InputAreaProps {
   referencedFiles?: string[]
   onReferenceRemove?: (path: string) => void
   fileSuggestions?: string[]
+  loreReferences?: string[]
+  loreReferenceLabels?: Record<string, string>
+  onLoreReferenceAdd?: (id: string) => void
+  onLoreReferenceRemove?: (id: string) => void
+  loreSuggestions?: ReferencePickerItem[]
   styleReferences?: string[]
   onStyleReferenceAdd?: (path: string) => void
   onStyleReferenceRemove?: (path: string) => void
@@ -48,6 +53,11 @@ export function InputArea({
   referencedFiles = [],
   onReferenceRemove,
   fileSuggestions = [],
+  loreReferences = [],
+  loreReferenceLabels = {},
+  onLoreReferenceAdd,
+  onLoreReferenceRemove,
+  loreSuggestions = [],
   styleReferences = [],
   onStyleReferenceAdd,
   onStyleReferenceRemove,
@@ -189,8 +199,12 @@ export function InputArea({
   const selectReference = (path: string) => {
     setValue((current) => current.replace(/(?:^|\s)@([^\s@]*)$/, (match) => {
       const prefix = match.startsWith(' ') ? ' ' : ''
-      return `${prefix}@${path} `
+      const loreItem = loreSuggestions.find((item) => item.value === path)
+      return `${prefix}@${loreItem ? `资料:${loreItem.label}` : path} `
     }))
+    if (loreSuggestions.some((item) => item.value === path)) {
+      onLoreReferenceAdd?.(path)
+    }
     setReferenceQuery(null)
     textareaRef.current?.focus()
   }
@@ -209,6 +223,15 @@ export function InputArea({
   return (
     <div className="relative border-t border-[#303238] bg-[#202124] p-3">
       <ReferenceChips files={referencedFiles} onRemove={onReferenceRemove} />
+      <ReferenceChips
+        files={loreReferences.map((id) => loreReferenceLabels[id] || id)}
+        onRemove={onLoreReferenceRemove ? (label) => {
+          const target = loreReferences.find((id) => (loreReferenceLabels[id] || id) === label)
+          if (target) onLoreReferenceRemove(target)
+        } : undefined}
+        prefix="@资料:"
+        tone="lore"
+      />
       <ReferenceChips files={styleReferences} onRemove={onStyleReferenceRemove} prefix="#" tone="style" />
       {textSelections.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
@@ -271,9 +294,12 @@ export function InputArea({
       </Popover>
 
       <FileReferencePicker
-        open={referenceQuery !== null && fileSuggestions.length > 0}
+        open={referenceQuery !== null && (fileSuggestions.length > 0 || loreSuggestions.length > 0)}
         query={referenceQuery || ''}
-        files={fileSuggestions}
+        files={[
+          ...loreSuggestions,
+          ...fileSuggestions,
+        ]}
         onSelect={selectReference}
       />
 

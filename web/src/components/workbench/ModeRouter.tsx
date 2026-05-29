@@ -1,4 +1,5 @@
-import { BookOpen, Bot, FileText, RefreshCw, SearchCheck, Sparkles, WandSparkles, PenLine } from 'lucide-react'
+import { BookOpen, Bot, Database, FileText, RefreshCw, SearchCheck, SlidersHorizontal, Sparkles, WandSparkles, PenLine } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { FileTree } from '@/components/Sidebar/FileTree'
 import { MessageList } from '@/components/Chat/MessageList'
 import { InputArea } from '@/components/Chat/InputArea'
@@ -6,8 +7,12 @@ import { SessionManager } from '@/components/Chat/SessionManager'
 import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
 import { GitPanel } from '@/components/Git/GitPanel'
 import { InteractiveLayout } from '@/features/interactive/components/InteractiveLayout'
+import { SettingPanel } from '@/features/interactive/components/SettingPanel'
+import { getInteractiveTellers } from '@/features/interactive/api'
+import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
+import type { Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { ChapterSummary, ChatMessage, SessionSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
+import type { ChapterSummary, ChatMessage, LoreItem, SessionSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
@@ -44,6 +49,8 @@ interface ModeRouterProps {
   activeSessionId: string
   activityContent: string
   references: string[]
+  loreReferences: string[]
+  loreItems: LoreItem[]
   styleReferences: string[]
   textSelections: TextSelection[]
   onSetMode: (mode: WorkspaceMode) => void
@@ -74,6 +81,8 @@ interface ModeRouterProps {
   onSend: (message: string) => void
   onStop: () => void
   onReferenceRemove: (path: string) => void
+  onLoreReferenceAdd: (id: string) => void
+  onLoreReferenceRemove: (id: string) => void
   onStyleReferenceAdd: (path: string) => void
   onStyleReferenceRemove: (path: string) => void
   onTextSelectionRemove: (index: number) => void
@@ -110,6 +119,8 @@ export function ModeRouter(props: ModeRouterProps) {
     activeSessionId,
     activityContent,
     references,
+    loreReferences,
+    loreItems,
     styleReferences,
     textSelections,
     onSetMode,
@@ -140,6 +151,8 @@ export function ModeRouter(props: ModeRouterProps) {
     onSend,
     onStop,
     onReferenceRemove,
+    onLoreReferenceAdd,
+    onLoreReferenceRemove,
     onStyleReferenceAdd,
     onStyleReferenceRemove,
     onTextSelectionRemove,
@@ -147,6 +160,30 @@ export function ModeRouter(props: ModeRouterProps) {
 
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
   const versionsVisible = rightPanel === 'versions'
+  const [tellers, setTellers] = useState<Teller[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!workspace) {
+      setTellers([])
+      return () => { cancelled = true }
+    }
+    getInteractiveTellers()
+      .then((data) => {
+        if (!cancelled) setTellers(data)
+      })
+      .catch(() => {
+        if (!cancelled) setTellers([])
+      })
+    return () => { cancelled = true }
+  }, [workspace])
+
+  const loreReferenceLabels = useMemo(() => Object.fromEntries(loreItems.map((item) => [item.id, item.name])), [loreItems])
+  const loreSuggestions = useMemo(() => loreItems.map((item) => ({
+    value: item.id,
+    label: item.name,
+    description: `${loreTypeLabel(item.type)} · ${loreImportanceLabel(item.importance)}${item.tags?.length ? ` · ${item.tags.join('、')}` : ''}`,
+  })), [loreItems])
 
   const sidebar = (
     <section className="nova-sidebar flex h-full flex-col border-r">
@@ -270,6 +307,7 @@ export function ModeRouter(props: ModeRouterProps) {
           <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
           创作Agent
         </div>
+        <IdeTellerSelector workspace={workspace} tellers={tellers} />
         <SessionManager
           sessions={sessions}
           activeSessionId={activeSessionId}
@@ -310,6 +348,11 @@ export function ModeRouter(props: ModeRouterProps) {
         referencedFiles={references}
         onReferenceRemove={onReferenceRemove}
         fileSuggestions={flattenFileTree(tree)}
+        loreReferences={loreReferences}
+        loreReferenceLabels={loreReferenceLabels}
+        onLoreReferenceAdd={onLoreReferenceAdd}
+        onLoreReferenceRemove={onLoreReferenceRemove}
+        loreSuggestions={loreSuggestions}
         styleReferences={styleReferences}
         onStyleReferenceAdd={onStyleReferenceAdd}
         onStyleReferenceRemove={onStyleReferenceRemove}
@@ -325,6 +368,28 @@ export function ModeRouter(props: ModeRouterProps) {
       visible={versionsVisible}
       onClose={() => onSetRightPanel(null)}
     />
+  ) : rightPanel === 'lore' ? (
+    <aside className="nova-sidebar flex h-full min-h-0 flex-col">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
+        <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
+          <Database className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
+          资料库
+        </div>
+        <button type="button" onClick={() => onSetRightPanel(null)} className="nova-nav-item rounded px-1 text-xs">×</button>
+      </div>
+      <SettingPanel mode="lore" workspace={workspace} embedded />
+    </aside>
+  ) : rightPanel === 'teller' ? (
+    <aside className="nova-sidebar flex h-full min-h-0 flex-col">
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
+        <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
+          <SlidersHorizontal className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
+          讲述者
+        </div>
+        <button type="button" onClick={() => onSetRightPanel(null)} className="nova-nav-item rounded px-1 text-xs">×</button>
+      </div>
+      <SettingPanel mode="teller" workspace={workspace} tellers={tellers} onTellersChange={setTellers} embedded />
+    </aside>
   ) : null
 
   return (
@@ -350,6 +415,62 @@ export function ModeRouter(props: ModeRouterProps) {
       onOpenCharacterCardDialog={onOpenCharacterCardDialog}
       onToggleSettings={onToggleSettings}
     />
+  )
+}
+
+function IdeTellerSelector({ workspace, tellers }: { workspace: string; tellers: Teller[] }) {
+  const [value, setValue] = useState('classic')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!workspace) {
+      setValue('classic')
+      return () => { cancelled = true }
+    }
+    fetchSettings()
+      .then((settings) => {
+        if (!cancelled) setValue(settings.effective.ide_story_teller_id || 'classic')
+      })
+      .catch(() => {
+        if (!cancelled) setValue('classic')
+      })
+    return () => { cancelled = true }
+  }, [workspace])
+
+  const handleChange = async (next: string) => {
+    if (!workspace || next === value) return
+    const previous = value
+    setValue(next)
+    setSaving(true)
+    try {
+      const settings = await fetchSettings()
+      await updateWorkspaceSettings({ ...settings.workspace, ide_story_teller_id: next })
+      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+    } catch (e) {
+      console.warn('保存 IDE 默认讲述者失败', e)
+      setValue(previous)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (tellers.length === 0) return null
+
+  return (
+    <label className="flex min-w-[150px] shrink-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]" title="IDE 创作 Agent 下一轮使用的默认讲述者">
+      <span className="shrink-0">讲述者</span>
+      <select
+        value={tellers.some((teller) => teller.id === value) ? value : 'classic'}
+        disabled={saving}
+        onChange={(event) => void handleChange(event.target.value)}
+        className="nova-field h-7 min-w-0 flex-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px] text-[var(--nova-text-muted)] outline-none"
+      >
+        {tellers.map((teller) => (
+          <option key={teller.id} value={teller.id}>{teller.name}</option>
+        ))}
+      </select>
+    </label>
   )
 }
 
@@ -398,6 +519,28 @@ function ChapterOutline({
       })}
     </div>
   )
+}
+
+function loreTypeLabel(type: LoreItem['type']) {
+  const labels: Record<LoreItem['type'], string> = {
+    character: '角色',
+    world: '世界观',
+    location: '地点',
+    faction: '势力',
+    rule: '规则',
+    item: '物品',
+    other: '其他',
+  }
+  return labels[type] || '资料'
+}
+
+function loreImportanceLabel(importance: LoreItem['importance']) {
+  const labels: Record<LoreItem['importance'], string> = {
+    major: '主要',
+    important: '重要',
+    minor: '次要',
+  }
+  return labels[importance] || '资料'
 }
 
 function AgentQuickActions({

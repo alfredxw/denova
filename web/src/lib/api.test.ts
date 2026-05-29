@@ -105,6 +105,7 @@ describe('api', () => {
     const stream = await sendMessage(
       '写下一章',
       ['chapters/ch01.md'],
+      [],
       ['古龙.md'],
       [{ fileName: 'chapters/ch02.md', startLine: 1, endLine: 2, content: '选中文本' }],
       undefined,
@@ -124,6 +125,7 @@ describe('api', () => {
     expect(requestBody).toEqual({
       message: '写下一章',
       references: ['chapters/ch01.md'],
+      lore_references: [],
       style_references: ['古龙.md'],
       selections: [{
         file_name: 'chapters/ch02.md',

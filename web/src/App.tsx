@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SettingsView } from '@/features/settings/SettingsView'
 import { fetchSettings } from '@/features/settings/api'
 import { fontStackFor } from '@/features/settings/font-options'
-import { importCharacterCard, previewCharacterCard, type CharacterCardPreview } from '@/lib/api'
+import { getLoreItems, importCharacterCard, previewCharacterCard, type CharacterCardPreview, type LoreItem } from '@/lib/api'
 import { CommandPalette } from '@/components/common/command-palette'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { useWorkspace } from '@/hooks/useWorkspace'
@@ -56,6 +56,7 @@ function App() {
   const [characterCardPreviewing, setCharacterCardPreviewing] = useState(false)
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
+  const [loreItems, setLoreItems] = useState<LoreItem[]>([])
   const characterCardInputRef = useRef<HTMLInputElement>(null)
   const chatBootstrappedRef = useRef(false)
   const tabActivationsRef = useRef<Map<string, number>>(new Map())
@@ -104,11 +105,34 @@ function App() {
     deleteChatSession,
     addReference,
     removeReference,
+    loreReferences,
+    addLoreReference,
+    removeLoreReference,
     addStyleReference,
     removeStyleReference,
     addTextSelection,
     removeTextSelection,
   } = useChat({ onAgentFileChange: handleAgentFileChange })
+
+  const refreshLoreItems = useCallback(async () => {
+    if (!workspace) {
+      setLoreItems([])
+      return
+    }
+    try {
+      setLoreItems(await getLoreItems())
+    } catch (e) {
+      console.warn('加载资料库条目失败', e)
+      setLoreItems([])
+    }
+  }, [workspace])
+
+  useEffect(() => {
+    void refreshLoreItems()
+    const onLoreUpdated = () => void refreshLoreItems()
+    window.addEventListener('nova:lore-updated', onLoreUpdated)
+    return () => window.removeEventListener('nova:lore-updated', onLoreUpdated)
+  }, [refreshLoreItems])
 
   const chapterStats: Record<string, ChapterSummary> = Object.fromEntries((summary?.chapters || []).map((chapter) => [chapter.path, chapter]))
   const currentChapter = selectedFile ? chapterStats[selectedFile] : undefined
@@ -442,6 +466,8 @@ function App() {
         activeSessionId={activeSessionId}
         activityContent={activityContent}
         references={references}
+        loreReferences={loreReferences}
+        loreItems={loreItems}
         styleReferences={styleReferences}
         textSelections={textSelections}
         onSetMode={handleSetMode}
@@ -472,6 +498,8 @@ function App() {
         onSend={send}
         onStop={stop}
         onReferenceRemove={removeReference}
+        onLoreReferenceAdd={addLoreReference}
+        onLoreReferenceRemove={removeLoreReference}
         onStyleReferenceAdd={addStyleReference}
         onStyleReferenceRemove={removeStyleReference}
         onTextSelectionRemove={removeTextSelection}

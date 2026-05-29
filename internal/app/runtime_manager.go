@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -408,10 +409,19 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings) (
 		novaDir = a.cfg.NovaDir
 	}
 	a.mu.RUnlock()
-	if err := config.WriteSettingsFile(config.UserConfigPath(novaDir), settings); err != nil {
+	path := config.UserConfigPath(novaDir)
+	if err := config.WriteSettingsFile(path, settings); err != nil {
 		return config.LayeredSettings{}, err
 	}
-	return s.Settings()
+	log.Printf("[settings] 用户配置已保存 path=%s", path)
+	layered, err := s.Settings()
+	if err != nil {
+		return config.LayeredSettings{}, err
+	}
+	a.mu.Lock()
+	applyLayeredSettingsToConfig(a.cfg, layered)
+	a.mu.Unlock()
+	return layered, nil
 }
 
 // UpdateWorkspaceSettings 持久化当前工作区配置并返回最新分层快照。
@@ -427,10 +437,74 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 	if workspace == "" {
 		return config.LayeredSettings{}, fmt.Errorf("当前没有打开的工作区")
 	}
-	if err := config.WriteSettingsFile(config.WorkspaceConfigPath(workspace), settings); err != nil {
+	path := config.WorkspaceConfigPath(workspace)
+	if err := config.WriteSettingsFile(path, settings); err != nil {
 		return config.LayeredSettings{}, err
 	}
-	return s.Settings()
+	log.Printf("[settings] 工作区配置已保存 path=%s", path)
+	layered, err := s.Settings()
+	if err != nil {
+		return config.LayeredSettings{}, err
+	}
+	a.mu.Lock()
+	applyLayeredSettingsToConfig(a.cfg, layered)
+	a.mu.Unlock()
+	return layered, nil
+}
+
+func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSettings) {
+	if cfg == nil {
+		return
+	}
+	applySettingsLayerToConfig(cfg, layered.User)
+	applySettingsLayerToConfig(cfg, layered.Workspace)
+
+	effective := layered.Effective
+	if cfg.OpenAIBaseURL == "" && effective.OpenAIBaseURL != "" {
+		cfg.OpenAIBaseURL = effective.OpenAIBaseURL
+	}
+	if cfg.OpenAIModel == "" && effective.OpenAIModel != "" {
+		cfg.OpenAIModel = effective.OpenAIModel
+	}
+	if cfg.SkillsDir == "" && effective.SkillsDir != "" {
+		cfg.SkillsDir = effective.SkillsDir
+	}
+	if cfg.NovaDir == "" && layered.Paths.NovaDir != "" {
+		cfg.NovaDir = layered.Paths.NovaDir
+	}
+	if cfg.IDEStoryTellerID == "" && effective.IDEStoryTellerID != "" {
+		cfg.IDEStoryTellerID = effective.IDEStoryTellerID
+	}
+	if effective.InteractiveReplyTargetChars != nil {
+		cfg.InteractiveReplyTargetChars = appSettingsInt(effective.InteractiveReplyTargetChars, 1200)
+	}
+	if effective.InteractiveMaxTokens != nil {
+		cfg.InteractiveMaxTokens = appSettingsInt(effective.InteractiveMaxTokens, 0)
+	}
+}
+
+func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
+	if settings.OpenAIAPIKey != "" && os.Getenv("OPENAI_API_KEY") == "" {
+		cfg.OpenAIAPIKey = settings.OpenAIAPIKey
+	}
+	if settings.OpenAIBaseURL != "" && os.Getenv("OPENAI_BASE_URL") == "" {
+		cfg.OpenAIBaseURL = settings.OpenAIBaseURL
+	}
+	if settings.OpenAIModel != "" && os.Getenv("OPENAI_MODEL") == "" {
+		cfg.OpenAIModel = settings.OpenAIModel
+	}
+	if settings.SkillsDir != "" && os.Getenv("NOVA_SKILLS_DIR") == "" {
+		cfg.SkillsDir = settings.SkillsDir
+	}
+	if settings.IDEStoryTellerID != "" {
+		cfg.IDEStoryTellerID = settings.IDEStoryTellerID
+	}
+	if settings.InteractiveReplyTargetChars != nil {
+		cfg.InteractiveReplyTargetChars = appSettingsInt(settings.InteractiveReplyTargetChars, 1200)
+	}
+	if settings.InteractiveMaxTokens != nil {
+		cfg.InteractiveMaxTokens = appSettingsInt(settings.InteractiveMaxTokens, 0)
+	}
 }
 
 func (s *WorkspaceRuntimeManager) gitService() *book.GitService {
@@ -497,11 +571,31 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 }
 
 func buildAgentRunner(ctx context.Context, cfg *config.Config, state *book.State) (*adk.Runner, error) {
-	builtAgent, err := agent.Build(ctx, cfg, state)
+	builtAgent, err := agent.Build(ctx, cfg, state, ideStoryTellerForConfig(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("构建 Agent 失败: %w", err)
 	}
 	return agent.NewRunner(ctx, builtAgent), nil
+}
+
+func ideStoryTellerForConfig(cfg *config.Config) agent.IDEStoryTeller {
+	if cfg == nil || cfg.NovaDir == "" {
+		return agent.IDEStoryTeller{}
+	}
+	tellerID := cfg.IDEStoryTellerID
+	if tellerID == "" {
+		tellerID = "classic"
+	}
+	teller := loadInteractiveTeller(cfg.NovaDir, tellerID)
+	if teller.ID == "" {
+		return agent.IDEStoryTeller{}
+	}
+	return agent.IDEStoryTeller{
+		ID:          teller.ID,
+		Name:        teller.Name,
+		Description: teller.Description,
+		Prompt:      teller.PromptForTargets("system", "turn_context"),
+	}
 }
 
 func buildInteractiveStoryRunner(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (*adk.Runner, error) {

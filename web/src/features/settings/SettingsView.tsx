@@ -5,6 +5,8 @@ import type { LayeredSettings, Settings, SettingsLayer, StyleRule } from './type
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from './api'
 import { FONT_OPTIONS, fontLabelFor } from './font-options'
 import { getStyles } from '@/lib/api'
+import { getInteractiveTellers } from '@/features/interactive/api'
+import type { Teller } from '@/features/interactive/types'
 
 type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'agent' | 'ide-editor' | 'ide-style-rules' | 'interactive'
 
@@ -27,6 +29,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [availableStyles, setAvailableStyles] = useState<string[]>([])
+  const [availableTellers, setAvailableTellers] = useState<Teller[]>([])
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('model')
   const [expandedSections, setExpandedSections] = useState<Record<SettingsSectionId, boolean>>({
     model: true,
@@ -58,6 +61,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     getStyles()
       .then((items) => setAvailableStyles(items))
       .catch((e) => console.warn('[settings] 获取风格参考列表失败', e))
+    getInteractiveTellers()
+      .then((items) => setAvailableTellers(items))
+      .catch((e) => console.warn('[settings] 获取讲述者列表失败', e))
   }, [activeLayer])
 
   useEffect(() => {
@@ -175,6 +181,15 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Num label="最大同时打开 Tab 数" value={draft.max_open_tabs ?? null}
                placeholder={placeholderFor('max_open_tabs')}
                onChange={(v) => setField('max_open_tabs', v)} />
+          {activeLayer === 'workspace' && (
+            <TellerSelect
+              label="默认讲述者"
+              value={draft.ide_story_teller_id}
+              effective={effective.ide_story_teller_id}
+              tellers={availableTellers}
+              onChange={(v) => setField('ide_story_teller_id', v)}
+            />
+          )}
         </>
       ),
     },
@@ -505,6 +520,30 @@ function FontSelect({ label, value, effective, onChange }: {
         <option value="">继承（{fontLabelFor(effective)}）</option>
         {FONT_OPTIONS.map((font) => (
           <option key={font.value} value={font.value}>{font.label}</option>
+        ))}
+      </select>
+    </FieldRow>
+  )
+}
+
+function TellerSelect({ label, value, effective, tellers, onChange }: {
+  label: string
+  value?: string
+  effective?: string
+  tellers: Teller[]
+  onChange: (v: string) => void
+}) {
+  const effectiveName = tellers.find((teller) => teller.id === effective)?.name || effective || 'classic'
+  return (
+    <FieldRow label={label}>
+      <select
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        className={fieldCls}
+      >
+        <option value="">继承（{effectiveName}）</option>
+        {tellers.map((teller) => (
+          <option key={teller.id} value={teller.id}>{teller.name}</option>
         ))}
       </select>
     </FieldRow>

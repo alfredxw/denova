@@ -8,6 +8,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	novaApp "nova/internal/app"
 	"nova/internal/interactive"
 )
 
@@ -118,10 +119,11 @@ func (s *Server) handleInteractiveBranchSwitch(ctx context.Context, c *app.Reque
 
 func (s *Server) handleInteractiveChat(ctx context.Context, c *app.RequestContext) {
 	var body struct {
-		Mode    string `json:"mode"`
-		StoryID string `json:"story_id"`
-		Branch  string `json:"branch"`
-		Message string `json:"message"`
+		Mode               string `json:"mode"`
+		StoryID            string `json:"story_id"`
+		Branch             string `json:"branch"`
+		Message            string `json:"message"`
+		RegenerateFromTurn string `json:"regenerate_from_turn_id"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
@@ -140,7 +142,12 @@ func (s *Server) handleInteractiveChat(ctx context.Context, c *app.RequestContex
 		return
 	}
 
-	task := s.app.StartInteractiveTask(body.StoryID, body.Branch, body.Message)
+	var task *novaApp.Task
+	if strings.TrimSpace(body.RegenerateFromTurn) != "" {
+		task = s.app.StartInteractiveRegenerateTask(body.StoryID, body.Branch, body.RegenerateFromTurn, body.Message)
+	} else {
+		task = s.app.StartInteractiveTask(body.StoryID, body.Branch, body.Message)
+	}
 	if task == nil {
 		writeError(c, consts.StatusConflict, "尚未选择书籍工作区，请先在书籍管理页选择或创建书籍")
 		return

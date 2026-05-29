@@ -5,6 +5,7 @@ export interface ChatMessage {
   role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'system' | 'error'
   content?: string
   id?: string
+  turn_id?: string
   name?: string
   args?: string
   status?: 'running' | 'success' | 'error'
@@ -175,6 +176,7 @@ export interface TextSelection {
 export async function sendMessage(
   message: string,
   references: string[] = [],
+  loreReferences: string[] = [],
   styleReferences: string[] = [],
   textSelections: TextSelection[] = [],
   signal?: AbortSignal,
@@ -186,6 +188,7 @@ export async function sendMessage(
     body: JSON.stringify({
       message,
       references,
+      lore_references: loreReferences,
       style_references: styleReferences,
       selections: textSelections.map(s => ({
         file_name: s.fileName,

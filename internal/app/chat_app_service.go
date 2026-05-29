@@ -231,6 +231,30 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 	novaDir := runtimeCfg.NovaDir
 	a.mu.Unlock()
 
+	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
+		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+		runtimeCfg.IDEStoryTellerID = layered.Effective.IDEStoryTellerID
+		if runtimeCfg.IDEStoryTellerID == "" {
+			runtimeCfg.IDEStoryTellerID = "classic"
+		}
+		log.Printf("[agent-task] load ide teller id=%s workspace=%s", runtimeCfg.IDEStoryTellerID, workspace)
+
+		// 注入工作区配置中的默认风格参考；仅在用户本轮未指定 # 风格时生效。
+		if len(req.StyleReferences) == 0 {
+			rules := layered.Effective.StyleRules
+			if len(rules) > 0 {
+				converted := make([]agent.StyleRule, 0, len(rules))
+				for _, r := range rules {
+					converted = append(converted, agent.StyleRule{Scene: r.Scene, Styles: r.Styles})
+				}
+				req.StyleRules = converted
+				log.Printf("[agent-task] inject style rules count=%d rules=%q", len(converted), appStyleRuleNames(converted))
+			}
+		}
+	} else {
+		log.Printf("[agent-task] load layered settings failed workspace=%s err=%v", workspace, err)
+	}
+
 	runner, err := buildAgentRunner(context.Background(), &runtimeCfg, state)
 	if err != nil {
 		log.Printf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", workspace, err)
@@ -256,25 +280,8 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 		}
 	}
 
-	// 注入工作区配置中的默认风格参考；仅在用户本轮未指定 # 风格时生效。
-	if len(req.StyleReferences) == 0 {
-		if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
-			rules := layered.Effective.StyleRules
-			if len(rules) > 0 {
-				converted := make([]agent.StyleRule, 0, len(rules))
-				for _, r := range rules {
-					converted = append(converted, agent.StyleRule{Scene: r.Scene, Styles: r.Styles})
-				}
-				req.StyleRules = converted
-				log.Printf("[agent-task] inject style rules count=%d rules=%q", len(converted), appStyleRuleNames(converted))
-			}
-		} else {
-			log.Printf("[agent-task] load layered settings for style rules failed err=%v", err)
-		}
-	}
-
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
-		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d style_references=%d style_rules=%d selections=%d plan_mode=%v", task.ID(), len(req.Message), len(req.References), len(req.StyleReferences), len(req.StyleRules), len(req.Selections), req.PlanMode)
+		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_references=%d style_rules=%d selections=%d plan_mode=%v", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleReferences), len(req.StyleRules), len(req.Selections), req.PlanMode)
 		chatService.Run(ctx, runner, agent.NewSessionConversation(sess), bookService, req, emit)
 		log.Printf("[agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})

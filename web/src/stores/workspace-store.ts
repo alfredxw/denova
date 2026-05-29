@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type RightPanel = 'ai' | 'outline' | 'characters' | 'versions' | null
+export type RightPanel = 'ai' | 'lore' | 'teller' | 'outline' | 'characters' | 'versions' | null
 export type BottomPanel = 'versions' | 'problems' | null
 export type WorkspaceMode = 'ide' | 'interactive'
 

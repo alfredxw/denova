@@ -37,6 +37,7 @@ export function useChat(options: ChatOptions = {}) {
   const [isStreaming, setIsStreaming] = useState(false)
   const [activityContent, setActivityContent] = useState('')
   const [references, setReferences] = useState<string[]>([])
+  const [loreReferences, setLoreReferences] = useState<string[]>([])
   const [styleReferences, setStyleReferences] = useState<string[]>([])
   const [textSelections, setTextSelections] = useState<TextSelection[]>([])
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -105,9 +106,19 @@ export function useChat(options: ChatOptions = {}) {
     setReferences(prev => Array.from(new Set([...prev, path])))
   }, [])
 
+  /** 添加资料库条目引用 */
+  const addLoreReference = useCallback((id: string) => {
+    setLoreReferences(prev => Array.from(new Set([...prev, id])))
+  }, [])
+
   /** 移除文件引用 */
   const removeReference = useCallback((path: string) => {
     setReferences(prev => prev.filter(item => item !== path))
+  }, [])
+
+  /** 移除资料库条目引用 */
+  const removeLoreReference = useCallback((id: string) => {
+    setLoreReferences(prev => prev.filter(item => item !== id))
   }, [])
 
   /** 添加风格参考 */
@@ -123,6 +134,11 @@ export function useChat(options: ChatOptions = {}) {
   /** 清空文件引用 */
   const clearReferences = useCallback(() => {
     setReferences([])
+  }, [])
+
+  /** 清空资料库条目引用 */
+  const clearLoreReferences = useCallback(() => {
+    setLoreReferences([])
   }, [])
 
   /** 清空风格参考 */
@@ -361,6 +377,7 @@ export function useChat(options: ChatOptions = {}) {
       finishCurrentSegment()
       if (options.clearInputsOnFinish) {
         clearReferences()
+        clearLoreReferences()
         clearStyleReferences()
         clearTextSelections()
       }
@@ -381,8 +398,9 @@ export function useChat(options: ChatOptions = {}) {
         setMessages(prev => [...prev, { role: 'error', content: `请求失败: ${e}` }])
       }
       if (options.clearInputsOnFinish) {
-        clearReferences()
-        clearStyleReferences()
+      clearReferences()
+      clearLoreReferences()
+      clearStyleReferences()
         clearTextSelections()
       }
     } finally {
@@ -399,6 +417,7 @@ export function useChat(options: ChatOptions = {}) {
   }, [
     appendStreamingSegment,
     clearReferences,
+    clearLoreReferences,
     clearStyleReferences,
     clearTextSelections,
     finishCurrentSegment,
@@ -440,6 +459,7 @@ export function useChat(options: ChatOptions = {}) {
 
     const inlineReferences = parseInlineReferences(input)
     const mergedReferences = Array.from(new Set([...references, ...inlineReferences]))
+    const mergedLoreReferences = Array.from(new Set(loreReferences))
     const inlineStyleReferences = parseInlineStyleReferences(input)
     const mergedStyleReferences = Array.from(new Set([...styleReferences, ...inlineStyleReferences]))
 
@@ -449,13 +469,13 @@ export function useChat(options: ChatOptions = {}) {
     abortControllerRef.current = abortController
 
     try {
-      const stream = await sendMessage(userMessage, mergedReferences, mergedStyleReferences, textSelections, abortController.signal, planMode)
+      const stream = await sendMessage(userMessage, mergedReferences, mergedLoreReferences, mergedStyleReferences, textSelections, abortController.signal, planMode)
       await consumeChatStream(stream, { clearInputsOnFinish: true, showAbortMessage: true })
     } catch (e) {
       setMessages(prev => [...prev, { role: 'error', content: `请求失败: ${e}` }])
       setIsStreaming(false)
     }
-  }, [consumeChatStream, isStreaming, loadHistory, loadSessions, references, styleReferences, textSelections])
+  }, [consumeChatStream, isStreaming, loadHistory, loadSessions, loreReferences, references, styleReferences, textSelections])
 
   /** 恢复订阅后台仍在运行的聊天任务。 */
   const resumeActiveChat = useCallback(async () => {
@@ -522,6 +542,7 @@ export function useChat(options: ChatOptions = {}) {
     isStreaming,
     activityContent,
     references,
+    loreReferences,
     styleReferences,
     textSelections,
     send,
@@ -535,6 +556,8 @@ export function useChat(options: ChatOptions = {}) {
     deleteChatSession,
     addReference,
     removeReference,
+    addLoreReference,
+    removeLoreReference,
     addStyleReference,
     removeStyleReference,
     addTextSelection,
@@ -553,7 +576,9 @@ function parseInlineReferences(input: string): string[] {
   const regex = /(?:^|\s)@([^\s@]+)/g
   let match: RegExpExecArray | null
   while ((match = regex.exec(input)) !== null) {
-    result.add(match[1])
+    const value = match[1]
+    if (value.startsWith('资料:')) continue
+    result.add(value)
   }
   return Array.from(result)
 }

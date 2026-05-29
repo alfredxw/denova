@@ -36,6 +36,7 @@ type Event struct {
 type ChatRequest struct {
 	Message         string             `json:"message"`
 	References      []string           `json:"references"`
+	LoreReferences  []string           `json:"lore_references"`
 	StyleReferences []string           `json:"style_references"`
 	Selections      []TextSelectionRef `json:"selections"`
 	PlanMode        bool               `json:"plan_mode"`
@@ -103,6 +104,9 @@ func (s *ChatService) Run(
 	if len(req.References) > 0 {
 		agentMessage = appendReferenceContext(bookService, agentMessage, req.References, contextLog)
 	}
+	if len(req.LoreReferences) > 0 {
+		agentMessage = appendLoreReferenceContext(bookService, agentMessage, req.LoreReferences, contextLog)
+	}
 	if len(req.StyleReferences) > 0 {
 		agentMessage = appendStyleReferenceContext(bookService, agentMessage, req.StyleReferences, contextLog)
 	} else if len(req.StyleRules) > 0 {
@@ -123,11 +127,12 @@ func (s *ChatService) Run(
 		return
 	}
 	log.Printf(
-		"[agent-run] context composition history=%s original=%s agent_message=%s references=%s style_references=%s style_rules=%d selections=%s plan_mode=%v resumed=%v",
+		"[agent-run] context composition history=%s original=%s agent_message=%s references=%s lore_references=%s style_references=%s style_rules=%d selections=%s plan_mode=%v resumed=%v",
 		messageListSummary(history),
 		promptPartSummary(originalMessage),
 		promptPartSummary(agentMessage),
 		stringListSummary(req.References),
+		stringListSummary(req.LoreReferences),
 		stringListSummary(req.StyleReferences),
 		len(req.StyleRules),
 		selectionListSummary(req.Selections),
@@ -320,6 +325,56 @@ func appendReferenceContext(bookService *book.Service, message string, reference
 	return sb.String()
 }
 
+// appendLoreReferenceContext 将用户本轮明确引用的结构化资料条目追加到 Agent 输入。
+func appendLoreReferenceContext(bookService *book.Service, message string, references []string, logs ...*contextBuildLog) string {
+	var sb strings.Builder
+	sb.WriteString(message)
+	sb.WriteString("\n\n# 本轮明确引用的资料库条目\n\n以下资料来自结构化资料库，优先级高于泛化摘要；请在本轮创作或判断中优先遵守这些条目的已确认设定。\n")
+
+	if bookService == nil || bookService.Workspace() == "" {
+		sb.WriteString("\n资料库读取失败：当前 workspace 不可用。\n")
+		addContextLog(logs, "资料库引用", "workspace", "当前 workspace 不可用", "读取失败")
+		return sb.String()
+	}
+
+	items, err := book.NewLoreStore(bookService.Workspace()).List()
+	if err != nil {
+		sb.WriteString("\n资料库读取失败：")
+		sb.WriteString(err.Error())
+		sb.WriteString("\n")
+		addContextLog(logs, "资料库引用", ".nova/lore/items.json", err.Error(), "读取失败")
+		return sb.String()
+	}
+
+	byID := make(map[string]book.LoreItem, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	seen := make(map[string]bool)
+	for _, ref := range references {
+		ref = strings.TrimSpace(ref)
+		if ref == "" || seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		item, ok := byID[ref]
+		if !ok {
+			sb.WriteString("\n## @资料:")
+			sb.WriteString(ref)
+			sb.WriteString("\n读取失败：资料条目不存在\n")
+			addContextLog(logs, "资料库引用", "@资料:"+ref, "资料条目不存在", "读取失败")
+			continue
+		}
+		content := formatLoreReference(item)
+		addContextLog(logs, "资料库引用", "@资料:"+item.Name, content, item.ID)
+		sb.WriteString("\n")
+		sb.WriteString(content)
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
 // appendStyleReferenceContext 将本轮指定的风格参考追加到 Agent 输入。
 func appendStyleReferenceContext(bookService *book.Service, message string, styleReferences []string, logs ...*contextBuildLog) string {
 	var sb strings.Builder
@@ -416,6 +471,32 @@ func readReferencedFile(bookService *book.Service, relPath string, fileLimit, re
 		result += "\n\n[内容已截断]"
 	}
 	return result, len(data), nil
+}
+
+func formatLoreReference(item book.LoreItem) string {
+	var sb strings.Builder
+	sb.WriteString("## ")
+	sb.WriteString(item.Name)
+	sb.WriteString("（")
+	sb.WriteString(item.Type)
+	sb.WriteString(" / ")
+	sb.WriteString(item.Importance)
+	sb.WriteString("）\n")
+	sb.WriteString("ID：")
+	sb.WriteString(item.ID)
+	sb.WriteString("\n")
+	if len(item.Tags) > 0 {
+		sb.WriteString("标签：")
+		sb.WriteString(strings.Join(item.Tags, "、"))
+		sb.WriteString("\n")
+	}
+	content := strings.TrimSpace(item.Content)
+	if content != "" {
+		sb.WriteString("\n```markdown\n")
+		sb.WriteString(content)
+		sb.WriteString("\n```\n")
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 // readStyleReferencedFile 安全读取风格参考文件，并按单文件和总大小限制截断。

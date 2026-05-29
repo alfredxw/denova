@@ -31,9 +31,10 @@ type Settings struct {
 	ReadingFontFamily string `toml:"reading_font_family,omitempty" json:"reading_font_family,omitempty"`
 
 	// Agent
-	MaxIteration    *int  `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
-	ModelMaxRetries *int  `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
-	PlanModeDefault *bool `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
+	MaxIteration     *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
+	ModelMaxRetries  *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
+	PlanModeDefault  *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
+	IDEStoryTellerID string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
 
 	// 互动模式
 	InteractiveReplyTargetChars *int     `toml:"interactive_reply_target_chars,omitempty" json:"interactive_reply_target_chars,omitempty"`
@@ -76,6 +77,7 @@ func DefaultSettings() Settings {
 		MaxIteration:                intPtr(50),
 		ModelMaxRetries:             intPtr(5),
 		PlanModeDefault:             boolPtr(false),
+		IDEStoryTellerID:            "classic",
 		InteractiveReplyTargetChars: intPtr(1200),
 		InteractiveStageFontSize:    intPtr(16),
 		InteractiveStageLineHeight:  floatPtr(1.78),
@@ -127,6 +129,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.PlanModeDefault != nil {
 		out.PlanModeDefault = child.PlanModeDefault
+	}
+	if child.IDEStoryTellerID != "" {
+		out.IDEStoryTellerID = child.IDEStoryTellerID
 	}
 	if child.InteractiveReplyTargetChars != nil {
 		out.InteractiveReplyTargetChars = child.InteractiveReplyTargetChars

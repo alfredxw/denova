@@ -2,23 +2,41 @@ import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useS
 import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Bot, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo } from 'lucide-react'
+import { Bot, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, Pencil, RefreshCw } from 'lucide-react'
 import type { ChatMessage } from '@/lib/api'
+import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 
 interface MessageItemProps {
   message: ChatMessage
   highlightDialogue?: boolean
   messageStyle?: CSSProperties
+  onEdit?: (message: ChatMessage) => void
+  onRegenerate?: (message: ChatMessage) => void
 }
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate }: MessageItemProps) {
   const { role, content = '' } = message
+  const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
+  const canRegenerate = role === 'assistant' && Boolean(message.turn_id) && Boolean(onRegenerate) && !message.streaming
 
   switch (role) {
     case 'user':
       return (
-        <div className="flex justify-end">
+        <div className="group flex justify-end gap-2">
+          {canEdit && (
+            <div className="flex h-8 shrink-0 items-center gap-1 self-end opacity-80 transition-opacity group-hover:opacity-100">
+              {onEdit && (
+                <TooltipIconButton
+                  label="编辑这轮输入"
+                  className="h-7 w-7 border border-[#5a5d64]/50 bg-[#25262a] text-[#d7dbe2] hover:bg-[#303238]"
+                  onClick={() => onEdit(message)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </TooltipIconButton>
+              )}
+            </div>
+          )}
           <div className="max-w-[88%] rounded bg-[#4a4d54] px-3 py-2 text-sm text-white whitespace-pre-wrap" style={messageStyle}>
             {content}
           </div>
@@ -29,11 +47,22 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return (
         <div className="flex justify-start">
           <div className="chat-agent-message w-full text-sm text-[#c8ccd4]" style={messageStyle}>
-            <div className="mb-2 flex items-center gap-2 text-xs font-medium text-[#d7dbe2]">
-              <span className="flex h-5 w-5 items-center justify-center rounded border border-[#5a5d64]/50 bg-[#1b1c1f] text-[#d7dbe2]">
-                <Bot className="h-3.5 w-3.5" />
-              </span>
-              Nova
+            <div className="mb-2 flex items-center justify-between gap-2 text-xs font-medium text-[#d7dbe2]">
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded border border-[#5a5d64]/50 bg-[#1b1c1f] text-[#d7dbe2]">
+                  <Bot className="h-3.5 w-3.5" />
+                </span>
+                Nova
+              </div>
+              {canRegenerate && onRegenerate && (
+                <TooltipIconButton
+                  label="重新生成这一轮"
+                  className="h-7 w-7 border border-[#5a5d64]/50 bg-[#25262a] text-[#d7dbe2] hover:bg-[#303238]"
+                  onClick={() => onRegenerate(message)}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                </TooltipIconButton>
+              )}
             </div>
             {message.streaming ? (
               <StreamingMarkdown content={content} highlightDialogue={highlightDialogue} />

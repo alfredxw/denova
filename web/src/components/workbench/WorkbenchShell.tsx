@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BookOpen, Bot, FolderTree, GitBranch, MessageSquareText, PenLine, Settings, Upload } from 'lucide-react'
+import { BookOpen, Bot, Database, FolderTree, GitBranch, MessageSquareText, PenLine, Settings, SlidersHorizontal, Upload } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
@@ -52,6 +52,8 @@ export function WorkbenchShell({
   onToggleSettings,
 }: WorkbenchShellProps) {
   const aiVisible = rightPanel === 'ai'
+  const loreVisible = rightPanel === 'lore'
+  const tellerVisible = rightPanel === 'teller'
   const versionsVisible = rightPanel === 'versions'
 
   const topBar = (
@@ -84,6 +86,20 @@ export function WorkbenchShell({
         className={`nova-icon-button mb-2 ${aiVisible ? 'is-active' : ''}`}
       >
         <Bot className="h-4 w-4" />
+      </TooltipIconButton>
+      <TooltipIconButton
+        label="资料库"
+        onClick={() => onSetRightPanel(loreVisible ? null : 'lore')}
+        className={`nova-icon-button mb-2 ${loreVisible ? 'is-active' : ''}`}
+      >
+        <Database className="h-4 w-4" />
+      </TooltipIconButton>
+      <TooltipIconButton
+        label="讲述者"
+        onClick={() => onSetRightPanel(tellerVisible ? null : 'teller')}
+        className={`nova-icon-button mb-2 ${tellerVisible ? 'is-active' : ''}`}
+      >
+        <SlidersHorizontal className="h-4 w-4" />
       </TooltipIconButton>
       <TooltipIconButton
         label="版本管理"

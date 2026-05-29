@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Compass, GitBranch, MessageSquareText, Send, Square } from 'lucide-react'
+import { Compass, GitBranch, MessageSquareText, Pencil, RefreshCw, Send, Square, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -30,6 +30,7 @@ const stageAbortControllers = new Map<string, AbortController>()
 
 export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: StoryStageProps) {
   const [input, setInput] = useState('')
+  const [inputFocused, setInputFocused] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const snapshotKey = `${storyId || 'none'}:${snapshot?.branch_id || branchId || 'main'}:${snapshot?.turns?.[snapshot.turns.length - 1]?.id || 'empty'}`
   const stageKey = `${workspace || 'current'}:${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
@@ -38,6 +39,8 @@ export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: S
   const streaming = stageRun.streaming
   const activityContent = stageRun.activityContent
   const liveMessages = stageRun.liveMessages
+  const rewindTurnId = stageRun.rewindTurnId
+  const [editingTurn, setEditingTurn] = useState<{ id: string; content: string } | null>(null)
   const liveStageKeyRef = useRef(stageKey)
   const previousSnapshotKeyRef = useRef(snapshotKey)
   const stageTypography = useStageTypography()
@@ -97,18 +100,20 @@ export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: S
 
   const historyMessages = useMemo<ChatMessage[]>(() => {
     const turns = snapshot?.turns || []
-    const visibleTurns = duplicatePersistedLiveTurn ? turns.slice(0, -1) : turns
+    const rewindIndex = rewindTurnId ? turns.findIndex((turn) => turn.id === rewindTurnId) : -1
+    const pathTurns = rewindIndex >= 0 ? turns.slice(0, rewindIndex) : turns
+    const visibleTurns = duplicatePersistedLiveTurn ? pathTurns.slice(0, -1) : pathTurns
     return visibleTurns.flatMap((turn) => {
       const messages: ChatMessage[] = [
-        { id: `${turn.id}-user`, role: 'user', content: turn.user },
+        { id: `${turn.id}-user`, turn_id: turn.id, role: 'user', content: turn.user },
       ]
       if (turn.thinking?.trim()) {
         messages.push({ id: `${turn.id}-thinking`, role: 'thinking', content: turn.thinking, streaming: false })
       }
-      messages.push({ id: `${turn.id}-assistant`, role: 'assistant', content: turn.narrative })
+      messages.push({ id: `${turn.id}-assistant`, turn_id: turn.id, role: 'assistant', content: turn.narrative })
       return messages
     })
-  }, [duplicatePersistedLiveTurn, snapshot?.turns])
+  }, [duplicatePersistedLiveTurn, rewindTurnId, snapshot?.turns])
 
   const messages = useMemo(() => [...historyMessages, ...liveMessages], [historyMessages, liveMessages])
   const scrollResetKey = `${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
@@ -117,20 +122,32 @@ export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: S
     const choices = snapshot?.current_turn?.hot_state?.choices || []
     return choices.map((choice) => choice.trim()).filter(Boolean).slice(0, 5)
   }, [snapshot?.current_turn?.hot_state?.choices])
+  const showHotChoices = !streaming && !editingTurn && inputFocused && hotChoices.length > 0
+  const turnsById = useMemo(() => {
+    const result = new Map<string, { user: string }>()
+    for (const turn of snapshot?.turns || []) {
+      result.set(turn.id, { user: turn.user })
+    }
+    return result
+  }, [snapshot?.turns])
 
-  const send = async () => {
-    const message = input.trim()
+  const send = async (override?: { message?: string; rewindTurnId?: string }) => {
+    const sourceMessage = override?.message ?? input
+    const message = sourceMessage.trim()
     if (!message || !storyId || streaming) return
+    const nextRewindTurnId = override?.rewindTurnId ?? editingTurn?.id
     setInput('')
+    setEditingTurn(null)
     setStageActivityContent('正在连接 AI Agent…')
     setStageLiveMessages([{ role: 'user', content: message }])
+    updateStageRun({ rewindTurnId: nextRewindTurnId || undefined })
     liveStageKeyRef.current = stageKey
     setStageStreaming(true)
     const abortController = new AbortController()
     stageAbortControllers.set(stageKey, abortController)
     const narrativeFilter = createInteractiveNarrativeFilter()
     try {
-      const stream = await sendInteractiveMessage({ mode: 'story', story_id: storyId, branch: branchId, message, signal: abortController.signal })
+      const stream = await sendInteractiveMessage({ mode: 'story', story_id: storyId, branch: branchId, message, regenerate_from_turn_id: nextRewindTurnId || undefined, signal: abortController.signal })
       const reader = stream.getReader()
       while (true) {
         const { done, value } = await reader.read()
@@ -205,6 +222,28 @@ export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: S
     setStageActivityContent('正在中断…')
   }
 
+  const startEditingMessage = (message: ChatMessage) => {
+    if (!message.turn_id || streaming) return
+    setEditingTurn({ id: message.turn_id, content: message.content || '' })
+    setInput(message.content || '')
+    window.requestAnimationFrame(() => {
+      const length = message.content?.length || 0
+      inputRef.current?.focus()
+      inputRef.current?.setSelectionRange(length, length)
+    })
+  }
+
+  const regenerateMessage = (message: ChatMessage) => {
+    if (!message.turn_id || streaming) return
+    const source = turnsById.get(message.turn_id)?.user || message.content || ''
+    void send({ message: source, rewindTurnId: message.turn_id })
+  }
+
+  const cancelEditing = () => {
+    setEditingTurn(null)
+    setInput('')
+  }
+
   return (
     <main className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
       <div data-testid="story-stage-card" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
@@ -247,6 +286,8 @@ export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: S
                 scrollResetKey={scrollResetKey}
                 bottomPaddingClassName="pb-6"
                 messageStyle={stageTextStyle}
+                onEditMessage={startEditingMessage}
+                onRegenerateMessage={regenerateMessage}
               />
             )}
           </section>
@@ -254,29 +295,48 @@ export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: S
       </div>
       <div className="shrink-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">
         <div className="mx-auto max-w-5xl">
-          {!streaming && hotChoices.length > 0 ? (
-            <div className="mb-3 border-b border-[var(--nova-border)] pb-3">
-              <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-[var(--nova-text-faint)]">
-                <Compass className="h-3.5 w-3.5" />
-                可选择
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {hotChoices.map((choice, index) => (
-                  <button
-                    key={`${index}-${choice}`}
-                    type="button"
-                    className="max-w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1.5 text-left text-xs leading-5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-                    onClick={() => {
-                      setInput(choice)
-                      window.requestAnimationFrame(() => {
-                        inputRef.current?.focus()
-                        inputRef.current?.setSelectionRange(choice.length, choice.length)
-                      })
-                    }}
-                  >
-                    {choice}
-                  </button>
-                ))}
+          {editingTurn && !streaming ? (
+            <div className="mb-3 flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
+              <Pencil className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+              <span className="min-w-0 flex-1 truncate">正在编辑这轮输入，发送后会从该回合重新生成后续内容。</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                className="h-7 w-7 shrink-0 text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
+                onClick={cancelEditing}
+                aria-label="取消编辑"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ) : null}
+          {hotChoices.length > 0 ? (
+            <div className={`grid overflow-hidden transition-[grid-template-rows,opacity,transform,margin] duration-300 ease-out ${showHotChoices ? 'mb-3 grid-rows-[1fr] translate-y-0 opacity-100' : 'mb-0 grid-rows-[0fr] translate-y-1 opacity-0 pointer-events-none'}`}>
+              <div className="min-h-0 overflow-hidden border-b border-[var(--nova-border)] pb-3">
+                <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-[var(--nova-text-faint)]">
+                  <Compass className="h-3.5 w-3.5" />
+                  可选择
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {hotChoices.map((choice, index) => (
+                    <button
+                      key={`${index}-${choice}`}
+                      type="button"
+                      className="max-w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1.5 text-left text-xs leading-5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setInput(choice)
+                        window.requestAnimationFrame(() => {
+                          inputRef.current?.focus()
+                          inputRef.current?.setSelectionRange(choice.length, choice.length)
+                        })
+                      }}
+                    >
+                      {choice}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           ) : null}
@@ -287,6 +347,8 @@ export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: S
               style={stageTextStyle}
               value={input}
               placeholder="你要做什么？"
+              onFocus={() => setInputFocused(true)}
+              onBlur={() => setInputFocused(false)}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.shiftKey) {
@@ -299,10 +361,10 @@ export function StoryStage({ workspace, storyId, branchId, snapshot, onDone }: S
               className={`h-14 w-24 border border-[var(--nova-border)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-red-500/45 hover:bg-red-500/55' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
               disabled={streaming ? false : (!storyId || !input.trim())}
               onClick={() => { streaming ? stop() : void send() }}
-              aria-label={streaming ? '中断 AI 执行' : '发送'}
+              aria-label={streaming ? '中断 AI 执行' : (editingTurn ? '发送并重新生成' : '发送')}
             >
-              {streaming ? <Square className="h-4 w-4 fill-current" /> : <Send className="h-4 w-4" />}
-              {streaming ? '中断' : '发送'}
+              {streaming ? <Square className="h-4 w-4 fill-current" /> : editingTurn ? <RefreshCw className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+              {streaming ? '中断' : editingTurn ? '重生成' : '发送'}
             </Button>
           </div>
         </div>

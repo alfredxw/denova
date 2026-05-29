@@ -15,6 +15,7 @@ type Config struct {
 	SkillsDir                   string `toml:"skills_dir"`
 	NovaDir                     string `toml:"nova_dir"`
 	Workspace                   string `toml:"workspace"`
+	IDEStoryTellerID            string `toml:"-"`
 	InteractiveReplyTargetChars int    `toml:"-"`
 	InteractiveMaxTokens        int    `toml:"-"`
 	ResumeLastWorkspace         bool   `toml:"-"`
@@ -51,6 +52,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		SkillsDir:                   s.SkillsDir,
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
+		IDEStoryTellerID:            s.IDEStoryTellerID,
 		InteractiveReplyTargetChars: settingsInt(s.InteractiveReplyTargetChars, 1200),
 		InteractiveMaxTokens:        settingsInt(s.InteractiveMaxTokens, 0),
 		ResumeLastWorkspace:         true,
@@ -122,6 +124,7 @@ func Load() *Config {
 			OpenAIModel:                 d.OpenAIModel,
 			SkillsDir:                   d.SkillsDir,
 			NovaDir:                     normalizePath(d.NovaDir),
+			IDEStoryTellerID:            d.IDEStoryTellerID,
 			InteractiveReplyTargetChars: settingsInt(d.InteractiveReplyTargetChars, 1200),
 			InteractiveMaxTokens:        settingsInt(d.InteractiveMaxTokens, 0),
 			ResumeLastWorkspace:         true,

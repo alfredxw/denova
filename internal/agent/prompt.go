@@ -13,17 +13,34 @@ import (
 	"nova/internal/prompts"
 )
 
+// IDEStoryTeller 描述 IDE 创作 Agent 本轮使用的默认讲述者规则。
+type IDEStoryTeller struct {
+	ID          string
+	Name        string
+	Description string
+	Prompt      string
+}
+
 // BuildInstruction 构建系统指令，包含基础 prompt + 作品状态注入。
 // 实际的 Prompt 文本集中在 internal/prompts 包，这里只负责把 cfg/state 翻译成 prompts.SystemInstructionInput。
-func BuildInstruction(cfg *config.Config, state *book.State) string {
+func BuildInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) string {
 	creator := state.ReadCreatorPrompt()
 	stateContext := state.CompactContext()
 	instruction := prompts.BuildSystemInstruction(prompts.SystemInstructionInput{
-		CreatorPrompt: creator,
-		Workspace:     cfg.Workspace,
-		StateContext:  stateContext,
+		CreatorPrompt:          creator,
+		Workspace:              cfg.Workspace,
+		StateContext:           stateContext,
+		StoryTellerID:          teller.ID,
+		StoryTellerName:        teller.Name,
+		StoryTellerDescription: teller.Description,
+		StoryTellerPrompt:      teller.Prompt,
 	})
-	logSystemPromptComposition("ide", cfg.Workspace, creator, stateContext, instruction)
+	logSystemPromptComposition("ide", cfg.Workspace, creator, stateContext, instruction, promptSource{
+		source:  "系统提示",
+		title:   "IDE 默认讲述者规则",
+		content: teller.Prompt,
+		note:    teller.ID,
+	})
 	return instruction
 }
 

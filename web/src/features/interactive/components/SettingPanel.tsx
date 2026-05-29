@@ -34,6 +34,7 @@ import type { Teller, TellerAgentResult, TellerPromptSlot } from '../types'
 const CREATOR_PATH = 'CREATOR.md'
 const LORE_AGENT_ENTRY_ID = '__lore_agent__'
 const TELLER_AGENT_ENTRY_ID = '__teller_agent__'
+const EMPTY_TELLERS: Teller[] = []
 
 const TYPE_OPTIONS = [
   { value: 'character', label: '角色' },
@@ -102,9 +103,10 @@ interface SettingPanelProps {
   workspace?: string
   tellers?: Teller[]
   onTellersChange?: (tellers: Teller[]) => void
+  embedded?: boolean
 }
 
-export function SettingPanel({ mode, workspace = '', tellers: externalTellers = [], onTellersChange }: SettingPanelProps) {
+export function SettingPanel({ mode, workspace = '', tellers: externalTellers = EMPTY_TELLERS, onTellersChange, embedded = false }: SettingPanelProps) {
   const activeMode = mode || 'lore'
   const [items, setItems] = useState<LoreItem[]>([])
   const [activeId, setActiveId] = useState('')
@@ -188,13 +190,29 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }, [externalTellers])
 
   useEffect(() => {
-    setTellers([])
-    setActiveTellerId('')
-    setTellerAgentTargetId('')
+    if (activeMode !== 'teller' || onTellersChange || externalTellers.length > 0 || !workspace) return
+    let cancelled = false
+    getInteractiveTellers()
+      .then((data) => {
+        if (cancelled) return
+        setTellers(data)
+        setActiveTellerId((current) => current || data[0]?.id || '')
+        setTellerAgentTargetId((current) => current || data[0]?.id || '')
+      })
+      .catch(() => {
+        if (!cancelled) setTellers([])
+      })
+    return () => { cancelled = true }
+  }, [activeMode, externalTellers.length, onTellersChange, workspace])
+
+  useEffect(() => {
+    setTellers(externalTellers)
+    setActiveTellerId(externalTellers[0]?.id || '')
+    setTellerAgentTargetId(externalTellers[0]?.id || '')
     setTellerDraft(null)
     setTellerTagDraft('')
     setActiveSlotId('')
-  }, [workspace])
+  }, [externalTellers, workspace])
 
   useEffect(() => {
     if (activeTellerId === TELLER_AGENT_ENTRY_ID) {
@@ -254,6 +272,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         content: `## ${section.createName}\n\n`,
       })
       await refreshItems(item.id)
+      notifyLoreUpdated([item.id])
     } finally {
       setSaving(false)
     }
@@ -288,6 +307,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     try {
       await deleteLoreItem(draft.id)
       await refreshItems()
+      notifyLoreUpdated([draft.id])
     } finally {
       setSaving(false)
     }
@@ -312,6 +332,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       if (!draft) return
       const item = await updateLoreItem(draft.id, { ...draft, tags: splitTags(tagDraft) })
       await refreshItems(item.id)
+      notifyLoreUpdated([item.id])
     } finally {
       setSaving(false)
     }
@@ -336,6 +357,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       setItems(restored)
       setActiveId(LORE_AGENT_ENTRY_ID)
       await refreshVersions()
+      notifyLoreUpdated(restored.map((item) => item.id))
     } finally {
       setSaving(false)
     }
@@ -344,6 +366,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const handleLoreAgentResult = async (result: LoreAgentResult) => {
     setItems(result.items || [])
     await refreshVersions()
+    notifyLoreUpdated(result.items?.map((item) => item.id) || [])
   }
 
   const handleTellerAgentResult = (result: TellerAgentResult) => {
@@ -364,7 +387,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const isTellerAgentActive = activeMode === 'teller' && activeTellerId === TELLER_AGENT_ENTRY_ID
   return (
     <section className="flex h-full min-h-0 bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
-      <aside className="nova-sidebar flex w-[320px] shrink-0 flex-col border-r">
+      <aside className={`nova-sidebar flex shrink-0 flex-col border-r ${embedded ? 'w-56' : 'w-[320px]'}`}>
         <div className="border-b border-[var(--nova-border)] px-3 py-3">
           <div className="flex items-center gap-2">
             <ModeIcon mode={activeMode} />
@@ -1885,6 +1908,11 @@ function splitTags(value: string) {
     .split(/[，,]/)
     .map((tag) => tag.trim())
     .filter(Boolean)
+}
+
+function notifyLoreUpdated(itemIds: string[] = []) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { item_ids: itemIds } }))
 }
 
 function parseLoreEventData<T>(data: string): T | null {

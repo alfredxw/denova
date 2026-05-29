@@ -4,8 +4,8 @@ import { Badge } from '@/components/ui/badge'
 interface ReferenceChipsProps {
   files: string[]
   onRemove?: (path: string) => void
-  prefix?: '@' | '#'
-  tone?: 'file' | 'style'
+  prefix?: string
+  tone?: 'file' | 'style' | 'lore'
 }
 
 /** 引用文件标签列表，展示本次 Chat 会随消息发送的文件。 */
@@ -13,7 +13,9 @@ export function ReferenceChips({ files, onRemove, prefix = '@', tone = 'file' }:
   if (files.length === 0) return null
   const toneClass = tone === 'style'
     ? 'bg-[#8b5cf6]/20 text-[#ddd6fe] hover:bg-[#8b5cf6]/25'
-    : 'bg-[#4a4d54]/20 text-[#d7dbe2] hover:bg-[#4a4d54]/25'
+    : tone === 'lore'
+      ? 'bg-[#0f766e]/20 text-[#99f6e4] hover:bg-[#0f766e]/25'
+      : 'bg-[#4a4d54]/20 text-[#d7dbe2] hover:bg-[#4a4d54]/25'
   const closeClass = tone === 'style' ? 'text-[#c5c9d1] hover:text-white' : 'text-[#c5c9d1] hover:text-white'
 
   return (
