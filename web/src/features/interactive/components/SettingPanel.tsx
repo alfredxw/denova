@@ -513,6 +513,7 @@ type TellerAgentChatMessage = {
   status?: 'running' | 'success' | 'error'
   toolResult?: string
   targetTeller?: Teller
+  tellerReferences?: Teller[]
   result?: TellerAgentResult
 }
 
@@ -954,30 +955,41 @@ function TellerAgentChat({
   const historyWorkspaceRef = useRef<string | null>(null)
   const workspaceRef = useRef(workspace)
   const [value, setValue] = useState('')
+  const [referenceIds, setReferenceIds] = useState<string[]>([])
+  const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [messages, setMessages] = useState<TellerAgentChatMessage[]>([])
   const [running, setRunning] = useState(false)
-  const [updateCurrent, setUpdateCurrent] = useState(Boolean(targetTellerId))
   const targetTeller = tellers.find((teller) => teller.id === targetTellerId) || null
-  const effectiveTargetId = updateCurrent ? (targetTeller?.id || '') : ''
+  const normalizedQuery = (referenceQuery || '').trim().toLowerCase()
+  const referencedTellers = referenceIds
+    .map((id) => tellers.find((teller) => teller.id === id))
+    .filter((teller): teller is Teller => Boolean(teller))
+  const visibleTellers = tellers
+    .filter((teller) => {
+      if (referenceIds.includes(teller.id)) return false
+      if (!normalizedQuery) return true
+      const haystack = `${teller.name}\n${teller.id}\n${teller.description}\n${(teller.tags || []).join('\n')}`.toLowerCase()
+      return haystack.includes(normalizedQuery)
+    })
+    .slice(0, 30)
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, running])
 
   useEffect(() => {
-    if (!targetTellerId) {
-      setUpdateCurrent(false)
-    }
-  }, [targetTellerId])
+    setReferenceIds((current) => current.filter((id) => tellers.some((teller) => teller.id === id)))
+  }, [tellers])
 
   useEffect(() => {
     workspaceRef.current = workspace
     if (historyWorkspaceRef.current === workspace) return
     historyWorkspaceRef.current = workspace || null
     setValue('')
+    setReferenceIds([])
+    setReferenceQuery(null)
     setMessages([])
     setRunning(false)
-    setUpdateCurrent(Boolean(targetTellerId))
     if (!workspace) return
     let cancelled = false
     getInteractiveTellerAgentMessages()
@@ -992,6 +1004,28 @@ function TellerAgentChat({
       })
     return () => { cancelled = true }
   }, [workspace])
+
+  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    const nextValue = event.target.value
+    setValue(nextValue)
+    const atMatch = nextValue.match(/(?:^|\s)@([^\s@]*)$/)
+    setReferenceQuery(atMatch ? atMatch[1] : null)
+  }
+
+  const selectReference = (teller: Teller) => {
+    const nextValue = value.replace(/(?:^|\s)@([^\s@]*)$/, (match) => {
+      const prefix = match.startsWith(' ') ? ' ' : ''
+      return `${prefix}@${teller.name} `
+    })
+    setValue(nextValue === value ? `${value.trimEnd()} @${teller.name} ` : nextValue)
+    setReferenceIds((current) => current.includes(teller.id) ? current : [...current, teller.id])
+    setReferenceQuery(null)
+    textareaRef.current?.focus()
+  }
+
+  const removeReference = (id: string) => {
+    setReferenceIds((current) => current.filter((entry) => entry !== id))
+  }
 
   const appendMessage = (message: Omit<TellerAgentChatMessage, 'id'>) => {
     setMessages((current) => [...current, { ...message, id: `${Date.now()}-${current.length}` }])
@@ -1058,6 +1092,8 @@ function TellerAgentChat({
         if (workspaceRef.current !== activeWorkspace) return
         appendMessage({ role: 'clear', content: '已清理讲述者 Agent 上下文，历史消息仍保留。' })
         setValue('')
+        setReferenceIds([])
+        setReferenceQuery(null)
       } catch (error) {
         if (workspaceRef.current !== activeWorkspace) return
         appendMessage({ role: 'error', content: error instanceof Error ? error.message : '讲述者 Agent 上下文清理失败' })
@@ -1066,11 +1102,17 @@ function TellerAgentChat({
       }
       return
     }
-    appendMessage({ role: 'user', content: instruction, targetTeller: effectiveTargetId ? targetTeller || undefined : undefined })
+    const refs = [...referenceIds]
+    const userReferences = refs
+      .map((id) => tellers.find((teller) => teller.id === id))
+      .filter((teller): teller is Teller => Boolean(teller))
+    appendMessage({ role: 'user', content: instruction, targetTeller: targetTeller || undefined, tellerReferences: userReferences })
     setValue('')
+    setReferenceIds([])
+    setReferenceQuery(null)
     setRunning(true)
     try {
-      const stream = await runInteractiveTellerAgentStream(instruction, effectiveTargetId)
+      const stream = await runInteractiveTellerAgentStream(instruction, targetTeller?.id || '', refs)
       const reader = stream.getReader()
       while (true) {
         const { done, value: event } = await reader.read()
@@ -1135,35 +1177,30 @@ function TellerAgentChat({
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       void send()
+      return
+    }
+    if (event.key === 'Escape') {
+      setReferenceQuery(null)
     }
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4">
-        <div className="text-xs text-[var(--nova-text-faint)]">输入 /clear 可清理后续上下文；每次只会创建或修改一个讲述者。</div>
-        <label className="flex items-center gap-2 text-xs text-[var(--nova-text-muted)]">
-          <input
-            type="checkbox"
-            checked={updateCurrent}
-            disabled={!targetTeller || running}
-            onChange={(event) => setUpdateCurrent(event.target.checked)}
-          />
-          修改当前讲述者
-        </label>
+        <div className="text-xs text-[var(--nova-text-faint)]">输入 /clear 可清理后续上下文；Agent 会根据本轮意图新建或修改一个讲述者。</div>
       </div>
 
       <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3">
         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_220px]">
           <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
-            {effectiveTargetId && targetTeller ? `本轮将修改「${targetTeller.name}」` : '本轮将创建一个新讲述者'}
+            {targetTeller ? `当前参考「${targetTeller.name}」；也可以在输入中 @ 其他讲述者或直接要求新建` : '未选择参考讲述者；Agent 会按指令自由判断'}
           </div>
           <Select value={targetTellerId || 'none'} onValueChange={(value) => onTargetTellerIdChange(value === 'none' ? '' : value)}>
             <SelectTrigger size="sm" className={selectClassName}>
-              <SelectValue placeholder="选择目标讲述者" />
+              <SelectValue placeholder="选择参考讲述者" />
             </SelectTrigger>
             <SelectContent className="nova-panel border text-[var(--nova-text)]">
-              <SelectItem value="none">不选择，创建新讲述者</SelectItem>
+              <SelectItem value="none">不选择，按指令判断</SelectItem>
               {tellers.map((teller) => (
                 <SelectItem key={teller.id} value={teller.id}>{teller.name}</SelectItem>
               ))}
@@ -1174,7 +1211,7 @@ function TellerAgentChat({
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {messages.length === 0 ? (
-          <EmptyState title="讲述者 Agent" description="描述你想要的讲述者，或选择目标后让 Agent 修改它。" />
+          <EmptyState title="讲述者 Agent" description="描述要新建或修改的讲述者；需要限定对象时，在输入框里用 @ 引用讲述者。" />
         ) : (
           <div className="mx-auto flex max-w-4xl flex-col gap-3">
             {messages.map((message) => (
@@ -1195,16 +1232,70 @@ function TellerAgentChat({
         <div className="mx-auto max-w-4xl">
           <div className="nova-field flex min-w-0 items-end gap-2 rounded-[var(--nova-radius)] px-3 py-2">
             <Bot className="mb-2 h-4 w-4 shrink-0 text-[var(--nova-text-faint)]" />
-            <textarea
-              ref={textareaRef}
-              className="max-h-36 min-h-10 min-w-0 flex-1 resize-none bg-transparent text-sm leading-5 text-[var(--nova-text)] outline-none placeholder:text-[var(--nova-text-faint)] disabled:opacity-60"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={running ? '讲述者 Agent 正在执行...' : '输入讲述者创建或修改指令，Enter 发送，Shift+Enter 换行'}
-              rows={2}
-              disabled={running}
-            />
+            <div className="relative min-w-0 flex-1">
+              <Popover open={referenceQuery !== null && visibleTellers.length > 0}>
+                <PopoverTrigger asChild>
+                  <span className="absolute bottom-full left-0 h-0 w-0" />
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  side="top"
+                  className="mb-2 w-[360px] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)]"
+                  onOpenAutoFocus={(event) => event.preventDefault()}
+                >
+                  <Command shouldFilter={false} className="bg-transparent">
+                    <CommandInput value={referenceQuery || ''} readOnly placeholder="搜索讲述者..." />
+                    <CommandList>
+                      <CommandEmpty>未找到讲述者</CommandEmpty>
+                      <CommandGroup heading="引用讲述者">
+                        {visibleTellers.map((teller) => (
+                          <CommandItem
+                            key={teller.id}
+                            value={teller.id}
+                            onSelect={() => selectReference(teller)}
+                            className="cursor-pointer"
+                          >
+                            <span className="min-w-0 flex-1 truncate">@{teller.name}</span>
+                            <span className="text-[11px] text-[var(--nova-text-faint)]">{teller.id}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <textarea
+                ref={textareaRef}
+                className="max-h-36 min-h-10 w-full resize-none bg-transparent text-sm leading-5 text-[var(--nova-text)] outline-none placeholder:text-[var(--nova-text-faint)] disabled:opacity-60"
+                value={value}
+                onChange={handleChange}
+                onKeyDown={handleKeyDown}
+                placeholder={running ? '讲述者 Agent 正在执行...' : '输入讲述者创建或修改指令，可用 @ 引用，Enter 发送'}
+                rows={2}
+                disabled={running}
+              />
+            </div>
+            {referencedTellers.length > 0 && (
+              <div className="flex max-w-[220px] flex-wrap justify-end gap-1.5">
+                {referencedTellers.map((teller) => (
+                  <span
+                    key={teller.id}
+                    className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-xs text-[var(--nova-text-muted)]"
+                  >
+                    <AtSign className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
+                    <span className="truncate">{teller.name}</span>
+                    <button
+                      type="button"
+                      className="rounded text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
+                      onClick={() => removeReference(teller.id)}
+                      aria-label={`移除引用 ${teller.name}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <Button className={actionButtonClassName} variant="outline" size="sm" disabled={running || !value.trim()} onClick={() => void send()}>
               {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               {running ? '执行中...' : '发送'}
@@ -1365,7 +1456,17 @@ function TellerAgentMessage({ message }: { message: TellerAgentChatMessage }) {
         {message.targetTeller && (
           <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-xs text-[var(--nova-text-muted)]">
             <SlidersHorizontal className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
-            <span className="truncate">修改：{message.targetTeller.name}</span>
+            <span className="truncate">参考：{message.targetTeller.name}</span>
+          </div>
+        )}
+        {message.tellerReferences && message.tellerReferences.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {message.tellerReferences.map((teller) => (
+              <span key={teller.id} className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-xs text-[var(--nova-text-muted)]">
+                <AtSign className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
+                <span className="truncate">{teller.name}</span>
+              </span>
+            ))}
           </div>
         )}
         {message.result && (
@@ -1957,12 +2058,12 @@ function tellerHistoryMessageToChat(message: ChatMessage, index: number, tellers
     id: `history-${index}`,
     role,
     content: message.content || '',
-    targetTeller: role === 'user' ? tellerReferenceFromContent(message.content || '', tellers) : undefined,
+    tellerReferences: role === 'user' ? tellerReferencesFromContent(message.content || '', tellers) : undefined,
   }
 }
 
-function tellerReferenceFromContent(content: string, tellers: Teller[]) {
-  return tellers.find((teller) => teller.name && content.includes(teller.name))
+function tellerReferencesFromContent(content: string, tellers: Teller[]) {
+  return tellers.filter((teller) => teller.name && content.includes(`@${teller.name}`))
 }
 
 function loreAgentResultSummary(result: LoreAgentResult) {

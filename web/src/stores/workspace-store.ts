@@ -9,7 +9,7 @@ const MODE_STORAGE_KEY = 'nova:mode'
 function readInitialMode(): WorkspaceMode {
   if (typeof window === 'undefined') return 'ide'
   const stored = window.localStorage.getItem(MODE_STORAGE_KEY)
-  return stored === 'interactive' || stored === 'books' ? stored : 'ide'
+  return stored === 'interactive' ? stored : 'ide'
 }
 
 type WorkspaceStore = {
@@ -36,7 +36,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   bottomPanel: null,
   commandOpen: false,
   setMode: (mode) => {
-    if (typeof window !== 'undefined') window.localStorage.setItem(MODE_STORAGE_KEY, mode)
+    if (typeof window !== 'undefined' && mode !== 'books') window.localStorage.setItem(MODE_STORAGE_KEY, mode)
     set({ mode })
   },
   setSelectedProjectId: (id) => set({ selectedProjectId: id }),

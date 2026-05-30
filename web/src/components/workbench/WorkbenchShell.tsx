@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BookMarked, BookOpen, Database, GitBranch, MessageSquareText, PanelLeft, PanelRight, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
+import { BookMarked, BookOpen, Database, GitBranch, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
@@ -9,6 +9,7 @@ import { formatNumber } from './workbench-utils'
 
 interface WorkbenchShellProps {
   mode: WorkspaceMode
+  booksReturnMode: Exclude<WorkspaceMode, 'books'>
   currentBookName: string
   workspace: string
   appVersion: string
@@ -20,20 +21,20 @@ interface WorkbenchShellProps {
   rightPanel: RightPanel
   settingsOpen: boolean
   interactiveSubmode: InteractiveSubmode
-  interactiveRightPanelVisible: boolean
   sidebar: ReactNode
   main: ReactNode
   rightPanelContent: ReactNode
   onSetMode: (mode: WorkspaceMode) => void
   onToggleActivityBarExpanded: () => void
   onSetInteractiveSubmode: (mode: InteractiveSubmode) => void
-  onToggleInteractiveRightPanel: () => void
   onSetRightPanel: (panel: RightPanel) => void
   onToggleSettings: () => void
+  onCloseSettings: () => void
 }
 
 export function WorkbenchShell({
   mode,
+  booksReturnMode,
   currentBookName,
   workspace,
   appVersion,
@@ -45,28 +46,71 @@ export function WorkbenchShell({
   rightPanel,
   settingsOpen,
   interactiveSubmode,
-  interactiveRightPanelVisible,
   sidebar,
   main,
   rightPanelContent,
   onSetMode,
   onToggleActivityBarExpanded,
   onSetInteractiveSubmode,
-  onToggleInteractiveRightPanel,
   onSetRightPanel,
   onToggleSettings,
+  onCloseSettings,
 }: WorkbenchShellProps) {
   const loreVisible = rightPanel === 'lore'
   const creatorVisible = rightPanel === 'creator'
   const tellerVisible = rightPanel === 'teller'
   const versionsVisible = rightPanel === 'versions'
-  const fullWorkspacePanelVisible = mode === 'ide' && (loreVisible || creatorVisible || tellerVisible)
+  const fullWorkspacePanelVisible = settingsOpen || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
   const modeLabel = mode === 'interactive' ? '互动工作台' : mode === 'books' ? '书籍管理' : '小说 IDE'
+  const navigationMode = mode === 'books' ? booksReturnMode : mode
+
+  const closeSettingsIfOpen = () => {
+    if (settingsOpen) onCloseSettings()
+  }
+
+  const openWriting = () => {
+    closeSettingsIfOpen()
+    onSetMode('ide')
+    if (loreVisible || creatorVisible || tellerVisible || versionsVisible) onSetRightPanel(null)
+  }
+
+  const toggleIdePanel = (panel: NonNullable<RightPanel>) => {
+    closeSettingsIfOpen()
+    onSetMode('ide')
+    onSetRightPanel(rightPanel === panel ? null : panel)
+  }
+
+  const openInteractiveSubmode = (nextMode: InteractiveSubmode) => {
+    closeSettingsIfOpen()
+    onSetMode('interactive')
+    onSetInteractiveSubmode(nextMode)
+  }
+
+  const openBooks = () => {
+    closeSettingsIfOpen()
+    onSetMode('books')
+  }
 
   const topBar = (
     <header className="nova-topbar grid h-10 shrink-0 grid-cols-[auto_1fr_auto] items-center border-b px-3 text-xs">
       <div className="flex items-center gap-3">
         <div className="font-semibold text-[var(--nova-text)]">Nova</div>
+        <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label="模式切换">
+          <button
+            type="button"
+            onClick={() => onSetMode('ide')}
+            className={`rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+          >
+            IDE 模式
+          </button>
+          <button
+            type="button"
+            onClick={() => onSetMode('interactive')}
+            className={`rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+          >
+            互动模式
+          </button>
+        </div>
       </div>
       <div className="mx-auto flex min-w-0 max-w-[520px] items-center justify-center gap-1.5" title={workspace || currentBookName}>
         <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
@@ -83,7 +127,7 @@ export function WorkbenchShell({
       <ActivityButton
         expanded={activityBarExpanded}
         label="资料库"
-        onClick={() => onSetRightPanel(loreVisible ? null : 'lore')}
+        onClick={() => toggleIdePanel('lore')}
         className={`nova-icon-button mb-2 ${loreVisible ? 'is-active' : ''}`}
       >
         <Database className="h-4 w-4" />
@@ -91,7 +135,7 @@ export function WorkbenchShell({
       <ActivityButton
         expanded={activityBarExpanded}
         label="创作者"
-        onClick={() => onSetRightPanel(creatorVisible ? null : 'creator')}
+        onClick={() => toggleIdePanel('creator')}
         className={`nova-icon-button mb-2 ${creatorVisible ? 'is-active' : ''}`}
       >
         <BookMarked className="h-4 w-4" />
@@ -99,7 +143,7 @@ export function WorkbenchShell({
       <ActivityButton
         expanded={activityBarExpanded}
         label="讲述者"
-        onClick={() => onSetRightPanel(tellerVisible ? null : 'teller')}
+        onClick={() => toggleIdePanel('teller')}
         className={`nova-icon-button mb-2 ${tellerVisible ? 'is-active' : ''}`}
       >
         <SlidersHorizontal className="h-4 w-4" />
@@ -107,7 +151,7 @@ export function WorkbenchShell({
       <ActivityButton
         expanded={activityBarExpanded}
         label="版本管理"
-        onClick={() => onSetRightPanel(versionsVisible ? null : 'versions')}
+        onClick={() => toggleIdePanel('versions')}
         className={`nova-icon-button mb-2 ${versionsVisible ? 'is-active' : ''}`}
       >
         <GitBranch className="h-4 w-4" />
@@ -120,82 +164,69 @@ export function WorkbenchShell({
       <ActivityButton
         expanded={activityBarExpanded}
         label="剧情"
-        onClick={() => onSetInteractiveSubmode('story')}
-        className={`nova-icon-button mb-2 ${interactiveSubmode === 'story' ? 'is-active' : ''}`}
+        onClick={() => openInteractiveSubmode('story')}
+        className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'story' ? 'is-active' : ''}`}
       >
         <MessageSquareText className="h-4 w-4" />
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
         label="剧情路线图"
-        onClick={() => onSetInteractiveSubmode('timeline')}
-        className={`nova-icon-button mb-2 ${interactiveSubmode === 'timeline' ? 'is-active' : ''}`}
+        onClick={() => openInteractiveSubmode('timeline')}
+        className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'timeline' ? 'is-active' : ''}`}
       >
         <GitBranch className="h-4 w-4" />
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
         label="资料库"
-        onClick={() => onSetInteractiveSubmode('lore')}
-        className={`nova-icon-button mb-2 ${interactiveSubmode === 'lore' ? 'is-active' : ''}`}
+        onClick={() => openInteractiveSubmode('lore')}
+        className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'lore' ? 'is-active' : ''}`}
       >
         <Database className="h-4 w-4" />
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
         label="创作者"
-        onClick={() => onSetInteractiveSubmode('creator')}
-        className={`nova-icon-button mb-2 ${interactiveSubmode === 'creator' ? 'is-active' : ''}`}
+        onClick={() => openInteractiveSubmode('creator')}
+        className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'creator' ? 'is-active' : ''}`}
       >
         <BookMarked className="h-4 w-4" />
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
         label="讲述者"
-        onClick={() => onSetInteractiveSubmode('teller')}
-        className={`nova-icon-button mb-2 ${interactiveSubmode === 'teller' ? 'is-active' : ''}`}
+        onClick={() => openInteractiveSubmode('teller')}
+        className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'teller' ? 'is-active' : ''}`}
       >
         <SlidersHorizontal className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={interactiveRightPanelVisible ? '隐藏场景记忆' : '显示场景记忆'}
-        onClick={onToggleInteractiveRightPanel}
-        className={`nova-icon-button mb-2 ${interactiveRightPanelVisible ? 'is-active' : ''}`}
-      >
-        <PanelRight className="h-4 w-4" />
       </ActivityButton>
     </>
   )
 
   const activityBar = (
     <aside className={`nova-activity-bar flex shrink-0 flex-col gap-2 border-r p-3 transition-[width] duration-500 ease-[var(--nova-ease)] ${activityBarExpanded ? 'is-expanded w-48 items-stretch' : 'w-16 items-center'}`}>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label="写作"
-        onClick={() => onSetMode('ide')}
-        className={`nova-icon-button ${mode === 'ide' ? 'is-active' : ''}`}
-      >
-        <PenLine className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label="互动"
-        onClick={() => onSetMode('interactive')}
-        className={`nova-icon-button ${mode === 'interactive' ? 'is-active' : ''}`}
-      >
-        <MessageSquareText className="h-4 w-4" />
-      </ActivityButton>
+      {navigationMode === 'interactive' ? interactiveActivityButtons : (
+        <>
+          <ActivityButton
+            expanded={activityBarExpanded}
+            label="写作"
+            onClick={openWriting}
+            className={`nova-icon-button mb-2 ${mode === 'ide' && !settingsOpen && !loreVisible && !creatorVisible && !tellerVisible && !versionsVisible ? 'is-active' : ''}`}
+          >
+            <PenLine className="h-4 w-4" />
+          </ActivityButton>
+          {ideActivityButtons}
+        </>
+      )}
       <ActivityButton
         expanded={activityBarExpanded}
         label="书籍管理"
-        onClick={() => onSetMode('books')}
-        className={`nova-icon-button ${mode === 'books' ? 'is-active' : ''}`}
+        onClick={openBooks}
+        className={`nova-icon-button mb-2 ${mode === 'books' && !settingsOpen ? 'is-active' : ''}`}
       >
         <BookOpen className="h-4 w-4" />
       </ActivityButton>
-      {mode === 'ide' ? ideActivityButtons : null}
-      {mode === 'interactive' ? interactiveActivityButtons : null}
       <div className="mt-auto flex flex-col gap-2">
         <ActivityButton
           expanded={activityBarExpanded}

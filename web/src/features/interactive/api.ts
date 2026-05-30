@@ -62,13 +62,13 @@ export function deleteInteractiveTeller(id: string): Promise<void> {
   return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, { method: 'DELETE' })
 }
 
-export async function runInteractiveTellerAgentStream(instruction: string, tellerId = ''): Promise<ReadableStream<InteractiveSSEEvent>> {
+export async function runInteractiveTellerAgentStream(instruction: string, tellerId = '', references: string[] = []): Promise<ReadableStream<InteractiveSSEEvent>> {
   let res: Response
   try {
     res = await fetch('/api/interactive/tellers/agent/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instruction, teller_id: tellerId }),
+      body: JSON.stringify({ instruction, teller_id: tellerId, references }),
     })
   } catch (error) {
     throw new Error(error instanceof Error && error.name === 'AbortError'

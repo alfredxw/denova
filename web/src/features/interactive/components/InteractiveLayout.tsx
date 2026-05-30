@@ -12,11 +12,13 @@ import { StoryStage } from './StoryStage'
 interface InteractiveLayoutProps {
   workspace?: string
   rightPanelVisible?: boolean
+  onToggleRightPanel?: () => void
 }
 
 export function InteractiveLayout({
   workspace,
   rightPanelVisible = true,
+  onToggleRightPanel,
 }: InteractiveLayoutProps) {
   const {
     stories, tellers, branches, snapshot, currentStoryId, currentBranchId, submode,
@@ -162,10 +164,12 @@ export function InteractiveLayout({
                       storyId={currentStoryId}
                       branchId={currentBranchId}
                       snapshot={currentBranchSnapshot}
+                      sceneMemoryVisible={rightPanelVisible}
                       onStorySelect={setCurrentStoryId}
                       onStoryCreate={handleCreateStory}
                       onStoryDelete={handleDeleteStory}
                       onTellerChange={handleTellerChange}
+                      onToggleSceneMemory={onToggleRightPanel}
                       onDone={reloadSnapshot}
                     />
                   </Panel>

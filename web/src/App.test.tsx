@@ -40,7 +40,7 @@ describe('App', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders the mode switch in the main header', async () => {
+  it('renders the IDE and interactive mode switch in the main header', async () => {
     render(
       <TooltipProvider>
         <App />
@@ -50,8 +50,8 @@ describe('App', () => {
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
     const header = screen.getByText('Nova').closest('header')
     expect(header).not.toBeNull()
-    expect(within(header as HTMLElement).getByRole('button', { name: '写作' })).toBeInTheDocument()
-    expect(within(header as HTMLElement).getByRole('button', { name: '互动' })).toBeInTheDocument()
+    expect(within(header as HTMLElement).getByRole('button', { name: 'IDE 模式' })).toBeInTheDocument()
+    expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toBeInTheDocument()
   })
 
   it('does not render the removed task panel UI', async () => {
@@ -113,7 +113,7 @@ describe('App', () => {
     })
   })
 
-  it('opens settings as a global dialog outside editor tabs', async () => {
+  it('opens settings as a workspace page outside editor tabs', async () => {
     const user = userEvent.setup()
     render(
       <TooltipProvider>
@@ -124,11 +124,11 @@ describe('App', () => {
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
     await user.click(screen.getByRole('button', { name: '设置' }))
 
-    const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByText('IDE 模式')).toBeInTheDocument()
-    expect(within(dialog).getByText('互动模式')).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: '编辑器' })).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: '故事舞台' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '关闭 设置' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(await screen.findByText('IDE 模式')).toBeInTheDocument()
+    expect(screen.getByText('互动模式')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '编辑器' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '故事舞台' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '关闭设置' })).toBeInTheDocument()
   })
 })

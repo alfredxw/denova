@@ -13,6 +13,7 @@ import { SettingPanel } from '@/features/interactive/components/SettingPanel'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
+import { SettingsView } from '@/features/settings/SettingsView'
 import type { Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { BookRecord, ChapterSummary, ChatMessage, LoreItem, SessionSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
@@ -24,6 +25,7 @@ import { flattenFileTree, formatNumber } from './workbench-utils'
 
 interface ModeRouterProps {
   mode: WorkspaceMode
+  booksReturnMode: Exclude<WorkspaceMode, 'books'>
   currentBookName: string
   workspace: string
   appVersion: string
@@ -62,6 +64,7 @@ interface ModeRouterProps {
   onToggleProjectVisible: () => void
   onSetRightPanel: (panel: RightPanel) => void
   onToggleSettings: () => void
+  onCloseSettings: () => void
   onToggleInteractiveRightPanel: () => void
   onSwitchBook: (path: string) => void
   onBooksChange: () => void | Promise<void>
@@ -96,6 +99,7 @@ interface ModeRouterProps {
 export function ModeRouter(props: ModeRouterProps) {
   const {
     mode,
+    booksReturnMode,
     currentBookName,
     workspace,
     appVersion,
@@ -134,6 +138,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onToggleProjectVisible,
     onSetRightPanel,
     onToggleSettings,
+    onCloseSettings,
     onToggleInteractiveRightPanel,
     onSwitchBook,
     onBooksChange,
@@ -167,7 +172,7 @@ export function ModeRouter(props: ModeRouterProps) {
 
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
   const versionsVisible = rightPanel === 'versions'
-  const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'creator' || rightPanel === 'teller') ? rightPanel : null
+  const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'creator' || rightPanel === 'teller' || rightPanel === 'versions') ? rightPanel : null
   const interactiveSubmode = useInteractiveStore((state) => state.submode)
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
   const [tellers, setTellers] = useState<Teller[]>([])
@@ -271,8 +276,10 @@ export function ModeRouter(props: ModeRouterProps) {
   )
 
   const main = (
-    <main className={`flex h-full min-w-0 flex-col bg-[var(--nova-bg)] ${mode === 'ide' && !ideWorkspacePanel ? 'border-r border-[var(--nova-border)]' : ''}`}>
-      {mode === 'books' ? (
+    <main className={`flex h-full min-w-0 flex-col bg-[var(--nova-bg)] ${mode === 'ide' && !settingsOpen && !ideWorkspacePanel ? 'border-r border-[var(--nova-border)]' : ''}`}>
+      {settingsOpen ? (
+        <SettingsView onClose={onCloseSettings} />
+      ) : mode === 'books' ? (
         <HomeView
           workspace={workspace}
           novaDir={novaDir}
@@ -280,11 +287,20 @@ export function ModeRouter(props: ModeRouterProps) {
           onSwitch={onSwitchBook}
           onBooksChange={onBooksChange}
           onOpenCharacterCardImport={onOpenCharacterCardImport}
+          onClose={() => onSetMode(booksReturnMode)}
         />
       ) : mode === 'interactive' ? (
         <InteractiveLayout
           workspace={workspace}
           rightPanelVisible={interactiveRightVisible}
+          onToggleRightPanel={onToggleInteractiveRightPanel}
+        />
+      ) : ideWorkspacePanel === 'versions' ? (
+        <GitPanel
+          workspace={workspace}
+          refreshSignal={gitRefreshSignal}
+          visible={versionsVisible}
+          onClose={() => onSetRightPanel(null)}
         />
       ) : ideWorkspacePanel === 'lore' ? (
         <IdeWorkspacePanel
@@ -408,18 +424,12 @@ export function ModeRouter(props: ModeRouterProps) {
         onTextSelectionRemove={onTextSelectionRemove}
       />
     </aside>
-  ) : rightPanel === 'versions' ? (
-    <GitPanel
-      workspace={workspace}
-      refreshSignal={gitRefreshSignal}
-      visible={versionsVisible}
-      onClose={() => onSetRightPanel(null)}
-    />
   ) : null
 
   return (
     <WorkbenchShell
       mode={mode}
+      booksReturnMode={booksReturnMode}
       currentBookName={currentBookName}
       workspace={workspace}
       appVersion={appVersion}
@@ -431,16 +441,15 @@ export function ModeRouter(props: ModeRouterProps) {
       rightPanel={rightPanel}
       settingsOpen={settingsOpen}
       interactiveSubmode={interactiveSubmode}
-      interactiveRightPanelVisible={interactiveRightVisible}
       sidebar={sidebar}
       main={main}
       rightPanelContent={rightPanelContent}
       onSetMode={onSetMode}
       onToggleActivityBarExpanded={onToggleActivityBarExpanded}
       onSetInteractiveSubmode={setInteractiveSubmode}
-      onToggleInteractiveRightPanel={onToggleInteractiveRightPanel}
       onSetRightPanel={onSetRightPanel}
       onToggleSettings={onToggleSettings}
+      onCloseSettings={onCloseSettings}
     />
   )
 }

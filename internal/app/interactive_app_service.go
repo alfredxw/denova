@@ -348,11 +348,11 @@ func (s *InteractiveAppService) ClearTellerAgentSession() error {
 	return sess.Clear()
 }
 
-func (a *App) StartTellerAgentTask(instruction string, targetID string) *Task {
-	return a.interactiveService().StartTellerAgentTask(instruction, targetID)
+func (a *App) StartTellerAgentTask(instruction string, targetID string, references []string) *Task {
+	return a.interactiveService().StartTellerAgentTask(instruction, targetID, references)
 }
 
-func (s *InteractiveAppService) StartTellerAgentTask(instruction string, targetID string) *Task {
+func (s *InteractiveAppService) StartTellerAgentTask(instruction string, targetID string, references []string) *Task {
 	cfg := s.cfg()
 	sessionStore := s.sessionStore()
 	if cfg == nil || cfg.NovaDir == "" || sessionStore == nil {
@@ -374,7 +374,7 @@ func (s *InteractiveAppService) StartTellerAgentTask(instruction string, targetI
 			emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 			return
 		}
-		log.Printf("[teller-agent-task] run begin id=%s target_id=%s instruction_len=%d", task.ID(), targetID, len(instruction))
+		log.Printf("[teller-agent-task] run begin id=%s target_id=%s references=%d instruction_len=%d", task.ID(), targetID, len(references), len(instruction))
 		if err := rejectUnsupportedTellerAgentInstruction(instruction); err != nil {
 			emitTellerError(sess, emit, err)
 			log.Printf("[teller-agent-task] 拒绝不支持的指令 target_id=%s err=%v", targetID, err)
@@ -396,12 +396,8 @@ func (s *InteractiveAppService) StartTellerAgentTask(instruction string, targetI
 		}
 		emitLoreToolResult(emit, "teller-read", fmt.Sprintf("已读取讲述者配置，共 %d 个。", len(tellers)))
 
-		mode := "create"
-		if targetID != "" {
-			mode = "update"
-		}
-		emitLoreToolCall(emit, "teller-plan", "生成讲述者编辑方案", fmt.Sprintf(`{"mode":%q,"target_id":%q,"history_messages":%d}`, mode, targetID, len(history)))
-		plan, err := agent.StreamTellerEditPlan(ctx, &runtimeCfg, instruction, tellers, targetID, history, emit)
+		emitLoreToolCall(emit, "teller-plan", "生成讲述者编辑方案", fmt.Sprintf(`{"selected_teller_id":%q,"references":%d,"history_messages":%d}`, targetID, len(references), len(history)))
+		plan, err := agent.StreamTellerEditPlan(ctx, &runtimeCfg, instruction, tellers, targetID, references, history, emit)
 		if err != nil {
 			emitTellerError(sess, emit, err)
 			log.Printf("[teller-agent-task] 生成编辑方案失败 target_id=%s err=%v", targetID, err)
@@ -409,16 +405,17 @@ func (s *InteractiveAppService) StartTellerAgentTask(instruction string, targetI
 		}
 		emitLoreToolResult(emit, "teller-plan", fmt.Sprintf("已生成 %s 方案：%s。", plan.Action, plan.Message))
 
-		emitLoreToolCall(emit, "teller-apply", "应用讲述者变更", fmt.Sprintf(`{"action":%q,"target_id":%q}`, plan.Action, targetID))
+		applyTargetID := strings.TrimSpace(plan.Teller.ID)
+		emitLoreToolCall(emit, "teller-apply", "应用讲述者变更", fmt.Sprintf(`{"action":%q,"teller_id":%q}`, plan.Action, applyTargetID))
 		var teller interactive.Teller
 		if plan.Action == "create" {
 			teller, err = library.Create(plan.Teller)
 		} else {
-			teller, err = library.Update(targetID, plan.Teller)
+			teller, err = library.Update(applyTargetID, plan.Teller)
 		}
 		if err != nil {
 			emitTellerError(sess, emit, err)
-			log.Printf("[teller-agent-task] 应用变更失败 action=%s target_id=%s err=%v", plan.Action, targetID, err)
+			log.Printf("[teller-agent-task] 应用变更失败 action=%s teller_id=%s err=%v", plan.Action, applyTargetID, err)
 			return
 		}
 		nextTellers, err := library.List()

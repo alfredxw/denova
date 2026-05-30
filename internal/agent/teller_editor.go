@@ -21,23 +21,23 @@ type TellerEditPlan struct {
 	Teller  interactive.Teller `json:"teller"`
 }
 
-func GenerateTellerEditPlan(ctx context.Context, cfg *config.Config, instruction string, tellers []interactive.Teller, targetID string, history []*schema.Message) (TellerEditPlan, error) {
-	content, err := generateTellerEditPlanContent(ctx, cfg, instruction, tellers, targetID, history, nil)
+func GenerateTellerEditPlan(ctx context.Context, cfg *config.Config, instruction string, tellers []interactive.Teller, targetID string, references []string, history []*schema.Message) (TellerEditPlan, error) {
+	content, err := generateTellerEditPlanContent(ctx, cfg, instruction, tellers, targetID, references, history, nil)
 	if err != nil {
 		return TellerEditPlan{}, err
 	}
-	return parseTellerEditPlan(content, targetID)
+	return parseTellerEditPlan(content, tellers, targetID, references, instruction)
 }
 
-func StreamTellerEditPlan(ctx context.Context, cfg *config.Config, instruction string, tellers []interactive.Teller, targetID string, history []*schema.Message, emit func(Event)) (TellerEditPlan, error) {
-	content, err := generateTellerEditPlanContent(ctx, cfg, instruction, tellers, targetID, history, emit)
+func StreamTellerEditPlan(ctx context.Context, cfg *config.Config, instruction string, tellers []interactive.Teller, targetID string, references []string, history []*schema.Message, emit func(Event)) (TellerEditPlan, error) {
+	content, err := generateTellerEditPlanContent(ctx, cfg, instruction, tellers, targetID, references, history, emit)
 	if err != nil {
 		return TellerEditPlan{}, err
 	}
-	return parseTellerEditPlan(content, targetID)
+	return parseTellerEditPlan(content, tellers, targetID, references, instruction)
 }
 
-func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, instruction string, tellers []interactive.Teller, targetID string, history []*schema.Message, emit func(Event)) (string, error) {
+func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, instruction string, tellers []interactive.Teller, targetID string, references []string, history []*schema.Message, emit func(Event)) (string, error) {
 	if cfg == nil {
 		return "", fmt.Errorf("配置不存在")
 	}
@@ -58,11 +58,11 @@ func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, inst
 	if err != nil {
 		return "", fmt.Errorf("创建讲述者编辑模型失败: %w", err)
 	}
-	userPrompt, err := buildTellerUserPrompt(instruction, tellers, targetID, history)
+	userPrompt, err := buildTellerUserPrompt(instruction, tellers, targetID, references, history)
 	if err != nil {
 		return "", err
 	}
-	log.Printf("[teller-editor-agent] generate begin instruction=%s tellers=%d target_id=%s stream=%t", promptPartSummary(instruction), len(tellers), targetID, emit != nil)
+	log.Printf("[teller-editor-agent] generate begin instruction=%s tellers=%d target_id=%s references=%d stream=%t", promptPartSummary(instruction), len(tellers), targetID, len(references), emit != nil)
 	messages := []*schema.Message{
 		schema.SystemMessage(tellerEditorSystemInstruction()),
 		schema.UserMessage(userPrompt),
@@ -107,23 +107,27 @@ func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, inst
 	return strings.TrimSpace(content.String()), nil
 }
 
-func buildTellerUserPrompt(instruction string, tellers []interactive.Teller, targetID string, history []*schema.Message) (string, error) {
+func buildTellerUserPrompt(instruction string, tellers []interactive.Teller, targetID string, references []string, history []*schema.Message) (string, error) {
 	tellersJSON, err := json.MarshalIndent(tellers, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("序列化讲述者列表失败: %w", err)
 	}
-	mode := "create"
-	if strings.TrimSpace(targetID) != "" {
-		mode = "update"
+	referencedTellers := collectTellerReferences(instruction, targetID, references, tellers)
+	userPrompt := fmt.Sprintf("用户编辑指令：\n%s\n\n界面当前选中的讲述者 ID（仅作为上下文参考，不强制修改）：%s\n\n当前讲述者列表 JSON：\n%s", instruction, strings.TrimSpace(targetID), string(tellersJSON))
+	if len(referencedTellers) > 0 {
+		refsJSON, err := json.MarshalIndent(referencedTellers, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("序列化引用讲述者失败: %w", err)
+		}
+		userPrompt = fmt.Sprintf("用户编辑指令：\n%s\n\n用户显式 @ 引用或界面选中的讲述者 JSON（优先作为 update 候选，但用户明确要求新建时仍应 create）：\n%s\n\n界面当前选中的讲述者 ID（仅作为上下文参考，不强制修改）：%s\n\n当前讲述者列表 JSON：\n%s", instruction, string(refsJSON), strings.TrimSpace(targetID), string(tellersJSON))
 	}
-	userPrompt := fmt.Sprintf("用户编辑指令：\n%s\n\n固定执行模式：%s\n目标讲述者 ID：%s\n\n当前讲述者列表 JSON：\n%s", instruction, mode, strings.TrimSpace(targetID), string(tellersJSON))
 	if historyText := formatLoreHistory(history); historyText != "" {
 		userPrompt = fmt.Sprintf("以下是 /clear 之后的讲述者 Agent 有效对话上下文，仅用于理解用户连续指令，不要把历史意图当成本轮任务：\n%s\n\n%s", historyText, userPrompt)
 	}
 	return userPrompt, nil
 }
 
-func parseTellerEditPlan(content string, targetID string) (TellerEditPlan, error) {
+func parseTellerEditPlan(content string, tellers []interactive.Teller, targetID string, references []string, instruction string) (TellerEditPlan, error) {
 	if strings.TrimSpace(content) == "" {
 		return TellerEditPlan{}, fmt.Errorf("讲述者编辑模型返回为空")
 	}
@@ -135,18 +139,28 @@ func parseTellerEditPlan(content string, targetID string) (TellerEditPlan, error
 	if action == "delete" || action == "remove" || action == "merge" || action == "batch" {
 		return TellerEditPlan{}, fmt.Errorf("讲述者 Agent 当前只支持创建或修改单个讲述者，不支持删除、批量修改或合并")
 	}
-	expectedAction := "create"
-	if strings.TrimSpace(targetID) != "" {
-		expectedAction = "update"
-		plan.Teller.ID = strings.TrimSpace(targetID)
+	if action != "create" && action != "update" {
+		return TellerEditPlan{}, fmt.Errorf("讲述者编辑方案 action 无效: %s", plan.Action)
 	}
-	plan.Action = expectedAction
+	plan.Action = action
+	referencedTellers := collectTellerReferences(instruction, targetID, references, tellers)
+	if plan.Action == "update" {
+		plan.Teller.ID = resolveTellerUpdateID(plan.Teller.ID, plan.Teller.Name, referencedTellers, tellers)
+		if strings.TrimSpace(plan.Teller.ID) == "" {
+			return TellerEditPlan{}, fmt.Errorf("讲述者编辑方案没有指定要修改的讲述者")
+		}
+		if !tellerIDExists(tellers, plan.Teller.ID) {
+			return TellerEditPlan{}, fmt.Errorf("目标讲述者不存在: %s", plan.Teller.ID)
+		}
+	} else if plan.Action == "create" && tellerIDExists(tellers, plan.Teller.ID) {
+		plan.Teller.ID = ""
+	}
 	plan.Teller.Path = ""
 	plan.Teller.Custom = false
 	plan.Teller.Invalid = false
 	plan.Teller.Error = ""
 	if strings.TrimSpace(plan.Message) == "" {
-		if expectedAction == "create" {
+		if plan.Action == "create" {
 			plan.Message = "讲述者 Agent 创建讲述者"
 		} else {
 			plan.Message = "讲述者 Agent 修改讲述者"
@@ -155,8 +169,78 @@ func parseTellerEditPlan(content string, targetID string) (TellerEditPlan, error
 	if len(plan.Teller.Slots) == 0 {
 		return TellerEditPlan{}, fmt.Errorf("讲述者编辑方案没有生成任何注入规则")
 	}
-	log.Printf("[teller-editor-agent] generate done action=%s target_id=%s message=%q slots=%d", plan.Action, targetID, plan.Message, len(plan.Teller.Slots))
+	log.Printf("[teller-editor-agent] generate done action=%s teller_id=%s message=%q slots=%d", plan.Action, plan.Teller.ID, plan.Message, len(plan.Teller.Slots))
 	return plan, nil
+}
+
+func collectTellerReferences(instruction, targetID string, references []string, tellers []interactive.Teller) []interactive.Teller {
+	selected := map[string]struct{}{}
+	addMatch := func(ref string) {
+		ref = strings.TrimSpace(strings.TrimPrefix(ref, "@"))
+		if ref == "" {
+			return
+		}
+		for _, teller := range tellers {
+			if strings.EqualFold(teller.ID, ref) || teller.Name == ref {
+				selected[teller.ID] = struct{}{}
+			}
+		}
+	}
+	addMatch(targetID)
+	for _, ref := range references {
+		addMatch(ref)
+	}
+	for _, teller := range tellers {
+		if teller.ID != "" && strings.Contains(instruction, "@"+teller.ID) {
+			selected[teller.ID] = struct{}{}
+			continue
+		}
+		if teller.Name != "" && strings.Contains(instruction, "@"+teller.Name) {
+			selected[teller.ID] = struct{}{}
+		}
+	}
+	if len(selected) == 0 {
+		return nil
+	}
+	result := make([]interactive.Teller, 0, len(selected))
+	for _, teller := range tellers {
+		if _, ok := selected[teller.ID]; ok {
+			result = append(result, teller)
+		}
+	}
+	return result
+}
+
+func resolveTellerUpdateID(planID, planName string, referencedTellers []interactive.Teller, tellers []interactive.Teller) string {
+	planID = strings.TrimSpace(planID)
+	planName = strings.TrimSpace(planName)
+	for _, teller := range tellers {
+		if strings.EqualFold(teller.ID, planID) || teller.Name == planID {
+			return teller.ID
+		}
+	}
+	for _, teller := range tellers {
+		if planName != "" && teller.Name == planName {
+			return teller.ID
+		}
+	}
+	if len(referencedTellers) == 1 {
+		return referencedTellers[0].ID
+	}
+	return ""
+}
+
+func tellerIDExists(tellers []interactive.Teller, id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	for _, teller := range tellers {
+		if teller.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func tellerEditorSystemInstruction() string {
@@ -168,7 +252,7 @@ JSON 格式：
   "message": "一句中文变更说明",
   "action": "create | update",
   "teller": {
-    "id": "create 可省略；update 会被后端强制改为目标 ID",
+    "id": "create 可省略；update 必须填写要修改的已有讲述者 ID",
     "name": "讲述者名称",
     "description": "一句中文简介",
     "random_event_rate": 0.15,
@@ -207,11 +291,12 @@ JSON 格式：
 
 规则：
 1. 每次只创建或修改一个讲述者，不能删除、批量修改、合并或影响多个讲述者。
-2. 固定执行模式为 create 时，输出 action=create；固定执行模式为 update 时，输出 action=update。
-3. update 必须基于目标讲述者的完整 JSON 修改后返回完整 teller，不要只返回局部字段，避免丢失规则。
-4. slots 至少包含一条启用规则，target 只能使用 system、turn_context、state_memory。
-5. random_event_rate 使用 0 到 1 的数字；不知道时使用 0.15。
-6. context_policy 不确定时使用 creator=always、lore=relevant、runtime_state=always、recent_turns=8。
-7. 所有面向用户的 name、description、tags 和 content 优先使用中文。
-8. 用户要求删除或批量操作时，返回 action 之外的 unsupported 文本是不允许的；请改为用 message 说明当前只支持单个创建或修改，并给出一个低风险 create/update 方案。`)
+2. 不要被界面当前选中项强制限制；必须根据用户本轮意图决定 action。用户要求新建、另做一版、增加一个风格时用 create；用户要求修改、调整、优化某个已有讲述者时用 update。
+3. 用户用 @ 引用讲述者或明确写出已有讲述者名称/ID 时，优先把它作为 update 对象；但用户明确要求基于它新建一版时仍用 create。
+4. update 必须填写已有讲述者 ID，并基于该讲述者的完整 JSON 修改后返回完整 teller，不要只返回局部字段，避免丢失规则。
+5. slots 至少包含一条启用规则，target 只能使用 system、turn_context、state_memory。
+6. random_event_rate 使用 0 到 1 的数字；不知道时使用 0.15。
+7. context_policy 不确定时使用 creator=always、lore=relevant、runtime_state=always、recent_turns=8。
+8. 所有面向用户的 name、description、tags 和 content 优先使用中文。
+9. 用户要求删除或批量操作时，返回 action 之外的 unsupported 文本是不允许的；请改为用 message 说明当前只支持单个创建或修改，并给出一个低风险 create/update 方案。`)
 }

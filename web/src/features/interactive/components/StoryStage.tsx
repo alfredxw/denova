@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Compass, GitBranch, MessageSquareText, Pencil, RefreshCw, Send, Square, X } from 'lucide-react'
+import { Compass, GitBranch, MessageSquareText, PanelRight, Pencil, RefreshCw, Send, Square, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -24,10 +24,12 @@ interface StoryStageProps {
   storyId: string
   branchId: string
   snapshot: Snapshot | null
+  sceneMemoryVisible?: boolean
   onStorySelect?: (storyId: string) => void
   onStoryCreate?: (input: { title: string; origin: string; story_teller_id: string }) => void
   onStoryDelete?: (storyId: string) => void
   onTellerChange?: (tellerId: string) => void
+  onToggleSceneMemory?: () => void
   onDone: () => void
 }
 
@@ -45,10 +47,12 @@ export function StoryStage({
   storyId,
   branchId,
   snapshot,
+  sceneMemoryVisible = true,
   onStorySelect = noop,
   onStoryCreate = noop,
   onStoryDelete = noop,
   onTellerChange = noop,
+  onToggleSceneMemory,
   onDone,
 }: StoryStageProps) {
   const [input, setInput] = useState('')
@@ -285,6 +289,20 @@ export function StoryStage({
               <GitBranch className="h-3 w-3" />
               {snapshot?.turns?.length || 0} 回合
             </Badge>
+            {onToggleSceneMemory && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${sceneMemoryVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`}
+                onClick={onToggleSceneMemory}
+                aria-label={sceneMemoryVisible ? '隐藏场景记忆' : '显示场景记忆'}
+                title={sceneMemoryVisible ? '隐藏场景记忆' : '显示场景记忆'}
+              >
+                <PanelRight className="h-3.5 w-3.5" />
+                场景记忆
+              </Button>
+            )}
           </div>
         </div>
 

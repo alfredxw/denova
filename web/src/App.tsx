@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { SettingsView } from '@/features/settings/SettingsView'
 import { fetchSettings } from '@/features/settings/api'
 import { fontStackFor } from '@/features/settings/font-options'
 import { getLoreItems, importCharacterCard, previewCharacterCard, type CharacterCardPreview, type LoreItem } from '@/lib/api'
 import { CommandPalette } from '@/components/common/command-palette'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useChat } from '@/hooks/useChat'
 import { useWorkspaceHotkeys } from '@/hooks/use-workspace-hotkeys'
@@ -55,6 +53,8 @@ function App() {
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
   const [loreItems, setLoreItems] = useState<LoreItem[]>([])
+  const [booksReturnMode, setBooksReturnMode] = useState<Exclude<WorkspaceMode, 'books'>>('ide')
+  const booksReturnModeRef = useRef<Exclude<WorkspaceMode, 'books'>>('ide')
   const characterCardInputRef = useRef<HTMLInputElement>(null)
   const chatBootstrappedRef = useRef(false)
   const tabActivationsRef = useRef<Map<string, number>>(new Map())
@@ -67,6 +67,13 @@ function App() {
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const setMode = useWorkspaceStore((state) => state.setMode)
   const setSelectedChapterId = useWorkspaceStore((state) => state.setSelectedChapterId)
+
+  useEffect(() => {
+    if (mode === 'books') return
+    const contentMode = mode === 'interactive' ? 'interactive' : 'ide'
+    booksReturnModeRef.current = contentMode
+    setBooksReturnMode(contentMode)
+  }, [mode])
 
   const {
     tree, loading, selectedFile, fileContent, workspace, workspaceLoaded, summary, styles, books,
@@ -245,7 +252,7 @@ function App() {
 
   const handleWorkspaceSwitch = (newPath: string) => {
     setWorkspace(newPath)
-    setMode('ide')
+    setMode(booksReturnModeRef.current)
     refreshAll()
     notifyGitChange()
     void Promise.all([loadSessions(), loadHistory()]).then(() => resumeActiveChat())
@@ -419,14 +426,33 @@ function App() {
     if (!isStreaming) send('/continue')
   }, [isStreaming, send])
 
-  const handleSetMode = useCallback((nextMode: WorkspaceMode) => setMode(nextMode), [setMode])
-  const handleSetRightPanel = useCallback((panel: RightPanel) => setRightPanel(panel), [setRightPanel])
+  const handleSetMode = useCallback((nextMode: WorkspaceMode) => {
+    if (nextMode === 'books') {
+      const returnMode = mode === 'interactive' ? 'interactive' : 'ide'
+      booksReturnModeRef.current = returnMode
+      setBooksReturnMode(returnMode)
+    } else {
+      booksReturnModeRef.current = nextMode
+      setBooksReturnMode(nextMode)
+    }
+    setSettingsOpen(false)
+    setMode(nextMode)
+  }, [mode, setMode])
+  const handleSetRightPanel = useCallback((panel: RightPanel) => {
+    setSettingsOpen(false)
+    setRightPanel(panel)
+  }, [setRightPanel])
+  const handleOpenVersions = useCallback(() => {
+    setSettingsOpen(false)
+    setMode('ide')
+    setRightPanel('versions')
+  }, [setMode, setRightPanel])
 
   useWorkspaceHotkeys({
     onSave: triggerSave,
     onOpenCommand: () => setCommandOpen(true),
     onGenerate: continueWriting,
-    onOpenDiff: () => setRightPanel('versions'),
+    onOpenDiff: handleOpenVersions,
     onEscape: () => {
       if (commandOpen) {
         setCommandOpen(false)
@@ -440,6 +466,7 @@ function App() {
     <>
       <ModeRouter
         mode={mode}
+        booksReturnMode={booksReturnMode}
         currentBookName={currentBookName}
         workspace={workspace}
         appVersion={APP_VERSION}
@@ -478,6 +505,7 @@ function App() {
         onToggleProjectVisible={() => setProjectVisible((value) => !value)}
         onSetRightPanel={handleSetRightPanel}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
+        onCloseSettings={() => setSettingsOpen(false)}
         onToggleInteractiveRightPanel={() => setInteractiveRightVisible((value) => !value)}
         onSwitchBook={handleWorkspaceSwitch}
         onBooksChange={refreshBooks}
@@ -517,7 +545,7 @@ function App() {
           setMode('ide')
           setRightPanel('ai')
         }}
-        onOpenVersions={() => setRightPanel('versions')}
+        onOpenVersions={handleOpenVersions}
         onContinueWriting={continueWriting}
         onClosePanels={() => {
           setRightPanel(null)
@@ -542,16 +570,6 @@ function App() {
         onBookTitleChange={setCharacterCardBookTitle}
         onImport={handleCharacterCardImport}
       />
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent
-          className="nova-panel left-[2vw] top-[4vh] flex h-[92dvh] max-h-[calc(100dvh-2rem)] min-h-0 w-[96vw] max-w-[calc(100vw-2rem)] min-w-0 translate-x-0 translate-y-0 resize overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)] sm:max-w-[calc(100vw-2rem)]"
-          showCloseButton={false}
-          aria-describedby={undefined}
-        >
-          <DialogTitle className="sr-only">设置</DialogTitle>
-          <SettingsView onClose={() => setSettingsOpen(false)} />
-        </DialogContent>
-      </Dialog>
     </>
   )
 }

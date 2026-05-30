@@ -13,8 +13,9 @@ import (
 )
 
 type tellerAgentRequest struct {
-	Instruction string `json:"instruction"`
-	TellerID    string `json:"teller_id"`
+	Instruction string   `json:"instruction"`
+	TellerID    string   `json:"teller_id"`
+	References  []string `json:"references"`
 }
 
 func (s *Server) handleInteractiveStories(ctx context.Context, c *app.RequestContext) {
@@ -228,7 +229,7 @@ func (s *Server) handleInteractiveTellerAgentStream(ctx context.Context, c *app.
 		writeError(c, consts.StatusBadRequest, "讲述者编辑指令不能为空")
 		return
 	}
-	task := s.app.StartTellerAgentTask(body.Instruction, body.TellerID)
+	task := s.app.StartTellerAgentTask(body.Instruction, body.TellerID, body.References)
 	if task == nil {
 		writeError(c, consts.StatusConflict, "尚未选择书籍工作区，请先在书籍管理页选择或创建书籍")
 		return
