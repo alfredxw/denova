@@ -1,4 +1,4 @@
-import { BookMarked, BookOpen, Bot, Database, FileText, FolderTree, RefreshCw, SearchCheck, SlidersHorizontal, Sparkles, WandSparkles, PenLine } from 'lucide-react'
+import { BookMarked, BookOpen, Bot, Database, FileText, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SearchCheck, SlidersHorizontal, Sparkles, WandSparkles, PenLine } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { FileTree } from '@/components/Sidebar/FileTree'
@@ -328,12 +328,6 @@ export function ModeRouter(props: ModeRouterProps) {
         </IdeWorkspacePanel>
       ) : (
         <>
-          <IdeWritingToolbar
-            projectVisible={projectVisible}
-            aiVisible={aiVisible}
-            onToggleProjectVisible={onToggleProjectVisible}
-            onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
-          />
           <TabController
             tabs={openTabs}
             activeTabKey={activeTabKey}
@@ -351,6 +345,14 @@ export function ModeRouter(props: ModeRouterProps) {
                 saveSignal={saveSignal}
                 chapterSummary={currentChapter}
                 workspaceSummary={summary}
+                toolbarActions={(
+                  <IdeWritingInfoActions
+                    projectVisible={projectVisible}
+                    aiVisible={aiVisible}
+                    onToggleProjectVisible={onToggleProjectVisible}
+                    onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
+                  />
+                )}
               />
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-[#7f8590]">
@@ -454,7 +456,7 @@ export function ModeRouter(props: ModeRouterProps) {
   )
 }
 
-function IdeWritingToolbar({
+function IdeWritingInfoActions({
   projectVisible,
   aiVisible,
   onToggleProjectVisible,
@@ -465,27 +467,32 @@ function IdeWritingToolbar({
   onToggleProjectVisible: () => void
   onToggleAgent: () => void
 }) {
+  const ProjectIcon = projectVisible ? PanelLeftClose : PanelLeftOpen
+  const AgentIcon = aiVisible ? PanelRightClose : PanelRightOpen
+
   return (
-    <div className="nova-topbar flex h-9 shrink-0 items-center gap-1 border-b border-[var(--nova-border)] px-3 text-xs">
+    <>
       <button
         type="button"
         onClick={onToggleProjectVisible}
-        className={`nova-nav-item flex items-center gap-1.5 px-2 py-1 ${projectVisible ? 'is-active' : ''}`}
+        aria-label={projectVisible ? '隐藏目录' : '显示目录'}
+        aria-pressed={projectVisible}
+        className={`nova-nav-item flex h-7 w-7 items-center justify-center ${projectVisible ? 'is-active' : ''}`}
         title={projectVisible ? '隐藏目录' : '显示目录'}
       >
-        <FolderTree className="h-3.5 w-3.5" />
-        目录
+        <ProjectIcon className="h-3.5 w-3.5" />
       </button>
       <button
         type="button"
         onClick={onToggleAgent}
-        className={`nova-nav-item flex items-center gap-1.5 px-2 py-1 ${aiVisible ? 'is-active' : ''}`}
+        aria-label={aiVisible ? '隐藏创作 Agent' : '显示创作 Agent'}
+        aria-pressed={aiVisible}
+        className={`nova-nav-item flex h-7 w-7 items-center justify-center ${aiVisible ? 'is-active' : ''}`}
         title={aiVisible ? '隐藏创作 Agent' : '显示创作 Agent'}
       >
-        <Bot className="h-3.5 w-3.5" />
-        Agent
+        <AgentIcon className="h-3.5 w-3.5" />
       </button>
-    </div>
+    </>
   )
 }
 

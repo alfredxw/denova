@@ -42,8 +42,8 @@ type Settings struct {
 	InteractiveStageFontSize    *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight  *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
 
-	// 风格：场景化默认风格规则（仅工作区级生效）。
-	// 每条规则关联一个自然语言场景描述与若干 setting/styles/ 下的风格文件，
+	// 风格：场景化默认风格规则（用户级 / 工作区级均可配置）。
+	// 每条规则关联一个自然语言场景描述与若干风格文件路径，
 	// 由 Agent 基于本轮章节内容自动匹配场景并选择对应风格文件。
 	// 当用户本轮通过 # 指定了任意风格参考时，本轮覆盖默认规则。
 	StyleRules []StyleRule `toml:"style_rules,omitempty" json:"style_rules,omitempty"`
@@ -51,7 +51,7 @@ type Settings struct {
 
 // StyleRule 表示一条「场景 → 风格文件」映射。
 // Scene 使用自然语言描述触发条件（如「激烈打斗」「日常对话」「宏大世界观铺陈」）；
-// Styles 是 setting/styles/ 下的相对路径列表。
+// Styles 支持绝对路径；历史配置中的相对路径会按当前 workspace 的 setting/styles/ 解析。
 type StyleRule struct {
 	Scene  string   `toml:"scene" json:"scene"`
 	Styles []string `toml:"styles" json:"styles"`
@@ -145,7 +145,7 @@ func Merge(parent, child Settings) Settings {
 	if child.InteractiveStageLineHeight != nil {
 		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight
 	}
-	// 场景化风格规则：工作区级覆盖，nil 视为未设置；空切片表示显式清空。
+	// 场景化风格规则：用户级 / 工作区级均可覆盖，nil 视为未设置；空切片表示显式清空。
 	if child.StyleRules != nil {
 		out.StyleRules = child.StyleRules
 	}

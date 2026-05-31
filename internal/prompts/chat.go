@@ -68,12 +68,12 @@ type StyleRule struct {
 	Styles []string
 }
 
-// StyleRulesHint 把工作区配置的「场景 → 风格文件」映射作为建议附加到上下文。
+// StyleRulesHint 把配置的「场景 → 风格文件路径」映射作为建议附加到上下文。
 // 不直接读取文件内容，由 Agent 基于本轮章节内容自行判断是否要 read_file 对应风格。
 func StyleRulesHint(message string, rules []StyleRule) string {
 	var sb strings.Builder
 	sb.WriteString(message)
-	sb.WriteString("\n\n---\n[场景化默认风格规则] 当前工作区配置了以下「场景 → 风格文件」映射（风格文件位于 setting/styles/ 下）：\n")
+	sb.WriteString("\n\n---\n[场景化默认风格规则] 当前配置生效了以下「场景 → 风格文件路径」映射：\n")
 	for i, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
 		if scene == "" || len(rule.Styles) == 0 {
@@ -94,7 +94,7 @@ func StyleRulesHint(message string, rules []StyleRule) string {
 		}
 		sb.WriteString("\n")
 	}
-	sb.WriteString("\n触发规则：仅当你判断本轮要执行『章节正文的创作 / 续写 / 重写』时，先根据当前章节内容选出最贴近的场景，再用 read_file 读取该场景对应的风格文件，把它们作为文风、节奏、叙述方式、句式和氛围的参考；不要照搬其中的人物、情节或设定。\n")
+	sb.WriteString("\n触发规则：仅当你判断本轮要执行『章节正文的创作 / 续写 / 重写』时，先根据当前章节内容选出最贴近的场景，再用 read_file 按上面列出的文件路径读取该场景对应的风格文件，把它们作为文风、节奏、叙述方式、句式和氛围的参考；不要照搬其中的人物、情节或设定。\n")
 	sb.WriteString("若本轮属于脑暴、大纲、设定、问答、规划等非章节正文场景，请完全忽略以上规则，不要读取任何风格文件；若没有场景明显匹配，也不必强行选择。\n")
 	return sb.String()
 }

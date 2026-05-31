@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"nova/config"
@@ -239,14 +241,11 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 		}
 		log.Printf("[agent-task] load ide teller id=%s workspace=%s", runtimeCfg.IDEStoryTellerID, workspace)
 
-		// 注入工作区配置中的默认风格参考；仅在用户本轮未指定 # 风格时生效。
+		// 注入用户/工作区配置中的默认风格参考；仅在用户本轮未指定 # 风格时生效。
 		if len(req.StyleReferences) == 0 {
 			rules := layered.Effective.StyleRules
 			if len(rules) > 0 {
-				converted := make([]agent.StyleRule, 0, len(rules))
-				for _, r := range rules {
-					converted = append(converted, agent.StyleRule{Scene: r.Scene, Styles: r.Styles})
-				}
+				converted := convertConfigStyleRules(workspace, rules)
 				req.StyleRules = converted
 				log.Printf("[agent-task] inject style rules count=%d rules=%q", len(converted), appStyleRuleNames(converted))
 			}
@@ -326,6 +325,59 @@ func appStyleRuleNames(rules []agent.StyleRule) []string {
 		names = append(names, fmt.Sprintf("%s -> %v", rule.Scene, rule.Styles))
 	}
 	return names
+}
+
+func convertConfigStyleRules(workspace string, rules []config.StyleRule) []agent.StyleRule {
+	converted := make([]agent.StyleRule, 0, len(rules))
+	for _, r := range rules {
+		styles := resolveStyleRulePaths(workspace, r.Styles)
+		if strings.TrimSpace(r.Scene) == "" || len(styles) == 0 {
+			continue
+		}
+		converted = append(converted, agent.StyleRule{Scene: r.Scene, Styles: styles})
+	}
+	return converted
+}
+
+func resolveStyleRulePaths(workspace string, styles []string) []string {
+	paths := make([]string, 0, len(styles))
+	seen := make(map[string]bool, len(styles))
+	for _, style := range styles {
+		path := resolveStyleRulePath(workspace, style)
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		paths = append(paths, path)
+	}
+	return paths
+}
+
+func resolveStyleRulePath(workspace string, style string) string {
+	style = strings.TrimSpace(style)
+	if style == "" {
+		return ""
+	}
+	if !isStyleRuleFile(style) {
+		return ""
+	}
+	if filepath.IsAbs(style) || workspace == "" {
+		return filepath.Clean(style)
+	}
+	cleanStyle := filepath.Clean(filepath.FromSlash(style))
+	slashStyle := filepath.ToSlash(cleanStyle)
+	if slashStyle == "." || slashStyle == ".." || strings.HasPrefix(slashStyle, "../") {
+		return ""
+	}
+	if strings.HasPrefix(slashStyle, "setting/styles/") {
+		cleanStyle = filepath.FromSlash(strings.TrimPrefix(slashStyle, "setting/styles/"))
+	}
+	return filepath.Join(workspace, "setting", "styles", cleanStyle)
+}
+
+func isStyleRuleFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".md" || ext == ".txt"
 }
 
 func (s *ChatAppService) abortActiveTaskLocked() {

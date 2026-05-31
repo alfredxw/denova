@@ -56,11 +56,14 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   useEffect(() => { void load() }, [load])
 
   useEffect(() => {
-    // 仅工作区层需要风格列表；切换层时按需加载即可，失败不阻塞主体配置展示。
-    if (activeLayer !== 'workspace') return
+    // 用户层也可以引用当前工作区已有风格文件；失败不阻塞主体配置展示。
     getStyles()
       .then((items) => setAvailableStyles(items))
       .catch((e) => console.warn('[settings] 获取风格参考列表失败', e))
+  }, [])
+
+  useEffect(() => {
+    if (activeLayer !== 'workspace') return
     getInteractiveTellers()
       .then((items) => setAvailableTellers(items))
       .catch((e) => console.warn('[settings] 获取讲述者列表失败', e))
@@ -72,6 +75,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [activeLayer, layered])
 
   const effective = layered?.effective ?? {}
+  const workspaceStyleRoot = workspaceStyleRootFromConfigPath(layered?.paths?.workspace_config)
 
   const onSave = async () => {
     setSaving(true)
@@ -193,21 +197,21 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         </>
       ),
     },
-    ...(activeLayer === 'workspace'
-      ? [{
-          id: 'ide-style-rules' as const,
-          group: 'IDE 模式' as const,
-          title: '场景化风格规则',
-          children: (
-            <StyleRulesEditor
-              available={availableStyles}
-              rules={draft.style_rules ?? []}
-              effective={effective.style_rules ?? []}
-              onChange={(v) => setField('style_rules', v)}
-            />
-          ),
-        }]
-      : []),
+    {
+      id: 'ide-style-rules',
+      group: 'IDE 模式',
+      title: '场景化风格规则',
+      children: (
+        <StyleRulesEditor
+          layer={activeLayer}
+          workspaceStyleRoot={workspaceStyleRoot}
+          available={availableStyles}
+          rules={draft.style_rules ?? []}
+          effective={effective.style_rules ?? []}
+          onChange={(v) => setField('style_rules', v)}
+        />
+      ),
+    },
     {
       id: 'interactive',
       group: '互动模式',
@@ -550,7 +554,9 @@ function TellerSelect({ label, value, effective, tellers, onChange }: {
   )
 }
 
-function StyleRulesEditor({ available, rules, effective, onChange }: {
+function StyleRulesEditor({ layer, workspaceStyleRoot, available, rules, effective, onChange }: {
+  layer: SettingsLayer
+  workspaceStyleRoot: string | null
   available: string[]
   rules: StyleRule[]
   effective: StyleRule[]
@@ -566,7 +572,7 @@ function StyleRulesEditor({ available, rules, effective, onChange }: {
     <div className="flex flex-col gap-3">
       <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[var(--nova-text-muted)]">
         为不同场景配置不同的风格参考。Agent 在创作章节正文时，会根据本轮要写的内容自动匹配最贴近的场景，并 read_file 读取对应风格文件作为文风参考。
-        本轮通过 # 显式指定风格则优先使用本轮指定，忽略此处规则。
+        用户配置会保存具体文件路径；本轮通过 # 显式指定风格则优先使用本轮指定，忽略此处规则。
       </div>
 
       {inheriting && (
@@ -588,6 +594,8 @@ function StyleRulesEditor({ available, rules, effective, onChange }: {
           {rules.map((rule, idx) => (
             <StyleRuleRow
               key={idx}
+              layer={layer}
+              workspaceStyleRoot={workspaceStyleRoot}
               available={available}
               rule={rule}
               onChange={(patch) => updateRule(idx, patch)}
@@ -607,20 +615,27 @@ function StyleRulesEditor({ available, rules, effective, onChange }: {
           新增规则
         </button>
         {available.length === 0 && (
-          <span className="text-[var(--nova-text-faint)]">提示：当前工作区 setting/styles/ 下尚无任何风格文件。</span>
+          <span className="text-[var(--nova-text-faint)]">提示：当前工作区 setting/styles/ 下尚无任何风格文件，可手动填写 .md 或 .txt 文件路径。</span>
         )}
       </div>
     </div>
   )
 }
 
-function StyleRuleRow({ available, rule, onChange, onRemove }: {
+function StyleRuleRow({ layer, workspaceStyleRoot, available, rule, onChange, onRemove }: {
+  layer: SettingsLayer
+  workspaceStyleRoot: string | null
   available: string[]
   rule: StyleRule
   onChange: (patch: Partial<StyleRule>) => void
   onRemove: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  const [customPath, setCustomPath] = useState('')
+  const availableOptions = available.map((path) => ({
+    label: path,
+    value: stylePathValueForLayer(path, layer, workspaceStyleRoot),
+  }))
   const toggleStyle = (path: string) => {
     if (rule.styles.includes(path)) {
       onChange({ styles: rule.styles.filter((p) => p !== path) })
@@ -628,6 +643,13 @@ function StyleRuleRow({ available, rule, onChange, onRemove }: {
       onChange({ styles: [...rule.styles, path] })
     }
   }
+  const addCustomStyle = () => {
+    const path = customPath.trim()
+    if (!path || rule.styles.includes(path)) return
+    onChange({ styles: [...rule.styles, path] })
+    setCustomPath('')
+  }
+  const selectedCustomStyles = rule.styles.filter((path) => !availableOptions.some((item) => item.value === path))
   const summary = rule.styles.length === 0 ? '尚未选择风格文件' : rule.styles.join('、')
 
   return (
@@ -665,23 +687,76 @@ function StyleRuleRow({ available, rule, onChange, onRemove }: {
       )}
 
       {expanded && (
-        <div className="mt-2 max-h-48 overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
-          {available.length === 0 ? (
-            <div className="px-2 py-2 text-[var(--nova-text-faint)]">无可用风格文件</div>
-          ) : (
-            available.map((path) => (
+        <div className="mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+          <div className="max-h-48 overflow-y-auto">
+            {availableOptions.length === 0 ? (
+              <div className="px-2 py-2 text-[var(--nova-text-faint)]">无可用风格文件</div>
+            ) : (
+              availableOptions.map((item) => (
+                <label key={item.value} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
+                  <input
+                    type="checkbox"
+                    checked={rule.styles.includes(item.value)}
+                    onChange={() => toggleStyle(item.value)}
+                  />
+                  <span className="truncate" title={item.value}>{item.label}</span>
+                </label>
+              ))
+            )}
+            {selectedCustomStyles.map((path) => (
               <label key={path} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
                 <input
                   type="checkbox"
-                  checked={rule.styles.includes(path)}
+                  checked
                   onChange={() => toggleStyle(path)}
                 />
-                <span className="truncate">{path}</span>
+                <span className="truncate" title={path}>{path}</span>
               </label>
-            ))
-          )}
+            ))}
+          </div>
+          <div className="flex flex-col gap-2 border-t border-[var(--nova-border)] p-2 sm:flex-row">
+            <input
+              type="text"
+              value={customPath}
+              placeholder="手动添加 .md 或 .txt 文件路径"
+              onChange={(e) => setCustomPath(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addCustomStyle()
+                }
+              }}
+              className={fieldCls}
+            />
+            <button type="button" onClick={addCustomStyle} className={`${actionButtonCls} justify-center`}>
+              <Plus className="h-3.5 w-3.5" />
+              添加
+            </button>
+          </div>
         </div>
       )}
     </div>
   )
+}
+
+function workspaceStyleRootFromConfigPath(configPath?: string): string | null {
+  if (!configPath) return null
+  const normalized = configPath.replace(/\\/g, '/')
+  const suffix = '/.nova/config.toml'
+  if (!normalized.endsWith(suffix)) return null
+  return joinPath(configPath.slice(0, configPath.length - suffix.length), 'setting/styles')
+}
+
+function stylePathValueForLayer(stylePath: string, layer: SettingsLayer, workspaceStyleRoot: string | null): string {
+  if (layer !== 'user' || !workspaceStyleRoot || isAbsolutePath(stylePath)) return stylePath
+  return joinPath(workspaceStyleRoot, stylePath)
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\')
+}
+
+function joinPath(root: string, rel: string): string {
+  const sep = root.includes('\\') ? '\\' : '/'
+  return `${root.replace(/[\\/]+$/, '')}${sep}${rel.replace(/^[\\/]+/, '').replace(/[\\/]/g, sep)}`
 }

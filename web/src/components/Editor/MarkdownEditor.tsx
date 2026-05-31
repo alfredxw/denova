@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import type { Editor } from '@tiptap/react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { Extension, Node } from '@tiptap/core'
@@ -27,6 +28,7 @@ interface MarkdownEditorProps {
   saveSignal?: number
   chapterSummary?: ChapterSummary
   workspaceSummary?: WorkspaceSummary | null
+  toolbarActions?: ReactNode
 }
 
 type EditorTheme = 'ide' | 'paper' | 'sepia'
@@ -92,7 +94,7 @@ function isTxtFile(name: string | null): boolean {
 }
 
 /** TipTap 编辑器组件，支持 Markdown 和纯文本格式 */
-export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, saveSignal = 0, chapterSummary, workspaceSummary }: MarkdownEditorProps) {
+export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, saveSignal = 0, chapterSummary, workspaceSummary, toolbarActions }: MarkdownEditorProps) {
   const [saveStatus, setSaveStatus] = useState<string>('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<EditorSettings>(() => loadEditorSettings())
@@ -394,21 +396,13 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* 编辑器工具栏 */}
-      <div className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-[#2f3136] bg-[#1f2023] px-4">
-        <div className="flex min-w-0 items-center gap-3 text-xs text-[#b7bbc3]">
-          <BookOpen className="h-4 w-4 shrink-0 text-[#a8adb7]" />
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-[#d7dbe2]">
-              {chapterSummary?.display_title || fileName}
-            </div>
-            <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-[#858b96]">
-              <span className="truncate">{fileName}</span>
-              {chapterSummary && <span>{chapterSummary.status}</span>}
-              {workspaceSummary && <span>全书 {formatNumber(workspaceSummary.total_words)} 字</span>}
-            </div>
-          </div>
+      <div className="flex h-9 shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-[#2f3136] bg-[#1f2023] px-3">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-[#b7bbc3]">
+          <BookOpen className="h-3.5 w-3.5 shrink-0 text-[#a8adb7]" />
+          <span className="truncate font-medium text-[#d7dbe2]">{chapterSummary?.display_title || fileName}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
+          {toolbarActions}
           {saveStatus && (
             <span className={`text-xs ${saveStatus === '已保存' ? 'text-[#6cc477]' : 'text-[#ff6b6b]'}`}>
               {saveStatus}
