@@ -108,21 +108,21 @@ export function ToolActivityBlock({ content }: { content: string }) {
 
   return (
     <div className="flex justify-start">
-      <div className="w-full rounded-lg border border-[#303238] bg-[#202124] px-3 py-2 text-xs shadow-[0_8px_24px_rgba(0,0,0,0.18)]">
+      <div className="w-full rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2.5 text-xs shadow-[var(--nova-shadow)]">
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#5a5d64]/40 bg-[#25262a] text-[#d7dbe2]">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
             <Clock3 className="h-3.5 w-3.5 animate-pulse" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2 text-[#d7dbe2]">
+            <div className="flex flex-wrap items-center gap-2 text-[var(--nova-text)]">
               <span className="font-medium">{activity.title}</span>
               {activity.toolName && (
-                <code className="rounded border border-[#454956] bg-[#1b1c20] px-1.5 py-0.5 font-mono text-[11px] text-[#d7dbe2]">
+                <code className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]">
                   {activity.toolName}
                 </code>
               )}
             </div>
-            {activity.detail && <div className="mt-1 truncate text-[#9aa1ad]">{activity.detail}</div>}
+            {activity.detail && <div className="mt-1 truncate text-[var(--nova-text-faint)]">{activity.detail}</div>}
           </div>
         </div>
       </div>
@@ -148,20 +148,20 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
 
   return (
     <div className="flex justify-start">
-      <div className="w-full overflow-hidden rounded-md border border-[#303238] bg-[#23252a] text-xs">
-        <div className="flex h-9 min-w-0 items-center gap-2 px-2.5">
+      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
+        <div className="flex min-h-10 min-w-0 items-center gap-2 px-3 py-2">
           <ToolStatusIcon status={status} />
-          <span className="shrink-0 font-medium text-[#d7dbe2]">调用工具</span>
-          <code className="shrink-0 rounded border border-[#454956] bg-[#1b1c20] px-1.5 py-0.5 font-mono text-[11px] text-[#d7dbe2]">
+          <span className="shrink-0 font-medium text-[var(--nova-text)]">调用工具</span>
+          <code className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]">
             {name}
           </code>
-          <span className="min-w-0 flex-1 truncate text-[#9aa1ad]">
+          <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
             {hasResult ? resultPreview || '执行完成' : summary}
           </span>
           {hasDetail && !isStreamingContent && (
             <button
               type="button"
-              className="shrink-0 text-[#aeb4bf] hover:text-[#f0f2f5]"
+              className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-[var(--nova-text-muted)] transition hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? '收起' : '详情'}
@@ -170,14 +170,14 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
         </div>
         {/* 流式写入时展示实时内容预览 */}
         {isStreamingContent && streamPreview && (
-          <div className="max-h-32 overflow-auto border-t border-[#303238] bg-[#1b1c20] px-3 py-2 font-mono text-[11px] leading-relaxed text-[#b8d4a8] whitespace-pre-wrap">
+          <div className="max-h-32 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-accent-green)] whitespace-pre-wrap">
             {streamPreview}
           </div>
         )}
         {expanded && !isStreamingContent && (
-          <div className="grid max-h-48 gap-2 overflow-auto border-t border-[#303238] bg-[#1b1c20] px-3 py-2 font-mono text-[11px] leading-relaxed text-[#aeb4bf]">
+          <div className="grid max-h-48 gap-2 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
             {args && <pre className="whitespace-pre-wrap">{args}</pre>}
-            {result && <pre className="whitespace-pre-wrap text-[#91d99f]">{result}</pre>}
+            {result && <pre className="whitespace-pre-wrap text-[var(--nova-accent-green)]">{result}</pre>}
           </div>
         )}
       </div>
@@ -203,26 +203,28 @@ export function TodoListBlock({ message }: { message: ChatMessage }) {
 
   return (
     <div className="flex justify-start">
-      <div className="w-full overflow-hidden rounded-md border border-[#303238] bg-[#23252a] text-xs">
-        <div className="flex h-9 min-w-0 items-center gap-2 px-2.5">
-          <ListTodo className="h-3.5 w-3.5 shrink-0 text-[#a8adb7]" />
-          <span className="shrink-0 font-medium text-[#d7dbe2]">待办列表</span>
+      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
+        <div className="flex min-h-10 min-w-0 items-center gap-2 px-3 py-2">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
+            <ListTodo className="h-3.5 w-3.5" />
+          </span>
+          <span className="shrink-0 font-medium text-[var(--nova-text)]">待办列表</span>
           {total > 0 && (
-            <span className="shrink-0 rounded-full border border-[#454956] bg-[#1b1c20] px-1.5 py-0.5 font-mono text-[11px] text-[#9aa1ad]">
+            <span className="shrink-0 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-faint)]">
               {completed}/{total}
             </span>
           )}
-          <span className="min-w-0 flex-1 truncate text-[#9aa1ad]">{headline}</span>
+          <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">{headline}</span>
         </div>
         {todos.length > 0 && (
-          <ul className="border-t border-[#303238] bg-[#1b1c20] px-3 py-2">
+          <ul className="grid gap-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5">
             {todos.map((todo, index) => (
               <TodoListItem key={index} todo={todo} />
             ))}
           </ul>
         )}
         {todos.length === 0 && (
-          <div className="border-t border-[#303238] bg-[#1b1c20] px-3 py-2 text-[#9aa1ad]">
+          <div className="border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 text-[var(--nova-text-faint)]">
             {status === 'running' ? '解析中…' : '空待办'}
           </div>
         )}
@@ -235,24 +237,24 @@ function TodoListItem({ todo }: { todo: TodoItem }) {
   const text = todo.status === 'in_progress' && todo.activeForm ? todo.activeForm : todo.content
   if (todo.status === 'completed') {
     return (
-      <li className="flex items-start gap-2 py-0.5 leading-6">
-        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#7bd88f]" />
-        <span className="text-[#7f8593] line-through">{text}</span>
+      <li className="flex items-start gap-2 rounded-md px-2 py-1.5 leading-5">
+        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--nova-accent-green)]" />
+        <span className="text-[var(--nova-text-faint)] line-through">{text}</span>
       </li>
     )
   }
   if (todo.status === 'in_progress') {
     return (
-      <li className="flex items-start gap-2 py-0.5 leading-6">
-        <CircleDot className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-pulse text-[#d7dbe2]" />
-        <span className="text-[#e4e7ee]">{text}</span>
+      <li className="flex items-start gap-2 rounded-md border border-[var(--nova-border)] bg-[var(--nova-hover)] px-2 py-1.5 leading-5">
+        <CircleDot className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-pulse text-[var(--nova-text)]" />
+        <span className="text-[var(--nova-text)]">{text}</span>
       </li>
     )
   }
   return (
-    <li className="flex items-start gap-2 py-0.5 leading-6">
-      <Circle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#5b6070]" />
-      <span className="text-[#c8ccd4]">{text}</span>
+    <li className="flex items-start gap-2 rounded-md px-2 py-1.5 leading-5">
+      <Circle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+      <span className="text-[var(--nova-text-muted)]">{text}</span>
     </li>
   )
 }
@@ -305,12 +307,16 @@ function parseTodosFromArgs(args: string): TodoItem[] {
 
 function ToolStatusIcon({ status }: { status: ChatMessage['status'] }) {
   if (status === 'success') {
-    return <span className="shrink-0 text-sm leading-none">✅</span>
+    return (
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--nova-accent-green)]/45 bg-[var(--nova-accent-green)]/10 text-[var(--nova-accent-green)]">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+      </span>
+    )
   }
   if (status === 'error') {
-    return <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-[#ff6b6b] text-[10px] text-[#ff6b6b]">!</span>
+    return <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#ff6b6b]/55 bg-[#ff6b6b]/10 text-[10px] text-[#ff6b6b]">!</span>
   }
-  return <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-[#5a5d64]/35 border-t-[#d7dbe2]" />
+  return <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[var(--nova-border)] border-t-[var(--nova-text)]" />
 }
 
 /** 工具结果卡片，默认展示摘要，避免大段结果挤占对话区 */
@@ -321,25 +327,25 @@ function ToolResultBlock({ content }: { content: string }) {
 
   return (
     <div className="flex justify-start">
-      <div className="w-full overflow-hidden rounded-lg border border-[#2f3d35] bg-[#202824] text-xs shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
         <div className="flex items-start gap-3 px-3 py-2.5">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#3d7a55]/40 bg-[#1e3327] text-[#7bd88f]">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-accent-green)]/35 bg-[var(--nova-accent-green)]/10 text-[var(--nova-accent-green)]">
             <CheckCircle2 className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-[#d7dbe2]">工具执行完成</span>
-              <span className="rounded-full border border-[#3d7a55]/40 bg-[#1b2a21] px-2 py-0.5 text-[11px] text-[#91d99f]">
+              <span className="font-medium text-[var(--nova-text)]">工具执行完成</span>
+              <span className="rounded-full border border-[var(--nova-accent-green)]/35 bg-[var(--nova-accent-green)]/10 px-2 py-0.5 text-[11px] text-[var(--nova-accent-green)]">
                 success
               </span>
             </div>
-            <div className="mt-1 flex min-w-0 items-center gap-2 text-[#9aa1ad]">
-              <FileText className="h-3.5 w-3.5 shrink-0 text-[#7bd88f]" />
+            <div className="mt-1 flex min-w-0 items-center gap-2 text-[var(--nova-text-faint)]">
+              <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
               <span className="truncate">{preview || '无返回内容'}</span>
               {canExpand && (
                 <button
                   type="button"
-                  className="shrink-0 text-[#aeb4bf] hover:text-[#f0f2f5]"
+                  className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-[var(--nova-text-muted)] transition hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                   onClick={() => setExpanded(!expanded)}
                 >
                   {expanded ? '收起' : '展开'}
@@ -349,7 +355,7 @@ function ToolResultBlock({ content }: { content: string }) {
           </div>
         </div>
         {expanded && (
-          <pre className="max-h-56 overflow-auto border-t border-[#2f3d35] bg-[#1b1f1d] px-3 py-2 font-mono text-[11px] leading-relaxed text-[#aeb4bf]">
+          <pre className="max-h-56 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
             {content}
           </pre>
         )}
