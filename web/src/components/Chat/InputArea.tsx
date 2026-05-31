@@ -21,6 +21,7 @@ const COMMANDS = [
   { cmd: '/status', desc: '查看状态' },
   { cmd: '/help', desc: '帮助信息' },
   { cmd: '/outline', desc: '生成大纲' },
+  { cmd: '/group-plan', desc: '生成下一组细纲' },
   { cmd: '/continue', desc: '继续写作' },
   { cmd: '/rewrite', desc: '重写章节' },
 ]

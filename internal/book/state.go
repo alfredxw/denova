@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -56,6 +57,11 @@ func (s *State) StyleDir() string {
 	return filepath.Join(s.SettingDir(), "styles")
 }
 
+// ChapterGroupDir 返回章节组细纲目录路径（用户可查看和编辑）。
+func (s *State) ChapterGroupDir() string {
+	return filepath.Join(s.SettingDir(), "chapter-groups")
+}
+
 // BrainstormFileName 顶层定调文件名，存于 workspace 根目录。
 const BrainstormFileName = "脑暴.md"
 
@@ -67,6 +73,7 @@ func (s *State) InitWorkspace() error {
 		s.SessionDir(),
 		s.LoreDir(),
 		s.SettingDir(),
+		s.ChapterGroupDir(),
 		s.StyleDir(),
 		filepath.Join(s.workspace, "chapters"),
 	}
@@ -133,7 +140,61 @@ func (s *State) CompactContext() string {
 		sb.WriteString("\n\n")
 	}
 
+	if groupContext := s.ChapterGroupContext(2); groupContext != "" {
+		sb.WriteString("## 章节组细纲\n\n")
+		sb.WriteString(groupContext)
+		sb.WriteString("\n\n")
+	}
+
 	return sb.String()
+}
+
+// ChapterGroupContext 返回最近的章节组细纲内容，用于提示 Agent 关注当前短期写作计划。
+func (s *State) ChapterGroupContext(limit int) string {
+	if limit <= 0 {
+		limit = 2
+	}
+	root := s.ChapterGroupDir()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return ""
+	}
+	var files []string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || strings.HasPrefix(name, ".") {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(name))
+		if ext != ".md" && ext != ".txt" {
+			continue
+		}
+		files = append(files, name)
+	}
+	if len(files) == 0 {
+		return ""
+	}
+	sort.Strings(files)
+	if len(files) > limit {
+		files = files[len(files)-limit:]
+	}
+	var sb strings.Builder
+	for _, name := range files {
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			continue
+		}
+		content := strings.TrimSpace(string(data))
+		if content == "" {
+			continue
+		}
+		sb.WriteString("### ")
+		sb.WriteString(name)
+		sb.WriteString("\n\n")
+		sb.WriteString(content)
+		sb.WriteString("\n\n")
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 // LoreContext 返回结构化资料库中的 Markdown 上下文。

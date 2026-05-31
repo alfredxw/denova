@@ -475,6 +475,15 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if cfg.IDEStoryTellerID == "" && effective.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = effective.IDEStoryTellerID
 	}
+	if effective.DraftFlowEnabled != nil {
+		cfg.DraftFlowEnabled = *effective.DraftFlowEnabled
+	}
+	if effective.ChapterGroupMin != nil {
+		cfg.ChapterGroupMin = appSettingsInt(effective.ChapterGroupMin, 3)
+	}
+	if effective.ChapterGroupMax != nil {
+		cfg.ChapterGroupMax = appSettingsInt(effective.ChapterGroupMax, 8)
+	}
 	if effective.InteractiveReplyTargetChars != nil {
 		cfg.InteractiveReplyTargetChars = appSettingsInt(effective.InteractiveReplyTargetChars, 1200)
 	}
@@ -498,6 +507,15 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = settings.IDEStoryTellerID
+	}
+	if settings.DraftFlowEnabled != nil {
+		cfg.DraftFlowEnabled = *settings.DraftFlowEnabled
+	}
+	if settings.ChapterGroupMin != nil {
+		cfg.ChapterGroupMin = appSettingsInt(settings.ChapterGroupMin, 3)
+	}
+	if settings.ChapterGroupMax != nil {
+		cfg.ChapterGroupMax = appSettingsInt(settings.ChapterGroupMax, 8)
 	}
 	if settings.InteractiveReplyTargetChars != nil {
 		cfg.InteractiveReplyTargetChars = appSettingsInt(settings.InteractiveReplyTargetChars, 1200)

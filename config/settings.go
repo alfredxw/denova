@@ -25,6 +25,9 @@ type Settings struct {
 	AutoSaveIntervalMs    *int   `toml:"auto_save_interval_ms,omitempty" json:"auto_save_interval_ms,omitempty"`
 	ChapterFilenameFormat string `toml:"chapter_filename_format,omitempty" json:"chapter_filename_format,omitempty"`
 	MaxOpenTabs           *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
+	DraftFlowEnabled      *bool  `toml:"draft_flow_enabled,omitempty" json:"draft_flow_enabled,omitempty"`
+	ChapterGroupMin       *int   `toml:"chapter_group_min,omitempty" json:"chapter_group_min,omitempty"`
+	ChapterGroupMax       *int   `toml:"chapter_group_max,omitempty" json:"chapter_group_max,omitempty"`
 
 	// 外观
 	UIFontFamily      string `toml:"ui_font_family,omitempty" json:"ui_font_family,omitempty"`
@@ -72,6 +75,9 @@ func DefaultSettings() Settings {
 		AutoSaveIntervalMs:          intPtr(1500),
 		ChapterFilenameFormat:       "ch{NN}-{title}.md",
 		MaxOpenTabs:                 intPtr(5),
+		DraftFlowEnabled:            boolPtr(false),
+		ChapterGroupMin:             intPtr(3),
+		ChapterGroupMax:             intPtr(8),
 		UIFontFamily:                "system-sans",
 		ReadingFontFamily:           "source-han-serif",
 		MaxIteration:                intPtr(50),
@@ -114,6 +120,15 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.MaxOpenTabs != nil {
 		out.MaxOpenTabs = child.MaxOpenTabs
+	}
+	if child.DraftFlowEnabled != nil {
+		out.DraftFlowEnabled = child.DraftFlowEnabled
+	}
+	if child.ChapterGroupMin != nil {
+		out.ChapterGroupMin = child.ChapterGroupMin
+	}
+	if child.ChapterGroupMax != nil {
+		out.ChapterGroupMax = child.ChapterGroupMax
 	}
 	if child.UIFontFamily != "" {
 		out.UIFontFamily = child.UIFontFamily

@@ -16,6 +16,9 @@ type Config struct {
 	NovaDir                     string `toml:"nova_dir"`
 	Workspace                   string `toml:"workspace"`
 	IDEStoryTellerID            string `toml:"-"`
+	DraftFlowEnabled            bool   `toml:"-"`
+	ChapterGroupMin             int    `toml:"-"`
+	ChapterGroupMax             int    `toml:"-"`
 	InteractiveReplyTargetChars int    `toml:"-"`
 	InteractiveMaxTokens        int    `toml:"-"`
 	ResumeLastWorkspace         bool   `toml:"-"`
@@ -53,6 +56,9 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
+		DraftFlowEnabled:            settingsBool(s.DraftFlowEnabled, false),
+		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
+		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
 		InteractiveReplyTargetChars: settingsInt(s.InteractiveReplyTargetChars, 1200),
 		InteractiveMaxTokens:        settingsInt(s.InteractiveMaxTokens, 0),
 		ResumeLastWorkspace:         true,
@@ -125,6 +131,9 @@ func Load() *Config {
 			SkillsDir:                   d.SkillsDir,
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
+			DraftFlowEnabled:            settingsBool(d.DraftFlowEnabled, false),
+			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
+			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),
 			InteractiveReplyTargetChars: settingsInt(d.InteractiveReplyTargetChars, 1200),
 			InteractiveMaxTokens:        settingsInt(d.InteractiveMaxTokens, 0),
 			ResumeLastWorkspace:         true,
@@ -144,6 +153,13 @@ func Load() *Config {
 
 func settingsInt(v *int, fallback int) int {
 	if v == nil || *v <= 0 {
+		return fallback
+	}
+	return *v
+}
+
+func settingsBool(v *bool, fallback bool) bool {
+	if v == nil {
 		return fallback
 	}
 	return *v

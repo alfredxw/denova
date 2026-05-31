@@ -659,9 +659,11 @@ function AgentQuickActions({
 }) {
   const target = chapter ? `当前章节《${chapter.display_title}》` : (selectedFile ? `当前文件 ${selectedFile}` : '当前作品')
   const actions = [
+    { label: '下一组细纲', icon: FileText, prompt: '请基于当前大纲、已定稿章节、progress.md 和角色状态，生成接下来一个短期情节单元的章节组细纲。只规划下一组，不要批量生成很多组；如实际定稿已经偏离大纲，请先指出偏差并让我确认是调整大纲还是拉回主线。' },
+    { label: '按细纲写下一章', icon: PenLine, prompt: '请读取当前章节组细纲、长期大纲、progress.md、角色状态和前面至少两章定稿正文，按细纲安排创作下一章。若草稿流程未启用且我没有明确要求草稿，请直接写入 chapters/ 作为定稿候选。' },
     { label: '续写下一段', icon: PenLine, prompt: `请基于${target}的上下文，续写下一段正文，保持原有叙事节奏和人物状态。` },
     { label: '润色当前章', icon: WandSparkles, prompt: `请检查并润色${target}，重点优化语句节奏、动作描写和情绪推进，不改变核心剧情。` },
-    { label: '提取本章摘要', icon: FileText, prompt: `请为${target}提取章节摘要，包含关键事件、角色状态变化、伏笔和下一章衔接点。` },
+    { label: '定稿并同步状态', icon: FileText, prompt: `请将${target}视为章节定稿，检查其与前后文和当前章节组细纲的连续性，然后同步更新 progress.md 和 characters.md；除非我明确要求，不要修改长期大纲。` },
     { label: '一致性检查', icon: SearchCheck, prompt: `请对${target}做一致性检查，重点关注人物动机、时间线、道具、地点和前后文冲突。` },
   ]
 

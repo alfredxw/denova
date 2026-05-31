@@ -12,6 +12,9 @@ export interface Settings {
   auto_save_interval_ms?: number | null
   chapter_filename_format?: string
   max_open_tabs?: number | null
+  draft_flow_enabled?: boolean | null
+  chapter_group_min?: number | null
+  chapter_group_max?: number | null
   ui_font_family?: string
   reading_font_family?: string
   max_iteration?: number | null

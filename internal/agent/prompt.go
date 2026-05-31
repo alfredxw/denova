@@ -34,6 +34,9 @@ func BuildInstruction(cfg *config.Config, state *book.State, teller IDEStoryTell
 		StoryTellerName:        teller.Name,
 		StoryTellerDescription: teller.Description,
 		StoryTellerPrompt:      teller.Prompt,
+		DraftFlowEnabled:       cfg.DraftFlowEnabled,
+		ChapterGroupMin:        cfg.ChapterGroupMin,
+		ChapterGroupMax:        cfg.ChapterGroupMax,
 	})
 	logSystemPromptComposition("ide", cfg.Workspace, creator, stateContext, instruction, promptSource{
 		source:  "系统提示",
@@ -153,6 +156,8 @@ func promptStateSectionSource(title string) string {
 		return "setting/world-building.md"
 	case "当前进度":
 		return "setting/progress.md"
+	case "章节组细纲":
+		return "setting/chapter-groups/"
 	case "资料库":
 		return ".nova/lore/items.json"
 	default:

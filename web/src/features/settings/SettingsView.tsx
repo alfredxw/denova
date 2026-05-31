@@ -185,6 +185,15 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Num label="最大同时打开 Tab 数" value={draft.max_open_tabs ?? null}
                placeholder={placeholderFor('max_open_tabs')}
                onChange={(v) => setField('max_open_tabs', v)} />
+          <BoolTri label="启用草稿流程" value={draft.draft_flow_enabled ?? null}
+                   effective={effective.draft_flow_enabled}
+                   onChange={(v) => setField('draft_flow_enabled', v)} />
+          <Num label="章节组最少章节" value={draft.chapter_group_min ?? null}
+               placeholder={placeholderFor('chapter_group_min')}
+               onChange={(v) => setField('chapter_group_min', v)} />
+          <Num label="章节组最多章节" value={draft.chapter_group_max ?? null}
+               placeholder={placeholderFor('chapter_group_max')}
+               onChange={(v) => setField('chapter_group_max', v)} />
           {activeLayer === 'workspace' && (
             <TellerSelect
               label="默认讲述者"
