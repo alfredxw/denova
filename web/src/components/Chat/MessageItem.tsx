@@ -2,7 +2,7 @@ import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useS
 import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Bot, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, Pencil, RefreshCw } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, Pencil, RefreshCw } from 'lucide-react'
 import type { ChatMessage } from '@/lib/api'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 
@@ -45,16 +45,10 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
 
     case 'assistant':
       return (
-        <div className="flex justify-start">
-          <div className="chat-agent-message nova-assistant-message w-full text-sm text-[#c8ccd4]" style={messageStyle}>
-            <div className="mb-2.5 flex items-center justify-between gap-2 text-xs font-medium text-[#d7dbe2]">
-              <div className="flex items-center gap-2">
-                <span className="flex h-6 w-6 items-center justify-center rounded-md border border-[#3a3a3a] bg-[#202020] text-[#a3a3a3] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                  <Bot className="h-3.5 w-3.5" />
-                </span>
-                <span>Nova</span>
-              </div>
-              {canRegenerate && onRegenerate && (
+        <div className="group flex justify-start">
+          <div className={`chat-agent-message relative w-full px-1 text-sm text-[#c8ccd4] ${canRegenerate ? 'pr-8' : ''}`} style={messageStyle}>
+            {canRegenerate && onRegenerate && (
+              <div className="absolute right-0 top-0 opacity-0 transition-opacity group-hover:opacity-100">
                 <TooltipIconButton
                   label="重新生成这一轮"
                   className="h-7 w-7 border border-[#5a5d64]/50 bg-[#25262a] text-[#d7dbe2] hover:bg-[#303238]"
@@ -62,8 +56,8 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
                 </TooltipIconButton>
-              )}
-            </div>
+              </div>
+            )}
             {message.streaming ? (
               <StreamingMarkdown content={content} highlightDialogue={highlightDialogue} />
             ) : (
@@ -162,7 +156,7 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
             {name}
           </code>
           <span className="min-w-0 flex-1 truncate text-[#9aa1ad]">
-            {hasResult ? resultPreview || '无返回内容' : summary}
+            {hasResult ? resultPreview || '执行完成' : summary}
           </span>
           {hasDetail && !isStreamingContent && (
             <button

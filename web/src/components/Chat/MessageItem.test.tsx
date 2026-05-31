@@ -11,6 +11,14 @@ describe('MessageItem', () => {
     expect(screen.getByText('条目')).toBeInTheDocument()
   })
 
+  it('assistant 消息不展示 Nova 标题和气泡容器', () => {
+    const { container } = render(<MessageItem message={{ role: 'assistant', content: '直接展示正文' }} />)
+
+    expect(screen.queryByText('Nova')).not.toBeInTheDocument()
+    expect(container.querySelector('.nova-assistant-message')).toBeNull()
+    expect(container.querySelector('.chat-agent-message')).toHaveTextContent('直接展示正文')
+  })
+
   it('流式 assistant 消息即时渲染常见 Markdown 结构', () => {
     render(<MessageItem message={{ role: 'assistant', content: '# 实时标题\n- 实时条目\n`cmd`', streaming: true }} />)
 

@@ -74,6 +74,56 @@ func TestLoadLegacyJSONLWithoutClearMarkerUsesFullHistory(t *testing.T) {
 	}
 }
 
+func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.UserMessage("帮我规划下一章")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{Role: "thinking", Content: "先分析角色动机"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "read_file", Content: "read_file", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.UpdateDisplayToolStatus("call-1", "read_file", "success"); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.AssistantMessage("规划完成", nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	effective := reloaded.GetEffectiveMessages()
+	if len(effective) != 2 {
+		t.Fatalf("展示事件不应进入 Agent 有效上下文: %#v", effective)
+	}
+	history := reloaded.History()
+	if len(history) != 4 {
+		t.Fatalf("历史应包含 user/thinking/tool/assistant: %#v", history)
+	}
+	if history[1].Role != "thinking" || history[1].Content != "先分析角色动机" {
+		t.Fatalf("thinking 展示事件未恢复: %#v", history[1])
+	}
+	if history[2].Role != "tool_call" || history[2].Name != "read_file" || history[2].Status != "success" {
+		t.Fatalf("工具卡片展示状态未恢复: %#v", history[2])
+	}
+}
+
 func TestMultipleSessionsAreIsolatedAndActiveSessionPersists(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {
