@@ -118,6 +118,19 @@ func (s *Server) handleInteractiveBranchSwitch(ctx context.Context, c *app.Reque
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (s *Server) handleInteractiveTurnVersionSwitch(ctx context.Context, c *app.RequestContext) {
+	var body interactive.SwitchTurnVersionRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		return
+	}
+	if err := s.app.SwitchInteractiveTurnVersion(c.Param("id"), body); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (s *Server) handleInteractiveChat(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		Mode               string   `json:"mode"`

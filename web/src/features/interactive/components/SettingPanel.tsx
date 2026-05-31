@@ -124,6 +124,12 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const [tellerTagDraft, setTellerTagDraft] = useState('')
   const [activeSlotId, setActiveSlotId] = useState('')
   const [saving, setSaving] = useState(false)
+  const loreDraftRef = useRef<LoreItem | null>(null)
+  const loreTagDraftRef = useRef('')
+  const loreAutoSaveTimer = useRef<number | null>(null)
+  const loreSavedSignature = useRef('')
+  const tellerAutoSaveTimer = useRef<number | null>(null)
+  const tellerSavedSignature = useRef('')
 
   useEffect(() => {
     let cancelled = false
@@ -169,9 +175,26 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 
   useEffect(() => {
     const item = items.find((entry) => entry.id === activeId) || null
-    setDraft(item ? { ...item, tags: [...(item.tags || [])] } : null)
-    setTagDraft((item?.tags || []).join('，'))
+    const nextDraft = item ? { ...item, tags: [...(item.tags || [])] } : null
+    const nextTagDraft = (item?.tags || []).join('，')
+    const currentDraft = loreDraftRef.current
+    const currentTagDraft = loreTagDraftRef.current
+    const hasUnsavedCurrentDraft = Boolean(
+      currentDraft?.id &&
+      currentDraft.id === item?.id &&
+      loreDraftSignature(currentDraft, currentTagDraft) !== loreSavedSignature.current,
+    )
+    if (!hasUnsavedCurrentDraft) {
+      setDraft(nextDraft)
+      setTagDraft(nextTagDraft)
+      loreSavedSignature.current = nextDraft ? loreDraftSignature(nextDraft, nextTagDraft) : ''
+    }
   }, [activeId, items])
+
+  useEffect(() => {
+    loreDraftRef.current = draft
+    loreTagDraftRef.current = tagDraft
+  }, [draft, tagDraft])
 
   useEffect(() => {
     if (activeMode !== 'creator') return
@@ -208,8 +231,14 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 
   useEffect(() => {
     setTellers(externalTellers)
-    setActiveTellerId(externalTellers[0]?.id || '')
-    setTellerAgentTargetId(externalTellers[0]?.id || '')
+    setActiveTellerId((current) => {
+      if (current && externalTellers.some((teller) => teller.id === current)) return current
+      return externalTellers[0]?.id || ''
+    })
+    setTellerAgentTargetId((current) => {
+      if (current && externalTellers.some((teller) => teller.id === current)) return current
+      return externalTellers[0]?.id || ''
+    })
     setTellerDraft(null)
     setTellerTagDraft('')
     setActiveSlotId('')
@@ -223,14 +252,20 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       return
     }
     const teller = tellers.find((entry) => entry.id === activeTellerId) || null
-    setTellerDraft(teller ? {
+    const nextDraft = teller ? {
       ...teller,
       tags: [...(teller.tags || [])],
       slots: [...(teller.slots || [])],
       context_policy: { ...teller.context_policy },
-    } : null)
+      style_rules: [...(teller.style_rules || [])],
+    } : null
+    setTellerDraft(nextDraft)
     setTellerTagDraft((teller?.tags || []).join('，'))
-    setActiveSlotId(teller?.slots?.[0]?.id || '')
+    setActiveSlotId((current) => {
+      if (current && teller?.slots?.some((slot) => slot.id === current)) return current
+      return teller?.slots?.[0]?.id || ''
+    })
+    tellerSavedSignature.current = nextDraft ? tellerDraftSignature(nextDraft, (teller?.tags || []).join('，')) : ''
   }, [activeTellerId, tellers])
 
   const refreshItems = async (nextActiveId?: string) => {
@@ -258,8 +293,49 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     const data = await getInteractiveTellers()
     setTellers(data)
     onTellersChange?.(data)
-    setActiveTellerId(nextActiveId || data[0]?.id || '')
+    setActiveTellerId((current) => {
+      if (nextActiveId) return nextActiveId
+      if (current && data.some((teller) => teller.id === current)) return current
+      return data[0]?.id || ''
+    })
     setTellerAgentTargetId((current) => data.some((teller) => teller.id === current) ? current : (nextActiveId || data[0]?.id || ''))
+  }
+
+  const mergeSavedTeller = (teller: Teller) => {
+    setTellers((current) => current.map((entry) => entry.id === teller.id ? teller : entry))
+    onTellersChange?.(tellers.map((entry) => entry.id === teller.id ? teller : entry))
+    setActiveTellerId(teller.id)
+    setTellerAgentTargetId((current) => current || teller.id)
+  }
+
+  const mergeSavedLoreItem = (item: LoreItem) => {
+    setItems((current) => current.map((entry) => entry.id === item.id ? item : entry))
+  }
+
+  const saveLoreDraft = async (mode: 'manual' | 'auto') => {
+    if (!draft) return null
+    const payload = { ...draft, tags: splitTags(tagDraft) }
+    const signature = loreDraftSignature(payload, tagDraft)
+    if (mode === 'auto' && signature === loreSavedSignature.current) return null
+    const item = await updateLoreItem(draft.id, payload)
+    loreSavedSignature.current = loreDraftSignature(item, (item.tags || []).join('，'))
+    mergeSavedLoreItem(item)
+    return item
+  }
+
+  const saveTellerDraft = async (mode: 'manual' | 'auto') => {
+    if (!tellerDraft) return
+    const payload = {
+      ...tellerDraft,
+      tags: splitTags(tellerTagDraft),
+    }
+    const signature = tellerDraftSignature(payload, tellerTagDraft)
+    if (mode === 'auto' && signature === tellerSavedSignature.current) return
+    const teller = await updateInteractiveTeller(tellerDraft.id, payload)
+    tellerSavedSignature.current = tellerDraftSignature(teller, (teller.tags || []).join('，'))
+    if (mode === 'manual') {
+      mergeSavedTeller(teller)
+    }
   }
 
   const handleCreateLore = async (section: KnowledgeSection = KNOWLEDGE_SECTIONS[0]) => {
@@ -306,6 +382,10 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     if (!window.confirm(`删除资料「${draft.name}」？`)) return
     setSaving(true)
     try {
+      if (loreAutoSaveTimer.current) {
+        window.clearTimeout(loreAutoSaveTimer.current)
+        loreAutoSaveTimer.current = null
+      }
       await deleteLoreItem(draft.id)
       await refreshItems()
       notifyLoreUpdated([draft.id])
@@ -322,22 +402,67 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         return
       }
       if (activeMode === 'teller') {
-        if (!tellerDraft) return
-        const teller = await updateInteractiveTeller(tellerDraft.id, {
-          ...tellerDraft,
-          tags: splitTags(tellerTagDraft),
-        })
-        await refreshTellers(teller.id)
+        if (tellerAutoSaveTimer.current) {
+          window.clearTimeout(tellerAutoSaveTimer.current)
+          tellerAutoSaveTimer.current = null
+        }
+        await saveTellerDraft('manual')
         return
       }
-      if (!draft) return
-      const item = await updateLoreItem(draft.id, { ...draft, tags: splitTags(tagDraft) })
-      await refreshItems(item.id)
-      notifyLoreUpdated([item.id])
+      if (loreAutoSaveTimer.current) {
+        window.clearTimeout(loreAutoSaveTimer.current)
+        loreAutoSaveTimer.current = null
+      }
+      const item = await saveLoreDraft('manual')
+      if (item) {
+        notifyLoreUpdated([item.id])
+      }
     } finally {
       setSaving(false)
     }
   }
+
+  useEffect(() => {
+    if (activeMode !== 'lore' || !draft || activeId === LORE_AGENT_ENTRY_ID) return
+    const signature = loreDraftSignature(draft, tagDraft)
+    if (signature === loreSavedSignature.current) return
+    if (loreAutoSaveTimer.current) {
+      window.clearTimeout(loreAutoSaveTimer.current)
+    }
+    loreAutoSaveTimer.current = window.setTimeout(() => {
+      loreAutoSaveTimer.current = null
+      void saveLoreDraft('auto').catch((err) => {
+        console.warn('[lore-editor] 自动保存资料库条目失败', err)
+      })
+    }, 1200)
+    return () => {
+      if (loreAutoSaveTimer.current) {
+        window.clearTimeout(loreAutoSaveTimer.current)
+        loreAutoSaveTimer.current = null
+      }
+    }
+  }, [activeMode, activeId, draft, tagDraft])
+
+  useEffect(() => {
+    if (activeMode !== 'teller' || !tellerDraft || activeTellerId === TELLER_AGENT_ENTRY_ID) return
+    const signature = tellerDraftSignature(tellerDraft, tellerTagDraft)
+    if (signature === tellerSavedSignature.current) return
+    if (tellerAutoSaveTimer.current) {
+      window.clearTimeout(tellerAutoSaveTimer.current)
+    }
+    tellerAutoSaveTimer.current = window.setTimeout(() => {
+      tellerAutoSaveTimer.current = null
+      void saveTellerDraft('auto').catch((err) => {
+        console.warn('[teller-editor] 自动保存讲述者失败', err)
+      })
+    }, 1200)
+    return () => {
+      if (tellerAutoSaveTimer.current) {
+        window.clearTimeout(tellerAutoSaveTimer.current)
+        tellerAutoSaveTimer.current = null
+      }
+    }
+  }, [activeMode, activeTellerId, tellerDraft, tellerTagDraft])
 
   const handleCreateLoreVersion = async () => {
     setSaving(true)
@@ -384,6 +509,17 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     }
   }
 
+  const handleSelectLore = (id: string) => {
+    if (loreAutoSaveTimer.current) {
+      window.clearTimeout(loreAutoSaveTimer.current)
+      loreAutoSaveTimer.current = null
+      void saveLoreDraft('auto').catch((err) => {
+        console.warn('[lore-editor] 切换条目前自动保存资料库条目失败', err)
+      })
+    }
+    setActiveId(id)
+  }
+
   const isLoreAgentActive = activeMode === 'lore' && activeId === LORE_AGENT_ENTRY_ID
   const isTellerAgentActive = activeMode === 'teller' && activeTellerId === TELLER_AGENT_ENTRY_ID
   return (
@@ -404,7 +540,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
             query={query}
             saving={saving}
             onQueryChange={setQuery}
-            onSelect={setActiveId}
+            onSelect={handleSelectLore}
             onCreate={(section) => void handleCreateLore(section)}
           />
         ) : activeMode === 'creator' ? (
@@ -2248,6 +2384,20 @@ function splitTags(value: string) {
     .split(/[，,]/)
     .map((tag) => tag.trim())
     .filter(Boolean)
+}
+
+function loreDraftSignature(item: Partial<LoreItem>, tagDraft: string) {
+  return JSON.stringify({
+    ...item,
+    tags: splitTags(tagDraft),
+  })
+}
+
+function tellerDraftSignature(teller: Partial<Teller>, tagDraft: string) {
+  return JSON.stringify({
+    ...teller,
+    tags: splitTags(tagDraft),
+  })
 }
 
 function notifyLoreUpdated(itemIds: string[] = []) {

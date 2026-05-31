@@ -56,6 +56,7 @@ export function InteractiveLayout({
     if (requestSeq !== snapshotRequestSeqRef.current) return
     setSnapshot(nextSnapshot)
     setBranches(nextBranches)
+    return nextSnapshot
   }, [currentBranchId, currentStoryId, setBranches, setSnapshot])
 
   useEffect(() => {

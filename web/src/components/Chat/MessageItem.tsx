@@ -2,7 +2,7 @@ import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useS
 import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, Pencil, RefreshCw } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, Pencil, RefreshCw } from 'lucide-react'
 import type { ChatMessage } from '@/lib/api'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 
@@ -12,13 +12,18 @@ interface MessageItemProps {
   messageStyle?: CSSProperties
   onEdit?: (message: ChatMessage) => void
   onRegenerate?: (message: ChatMessage) => void
+  onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void
 }
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canRegenerate = role === 'assistant' && Boolean(message.turn_id) && Boolean(onRegenerate) && !message.streaming
+  const versionCount = message.turn_versions?.length || 0
+  const versionIndex = message.turn_version_index ?? -1
+  const canSwitchVersion = role === 'assistant' && versionCount > 1 && versionIndex >= 0 && Boolean(onSwitchVersion) && !message.streaming
+  const showAssistantActions = canRegenerate || canSwitchVersion
 
   switch (role) {
     case 'user':
@@ -46,22 +51,51 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
     case 'assistant':
       return (
         <div className="group flex justify-start">
-          <div className={`chat-agent-message relative w-full px-1 text-sm text-[#c8ccd4] ${canRegenerate ? 'pr-8' : ''}`} style={messageStyle}>
-            {canRegenerate && onRegenerate && (
-              <div className="absolute right-0 top-0 opacity-0 transition-opacity group-hover:opacity-100">
-                <TooltipIconButton
-                  label="重新生成这一轮"
-                  className="h-7 w-7 border border-[#5a5d64]/50 bg-[#25262a] text-[#d7dbe2] hover:bg-[#303238]"
-                  onClick={() => onRegenerate(message)}
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                </TooltipIconButton>
-              </div>
-            )}
+          <div className="chat-agent-message w-full px-1 text-sm text-[#c8ccd4]" style={messageStyle}>
             {message.streaming ? (
               <StreamingMarkdown content={content} highlightDialogue={highlightDialogue} />
             ) : (
               <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
+            )}
+            {showAssistantActions && (
+              <div className="mt-1.5 flex justify-end">
+                <div className="flex items-center gap-0.5 opacity-30 transition-opacity group-hover:opacity-80 focus-within:opacity-80">
+                  {canSwitchVersion && onSwitchVersion && (
+                    <>
+                      <TooltipIconButton
+                        label="切换到上一版"
+                        className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
+                        disabled={versionIndex <= 0}
+                        onClick={() => onSwitchVersion(message, -1)}
+                      >
+                        <ChevronLeft className="h-3 w-3" />
+                      </TooltipIconButton>
+                      <span className="min-w-8 text-center font-mono text-[10px] leading-6 text-[var(--nova-text-faint)]">
+                        {versionIndex + 1}/{versionCount}
+                      </span>
+                    </>
+                  )}
+                  {canRegenerate && onRegenerate && (
+                    <TooltipIconButton
+                      label="重新生成这一轮"
+                      className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
+                      onClick={() => onRegenerate(message)}
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </TooltipIconButton>
+                  )}
+                  {canSwitchVersion && onSwitchVersion && (
+                    <TooltipIconButton
+                      label="切换到下一版"
+                      className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
+                      disabled={versionIndex >= versionCount - 1}
+                      onClick={() => onSwitchVersion(message, 1)}
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                    </TooltipIconButton>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>

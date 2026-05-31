@@ -10,7 +10,7 @@ import { ReferenceChips } from '@/components/Chat/ReferenceChips'
 import type { ChatMessage } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { fontStackFor } from '@/features/settings/font-options'
-import { abortInteractiveChat, sendInteractiveMessage } from '../api'
+import { abortInteractiveChat, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
 import { createInteractiveNarrativeFilter } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
@@ -33,7 +33,7 @@ interface StoryStageProps {
   onStoryDelete?: (storyId: string) => void
   onTellerChange?: (tellerId: string) => void
   onToggleSceneMemory?: () => void
-  onDone: () => void
+  onDone: () => void | Promise<Snapshot | void>
 }
 
 const DEFAULT_STAGE_FONT_SIZE = 16
@@ -73,6 +73,7 @@ export function StoryStage({
   const liveMessages = stageRun.liveMessages
   const rewindTurnId = stageRun.rewindTurnId
   const [editingTurn, setEditingTurn] = useState<{ id: string; content: string } | null>(null)
+  const [switchingVersionTurnId, setSwitchingVersionTurnId] = useState<string | null>(null)
   const liveStageKeyRef = useRef(stageKey)
   const previousSnapshotKeyRef = useRef(snapshotKey)
   const stageTypography = useStageTypography()
@@ -112,7 +113,7 @@ export function StoryStage({
     return { user, narrative }
   }, [liveMessages])
 
-  const duplicatePersistedLiveTurn = useMemo(() => {
+  const hasPersistedLiveTurn = useMemo(() => {
     const lastTurn = snapshot?.turns?.[snapshot.turns.length - 1]
     if (!lastTurn || !latestLiveTurn) return false
     if (liveStageKeyRef.current !== stageKey) return false
@@ -125,29 +126,36 @@ export function StoryStage({
     if (streaming) return
     previousSnapshotKeyRef.current = snapshotKey
     setStageActivityContent('')
-    if (!duplicatePersistedLiveTurn) {
+    if (liveMessages.length > 0) {
       clearStoryStageRun(stageKey)
     }
-  }, [clearStoryStageRun, duplicatePersistedLiveTurn, setStageActivityContent, snapshotKey, stageKey, streaming])
+  }, [clearStoryStageRun, liveMessages.length, setStageActivityContent, snapshotKey, stageKey, streaming])
 
   const historyMessages = useMemo<ChatMessage[]>(() => {
     const turns = snapshot?.turns || []
     const rewindIndex = rewindTurnId ? turns.findIndex((turn) => turn.id === rewindTurnId) : -1
     const pathTurns = rewindIndex >= 0 ? turns.slice(0, rewindIndex) : turns
-    const visibleTurns = duplicatePersistedLiveTurn ? pathTurns.slice(0, -1) : pathTurns
-    return visibleTurns.flatMap((turn) => {
+    return pathTurns.flatMap((turn) => {
       const messages: ChatMessage[] = [
         { id: `${turn.id}-user`, turn_id: turn.id, role: 'user', content: turn.user },
       ]
       if (turn.thinking?.trim()) {
         messages.push({ id: `${turn.id}-thinking`, role: 'thinking', content: turn.thinking, streaming: false })
       }
-      messages.push({ id: `${turn.id}-assistant`, turn_id: turn.id, role: 'assistant', content: turn.narrative })
+      messages.push({
+        id: `${turn.id}-assistant`,
+        turn_id: turn.id,
+        role: 'assistant',
+        content: turn.narrative,
+        turn_versions: turn.versions,
+        turn_version_index: turn.version_idx,
+      })
       return messages
     })
-  }, [duplicatePersistedLiveTurn, rewindTurnId, snapshot?.turns])
+  }, [rewindTurnId, snapshot?.turns])
 
-  const messages = useMemo(() => [...historyMessages, ...liveMessages], [historyMessages, liveMessages])
+  const displayLiveMessages = hasPersistedLiveTurn ? [] : liveMessages
+  const messages = useMemo(() => [...historyMessages, ...displayLiveMessages], [displayLiveMessages, historyMessages])
   const scrollResetKey = `${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
   const title = pickSceneTitle(snapshot, branchId)
   const hotChoices = useMemo(() => {
@@ -235,6 +243,7 @@ export function StoryStage({
             const visible = narrativeFilter.flush()
             collapseNonNarrativeMessages()
             if (visible) appendAssistantMessage(visible)
+            finishLiveMessages()
             setStageActivityContent('完成')
             break
           }
@@ -242,6 +251,7 @@ export function StoryStage({
             const visible = narrativeFilter.flush()
             collapseNonNarrativeMessages()
             if (visible) appendAssistantMessage(visible)
+            finishLiveMessages()
             setStageActivityContent('已中断')
             break
           }
@@ -281,6 +291,30 @@ export function StoryStage({
     if (!message.turn_id || streaming) return
     const source = turnsById.get(message.turn_id)?.user || message.content || ''
     void send({ message: source, rewindTurnId: message.turn_id })
+  }
+
+  const switchMessageVersion = async (message: ChatMessage, direction: -1 | 1) => {
+    if (!message.turn_id || !storyId || streaming || switchingVersionTurnId) return
+    const versions = message.turn_versions || []
+    const currentIndex = message.turn_version_index ?? versions.findIndex((version) => version.current)
+    const nextVersion = versions[currentIndex + direction]
+    if (!nextVersion) return
+    setSwitchingVersionTurnId(message.turn_id)
+    setStageActivityContent(direction > 0 ? '正在切换到更新版本…' : '正在切换到更早版本…')
+    try {
+      await switchInteractiveTurnVersion(storyId, {
+        branch_id: branchId,
+        turn_id: message.turn_id,
+        version_turn_id: nextVersion.turn_id,
+      })
+      clearStoryStageRun(stageKey)
+      await onDone()
+    } catch (error) {
+      setStageLiveMessages((prev) => [...prev, { role: 'error', content: error instanceof Error ? error.message : '切换回合版本失败' }])
+    } finally {
+      setSwitchingVersionTurnId(null)
+      setStageActivityContent('')
+    }
   }
 
   const cancelEditing = () => {
@@ -370,6 +404,7 @@ export function StoryStage({
                 messageStyle={stageTextStyle}
                 onEditMessage={startEditingMessage}
                 onRegenerateMessage={regenerateMessage}
+                onSwitchMessageVersion={switchMessageVersion}
               />
             )}
           </section>
@@ -496,6 +531,14 @@ export function StoryStage({
   function collapseNonNarrativeMessages() {
     setStageLiveMessages((prev) => prev.map((msg) => (
       msg.role === 'thinking' || msg.role === 'tool_call'
+        ? { ...msg, streaming: false, status: msg.role === 'tool_call' ? (msg.status === 'running' ? 'success' : msg.status) : msg.status }
+        : msg
+    )))
+  }
+
+  function finishLiveMessages() {
+    setStageLiveMessages((prev) => prev.map((msg) => (
+      msg.role === 'assistant' || msg.role === 'thinking' || msg.role === 'tool_call'
         ? { ...msg, streaming: false, status: msg.role === 'tool_call' ? (msg.status === 'running' ? 'success' : msg.status) : msg.status }
         : msg
     )))

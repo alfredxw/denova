@@ -75,6 +75,14 @@ export interface TurnEvent {
   hot_state?: HotState
   state_status?: 'pending' | 'ready' | 'failed'
   state_error?: string
+  versions?: TurnVersion[]
+  version_idx?: number
+}
+
+export interface TurnVersion {
+  turn_id: string
+  ts: string
+  current?: boolean
 }
 
 export interface StateDelta {

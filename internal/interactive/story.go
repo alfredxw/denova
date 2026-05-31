@@ -62,6 +62,12 @@ type RewindTurnRequest struct {
 	TurnID   string `json:"turn_id"`
 }
 
+type SwitchTurnVersionRequest struct {
+	BranchID      string `json:"branch_id"`
+	TurnID        string `json:"turn_id"`
+	VersionTurnID string `json:"version_turn_id"`
+}
+
 type AppendStateDeltaRequest struct {
 	ParentID string    `json:"parent_id"`
 	BranchID string    `json:"branch_id"`
@@ -147,12 +153,20 @@ type TurnEvent struct {
 	StateError  string          `json:"state_error,omitempty"`
 	Alts        []TurnAlt       `json:"alts,omitempty"`
 	AltIdx      int             `json:"alt_idx,omitempty"`
+	Versions    []TurnVersion   `json:"versions,omitempty"`
+	VersionIdx  int             `json:"version_idx,omitempty"`
 	Flags       map[string]bool `json:"flags,omitempty"`
 }
 
 type TurnAlt struct {
 	Narrative string `json:"narrative"`
 	Ts        string `json:"ts"`
+}
+
+type TurnVersion struct {
+	TurnID  string `json:"turn_id"`
+	Ts      string `json:"ts"`
+	Current bool   `json:"current"`
 }
 
 type StateDelta struct {
@@ -523,6 +537,68 @@ func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error 
 	return s.touchIndexLocked(storyID, now, 0)
 }
 
+func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	turnID := strings.TrimSpace(req.TurnID)
+	versionTurnID := strings.TrimSpace(req.VersionTurnID)
+	if turnID == "" || versionTurnID == "" {
+		return fmt.Errorf("回合版本参数不能为空")
+	}
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return err
+	}
+	branchID := req.BranchID
+	if branchID == "" {
+		branchID = meta.CurrentBranch
+	}
+	branch, ok := meta.Branches[branchID]
+	if !ok {
+		return fmt.Errorf("分支不存在: %s", branchID)
+	}
+	events := eventsByID(lines)
+	path, pathSet := eventPath(branch.Head, events)
+	if !pathSet[turnID] {
+		return fmt.Errorf("只能切换当前剧情路径上的回合版本: %s", turnID)
+	}
+	var current map[string]any
+	for _, raw := range path {
+		id, _ := raw["id"].(string)
+		eventType, _ := raw["type"].(string)
+		if id == turnID && eventType == "turn" {
+			current = raw
+			break
+		}
+	}
+	if current == nil {
+		return fmt.Errorf("回合不存在: %s", turnID)
+	}
+	target, ok := events[versionTurnID]
+	if !ok {
+		return fmt.Errorf("目标版本不存在: %s", versionTurnID)
+	}
+	if eventType, _ := target["type"].(string); eventType != "turn" {
+		return fmt.Errorf("目标版本不是互动回合: %s", versionTurnID)
+	}
+	if rawBranchID, _ := target["branch_id"].(string); rawBranchID != branchID {
+		return fmt.Errorf("目标版本不属于当前分支: %s", versionTurnID)
+	}
+	if parentIDFromRaw(target) != parentIDFromRaw(current) {
+		return fmt.Errorf("只能在同一剧情位置切换版本")
+	}
+
+	branch.Head = versionTurnID
+	meta.Branches[branchID] = branch
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	meta.UpdatedAt = now
+	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
+		return err
+	}
+	return s.touchIndexLocked(storyID, now, 0)
+}
+
 func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (StateDeltaEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -798,6 +874,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[str
 	snapshot := Snapshot{StoryID: storyID, BranchID: branchID, State: state}
 	eventsByID := eventsByID(lines)
 	path, pathSet := eventPath(branch.Head, eventsByID)
+	turnVersions := buildTurnVersionIndex(lines)
 	for _, raw := range path {
 		eventType, _ := raw["type"].(string)
 		switch eventType {
@@ -805,6 +882,17 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[str
 			var turn TurnEvent
 			if err := mapToStruct(raw, &turn); err != nil {
 				return Snapshot{}, err
+			}
+			versions := turnVersions[turnVersionKey(turn.BranchID, parentIDFromRaw(raw))]
+			if len(versions) > 1 {
+				turn.Versions = versions
+				for index, version := range versions {
+					if version.TurnID == turn.ID {
+						turn.VersionIdx = index
+						turn.Versions[index].Current = true
+						break
+					}
+				}
 			}
 			snapshot.Turns = append(snapshot.Turns, turn)
 			currentTurn := turn
@@ -826,6 +914,33 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[str
 	}
 	snapshot.Graph = buildStoryGraph(meta, lines, eventsByID, pathSet)
 	return snapshot, nil
+}
+
+func buildTurnVersionIndex(lines []map[string]any) map[string][]TurnVersion {
+	result := map[string][]TurnVersion{}
+	for _, raw := range lines {
+		if eventType, _ := raw["type"].(string); eventType != "turn" {
+			continue
+		}
+		id, _ := raw["id"].(string)
+		branchID, _ := raw["branch_id"].(string)
+		ts, _ := raw["ts"].(string)
+		if id == "" || branchID == "" {
+			continue
+		}
+		key := turnVersionKey(branchID, parentIDFromRaw(raw))
+		result[key] = append(result[key], TurnVersion{TurnID: id, Ts: ts})
+	}
+	for key := range result {
+		sort.Slice(result[key], func(i, j int) bool {
+			return result[key][i].Ts < result[key][j].Ts
+		})
+	}
+	return result
+}
+
+func turnVersionKey(branchID, parentID string) string {
+	return branchID + "\x00" + parentID
 }
 
 func initialStoryState() map[string]any {

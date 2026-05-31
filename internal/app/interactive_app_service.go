@@ -122,6 +122,18 @@ func (s *InteractiveAppService) SwitchInteractiveBranch(storyID, branchID string
 	return store.SwitchBranch(storyID, branchID)
 }
 
+func (a *App) SwitchInteractiveTurnVersion(storyID string, req interactive.SwitchTurnVersionRequest) error {
+	return a.interactiveService().SwitchInteractiveTurnVersion(storyID, req)
+}
+
+func (s *InteractiveAppService) SwitchInteractiveTurnVersion(storyID string, req interactive.SwitchTurnVersionRequest) error {
+	store := s.store()
+	if store == nil {
+		return ErrNoWorkspace
+	}
+	return store.SwitchTurnVersion(storyID, req)
+}
+
 func (a *App) DeleteInteractiveBranch(storyID, branchID string) error {
 	return a.interactiveService().DeleteInteractiveBranch(storyID, branchID)
 }

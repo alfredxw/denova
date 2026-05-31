@@ -122,6 +122,14 @@ export function switchInteractiveBranch(storyId: string, branchId: string): Prom
   })
 }
 
+export function switchInteractiveTurnVersion(storyId: string, input: { branch_id: string; turn_id: string; version_turn_id: string }): Promise<void> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/switch-turn-version`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+}
+
 export async function sendInteractiveMessage(input: {
   mode: 'story' | 'setting'
   story_id: string

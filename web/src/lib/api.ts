@@ -12,6 +12,8 @@ export interface ChatMessage {
   result?: string
   streaming?: boolean
   created_at?: string
+  turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
+  turn_version_index?: number
 }
 
 export interface SessionSummary {

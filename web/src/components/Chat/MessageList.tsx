@@ -13,10 +13,11 @@ interface MessageListProps {
   messageStyle?: CSSProperties
   onEditMessage?: (message: ChatMessage) => void
   onRegenerateMessage?: (message: ChatMessage) => void
+  onSwitchMessageVersion?: (message: ChatMessage, direction: -1 | 1) => void
 }
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', messageStyle, onEditMessage, onRegenerateMessage }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', messageStyle, onEditMessage, onRegenerateMessage, onSwitchMessageVersion }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
@@ -158,7 +159,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       {messages.map((msg, i) => (
         msg.type === 'clear'
           ? <ContextClearDivider key={msg.id || msg.created_at || i} createdAt={msg.created_at} />
-          : <MessageItem key={msg.id || i} message={msg} highlightDialogue={highlightDialogue} messageStyle={messageStyle} onEdit={isStreaming ? undefined : onEditMessage} onRegenerate={isStreaming ? undefined : onRegenerateMessage} />
+          : <MessageItem key={msg.id || i} message={msg} highlightDialogue={highlightDialogue} messageStyle={messageStyle} onEdit={isStreaming ? undefined : onEditMessage} onRegenerate={isStreaming ? undefined : onRegenerateMessage} onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion} />
       ))}
 
       {isStreaming && (
