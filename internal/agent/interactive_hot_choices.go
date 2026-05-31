@@ -1,0 +1,97 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"strings"
+
+	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/schema"
+
+	"nova/config"
+	"nova/internal/prompts"
+)
+
+type interactiveHotChoicesPayload struct {
+	Choices []string `json:"choices"`
+}
+
+func GenerateInteractiveHotChoices(ctx context.Context, cfg *config.Config, instruction string) ([]string, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("配置不存在")
+	}
+	temperature := float32(0.35)
+	maxTokens := 3000
+	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
+		APIKey:      cfg.OpenAIAPIKey,
+		Model:       cfg.OpenAIModel,
+		BaseURL:     cfg.OpenAIBaseURL,
+		Temperature: &temperature,
+		MaxTokens:   &maxTokens,
+		ResponseFormat: &openai.ChatCompletionResponseFormat{
+			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("创建互动快捷选择模型失败: %w", err)
+	}
+	log.Printf("[interactive-hot-choices-agent] generate begin instruction=%s", promptPartSummary(instruction))
+	msg, err := cm.Generate(ctx, []*schema.Message{
+		schema.SystemMessage(prompts.BuildInteractiveHotChoicesSystemInstruction()),
+		schema.UserMessage(instruction),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("生成互动快捷选择失败: %w", err)
+	}
+	if msg == nil {
+		return nil, fmt.Errorf("互动快捷选择模型返回为空")
+	}
+	choices, err := parseInteractiveHotChoices(msg.Content)
+	if err != nil {
+		log.Printf("[interactive-hot-choices-agent] parse failed err=%v output=%q", err, msg.Content)
+		return nil, err
+	}
+	log.Printf("[interactive-hot-choices-agent] generate done choices=%d output=%s", len(choices), promptPartSummary(msg.Content))
+	return choices, nil
+}
+
+func parseInteractiveHotChoices(content string) ([]string, error) {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil, fmt.Errorf("互动快捷选择模型返回为空")
+	}
+	var payload interactiveHotChoicesPayload
+	if err := json.Unmarshal([]byte(extractJSONContent(content)), &payload); err != nil {
+		return nil, fmt.Errorf("解析互动快捷选择失败: %w", err)
+	}
+	choices := make([]string, 0, len(payload.Choices))
+	seen := map[string]bool{}
+	for _, choice := range payload.Choices {
+		choice = strings.TrimSpace(choice)
+		if choice == "" || seen[choice] {
+			continue
+		}
+		choices = append(choices, choice)
+		seen[choice] = true
+		if len(choices) >= 5 {
+			break
+		}
+	}
+	if len(choices) == 0 {
+		return nil, fmt.Errorf("互动快捷选择模型返回 choices 为空")
+	}
+	return choices, nil
+}
+
+func extractJSONContent(content string) string {
+	content = strings.TrimSpace(content)
+	if strings.HasPrefix(content, "```") {
+		content = strings.TrimPrefix(content, "```json")
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSpace(content)
+		content = strings.TrimSuffix(content, "```")
+	}
+	return strings.TrimSpace(content)
+}

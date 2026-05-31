@@ -131,6 +131,23 @@ func (s *Server) handleInteractiveTurnVersionSwitch(ctx context.Context, c *app.
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (s *Server) handleInteractiveHotChoices(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		Branch         string   `json:"branch"`
+		ExcludeChoices []string `json:"exclude_choices"`
+	}
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		return
+	}
+	result, err := s.app.GenerateInteractiveHotChoices(ctx, c.Param("id"), body.Branch, body.ExcludeChoices)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
 func (s *Server) handleInteractiveChat(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		Mode               string   `json:"mode"`

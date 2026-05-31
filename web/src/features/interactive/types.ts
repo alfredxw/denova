@@ -99,6 +99,11 @@ export interface HotState {
   choices: string[]
 }
 
+export interface HotChoicesResponse {
+  enabled: boolean
+  choices: string[]
+}
+
 export interface Snapshot {
   story_id: string
   branch_id: string

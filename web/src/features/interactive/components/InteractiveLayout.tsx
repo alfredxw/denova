@@ -7,6 +7,7 @@ import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
 import { SettingPanel, type SettingPanelMode } from './SettingPanel'
 import { SnapshotPanel } from './SnapshotPanel'
+import { StoryPicker } from './StoryPicker'
 import { StoryStage } from './StoryStage'
 
 interface InteractiveLayoutProps {
@@ -149,6 +150,16 @@ export function InteractiveLayout({
                   fill
                   variant="workspace"
                   onBackToStory={() => setSubmode('story')}
+                  headerControls={(
+                    <StoryPicker
+                      stories={stories}
+                      currentStoryId={currentStoryId}
+                      tellers={tellers}
+                      onSelect={setCurrentStoryId}
+                      onCreate={handleCreateStory}
+                      onDelete={handleDeleteStory}
+                    />
+                  )}
                 />
               ) : (
                 <Group

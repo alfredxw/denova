@@ -1,0 +1,184 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"nova/config"
+	"nova/internal/agent"
+	"nova/internal/book"
+	"nova/internal/interactive"
+	"nova/internal/prompts"
+)
+
+type InteractiveHotChoicesResult struct {
+	Enabled bool     `json:"enabled"`
+	Choices []string `json:"choices"`
+}
+
+func (a *App) GenerateInteractiveHotChoices(ctx context.Context, storyID, branchID string, excludeChoices []string) (InteractiveHotChoicesResult, error) {
+	return a.interactiveService().GenerateInteractiveHotChoices(ctx, storyID, branchID, excludeChoices)
+}
+
+func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Context, storyID, branchID string, excludeChoices []string) (InteractiveHotChoicesResult, error) {
+	a := s.app
+	a.mu.RLock()
+	store := a.interactive
+	cfg := a.cfg
+	workspace := a.workspace
+	a.mu.RUnlock()
+	if store == nil || cfg == nil {
+		return InteractiveHotChoicesResult{}, ErrNoWorkspace
+	}
+
+	runtimeCfg := *cfg
+	runtimeCfg.Workspace = workspace
+	if layered, err := config.LoadLayered(runtimeCfg.NovaDir, workspace); err == nil {
+		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+	} else {
+		log.Printf("[interactive-hot-choices] load settings failed workspace=%s err=%v", workspace, err)
+	}
+	if !runtimeCfg.InteractiveHotChoices {
+		log.Printf("[interactive-hot-choices] disabled by settings story_id=%s branch_id=%s", storyID, branchID)
+		return InteractiveHotChoicesResult{Enabled: false, Choices: []string{}}, nil
+	}
+
+	storyCtx, err := store.StoryContext(storyID, branchID)
+	if err != nil {
+		return InteractiveHotChoicesResult{}, err
+	}
+	cached, hasCached, err := store.HotChoices(storyID, storyCtx.Snapshot.BranchID)
+	if err != nil {
+		return InteractiveHotChoicesResult{}, err
+	}
+	if len(excludeChoices) == 0 && hasCached {
+		log.Printf("[interactive-hot-choices] cache hit story_id=%s branch_id=%s parent_id=%s choices=%d", storyID, cached.BranchID, cached.ParentID, len(cached.Choices))
+		return InteractiveHotChoicesResult{Enabled: true, Choices: cached.Choices}, nil
+	}
+	stateJSON, err := json.MarshalIndent(storyCtx.Snapshot.State, "", "  ")
+	if err != nil {
+		return InteractiveHotChoicesResult{}, fmt.Errorf("序列化互动状态失败: %w", err)
+	}
+	loreItems := hotChoicesLoreContext(workspace)
+	characters := ""
+	worldBuilding := ""
+	if loreItems == "" {
+		characters = readHotChoicesSettingFile(workspace, "characters.md")
+		worldBuilding = readHotChoicesSettingFile(workspace, "world-building.md")
+	}
+	instruction := prompts.InteractiveHotChoicesInstruction(prompts.InteractiveHotChoicesPromptInput{
+		Title:             storyCtx.Meta.Title,
+		Origin:            storyCtx.Meta.Origin,
+		StoryTellerID:     storyCtx.Meta.StoryTellerID,
+		BranchID:          storyCtx.Snapshot.BranchID,
+		Characters:        characters,
+		WorldBuilding:     worldBuilding,
+		LoreItems:         loreItems,
+		SnapshotStateJSON: string(stateJSON),
+		RecentTurns:       formatHotChoicesRecentTurns(storyCtx.Snapshot.Turns),
+		ExcludeChoices:    formatHotChoicesExcludeChoices(excludeChoices),
+	})
+	log.Printf(
+		"[interactive-hot-choices] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s turns=%d state=%s instruction=%s",
+		storyID,
+		storyCtx.Snapshot.BranchID,
+		interactivePartSummary(storyCtx.Meta.Title),
+		interactivePartSummary(storyCtx.Meta.Origin),
+		storyCtx.Meta.StoryTellerID,
+		len(storyCtx.Snapshot.Turns),
+		interactivePartSummary(string(stateJSON)),
+		interactivePartSummary(instruction),
+	)
+	choices, err := agent.GenerateInteractiveHotChoices(ctx, &runtimeCfg, instruction)
+	if err != nil {
+		log.Printf("[interactive-hot-choices] generate failed story_id=%s branch_id=%s err=%v", storyID, storyCtx.Snapshot.BranchID, err)
+		return InteractiveHotChoicesResult{}, err
+	}
+	persistedChoices := mergeHotChoiceLists(cached.Choices, excludeChoices, choices)
+	if len(persistedChoices) == 0 {
+		return InteractiveHotChoicesResult{}, fmt.Errorf("互动快捷选择模型返回为空")
+	}
+	event, err := store.SaveHotChoices(storyID, storyCtx.Snapshot.BranchID, persistedChoices)
+	if err != nil {
+		log.Printf("[interactive-hot-choices] persist failed story_id=%s branch_id=%s err=%v", storyID, storyCtx.Snapshot.BranchID, err)
+		return InteractiveHotChoicesResult{}, err
+	}
+	log.Printf("[interactive-hot-choices] persist done story_id=%s branch_id=%s parent_id=%s choices=%d", storyID, event.BranchID, event.ParentID, len(event.Choices))
+	return InteractiveHotChoicesResult{Enabled: true, Choices: event.Choices}, nil
+}
+
+func readHotChoicesSettingFile(workspace, name string) string {
+	if workspace == "" {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(workspace, "setting", name))
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func hotChoicesLoreContext(workspace string) string {
+	if workspace == "" {
+		return ""
+	}
+	context, err := book.NewLoreStore(workspace).ContextMarkdown()
+	if err != nil {
+		log.Printf("[interactive-hot-choices] load lore context failed workspace=%s err=%v", workspace, err)
+		return ""
+	}
+	return context
+}
+
+func formatHotChoicesRecentTurns(turns []interactive.TurnEvent) string {
+	if len(turns) == 0 {
+		return "（暂无历史回合，请基于开端给出第一步行动建议。）"
+	}
+	start := len(turns) - 6
+	if start < 0 {
+		start = 0
+	}
+	var sb strings.Builder
+	for i, turn := range turns[start:] {
+		idx := start + i + 1
+		fmt.Fprintf(&sb, "第 %d 回合用户行动：%s\n", idx, strings.TrimSpace(turn.User))
+		fmt.Fprintf(&sb, "第 %d 回合剧情：%s\n\n", idx, strings.TrimSpace(turn.Narrative))
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func formatHotChoicesExcludeChoices(choices []string) string {
+	var sb strings.Builder
+	for _, choice := range choices {
+		choice = strings.TrimSpace(choice)
+		if choice == "" {
+			continue
+		}
+		fmt.Fprintf(&sb, "- %s\n", choice)
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func mergeHotChoiceLists(lists ...[]string) []string {
+	merged := make([]string, 0)
+	seen := map[string]bool{}
+	for _, list := range lists {
+		for _, choice := range list {
+			choice = strings.TrimSpace(choice)
+			if choice == "" || seen[choice] {
+				continue
+			}
+			merged = append(merged, choice)
+			seen[choice] = true
+			if len(merged) >= 10 {
+				return merged
+			}
+		}
+	}
+	return merged
+}

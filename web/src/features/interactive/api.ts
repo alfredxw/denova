@@ -1,5 +1,5 @@
 import type { ChatMessage } from '@/lib/api'
-import type { BranchSummary, InteractiveSSEEvent, Snapshot, StoryIndex, StorySummary, Teller } from './types'
+import type { BranchSummary, HotChoicesResponse, InteractiveSSEEvent, Snapshot, StoryIndex, StorySummary, Teller } from './types'
 
 async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -127,6 +127,15 @@ export function switchInteractiveTurnVersion(storyId: string, input: { branch_id
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
+  })
+}
+
+export function generateInteractiveHotChoices(storyId: string, input: { branch?: string; exclude_choices?: string[]; signal?: AbortSignal }): Promise<HotChoicesResponse> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/hot-choices`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ branch: input.branch, exclude_choices: input.exclude_choices }),
+    signal: input.signal,
   })
 }
 

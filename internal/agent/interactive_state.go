@@ -16,12 +16,10 @@ func GenerateInteractiveState(ctx context.Context, cfg *config.Config, instructi
 	if cfg == nil {
 		return "", fmt.Errorf("配置不存在")
 	}
-	temperature := float32(0.2)
 	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
 		APIKey:      cfg.OpenAIAPIKey,
 		Model:       cfg.OpenAIModel,
 		BaseURL:     cfg.OpenAIBaseURL,
-		Temperature: &temperature,
 		ResponseFormat: &openai.ChatCompletionResponseFormat{
 			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 		},

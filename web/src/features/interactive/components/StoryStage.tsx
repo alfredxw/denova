@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent } from 'react'
-import { Compass, GitBranch, MessageSquareText, PanelRight, Pencil, RefreshCw, Send, Square, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Compass, GitBranch, MessageSquareText, PanelRight, Pencil, RefreshCw, Send, Square, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -10,7 +10,7 @@ import { ReferenceChips } from '@/components/Chat/ReferenceChips'
 import type { ChatMessage } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { fontStackFor } from '@/features/settings/font-options'
-import { abortInteractiveChat, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
+import { abortInteractiveChat, generateInteractiveHotChoices, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
 import { createInteractiveNarrativeFilter } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
@@ -60,7 +60,6 @@ export function StoryStage({
   onDone,
 }: StoryStageProps) {
   const [input, setInput] = useState('')
-  const [inputFocused, setInputFocused] = useState(false)
   const [styleReferences, setStyleReferences] = useState<string[]>([])
   const [styleReferenceQuery, setStyleReferenceQuery] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -74,14 +73,23 @@ export function StoryStage({
   const rewindTurnId = stageRun.rewindTurnId
   const [editingTurn, setEditingTurn] = useState<{ id: string; content: string } | null>(null)
   const [switchingVersionTurnId, setSwitchingVersionTurnId] = useState<string | null>(null)
+  const [generatedHotChoices, setGeneratedHotChoices] = useState<string[]>([])
+  const [hotChoicesExpanded, setHotChoicesExpanded] = useState(false)
+  const [hotChoicesLoading, setHotChoicesLoading] = useState(false)
+  const hotChoicesAbortRef = useRef<AbortController | null>(null)
   const liveStageKeyRef = useRef(stageKey)
   const previousSnapshotKeyRef = useRef(snapshotKey)
-  const stageTypography = useStageTypography()
+  const stagePreferences = useStagePreferences()
   const stageTextStyle = useMemo<CSSProperties>(() => ({
-    fontSize: `${stageTypography.fontSize}px`,
-    lineHeight: stageTypography.lineHeight,
-    fontFamily: stageTypography.fontFamily,
-  }), [stageTypography.fontFamily, stageTypography.fontSize, stageTypography.lineHeight])
+    fontSize: `${stagePreferences.fontSize}px`,
+    lineHeight: stagePreferences.lineHeight,
+    fontFamily: stagePreferences.fontFamily,
+  }), [stagePreferences.fontFamily, stagePreferences.fontSize, stagePreferences.lineHeight])
+  const inputTextStyle = useMemo<CSSProperties>(() => ({
+    fontSize: `${Math.min(stagePreferences.fontSize, 16)}px`,
+    lineHeight: 1.35,
+    fontFamily: stagePreferences.fontFamily,
+  }), [stagePreferences.fontFamily, stagePreferences.fontSize])
 
   const updateStageRun = useCallback((updater: Partial<StoryStageRunState> | ((current: StoryStageRunState) => StoryStageRunState)) => {
     setStoryStageRun(stageKey, updater)
@@ -158,11 +166,9 @@ export function StoryStage({
   const messages = useMemo(() => [...historyMessages, ...displayLiveMessages], [displayLiveMessages, historyMessages])
   const scrollResetKey = `${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
   const title = pickSceneTitle(snapshot, branchId)
-  const hotChoices = useMemo(() => {
-    const choices = snapshot?.current_turn?.hot_state?.choices || []
-    return choices.map((choice) => choice.trim()).filter(Boolean).slice(0, 5)
-  }, [snapshot?.current_turn?.hot_state?.choices])
-  const showHotChoices = !streaming && !editingTurn && inputFocused && hotChoices.length > 0
+  const hotChoices = useMemo(() => generatedHotChoices.map((choice) => choice.trim()).filter(Boolean).slice(0, 10), [generatedHotChoices])
+  const canUseHotChoices = !streaming && !editingTurn && stagePreferences.hotChoicesEnabled && Boolean(storyId)
+  const showHotChoices = canUseHotChoices && hotChoicesExpanded
   const turnsById = useMemo(() => {
     const result = new Map<string, { user: string }>()
     for (const turn of snapshot?.turns || []) {
@@ -170,6 +176,67 @@ export function StoryStage({
     }
     return result
   }, [snapshot?.turns])
+
+  const requestHotChoices = useCallback((append = false) => {
+    if (!stagePreferences.hotChoicesEnabled || streaming || editingTurn || !storyId || hotChoicesLoading) return
+    const abortController = new AbortController()
+    hotChoicesAbortRef.current?.abort()
+    hotChoicesAbortRef.current = abortController
+    setHotChoicesLoading(true)
+    generateInteractiveHotChoices(storyId, {
+      branch: branchId || snapshot?.branch_id,
+      exclude_choices: append ? hotChoices : [],
+      signal: abortController.signal,
+    })
+      .then((result) => {
+        if (abortController.signal.aborted) return
+        const nextChoices = result.enabled ? (result.choices || []) : []
+        setGeneratedHotChoices((current) => append ? mergeHotChoices(current, nextChoices) : nextChoices)
+      })
+      .catch((error) => {
+        if (!isAbortError(error)) {
+          console.warn('[interactive-stage] 生成快捷选择失败', error)
+        }
+        if (!abortController.signal.aborted && !append) setGeneratedHotChoices([])
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) setHotChoicesLoading(false)
+      })
+  }, [
+    branchId,
+    editingTurn,
+    hotChoices,
+    hotChoicesLoading,
+    snapshot?.branch_id,
+    stagePreferences.hotChoicesEnabled,
+    storyId,
+    streaming,
+  ])
+
+  const toggleHotChoices = () => {
+    if (!canUseHotChoices) return
+    const nextExpanded = !hotChoicesExpanded
+    setHotChoicesExpanded(nextExpanded)
+    if (nextExpanded && hotChoices.length === 0 && !hotChoicesLoading) {
+      requestHotChoices(false)
+    }
+  }
+
+  useEffect(() => {
+    hotChoicesAbortRef.current?.abort()
+    setGeneratedHotChoices([])
+    setHotChoicesExpanded(false)
+    setHotChoicesLoading(false)
+  }, [snapshotKey])
+
+  useEffect(() => {
+    if (!stagePreferences.hotChoicesEnabled) {
+      hotChoicesAbortRef.current?.abort()
+      setGeneratedHotChoices([])
+      setHotChoicesExpanded(false)
+      setHotChoicesLoading(false)
+    }
+  }, [stagePreferences.hotChoicesEnabled])
 
   const send = async (override?: { message?: string; rewindTurnId?: string }) => {
     const sourceMessage = override?.message ?? input
@@ -428,33 +495,69 @@ export function StoryStage({
               </Button>
             </div>
           ) : null}
-          {hotChoices.length > 0 ? (
-            <div className={`grid overflow-hidden transition-[grid-template-rows,opacity,transform,margin] duration-300 ease-out ${showHotChoices ? 'mb-3 grid-rows-[1fr] translate-y-0 opacity-100' : 'mb-0 grid-rows-[0fr] translate-y-1 opacity-0 pointer-events-none'}`}>
-              <div className="min-h-0 overflow-hidden border-b border-[var(--nova-border)] pb-3">
-                <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-[var(--nova-text-faint)]">
-                  <Compass className="h-3.5 w-3.5" />
-                  可选择
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {hotChoices.map((choice, index) => (
-                    <button
-                      key={`${index}-${choice}`}
-                      type="button"
-                      className="max-w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1.5 text-left text-xs leading-5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => {
-                        setInput(choice)
-                        window.requestAnimationFrame(() => {
-                          inputRef.current?.focus()
-                          inputRef.current?.setSelectionRange(choice.length, choice.length)
-                        })
-                      }}
-                    >
-                      {choice}
-                    </button>
-                  ))}
-                </div>
+          {showHotChoices ? (
+            <div className="mb-2 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
+              <div className="flex min-h-8 items-center gap-1.5 px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">
+                <button
+                  type="button"
+                  className="nova-nav-item flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1 text-left hover:bg-[var(--nova-hover)]"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setHotChoicesExpanded((value) => !value)}
+                  aria-expanded={hotChoicesExpanded}
+                >
+                  <Compass className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                  <span className="shrink-0 font-medium text-[var(--nova-text-muted)]">可选择</span>
+                  <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
+                    {hotChoicesLoading && hotChoices.length === 0 ? '生成中…' : hotChoices.length > 0 ? `${hotChoices.length} 条行动建议` : '暂无建议'}
+                  </span>
+                  {hotChoicesExpanded ? (
+                    <ChevronUp className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                  )}
+                </button>
+                {!hotChoicesLoading && (hotChoices.length === 0 || hotChoices.length < 10) ? (
+                  <button
+                    type="button"
+                    className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded-[var(--nova-radius)] px-2 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-50"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => requestHotChoices(hotChoices.length > 0)}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    {hotChoices.length > 0 ? '更多' : '生成'}
+                  </button>
+                ) : null}
               </div>
+              {hotChoicesExpanded ? (
+                <div className="border-t border-[var(--nova-border)] px-2 py-2">
+                  {hotChoicesLoading && hotChoices.length === 0 ? (
+                    <div className="px-1 py-1 text-xs text-[var(--nova-text-faint)]">正在生成可选择行动…</div>
+                  ) : hotChoices.length === 0 ? (
+                    <div className="px-1 py-1 text-xs text-[var(--nova-text-faint)]">暂时没有可展示的行动建议，可以重新生成。</div>
+                  ) : (
+                    <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
+                      {hotChoices.map((choice, index) => (
+                        <button
+                          key={`${index}-${choice}`}
+                          type="button"
+                          className="max-w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 text-left text-xs leading-5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setInput(choice)
+                            setHotChoicesExpanded(false)
+                            window.requestAnimationFrame(() => {
+                              inputRef.current?.focus()
+                              inputRef.current?.setSelectionRange(choice.length, choice.length)
+                            })
+                          }}
+                        >
+                          {choice}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="flex items-center gap-3">
@@ -472,12 +575,10 @@ export function StoryStage({
               />
               <Textarea
                 ref={inputRef}
-                className="nova-field h-14 min-h-14 flex-1 resize-none text-sm leading-6 placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
-                style={stageTextStyle}
+                className="nova-field !h-11 !min-h-11 flex-1 resize-none px-3 py-2 text-sm placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
+                style={inputTextStyle}
                 value={input}
                 placeholder="你要做什么？"
-                onFocus={() => setInputFocused(true)}
-                onBlur={() => setInputFocused(false)}
                 onChange={handleInputChange}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') {
@@ -491,13 +592,28 @@ export function StoryStage({
                 }}
               />
             </div>
+            {stagePreferences.hotChoicesEnabled ? (
+              <Button
+                type="button"
+                variant="outline"
+                className={`h-11 w-14 shrink-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`}
+                disabled={!storyId || streaming || Boolean(editingTurn)}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={toggleHotChoices}
+                aria-label={hotChoicesExpanded ? '收起行动选择' : '获取行动选择'}
+                title={hotChoicesExpanded ? '收起行动选择' : '获取行动选择'}
+              >
+                <Compass className={`h-3.5 w-3.5 ${hotChoicesLoading ? 'animate-pulse' : ''}`} />
+                选择
+              </Button>
+            ) : null}
             <Button
-              className={`h-14 w-24 border border-[var(--nova-border)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-red-500/45 hover:bg-red-500/55' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
+              className={`h-11 w-20 border border-[var(--nova-border)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-red-500/45 hover:bg-red-500/55' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
               disabled={streaming ? false : (!storyId || !input.trim())}
               onClick={() => { streaming ? stop() : void send() }}
               aria-label={streaming ? '中断 AI 执行' : (editingTurn ? '发送并重新生成' : '发送')}
             >
-              {streaming ? <Square className="h-4 w-4 fill-current" /> : editingTurn ? <RefreshCw className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+              {streaming ? <Square className="h-3.5 w-3.5 fill-current" /> : editingTurn ? <RefreshCw className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
               {streaming ? '中断' : editingTurn ? '重生成' : '发送'}
             </Button>
           </div>
@@ -547,28 +663,31 @@ export function StoryStage({
 
 function noop() {}
 
-function useStageTypography() {
-  const [typography, setTypography] = useState({
+function useStagePreferences() {
+  const [preferences, setPreferences] = useState({
     fontSize: DEFAULT_STAGE_FONT_SIZE,
     lineHeight: DEFAULT_STAGE_LINE_HEIGHT,
     fontFamily: fontStackFor(DEFAULT_READING_FONT, DEFAULT_READING_FONT),
+    hotChoicesEnabled: true,
   })
 
   const load = useCallback(async () => {
     try {
       const settings = await fetchSettings()
       const effective = settings.effective || {}
-      setTypography({
+      setPreferences({
         fontSize: clampNumber(effective.interactive_stage_font_size, 13, 24, DEFAULT_STAGE_FONT_SIZE),
         lineHeight: clampNumber(effective.interactive_stage_line_height, 1.35, 2.4, DEFAULT_STAGE_LINE_HEIGHT),
         fontFamily: fontStackFor(effective.reading_font_family, DEFAULT_READING_FONT),
+        hotChoicesEnabled: effective.interactive_hot_choices_enabled !== false,
       })
     } catch (error) {
       console.warn('[interactive-stage] 加载故事舞台显示设置失败', error)
-      setTypography({
+      setPreferences({
         fontSize: DEFAULT_STAGE_FONT_SIZE,
         lineHeight: DEFAULT_STAGE_LINE_HEIGHT,
         fontFamily: fontStackFor(DEFAULT_READING_FONT, DEFAULT_READING_FONT),
+        hotChoicesEnabled: true,
       })
     }
   }, [])
@@ -579,7 +698,7 @@ function useStageTypography() {
     return () => window.removeEventListener('nova:settings-updated', load)
   }, [load])
 
-  return typography
+  return preferences
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number) {
@@ -594,6 +713,19 @@ function isAbortError(error: unknown) {
 
 function normalizeMessageContent(value: string) {
   return value.replace(/\r\n/g, '\n').trim()
+}
+
+function mergeHotChoices(current: string[], next: string[]) {
+  const merged: string[] = []
+  const seen = new Set<string>()
+  for (const choice of [...current, ...next]) {
+    const normalized = choice.trim()
+    if (!normalized || seen.has(normalized)) continue
+    merged.push(normalized)
+    seen.add(normalized)
+    if (merged.length >= 10) break
+  }
+  return merged
 }
 
 function parseInlineStyleReferences(input: string): string[] {

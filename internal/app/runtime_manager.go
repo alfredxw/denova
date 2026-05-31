@@ -490,6 +490,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.InteractiveMaxTokens != nil {
 		cfg.InteractiveMaxTokens = appSettingsInt(effective.InteractiveMaxTokens, 0)
 	}
+	if effective.InteractiveHotChoices != nil {
+		cfg.InteractiveHotChoices = *effective.InteractiveHotChoices
+	}
 }
 
 func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
@@ -522,6 +525,9 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.InteractiveMaxTokens != nil {
 		cfg.InteractiveMaxTokens = appSettingsInt(settings.InteractiveMaxTokens, 0)
+	}
+	if settings.InteractiveHotChoices != nil {
+		cfg.InteractiveHotChoices = *settings.InteractiveHotChoices
 	}
 }
 

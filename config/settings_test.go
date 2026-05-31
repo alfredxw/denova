@@ -27,6 +27,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.InteractiveStageLineHeight == nil || *s.InteractiveStageLineHeight != 1.78 {
 		t.Fatalf("InteractiveStageLineHeight default")
 	}
+	if s.InteractiveHotChoices == nil || *s.InteractiveHotChoices != true {
+		t.Fatalf("InteractiveHotChoices default")
+	}
 	if s.UIFontFamily != "system-sans" {
 		t.Fatalf("UIFontFamily default: %s", s.UIFontFamily)
 	}
@@ -43,6 +46,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		UIFontFamily:               "system-sans",
 		ReadingFontFamily:          "source-han-serif",
 		InteractiveMaxTokens:       intPtr(0),
+		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
 	}
@@ -52,6 +56,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		UIFontFamily:               "humanist-sans",
 		ReadingFontFamily:          "system-serif",
 		InteractiveMaxTokens:       intPtr(4000),
+		InteractiveHotChoices:      boolPtr(false),
 		InteractiveStageFontSize:   intPtr(18),
 		InteractiveStageLineHeight: floatPtr(1.95),
 	}
@@ -73,6 +78,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 4000 {
 		t.Fatalf("InteractiveMaxTokens should override parent")
+	}
+	if out.InteractiveHotChoices == nil || *out.InteractiveHotChoices != false {
+		t.Fatalf("InteractiveHotChoices should override parent")
 	}
 	if out.InteractiveStageFontSize == nil || *out.InteractiveStageFontSize != 18 {
 		t.Fatalf("InteractiveStageFontSize should override parent")

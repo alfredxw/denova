@@ -203,6 +203,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Num label="最大输出 Token" value={draft.interactive_max_tokens ?? null}
                placeholder="不填则不限制，优先避免截断"
                onChange={(v) => setField('interactive_max_tokens', v)} />
+          <BoolTri label="输入框快捷选择" value={draft.interactive_hot_choices_enabled ?? null}
+                   effective={effective.interactive_hot_choices_enabled}
+                   onChange={(v) => setField('interactive_hot_choices_enabled', v)} />
           <Num label="故事舞台字号 (px)" value={draft.interactive_stage_font_size ?? null}
                placeholder={placeholderFor('interactive_stage_font_size')}
                onChange={(v) => setField('interactive_stage_font_size', v)} />
@@ -213,6 +216,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         </>
       ) : (
         <>
+          <BoolTri label="输入框快捷选择" value={draft.interactive_hot_choices_enabled ?? null}
+                   effective={effective.interactive_hot_choices_enabled}
+                   onChange={(v) => setField('interactive_hot_choices_enabled', v)} />
           <Num label="故事舞台字号 (px)" value={draft.interactive_stage_font_size ?? null}
                placeholder={placeholderFor('interactive_stage_font_size')}
                onChange={(v) => setField('interactive_stage_font_size', v)} />

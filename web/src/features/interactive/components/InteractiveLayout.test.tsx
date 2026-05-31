@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { InteractiveLayout } from './InteractiveLayout'
@@ -352,5 +353,68 @@ describe('InteractiveLayout', () => {
     fireEvent.click(screen.getByRole('button', { name: '剧情' }))
     expect(await screen.findByText('故事舞台 · 当前分支 main')).toBeInTheDocument()
     expect(screen.queryByTestId('branch-graph-canvas')).not.toBeInTheDocument()
+  })
+
+  it('switches the route map when choosing another story in timeline view', async () => {
+    const user = userEvent.setup()
+    useInteractiveStore.setState({
+      stories: [],
+      tellers: [],
+      branches: [],
+      snapshot: null,
+      currentStoryId: '',
+      currentBranchId: 'main',
+      submode: 'timeline',
+    })
+    const requestedSnapshots: string[] = []
+    server.use(
+      http.get('/api/interactive/stories', () => HttpResponse.json({
+        current_story_id: 'st_1',
+        stories: [
+          { id: 'st_1', title: '旧城线', origin: '', story_teller_id: 'classic', created_at: '', updated_at: '', branches: 1, events: 1 },
+          { id: 'st_2', title: '雪山线', origin: '', story_teller_id: 'classic', created_at: '', updated_at: '', branches: 1, events: 1 },
+        ],
+      })),
+      http.get('/api/interactive/stories/:id/branches', ({ params }) => HttpResponse.json({
+        branches: [{ id: 'main', head: params.id === 'st_2' ? 'snow_1' : 'city_1', title: '主线', created_at: '', current: true }],
+      })),
+      http.get('/api/interactive/stories/:id/snapshot', ({ params }) => {
+        requestedSnapshots.push(String(params.id))
+        if (params.id === 'st_2') {
+          return HttpResponse.json({
+            story_id: 'st_2',
+            branch_id: 'main',
+            turns: [],
+            state: {},
+            graph: {
+              branches: [{ id: 'main', head: 'snow_1', title: '主线', created_at: '', current: true }],
+              nodes: [{ id: 'snow_1', branch_id: 'main', title: '雪山入口', summary: '风雪封路', ts: '', current: true, head: true }],
+            },
+          })
+        }
+        return HttpResponse.json({
+          story_id: 'st_1',
+          branch_id: 'main',
+          turns: [],
+          state: {},
+          graph: {
+            branches: [{ id: 'main', head: 'city_1', title: '主线', created_at: '', current: true }],
+            nodes: [{ id: 'city_1', branch_id: 'main', title: '旧城开端', summary: '钟楼响起', ts: '', current: true, head: true }],
+          },
+        })
+      }),
+    )
+
+    render(<InteractiveLayout />)
+
+    expect(await screen.findByText('旧城开端')).toBeInTheDocument()
+    expect(screen.getByLabelText('选择故事线')).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('选择故事线'))
+    await user.click(await screen.findByRole('option', { name: '雪山线' }))
+
+    expect(await screen.findByText('雪山入口')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('旧城开端')).not.toBeInTheDocument())
+    expect(requestedSnapshots).toContain('st_2')
   })
 })

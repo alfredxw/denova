@@ -22,6 +22,7 @@ type Config struct {
 	ChapterGroupMax             int    `toml:"-"`
 	InteractiveReplyTargetChars int    `toml:"-"`
 	InteractiveMaxTokens        int    `toml:"-"`
+	InteractiveHotChoices       bool   `toml:"-"`
 	ResumeLastWorkspace         bool   `toml:"-"`
 }
 
@@ -63,6 +64,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
 		InteractiveReplyTargetChars: 1200,
 		InteractiveMaxTokens:        settingsInt(s.InteractiveMaxTokens, 0),
+		InteractiveHotChoices:       settingsBool(s.InteractiveHotChoices, true),
 		ResumeLastWorkspace:         true,
 	}
 
@@ -140,6 +142,7 @@ func Load() *Config {
 			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),
 			InteractiveReplyTargetChars: 1200,
 			InteractiveMaxTokens:        settingsInt(d.InteractiveMaxTokens, 0),
+			InteractiveHotChoices:       settingsBool(d.InteractiveHotChoices, true),
 			ResumeLastWorkspace:         true,
 		}
 		overrideFromEnv(cfg)

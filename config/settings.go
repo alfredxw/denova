@@ -41,6 +41,7 @@ type Settings struct {
 
 	// 互动模式
 	InteractiveMaxTokens       *int     `toml:"interactive_max_tokens,omitempty" json:"interactive_max_tokens,omitempty"`
+	InteractiveHotChoices      *bool    `toml:"interactive_hot_choices_enabled,omitempty" json:"interactive_hot_choices_enabled,omitempty"`
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
 }
@@ -69,6 +70,7 @@ func DefaultSettings() Settings {
 		ModelMaxRetries:            intPtr(5),
 		PlanModeDefault:            boolPtr(false),
 		IDEStoryTellerID:           "classic",
+		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
 	}
@@ -134,6 +136,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.InteractiveMaxTokens != nil {
 		out.InteractiveMaxTokens = child.InteractiveMaxTokens
+	}
+	if child.InteractiveHotChoices != nil {
+		out.InteractiveHotChoices = child.InteractiveHotChoices
 	}
 	if child.InteractiveStageFontSize != nil {
 		out.InteractiveStageFontSize = child.InteractiveStageFontSize

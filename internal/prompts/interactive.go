@@ -76,13 +76,12 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 	sb.WriteString("- 世界规则必须稳定：已确认的地点、伤势、物品、关系、时间、风险、禁忌、能力边界和因果代价，后续回合不得随意遗忘或改写。\n")
 	sb.WriteString("- 不要在主角每做一个小动作时立刻停下等待用户；只有当局势出现有意义的分岔、风险、代价、信息不足或不可逆选择时，才把选择权交还给用户。\n")
 	sb.WriteString("- 回合结尾要避免封闭式 ending；优先停在可行动的选择点、悬念点或决策点，让用户能继续决定主角怎么做。\n")
-	sb.WriteString("- 可以在正文结尾自然露出 2 到 4 个可选行动方向，但不要写成游戏 UI 菜单，也不要替用户决定下一步选择。\n\n")
+	sb.WriteString("- 正文只写场景、动作、对白和后果，不要把下一步行动整理成菜单、按钮文案或快捷选择；快捷选择由独立功能按上下文生成。\n\n")
 	fmt.Fprintf(&sb, "- 本轮回复目标长度约为 %d 个中文字以内；你需要主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。\n\n", normalizeInteractiveReplyTargetChars(in.ReplyTargetChars))
 	sb.WriteString("## 输出协议\n")
-	sb.WriteString("必须按顺序输出 <NARRATIVE>...</NARRATIVE> 和 <HOT_STATE>{\"choices\":[...]}</HOT_STATE>。\n")
+	sb.WriteString("必须只输出 <NARRATIVE>...</NARRATIVE>。\n")
 	sb.WriteString("- <NARRATIVE> 内只写本回合展示在故事舞台上的正文；不要输出计划、解释、工具说明、Markdown 标题或状态 JSON。\n")
-	sb.WriteString("- <HOT_STATE> 内只输出 JSON 对象，choices 是 2 到 5 条中文行动句字符串，可直接作为用户下一轮输入；不要包含 id、label、note 或对象。\n")
-	sb.WriteString("- 不要输出 <STATE_DELTA>，正式状态由后台状态 Agent 异步生成。\n")
+	sb.WriteString("- 不要输出 <HOT_STATE>、<STATE_DELTA> 或任何 JSON；正式状态和快捷选择由后台独立生成。\n")
 	if ws := strings.TrimSpace(in.Workspace); ws != "" {
 		sb.WriteString("\n## 作品工作目录\n")
 		sb.WriteString(ws)
@@ -96,10 +95,9 @@ func InteractiveStoryContext(in InteractiveStoryPromptInput) string {
 	sb.WriteString("[互动故事模式]\n")
 	sb.WriteString("你正在为 Nova 的互动 story 子模式生成下一回合内容。输出会直接流式显示到故事舞台，并在结束后写入 interactive/story/story-{id}.jsonl。\n\n")
 	sb.WriteString("## 输出协议\n")
-	sb.WriteString("必须按顺序输出 <NARRATIVE>...</NARRATIVE> 和 <HOT_STATE>{\"choices\":[...]}</HOT_STATE>。\n")
+	sb.WriteString("必须只输出 <NARRATIVE>...</NARRATIVE>。\n")
 	sb.WriteString("- <NARRATIVE> 内只写本回合面向读者展示的故事正文；不要输出额外解释、计划、工具说明、Markdown 标题或状态 JSON。\n")
-	sb.WriteString("- <HOT_STATE> 内只输出 JSON 对象，choices 是 2 到 5 条中文行动句字符串，可直接作为用户下一轮输入；不要包含 id、label、note 或对象。\n")
-	sb.WriteString("- 不要输出 <STATE_DELTA>，正式状态由后台状态 Agent 异步生成。\n\n")
+	sb.WriteString("- 不要输出 <HOT_STATE>、<STATE_DELTA> 或任何 JSON；正式状态和快捷选择由后台独立生成。\n\n")
 	sb.WriteString("## 回合裁定循环（必须隐式执行，不要输出分析）\n")
 	sb.WriteString("1. 识别用户行动：区分行动、对白、观察、等待、追问、计划、元指令；提取目标、手段、风险、涉及对象和隐含意图。\n")
 	sb.WriteString("2. 判断相关上下文：只调动本轮相关的在场角色、角色状态、关系、地点、时间、世界规则、未解决线索和近期事件。\n")
@@ -157,11 +155,58 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 %s
 %s
 
-请基于互动故事上下文续写下一回合，并严格按输出协议返回：读者应看到的故事正文只能放在 <NARRATIVE> 内，下一步行动候选只能放在 <HOT_STATE> 内。
+请基于互动故事上下文续写下一回合，并严格按输出协议返回：读者应看到的故事正文只能放在 <NARRATIVE> 内。
 本回合必须隐式完成：识别用户行动、判断相关角色和世界规则、裁定后果、制造新的可选择、保持角色和世界一致性；不要输出这些分析过程。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
 其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。
-输出结尾必须追加 <HOT_STATE>{"choices":[...字符串...]}</HOT_STATE>，choices 写 2 到 5 条用户可直接采用或改写的下一步行动。不要输出 <STATE_DELTA>。`, strings.TrimSpace(message), turnBlock)
+不要输出 <HOT_STATE>、<STATE_DELTA> 或快捷选择列表。`, strings.TrimSpace(message), turnBlock)
+}
+
+type InteractiveHotChoicesPromptInput struct {
+	Title             string
+	Origin            string
+	StoryTellerID     string
+	BranchID          string
+	Characters        string
+	WorldBuilding     string
+	LoreItems         string
+	SnapshotStateJSON string
+	RecentTurns       string
+	ExcludeChoices    string
+}
+
+func BuildInteractiveHotChoicesSystemInstruction() string {
+	return strings.Join([]string{
+		"你是 Nova 互动故事模式的快捷行动建议 Agent。",
+		"你只负责根据当前故事上下文生成用户下一轮可直接输入的行动建议，不负责续写剧情。",
+		"不要输出思考过程、解释、Markdown 或代码块。",
+		"必须只输出 JSON 对象，格式为 {\"choices\":[\"...\"]}。",
+		"choices 需要是 2 到 5 条中文行动句，每条都应从玩家第一人称或明确行动意图出发，可直接放入输入框。",
+		"建议要彼此有区分度，覆盖观察、对话、探索、冒险、保守应对等不同可行方向，但不得引入上下文未支撑的新事实。",
+	}, "\n")
+}
+
+func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) string {
+	var sb strings.Builder
+	sb.WriteString("请基于以下互动故事上下文，生成下一轮快捷行动建议。\n\n")
+	sb.WriteString("## 故事信息\n")
+	writeField(&sb, "标题", in.Title)
+	writeField(&sb, "开端", in.Origin)
+	writeField(&sb, "当前分支", in.BranchID)
+	writeField(&sb, "讲述者 ID", in.StoryTellerID)
+	if strings.TrimSpace(in.LoreItems) != "" {
+		writeBlock(&sb, "资料库", in.LoreItems)
+	} else {
+		writeBlock(&sb, "角色设定", in.Characters)
+		writeBlock(&sb, "世界观设定", in.WorldBuilding)
+	}
+	writeBlock(&sb, "当前互动状态快照(JSON)", in.SnapshotStateJSON)
+	writeBlock(&sb, "最近回合", in.RecentTurns)
+	if strings.TrimSpace(in.ExcludeChoices) != "" {
+		writeBlock(&sb, "已展示过的选择（不要重复）", in.ExcludeChoices)
+	}
+	sb.WriteString("\n只输出 JSON，例如：{\"choices\":[\"我先观察门缝里的动静。\",\"我压低声音询问身边的人。\"]}。\n")
+	return sb.String()
 }
 
 func BuildInteractiveStateSystemInstruction() string {
@@ -171,7 +216,7 @@ func BuildInteractiveStateSystemInstruction() string {
 		"必须只输出一个 JSON 对象，不要输出 Markdown、解释或代码块。",
 		"JSON 格式必须是 {\"ops\":[...]}，ops 不能为空。",
 		"ops 只记录本回合已经发生且确定成立的变化，不记录未来计划，不复制没有变化的旧状态。",
-		"状态 path 仅允许 on_stage、characters.<角色名>、events、location、time、pov、scene、inventory、resources、world_flags、rules、threads、action_space 及其子路径。",
+		"状态 path 仅允许 on_stage、characters.<角色名>、events、location、time、pov、scene、inventory、resources、world_flags、rules、threads 及其子路径。",
 		"op 仅允许 set、merge、push、pull、inc、unset。",
 	}, "\n")
 }
@@ -185,7 +230,7 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	sb.WriteString("- inventory/resources：记录主角或队伍获得、失去、消耗、受限的物品与资源。\n")
 	sb.WriteString("- world_flags/rules：记录本轮激活或确认、后续必须遵守的世界规则、禁忌、能力边界、势力反应。\n")
 	sb.WriteString("- threads：记录尚未解决的线索、危机、承诺、倒计时和暗线压力。\n")
-	sb.WriteString("- action_space：记录当前已暴露的可选择入口，只写客观可行性，不写成给用户看的菜单。\n\n")
+	sb.WriteString("- 不要记录下一步行动建议、快捷选择或可选择入口；这些由独立快捷选择 Agent 生成。\n\n")
 	sb.WriteString("## 故事信息\n")
 	writeField(&sb, "标题", in.Title)
 	writeField(&sb, "开端", in.Origin)

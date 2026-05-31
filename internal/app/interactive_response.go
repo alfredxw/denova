@@ -180,7 +180,6 @@ func isAllowedStatePath(path string) bool {
 		"world_flags",
 		"rules",
 		"threads",
-		"action_space",
 	}
 	for _, root := range allowedRoots {
 		if path == root || strings.HasPrefix(path, root+".") {

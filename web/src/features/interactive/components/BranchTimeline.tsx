@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import { ArrowLeft, ChevronDown, ChevronUp, GitBranch, Move, Plus, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ interface BranchTimelineProps {
   onExpandedChange?: (expanded: boolean) => void
   variant?: 'panel' | 'workspace'
   onBackToStory?: () => void
+  headerControls?: ReactNode
 }
 
 interface TimelineRow {
@@ -107,6 +108,7 @@ export function BranchTimeline({
   onExpandedChange,
   variant = 'panel',
   onBackToStory,
+  headerControls,
 }: BranchTimelineProps) {
   const [internalExpanded, setInternalExpanded] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
@@ -205,11 +207,12 @@ export function BranchTimeline({
     <div className={`${workspaceMode ? 'h-full min-h-0 border-0 p-4' : `${fill ? 'h-full min-h-0' : expanded ? 'h-[min(260px,calc(100vh-96px))] min-h-[180px]' : 'h-[48px]'} border-t px-3 py-2 transition-[height] sm:px-4`} flex flex-col border-[var(--nova-border)] bg-[var(--nova-surface)]`}>
       <div className="flex items-center justify-between gap-2 text-xs text-[var(--nova-text-faint)]">
         {workspaceMode ? (
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1 font-medium text-[var(--nova-text)]">
               <GitBranch className="h-3.5 w-3.5 text-[var(--nova-accent-blue)]" />
               剧情路线图
             </div>
+            {headerControls}
             {onBackToStory && (
               <Button variant="outline" size="xs" className="nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onBackToStory}>
                 <ArrowLeft className="h-3.5 w-3.5" />

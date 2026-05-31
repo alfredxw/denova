@@ -17,6 +17,7 @@ export interface Settings {
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
   interactive_max_tokens?: number | null
+  interactive_hot_choices_enabled?: boolean | null
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
 }

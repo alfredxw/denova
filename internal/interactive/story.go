@@ -177,6 +177,16 @@ type HotState struct {
 	Choices []string `json:"choices"`
 }
 
+type HotChoicesEvent struct {
+	V        int      `json:"v"`
+	Type     string   `json:"type"`
+	ID       string   `json:"id"`
+	ParentID string   `json:"parent_id"`
+	BranchID string   `json:"branch_id"`
+	Ts       string   `json:"ts"`
+	Choices  []string `json:"choices"`
+}
+
 type StateDeltaEvent struct {
 	V        int       `json:"v"`
 	Type     string    `json:"type"`
@@ -378,6 +388,58 @@ func (s *Store) StoryContext(storyID, branchID string) (StoryContext, error) {
 		return StoryContext{}, err
 	}
 	return StoryContext{Meta: meta, Snapshot: snapshot}, nil
+}
+
+func (s *Store) HotChoices(storyID, branchID string) (HotChoicesEvent, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return HotChoicesEvent{}, false, err
+	}
+	branchID, branch, err := resolveBranch(meta, branchID)
+	if err != nil {
+		return HotChoicesEvent{}, false, err
+	}
+	event, ok := latestHotChoicesForHead(lines, branchID, branch.Head)
+	return event, ok, nil
+}
+
+func (s *Store) SaveHotChoices(storyID, branchID string, choices []string) (HotChoicesEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	choices = normalizeChoiceListLimit(choices, 10)
+	if len(choices) == 0 {
+		return HotChoicesEvent{}, fmt.Errorf("快捷选择不能为空")
+	}
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return HotChoicesEvent{}, err
+	}
+	branchID, branch, err := resolveBranch(meta, branchID)
+	if err != nil {
+		return HotChoicesEvent{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	event := HotChoicesEvent{
+		V:        schemaVersion,
+		Type:     "hot_choices",
+		ID:       newID("hc"),
+		ParentID: branch.Head,
+		BranchID: branchID,
+		Ts:       now,
+		Choices:  choices,
+	}
+	meta.UpdatedAt = now
+	if err := s.rewriteStoryLocked(storyID, meta, lines, event); err != nil {
+		return HotChoicesEvent{}, err
+	}
+	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+		return HotChoicesEvent{}, err
+	}
+	return event, nil
 }
 
 func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, error) {
@@ -945,16 +1007,15 @@ func turnVersionKey(branchID, parentID string) string {
 
 func initialStoryState() map[string]any {
 	return map[string]any{
-		"on_stage":     []any{},
-		"characters":   map[string]any{},
-		"events":       []any{},
-		"scene":        map[string]any{},
-		"inventory":    map[string]any{},
-		"resources":    map[string]any{},
-		"world_flags":  []any{},
-		"rules":        []any{},
-		"threads":      []any{},
-		"action_space": []any{},
+		"on_stage":    []any{},
+		"characters":  map[string]any{},
+		"events":      []any{},
+		"scene":       map[string]any{},
+		"inventory":   map[string]any{},
+		"resources":   map[string]any{},
+		"world_flags": []any{},
+		"rules":       []any{},
+		"threads":     []any{},
 	}
 }
 
@@ -962,23 +1023,69 @@ func normalizeHotState(hot *HotState) *HotState {
 	if hot == nil {
 		return nil
 	}
-	choices := make([]string, 0, len(hot.Choices))
+	choices := normalizeChoiceListLimit(hot.Choices, 5)
+	if len(choices) == 0 {
+		return nil
+	}
+	return &HotState{Choices: choices}
+}
+
+func normalizeChoiceListLimit(input []string, limit int) []string {
+	if limit <= 0 {
+		limit = 5
+	}
+	choices := make([]string, 0, len(input))
 	seen := map[string]bool{}
-	for _, choice := range hot.Choices {
+	for _, choice := range input {
 		choice = strings.TrimSpace(choice)
 		if choice == "" || seen[choice] {
 			continue
 		}
 		choices = append(choices, choice)
 		seen[choice] = true
-		if len(choices) >= 5 {
+		if len(choices) >= limit {
 			break
 		}
 	}
-	if len(choices) == 0 {
-		return nil
+	return choices
+}
+
+func resolveBranch(meta StoryMeta, branchID string) (string, BranchMeta, error) {
+	if branchID == "" {
+		branchID = meta.CurrentBranch
 	}
-	return &HotState{Choices: choices}
+	branch, ok := meta.Branches[branchID]
+	if !ok {
+		return "", BranchMeta{}, fmt.Errorf("分支不存在: %s", branchID)
+	}
+	return branchID, branch, nil
+}
+
+func latestHotChoicesForHead(lines []map[string]any, branchID, parentID string) (HotChoicesEvent, bool) {
+	var latest HotChoicesEvent
+	for _, raw := range lines {
+		if eventType, _ := raw["type"].(string); eventType != "hot_choices" {
+			continue
+		}
+		if rawBranchID, _ := raw["branch_id"].(string); rawBranchID != branchID {
+			continue
+		}
+		if parentIDFromRaw(raw) != parentID {
+			continue
+		}
+		var event HotChoicesEvent
+		if err := mapToStruct(raw, &event); err != nil {
+			continue
+		}
+		event.Choices = normalizeChoiceListLimit(event.Choices, 10)
+		if len(event.Choices) == 0 {
+			continue
+		}
+		if latest.ID == "" || event.Ts >= latest.Ts {
+			latest = event
+		}
+	}
+	return latest, latest.ID != ""
 }
 
 func eventsByID(lines []map[string]any) map[string]map[string]any {

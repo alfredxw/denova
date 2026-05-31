@@ -1,12 +1,13 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoryStage } from './StoryStage'
-import { abortInteractiveChat, sendInteractiveMessage } from '../api'
+import { abortInteractiveChat, generateInteractiveHotChoices, sendInteractiveMessage } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import type { InteractiveSSEEvent } from '../types'
 
 vi.mock('../api', () => ({
   abortInteractiveChat: vi.fn(),
+  generateInteractiveHotChoices: vi.fn(),
   sendInteractiveMessage: vi.fn(),
 }))
 
@@ -23,6 +24,7 @@ describe('StoryStage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useInteractiveStore.setState({ storyStageRuns: {} })
+    vi.mocked(generateInteractiveHotChoices).mockResolvedValue({ enabled: true, choices: [] })
   })
 
   it('uses chat messages for interactive history and streamed agent events', async () => {
@@ -131,7 +133,11 @@ describe('StoryStage', () => {
     expect(await screen.findByText('先整理当前场景和风险。')).toBeInTheDocument()
   })
 
-  it('fills the input from hot state choices without sending immediately', () => {
+  it('fills the input from generated hot choices without sending immediately', async () => {
+    vi.mocked(generateInteractiveHotChoices).mockResolvedValue({
+      enabled: true,
+      choices: ['我靠近地窖门，观察门缝和周围痕迹。'],
+    })
     render(
       <StoryStage
         storyId="st_1"
@@ -140,25 +146,21 @@ describe('StoryStage', () => {
           story_id: 'st_1',
           branch_id: 'main',
           state: {},
-          current_turn: {
+          turns: [{
             id: 'ev_1',
             parent_id: null,
             branch_id: 'main',
             ts: '',
             user: '观察酒馆',
             narrative: '柜台后的影子露出一道缝。',
-            state_status: 'pending',
-            hot_state: {
-              choices: ['我靠近地窖门，观察门缝和周围痕迹。'],
-            },
-          },
-          turns: [],
+          }],
         }}
         onDone={vi.fn()}
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '我靠近地窖门，观察门缝和周围痕迹。' }))
+    fireEvent.click(await screen.findByRole('button', { name: /获取行动选择/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '我靠近地窖门，观察门缝和周围痕迹。' }))
 
     expect(screen.getByPlaceholderText('你要做什么？')).toHaveValue('我靠近地窖门，观察门缝和周围痕迹。')
     expect(sendInteractiveMessage).not.toHaveBeenCalled()
