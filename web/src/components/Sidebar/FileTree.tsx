@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useMemo, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -86,6 +86,11 @@ export function FileTree({
 }: FileTreeProps) {
   // 内联编辑状态（新建 / 重命名）
   const [inlineEdit, setInlineEdit] = useState<InlineEditState | null>(null)
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set())
+  const [lastSelectedPath, setLastSelectedPath] = useState('')
+  const [dragPaths, setDragPaths] = useState<string[]>([])
+  const [dragOverPath, setDragOverPath] = useState('')
+  const orderedPaths = useMemo(() => collectFileNodePaths(nodes, basePath), [nodes, basePath])
 
   // 弹窗操作（仅复制 / 移动）
   const [operation, setOperation] = useState<{
@@ -93,8 +98,77 @@ export function FileTree({
     mode: FileOperationMode
     targetPath: string
     defaultValue: string
-  }>({ open: false, mode: 'copy', targetPath: '', defaultValue: '' })
-  const [deleteTarget, setDeleteTarget] = useState('')
+    paths: string[]
+    batch: boolean
+  }>({ open: false, mode: 'copy', targetPath: '', defaultValue: '', paths: [], batch: false })
+  const [deleteTarget, setDeleteTarget] = useState<string | string[] | null>(null)
+
+  const selectedPathList = useMemo(() => Array.from(selectedPaths), [selectedPaths])
+
+  const clearSelection = () => setSelectedPaths(new Set())
+
+  const updateSelection = (path: string, event?: MouseEvent) => {
+    setSelectedPaths(prev => {
+      const next = new Set(prev)
+      if (event?.shiftKey && lastSelectedPath) {
+        const start = orderedPaths.indexOf(lastSelectedPath)
+        const end = orderedPaths.indexOf(path)
+        if (start >= 0 && end >= 0) {
+          const [from, to] = start < end ? [start, end] : [end, start]
+          orderedPaths.slice(from, to + 1).forEach(item => next.add(item))
+          return next
+        }
+      }
+      if (event?.metaKey || event?.ctrlKey || event?.shiftKey) {
+        if (next.has(path)) next.delete(path)
+        else next.add(path)
+        return next
+      }
+      next.clear()
+      next.add(path)
+      return next
+    })
+    setLastSelectedPath(path)
+  }
+
+  const selectForContextMenu = (path: string) => {
+    if (selectedPaths.has(path)) return
+    setSelectedPaths(new Set([path]))
+    setLastSelectedPath(path)
+  }
+
+  const pathsForAction = (path?: string) => {
+    if (!path) return selectedPathList
+    return selectedPaths.has(path) ? selectedPathList : [path]
+  }
+
+  const runBatchOperation = async (mode: 'copy' | 'move', sources: string[], targetDir: string) => {
+    const cleanTargetDir = targetDir.replace(/\/+$/, '')
+    for (const source of sources) {
+      if (!cleanTargetDir || cleanTargetDir === source || cleanTargetDir.startsWith(`${source}/`)) {
+        continue
+      }
+      const target = joinPath(cleanTargetDir, getBaseName(source))
+      if (mode === 'copy') await onCopyItem?.(source, target)
+      else await onMoveItem?.(source, target)
+    }
+    if (mode === 'move') clearSelection()
+  }
+
+  const handleDropToDir = async (targetDir: string, event: DragEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const paths = dragPaths.length > 0 ? dragPaths : selectedPathList
+    const mode = event.altKey ? 'copy' : 'move'
+    setDragOverPath('')
+    setDragPaths([])
+    if (paths.length === 0) return
+    try {
+      await runBatchOperation(mode, paths, targetDir)
+    } catch (e) {
+      console.warn(`${mode === 'copy' ? '复制' : '移动'}文件失败`, e)
+    }
+  }
 
   /** 开始内联编辑 */
   const startInlineEdit = (type: InlineEditState['type'], parentPath: string, defaultValue: string, renamePath?: string) => {
@@ -130,6 +204,10 @@ export function FileTree({
 
   /** 弹窗操作提交（复制 / 移动） */
   const submitOperation = async (value: string) => {
+    if (operation.batch) {
+      await runBatchOperation(operation.mode === 'copy' ? 'copy' : 'move', operation.paths, value)
+      return
+    }
     switch (operation.mode) {
       case 'copy':
         await onCopyItem?.(operation.targetPath, value)
@@ -146,16 +224,32 @@ export function FileTree({
         nodes={nodes}
         basePath={basePath}
         selectedFile={selectedFile}
+        selectedPaths={selectedPaths}
+        dragPaths={dragPaths}
+        dragOverPath={dragOverPath}
         onSelectFile={onSelectFile}
+        onSelectPath={updateSelection}
+        onContextSelectPath={selectForContextMenu}
         onReferenceFile={onReferenceFile}
         onStartInlineEdit={startInlineEdit}
         inlineEdit={inlineEdit}
         onInlineConfirm={confirmInlineEdit}
         onInlineCancel={() => setInlineEdit(null)}
-        onOpenOperation={(mode, targetPath, defaultValue) =>
-          setOperation({ open: true, mode, targetPath, defaultValue })
+        onOpenOperation={(mode, targetPath, defaultValue, paths = [targetPath], batch = false) =>
+          setOperation({ open: true, mode, targetPath, defaultValue, paths, batch })
         }
         onDeleteTarget={setDeleteTarget}
+        onDragStartPaths={(paths) => {
+          setDragPaths(paths)
+          setSelectedPaths(new Set(paths))
+        }}
+        onDragEnd={() => {
+          setDragPaths([])
+          setDragOverPath('')
+        }}
+        onDragOverPath={setDragOverPath}
+        onDropToDir={handleDropToDir}
+        getActionPaths={pathsForAction}
         chapterStats={chapterStats}
       />
       <FileOperationDialog
@@ -167,14 +261,18 @@ export function FileTree({
         onSubmit={submitOperation}
       />
       <DeleteConfirmDialog
-        open={deleteTarget !== ''}
-        path={deleteTarget}
+        open={deleteTarget !== null}
+        path={deleteTarget || ''}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget('')
+          if (!open) setDeleteTarget(null)
         }}
         onConfirm={async () => {
           if (deleteTarget) {
-            await onDeleteItem?.(deleteTarget)
+            const targets = Array.isArray(deleteTarget) ? deleteTarget : [deleteTarget]
+            for (const target of targets) {
+              await onDeleteItem?.(target)
+            }
+            clearSelection()
           }
         }}
       />
@@ -186,14 +284,24 @@ interface FileTreeListProps {
   nodes: FileNode[]
   basePath: string
   selectedFile: string | null
+  selectedPaths: Set<string>
+  dragPaths: string[]
+  dragOverPath: string
   onSelectFile: (path: string) => void
+  onSelectPath: (path: string, event?: MouseEvent) => void
+  onContextSelectPath: (path: string) => void
   onReferenceFile?: (path: string) => void
   onStartInlineEdit: (type: InlineEditState['type'], parentPath: string, defaultValue: string, renamePath?: string) => void
   inlineEdit: InlineEditState | null
   onInlineConfirm: (value: string) => void
   onInlineCancel: () => void
-  onOpenOperation: (mode: FileOperationMode, targetPath: string, defaultValue: string) => void
-  onDeleteTarget: (path: string) => void
+  onOpenOperation: (mode: FileOperationMode, targetPath: string, defaultValue: string, paths?: string[], batch?: boolean) => void
+  onDeleteTarget: (path: string | string[]) => void
+  onDragStartPaths: (paths: string[]) => void
+  onDragEnd: () => void
+  onDragOverPath: (path: string) => void
+  onDropToDir: (targetDir: string, event: DragEvent) => Promise<void>
+  getActionPaths: (path?: string) => string[]
   chapterStats: Record<string, ChapterSummary>
 }
 
@@ -237,14 +345,24 @@ interface FileTreeNodeProps {
   basePath: string
   nodes: FileNode[]
   selectedFile: string | null
+  selectedPaths: Set<string>
+  dragPaths: string[]
+  dragOverPath: string
   onSelectFile: (path: string) => void
+  onSelectPath: (path: string, event?: MouseEvent) => void
+  onContextSelectPath: (path: string) => void
   onReferenceFile?: (path: string) => void
   onStartInlineEdit: (type: InlineEditState['type'], parentPath: string, defaultValue: string, renamePath?: string) => void
   inlineEdit: InlineEditState | null
   onInlineConfirm: (value: string) => void
   onInlineCancel: () => void
-  onOpenOperation: (mode: FileOperationMode, targetPath: string, defaultValue: string) => void
-  onDeleteTarget: (path: string) => void
+  onOpenOperation: (mode: FileOperationMode, targetPath: string, defaultValue: string, paths?: string[], batch?: boolean) => void
+  onDeleteTarget: (path: string | string[]) => void
+  onDragStartPaths: (paths: string[]) => void
+  onDragEnd: () => void
+  onDragOverPath: (path: string) => void
+  onDropToDir: (targetDir: string, event: DragEvent) => Promise<void>
+  getActionPaths: (path?: string) => string[]
   chapterStats: Record<string, ChapterSummary>
 }
 
@@ -261,7 +379,12 @@ function FileTreeNode({
   node,
   path,
   selectedFile,
+  selectedPaths,
+  dragPaths,
+  dragOverPath,
   onSelectFile,
+  onSelectPath,
+  onContextSelectPath,
   onReferenceFile,
   onStartInlineEdit,
   inlineEdit,
@@ -269,22 +392,38 @@ function FileTreeNode({
   onInlineCancel,
   onOpenOperation,
   onDeleteTarget,
+  onDragStartPaths,
+  onDragEnd,
+  onDragOverPath,
+  onDropToDir,
+  getActionPaths,
   chapterStats,
 }: FileTreeNodeProps) {
   const [expanded, setExpanded] = useState(DEFAULT_EXPANDED.has(node.name))
   const isDir = node.type === 'dir'
   const isSelected = selectedFile === path
+  const isMultiSelected = selectedPaths.has(path)
+  const isDragOver = isDir && dragOverPath === path && dragPaths.some(source => source !== path && !path.startsWith(`${source}/`))
   const parentPath = getParentPath(path)
   const defaultCopyPath = `${path}-copy`
   const chapter = chapterStats[path]
+  const actionPaths = getActionPaths(path)
+  const isBatchAction = actionPaths.length > 1
 
   // 是否正在重命名此节点
   const isRenaming = inlineEdit?.type === 'rename' && inlineEdit.renamePath === path
 
   const createTargetDir = isDir ? path : parentPath
+  const startDrag = (event: DragEvent) => {
+    if (isRenaming) return
+    const paths = selectedPaths.has(path) ? Array.from(selectedPaths) : [path]
+    event.dataTransfer.effectAllowed = 'copyMove'
+    event.dataTransfer.setData('text/plain', paths.join('\n'))
+    onDragStartPaths(paths)
+  }
 
   const actions: TreeAction[] = [
-    ...(!isDir
+    ...(!isDir && !isBatchAction
       ? [
           {
             label: '引用到 Chat',
@@ -312,39 +451,68 @@ function FileTreeNode({
     },
     { separator: true },
     {
-      label: '重命名',
+      label: isBatchAction ? undefined : '重命名',
       icon: <Pencil className="h-3.5 w-3.5" />,
       onSelect: () => onStartInlineEdit('rename', parentPath, node.name, path),
     },
     {
-      label: '复制',
+      label: isBatchAction ? `复制选中 ${actionPaths.length} 项` : '复制',
       icon: <Copy className="h-3.5 w-3.5" />,
-      onSelect: () => onOpenOperation('copy', path, defaultCopyPath),
+      onSelect: () => onOpenOperation('copy', isBatchAction ? `${actionPaths.length} 项` : path, isBatchAction ? parentPath : defaultCopyPath, actionPaths, isBatchAction),
     },
     {
-      label: '移动',
+      label: isBatchAction ? `移动选中 ${actionPaths.length} 项` : '移动',
       icon: <MoveRight className="h-3.5 w-3.5" />,
-      onSelect: () => onOpenOperation('move', path, path),
+      onSelect: () => onOpenOperation('move', isBatchAction ? `${actionPaths.length} 项` : path, isBatchAction ? parentPath : path, actionPaths, isBatchAction),
     },
     { separator: true },
     {
-      label: '删除',
+      label: isBatchAction ? `删除选中 ${actionPaths.length} 项` : '删除',
       icon: <Trash2 className="h-3.5 w-3.5" />,
       danger: true,
-      onSelect: () => onDeleteTarget(path),
+      onSelect: () => onDeleteTarget(isBatchAction ? actionPaths : path),
     },
-  ]
+  ].filter(action => action.separator || action.label) as TreeAction[]
 
   if (isDir) {
     return (
       <li>
         <ContextMenu>
           <ContextMenuTrigger asChild>
-            <div className="group flex w-full items-center rounded text-[#aeb4bf] hover:bg-[#2a2c31]">
+            <div
+              className={`group flex w-full items-center rounded ${
+                isMultiSelected
+                  ? 'bg-[#4a4d54]/25 text-[#f0f2f5]'
+                  : isDragOver
+                    ? 'bg-[#2c3a4d] text-[#f0f2f5]'
+                    : 'text-[#aeb4bf] hover:bg-[#2a2c31]'
+              }`}
+              draggable={!isRenaming}
+              onContextMenu={() => onContextSelectPath(path)}
+              onDragStart={startDrag}
+              onDragEnd={onDragEnd}
+              onDragOver={(event) => {
+                if (!isDir) return
+                event.preventDefault()
+                event.dataTransfer.dropEffect = event.altKey ? 'copy' : 'move'
+                onDragOverPath(path)
+              }}
+              onDragLeave={() => {
+                if (dragOverPath === path) onDragOverPath('')
+              }}
+              onDrop={(event) => void onDropToDir(path, event)}
+            >
               <button
                 type="button"
                 className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1 text-left"
-                onClick={() => setExpanded(!expanded)}
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                    onSelectPath(path, event)
+                    return
+                  }
+                  onSelectPath(path)
+                  setExpanded(!expanded)
+                }}
               >
                 {expanded ? (
                   <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#6f7682]" />
@@ -380,7 +548,12 @@ function FileTreeNode({
               nodes={node.children ?? []}
               basePath={path}
               selectedFile={selectedFile}
+              selectedPaths={selectedPaths}
+              dragPaths={dragPaths}
+              dragOverPath={dragOverPath}
               onSelectFile={onSelectFile}
+              onSelectPath={onSelectPath}
+              onContextSelectPath={onContextSelectPath}
               onReferenceFile={onReferenceFile}
               onStartInlineEdit={onStartInlineEdit}
               inlineEdit={inlineEdit}
@@ -388,6 +561,11 @@ function FileTreeNode({
               onInlineCancel={onInlineCancel}
               onOpenOperation={onOpenOperation}
               onDeleteTarget={onDeleteTarget}
+              onDragStartPaths={onDragStartPaths}
+              onDragEnd={onDragEnd}
+              onDragOverPath={onDragOverPath}
+              onDropToDir={onDropToDir}
+              getActionPaths={getActionPaths}
               chapterStats={chapterStats}
             />
           </div>
@@ -402,15 +580,27 @@ function FileTreeNode({
         <ContextMenuTrigger asChild>
           <div
             className={`group flex w-full items-center rounded ${
-              isSelected
+              isSelected || isMultiSelected
                 ? 'bg-[#4a4d54]/25 text-[#f0f2f5]'
                 : 'text-[#aeb4bf] hover:bg-[#2a2c31]'
             }`}
+            draggable={!isRenaming}
+            onContextMenu={() => onContextSelectPath(path)}
+            onDragStart={startDrag}
+            onDragEnd={onDragEnd}
           >
             <button
               type="button"
               className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1 text-left"
-              onClick={() => !isRenaming && onSelectFile(path)}
+              onClick={(event) => {
+                if (isRenaming) return
+                if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                  onSelectPath(path, event)
+                  return
+                }
+                onSelectPath(path)
+                onSelectFile(path)
+              }}
             >
               <span className="w-3.5 shrink-0" />
               <FileText className="h-4 w-4 shrink-0 text-[#858b96]" />
@@ -451,12 +641,15 @@ function NodeDropdown({ actions }: { actions: TreeAction[] }) {
         <button
           type="button"
           className="mr-1 hidden rounded p-0.5 text-[#858b96] hover:bg-[#3a3d44] group-hover:block"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+          }}
         >
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className={MENU_CONTENT_CLASS} align="start">
+      <DropdownMenuContent className={MENU_CONTENT_CLASS} align="end" sideOffset={6}>
         {renderActionMenu(actions, 'dropdown')}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -493,8 +686,25 @@ function getParentPath(path: string) {
   return idx >= 0 ? path.slice(0, idx) : ''
 }
 
+function getBaseName(path: string) {
+  const idx = path.lastIndexOf('/')
+  return idx >= 0 ? path.slice(idx + 1) : path
+}
+
 function joinPath(parent: string, name: string) {
   return parent ? `${parent}/${name}` : name
+}
+
+function collectFileNodePaths(nodes: FileNode[], basePath = ''): string[] {
+  const paths: string[] = []
+  for (const node of sortFileNodesForDisplay(nodes)) {
+    const path = basePath ? `${basePath}/${node.name}` : node.name
+    paths.push(path)
+    if (node.type === 'dir' && node.children?.length) {
+      paths.push(...collectFileNodePaths(node.children, path))
+    }
+  }
+  return paths
 }
 
 function sortFileNodesForDisplay(nodes: FileNode[]) {

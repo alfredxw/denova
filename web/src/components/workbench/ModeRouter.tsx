@@ -713,11 +713,6 @@ function PlanningListItem({
       <div className="flex min-w-0 items-center gap-2">
         <Icon className={`h-3.5 w-3.5 shrink-0 ${selected ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
         <span className="min-w-0 flex-1 truncate text-xs font-medium">{document.title}</span>
-        <span className="shrink-0 text-[10px] text-[var(--nova-text-faint)]">{formatNumber(document.words)} 字</span>
-      </div>
-      <div className="mt-1 flex min-w-0 items-center justify-between gap-2 text-[10px] text-[var(--nova-text-faint)]">
-        <span className="truncate">{document.path}</span>
-        <span className="shrink-0">{document.updated_at || '未更新'}</span>
       </div>
     </button>
   )
