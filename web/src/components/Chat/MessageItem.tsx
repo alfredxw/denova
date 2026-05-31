@@ -21,7 +21,8 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canRegenerate = role === 'assistant' && Boolean(message.turn_id) && Boolean(onRegenerate) && !message.streaming
   const versionCount = message.turn_versions?.length || 0
-  const versionIndex = message.turn_version_index ?? -1
+  const markedVersionIndex = message.turn_versions?.findIndex((version) => version.current) ?? -1
+  const versionIndex = message.turn_version_index ?? markedVersionIndex
   const canSwitchVersion = role === 'assistant' && versionCount > 1 && versionIndex >= 0 && Boolean(onSwitchVersion) && !message.streaming
   const showAssistantActions = canRegenerate || canSwitchVersion
 
