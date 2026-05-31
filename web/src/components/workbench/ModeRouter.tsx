@@ -1,4 +1,4 @@
-import { BookMarked, BookOpen, Bot, Database, FileText, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SearchCheck, SlidersHorizontal, Sparkles, WandSparkles, PenLine } from 'lucide-react'
+import { BookMarked, BookOpen, Bot, ChevronDown, ChevronRight, Database, FileText, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SearchCheck, SlidersHorizontal, Sparkles, WandSparkles, PenLine } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { FileTree } from '@/components/Sidebar/FileTree'
@@ -16,7 +16,7 @@ import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import { SettingsView } from '@/features/settings/SettingsView'
 import type { Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { BookRecord, ChapterSummary, ChatMessage, LoreItem, SessionSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
+import type { BookRecord, ChapterSummary, ChatMessage, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
@@ -252,6 +252,8 @@ export function ModeRouter(props: ModeRouterProps) {
         ) : sidebarView === 'outline' ? (
           <ChapterOutline
             chapters={summary?.chapters || []}
+            outline={summary?.outline}
+            chapterPlans={summary?.chapter_plans || []}
             selectedFile={selectedFile}
             onSelectFile={onSelectFile}
           />
@@ -581,14 +583,31 @@ function IdeTellerSelector({ workspace, tellers }: { workspace: string; tellers:
 
 function ChapterOutline({
   chapters,
+  outline,
+  chapterPlans,
   selectedFile,
   onSelectFile,
 }: {
   chapters: ChapterSummary[]
+  outline?: DocumentPreview
+  chapterPlans: DocumentPreview[]
   selectedFile: string | null
   onSelectFile: (path: string) => void | Promise<void>
 }) {
-  if (chapters.length === 0) {
+  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set())
+  const volumes = useMemo(() => groupChaptersByVolume(chapters), [chapters])
+  const hasPlanning = outline || chapterPlans.length > 0
+
+  const toggleVolume = (key: string) => {
+    setCollapsedVolumes(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  if (!hasPlanning && chapters.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-4 text-center text-xs text-[var(--nova-text-faint)]">
         chapters/ 下还没有章节
@@ -597,33 +616,165 @@ function ChapterOutline({
   }
 
   return (
-    <div className="space-y-1.5">
-      {chapters.map((chapter) => {
-        const active = selectedFile === chapter.path
-        return (
-          <button
-            key={chapter.path}
-            type="button"
-            className={`nova-nav-item w-full border px-3 py-2 text-left ${
-              active
-                ? 'is-active border-[var(--nova-border)]'
-                : 'border-transparent bg-[var(--nova-surface)]'
-            }`}
-            onClick={() => onSelectFile(chapter.path)}
-          >
-            <div className="flex min-w-0 items-center gap-2">
-              <BookOpen className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-              <span className="truncate text-xs font-medium">{chapter.display_title}</span>
-            </div>
-            <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--nova-text-faint)]">
-              <span>{formatNumber(chapter.words)} 字</span>
-              <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{chapter.status}</span>
-            </div>
-          </button>
-        )
-      })}
+    <div className="space-y-3">
+      <section className="space-y-1.5">
+        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">大纲</div>
+        {outline ? (
+          <PlanningListItem document={outline} icon="outline" selected={selectedFile === outline.path} onSelectFile={onSelectFile} />
+        ) : (
+          <PlanningEmptyState text="setting/outline.md 尚未生成" />
+        )}
+      </section>
+
+      <section className="space-y-1.5">
+        <div className="flex items-center justify-between px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">
+          <span>章节组细纲</span>
+          {chapterPlans.length > 0 && <span>{chapterPlans.length} 组</span>}
+        </div>
+        {chapterPlans.length > 0 ? (
+          <div className="space-y-1">
+            {chapterPlans.map((plan) => (
+              <PlanningListItem key={plan.path} document={plan} icon="plan" selected={selectedFile === plan.path} onSelectFile={onSelectFile} />
+            ))}
+          </div>
+        ) : (
+          <PlanningEmptyState text="setting/chapter-groups/ 下还没有细纲" />
+        )}
+      </section>
+
+      <section className="space-y-1.5">
+        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">分卷章节</div>
+        {volumes.length === 0 ? (
+          <PlanningEmptyState text="chapters/ 下还没有章节" />
+        ) : (
+          <div className="space-y-1.5">
+            {volumes.map((volume) => {
+              const expanded = !collapsedVolumes.has(volume.key)
+              return (
+                <div key={volume.key} className="space-y-1">
+                  <button
+                    type="button"
+                    className="nova-nav-item flex w-full items-center gap-2 border border-transparent bg-[var(--nova-surface)] px-2 py-1.5 text-left"
+                    onClick={() => toggleVolume(volume.key)}
+                  >
+                    {expanded ? (
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+                    )}
+                    <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{volume.label}</span>
+                    <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{volume.chapters.length} 章</span>
+                  </button>
+                  {expanded && (
+                    <div className="space-y-1 pl-4">
+                      {volume.chapters.map((chapter) => (
+                        <ChapterOutlineItem
+                          key={chapter.path}
+                          chapter={chapter}
+                          active={selectedFile === chapter.path}
+                          onSelectFile={onSelectFile}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
     </div>
   )
+}
+
+function PlanningListItem({
+  document,
+  icon,
+  selected,
+  onSelectFile,
+}: {
+  document: DocumentPreview
+  icon: 'outline' | 'plan'
+  selected: boolean
+  onSelectFile: (path: string) => void | Promise<void>
+}) {
+  const Icon = icon === 'outline' ? BookMarked : FileText
+  return (
+    <button
+      type="button"
+      className={`nova-nav-item w-full border px-3 py-2 text-left ${
+        selected
+          ? 'is-active border-[var(--nova-border)]'
+          : 'border-transparent bg-[var(--nova-surface)]'
+      }`}
+      onClick={() => onSelectFile(document.path)}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${selected ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">{document.title}</span>
+        <span className="shrink-0 text-[10px] text-[var(--nova-text-faint)]">{formatNumber(document.words)} 字</span>
+      </div>
+      <div className="mt-1 flex min-w-0 items-center justify-between gap-2 text-[10px] text-[var(--nova-text-faint)]">
+        <span className="truncate">{document.path}</span>
+        <span className="shrink-0">{document.updated_at || '未更新'}</span>
+      </div>
+    </button>
+  )
+}
+
+function PlanningEmptyState({ text }: { text: string }) {
+  return (
+    <div className="rounded border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2 text-[11px] text-[var(--nova-text-faint)]">
+      {text}
+    </div>
+  )
+}
+
+function ChapterOutlineItem({
+  chapter,
+  active,
+  onSelectFile,
+}: {
+  chapter: ChapterSummary
+  active: boolean
+  onSelectFile: (path: string) => void | Promise<void>
+}) {
+  return (
+    <button
+      type="button"
+      className={`nova-nav-item w-full border px-3 py-2 text-left ${
+        active
+          ? 'is-active border-[var(--nova-border)]'
+          : 'border-transparent bg-[var(--nova-surface)]'
+      }`}
+      onClick={() => onSelectFile(chapter.path)}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <BookOpen className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
+        <span className="truncate text-xs font-medium">{chapter.display_title}</span>
+      </div>
+      <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--nova-text-faint)]">
+        <span>{formatNumber(chapter.words)} 字</span>
+        <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{chapter.status}</span>
+      </div>
+    </button>
+  )
+}
+
+function groupChaptersByVolume(chapters: ChapterSummary[]) {
+  const map = new Map<string, { key: string; label: string; chapters: ChapterSummary[] }>()
+  for (const chapter of chapters) {
+    const key = chapter.volume_path || chapter.volume || 'chapters'
+    const label = chapter.volume || '未分卷'
+    const existing = map.get(key)
+    if (existing) {
+      existing.chapters.push(chapter)
+    } else {
+      map.set(key, { key, label, chapters: [chapter] })
+    }
+  }
+  return Array.from(map.values())
 }
 
 function loreTypeLabel(type: LoreItem['type']) {

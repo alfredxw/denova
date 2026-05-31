@@ -64,6 +64,16 @@ export interface ChapterSummary {
   words: number
   status: string
   updated_at: string
+  volume: string
+  volume_path: string
+}
+
+export interface DocumentPreview {
+  path: string
+  title: string
+  excerpt: string
+  words: number
+  updated_at: string
 }
 
 export interface WorkspaceSummary {
@@ -72,6 +82,8 @@ export interface WorkspaceSummary {
   chapter_count: number
   total_words: number
   chapters: ChapterSummary[]
+  outline?: DocumentPreview
+  chapter_plans: DocumentPreview[]
 }
 
 export interface CharacterCardImportResult {
@@ -369,6 +381,7 @@ export async function getWorkspaceSummary(): Promise<WorkspaceSummary> {
   return {
     ...summary,
     chapters: Array.isArray(summary.chapters) ? summary.chapters : [],
+    chapter_plans: Array.isArray(summary.chapter_plans) ? summary.chapter_plans : [],
   }
 }
 
