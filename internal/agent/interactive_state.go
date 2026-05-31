@@ -16,14 +16,11 @@ func GenerateInteractiveState(ctx context.Context, cfg *config.Config, instructi
 	if cfg == nil {
 		return "", fmt.Errorf("配置不存在")
 	}
-	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		APIKey:      cfg.OpenAIAPIKey,
-		Model:       cfg.OpenAIModel,
-		BaseURL:     cfg.OpenAIBaseURL,
-		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-		},
-	})
+	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindInteractiveState)
+	modelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
+		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+	}
+	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
 		return "", fmt.Errorf("创建互动状态模型失败: %w", err)
 	}

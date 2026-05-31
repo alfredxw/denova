@@ -45,16 +45,11 @@ func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, inst
 	if instruction == "" {
 		return "", fmt.Errorf("讲述者编辑指令不能为空")
 	}
-	temperature := float32(0.1)
-	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		APIKey:      cfg.OpenAIAPIKey,
-		Model:       cfg.OpenAIModel,
-		BaseURL:     cfg.OpenAIBaseURL,
-		Temperature: &temperature,
-		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-		},
-	})
+	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindTellerEditor)
+	modelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
+		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+	}
+	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
 		return "", fmt.Errorf("创建讲述者编辑模型失败: %w", err)
 	}

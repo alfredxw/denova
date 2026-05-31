@@ -70,6 +70,32 @@ openai_base_url = "https://api.deepseek.com"
 openai_model = "deepseek-v4-pro"
 ```
 
+如需让不同 Agent 使用不同平台或模型，可以增加多个 OpenAI 协议兼容配置，并按 Agent 分配：
+
+```toml
+[[model_profiles]]
+id = "deepseek"
+name = "DeepSeek"
+openai_api_key = "your-api-key"
+openai_base_url = "https://api.deepseek.com"
+openai_model = "deepseek-v4-pro"
+
+[[model_profiles]]
+id = "openai"
+name = "OpenAI"
+openai_api_key = "your-api-key"
+openai_base_url = "https://api.openai.com/v1"
+openai_model = "gpt-4.1"
+
+[agent_models.ide]
+profile_id = "deepseek"
+temperature = 0.7
+
+[agent_models.lore_editor]
+profile_id = "openai"
+temperature = 0.2
+```
+
 也可以用环境变量覆盖配置文件，环境变量优先级最高：
 
 ```bash
@@ -251,7 +277,7 @@ my-novel/
 
 常见可调项：
 
-- 模型：`openai_api_key`、`openai_base_url`、`openai_model`
+- 模型：`openai_api_key`、`openai_base_url`、`openai_model`、`model_profiles`、`agent_models`
 - 编辑器：自动保存间隔、章节文件名格式、最大同时打开 Tab 数
 - Agent：最大迭代次数、失败重试次数、是否默认计划模式
 - 讲述者页面：按讲述者独立配置单轮目标字数、按场景匹配默认风格参考

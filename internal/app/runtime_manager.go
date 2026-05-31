@@ -466,6 +466,10 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if cfg.OpenAIModel == "" && effective.OpenAIModel != "" {
 		cfg.OpenAIModel = effective.OpenAIModel
 	}
+	if len(effective.ModelProfiles) > 0 {
+		cfg.ModelProfiles = effective.ModelProfiles
+	}
+	cfg.AgentModels = effective.AgentModels
 	if cfg.SkillsDir == "" && effective.SkillsDir != "" {
 		cfg.SkillsDir = effective.SkillsDir
 	}
@@ -474,6 +478,12 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	}
 	if cfg.IDEStoryTellerID == "" && effective.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = effective.IDEStoryTellerID
+	}
+	if effective.MaxIteration != nil {
+		cfg.MaxIteration = appSettingsInt(effective.MaxIteration, 50)
+	}
+	if effective.ModelMaxRetries != nil {
+		cfg.ModelMaxRetries = appSettingsInt(effective.ModelMaxRetries, 5)
 	}
 	if effective.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = effective.ChapterFilenameFormat
@@ -505,11 +515,21 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.OpenAIModel != "" && os.Getenv("OPENAI_MODEL") == "" {
 		cfg.OpenAIModel = settings.OpenAIModel
 	}
+	if len(settings.ModelProfiles) > 0 {
+		cfg.ModelProfiles = config.Merge(config.Settings{ModelProfiles: cfg.ModelProfiles}, config.Settings{ModelProfiles: settings.ModelProfiles}).ModelProfiles
+	}
+	cfg.AgentModels = config.MergeAgentModelSettings(cfg.AgentModels, settings.AgentModels)
 	if settings.SkillsDir != "" && os.Getenv("NOVA_SKILLS_DIR") == "" {
 		cfg.SkillsDir = settings.SkillsDir
 	}
 	if settings.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = settings.IDEStoryTellerID
+	}
+	if settings.MaxIteration != nil {
+		cfg.MaxIteration = appSettingsInt(settings.MaxIteration, 50)
+	}
+	if settings.ModelMaxRetries != nil {
+		cfg.ModelMaxRetries = appSettingsInt(settings.ModelMaxRetries, 5)
 	}
 	if settings.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = settings.ChapterFilenameFormat

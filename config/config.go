@@ -9,21 +9,25 @@ import (
 
 // Config 保存 Nova 的全局配置
 type Config struct {
-	OpenAIAPIKey                string `toml:"openai_api_key"`
-	OpenAIBaseURL               string `toml:"openai_base_url"`
-	OpenAIModel                 string `toml:"openai_model"`
-	SkillsDir                   string `toml:"skills_dir"`
-	NovaDir                     string `toml:"nova_dir"`
-	Workspace                   string `toml:"workspace"`
-	IDEStoryTellerID            string `toml:"-"`
-	ChapterFilenameFormat       string `toml:"-"`
-	DraftFlowEnabled            bool   `toml:"-"`
-	ChapterGroupMin             int    `toml:"-"`
-	ChapterGroupMax             int    `toml:"-"`
-	InteractiveReplyTargetChars int    `toml:"-"`
-	InteractiveMaxTokens        int    `toml:"-"`
-	InteractiveHotChoices       bool   `toml:"-"`
-	ResumeLastWorkspace         bool   `toml:"-"`
+	OpenAIAPIKey                string                 `toml:"openai_api_key"`
+	OpenAIBaseURL               string                 `toml:"openai_base_url"`
+	OpenAIModel                 string                 `toml:"openai_model"`
+	ModelProfiles               []ModelProfileSettings `toml:"model_profiles"`
+	AgentModels                 AgentModelSettings     `toml:"agent_models"`
+	SkillsDir                   string                 `toml:"skills_dir"`
+	NovaDir                     string                 `toml:"nova_dir"`
+	Workspace                   string                 `toml:"workspace"`
+	IDEStoryTellerID            string                 `toml:"-"`
+	MaxIteration                int                    `toml:"max_iteration"`
+	ModelMaxRetries             int                    `toml:"model_max_retries"`
+	ChapterFilenameFormat       string                 `toml:"-"`
+	DraftFlowEnabled            bool                   `toml:"-"`
+	ChapterGroupMin             int                    `toml:"-"`
+	ChapterGroupMax             int                    `toml:"-"`
+	InteractiveReplyTargetChars int                    `toml:"-"`
+	InteractiveMaxTokens        int                    `toml:"-"`
+	InteractiveHotChoices       bool                   `toml:"-"`
+	ResumeLastWorkspace         bool                   `toml:"-"`
 }
 
 // LoadWithWorkspace 在已知 workspace 时读取分层配置（默认 < 用户级 < 工作区级 < 环境变量）。
@@ -54,10 +58,14 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		OpenAIAPIKey:                s.OpenAIAPIKey,
 		OpenAIBaseURL:               s.OpenAIBaseURL,
 		OpenAIModel:                 s.OpenAIModel,
+		ModelProfiles:               s.ModelProfiles,
+		AgentModels:                 s.AgentModels,
 		SkillsDir:                   s.SkillsDir,
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
+		MaxIteration:                settingsInt(s.MaxIteration, 50),
+		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		DraftFlowEnabled:            settingsBool(s.DraftFlowEnabled, false),
 		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
@@ -106,14 +114,23 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg == nil {
 		return Settings{}
 	}
-	return Settings{
+	settings := Settings{
 		OpenAIAPIKey:          cfg.OpenAIAPIKey,
 		OpenAIBaseURL:         cfg.OpenAIBaseURL,
 		OpenAIModel:           cfg.OpenAIModel,
+		ModelProfiles:         cfg.ModelProfiles,
+		AgentModels:           cfg.AgentModels,
 		SkillsDir:             cfg.SkillsDir,
 		NovaDir:               cfg.NovaDir,
 		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
 	}
+	if cfg.MaxIteration > 0 {
+		settings.MaxIteration = &cfg.MaxIteration
+	}
+	if cfg.ModelMaxRetries > 0 {
+		settings.ModelMaxRetries = &cfg.ModelMaxRetries
+	}
+	return settings
 }
 
 func globalConfigCandidates() []string {
@@ -133,9 +150,13 @@ func Load() *Config {
 		cfg = &Config{
 			OpenAIBaseURL:               d.OpenAIBaseURL,
 			OpenAIModel:                 d.OpenAIModel,
+			ModelProfiles:               d.ModelProfiles,
+			AgentModels:                 d.AgentModels,
 			SkillsDir:                   d.SkillsDir,
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
+			MaxIteration:                settingsInt(d.MaxIteration, 50),
+			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			DraftFlowEnabled:            settingsBool(d.DraftFlowEnabled, false),
 			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),

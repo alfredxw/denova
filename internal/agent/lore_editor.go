@@ -44,16 +44,11 @@ func generateLoreEditPlanContent(ctx context.Context, cfg *config.Config, instru
 	if instruction == "" {
 		return "", fmt.Errorf("资料库编辑指令不能为空")
 	}
-	temperature := float32(0.1)
-	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		APIKey:      cfg.OpenAIAPIKey,
-		Model:       cfg.OpenAIModel,
-		BaseURL:     cfg.OpenAIBaseURL,
-		Temperature: &temperature,
-		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-		},
-	})
+	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindLoreEditor)
+	modelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
+		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+	}
+	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
 		return "", fmt.Errorf("创建资料库编辑模型失败: %w", err)
 	}

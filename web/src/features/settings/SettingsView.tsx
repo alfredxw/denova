@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronUp, Save, Settings as SettingsIcon, X } from 'lucide-react'
-import type { LayeredSettings, Settings, SettingsLayer } from './types'
+import { ChevronDown, ChevronUp, Plus, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
+import type { AgentModelSettings, AgentModelOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from './types'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from './api'
 import { FONT_OPTIONS, fontLabelFor } from './font-options'
 import { getInteractiveTellers } from '@/features/interactive/api'
@@ -64,6 +64,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [activeLayer, layered])
 
   const effective = layered?.effective ?? {}
+  const profileOptions = buildProfileOptions(draft, effective)
 
   const onSave = async () => {
     setSaving(true)
@@ -86,6 +87,20 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const setField = <K extends keyof Settings>(k: K, v: Settings[K]) =>
     setDraft((d) => ({ ...d, [k]: v }))
 
+  const setModelProfiles = (profiles: ModelProfileSettings[]) => {
+    setField('model_profiles', profiles)
+  }
+
+  const setAgentOverride = (key: keyof AgentModelSettings, override: AgentModelOverride) => {
+    setDraft((d) => ({
+      ...d,
+      agent_models: {
+        ...(d.agent_models ?? {}),
+        [key]: override,
+      },
+    }))
+  }
+
   const placeholderFor = (k: keyof Settings): string => {
     const v = effective[k]
     if (v === undefined || v === null || v === '') return '未设置'
@@ -105,6 +120,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                 onChange={(v) => setField('openai_base_url', v)} />
           <Text label="模型" value={draft.openai_model} placeholder={placeholderFor('openai_model')}
                 onChange={(v) => setField('openai_model', v)} />
+          <ModelProfilesEditor
+            profiles={draft.model_profiles ?? []}
+            effectiveProfiles={effective.model_profiles ?? []}
+            onChange={setModelProfiles}
+          />
         </>
       ),
     },
@@ -152,6 +172,12 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <BoolTri label="默认 PlanMode" value={draft.plan_mode_default ?? null}
                    effective={effective.plan_mode_default}
                    onChange={(v) => setField('plan_mode_default', v)} />
+          <AgentModelEditor
+            settings={draft.agent_models ?? {}}
+            effective={effective.agent_models ?? {}}
+            profiles={profileOptions}
+            onChange={setAgentOverride}
+          />
         </>
       ),
     },
@@ -536,4 +562,165 @@ function TellerSelect({ label, value, effective, tellers, onChange }: {
       </select>
     </FieldRow>
   )
+}
+
+function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
+  profiles: ModelProfileSettings[]
+  effectiveProfiles: ModelProfileSettings[]
+  onChange: (profiles: ModelProfileSettings[]) => void
+}) {
+  const addProfile = () => {
+    const nextIndex = profiles.length + 1
+    onChange([...profiles, { id: `model-${nextIndex}`, name: `模型 ${nextIndex}` }])
+  }
+  const updateProfile = (index: number, patch: Partial<ModelProfileSettings>) => {
+    onChange(profiles.map((profile, i) => (i === index ? { ...profile, ...patch } : profile)))
+  }
+  const removeProfile = (index: number) => {
+    onChange(profiles.filter((_, i) => i !== index))
+  }
+
+  return (
+    <div className="nova-settings-row rounded-md px-2 py-1.5">
+      <div className="mb-1.5 text-[var(--nova-text-muted)]">多模型配置</div>
+      <div className="flex flex-col gap-2">
+        {profiles.length === 0 && (
+          <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-2 text-[var(--nova-text-faint)]">
+            继承 {effectiveProfiles.length || 1} 个模型配置；可新增常见 OpenAI 协议平台。
+          </div>
+        )}
+        {profiles.map((profile, index) => (
+          <div key={`${profile.id ?? 'profile'}-${index}`} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-2">
+            <input
+              value={profile.id ?? ''}
+              placeholder="配置 ID，如 deepseek"
+              onChange={(e) => updateProfile(index, { id: e.target.value })}
+              className={fieldCls}
+            />
+            <input
+              value={profile.name ?? ''}
+              placeholder="显示名称"
+              onChange={(e) => updateProfile(index, { name: e.target.value })}
+              className={fieldCls}
+            />
+            <input
+              value={profile.openai_base_url ?? ''}
+              placeholder="Base URL"
+              onChange={(e) => updateProfile(index, { openai_base_url: e.target.value })}
+              className={fieldCls}
+            />
+            <input
+              value={profile.openai_model ?? ''}
+              placeholder="模型 ID"
+              onChange={(e) => updateProfile(index, { openai_model: e.target.value })}
+              className={fieldCls}
+            />
+            <input
+              type="password"
+              value={profile.openai_api_key ?? ''}
+              placeholder="API Key，不填则继承默认"
+              onChange={(e) => updateProfile(index, { openai_api_key: e.target.value })}
+              className={fieldCls}
+            />
+            <div className="flex gap-2">
+              <input
+                type="number"
+                step={0.1}
+                min={0}
+                max={2}
+                value={profile.temperature ?? ''}
+                placeholder="Temperature，空为平台默认"
+                onChange={(e) => updateProfile(index, { temperature: e.target.value === '' ? null : Number(e.target.value) })}
+                className={fieldCls}
+              />
+              <button
+                type="button"
+                onClick={() => removeProfile(index)}
+                className={`${iconButtonCls} shrink-0 border border-[var(--nova-border)] p-1.5`}
+                aria-label="删除模型配置"
+                title="删除模型配置"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={addProfile}
+          className="nova-nav-item inline-flex w-fit items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2.5 py-1 text-[var(--nova-text)]"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          添加模型
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AgentModelEditor({ settings, effective, profiles, onChange }: {
+  settings: AgentModelSettings
+  effective: AgentModelSettings
+  profiles: Array<{ id: string; label: string }>
+  onChange: (key: keyof AgentModelSettings, override: AgentModelOverride) => void
+}) {
+  const rows: Array<{ key: keyof AgentModelSettings; label: string }> = [
+    { key: 'default', label: '默认 Agent' },
+    { key: 'ide', label: 'IDE 创作 Agent' },
+    { key: 'interactive_story', label: '互动叙事 Agent' },
+    { key: 'lore_editor', label: '资料库编辑 Agent' },
+    { key: 'teller_editor', label: '讲述者编辑 Agent' },
+    { key: 'interactive_state', label: '互动状态 Agent' },
+    { key: 'interactive_hot_choices', label: '快捷选项 Agent' },
+  ]
+
+  return (
+    <div className="nova-settings-row rounded-md px-2 py-1.5">
+      <div className="mb-1.5 text-[var(--nova-text-muted)]">Agent 模型分配</div>
+      <div className="flex flex-col gap-2">
+        {rows.map((row) => {
+          const value = settings[row.key] ?? {}
+          const inherited = effective[row.key] ?? {}
+          return (
+            <div key={row.key} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-[minmax(8rem,12rem)_1fr_1fr] md:items-center">
+              <span className="text-[var(--nova-text-muted)]">{row.label}</span>
+              <select
+                value={value.profile_id ?? ''}
+                onChange={(e) => onChange(row.key, { ...value, profile_id: e.target.value })}
+                className={fieldCls}
+              >
+                <option value="">继承（{inherited.profile_id || 'default'}）</option>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.label}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                step={0.1}
+                min={0}
+                max={2}
+                value={value.temperature ?? ''}
+                placeholder={inherited.temperature === null || inherited.temperature === undefined ? 'Temperature：平台默认' : `继承：${inherited.temperature}`}
+                onChange={(e) => onChange(row.key, { ...value, temperature: e.target.value === '' ? null : Number(e.target.value) })}
+                className={fieldCls}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function buildProfileOptions(draft: Settings, effective: Settings): Array<{ id: string; label: string }> {
+  const profiles = new Map<string, string>()
+  const add = (profile?: ModelProfileSettings) => {
+    const id = profile?.id?.trim()
+    if (!id) return
+    profiles.set(id, profile?.name || profile?.openai_model || id)
+  }
+  profiles.set('default', effective.openai_model || '默认模型')
+  ;(effective.model_profiles ?? []).forEach(add)
+  ;(draft.model_profiles ?? []).forEach(add)
+  return Array.from(profiles.entries()).map(([id, label]) => ({ id, label: id === 'default' ? `default（${label}）` : `${id}（${label}）` }))
 }

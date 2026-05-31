@@ -22,18 +22,13 @@ func GenerateInteractiveHotChoices(ctx context.Context, cfg *config.Config, inst
 	if cfg == nil {
 		return nil, fmt.Errorf("配置不存在")
 	}
-	temperature := float32(0.35)
 	maxTokens := 3000
-	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		APIKey:      cfg.OpenAIAPIKey,
-		Model:       cfg.OpenAIModel,
-		BaseURL:     cfg.OpenAIBaseURL,
-		Temperature: &temperature,
-		MaxTokens:   &maxTokens,
-		ResponseFormat: &openai.ChatCompletionResponseFormat{
-			Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-		},
-	})
+	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindInteractiveHotChoices)
+	modelCfg.MaxTokens = &maxTokens
+	modelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
+		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
+	}
+	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建互动快捷选择模型失败: %w", err)
 	}

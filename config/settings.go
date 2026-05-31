@@ -12,9 +12,11 @@ import (
 // 指针类型用于区分 "未设置"（继承上层）与 "显式置零"。
 type Settings struct {
 	// 模型
-	OpenAIAPIKey  string `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
-	OpenAIBaseURL string `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
-	OpenAIModel   string `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
+	OpenAIAPIKey  string                 `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
+	OpenAIBaseURL string                 `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
+	OpenAIModel   string                 `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
+	ModelProfiles []ModelProfileSettings `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
+	AgentModels   AgentModelSettings     `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
 
 	// 路径
 	SkillsDir string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -89,6 +91,8 @@ func Merge(parent, child Settings) Settings {
 	if child.OpenAIModel != "" {
 		out.OpenAIModel = child.OpenAIModel
 	}
+	out.ModelProfiles = mergeModelProfiles(out.ModelProfiles, child.ModelProfiles)
+	out.AgentModels = MergeAgentModelSettings(out.AgentModels, child.AgentModels)
 	if child.SkillsDir != "" {
 		out.SkillsDir = child.SkillsDir
 	}

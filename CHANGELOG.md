@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 后端/设置页支持多个 OpenAI 协议兼容模型配置，可为 IDE 创作、互动叙事、资料库编辑、讲述者编辑、互动状态和快捷选项等 Agent 分配不同模型与 Temperature；未配置 Temperature 时不再写死默认值，交由平台/模型默认策略处理。
 - 互动模式新增按需快捷行动建议生成接口，故事舞台可继续生成更多选择，并在设置页支持关闭“输入框快捷选择”。
 - 互动模式故事舞台支持像 IDE 模式一样通过 `#` 引用用户级 `<nova_dir>/styles/` 下的风格参考，本轮会随互动 Agent 请求注入。
 - 互动模式支持复用场景化风格规则；每个具体讲述者编辑页可分别维护场景风格规则和互动单轮目标字数。
@@ -22,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 后端 Agent 构建接入 `max_iteration` 与 `model_max_retries` 运行时设置，不再使用构建时硬编码值。
 - 互动故事 Agent 不再随正文输出 `<HOT_STATE>` 快捷选择，也不再对缺失选择做兜底生成；快捷选择改为用户点击“选择”时由独立 LLM 调用按当前上下文生成。
 - 互动模式快捷行动建议生成后会按当前剧情节点持久化到故事 JSONL，刷新后优先复用已生成结果；状态 Agent 不再维护可选择入口。
 - 互动模式快捷行动建议不再自动展示，改为输入区显式按钮触发，面板可手动收起并保留生成结果。

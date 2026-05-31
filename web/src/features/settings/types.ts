@@ -2,6 +2,8 @@ export interface Settings {
   openai_api_key?: string
   openai_base_url?: string
   openai_model?: string
+  model_profiles?: ModelProfileSettings[]
+  agent_models?: AgentModelSettings
   skills_dir?: string
   auto_save_enabled?: boolean | null
   auto_save_interval_ms?: number | null
@@ -20,6 +22,30 @@ export interface Settings {
   interactive_hot_choices_enabled?: boolean | null
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
+}
+
+export interface ModelProfileSettings {
+  id?: string
+  name?: string
+  openai_api_key?: string
+  openai_base_url?: string
+  openai_model?: string
+  temperature?: number | null
+}
+
+export interface AgentModelSettings {
+  default?: AgentModelOverride
+  ide?: AgentModelOverride
+  interactive_story?: AgentModelOverride
+  lore_editor?: AgentModelOverride
+  teller_editor?: AgentModelOverride
+  interactive_state?: AgentModelOverride
+  interactive_hot_choices?: AgentModelOverride
+}
+
+export interface AgentModelOverride {
+  profile_id?: string
+  temperature?: number | null
 }
 
 export interface SettingsPaths {

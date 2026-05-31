@@ -20,11 +20,11 @@ import (
 
 // Build 构建小说创作 Agent（deep agent + 文件系统工具 + Skill 中间件）。
 func Build(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (adk.Agent, error) {
-	return buildDeepAgent(ctx, cfg, "NovaAgent", "AI 小说创作助手", BuildInstruction(cfg, state, teller), true, false, nil, nil)
+	return buildDeepAgent(ctx, cfg, config.AgentKindIDE, "NovaAgent", "AI 小说创作助手", BuildInstruction(cfg, state, teller), true, false, nil, nil)
 }
 
 func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (adk.Agent, error) {
-	return buildDeepAgent(ctx, cfg, "NovaInteractiveStoryAgent", "AI 互动故事叙事助手", BuildInteractiveStoryInstruction(cfg, state, teller), false, true, []adk.ChatModelAgentMiddleware{
+	return buildDeepAgent(ctx, cfg, config.AgentKindInteractiveStory, "NovaInteractiveStoryAgent", "AI 互动故事叙事助手", BuildInteractiveStoryInstruction(cfg, state, teller), false, true, []adk.ChatModelAgentMiddleware{
 		newInteractiveStoryToolMiddleware(),
 	}, interactiveMaxTokens(cfg))
 }
@@ -32,6 +32,7 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 func buildDeepAgent(
 	ctx context.Context,
 	cfg *config.Config,
+	agentKind string,
 	name string,
 	description string,
 	instruction string,
@@ -40,12 +41,9 @@ func buildDeepAgent(
 	extraHandlers []adk.ChatModelAgentMiddleware,
 	maxTokens *int,
 ) (adk.Agent, error) {
-	cm, err := openai.NewChatModel(ctx, &openai.ChatModelConfig{
-		APIKey:    cfg.OpenAIAPIKey,
-		Model:     cfg.OpenAIModel,
-		BaseURL:   cfg.OpenAIBaseURL,
-		MaxTokens: maxTokens,
-	})
+	modelCfg := chatModelConfigForAgent(cfg, agentKind)
+	modelCfg.MaxTokens = maxTokens
+	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建模型失败: %w", err)
 	}
@@ -81,7 +79,7 @@ func buildDeepAgent(
 		Backend:           backend,
 		StreamingShell:    backend,
 		WithoutWriteTodos: disableWriteTodos,
-		MaxIteration:      50,
+		MaxIteration:      configMaxIteration(cfg),
 		Handlers:          handlers,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
@@ -91,7 +89,7 @@ func buildDeepAgent(
 			},
 		},
 		ModelRetryConfig: &adk.ModelRetryConfig{
-			MaxRetries: 5,
+			MaxRetries: configModelMaxRetries(cfg),
 			IsRetryAble: func(_ context.Context, err error) bool {
 				return strings.Contains(err.Error(), "429") ||
 					strings.Contains(err.Error(), "Too Many Requests") ||
@@ -99,6 +97,20 @@ func buildDeepAgent(
 			},
 		},
 	})
+}
+
+func configMaxIteration(cfg *config.Config) int {
+	if cfg == nil || cfg.MaxIteration <= 0 {
+		return 50
+	}
+	return cfg.MaxIteration
+}
+
+func configModelMaxRetries(cfg *config.Config) int {
+	if cfg == nil || cfg.ModelMaxRetries < 0 {
+		return 5
+	}
+	return cfg.ModelMaxRetries
 }
 
 func interactiveMaxTokens(cfg *config.Config) *int {
