@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { AtSign, BookMarked, Bot, Building2, ChevronDown, Database, FileText, Folder, History, Library, Loader2, MapPin, Plus, RotateCcw, Save, ScrollText, Search, Send, SlidersHorizontal, Trash2, UserRound, X } from 'lucide-react'
+import { AtSign, BookMarked, Bot, Building2, Check, ChevronDown, Database, FileText, Folder, History, Library, Loader2, MapPin, Plus, RotateCcw, Save, ScrollText, Search, Send, SlidersHorizontal, Trash2, UserRound, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
   createLoreVersion,
@@ -1789,13 +1789,23 @@ function TellerEditor({
   onSave: () => void
 }) {
   const activeSlot = draft?.slots?.find((slot) => slot.id === activeSlotId) || draft?.slots?.[0] || null
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false)
+
+  useEffect(() => {
+    setTargetPickerOpen(false)
+  }, [activeSlotId])
+
+  const updateSlotById = (slotId: string, patch: Partial<TellerPromptSlot>) => {
+    if (!draft) return
+    setDraft({
+      ...draft,
+      slots: draft.slots.map((slot) => slot.id === slotId ? { ...slot, ...patch } : slot),
+    })
+  }
 
   const updateSlot = (patch: Partial<TellerPromptSlot>) => {
     if (!draft || !activeSlot) return
-    setDraft({
-      ...draft,
-      slots: draft.slots.map((slot) => slot.id === activeSlot.id ? { ...slot, ...patch } : slot),
-    })
+    updateSlotById(activeSlot.id, patch)
   }
 
   const addSlot = () => {
@@ -1866,21 +1876,35 @@ function TellerEditor({
           <ScrollArea className="min-h-0 flex-1">
             <div className="p-2">
               {(draft.slots || []).map((slot) => (
-                <button
+                <div
                   key={slot.id}
-                  type="button"
-                  onClick={() => setActiveSlotId(slot.id)}
-                  className={`mb-1 flex min-h-10 w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition ${
-                    activeSlot?.id === slot.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+                  className={`mb-1 flex min-h-12 w-full items-center gap-2 rounded-md border px-3 py-2 text-xs transition ${
+                    activeSlot?.id === slot.id
+                      ? 'border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_3px_0_0_var(--nova-accent)]'
+                      : 'border-transparent text-[var(--nova-text-muted)] hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
                   }`}
                 >
-                  <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{slot.name}</span>
-                    <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{targetLabel(slot.target)} · {slot.enabled ? '已启用' : '已停用'}</span>
-                  </span>
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${slot.enabled ? 'bg-[var(--nova-accent-green)]' : 'bg-[var(--nova-active)]'}`} />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlotId(slot.id)}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  >
+                    <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{slot.name}</span>
+                      <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]">
+                        <span className="truncate">{targetLabel(slot.target)}</span>
+                        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${slot.enabled ? 'bg-[var(--nova-accent-green)]' : 'bg-[var(--nova-text-faint)]/35'}`} />
+                        <span className="shrink-0">{slot.enabled ? '启用' : '停用'}</span>
+                      </span>
+                    </span>
+                  </button>
+                  <ToggleSwitch
+                    checked={slot.enabled}
+                    compact
+                    onChange={(enabled) => updateSlotById(slot.id, { enabled })}
+                  />
+                </div>
               ))}
             </div>
           </ScrollArea>
@@ -1889,49 +1913,66 @@ function TellerEditor({
         {activeSlot ? (
           <section className="flex min-h-0 flex-col">
             <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
-              <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(260px,420px)]">
+              <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(240px,320px)_32px]">
                 <Field label="规则名称">
                   <Input className={inputClassName} value={activeSlot.name} onChange={(event) => updateSlot({ name: event.target.value })} />
                 </Field>
-                <div className="flex items-end justify-between gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2">
-                  <div className="min-w-0">
-                    <div className="text-[11px] text-[var(--nova-text-faint)]">Prompt 效果</div>
-                    <div className="mt-1 truncate text-xs font-medium text-[var(--nova-text)]">{selectedTarget.label}</div>
-                    <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[var(--nova-text-faint)]">{selectedTarget.detail}</div>
-                  </div>
-                  <ToggleSwitch checked={activeSlot.enabled} onChange={(enabled) => updateSlot({ enabled })} />
+                <div className="grid gap-1.5">
+                  <span className="text-[11px] text-[var(--nova-text-faint)]">注入位置</span>
+                  <Popover open={targetPickerOpen} onOpenChange={setTargetPickerOpen}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label="注入位置"
+                        className={`${selectClassName} flex w-full items-center justify-between gap-2 px-3 text-left text-[var(--nova-text)]`}
+                      >
+                        <span className="min-w-0 flex-1 truncate">{selectedTarget.label} · {selectedTarget.summary}</span>
+                        <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition ${targetPickerOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" sideOffset={6} className="nova-panel w-[320px] border border-[var(--nova-border)] p-1.5 text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
+                      {TELLER_TARGET_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => {
+                            updateSlot({ target: option.value as TellerTarget })
+                            setTargetPickerOpen(false)
+                          }}
+                          className={`flex w-full items-start gap-2 rounded-md px-3 py-2.5 text-left transition ${
+                            activeSlot.target === option.value
+                              ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
+                              : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+                          }`}
+                        >
+                          <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                            activeSlot.target === option.value ? 'border-[var(--nova-accent)] bg-[var(--nova-accent)]/15 text-[var(--nova-accent)]' : 'border-[var(--nova-border)] text-transparent'
+                          }`}>
+                            <Check className="h-3 w-3" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-xs font-medium">{option.label}</span>
+                            <span className="mt-0.5 block text-[11px] leading-4 text-[var(--nova-text-faint)]">{option.summary}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
                 </div>
-              </div>
-
-              <div className="mt-4">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-medium text-[var(--nova-text-muted)]">注入位置</div>
-                    <div className="mt-0.5 text-[11px] text-[var(--nova-text-faint)]">选择这条规则交给哪一段 Agent 流程使用。</div>
-                  </div>
+                <div className="flex items-end justify-end">
                   <Button className={iconActionClassName} variant="outline" size="icon" disabled={(draft.slots || []).length <= 1} onClick={deleteSlot} aria-label="删除注入规则">
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="grid gap-2 lg:grid-cols-3 md:grid-cols-2">
-                  {TELLER_TARGET_OPTIONS.map((option) => {
-                    const selected = activeSlot.target === option.value
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => updateSlot({ target: option.value as TellerTarget })}
-                        className={`min-h-[76px] rounded-md border p-3 text-left transition ${
-                          selected
-                            ? 'border-[var(--nova-accent)]/60 bg-[var(--nova-accent)]/10 text-[var(--nova-text)]'
-                            : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:border-[var(--nova-active)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-                        }`}
-                      >
-                        <span className="block text-xs font-medium">{option.label}</span>
-                        <span className="mt-1 block text-[11px] leading-4 text-[var(--nova-text-faint)]">{option.summary}</span>
-                      </button>
-                    )
-                  })}
+                <div className="lg:col-span-3">
+                  <div className="min-w-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5">
+                    <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
+                      <span>{selectedTarget.label}</span>
+                      <span className="h-1 w-1 rounded-full bg-[var(--nova-text-faint)]/50" />
+                      <span className="text-[var(--nova-text-faint)]">{selectedTarget.summary}</span>
+                    </div>
+                    <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">{selectedTarget.detail}</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1978,20 +2019,23 @@ function EmptyState({ title, description }: { title: string; description: string
   )
 }
 
-function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
+function ToggleSwitch({ checked, onChange, compact = false }: { checked: boolean; onChange: (checked: boolean) => void; compact?: boolean }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 shrink-0 rounded-full border transition ${
+      title={checked ? '停用规则' : '启用规则'}
+      className={`relative shrink-0 rounded-full border transition ${
         checked ? 'border-[var(--nova-accent-green)]/60 bg-[var(--nova-accent-green)]/25' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)]'
-      }`}
+      } ${compact ? 'h-5 w-9' : 'h-6 w-11'}`}
     >
       <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-[var(--nova-text)] shadow transition ${
-          checked ? 'left-[22px]' : 'left-0.5'
+        className={`absolute rounded-full bg-[var(--nova-text)] shadow transition ${
+          compact
+            ? `top-0.5 h-4 w-4 ${checked ? 'left-[18px]' : 'left-0.5'}`
+            : `top-0.5 h-5 w-5 ${checked ? 'left-[22px]' : 'left-0.5'}`
         }`}
       />
       <span className="sr-only">{checked ? '停用规则' : '启用规则'}</span>

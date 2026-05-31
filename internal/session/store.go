@@ -20,6 +20,7 @@ const (
 	defaultSessionID     = "default"
 	defaultSessionTitle  = "新会话"
 	historyTypeMessage   = "message"
+	historyTypeDisplay   = "display"
 	historyTypeClear     = "clear"
 	historyTypeInterrupt = "interrupt"
 
@@ -30,8 +31,11 @@ const (
 // HistoryEntry 表示用于前端展示的会话历史记录。
 type HistoryEntry struct {
 	Type      string          `json:"type"`
+	ID        string          `json:"id,omitempty"`
 	Role      string          `json:"role,omitempty"`
 	Content   string          `json:"content,omitempty"`
+	Name      string          `json:"name,omitempty"`
+	Status    string          `json:"status,omitempty"`
 	Message   *schema.Message `json:"-"`
 	CreatedAt time.Time       `json:"created_at,omitempty"`
 }
@@ -39,8 +43,19 @@ type HistoryEntry struct {
 type historyRecord struct {
 	kind         string
 	message      *schema.Message
+	display      *DisplayEvent
 	interruption *Interruption
 	createdAt    time.Time
+}
+
+// DisplayEvent 表示只用于前端展示的非上下文事件，例如 thinking 和工具卡片。
+type DisplayEvent struct {
+	ID        string    `json:"id,omitempty"`
+	Role      string    `json:"role"`
+	Content   string    `json:"content,omitempty"`
+	Name      string    `json:"name,omitempty"`
+	Status    string    `json:"status,omitempty"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
 }
 
 // Interruption 表示一次异常中断后可恢复的对话轮次。
@@ -81,6 +96,46 @@ func (s *Session) Append(msg *schema.Message) error {
 	}
 
 	return s.persistLocked()
+}
+
+// AppendDisplayEvent 追加仅用于前端展示的事件，不进入 Agent 有效上下文。
+func (s *Session) AppendDisplayEvent(event DisplayEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if strings.TrimSpace(event.Role) == "" {
+		return fmt.Errorf("展示事件 role 不能为空")
+	}
+	if event.CreatedAt.IsZero() {
+		event.CreatedAt = time.Now().UTC()
+	}
+	s.records = append(s.records, historyRecord{kind: historyTypeDisplay, display: &event, createdAt: event.CreatedAt})
+	s.UpdatedAt = event.CreatedAt
+	return s.persistLocked()
+}
+
+// UpdateDisplayToolStatus 更新已持久化工具卡片的执行状态，不保存工具参数或输出。
+func (s *Session) UpdateDisplayToolStatus(id, name, status string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+	for i := len(s.records) - 1; i >= 0; i-- {
+		if s.records[i].kind != historyTypeDisplay || s.records[i].display == nil || s.records[i].display.Role != "tool_call" {
+			continue
+		}
+		if id != "" && s.records[i].display.ID != id {
+			continue
+		}
+		if id == "" && name != "" && s.records[i].display.Name != name {
+			continue
+		}
+		s.records[i].display.Status = status
+		s.UpdatedAt = time.Now().UTC()
+		return s.persistLocked()
+	}
+	return nil
 }
 
 // AppendClearMarker 追加上下文清理标记，不删除历史消息。
@@ -192,6 +247,19 @@ func (s *Session) History() []HistoryEntry {
 				Content: record.message.Content,
 				Message: record.message,
 			})
+		case historyTypeDisplay:
+			if record.display == nil {
+				continue
+			}
+			result = append(result, HistoryEntry{
+				Type:      historyTypeMessage,
+				ID:        record.display.ID,
+				Role:      record.display.Role,
+				Content:   record.display.Content,
+				Name:      record.display.Name,
+				Status:    record.display.Status,
+				CreatedAt: record.display.CreatedAt,
+			})
 		}
 	}
 	return result
@@ -265,6 +333,13 @@ func (s *Session) persistLocked() error {
 				continue
 			}
 			if err := writeJSONLine(&sb, interruptionRecord{Type: historyTypeInterrupt, Interruption: *record.interruption}); err != nil {
+				return err
+			}
+		case historyTypeDisplay:
+			if record.display == nil {
+				continue
+			}
+			if err := writeJSONLine(&sb, displayRecord{Type: historyTypeDisplay, DisplayEvent: *record.display}); err != nil {
 				return err
 			}
 		case historyTypeMessage:
@@ -595,6 +670,11 @@ type interruptionRecord struct {
 	Interruption
 }
 
+type displayRecord struct {
+	Type string `json:"type"`
+	DisplayEvent
+}
+
 type activeSessionState struct {
 	ActiveID string `json:"active_id"`
 }
@@ -730,6 +810,21 @@ func appendRecordLine(sess *Session, line string) error {
 		sess.records = append(sess.records, historyRecord{kind: historyTypeInterrupt, interruption: &interruption, createdAt: interruption.CreatedAt})
 		if interruption.CreatedAt.After(sess.UpdatedAt) {
 			sess.UpdatedAt = interruption.CreatedAt
+		}
+		return nil
+	}
+	if typed.Type == historyTypeDisplay {
+		var marker displayRecord
+		if err := json.Unmarshal([]byte(line), &marker); err != nil {
+			return err
+		}
+		event := marker.DisplayEvent
+		if event.CreatedAt.IsZero() {
+			event.CreatedAt = sess.UpdatedAt
+		}
+		sess.records = append(sess.records, historyRecord{kind: historyTypeDisplay, display: &event, createdAt: event.CreatedAt})
+		if event.CreatedAt.After(sess.UpdatedAt) {
+			sess.UpdatedAt = event.CreatedAt
 		}
 		return nil
 	}

@@ -75,6 +75,12 @@ func (s *ChatService) Run(
 	req ChatRequest,
 	emit func(Event),
 ) {
+	recorder := newDisplayEventRecorder(conversation)
+	rawEmit := emit
+	emit = func(ev Event) {
+		recorder.Record(ev)
+		rawEmit(ev)
+	}
 	originalMessage := req.Message
 	var resumeInterruption *session.Interruption
 	if shouldResumeInterruptedRequest(req.Message) {
@@ -247,6 +253,106 @@ func appendAssistantIfAny(conversation Conversation, content, thinking *strings.
 		thinking.Reset()
 	}
 	return generated
+}
+
+type displayEventAppender interface {
+	AppendDisplayEvent(event session.DisplayEvent) error
+	UpdateDisplayToolStatus(id, name, status string) error
+}
+
+type displayEventRecorder struct {
+	appender       displayEventAppender
+	thinking       strings.Builder
+	pendingToolIDs map[string]string
+}
+
+func newDisplayEventRecorder(conversation Conversation) *displayEventRecorder {
+	appender, _ := conversation.(displayEventAppender)
+	return &displayEventRecorder{
+		appender:       appender,
+		pendingToolIDs: make(map[string]string),
+	}
+}
+
+func (r *displayEventRecorder) Record(ev Event) {
+	if r == nil || r.appender == nil {
+		return
+	}
+	switch ev.Type {
+	case "thinking":
+		r.thinking.WriteString(eventDataString(ev.Data, "content"))
+	case "chunk":
+		r.flushThinking()
+	case "tool_call":
+		r.flushThinking()
+		id := eventDataString(ev.Data, "id")
+		name := eventDataString(ev.Data, "name")
+		if strings.TrimSpace(name) == "" {
+			name = "unknown_tool"
+		}
+		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+			ID:      id,
+			Role:    "tool_call",
+			Content: name,
+			Name:    name,
+			Status:  "running",
+		}); err != nil {
+			log.Printf("[agent-run] persist display tool_call failed name=%s id=%s err=%v", name, id, err)
+			return
+		}
+		if id != "" {
+			r.pendingToolIDs[id] = name
+		}
+	case "tool_result":
+		r.flushThinking()
+		id := eventDataString(ev.Data, "id")
+		name := eventDataString(ev.Data, "name")
+		if err := r.appender.UpdateDisplayToolStatus(id, name, "success"); err != nil {
+			log.Printf("[agent-run] persist display tool_result failed name=%s id=%s err=%v", name, id, err)
+		}
+		if id != "" {
+			delete(r.pendingToolIDs, id)
+		}
+	case "error", "aborted":
+		r.flushThinking()
+		for id, name := range r.pendingToolIDs {
+			if err := r.appender.UpdateDisplayToolStatus(id, name, "error"); err != nil {
+				log.Printf("[agent-run] persist display tool_error failed name=%s id=%s err=%v", name, id, err)
+			}
+		}
+		r.pendingToolIDs = make(map[string]string)
+	case "done":
+		r.flushThinking()
+	}
+}
+
+func (r *displayEventRecorder) flushThinking() {
+	if r == nil || r.appender == nil || r.thinking.Len() == 0 {
+		return
+	}
+	content := r.thinking.String()
+	r.thinking.Reset()
+	if strings.TrimSpace(content) == "" {
+		return
+	}
+	if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+		Role:    "thinking",
+		Content: content,
+	}); err != nil {
+		log.Printf("[agent-run] persist display thinking failed bytes=%d err=%v", len(content), err)
+	}
+}
+
+func eventDataString(data interface{}, key string) string {
+	switch typed := data.(type) {
+	case map[string]string:
+		return typed[key]
+	case map[string]interface{}:
+		if value, ok := typed[key]; ok {
+			return fmt.Sprint(value)
+		}
+	}
+	return ""
 }
 
 func markInterruptionIfNeeded(conversation Conversation, resumed *session.Interruption, userMessage, assistantContent, reason string) {

@@ -14,8 +14,11 @@ import (
 // messageDTO 消息 DTO，type=clear 时表示上下文清理分界。
 type messageDTO struct {
 	Type      string `json:"type"`
+	ID        string `json:"id,omitempty"`
 	Role      string `json:"role,omitempty"`
 	Content   string `json:"content,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Status    string `json:"status,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
 }
 
@@ -68,9 +71,13 @@ func (s *Server) handleSessionMessages(ctx context.Context, c *app.RequestContex
 			continue
 		}
 		result = append(result, messageDTO{
-			Type:    entry.Type,
-			Role:    entry.Role,
-			Content: entry.Content,
+			Type:      entry.Type,
+			ID:        entry.ID,
+			Role:      entry.Role,
+			Content:   entry.Content,
+			Name:      entry.Name,
+			Status:    entry.Status,
+			CreatedAt: formatTime(entry.CreatedAt),
 		})
 	}
 
