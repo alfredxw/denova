@@ -10,7 +10,7 @@ import { Markdown } from '@tiptap/markdown'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection as PmTextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import { BookOpen, Check, ChevronDown, ChevronUp, MessageSquareQuote, Palette, Save, Search, Settings, X } from 'lucide-react'
+import { BookOpen, Check, ChevronDown, ChevronUp, MessageSquareQuote, Palette, Rows3, Save, Search, Settings, Type, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { TextSelection as QuoteSelection } from '@/lib/api'
@@ -60,7 +60,7 @@ const DEFAULT_SETTINGS: EditorSettings = {
 const THEME_STYLES: Record<EditorTheme, { label: string; background: string; color: string; accent: string }> = {
   ide: {
     label: 'IDE 深色',
-    background: '#1b1c1f',
+    background: '#1a1a1a',
     color: '#d7dbe2',
     accent: '#303238',
   },
@@ -396,10 +396,10 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* 编辑器工具栏 */}
-      <div className="flex h-9 shrink-0 items-center justify-between gap-3 overflow-hidden border-b border-[#2f3136] bg-[#1f2023] px-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs text-[#b7bbc3]">
-          <BookOpen className="h-3.5 w-3.5 shrink-0 text-[#a8adb7]" />
-          <span className="truncate font-medium text-[#d7dbe2]">{chapterSummary?.display_title || fileName}</span>
+      <div className="nova-editor-toolbar flex h-9 shrink-0 items-center justify-between gap-3 overflow-hidden border-b px-3">
+        <div className="flex min-w-0 items-center gap-2 text-xs text-[var(--nova-text-muted)]">
+          <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+          <span className="truncate font-medium text-[var(--nova-text)]">{chapterSummary?.display_title || fileName}</span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {toolbarActions}
@@ -413,7 +413,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
             onClick={handleSave}
             size="xs"
             variant="ghost"
-            className="flex items-center gap-1 text-[#c5c9d1] hover:bg-[#303238]"
+            className="flex items-center gap-1 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           >
             <Save className="w-3.5 h-3.5" />
             保存
@@ -424,7 +424,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
                 type="button"
                 size="xs"
                 variant="ghost"
-                className="flex items-center gap-1 text-[#c5c9d1] hover:bg-[#303238]"
+                className="flex items-center gap-1 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                 aria-label="编辑器设置"
               >
                 <Settings className="h-3.5 w-3.5" />
@@ -434,7 +434,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
             <PopoverContent
               align="end"
               side="bottom"
-              className="w-72 border-[#303238] bg-[#25262a] p-3 text-[#d7dbe2] shadow-2xl"
+              className="nova-editor-settings-panel w-[340px] overflow-hidden rounded-lg border border-[var(--nova-border)] p-0 text-[var(--nova-text)]"
             >
               <EditorSettingsPanel
                 settings={settings}
@@ -514,12 +514,12 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
           <SelectionToolbar editor={editor} onQuote={quoteCurrentSelection} />
         )}
       </div>
-      <div className="flex h-7 shrink-0 items-center gap-4 border-t border-[#2f3136] bg-[#1f2023] px-3 text-[11px] text-[#858b96]">
+      <div className="nova-editor-statusbar flex h-7 shrink-0 items-center gap-4 border-t px-3 text-[11px] text-[var(--nova-text-faint)]">
         <span>本章：{formatNumber(totalCharacters)} 字</span>
         {workspaceSummary && <span>全书：{formatNumber(workspaceSummary.total_words)} 字</span>}
         {chapterSummary && <span>更新：{chapterSummary.updated_at || '未知'}</span>}
         {selectedCharacters > 0 && (
-          <span className="text-[#b7bbc3]">已选：{formatNumber(selectedCharacters)} 字</span>
+          <span className="text-[var(--nova-text-muted)]">已选：{formatNumber(selectedCharacters)} 字</span>
         )}
       </div>
     </div>
@@ -539,67 +539,99 @@ function EditorSettingsPanel({
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs font-medium text-[#d7dbe2]">
-          <Palette className="h-3.5 w-3.5 text-[#a8adb7]" />
-          编辑器设置
+      <div className="border-b border-[var(--nova-border-soft)] px-3 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#3a3a3a] bg-[#202020] text-[#a3a3a3]">
+              <Palette className="h-3.5 w-3.5" />
+            </span>
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-[var(--nova-text)]">编辑器设置</div>
+              <div className="text-[11px] text-[var(--nova-text-faint)]">阅读密度与编辑器背景</div>
+            </div>
+          </div>
+          <button type="button" className="rounded px-2 py-1 text-xs text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onClose}>
+            关闭
+          </button>
         </div>
-        <button type="button" className="text-xs text-[#858b96] hover:text-[#d7dbe2]" onClick={onClose}>
-          关闭
-        </button>
       </div>
 
-      <label className="mb-3 block">
-        <div className="mb-1 flex items-center justify-between text-xs text-[#aeb4bf]">
-          <span>字号</span>
-          <span>{settings.fontSize}px</span>
-        </div>
-        <input
-          type="range"
-          min="14"
-          max="28"
-          step="1"
-          value={settings.fontSize}
-          onChange={(e) => patch({ fontSize: Number(e.target.value) })}
-          className="w-full"
-        />
-      </label>
-
-      <label className="mb-3 block">
-        <div className="mb-1 flex items-center justify-between text-xs text-[#aeb4bf]">
-          <span>行间距</span>
-          <span>{settings.lineHeight.toFixed(1)}</span>
-        </div>
-        <input
-          type="range"
-          min="1.4"
-          max="2.6"
-          step="0.1"
-          value={settings.lineHeight}
-          onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
-          className="w-full"
-        />
-      </label>
-
-      <div className="space-y-1">
-        <div className="mb-1 text-xs text-[#aeb4bf]">背景色</div>
-        {(Object.keys(THEME_STYLES) as EditorTheme[]).map((theme) => (
-          <button
-            key={theme}
-            type="button"
-            className="flex w-full items-center justify-between rounded px-2 py-1.5 text-xs text-[#d7dbe2] hover:bg-[#303238]"
-            onClick={() => patch({ theme })}
-          >
-            <span className="flex items-center gap-2">
-              <span
-                className="h-4 w-4 rounded border border-[#3a3d44]"
-                style={{ background: THEME_STYLES[theme].background }}
-              />
-              {THEME_STYLES[theme].label}
+      <div className="space-y-3 p-3">
+        <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+            <span className="flex items-center gap-2 font-medium text-[var(--nova-text-muted)]">
+              <Type className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
+              字号
             </span>
-            {settings.theme === theme && <Check className="h-3.5 w-3.5 text-[#6cc477]" />}
-          </button>
-        ))}
+            <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 font-mono text-[11px] text-[var(--nova-text)]">{settings.fontSize}px</span>
+          </div>
+          <input
+            type="range"
+            min="14"
+            max="28"
+            step="1"
+            value={settings.fontSize}
+            onChange={(e) => patch({ fontSize: Number(e.target.value) })}
+            className="nova-editor-range w-full"
+          />
+        </label>
+
+        <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+            <span className="flex items-center gap-2 font-medium text-[var(--nova-text-muted)]">
+              <Rows3 className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
+              行间距
+            </span>
+            <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 font-mono text-[11px] text-[var(--nova-text)]">{settings.lineHeight.toFixed(1)}</span>
+          </div>
+          <input
+            type="range"
+            min="1.4"
+            max="2.6"
+            step="0.1"
+            value={settings.lineHeight}
+            onChange={(e) => patch({ lineHeight: Number(e.target.value) })}
+            className="nova-editor-range w-full"
+          />
+        </label>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between text-xs text-[var(--nova-text-muted)]">
+            <span className="font-medium">背景主题</span>
+            <span className="text-[11px] text-[var(--nova-text-faint)]">当前：{THEME_STYLES[settings.theme].label}</span>
+          </div>
+          <div className="grid gap-2">
+            {(Object.keys(THEME_STYLES) as EditorTheme[]).map((theme) => (
+              <button
+                key={theme}
+                type="button"
+                className={`nova-editor-theme-option flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs ${
+                  settings.theme === theme
+                    ? 'is-active border-[#4a4a4a] bg-[#2f2f2f] text-[var(--nova-text)]'
+                    : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:border-[#3a3a3a] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+                }`}
+                onClick={() => patch({ theme })}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="flex h-9 w-12 shrink-0 items-center justify-center rounded-md border border-black/15 text-[10px]"
+                    style={{
+                      background: THEME_STYLES[theme].background,
+                      color: THEME_STYLES[theme].color,
+                    }}
+                  >
+                    Aa
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block font-medium">{THEME_STYLES[theme].label}</span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">正文 / 引用 / 代码块</span>
+                  </span>
+                </span>
+                {settings.theme === theme && <Check className="h-3.5 w-3.5 shrink-0 text-[var(--nova-accent-green)]" />}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   )

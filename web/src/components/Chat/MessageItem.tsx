@@ -37,7 +37,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
               )}
             </div>
           )}
-          <div className="max-w-[88%] rounded bg-[#4a4d54] px-3 py-2 text-sm text-white whitespace-pre-wrap" style={messageStyle}>
+          <div className="nova-user-message max-w-[88%] rounded-lg px-3.5 py-2.5 text-sm text-white whitespace-pre-wrap" style={messageStyle}>
             {content}
           </div>
         </div>
@@ -46,13 +46,13 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
     case 'assistant':
       return (
         <div className="flex justify-start">
-          <div className="chat-agent-message w-full text-sm text-[#c8ccd4]" style={messageStyle}>
-            <div className="mb-2 flex items-center justify-between gap-2 text-xs font-medium text-[#d7dbe2]">
+          <div className="chat-agent-message nova-assistant-message w-full text-sm text-[#c8ccd4]" style={messageStyle}>
+            <div className="mb-2.5 flex items-center justify-between gap-2 text-xs font-medium text-[#d7dbe2]">
               <div className="flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded border border-[#5a5d64]/50 bg-[#1b1c1f] text-[#d7dbe2]">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md border border-[#3a3a3a] bg-[#202020] text-[#a3a3a3] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                   <Bot className="h-3.5 w-3.5" />
                 </span>
-                Nova
+                <span>Nova</span>
               </div>
               {canRegenerate && onRegenerate && (
                 <TooltipIconButton

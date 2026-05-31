@@ -13,7 +13,7 @@
   --nova-text: #f5f5f5;
   --nova-text-muted: #a3a3a3;
   --nova-text-faint: #737373;
-  --nova-accent: #d6aa62;
+  --nova-accent: #a8adb7;
   --nova-accent-blue: #7fa7d9;
   --nova-accent-green: #81b38d;
   --nova-radius: 8px;
@@ -154,6 +154,104 @@ button {
 .nova-field:focus-within {
   border-color: #3a3a3a;
   background: var(--nova-surface-3);
+}
+
+.nova-chat-canvas {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--nova-surface-2) 88%, #202020 12%), var(--nova-surface-2) 220px),
+    var(--nova-surface-2);
+}
+
+.nova-chat-input-area {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--nova-surface) 78%, transparent), var(--nova-surface) 42%),
+    var(--nova-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.nova-chat-composer {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 10px 28px rgba(0, 0, 0, 0.18);
+  transition: border-color 220ms var(--nova-ease), background-color 220ms var(--nova-ease), box-shadow 220ms var(--nova-ease);
+}
+
+.nova-chat-composer:focus-within {
+  border-color: #3f3f3f;
+  background: color-mix(in srgb, var(--nova-surface-2) 72%, #202020 28%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(163, 163, 163, 0.08),
+    0 14px 34px rgba(0, 0, 0, 0.22);
+}
+
+.nova-command-menu {
+  background:
+    linear-gradient(180deg, var(--nova-surface-3), var(--nova-surface) 70%),
+    var(--nova-surface);
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.nova-user-message {
+  border: 1px solid #4a4a4a;
+  background:
+    linear-gradient(180deg, #4a4a4a, #3f3f3f);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 26px rgba(0, 0, 0, 0.16);
+}
+
+.nova-assistant-message {
+  border: 1px solid #303030;
+  border-radius: var(--nova-radius);
+  background:
+    linear-gradient(180deg, #141414, var(--nova-surface) 68%);
+  padding: 12px 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.028),
+    0 12px 30px rgba(0, 0, 0, 0.14);
+}
+
+.nova-editor-toolbar,
+.nova-editor-statusbar {
+  border-color: var(--nova-border);
+  background: color-mix(in srgb, var(--nova-surface) 92%, #202020 8%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.nova-editor-settings-panel {
+  background:
+    linear-gradient(180deg, var(--nova-surface-3), var(--nova-surface) 72%),
+    var(--nova-surface);
+  box-shadow:
+    0 20px 48px rgba(0, 0, 0, 0.46),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.nova-editor-control {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.028);
+}
+
+.nova-editor-range {
+  height: 18px;
+  accent-color: #a8adb7;
+}
+
+.nova-editor-range:focus-visible {
+  outline: 1px solid rgba(168, 173, 183, 0.45);
+  outline-offset: 3px;
+}
+
+.nova-editor-theme-option {
+  transition: border-color 220ms var(--nova-ease), background-color 220ms var(--nova-ease), color 220ms var(--nova-ease), box-shadow 220ms var(--nova-ease);
+}
+
+.nova-editor-theme-option.is-active {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.045),
+    0 8px 22px rgba(0, 0, 0, 0.16);
 }
 
 .nova-muted {
@@ -356,7 +454,15 @@ button {
 }
 
 .chat-agent-message p {
-  margin: 0.55em 0;
+  margin: 0.45em 0;
+}
+
+.chat-agent-message > :first-child {
+  margin-top: 0;
+}
+
+.chat-agent-message > :last-child {
+  margin-bottom: 0;
 }
 
 .chat-agent-message h1,

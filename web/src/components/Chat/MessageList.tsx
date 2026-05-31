@@ -145,11 +145,13 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       ref={containerRef}
       onScroll={handleContainerScroll}
       onWheel={handleWheel}
-      className={`min-h-0 flex-1 space-y-4 overflow-y-auto bg-[var(--nova-surface-2)] px-6 py-5 ${bottomPaddingClassName}`}
+      className={`nova-chat-canvas min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 ${bottomPaddingClassName}`}
     >
       {messages.length === 0 && !isStreaming && (
-        <div className="flex h-full items-center justify-center text-sm text-[#858b96]">
-          发送消息开始对话，或输入 /help 查看可用命令
+        <div className="flex h-full items-center justify-center">
+          <div className="rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3 text-center text-sm text-[var(--nova-text-muted)] shadow-[0_14px_34px_rgba(0,0,0,0.22)]">
+            发送消息开始对话，或输入 /help 查看可用命令
+          </div>
         </div>
       )}
 

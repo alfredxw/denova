@@ -20,7 +20,7 @@ type SettingsSection = {
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
 const iconButtonCls = 'nova-nav-item rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-const actionButtonCls = 'nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-1 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+const actionButtonCls = 'nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [layered, setLayered] = useState<LayeredSettings | null>(null)
@@ -291,7 +291,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [])
 
   return (
-    <div className="nova-sidebar flex h-full min-h-0 w-full flex-col text-[var(--nova-text)]">
+    <div className="nova-settings-view flex h-full min-h-0 w-full flex-col text-[var(--nova-text)]">
       <div className="nova-topbar flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs">
         <SettingsIcon className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
         <span className="font-medium text-[var(--nova-text)]">设置</span>
@@ -409,7 +409,7 @@ function Section({
         className="nova-nav-item mb-2 flex w-full items-center justify-between rounded-[var(--nova-radius)] px-1.5 py-1 text-left"
         aria-expanded={expanded}
       >
-        <span>
+        <span className="min-w-0">
           <span className="mr-2 text-[11px] text-[var(--nova-text-faint)]">{group}</span>
           <span className="font-medium text-[var(--nova-text)]">{title}</span>
         </span>
@@ -420,7 +420,7 @@ function Section({
         )}
       </button>
       {expanded && (
-        <div className="space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">{children}</div>
+        <div className="nova-settings-section-card space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">{children}</div>
       )}
     </section>
   )
@@ -428,7 +428,7 @@ function Section({
 
 function FieldRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+    <label className="nova-settings-row flex flex-col gap-1.5 rounded-md px-2 py-1.5 sm:flex-row sm:items-center sm:gap-3">
       <span className="w-44 shrink-0 text-[var(--nova-text-muted)]">{label}</span>
       {children}
     </label>
@@ -437,7 +437,7 @@ function FieldRow({ label, children }: { label: string; children: ReactNode }) {
 
 function ValueRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+    <div className="nova-settings-row flex flex-col gap-1.5 rounded-md px-2 py-1.5 sm:flex-row sm:items-center sm:gap-3">
       <span className="w-44 shrink-0 text-[var(--nova-text-muted)]">{label}</span>
       {children}
     </div>

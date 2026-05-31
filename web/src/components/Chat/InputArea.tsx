@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { Send, Square } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+import { BadgeHelp, ClipboardList, Command as CommandIcon, Eraser, Layers3, ListTree, PenLine, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
 import { ReferenceChips } from './ReferenceChips'
 import type { TextSelection } from '@/lib/api'
@@ -15,15 +16,15 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 /** 可用命令列表 */
-const COMMANDS = [
-  { cmd: '/plan', desc: '先规划再执行' },
-  { cmd: '/clear', desc: '清空对话' },
-  { cmd: '/status', desc: '查看状态' },
-  { cmd: '/help', desc: '帮助信息' },
-  { cmd: '/outline', desc: '生成大纲' },
-  { cmd: '/group-plan', desc: '生成下一组细纲' },
-  { cmd: '/continue', desc: '继续写作' },
-  { cmd: '/rewrite', desc: '重写章节' },
+const COMMANDS: Array<{ cmd: string; desc: string; hint: string; icon: LucideIcon }> = [
+  { cmd: '/plan', desc: '先规划再执行', hint: '拆解任务', icon: ClipboardList },
+  { cmd: '/clear', desc: '清空对话', hint: '重置上下文', icon: Eraser },
+  { cmd: '/status', desc: '查看状态', hint: '当前进度', icon: Sparkles },
+  { cmd: '/help', desc: '帮助信息', hint: '命令说明', icon: BadgeHelp },
+  { cmd: '/outline', desc: '生成大纲', hint: '故事骨架', icon: ListTree },
+  { cmd: '/group-plan', desc: '生成下一组细纲', hint: '章节组', icon: Layers3 },
+  { cmd: '/continue', desc: '继续写作', hint: '接续正文', icon: PenLine },
+  { cmd: '/rewrite', desc: '重写章节', hint: '优化表达', icon: WandSparkles },
 ]
 
 interface InputAreaProps {
@@ -69,6 +70,7 @@ export function InputArea({
   const [value, setValue] = useState('')
   const [showCommands, setShowCommands] = useState(false)
   const [filteredCommands, setFilteredCommands] = useState(COMMANDS)
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0)
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [styleReferenceQuery, setStyleReferenceQuery] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -94,8 +96,10 @@ export function InputArea({
       const filtered = COMMANDS.filter(c => c.cmd.startsWith(query))
       setFilteredCommands(filtered)
       setShowCommands(filtered.length > 0)
+      setActiveCommandIndex(0)
     } else {
       setShowCommands(false)
+      setActiveCommandIndex(0)
     }
 
     const atMatch = v.match(/(?:^|\s)@([^\s@]*)$/)
@@ -107,17 +111,38 @@ export function InputArea({
   /** 处理键盘事件 */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const isMod = e.metaKey || e.ctrlKey
+    const canPickCommand = showCommands && filteredCommands.length > 0
+
+    if (canPickCommand && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault()
+      setActiveCommandIndex((current) => {
+        const direction = e.key === 'ArrowDown' ? 1 : -1
+        return (current + direction + filteredCommands.length) % filteredCommands.length
+      })
+      return
+    }
 
     // Enter 发送
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
+      if (canPickCommand) {
+        selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
+        return
+      }
       handleSend()
+      return
+    }
+
+    if (canPickCommand && e.key === 'Tab') {
+      e.preventDefault()
+      selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
       return
     }
 
     // Escape 关闭菜单
     if (e.key === 'Escape') {
       setShowCommands(false)
+      setActiveCommandIndex(0)
       setReferenceQuery(null)
       setStyleReferenceQuery(null)
       return
@@ -185,6 +210,7 @@ export function InputArea({
     onSend(trimmed)
     setValue('')
     setShowCommands(false)
+    setActiveCommandIndex(0)
     setReferenceQuery(null)
     setStyleReferenceQuery(null)
   }
@@ -193,6 +219,7 @@ export function InputArea({
   const selectCommand = (cmd: string) => {
     setValue(cmd + ' ')
     setShowCommands(false)
+    setActiveCommandIndex(0)
     textareaRef.current?.focus()
   }
 
@@ -222,7 +249,7 @@ export function InputArea({
   }
 
   return (
-    <div className="relative border-t border-[#303238] bg-[#202124] p-3">
+    <div className="nova-chat-input-area relative border-t border-[var(--nova-border)] p-3">
       <ReferenceChips files={referencedFiles} onRemove={onReferenceRemove} />
       <ReferenceChips
         files={loreReferences.map((id) => loreReferenceLabels[id] || id)}
@@ -270,24 +297,56 @@ export function InputArea({
         <PopoverContent
           align="start"
           side="top"
-          className="mb-1 w-[360px] border-[#303238] bg-[#25262a] p-0 text-[#d7dbe2] shadow-xl"
+          className="nova-command-menu mb-2 w-[384px] overflow-hidden rounded-lg border border-[var(--nova-border)] p-0 text-[var(--nova-text)]"
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
           <Command shouldFilter={false} className="bg-transparent">
-            <CommandList>
-              <CommandEmpty>未找到命令</CommandEmpty>
-              <CommandGroup heading="命令">
-                {filteredCommands.map(({ cmd, desc }) => (
-                  <CommandItem
-                    key={cmd}
-                    value={cmd}
-                    onSelect={() => selectCommand(cmd)}
-                    className="cursor-pointer text-[#d7dbe2] data-[selected=true]:bg-[#303238]"
-                  >
-                    <span className="font-mono text-[#a8adb7]">{cmd}</span>
-                    <span className="text-[#858b96]">{desc}</span>
-                  </CommandItem>
-                ))}
+            <div className="border-b border-[var(--nova-border-soft)] px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#3a3a3a] bg-[#202020] text-[#a3a3a3]">
+                    <CommandIcon className="h-3.5 w-3.5" />
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-[var(--nova-text)]">快速命令</div>
+                    <div className="text-[11px] text-[var(--nova-text-faint)]">选择一个写作动作</div>
+                  </div>
+                </div>
+                <kbd className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--nova-text-faint)]">/</kbd>
+              </div>
+            </div>
+            <CommandList className="max-h-[312px] p-1.5">
+              <CommandEmpty className="py-5 text-center text-xs text-[var(--nova-text-faint)]">未找到命令</CommandEmpty>
+              <CommandGroup heading="可用命令" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
+                {filteredCommands.map(({ cmd, desc, hint, icon: Icon }, index) => {
+                  const active = index === activeCommandIndex
+                  return (
+                    <CommandItem
+                      key={cmd}
+                      value={cmd}
+                      onMouseEnter={() => setActiveCommandIndex(index)}
+                      onSelect={() => selectCommand(cmd)}
+                      className={`group min-h-12 cursor-pointer rounded-md border px-2.5 py-2 text-[var(--nova-text-muted)] ${
+                        active
+                          ? 'border-[#4a4a4a] bg-[#2f2f2f] text-[var(--nova-text)]'
+                          : 'border-transparent hover:border-[#3a3a3a] hover:bg-[#262626]'
+                      }`}
+                    >
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-[var(--nova-surface-2)] ${
+                      active ? 'border-[#4a4a4a] text-[#f5f5f5]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'
+                    }`}>
+                      <Icon className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-[var(--nova-text)]">{cmd}</span>
+                        <span className="truncate text-xs text-[var(--nova-text-muted)]">{desc}</span>
+                      </span>
+                      <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{hint}</span>
+                    </span>
+                    </CommandItem>
+                  )
+                })}
               </CommandGroup>
             </CommandList>
           </Command>
@@ -315,7 +374,7 @@ export function InputArea({
         heading="风格参考"
       />
 
-      <div className="flex items-end gap-2">
+      <div className="nova-chat-composer flex items-end gap-2 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5">
         <Textarea
           ref={textareaRef}
           value={value}
@@ -324,15 +383,15 @@ export function InputArea({
           placeholder={disabled ? 'AI 正在回复…' : '输入消息，Enter 发送，Shift+Enter 换行'}
           disabled={disabled}
           rows={1}
-          className="min-h-0 flex-1 resize-none border-[#3a3d44] bg-[#1b1c1f] px-3 py-2 text-sm text-[#d7dbe2] placeholder:text-[#6f7682] focus-visible:border-[#4a4d54] focus-visible:ring-0 disabled:opacity-50"
+          className="min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2.5 py-2 text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
         />
         <Button
           type="button"
           onClick={disabled ? onStop : handleSend}
           disabled={disabled ? !onStop : !value.trim()}
           size="icon-sm"
-          className={`shrink-0 text-white ${
-            disabled ? 'bg-[#c95050] hover:bg-[#e05d5d]' : 'bg-[#4a4d54] hover:bg-[#5a5d64]'
+          className={`h-9 w-9 shrink-0 rounded-md text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
+            disabled ? 'bg-[#c95050] hover:bg-[#e05d5d]' : 'bg-[#4a4d54] hover:bg-[#5a5d64] disabled:bg-[var(--nova-active)]'
           }`}
           aria-label={disabled ? '中断 AI 执行' : '发送'}
         >
