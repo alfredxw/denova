@@ -140,3 +140,15 @@ func TestLoreStoreApplyOperationsCreatesVersionAndRestores(t *testing.T) {
 		t.Fatalf("restore should recover pre-agent snapshot: %#v", restored)
 	}
 }
+
+func TestUniqueLoreIDFromBaseAppendsSuffixOnCollision(t *testing.T) {
+	items := []LoreItem{
+		{ID: "world-1780235672765251000"},
+		{ID: "world-1780235672765251000-2"},
+	}
+
+	got := uniqueLoreIDFromBase(items, "world-1780235672765251000")
+	if got != "world-1780235672765251000-3" {
+		t.Fatalf("唯一资料 ID 不符合预期: %s", got)
+	}
+}

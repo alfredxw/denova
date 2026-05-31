@@ -7,31 +7,25 @@ import (
 	"testing"
 )
 
-func TestStateInitWorkspaceCreatesStyleDir(t *testing.T) {
+func TestUserStyleDir(t *testing.T) {
 	workspace := t.TempDir()
-	state := NewState(workspace)
-	if err := state.InitWorkspace(); err != nil {
-		t.Fatalf("初始化 workspace 失败: %v", err)
-	}
-
-	info, err := os.Stat(filepath.Join(workspace, "setting", "styles"))
-	if err != nil {
-		t.Fatalf("setting/styles 应被创建: %v", err)
-	}
-	if !info.IsDir() {
-		t.Fatalf("setting/styles 应为目录")
+	got := UserStyleDir(workspace)
+	want := filepath.Join(workspace, "styles")
+	if got != want {
+		t.Fatalf("用户级风格目录不符合预期: want=%s got=%s", want, got)
 	}
 }
 
 func TestServiceStyleFiles(t *testing.T) {
 	workspace := t.TempDir()
-	service := NewService(workspace)
-	mustWriteFile(t, workspace, "setting/styles/古龙.md", "短句")
-	mustWriteFile(t, workspace, "setting/styles/番茄.txt", "快节奏")
-	mustWriteFile(t, workspace, "setting/styles/武侠/冷峻.md", "冷峻")
-	mustWriteFile(t, workspace, "setting/styles/ignore.doc", "ignore")
-	mustWriteFile(t, workspace, "setting/styles/.hidden.md", "hidden")
-	mustWriteFile(t, workspace, "setting/styles/.secret/secret.md", "hidden")
+	styleRoot := filepath.Join(t.TempDir(), "styles")
+	service := NewServiceWithStyleRoot(workspace, styleRoot)
+	mustWriteFile(t, styleRoot, "古龙.md", "短句")
+	mustWriteFile(t, styleRoot, "番茄.txt", "快节奏")
+	mustWriteFile(t, styleRoot, "武侠/冷峻.md", "冷峻")
+	mustWriteFile(t, styleRoot, "ignore.doc", "ignore")
+	mustWriteFile(t, styleRoot, ".hidden.md", "hidden")
+	mustWriteFile(t, styleRoot, ".secret/secret.md", "hidden")
 
 	files, err := service.StyleFiles()
 	if err != nil {
@@ -46,9 +40,10 @@ func TestServiceStyleFiles(t *testing.T) {
 
 func TestServiceReadStyleFile(t *testing.T) {
 	workspace := t.TempDir()
-	service := NewService(workspace)
-	mustWriteFile(t, workspace, "setting/styles/古龙.md", "短句留白")
-	mustWriteFile(t, workspace, "setting/styles/番茄.txt", "强冲突快节奏")
+	styleRoot := filepath.Join(t.TempDir(), "styles")
+	service := NewServiceWithStyleRoot(workspace, styleRoot)
+	mustWriteFile(t, styleRoot, "古龙.md", "短句留白")
+	mustWriteFile(t, styleRoot, "番茄.txt", "强冲突快节奏")
 
 	content, err := service.ReadStyleFile("古龙.md")
 	if err != nil {
@@ -70,7 +65,7 @@ func TestServiceReadStyleFile(t *testing.T) {
 		path string
 	}{
 		{name: "拒绝越界路径", path: "../outline.md"},
-		{name: "拒绝绝对路径", path: filepath.Join(workspace, "setting/styles/古龙.md")},
+		{name: "拒绝绝对路径", path: filepath.Join(styleRoot, "古龙.md")},
 		{name: "拒绝不支持的扩展名", path: "notes.doc"},
 	}
 

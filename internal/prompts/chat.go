@@ -62,13 +62,13 @@ func ResumeFromInterruption(current string, prev InterruptedResume) string {
 	return sb.String()
 }
 
-// StyleRule 镜像 config.StyleRule，避免 prompts 反向依赖业务包。
+// StyleRule 表示「场景 → 风格文件路径」映射。
 type StyleRule struct {
 	Scene  string
 	Styles []string
 }
 
-// StyleRulesHint 把配置的「场景 → 风格文件路径」映射作为建议附加到上下文。
+// StyleRulesHint 把讲述者的「场景 → 风格文件路径」映射作为建议附加到上下文。
 // 不直接读取文件内容，由 Agent 基于本轮章节内容自行判断是否要 read_file 对应风格。
 func StyleRulesHint(message string, rules []StyleRule) string {
 	var sb strings.Builder

@@ -40,24 +40,9 @@ type Settings struct {
 	IDEStoryTellerID string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
 
 	// 互动模式
-	InteractiveReplyTargetChars *int     `toml:"interactive_reply_target_chars,omitempty" json:"interactive_reply_target_chars,omitempty"`
-	InteractiveMaxTokens        *int     `toml:"interactive_max_tokens,omitempty" json:"interactive_max_tokens,omitempty"`
-	InteractiveStageFontSize    *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
-	InteractiveStageLineHeight  *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
-
-	// 风格：场景化默认风格规则（用户级 / 工作区级均可配置）。
-	// 每条规则关联一个自然语言场景描述与若干风格文件路径，
-	// 由 Agent 基于本轮章节内容自动匹配场景并选择对应风格文件。
-	// 当用户本轮通过 # 指定了任意风格参考时，本轮覆盖默认规则。
-	StyleRules []StyleRule `toml:"style_rules,omitempty" json:"style_rules,omitempty"`
-}
-
-// StyleRule 表示一条「场景 → 风格文件」映射。
-// Scene 使用自然语言描述触发条件（如「激烈打斗」「日常对话」「宏大世界观铺陈」）；
-// Styles 支持绝对路径；历史配置中的相对路径会按当前 workspace 的 setting/styles/ 解析。
-type StyleRule struct {
-	Scene  string   `toml:"scene" json:"scene"`
-	Styles []string `toml:"styles" json:"styles"`
+	InteractiveMaxTokens       *int     `toml:"interactive_max_tokens,omitempty" json:"interactive_max_tokens,omitempty"`
+	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
+	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
 }
 
 func boolPtr(v bool) *bool        { return &v }
@@ -67,26 +52,25 @@ func floatPtr(v float64) *float64 { return &v }
 // DefaultSettings 返回内置默认配置（最低优先级）。
 func DefaultSettings() Settings {
 	return Settings{
-		OpenAIBaseURL:               "https://api.deepseek.com",
-		OpenAIModel:                 "deepseek-v4-pro",
-		SkillsDir:                   "./skills",
-		NovaDir:                     "./.nova",
-		AutoSaveEnabled:             boolPtr(true),
-		AutoSaveIntervalMs:          intPtr(1500),
-		ChapterFilenameFormat:       "ch{NNNN}-{title}.md",
-		MaxOpenTabs:                 intPtr(5),
-		DraftFlowEnabled:            boolPtr(false),
-		ChapterGroupMin:             intPtr(3),
-		ChapterGroupMax:             intPtr(8),
-		UIFontFamily:                "system-sans",
-		ReadingFontFamily:           "source-han-serif",
-		MaxIteration:                intPtr(50),
-		ModelMaxRetries:             intPtr(5),
-		PlanModeDefault:             boolPtr(false),
-		IDEStoryTellerID:            "classic",
-		InteractiveReplyTargetChars: intPtr(1200),
-		InteractiveStageFontSize:    intPtr(16),
-		InteractiveStageLineHeight:  floatPtr(1.78),
+		OpenAIBaseURL:              "https://api.deepseek.com",
+		OpenAIModel:                "deepseek-v4-pro",
+		SkillsDir:                  "./skills",
+		NovaDir:                    "./.nova",
+		AutoSaveEnabled:            boolPtr(true),
+		AutoSaveIntervalMs:         intPtr(1500),
+		ChapterFilenameFormat:      "ch{NNNN}-{title}.md",
+		MaxOpenTabs:                intPtr(5),
+		DraftFlowEnabled:           boolPtr(false),
+		ChapterGroupMin:            intPtr(3),
+		ChapterGroupMax:            intPtr(8),
+		UIFontFamily:               "system-sans",
+		ReadingFontFamily:          "source-han-serif",
+		MaxIteration:               intPtr(50),
+		ModelMaxRetries:            intPtr(5),
+		PlanModeDefault:            boolPtr(false),
+		IDEStoryTellerID:           "classic",
+		InteractiveStageFontSize:   intPtr(16),
+		InteractiveStageLineHeight: floatPtr(1.78),
 	}
 }
 
@@ -148,9 +132,6 @@ func Merge(parent, child Settings) Settings {
 	if child.IDEStoryTellerID != "" {
 		out.IDEStoryTellerID = child.IDEStoryTellerID
 	}
-	if child.InteractiveReplyTargetChars != nil {
-		out.InteractiveReplyTargetChars = child.InteractiveReplyTargetChars
-	}
 	if child.InteractiveMaxTokens != nil {
 		out.InteractiveMaxTokens = child.InteractiveMaxTokens
 	}
@@ -159,10 +140,6 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.InteractiveStageLineHeight != nil {
 		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight
-	}
-	// 场景化风格规则：用户级 / 工作区级均可覆盖，nil 视为未设置；空切片表示显式清空。
-	if child.StyleRules != nil {
-		out.StyleRules = child.StyleRules
 	}
 	return out
 }

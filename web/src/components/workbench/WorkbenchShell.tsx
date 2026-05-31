@@ -60,6 +60,7 @@ export function WorkbenchShell({
   const creatorVisible = rightPanel === 'creator'
   const tellerVisible = rightPanel === 'teller'
   const versionsVisible = rightPanel === 'versions'
+  const ideModeActive = mode === 'ide' && !settingsOpen
   const fullWorkspacePanelVisible = settingsOpen || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
   const modeLabel = mode === 'interactive' ? '互动工作台' : mode === 'books' ? '书籍管理' : '小说 IDE'
   const navigationMode = mode === 'books' ? booksReturnMode : mode
@@ -86,7 +87,21 @@ export function WorkbenchShell({
     onSetInteractiveSubmode(nextMode)
   }
 
+  const returnFromBooks = () => {
+    if (booksReturnMode === 'interactive') {
+      onSetMode('interactive')
+      onSetInteractiveSubmode('story')
+      return
+    }
+    onSetMode('ide')
+    if (loreVisible || creatorVisible || tellerVisible || versionsVisible) onSetRightPanel(null)
+  }
+
   const openBooks = () => {
+    if (mode === 'books' && !settingsOpen) {
+      returnFromBooks()
+      return
+    }
     closeSettingsIfOpen()
     onSetMode('books')
   }
@@ -128,7 +143,7 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label="资料库"
         onClick={() => toggleIdePanel('lore')}
-        className={`nova-icon-button mb-2 ${loreVisible ? 'is-active' : ''}`}
+        className={`nova-icon-button mb-2 ${ideModeActive && loreVisible ? 'is-active' : ''}`}
       >
         <Database className="h-4 w-4" />
       </ActivityButton>
@@ -136,7 +151,7 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label="创作者"
         onClick={() => toggleIdePanel('creator')}
-        className={`nova-icon-button mb-2 ${creatorVisible ? 'is-active' : ''}`}
+        className={`nova-icon-button mb-2 ${ideModeActive && creatorVisible ? 'is-active' : ''}`}
       >
         <BookMarked className="h-4 w-4" />
       </ActivityButton>
@@ -144,7 +159,7 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label="讲述者"
         onClick={() => toggleIdePanel('teller')}
-        className={`nova-icon-button mb-2 ${tellerVisible ? 'is-active' : ''}`}
+        className={`nova-icon-button mb-2 ${ideModeActive && tellerVisible ? 'is-active' : ''}`}
       >
         <SlidersHorizontal className="h-4 w-4" />
       </ActivityButton>
@@ -152,7 +167,7 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label="版本管理"
         onClick={() => toggleIdePanel('versions')}
-        className={`nova-icon-button mb-2 ${versionsVisible ? 'is-active' : ''}`}
+        className={`nova-icon-button mb-2 ${ideModeActive && versionsVisible ? 'is-active' : ''}`}
       >
         <GitBranch className="h-4 w-4" />
       </ActivityButton>

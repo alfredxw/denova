@@ -23,11 +23,25 @@ type FileNode struct {
 // Service 提供作品工作区文件管理能力。
 type Service struct {
 	workspace string
+	styleRoot string
 }
 
 // NewService 创建作品文件服务。
 func NewService(workspace string) *Service {
-	return &Service{workspace: workspace}
+	return &Service{workspace: workspace, styleRoot: filepath.Join(workspace, "setting", "styles")}
+}
+
+// NewServiceWithStyleRoot 创建作品文件服务，并指定用户级风格参考目录。
+func NewServiceWithStyleRoot(workspace, styleRoot string) *Service {
+	if strings.TrimSpace(styleRoot) == "" {
+		styleRoot = filepath.Join(workspace, "setting", "styles")
+	}
+	return &Service{workspace: workspace, styleRoot: styleRoot}
+}
+
+// UserStyleDir 返回用户级风格参考目录。
+func UserStyleDir(novaDir string) string {
+	return filepath.Join(novaDir, "styles")
 }
 
 // Workspace 返回当前作品工作目录。
@@ -62,9 +76,9 @@ func (s *Service) ReadFile(relPath string) (string, error) {
 	return string(data), nil
 }
 
-// StyleFiles 返回 setting/styles/ 下所有可用的风格参考文件。
+// StyleFiles 返回用户级 styles/ 下所有可用的风格参考文件。
 func (s *Service) StyleFiles() ([]string, error) {
-	root := filepath.Join(s.workspace, "setting", "styles")
+	root := s.styleRoot
 	if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
 		return []string{}, nil
 	} else if err != nil {
@@ -100,7 +114,7 @@ func (s *Service) StyleFiles() ([]string, error) {
 	return files, nil
 }
 
-// ReadStyleFile 安全读取 setting/styles/ 下指定的风格参考文件。
+// ReadStyleFile 安全读取用户级 styles/ 下指定的风格参考文件。
 func (s *Service) ReadStyleFile(stylePath string) (string, error) {
 	if strings.TrimSpace(stylePath) == "" {
 		return "", errors.New("风格参考路径不能为空")
@@ -111,17 +125,43 @@ func (s *Service) ReadStyleFile(stylePath string) (string, error) {
 	if !isStyleReferenceFile(stylePath) {
 		return "", errors.New("风格参考只支持 Markdown 或 TXT 文件")
 	}
-
-	relPath := filepath.ToSlash(filepath.Join("setting", "styles", filepath.FromSlash(stylePath)))
-	if !strings.HasPrefix(relPath, "setting/styles/") {
-		return "", errors.New("风格参考路径不在 setting/styles 范围内")
+	absPath, err := safeStyleReferencePath(s.styleRoot, stylePath)
+	if err != nil {
+		return "", err
 	}
-	return s.ReadFile(relPath)
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func isStyleReferenceFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	return ext == ".md" || ext == ".txt"
+}
+
+func safeStyleReferencePath(root, stylePath string) (string, error) {
+	if strings.TrimSpace(root) == "" {
+		return "", errors.New("风格参考目录未配置")
+	}
+	clean := filepath.Clean(filepath.FromSlash(stylePath))
+	if clean == "." || clean == ".." || strings.HasPrefix(filepath.ToSlash(clean), "../") {
+		return "", errors.New("风格参考路径不在用户 styles 目录范围内")
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	absPath := filepath.Join(absRoot, clean)
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return "", err
+	}
+	if rel == "." || strings.HasPrefix(filepath.ToSlash(rel), "../") {
+		return "", errors.New("风格参考路径不在用户 styles 目录范围内")
+	}
+	return absPath, nil
 }
 
 // WriteFile 写入 workspace 内文件内容，必要时创建父目录。

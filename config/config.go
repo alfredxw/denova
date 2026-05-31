@@ -61,7 +61,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		DraftFlowEnabled:            settingsBool(s.DraftFlowEnabled, false),
 		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
 		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
-		InteractiveReplyTargetChars: settingsInt(s.InteractiveReplyTargetChars, 1200),
+		InteractiveReplyTargetChars: 1200,
 		InteractiveMaxTokens:        settingsInt(s.InteractiveMaxTokens, 0),
 		ResumeLastWorkspace:         true,
 	}
@@ -138,7 +138,7 @@ func Load() *Config {
 			DraftFlowEnabled:            settingsBool(d.DraftFlowEnabled, false),
 			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
 			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),
-			InteractiveReplyTargetChars: settingsInt(d.InteractiveReplyTargetChars, 1200),
+			InteractiveReplyTargetChars: 1200,
 			InteractiveMaxTokens:        settingsInt(d.InteractiveMaxTokens, 0),
 			ResumeLastWorkspace:         true,
 		}

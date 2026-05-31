@@ -21,9 +21,6 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.MaxIteration == nil || *s.MaxIteration != 50 {
 		t.Fatalf("MaxIteration default")
 	}
-	if s.InteractiveReplyTargetChars == nil || *s.InteractiveReplyTargetChars != 1200 {
-		t.Fatalf("InteractiveReplyTargetChars default")
-	}
 	if s.InteractiveStageFontSize == nil || *s.InteractiveStageFontSize != 16 {
 		t.Fatalf("InteractiveStageFontSize default")
 	}
@@ -40,25 +37,23 @@ func TestDefaultSettingsValues(t *testing.T) {
 
 func TestMergeOverridesNonZero(t *testing.T) {
 	parent := Settings{
-		OpenAIBaseURL:               "https://parent",
-		OpenAIModel:                 "p-model",
-		MaxIteration:                intPtr(10),
-		UIFontFamily:                "system-sans",
-		ReadingFontFamily:           "source-han-serif",
-		InteractiveReplyTargetChars: intPtr(1200),
-		InteractiveMaxTokens:        intPtr(0),
-		InteractiveStageFontSize:    intPtr(16),
-		InteractiveStageLineHeight:  floatPtr(1.78),
+		OpenAIBaseURL:              "https://parent",
+		OpenAIModel:                "p-model",
+		MaxIteration:               intPtr(10),
+		UIFontFamily:               "system-sans",
+		ReadingFontFamily:          "source-han-serif",
+		InteractiveMaxTokens:       intPtr(0),
+		InteractiveStageFontSize:   intPtr(16),
+		InteractiveStageLineHeight: floatPtr(1.78),
 	}
 	child := Settings{
-		OpenAIModel:                 "c-model", // override
-		MaxIteration:                nil,       // 继承 parent
-		UIFontFamily:                "humanist-sans",
-		ReadingFontFamily:           "system-serif",
-		InteractiveReplyTargetChars: intPtr(800),
-		InteractiveMaxTokens:        intPtr(4000),
-		InteractiveStageFontSize:    intPtr(18),
-		InteractiveStageLineHeight:  floatPtr(1.95),
+		OpenAIModel:                "c-model", // override
+		MaxIteration:               nil,       // 继承 parent
+		UIFontFamily:               "humanist-sans",
+		ReadingFontFamily:          "system-serif",
+		InteractiveMaxTokens:       intPtr(4000),
+		InteractiveStageFontSize:   intPtr(18),
+		InteractiveStageLineHeight: floatPtr(1.95),
 	}
 	out := Merge(parent, child)
 	if out.OpenAIBaseURL != "https://parent" {
@@ -75,9 +70,6 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.ReadingFontFamily != "system-serif" {
 		t.Fatalf("ReadingFontFamily should override parent: %s", out.ReadingFontFamily)
-	}
-	if out.InteractiveReplyTargetChars == nil || *out.InteractiveReplyTargetChars != 800 {
-		t.Fatalf("InteractiveReplyTargetChars should override parent")
 	}
 	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 4000 {
 		t.Fatalf("InteractiveMaxTokens should override parent")
@@ -96,25 +88,6 @@ func TestMergePointerExplicitOverride(t *testing.T) {
 	out := Merge(parent, child)
 	if out.AutoSaveEnabled == nil || *out.AutoSaveEnabled != false {
 		t.Fatalf("explicit false should override true")
-	}
-}
-
-func TestMergeStyleRules(t *testing.T) {
-	parent := Settings{StyleRules: []StyleRule{{Scene: "打斗", Styles: []string{"古龙.md"}}}}
-	// nil 切片视为未设置，应继承
-	out := Merge(parent, Settings{})
-	if len(out.StyleRules) != 1 || out.StyleRules[0].Scene != "打斗" {
-		t.Fatalf("nil child should inherit parent: %+v", out.StyleRules)
-	}
-	// 显式空切片视为清空
-	out = Merge(parent, Settings{StyleRules: []StyleRule{}})
-	if len(out.StyleRules) != 0 {
-		t.Fatalf("empty slice should clear: %+v", out.StyleRules)
-	}
-	// 非空切片应整体覆盖
-	out = Merge(parent, Settings{StyleRules: []StyleRule{{Scene: "对话", Styles: []string{"温吞.md"}}}})
-	if len(out.StyleRules) != 1 || out.StyleRules[0].Scene != "对话" {
-		t.Fatalf("non-empty child should override: %+v", out.StyleRules)
 	}
 }
 

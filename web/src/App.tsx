@@ -49,7 +49,7 @@ function App() {
   const [characterCardDialogOpen, setCharacterCardDialogOpen] = useState(false)
   const [characterCardFile, setCharacterCardFile] = useState<File | null>(null)
   const [characterCardPreview, setCharacterCardPreview] = useState<CharacterCardPreview | null>(null)
-  const [characterCardTargetMode, setCharacterCardTargetMode] = useState<CharacterCardTargetMode>('current')
+  const [characterCardTargetMode, setCharacterCardTargetMode] = useState<CharacterCardTargetMode>('new_book')
   const [characterCardBookTitle, setCharacterCardBookTitle] = useState('')
   const [characterCardPreviewing, setCharacterCardPreviewing] = useState(false)
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
@@ -332,7 +332,7 @@ function App() {
   const resetCharacterCardImport = useCallback(() => {
     setCharacterCardFile(null)
     setCharacterCardPreview(null)
-    setCharacterCardTargetMode(workspace ? 'current' : 'new_book')
+    setCharacterCardTargetMode('new_book')
     setCharacterCardBookTitle('')
     setCharacterCardPreviewing(false)
     setCharacterCardImporting(false)
@@ -340,13 +340,13 @@ function App() {
     if (characterCardInputRef.current) {
       characterCardInputRef.current.value = ''
     }
-  }, [workspace])
+  }, [])
 
   const handleCharacterCardDialogOpenChange = useCallback((open: boolean) => {
     setCharacterCardDialogOpen(open)
     if (!open) resetCharacterCardImport()
-    if (open && !workspace) setCharacterCardTargetMode('new_book')
-  }, [resetCharacterCardImport, workspace])
+    if (open) setCharacterCardTargetMode('new_book')
+  }, [resetCharacterCardImport])
 
   const handleOpenCharacterCardImportFromBooks = useCallback(() => {
     handleCharacterCardDialogOpenChange(true)
@@ -356,7 +356,8 @@ function App() {
     if (!file) return
     setCharacterCardFile(file)
     setCharacterCardPreview(null)
-    setCharacterCardTargetMode(workspace ? 'current' : 'new_book')
+    setCharacterCardTargetMode('new_book')
+    setCharacterCardBookTitle('')
     setCharacterCardError('')
     setCharacterCardPreviewing(true)
     try {
@@ -371,7 +372,7 @@ function App() {
         characterCardInputRef.current.value = ''
       }
     }
-  }, [workspace])
+  }, [])
 
   const handleCharacterCardImport = useCallback(async () => {
     if (!characterCardFile) {

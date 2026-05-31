@@ -18,20 +18,22 @@ type TellerLibrary struct {
 }
 
 type Teller struct {
-	Version         int                 `json:"version"`
-	ID              string              `json:"id"`
-	Name            string              `json:"name"`
-	Description     string              `json:"description"`
-	RandomEventRate float64             `json:"random_event_rate"`
-	Tags            []string            `json:"tags"`
-	ContextPolicy   TellerContextPolicy `json:"context_policy"`
-	Slots           []TellerPromptSlot  `json:"slots"`
-	Path            string              `json:"path,omitempty"`
-	Custom          bool                `json:"custom"`
-	Invalid         bool                `json:"invalid,omitempty"`
-	Error           string              `json:"error,omitempty"`
-	CreatedAt       string              `json:"created_at,omitempty"`
-	UpdatedAt       string              `json:"updated_at,omitempty"`
+	Version          int                 `json:"version"`
+	ID               string              `json:"id"`
+	Name             string              `json:"name"`
+	Description      string              `json:"description"`
+	RandomEventRate  float64             `json:"random_event_rate"`
+	ReplyTargetChars *int                `json:"reply_target_chars,omitempty"`
+	StyleRules       []StyleRule         `json:"style_rules,omitempty"`
+	Tags             []string            `json:"tags"`
+	ContextPolicy    TellerContextPolicy `json:"context_policy"`
+	Slots            []TellerPromptSlot  `json:"slots"`
+	Path             string              `json:"path,omitempty"`
+	Custom           bool                `json:"custom"`
+	Invalid          bool                `json:"invalid,omitempty"`
+	Error            string              `json:"error,omitempty"`
+	CreatedAt        string              `json:"created_at,omitempty"`
+	UpdatedAt        string              `json:"updated_at,omitempty"`
 }
 
 type TellerContextPolicy struct {
@@ -47,6 +49,12 @@ type TellerPromptSlot struct {
 	Target  string `json:"target"`
 	Enabled bool   `json:"enabled"`
 	Content string `json:"content"`
+}
+
+// StyleRule 表示讲述者自己的「场景 → 风格参考」映射。
+type StyleRule struct {
+	Scene  string   `json:"scene"`
+	Styles []string `json:"styles"`
 }
 
 func NewTellerLibrary(novaDir string) *TellerLibrary {
@@ -249,10 +257,39 @@ func normalizeTeller(teller Teller) Teller {
 	teller.ID = strings.TrimSpace(teller.ID)
 	teller.Name = strings.TrimSpace(teller.Name)
 	teller.Description = strings.TrimSpace(teller.Description)
+	if teller.ReplyTargetChars != nil && *teller.ReplyTargetChars <= 0 {
+		teller.ReplyTargetChars = nil
+	}
+	teller.StyleRules = normalizeStyleRules(teller.StyleRules)
 	teller.Tags = normalizeTellerTags(teller.Tags)
 	teller.ContextPolicy = normalizeContextPolicy(teller.ContextPolicy)
 	teller.Slots = normalizePromptSlots(teller.Slots)
 	return teller
+}
+
+func normalizeStyleRules(rules []StyleRule) []StyleRule {
+	result := make([]StyleRule, 0, len(rules))
+	for _, rule := range rules {
+		scene := strings.TrimSpace(rule.Scene)
+		if scene == "" {
+			continue
+		}
+		styles := make([]string, 0, len(rule.Styles))
+		seen := map[string]bool{}
+		for _, style := range rule.Styles {
+			style = strings.TrimSpace(style)
+			if style == "" || seen[style] {
+				continue
+			}
+			seen[style] = true
+			styles = append(styles, style)
+		}
+		if len(styles) == 0 {
+			continue
+		}
+		result = append(result, StyleRule{Scene: scene, Styles: styles})
+	}
+	return result
 }
 
 func normalizeContextPolicy(policy TellerContextPolicy) TellerContextPolicy {

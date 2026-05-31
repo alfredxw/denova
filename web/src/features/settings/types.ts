@@ -1,8 +1,3 @@
-export interface StyleRule {
-  scene: string
-  styles: string[]
-}
-
 export interface Settings {
   openai_api_key?: string
   openai_base_url?: string
@@ -21,11 +16,9 @@ export interface Settings {
   model_max_retries?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
-  interactive_reply_target_chars?: number | null
   interactive_max_tokens?: number | null
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
-  style_rules?: StyleRule[] | null
 }
 
 export interface SettingsPaths {

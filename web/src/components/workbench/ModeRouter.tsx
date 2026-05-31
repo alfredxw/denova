@@ -202,6 +202,15 @@ export function ModeRouter(props: ModeRouterProps) {
     description: `${loreTypeLabel(item.type)} · ${loreImportanceLabel(item.importance)}${item.tags?.length ? ` · ${item.tags.join('、')}` : ''}`,
   })), [loreItems])
   const aiVisible = rightPanel === 'ai'
+  const closeBooks = () => {
+    if (booksReturnMode === 'interactive') {
+      onSetMode('interactive')
+      setInteractiveSubmode('story')
+      return
+    }
+    onSetMode('ide')
+    if (rightPanel === 'lore' || rightPanel === 'creator' || rightPanel === 'teller' || rightPanel === 'versions') onSetRightPanel(null)
+  }
 
   const sidebar = (
     <section className="nova-sidebar flex h-full flex-col border-r">
@@ -303,7 +312,7 @@ export function ModeRouter(props: ModeRouterProps) {
           onSwitch={onSwitchBook}
           onBooksChange={onBooksChange}
           onOpenCharacterCardImport={onOpenCharacterCardImport}
-          onClose={() => onSetMode(booksReturnMode)}
+          onClose={closeBooks}
         />
       ) : mode === 'interactive' ? (
         <InteractiveLayout

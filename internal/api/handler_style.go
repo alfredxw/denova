@@ -7,7 +7,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 )
 
-// handleStyles GET /api/styles — 返回 setting/styles/ 下可用的风格参考文件。
+// handleStyles GET /api/styles — 返回用户级 styles/ 下可用的风格参考文件。
 func (s *Server) handleStyles(ctx context.Context, c *app.RequestContext) {
 	if !s.app.HasWorkspace() {
 		writeJSON(c, consts.StatusOK, map[string][]string{"styles": {}})

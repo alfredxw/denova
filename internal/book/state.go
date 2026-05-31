@@ -52,11 +52,6 @@ func (s *State) SettingDir() string {
 	return filepath.Join(s.workspace, "setting")
 }
 
-// StyleDir 返回 setting/styles/ 目录路径（用户可维护的风格参考）。
-func (s *State) StyleDir() string {
-	return filepath.Join(s.SettingDir(), "styles")
-}
-
 // ChapterGroupDir 返回章节组细纲目录路径（用户可查看和编辑）。
 func (s *State) ChapterGroupDir() string {
 	return filepath.Join(s.SettingDir(), "chapter-groups")
@@ -74,7 +69,6 @@ func (s *State) InitWorkspace() error {
 		s.LoreDir(),
 		s.SettingDir(),
 		s.ChapterGroupDir(),
-		s.StyleDir(),
 		filepath.Join(s.workspace, "chapters"),
 	}
 	for _, dir := range dirs {

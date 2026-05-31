@@ -24,6 +24,8 @@ export interface Teller {
   name: string
   description: string
   random_event_rate: number
+  reply_target_chars?: number | null
+  style_rules?: StyleRule[] | null
   tags: string[]
   context_policy: TellerContextPolicy
   slots: TellerPromptSlot[]
@@ -32,6 +34,11 @@ export interface Teller {
   error?: string
   created_at?: string
   updated_at?: string
+}
+
+export interface StyleRule {
+  scene: string
+  styles: string[]
 }
 
 export interface TellerContextPolicy {

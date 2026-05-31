@@ -256,6 +256,13 @@ JSON 格式：
     "name": "讲述者名称",
     "description": "一句中文简介",
     "random_event_rate": 0.15,
+    "reply_target_chars": 1200,
+    "style_rules": [
+      {
+        "scene": "场景描述，如：激烈打斗 / 日常对话 / 压抑悬疑",
+        "styles": ["风格参考.md"]
+      }
+    ],
     "tags": ["标签"],
     "context_policy": {
       "creator": "always",
@@ -296,7 +303,8 @@ JSON 格式：
 4. update 必须填写已有讲述者 ID，并基于该讲述者的完整 JSON 修改后返回完整 teller，不要只返回局部字段，避免丢失规则。
 5. slots 至少包含一条启用规则，target 只能使用 system、turn_context、state_memory。
 6. random_event_rate 使用 0 到 1 的数字；不知道时使用 0.15。
-7. context_policy 不确定时使用 creator=always、lore=relevant、runtime_state=always、recent_turns=8。
-8. 所有面向用户的 name、description、tags 和 content 优先使用中文。
-9. 用户要求删除或批量操作时，返回 action 之外的 unsupported 文本是不允许的；请改为用 message 说明当前只支持单个创建或修改，并给出一个低风险 create/update 方案。`)
+7. reply_target_chars 和 style_rules 是这个讲述者独立的互动配置；用户没要求修改时必须原样保留，缺省或不确定时可省略。
+8. context_policy 不确定时使用 creator=always、lore=relevant、runtime_state=always、recent_turns=8。
+9. 所有面向用户的 name、description、tags 和 content 优先使用中文。
+10. 用户要求删除或批量操作时，返回 action 之外的 unsupported 文本是不允许的；请改为用 message 说明当前只支持单个创建或修改，并给出一个低风险 create/update 方案。`)
 }

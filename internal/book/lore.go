@@ -113,7 +113,7 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 		UpdatedAt:  now,
 	})
 	if item.ID == "" {
-		item.ID = newLoreID(item.Type)
+		item.ID = newUniqueLoreID(collection.Items, item.Type)
 	}
 	if item.Name == "" {
 		return LoreItem{}, errors.New("资料名称不能为空")
@@ -226,7 +226,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				UpdatedAt:  time.Now().Format(time.RFC3339),
 			})
 			if item.ID == "" {
-				item.ID = newLoreID(item.Type)
+				item.ID = newUniqueLoreID(next, item.Type)
 			}
 			if item.Name == "" {
 				return LoreApplyResult{}, errors.New("创建资料时名称不能为空")
@@ -585,6 +585,26 @@ func normalizeLoreTags(tags []string) []string {
 func newLoreID(itemType string) string {
 	itemType = normalizeLoreType(itemType)
 	return fmt.Sprintf("%s-%d", itemType, time.Now().UTC().UnixNano())
+}
+
+func newUniqueLoreID(items []LoreItem, itemType string) string {
+	return uniqueLoreIDFromBase(items, newLoreID(itemType))
+}
+
+func uniqueLoreIDFromBase(items []LoreItem, base string) string {
+	base = normalizeLoreID(base)
+	if base == "" {
+		base = newLoreID("other")
+	}
+	if loreItemIndex(items, base) < 0 {
+		return base
+	}
+	for suffix := 2; ; suffix++ {
+		candidate := fmt.Sprintf("%s-%d", base, suffix)
+		if loreItemIndex(items, candidate) < 0 {
+			return candidate
+		}
+	}
 }
 
 func loreItemIndex(items []LoreItem, id string) int {

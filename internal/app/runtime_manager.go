@@ -487,9 +487,6 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.ChapterGroupMax != nil {
 		cfg.ChapterGroupMax = appSettingsInt(effective.ChapterGroupMax, 8)
 	}
-	if effective.InteractiveReplyTargetChars != nil {
-		cfg.InteractiveReplyTargetChars = appSettingsInt(effective.InteractiveReplyTargetChars, 1200)
-	}
 	if effective.InteractiveMaxTokens != nil {
 		cfg.InteractiveMaxTokens = appSettingsInt(effective.InteractiveMaxTokens, 0)
 	}
@@ -522,9 +519,6 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.ChapterGroupMax != nil {
 		cfg.ChapterGroupMax = appSettingsInt(settings.ChapterGroupMax, 8)
-	}
-	if settings.InteractiveReplyTargetChars != nil {
-		cfg.InteractiveReplyTargetChars = appSettingsInt(settings.InteractiveReplyTargetChars, 1200)
 	}
 	if settings.InteractiveMaxTokens != nil {
 		cfg.InteractiveMaxTokens = appSettingsInt(settings.InteractiveMaxTokens, 0)
@@ -560,6 +554,9 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 	if err := state.InitWorkspace(); err != nil {
 		return nil, fmt.Errorf("初始化工作目录失败: %w", err)
 	}
+	if err := os.MkdirAll(book.UserStyleDir(cfg.NovaDir), 0o755); err != nil {
+		return nil, fmt.Errorf("初始化用户风格参考目录失败: %w", err)
+	}
 
 	store, err := session.NewStore(state.SessionDir())
 	if err != nil {
@@ -584,7 +581,7 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 	return &runtimeState{
 		workspace:              absWorkspace,
 		bookState:              state,
-		bookService:            book.NewService(absWorkspace),
+		bookService:            book.NewServiceWithStyleRoot(absWorkspace, book.UserStyleDir(cfg.NovaDir)),
 		interactive:            interactive.NewStore(absWorkspace),
 		sessionStore:           store,
 		session:                sess,

@@ -46,6 +46,8 @@ export function CharacterCardImportDialog({
   onBookTitleChange,
   onImport,
 }: CharacterCardImportDialogProps) {
+  const hasSelectedFile = Boolean(file)
+
   return (
     <>
       <input
@@ -97,41 +99,45 @@ export function CharacterCardImportDialog({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2 rounded-[var(--nova-radius)] bg-[var(--nova-surface)] p-1">
-              <button
-                type="button"
-                className={`nova-nav-item h-8 px-3 text-xs ${targetMode === 'current' ? 'is-active' : ''}`}
-                onClick={() => onTargetModeChange('current')}
-                disabled={!workspace || importing}
-                title={workspace ? '导入到当前书籍资料库' : '当前没有打开的书籍'}
-              >
-                导入到本书
-              </button>
-              <button
-                type="button"
-                className={`nova-nav-item h-8 px-3 text-xs ${targetMode === 'new_book' ? 'is-active' : ''}`}
-                onClick={() => onTargetModeChange('new_book')}
-                disabled={importing}
-              >
-                导入成新书
-              </button>
-            </div>
-
-            {targetMode === 'current' ? (
-              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-[var(--nova-text-faint)]">
-                当前书籍：<span className="text-[var(--nova-text-muted)]">{workspace ? currentBookName : '未选择书籍'}</span>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Input
-                  value={bookTitle}
-                  onChange={(event) => onBookTitleChange(event.target.value)}
-                  placeholder={preview?.name || '新书书名'}
-                  className="nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]"
+            {hasSelectedFile && (
+              <div className="grid grid-cols-2 gap-2 rounded-[var(--nova-radius)] bg-[var(--nova-surface)] p-1">
+                <button
+                  type="button"
+                  className={`nova-nav-item h-8 px-3 text-xs ${targetMode === 'current' ? 'is-active' : ''}`}
+                  onClick={() => onTargetModeChange('current')}
+                  disabled={!workspace || importing}
+                  title={workspace ? '导入到当前书籍资料库' : '当前没有打开的书籍'}
+                >
+                  导入到本书
+                </button>
+                <button
+                  type="button"
+                  className={`nova-nav-item h-8 px-3 text-xs ${targetMode === 'new_book' ? 'is-active' : ''}`}
+                  onClick={() => onTargetModeChange('new_book')}
                   disabled={importing}
-                />
-                <div className="truncate text-[11px] text-[var(--nova-text-faint)]">新书将创建在 {novaDir || 'Nova 数据目录'}</div>
+                >
+                  导入成新书
+                </button>
               </div>
+            )}
+
+            {hasSelectedFile && (
+              targetMode === 'current' ? (
+                <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-[var(--nova-text-faint)]">
+                  当前书籍：<span className="text-[var(--nova-text-muted)]">{workspace ? currentBookName : '未选择书籍'}</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Input
+                    value={bookTitle}
+                    onChange={(event) => onBookTitleChange(event.target.value)}
+                    placeholder={preview?.name || '新书书名'}
+                    className="nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]"
+                    disabled={importing}
+                  />
+                  <div className="truncate text-[11px] text-[var(--nova-text-faint)]">新书将创建在 {novaDir || 'Nova 数据目录'}</div>
+                </div>
+              )
             )}
 
             {error && (

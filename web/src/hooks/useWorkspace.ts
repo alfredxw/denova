@@ -73,7 +73,7 @@ export function useWorkspace() {
     }
   }, [])
 
-  /** 获取 setting/styles 下的风格参考文件 */
+  /** 获取用户级 styles 下的风格参考文件 */
   const fetchStyles = useCallback(async () => {
     try {
       setStyles(await getStyles())

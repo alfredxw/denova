@@ -11,6 +11,7 @@ import (
 	"nova/config"
 	"nova/internal/agent"
 	"nova/internal/book"
+	"nova/internal/interactive"
 	"nova/internal/session"
 )
 
@@ -241,13 +242,13 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 		}
 		log.Printf("[agent-task] load ide teller id=%s workspace=%s", runtimeCfg.IDEStoryTellerID, workspace)
 
-		// 注入用户/工作区配置中的默认风格参考；仅在用户本轮未指定 # 风格时生效。
+		// 注入当前 IDE 默认讲述者自己的默认风格参考；仅在用户本轮未指定 # 风格时生效。
 		if len(req.StyleReferences) == 0 {
-			rules := layered.Effective.StyleRules
-			if len(rules) > 0 {
-				converted := convertConfigStyleRules(workspace, rules)
+			teller := loadInteractiveTeller(novaDir, runtimeCfg.IDEStoryTellerID)
+			if len(teller.StyleRules) > 0 {
+				converted := convertTellerStyleRules(novaDir, teller.StyleRules)
 				req.StyleRules = converted
-				log.Printf("[agent-task] inject style rules count=%d rules=%q", len(converted), appStyleRuleNames(converted))
+				log.Printf("[agent-task] inject teller style rules teller_id=%s count=%d rules=%q", teller.ID, len(converted), appStyleRuleNames(converted))
 			}
 		}
 	} else {
@@ -327,10 +328,10 @@ func appStyleRuleNames(rules []agent.StyleRule) []string {
 	return names
 }
 
-func convertConfigStyleRules(workspace string, rules []config.StyleRule) []agent.StyleRule {
+func convertTellerStyleRules(novaDir string, rules []interactive.StyleRule) []agent.StyleRule {
 	converted := make([]agent.StyleRule, 0, len(rules))
 	for _, r := range rules {
-		styles := resolveStyleRulePaths(workspace, r.Styles)
+		styles := resolveStyleRulePaths(novaDir, r.Styles)
 		if strings.TrimSpace(r.Scene) == "" || len(styles) == 0 {
 			continue
 		}
@@ -339,11 +340,11 @@ func convertConfigStyleRules(workspace string, rules []config.StyleRule) []agent
 	return converted
 }
 
-func resolveStyleRulePaths(workspace string, styles []string) []string {
+func resolveStyleRulePaths(novaDir string, styles []string) []string {
 	paths := make([]string, 0, len(styles))
 	seen := make(map[string]bool, len(styles))
 	for _, style := range styles {
-		path := resolveStyleRulePath(workspace, style)
+		path := resolveStyleRulePath(novaDir, style)
 		if path == "" || seen[path] {
 			continue
 		}
@@ -353,7 +354,7 @@ func resolveStyleRulePaths(workspace string, styles []string) []string {
 	return paths
 }
 
-func resolveStyleRulePath(workspace string, style string) string {
+func resolveStyleRulePath(novaDir string, style string) string {
 	style = strings.TrimSpace(style)
 	if style == "" {
 		return ""
@@ -361,7 +362,7 @@ func resolveStyleRulePath(workspace string, style string) string {
 	if !isStyleRuleFile(style) {
 		return ""
 	}
-	if filepath.IsAbs(style) || workspace == "" {
+	if filepath.IsAbs(style) || novaDir == "" {
 		return filepath.Clean(style)
 	}
 	cleanStyle := filepath.Clean(filepath.FromSlash(style))
@@ -369,10 +370,13 @@ func resolveStyleRulePath(workspace string, style string) string {
 	if slashStyle == "." || slashStyle == ".." || strings.HasPrefix(slashStyle, "../") {
 		return ""
 	}
+	if strings.HasPrefix(slashStyle, "styles/") {
+		cleanStyle = filepath.FromSlash(strings.TrimPrefix(slashStyle, "styles/"))
+	}
 	if strings.HasPrefix(slashStyle, "setting/styles/") {
 		cleanStyle = filepath.FromSlash(strings.TrimPrefix(slashStyle, "setting/styles/"))
 	}
-	return filepath.Join(workspace, "setting", "styles", cleanStyle)
+	return filepath.Join(book.UserStyleDir(novaDir), cleanStyle)
 }
 
 func isStyleRuleFile(path string) bool {
