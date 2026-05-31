@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { AtSign, BookMarked, Bot, Building2, Check, ChevronDown, Database, FileText, Folder, History, Library, Loader2, MapPin, Plus, RotateCcw, Save, ScrollText, Search, Send, SlidersHorizontal, Trash2, UserRound, X } from 'lucide-react'
+import { AtSign, BookMarked, Bot, Building2, Check, ChevronDown, ChevronUp, Database, FileText, Folder, History, Library, Loader2, MapPin, Plus, RotateCcw, Save, ScrollText, Search, Send, SlidersHorizontal, Trash2, UserRound, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import {
   createLoreVersion,
@@ -9,6 +9,7 @@ import {
   getLoreAgentMessages,
   getLoreItems,
   getLoreVersions,
+  getStyles,
   readFile,
   restoreLoreVersion,
   runLoreAgentStream,
@@ -21,6 +22,8 @@ import {
   type SSEEvent,
 } from '@/lib/api'
 import { isSaveShortcut } from '@/lib/keyboard'
+import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
+import type { Settings, StyleRule } from '@/features/settings/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -34,6 +37,7 @@ import type { Teller, TellerAgentResult, TellerPromptSlot } from '../types'
 const CREATOR_PATH = 'CREATOR.md'
 const LORE_AGENT_ENTRY_ID = '__lore_agent__'
 const TELLER_AGENT_ENTRY_ID = '__teller_agent__'
+const TELLER_SETTINGS_ENTRY_ID = '__teller_settings__'
 const EMPTY_TELLERS: Teller[] = []
 
 const TYPE_OPTIONS = [
@@ -221,6 +225,12 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       setActiveSlotId('')
       return
     }
+    if (activeTellerId === TELLER_SETTINGS_ENTRY_ID) {
+      setTellerDraft(null)
+      setTellerTagDraft('')
+      setActiveSlotId('')
+      return
+    }
     const teller = tellers.find((entry) => entry.id === activeTellerId) || null
     setTellerDraft(teller ? {
       ...teller,
@@ -385,6 +395,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 
   const isLoreAgentActive = activeMode === 'lore' && activeId === LORE_AGENT_ENTRY_ID
   const isTellerAgentActive = activeMode === 'teller' && activeTellerId === TELLER_AGENT_ENTRY_ID
+  const isTellerSettingsActive = activeMode === 'teller' && activeTellerId === TELLER_SETTINGS_ENTRY_ID
   return (
     <section className="flex h-full min-h-0 bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
       <aside className={`nova-sidebar flex shrink-0 flex-col border-r ${embedded ? 'w-56' : 'w-[320px]'}`}>
@@ -424,9 +435,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <ModeIcon mode={activeMode} />
-              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreAgentActive ? '资料库 Agent' : isTellerAgentActive ? '讲述者 Agent' : editorTitle(activeMode, draft, tellerDraft)}</h2>
+              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreAgentActive ? '资料库 Agent' : isTellerAgentActive ? '讲述者 Agent' : isTellerSettingsActive ? '讲述者配置' : editorTitle(activeMode, draft, tellerDraft)}</h2>
             </div>
-            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreAgentActive ? '用自然语言批量整理、补充和修改资料库' : isTellerAgentActive ? '用自然语言创建或修改单个讲述者规则包' : editorSubtitle(activeMode, draft, tellerDraft)}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreAgentActive ? '用自然语言批量整理、补充和修改资料库' : isTellerAgentActive ? '用自然语言创建或修改单个讲述者规则包' : isTellerSettingsActive ? '配置场景风格规则和互动回合目标字数' : editorSubtitle(activeMode, draft, tellerDraft)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {activeMode === 'lore' && !isLoreAgentActive && (
@@ -439,7 +450,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
-            {!isLoreAgentActive && !isTellerAgentActive && (
+            {!isLoreAgentActive && !isTellerAgentActive && !isTellerSettingsActive && (
               <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving || (activeMode === 'lore' && !draft) || (activeMode === 'teller' && !tellerDraft)} onClick={handleSave}>
                 <Save className="h-4 w-4" />
                 {saving ? '保存中...' : '保存'}
@@ -468,6 +479,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
           </>
         ) : activeMode === 'creator' ? (
           <CreatorEditor content={creatorContent} setContent={setCreatorContent} onSave={handleSave} />
+        ) : isTellerSettingsActive ? (
+          <TellerSettingsEditor workspace={workspace} />
         ) : isTellerAgentActive ? (
           <TellerAgentChat
             workspace={workspace}
@@ -1634,6 +1647,16 @@ function TellerDirectory({
       <div className="border-b border-[var(--nova-border)] p-2">
         <button
           type="button"
+          onClick={() => onSelect(TELLER_SETTINGS_ENTRY_ID)}
+          className={`mb-1 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
+            activeTellerId === TELLER_SETTINGS_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+          }`}
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+          <span className="min-w-0 flex-1 truncate">讲述者配置</span>
+        </button>
+        <button
+          type="button"
           onClick={() => onSelect(TELLER_AGENT_ENTRY_ID)}
           className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
             activeTellerId === TELLER_AGENT_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
@@ -1995,6 +2018,301 @@ function TellerEditor({
           <EmptyState title="暂无注入规则" description="为这个讲述者新增一条规则。" />
         )}
       </div>
+    </div>
+  )
+}
+
+function TellerSettingsEditor({ workspace }: { workspace: string }) {
+  const [draft, setDraft] = useState<Settings>({})
+  const [effective, setEffective] = useState<Settings>({})
+  const [availableStyles, setAvailableStyles] = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    if (!workspace) {
+      setDraft({})
+      setEffective({})
+      setAvailableStyles([])
+      setLoading(false)
+      return () => { cancelled = true }
+    }
+    Promise.all([
+      fetchSettings(),
+      getStyles().catch((err) => {
+        console.warn('[teller-settings] 获取风格参考列表失败', err)
+        return [] as string[]
+      }),
+    ])
+      .then(([settings, styles]) => {
+        if (cancelled) return
+        setDraft(settings.workspace || {})
+        setEffective(settings.effective || {})
+        setAvailableStyles(styles)
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : '加载讲述者配置失败')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [workspace])
+
+  const setField = <K extends keyof Settings>(key: K, value: Settings[K]) => {
+    setDraft((current) => ({ ...current, [key]: value }))
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setError(null)
+    try {
+      const next = await updateWorkspaceSettings(draft)
+      setDraft(next.workspace || {})
+      setEffective(next.effective || {})
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存讲述者配置失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!workspace) {
+    return <EmptyState title="尚未选择书籍" description="选择或创建书籍后，可以配置讲述者相关写作规则。" />
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-xs text-[var(--nova-text-muted)]">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        正在加载讲述者配置...
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4">
+        {error && (
+          <div className="rounded-[var(--nova-radius)] border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+            {error}
+          </div>
+        )}
+
+        <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+          <div className="flex min-h-11 items-center justify-between gap-3 border-b border-[var(--nova-border)] px-4 py-2">
+            <div>
+              <div className="text-xs font-medium text-[var(--nova-text)]">互动回合长度</div>
+              <div className="mt-0.5 text-[11px] text-[var(--nova-text-faint)]">控制讲述者每次生成下一回合时的目标篇幅。</div>
+            </div>
+            <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving} onClick={() => void save()}>
+              <Save className="h-4 w-4" />
+              {saving ? '保存中...' : '保存配置'}
+            </Button>
+          </div>
+          <div className="grid gap-3 p-4 md:grid-cols-2">
+            <SettingsNumberField
+              label="单轮目标字数"
+              value={draft.interactive_reply_target_chars ?? null}
+              placeholder={`继承：${effective.interactive_reply_target_chars ?? 1200}`}
+              onChange={(value) => setField('interactive_reply_target_chars', value)}
+            />
+          </div>
+        </section>
+
+        <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+          <div className="border-b border-[var(--nova-border)] px-4 py-3">
+            <div className="text-xs font-medium text-[var(--nova-text)]">场景风格规则</div>
+            <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+              IDE 章节创作和互动故事生成共用这套规则；本轮显式输入 # 风格参考时，会优先使用本轮指定。
+            </div>
+          </div>
+          <div className="p-4">
+            <InteractiveStyleRulesEditor
+              available={availableStyles}
+              rules={draft.style_rules ?? []}
+              effective={effective.style_rules ?? []}
+              onChange={(rules) => setField('style_rules', rules)}
+            />
+          </div>
+        </section>
+      </div>
+    </div>
+  )
+}
+
+function SettingsNumberField({ label, value, placeholder, onChange }: {
+  label: string
+  value: number | null
+  placeholder?: string
+  onChange: (value: number | null) => void
+}) {
+  return (
+    <Field label={label}>
+      <Input
+        className={inputClassName}
+        type="number"
+        value={value ?? ''}
+        placeholder={placeholder}
+        onChange={(event) => {
+          const raw = event.target.value
+          onChange(raw === '' ? null : Number(raw))
+        }}
+      />
+    </Field>
+  )
+}
+
+function InteractiveStyleRulesEditor({ available, rules, effective, onChange }: {
+  available: string[]
+  rules: StyleRule[]
+  effective: StyleRule[]
+  onChange: (rules: StyleRule[]) => void
+}) {
+  const addRule = () => onChange([...rules, { scene: '', styles: [] }])
+  const removeRule = (index: number) => onChange(rules.filter((_, i) => i !== index))
+  const updateRule = (index: number, patch: Partial<StyleRule>) => {
+    onChange(rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)))
+  }
+  const inheriting = rules.length === 0 && effective.length > 0
+
+  return (
+    <div className="flex flex-col gap-3">
+      {inheriting && (
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-faint)]">
+          当前继承生效 {effective.length} 条规则：
+          <div className="mt-1 space-y-1">
+            {effective.map((rule, index) => (
+              <div key={`${index}-${rule.scene}`} className="truncate">
+                <span className="text-[var(--nova-text-muted)]">{rule.scene || '未命名场景'}</span>
+                <span className="ml-2">→ {rule.styles.join('、') || '无风格文件'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {rules.length > 0 && (
+        <div className="space-y-2">
+          {rules.map((rule, index) => (
+            <InteractiveStyleRuleRow
+              key={index}
+              available={available}
+              rule={rule}
+              onChange={(patch) => updateRule(index, patch)}
+              onRemove={() => removeRule(index)}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button className={actionButtonClassName} variant="outline" size="sm" onClick={addRule}>
+          <Plus className="h-3.5 w-3.5" />
+          新增规则
+        </Button>
+        {available.length === 0 && (
+          <span className="text-xs text-[var(--nova-text-faint)]">当前工作区 setting/styles/ 下暂无风格文件，也可以手动添加 .md 或 .txt 路径。</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
+  available: string[]
+  rule: StyleRule
+  onChange: (patch: Partial<StyleRule>) => void
+  onRemove: () => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const [customPath, setCustomPath] = useState('')
+  const selectedCustomStyles = rule.styles.filter((path) => !available.includes(path))
+  const summary = rule.styles.length === 0 ? '尚未选择风格文件' : rule.styles.join('、')
+  const toggleStyle = (path: string) => {
+    onChange({
+      styles: rule.styles.includes(path)
+        ? rule.styles.filter((item) => item !== path)
+        : [...rule.styles, path],
+    })
+  }
+  const addCustomStyle = () => {
+    const path = customPath.trim()
+    if (!path || rule.styles.includes(path)) return
+    onChange({ styles: [...rule.styles, path] })
+    setCustomPath('')
+  }
+
+  return (
+    <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center">
+        <Input
+          className={inputClassName}
+          value={rule.scene}
+          placeholder="场景描述，如：激烈打斗 / 日常对话 / 压抑悬疑"
+          onChange={(event) => onChange({ scene: event.target.value })}
+        />
+        <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={() => setExpanded((value) => !value)}>
+          {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          {expanded ? '收起' : `风格 (${rule.styles.length})`}
+        </Button>
+        <Button className={`${actionButtonClassName} justify-center hover:bg-red-500/15 hover:text-red-200`} variant="outline" size="sm" onClick={onRemove}>
+          <Trash2 className="h-3.5 w-3.5" />
+          删除
+        </Button>
+      </div>
+
+      {!expanded && (
+        <div className="mt-1 truncate px-1 text-xs text-[var(--nova-text-faint)]">→ {summary}</div>
+      )}
+
+      {expanded && (
+        <div className="mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+          <div className="max-h-52 overflow-y-auto">
+            {available.length === 0 ? (
+              <div className="px-2 py-2 text-xs text-[var(--nova-text-faint)]">无可用风格文件</div>
+            ) : (
+              available.map((path) => (
+                <label key={path} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
+                  <input type="checkbox" checked={rule.styles.includes(path)} onChange={() => toggleStyle(path)} />
+                  <span className="truncate" title={path}>{path}</span>
+                </label>
+              ))
+            )}
+            {selectedCustomStyles.map((path) => (
+              <label key={path} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
+                <input type="checkbox" checked onChange={() => toggleStyle(path)} />
+                <span className="truncate" title={path}>{path}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-col gap-2 border-t border-[var(--nova-border)] p-2 md:flex-row">
+            <Input
+              className={inputClassName}
+              value={customPath}
+              placeholder="手动添加 .md 或 .txt 文件路径"
+              onChange={(event) => setCustomPath(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  addCustomStyle()
+                }
+              }}
+            />
+            <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={addCustomStyle}>
+              <Plus className="h-3.5 w-3.5" />
+              添加
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -28,10 +28,18 @@ interface MarkdownEditorProps {
   saveSignal?: number
   chapterSummary?: ChapterSummary
   workspaceSummary?: WorkspaceSummary | null
+  searchIntent?: EditorSearchIntent | null
   toolbarActions?: ReactNode
 }
 
+export interface EditorSearchIntent {
+  query: string
+  line: number
+  nonce: number
+}
+
 type EditorTheme = 'ide' | 'paper' | 'sepia'
+type SaveStatus = 'dirty' | 'auto-saving' | 'auto-saved' | 'manual-saving' | 'manual-saved' | 'error'
 
 interface EditorSettings {
   fontSize: number
@@ -78,6 +86,44 @@ const THEME_STYLES: Record<EditorTheme, { label: string; background: string; col
   },
 }
 
+const SAVE_STATUS_META: Record<SaveStatus, { label: string; ariaLabel: string; className: string; dotClassName?: string; subtle?: boolean }> = {
+  dirty: {
+    label: '有改动',
+    ariaLabel: '内容有改动，等待自动保存',
+    className: 'text-[var(--nova-text-faint)]',
+    dotClassName: 'bg-[var(--nova-text-faint)] opacity-60',
+    subtle: true,
+  },
+  'auto-saving': {
+    label: '同步中',
+    ariaLabel: '正在自动保存',
+    className: 'text-[var(--nova-text-faint)]',
+    dotClassName: 'animate-pulse bg-[var(--nova-text-muted)] opacity-70',
+    subtle: true,
+  },
+  'auto-saved': {
+    label: '已同步',
+    ariaLabel: '已自动保存',
+    className: 'text-[var(--nova-text-faint)]',
+    subtle: true,
+  },
+  'manual-saving': {
+    label: '保存中…',
+    ariaLabel: '正在保存',
+    className: 'text-[var(--nova-text-muted)]',
+  },
+  'manual-saved': {
+    label: '已保存',
+    ariaLabel: '已保存',
+    className: 'text-[var(--nova-accent-green)]',
+  },
+  error: {
+    label: '保存失败',
+    ariaLabel: '保存失败',
+    className: 'text-[#ff6b6b]',
+  },
+}
+
 /** 检测文本是否已自带缩进（首个非空行以全角/半角空格开头） */
 function hasNativeIndent(text: string): boolean {
   const lines = text.split('\n')
@@ -94,8 +140,8 @@ function isTxtFile(name: string | null): boolean {
 }
 
 /** TipTap 编辑器组件，支持 Markdown 和纯文本格式 */
-export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, saveSignal = 0, chapterSummary, workspaceSummary, toolbarActions }: MarkdownEditorProps) {
-  const [saveStatus, setSaveStatus] = useState<string>('')
+export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, saveSignal = 0, chapterSummary, workspaceSummary, searchIntent, toolbarActions }: MarkdownEditorProps) {
+  const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<EditorSettings>(() => loadEditorSettings())
   const [nativeIndent, setNativeIndent] = useState(false)
@@ -106,10 +152,12 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
   const [searchIndex, setSearchIndex] = useState(0)
   const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
   const autoSaveTimer = useRef<number | null>(null)
+  const saveStatusClearTimer = useRef<number | null>(null)
   const lastSyncedFileRef = useRef<string | null>(null)
   const lastSyncedContentRef = useRef('')
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastSaveSignalRef = useRef(saveSignal)
+  const lastSearchIntentNonceRef = useRef<number | null>(null)
   const searchStateRef = useRef<SearchState>({ query: '', index: 0 })
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const editorContainerRef = useRef<HTMLDivElement>(null)
@@ -260,6 +308,36 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
     }
   }, [searchOpen, searchQuery, searchIndex, updateSearch])
 
+  useEffect(() => {
+    if (!editor || !searchIntent || !searchIntent.query.trim()) return
+    if (lastSearchIntentNonceRef.current === searchIntent.nonce) return
+    lastSearchIntentNonceRef.current = searchIntent.nonce
+
+    const matches = findSearchMatches(editor, searchIntent.query)
+    const targetIndex = searchIntent.line > 0
+      ? matches.findIndex((match) => getLineNumber(editor.state.doc, match.from) === searchIntent.line)
+      : -1
+    setSearchOpen(true)
+    updateSearch(searchIntent.query, targetIndex >= 0 ? targetIndex : 0)
+  }, [editor, searchIntent, updateSearch])
+
+  const clearSaveStatusTimer = useCallback(() => {
+    if (saveStatusClearTimer.current) {
+      window.clearTimeout(saveStatusClearTimer.current)
+      saveStatusClearTimer.current = null
+    }
+  }, [])
+
+  const scheduleSaveStatusClear = useCallback((status: SaveStatus, delay: number) => {
+    clearSaveStatusTimer()
+    saveStatusClearTimer.current = window.setTimeout(() => {
+      setSaveStatus((current) => current === status ? null : current)
+      saveStatusClearTimer.current = null
+    }, delay)
+  }, [clearSaveStatusTimer])
+
+  useEffect(() => clearSaveStatusTimer, [clearSaveStatusTimer])
+
   /** 保存当前编辑内容 */
   const saveEditorContent = useCallback(async (mode: 'manual' | 'auto') => {
     if (!editor || !fileName) return
@@ -267,15 +345,17 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
       ? normalizeEditorText(editor.getText({ blockSeparator: '\n' }))
       : normalizeEditorText(editor.getMarkdown())
     lastSyncedContentRef.current = text
-    setSaveStatus(mode === 'auto' ? '自动保存中…' : '保存中…')
+    clearSaveStatusTimer()
+    setSaveStatus(mode === 'auto' ? 'auto-saving' : 'manual-saving')
     const ok = await onSave(text)
-    setSaveStatus(ok ? (mode === 'auto' ? '已自动保存' : '已保存') : '保存失败')
+    const nextStatus: SaveStatus = ok ? (mode === 'auto' ? 'auto-saved' : 'manual-saved') : 'error'
+    setSaveStatus(nextStatus)
     if (mode === 'manual') {
       if (ok) toast.success('保存成功')
       else toast.error('保存失败')
     }
-    setTimeout(() => setSaveStatus(''), 2000)
-  }, [editor, fileName, onSave])
+    scheduleSaveStatusClear(nextStatus, mode === 'auto' ? 1400 : 2000)
+  }, [clearSaveStatusTimer, editor, fileName, onSave, scheduleSaveStatusClear])
 
   /** 执行手动保存 */
   const handleSave = useCallback(async () => {
@@ -298,7 +378,8 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
 
     const handleUpdate = () => {
       if (!fileName) return
-      setSaveStatus('未保存')
+      clearSaveStatusTimer()
+      setSaveStatus('dirty')
       if (autoSaveTimer.current) {
         window.clearTimeout(autoSaveTimer.current)
       }
@@ -315,7 +396,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
         window.clearTimeout(autoSaveTimer.current)
       }
     }
-  }, [editor, fileName, saveEditorContent])
+  }, [clearSaveStatusTimer, editor, fileName, saveEditorContent])
 
   // Ctrl+F / Cmd+F 打开文章内搜索，保存快捷键由工作台统一分发。
   useEffect(() => {
@@ -393,6 +474,8 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
     )
   }
 
+  const saveStatusMeta = saveStatus ? SAVE_STATUS_META[saveStatus] : null
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* 编辑器工具栏 */}
@@ -403,9 +486,19 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {toolbarActions}
-          {saveStatus && (
-            <span className={`text-xs ${saveStatus === '已保存' ? 'text-[#6cc477]' : 'text-[#ff6b6b]'}`}>
-              {saveStatus}
+          {saveStatusMeta && (
+            <span
+              className={`inline-flex h-5 min-w-5 items-center justify-end gap-1 text-[11px] transition-colors ${saveStatusMeta.className}`}
+              aria-live="polite"
+              aria-label={saveStatusMeta.ariaLabel}
+              title={saveStatusMeta.ariaLabel}
+            >
+              {saveStatus === 'auto-saved' ? (
+                <Check className="h-3 w-3 opacity-45" />
+              ) : saveStatusMeta.dotClassName ? (
+                <span className={`h-1.5 w-1.5 rounded-full ${saveStatusMeta.dotClassName}`} />
+              ) : null}
+              <span className={saveStatusMeta.subtle ? 'sr-only' : ''}>{saveStatusMeta.label}</span>
             </span>
           )}
           <Button

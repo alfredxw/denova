@@ -4,6 +4,7 @@ import { isEditableTarget, isNativeTextEditingShortcut } from '@/lib/keyboard'
 interface WorkspaceHotkeysOptions {
   onSave?: () => void | Promise<void>
   onOpenCommand?: () => void
+  onOpenSearch?: () => void
   onGenerate?: () => void
   onOpenDiff?: () => void
   onEscape?: () => void
@@ -13,6 +14,7 @@ interface WorkspaceHotkeysOptions {
 export function useWorkspaceHotkeys({
   onSave,
   onOpenCommand,
+  onOpenSearch,
   onGenerate,
   onOpenDiff,
   onEscape,
@@ -31,6 +33,13 @@ export function useWorkspaceHotkeys({
     event.preventDefault()
     onOpenCommand?.()
   }, { enableOnFormTags: true, enableOnContentEditable: true }, [onOpenCommand])
+
+  useHotkeys('meta+shift+f, ctrl+shift+f', (event) => {
+    const inEditor = event.target instanceof HTMLElement && Boolean(event.target.closest('.editor-content'))
+    if (isNativeTextEditingShortcut(event) || (isEditableTarget(event.target) && !inEditor)) return
+    event.preventDefault()
+    onOpenSearch?.()
+  }, { enableOnFormTags: true, enableOnContentEditable: true }, [onOpenSearch])
 
   useHotkeys('meta+enter, ctrl+enter', (event) => {
     if (shouldSkipWorkspaceAction(event)) return

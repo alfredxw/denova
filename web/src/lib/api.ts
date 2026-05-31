@@ -86,6 +86,14 @@ export interface WorkspaceSummary {
   chapter_plans: DocumentPreview[]
 }
 
+export interface WorkspaceSearchResult {
+  path: string
+  line: number
+  column: number
+  preview: string
+  match_text: string
+}
+
 export interface CharacterCardImportResult {
   name: string
   target_path: string
@@ -388,6 +396,13 @@ export async function getWorkspaceSummary(): Promise<WorkspaceSummary> {
 /** 读取文件内容 */
 export async function readFile(path: string): Promise<{ path: string; content: string }> {
   return requestJSON(`/api/workspace/file?path=${encodeURIComponent(path)}`)
+}
+
+/** 搜索当前 workspace 文本内容和文件路径 */
+export async function searchWorkspace(query: string, limit = 100): Promise<WorkspaceSearchResult[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) })
+  const data = await requestJSON<{ results: WorkspaceSearchResult[] }>(`/api/workspace/search?${params.toString()}`)
+  return Array.isArray(data.results) ? data.results : []
 }
 
 /** 保存文件内容 */

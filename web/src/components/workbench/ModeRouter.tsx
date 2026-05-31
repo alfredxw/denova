@@ -2,6 +2,7 @@ import { BookMarked, BookOpen, ChevronDown, ChevronRight, Database, FileText, Pa
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { FileTree } from '@/components/Sidebar/FileTree'
+import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel } from '@/components/Chat/AgentPanel'
 import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
 import { GitPanel } from '@/components/Git/GitPanel'
@@ -13,7 +14,7 @@ import { useInteractiveStore } from '@/features/interactive/stores/interactive-s
 import { SettingsView } from '@/features/settings/SettingsView'
 import type { Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { BookRecord, ChapterSummary, ChatMessage, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSummary } from '@/lib/api'
+import type { BookRecord, ChapterSummary, ChatMessage, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
@@ -44,7 +45,8 @@ interface ModeRouterProps {
   styles: string[]
   openTabs: Tab[]
   activeTabKey: string | null
-  sidebarView: 'outline' | 'files'
+  sidebarView: 'outline' | 'files' | 'search'
+  editorSearchIntent: { path: string; query: string; line: number; nonce: number } | null
   saveSignal: number
   gitRefreshSignal: number
   messages: ChatMessage[]
@@ -66,7 +68,8 @@ interface ModeRouterProps {
   onSwitchBook: (path: string) => void
   onBooksChange: () => void | Promise<void>
   onOpenCharacterCardImport: () => void
-  onSetSidebarView: (view: 'outline' | 'files') => void
+  onSetSidebarView: (view: 'outline' | 'files' | 'search') => void
+  onSelectSearchResult: (result: WorkspaceSearchResult, query: string) => void | Promise<void>
   onRefreshTree: () => void
   onSelectFile: (path: string) => void | Promise<void>
   onReferenceFile: (path: string) => void
@@ -119,6 +122,7 @@ export function ModeRouter(props: ModeRouterProps) {
     openTabs,
     activeTabKey,
     sidebarView,
+    editorSearchIntent,
     saveSignal,
     gitRefreshSignal,
     messages,
@@ -141,6 +145,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onBooksChange,
     onOpenCharacterCardImport,
     onSetSidebarView,
+    onSelectSearchResult,
     onRefreshTree,
     onSelectFile,
     onReferenceFile,
@@ -241,6 +246,13 @@ export function ModeRouter(props: ModeRouterProps) {
           >
             项目文件
           </button>
+          <button
+            type="button"
+            onClick={() => onSetSidebarView('search')}
+            className={`nova-nav-item flex-1 px-2 py-1 text-xs ${sidebarView === 'search' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
+          >
+            全局搜索
+          </button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-2 text-xs">
@@ -253,6 +265,11 @@ export function ModeRouter(props: ModeRouterProps) {
             chapterPlans={summary?.chapter_plans || []}
             selectedFile={selectedFile}
             onSelectFile={onSelectFile}
+          />
+        ) : sidebarView === 'search' ? (
+          <SearchPanel
+            workspace={workspace}
+            onSelectResult={onSelectSearchResult}
           />
         ) : tree.length === 0 ? (
           <div className="py-4 text-center text-[#858b96]">暂无文件</div>
@@ -291,6 +308,7 @@ export function ModeRouter(props: ModeRouterProps) {
       ) : mode === 'interactive' ? (
         <InteractiveLayout
           workspace={workspace}
+          styleSuggestions={styles}
           rightPanelVisible={interactiveRightVisible}
           onToggleRightPanel={onToggleInteractiveRightPanel}
         />
@@ -344,6 +362,7 @@ export function ModeRouter(props: ModeRouterProps) {
                 saveSignal={saveSignal}
                 chapterSummary={currentChapter}
                 workspaceSummary={summary}
+                searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
                 toolbarActions={(
                   <IdeWritingInfoActions
                     projectVisible={projectVisible}

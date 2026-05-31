@@ -73,7 +73,7 @@ func DefaultSettings() Settings {
 		NovaDir:                     "./.nova",
 		AutoSaveEnabled:             boolPtr(true),
 		AutoSaveIntervalMs:          intPtr(1500),
-		ChapterFilenameFormat:       "ch{NN}-{title}.md",
+		ChapterFilenameFormat:       "ch{NNNN}-{title}.md",
 		MaxOpenTabs:                 intPtr(5),
 		DraftFlowEnabled:            boolPtr(false),
 		ChapterGroupMin:             intPtr(3),

@@ -21,7 +21,7 @@ nova_dir = "./.nova"
 # 编辑器
 auto_save_enabled = true
 auto_save_interval_ms = 1500
-chapter_filename_format = "ch{NN}-{title}.md"
+chapter_filename_format = "ch{NNNN}-{title}.md"
 draft_flow_enabled = false
 chapter_group_min = 3
 chapter_group_max = 8

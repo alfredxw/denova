@@ -712,8 +712,23 @@ function sortFileNodesForDisplay(nodes: FileNode[]) {
     if (a.type !== b.type) {
       return a.type === 'dir' ? -1 : 1
     }
-    return a.name.localeCompare(b.name, 'zh-Hans-CN')
+    return compareFileNodeNames(a.name, b.name)
   })
+}
+
+function compareFileNodeNames(left: string, right: string) {
+  const leftIndex = chapterIndex(left)
+  const rightIndex = chapterIndex(right)
+  if (leftIndex > 0 && rightIndex > 0 && leftIndex !== rightIndex) {
+    return leftIndex - rightIndex
+  }
+  return left.localeCompare(right, 'zh-Hans-CN')
+}
+
+function chapterIndex(name: string) {
+  const baseName = name.replace(/\.[^.]+$/, '')
+  const match = /^ch(\d+)[-_ ]*/i.exec(baseName)
+  return match ? Number.parseInt(match[1], 10) : 0
 }
 
 function formatCompactWords(words: number) {

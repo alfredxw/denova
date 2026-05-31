@@ -10,6 +10,7 @@ function renderCommandPalette(overrides: Partial<React.ComponentProps<typeof Com
     onSave: vi.fn(),
     onOpenAgent: vi.fn(),
     onOpenVersions: vi.fn(),
+    onOpenSearch: vi.fn(),
     onContinueWriting: vi.fn(),
     onClosePanels: vi.fn(),
     ...overrides,

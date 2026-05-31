@@ -3,6 +3,7 @@ import {
   Bot,
   GitBranch,
   Save,
+  Search,
   Sparkles,
   X,
 } from 'lucide-react'
@@ -32,6 +33,7 @@ interface CommandPaletteProps {
   onSave: () => void
   onOpenAgent: () => void
   onOpenVersions: () => void
+  onOpenSearch: () => void
   onContinueWriting: () => void
   onClosePanels: () => void
 }
@@ -44,6 +46,7 @@ export function CommandPalette({
   onSave,
   onOpenAgent,
   onOpenVersions,
+  onOpenSearch,
   onContinueWriting,
   onClosePanels,
 }: CommandPaletteProps) {
@@ -66,6 +69,13 @@ export function CommandPalette({
       label: '打开版本管理',
       icon: <GitBranch className="h-4 w-4" />,
       onSelect: onOpenVersions,
+    },
+    {
+      id: 'search',
+      label: '打开全局搜索',
+      shortcut: '⌘⇧F',
+      icon: <Search className="h-4 w-4" />,
+      onSelect: onOpenSearch,
     },
     {
       id: 'continue',

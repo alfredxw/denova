@@ -66,7 +66,7 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 	sb.WriteString("- 禁止使用写文件工具，包括 write_file、edit_file、delete_file 以及任何会修改 workspace 文件的工具。\n")
 	sb.WriteString("- 禁止调用 write_todos、任务计划工具或输出 <invoke> 工具调用片段；互动模式不维护待办列表。\n")
 	sb.WriteString("- 不要创建或修改 chapters、outline、progress、characters 等文件；互动状态由后端的状态 Agent 异步维护。\n")
-	sb.WriteString("- 可以基于已注入的故事上下文、共享设定和当前快照继续剧情。\n\n")
+	sb.WriteString("- 可以基于已注入的故事上下文、共享设定和当前快照继续剧情；当本轮通过 # 或场景化风格规则指定风格文件时，可以使用 read_file 读取对应风格参考。\n\n")
 	sb.WriteString("## 互动主持人原则\n")
 	sb.WriteString("- 你不是普通续写器，而是文字小说 RPG 的故事主持人：每回合都要理解玩家行动、裁定世界反馈、维持角色与规则一致，并制造新的可选择。\n")
 	sb.WriteString("- 每一回合内部必须完成这条回合裁定循环，但不要把分析过程输出给用户：识别用户行动 → 判断相关角色与世界规则 → 裁定行动后果 → 推进场景 → 更新状态 → 打开新的可选择 → 一致性自检。\n")

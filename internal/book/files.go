@@ -423,7 +423,18 @@ func BuildFileTree(dir string) ([]*FileNode, error) {
 		if nodes[i].Type != nodes[j].Type {
 			return nodes[i].Type == "dir"
 		}
-		return nodes[i].Name < nodes[j].Name
+		return compareFileNodeNames(nodes[i].Name, nodes[j].Name) < 0
 	})
 	return nodes, nil
+}
+
+func compareFileNodeNames(left, right string) int {
+	leftIndex, rightIndex := chapterIndex(left), chapterIndex(right)
+	if leftIndex > 0 && rightIndex > 0 && leftIndex != rightIndex {
+		if leftIndex < rightIndex {
+			return -1
+		}
+		return 1
+	}
+	return strings.Compare(left, right)
 }

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ChangeEvent } from 'react'
 import { Compass, GitBranch, MessageSquareText, PanelRight, Pencil, RefreshCw, Send, Square, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { MessageList } from '@/components/Chat/MessageList'
+import { ReferenceChips } from '@/components/Chat/ReferenceChips'
 import type { ChatMessage } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { fontStackFor } from '@/features/settings/font-options'
@@ -18,6 +20,7 @@ import { TellerPicker } from './TellerPicker'
 
 interface StoryStageProps {
   workspace?: string
+  styleSuggestions?: string[]
   stories?: StorySummary[]
   story?: StorySummary
   tellers?: Teller[]
@@ -41,6 +44,7 @@ const stageAbortControllers = new Map<string, AbortController>()
 
 export function StoryStage({
   workspace,
+  styleSuggestions = [],
   stories = [],
   story,
   tellers = [],
@@ -57,6 +61,8 @@ export function StoryStage({
 }: StoryStageProps) {
   const [input, setInput] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
+  const [styleReferences, setStyleReferences] = useState<string[]>([])
+  const [styleReferenceQuery, setStyleReferenceQuery] = useState<string | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const snapshotKey = `${storyId || 'none'}:${snapshot?.branch_id || branchId || 'main'}:${snapshot?.turns?.[snapshot.turns.length - 1]?.id || 'empty'}`
   const stageKey = `${workspace || 'current'}:${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
@@ -162,8 +168,12 @@ export function StoryStage({
     const message = sourceMessage.trim()
     if (!message || !storyId || streaming) return
     const nextRewindTurnId = override?.rewindTurnId ?? editingTurn?.id
+    const inlineStyleReferences = parseInlineStyleReferences(message)
+    const mergedStyleReferences = Array.from(new Set([...styleReferences, ...inlineStyleReferences]))
     setInput('')
     setEditingTurn(null)
+    setStyleReferences([])
+    setStyleReferenceQuery(null)
     setStageActivityContent('正在连接 AI Agent…')
     setStageLiveMessages([{ role: 'user', content: message }])
     updateStageRun({ rewindTurnId: nextRewindTurnId || undefined })
@@ -173,7 +183,15 @@ export function StoryStage({
     stageAbortControllers.set(stageKey, abortController)
     const narrativeFilter = createInteractiveNarrativeFilter()
     try {
-      const stream = await sendInteractiveMessage({ mode: 'story', story_id: storyId, branch: branchId, message, regenerate_from_turn_id: nextRewindTurnId || undefined, signal: abortController.signal })
+      const stream = await sendInteractiveMessage({
+        mode: 'story',
+        story_id: storyId,
+        branch: branchId,
+        message,
+        style_references: mergedStyleReferences,
+        regenerate_from_turn_id: nextRewindTurnId || undefined,
+        signal: abortController.signal,
+      })
       const reader = stream.getReader()
       while (true) {
         const { done, value } = await reader.read()
@@ -268,6 +286,28 @@ export function StoryStage({
   const cancelEditing = () => {
     setEditingTurn(null)
     setInput('')
+    setStyleReferenceQuery(null)
+  }
+
+  const handleInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    const nextValue = event.target.value
+    setInput(nextValue)
+    const styleMatch = nextValue.match(/(?:^|\s)#([^\s#]*)$/)
+    setStyleReferenceQuery(styleMatch ? styleMatch[1] : null)
+  }
+
+  const selectStyleReference = (path: string) => {
+    setInput((current) => current.replace(/(?:^|\s)#([^\s#]*)$/, (match) => {
+      const prefix = match.startsWith(' ') ? ' ' : ''
+      return `${prefix}#${path} `
+    }))
+    setStyleReferences((current) => Array.from(new Set([...current, path])))
+    setStyleReferenceQuery(null)
+    inputRef.current?.focus()
+  }
+
+  const removeStyleReference = (path: string) => {
+    setStyleReferences((current) => current.filter((item) => item !== path))
   }
 
   return (
@@ -383,22 +423,39 @@ export function StoryStage({
             </div>
           ) : null}
           <div className="flex items-center gap-3">
-            <Textarea
-              ref={inputRef}
-              className="nova-field h-14 min-h-14 flex-1 resize-none text-sm leading-6 placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
-              style={stageTextStyle}
-              value={input}
-              placeholder="你要做什么？"
-              onFocus={() => setInputFocused(true)}
-              onBlur={() => setInputFocused(false)}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
-                  event.preventDefault()
-                  void send()
-                }
-              }}
-            />
+            <div className="relative min-w-0 flex-1">
+              <ReferenceChips files={styleReferences} onRemove={removeStyleReference} prefix="#" tone="style" />
+              <FileReferencePicker
+                open={styleReferenceQuery !== null && styleSuggestions.length > 0}
+                query={styleReferenceQuery || ''}
+                files={styleSuggestions}
+                onSelect={selectStyleReference}
+                trigger="#"
+                placeholder="搜索风格参考..."
+                emptyText="未找到风格参考"
+                heading="风格参考"
+              />
+              <Textarea
+                ref={inputRef}
+                className="nova-field h-14 min-h-14 flex-1 resize-none text-sm leading-6 placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
+                style={stageTextStyle}
+                value={input}
+                placeholder="你要做什么？"
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => setInputFocused(false)}
+                onChange={handleInputChange}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    setStyleReferenceQuery(null)
+                    return
+                  }
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    void send()
+                  }
+                }}
+              />
+            </div>
             <Button
               className={`h-14 w-24 border border-[var(--nova-border)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-red-500/45 hover:bg-red-500/55' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
               disabled={streaming ? false : (!storyId || !input.trim())}
@@ -494,6 +551,16 @@ function isAbortError(error: unknown) {
 
 function normalizeMessageContent(value: string) {
   return value.replace(/\r\n/g, '\n').trim()
+}
+
+function parseInlineStyleReferences(input: string): string[] {
+  const result = new Set<string>()
+  const regex = /(?:^|\s)#([^\s#]+)/g
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(input)) !== null) {
+    result.add(match[1])
+  }
+  return Array.from(result)
 }
 
 function pickSceneTitle(snapshot: Snapshot | null, branchId: string) {

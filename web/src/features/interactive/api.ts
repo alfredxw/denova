@@ -127,6 +127,7 @@ export async function sendInteractiveMessage(input: {
   story_id: string
   branch?: string
   message: string
+  style_references?: string[]
   regenerate_from_turn_id?: string
   signal?: AbortSignal
 }): Promise<ReadableStream<InteractiveSSEEvent>> {

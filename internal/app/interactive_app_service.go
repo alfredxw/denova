@@ -163,23 +163,23 @@ func (s *InteractiveAppService) AppendInteractiveTurn(storyID, branchID, user, n
 }
 
 // StartInteractiveTask 启动互动模式 Agent 任务，输出写回 interactive/story。
-func (a *App) StartInteractiveTask(storyID, branchID, message string) *Task {
-	return a.interactiveService().StartInteractiveTask(storyID, branchID, message)
+func (a *App) StartInteractiveTask(storyID, branchID, message string, styleReferences []string) *Task {
+	return a.interactiveService().StartInteractiveTask(storyID, branchID, message, styleReferences)
 }
 
-func (s *InteractiveAppService) StartInteractiveTask(storyID, branchID, message string) *Task {
-	return s.startInteractiveTask(storyID, branchID, message, "")
+func (s *InteractiveAppService) StartInteractiveTask(storyID, branchID, message string, styleReferences []string) *Task {
+	return s.startInteractiveTask(storyID, branchID, message, styleReferences, "")
 }
 
-func (a *App) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string) *Task {
-	return a.interactiveService().StartInteractiveRegenerateTask(storyID, branchID, turnID, message)
+func (a *App) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string, styleReferences []string) *Task {
+	return a.interactiveService().StartInteractiveRegenerateTask(storyID, branchID, turnID, message, styleReferences)
 }
 
-func (s *InteractiveAppService) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string) *Task {
-	return s.startInteractiveTask(storyID, branchID, message, turnID)
+func (s *InteractiveAppService) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string, styleReferences []string) *Task {
+	return s.startInteractiveTask(storyID, branchID, message, styleReferences, turnID)
 }
 
-func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message, rewindTurnID string) *Task {
+func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message string, styleReferences []string, rewindTurnID string) *Task {
 	a := s.app
 	a.mu.Lock()
 	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
@@ -202,11 +202,18 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message,
 	novaDir := runtimeCfg.NovaDir
 	a.mu.Unlock()
 
+	var styleRules []agent.StyleRule
 	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 		runtimeCfg.InteractiveReplyTargetChars = appSettingsInt(layered.Effective.InteractiveReplyTargetChars, 1200)
 		runtimeCfg.InteractiveMaxTokens = appSettingsInt(layered.Effective.InteractiveMaxTokens, 0)
 		log.Printf("[interactive-agent-task] load interactive settings target_chars=%d max_tokens=%d workspace=%s", runtimeCfg.InteractiveReplyTargetChars, runtimeCfg.InteractiveMaxTokens, workspace)
+		if len(styleReferences) == 0 {
+			styleRules = convertConfigStyleRules(workspace, layered.Effective.StyleRules)
+			if len(styleRules) > 0 {
+				log.Printf("[interactive-agent-task] inject style rules count=%d rules=%q", len(styleRules), appStyleRuleNames(styleRules))
+			}
+		}
 	} else {
 		log.Printf("[interactive-agent-task] load interactive settings failed workspace=%s err=%v", workspace, err)
 	}
@@ -237,11 +244,13 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message,
 	}
 
 	req := agent.ChatRequest{
-		Message: message,
+		Message:         message,
+		StyleReferences: styleReferences,
+		StyleRules:      styleRules,
 	}
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars)
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
-		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d", task.ID(), storyID, branchID, rewindTurnID, len(message))
+		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_references=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleReferences))
 		chatService.Run(ctx, runner, conversation, bookService, req, emit)
 		if turn, stateReady, ok := conversation.LastTurnForState(); ok && !stateReady && ctx.Err() == nil {
 			startInteractiveStateTask(&runtimeCfg, conversation, turn)

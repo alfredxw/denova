@@ -16,6 +16,7 @@ type Config struct {
 	NovaDir                     string `toml:"nova_dir"`
 	Workspace                   string `toml:"workspace"`
 	IDEStoryTellerID            string `toml:"-"`
+	ChapterFilenameFormat       string `toml:"-"`
 	DraftFlowEnabled            bool   `toml:"-"`
 	ChapterGroupMin             int    `toml:"-"`
 	ChapterGroupMax             int    `toml:"-"`
@@ -56,6 +57,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
+		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		DraftFlowEnabled:            settingsBool(s.DraftFlowEnabled, false),
 		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
 		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
@@ -103,11 +105,12 @@ func settingsFromConfig(cfg *Config) Settings {
 		return Settings{}
 	}
 	return Settings{
-		OpenAIAPIKey:  cfg.OpenAIAPIKey,
-		OpenAIBaseURL: cfg.OpenAIBaseURL,
-		OpenAIModel:   cfg.OpenAIModel,
-		SkillsDir:     cfg.SkillsDir,
-		NovaDir:       cfg.NovaDir,
+		OpenAIAPIKey:          cfg.OpenAIAPIKey,
+		OpenAIBaseURL:         cfg.OpenAIBaseURL,
+		OpenAIModel:           cfg.OpenAIModel,
+		SkillsDir:             cfg.SkillsDir,
+		NovaDir:               cfg.NovaDir,
+		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
 	}
 }
 
@@ -131,6 +134,7 @@ func Load() *Config {
 			SkillsDir:                   d.SkillsDir,
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
+			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			DraftFlowEnabled:            settingsBool(d.DraftFlowEnabled, false),
 			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
 			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),

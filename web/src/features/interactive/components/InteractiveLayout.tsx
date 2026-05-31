@@ -11,12 +11,14 @@ import { StoryStage } from './StoryStage'
 
 interface InteractiveLayoutProps {
   workspace?: string
+  styleSuggestions?: string[]
   rightPanelVisible?: boolean
   onToggleRightPanel?: () => void
 }
 
 export function InteractiveLayout({
   workspace,
+  styleSuggestions = [],
   rightPanelVisible = true,
   onToggleRightPanel,
 }: InteractiveLayoutProps) {
@@ -158,6 +160,7 @@ export function InteractiveLayout({
                   <Panel id="story-stage" minSize="240px" className="min-w-0">
                     <StoryStage
                       workspace={workspace}
+                      styleSuggestions={styleSuggestions}
                       stories={stories}
                       story={currentStory}
                       tellers={tellers}

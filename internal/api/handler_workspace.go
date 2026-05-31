@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
+
+	"nova/internal/book"
 )
 
 // handleWorkspaceTree GET /api/workspace/tree — 递归扫描 workspace 目录返回文件树。
@@ -63,6 +66,31 @@ func (s *Server) handleWorkspaceFile(ctx context.Context, c *app.RequestContext)
 		"content": content,
 		"path":    relPath,
 	})
+}
+
+// handleWorkspaceSearch GET /api/workspace/search?q=xxx — 搜索当前书籍 workspace 文本内容和文件路径。
+func (s *Server) handleWorkspaceSearch(ctx context.Context, c *app.RequestContext) {
+	if !s.app.HasWorkspace() {
+		writeJSON(c, consts.StatusOK, map[string]any{"results": []any{}})
+		return
+	}
+	query := c.Query("q")
+	limit := book.DefaultSearchLimit
+	if rawLimit := c.Query("limit"); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
+		if err != nil || parsed < 0 {
+			writeError(c, consts.StatusBadRequest, "limit 必须是非负整数")
+			return
+		}
+		limit = parsed
+	}
+
+	results, err := s.app.BookService().Search(query, limit)
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, "搜索失败: "+err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]any{"results": results})
 }
 
 // handleWorkspaceFileWrite POST /api/workspace/file — 写入文件内容。

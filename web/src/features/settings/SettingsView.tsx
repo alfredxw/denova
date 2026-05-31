@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronUp, Plus, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
-import type { LayeredSettings, Settings, SettingsLayer, StyleRule } from './types'
+import { ChevronDown, ChevronUp, Save, Settings as SettingsIcon, X } from 'lucide-react'
+import type { LayeredSettings, Settings, SettingsLayer } from './types'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from './api'
 import { FONT_OPTIONS, fontLabelFor } from './font-options'
-import { getStyles } from '@/lib/api'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 
-type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'agent' | 'ide-editor' | 'ide-style-rules' | 'interactive'
+type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'agent' | 'ide-editor' | 'interactive'
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -20,7 +19,6 @@ type SettingsSection = {
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
 const iconButtonCls = 'nova-nav-item rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-const actionButtonCls = 'nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [layered, setLayered] = useState<LayeredSettings | null>(null)
@@ -28,7 +26,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [draft, setDraft] = useState<Settings>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [availableStyles, setAvailableStyles] = useState<string[]>([])
   const [availableTellers, setAvailableTellers] = useState<Teller[]>([])
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('model')
   const [expandedSections, setExpandedSections] = useState<Record<SettingsSectionId, boolean>>({
@@ -37,7 +34,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     appearance: true,
     agent: true,
     'ide-editor': true,
-    'ide-style-rules': true,
     interactive: true,
   })
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -56,13 +52,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   useEffect(() => { void load() }, [load])
 
   useEffect(() => {
-    // 用户层也可以引用当前工作区已有风格文件；失败不阻塞主体配置展示。
-    getStyles()
-      .then((items) => setAvailableStyles(items))
-      .catch((e) => console.warn('[settings] 获取风格参考列表失败', e))
-  }, [])
-
-  useEffect(() => {
     if (activeLayer !== 'workspace') return
     getInteractiveTellers()
       .then((items) => setAvailableTellers(items))
@@ -75,7 +64,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [activeLayer, layered])
 
   const effective = layered?.effective ?? {}
-  const workspaceStyleRoot = workspaceStyleRootFromConfigPath(layered?.paths?.workspace_config)
 
   const onSave = async () => {
     setSaving(true)
@@ -207,29 +195,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       ),
     },
     {
-      id: 'ide-style-rules',
-      group: 'IDE 模式',
-      title: '场景化风格规则',
-      children: (
-        <StyleRulesEditor
-          layer={activeLayer}
-          workspaceStyleRoot={workspaceStyleRoot}
-          available={availableStyles}
-          rules={draft.style_rules ?? []}
-          effective={effective.style_rules ?? []}
-          onChange={(v) => setField('style_rules', v)}
-        />
-      ),
-    },
-    {
       id: 'interactive',
       group: '互动模式',
       title: '故事舞台',
       children: activeLayer === 'workspace' ? (
         <>
-          <Num label="单轮目标字数" value={draft.interactive_reply_target_chars ?? null}
-               placeholder={placeholderFor('interactive_reply_target_chars')}
-               onChange={(v) => setField('interactive_reply_target_chars', v)} />
           <Num label="最大输出 Token" value={draft.interactive_max_tokens ?? null}
                placeholder="不填则不限制，优先避免截断"
                onChange={(v) => setField('interactive_max_tokens', v)} />
@@ -243,7 +213,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         </>
       ) : (
         <>
-          <ReadOnly label="单轮目标字数" value={`当前工作区配置，生效值：${effective.interactive_reply_target_chars ?? 1200} 个中文字`} />
           <Num label="故事舞台字号 (px)" value={draft.interactive_stage_font_size ?? null}
                placeholder={placeholderFor('interactive_stage_font_size')}
                onChange={(v) => setField('interactive_stage_font_size', v)} />
@@ -561,211 +530,4 @@ function TellerSelect({ label, value, effective, tellers, onChange }: {
       </select>
     </FieldRow>
   )
-}
-
-function StyleRulesEditor({ layer, workspaceStyleRoot, available, rules, effective, onChange }: {
-  layer: SettingsLayer
-  workspaceStyleRoot: string | null
-  available: string[]
-  rules: StyleRule[]
-  effective: StyleRule[]
-  onChange: (v: StyleRule[]) => void
-}) {
-  const addRule = () => onChange([...rules, { scene: '', styles: [] }])
-  const removeRule = (idx: number) => onChange(rules.filter((_, i) => i !== idx))
-  const updateRule = (idx: number, patch: Partial<StyleRule>) =>
-    onChange(rules.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
-  const inheriting = rules.length === 0 && effective.length > 0
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[var(--nova-text-muted)]">
-        为不同场景配置不同的风格参考。Agent 在创作章节正文时，会根据本轮要写的内容自动匹配最贴近的场景，并 read_file 读取对应风格文件作为文风参考。
-        用户配置会保存具体文件路径；本轮通过 # 显式指定风格则优先使用本轮指定，忽略此处规则。
-      </div>
-
-      {inheriting && (
-        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[var(--nova-text-faint)]">
-          继承生效（{effective.length} 条规则）：
-          <ul className="mt-1 space-y-0.5">
-            {effective.map((r, i) => (
-              <li key={i}>
-                <span className="text-[var(--nova-text-muted)]">{r.scene || '（未命名场景）'}</span>
-                <span className="ml-2">→ {r.styles.join('、') || '（无风格文件）'}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {rules.length > 0 && (
-        <div className="space-y-2">
-          {rules.map((rule, idx) => (
-            <StyleRuleRow
-              key={idx}
-              layer={layer}
-              workspaceStyleRoot={workspaceStyleRoot}
-              available={available}
-              rule={rule}
-              onChange={(patch) => updateRule(idx, patch)}
-              onRemove={() => removeRule(idx)}
-            />
-          ))}
-        </div>
-      )}
-
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={addRule}
-          className={actionButtonCls}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          新增规则
-        </button>
-        {available.length === 0 && (
-          <span className="text-[var(--nova-text-faint)]">提示：当前工作区 setting/styles/ 下尚无任何风格文件，可手动填写 .md 或 .txt 文件路径。</span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function StyleRuleRow({ layer, workspaceStyleRoot, available, rule, onChange, onRemove }: {
-  layer: SettingsLayer
-  workspaceStyleRoot: string | null
-  available: string[]
-  rule: StyleRule
-  onChange: (patch: Partial<StyleRule>) => void
-  onRemove: () => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const [customPath, setCustomPath] = useState('')
-  const availableOptions = available.map((path) => ({
-    label: path,
-    value: stylePathValueForLayer(path, layer, workspaceStyleRoot),
-  }))
-  const toggleStyle = (path: string) => {
-    if (rule.styles.includes(path)) {
-      onChange({ styles: rule.styles.filter((p) => p !== path) })
-    } else {
-      onChange({ styles: [...rule.styles, path] })
-    }
-  }
-  const addCustomStyle = () => {
-    const path = customPath.trim()
-    if (!path || rule.styles.includes(path)) return
-    onChange({ styles: [...rule.styles, path] })
-    setCustomPath('')
-  }
-  const selectedCustomStyles = rule.styles.filter((path) => !availableOptions.some((item) => item.value === path))
-  const summary = rule.styles.length === 0 ? '尚未选择风格文件' : rule.styles.join('、')
-
-  return (
-    <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <input
-          type="text"
-          value={rule.scene}
-          placeholder="场景描述（如：激烈打斗 / 日常对话 / 宏大世界观铺陈）"
-          onChange={(e) => onChange({ scene: e.target.value })}
-          className={fieldCls}
-        />
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className={`${actionButtonCls} justify-center`}
-          title={expanded ? '收起' : '展开选择风格'}
-        >
-          {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          {expanded ? '收起' : `风格 (${rule.styles.length})`}
-        </button>
-        <button
-          type="button"
-          onClick={onRemove}
-          className={`${actionButtonCls} justify-center hover:bg-red-500/15 hover:text-red-200`}
-          title="删除规则"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-          删除
-        </button>
-      </div>
-
-      {!expanded && (
-        <div className="mt-1 truncate px-1 text-[var(--nova-text-faint)]">→ {summary}</div>
-      )}
-
-      {expanded && (
-        <div className="mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
-          <div className="max-h-48 overflow-y-auto">
-            {availableOptions.length === 0 ? (
-              <div className="px-2 py-2 text-[var(--nova-text-faint)]">无可用风格文件</div>
-            ) : (
-              availableOptions.map((item) => (
-                <label key={item.value} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
-                  <input
-                    type="checkbox"
-                    checked={rule.styles.includes(item.value)}
-                    onChange={() => toggleStyle(item.value)}
-                  />
-                  <span className="truncate" title={item.value}>{item.label}</span>
-                </label>
-              ))
-            )}
-            {selectedCustomStyles.map((path) => (
-              <label key={path} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
-                <input
-                  type="checkbox"
-                  checked
-                  onChange={() => toggleStyle(path)}
-                />
-                <span className="truncate" title={path}>{path}</span>
-              </label>
-            ))}
-          </div>
-          <div className="flex flex-col gap-2 border-t border-[var(--nova-border)] p-2 sm:flex-row">
-            <input
-              type="text"
-              value={customPath}
-              placeholder="手动添加 .md 或 .txt 文件路径"
-              onChange={(e) => setCustomPath(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  addCustomStyle()
-                }
-              }}
-              className={fieldCls}
-            />
-            <button type="button" onClick={addCustomStyle} className={`${actionButtonCls} justify-center`}>
-              <Plus className="h-3.5 w-3.5" />
-              添加
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function workspaceStyleRootFromConfigPath(configPath?: string): string | null {
-  if (!configPath) return null
-  const normalized = configPath.replace(/\\/g, '/')
-  const suffix = '/.nova/config.toml'
-  if (!normalized.endsWith(suffix)) return null
-  return joinPath(configPath.slice(0, configPath.length - suffix.length), 'setting/styles')
-}
-
-function stylePathValueForLayer(stylePath: string, layer: SettingsLayer, workspaceStyleRoot: string | null): string {
-  if (layer !== 'user' || !workspaceStyleRoot || isAbsolutePath(stylePath)) return stylePath
-  return joinPath(workspaceStyleRoot, stylePath)
-}
-
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith('\\\\')
-}
-
-function joinPath(root: string, rel: string): string {
-  const sep = root.includes('\\') ? '\\' : '/'
-  return `${root.replace(/[\\/]+$/, '')}${sep}${rel.replace(/^[\\/]+/, '').replace(/[\\/]/g, sep)}`
 }

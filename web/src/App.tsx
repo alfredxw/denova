@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchSettings } from '@/features/settings/api'
 import { fontStackFor } from '@/features/settings/font-options'
-import { getLoreItems, importCharacterCard, previewCharacterCard, type CharacterCardPreview, type LoreItem } from '@/lib/api'
+import { getLoreItems, importCharacterCard, previewCharacterCard, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
 import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useChat } from '@/hooks/useChat'
@@ -31,6 +31,7 @@ const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
 const INTERACTIVE_RIGHT_VISIBLE_KEY = 'nova.layout.interactiveRightVisible'
 const APP_VERSION = __APP_VERSION__
 const MAX_OPEN_TABS_FALLBACK = 5
+type SidebarView = 'outline' | 'files' | 'search'
 
 function App() {
   const [projectVisible, setProjectVisible] = useState(() => readLayoutBoolean(PROJECT_VISIBLE_KEY, true))
@@ -43,7 +44,8 @@ function App() {
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null)
   const [maxOpenTabs, setMaxOpenTabs] = useState<number>(MAX_OPEN_TABS_FALLBACK)
   const [novaDir, setNovaDir] = useState('')
-  const [sidebarView, setSidebarView] = useState<'outline' | 'files'>('outline')
+  const [sidebarView, setSidebarView] = useState<SidebarView>('outline')
+  const [editorSearchIntent, setEditorSearchIntent] = useState<{ path: string; query: string; line: number; nonce: number } | null>(null)
   const [characterCardDialogOpen, setCharacterCardDialogOpen] = useState(false)
   const [characterCardFile, setCharacterCardFile] = useState<File | null>(null)
   const [characterCardPreview, setCharacterCardPreview] = useState<CharacterCardPreview | null>(null)
@@ -313,6 +315,20 @@ function App() {
     await selectFile(path)
   }, [limitTabs, selectFile, setSelectedChapterId])
 
+  const handleSelectSearchResult = useCallback(async (result: WorkspaceSearchResult, query: string) => {
+    setSettingsOpen(false)
+    setMode('ide')
+    setProjectVisible(true)
+    setSidebarView('search')
+    await handleSelectFile(result.path)
+    setEditorSearchIntent({
+      path: result.path,
+      query,
+      line: result.line,
+      nonce: Date.now(),
+    })
+  }, [handleSelectFile, setMode])
+
   const resetCharacterCardImport = useCallback(() => {
     setCharacterCardFile(null)
     setCharacterCardPreview(null)
@@ -448,9 +464,17 @@ function App() {
     setRightPanel('versions')
   }, [setMode, setRightPanel])
 
+  const handleOpenGlobalSearch = useCallback(() => {
+    setSettingsOpen(false)
+    setMode('ide')
+    setProjectVisible(true)
+    setSidebarView('search')
+  }, [setMode])
+
   useWorkspaceHotkeys({
     onSave: triggerSave,
     onOpenCommand: () => setCommandOpen(true),
+    onOpenSearch: handleOpenGlobalSearch,
     onGenerate: continueWriting,
     onOpenDiff: handleOpenVersions,
     onEscape: () => {
@@ -489,6 +513,7 @@ function App() {
         openTabs={openTabs}
         activeTabKey={activeTabKey}
         sidebarView={sidebarView}
+        editorSearchIntent={editorSearchIntent}
         saveSignal={saveSignal}
         gitRefreshSignal={gitRefreshSignal}
         messages={messages}
@@ -511,6 +536,7 @@ function App() {
         onBooksChange={refreshBooks}
         onOpenCharacterCardImport={handleOpenCharacterCardImportFromBooks}
         onSetSidebarView={setSidebarView}
+        onSelectSearchResult={handleSelectSearchResult}
         onRefreshTree={refresh}
         onSelectFile={handleSelectFile}
         onReferenceFile={addReference}
@@ -546,6 +572,7 @@ function App() {
           setRightPanel('ai')
         }}
         onOpenVersions={handleOpenVersions}
+        onOpenSearch={handleOpenGlobalSearch}
         onContinueWriting={continueWriting}
         onClosePanels={() => {
           setRightPanel(null)

@@ -475,6 +475,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if cfg.IDEStoryTellerID == "" && effective.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = effective.IDEStoryTellerID
 	}
+	if effective.ChapterFilenameFormat != "" {
+		cfg.ChapterFilenameFormat = effective.ChapterFilenameFormat
+	}
 	if effective.DraftFlowEnabled != nil {
 		cfg.DraftFlowEnabled = *effective.DraftFlowEnabled
 	}
@@ -507,6 +510,9 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = settings.IDEStoryTellerID
+	}
+	if settings.ChapterFilenameFormat != "" {
+		cfg.ChapterFilenameFormat = settings.ChapterFilenameFormat
 	}
 	if settings.DraftFlowEnabled != nil {
 		cfg.DraftFlowEnabled = *settings.DraftFlowEnabled
