@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { MessageItem } from './MessageItem'
 
 describe('MessageItem', () => {
@@ -58,6 +58,33 @@ describe('MessageItem', () => {
 
     const highlights = container.querySelectorAll('.nova-dialogue-highlight')
     expect(highlights).toHaveLength(2)
+  })
+
+  it('互动消息在最早版本缺少版本索引时仍显示下一版切换按钮', async () => {
+    const user = userEvent.setup()
+    const handleSwitch = vi.fn()
+
+    render(
+      <MessageItem
+        message={{
+          role: 'assistant',
+          content: '最早版本',
+          turn_id: 'turn-1',
+          turn_versions: [
+            { turn_id: 'turn-1', ts: '2026-05-31T00:00:00Z', current: true },
+            { turn_id: 'turn-2', ts: '2026-05-31T00:01:00Z' },
+          ],
+        }}
+        onRegenerate={vi.fn()}
+        onSwitchVersion={handleSwitch}
+      />,
+    )
+
+    expect(screen.getByText('1/2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '切换到上一版' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: '切换到下一版' }))
+    expect(handleSwitch).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }), 1)
   })
 
   it('思考过程流式时默认展开，结束后默认折叠但可手动展开', async () => {
