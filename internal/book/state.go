@@ -100,7 +100,7 @@ func (s *State) BrainstormPath() string {
 	return filepath.Join(s.workspace, BrainstormFileName)
 }
 
-// CompactContext 读取 setting/ 下所有状态文件，构建分级注入的上下文字符串。
+// CompactContext 读取作品状态和结构化资料库，构建分级注入的上下文字符串。
 func (s *State) CompactContext() string {
 	var sb strings.Builder
 	loreContext := s.LoreContext()
@@ -110,15 +110,10 @@ func (s *State) CompactContext() string {
 		title string
 	}{
 		{"outline.md", "当前大纲"},
-		{"characters.md", "角色卡片"},
-		{"world-building.md", "世界观设定"},
 		{"progress.md", "当前进度"},
 	}
 
 	for _, sec := range sections {
-		if loreContext != "" && (sec.file == "characters.md" || sec.file == "world-building.md") {
-			continue
-		}
 		content := s.readSettingFile(sec.file)
 		if content == "" {
 			continue
@@ -200,15 +195,15 @@ func (s *State) LoreContext() string {
 	return context
 }
 
-// HasState 检查 setting/ 目录是否已存在状态文件。
+// HasState 检查作品是否已有大纲、进度或资料库内容。
 func (s *State) HasState() bool {
-	files := []string{"outline.md", "characters.md", "progress.md"}
+	files := []string{"outline.md", "progress.md"}
 	for _, f := range files {
 		if _, err := os.Stat(filepath.Join(s.SettingDir(), f)); err == nil {
 			return true
 		}
 	}
-	return false
+	return strings.TrimSpace(s.LoreContext()) != ""
 }
 
 func (s *State) readSettingFile(name string) string {

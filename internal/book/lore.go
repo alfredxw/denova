@@ -35,9 +35,8 @@ type LoreItemInput struct {
 }
 
 type LoreCollection struct {
-	Version        int        `json:"version"`
-	LegacyMigrated bool       `json:"legacy_migrated"`
-	Items          []LoreItem `json:"items"`
+	Version int        `json:"version"`
+	Items   []LoreItem `json:"items"`
 }
 
 type LoreOperation struct {
@@ -390,27 +389,12 @@ func (s *LoreStore) loadOrCreate() (LoreCollection, error) {
 		}
 		collection.Version = loreItemsVersion
 		collection.Items = normalizeLoreItems(collection.Items)
-		if !collection.LegacyMigrated {
-			legacyItems := s.legacyItems()
-			if len(legacyItems) > 0 {
-				collection.Items = mergeLoreItems(collection.Items, legacyItems)
-				collection.LegacyMigrated = true
-				if err := s.save(collection); err != nil {
-					return LoreCollection{}, err
-				}
-			}
-		}
 		return collection, nil
 	}
 	if !os.IsNotExist(err) {
 		return LoreCollection{}, err
 	}
-	legacyItems := s.legacyItems()
-	collection := LoreCollection{
-		Version:        loreItemsVersion,
-		LegacyMigrated: len(legacyItems) > 0,
-		Items:          legacyItems,
-	}
+	collection := LoreCollection{Version: loreItemsVersion}
 	if err := s.save(collection); err != nil {
 		return LoreCollection{}, err
 	}
@@ -428,37 +412,6 @@ func (s *LoreStore) save(collection LoreCollection) error {
 		return err
 	}
 	return os.WriteFile(s.itemsPath(), append(data, '\n'), 0o644)
-}
-
-func (s *LoreStore) legacyItems() []LoreItem {
-	now := time.Now().Format(time.RFC3339)
-	candidates := []struct {
-		id         string
-		itemType   string
-		name       string
-		importance string
-		file       string
-	}{
-		{"characters", "character", "角色设定", "major", filepath.Join(s.workspace, "setting", "characters.md")},
-		{"world-building", "world", "世界观设定", "major", filepath.Join(s.workspace, "setting", "world-building.md")},
-	}
-	items := make([]LoreItem, 0, len(candidates))
-	for _, candidate := range candidates {
-		data, err := os.ReadFile(candidate.file)
-		if err != nil || strings.TrimSpace(string(data)) == "" {
-			continue
-		}
-		items = append(items, normalizeLoreItem(LoreItem{
-			ID:         candidate.id,
-			Type:       candidate.itemType,
-			Name:       candidate.name,
-			Importance: candidate.importance,
-			Content:    string(data),
-			CreatedAt:  now,
-			UpdatedAt:  now,
-		}))
-	}
-	return items
 }
 
 func (s *LoreStore) itemsPath() string {
@@ -508,22 +461,6 @@ func normalizeLoreItems(items []LoreItem) []LoreItem {
 		normalized = append(normalized, item)
 	}
 	return normalized
-}
-
-func mergeLoreItems(current, incoming []LoreItem) []LoreItem {
-	result := append([]LoreItem(nil), current...)
-	seen := map[string]bool{}
-	for _, item := range current {
-		seen[item.ID] = true
-	}
-	for _, item := range incoming {
-		if item.ID == "" || seen[item.ID] {
-			continue
-		}
-		seen[item.ID] = true
-		result = append(result, item)
-	}
-	return normalizeLoreItems(result)
 }
 
 func normalizeLoreItem(item LoreItem) LoreItem {

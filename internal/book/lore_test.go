@@ -1,43 +1,6 @@
 package book
 
-import (
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
-)
-
-func TestLoreStoreMigratesLegacySettingFiles(t *testing.T) {
-	workspace := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(workspace, "setting"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workspace, "setting", "characters.md"), []byte("林川：谨慎的幸存者"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workspace, "setting", "world-building.md"), []byte("世界已进入黄昏末日。"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	store := NewLoreStore(workspace)
-	items, err := store.List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 2 {
-		t.Fatalf("items length = %d, want 2: %#v", len(items), items)
-	}
-	context, err := store.ContextMarkdown()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(context, "林川：谨慎的幸存者") || !strings.Contains(context, "世界已进入黄昏末日。") {
-		t.Fatalf("context should include migrated settings: %s", context)
-	}
-	if _, err := os.Stat(filepath.Join(workspace, ".nova", "lore", "items.json")); err != nil {
-		t.Fatalf("items.json should be created: %v", err)
-	}
-}
+import "testing"
 
 func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	store := NewLoreStore(t.TempDir())

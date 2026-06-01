@@ -2,14 +2,14 @@
 // 供 agent / book / api 等业务模块复用，避免长字符串散落各处。
 package prompts
 
-// BrainstormTemplate 顶层定调模板。讨论定稿后内容沉淀到 outline/characters/world-building，
+// BrainstormTemplate 顶层定调模板。讨论定稿后内容沉淀到 outline/progress 和结构化资料库，
 // 本文件归档保留，不参与后续 Agent 上下文。
 const BrainstormTemplate = `# 脑暴
 
 <!--
   这是作品的顶层设定文件。
   请先把你能想到的填进去，没想清楚的留空，然后告诉 Nova 一起讨论补全。
-  讨论定稿后，Nova 会基于此生成 outline / characters / world-building，
+  讨论定稿后，Nova 会基于此生成 outline / progress，并把角色、世界观等长期设定整理到资料库，
   本文件归档保留，不再用于后续创作上下文。
 -->
 

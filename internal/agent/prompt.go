@@ -151,10 +151,6 @@ func promptStateSectionSource(title string) string {
 	switch title {
 	case "当前大纲":
 		return "setting/outline.md"
-	case "角色卡片":
-		return "setting/characters.md"
-	case "世界观设定":
-		return "setting/world-building.md"
 	case "当前进度":
 		return "setting/progress.md"
 	case "章节组细纲":
