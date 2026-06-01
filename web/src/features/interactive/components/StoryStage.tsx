@@ -150,6 +150,18 @@ export function StoryStage({
       if (turn.thinking?.trim()) {
         messages.push({ id: `${turn.id}-thinking`, role: 'thinking', content: turn.thinking, streaming: false })
       }
+      for (const [index, event] of (turn.display_events || []).entries()) {
+        if (event.role !== 'tool_call') continue
+        messages.push({
+          id: event.id || `${turn.id}-tool-${index}`,
+          role: 'tool_call',
+          content: event.content || event.name || 'unknown_tool',
+          name: event.name || event.content,
+          status: event.status || 'success',
+          streaming: false,
+          created_at: event.created_at,
+        })
+      }
       messages.push({
         id: `${turn.id}-assistant`,
         turn_id: turn.id,
@@ -290,13 +302,18 @@ export function StoryStage({
           }
           case 'tool_call': {
             const data = JSON.parse(value.data)
+            appendToolCallMessage(data)
             setStageActivityContent(`正在处理 ${data.name || '工具调用'}…`)
             break
           }
           case 'tool_args_delta': {
+            const data = JSON.parse(value.data)
+            appendToolArgsDelta(data)
             break
           }
           case 'tool_result': {
+            const data = JSON.parse(value.data)
+            updateToolCallMessage(data.id, data.name, 'success', data.content || '')
             setStageActivityContent('')
             break
           }
@@ -466,6 +483,7 @@ export function StoryStage({
                 isStreaming={streaming}
                 activityContent={activityContent}
                 highlightDialogue
+                collapseTraceBeforeAssistant
                 scrollResetKey={scrollResetKey}
                 bottomPaddingClassName="pb-6"
                 messageStyle={stageTextStyle}
@@ -642,6 +660,41 @@ export function StoryStage({
       }
       return [...prev, { role: 'thinking', content, streaming: true }]
     })
+  }
+
+  function appendToolCallMessage(payload: { id?: string; name?: string; args?: string }) {
+    const id = payload.id || `tool-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const name = payload.name || 'unknown_tool'
+    setStageLiveMessages((prev) => [
+      ...prev,
+      {
+        id,
+        role: 'tool_call',
+        content: name,
+        name,
+        args: payload.args || '',
+        status: 'running',
+        streaming: true,
+      },
+    ])
+  }
+
+  function appendToolArgsDelta(payload: { id?: string; args?: string; delta?: string }) {
+    if (!payload.id) return
+    setStageLiveMessages((prev) => prev.map((msg) => (
+      msg.role === 'tool_call' && msg.id === payload.id
+        ? { ...msg, args: payload.args !== undefined ? payload.args : `${msg.args || ''}${payload.delta || ''}` }
+        : msg
+    )))
+  }
+
+  function updateToolCallMessage(id: string | undefined, name: string | undefined, status: 'success' | 'error', result = '') {
+    setStageLiveMessages((prev) => prev.map((msg) => {
+      if (msg.role !== 'tool_call') return msg
+      const matched = id ? msg.id === id : Boolean(name && msg.name === name)
+      if (!matched) return msg
+      return { ...msg, status, result, streaming: false }
+    }))
   }
 
   function collapseNonNarrativeMessages() {

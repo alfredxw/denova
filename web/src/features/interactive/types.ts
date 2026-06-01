@@ -71,12 +71,22 @@ export interface TurnEvent {
   user: string
   narrative: string
   thinking?: string
+  display_events?: TurnDisplayEvent[]
   state_delta?: StateDelta
   hot_state?: HotState
   state_status?: 'pending' | 'ready' | 'failed'
   state_error?: string
   versions?: TurnVersion[]
   version_idx?: number
+}
+
+export interface TurnDisplayEvent {
+  id?: string
+  role: 'thinking' | 'tool_call' | 'tool_result'
+  content?: string
+  name?: string
+  status?: 'running' | 'success' | 'error'
+  created_at?: string
 }
 
 export interface TurnVersion {

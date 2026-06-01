@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, WheelEvent } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { MessageItem, ToolActivityBlock } from './MessageItem'
 import type { ChatMessage } from '@/lib/api'
 
@@ -11,13 +12,14 @@ interface MessageListProps {
   scrollResetKey?: string
   bottomPaddingClassName?: string
   messageStyle?: CSSProperties
+  collapseTraceBeforeAssistant?: boolean
   onEditMessage?: (message: ChatMessage) => void
   onRegenerateMessage?: (message: ChatMessage) => void
   onSwitchMessageVersion?: (message: ChatMessage, direction: -1 | 1) => void
 }
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', messageStyle, onEditMessage, onRegenerateMessage, onSwitchMessageVersion }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
@@ -141,6 +143,39 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     }
   }, [isNearBottom, isStreaming])
 
+  const renderMessage = (msg: ChatMessage, index: number) => (
+    msg.type === 'clear'
+      ? <ContextClearDivider key={msg.id || msg.created_at || index} createdAt={msg.created_at} />
+      : <MessageItem key={msg.id || index} message={msg} highlightDialogue={highlightDialogue} messageStyle={messageStyle} onEdit={isStreaming ? undefined : onEditMessage} onRegenerate={isStreaming ? undefined : onRegenerateMessage} onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion} />
+  )
+
+  const renderedMessages = []
+  for (let index = 0; index < messages.length; index += 1) {
+    const msg = messages[index]
+    if (collapseTraceBeforeAssistant && isTraceMessage(msg)) {
+      const traceMessages: ChatMessage[] = []
+      let nextIndex = index
+      while (nextIndex < messages.length && isTraceMessage(messages[nextIndex])) {
+        traceMessages.push(messages[nextIndex])
+        nextIndex += 1
+      }
+      const nextMessage = messages[nextIndex]
+      if (traceMessages.length > 0 && nextMessage?.role === 'assistant' && (nextMessage.content || '').trim()) {
+        renderedMessages.push(
+          <TraceGroup
+            key={`trace-${traceMessages[0].id || index}`}
+            messages={traceMessages}
+            highlightDialogue={highlightDialogue}
+            messageStyle={messageStyle}
+          />,
+        )
+        index = nextIndex - 1
+        continue
+      }
+    }
+    renderedMessages.push(renderMessage(msg, index))
+  }
+
   return (
     <div
       ref={containerRef}
@@ -156,11 +191,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         </div>
       )}
 
-      {messages.map((msg, i) => (
-        msg.type === 'clear'
-          ? <ContextClearDivider key={msg.id || msg.created_at || i} createdAt={msg.created_at} />
-          : <MessageItem key={msg.id || i} message={msg} highlightDialogue={highlightDialogue} messageStyle={messageStyle} onEdit={isStreaming ? undefined : onEditMessage} onRegenerate={isStreaming ? undefined : onRegenerateMessage} onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion} />
-      ))}
+      {renderedMessages}
 
       {isStreaming && (
         <>
@@ -178,6 +209,55 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       )}
 
       <div ref={bottomRef} />
+    </div>
+  )
+}
+
+function isTraceMessage(message: ChatMessage) {
+  return message.role === 'thinking' || message.role === 'tool_call' || message.role === 'tool_result'
+}
+
+function TraceGroup({ messages, highlightDialogue, messageStyle }: { messages: ChatMessage[]; highlightDialogue: boolean; messageStyle?: CSSProperties }) {
+  const [expanded, setExpanded] = useState(false)
+  const toolCount = messages.filter((message) => message.role === 'tool_call').length
+  const thinkingCount = messages.filter((message) => message.role === 'thinking').length
+  const label = [
+    thinkingCount > 0 ? '思考过程' : '',
+    toolCount > 0 ? `${toolCount} 次工具调用` : '',
+  ].filter(Boolean).join(' · ') || '执行过程'
+
+  return (
+    <div className="flex justify-start">
+      <div className="w-full">
+        <button
+          type="button"
+          className="flex items-center gap-1 py-1 text-xs text-[#858b96] hover:text-[#c5c9d1]"
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {label}
+        </button>
+        {expanded && (
+          <div className="space-y-2 border-l border-[#303238] px-3 py-2">
+            {messages.map((message, index) => (
+              message.role === 'thinking'
+                ? (
+                  <div key={message.id || index} className="text-xs leading-relaxed text-[#858b96] whitespace-pre-wrap">
+                    {message.content}
+                  </div>
+                )
+                : (
+                  <MessageItem
+                    key={message.id || index}
+                    message={{ ...message, streaming: false }}
+                    highlightDialogue={highlightDialogue}
+                    messageStyle={messageStyle}
+                  />
+                )
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

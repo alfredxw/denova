@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cloudwego/eino/schema"
@@ -33,6 +34,7 @@ type interactiveConversation struct {
 	lastTurn         *interactive.TurnEvent
 	lastStateReady   bool
 	lastSources      string
+	displayEvents    []interactive.DisplayEvent
 }
 
 func newInteractiveConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int) *interactiveConversation {
@@ -129,11 +131,12 @@ func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking 
 	}
 	log.Printf("[interactive-agent] parse assistant output result story_id=%s branch_id=%s narrative=%q ops=%s", c.storyID, c.branchID, narrative, interactiveStateOpsLogJSON(ops))
 	turn, _, err := c.store.AppendTurnWithState(c.storyID, interactive.AppendTurnWithStateRequest{
-		BranchID:  c.branchID,
-		User:      c.user,
-		Narrative: narrative,
-		Thinking:  thinking,
-		Ops:       ops,
+		BranchID:      c.branchID,
+		User:          c.user,
+		Narrative:     narrative,
+		Thinking:      thinking,
+		DisplayEvents: c.displayEventsSnapshot(),
+		Ops:           ops,
 	})
 	if err == nil {
 		c.mu.Lock()
@@ -142,6 +145,93 @@ func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking 
 		c.mu.Unlock()
 	}
 	return err
+}
+
+func (c *interactiveConversation) AppendDisplayEvent(event session.DisplayEvent) error {
+	if c == nil {
+		return nil
+	}
+	role := strings.TrimSpace(event.Role)
+	if role == "" {
+		return fmt.Errorf("展示事件 role 不能为空")
+	}
+	// thinking 已作为回合字段持久化；这里仅保留工具卡片，避免刷新后重复展示思考块。
+	if role == "thinking" {
+		return nil
+	}
+	if role != "tool_call" && role != "tool_result" {
+		return nil
+	}
+	name := strings.TrimSpace(event.Name)
+	content := strings.TrimSpace(event.Content)
+	if role == "tool_call" {
+		if name == "" {
+			name = content
+		}
+		if name == "" {
+			name = "unknown_tool"
+		}
+		content = name
+	}
+	status := strings.TrimSpace(event.Status)
+	if role == "tool_call" && status == "" {
+		status = "running"
+	}
+	createdAt := ""
+	if !event.CreatedAt.IsZero() {
+		createdAt = event.CreatedAt.UTC().Format(time.RFC3339Nano)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.displayEvents = append(c.displayEvents, interactive.DisplayEvent{
+		ID:        strings.TrimSpace(event.ID),
+		Role:      role,
+		Content:   content,
+		Name:      name,
+		Status:    status,
+		CreatedAt: createdAt,
+	})
+	return nil
+}
+
+func (c *interactiveConversation) UpdateDisplayToolStatus(id, name, status string) error {
+	if c == nil {
+		return nil
+	}
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+	status = strings.TrimSpace(status)
+	if status == "" {
+		status = "success"
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := len(c.displayEvents) - 1; i >= 0; i-- {
+		event := c.displayEvents[i]
+		if event.Role != "tool_call" {
+			continue
+		}
+		if id != "" && event.ID != id {
+			continue
+		}
+		if id == "" && name != "" && event.Name != name {
+			continue
+		}
+		c.displayEvents[i].Status = status
+		return nil
+	}
+	return nil
+}
+
+func (c *interactiveConversation) displayEventsSnapshot() []interactive.DisplayEvent {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.displayEvents) == 0 {
+		return nil
+	}
+	result := make([]interactive.DisplayEvent, len(c.displayEvents))
+	copy(result, c.displayEvents)
+	return result
 }
 
 func (c *interactiveConversation) LastTurnForState() (interactive.TurnEvent, bool, bool) {

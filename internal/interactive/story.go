@@ -42,19 +42,21 @@ type CreateStoryRequest struct {
 }
 
 type AppendTurnRequest struct {
-	BranchID  string `json:"branch_id"`
-	User      string `json:"user"`
-	Narrative string `json:"narrative"`
-	Thinking  string `json:"thinking,omitempty"`
+	BranchID      string         `json:"branch_id"`
+	User          string         `json:"user"`
+	Narrative     string         `json:"narrative"`
+	Thinking      string         `json:"thinking,omitempty"`
+	DisplayEvents []DisplayEvent `json:"display_events,omitempty"`
 }
 
 type AppendTurnWithStateRequest struct {
-	BranchID  string    `json:"branch_id"`
-	User      string    `json:"user"`
-	Narrative string    `json:"narrative"`
-	Thinking  string    `json:"thinking,omitempty"`
-	Ops       []StateOp `json:"ops,omitempty"`
-	HotState  *HotState `json:"hot_state,omitempty"`
+	BranchID      string         `json:"branch_id"`
+	User          string         `json:"user"`
+	Narrative     string         `json:"narrative"`
+	Thinking      string         `json:"thinking,omitempty"`
+	DisplayEvents []DisplayEvent `json:"display_events,omitempty"`
+	Ops           []StateOp      `json:"ops,omitempty"`
+	HotState      *HotState      `json:"hot_state,omitempty"`
 }
 
 type RewindTurnRequest struct {
@@ -138,24 +140,36 @@ type StoryMeta struct {
 }
 
 type TurnEvent struct {
-	V           int             `json:"v"`
-	Type        string          `json:"type"`
-	ID          string          `json:"id"`
-	ParentID    any             `json:"parent_id"`
-	BranchID    string          `json:"branch_id"`
-	Ts          string          `json:"ts"`
-	User        string          `json:"user"`
-	Narrative   string          `json:"narrative"`
-	Thinking    string          `json:"thinking,omitempty"`
-	StateDelta  *StateDelta     `json:"state_delta,omitempty"`
-	HotState    *HotState       `json:"hot_state,omitempty"`
-	StateStatus string          `json:"state_status,omitempty"`
-	StateError  string          `json:"state_error,omitempty"`
-	Alts        []TurnAlt       `json:"alts,omitempty"`
-	AltIdx      int             `json:"alt_idx,omitempty"`
-	Versions    []TurnVersion   `json:"versions,omitempty"`
-	VersionIdx  int             `json:"version_idx,omitempty"`
-	Flags       map[string]bool `json:"flags,omitempty"`
+	V             int             `json:"v"`
+	Type          string          `json:"type"`
+	ID            string          `json:"id"`
+	ParentID      any             `json:"parent_id"`
+	BranchID      string          `json:"branch_id"`
+	Ts            string          `json:"ts"`
+	User          string          `json:"user"`
+	Narrative     string          `json:"narrative"`
+	Thinking      string          `json:"thinking,omitempty"`
+	DisplayEvents []DisplayEvent  `json:"display_events,omitempty"`
+	StateDelta    *StateDelta     `json:"state_delta,omitempty"`
+	HotState      *HotState       `json:"hot_state,omitempty"`
+	StateStatus   string          `json:"state_status,omitempty"`
+	StateError    string          `json:"state_error,omitempty"`
+	Alts          []TurnAlt       `json:"alts,omitempty"`
+	AltIdx        int             `json:"alt_idx,omitempty"`
+	Versions      []TurnVersion   `json:"versions,omitempty"`
+	VersionIdx    int             `json:"version_idx,omitempty"`
+	Flags         map[string]bool `json:"flags,omitempty"`
+}
+
+// DisplayEvent 表示互动回合中只用于前端展示的事件，例如工具调用卡片。
+// 它不进入下一轮 Agent 上下文，并且不保存工具入参或返回正文。
+type DisplayEvent struct {
+	ID        string `json:"id,omitempty"`
+	Role      string `json:"role"`
+	Content   string `json:"content,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Status    string `json:"status,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 type TurnAlt struct {
@@ -464,16 +478,17 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	event := TurnEvent{
-		V:         schemaVersion,
-		Type:      "turn",
-		ID:        newID("ev"),
-		ParentID:  parentID,
-		BranchID:  branchID,
-		Ts:        now,
-		User:      req.User,
-		Narrative: req.Narrative,
-		Thinking:  strings.TrimSpace(req.Thinking),
-		Flags:     map[string]bool{"pinned": false, "locked": false},
+		V:             schemaVersion,
+		Type:          "turn",
+		ID:            newID("ev"),
+		ParentID:      parentID,
+		BranchID:      branchID,
+		Ts:            now,
+		User:          req.User,
+		Narrative:     req.Narrative,
+		Thinking:      strings.TrimSpace(req.Thinking),
+		DisplayEvents: sanitizeDisplayEvents(req.DisplayEvents),
+		Flags:         map[string]bool{"pinned": false, "locked": false},
 	}
 	branch.Head = event.ID
 	meta.Branches[branchID] = branch
@@ -509,17 +524,18 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	turn := TurnEvent{
-		V:         schemaVersion,
-		Type:      "turn",
-		ID:        newID("ev"),
-		ParentID:  parentID,
-		BranchID:  branchID,
-		Ts:        now,
-		User:      req.User,
-		Narrative: req.Narrative,
-		Thinking:  strings.TrimSpace(req.Thinking),
-		HotState:  normalizeHotState(req.HotState),
-		Flags:     map[string]bool{"pinned": false, "locked": false},
+		V:             schemaVersion,
+		Type:          "turn",
+		ID:            newID("ev"),
+		ParentID:      parentID,
+		BranchID:      branchID,
+		Ts:            now,
+		User:          req.User,
+		Narrative:     req.Narrative,
+		Thinking:      strings.TrimSpace(req.Thinking),
+		DisplayEvents: sanitizeDisplayEvents(req.DisplayEvents),
+		HotState:      normalizeHotState(req.HotState),
+		Flags:         map[string]bool{"pinned": false, "locked": false},
 	}
 	branch.Head = turn.ID
 
@@ -1402,6 +1418,49 @@ func mapToStruct(raw map[string]any, out any) error {
 		return err
 	}
 	return json.Unmarshal(data, out)
+}
+
+func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
+	if len(events) == 0 {
+		return nil
+	}
+	result := make([]DisplayEvent, 0, len(events))
+	for _, event := range events {
+		role := strings.TrimSpace(event.Role)
+		if role == "" {
+			continue
+		}
+		if role != "tool_call" && role != "tool_result" && role != "thinking" {
+			continue
+		}
+		name := strings.TrimSpace(event.Name)
+		content := strings.TrimSpace(event.Content)
+		status := strings.TrimSpace(event.Status)
+		if role == "tool_call" {
+			if name == "" {
+				name = content
+			}
+			if name == "" {
+				name = "unknown_tool"
+			}
+			content = name
+			if status == "" {
+				status = "running"
+			}
+		}
+		result = append(result, DisplayEvent{
+			ID:        strings.TrimSpace(event.ID),
+			Role:      role,
+			Content:   content,
+			Name:      name,
+			Status:    status,
+			CreatedAt: strings.TrimSpace(event.CreatedAt),
+		})
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 func applyStateOp(state map[string]any, op StateOp) {
