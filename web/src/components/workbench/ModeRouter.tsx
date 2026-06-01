@@ -358,6 +358,14 @@ export function ModeRouter(props: ModeRouterProps) {
             tabs={openTabs}
             activeTabKey={activeTabKey}
             summary={summary}
+            actions={(
+              <IdeWritingInfoActions
+                projectVisible={projectVisible}
+                aiVisible={aiVisible}
+                onToggleProjectVisible={onToggleProjectVisible}
+                onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
+              />
+            )}
             onActivateTab={onActivateTab}
             onCloseTab={onCloseTab}
           />
@@ -372,14 +380,6 @@ export function ModeRouter(props: ModeRouterProps) {
                 chapterSummary={currentChapter}
                 workspaceSummary={summary}
                 searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
-                toolbarActions={(
-                  <IdeWritingInfoActions
-                    projectVisible={projectVisible}
-                    aiVisible={aiVisible}
-                    onToggleProjectVisible={onToggleProjectVisible}
-                    onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
-                  />
-                )}
               />
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-[#7f8590]">

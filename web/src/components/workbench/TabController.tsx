@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import type { ReactNode } from 'react'
 import type { WorkspaceSummary } from '@/lib/api'
 
 const TABS_STORAGE_PREFIX = 'nova.layout.tabs:'
@@ -110,6 +111,7 @@ interface TabControllerProps {
   tabs: Tab[]
   activeTabKey: string | null
   summary: WorkspaceSummary | null
+  actions?: ReactNode
   onActivateTab: (tab: Tab) => void
   onCloseTab: (tab: Tab) => void
 }
@@ -118,47 +120,55 @@ export function TabController({
   tabs,
   activeTabKey,
   summary,
+  actions,
   onActivateTab,
   onCloseTab,
 }: TabControllerProps) {
   return (
-    <div className="nova-sidebar flex h-9 shrink-0 items-stretch overflow-x-auto border-b text-xs">
-      {tabs.length === 0 ? (
-        <div className="flex h-full items-center px-3 text-[var(--nova-text-faint)]">未打开任何页面</div>
-      ) : (
-        tabs.map((tab) => {
-          const key = tabKey(tab)
-          const isActive = key === activeTabKey
-          const label = formatChapterTabLabel(tab, summary)
-          return (
-            <div
-              key={key}
-              className={`group flex h-full shrink-0 items-center gap-2 border-r border-[var(--nova-border)] px-3 transition-colors ${
-                isActive
-                  ? 'border-t-2 border-t-[var(--nova-text-faint)] bg-[var(--nova-active)] text-[var(--nova-text)]'
-                  : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => { if (!isActive) onActivateTab(tab) }}
-                className="max-w-[220px] truncate text-left"
-                title={tab.path}
+    <div className="nova-sidebar flex h-9 shrink-0 items-stretch border-b text-xs">
+      <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+        {tabs.length === 0 ? (
+          <div className="flex h-full items-center px-3 text-[var(--nova-text-faint)]">未打开任何页面</div>
+        ) : (
+          tabs.map((tab) => {
+            const key = tabKey(tab)
+            const isActive = key === activeTabKey
+            const label = formatChapterTabLabel(tab, summary)
+            return (
+              <div
+                key={key}
+                className={`group flex h-full shrink-0 items-center gap-2 border-r border-[var(--nova-border)] px-3 transition-colors ${
+                  isActive
+                    ? 'border-t-2 border-t-[var(--nova-text-faint)] bg-[var(--nova-active)] text-[var(--nova-text)]'
+                    : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
+                }`}
               >
-                {label}
-              </button>
-              <button
-                type="button"
-                onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
-                className="nova-nav-item rounded p-0.5 opacity-0 group-hover:opacity-100"
-                aria-label={`关闭 ${label}`}
-                title="关闭"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          )
-        })
+                <button
+                  type="button"
+                  onClick={() => { if (!isActive) onActivateTab(tab) }}
+                  className="max-w-[220px] truncate text-left"
+                  title={tab.path}
+                >
+                  {label}
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
+                  className="nova-nav-item rounded p-0.5 opacity-0 group-hover:opacity-100"
+                  aria-label={`关闭 ${label}`}
+                  title="关闭"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )
+          })
+        )}
+      </div>
+      {actions && (
+        <div className="flex shrink-0 items-center gap-1 border-l border-[var(--nova-border)] px-2">
+          {actions}
+        </div>
       )}
     </div>
   )

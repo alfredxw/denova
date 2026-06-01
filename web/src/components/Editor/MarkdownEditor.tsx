@@ -1,5 +1,4 @@
 import { useEffect, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import type { Editor } from '@tiptap/react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { Extension, Node } from '@tiptap/core'
@@ -29,7 +28,6 @@ interface MarkdownEditorProps {
   chapterSummary?: ChapterSummary
   workspaceSummary?: WorkspaceSummary | null
   searchIntent?: EditorSearchIntent | null
-  toolbarActions?: ReactNode
 }
 
 export interface EditorSearchIntent {
@@ -140,7 +138,7 @@ function isTxtFile(name: string | null): boolean {
 }
 
 /** TipTap 编辑器组件，支持 Markdown 和纯文本格式 */
-export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, saveSignal = 0, chapterSummary, workspaceSummary, searchIntent, toolbarActions }: MarkdownEditorProps) {
+export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, saveSignal = 0, chapterSummary, workspaceSummary, searchIntent }: MarkdownEditorProps) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<EditorSettings>(() => loadEditorSettings())
@@ -485,7 +483,6 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
           <span className="truncate font-medium text-[var(--nova-text)]">{chapterSummary?.display_title || fileName}</span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {toolbarActions}
           {saveStatusMeta && (
             <span
               className={`inline-flex h-5 min-w-5 items-center justify-end gap-1 text-[11px] transition-colors ${saveStatusMeta.className}`}
