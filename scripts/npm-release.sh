@@ -11,6 +11,7 @@ ACCESS="${NPM_ACCESS:-public}"
 TAG="${NPM_TAG:-latest}"
 REGISTRY="${NPM_REGISTRY:-}"
 OTP="${NPM_OTP:-}"
+AUTH_TYPE="${NPM_AUTH_TYPE:-web}"
 
 usage() {
   cat <<'USAGE'
@@ -26,6 +27,7 @@ usage() {
   --access <access>     scoped package 访问级别，默认 public
   --registry <url>      指定 npm registry
   --otp <code>          npm 二次验证验证码
+  --auth-type <type>    npm 认证方式，默认 web；传空字符串可禁用
   -h, --help            显示帮助
 
 示例:
@@ -34,6 +36,7 @@ usage() {
   scripts/npm-release.sh --publish
   scripts/npm-release.sh --publish --tag beta
   scripts/npm-release.sh --publish --registry https://registry.npmjs.org/
+  scripts/npm-release.sh --publish --auth-type web
 USAGE
 }
 
@@ -65,6 +68,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --otp)
       OTP="${2:-}"
+      shift 2
+      ;;
+    --auth-type)
+      AUTH_TYPE="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -131,6 +138,8 @@ if [[ -n "${REGISTRY}" ]]; then
 fi
 if [[ -n "${OTP}" ]]; then
   PUBLISH_ARGS+=(--otp "${OTP}")
+elif [[ -n "${AUTH_TYPE}" ]]; then
+  PUBLISH_ARGS+=(--auth-type "${AUTH_TYPE}")
 fi
 
 echo "==> 预览 npm 包内容"
@@ -153,8 +162,12 @@ fi
 
 echo "==> 检查 npm 登录状态"
 if ! npm "${WHOAMI_ARGS[@]}" >/dev/null 2>&1; then
-  echo "错误: 当前未登录 npm，请先执行 npm login" >&2
-  exit 1
+  if [[ "${AUTH_TYPE}" == "web" ]]; then
+    echo "  当前未登录或需要重新认证，将交给 npm publish --auth-type=web 打开浏览器认证"
+  else
+    echo "错误: 当前未登录 npm，请先执行 npm login" >&2
+    exit 1
+  fi
 fi
 
 echo "==> 发布到 npm registry"
