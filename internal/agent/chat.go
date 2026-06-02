@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -187,6 +188,7 @@ func (s *ChatService) Run(
 				continue
 			}
 			content := drainContent(mv)
+			fullToolContent := content
 			if content == "" {
 				content = "(无返回内容)"
 			}
@@ -194,11 +196,16 @@ func (s *ChatService) Run(
 				content = content[:300] + "..."
 			}
 			logToolResult(mv.Message.ToolName, mv.Message.ToolCallID, content)
-			emit(Event{Type: "tool_result", Data: map[string]string{
+			data := map[string]interface{}{
 				"id":      mv.Message.ToolCallID,
 				"name":    mv.Message.ToolName,
 				"content": content,
-			}})
+			}
+			if itemIDs, deletedIDs := parseWriteLoreItemsToolResult(mv.Message.ToolName, fullToolContent); len(itemIDs) > 0 || len(deletedIDs) > 0 {
+				data["item_ids"] = itemIDs
+				data["deleted_ids"] = deletedIDs
+			}
+			emit(Event{Type: "tool_result", Data: data})
 			continue
 		}
 
@@ -353,6 +360,25 @@ func eventDataString(data interface{}, key string) string {
 		}
 	}
 	return ""
+}
+
+func parseWriteLoreItemsToolResult(toolName, content string) ([]string, []string) {
+	if toolName != "write_lore_items" {
+		return nil, nil
+	}
+	var itemIDs []string
+	var deletedIDs []string
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if raw, ok := strings.CutPrefix(line, "item_ids:"); ok {
+			_ = json.Unmarshal([]byte(strings.TrimSpace(raw)), &itemIDs)
+			continue
+		}
+		if raw, ok := strings.CutPrefix(line, "deleted_ids:"); ok {
+			_ = json.Unmarshal([]byte(strings.TrimSpace(raw)), &deletedIDs)
+		}
+	}
+	return itemIDs, deletedIDs
 }
 
 func markInterruptionIfNeeded(conversation Conversation, resumed *session.Interruption, userMessage, assistantContent, reason string) {

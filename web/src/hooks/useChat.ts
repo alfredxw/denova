@@ -314,6 +314,7 @@ export function useChat(options: ChatOptions = {}) {
             const content = data.content || ''
             const toolId = findToolMessageId(data, toolKeyToMessageIdRef.current, toolCallQueueRef.current)
             const toolCall = toolId ? pendingToolCallsRef.current[toolId] : undefined
+            const toolName = data.name || toolCall?.name || ''
             if (toolId) {
               const { [toolId]: _, ...restPending } = pendingToolCallsRef.current
               pendingToolCallsRef.current = restPending
@@ -331,6 +332,9 @@ export function useChat(options: ChatOptions = {}) {
             }
             if (toolCall && isFileMutationTool(toolCall.name)) {
               void onAgentFileChange?.(extractToolPath(toolCall.args))
+            }
+            if (isLoreMutationTool(toolName)) {
+              notifyLoreUpdated(readStringArray(data.item_ids))
             }
             break
           }
@@ -691,6 +695,19 @@ function normalizeMessageContent(content: string) {
 
 function isFileMutationTool(name: string) {
   return ['write_file', 'create_file', 'edit_file', 'replace_file', 'delete_file', 'rename_file'].includes(name)
+}
+
+function isLoreMutationTool(name: string) {
+  return name === 'write_lore_items'
+}
+
+function notifyLoreUpdated(itemIds: string[] = []) {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { item_ids: itemIds } }))
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
 function extractToolPath(args: string): string | undefined {

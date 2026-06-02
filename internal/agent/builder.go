@@ -21,7 +21,7 @@ import (
 
 // Build 构建小说创作 Agent（deep agent + 文件系统工具 + Skill 中间件）。
 func Build(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (adk.Agent, error) {
-	loreTools, err := newLoreTools(cfg.Workspace)
+	loreTools, err := newLoreTools(cfg.Workspace, true)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +29,7 @@ func Build(ctx context.Context, cfg *config.Config, state *book.State, teller ID
 }
 
 func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (adk.Agent, error) {
-	loreTools, err := newLoreTools(cfg.Workspace)
+	loreTools, err := newLoreTools(cfg.Workspace, false)
 	if err != nil {
 		return nil, err
 	}

@@ -5,10 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 
 	"nova/config"
 	"nova/internal/api"
@@ -23,7 +25,7 @@ func main() {
 		noOpen    bool
 	)
 	flag.StringVar(&workspace, "workspace", "", "作品工作目录 (默认恢复最近打开的书籍)")
-	flag.StringVar(&port, "port", "8080", "HTTP 服务端口")
+	flag.StringVar(&port, "port", port, "HTTP 服务端口")
 	flag.BoolVar(&dev, "dev", false, "开发模式：同时启动 Vite 前端 dev server")
 	flag.BoolVar(&noOpen, "no-open", false, "启动服务后不自动打开浏览器")
 	flag.Parse()
@@ -31,6 +33,7 @@ func main() {
 	logPath, closeLog := setupLogging("./log")
 	defer closeLog()
 	log.Printf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath)
+	port = selectStartupPort(port, shouldAutoPickPort())
 
 	cfg := config.Load()
 	if workspace != "" {
@@ -124,6 +127,62 @@ func defaultPort() string {
 		return v
 	}
 	return "8080"
+}
+
+func shouldAutoPickPort() bool {
+	if os.Getenv("NOVA_BACKEND_PORT") != "" {
+		return false
+	}
+	explicit := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "port" {
+			explicit = true
+		}
+	})
+	return !explicit
+}
+
+func selectStartupPort(preferred string, autoPick bool) string {
+	if portAvailable(preferred) {
+		return preferred
+	}
+	if !autoPick {
+		log.Printf("[startup] HTTP 端口不可用 port=%s auto_pick=false", preferred)
+		return preferred
+	}
+
+	next, err := findAvailablePort(preferred, 20)
+	if err != nil {
+		log.Printf("[startup] HTTP 端口不可用且自动选择失败 port=%s err=%v", preferred, err)
+		return preferred
+	}
+
+	fmt.Fprintf(os.Stderr, "提示: 端口 %s 已被占用，已自动改用 %s\n", preferred, next)
+	log.Printf("[startup] HTTP 端口 %s 已被占用，自动改用 %s", preferred, next)
+	return next
+}
+
+func findAvailablePort(preferred string, attempts int) (string, error) {
+	start, err := strconv.Atoi(preferred)
+	if err != nil || start <= 0 || start > 65535 {
+		return "", fmt.Errorf("端口号无效: %s", preferred)
+	}
+	for port := start + 1; port <= 65535 && port <= start+attempts; port++ {
+		candidate := strconv.Itoa(port)
+		if portAvailable(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("未找到可用端口: %d-%d", start+1, start+attempts)
+}
+
+func portAvailable(port string) bool {
+	ln, err := net.Listen("tcp", "0.0.0.0:"+port)
+	if err != nil {
+		return false
+	}
+	_ = ln.Close()
+	return true
 }
 
 func bundledDir(name string) string {

@@ -8,8 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 创作 Agent 新增 `write_lore_items` 批量写资料库工具，可在大纲定稿、章节定稿或重写后一次性创建/更新多个资料条目，并在 WebUI 自动刷新资料库索引。
 - `scripts/npm-release.sh` 发布到 npm registry 时默认使用 `--auth-type web`，可通过浏览器完成 npm 2FA/认证流程；提供 `--auth-type` 参数并保留 `--otp` 覆盖方式。
 - 整理 `ideas.md` 规划记录，补充“续写下一章没自动分卷”待修复项并移除空的 NEED FIX 段落。
+
+### Fixed
+
+- Windows Release：修复默认 8080 端口被占用时双击启动后服务监听失败并退出的问题；未显式指定端口时会自动顺延选择可用端口，并保留 `NOVA_BACKEND_PORT` / `--port` 的显式配置语义。
 
 ## [v0.1.5] - 2026-06-02
 
