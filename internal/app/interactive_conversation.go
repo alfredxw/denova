@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -59,10 +57,6 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	loreItems := c.loreContext()
 	characters := ""
 	worldBuilding := ""
-	if loreItems == "" {
-		characters = c.readSettingFile("characters.md")
-		worldBuilding = c.readSettingFile("world-building.md")
-	}
 	contextMessage := prompts.InteractiveStoryContext(prompts.InteractiveStoryPromptInput{
 		Title:             storyCtx.Meta.Title,
 		Origin:            storyCtx.Meta.Origin,
@@ -265,8 +259,8 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		StoryTellerID:     storyCtx.Meta.StoryTellerID,
 		StoryTellerMemory: teller.PromptForTargets("state_memory"),
 		BranchID:          storyCtx.Snapshot.BranchID,
-		Characters:        c.readSettingFile("characters.md"),
-		WorldBuilding:     c.readSettingFile("world-building.md"),
+		Characters:        "",
+		WorldBuilding:     "",
 		LoreItems:         c.loreContext(),
 		SnapshotStateJSON: string(stateJSON),
 		UserAction:        turn.User,
@@ -279,7 +273,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		turn.ID,
 		storyCtx.Meta.StoryTellerID,
 		interactiveTellerSlotSummary(teller, "state_memory"),
-		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, c.loreContext(), c.readSettingFile("characters.md"), c.readSettingFile("world-building.md"), string(stateJSON), turn.User, turn.Narrative),
+		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, c.loreContext(), "", "", string(stateJSON), turn.User, turn.Narrative),
 		interactivePartSummary(instruction),
 	)
 	return instruction, nil
@@ -315,22 +309,11 @@ func interactiveStoryTellerSystemInput(teller interactive.Teller) prompts.Intera
 	}
 }
 
-func (c *interactiveConversation) readSettingFile(name string) string {
-	if c.workspace == "" {
-		return ""
-	}
-	data, err := os.ReadFile(filepath.Join(c.workspace, "setting", name))
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
 func (c *interactiveConversation) loreContext() string {
 	if c.workspace == "" {
 		return ""
 	}
-	context, err := book.NewLoreStore(c.workspace).ContextMarkdown()
+	context, err := book.NewLoreStore(c.workspace).ProgressiveContextMarkdown()
 	if err != nil {
 		log.Printf("[interactive-agent] load lore context failed workspace=%s err=%v", c.workspace, err)
 		return ""
@@ -374,11 +357,6 @@ func interactiveStorySourceSummary(title, origin string, teller interactive.Tell
 	parts = append(parts, interactiveTellerSlotSources(teller, "turn_context")...)
 	if strings.TrimSpace(loreItems) != "" {
 		parts = append(parts, interactiveContextSource{Source: "资料库", Title: ".nova/lore/items.json", Content: loreItems})
-	} else {
-		parts = append(parts,
-			interactiveContextSource{Source: "设定文件", Title: "setting/characters.md", Content: characters, Note: "资料库为空时回退注入"},
-			interactiveContextSource{Source: "设定文件", Title: "setting/world-building.md", Content: worldBuilding, Note: "资料库为空时回退注入"},
-		)
 	}
 	parts = append(parts, interactiveContextSource{Source: "互动状态", Title: "当前快照 JSON", Content: snapshotState})
 	for i, turn := range turns {
@@ -399,11 +377,6 @@ func interactiveStateSourceSummary(title, origin string, teller interactive.Tell
 	parts = append(parts, interactiveTellerSlotSources(teller, "state_memory")...)
 	if strings.TrimSpace(loreItems) != "" {
 		parts = append(parts, interactiveContextSource{Source: "资料库", Title: ".nova/lore/items.json", Content: loreItems})
-	} else {
-		parts = append(parts,
-			interactiveContextSource{Source: "设定文件", Title: "setting/characters.md", Content: characters, Note: "资料库为空时回退注入"},
-			interactiveContextSource{Source: "设定文件", Title: "setting/world-building.md", Content: worldBuilding, Note: "资料库为空时回退注入"},
-		)
 	}
 	parts = append(parts,
 		interactiveContextSource{Source: "互动状态", Title: "当前快照 JSON", Content: snapshotState},

@@ -587,6 +587,8 @@ func formatLoreReference(item book.LoreItem) string {
 	sb.WriteString(item.Type)
 	sb.WriteString(" / ")
 	sb.WriteString(item.Importance)
+	sb.WriteString(" / ")
+	sb.WriteString(item.LoadMode)
 	sb.WriteString("）\n")
 	sb.WriteString("ID：")
 	sb.WriteString(item.ID)
@@ -594,6 +596,11 @@ func formatLoreReference(item book.LoreItem) string {
 	if len(item.Tags) > 0 {
 		sb.WriteString("标签：")
 		sb.WriteString(strings.Join(item.Tags, "、"))
+		sb.WriteString("\n")
+	}
+	if item.BriefDescription != "" {
+		sb.WriteString("简介：")
+		sb.WriteString(item.BriefDescription)
 		sb.WriteString("\n")
 	}
 	content := strings.TrimSpace(item.Content)

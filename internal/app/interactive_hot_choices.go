@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"nova/config"
@@ -67,10 +65,6 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 	loreItems := hotChoicesLoreContext(workspace)
 	characters := ""
 	worldBuilding := ""
-	if loreItems == "" {
-		characters = readHotChoicesSettingFile(workspace, "characters.md")
-		worldBuilding = readHotChoicesSettingFile(workspace, "world-building.md")
-	}
 	instruction := prompts.InteractiveHotChoicesInstruction(prompts.InteractiveHotChoicesPromptInput{
 		Title:             storyCtx.Meta.Title,
 		Origin:            storyCtx.Meta.Origin,
@@ -112,22 +106,11 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 	return InteractiveHotChoicesResult{Enabled: true, Choices: event.Choices}, nil
 }
 
-func readHotChoicesSettingFile(workspace, name string) string {
-	if workspace == "" {
-		return ""
-	}
-	data, err := os.ReadFile(filepath.Join(workspace, "setting", name))
-	if err != nil {
-		return ""
-	}
-	return string(data)
-}
-
 func hotChoicesLoreContext(workspace string) string {
 	if workspace == "" {
 		return ""
 	}
-	context, err := book.NewLoreStore(workspace).ContextMarkdown()
+	context, err := book.NewLoreStore(workspace).ProgressiveContextMarkdown()
 	if err != nil {
 		log.Printf("[interactive-hot-choices] load lore context failed workspace=%s err=%v", workspace, err)
 		return ""

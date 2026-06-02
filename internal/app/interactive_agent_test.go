@@ -1,25 +1,22 @@
 package app
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/cloudwego/eino/schema"
 
+	"nova/internal/book"
 	"nova/internal/interactive"
 )
 
 func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *testing.T) {
 	workspace := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(workspace, "setting"), 0o755); err != nil {
+	loreStore := book.NewLoreStore(workspace)
+	if _, err := loreStore.Create(book.LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: book.LoreLoadModeResident, Content: "林川：谨慎的幸存者"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(workspace, "setting", "characters.md"), []byte("林川：谨慎的幸存者"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(workspace, "setting", "world-building.md"), []byte("世界已进入黄昏末日。"), 0o644); err != nil {
+	if _, err := loreStore.Create(book.LoreItemInput{ID: "world", Type: "world", Name: "黄昏末日", Importance: "major", LoadMode: book.LoreLoadModeResident, Content: "世界已进入黄昏末日。"}); err != nil {
 		t.Fatal(err)
 	}
 	novaDir := t.TempDir()

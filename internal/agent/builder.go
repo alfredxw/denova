@@ -11,6 +11,7 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/adk/middlewares/skill"
 	"github.com/cloudwego/eino/adk/prebuilt/deep"
+	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 
 	"nova/config"
@@ -20,13 +21,21 @@ import (
 
 // Build 构建小说创作 Agent（deep agent + 文件系统工具 + Skill 中间件）。
 func Build(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (adk.Agent, error) {
-	return buildDeepAgent(ctx, cfg, config.AgentKindIDE, "NovaAgent", "AI 小说创作助手", BuildInstruction(cfg, state, teller), true, false, nil, nil)
+	loreTools, err := newLoreTools(cfg.Workspace)
+	if err != nil {
+		return nil, err
+	}
+	return buildDeepAgent(ctx, cfg, config.AgentKindIDE, "NovaAgent", "AI 小说创作助手", BuildInstruction(cfg, state, teller), true, false, nil, loreTools, nil)
 }
 
 func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (adk.Agent, error) {
+	loreTools, err := newLoreTools(cfg.Workspace)
+	if err != nil {
+		return nil, err
+	}
 	return buildDeepAgent(ctx, cfg, config.AgentKindInteractiveStory, "NovaInteractiveStoryAgent", "AI 互动故事叙事助手", BuildInteractiveStoryInstruction(cfg, state, teller), false, true, []adk.ChatModelAgentMiddleware{
 		newInteractiveStoryToolMiddleware(),
-	}, interactiveMaxTokens(cfg))
+	}, loreTools, interactiveMaxTokens(cfg))
 }
 
 func buildDeepAgent(
@@ -39,6 +48,7 @@ func buildDeepAgent(
 	enableSkills bool,
 	disableWriteTodos bool,
 	extraHandlers []adk.ChatModelAgentMiddleware,
+	extraTools []tool.BaseTool,
 	maxTokens *int,
 ) (adk.Agent, error) {
 	modelCfg := chatModelConfigForAgent(cfg, agentKind)
@@ -83,6 +93,7 @@ func buildDeepAgent(
 		Handlers:          handlers,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
+				Tools: extraTools,
 				// 当 LLM 幻觉出不存在的工具时，把错误信息以 ToolMessage 形式回传，
 				// 让 Agent 在下一轮自行修正工具名或改用其他方案，避免整次任务被 NodeRunError 中断。
 				UnknownToolsHandler: handleUnknownTool,

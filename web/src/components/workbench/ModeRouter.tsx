@@ -199,7 +199,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const loreSuggestions = useMemo(() => loreItems.map((item) => ({
     value: item.id,
     label: item.name,
-    description: `${loreTypeLabel(item.type)} · ${loreImportanceLabel(item.importance)}${item.tags?.length ? ` · ${item.tags.join('、')}` : ''}`,
+    description: `${loreTypeLabel(item.type)} · ${loreImportanceLabel(item.importance)} · ${loreLoadModeLabel(item.load_mode)}${item.tags?.length ? ` · ${item.tags.join('、')}` : ''}${item.brief_description ? ` · 简介：${item.brief_description}` : ''}`,
   })), [loreItems])
   const aiVisible = rightPanel === 'ai'
   const closeBooks = () => {
@@ -733,4 +733,13 @@ function loreImportanceLabel(importance: LoreItem['importance']) {
     minor: '次要',
   }
   return labels[importance] || '资料'
+}
+
+function loreLoadModeLabel(loadMode: LoreItem['load_mode']) {
+  const labels: Record<LoreItem['load_mode'], string> = {
+    resident: '常驻',
+    auto: '简介自动匹配',
+    manual: '手动引用',
+  }
+  return labels[loadMode] || '简介自动匹配'
 }

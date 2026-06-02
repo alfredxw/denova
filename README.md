@@ -185,7 +185,7 @@ my-novel/
 - `脑暴.md` 用来沉淀题材、卖点、目标读者、金手指、剧情走向和参考作品。
 - `setting/outline.md` 是长期大纲，记录主线、卷章安排、阶段目标和章节方向，低频变化。
 - `setting/chapter-groups/` 存放章节组细纲，每个文件只规划接下来要写的一组连续章节，例如 `group01-宗门立足.md`。
-- WebUI「资料库」维护角色、世界观、地点、势力、规则和物品等长期设定，内部存储在 `.nova/lore/`；`setting/characters.md` 和 `setting/world-building.md` 已不再作为创作上下文。
+- WebUI「资料库」维护角色、世界观、地点、势力、规则和物品等长期设定，内部存储在 `.nova/lore/`；每个条目可设置「常驻 / 简介自动匹配 / 手动引用」加载策略，`setting/characters.md` 和 `setting/world-building.md` 已不再作为创作上下文。
 - `chapters/` 存放正文，章节文件建议遵循 `chNNNN-章节名.md`，例如 `ch0001-废材开局.md`；已有 `ch01-...` 文件仍可识别，千章作品推荐使用四位补零以保持文件树排序稳定。
 - `drafts/` 是可选草稿目录；默认草稿流程关闭，只有启用草稿流程或明确要求草稿时使用。
 - `<nova_dir>/styles/` 存放用户级风格参考样本，只在本轮通过 `#` 指定或命中当前讲述者配置的场景化风格规则时注入 Agent。

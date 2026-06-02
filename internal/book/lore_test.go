@@ -1,6 +1,105 @@
 package book
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestLoreStoreNormalizesProgressiveLoadingDefaults(t *testing.T) {
+	workspace := t.TempDir()
+	store := NewLoreStore(workspace)
+	if err := os.MkdirAll(filepath.Dir(store.itemsPath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data := `{
+  "version": 1,
+  "items": [
+    {"id":"hero","type":"character","name":"林川","importance":"major","tags":["主角"],"content":"主角设定"},
+    {"id":"base","type":"location","name":"黄泉酒馆","importance":"important","content":"据点设定"}
+  ]
+}`
+	if err := os.WriteFile(store.itemsPath(), []byte(data), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]LoreItem{}
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	if byID["hero"].LoadMode != LoreLoadModeResident {
+		t.Fatalf("major legacy item should default to resident: %#v", byID["hero"])
+	}
+	if byID["base"].LoadMode != LoreLoadModeAuto {
+		t.Fatalf("important legacy item should default to auto: %#v", byID["base"])
+	}
+	if byID["hero"].Keywords == nil || len(byID["hero"].Keywords) != 0 {
+		t.Fatalf("missing keywords should normalize to empty array: %#v", byID["hero"].Keywords)
+	}
+}
+
+func TestLoreStoreProgressiveContextSplitsResidentAndIndex(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	if _, err := store.Create(LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: LoreLoadModeResident, Content: "主角完整正文"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, Keywords: []string{"据点"}, Content: "据点完整正文"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(LoreItemInput{ID: "secret", Type: "rule", Name: "隐藏规则", Importance: "minor", LoadMode: LoreLoadModeManual, Content: "隐藏完整正文"}); err != nil {
+		t.Fatal(err)
+	}
+
+	context, err := store.ProgressiveContextMarkdown()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(context, "## 常驻资料库") || !strings.Contains(context, "主角完整正文") {
+		t.Fatalf("resident context missing full content: %s", context)
+	}
+	if !strings.Contains(context, "## 资料库索引") || !strings.Contains(context, "base") || !strings.Contains(context, "secret") {
+		t.Fatalf("index context missing non-resident items: %s", context)
+	}
+	if strings.Contains(context, "据点完整正文") || strings.Contains(context, "隐藏完整正文") {
+		t.Fatalf("non-resident full content should not be in progressive context: %s", context)
+	}
+}
+
+func TestLoreStoreReadAndSearch(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, Tags: []string{"据点"}, Keywords: []string{"黄泉"}, Content: "据点正文"}); err != nil {
+		t.Fatal(err)
+	}
+	item, err := store.Read("base")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Content != "据点正文" {
+		t.Fatalf("read item content mismatch: %#v", item)
+	}
+	if _, err := store.Read("missing"); err == nil || !strings.Contains(err.Error(), "资料不存在") {
+		t.Fatalf("missing item should return chinese error, got %v", err)
+	}
+	results, err := store.Search("黄泉", "", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].ID != "base" {
+		t.Fatalf("search by keyword failed: %#v", results)
+	}
+	results, err = store.Search("", "location", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].ID != "base" {
+		t.Fatalf("search by type failed: %#v", results)
+	}
+}
 
 func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	store := NewLoreStore(t.TempDir())

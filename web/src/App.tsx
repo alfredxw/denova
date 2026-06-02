@@ -32,6 +32,7 @@ const INTERACTIVE_RIGHT_VISIBLE_KEY = 'nova.layout.interactiveRightVisible'
 const APP_VERSION = __APP_VERSION__
 const MAX_OPEN_TABS_FALLBACK = 5
 type SidebarView = 'outline' | 'files' | 'search'
+type WritingRightPanel = Extract<RightPanel, 'ai'> | null
 
 function App() {
   const [projectVisible, setProjectVisible] = useState(() => readLayoutBoolean(PROJECT_VISIBLE_KEY, true))
@@ -57,6 +58,7 @@ function App() {
   const [loreItems, setLoreItems] = useState<LoreItem[]>([])
   const [booksReturnMode, setBooksReturnMode] = useState<Exclude<WorkspaceMode, 'books'>>('ide')
   const booksReturnModeRef = useRef<Exclude<WorkspaceMode, 'books'>>('ide')
+  const writingRightPanelRef = useRef<WritingRightPanel>('ai')
   const characterCardInputRef = useRef<HTMLInputElement>(null)
   const chatBootstrappedRef = useRef(false)
   const tabActivationsRef = useRef<Map<string, number>>(new Map())
@@ -457,13 +459,23 @@ function App() {
   }, [mode, setMode])
   const handleSetRightPanel = useCallback((panel: RightPanel) => {
     setSettingsOpen(false)
+    if (isIdeWorkspacePanel(panel)) {
+      if (!isIdeWorkspacePanel(rightPanel)) writingRightPanelRef.current = toWritingRightPanel(rightPanel)
+      setRightPanel(panel)
+      return
+    }
+    if (panel === null && isIdeWorkspacePanel(rightPanel)) {
+      setRightPanel(writingRightPanelRef.current)
+      return
+    }
+    if (panel === 'ai' || panel === null) writingRightPanelRef.current = panel
     setRightPanel(panel)
-  }, [setRightPanel])
+  }, [rightPanel, setRightPanel])
   const handleOpenVersions = useCallback(() => {
     setSettingsOpen(false)
     setMode('ide')
-    setRightPanel('versions')
-  }, [setMode, setRightPanel])
+    handleSetRightPanel('versions')
+  }, [handleSetRightPanel, setMode])
 
   const handleOpenGlobalSearch = useCallback(() => {
     setSettingsOpen(false)
@@ -483,7 +495,7 @@ function App() {
         setCommandOpen(false)
         return
       }
-      if (rightPanel) setRightPanel(null)
+      if (rightPanel) handleSetRightPanel(null)
     },
   })
 
@@ -570,13 +582,13 @@ function App() {
         onSave={triggerSave}
         onOpenAgent={() => {
           setMode('ide')
-          setRightPanel('ai')
+          handleSetRightPanel('ai')
         }}
         onOpenVersions={handleOpenVersions}
         onOpenSearch={handleOpenGlobalSearch}
         onContinueWriting={continueWriting}
         onClosePanels={() => {
-          setRightPanel(null)
+          handleSetRightPanel(null)
         }}
       />
       <CharacterCardImportDialog
@@ -607,6 +619,14 @@ function readLayoutBoolean(key: string, fallback: boolean) {
   const value = window.localStorage.getItem(key)
   if (value === null) return fallback
   return value === 'true'
+}
+
+function isIdeWorkspacePanel(panel: RightPanel): panel is 'lore' | 'creator' | 'teller' | 'versions' {
+  return panel === 'lore' || panel === 'creator' || panel === 'teller' || panel === 'versions'
+}
+
+function toWritingRightPanel(panel: RightPanel): WritingRightPanel {
+  return panel === 'ai' ? 'ai' : null
 }
 
 function applyFontSettings(uiFont?: string, readingFont?: string) {

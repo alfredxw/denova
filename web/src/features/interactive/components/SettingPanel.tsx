@@ -53,6 +53,15 @@ const IMPORTANCE_OPTIONS = [
   { value: 'minor', label: '次要' },
 ] as const
 
+const LOAD_MODE_OPTIONS = [
+  { value: 'resident', label: '常驻', description: '完整正文进入 system prompt' },
+  { value: 'auto', label: '简介自动匹配', description: '进入索引，由 Agent 按简介判断是否加载正文' },
+  { value: 'manual', label: '手动引用', description: '仅本轮明确引用时加载正文' },
+] as const
+
+const LORE_RESIDENT_ITEM_WARNING_CHARS = 8000
+const LORE_RESIDENT_TOTAL_WARNING_CHARS = 40000
+
 const TELLER_TARGET_OPTIONS = [
   {
     value: 'system',
@@ -345,7 +354,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         type: section.createType,
         name: section.createName,
         importance: section.createType === 'character' ? 'major' : 'important',
+        load_mode: section.createType === 'character' ? 'resident' : 'auto',
         tags: section.tag ? [section.tag] : [],
+        brief_description: `${section.createName}相关设定，用于判断是否需要加载该资料正文。`,
         content: `## ${section.createName}\n\n`,
       })
       await refreshItems(item.id)
@@ -600,7 +611,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
                 onRestoreVersion={(version) => void handleRestoreLoreVersion(version)}
               />
             ) : (
-              <LoreEditor draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft} onSave={handleSave} />
+              <LoreEditor draft={draft} tagDraft={tagDraft} residentTotalChars={items.filter((item) => item.load_mode === 'resident' && item.id !== draft?.id).reduce((total, item) => total + (item.content || '').length, draft?.load_mode === 'resident' ? (draft.content || '').length : 0)} setDraft={setDraft} setTagDraft={setTagDraft} onSave={handleSave} />
             )}
           </>
         ) : activeMode === 'creator' ? (
@@ -1815,12 +1826,14 @@ function TellerDirectory({
 function LoreEditor({
   draft,
   tagDraft,
+  residentTotalChars,
   setDraft,
   setTagDraft,
   onSave,
 }: {
   draft: LoreItem | null
   tagDraft: string
+  residentTotalChars: number
   setDraft: (draft: LoreItem | null) => void
   setTagDraft: (value: string) => void
   onSave: () => void
@@ -1829,9 +1842,12 @@ function LoreEditor({
     return <EmptyState title="未选择资料" description="从左侧资料库目录选择或新建一个条目。" />
   }
 
+  const residentItemChars = draft.load_mode === 'resident' ? (draft.content || '').length : 0
+  const residentWarning = draft.load_mode === 'resident' && (residentItemChars > LORE_RESIDENT_ITEM_WARNING_CHARS || residentTotalChars > LORE_RESIDENT_TOTAL_WARNING_CHARS)
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_180px_180px]">
+      <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_160px_160px_180px]">
         <Field label="名称">
           <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
         </Field>
@@ -1859,9 +1875,28 @@ function LoreEditor({
             </SelectContent>
           </Select>
         </Field>
+        <Field label="加载策略">
+          <Select value={draft.load_mode || 'auto'} onValueChange={(value) => setDraft({ ...draft, load_mode: value as LoreItem['load_mode'] })}>
+            <SelectTrigger size="sm" className={selectClassName}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="nova-panel border text-[var(--nova-text)]">
+              {LOAD_MODE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
         <Field label="标签">
           <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder="用逗号分隔" />
         </Field>
+        <Field label="简介">
+          <Input className={inputClassName} value={draft.brief_description || ''} onChange={(event) => setDraft({ ...draft, brief_description: event.target.value })} placeholder="一两句说明适用场景、别名和关键设定" />
+        </Field>
+        <div className="lg:col-span-4 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+          {draft.load_mode === 'resident' ? '该资料会以完整正文常驻 system prompt。' : LOAD_MODE_OPTIONS.find((option) => option.value === draft.load_mode)?.description || '该资料会进入资料库索引。'}
+          {residentWarning ? <span className="ml-2 text-red-400">常驻正文较长，可能显著增加上下文成本。</span> : null}
+        </div>
       </div>
       <div className="min-h-0 flex-1 p-4">
         <Textarea
@@ -2495,23 +2530,29 @@ function sectionItems(items: LoreItem[], section: KnowledgeSection, query = '') 
     if (section.tag && !tags.includes(section.tag)) return false
     if (section.excludeTag && tags.includes(section.excludeTag)) return false
     if (normalizedQuery) {
-      const haystack = `${item.name}\n${item.content || ''}\n${tags.join('\n')}`.toLowerCase()
+      const haystack = [item.name, item.brief_description || '', item.content || '', tags.join('\n')].join('\n').toLowerCase()
       if (!haystack.includes(normalizedQuery)) return false
     }
     return true
   })
 }
-
 function targetLabel(target: TellerTarget) {
   return targetOption(target).label
 }
-
 function targetOption(target: TellerTarget) {
   return TELLER_TARGET_OPTIONS.find((option) => option.value === target) || TELLER_TARGET_OPTIONS[1]
 }
 
 function loreTypeLabel(type: LoreItem['type']) {
   return TYPE_OPTIONS.find((option) => option.value === type)?.label || '其他'
+}
+
+function loreImportanceLabel(importance: LoreItem['importance']) {
+  return IMPORTANCE_OPTIONS.find((option) => option.value === importance)?.label || '重要'
+}
+
+function loreLoadModeLabel(loadMode?: LoreItem['load_mode']) {
+  return LOAD_MODE_OPTIONS.find((option) => option.value === loadMode)?.label || '简介自动匹配'
 }
 
 function panelTitle(mode: SettingPanelMode) {
@@ -2530,7 +2571,7 @@ function editorSubtitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDr
   if (mode === 'creator') return '当前作品最高优先级规则'
   if (mode === 'teller') return tellerDraft?.description || '用户级 prompt slot 配置'
   if (!draft) return '角色、地点、组织、规则与素材'
-  return `${loreTypeLabel(draft.type)} · ${draft.importance} · ${(draft.tags || []).join('，') || '无标签'}`
+  return `${loreTypeLabel(draft.type)} · ${loreImportanceLabel(draft.importance)} · ${loreLoadModeLabel(draft.load_mode)} · ${(draft.tags || []).join('，') || '无标签'}`
 }
 
 function newTellerDraft(): Partial<Teller> {

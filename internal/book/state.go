@@ -124,7 +124,6 @@ func (s *State) CompactContext() string {
 	}
 
 	if loreContext != "" {
-		sb.WriteString("## 资料库\n\n")
 		sb.WriteString(loreContext)
 		sb.WriteString("\n\n")
 	}
@@ -186,9 +185,9 @@ func (s *State) ChapterGroupContext(limit int) string {
 	return strings.TrimSpace(sb.String())
 }
 
-// LoreContext 返回结构化资料库中的 Markdown 上下文。
+// LoreContext 返回结构化资料库的渐进式 Markdown 上下文。
 func (s *State) LoreContext() string {
-	context, err := NewLoreStore(s.workspace).ContextMarkdown()
+	context, err := NewLoreStore(s.workspace).ProgressiveContextMarkdown()
 	if err != nil {
 		return ""
 	}

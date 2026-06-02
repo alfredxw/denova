@@ -4,34 +4,51 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const loreItemsVersion = 1
 
+const (
+	LoreLoadModeResident = "resident"
+	LoreLoadModeAuto     = "auto"
+	LoreLoadModeManual   = "manual"
+
+	LoreResidentItemWarningChars  = 8000
+	LoreResidentTotalWarningChars = 40000
+)
+
 // LoreItem 是用户可编辑的作品资料条目。固定字段只负责索引和展示，正文继续使用 Markdown。
 type LoreItem struct {
-	ID         string   `json:"id"`
-	Type       string   `json:"type"`
-	Name       string   `json:"name"`
-	Importance string   `json:"importance"`
-	Tags       []string `json:"tags"`
-	Content    string   `json:"content"`
-	CreatedAt  string   `json:"created_at"`
-	UpdatedAt  string   `json:"updated_at"`
+	ID               string   `json:"id"`
+	Type             string   `json:"type"`
+	Name             string   `json:"name"`
+	Importance       string   `json:"importance"`
+	Tags             []string `json:"tags"`
+	BriefDescription string   `json:"brief_description"`
+	Keywords         []string `json:"keywords"`
+	LoadMode         string   `json:"load_mode"`
+	Content          string   `json:"content"`
+	CreatedAt        string   `json:"created_at"`
+	UpdatedAt        string   `json:"updated_at"`
 }
 
 type LoreItemInput struct {
-	ID         string   `json:"id"`
-	Type       string   `json:"type"`
-	Name       string   `json:"name"`
-	Importance string   `json:"importance"`
-	Tags       []string `json:"tags"`
-	Content    string   `json:"content"`
+	ID               string   `json:"id"`
+	Type             string   `json:"type"`
+	Name             string   `json:"name"`
+	Importance       string   `json:"importance"`
+	Tags             []string `json:"tags"`
+	BriefDescription string   `json:"brief_description"`
+	Keywords         []string `json:"keywords"`
+	LoadMode         string   `json:"load_mode"`
+	Content          string   `json:"content"`
 }
 
 type LoreCollection struct {
@@ -102,14 +119,17 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 	}
 	now := time.Now().Format(time.RFC3339)
 	item := normalizeLoreItem(LoreItem{
-		ID:         input.ID,
-		Type:       input.Type,
-		Name:       input.Name,
-		Importance: input.Importance,
-		Tags:       input.Tags,
-		Content:    input.Content,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:               input.ID,
+		Type:             input.Type,
+		Name:             input.Name,
+		Importance:       input.Importance,
+		Tags:             input.Tags,
+		BriefDescription: input.BriefDescription,
+		Keywords:         input.Keywords,
+		LoadMode:         input.LoadMode,
+		Content:          input.Content,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	})
 	if item.ID == "" {
 		item.ID = newUniqueLoreID(collection.Items, item.Type)
@@ -144,14 +164,17 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 			continue
 		}
 		updated := normalizeLoreItem(LoreItem{
-			ID:         id,
-			Type:       input.Type,
-			Name:       input.Name,
-			Importance: input.Importance,
-			Tags:       input.Tags,
-			Content:    input.Content,
-			CreatedAt:  collection.Items[i].CreatedAt,
-			UpdatedAt:  time.Now().Format(time.RFC3339),
+			ID:               id,
+			Type:             input.Type,
+			Name:             input.Name,
+			Importance:       input.Importance,
+			Tags:             input.Tags,
+			BriefDescription: input.BriefDescription,
+			Keywords:         input.Keywords,
+			LoadMode:         input.LoadMode,
+			Content:          input.Content,
+			CreatedAt:        collection.Items[i].CreatedAt,
+			UpdatedAt:        time.Now().Format(time.RFC3339),
 		})
 		if updated.Name == "" {
 			return LoreItem{}, errors.New("资料名称不能为空")
@@ -215,14 +238,17 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 		switch strings.TrimSpace(op.Op) {
 		case "create":
 			item := normalizeLoreItem(LoreItem{
-				ID:         op.Item.ID,
-				Type:       op.Item.Type,
-				Name:       op.Item.Name,
-				Importance: op.Item.Importance,
-				Tags:       op.Item.Tags,
-				Content:    op.Item.Content,
-				CreatedAt:  time.Now().Format(time.RFC3339),
-				UpdatedAt:  time.Now().Format(time.RFC3339),
+				ID:               op.Item.ID,
+				Type:             op.Item.Type,
+				Name:             op.Item.Name,
+				Importance:       op.Item.Importance,
+				Tags:             op.Item.Tags,
+				BriefDescription: op.Item.BriefDescription,
+				Keywords:         op.Item.Keywords,
+				LoadMode:         op.Item.LoadMode,
+				Content:          op.Item.Content,
+				CreatedAt:        time.Now().Format(time.RFC3339),
+				UpdatedAt:        time.Now().Format(time.RFC3339),
 			})
 			if item.ID == "" {
 				item.ID = newUniqueLoreID(next, item.Type)
@@ -245,17 +271,23 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				return LoreApplyResult{}, fmt.Errorf("资料不存在: %s", id)
 			}
 			updated := normalizeLoreItem(LoreItem{
-				ID:         id,
-				Type:       firstNonEmptyLoreValue(op.Item.Type, next[idx].Type),
-				Name:       firstNonEmptyLoreValue(op.Item.Name, next[idx].Name),
-				Importance: firstNonEmptyLoreValue(op.Item.Importance, next[idx].Importance),
-				Tags:       op.Item.Tags,
-				Content:    firstNonEmptyLoreValue(op.Item.Content, next[idx].Content),
-				CreatedAt:  next[idx].CreatedAt,
-				UpdatedAt:  time.Now().Format(time.RFC3339),
+				ID:               id,
+				Type:             firstNonEmptyLoreValue(op.Item.Type, next[idx].Type),
+				Name:             firstNonEmptyLoreValue(op.Item.Name, next[idx].Name),
+				Importance:       firstNonEmptyLoreValue(op.Item.Importance, next[idx].Importance),
+				Tags:             op.Item.Tags,
+				BriefDescription: firstNonEmptyLoreValue(op.Item.BriefDescription, next[idx].BriefDescription),
+				Keywords:         op.Item.Keywords,
+				LoadMode:         firstNonEmptyLoreValue(op.Item.LoadMode, next[idx].LoadMode),
+				Content:          firstNonEmptyLoreValue(op.Item.Content, next[idx].Content),
+				CreatedAt:        next[idx].CreatedAt,
+				UpdatedAt:        time.Now().Format(time.RFC3339),
 			})
 			if op.Item.Tags == nil {
 				updated.Tags = append([]string(nil), next[idx].Tags...)
+			}
+			if op.Item.Keywords == nil {
+				updated.Keywords = append([]string(nil), next[idx].Keywords...)
 			}
 			if updated.Name == "" {
 				return LoreApplyResult{}, fmt.Errorf("资料名称不能为空: %s", id)
@@ -351,6 +383,162 @@ func (s *LoreStore) RestoreVersion(id string) ([]LoreItem, error) {
 	return s.List()
 }
 
+func (s *LoreStore) Read(id string) (LoreItem, error) {
+	id = normalizeLoreID(id)
+	if id == "" {
+		return LoreItem{}, errors.New("资料 ID 不能为空")
+	}
+	items, err := s.List()
+	if err != nil {
+		return LoreItem{}, err
+	}
+	for _, item := range items {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return LoreItem{}, fmt.Errorf("资料不存在: %s", id)
+}
+
+func (s *LoreStore) ReadMany(ids []string) ([]LoreItem, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("资料 ID 列表不能为空")
+	}
+	wanted := make([]string, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		id = normalizeLoreID(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		wanted = append(wanted, id)
+	}
+	if len(wanted) == 0 {
+		return nil, errors.New("资料 ID 列表不能为空")
+	}
+	items, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]LoreItem, len(items))
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	result := make([]LoreItem, 0, len(wanted))
+	for _, id := range wanted {
+		item, ok := byID[id]
+		if !ok {
+			return nil, fmt.Errorf("资料不存在: %s", id)
+		}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
+func (s *LoreStore) Search(query, itemType string, limit int) ([]LoreItem, error) {
+	items, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+	itemType = normalizeOptionalLoreType(itemType)
+	if limit <= 0 {
+		limit = 8
+	}
+	if limit > 20 {
+		limit = 20
+	}
+	result := make([]LoreItem, 0, limit)
+	for _, item := range items {
+		if itemType != "" && item.Type != itemType {
+			continue
+		}
+		if query != "" && !loreItemMatchesQuery(item, query) {
+			continue
+		}
+		result = append(result, item)
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result, nil
+}
+
+func (s *LoreStore) ResidentContextMarkdown() (string, error) {
+	items, err := s.List()
+	if err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	totalChars := 0
+	for _, item := range items {
+		if item.LoadMode != LoreLoadModeResident {
+			continue
+		}
+		content := strings.TrimSpace(item.Content)
+		if content == "" {
+			continue
+		}
+		chars := utf8.RuneCountInString(content)
+		totalChars += chars
+		if chars > LoreResidentItemWarningChars {
+			log.Printf("[lore-context] resident item too long id=%s name=%s chars=%d threshold=%d", item.ID, item.Name, chars, LoreResidentItemWarningChars)
+		}
+		sb.WriteString(formatLoreItemMarkdown(item, true))
+		sb.WriteString("\n\n")
+	}
+	if totalChars > LoreResidentTotalWarningChars {
+		log.Printf("[lore-context] resident context too long chars=%d threshold=%d", totalChars, LoreResidentTotalWarningChars)
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
+
+func (s *LoreStore) IndexMarkdown() (string, error) {
+	items, err := s.List()
+	if err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	for _, item := range items {
+		if item.LoadMode == LoreLoadModeResident {
+			continue
+		}
+		fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  重要度: %s\n  加载策略: %s\n", item.ID, item.Name, loreTypeLabel(item.Type), loreImportanceLabel(item.Importance), loreLoadModeLabel(item.LoadMode))
+		if len(item.Tags) > 0 {
+			fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(item.Tags, "、"))
+		}
+		if item.BriefDescription != "" {
+			fmt.Fprintf(&sb, "  简介: %s\n", item.BriefDescription)
+		}
+		sb.WriteString("\n")
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
+
+func (s *LoreStore) ProgressiveContextMarkdown() (string, error) {
+	resident, err := s.ResidentContextMarkdown()
+	if err != nil {
+		return "", err
+	}
+	index, err := s.IndexMarkdown()
+	if err != nil {
+		return "", err
+	}
+	var sb strings.Builder
+	if resident != "" {
+		sb.WriteString("## 常驻资料库\n\n")
+		sb.WriteString(resident)
+		sb.WriteString("\n\n")
+	}
+	if index != "" {
+		sb.WriteString("## 资料库索引\n\n")
+		sb.WriteString(index)
+		sb.WriteString("\n\n")
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
+
 func (s *LoreStore) ContextMarkdown() (string, error) {
 	items, err := s.List()
 	if err != nil {
@@ -362,13 +550,7 @@ func (s *LoreStore) ContextMarkdown() (string, error) {
 		if content == "" {
 			continue
 		}
-		fmt.Fprintf(&sb, "## %s（%s / %s）\n\n", item.Name, loreTypeLabel(item.Type), loreImportanceLabel(item.Importance))
-		if len(item.Tags) > 0 {
-			sb.WriteString("标签：")
-			sb.WriteString(strings.Join(item.Tags, "、"))
-			sb.WriteString("\n\n")
-		}
-		sb.WriteString(content)
+		sb.WriteString(formatLoreItemMarkdown(item, true))
 		sb.WriteString("\n\n")
 	}
 	return strings.TrimSpace(sb.String()), nil
@@ -468,8 +650,14 @@ func normalizeLoreItem(item LoreItem) LoreItem {
 	item.Type = normalizeLoreType(item.Type)
 	item.Name = strings.TrimSpace(item.Name)
 	item.Importance = normalizeLoreImportance(item.Importance)
+	item.LoadMode = normalizeLoreLoadMode(item.LoadMode, item.Importance)
 	item.Content = strings.TrimSpace(item.Content)
 	item.Tags = normalizeLoreTags(item.Tags)
+	item.Keywords = normalizeLoreKeywords(item.Keywords)
+	item.BriefDescription = strings.TrimSpace(item.BriefDescription)
+	if item.BriefDescription == "" && len(item.Keywords) > 0 {
+		item.BriefDescription = strings.Join(item.Keywords, "、")
+	}
 	return item
 }
 
@@ -487,6 +675,10 @@ func normalizeLoreID(id string) string {
 	return sb.String()
 }
 
+func (item LoreItem) EffectiveKeywords() []string {
+	return normalizeLoreKeywords(append(append([]string{item.Name}, item.Tags...), item.Keywords...))
+}
+
 func normalizeLoreType(t string) string {
 	switch strings.TrimSpace(t) {
 	case "character", "world", "location", "faction", "rule", "item", "other":
@@ -494,6 +686,14 @@ func normalizeLoreType(t string) string {
 	default:
 		return "other"
 	}
+}
+
+func normalizeOptionalLoreType(t string) string {
+	t = strings.TrimSpace(t)
+	if t == "" {
+		return ""
+	}
+	return normalizeLoreType(t)
 }
 
 func normalizeLoreImportance(v string) string {
@@ -505,16 +705,35 @@ func normalizeLoreImportance(v string) string {
 	}
 }
 
+func normalizeLoreLoadMode(v, importance string) string {
+	switch strings.TrimSpace(v) {
+	case LoreLoadModeResident, LoreLoadModeAuto, LoreLoadModeManual:
+		return strings.TrimSpace(v)
+	}
+	if normalizeLoreImportance(importance) == "major" {
+		return LoreLoadModeResident
+	}
+	return LoreLoadModeAuto
+}
+
 func normalizeLoreTags(tags []string) []string {
-	result := make([]string, 0, len(tags))
+	return normalizeLoreStringList(tags)
+}
+
+func normalizeLoreKeywords(keywords []string) []string {
+	return normalizeLoreStringList(keywords)
+}
+
+func normalizeLoreStringList(values []string) []string {
+	result := make([]string, 0, len(values))
 	seen := map[string]bool{}
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "" || seen[tag] {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
 			continue
 		}
-		seen[tag] = true
-		result = append(result, tag)
+		seen[value] = true
+		result = append(result, value)
 	}
 	return result
 }
@@ -610,6 +829,54 @@ func loreTypeLabel(t string) string {
 	default:
 		return "其他"
 	}
+}
+
+func loreLoadModeLabel(v string) string {
+	switch normalizeLoreLoadMode(v, "") {
+	case LoreLoadModeResident:
+		return "常驻 system prompt"
+	case LoreLoadModeManual:
+		return "手动引用"
+	default:
+		return "按简介自动加载"
+	}
+}
+
+func formatLoreItemMarkdown(item LoreItem, includeContent bool) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "## %s（%s / %s / %s）\n\n", item.Name, loreTypeLabel(item.Type), loreImportanceLabel(item.Importance), loreLoadModeLabel(item.LoadMode))
+	if item.ID != "" {
+		fmt.Fprintf(&sb, "ID：%s\n", item.ID)
+	}
+	if len(item.Tags) > 0 {
+		sb.WriteString("标签：")
+		sb.WriteString(strings.Join(item.Tags, "、"))
+		sb.WriteString("\n")
+	}
+	if item.BriefDescription != "" {
+		sb.WriteString("简介：")
+		sb.WriteString(item.BriefDescription)
+		sb.WriteString("\n")
+	}
+	if includeContent {
+		content := strings.TrimSpace(item.Content)
+		if content != "" {
+			sb.WriteString("\n")
+			sb.WriteString(content)
+		}
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func loreItemMatchesQuery(item LoreItem, query string) bool {
+	parts := []string{item.ID, item.Name, item.Type, loreTypeLabel(item.Type), item.Importance, loreImportanceLabel(item.Importance), item.LoadMode, loreLoadModeLabel(item.LoadMode), item.BriefDescription}
+	parts = append(parts, item.Tags...)
+	for _, part := range parts {
+		if strings.Contains(strings.ToLower(part), query) {
+			return true
+		}
+	}
+	return false
 }
 
 func loreImportanceLabel(v string) string {

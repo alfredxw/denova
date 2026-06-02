@@ -153,7 +153,10 @@ export interface LoreItem {
   type: 'character' | 'world' | 'location' | 'faction' | 'rule' | 'item' | 'other'
   name: string
   importance: 'major' | 'important' | 'minor'
+  load_mode: 'resident' | 'auto' | 'manual'
   tags: string[]
+  brief_description: string
+  keywords: string[]
   content: string
   created_at: string
   updated_at: string
