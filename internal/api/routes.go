@@ -1,7 +1,11 @@
 package api
 
 import (
-	"github.com/cloudwego/hertz/pkg/app"
+	"log"
+	"os"
+	"path/filepath"
+
+	hertzapp "github.com/cloudwego/hertz/pkg/app"
 	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
 )
 
@@ -87,5 +91,48 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/status", s.handleStatus)
 	}
 
-	h.StaticFS("/", &app.FS{Root: "web/", IndexNames: []string{"index.html"}})
+	if webRoot := resolveWebRoot(); webRoot != "" {
+		log.Printf("[startup] Web 静态资源目录: %s", webRoot)
+		h.StaticFS("/", &hertzapp.FS{Root: webRoot, IndexNames: []string{"index.html"}})
+	} else {
+		log.Printf("[startup] 未找到 Web 静态资源目录，仅注册 API 路由")
+	}
+}
+
+func resolveWebRoot() string {
+	candidates := []string{}
+	if v := os.Getenv("NOVA_WEB_DIR"); v != "" {
+		candidates = append(candidates, v)
+	}
+	candidates = append(candidates, "web")
+	if exe, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exe)
+		candidates = append(candidates,
+			filepath.Join(exeDir, "web"),
+			filepath.Join(exeDir, "..", "web"),
+			filepath.Join(exeDir, "..", "..", "web"),
+		)
+	}
+	for _, candidate := range candidates {
+		root := normalizeStaticRoot(candidate)
+		if root == "" {
+			continue
+		}
+		if fi, err := os.Stat(root); err == nil && fi.IsDir() {
+			if _, err := os.Stat(filepath.Join(root, "index.html")); err == nil {
+				return root
+			}
+		}
+	}
+	return ""
+}
+
+func normalizeStaticRoot(root string) string {
+	if root == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(root); err == nil {
+		return abs
+	}
+	return filepath.Clean(root)
 }

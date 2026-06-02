@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 
 	"nova/config"
@@ -17,7 +18,7 @@ import (
 func main() {
 	var (
 		workspace string
-		port      string
+		port      = defaultPort()
 		dev       bool
 		noOpen    bool
 	)
@@ -40,19 +41,7 @@ func main() {
 		cfg.ResumeLastWorkspace = false
 	}
 
-	// 自动检测 skills 目录
-	if cfg.SkillsDir == "" {
-		candidates := []string{
-			"./skills",
-			os.Args[0] + "/../skills",
-		}
-		for _, c := range candidates {
-			if fi, err := os.Stat(c); err == nil && fi.IsDir() {
-				cfg.SkillsDir = c
-				break
-			}
-		}
-	}
+	cfg.SkillsDir = resolveSkillsDir(cfg.SkillsDir)
 
 	ctx := context.Background()
 
@@ -114,7 +103,7 @@ func startViteDev() {
 	webDir := "./web"
 	if _, err := os.Stat(webDir); os.IsNotExist(err) {
 		// 尝试可执行文件同级
-		webDir = os.Args[0] + "/../web"
+		webDir = bundledDir("web")
 		if _, err := os.Stat(webDir); os.IsNotExist(err) {
 			fmt.Fprintf(os.Stderr, "警告: 未找到 web/ 目录，跳过前端 dev server\n")
 			return
@@ -128,4 +117,59 @@ func startViteDev() {
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Vite dev server 退出: %v\n", err)
 	}
+}
+
+func defaultPort() string {
+	if v := os.Getenv("NOVA_BACKEND_PORT"); v != "" {
+		return v
+	}
+	return "8080"
+}
+
+func bundledDir(name string) string {
+	if exe, err := os.Executable(); err == nil {
+		return filepath.Join(filepath.Dir(exe), name)
+	}
+	return ""
+}
+
+func bundledParentDir(name string) string {
+	if exe, err := os.Executable(); err == nil {
+		return filepath.Join(filepath.Dir(exe), "..", "..", name)
+	}
+	return ""
+}
+
+func resolveSkillsDir(configured string) string {
+	if dir := existingDir(configured); dir != "" {
+		return dir
+	}
+	if configured != "" && os.Getenv("NOVA_SKILLS_DIR") != "" {
+		return configured
+	}
+	candidates := []string{
+		"./skills",
+		bundledDir("skills"),
+		bundledParentDir("skills"),
+	}
+	for _, c := range candidates {
+		if dir := existingDir(c); dir != "" {
+			return dir
+		}
+	}
+	return configured
+}
+
+func existingDir(path string) string {
+	if path == "" {
+		return ""
+	}
+	clean := filepath.Clean(path)
+	if fi, err := os.Stat(clean); err == nil && fi.IsDir() {
+		if abs, err := filepath.Abs(clean); err == nil {
+			return abs
+		}
+		return clean
+	}
+	return ""
 }

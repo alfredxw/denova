@@ -2,6 +2,7 @@
 .agents/
 playground
 output/
+dist/
 log/
 data/
 web/node_modules/
