@@ -122,30 +122,56 @@ export interface BookMeta {
   updated_at: string
 }
 
-export interface GitChange {
+export type VersionSource = 'manual' | 'timer' | 'agent' | 'rollback_backup'
+
+export interface VersionChange {
   path: string
-  status: string
+  status: 'added' | 'modified' | 'deleted' | string
 }
 
-export interface GitStatus {
-  initialized: boolean
-  branch: string
+export interface VersionEntry {
+  id: string
+  message: string
+  created_at: string
+  source: VersionSource
+  file_count: number
+  total_bytes: number
+  changed_paths: string[]
+}
+
+export interface VersionAutoInfo {
+  timed_enabled: boolean
+  timed_interval_minutes: number
+  agent_enabled: boolean
+  agent_char_threshold: number
+  retention: number
+  last_auto_at?: string
+}
+
+export interface VersionStatus {
+  has_versions: boolean
   clean: boolean
-  changes: GitChange[]
+  changes: VersionChange[]
+  latest?: VersionEntry
+  auto: VersionAutoInfo
 }
 
-export interface GitCommit {
-  hash: string
-  short_hash: string
-  author: string
-  date: string
-  subject: string
+export interface VersionCommandResult {
+  message: string
+  version?: VersionEntry
+  status?: VersionStatus
 }
 
-export interface GitCommandResult {
-  command: string
-  output: string
-  status?: GitStatus
+export interface VersionDiff {
+  version: VersionEntry
+  changes: VersionChange[]
+  path?: string
+  original?: string
+  modified?: string
+  text: boolean
+  binary: boolean
+  missing_in_version?: boolean
+  missing_in_workspace?: boolean
 }
 
 export interface LoreItem {
@@ -593,62 +619,38 @@ export async function updateBookInfo(path: string, title: string, author: string
   })
 }
 
-/** 获取当前书籍 Git 状态 */
-export async function getGitStatus(): Promise<GitStatus> {
-  return requestJSON('/api/git/status')
+/** 获取当前书籍版本状态 */
+export async function getVersionStatus(): Promise<VersionStatus> {
+  const status = await requestJSON<VersionStatus>('/api/versions/status')
+  return {
+    ...status,
+    changes: status.changes ?? [],
+  }
 }
 
-/** 获取当前书籍 Git 提交历史 */
-export async function getGitHistory(limit = 20): Promise<GitCommit[]> {
-  const data = await requestJSON<{ commits: GitCommit[] }>(`/api/git/history?limit=${encodeURIComponent(String(limit))}`)
-  return data.commits || []
-}
-
-/** 获取当前书籍 Git diff */
-export async function getGitDiff(path?: string): Promise<string> {
-  const query = path ? `?path=${encodeURIComponent(path)}` : ''
-  const data = await requestJSON<{ diff: string }>(`/api/git/diff${query}`)
-  return data.diff || ''
-}
-
-/** 初始化当前书籍 Git 仓库 */
-export async function initGitRepository(): Promise<GitCommandResult> {
-  return requestJSON('/api/git/init', { method: 'POST' })
+/** 获取当前书籍版本历史 */
+export async function getVersions(limit = 30): Promise<VersionEntry[]> {
+  const data = await requestJSON<{ versions: VersionEntry[] }>(`/api/versions?limit=${encodeURIComponent(String(limit))}`)
+  return data.versions || []
 }
 
 /** 创建当前书籍版本 */
-export async function createGitVersion(message: string): Promise<GitCommandResult> {
-  return requestJSON('/api/git/commit', {
+export async function createVersion(message: string): Promise<VersionCommandResult> {
+  return requestJSON('/api/versions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message }),
   })
 }
 
-/** 回滚当前书籍到指定版本 */
-export async function rollbackGitVersion(hash: string): Promise<GitCommandResult> {
-  return requestJSON('/api/git/rollback', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ hash }),
-  })
+/** 获取版本差异 */
+export async function getVersionDiff(id: string, path?: string): Promise<VersionDiff> {
+  const query = path ? `?path=${encodeURIComponent(path)}` : ''
+  return requestJSON(`/api/versions/${encodeURIComponent(id)}/diff${query}`)
 }
 
-/** 暂存当前书籍未提交内容 */
-export async function stashGitChanges(): Promise<GitCommandResult> {
-  return requestJSON('/api/git/stash', { method: 'POST' })
+/** 恢复当前书籍到指定版本 */
+export async function restoreVersion(id: string): Promise<VersionCommandResult> {
+  return requestJSON(`/api/versions/${encodeURIComponent(id)}/restore`, { method: 'POST' })
 }
 
-/** 恢复最近一次暂存内容 */
-export async function popGitStash(): Promise<GitCommandResult> {
-  return requestJSON('/api/git/stash/pop', { method: 'POST' })
-}
-
-/** 执行受限 Git 命令 */
-export async function runGitCommand(command: string): Promise<GitCommandResult> {
-  return requestJSON('/api/git/command', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ command }),
-  })
-}

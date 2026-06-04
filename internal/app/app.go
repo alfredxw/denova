@@ -30,7 +30,7 @@ type App struct {
 	chatService            *agent.ChatService
 	bookRegistry           *BookRegistry
 	bookMetaStore          *BookMetaStore
-	gitService             *book.GitService
+	versionService         *book.VersionService
 	activeTask             *Task
 	activeInteractiveTask  *Task
 
@@ -121,5 +121,5 @@ func (a *App) applyRuntime(runtime *runtimeState) {
 	a.session = runtime.session
 	a.agentRunner = runtime.agentRunner
 	a.interactiveStoryRunner = runtime.interactiveStoryRunner
-	a.gitService = runtime.gitService
+	a.versionService = runtime.versionService
 }

@@ -12,6 +12,11 @@ export interface Settings {
   draft_flow_enabled?: boolean | null
   chapter_group_min?: number | null
   chapter_group_max?: number | null
+  version_timed_enabled?: boolean | null
+  version_timed_interval_minutes?: number | null
+  version_agent_enabled?: boolean | null
+  version_agent_char_threshold?: number | null
+  version_auto_retention?: number | null
   ui_font_family?: string
   reading_font_family?: string
   max_iteration?: number | null

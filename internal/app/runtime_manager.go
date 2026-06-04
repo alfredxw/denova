@@ -17,7 +17,7 @@ import (
 	"nova/internal/session"
 )
 
-// WorkspaceRuntimeManager 负责工作区运行时、书籍元信息、Git 与设置等跨领域基础能力。
+// WorkspaceRuntimeManager 负责工作区运行时、书籍元信息、原生版本服务与设置等跨领域基础能力。
 type WorkspaceRuntimeManager struct {
 	app *App
 }
@@ -246,121 +246,108 @@ func (s *WorkspaceRuntimeManager) CreateBook(ctx context.Context, parentDir, tit
 	return workspace, meta, nil
 }
 
-// GitStatus 返回当前书籍 workspace 的 Git 状态。
-func (a *App) GitStatus(ctx context.Context) (book.GitStatus, error) {
-	return a.runtime().GitStatus(ctx)
+// VersionStatus 返回当前书籍 workspace 的原生版本状态。
+func (a *App) VersionStatus(ctx context.Context) (book.VersionStatus, error) {
+	return a.runtime().VersionStatus(ctx)
 }
 
-func (s *WorkspaceRuntimeManager) GitStatus(ctx context.Context) (book.GitStatus, error) {
-	gitService := s.gitService()
-	if gitService == nil {
-		return book.GitStatus{}, ErrNoWorkspace
+func (s *WorkspaceRuntimeManager) VersionStatus(ctx context.Context) (book.VersionStatus, error) {
+	_ = ctx
+	versionService := s.versionService()
+	if versionService == nil {
+		return book.VersionStatus{}, ErrNoWorkspace
 	}
-	return gitService.Status(ctx)
+	return versionService.Status(s.versionAutoSettings())
 }
 
-// GitHistory 返回当前书籍 workspace 的 Git 提交历史。
-func (a *App) GitHistory(ctx context.Context, limit int) ([]book.GitCommit, error) {
-	return a.runtime().GitHistory(ctx, limit)
+// VersionHistory 返回当前书籍 workspace 的版本历史。
+func (a *App) VersionHistory(ctx context.Context, limit int) ([]book.VersionEntry, error) {
+	return a.runtime().VersionHistory(ctx, limit)
 }
 
-func (s *WorkspaceRuntimeManager) GitHistory(ctx context.Context, limit int) ([]book.GitCommit, error) {
-	gitService := s.gitService()
-	if gitService == nil {
+func (s *WorkspaceRuntimeManager) VersionHistory(ctx context.Context, limit int) ([]book.VersionEntry, error) {
+	_ = ctx
+	versionService := s.versionService()
+	if versionService == nil {
 		return nil, ErrNoWorkspace
 	}
-	return gitService.History(ctx, limit)
+	return versionService.History(limit)
 }
 
-// GitDiff 返回当前工作区 Git diff。
-func (a *App) GitDiff(ctx context.Context, path string) (string, error) {
-	return a.runtime().GitDiff(ctx, path)
+// CreateVersion 创建一个手动版本。
+func (a *App) CreateVersion(ctx context.Context, message string) (book.VersionCommandResult, error) {
+	return a.runtime().CreateVersion(ctx, message)
 }
 
-func (s *WorkspaceRuntimeManager) GitDiff(ctx context.Context, path string) (string, error) {
-	gitService := s.gitService()
-	if gitService == nil {
-		return "", ErrNoWorkspace
+func (s *WorkspaceRuntimeManager) CreateVersion(ctx context.Context, message string) (book.VersionCommandResult, error) {
+	_ = ctx
+	versionService := s.versionService()
+	if versionService == nil {
+		return book.VersionCommandResult{}, ErrNoWorkspace
 	}
-	return gitService.Diff(ctx, path)
+	return versionService.Create(message, book.VersionSourceManual, s.versionAutoSettings())
 }
 
-// InitGit 初始化当前书籍 workspace 的 Git 仓库。
-func (a *App) InitGit(ctx context.Context) (book.GitCommandResult, error) {
-	return a.runtime().InitGit(ctx)
+// VersionDiff 返回目标版本与当前工作区的差异。
+func (a *App) VersionDiff(ctx context.Context, id, path string) (book.VersionDiff, error) {
+	return a.runtime().VersionDiff(ctx, id, path)
 }
 
-func (s *WorkspaceRuntimeManager) InitGit(ctx context.Context) (book.GitCommandResult, error) {
-	gitService := s.gitService()
-	if gitService == nil {
-		return book.GitCommandResult{}, ErrNoWorkspace
+func (s *WorkspaceRuntimeManager) VersionDiff(ctx context.Context, id, path string) (book.VersionDiff, error) {
+	_ = ctx
+	versionService := s.versionService()
+	if versionService == nil {
+		return book.VersionDiff{}, ErrNoWorkspace
 	}
-	return gitService.Init(ctx)
+	return versionService.Diff(id, path)
 }
 
-// CreateGitVersion 创建一个书籍版本。
-func (a *App) CreateGitVersion(ctx context.Context, message string) (book.GitCommandResult, error) {
-	return a.runtime().CreateGitVersion(ctx, message)
+// RestoreVersion 将整本书恢复到指定版本。
+func (a *App) RestoreVersion(ctx context.Context, id string) (book.VersionCommandResult, error) {
+	return a.runtime().RestoreVersion(ctx, id)
 }
 
-func (s *WorkspaceRuntimeManager) CreateGitVersion(ctx context.Context, message string) (book.GitCommandResult, error) {
-	gitService := s.gitService()
-	if gitService == nil {
-		return book.GitCommandResult{}, ErrNoWorkspace
+func (s *WorkspaceRuntimeManager) RestoreVersion(ctx context.Context, id string) (book.VersionCommandResult, error) {
+	versionService := s.versionService()
+	if versionService == nil {
+		return book.VersionCommandResult{}, ErrNoWorkspace
 	}
-	return gitService.CreateVersion(ctx, message)
-}
-
-// RollbackGitVersion 将整本书回滚到指定版本。
-func (a *App) RollbackGitVersion(ctx context.Context, hash string) (book.GitCommandResult, error) {
-	return a.runtime().RollbackGitVersion(ctx, hash)
-}
-
-func (s *WorkspaceRuntimeManager) RollbackGitVersion(ctx context.Context, hash string) (book.GitCommandResult, error) {
-	gitService := s.gitService()
-	if gitService == nil {
-		return book.GitCommandResult{}, ErrNoWorkspace
+	result, err := versionService.Restore(id, s.versionAutoSettings())
+	if err != nil {
+		return book.VersionCommandResult{}, err
 	}
-	return gitService.Rollback(ctx, hash)
-}
-
-// StashGitChanges 暂存当前未提交内容。
-func (a *App) StashGitChanges(ctx context.Context) (book.GitCommandResult, error) {
-	return a.runtime().StashGitChanges(ctx)
-}
-
-func (s *WorkspaceRuntimeManager) StashGitChanges(ctx context.Context) (book.GitCommandResult, error) {
-	gitService := s.gitService()
-	if gitService == nil {
-		return book.GitCommandResult{}, ErrNoWorkspace
+	if timed, timedErr := versionService.MaybeCreateTimed(s.versionAutoSettings()); timedErr != nil {
+		log.Printf("[versions] 恢复版本后定时保存检查失败 err=%v", timedErr)
+	} else if !timed.Skipped && timed.Version != nil {
+		log.Printf("[versions] 恢复版本后创建定时版本 id=%s", timed.Version.ID)
 	}
-	return gitService.Stash(ctx)
+	_ = ctx
+	return result, nil
 }
 
-// PopGitStash 恢复最近一次暂存内容。
-func (a *App) PopGitStash(ctx context.Context) (book.GitCommandResult, error) {
-	return a.runtime().PopGitStash(ctx)
+// MaybeCreateTimedVersion 在写操作后按定时策略创建自动版本。
+func (a *App) MaybeCreateTimedVersion(ctx context.Context) {
+	a.runtime().MaybeCreateTimedVersion(ctx)
 }
 
-func (s *WorkspaceRuntimeManager) PopGitStash(ctx context.Context) (book.GitCommandResult, error) {
-	gitService := s.gitService()
-	if gitService == nil {
-		return book.GitCommandResult{}, ErrNoWorkspace
+func (s *WorkspaceRuntimeManager) MaybeCreateTimedVersion(ctx context.Context) {
+	_ = ctx
+	versionService := s.versionService()
+	if versionService == nil {
+		return
 	}
-	return gitService.PopStash(ctx)
-}
-
-// RunGitCommand 执行受限 Git 命令。
-func (a *App) RunGitCommand(ctx context.Context, input string) (book.GitCommandResult, error) {
-	return a.runtime().RunGitCommand(ctx, input)
-}
-
-func (s *WorkspaceRuntimeManager) RunGitCommand(ctx context.Context, input string) (book.GitCommandResult, error) {
-	gitService := s.gitService()
-	if gitService == nil {
-		return book.GitCommandResult{}, ErrNoWorkspace
+	result, err := versionService.MaybeCreateTimed(s.versionAutoSettings())
+	if err != nil {
+		log.Printf("[versions] 定时自动保存失败 err=%v", err)
+		return
 	}
-	return gitService.RunCommand(ctx, input)
+	if result.Skipped {
+		log.Printf("[versions] 定时自动保存跳过 reason=%q", result.Reason)
+		return
+	}
+	if result.Version != nil {
+		log.Printf("[versions] 定时自动保存完成 id=%s", result.Version.ID)
+	}
 }
 
 // Status 返回当前作品状态摘要。
@@ -503,6 +490,21 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.InteractiveHotChoices != nil {
 		cfg.InteractiveHotChoices = *effective.InteractiveHotChoices
 	}
+	if effective.VersionTimedEnabled != nil {
+		cfg.VersionTimedEnabled = *effective.VersionTimedEnabled
+	}
+	if effective.VersionTimedIntervalMinutes != nil {
+		cfg.VersionTimedIntervalMinutes = appSettingsInt(effective.VersionTimedIntervalMinutes, 10)
+	}
+	if effective.VersionAgentEnabled != nil {
+		cfg.VersionAgentEnabled = *effective.VersionAgentEnabled
+	}
+	if effective.VersionAgentCharThreshold != nil {
+		cfg.VersionAgentCharThreshold = appSettingsInt(effective.VersionAgentCharThreshold, 3000)
+	}
+	if effective.VersionAutoRetention != nil {
+		cfg.VersionAutoRetention = appSettingsInt(effective.VersionAutoRetention, 100)
+	}
 }
 
 func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
@@ -549,13 +551,45 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.InteractiveHotChoices != nil {
 		cfg.InteractiveHotChoices = *settings.InteractiveHotChoices
 	}
+	if settings.VersionTimedEnabled != nil {
+		cfg.VersionTimedEnabled = *settings.VersionTimedEnabled
+	}
+	if settings.VersionTimedIntervalMinutes != nil {
+		cfg.VersionTimedIntervalMinutes = appSettingsInt(settings.VersionTimedIntervalMinutes, 10)
+	}
+	if settings.VersionAgentEnabled != nil {
+		cfg.VersionAgentEnabled = *settings.VersionAgentEnabled
+	}
+	if settings.VersionAgentCharThreshold != nil {
+		cfg.VersionAgentCharThreshold = appSettingsInt(settings.VersionAgentCharThreshold, 3000)
+	}
+	if settings.VersionAutoRetention != nil {
+		cfg.VersionAutoRetention = appSettingsInt(settings.VersionAutoRetention, 100)
+	}
 }
 
-func (s *WorkspaceRuntimeManager) gitService() *book.GitService {
+func (s *WorkspaceRuntimeManager) versionService() *book.VersionService {
 	a := s.app
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	return a.gitService
+	return a.versionService
+}
+
+func (s *WorkspaceRuntimeManager) versionAutoSettings() book.VersionAutoSettings {
+	a := s.app
+	a.mu.RLock()
+	cfg := a.cfg
+	a.mu.RUnlock()
+	settings := book.DefaultVersionAutoSettings()
+	if cfg == nil {
+		return settings
+	}
+	settings.TimedEnabled = cfg.VersionTimedEnabled
+	settings.TimedIntervalMinutes = cfg.VersionTimedIntervalMinutes
+	settings.AgentEnabled = cfg.VersionAgentEnabled
+	settings.AgentCharThreshold = cfg.VersionAgentCharThreshold
+	settings.Retention = cfg.VersionAutoRetention
+	return settings
 }
 
 type runtimeState struct {
@@ -567,7 +601,7 @@ type runtimeState struct {
 	session                *session.Session
 	agentRunner            *adk.Runner
 	interactiveStoryRunner *adk.Runner
-	gitService             *book.GitService
+	versionService         *book.VersionService
 }
 
 func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*runtimeState, error) {
@@ -613,7 +647,7 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 		session:                sess,
 		agentRunner:            agentRunner,
 		interactiveStoryRunner: interactiveStoryRunner,
-		gitService:             book.NewGitService(absWorkspace),
+		versionService:         book.NewVersionService(absWorkspace),
 	}, nil
 }
 

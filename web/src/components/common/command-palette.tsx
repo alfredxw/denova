@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import {
   Bot,
-  GitBranch,
+  History,
   Save,
   Search,
   Sparkles,
@@ -67,7 +67,7 @@ export function CommandPalette({
     {
       id: 'versions',
       label: '打开版本管理',
-      icon: <GitBranch className="h-4 w-4" />,
+      icon: <History className="h-4 w-4" />,
       onSelect: onOpenVersions,
     },
     {

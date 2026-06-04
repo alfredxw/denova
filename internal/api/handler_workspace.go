@@ -111,6 +111,7 @@ func (s *Server) handleWorkspaceFileWrite(ctx context.Context, c *app.RequestCon
 		writeError(c, fileWriteStatus(err), "写入文件失败: "+err.Error())
 		return
 	}
+	s.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{
 		"path":    req.Path,
 		"message": "文件已保存",
@@ -140,6 +141,7 @@ func (s *Server) handleWorkspaceCreate(ctx context.Context, c *app.RequestContex
 		writeError(c, fileWriteStatus(err), err.Error())
 		return
 	}
+	s.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": "创建成功"})
 }
 
@@ -160,6 +162,7 @@ func (s *Server) handleWorkspaceDelete(ctx context.Context, c *app.RequestContex
 		writeError(c, fileWriteStatus(err), "删除失败: "+err.Error())
 		return
 	}
+	s.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": "删除成功"})
 }
 
@@ -186,6 +189,7 @@ func (s *Server) handleWorkspaceRename(ctx context.Context, c *app.RequestContex
 		writeError(c, fileWriteStatus(err), err.Error())
 		return
 	}
+	s.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": newPath, "message": "重命名成功"})
 }
 
@@ -211,6 +215,7 @@ func (s *Server) handleWorkspaceCopy(ctx context.Context, c *app.RequestContext)
 		writeError(c, fileWriteStatus(err), "复制失败: "+err.Error())
 		return
 	}
+	s.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": "复制成功"})
 }
 
@@ -236,6 +241,7 @@ func (s *Server) handleWorkspaceMove(ctx context.Context, c *app.RequestContext)
 		writeError(c, fileWriteStatus(err), "移动失败: "+err.Error())
 		return
 	}
+	s.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": "移动成功"})
 }
 

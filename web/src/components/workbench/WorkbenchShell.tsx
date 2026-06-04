@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BookMarked, BookOpen, Database, GitBranch, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
+import { BookMarked, BookOpen, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
@@ -169,7 +169,7 @@ export function WorkbenchShell({
         onClick={() => toggleIdePanel('versions')}
         className={`nova-icon-button mb-2 ${ideModeActive && versionsVisible ? 'is-active' : ''}`}
       >
-        <GitBranch className="h-4 w-4" />
+        <History className="h-4 w-4" />
       </ActivityButton>
     </>
   )
@@ -190,7 +190,7 @@ export function WorkbenchShell({
         onClick={() => openInteractiveSubmode('timeline')}
         className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'timeline' ? 'is-active' : ''}`}
       >
-        <GitBranch className="h-4 w-4" />
+        <History className="h-4 w-4" />
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}

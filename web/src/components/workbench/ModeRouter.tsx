@@ -5,7 +5,7 @@ import { FileTree } from '@/components/Sidebar/FileTree'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel } from '@/components/Chat/AgentPanel'
 import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
-import { GitPanel } from '@/components/Git/GitPanel'
+import { VersionPanel } from '@/components/Versions/VersionPanel'
 import { HomeView } from '@/components/Home/HomeView'
 import { InteractiveLayout } from '@/features/interactive/components/InteractiveLayout'
 import { SettingPanel } from '@/features/interactive/components/SettingPanel'
@@ -48,7 +48,7 @@ interface ModeRouterProps {
   sidebarView: 'outline' | 'files' | 'search'
   editorSearchIntent: { path: string; query: string; line: number; nonce: number } | null
   saveSignal: number
-  gitRefreshSignal: number
+  versionRefreshSignal: number
   messages: ChatMessage[]
   sessions: SessionSummary[]
   activeSessionId: string
@@ -124,7 +124,7 @@ export function ModeRouter(props: ModeRouterProps) {
     sidebarView,
     editorSearchIntent,
     saveSignal,
-    gitRefreshSignal,
+    versionRefreshSignal,
     messages,
     sessions,
     activeSessionId,
@@ -322,9 +322,9 @@ export function ModeRouter(props: ModeRouterProps) {
           onToggleRightPanel={onToggleInteractiveRightPanel}
         />
       ) : ideWorkspacePanel === 'versions' ? (
-        <GitPanel
+        <VersionPanel
           workspace={workspace}
-          refreshSignal={gitRefreshSignal}
+          refreshSignal={versionRefreshSignal}
           visible={versionsVisible}
           onClose={() => onSetRightPanel(null)}
         />

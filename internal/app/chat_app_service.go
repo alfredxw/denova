@@ -6,7 +6,6 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"nova/config"
 	"nova/internal/agent"
@@ -228,7 +227,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 	bookService := a.bookService
 	chatService := a.chatService
 	workspace := a.workspace
-	gitService := a.gitService
+	versionService := a.versionService
 	runtimeCfg := *a.cfg
 	runtimeCfg.Workspace = workspace
 	novaDir := runtimeCfg.NovaDir
@@ -266,23 +265,37 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 	}
 	a.mu.Unlock()
 
-	// 对话前自动 commit：默认阈值 50 行；失败不阻断对话，仅记录日志。
-	if gitService != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		result, err := gitService.AutoCommit(ctx, book.DefaultAutoCommitLineThreshold)
-		cancel()
+	var beforeVersionState book.VersionWorkspaceState
+	var hasBeforeVersionState bool
+	if versionService != nil {
+		state, err := versionService.CaptureState()
 		if err != nil {
-			log.Printf("[auto-commit] workspace=%s 失败 err=%v", workspace, err)
-		} else if result.Skipped {
-			log.Printf("[auto-commit] workspace=%s 跳过 reason=%q lines=%d", workspace, result.Reason, result.Lines)
+			log.Printf("[versions] 捕获 Agent 运行前状态失败 workspace=%s err=%v", workspace, err)
 		} else {
-			log.Printf("[auto-commit] workspace=%s 已提交 commit=%s lines=%d", workspace, result.Commit, result.Lines)
+			beforeVersionState = state
+			hasBeforeVersionState = true
 		}
 	}
 
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_references=%d style_rules=%d selections=%d plan_mode=%v", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleReferences), len(req.StyleRules), len(req.Selections), req.PlanMode)
 		chatService.Run(ctx, runner, agent.NewSessionConversation(sess), bookService, req, emit)
+		if versionService != nil && hasBeforeVersionState {
+			settings := book.DefaultVersionAutoSettings()
+			settings.TimedEnabled = runtimeCfg.VersionTimedEnabled
+			settings.TimedIntervalMinutes = runtimeCfg.VersionTimedIntervalMinutes
+			settings.AgentEnabled = runtimeCfg.VersionAgentEnabled
+			settings.AgentCharThreshold = runtimeCfg.VersionAgentCharThreshold
+			settings.Retention = runtimeCfg.VersionAutoRetention
+			result, err := versionService.MaybeCreateAgent(beforeVersionState, settings)
+			if err != nil {
+				log.Printf("[versions] Agent 自动保存失败 workspace=%s err=%v", workspace, err)
+			} else if result.Skipped {
+				log.Printf("[versions] Agent 自动保存跳过 workspace=%s reason=%q chars=%d", workspace, result.Reason, result.Chars)
+			} else if result.Version != nil {
+				log.Printf("[versions] Agent 自动保存完成 workspace=%s version=%s chars=%d", workspace, result.Version.ID, result.Chars)
+			}
+		}
 		log.Printf("[agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})
 

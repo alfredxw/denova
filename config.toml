@@ -50,6 +50,11 @@ chapter_filename_format = "ch{NNNN}-{title}.md"
 draft_flow_enabled = false
 chapter_group_min = 3
 chapter_group_max = 8
+version_timed_enabled = true
+version_timed_interval_minutes = 10
+version_agent_enabled = true
+version_agent_char_threshold = 3000
+version_auto_retention = 100
 
 # 外观
 # 可选：system-sans / humanist-sans / apple-system / microsoft-yahei / system-serif / source-han-serif / lxgw-wenkai / mono

@@ -39,7 +39,7 @@ function App() {
   const [activityBarExpanded, setActivityBarExpanded] = useState(() => readLayoutBoolean(ACTIVITY_BAR_EXPANDED_KEY, false))
   const [interactiveRightVisible, setInteractiveRightVisible] = useState(() => readLayoutBoolean(INTERACTIVE_RIGHT_VISIBLE_KEY, true))
   const [saveSignal, setSaveSignal] = useState(0)
-  const [gitRefreshSignal, setGitRefreshSignal] = useState(0)
+  const [versionRefreshSignal, setVersionRefreshSignal] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [openTabs, setOpenTabs] = useState<Tab[]>([])
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null)
@@ -85,14 +85,14 @@ function App() {
     refresh, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace()
 
-  const notifyGitChange = useCallback(() => {
-    setGitRefreshSignal(value => value + 1)
+  const notifyVersionChange = useCallback(() => {
+    setVersionRefreshSignal(value => value + 1)
   }, [])
 
   const handleAgentFileChange = useCallback(async (path?: string) => {
     await refreshAfterAgentFileChange(path)
-    notifyGitChange()
-  }, [notifyGitChange, refreshAfterAgentFileChange])
+    notifyVersionChange()
+  }, [notifyVersionChange, refreshAfterAgentFileChange])
 
   const {
     messages,
@@ -258,26 +258,26 @@ function App() {
     setWorkspace(newPath)
     setMode(booksReturnModeRef.current)
     refreshAll()
-    notifyGitChange()
+    notifyVersionChange()
     void Promise.all([loadSessions(), loadHistory()]).then(() => resumeActiveChat())
   }
 
   const handleSaveCurrentFile = useCallback(async (content: string) => {
     const saved = await saveCurrentFile(content)
-    if (saved) notifyGitChange()
+    if (saved) notifyVersionChange()
     return saved
-  }, [notifyGitChange, saveCurrentFile])
+  }, [notifyVersionChange, saveCurrentFile])
 
   const handleCreateItem = useCallback(async (path: string, type: 'file' | 'dir') => {
     await createItem(path, type)
-    notifyGitChange()
-  }, [createItem, notifyGitChange])
+    notifyVersionChange()
+  }, [createItem, notifyVersionChange])
 
   const handleDeleteItem = useCallback(async (path: string) => {
     await deleteItem(path)
     setOpenTabs((prev) => prev.filter((tab) => tab.path !== path && !tab.path.startsWith(`${path}/`)))
-    notifyGitChange()
-  }, [deleteItem, notifyGitChange])
+    notifyVersionChange()
+  }, [deleteItem, notifyVersionChange])
 
   const handleRenameItem = useCallback(async (path: string, newName: string) => {
     await renameItem(path, newName)
@@ -288,13 +288,13 @@ function App() {
       if (tab.path.startsWith(`${path}/`)) return { kind: 'file', path: `${newPath}${tab.path.slice(path.length)}` }
       return tab
     })))
-    notifyGitChange()
-  }, [notifyGitChange, renameItem])
+    notifyVersionChange()
+  }, [notifyVersionChange, renameItem])
 
   const handleCopyItem = useCallback(async (from: string, to: string) => {
     await copyItem(from, to)
-    notifyGitChange()
-  }, [copyItem, notifyGitChange])
+    notifyVersionChange()
+  }, [copyItem, notifyVersionChange])
 
   const handleMoveItem = useCallback(async (from: string, to: string) => {
     await moveItem(from, to)
@@ -303,8 +303,8 @@ function App() {
       if (tab.path.startsWith(`${from}/`)) return { kind: 'file', path: `${to}${tab.path.slice(from.length)}` }
       return tab
     })))
-    notifyGitChange()
-  }, [moveItem, notifyGitChange])
+    notifyVersionChange()
+  }, [moveItem, notifyVersionChange])
 
   const handleSelectFile = useCallback(async (path: string) => {
     setSelectedChapterId(path)
@@ -403,7 +403,7 @@ function App() {
       window.setTimeout(() => {
         window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: result }))
       }, 0)
-      notifyGitChange()
+      notifyVersionChange()
       setCharacterCardDialogOpen(false)
       resetCharacterCardImport()
     } catch (e) {
@@ -413,7 +413,7 @@ function App() {
     } finally {
       setCharacterCardImporting(false)
     }
-  }, [characterCardBookTitle, characterCardFile, characterCardTargetMode, notifyGitChange, refresh, refreshAll, resetCharacterCardImport, setMode, workspace])
+  }, [characterCardBookTitle, characterCardFile, characterCardTargetMode, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, workspace])
 
   const handleActivateTab = useCallback((tab: Tab) => {
     const key = tabKey(tab)
@@ -528,7 +528,7 @@ function App() {
         sidebarView={sidebarView}
         editorSearchIntent={editorSearchIntent}
         saveSignal={saveSignal}
-        gitRefreshSignal={gitRefreshSignal}
+        versionRefreshSignal={versionRefreshSignal}
         messages={messages}
         sessions={sessions}
         activeSessionId={activeSessionId}

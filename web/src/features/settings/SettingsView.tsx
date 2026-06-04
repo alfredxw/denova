@@ -7,7 +7,7 @@ import { FONT_OPTIONS, fontLabelFor } from './font-options'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 
-type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'agent' | 'ide-editor' | 'interactive'
+type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -34,6 +34,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     appearance: true,
     agent: true,
     'ide-editor': true,
+    versions: true,
     interactive: true,
   })
   const contentRef = useRef<HTMLDivElement | null>(null)
@@ -218,6 +219,32 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             />
           )}
         </>
+      ),
+    },
+    {
+      id: 'versions',
+      group: 'IDE 模式',
+      title: '版本管理',
+      children: activeLayer === 'workspace' ? (
+        <>
+          <BoolTri label="定时自动保存版本" value={draft.version_timed_enabled ?? null}
+                   effective={effective.version_timed_enabled}
+                   onChange={(v) => setField('version_timed_enabled', v)} />
+          <Num label="定时保存间隔 (分钟)" value={draft.version_timed_interval_minutes ?? null}
+               placeholder={placeholderFor('version_timed_interval_minutes')}
+               onChange={(v) => setField('version_timed_interval_minutes', v)} />
+          <BoolTri label="Agent 大量输出自动保存" value={draft.version_agent_enabled ?? null}
+                   effective={effective.version_agent_enabled}
+                   onChange={(v) => setField('version_agent_enabled', v)} />
+          <Num label="Agent 触发字数" value={draft.version_agent_char_threshold ?? null}
+               placeholder={placeholderFor('version_agent_char_threshold')}
+               onChange={(v) => setField('version_agent_char_threshold', v)} />
+          <Num label="自动版本保留数量" value={draft.version_auto_retention ?? null}
+               placeholder={placeholderFor('version_auto_retention')}
+               onChange={(v) => setField('version_auto_retention', v)} />
+        </>
+      ) : (
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">版本管理策略按每本书单独保存，请切换到工作区配置后修改。</div>
       ),
     },
     {

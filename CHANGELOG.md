@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 版本管理从本地 Git 仓库替换为 Nova 原生快照系统，版本库存放在每本书的 `.nova/versions/`，无需初始化 Git 即可创建版本、查看历史、对比和恢复。
+- WebUI 版本管理面板改为全中文快照工作流，第一屏展示保护状态、手动保存、定时保存和 Agent 自动保存状态，并在历史中标注手动、定时、Agent 与回滚前备份版本。
+- 设置页新增工作区级版本管理配置，支持定时自动保存、Agent 大量输出自动保存、Agent 字数阈值和自动版本保留数量。
 - 创作 Agent 新增 `write_lore_items` 批量写资料库工具，可在大纲定稿、章节定稿或重写后一次性创建/更新多个资料条目，并在 WebUI 自动刷新资料库索引；写入条目缺少简介时会按资料类型、名称、标签和正文自动生成 `brief_description`。
 - `scripts/npm-release.sh` 发布到 npm registry 时默认使用 `--auth-type web`，可通过浏览器完成 npm 2FA/认证流程；提供 `--auth-type` 参数并保留 `--otp` 覆盖方式。
 - 整理 `ideas.md` 规划记录，补充“续写下一章没自动分卷”待修复项并移除空的 NEED FIX 段落。

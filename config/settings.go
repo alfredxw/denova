@@ -23,13 +23,18 @@ type Settings struct {
 	NovaDir   string `toml:"nova_dir,omitempty" json:"nova_dir,omitempty"`
 
 	// 编辑器
-	AutoSaveEnabled       *bool  `toml:"auto_save_enabled,omitempty" json:"auto_save_enabled,omitempty"`
-	AutoSaveIntervalMs    *int   `toml:"auto_save_interval_ms,omitempty" json:"auto_save_interval_ms,omitempty"`
-	ChapterFilenameFormat string `toml:"chapter_filename_format,omitempty" json:"chapter_filename_format,omitempty"`
-	MaxOpenTabs           *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
-	DraftFlowEnabled      *bool  `toml:"draft_flow_enabled,omitempty" json:"draft_flow_enabled,omitempty"`
-	ChapterGroupMin       *int   `toml:"chapter_group_min,omitempty" json:"chapter_group_min,omitempty"`
-	ChapterGroupMax       *int   `toml:"chapter_group_max,omitempty" json:"chapter_group_max,omitempty"`
+	AutoSaveEnabled             *bool  `toml:"auto_save_enabled,omitempty" json:"auto_save_enabled,omitempty"`
+	AutoSaveIntervalMs          *int   `toml:"auto_save_interval_ms,omitempty" json:"auto_save_interval_ms,omitempty"`
+	ChapterFilenameFormat       string `toml:"chapter_filename_format,omitempty" json:"chapter_filename_format,omitempty"`
+	MaxOpenTabs                 *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
+	DraftFlowEnabled            *bool  `toml:"draft_flow_enabled,omitempty" json:"draft_flow_enabled,omitempty"`
+	ChapterGroupMin             *int   `toml:"chapter_group_min,omitempty" json:"chapter_group_min,omitempty"`
+	ChapterGroupMax             *int   `toml:"chapter_group_max,omitempty" json:"chapter_group_max,omitempty"`
+	VersionTimedEnabled         *bool  `toml:"version_timed_enabled,omitempty" json:"version_timed_enabled,omitempty"`
+	VersionTimedIntervalMinutes *int   `toml:"version_timed_interval_minutes,omitempty" json:"version_timed_interval_minutes,omitempty"`
+	VersionAgentEnabled         *bool  `toml:"version_agent_enabled,omitempty" json:"version_agent_enabled,omitempty"`
+	VersionAgentCharThreshold   *int   `toml:"version_agent_char_threshold,omitempty" json:"version_agent_char_threshold,omitempty"`
+	VersionAutoRetention        *int   `toml:"version_auto_retention,omitempty" json:"version_auto_retention,omitempty"`
 
 	// 外观
 	UIFontFamily      string `toml:"ui_font_family,omitempty" json:"ui_font_family,omitempty"`
@@ -55,26 +60,31 @@ func floatPtr(v float64) *float64 { return &v }
 // DefaultSettings 返回内置默认配置（最低优先级）。
 func DefaultSettings() Settings {
 	return Settings{
-		OpenAIBaseURL:              "https://api.deepseek.com",
-		OpenAIModel:                "deepseek-v4-pro",
-		SkillsDir:                  "./skills",
-		NovaDir:                    "./.nova",
-		AutoSaveEnabled:            boolPtr(true),
-		AutoSaveIntervalMs:         intPtr(1500),
-		ChapterFilenameFormat:      "ch{NNNN}-{title}.md",
-		MaxOpenTabs:                intPtr(5),
-		DraftFlowEnabled:           boolPtr(false),
-		ChapterGroupMin:            intPtr(3),
-		ChapterGroupMax:            intPtr(8),
-		UIFontFamily:               "system-sans",
-		ReadingFontFamily:          "source-han-serif",
-		MaxIteration:               intPtr(50),
-		ModelMaxRetries:            intPtr(5),
-		PlanModeDefault:            boolPtr(false),
-		IDEStoryTellerID:           "classic",
-		InteractiveHotChoices:      boolPtr(true),
-		InteractiveStageFontSize:   intPtr(16),
-		InteractiveStageLineHeight: floatPtr(1.78),
+		OpenAIBaseURL:               "https://api.deepseek.com",
+		OpenAIModel:                 "deepseek-v4-pro",
+		SkillsDir:                   "./skills",
+		NovaDir:                     "./.nova",
+		AutoSaveEnabled:             boolPtr(true),
+		AutoSaveIntervalMs:          intPtr(1500),
+		ChapterFilenameFormat:       "ch{NNNN}-{title}.md",
+		MaxOpenTabs:                 intPtr(5),
+		DraftFlowEnabled:            boolPtr(false),
+		ChapterGroupMin:             intPtr(3),
+		ChapterGroupMax:             intPtr(8),
+		VersionTimedEnabled:         boolPtr(true),
+		VersionTimedIntervalMinutes: intPtr(10),
+		VersionAgentEnabled:         boolPtr(true),
+		VersionAgentCharThreshold:   intPtr(3000),
+		VersionAutoRetention:        intPtr(100),
+		UIFontFamily:                "system-sans",
+		ReadingFontFamily:           "source-han-serif",
+		MaxIteration:                intPtr(50),
+		ModelMaxRetries:             intPtr(5),
+		PlanModeDefault:             boolPtr(false),
+		IDEStoryTellerID:            "classic",
+		InteractiveHotChoices:       boolPtr(true),
+		InteractiveStageFontSize:    intPtr(16),
+		InteractiveStageLineHeight:  floatPtr(1.78),
 	}
 }
 
@@ -119,6 +129,21 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.ChapterGroupMax != nil {
 		out.ChapterGroupMax = child.ChapterGroupMax
+	}
+	if child.VersionTimedEnabled != nil {
+		out.VersionTimedEnabled = child.VersionTimedEnabled
+	}
+	if child.VersionTimedIntervalMinutes != nil {
+		out.VersionTimedIntervalMinutes = child.VersionTimedIntervalMinutes
+	}
+	if child.VersionAgentEnabled != nil {
+		out.VersionAgentEnabled = child.VersionAgentEnabled
+	}
+	if child.VersionAgentCharThreshold != nil {
+		out.VersionAgentCharThreshold = child.VersionAgentCharThreshold
+	}
+	if child.VersionAutoRetention != nil {
+		out.VersionAutoRetention = child.VersionAutoRetention
 	}
 	if child.UIFontFamily != "" {
 		out.UIFontFamily = child.UIFontFamily

@@ -1,4 +1,4 @@
-import { GitCommit, RotateCcw } from 'lucide-react'
+import { History, RotateCcw } from 'lucide-react'
 
 export type VersionItem = {
   id: string
@@ -48,7 +48,7 @@ export function VersionTimeline({
               onClick={() => onSelectVersion?.(version)}
             >
               <div className="flex items-center gap-1 truncate text-[var(--nova-text)]" title={version.title}>
-                <GitCommit className="h-3 w-3 shrink-0 text-[var(--nova-text-muted)]" />
+                <History className="h-3 w-3 shrink-0 text-[var(--nova-text-muted)]" />
                 <span className="truncate">{version.title || '(无说明)'}</span>
               </div>
               <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">

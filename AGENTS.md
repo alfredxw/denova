@@ -25,7 +25,7 @@
 - 风格参考：用户在 `<nova_dir>/styles/` 中维护的 Markdown 或 TXT 文风样本，仅在 AI 对话区本轮通过 `#` 指定或命中当前讲述者场景化规则时注入 Agent。
 - 书籍：一个 workspace 代表一本书，后端需要记录最近打开的书籍目录并在重启后恢复上次书籍。
 - 章节文件：正文放在 `chapters/` 下，命名遵循配置的章节文件名模板；默认 `chNNNN-章节名.md`，例如 `ch0001-废材开局.md`，便于目录整体浏览并支持千章排序。
-- 版本管理：每个书籍 workspace 可作为独立 Git 仓库，通过右侧版本管理面板执行初始化、创建版本、查看历史、回滚、暂存和恢复暂存等本地 Git 操作。
+- 版本管理：每个书籍 workspace 使用 Nova 原生快照系统，通过右侧版本管理面板执行手动保存版本、查看历史、查看差异和恢复；系统支持定时自动保存与 Agent 大量输出自动保存，不依赖 Git。
 - 会话管理：每个书籍 workspace 支持多个独立会话；`/clear` 只追加上下文清理标记，不物理删除历史，Agent 只读取当前会话有效上下文。
 
 # 后端模块边界
@@ -38,6 +38,9 @@
 # 代码注意事项
 - goroutine 都需要 recover，避免 panic 导致整个服务崩溃
 - 写代码时注意前后端都打印必要日志，帮助调试问题，避免隐藏错误，日志信息要充分说明具体在干什么，具体文件位置和行号，方便定位问题
+- go package 解耦一点，遵循高内聚低耦合原则，不要一大堆不同功能的文件塞一起
+- Split files and packages/directories by responsibility and reason-to-change.
+- Do not optimize for fewer lines. Optimize for fewer concepts per file.
 
 # 构建逻辑
 1. 使用 go mod tidy 确保依赖拉下来了
