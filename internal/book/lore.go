@@ -655,10 +655,69 @@ func normalizeLoreItem(item LoreItem) LoreItem {
 	item.Tags = normalizeLoreTags(item.Tags)
 	item.Keywords = normalizeLoreKeywords(item.Keywords)
 	item.BriefDescription = strings.TrimSpace(item.BriefDescription)
-	if item.BriefDescription == "" && len(item.Keywords) > 0 {
-		item.BriefDescription = strings.Join(item.Keywords, "、")
+	if item.BriefDescription == "" {
+		item.BriefDescription = defaultLoreBriefDescription(item)
 	}
 	return item
+}
+
+func defaultLoreBriefDescription(item LoreItem) string {
+	item.Type = normalizeLoreType(item.Type)
+	name := strings.TrimSpace(item.Name)
+	typeLabel := loreTypeLabel(item.Type)
+	subject := typeLabel
+	if name != "" {
+		subject = fmt.Sprintf("%s“%s”", typeLabel, name)
+	}
+
+	if summary := lorePlainTextSummary(item.Content, 72); summary != "" {
+		return truncateRunes(subject+"："+summary, 140)
+	}
+
+	signals := normalizeLoreStringList(append(append([]string{}, item.Tags...), item.Keywords...))
+	if len(signals) > 0 {
+		return truncateRunes(subject+"，关联："+strings.Join(signals, "、"), 140)
+	}
+	if name != "" {
+		return subject + "，用于判断本轮是否需要加载该资料正文。"
+	}
+	return "资料库条目，用于判断本轮是否需要加载完整正文。"
+}
+
+func lorePlainTextSummary(content string, limit int) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	if limit <= 0 {
+		limit = 72
+	}
+
+	lines := []string{}
+	for _, line := range strings.Split(content, "\n") {
+		line = normalizeLoreSummaryLine(line)
+		if line == "" {
+			continue
+		}
+		lines = append(lines, line)
+		if utf8.RuneCountInString(strings.Join(lines, " / ")) >= limit {
+			break
+		}
+	}
+	return truncateRunes(strings.Join(lines, " / "), limit)
+}
+
+func normalizeLoreSummaryLine(line string) string {
+	line = strings.TrimSpace(line)
+	line = strings.TrimLeft(line, "#>*-+ 	")
+	line = strings.TrimSpace(line)
+	if line == "" || strings.Trim(line, "-|: ") == "" {
+		return ""
+	}
+	for _, marker := range []string{"**", "__", "`"} {
+		line = strings.ReplaceAll(line, marker, "")
+	}
+	return strings.Join(strings.Fields(line), " ")
 }
 
 func normalizeLoreID(id string) string {

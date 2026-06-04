@@ -123,6 +123,12 @@ func (s *State) CompactContext() string {
 		sb.WriteString("\n\n")
 	}
 
+	if chapterContext := s.ChapterPathContext(12); chapterContext != "" {
+		sb.WriteString("## 章节目录概览\n\n")
+		sb.WriteString(chapterContext)
+		sb.WriteString("\n\n")
+	}
+
 	if loreContext != "" {
 		sb.WriteString(loreContext)
 		sb.WriteString("\n\n")
@@ -181,6 +187,85 @@ func (s *State) ChapterGroupContext(limit int) string {
 		sb.WriteString("\n\n")
 		sb.WriteString(content)
 		sb.WriteString("\n\n")
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+// ChapterPathContext 返回最近章节路径和分卷概览，帮助 Agent 在续写时选择正确目录。
+func (s *State) ChapterPathContext(limit int) string {
+	if limit <= 0 {
+		limit = 12
+	}
+	root := filepath.Join(s.workspace, "chapters")
+	if _, err := os.Stat(root); err != nil {
+		return ""
+	}
+
+	type chapterEntry struct {
+		Path   string
+		Index  int
+		Volume string
+	}
+	var entries []chapterEntry
+	_ = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(name))
+		if ext != ".md" && ext != ".txt" {
+			return nil
+		}
+		rel, err := filepath.Rel(s.workspace, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		volume, _ := chapterVolume(rel)
+		entries = append(entries, chapterEntry{Path: rel, Index: chapterIndex(filepath.Base(rel)), Volume: volume})
+		return nil
+	})
+	if len(entries) == 0 {
+		return ""
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		left, right := entries[i], entries[j]
+		if left.Index > 0 && right.Index > 0 && left.Index != right.Index {
+			return left.Index < right.Index
+		}
+		return left.Path < right.Path
+	})
+	if len(entries) > limit {
+		entries = entries[len(entries)-limit:]
+	}
+
+	var sb strings.Builder
+	for _, entry := range entries {
+		sb.WriteString("- ")
+		sb.WriteString(entry.Path)
+		if entry.Volume != "" {
+			sb.WriteString("（分卷：")
+			sb.WriteString(entry.Volume)
+			sb.WriteString("）")
+		}
+		sb.WriteString("\n")
+	}
+	latest := entries[len(entries)-1]
+	sb.WriteString("\n最近定稿章节：")
+	sb.WriteString(latest.Path)
+	if latest.Volume != "" && latest.Volume != "未分卷" {
+		sb.WriteString("；若大纲仍处于该卷，下一章应继续写入 chapters/")
+		sb.WriteString(latest.Volume)
+		sb.WriteString("/。")
 	}
 	return strings.TrimSpace(sb.String())
 }

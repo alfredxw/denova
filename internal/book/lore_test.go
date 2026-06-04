@@ -116,6 +116,9 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	if item.ID == "" || len(item.Tags) != 1 {
 		t.Fatalf("unexpected item: %#v", item)
 	}
+	if item.BriefDescription == "" || !strings.Contains(item.BriefDescription, "角色“") {
+		t.Fatalf("brief description should be generated: %#v", item)
+	}
 
 	updated, err := store.Update(item.ID, LoreItemInput{
 		Type:       "location",

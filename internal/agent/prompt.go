@@ -155,6 +155,8 @@ func promptStateSectionSource(title string) string {
 		return "setting/progress.md"
 	case "章节组细纲":
 		return "setting/chapter-groups/"
+	case "章节目录概览":
+		return "chapters/"
 	case "资料库":
 		return ".nova/lore/items.json"
 	default:
