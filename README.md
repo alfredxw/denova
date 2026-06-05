@@ -2,7 +2,7 @@
 
 Nova 是一个面向长篇小说创作的 AI 写作工作台，提供类似 IDE 的创作体验，覆盖灵感、设定、大纲、章节写作、互动试演、资料库和版本管理。
 
-当前版本：v0.1.5（2026-06-02）
+当前版本：v0.1.6（2026-06-05）
 
 ## Screenshots
 
@@ -164,14 +164,14 @@ cd output
 GitHub Release 本地打包：
 
 ```bash
-scripts/build-github-release.sh v0.1.5
+scripts/build-github-release.sh v0.1.6
 ```
 
 推送 tag 后，GitHub Actions 会自动创建或更新 Release：
 
 ```bash
-git tag v0.1.5
-git push origin v0.1.5
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 ## Tech Stack
