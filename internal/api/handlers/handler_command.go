@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"context"
@@ -15,7 +15,7 @@ type commandRequest struct {
 }
 
 // handleCommand POST /api/command — 执行内置命令。
-func (s *Server) handleCommand(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleCommand(ctx context.Context, c *app.RequestContext) {
 	var req commandRequest
 	if err := c.BindJSON(&req); err != nil {
 		writeError(c, consts.StatusBadRequest, "无效请求体")
@@ -31,19 +31,19 @@ func (s *Server) handleCommand(ctx context.Context, c *app.RequestContext) {
 	var result string
 	switch cmd {
 	case "clear":
-		if !s.requireWorkspace(c) {
+		if !h.requireWorkspace(c) {
 			return
 		}
-		if err := s.app.ClearSession(); err != nil {
+		if err := h.app.ClearSession(); err != nil {
 			result = fmt.Sprintf("清空失败: %v", err)
 		} else {
 			result = "上下文已清理，历史消息已保留"
 		}
 	case "status":
-		if !s.requireWorkspace(c) {
+		if !h.requireWorkspace(c) {
 			return
 		}
-		_, stateCtx := s.app.Status()
+		_, stateCtx := h.app.Status()
 		if stateCtx == "" {
 			result = "当前无作品状态数据，请先创建大纲"
 		} else {

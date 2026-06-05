@@ -5,6 +5,7 @@ import (
 
 	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
 
+	"nova/internal/api/handlers"
 	"nova/internal/app"
 )
 
@@ -24,7 +25,7 @@ func NewServer(application *app.App, port string) *Server {
 
 	h := hertzserver.Default(
 		hertzserver.WithHostPorts("0.0.0.0:"+port),
-		hertzserver.WithMaxRequestBodySize(int(maxCharacterCardUploadBytes)),
+		hertzserver.WithMaxRequestBodySize(int(handlers.MaxCharacterCardUploadBytes)),
 	)
 	h.Use(corsMiddleware)
 	s.registerRoutes(h)

@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"nova/internal/api/sse"
 	novaApp "nova/internal/app"
 	"nova/internal/interactive"
 )
@@ -18,8 +19,8 @@ type tellerAgentRequest struct {
 	References  []string `json:"references"`
 }
 
-func (s *Server) handleInteractiveStories(ctx context.Context, c *app.RequestContext) {
-	index, err := s.app.InteractiveStories()
+func (h *Handlers) HandleInteractiveStories(ctx context.Context, c *app.RequestContext) {
+	index, err := h.app.InteractiveStories()
 	if err != nil {
 		writeError(c, consts.StatusConflict, err.Error())
 		return
@@ -27,13 +28,13 @@ func (s *Server) handleInteractiveStories(ctx context.Context, c *app.RequestCon
 	writeJSON(c, consts.StatusOK, index)
 }
 
-func (s *Server) handleInteractiveStoryCreate(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveStoryCreate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.CreateStoryRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	story, err := s.app.CreateInteractiveStory(body)
+	story, err := h.app.CreateInteractiveStory(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -41,13 +42,13 @@ func (s *Server) handleInteractiveStoryCreate(ctx context.Context, c *app.Reques
 	writeJSON(c, consts.StatusOK, story)
 }
 
-func (s *Server) handleInteractiveStoryUpdate(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveStoryUpdate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.UpdateStoryRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	story, err := s.app.UpdateInteractiveStory(c.Param("id"), body)
+	story, err := h.app.UpdateInteractiveStory(c.Param("id"), body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -55,16 +56,16 @@ func (s *Server) handleInteractiveStoryUpdate(ctx context.Context, c *app.Reques
 	writeJSON(c, consts.StatusOK, story)
 }
 
-func (s *Server) handleInteractiveStoryDelete(ctx context.Context, c *app.RequestContext) {
-	if err := s.app.DeleteInteractiveStory(c.Param("id")); err != nil {
+func (h *Handlers) HandleInteractiveStoryDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteInteractiveStory(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleInteractiveSnapshot(ctx context.Context, c *app.RequestContext) {
-	snapshot, err := s.app.InteractiveSnapshot(c.Param("id"), c.Query("branch"))
+func (h *Handlers) HandleInteractiveSnapshot(ctx context.Context, c *app.RequestContext) {
+	snapshot, err := h.app.InteractiveSnapshot(c.Param("id"), c.Query("branch"))
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -72,8 +73,8 @@ func (s *Server) handleInteractiveSnapshot(ctx context.Context, c *app.RequestCo
 	writeJSON(c, consts.StatusOK, snapshot)
 }
 
-func (s *Server) handleInteractiveBranches(ctx context.Context, c *app.RequestContext) {
-	branches, err := s.app.InteractiveBranches(c.Param("id"))
+func (h *Handlers) HandleInteractiveBranches(ctx context.Context, c *app.RequestContext) {
+	branches, err := h.app.InteractiveBranches(c.Param("id"))
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -81,13 +82,13 @@ func (s *Server) handleInteractiveBranches(ctx context.Context, c *app.RequestCo
 	writeJSON(c, consts.StatusOK, map[string]any{"branches": branches})
 }
 
-func (s *Server) handleInteractiveBranchCreate(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveBranchCreate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.CreateBranchRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	branch, err := s.app.CreateInteractiveBranch(c.Param("id"), body)
+	branch, err := h.app.CreateInteractiveBranch(c.Param("id"), body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -95,15 +96,15 @@ func (s *Server) handleInteractiveBranchCreate(ctx context.Context, c *app.Reque
 	writeJSON(c, consts.StatusOK, branch)
 }
 
-func (s *Server) handleInteractiveBranchDelete(ctx context.Context, c *app.RequestContext) {
-	if err := s.app.DeleteInteractiveBranch(c.Param("id"), c.Param("branch")); err != nil {
+func (h *Handlers) HandleInteractiveBranchDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteInteractiveBranch(c.Param("id"), c.Param("branch")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleInteractiveBranchSwitch(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveBranchSwitch(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		BranchID string `json:"branch_id"`
 	}
@@ -111,27 +112,27 @@ func (s *Server) handleInteractiveBranchSwitch(ctx context.Context, c *app.Reque
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	if err := s.app.SwitchInteractiveBranch(c.Param("id"), body.BranchID); err != nil {
+	if err := h.app.SwitchInteractiveBranch(c.Param("id"), body.BranchID); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleInteractiveTurnVersionSwitch(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveTurnVersionSwitch(ctx context.Context, c *app.RequestContext) {
 	var body interactive.SwitchTurnVersionRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	if err := s.app.SwitchInteractiveTurnVersion(c.Param("id"), body); err != nil {
+	if err := h.app.SwitchInteractiveTurnVersion(c.Param("id"), body); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleInteractiveHotChoices(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveHotChoices(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		Branch         string   `json:"branch"`
 		ExcludeChoices []string `json:"exclude_choices"`
@@ -140,7 +141,7 @@ func (s *Server) handleInteractiveHotChoices(ctx context.Context, c *app.Request
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	result, err := s.app.GenerateInteractiveHotChoices(ctx, c.Param("id"), body.Branch, body.ExcludeChoices)
+	result, err := h.app.GenerateInteractiveHotChoices(ctx, c.Param("id"), body.Branch, body.ExcludeChoices)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -148,7 +149,7 @@ func (s *Server) handleInteractiveHotChoices(ctx context.Context, c *app.Request
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func (s *Server) handleInteractiveChat(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		Mode               string   `json:"mode"`
 		StoryID            string   `json:"story_id"`
@@ -176,27 +177,27 @@ func (s *Server) handleInteractiveChat(ctx context.Context, c *app.RequestContex
 
 	var task *novaApp.Task
 	if strings.TrimSpace(body.RegenerateFromTurn) != "" {
-		task = s.app.StartInteractiveRegenerateTask(body.StoryID, body.Branch, body.RegenerateFromTurn, body.Message, body.StyleReferences)
+		task = h.app.StartInteractiveRegenerateTask(body.StoryID, body.Branch, body.RegenerateFromTurn, body.Message, body.StyleReferences)
 	} else {
-		task = s.app.StartInteractiveTask(body.StoryID, body.Branch, body.Message, body.StyleReferences)
+		task = h.app.StartInteractiveTask(body.StoryID, body.Branch, body.Message, body.StyleReferences)
 	}
 	if task == nil {
 		writeError(c, consts.StatusConflict, "尚未选择书籍工作区，请先在书籍管理页选择或创建书籍")
 		return
 	}
-	streamTask(c, task)
+	sse.StreamTask(c, task)
 }
 
-func (s *Server) handleInteractiveChatAbort(ctx context.Context, c *app.RequestContext) {
-	if task := s.app.ActiveInteractiveTask(); task != nil {
+func (h *Handlers) HandleInteractiveChatAbort(ctx context.Context, c *app.RequestContext) {
+	if task := h.app.ActiveInteractiveTask(); task != nil {
 		log.Printf("[interactive-agent-sse] abort requested task_id=%s status=%s", task.ID(), task.Status())
 	}
-	s.app.AbortInteractiveTask()
+	h.app.AbortInteractiveTask()
 	c.JSON(consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleInteractiveTellers(ctx context.Context, c *app.RequestContext) {
-	tellers, err := s.app.InteractiveTellers()
+func (h *Handlers) HandleInteractiveTellers(ctx context.Context, c *app.RequestContext) {
+	tellers, err := h.app.InteractiveTellers()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -204,9 +205,9 @@ func (s *Server) handleInteractiveTellers(ctx context.Context, c *app.RequestCon
 	writeJSON(c, consts.StatusOK, map[string]any{"tellers": tellers})
 }
 
-func (s *Server) handleInteractiveTeller(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveTeller(ctx context.Context, c *app.RequestContext) {
 	id := c.Param("id")
-	teller, err := s.app.InteractiveTeller(id)
+	teller, err := h.app.InteractiveTeller(id)
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -214,13 +215,13 @@ func (s *Server) handleInteractiveTeller(ctx context.Context, c *app.RequestCont
 	writeJSON(c, consts.StatusOK, teller)
 }
 
-func (s *Server) handleInteractiveTellerCreate(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveTellerCreate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.Teller
 	if err := c.BindJSON(&body); err != nil {
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	teller, err := s.app.CreateInteractiveTeller(body)
+	teller, err := h.app.CreateInteractiveTeller(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -228,13 +229,13 @@ func (s *Server) handleInteractiveTellerCreate(ctx context.Context, c *app.Reque
 	writeJSON(c, consts.StatusOK, teller)
 }
 
-func (s *Server) handleInteractiveTellerUpdate(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.Teller
 	if err := c.BindJSON(&body); err != nil {
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	teller, err := s.app.UpdateInteractiveTeller(c.Param("id"), body)
+	teller, err := h.app.UpdateInteractiveTeller(c.Param("id"), body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -242,15 +243,15 @@ func (s *Server) handleInteractiveTellerUpdate(ctx context.Context, c *app.Reque
 	writeJSON(c, consts.StatusOK, teller)
 }
 
-func (s *Server) handleInteractiveTellerDelete(ctx context.Context, c *app.RequestContext) {
-	if err := s.app.DeleteInteractiveTeller(c.Param("id")); err != nil {
+func (h *Handlers) HandleInteractiveTellerDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteInteractiveTeller(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleInteractiveTellerAgentStream(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleInteractiveTellerAgentStream(ctx context.Context, c *app.RequestContext) {
 	var body tellerAgentRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
@@ -260,20 +261,20 @@ func (s *Server) handleInteractiveTellerAgentStream(ctx context.Context, c *app.
 		writeError(c, consts.StatusBadRequest, "讲述者编辑指令不能为空")
 		return
 	}
-	task := s.app.StartTellerAgentTask(body.Instruction, body.TellerID, body.References)
+	task := h.app.StartTellerAgentTask(body.Instruction, body.TellerID, body.References)
 	if task == nil {
 		writeError(c, consts.StatusConflict, "尚未选择书籍工作区，请先在书籍管理页选择或创建书籍")
 		return
 	}
-	streamTask(c, task)
+	sse.StreamTask(c, task)
 }
 
-func (s *Server) handleInteractiveTellerAgentMessages(ctx context.Context, c *app.RequestContext) {
-	if !s.app.HasWorkspace() {
+func (h *Handlers) HandleInteractiveTellerAgentMessages(ctx context.Context, c *app.RequestContext) {
+	if !h.app.HasWorkspace() {
 		writeJSON(c, consts.StatusOK, []messageDTO{})
 		return
 	}
-	entries, err := s.app.TellerAgentMessages()
+	entries, err := h.app.TellerAgentMessages()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -299,11 +300,11 @@ func (s *Server) handleInteractiveTellerAgentMessages(ctx context.Context, c *ap
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func (s *Server) handleInteractiveTellerAgentClear(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleInteractiveTellerAgentClear(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
-	if err := s.app.ClearTellerAgentSession(); err != nil {
+	if err := h.app.ClearTellerAgentSession(); err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}

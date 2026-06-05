@@ -14,6 +14,25 @@ import (
 	runtimeapp "nova/internal/app"
 )
 
+type testMessageDTO struct {
+	Type      string `json:"type"`
+	ID        string `json:"id,omitempty"`
+	Role      string `json:"role,omitempty"`
+	Content   string `json:"content,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Status    string `json:"status,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
+}
+
+type testSessionDTO struct {
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
+	Active       bool   `json:"active"`
+	MessageCount int    `json:"message_count"`
+}
+
 func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
@@ -28,7 +47,7 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 		t.Fatalf("list status = %d body=%s", listResp.Code, listResp.Body.String())
 	}
 	var listBody struct {
-		Sessions []sessionDTO `json:"sessions"`
+		Sessions []testSessionDTO `json:"sessions"`
 	}
 	decodeResponse(t, listResp.Body.Bytes(), &listBody)
 	if len(listBody.Sessions) != 1 || listBody.Sessions[0].ID != defaultID || !listBody.Sessions[0].Active {
@@ -39,7 +58,7 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 	if createResp.Code != http.StatusOK {
 		t.Fatalf("create status = %d body=%s", createResp.Code, createResp.Body.String())
 	}
-	var created sessionDTO
+	var created testSessionDTO
 	decodeResponse(t, createResp.Body.Bytes(), &created)
 	if created.ID == "" || created.ID == defaultID || !created.Active || created.Title != "会话 B" {
 		t.Fatalf("创建会话返回不符合预期: %#v", created)
@@ -49,7 +68,7 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 	}
 
 	currentMessages := performJSONRequest(t, server, http.MethodGet, "/api/session/messages", nil)
-	var current []messageDTO
+	var current []testMessageDTO
 	decodeResponse(t, currentMessages.Body.Bytes(), &current)
 	if len(current) != 1 || current[0].Content != "会话 B 消息" {
 		t.Fatalf("当前会话消息应来自新会话: %#v", current)
@@ -60,7 +79,7 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 		t.Fatalf("switch status = %d body=%s", switchResp.Code, switchResp.Body.String())
 	}
 	defaultMessages := performJSONRequest(t, server, http.MethodGet, "/api/session/messages?session_id="+defaultID, nil)
-	var defaultHistory []messageDTO
+	var defaultHistory []testMessageDTO
 	decodeResponse(t, defaultMessages.Body.Bytes(), &defaultHistory)
 	if len(defaultHistory) != 1 || defaultHistory[0].Content != "默认会话消息" {
 		t.Fatalf("指定会话消息读取不符合预期: %#v", defaultHistory)
@@ -81,7 +100,7 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 		t.Fatalf("clear status = %d body=%s", clearResp.Code, clearResp.Body.String())
 	}
 	clearedResp := performJSONRequest(t, server, http.MethodGet, "/api/session/messages", nil)
-	var cleared []messageDTO
+	var cleared []testMessageDTO
 	decodeResponse(t, clearedResp.Body.Bytes(), &cleared)
 	if len(cleared) != 2 || cleared[1].Type != "clear" {
 		t.Fatalf("/clear 后应保留历史并追加 clear 标记: %#v", cleared)
@@ -91,7 +110,7 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 	if deleteResp.Code != http.StatusOK {
 		t.Fatalf("delete status = %d body=%s", deleteResp.Code, deleteResp.Body.String())
 	}
-	var active sessionDTO
+	var active testSessionDTO
 	decodeResponse(t, deleteResp.Body.Bytes(), &active)
 	if active.ID != defaultID || !active.Active {
 		t.Fatalf("删除非唯一会话后应保留默认会话激活: %#v", active)
@@ -139,7 +158,7 @@ func decodeResponse(t *testing.T, data []byte, target any) {
 	}
 }
 
-func containsSessionTitle(sessions []sessionDTO, id, title string) bool {
+func containsSessionTitle(sessions []testSessionDTO, id, title string) bool {
 	for _, sess := range sessions {
 		if sess.ID == id && sess.Title == title {
 			return true

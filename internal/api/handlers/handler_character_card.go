@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"context"
@@ -13,10 +13,11 @@ import (
 	"nova/internal/book"
 )
 
-const maxCharacterCardUploadBytes int64 = 32 * 1024 * 1024
+// MaxCharacterCardUploadBytes limits tavern character card uploads.
+const MaxCharacterCardUploadBytes int64 = 32 * 1024 * 1024
 
 // handleWorkspacePreviewCharacterCard POST /api/workspace/import-character-card/preview — 预览酒馆角色卡 PNG/JSON，不写入文件。
-func (s *Server) handleWorkspacePreviewCharacterCard(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleWorkspacePreviewCharacterCard(ctx context.Context, c *app.RequestContext) {
 	filename, data, ok := readCharacterCardUpload(c)
 	if !ok {
 		return
@@ -35,7 +36,7 @@ func readCharacterCardUpload(c *app.RequestContext) (string, []byte, bool) {
 		writeError(c, consts.StatusBadRequest, "请上传 PNG 或 JSON 格式的酒馆角色卡文件")
 		return "", nil, false
 	}
-	if fileHeader.Size > maxCharacterCardUploadBytes {
+	if fileHeader.Size > MaxCharacterCardUploadBytes {
 		writeError(c, consts.StatusBadRequest, "角色卡文件不能超过 32MB")
 		return "", nil, false
 	}
@@ -47,12 +48,12 @@ func readCharacterCardUpload(c *app.RequestContext) (string, []byte, bool) {
 	}
 	defer file.Close()
 
-	data, err := io.ReadAll(io.LimitReader(file, maxCharacterCardUploadBytes+1))
+	data, err := io.ReadAll(io.LimitReader(file, MaxCharacterCardUploadBytes+1))
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, "读取上传文件失败: "+err.Error())
 		return "", nil, false
 	}
-	if int64(len(data)) > maxCharacterCardUploadBytes {
+	if int64(len(data)) > MaxCharacterCardUploadBytes {
 		writeError(c, consts.StatusBadRequest, "角色卡文件不能超过 32MB")
 		return "", nil, false
 	}
@@ -60,7 +61,7 @@ func readCharacterCardUpload(c *app.RequestContext) (string, []byte, bool) {
 }
 
 // handleWorkspaceImportCharacterCard POST /api/workspace/import-character-card — 导入酒馆角色卡 PNG/JSON 到互动资料库。
-func (s *Server) handleWorkspaceImportCharacterCard(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *app.RequestContext) {
 	filename, data, ok := readCharacterCardUpload(c)
 	if !ok {
 		return
@@ -70,18 +71,18 @@ func (s *Server) handleWorkspaceImportCharacterCard(ctx context.Context, c *app.
 	if targetMode == "" {
 		targetMode = "current"
 	}
-	log.Printf("[api] 导入酒馆角色卡 filename=%q size=%d workspace=%q target_mode=%q", filename, len(data), s.app.Workspace(), targetMode)
+	log.Printf("[api] 导入酒馆角色卡 filename=%q size=%d workspace=%q target_mode=%q", filename, len(data), h.app.Workspace(), targetMode)
 
 	var result book.CharacterCardImportResult
 	var err error
 	switch targetMode {
 	case "current":
-		if !s.requireWorkspace(c) {
+		if !h.requireWorkspace(c) {
 			return
 		}
-		result, err = s.app.BookService().ImportTavernCharacterCard(filename, data)
+		result, err = h.app.BookService().ImportTavernCharacterCard(filename, data)
 	case "new_book":
-		result, err = s.importCharacterCardToNewBook(ctx, filename, data, strings.TrimSpace(string(c.FormValue("book_title"))))
+		result, err = h.importCharacterCardToNewBook(ctx, filename, data, strings.TrimSpace(string(c.FormValue("book_title"))))
 	default:
 		writeError(c, consts.StatusBadRequest, "导入目标无效")
 		return
@@ -99,7 +100,7 @@ func (s *Server) handleWorkspaceImportCharacterCard(ctx context.Context, c *app.
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func (s *Server) importCharacterCardToNewBook(ctx context.Context, filename string, data []byte, title string) (book.CharacterCardImportResult, error) {
+func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename string, data []byte, title string) (book.CharacterCardImportResult, error) {
 	preview, err := book.PreviewTavernCharacterCard(filename, data)
 	if err != nil {
 		return book.CharacterCardImportResult{}, err
@@ -107,18 +108,18 @@ func (s *Server) importCharacterCardToNewBook(ctx context.Context, filename stri
 	if title == "" {
 		title = preview.Name
 	}
-	layered, err := s.app.Settings()
+	layered, err := h.app.Settings()
 	if err != nil {
 		return book.CharacterCardImportResult{}, err
 	}
 	if layered.Paths.NovaDir == "" {
 		return book.CharacterCardImportResult{}, errors.New("Nova 数据目录未配置")
 	}
-	workspace, meta, err := s.app.CreateBook(ctx, layered.Paths.NovaDir, title, "", "")
+	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.NovaDir, title, "", "")
 	if err != nil {
 		return book.CharacterCardImportResult{}, err
 	}
-	result, err := s.app.BookService().ImportTavernCharacterCard(filename, data)
+	result, err := h.app.BookService().ImportTavernCharacterCard(filename, data)
 	if err != nil {
 		return book.CharacterCardImportResult{}, err
 	}

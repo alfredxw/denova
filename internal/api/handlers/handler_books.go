@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"context"
@@ -9,14 +9,14 @@ import (
 )
 
 // handleBooks GET /api/books — 返回最近打开的书籍工作目录。
-func (s *Server) handleBooks(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleBooks(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, consts.StatusOK, map[string]interface{}{
-		"books": s.app.Books(),
+		"books": h.app.Books(),
 	})
 }
 
 // handleCreateBook POST /api/books/create — 创建新书籍工作区。
-func (s *Server) handleCreateBook(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) {
 	var req struct {
 		Title       string `json:"title"`
 		Author      string `json:"author,omitempty"`
@@ -30,7 +30,7 @@ func (s *Server) handleCreateBook(ctx context.Context, c *app.RequestContext) {
 		writeError(c, consts.StatusBadRequest, "title 不能为空")
 		return
 	}
-	layered, err := s.app.Settings()
+	layered, err := h.app.Settings()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -39,7 +39,7 @@ func (s *Server) handleCreateBook(ctx context.Context, c *app.RequestContext) {
 		writeError(c, consts.StatusInternalServerError, "Nova 数据目录未配置")
 		return
 	}
-	workspace, meta, err := s.app.CreateBook(ctx, layered.Paths.NovaDir, req.Title, req.Author, req.Description)
+	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.NovaDir, req.Title, req.Author, req.Description)
 	if err != nil {
 		status := consts.StatusInternalServerError
 		if strings.Contains(err.Error(), "已存在") {
@@ -55,7 +55,7 @@ func (s *Server) handleCreateBook(ctx context.Context, c *app.RequestContext) {
 }
 
 // handleBookRemove POST /api/books/remove — 移除书籍记录，不删除磁盘目录。
-func (s *Server) handleBookRemove(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleBookRemove(ctx context.Context, c *app.RequestContext) {
 	var req struct {
 		Path string `json:"path"`
 	}
@@ -63,7 +63,7 @@ func (s *Server) handleBookRemove(ctx context.Context, c *app.RequestContext) {
 		writeError(c, consts.StatusBadRequest, "请提供 path 参数")
 		return
 	}
-	if err := s.app.RemoveBook(req.Path); err != nil {
+	if err := h.app.RemoveBook(req.Path); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -71,13 +71,13 @@ func (s *Server) handleBookRemove(ctx context.Context, c *app.RequestContext) {
 }
 
 // handleBookInfo GET /api/books/info — 读取指定工作区的书籍元信息。
-func (s *Server) handleBookInfo(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleBookInfo(ctx context.Context, c *app.RequestContext) {
 	path := string(c.Query("path"))
 	if path == "" {
 		writeError(c, consts.StatusBadRequest, "path 参数不能为空")
 		return
 	}
-	meta, err := s.app.BookInfo(path)
+	meta, err := h.app.BookInfo(path)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -86,7 +86,7 @@ func (s *Server) handleBookInfo(ctx context.Context, c *app.RequestContext) {
 }
 
 // handleUpdateBookInfo PUT /api/books/info — 更新指定工作区的书籍元信息。
-func (s *Server) handleUpdateBookInfo(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleUpdateBookInfo(ctx context.Context, c *app.RequestContext) {
 	var req struct {
 		Path        string `json:"path"`
 		Title       string `json:"title"`
@@ -101,7 +101,7 @@ func (s *Server) handleUpdateBookInfo(ctx context.Context, c *app.RequestContext
 		writeError(c, consts.StatusBadRequest, "path 不能为空")
 		return
 	}
-	meta, err := s.app.UpdateBookInfo(req.Path, req.Title, req.Author, req.Description)
+	meta, err := h.app.UpdateBookInfo(req.Path, req.Title, req.Author, req.Description)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return

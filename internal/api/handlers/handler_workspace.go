@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"context"
@@ -13,12 +13,12 @@ import (
 )
 
 // handleWorkspaceTree GET /api/workspace/tree — 递归扫描 workspace 目录返回文件树。
-func (s *Server) handleWorkspaceTree(ctx context.Context, c *app.RequestContext) {
-	if !s.app.HasWorkspace() {
+func (h *Handlers) HandleWorkspaceTree(ctx context.Context, c *app.RequestContext) {
+	if !h.app.HasWorkspace() {
 		writeJSON(c, consts.StatusOK, []any{})
 		return
 	}
-	tree, err := s.app.BookService().Tree()
+	tree, err := h.app.BookService().Tree()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, "扫描目录失败: "+err.Error())
 		return
@@ -27,8 +27,8 @@ func (s *Server) handleWorkspaceTree(ctx context.Context, c *app.RequestContext)
 }
 
 // handleWorkspaceSummary GET /api/workspace/summary — 返回作品章节统计和写作进度。
-func (s *Server) handleWorkspaceSummary(ctx context.Context, c *app.RequestContext) {
-	if !s.app.HasWorkspace() {
+func (h *Handlers) HandleWorkspaceSummary(ctx context.Context, c *app.RequestContext) {
+	if !h.app.HasWorkspace() {
 		writeJSON(c, consts.StatusOK, map[string]any{
 			"title":         "",
 			"author":        "",
@@ -38,7 +38,7 @@ func (s *Server) handleWorkspaceSummary(ctx context.Context, c *app.RequestConte
 		})
 		return
 	}
-	summary, err := s.app.BookService().Summary()
+	summary, err := h.app.BookService().Summary()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, "统计作品进度失败: "+err.Error())
 		return
@@ -47,8 +47,8 @@ func (s *Server) handleWorkspaceSummary(ctx context.Context, c *app.RequestConte
 }
 
 // handleWorkspaceFile GET /api/workspace/file?path=xxx — 读取文件内容。
-func (s *Server) handleWorkspaceFile(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleWorkspaceFile(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	relPath := c.Query("path")
@@ -57,7 +57,7 @@ func (s *Server) handleWorkspaceFile(ctx context.Context, c *app.RequestContext)
 		return
 	}
 
-	content, err := s.app.BookService().ReadFile(relPath)
+	content, err := h.app.BookService().ReadFile(relPath)
 	if err != nil {
 		writeError(c, fileReadStatus(err), err.Error())
 		return
@@ -69,8 +69,8 @@ func (s *Server) handleWorkspaceFile(ctx context.Context, c *app.RequestContext)
 }
 
 // handleWorkspaceSearch GET /api/workspace/search?q=xxx — 搜索当前书籍 workspace 文本内容和文件路径。
-func (s *Server) handleWorkspaceSearch(ctx context.Context, c *app.RequestContext) {
-	if !s.app.HasWorkspace() {
+func (h *Handlers) HandleWorkspaceSearch(ctx context.Context, c *app.RequestContext) {
+	if !h.app.HasWorkspace() {
 		writeJSON(c, consts.StatusOK, map[string]any{"results": []any{}})
 		return
 	}
@@ -85,7 +85,7 @@ func (s *Server) handleWorkspaceSearch(ctx context.Context, c *app.RequestContex
 		limit = parsed
 	}
 
-	results, err := s.app.BookService().Search(query, limit)
+	results, err := h.app.BookService().Search(query, limit)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, "搜索失败: "+err.Error())
 		return
@@ -94,8 +94,8 @@ func (s *Server) handleWorkspaceSearch(ctx context.Context, c *app.RequestContex
 }
 
 // handleWorkspaceFileWrite POST /api/workspace/file — 写入文件内容。
-func (s *Server) handleWorkspaceFileWrite(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleWorkspaceFileWrite(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var req struct {
@@ -107,11 +107,11 @@ func (s *Server) handleWorkspaceFileWrite(ctx context.Context, c *app.RequestCon
 		return
 	}
 
-	if err := s.app.BookService().WriteFile(req.Path, req.Content); err != nil {
+	if err := h.app.BookService().WriteFile(req.Path, req.Content); err != nil {
 		writeError(c, fileWriteStatus(err), "写入文件失败: "+err.Error())
 		return
 	}
-	s.app.MaybeCreateTimedVersion(ctx)
+	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{
 		"path":    req.Path,
 		"message": "文件已保存",
@@ -119,8 +119,8 @@ func (s *Server) handleWorkspaceFileWrite(ctx context.Context, c *app.RequestCon
 }
 
 // handleWorkspaceCreate POST /api/workspace/create — 新建文件或目录。
-func (s *Server) handleWorkspaceCreate(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleWorkspaceCreate(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var req struct {
@@ -133,7 +133,7 @@ func (s *Server) handleWorkspaceCreate(ctx context.Context, c *app.RequestContex
 		return
 	}
 
-	if err := s.app.BookService().Create(req.Path, req.Type, req.Content); err != nil {
+	if err := h.app.BookService().Create(req.Path, req.Type, req.Content); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			writeError(c, consts.StatusConflict, "目标已存在")
 			return
@@ -141,13 +141,13 @@ func (s *Server) handleWorkspaceCreate(ctx context.Context, c *app.RequestContex
 		writeError(c, fileWriteStatus(err), err.Error())
 		return
 	}
-	s.app.MaybeCreateTimedVersion(ctx)
+	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": "创建成功"})
 }
 
 // handleWorkspaceDelete POST /api/workspace/delete — 删除文件或目录。
-func (s *Server) handleWorkspaceDelete(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleWorkspaceDelete(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var req struct {
@@ -158,17 +158,17 @@ func (s *Server) handleWorkspaceDelete(ctx context.Context, c *app.RequestContex
 		return
 	}
 
-	if err := s.app.BookService().Delete(req.Path); err != nil {
+	if err := h.app.BookService().Delete(req.Path); err != nil {
 		writeError(c, fileWriteStatus(err), "删除失败: "+err.Error())
 		return
 	}
-	s.app.MaybeCreateTimedVersion(ctx)
+	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": "删除成功"})
 }
 
 // handleWorkspaceRename POST /api/workspace/rename — 重命名同目录下的文件或目录。
-func (s *Server) handleWorkspaceRename(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleWorkspaceRename(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var req struct {
@@ -180,7 +180,7 @@ func (s *Server) handleWorkspaceRename(ctx context.Context, c *app.RequestContex
 		return
 	}
 
-	newPath, err := s.app.BookService().Rename(req.Path, req.NewName)
+	newPath, err := h.app.BookService().Rename(req.Path, req.NewName)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			writeError(c, consts.StatusConflict, "目标已存在")
@@ -189,13 +189,13 @@ func (s *Server) handleWorkspaceRename(ctx context.Context, c *app.RequestContex
 		writeError(c, fileWriteStatus(err), err.Error())
 		return
 	}
-	s.app.MaybeCreateTimedVersion(ctx)
+	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": newPath, "message": "重命名成功"})
 }
 
 // handleWorkspaceCopy POST /api/workspace/copy — 复制文件或目录。
-func (s *Server) handleWorkspaceCopy(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleWorkspaceCopy(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var req struct {
@@ -207,7 +207,7 @@ func (s *Server) handleWorkspaceCopy(ctx context.Context, c *app.RequestContext)
 		return
 	}
 
-	if err := s.app.BookService().Copy(req.From, req.To); err != nil {
+	if err := h.app.BookService().Copy(req.From, req.To); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			writeError(c, consts.StatusConflict, "目标已存在")
 			return
@@ -215,13 +215,13 @@ func (s *Server) handleWorkspaceCopy(ctx context.Context, c *app.RequestContext)
 		writeError(c, fileWriteStatus(err), "复制失败: "+err.Error())
 		return
 	}
-	s.app.MaybeCreateTimedVersion(ctx)
+	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": "复制成功"})
 }
 
 // handleWorkspaceMove POST /api/workspace/move — 移动文件或目录。
-func (s *Server) handleWorkspaceMove(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleWorkspaceMove(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var req struct {
@@ -233,7 +233,7 @@ func (s *Server) handleWorkspaceMove(ctx context.Context, c *app.RequestContext)
 		return
 	}
 
-	if err := s.app.BookService().Move(req.From, req.To); err != nil {
+	if err := h.app.BookService().Move(req.From, req.To); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			writeError(c, consts.StatusConflict, "目标已存在")
 			return
@@ -241,12 +241,12 @@ func (s *Server) handleWorkspaceMove(ctx context.Context, c *app.RequestContext)
 		writeError(c, fileWriteStatus(err), "移动失败: "+err.Error())
 		return
 	}
-	s.app.MaybeCreateTimedVersion(ctx)
+	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": "移动成功"})
 }
 
 // handleWorkspaceSwitch POST /api/workspace/switch — 切换工作目录。
-func (s *Server) handleWorkspaceSwitch(ctx context.Context, c *app.RequestContext) {
+func (h *Handlers) HandleWorkspaceSwitch(ctx context.Context, c *app.RequestContext) {
 	var req struct {
 		Path string `json:"path"`
 	}
@@ -255,7 +255,7 @@ func (s *Server) handleWorkspaceSwitch(ctx context.Context, c *app.RequestContex
 		return
 	}
 
-	workspace, err := s.app.SwitchWorkspace(ctx, req.Path)
+	workspace, err := h.app.SwitchWorkspace(ctx, req.Path)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -267,10 +267,10 @@ func (s *Server) handleWorkspaceSwitch(ctx context.Context, c *app.RequestContex
 }
 
 // handleWorkspaceCurrent GET /api/workspace/current — 获取当前工作目录。
-func (s *Server) handleWorkspaceCurrent(ctx context.Context, c *app.RequestContext) {
-	hasState, _ := s.app.Status()
+func (h *Handlers) HandleWorkspaceCurrent(ctx context.Context, c *app.RequestContext) {
+	hasState, _ := h.app.Status()
 	writeJSON(c, consts.StatusOK, map[string]interface{}{
-		"workspace": s.app.Workspace(),
+		"workspace": h.app.Workspace(),
 		"has_state": hasState,
 	})
 }

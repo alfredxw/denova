@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"nova/internal/api/sse"
 	"nova/internal/book"
 )
 
@@ -19,11 +20,11 @@ type loreVersionCreateRequest struct {
 	Message string `json:"message"`
 }
 
-func (s *Server) handleLoreItems(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleLoreItems(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
-	items, err := s.app.LoreItems()
+	items, err := h.app.LoreItems()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -31,8 +32,8 @@ func (s *Server) handleLoreItems(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, consts.StatusOK, map[string]any{"items": items})
 }
 
-func (s *Server) handleLoreItemCreate(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleLoreItemCreate(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var body book.LoreItemInput
@@ -40,7 +41,7 @@ func (s *Server) handleLoreItemCreate(ctx context.Context, c *app.RequestContext
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	item, err := s.app.CreateLoreItem(body)
+	item, err := h.app.CreateLoreItem(body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -48,8 +49,8 @@ func (s *Server) handleLoreItemCreate(ctx context.Context, c *app.RequestContext
 	writeJSON(c, consts.StatusOK, item)
 }
 
-func (s *Server) handleLoreItemUpdate(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleLoreItemUpdate(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var body book.LoreItemInput
@@ -57,7 +58,7 @@ func (s *Server) handleLoreItemUpdate(ctx context.Context, c *app.RequestContext
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	item, err := s.app.UpdateLoreItem(c.Param("id"), body)
+	item, err := h.app.UpdateLoreItem(c.Param("id"), body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -65,19 +66,19 @@ func (s *Server) handleLoreItemUpdate(ctx context.Context, c *app.RequestContext
 	writeJSON(c, consts.StatusOK, item)
 }
 
-func (s *Server) handleLoreItemDelete(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleLoreItemDelete(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
-	if err := s.app.DeleteLoreItem(c.Param("id")); err != nil {
+	if err := h.app.DeleteLoreItem(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleLoreAgent(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleLoreAgent(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var body loreAgentRequest
@@ -89,7 +90,7 @@ func (s *Server) handleLoreAgent(ctx context.Context, c *app.RequestContext) {
 		writeError(c, consts.StatusBadRequest, "资料库编辑指令不能为空")
 		return
 	}
-	result, err := s.app.RunLoreAgent(ctx, body.Instruction, body.References)
+	result, err := h.app.RunLoreAgent(ctx, body.Instruction, body.References)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -97,8 +98,8 @@ func (s *Server) handleLoreAgent(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func (s *Server) handleLoreAgentStream(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleLoreAgentStream(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var body loreAgentRequest
@@ -110,20 +111,20 @@ func (s *Server) handleLoreAgentStream(ctx context.Context, c *app.RequestContex
 		writeError(c, consts.StatusBadRequest, "资料库编辑指令不能为空")
 		return
 	}
-	task := s.app.StartLoreAgentTask(body.Instruction, body.References)
+	task := h.app.StartLoreAgentTask(body.Instruction, body.References)
 	if task == nil {
 		writeError(c, consts.StatusConflict, "尚未选择书籍工作区，请先在书籍管理页选择或创建书籍")
 		return
 	}
-	streamTask(c, task)
+	sse.StreamTask(c, task)
 }
 
-func (s *Server) handleLoreAgentMessages(ctx context.Context, c *app.RequestContext) {
-	if !s.app.HasWorkspace() {
+func (h *Handlers) HandleLoreAgentMessages(ctx context.Context, c *app.RequestContext) {
+	if !h.app.HasWorkspace() {
 		writeJSON(c, consts.StatusOK, []messageDTO{})
 		return
 	}
-	entries, err := s.app.LoreAgentMessages()
+	entries, err := h.app.LoreAgentMessages()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -149,22 +150,22 @@ func (s *Server) handleLoreAgentMessages(ctx context.Context, c *app.RequestCont
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func (s *Server) handleLoreAgentClear(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleLoreAgentClear(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
-	if err := s.app.ClearLoreAgentSession(); err != nil {
+	if err := h.app.ClearLoreAgentSession(); err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleLoreVersions(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleLoreVersions(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
-	versions, err := s.app.LoreVersions()
+	versions, err := h.app.LoreVersions()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -172,8 +173,8 @@ func (s *Server) handleLoreVersions(ctx context.Context, c *app.RequestContext) 
 	writeJSON(c, consts.StatusOK, map[string]any{"versions": versions})
 }
 
-func (s *Server) handleLoreVersionCreate(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleLoreVersionCreate(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var body loreVersionCreateRequest
@@ -181,7 +182,7 @@ func (s *Server) handleLoreVersionCreate(ctx context.Context, c *app.RequestCont
 		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
 		return
 	}
-	version, err := s.app.CreateLoreVersion(body.Message)
+	version, err := h.app.CreateLoreVersion(body.Message)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -189,11 +190,11 @@ func (s *Server) handleLoreVersionCreate(ctx context.Context, c *app.RequestCont
 	writeJSON(c, consts.StatusOK, version)
 }
 
-func (s *Server) handleLoreVersionRestore(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleLoreVersionRestore(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
-	items, err := s.app.RestoreLoreVersion(c.Param("id"))
+	items, err := h.app.RestoreLoreVersion(c.Param("id"))
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return

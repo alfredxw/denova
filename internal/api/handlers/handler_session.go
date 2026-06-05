@@ -1,4 +1,4 @@
-package api
+package handlers
 
 import (
 	"context"
@@ -46,13 +46,13 @@ type sessionRenameRequest struct {
 }
 
 // handleSessionMessages GET /api/session/messages — 返回当前或指定会话历史消息。
-func (s *Server) handleSessionMessages(ctx context.Context, c *app.RequestContext) {
-	if !s.app.HasWorkspace() {
+func (h *Handlers) HandleSessionMessages(ctx context.Context, c *app.RequestContext) {
+	if !h.app.HasWorkspace() {
 		writeJSON(c, consts.StatusOK, []messageDTO{})
 		return
 	}
 	id := strings.TrimSpace(c.Query("session_id"))
-	entries, err := s.app.SessionMessages(id)
+	entries, err := h.app.SessionMessages(id)
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -85,12 +85,12 @@ func (s *Server) handleSessionMessages(ctx context.Context, c *app.RequestContex
 }
 
 // handleSessions GET /api/sessions — 返回当前 workspace 下的会话列表。
-func (s *Server) handleSessions(ctx context.Context, c *app.RequestContext) {
-	if !s.app.HasWorkspace() {
+func (h *Handlers) HandleSessions(ctx context.Context, c *app.RequestContext) {
+	if !h.app.HasWorkspace() {
 		writeJSON(c, consts.StatusOK, map[string]any{"sessions": []sessionDTO{}})
 		return
 	}
-	metas, err := s.app.Sessions()
+	metas, err := h.app.Sessions()
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -99,8 +99,8 @@ func (s *Server) handleSessions(ctx context.Context, c *app.RequestContext) {
 }
 
 // handleSessionCreate POST /api/sessions — 创建并激活新会话。
-func (s *Server) handleSessionCreate(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleSessionCreate(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var req sessionCreateRequest
@@ -108,7 +108,7 @@ func (s *Server) handleSessionCreate(ctx context.Context, c *app.RequestContext)
 		writeError(c, consts.StatusBadRequest, "无效请求体")
 		return
 	}
-	sess, err := s.app.CreateSession(req.Title)
+	sess, err := h.app.CreateSession(req.Title)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -117,8 +117,8 @@ func (s *Server) handleSessionCreate(ctx context.Context, c *app.RequestContext)
 }
 
 // handleSessionSwitch POST /api/sessions/switch — 切换当前激活会话。
-func (s *Server) handleSessionSwitch(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleSessionSwitch(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var req sessionIDRequest
@@ -126,7 +126,7 @@ func (s *Server) handleSessionSwitch(ctx context.Context, c *app.RequestContext)
 		writeError(c, consts.StatusBadRequest, "无效请求体")
 		return
 	}
-	sess, err := s.app.SwitchSession(req.ID)
+	sess, err := h.app.SwitchSession(req.ID)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -135,8 +135,8 @@ func (s *Server) handleSessionSwitch(ctx context.Context, c *app.RequestContext)
 }
 
 // handleSessionRename POST /api/sessions/rename — 重命名会话。
-func (s *Server) handleSessionRename(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleSessionRename(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var req sessionRenameRequest
@@ -144,7 +144,7 @@ func (s *Server) handleSessionRename(ctx context.Context, c *app.RequestContext)
 		writeError(c, consts.StatusBadRequest, "无效请求体")
 		return
 	}
-	if err := s.app.RenameSession(req.ID, req.Title); err != nil {
+	if err := h.app.RenameSession(req.ID, req.Title); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -152,8 +152,8 @@ func (s *Server) handleSessionRename(ctx context.Context, c *app.RequestContext)
 }
 
 // handleSessionDelete POST /api/sessions/delete — 删除会话并返回新的激活会话。
-func (s *Server) handleSessionDelete(ctx context.Context, c *app.RequestContext) {
-	if !s.requireWorkspace(c) {
+func (h *Handlers) HandleSessionDelete(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
 		return
 	}
 	var req sessionIDRequest
@@ -161,7 +161,7 @@ func (s *Server) handleSessionDelete(ctx context.Context, c *app.RequestContext)
 		writeError(c, consts.StatusBadRequest, "无效请求体")
 		return
 	}
-	sess, err := s.app.DeleteSession(req.ID)
+	sess, err := h.app.DeleteSession(req.ID)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -176,8 +176,8 @@ type statusResponse struct {
 }
 
 // handleStatus GET /api/status — 返回作品状态。
-func (s *Server) handleStatus(ctx context.Context, c *app.RequestContext) {
-	hasState, stateCtx := s.app.Status()
+func (h *Handlers) HandleStatus(ctx context.Context, c *app.RequestContext) {
+	hasState, stateCtx := h.app.Status()
 	writeJSON(c, consts.StatusOK, statusResponse{
 		HasState: hasState,
 		Context:  stateCtx,
