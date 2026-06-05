@@ -3,10 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FileClock, MoreHorizontal, RefreshCw, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { createVersion, getVersionDiff, getVersions, getVersionStatus, restoreVersion } from '@/lib/api'
-import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { VersionTimeline, type VersionItem } from '@/features/versions/components/version-timeline'
 import { AutoSummary } from './AutoSummary'
 import { ChangesList } from './ChangesList'
@@ -32,7 +32,6 @@ const versionKeys = {
 /** VersionPanel 展示 Nova 原生快照版本状态、历史和恢复操作。 */
 export function VersionPanel({ workspace, refreshSignal, visible, onClose }: VersionPanelProps) {
   const queryClient = useQueryClient()
-  const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [changesExpanded, setChangesExpanded] = useState(true)
   const [historyExpanded, setHistoryExpanded] = useState(true)
@@ -66,7 +65,6 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
 
   useEffect(() => {
     setError('')
-    setMessage('')
   }, [workspace])
 
   useEffect(() => {
@@ -81,11 +79,10 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
   }, [refresh, visible])
 
   const createMutation = useMutation({
-    mutationFn: createVersion,
-    onSuccess: async (_, versionMessage) => {
-      setMessage('')
+    mutationFn: () => createVersion(),
+    onSuccess: async (result) => {
       setError('')
-      toast.success(`已保存版本：${versionMessage}`)
+      toast.success(`已保存版本：${result.version?.message || result.message}`)
       await invalidateVersionQueries()
     },
     onError: (e) => showOperationError(e, '创建版本失败', setError),
@@ -104,14 +101,13 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
 
   const loading = statusQuery.isFetching || historyQuery.isFetching || createMutation.isPending || restoreMutation.isPending
   const changes = status?.changes ?? []
-  const canCreate = message.trim().length > 0 && !loading && Boolean(workspace)
+  const canCreate = !loading && Boolean(workspace)
   const timelineItems = useMemo(() => versions.map(versionToTimelineItem), [versions])
   const currentVersionItem = useMemo(() => status?.latest ? versionToTimelineItem(status.latest) : null, [status?.latest])
 
   const createManualVersion = () => {
-    const trimmed = message.trim()
-    if (!trimmed || loading) return
-    createMutation.mutate(trimmed)
+    if (loading) return
+    createMutation.mutate()
   }
 
   const openDiff = async (version: VersionItem, path?: string) => {
@@ -162,17 +158,9 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
               <FileClock className="h-3.5 w-3.5" />
               <span>手动保存版本</span>
             </div>
-            <Textarea
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              placeholder="输入这次版本说明"
-              rows={2}
-              className="nova-field min-h-0 resize-none px-2 py-1.5 text-xs leading-5 placeholder:text-[var(--nova-text-faint)] focus-visible:ring-0"
-              disabled={loading || !workspace}
-            />
             <Button type="button" size="sm" className="mt-2 flex w-full items-center justify-center gap-2 border border-[var(--nova-border)] bg-[var(--nova-active)] font-medium text-[var(--nova-text)] hover:bg-[var(--nova-hover)] disabled:opacity-45" onClick={createManualVersion} disabled={!canCreate}>
-              <ShieldCheck className="h-3.5 w-3.5" />
-              <span>保存当前版本</span>
+              <ShieldCheck className={`h-3.5 w-3.5 ${createMutation.isPending ? 'animate-pulse' : ''}`} />
+              <span>{createMutation.isPending ? '正在生成说明并保存' : '保存当前版本'}</span>
             </Button>
           </div>
 
@@ -192,9 +180,7 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
           )}
 
           {error && (
-            <div className="mt-3 rounded border border-red-500/30 bg-red-500/10 px-2 py-1.5 leading-5 text-red-200">
-              {error}
-            </div>
+            <InlineErrorNotice className="mt-3" message={error} />
           )}
         </div>
       </ScrollArea>

@@ -17,5 +17,13 @@ func chatModelConfigForAgent(cfg *config.Config, agentKind string) openai.ChatMo
 		temperature := float32(*resolved.Temperature)
 		modelCfg.Temperature = &temperature
 	}
+	if resolved.EnableThinking != nil {
+		modelCfg.ExtraFields = map[string]any{
+			"enable_thinking": *resolved.EnableThinking,
+		}
+	}
+	if resolved.ReasoningEffort != "" {
+		modelCfg.ReasoningEffort = openai.ReasoningEffortLevel(resolved.ReasoningEffort)
+	}
 	return modelCfg
 }

@@ -6,6 +6,7 @@ import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from './ap
 import { FONT_OPTIONS, fontLabelFor } from './font-options'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
+import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 
 type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
@@ -359,7 +360,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         )}
       </div>
 
-      {error && <div className="border-b border-red-500/40 bg-red-500/10 px-4 py-1.5 text-xs text-red-400">{error}</div>}
+      {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title="配置保存失败" />}
 
       <div className="flex min-h-0 flex-1 text-xs">
         <aside className="w-44 shrink-0 border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-4 sm:w-52 sm:px-3 md:w-56">
@@ -699,6 +700,7 @@ function AgentModelEditor({ settings, effective, profiles, onChange }: {
     { key: 'teller_editor', label: '讲述者编辑 Agent' },
     { key: 'interactive_state', label: '互动状态 Agent' },
     { key: 'interactive_hot_choices', label: '快捷选项 Agent' },
+    { key: 'version_summary', label: '版本说明 Agent' },
   ]
 
   return (
@@ -709,7 +711,7 @@ function AgentModelEditor({ settings, effective, profiles, onChange }: {
           const value = settings[row.key] ?? {}
           const inherited = effective[row.key] ?? {}
           return (
-            <div key={row.key} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-[minmax(8rem,12rem)_1fr_1fr] md:items-center">
+            <div key={row.key} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-[minmax(8rem,12rem)_1fr_minmax(7rem,9rem)_minmax(8rem,10rem)_minmax(8rem,10rem)] md:items-center">
               <span className="text-[var(--nova-text-muted)]">{row.label}</span>
               <select
                 value={value.profile_id ?? ''}
@@ -731,6 +733,25 @@ function AgentModelEditor({ settings, effective, profiles, onChange }: {
                 onChange={(e) => onChange(row.key, { ...value, temperature: e.target.value === '' ? null : Number(e.target.value) })}
                 className={fieldCls}
               />
+              <select
+                value={value.enable_thinking === null || value.enable_thinking === undefined ? '' : String(value.enable_thinking)}
+                onChange={(e) => onChange(row.key, { ...value, enable_thinking: e.target.value === '' ? null : e.target.value === 'true' })}
+                className={fieldCls}
+              >
+                <option value="">思考：{inherited.enable_thinking === null || inherited.enable_thinking === undefined ? '不传' : inherited.enable_thinking ? '开启' : '关闭'}</option>
+                <option value="true">开启思考</option>
+                <option value="false">关闭思考</option>
+              </select>
+              <select
+                value={value.reasoning_effort ?? ''}
+                onChange={(e) => onChange(row.key, { ...value, reasoning_effort: e.target.value })}
+                className={fieldCls}
+              >
+                <option value="">强度：{inherited.reasoning_effort || '不传'}</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
             </div>
           )
         })}

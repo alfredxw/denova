@@ -16,6 +16,7 @@ openai_model = "deepseek-v4-pro"
 
 # 可选：配置多个 OpenAI 协议兼容平台，并按 Agent 分配。
 # 不配置 temperature 时使用平台/模型默认值。
+# 快捷选项 Agent 和版本说明 Agent 内置默认 enable_thinking=false，其他 Agent 默认不传思考参数。
 #
 # [[model_profiles]]
 # id = "deepseek"
@@ -34,6 +35,8 @@ openai_model = "deepseek-v4-pro"
 # [agent_models.ide]
 # profile_id = "deepseek"
 # temperature = 0.7
+# enable_thinking = true       # 可选：不填则不传；适用于支持 enable_thinking 的 OpenAI 兼容平台
+# reasoning_effort = "medium"  # 可选：low / medium / high；不填则不传
 #
 # [agent_models.lore_editor]
 # profile_id = "openai"

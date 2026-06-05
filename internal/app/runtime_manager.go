@@ -279,12 +279,13 @@ func (a *App) CreateVersion(ctx context.Context, message string) (book.VersionCo
 }
 
 func (s *WorkspaceRuntimeManager) CreateVersion(ctx context.Context, message string) (book.VersionCommandResult, error) {
-	_ = ctx
 	versionService := s.versionService()
 	if versionService == nil {
 		return book.VersionCommandResult{}, ErrNoWorkspace
 	}
-	return versionService.Create(message, book.VersionSourceManual, s.versionAutoSettings())
+	settings := s.versionAutoSettings()
+	message = s.inferVersionMessage(ctx, message, book.VersionSourceManual, versionService, settings)
+	return versionService.Create(message, book.VersionSourceManual, settings)
 }
 
 // VersionDiff 返回目标版本与当前工作区的差异。

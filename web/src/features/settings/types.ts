@@ -46,11 +46,14 @@ export interface AgentModelSettings {
   teller_editor?: AgentModelOverride
   interactive_state?: AgentModelOverride
   interactive_hot_choices?: AgentModelOverride
+  version_summary?: AgentModelOverride
 }
 
 export interface AgentModelOverride {
   profile_id?: string
   temperature?: number | null
+  enable_thinking?: boolean | null
+  reasoning_effort?: string
 }
 
 export interface SettingsPaths {

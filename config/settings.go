@@ -80,11 +80,15 @@ func DefaultSettings() Settings {
 		ReadingFontFamily:           "source-han-serif",
 		MaxIteration:                intPtr(50),
 		ModelMaxRetries:             intPtr(5),
-		PlanModeDefault:             boolPtr(false),
-		IDEStoryTellerID:            "classic",
-		InteractiveHotChoices:       boolPtr(true),
-		InteractiveStageFontSize:    intPtr(16),
-		InteractiveStageLineHeight:  floatPtr(1.78),
+		AgentModels: AgentModelSettings{
+			InteractiveHotChoices: AgentModelOverride{EnableThinking: boolPtr(false)},
+			VersionSummary:        AgentModelOverride{EnableThinking: boolPtr(false)},
+		},
+		PlanModeDefault:            boolPtr(false),
+		IDEStoryTellerID:           "classic",
+		InteractiveHotChoices:      boolPtr(true),
+		InteractiveStageFontSize:   intPtr(16),
+		InteractiveStageLineHeight: floatPtr(1.78),
 	}
 }
 

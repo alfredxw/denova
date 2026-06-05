@@ -558,3 +558,31 @@ button {
   color: color-mix(in srgb, currentColor 35%, #ffd166);
   text-shadow: 0 0 14px color-mix(in srgb, currentColor 22%, transparent);
 }
+
+[data-sonner-toast][data-styled='true'] {
+  padding-right: 2.35rem;
+}
+
+[data-sonner-toast][data-styled='true'] [data-close-button] {
+  top: 50% !important;
+  right: 0.65rem !important;
+  left: auto !important;
+  width: 1.35rem !important;
+  height: 1.35rem !important;
+  transform: translateY(-50%) !important;
+  border-radius: var(--nova-radius) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--nova-text-faint) !important;
+  opacity: 1 !important;
+}
+
+[data-sonner-toast][data-styled='true'] [data-close-button] svg {
+  opacity: 1 !important;
+}
+
+[data-sonner-toast][data-styled='true'] [data-close-button]:hover {
+  border-color: var(--nova-border) !important;
+  background: var(--nova-hover) !important;
+  color: var(--nova-text) !important;
+}

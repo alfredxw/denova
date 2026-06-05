@@ -51,9 +51,11 @@ func (h *Handlers) HandleVersionCreate(ctx context.Context, c *app.RequestContex
 	var req struct {
 		Message string `json:"message"`
 	}
-	if err := c.BindJSON(&req); err != nil || req.Message == "" {
-		writeError(c, consts.StatusBadRequest, "请提供版本说明")
-		return
+	if len(c.Request.Body()) > 0 {
+		if err := c.BindJSON(&req); err != nil {
+			writeError(c, consts.StatusBadRequest, "版本保存请求格式不正确")
+			return
+		}
 	}
 	result, err := h.app.CreateVersion(ctx, req.Message)
 	if err != nil {

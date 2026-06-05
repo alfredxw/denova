@@ -635,7 +635,7 @@ export async function getVersions(limit = 30): Promise<VersionEntry[]> {
 }
 
 /** 创建当前书籍版本 */
-export async function createVersion(message: string): Promise<VersionCommandResult> {
+export async function createVersion(message = ''): Promise<VersionCommandResult> {
   return requestJSON('/api/versions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -653,4 +653,3 @@ export async function getVersionDiff(id: string, path?: string): Promise<Version
 export async function restoreVersion(id: string): Promise<VersionCommandResult> {
   return requestJSON(`/api/versions/${encodeURIComponent(id)}/restore`, { method: 'POST' })
 }
-

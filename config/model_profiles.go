@@ -9,6 +9,7 @@ const (
 	AgentKindTellerEditor          = "teller_editor"
 	AgentKindInteractiveState      = "interactive_state"
 	AgentKindInteractiveHotChoices = "interactive_hot_choices"
+	AgentKindVersionSummary        = "version_summary"
 )
 
 type ModelProfileSettings struct {
@@ -28,19 +29,24 @@ type AgentModelSettings struct {
 	TellerEditor          AgentModelOverride `toml:"teller_editor,omitempty" json:"teller_editor,omitempty"`
 	InteractiveState      AgentModelOverride `toml:"interactive_state,omitempty" json:"interactive_state,omitempty"`
 	InteractiveHotChoices AgentModelOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
+	VersionSummary        AgentModelOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 }
 
 type AgentModelOverride struct {
-	ProfileID   string   `toml:"profile_id,omitempty" json:"profile_id,omitempty"`
-	Temperature *float64 `toml:"temperature,omitempty" json:"temperature,omitempty"`
+	ProfileID       string   `toml:"profile_id,omitempty" json:"profile_id,omitempty"`
+	Temperature     *float64 `toml:"temperature,omitempty" json:"temperature,omitempty"`
+	EnableThinking  *bool    `toml:"enable_thinking,omitempty" json:"enable_thinking,omitempty"`
+	ReasoningEffort string   `toml:"reasoning_effort,omitempty" json:"reasoning_effort,omitempty"`
 }
 
 type ResolvedModelSettings struct {
-	ProfileID     string
-	OpenAIAPIKey  string
-	OpenAIBaseURL string
-	OpenAIModel   string
-	Temperature   *float64
+	ProfileID       string
+	OpenAIAPIKey    string
+	OpenAIBaseURL   string
+	OpenAIModel     string
+	Temperature     *float64
+	EnableThinking  *bool
+	ReasoningEffort string
 }
 
 func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSettings {
@@ -52,6 +58,7 @@ func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSetting
 		TellerEditor:          mergeAgentModelOverride(parent.TellerEditor, child.TellerEditor),
 		InteractiveState:      mergeAgentModelOverride(parent.InteractiveState, child.InteractiveState),
 		InteractiveHotChoices: mergeAgentModelOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
+		VersionSummary:        mergeAgentModelOverride(parent.VersionSummary, child.VersionSummary),
 	}
 }
 
@@ -97,11 +104,13 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		temperature = agentOverride.Temperature
 	}
 	return ResolvedModelSettings{
-		ProfileID:     profileID,
-		OpenAIAPIKey:  profile.OpenAIAPIKey,
-		OpenAIBaseURL: profile.OpenAIBaseURL,
-		OpenAIModel:   profile.OpenAIModel,
-		Temperature:   temperature,
+		ProfileID:       profileID,
+		OpenAIAPIKey:    profile.OpenAIAPIKey,
+		OpenAIBaseURL:   profile.OpenAIBaseURL,
+		OpenAIModel:     profile.OpenAIModel,
+		Temperature:     temperature,
+		EnableThinking:  agentOverride.EnableThinking,
+		ReasoningEffort: normalizeReasoningEffort(agentOverride.ReasoningEffort),
 	}
 }
 
@@ -167,6 +176,12 @@ func mergeAgentModelOverride(parent, child AgentModelOverride) AgentModelOverrid
 	if child.Temperature != nil {
 		out.Temperature = child.Temperature
 	}
+	if child.EnableThinking != nil {
+		out.EnableThinking = child.EnableThinking
+	}
+	if child.ReasoningEffort != "" {
+		out.ReasoningEffort = normalizeReasoningEffort(child.ReasoningEffort)
+	}
 	return out
 }
 
@@ -184,6 +199,8 @@ func agentModelOverrideFor(settings AgentModelSettings, agentKind string) AgentM
 		return settings.InteractiveState
 	case AgentKindInteractiveHotChoices:
 		return settings.InteractiveHotChoices
+	case AgentKindVersionSummary:
+		return settings.VersionSummary
 	default:
 		return AgentModelOverride{}
 	}
@@ -201,4 +218,8 @@ func legacyModelProfile(cfg *Config) ModelProfileSettings {
 
 func normalizeModelProfileID(id string) string {
 	return strings.TrimSpace(id)
+}
+
+func normalizeReasoningEffort(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
 }
