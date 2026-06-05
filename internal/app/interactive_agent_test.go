@@ -61,7 +61,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if history[2].Role != schema.Assistant || history[2].Content != "门后传来低沉的风声。" {
 		t.Fatalf("history[2] mismatch: %#v", history[2])
 	}
-	if history[3].Role != schema.User || !strings.Contains(history[3].Content, "我点燃火把") || strings.Contains(history[3].Content, "<STATE_DELTA>") {
+	if history[3].Role != schema.User || !strings.Contains(history[3].Content, "我点燃火把") || strings.Contains(history[3].Content, "</STATE_DELTA>") {
 		t.Fatalf("history[3] mismatch: %#v", history[3])
 	}
 	if !strings.Contains(history[3].Content, "讲述者本轮上下文规则") || !strings.Contains(history[3].Content, "讲述者随机事件率") {

@@ -48,10 +48,10 @@ func TestLoreStoreProgressiveContextSplitsResidentAndIndex(t *testing.T) {
 	if _, err := store.Create(LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: LoreLoadModeResident, Content: "主角完整正文"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, Keywords: []string{"据点"}, Content: "据点完整正文"}); err != nil {
+	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, Keywords: []string{"据点"}, BriefDescription: "黄泉酒馆索引简介", Content: "据点完整正文"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Create(LoreItemInput{ID: "secret", Type: "rule", Name: "隐藏规则", Importance: "minor", LoadMode: LoreLoadModeManual, Content: "隐藏完整正文"}); err != nil {
+	if _, err := store.Create(LoreItemInput{ID: "secret", Type: "rule", Name: "隐藏规则", Importance: "minor", LoadMode: LoreLoadModeManual, BriefDescription: "隐藏规则索引简介", Content: "隐藏完整正文"}); err != nil {
 		t.Fatal(err)
 	}
 

@@ -18,12 +18,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - WebUI 报错提示调整为贴近 IDE 面板风格的紧凑卡片，统一版本管理和设置页错误展示。
 - 右下角 Toast 弹窗关闭 Sonner 默认高饱和错误色，改为使用 Nova IDE 面板变量和低干扰边框样式，并将关闭按钮改为右侧常显的小图标。
 - 设置页新增工作区级版本管理配置，支持定时自动保存、Agent 大量输出自动保存、Agent 字数阈值和自动版本保留数量。
-- 创作 Agent 新增 `write_lore_items` 批量写资料库工具，可在大纲定稿、章节定稿或重写后一次性创建/更新多个资料条目，并在 WebUI 自动刷新资料库索引；写入条目缺少简介时会按资料类型、名称、标签和正文自动生成 `brief_description`。
+- 创作 Agent 新增用户可见的 `setting/character-states.md` 角色状态层，章节定稿后主要同步 `progress.md` 与角色当前状态；资料库改为只承载角色身份、人设、长期关系、能力体系和世界规则等稳定设定，避免每章状态抖动频繁写入资料库。
+- 创作 Agent 调整 `write_lore_items` 批量写资料库工具语义，用于在大纲定稿或长期设定变化时一次性创建/更新多个资料条目，并在 WebUI 自动刷新资料库索引；写入条目缺少简介时会按资料类型、名称、标签和正文自动生成 `brief_description`。
 - `scripts/npm-release.sh` 发布到 npm registry 时默认使用 `--auth-type web`，可通过浏览器完成 npm 2FA/认证流程；提供 `--auth-type` 参数并保留 `--otp` 覆盖方式。
 - 整理 `ideas.md` 规划记录，补充“续写下一章没自动分卷”待修复项并移除空的 NEED FIX 段落。
 
 ### Fixed
 
+- 互动模式：修复状态变化解析白名单遗漏 `action_space`，导致包含可行动选项的状态更新整组被丢弃的问题。
 - 创作 Agent：修复“按细纲写下一章”未按大纲分卷的问题，系统提示会结合大纲卷章安排、章节组细纲、进度和最近章节路径选择 `chapters/<分卷名>/` 目标目录，并在快捷创作提示中同步强调分卷写入。
 - Windows Release：修复默认 8080 端口被占用时双击启动后服务监听失败并退出的问题；未显式指定端口时会自动顺延选择可用端口，并保留 `NOVA_BACKEND_PORT` / `--port` 的显式配置语义。
 

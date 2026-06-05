@@ -4,9 +4,97 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestInitWorkspaceDoesNotCreateCharacterStates(t *testing.T) {
+	dir := t.TempDir()
+	state := NewState(dir)
+
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace 失败: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(state.SettingDir(), CharacterStatesFileName)); !os.IsNotExist(err) {
+		t.Fatalf("InitWorkspace 不应自动创建 %s: %v", CharacterStatesFileName, err)
+	}
+}
+
+func TestCompactContextIncludesCharacterStates(t *testing.T) {
+	dir := t.TempDir()
+	state := NewState(dir)
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace 失败: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), "outline.md"), []byte("大纲内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), "progress.md"), []byte("进度内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), CharacterStatesFileName), []byte("林川在废城东区地下仓库"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "chapters", "ch0001-开局.md"), []byte("第一章正文"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.ChapterGroupDir(), "group01-废城.md"), []byte("章节组内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewLoreStore(dir).Create(LoreItemInput{
+		ID:         "hero",
+		Type:       "character",
+		Name:       "林川",
+		Importance: "major",
+		LoadMode:   LoreLoadModeResident,
+		Content:    "林川的长期人设",
+	}); err != nil {
+		t.Fatalf("创建资料失败: %v", err)
+	}
+
+	context := state.CompactContext()
+	for _, required := range []string{
+		"## 当前大纲",
+		"大纲内容",
+		"## 当前进度",
+		"进度内容",
+		"## 角色状态",
+		"林川在废城东区地下仓库",
+		"## 章节目录概览",
+		"chapters/ch0001-开局.md",
+		"## 常驻资料库",
+		"林川的长期人设",
+		"## 章节组细纲",
+		"章节组内容",
+	} {
+		if !strings.Contains(context, required) {
+			t.Fatalf("CompactContext 缺少 %q:\n%s", required, context)
+		}
+	}
+}
+
+func TestHasStateRecognizesCharacterStates(t *testing.T) {
+	dir := t.TempDir()
+	state := NewState(dir)
+	if err := os.MkdirAll(state.SettingDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewLoreStore(dir).Ensure(); err != nil {
+		t.Fatal(err)
+	}
+	if state.HasState() {
+		t.Fatal("空作品不应有状态")
+	}
+
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), CharacterStatesFileName), []byte("# 角色状态"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !state.HasState() {
+		t.Fatal("只有 character-states.md 时也应识别为已有状态")
+	}
+}
 
 func TestReadWriteBookMeta(t *testing.T) {
 	// 测试 1：book.json 不存在时返回默认值

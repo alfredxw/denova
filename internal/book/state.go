@@ -60,6 +60,9 @@ func (s *State) ChapterGroupDir() string {
 // BrainstormFileName 顶层定调文件名，存于 workspace 根目录。
 const BrainstormFileName = "脑暴.md"
 
+// CharacterStatesFileName 角色状态文件名，存于 setting/，用于追踪当前连续性状态。
+const CharacterStatesFileName = "character-states.md"
+
 // InitWorkspace 初始化作品工作目录结构，并在缺失时写入「脑暴.md」顶层定调模板。
 func (s *State) InitWorkspace() error {
 	dirs := []string{
@@ -111,6 +114,7 @@ func (s *State) CompactContext() string {
 	}{
 		{"outline.md", "当前大纲"},
 		{"progress.md", "当前进度"},
+		{CharacterStatesFileName, "角色状态"},
 	}
 
 	for _, sec := range sections {
@@ -279,9 +283,9 @@ func (s *State) LoreContext() string {
 	return context
 }
 
-// HasState 检查作品是否已有大纲、进度或资料库内容。
+// HasState 检查作品是否已有大纲、进度、角色状态或资料库内容。
 func (s *State) HasState() bool {
-	files := []string{"outline.md", "progress.md"}
+	files := []string{"outline.md", "progress.md", CharacterStatesFileName}
 	for _, f := range files {
 		if _, err := os.Stat(filepath.Join(s.SettingDir(), f)); err == nil {
 			return true

@@ -216,7 +216,7 @@ func BuildInteractiveStateSystemInstruction() string {
 		"必须只输出一个 JSON 对象，不要输出 Markdown、解释或代码块。",
 		"JSON 格式必须是 {\"ops\":[...]}，ops 不能为空。",
 		"ops 只记录本回合已经发生且确定成立的变化，不记录未来计划，不复制没有变化的旧状态。",
-		"状态 path 仅允许 on_stage、characters.<角色名>、events、location、time、pov、scene、inventory、resources、world_flags、rules、threads 及其子路径。",
+		"状态 path 仅允许 on_stage、characters.<角色名>、events、location、time、pov、scene、action_space、inventory、resources、world_flags、rules、threads 及其子路径。",
 		"op 仅允许 set、merge、push、pull、inc、unset。",
 	}, "\n")
 }

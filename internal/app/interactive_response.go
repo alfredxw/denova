@@ -175,6 +175,7 @@ func isAllowedStatePath(path string) bool {
 		"time",
 		"pov",
 		"scene",
+		"action_space",
 		"inventory",
 		"resources",
 		"world_flags",

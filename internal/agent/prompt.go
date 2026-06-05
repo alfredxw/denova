@@ -153,6 +153,8 @@ func promptStateSectionSource(title string) string {
 		return "setting/outline.md"
 	case "当前进度":
 		return "setting/progress.md"
+	case "角色状态":
+		return "setting/character-states.md"
 	case "章节组细纲":
 		return "setting/chapter-groups/"
 	case "章节目录概览":

@@ -262,11 +262,11 @@ function AgentQuickActions({
 }) {
   const target = chapter ? `当前章节《${chapter.display_title}》` : (selectedFile ? `当前文件 ${selectedFile}` : '当前作品')
   const actions = useMemo(() => [
-    { label: '下一组细纲', icon: FileText, prompt: '请基于当前大纲、已定稿章节、progress.md 和角色状态，生成接下来一个短期情节单元的章节组细纲。只规划下一组，不要批量生成很多组；如实际定稿已经偏离大纲，请先指出偏差并让我确认是调整大纲还是拉回主线。' },
-    { label: '按细纲写下一章', icon: PenLine, prompt: '请读取当前章节组细纲、长期大纲、progress.md、角色状态和前面至少两章定稿正文，按细纲安排创作下一章。写作前请先按长期大纲的卷章安排和已有章节路径判断下一章所属分卷；若属于某一卷，请写入 chapters/<分卷名>/ 下符合章节文件名模板的文件。若草稿流程未启用且我没有明确要求草稿，请直接写入 chapters/ 对应分卷目录作为定稿候选。' },
+    { label: '下一组细纲', icon: FileText, prompt: '请基于当前大纲、已定稿章节、progress.md、character-states.md 和资料库长期设定，生成接下来一个短期情节单元的章节组细纲。只规划下一组，不要批量生成很多组；如实际定稿已经偏离大纲，请先指出偏差并让我确认是调整大纲还是拉回主线。' },
+    { label: '按细纲写下一章', icon: PenLine, prompt: '请读取当前章节组细纲、长期大纲、progress.md、character-states.md、资料库长期设定和前面至少两章定稿正文，按细纲安排创作下一章。写作前请先按长期大纲的卷章安排和已有章节路径判断下一章所属分卷；若属于某一卷，请写入 chapters/<分卷名>/ 下符合章节文件名模板的文件。若草稿流程未启用且我没有明确要求草稿，请直接写入 chapters/ 对应分卷目录作为定稿候选。' },
     { label: '续写下一段', icon: PenLine, prompt: `请基于${target}的上下文，续写下一段正文，保持原有叙事节奏和人物状态。` },
     { label: '润色当前章', icon: WandSparkles, prompt: `请检查并润色${target}，重点优化语句节奏、动作描写和情绪推进，不改变核心剧情。` },
-    { label: '定稿并同步状态', icon: FileText, prompt: `请将${target}视为章节定稿，检查其与前后文和当前章节组细纲的连续性，然后同步更新 progress.md 和资料库中有明确变化的条目；除非我明确要求，不要修改长期大纲。` },
+    { label: '定稿并同步状态', icon: FileText, prompt: `请将${target}视为章节定稿，检查其与前后文和当前章节组细纲的连续性，然后同步更新 progress.md 和 character-states.md；只有角色身份、人设、长期关系、能力体系或世界规则等稳定设定发生明确变化时，才更新资料库。除非我明确要求，不要修改长期大纲。` },
     { label: '一致性检查', icon: SearchCheck, prompt: `请对${target}做一致性检查，重点关注人物动机、时间线、道具、地点和前后文冲突。` },
   ], [target])
 
