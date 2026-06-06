@@ -11,6 +11,7 @@ import { InteractiveLayout } from '@/features/interactive/components/Interactive
 import { SettingPanel } from '@/features/interactive/components/SettingPanel'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
+import { AgentsView } from '@/features/agents/AgentsView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import type { Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
@@ -23,7 +24,7 @@ import { flattenFileTree, formatNumber } from './workbench-utils'
 
 interface ModeRouterProps {
   mode: WorkspaceMode
-  booksReturnMode: Exclude<WorkspaceMode, 'books'>
+  booksReturnMode: 'ide' | 'interactive'
   currentBookName: string
   workspace: string
   appVersion: string
@@ -174,6 +175,7 @@ export function ModeRouter(props: ModeRouterProps) {
 
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
   const versionsVisible = rightPanel === 'versions'
+  const agentsVisible = mode === 'agents'
   const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'creator' || rightPanel === 'teller' || rightPanel === 'versions') ? rightPanel : null
   const interactiveSubmode = useInteractiveStore((state) => state.submode)
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
@@ -304,6 +306,8 @@ export function ModeRouter(props: ModeRouterProps) {
     <main className={`flex h-full min-w-0 flex-col bg-[var(--nova-bg)] ${mode === 'ide' && !settingsOpen && !ideWorkspacePanel ? 'border-r border-[var(--nova-border)]' : ''}`}>
       {settingsOpen ? (
         <SettingsView onClose={onCloseSettings} />
+      ) : agentsVisible ? (
+        <AgentsView onClose={() => onSetMode(booksReturnMode)} />
       ) : mode === 'books' ? (
         <HomeView
           workspace={workspace}

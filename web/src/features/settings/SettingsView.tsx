@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Plus, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
-import type { AgentModelSettings, AgentModelOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from './types'
+import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from './types'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from './api'
 import { FONT_OPTIONS, fontLabelFor } from './font-options'
 import { getInteractiveTellers } from '@/features/interactive/api'
@@ -66,8 +66,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [activeLayer, layered])
 
   const effective = layered?.effective ?? {}
-  const profileOptions = buildProfileOptions(draft, effective)
-
   const onSave = async () => {
     setSaving(true)
     setError(null)
@@ -91,16 +89,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
 
   const setModelProfiles = (profiles: ModelProfileSettings[]) => {
     setField('model_profiles', profiles)
-  }
-
-  const setAgentOverride = (key: keyof AgentModelSettings, override: AgentModelOverride) => {
-    setDraft((d) => ({
-      ...d,
-      agent_models: {
-        ...(d.agent_models ?? {}),
-        [key]: override,
-      },
-    }))
   }
 
   const placeholderFor = (k: keyof Settings): string => {
@@ -184,12 +172,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <BoolTri label="默认 PlanMode" value={draft.plan_mode_default ?? null}
                    effective={effective.plan_mode_default}
                    onChange={(v) => setField('plan_mode_default', v)} />
-          <AgentModelEditor
-            settings={draft.agent_models ?? {}}
-            effective={effective.agent_models ?? {}}
-            profiles={profileOptions}
-            onChange={setAgentOverride}
-          />
         </>
       ),
     },
@@ -692,91 +674,4 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
       </div>
     </div>
   )
-}
-
-function AgentModelEditor({ settings, effective, profiles, onChange }: {
-  settings: AgentModelSettings
-  effective: AgentModelSettings
-  profiles: Array<{ id: string; label: string }>
-  onChange: (key: keyof AgentModelSettings, override: AgentModelOverride) => void
-}) {
-  const rows: Array<{ key: keyof AgentModelSettings; label: string }> = [
-    { key: 'default', label: '默认 Agent' },
-    { key: 'ide', label: 'IDE 创作 Agent' },
-    { key: 'interactive_story', label: '互动叙事 Agent' },
-    { key: 'lore_editor', label: '资料库编辑 Agent' },
-    { key: 'teller_editor', label: '讲述者编辑 Agent' },
-    { key: 'interactive_state', label: '互动状态 Agent' },
-    { key: 'interactive_hot_choices', label: '快捷选项 Agent' },
-    { key: 'version_summary', label: '版本说明 Agent' },
-  ]
-
-  return (
-    <div className="nova-settings-row rounded-md px-2 py-1.5">
-      <div className="mb-1.5 text-[var(--nova-text-muted)]">Agent 模型分配</div>
-      <div className="flex flex-col gap-2">
-        {rows.map((row) => {
-          const value = settings[row.key] ?? {}
-          const inherited = effective[row.key] ?? {}
-          return (
-            <div key={row.key} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-[minmax(8rem,12rem)_1fr_minmax(7rem,9rem)_minmax(8rem,10rem)_minmax(8rem,10rem)] md:items-center">
-              <span className="text-[var(--nova-text-muted)]">{row.label}</span>
-              <select
-                value={value.profile_id ?? ''}
-                onChange={(e) => onChange(row.key, { ...value, profile_id: e.target.value })}
-                className={fieldCls}
-              >
-                <option value="">继承（{inherited.profile_id || 'default'}）</option>
-                {profiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>{profile.label}</option>
-                ))}
-              </select>
-              <input
-                type="number"
-                step={0.1}
-                min={0}
-                max={2}
-                value={value.temperature ?? ''}
-                placeholder={inherited.temperature === null || inherited.temperature === undefined ? 'Temperature：平台默认' : `继承：${inherited.temperature}`}
-                onChange={(e) => onChange(row.key, { ...value, temperature: e.target.value === '' ? null : Number(e.target.value) })}
-                className={fieldCls}
-              />
-              <select
-                value={value.enable_thinking === null || value.enable_thinking === undefined ? '' : String(value.enable_thinking)}
-                onChange={(e) => onChange(row.key, { ...value, enable_thinking: e.target.value === '' ? null : e.target.value === 'true' })}
-                className={fieldCls}
-              >
-                <option value="">思考：{inherited.enable_thinking === null || inherited.enable_thinking === undefined ? '不传' : inherited.enable_thinking ? '开启' : '关闭'}</option>
-                <option value="true">开启思考</option>
-                <option value="false">关闭思考</option>
-              </select>
-              <select
-                value={value.reasoning_effort ?? ''}
-                onChange={(e) => onChange(row.key, { ...value, reasoning_effort: e.target.value })}
-                className={fieldCls}
-              >
-                <option value="">强度：{inherited.reasoning_effort || '不传'}</option>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-              </select>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function buildProfileOptions(draft: Settings, effective: Settings): Array<{ id: string; label: string }> {
-  const profiles = new Map<string, string>()
-  const add = (profile?: ModelProfileSettings) => {
-    const id = profile?.id?.trim()
-    if (!id) return
-    profiles.set(id, profile?.name || profile?.openai_model || id)
-  }
-  profiles.set('default', effective.openai_model || '默认模型')
-  ;(effective.model_profiles ?? []).forEach(add)
-  ;(draft.model_profiles ?? []).forEach(add)
-  return Array.from(profiles.entries()).map(([id, label]) => ({ id, label: id === 'default' ? `default（${label}）` : `${id}（${label}）` }))
 }

@@ -4,6 +4,7 @@ export interface Settings {
   openai_model?: string
   model_profiles?: ModelProfileSettings[]
   agent_models?: AgentModelSettings
+  agent_tools?: AgentToolSettings
   skills_dir?: string
   auto_save_enabled?: boolean | null
   auto_save_interval_ms?: number | null
@@ -56,6 +57,27 @@ export interface AgentModelOverride {
   temperature?: number | null
   enable_thinking?: boolean | null
   reasoning_effort?: string
+}
+
+export interface AgentToolSettings {
+  default?: AgentToolOverride
+  ide?: AgentToolOverride
+  interactive_story?: AgentToolOverride
+  lore_editor?: AgentToolOverride
+  teller_editor?: AgentToolOverride
+  interactive_state?: AgentToolOverride
+  interactive_hot_choices?: AgentToolOverride
+  version_summary?: AgentToolOverride
+}
+
+export interface AgentToolOverride {
+  file_read?: boolean | null
+  file_write?: boolean | null
+  shell_execute?: boolean | null
+  skills?: boolean | null
+  lore_read?: boolean | null
+  lore_write?: boolean | null
+  todo?: boolean | null
 }
 
 export interface SettingsPaths {

@@ -33,6 +33,7 @@ const APP_VERSION = __APP_VERSION__
 const MAX_OPEN_TABS_FALLBACK = 5
 type SidebarView = 'outline' | 'files' | 'search'
 type WritingRightPanel = Extract<RightPanel, 'ai'> | null
+type BooksReturnMode = 'ide' | 'interactive'
 
 function App() {
   const [projectVisible, setProjectVisible] = useState(() => readLayoutBoolean(PROJECT_VISIBLE_KEY, true))
@@ -56,8 +57,8 @@ function App() {
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
   const [loreItems, setLoreItems] = useState<LoreItem[]>([])
-  const [booksReturnMode, setBooksReturnMode] = useState<Exclude<WorkspaceMode, 'books'>>('ide')
-  const booksReturnModeRef = useRef<Exclude<WorkspaceMode, 'books'>>('ide')
+  const [booksReturnMode, setBooksReturnMode] = useState<BooksReturnMode>('ide')
+  const booksReturnModeRef = useRef<BooksReturnMode>('ide')
   const writingRightPanelRef = useRef<WritingRightPanel>('ai')
   const characterCardInputRef = useRef<HTMLInputElement>(null)
   const chatBootstrappedRef = useRef(false)
@@ -73,7 +74,7 @@ function App() {
   const setSelectedChapterId = useWorkspaceStore((state) => state.setSelectedChapterId)
 
   useEffect(() => {
-    if (mode === 'books') return
+    if (mode === 'books' || mode === 'agents') return
     const contentMode = mode === 'interactive' ? 'interactive' : 'ide'
     booksReturnModeRef.current = contentMode
     setBooksReturnMode(contentMode)
@@ -451,11 +452,11 @@ function App() {
   }, [isStreaming, send])
 
   const handleSetMode = useCallback((nextMode: WorkspaceMode) => {
-    if (nextMode === 'books') {
+    if (nextMode === 'books' || nextMode === 'agents') {
       const returnMode = mode === 'interactive' ? 'interactive' : 'ide'
       booksReturnModeRef.current = returnMode
       setBooksReturnMode(returnMode)
-    } else {
+    } else if (nextMode === 'ide' || nextMode === 'interactive') {
       booksReturnModeRef.current = nextMode
       setBooksReturnMode(nextMode)
     }

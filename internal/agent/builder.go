@@ -9,6 +9,7 @@ import (
 	localbk "github.com/cloudwego/eino-ext/adk/backend/local"
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
+	filesystemmw "github.com/cloudwego/eino/adk/middlewares/filesystem"
 	"github.com/cloudwego/eino/adk/middlewares/skill"
 	"github.com/cloudwego/eino/adk/prebuilt/deep"
 	"github.com/cloudwego/eino/components/tool"
@@ -21,17 +22,27 @@ import (
 
 // Build 构建小说创作 Agent（deep agent + 文件系统工具 + Skill 中间件）。
 func Build(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (adk.Agent, error) {
-	loreTools, err := newLoreTools(cfg.Workspace, true)
-	if err != nil {
-		return nil, err
+	toolSettings := config.ResolveAgentTools(cfg, config.AgentKindIDE)
+	var loreTools []tool.BaseTool
+	if toolSettings.LoreRead {
+		var err error
+		loreTools, err = newLoreTools(cfg.Workspace, toolSettings.LoreWrite)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return buildDeepAgent(ctx, cfg, config.AgentKindIDE, "NovaAgent", "AI 小说创作助手", BuildInstruction(cfg, state, teller), true, false, nil, loreTools, nil)
 }
 
 func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (adk.Agent, error) {
-	loreTools, err := newLoreTools(cfg.Workspace, false)
-	if err != nil {
-		return nil, err
+	toolSettings := config.ResolveAgentTools(cfg, config.AgentKindInteractiveStory)
+	var loreTools []tool.BaseTool
+	if toolSettings.LoreRead {
+		var err error
+		loreTools, err = newLoreTools(cfg.Workspace, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return buildDeepAgent(ctx, cfg, config.AgentKindInteractiveStory, "NovaInteractiveStoryAgent", "AI 互动故事叙事助手", BuildInteractiveStoryInstruction(cfg, state, teller), false, true, []adk.ChatModelAgentMiddleware{
 		newInteractiveStoryToolMiddleware(),
@@ -53,6 +64,7 @@ func buildDeepAgent(
 ) (adk.Agent, error) {
 	modelCfg := chatModelConfigForAgent(cfg, agentKind)
 	modelCfg.MaxTokens = maxTokens
+	toolSettings := config.ResolveAgentTools(cfg, agentKind)
 	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建模型失败: %w", err)
@@ -64,7 +76,14 @@ func buildDeepAgent(
 	}
 
 	var handlers []adk.ChatModelAgentMiddleware
-	if enableSkills {
+	filesystemHandler, err := newFilesystemMiddleware(ctx, backend, toolSettings)
+	if err != nil {
+		return nil, err
+	}
+	if filesystemHandler != nil {
+		handlers = append(handlers, filesystemHandler)
+	}
+	if enableSkills && toolSettings.Skills {
 		if skillsDir := ResolveSkillsDir(cfg.SkillsDir); skillsDir != "" {
 			skillBackend, sbErr := skill.NewBackendFromFilesystem(ctx, &skill.BackendFromFilesystemConfig{
 				Backend: backend,
@@ -86,9 +105,7 @@ func buildDeepAgent(
 		Description:       description,
 		ChatModel:         cm,
 		Instruction:       instruction,
-		Backend:           backend,
-		StreamingShell:    backend,
-		WithoutWriteTodos: disableWriteTodos,
+		WithoutWriteTodos: disableWriteTodos || !toolSettings.Todo,
 		MaxIteration:      configMaxIteration(cfg),
 		Handlers:          handlers,
 		ToolsConfig: adk.ToolsConfig{
@@ -108,6 +125,40 @@ func buildDeepAgent(
 			},
 		},
 	})
+}
+
+func newFilesystemMiddleware(ctx context.Context, backend *localbk.Local, settings config.ResolvedAgentToolSettings) (adk.ChatModelAgentMiddleware, error) {
+	if backend == nil {
+		return nil, nil
+	}
+	if !settings.FileRead && !settings.FileWrite && !settings.ShellExecute {
+		return nil, nil
+	}
+	mwConfig := &filesystemmw.MiddlewareConfig{
+		Backend: backend,
+		LsToolConfig: &filesystemmw.ToolConfig{
+			Disable: !settings.FileRead,
+		},
+		ReadFileToolConfig: &filesystemmw.ToolConfig{
+			Disable: !settings.FileRead,
+		},
+		GlobToolConfig: &filesystemmw.ToolConfig{
+			Disable: !settings.FileRead,
+		},
+		GrepToolConfig: &filesystemmw.ToolConfig{
+			Disable: !settings.FileRead,
+		},
+		WriteFileToolConfig: &filesystemmw.ToolConfig{
+			Disable: !settings.FileWrite,
+		},
+		EditFileToolConfig: &filesystemmw.ToolConfig{
+			Disable: !settings.FileWrite,
+		},
+	}
+	if settings.ShellExecute {
+		mwConfig.StreamingShell = backend
+	}
+	return filesystemmw.New(ctx, mwConfig)
 }
 
 func configMaxIteration(cfg *config.Config) int {

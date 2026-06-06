@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BookMarked, BookOpen, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
+import { BookMarked, BookOpen, Bot, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
@@ -9,7 +9,7 @@ import { formatNumber } from './workbench-utils'
 
 interface WorkbenchShellProps {
   mode: WorkspaceMode
-  booksReturnMode: Exclude<WorkspaceMode, 'books'>
+  booksReturnMode: 'ide' | 'interactive'
   currentBookName: string
   workspace: string
   appVersion: string
@@ -61,9 +61,10 @@ export function WorkbenchShell({
   const tellerVisible = rightPanel === 'teller'
   const versionsVisible = rightPanel === 'versions'
   const ideModeActive = mode === 'ide' && !settingsOpen
-  const fullWorkspacePanelVisible = settingsOpen || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
-  const modeLabel = mode === 'interactive' ? '互动工作台' : mode === 'books' ? '书籍管理' : '小说 IDE'
-  const navigationMode = mode === 'books' ? booksReturnMode : mode
+  const agentsActive = mode === 'agents' && !settingsOpen
+  const fullWorkspacePanelVisible = settingsOpen || mode === 'agents' || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
+  const modeLabel = settingsOpen ? '设置' : mode === 'interactive' ? '互动工作台' : mode === 'books' ? '书籍管理' : mode === 'agents' ? 'Agents' : '小说 IDE'
+  const navigationMode = mode === 'books' || mode === 'agents' ? booksReturnMode : mode
 
   const closeSettingsIfOpen = () => {
     if (settingsOpen) onCloseSettings()
@@ -104,6 +105,15 @@ export function WorkbenchShell({
     }
     closeSettingsIfOpen()
     onSetMode('books')
+  }
+
+  const openAgents = () => {
+    if (mode === 'agents' && !settingsOpen) {
+      returnFromBooks()
+      return
+    }
+    closeSettingsIfOpen()
+    onSetMode('agents')
   }
 
   const topBar = (
@@ -241,6 +251,14 @@ export function WorkbenchShell({
         className={`nova-icon-button mb-2 ${mode === 'books' && !settingsOpen ? 'is-active' : ''}`}
       >
         <BookOpen className="h-4 w-4" />
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
+        label="Agents"
+        onClick={openAgents}
+        className={`nova-icon-button mb-2 ${agentsActive ? 'is-active' : ''}`}
+      >
+        <Bot className="h-4 w-4" />
       </ActivityButton>
       <div className="mt-auto flex flex-col gap-2">
         <ActivityButton

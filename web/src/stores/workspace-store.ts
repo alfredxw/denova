@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export type RightPanel = 'ai' | 'lore' | 'creator' | 'teller' | 'outline' | 'characters' | 'versions' | null
 export type BottomPanel = 'versions' | 'problems' | null
-export type WorkspaceMode = 'ide' | 'interactive' | 'books'
+export type WorkspaceMode = 'ide' | 'interactive' | 'books' | 'agents'
 
 const MODE_STORAGE_KEY = 'nova:mode'
 
@@ -36,7 +36,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set) => ({
   bottomPanel: null,
   commandOpen: false,
   setMode: (mode) => {
-    if (typeof window !== 'undefined' && mode !== 'books') window.localStorage.setItem(MODE_STORAGE_KEY, mode)
+    if (typeof window !== 'undefined' && (mode === 'ide' || mode === 'interactive')) window.localStorage.setItem(MODE_STORAGE_KEY, mode)
     set({ mode })
   },
   setSelectedProjectId: (id) => set({ selectedProjectId: id }),

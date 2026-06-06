@@ -5,8 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	localbk "github.com/cloudwego/eino-ext/adk/backend/local"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
+
+	"nova/config"
 )
 
 // TestHandleUnknownTool 验证 LLM 幻觉调用不存在工具时，处理器返回引导性
@@ -70,5 +73,45 @@ func TestInteractiveStoryToolMiddlewareAllowsReadTools(t *testing.T) {
 	}
 	if !called || result != "ok" {
 		t.Fatalf("read_file should pass through, called=%v result=%s", called, result)
+	}
+}
+
+func TestNewFilesystemMiddlewareRespectsToolSettings(t *testing.T) {
+	backend, err := localbk.NewBackend(context.Background(), &localbk.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	middleware, err := newFilesystemMiddleware(context.Background(), backend, config.ResolvedAgentToolSettings{
+		FileRead:     true,
+		FileWrite:    false,
+		ShellExecute: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if middleware == nil {
+		t.Fatal("filesystem middleware should be registered when read tools are enabled")
+	}
+	_, runCtx, err := middleware.BeforeAgent(context.Background(), &adk.ChatModelAgentContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, item := range runCtx.Tools {
+		info, err := item.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		names[info.Name] = true
+	}
+	for _, name := range []string{"ls", "read_file", "glob", "grep"} {
+		if !names[name] {
+			t.Fatalf("read tool %s should be registered, names=%v", name, names)
+		}
+	}
+	for _, name := range []string{"write_file", "edit_file", "execute"} {
+		if names[name] {
+			t.Fatalf("tool %s should be disabled, names=%v", name, names)
+		}
 	}
 }

@@ -14,6 +14,7 @@ type Config struct {
 	OpenAIModel                 string                 `toml:"openai_model"`
 	ModelProfiles               []ModelProfileSettings `toml:"model_profiles"`
 	AgentModels                 AgentModelSettings     `toml:"agent_models"`
+	AgentTools                  AgentToolSettings      `toml:"agent_tools"`
 	SkillsDir                   string                 `toml:"skills_dir"`
 	NovaDir                     string                 `toml:"nova_dir"`
 	Workspace                   string                 `toml:"workspace"`
@@ -65,6 +66,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		OpenAIModel:                 s.OpenAIModel,
 		ModelProfiles:               s.ModelProfiles,
 		AgentModels:                 s.AgentModels,
+		AgentTools:                  s.AgentTools,
 		SkillsDir:                   s.SkillsDir,
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
@@ -130,6 +132,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		OpenAIModel:           cfg.OpenAIModel,
 		ModelProfiles:         cfg.ModelProfiles,
 		AgentModels:           cfg.AgentModels,
+		AgentTools:            cfg.AgentTools,
 		SkillsDir:             cfg.SkillsDir,
 		NovaDir:               cfg.NovaDir,
 		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
@@ -162,6 +165,7 @@ func Load() *Config {
 			OpenAIModel:                 d.OpenAIModel,
 			ModelProfiles:               d.ModelProfiles,
 			AgentModels:                 d.AgentModels,
+			AgentTools:                  d.AgentTools,
 			SkillsDir:                   d.SkillsDir,
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,

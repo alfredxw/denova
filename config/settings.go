@@ -17,6 +17,7 @@ type Settings struct {
 	OpenAIModel   string                 `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
 	ModelProfiles []ModelProfileSettings `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
 	AgentModels   AgentModelSettings     `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
+	AgentTools    AgentToolSettings      `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
 
 	// 路径
 	SkillsDir string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -88,6 +89,7 @@ func DefaultSettings() Settings {
 			InteractiveHotChoices: AgentModelOverride{EnableThinking: boolPtr(false)},
 			VersionSummary:        AgentModelOverride{EnableThinking: boolPtr(false)},
 		},
+		AgentTools:                 DefaultAgentToolSettings(),
 		PlanModeDefault:            boolPtr(false),
 		IDEStoryTellerID:           "classic",
 		InteractiveHotChoices:      boolPtr(true),
@@ -111,6 +113,7 @@ func Merge(parent, child Settings) Settings {
 	}
 	out.ModelProfiles = mergeModelProfiles(out.ModelProfiles, child.ModelProfiles)
 	out.AgentModels = MergeAgentModelSettings(out.AgentModels, child.AgentModels)
+	out.AgentTools = MergeAgentToolSettings(out.AgentTools, child.AgentTools)
 	if child.SkillsDir != "" {
 		out.SkillsDir = child.SkillsDir
 	}
