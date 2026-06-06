@@ -453,7 +453,7 @@ function App() {
 
   const handleSetMode = useCallback((nextMode: WorkspaceMode) => {
     if (nextMode === 'books' || nextMode === 'agents') {
-      const returnMode = mode === 'interactive' ? 'interactive' : 'ide'
+      const returnMode = mode === 'ide' || mode === 'interactive' ? mode : booksReturnModeRef.current
       booksReturnModeRef.current = returnMode
       setBooksReturnMode(returnMode)
     } else if (nextMode === 'ide' || nextMode === 'interactive') {

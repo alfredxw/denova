@@ -60,7 +60,9 @@ export function WorkbenchShell({
   const creatorVisible = rightPanel === 'creator'
   const tellerVisible = rightPanel === 'teller'
   const versionsVisible = rightPanel === 'versions'
-  const ideModeActive = mode === 'ide' && !settingsOpen
+  const sharedMenuActive = settingsOpen || mode === 'books' || mode === 'agents'
+  const ideModeActive = mode === 'ide' && !sharedMenuActive
+  const interactiveModeActive = mode === 'interactive' && !sharedMenuActive
   const agentsActive = mode === 'agents' && !settingsOpen
   const fullWorkspacePanelVisible = settingsOpen || mode === 'agents' || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
   const modeLabel = settingsOpen ? '设置' : mode === 'interactive' ? '互动工作台' : mode === 'books' ? '书籍管理' : mode === 'agents' ? 'Agents' : '小说 IDE'
@@ -190,7 +192,7 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label="剧情"
         onClick={() => openInteractiveSubmode('story')}
-        className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'story' ? 'is-active' : ''}`}
+        className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'story' ? 'is-active' : ''}`}
       >
         <MessageSquareText className="h-4 w-4" />
       </ActivityButton>
@@ -198,7 +200,7 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label="剧情路线图"
         onClick={() => openInteractiveSubmode('timeline')}
-        className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'timeline' ? 'is-active' : ''}`}
+        className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'timeline' ? 'is-active' : ''}`}
       >
         <History className="h-4 w-4" />
       </ActivityButton>
@@ -206,7 +208,7 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label="资料库"
         onClick={() => openInteractiveSubmode('lore')}
-        className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'lore' ? 'is-active' : ''}`}
+        className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'lore' ? 'is-active' : ''}`}
       >
         <Database className="h-4 w-4" />
       </ActivityButton>
@@ -214,7 +216,7 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label="创作者"
         onClick={() => openInteractiveSubmode('creator')}
-        className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'creator' ? 'is-active' : ''}`}
+        className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'creator' ? 'is-active' : ''}`}
       >
         <BookMarked className="h-4 w-4" />
       </ActivityButton>
@@ -222,7 +224,7 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label="讲述者"
         onClick={() => openInteractiveSubmode('teller')}
-        className={`nova-icon-button mb-2 ${mode === 'interactive' && interactiveSubmode === 'teller' ? 'is-active' : ''}`}
+        className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'teller' ? 'is-active' : ''}`}
       >
         <SlidersHorizontal className="h-4 w-4" />
       </ActivityButton>
@@ -237,7 +239,7 @@ export function WorkbenchShell({
             expanded={activityBarExpanded}
             label="写作"
             onClick={openWriting}
-            className={`nova-icon-button mb-2 ${mode === 'ide' && !settingsOpen && !loreVisible && !creatorVisible && !tellerVisible && !versionsVisible ? 'is-active' : ''}`}
+            className={`nova-icon-button mb-2 ${ideModeActive && !loreVisible && !creatorVisible && !tellerVisible && !versionsVisible ? 'is-active' : ''}`}
           >
             <PenLine className="h-4 w-4" />
           </ActivityButton>
