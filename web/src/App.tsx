@@ -174,7 +174,12 @@ function App() {
           const v = data?.effective?.max_open_tabs
           if (typeof v === 'number' && v >= 1) setMaxOpenTabs(Math.floor(v))
           setNovaDir(data?.paths?.nova_dir || '')
-          applyFontSettings(data?.effective?.ui_font_family, data?.effective?.reading_font_family)
+          applyFontSettings({
+            uiFont: data?.effective?.ui_font_family,
+            uiFontSize: data?.effective?.ui_font_size,
+            readingFont: data?.effective?.reading_font_family,
+            readingFontSize: data?.effective?.reading_font_size,
+          })
         })
         .catch((e) => console.warn('加载界面配置失败', e))
     }
@@ -629,10 +634,40 @@ function toWritingRightPanel(panel: RightPanel): WritingRightPanel {
   return panel === 'ai' ? 'ai' : null
 }
 
-function applyFontSettings(uiFont?: string, readingFont?: string) {
+function applyFontSettings({
+  uiFont,
+  uiFontSize,
+  readingFont,
+  readingFontSize,
+}: {
+  uiFont?: string
+  uiFontSize?: number | null
+  readingFont?: string
+  readingFontSize?: number | null
+}) {
   if (typeof document === 'undefined') return
+  const baseSize = clampFontSize(uiFontSize, 11, 16, 12)
+  const smSize = clampFontSize(baseSize + 2, 12, 18, 14)
+  const compactSize = clampFontSize(baseSize - 1, 10, 15, 11)
+  const microSize = clampFontSize(baseSize - 2, 10, 14, 10)
   document.documentElement.style.setProperty('--nova-ui-font-family', fontStackFor(uiFont, 'system-sans'))
   document.documentElement.style.setProperty('--nova-reading-font-family', fontStackFor(readingFont, 'source-han-serif'))
+  document.documentElement.style.setProperty('--nova-ui-font-size', `${baseSize}px`)
+  document.documentElement.style.setProperty('--nova-ui-line-height', `${baseSize + 6}px`)
+  document.documentElement.style.setProperty('--nova-ui-sm-font-size', `${smSize}px`)
+  document.documentElement.style.setProperty('--nova-ui-sm-line-height', `${smSize + 6}px`)
+  document.documentElement.style.setProperty('--nova-ui-caption-size', `${compactSize}px`)
+  document.documentElement.style.setProperty('--nova-ui-compact-font-size', `${compactSize}px`)
+  document.documentElement.style.setProperty('--nova-ui-compact-line-height', `${compactSize + 5}px`)
+  document.documentElement.style.setProperty('--nova-ui-micro-font-size', `${microSize}px`)
+  document.documentElement.style.setProperty('--nova-ui-micro-line-height', `${microSize + 4}px`)
+  document.documentElement.style.setProperty('--nova-reading-font-size', `${clampFontSize(readingFontSize, 14, 28, 18)}px`)
+}
+
+function clampFontSize(value: unknown, min: number, max: number, fallback: number) {
+  const numberValue = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numberValue)) return fallback
+  return Math.min(max, Math.max(min, Math.round(numberValue)))
 }
 
 export default App

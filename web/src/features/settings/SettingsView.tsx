@@ -153,9 +153,19 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <FontSelect label="界面字体" value={draft.ui_font_family}
                       effective={effective.ui_font_family}
                       onChange={(v) => setField('ui_font_family', v)} />
+          <Num label="界面字号 (px)" value={draft.ui_font_size ?? null}
+               placeholder={placeholderFor('ui_font_size')}
+               min={11}
+               max={16}
+               onChange={(v) => setField('ui_font_size', v)} />
           <FontSelect label="阅读字体" value={draft.reading_font_family}
                       effective={effective.reading_font_family}
                       onChange={(v) => setField('reading_font_family', v)} />
+          <Num label="阅读字号 (px)" value={draft.reading_font_size ?? null}
+               placeholder={placeholderFor('reading_font_size')}
+               min={14}
+               max={28}
+               onChange={(v) => setField('reading_font_size', v)} />
         </>
       ),
     },
@@ -260,9 +270,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <BoolTri label="输入框快捷选择" value={draft.interactive_hot_choices_enabled ?? null}
                    effective={effective.interactive_hot_choices_enabled}
                    onChange={(v) => setField('interactive_hot_choices_enabled', v)} />
-          <Num label="故事舞台字号 (px)" value={draft.interactive_stage_font_size ?? null}
-               placeholder={placeholderFor('interactive_stage_font_size')}
-               onChange={(v) => setField('interactive_stage_font_size', v)} />
           <Num label="故事舞台行间距" value={draft.interactive_stage_line_height ?? null}
                placeholder={placeholderFor('interactive_stage_line_height')}
                step={0.05}
@@ -273,9 +280,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <BoolTri label="输入框快捷选择" value={draft.interactive_hot_choices_enabled ?? null}
                    effective={effective.interactive_hot_choices_enabled}
                    onChange={(v) => setField('interactive_hot_choices_enabled', v)} />
-          <Num label="故事舞台字号 (px)" value={draft.interactive_stage_font_size ?? null}
-               placeholder={placeholderFor('interactive_stage_font_size')}
-               onChange={(v) => setField('interactive_stage_font_size', v)} />
           <Num label="故事舞台行间距" value={draft.interactive_stage_line_height ?? null}
                placeholder={placeholderFor('interactive_stage_line_height')}
                step={0.05}
@@ -501,9 +505,11 @@ function Text({ label, value, placeholder, type = 'text', disabled, onChange }: 
   )
 }
 
-function Num({ label, value, placeholder, step = 1, onChange }: {
+function Num({ label, value, placeholder, step = 1, min, max, onChange }: {
   label: string; value: number | null; placeholder?: string
   step?: number
+  min?: number
+  max?: number
   onChange: (v: number | null) => void
 }) {
   return (
@@ -511,6 +517,8 @@ function Num({ label, value, placeholder, step = 1, onChange }: {
       <input
         type="number"
         step={step}
+        min={min}
+        max={max}
         value={value ?? ''}
         placeholder={placeholder}
         onChange={(e) => {

@@ -38,7 +38,9 @@ type Settings struct {
 
 	// 外观
 	UIFontFamily      string `toml:"ui_font_family,omitempty" json:"ui_font_family,omitempty"`
+	UIFontSize        *int   `toml:"ui_font_size,omitempty" json:"ui_font_size,omitempty"`
 	ReadingFontFamily string `toml:"reading_font_family,omitempty" json:"reading_font_family,omitempty"`
+	ReadingFontSize   *int   `toml:"reading_font_size,omitempty" json:"reading_font_size,omitempty"`
 
 	// Agent
 	MaxIteration     *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
@@ -77,7 +79,9 @@ func DefaultSettings() Settings {
 		VersionAgentCharThreshold:   intPtr(3000),
 		VersionAutoRetention:        intPtr(100),
 		UIFontFamily:                "system-sans",
+		UIFontSize:                  intPtr(12),
 		ReadingFontFamily:           "source-han-serif",
+		ReadingFontSize:             intPtr(18),
 		MaxIteration:                intPtr(50),
 		ModelMaxRetries:             intPtr(5),
 		AgentModels: AgentModelSettings{
@@ -152,8 +156,14 @@ func Merge(parent, child Settings) Settings {
 	if child.UIFontFamily != "" {
 		out.UIFontFamily = child.UIFontFamily
 	}
+	if child.UIFontSize != nil {
+		out.UIFontSize = child.UIFontSize
+	}
 	if child.ReadingFontFamily != "" {
 		out.ReadingFontFamily = child.ReadingFontFamily
+	}
+	if child.ReadingFontSize != nil {
+		out.ReadingFontSize = child.ReadingFontSize
 	}
 	if child.MaxIteration != nil {
 		out.MaxIteration = child.MaxIteration

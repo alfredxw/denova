@@ -33,8 +33,14 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.UIFontFamily != "system-sans" {
 		t.Fatalf("UIFontFamily default: %s", s.UIFontFamily)
 	}
+	if s.UIFontSize == nil || *s.UIFontSize != 12 {
+		t.Fatalf("UIFontSize default")
+	}
 	if s.ReadingFontFamily != "source-han-serif" {
 		t.Fatalf("ReadingFontFamily default: %s", s.ReadingFontFamily)
+	}
+	if s.ReadingFontSize == nil || *s.ReadingFontSize != 18 {
+		t.Fatalf("ReadingFontSize default")
 	}
 }
 
@@ -44,7 +50,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		OpenAIModel:                "p-model",
 		MaxIteration:               intPtr(10),
 		UIFontFamily:               "system-sans",
+		UIFontSize:                 intPtr(12),
 		ReadingFontFamily:          "source-han-serif",
+		ReadingFontSize:            intPtr(18),
 		InteractiveMaxTokens:       intPtr(0),
 		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
@@ -54,7 +62,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		OpenAIModel:                "c-model", // override
 		MaxIteration:               nil,       // 继承 parent
 		UIFontFamily:               "humanist-sans",
+		UIFontSize:                 intPtr(13),
 		ReadingFontFamily:          "system-serif",
+		ReadingFontSize:            intPtr(20),
 		InteractiveMaxTokens:       intPtr(4000),
 		InteractiveHotChoices:      boolPtr(false),
 		InteractiveStageFontSize:   intPtr(18),
@@ -73,8 +83,14 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	if out.UIFontFamily != "humanist-sans" {
 		t.Fatalf("UIFontFamily should override parent: %s", out.UIFontFamily)
 	}
+	if out.UIFontSize == nil || *out.UIFontSize != 13 {
+		t.Fatalf("UIFontSize should override parent")
+	}
 	if out.ReadingFontFamily != "system-serif" {
 		t.Fatalf("ReadingFontFamily should override parent: %s", out.ReadingFontFamily)
+	}
+	if out.ReadingFontSize == nil || *out.ReadingFontSize != 20 {
+		t.Fatalf("ReadingFontSize should override parent")
 	}
 	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 4000 {
 		t.Fatalf("InteractiveMaxTokens should override parent")

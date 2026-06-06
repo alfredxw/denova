@@ -9,7 +9,7 @@ import { Markdown } from '@tiptap/markdown'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection as PmTextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import { BookOpen, Check, ChevronDown, ChevronUp, MessageSquareQuote, Palette, Rows3, Save, Search, Settings, Type, X } from 'lucide-react'
+import { BookOpen, Check, ChevronDown, ChevronUp, MessageSquareQuote, Palette, Rows3, Save, Search, Settings, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import type { TextSelection as QuoteSelection } from '@/lib/api'
@@ -40,7 +40,6 @@ type EditorTheme = 'ide' | 'paper' | 'sepia'
 type SaveStatus = 'dirty' | 'auto-saving' | 'auto-saved' | 'manual-saving' | 'manual-saved' | 'error'
 
 interface EditorSettings {
-  fontSize: number
   lineHeight: number
   theme: EditorTheme
 }
@@ -58,7 +57,6 @@ interface SearchMatch {
 const searchPluginKey = new PluginKey<DecorationSet>('nova-search-highlight')
 
 const DEFAULT_SETTINGS: EditorSettings = {
-  fontSize: 18,
   lineHeight: 1.9,
   theme: 'ide',
 }
@@ -543,7 +541,6 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
           background: themeStyle.background,
           ['--nova-editor-color' as string]: themeStyle.color,
           ['--nova-editor-accent' as string]: themeStyle.accent,
-          ['--nova-editor-font-size' as string]: `${settings.fontSize}px`,
           ['--nova-editor-line-height' as string]: String(settings.lineHeight),
         }}
       >
@@ -637,7 +634,7 @@ function EditorSettingsPanel({
             </span>
             <div className="min-w-0">
               <div className="text-xs font-medium text-[var(--nova-text)]">编辑器设置</div>
-              <div className="text-[11px] text-[var(--nova-text-faint)]">阅读密度与编辑器背景</div>
+              <div className="text-[11px] text-[var(--nova-text-faint)]">行间距与编辑器背景</div>
             </div>
           </div>
           <button type="button" className="rounded px-2 py-1 text-xs text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onClose}>
@@ -647,25 +644,6 @@ function EditorSettingsPanel({
       </div>
 
       <div className="space-y-3 p-3">
-        <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-          <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-            <span className="flex items-center gap-2 font-medium text-[var(--nova-text-muted)]">
-              <Type className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-              字号
-            </span>
-            <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 font-mono text-[11px] text-[var(--nova-text)]">{settings.fontSize}px</span>
-          </div>
-          <input
-            type="range"
-            min="14"
-            max="28"
-            step="1"
-            value={settings.fontSize}
-            onChange={(e) => patch({ fontSize: Number(e.target.value) })}
-            className="nova-editor-range w-full"
-          />
-        </label>
-
         <label className="nova-editor-control block rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
           <div className="mb-2 flex items-center justify-between gap-3 text-xs">
             <span className="flex items-center gap-2 font-medium text-[var(--nova-text-muted)]">
@@ -733,7 +711,6 @@ function loadEditorSettings(): EditorSettings {
     if (!raw) return DEFAULT_SETTINGS
     const parsed = JSON.parse(raw) as Partial<EditorSettings>
     return {
-      fontSize: parsed.fontSize ?? DEFAULT_SETTINGS.fontSize,
       lineHeight: parsed.lineHeight ?? DEFAULT_SETTINGS.lineHeight,
       theme: parsed.theme && parsed.theme in THEME_STYLES ? parsed.theme : DEFAULT_SETTINGS.theme,
     }

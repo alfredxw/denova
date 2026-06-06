@@ -62,7 +62,9 @@ version_auto_retention = 100
 # 外观
 # 可选：system-sans / humanist-sans / apple-system / microsoft-yahei / system-serif / source-han-serif / lxgw-wenkai / mono
 ui_font_family = "apple-system"
+ui_font_size = 12
 reading_font_family = "apple-system"
+reading_font_size = 18
 
 # Agent
 max_iteration = 50
@@ -74,5 +76,4 @@ ide_story_teller_id = "classic"
 # 互动模式
 # 留空或 0 表示不限制，优先避免非自然截断
 interactive_max_tokens = 0
-interactive_stage_font_size = 16
 interactive_stage_line_height = 1.78

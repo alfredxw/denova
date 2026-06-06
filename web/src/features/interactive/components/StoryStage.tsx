@@ -36,7 +36,7 @@ interface StoryStageProps {
   onDone: () => void | Promise<Snapshot | void>
 }
 
-const DEFAULT_STAGE_FONT_SIZE = 16
+const DEFAULT_READING_FONT_SIZE = 18
 const DEFAULT_STAGE_LINE_HEIGHT = 1.78
 const DEFAULT_READING_FONT = 'source-han-serif'
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
@@ -718,7 +718,7 @@ function noop() {}
 
 function useStagePreferences() {
   const [preferences, setPreferences] = useState({
-    fontSize: DEFAULT_STAGE_FONT_SIZE,
+    fontSize: DEFAULT_READING_FONT_SIZE,
     lineHeight: DEFAULT_STAGE_LINE_HEIGHT,
     fontFamily: fontStackFor(DEFAULT_READING_FONT, DEFAULT_READING_FONT),
     hotChoicesEnabled: true,
@@ -729,7 +729,7 @@ function useStagePreferences() {
       const settings = await fetchSettings()
       const effective = settings.effective || {}
       setPreferences({
-        fontSize: clampNumber(effective.interactive_stage_font_size, 13, 24, DEFAULT_STAGE_FONT_SIZE),
+        fontSize: clampNumber(effective.reading_font_size, 14, 28, DEFAULT_READING_FONT_SIZE),
         lineHeight: clampNumber(effective.interactive_stage_line_height, 1.35, 2.4, DEFAULT_STAGE_LINE_HEIGHT),
         fontFamily: fontStackFor(effective.reading_font_family, DEFAULT_READING_FONT),
         hotChoicesEnabled: effective.interactive_hot_choices_enabled !== false,
@@ -737,7 +737,7 @@ function useStagePreferences() {
     } catch (error) {
       console.warn('[interactive-stage] 加载故事舞台显示设置失败', error)
       setPreferences({
-        fontSize: DEFAULT_STAGE_FONT_SIZE,
+        fontSize: DEFAULT_READING_FONT_SIZE,
         lineHeight: DEFAULT_STAGE_LINE_HEIGHT,
         fontFamily: fontStackFor(DEFAULT_READING_FONT, DEFAULT_READING_FONT),
         hotChoicesEnabled: true,

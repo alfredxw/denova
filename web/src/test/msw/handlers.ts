@@ -46,7 +46,7 @@ export const handlers = [
     global: {},
     user: {},
     workspace: {},
-    effective: { max_open_tabs: 5, ui_font_family: 'system-sans', reading_font_family: 'source-han-serif', interactive_stage_font_size: 16, interactive_stage_line_height: 1.78 },
+    effective: { max_open_tabs: 5, ui_font_family: 'system-sans', ui_font_size: 12, reading_font_family: 'source-han-serif', reading_font_size: 18, interactive_stage_line_height: 1.78 },
     paths: { nova_dir: '', user_config: '', workspace_config: '' },
   })),
   http.get('/api/lore/items', () => HttpResponse.json({ items: [] })),

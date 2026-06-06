@@ -18,7 +18,9 @@ export interface Settings {
   version_agent_char_threshold?: number | null
   version_auto_retention?: number | null
   ui_font_family?: string
+  ui_font_size?: number | null
   reading_font_family?: string
+  reading_font_size?: number | null
   max_iteration?: number | null
   model_max_retries?: number | null
   plan_mode_default?: boolean | null

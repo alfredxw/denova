@@ -131,7 +131,7 @@ export function WorkbenchShell({
         <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
         <span className="truncate font-medium text-[var(--nova-text)]">{currentBookName}</span>
       </div>
-      <div className="flex items-center justify-end gap-2 text-[11px] text-[var(--nova-text-faint)]">
+      <div className="nova-ui-compact flex items-center justify-end gap-2 text-[var(--nova-text-faint)]">
         <span>{modeLabel}</span>
       </div>
     </header>
@@ -264,7 +264,7 @@ export function WorkbenchShell({
   )
 
   const statusBar = (
-    <div className="nova-topbar flex h-6 shrink-0 items-center border-t px-3 text-[11px]">
+    <div className="nova-statusbar nova-topbar flex h-6 shrink-0 items-center border-t px-3">
       <span>Nova v{appVersion}</span>
       {mode === 'ide' && summary && (
         <span className="ml-4">《{summary.title || '未命名'}》 · {summary.chapter_count} 章 · {formatNumber(summary.total_words)} 字</span>
