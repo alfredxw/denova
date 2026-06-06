@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { FileText, Loader2, Search } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
 import { searchWorkspace, type WorkspaceSearchResult } from '@/lib/api'
 
@@ -18,6 +19,7 @@ const SEARCH_DEBOUNCE_MS = 260
 
 /** 当前书籍 workspace 的扫描式全局搜索面板。 */
 export function SearchPanel({ workspace, onSelectResult }: SearchPanelProps) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<WorkspaceSearchResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -48,7 +50,7 @@ export function SearchPanel({ workspace, onSelectResult }: SearchPanelProps) {
         .catch((e) => {
           if (requestSeq.current !== seq) return
           setResults([])
-          setError(e instanceof Error ? e.message : '搜索失败')
+          setError(e instanceof Error ? e.message : t('search.failed'))
         })
         .finally(() => {
           if (requestSeq.current === seq) setLoading(false)
@@ -56,7 +58,7 @@ export function SearchPanel({ workspace, onSelectResult }: SearchPanelProps) {
     }, SEARCH_DEBOUNCE_MS)
 
     return () => window.clearTimeout(timer)
-  }, [trimmedQuery, workspace])
+  }, [t, trimmedQuery, workspace])
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -66,7 +68,7 @@ export function SearchPanel({ workspace, onSelectResult }: SearchPanelProps) {
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索当前书籍..."
+            placeholder={t('search.placeholder')}
             className="h-8 border-[var(--nova-border)] bg-[var(--nova-surface)] pl-8 pr-8 text-xs text-[var(--nova-text)] placeholder:text-[var(--nova-text-faint)]"
           />
           {loading && (
@@ -75,22 +77,22 @@ export function SearchPanel({ workspace, onSelectResult }: SearchPanelProps) {
         </div>
         {trimmedQuery && !loading && results.length > 0 && (
           <div className="px-1 text-[11px] text-[var(--nova-text-faint)]">
-            找到 {results.length} 条结果
+            {t('search.resultCount', { count: results.length })}
           </div>
         )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-1 pb-2">
         {!workspace ? (
-          <SearchEmptyState text="请先在书籍管理中选择一本书" />
+          <SearchEmptyState text={t('search.noWorkspace')} />
         ) : error ? (
           <SearchEmptyState text={error} />
         ) : !trimmedQuery ? (
-          <SearchEmptyState text="输入关键词搜索正文、设定和项目文件" />
+          <SearchEmptyState text={t('search.empty')} />
         ) : loading && results.length === 0 ? (
-          <SearchEmptyState text="正在搜索..." />
+          <SearchEmptyState text={t('common.searching')} />
         ) : groups.length === 0 ? (
-          <SearchEmptyState text="没有找到匹配内容" />
+          <SearchEmptyState text={t('search.noResults')} />
         ) : (
           <div className="space-y-3">
             {groups.map((group) => (
@@ -109,8 +111,8 @@ export function SearchPanel({ workspace, onSelectResult }: SearchPanelProps) {
                       onClick={() => void onSelectResult(result, trimmedQuery)}
                     >
                       <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-[var(--nova-text-faint)]">
-                        <span>{result.line > 0 ? `第 ${result.line} 行` : '路径匹配'}</span>
-                        {result.column > 0 && <span>列 {result.column}</span>}
+                        <span>{result.line > 0 ? t('search.line', { line: result.line }) : t('search.pathMatch')}</span>
+                        {result.column > 0 && <span>{t('search.column', { column: result.column })}</span>}
                       </div>
                       <p className="line-clamp-2 whitespace-pre-wrap break-words text-xs leading-5 text-[var(--nova-text-muted)]">
                         <HighlightedText text={result.preview || result.path} query={trimmedQuery} />

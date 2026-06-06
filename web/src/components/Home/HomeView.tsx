@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { BookOpen, Check, Clock3, Folder, LibraryBig, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -33,19 +35,19 @@ interface HomeViewProps {
 }
 
 /** 计算相对时间描述 */
-function relativeTime(isoStr: string): string {
+function relativeTime(isoStr: string, t: TFunction): string {
   if (!isoStr) return ''
   const diff = Date.now() - new Date(isoStr).getTime()
-  if (diff < 0) return '刚刚'
+  if (diff < 0) return t('time.justNow')
   const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes}分钟前`
+  if (minutes < 1) return t('time.justNow')
+  if (minutes < 60) return t('time.minutesAgo', { count: minutes })
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}小时前`
+  if (hours < 24) return t('time.hoursAgo', { count: hours })
   const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}天前`
+  if (days < 30) return t('time.daysAgo', { count: days })
   const months = Math.floor(days / 30)
-  return `${months}月前`
+  return t('time.monthsAgo', { count: months })
 }
 
 const inputCls = 'nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
@@ -55,6 +57,7 @@ const iconButtonCls = 'nova-nav-item text-[var(--nova-text-faint)] hover:bg-[var
 
 /** 书籍管理视图：集中展示、创建、打开和编辑最近书籍。 */
 export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, onOpenCharacterCardImport, onClose }: HomeViewProps) {
+  const { t } = useTranslation()
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [createTitle, setCreateTitle] = useState('')
   const [createAuthor, setCreateAuthor] = useState('')
@@ -80,8 +83,8 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
 
   /** 提交新建书籍 */
   const handleCreate = async () => {
-    if (!createTitle.trim()) { setCreateError('书名不能为空'); return }
-    if (!novaDir.trim()) { setCreateError('Nova 数据目录未就绪，请稍后重试'); return }
+    if (!createTitle.trim()) { setCreateError(t('home.titleRequired')); return }
+    if (!novaDir.trim()) { setCreateError(t('home.waitNovaDir')); return }
     setCreating(true)
     setCreateError('')
     try {
@@ -94,7 +97,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
       setShowCreateForm(false)
       onBooksChange()
     } catch (e: unknown) {
-      setCreateError(e instanceof Error ? e.message : '创建失败')
+      setCreateError(e instanceof Error ? e.message : t('home.createError'))
     } finally {
       setCreating(false)
     }
@@ -160,15 +163,15 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
     <div className="nova-sidebar flex h-full min-w-0 flex-col text-[var(--nova-text)]">
       <div className="nova-topbar flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs">
         <LibraryBig className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        <span className="font-medium text-[var(--nova-text)]">书籍管理</span>
-        <span className="text-[11px] text-[var(--nova-text-faint)]">{books.length} 本最近书籍</span>
+        <span className="font-medium text-[var(--nova-text)]">{t('home.title')}</span>
+        <span className="text-[11px] text-[var(--nova-text-faint)]">{t('home.recentCount', { count: books.length })}</span>
         {onClose && (
           <button
             type="button"
             onClick={onClose}
             className={`${iconButtonCls} ml-auto rounded p-1`}
-            aria-label="关闭书籍管理"
-            title="关闭书籍管理"
+            aria-label={t('home.close')}
+            title={t('home.close')}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -181,19 +184,19 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
           <section className="border-b border-[var(--nova-border)] pb-5">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase text-[var(--nova-text-faint)]">
               <BookOpen className="h-3.5 w-3.5" />
-              当前书籍
+              {t('home.currentBook')}
             </div>
             <div className="flex min-w-0 flex-col gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
                 <div className="truncate text-sm font-semibold text-[var(--nova-text)]">
-                  {currentBook?.name || (workspace ? workspace.split('/').filter(Boolean).pop() : '未设置工作区')}
+                  {currentBook?.name || (workspace ? workspace.split('/').filter(Boolean).pop() : t('home.currentWorkspaceUnset'))}
                 </div>
-                <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">{workspace || '请新建或选择一本书开始写作'}</div>
+                <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">{workspace || t('home.startHint')}</div>
               </div>
               {currentBook?.last_opened_at && (
                 <div className="flex shrink-0 items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">
                   <Clock3 className="h-3 w-3" />
-                  {relativeTime(currentBook.last_opened_at)}
+                  {relativeTime(currentBook.last_opened_at, t)}
                 </div>
               )}
             </div>
@@ -204,7 +207,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-[11px] font-medium uppercase text-[var(--nova-text-faint)]">
                 <Folder className="h-3.5 w-3.5" />
-                最近书籍
+                {t('home.recentBooks')}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {onOpenCharacterCardImport && (
@@ -216,7 +219,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                     onClick={onOpenCharacterCardImport}
                   >
                     <Upload className="h-3.5 w-3.5" />
-                    导入酒馆角色卡
+                    {t('home.importCard')}
                   </Button>
                 )}
                 {!showCreateForm && (
@@ -228,7 +231,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                     onClick={openCreateForm}
                   >
                     <Plus className="h-3.5 w-3.5" />
-                    新建书籍
+                    {t('home.createBook')}
                   </Button>
                 )}
               </div>
@@ -238,13 +241,13 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
               <div className="mb-4 space-y-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
                 <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
                   <Plus className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-                  新建书籍
+                  {t('home.createBook')}
                 </div>
                 <Input
                   type="text"
                   value={createTitle}
                   onChange={(e) => setCreateTitle(e.target.value)}
-                  placeholder="书名（必填）"
+                  placeholder={t('home.bookTitlePlaceholder')}
                   className={inputCls}
                   autoFocus
                 />
@@ -252,33 +255,33 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                   type="text"
                   value={createAuthor}
                   onChange={(e) => setCreateAuthor(e.target.value)}
-                  placeholder="作者（选填）"
+                  placeholder={t('home.authorPlaceholder')}
                   className={inputCls}
                 />
                 <div className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1.5 text-xs text-[var(--nova-text-faint)]">
                   <Folder className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-                  <span className="shrink-0">新书将创建在</span>
-                  <span className="truncate text-[var(--nova-text-muted)]">{novaDir || 'Nova 数据目录加载中...'}</span>
+                  <span className="shrink-0">{t('home.createIn')}</span>
+                  <span className="truncate text-[var(--nova-text-muted)]">{novaDir || t('home.novaDirLoading')}</span>
                 </div>
                 <Textarea
                   value={createDesc}
                   onChange={(e) => setCreateDesc(e.target.value)}
-                  placeholder="简介（选填）"
+                  placeholder={t('home.descriptionPlaceholder')}
                   rows={3}
                   className={inputCls + ' min-h-0 resize-none'}
                 />
                 {createError && <div className="text-xs text-red-400">{createError}</div>}
                 <div className="flex items-center justify-end gap-2">
-                  <Button type="button" size="xs" variant="ghost" className={ghostButtonCls} onClick={() => setShowCreateForm(false)}>取消</Button>
+                  <Button type="button" size="xs" variant="ghost" className={ghostButtonCls} onClick={() => setShowCreateForm(false)}>{t('common.cancel')}</Button>
                   <Button type="button" size="xs" className={primaryButtonCls} disabled={creating || !novaDir.trim()} onClick={handleCreate}>
-                    {creating ? '创建中...' : '创建'}
+                    {creating ? t('common.creating') : t('common.create')}
                   </Button>
                 </div>
               </div>
             )}
 
             {books.length === 0 ? (
-              <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-8 text-center text-xs text-[var(--nova-text-faint)]">暂无书籍记录</div>
+              <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-8 text-center text-xs text-[var(--nova-text-faint)]">{t('home.empty')}</div>
             ) : (
               <div className="space-y-2">
                 {books.map((book) => {
@@ -289,14 +292,14 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                     return (
                       <div key={book.path} className="space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
                         {editLoading ? (
-                          <div className="py-2 text-center text-xs text-[var(--nova-text-faint)]">加载中...</div>
+                          <div className="py-2 text-center text-xs text-[var(--nova-text-faint)]">{t('common.loading')}</div>
                         ) : (
                           <>
                             <Input
                               type="text"
                               value={editTitle}
                               onChange={(e) => setEditTitle(e.target.value)}
-                              placeholder="书名"
+                              placeholder={t('home.bookTitlePlaceholder')}
                               className={inputCls}
                               autoFocus
                             />
@@ -304,26 +307,26 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                               type="text"
                               value={editAuthor}
                               onChange={(e) => setEditAuthor(e.target.value)}
-                              placeholder="作者"
+                              placeholder={t('home.authorPlaceholder')}
                               className={inputCls}
                             />
                             <Textarea
                               value={editDesc}
                               onChange={(e) => setEditDesc(e.target.value)}
-                              placeholder="简介"
+                              placeholder={t('common.description')}
                               rows={2}
                               className={inputCls + ' min-h-0 resize-none'}
                             />
                             <div className="flex items-center justify-end gap-2">
                               <TooltipIconButton
-                                label="取消"
+                                label={t('common.cancel')}
                                 className={iconButtonCls}
                                 onClick={() => setEditingBookPath(null)}
                               >
                                 <X className="h-3.5 w-3.5" />
                               </TooltipIconButton>
                               <TooltipIconButton
-                                label="保存"
+                                label={t('common.save')}
                                 className="nova-nav-item text-[var(--nova-accent-green)] hover:bg-[var(--nova-hover)]"
                                 disabled={editSaving}
                                 onClick={handleSaveEdit}
@@ -354,24 +357,24 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                         className="min-w-0 flex-1 pl-1 text-left"
                         onClick={() => handleSwitch(book.path)}
                       >
-                        <div className="truncate text-sm font-semibold text-[var(--nova-text)]">{book.name || '未命名书籍'}</div>
+                        <div className="truncate text-sm font-semibold text-[var(--nova-text)]">{book.name || t('home.unnamedBook')}</div>
                         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
                           {book.author && <span>{book.author}</span>}
-                          {book.last_opened_at && <span>{relativeTime(book.last_opened_at)}</span>}
-                          {isCurrent && <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">当前</span>}
+                          {book.last_opened_at && <span>{relativeTime(book.last_opened_at, t)}</span>}
+                          {isCurrent && <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{t('common.current')}</span>}
                         </div>
                         <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">{book.path}</div>
                       </button>
                       <div className="flex shrink-0 items-center gap-0.5 pt-0.5">
                         <TooltipIconButton
-                          label="编辑信息"
+                          label={t('home.editInfo')}
                           className={`${iconButtonCls} opacity-0 group-hover:opacity-100`}
                           onClick={() => startEdit(book)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </TooltipIconButton>
                         <TooltipIconButton
-                          label="移除记录"
+                          label={t('home.removeRecord')}
                           className="nova-nav-item text-[var(--nova-text-faint)] opacity-0 hover:bg-red-500/15 hover:text-red-200 group-hover:opacity-100"
                           onClick={() => handleRemove(book.path)}
                         >

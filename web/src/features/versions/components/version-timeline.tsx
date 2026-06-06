@@ -1,4 +1,5 @@
 import { History, RotateCcw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 export type VersionItem = {
   id: string
@@ -28,8 +29,9 @@ export function VersionTimeline({
   onOpenDiff,
   onRollback,
 }: VersionTimelineProps) {
+  const { t } = useTranslation()
   if (versions.length === 0) {
-    return <div className="rounded bg-[var(--nova-surface)] px-2 py-2 text-[var(--nova-text-faint)]">暂无版本历史</div>
+    return <div className="rounded bg-[var(--nova-surface)] px-2 py-2 text-[var(--nova-text-faint)]">{t('versions.historyEmpty')}</div>
   }
 
   return (
@@ -49,7 +51,7 @@ export function VersionTimeline({
             >
               <div className="flex items-center gap-1 truncate text-[var(--nova-text)]" title={version.title}>
                 <History className="h-3 w-3 shrink-0 text-[var(--nova-text-muted)]" />
-                <span className="truncate">{version.title || '(无说明)'}</span>
+                <span className="truncate">{version.title || t('versions.emptyMessage')}</span>
               </div>
               <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
                 {version.description && <span className="font-mono text-[var(--nova-text-muted)]">{version.description}</span>}
@@ -73,10 +75,10 @@ export function VersionTimeline({
                   className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-accent)] disabled:cursor-not-allowed disabled:opacity-40"
                   onClick={() => onRollback(version)}
                   disabled={loading || !canRollback}
-                  title={!canRollback ? '当前工作区有未提交变更，请先创建版本后再回滚' : '回滚到此版本'}
+                  title={!canRollback ? t('versions.rollbackDisabled') : t('versions.rollbackTo')}
                 >
                   <RotateCcw className="h-3 w-3" />
-                  回滚
+                  {t('versions.rollback')}
                 </button>
               )}
             </div>

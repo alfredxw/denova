@@ -1,21 +1,23 @@
 import type { VersionEntry } from '@/lib/api'
 import type { VersionItem } from '@/features/versions/components/version-timeline'
+import type { TFunction } from 'i18next'
+import { formatDateTime } from '@/i18n'
 
-export function versionToTimelineItem(version: VersionEntry): VersionItem {
+export function versionToTimelineItem(version: VersionEntry, t: TFunction): VersionItem {
   return {
     id: version.id,
-    title: version.message || '(无说明)',
-    description: sourceText(version.source),
+    title: version.message || t('versions.emptyMessage'),
+    description: sourceText(version.source, t),
     createdAt: formatTime(version.created_at),
-    author: `${version.file_count} 文件 · ${formatBytes(version.total_bytes)}`,
+    author: t('versions.filesBytes', { files: version.file_count, bytes: formatBytes(version.total_bytes) }),
   }
 }
 
-function sourceText(source: VersionEntry['source']) {
-  if (source === 'timer') return '定时'
-  if (source === 'agent') return 'Agent'
-  if (source === 'rollback_backup') return '回滚前备份'
-  return '手动'
+function sourceText(source: VersionEntry['source'], t: TFunction) {
+  if (source === 'timer') return t('versions.source.timer')
+  if (source === 'agent') return t('versions.source.agent')
+  if (source === 'rollback_backup') return t('versions.source.rollbackBackup')
+  return t('versions.source.manual')
 }
 
 export function workspaceName(path: string) {
@@ -38,10 +40,10 @@ export function statusLabel(status: string) {
   return 'M'
 }
 
-export function statusText(status: string) {
-  if (status === 'added') return '新增'
-  if (status === 'deleted') return '删除'
-  return '修改'
+export function statusText(status: string, t: TFunction) {
+  if (status === 'added') return t('versions.change.added')
+  if (status === 'deleted') return t('versions.change.deleted')
+  return t('versions.change.modified')
 }
 
 export function statusColor(status: string) {
@@ -52,9 +54,7 @@ export function statusColor(status: string) {
 
 export function formatTime(value: string) {
   if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', { hour12: false })
+  return formatDateTime(value) || value
 }
 
 function formatBytes(value: number) {

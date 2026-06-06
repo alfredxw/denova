@@ -24,7 +24,7 @@ func (h *Handlers) HandleWorkspacePreviewCharacterCard(ctx context.Context, c *a
 	}
 	preview, err := book.PreviewTavernCharacterCard(filename, data)
 	if err != nil {
-		writeError(c, consts.StatusBadRequest, "解析酒馆角色卡失败: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.parseFailed", "detail", err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, preview)
@@ -33,28 +33,28 @@ func (h *Handlers) HandleWorkspacePreviewCharacterCard(ctx context.Context, c *a
 func readCharacterCardUpload(c *app.RequestContext) (string, []byte, bool) {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
-		writeError(c, consts.StatusBadRequest, "请上传 PNG 或 JSON 格式的酒馆角色卡文件")
+		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.uploadRequired")
 		return "", nil, false
 	}
 	if fileHeader.Size > MaxCharacterCardUploadBytes {
-		writeError(c, consts.StatusBadRequest, "角色卡文件不能超过 32MB")
+		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.tooLarge")
 		return "", nil, false
 	}
 
 	file, err := fileHeader.Open()
 	if err != nil {
-		writeError(c, consts.StatusBadRequest, "读取上传文件失败: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.readFailed", "detail", err.Error())
 		return "", nil, false
 	}
 	defer file.Close()
 
 	data, err := io.ReadAll(io.LimitReader(file, MaxCharacterCardUploadBytes+1))
 	if err != nil {
-		writeError(c, consts.StatusBadRequest, "读取上传文件失败: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.readFailed", "detail", err.Error())
 		return "", nil, false
 	}
 	if int64(len(data)) > MaxCharacterCardUploadBytes {
-		writeError(c, consts.StatusBadRequest, "角色卡文件不能超过 32MB")
+		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.tooLarge")
 		return "", nil, false
 	}
 	return fileHeader.Filename, data, true
@@ -84,7 +84,7 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 	case "new_book":
 		result, err = h.importCharacterCardToNewBook(ctx, filename, data, strings.TrimSpace(string(c.FormValue("book_title"))))
 	default:
-		writeError(c, consts.StatusBadRequest, "导入目标无效")
+		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.invalidTarget")
 		return
 	}
 	if err != nil {
@@ -93,7 +93,7 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 		if strings.Contains(err.Error(), "已存在") {
 			status = consts.StatusConflict
 		}
-		writeError(c, status, "导入酒馆角色卡失败: "+err.Error())
+		writeErrorKey(c, status, "api.characterCard.importFailed", "detail", err.Error())
 		return
 	}
 	log.Printf("[api] 导入酒馆角色卡完成 name=%q target=%q entries=%d items=%d", result.Name, result.TargetPath, result.EntryCount, result.ItemCount)

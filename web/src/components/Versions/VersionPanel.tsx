@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { FileClock, MoreHorizontal, RefreshCw, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { createVersion, getVersionDiff, getVersions, getVersionStatus, restoreVersion } from '@/lib/api'
@@ -31,6 +32,7 @@ const versionKeys = {
 
 /** VersionPanel 展示 Nova 原生快照版本状态、历史和恢复操作。 */
 export function VersionPanel({ workspace, refreshSignal, visible, onClose }: VersionPanelProps) {
+  const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [error, setError] = useState('')
   const [changesExpanded, setChangesExpanded] = useState(true)
@@ -82,10 +84,10 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
     mutationFn: () => createVersion(),
     onSuccess: async (result) => {
       setError('')
-      toast.success(`已保存版本：${result.version?.message || result.message}`)
+      toast.success(t('versions.saved', { message: result.version?.message || result.message }))
       await invalidateVersionQueries()
     },
-    onError: (e) => showOperationError(e, '创建版本失败', setError),
+    onError: (e) => showOperationError(e, t('versions.createFailed'), setError),
   })
 
   const restoreMutation = useMutation({
@@ -93,17 +95,17 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
     onSuccess: async () => {
       setRollbackVersion(null)
       setError('')
-      toast.success('已恢复版本')
+      toast.success(t('versions.restoreSuccess'))
       await invalidateVersionQueries()
     },
-    onError: (e) => showOperationError(e, '恢复版本失败', setError),
+    onError: (e) => showOperationError(e, t('versions.restoreFailed'), setError),
   })
 
   const loading = statusQuery.isFetching || historyQuery.isFetching || createMutation.isPending || restoreMutation.isPending
   const changes = status?.changes ?? []
   const canCreate = !loading && Boolean(workspace)
-  const timelineItems = useMemo(() => versions.map(versionToTimelineItem), [versions])
-  const currentVersionItem = useMemo(() => status?.latest ? versionToTimelineItem(status.latest) : null, [status?.latest])
+  const timelineItems = useMemo(() => versions.map((version) => versionToTimelineItem(version, t)), [t, versions])
+  const currentVersionItem = useMemo(() => status?.latest ? versionToTimelineItem(status.latest, t) : null, [status?.latest, t])
 
   const createManualVersion = () => {
     if (loading) return
@@ -121,7 +123,7 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
       setDiffPath(selectedPath)
       if (!selectedPath) {
         setDiffText(null)
-        toast.info('这个版本与当前工作区没有可对比的文件')
+        toast.info(t('versions.noComparableFiles'))
         return
       }
       const diff = await getVersionDiff(version.id, selectedPath)
@@ -129,21 +131,21 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
         setDiffText({ original: diff.original || '', modified: diff.modified || '' })
       } else {
         setDiffText(null)
-        toast.info('该文件不是文本文件，暂不支持内容对比')
+        toast.info(t('versions.fileBinary'))
       }
     } catch (e) {
-      showOperationError(e, '读取版本差异失败', setError)
+      showOperationError(e, t('versions.diffReadFailed'), setError)
     }
   }
 
   return (
     <div className="nova-sidebar flex h-full min-h-0 flex-col text-xs text-[var(--nova-text-muted)]">
       <div className="nova-topbar flex h-9 shrink-0 items-center border-b px-3">
-        <span className="font-semibold text-[var(--nova-text)]">版本管理</span>
-        <TooltipIconButton label="刷新版本状态" className="ml-auto text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={refresh} disabled={loading}>
+        <span className="font-semibold text-[var(--nova-text)]">{t('versions.title')}</span>
+        <TooltipIconButton label={t('versions.refresh')} className="ml-auto text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={refresh} disabled={loading}>
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
         </TooltipIconButton>
-        <TooltipIconButton label="关闭版本管理" className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onClose}>
+        <TooltipIconButton label={t('versions.close')} className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onClose}>
           <MoreHorizontal className="h-3.5 w-3.5" />
         </TooltipIconButton>
       </div>
@@ -156,18 +158,18 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
           <div className="mt-3">
             <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold text-[var(--nova-text-muted)]">
               <FileClock className="h-3.5 w-3.5" />
-              <span>手动保存版本</span>
+              <span>{t('versions.manualSave')}</span>
             </div>
             <Button type="button" size="sm" className="mt-2 flex w-full items-center justify-center gap-2 border border-[var(--nova-border)] bg-[var(--nova-active)] font-medium text-[var(--nova-text)] hover:bg-[var(--nova-hover)] disabled:opacity-45" onClick={createManualVersion} disabled={!canCreate}>
               <ShieldCheck className={`h-3.5 w-3.5 ${createMutation.isPending ? 'animate-pulse' : ''}`} />
-              <span>{createMutation.isPending ? '正在生成说明并保存' : '保存当前版本'}</span>
+              <span>{createMutation.isPending ? t('versions.savingWithSummary') : t('versions.saveCurrent')}</span>
             </Button>
           </div>
 
-          <SectionHeader title="当前变更" count={changes.length} expanded={changesExpanded} onToggle={() => setChangesExpanded(value => !value)} />
+          <SectionHeader title={t('versions.currentChanges')} count={changes.length} expanded={changesExpanded} onToggle={() => setChangesExpanded(value => !value)} />
           {changesExpanded && <ChangesList changes={changes} onOpenDiff={(path) => currentVersionItem && openDiff(currentVersionItem, path)} />}
 
-          <SectionHeader title="版本历史" count={timelineItems.length} expanded={historyExpanded} onToggle={() => setHistoryExpanded(value => !value)} />
+          <SectionHeader title={t('versions.history')} count={timelineItems.length} expanded={historyExpanded} onToggle={() => setHistoryExpanded(value => !value)} />
           {historyExpanded && (
             <VersionTimeline
               versions={timelineItems}
@@ -195,7 +197,7 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
 
       <VersionDiffDialog
         open={Boolean(diffVersion && diffPath && diffText)}
-        title={diffPath ? `版本差异：${diffPath}` : '版本差异'}
+        title={diffPath ? t('versions.diffTitleWithPath', { path: diffPath }) : t('versions.diffTitle')}
         original={diffText?.original || ''}
         modified={diffText?.modified || ''}
         language="markdown"

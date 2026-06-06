@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Bot, FileText, MessageSquareText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { Teller } from '@/features/interactive/types'
 import type { ChapterSummary, ChatMessage, SessionSummary, TextSelection } from '@/lib/api'
@@ -76,6 +77,7 @@ export function AgentPanel({
   onTextSelectionRemove,
   onClose,
 }: AgentPanelProps) {
+  const { t } = useTranslation()
   const [view, setView] = useState<AgentPanelView>('chat')
   const activeSession = sessions.find((session) => session.id === activeSessionId) ||
     sessions.find((session) => session.active) ||
@@ -86,32 +88,32 @@ export function AgentPanel({
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
         <div className="flex min-w-0 shrink-0 items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
           <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-          创作Agent
+          {t('chat.agent')}
         </div>
-        <div className="flex h-7 min-w-0 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label="Agent 面板切换">
+        <div className="flex h-7 min-w-0 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('chat.panelSwitch')}>
           <button
             type="button"
             onClick={() => setView('chat')}
             className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'chat' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
-            对话
+            {t('chat.view.chat')}
           </button>
           <button
             type="button"
             onClick={() => setView('sessions')}
             className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'sessions' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
-            会话
+            {t('chat.view.sessions')}
           </button>
         </div>
         <div className="min-w-0 flex-1" />
-        <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{isStreaming ? '创作中…' : '等待'}</span>
+        <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{isStreaming ? t('chat.status.streaming') : t('chat.status.idle')}</span>
         <button
           type="button"
           onClick={onClose}
           className="nova-nav-item rounded p-1"
-          aria-label="关闭创作 Agent"
-          title="关闭"
+          aria-label={t('chat.closeAgent')}
+          title={t('common.close')}
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -121,21 +123,21 @@ export function AgentPanel({
         <>
           <div className="flex min-h-[42px] shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3">
             <IdeTellerSelector workspace={workspace} tellers={tellers} />
-            <div className="flex min-w-0 flex-1 items-center text-[11px] text-[var(--nova-text-faint)]" title={activeSession ? `${activeSession.title} · ${activeSession.message_count} 条消息` : '暂无会话'}>
-              <span className="shrink-0 text-[var(--nova-text-muted)]">当前：</span>
-              <span className="min-w-0 truncate">{activeSession?.title || '暂无会话'}</span>
-              {activeSession && <span className="shrink-0"> · {activeSession.message_count} 条</span>}
+            <div className="flex min-w-0 flex-1 items-center text-[11px] text-[var(--nova-text-faint)]" title={activeSession ? `${activeSession.title} · ${t('common.messages', { count: activeSession.message_count })}` : t('chat.noSession')}>
+              <span className="shrink-0 text-[var(--nova-text-muted)]">{t('chat.current')}</span>
+              <span className="min-w-0 truncate">{activeSession?.title || t('chat.noSession')}</span>
+              {activeSession && <span className="shrink-0"> · {activeSession.message_count}</span>}
             </div>
             <button
               type="button"
               disabled={isStreaming}
               onClick={() => void onCreateSession()}
               className="nova-nav-item flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-45"
-              aria-label="新建会话"
-              title="新建会话"
+              aria-label={t('chat.newSession')}
+              title={t('chat.newSession')}
             >
               <Plus className="h-3.5 w-3.5" />
-              新建
+              {t('chat.new')}
             </button>
             <button
               type="button"
@@ -143,7 +145,7 @@ export function AgentPanel({
               className="nova-nav-item flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px]"
             >
               <MessageSquareText className="h-3.5 w-3.5" />
-              管理
+              {t('chat.manage')}
             </button>
           </div>
           {messages.length === 0 && !isStreaming && (
@@ -196,6 +198,7 @@ export function AgentPanel({
 }
 
 function IdeTellerSelector({ workspace, tellers }: { workspace: string; tellers: Teller[] }) {
+  const { t } = useTranslation()
   const [value, setValue] = useState('classic')
   const [saving, setSaving] = useState(false)
 
@@ -235,8 +238,8 @@ function IdeTellerSelector({ workspace, tellers }: { workspace: string; tellers:
   if (tellers.length === 0) return null
 
   return (
-    <label className="flex min-w-[126px] max-w-[170px] shrink-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]" title="IDE 创作 Agent 下一轮使用的默认讲述者">
-      <span className="shrink-0">讲述者</span>
+    <label className="flex min-w-[126px] max-w-[170px] shrink-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]" title={t('chat.tellerTitle')}>
+      <span className="shrink-0">{t('chat.teller')}</span>
       <select
         value={tellers.some((teller) => teller.id === value) ? value : 'classic'}
         disabled={saving}
@@ -260,21 +263,22 @@ function AgentQuickActions({
   selectedFile: string | null
   onSend: (message: string) => void
 }) {
-  const target = chapter ? `当前章节《${chapter.display_title}》` : (selectedFile ? `当前文件 ${selectedFile}` : '当前作品')
+  const { t } = useTranslation()
+  const target = chapter ? t('chat.quick.targetChapter', { title: chapter.display_title }) : (selectedFile ? t('chat.quick.targetFile', { file: selectedFile }) : t('chat.quick.targetWork'))
   const actions = useMemo(() => [
-    { label: '下一组细纲', icon: FileText, prompt: '请基于当前大纲、已定稿章节、progress.md、character-states.md 和资料库长期设定，生成接下来一个短期情节单元的章节组细纲。只规划下一组，不要批量生成很多组；如实际定稿已经偏离大纲，请先指出偏差并让我确认是调整大纲还是拉回主线。' },
-    { label: '按细纲写下一章', icon: PenLine, prompt: '请读取当前章节组细纲、长期大纲、progress.md、character-states.md、资料库长期设定和前面至少两章定稿正文，按细纲安排创作下一章。写作前请先按长期大纲的卷章安排和已有章节路径判断下一章所属分卷；若属于某一卷，请写入 chapters/<分卷名>/ 下符合章节文件名模板的文件。若草稿流程未启用且我没有明确要求草稿，请直接写入 chapters/ 对应分卷目录作为定稿候选。' },
-    { label: '续写下一段', icon: PenLine, prompt: `请基于${target}的上下文，续写下一段正文，保持原有叙事节奏和人物状态。` },
-    { label: '润色当前章', icon: WandSparkles, prompt: `请检查并润色${target}，重点优化语句节奏、动作描写和情绪推进，不改变核心剧情。` },
-    { label: '定稿并同步状态', icon: FileText, prompt: `请将${target}视为章节定稿，检查其与前后文和当前章节组细纲的连续性，然后同步更新 progress.md 和 character-states.md；只有角色身份、人设、长期关系、能力体系或世界规则等稳定设定发生明确变化时，才更新资料库。除非我明确要求，不要修改长期大纲。` },
-    { label: '一致性检查', icon: SearchCheck, prompt: `请对${target}做一致性检查，重点关注人物动机、时间线、道具、地点和前后文冲突。` },
-  ], [target])
+    { label: t('chat.quick.nextGroup'), icon: FileText, prompt: '请基于当前大纲、已定稿章节、progress.md、character-states.md 和资料库长期设定，生成接下来一个短期情节单元的章节组细纲。只规划下一组，不要批量生成很多组；如实际定稿已经偏离大纲，请先指出偏差并让我确认是调整大纲还是拉回主线。' },
+    { label: t('chat.quick.writeNextChapter'), icon: PenLine, prompt: '请读取当前章节组细纲、长期大纲、progress.md、character-states.md、资料库长期设定和前面至少两章定稿正文，按细纲安排创作下一章。写作前请先按长期大纲的卷章安排和已有章节路径判断下一章所属分卷；若属于某一卷，请写入 chapters/<分卷名>/ 下符合章节文件名模板的文件。若草稿流程未启用且我没有明确要求草稿，请直接写入 chapters/ 对应分卷目录作为定稿候选。' },
+    { label: t('chat.quick.continueParagraph'), icon: PenLine, prompt: `请基于${target}的上下文，续写下一段正文，保持原有叙事节奏和人物状态。` },
+    { label: t('chat.quick.polishChapter'), icon: WandSparkles, prompt: `请检查并润色${target}，重点优化语句节奏、动作描写和情绪推进，不改变核心剧情。` },
+    { label: t('chat.quick.finalizeState'), icon: FileText, prompt: `请将${target}视为章节定稿，检查其与前后文和当前章节组细纲的连续性，然后同步更新 progress.md 和 character-states.md；只有角色身份、人设、长期关系、能力体系或世界规则等稳定设定发生明确变化时，才更新资料库。除非我明确要求，不要修改长期大纲。` },
+    { label: t('chat.quick.consistencyCheck'), icon: SearchCheck, prompt: `请对${target}做一致性检查，重点关注人物动机、时间线、道具、地点和前后文冲突。` },
+  ], [target, t])
 
   return (
     <div className="border-b border-[var(--nova-border)] bg-[var(--nova-bg)] p-3">
       <div className="mb-2 flex items-center gap-2 text-xs font-medium text-[var(--nova-text-muted)]">
         <Sparkles className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        快捷创作
+        {t('chat.quickActions')}
       </div>
       <div className="grid grid-cols-2 gap-2">
         {actions.map((action) => {

@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, Pencil, RefreshCw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '@/lib/api'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 
@@ -17,6 +18,7 @@ interface MessageItemProps {
 
 /** 单条消息组件，根据 role 渲染不同样式 */
 export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion }: MessageItemProps) {
+  const { t } = useTranslation()
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canRegenerate = role === 'assistant' && Boolean(message.turn_id) && Boolean(onRegenerate) && !message.streaming
@@ -34,7 +36,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
             <div className="flex h-8 shrink-0 items-center gap-1 self-end opacity-80 transition-opacity group-hover:opacity-100">
               {onEdit && (
                 <TooltipIconButton
-                  label="编辑这轮输入"
+                  label={t('chat.action.editTurn')}
                   className="h-7 w-7 border border-[#5a5d64]/50 bg-[#25262a] text-[#d7dbe2] hover:bg-[#303238]"
                   onClick={() => onEdit(message)}
                 >
@@ -64,7 +66,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                   {canSwitchVersion && onSwitchVersion && (
                     <>
                       <TooltipIconButton
-                        label="切换到上一版"
+                        label={t('chat.action.prevVersion')}
                         className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
                         disabled={versionIndex <= 0}
                         onClick={() => onSwitchVersion(message, -1)}
@@ -78,7 +80,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                   )}
                   {canRegenerate && onRegenerate && (
                     <TooltipIconButton
-                      label="重新生成这一轮"
+                      label={t('chat.action.regenerateTurn')}
                       className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
                       onClick={() => onRegenerate(message)}
                     >
@@ -87,7 +89,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                   )}
                   {canSwitchVersion && onSwitchVersion && (
                     <TooltipIconButton
-                      label="切换到下一版"
+                      label={t('chat.action.nextVersion')}
                       className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
                       disabled={versionIndex >= versionCount - 1}
                       onClick={() => onSwitchVersion(message, 1)}
@@ -139,7 +141,8 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
 
 /** 工具执行中的轻量状态卡片 */
 export function ToolActivityBlock({ content }: { content: string }) {
-  const activity = parseActivityContent(content)
+  const { t } = useTranslation()
+  const activity = parseActivityContent(content, t)
 
   return (
     <div className="flex justify-start">
@@ -167,6 +170,7 @@ export function ToolActivityBlock({ content }: { content: string }) {
 
 /** 工具执行卡片，默认以单行展示运行态和结果态。 */
 export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const info = parseToolCallContent(message.content || '')
   const name = message.name || info.name
@@ -177,7 +181,7 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const hasResult = status === 'success'
   const isStreamingContent = status === 'running' && isContentTool(name) && rawArgs.length > 50
   const streamPreview = isStreamingContent ? extractStreamingContent(rawArgs) : ''
-  const summary = buildToolArgSummary(args) || (isStreamingContent ? '正在写入…' : '准备执行工具请求')
+  const summary = buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
   const resultPreview = buildPreview(result, 80)
   const hasDetail = Boolean(args || result)
 
@@ -186,12 +190,12 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
       <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
         <div className="flex min-h-10 min-w-0 items-center gap-2 px-3 py-2">
           <ToolStatusIcon status={status} />
-          <span className="shrink-0 font-medium text-[var(--nova-text)]">调用工具</span>
+          <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('chat.tool.calling')}</span>
           <code className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]">
             {name}
           </code>
           <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
-            {hasResult ? resultPreview || '执行完成' : summary}
+            {hasResult ? resultPreview || t('chat.tool.done') : summary}
           </span>
           {hasDetail && !isStreamingContent && (
             <button
@@ -199,7 +203,7 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
               className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-[var(--nova-text-muted)] transition hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
               onClick={() => setExpanded(!expanded)}
             >
-              {expanded ? '收起' : '详情'}
+              {expanded ? t('chat.tool.collapse') : t('chat.tool.details')}
             </button>
           )}
         </div>
@@ -228,13 +232,14 @@ interface TodoItem {
 
 /** Agentic Loop write_todos 工具卡片：渲染为可读的待办列表，兼容流式不完整 args */
 export function TodoListBlock({ message }: { message: ChatMessage }) {
+  const { t } = useTranslation()
   const args = message.args || ''
   const todos = parseTodosFromArgs(args)
   const status = message.status || 'running'
   const total = todos.length
   const completed = todos.filter(t => t.status === 'completed').length
   const inProgress = todos.find(t => t.status === 'in_progress')
-  const headline = inProgress?.activeForm || inProgress?.content || (status === 'success' ? '已更新待办列表' : '正在更新待办列表…')
+  const headline = inProgress?.activeForm || inProgress?.content || (status === 'success' ? t('chat.todo.updated') : t('chat.todo.updating'))
 
   return (
     <div className="flex justify-start">
@@ -243,7 +248,7 @@ export function TodoListBlock({ message }: { message: ChatMessage }) {
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
             <ListTodo className="h-3.5 w-3.5" />
           </span>
-          <span className="shrink-0 font-medium text-[var(--nova-text)]">待办列表</span>
+          <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('chat.todo.list')}</span>
           {total > 0 && (
             <span className="shrink-0 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-faint)]">
               {completed}/{total}
@@ -260,7 +265,7 @@ export function TodoListBlock({ message }: { message: ChatMessage }) {
         )}
         {todos.length === 0 && (
           <div className="border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 text-[var(--nova-text-faint)]">
-            {status === 'running' ? '解析中…' : '空待办'}
+            {status === 'running' ? t('chat.todo.parsing') : t('chat.todo.empty')}
           </div>
         )}
       </div>
@@ -356,6 +361,7 @@ function ToolStatusIcon({ status }: { status: ChatMessage['status'] }) {
 
 /** 工具结果卡片，默认展示摘要，避免大段结果挤占对话区 */
 function ToolResultBlock({ content }: { content: string }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const preview = buildPreview(content, 160)
   const canExpand = content.trim().replace(/\s+/g, ' ').length > 160
@@ -369,21 +375,21 @@ function ToolResultBlock({ content }: { content: string }) {
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-medium text-[var(--nova-text)]">工具执行完成</span>
+              <span className="font-medium text-[var(--nova-text)]">{t('chat.tool.resultDone')}</span>
               <span className="rounded-full border border-[var(--nova-accent-green)]/35 bg-[var(--nova-accent-green)]/10 px-2 py-0.5 text-[11px] text-[var(--nova-accent-green)]">
                 success
               </span>
             </div>
             <div className="mt-1 flex min-w-0 items-center gap-2 text-[var(--nova-text-faint)]">
               <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-              <span className="truncate">{preview || '无返回内容'}</span>
+              <span className="truncate">{preview || t('chat.tool.noReturn')}</span>
               {canExpand && (
                 <button
                   type="button"
                   className="shrink-0 rounded border border-transparent px-1.5 py-0.5 text-[var(--nova-text-muted)] transition hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                   onClick={() => setExpanded(!expanded)}
                 >
-                  {expanded ? '收起' : '展开'}
+                  {expanded ? t('chat.tool.collapse') : t('chat.tool.expand')}
                 </button>
               )}
             </div>
@@ -411,21 +417,21 @@ function parseToolCallContent(content: string) {
   }
 }
 
-function parseActivityContent(content: string) {
+function parseActivityContent(content: string, t: (key: string) => string) {
   const toolMatch = content.match(/^正在执行工具：([^\n]+)(?:\n([\s\S]*))?$/)
   if (toolMatch) {
     const args = formatMaybeJSON((toolMatch[2] || '').trim())
     return {
-      title: '正在执行工具',
+      title: t('chat.tool.runningTitle'),
       toolName: toolMatch[1].trim(),
-      detail: buildToolArgSummary(args) || '等待工具返回结果',
+      detail: buildToolArgSummary(args) || t('chat.tool.waitingResult'),
     }
   }
 
   const doneMatch = content.match(/^工具执行完成：?([\s\S]*)$/)
   if (doneMatch) {
     return {
-      title: '工具执行完成',
+      title: t('chat.tool.resultDone'),
       toolName: '',
       detail: buildPreview(doneMatch[1] || '', 120),
     }
@@ -647,6 +653,7 @@ function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string
 
 /** 思考过程折叠块，流式思考中自动展开，结束后自动折叠。 */
 function ThinkingBlock({ content, streaming }: { content: string; streaming: boolean }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(streaming)
 
   useEffect(() => {
@@ -662,7 +669,7 @@ function ThinkingBlock({ content, streaming }: { content: string; streaming: boo
           onClick={() => setExpanded(!expanded)}
         >
           {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-          💭 思考过程
+          💭 {t('chat.trace.thinking')}
         </button>
         {expanded && (
           <div className="border-l border-[#303238] px-3 py-2 text-xs text-[#858b96] whitespace-pre-wrap">

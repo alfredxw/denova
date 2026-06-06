@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { AtSign, BookMarked, Bot, Building2, Check, ChevronDown, ChevronUp, Database, FileText, Folder, History, Library, Loader2, MapPin, Plus, RotateCcw, Save, ScrollText, Search, Send, SlidersHorizontal, Trash2, UserRound, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import {
   createLoreVersion,
   createLoreItem,
@@ -29,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { formatDateTime as formatLocaleDateTime } from '@/i18n'
 import { clearInteractiveTellerAgentSession, createInteractiveTeller, deleteInteractiveTeller, getInteractiveTellerAgentMessages, getInteractiveTellers, runInteractiveTellerAgentStream, updateInteractiveTeller } from '../api'
 import type { StyleRule, Teller, TellerAgentResult, TellerPromptSlot } from '../types'
 
@@ -38,49 +40,34 @@ const TELLER_AGENT_ENTRY_ID = '__teller_agent__'
 const EMPTY_TELLERS: Teller[] = []
 
 const TYPE_OPTIONS = [
-  { value: 'character', label: '角色' },
-  { value: 'world', label: '世界观' },
-  { value: 'location', label: '地点' },
-  { value: 'faction', label: '势力' },
-  { value: 'rule', label: '规则' },
-  { value: 'item', label: '物品' },
-  { value: 'other', label: '其他' },
+  { value: 'character' },
+  { value: 'world' },
+  { value: 'location' },
+  { value: 'faction' },
+  { value: 'rule' },
+  { value: 'item' },
+  { value: 'other' },
 ] as const
 
 const IMPORTANCE_OPTIONS = [
-  { value: 'major', label: '主要' },
-  { value: 'important', label: '重要' },
-  { value: 'minor', label: '次要' },
+  { value: 'major' },
+  { value: 'important' },
+  { value: 'minor' },
 ] as const
 
 const LOAD_MODE_OPTIONS = [
-  { value: 'resident', label: '常驻', description: '完整正文进入 system prompt' },
-  { value: 'auto', label: '简介自动匹配', description: '进入索引，由 Agent 按简介判断是否加载正文' },
-  { value: 'manual', label: '手动引用', description: '仅本轮明确引用时加载正文' },
+  { value: 'resident' },
+  { value: 'auto' },
+  { value: 'manual' },
 ] as const
 
 const LORE_RESIDENT_ITEM_WARNING_CHARS = 8000
 const LORE_RESIDENT_TOTAL_WARNING_CHARS = 40000
 
 const TELLER_TARGET_OPTIONS = [
-  {
-    value: 'system',
-    label: '系统提示',
-    summary: 'Agent 初始化时注入',
-    detail: '和 CREATOR.md 同处系统提示层，定义讲述者身份、题材倾向和长期叙事原则。',
-  },
-  {
-    value: 'turn_context',
-    label: '本轮上下文',
-    summary: '每轮贴近用户行动',
-    detail: '每次生成下一回合时注入，强约束本轮裁定、NPC 主动反应、代价、暗线推进和可选择。',
-  },
-  {
-    value: 'state_memory',
-    label: '状态记忆',
-    summary: '只影响状态记录',
-    detail: '正文生成后注入状态 Agent，用于稳定记录危机、关系变化、资源压力、暗线和行动入口。',
-  },
+  { value: 'system' },
+  { value: 'turn_context' },
+  { value: 'state_memory' },
 ] as const
 
 type TellerTarget = TellerPromptSlot['target']
@@ -90,7 +77,7 @@ type LoreType = LoreItem['type']
 
 interface KnowledgeSection {
   id: string
-  label: string
+  labelKey: string
   icon: LucideIcon
   types: LoreType[]
   createType: LoreType
@@ -100,12 +87,12 @@ interface KnowledgeSection {
 }
 
 const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
-  { id: 'characters', label: '角色', icon: UserRound, types: ['character'], createType: 'character', createName: '新角色' },
-  { id: 'locations', label: '地点', icon: MapPin, types: ['location'], createType: 'location', createName: '新地点' },
-  { id: 'factions', label: '组织', icon: Building2, types: ['faction'], createType: 'faction', createName: '新组织' },
-  { id: 'rules', label: '规则', icon: ScrollText, types: ['world', 'rule'], createType: 'rule', createName: '新规则' },
-  { id: 'templates', label: '模板', icon: FileText, types: ['other'], createType: 'other', createName: '新模板', tag: '模板' },
-  { id: 'assets', label: '素材库', icon: Library, types: ['item', 'other'], createType: 'item', createName: '新素材', excludeTag: '模板' },
+  { id: 'characters', labelKey: 'lore.type.character', icon: UserRound, types: ['character'], createType: 'character', createName: '新角色' },
+  { id: 'locations', labelKey: 'lore.type.location', icon: MapPin, types: ['location'], createType: 'location', createName: '新地点' },
+  { id: 'factions', labelKey: 'lore.type.faction', icon: Building2, types: ['faction'], createType: 'faction', createName: '新组织' },
+  { id: 'rules', labelKey: 'lore.type.rule', icon: ScrollText, types: ['world', 'rule'], createType: 'rule', createName: '新规则' },
+  { id: 'templates', labelKey: 'settingPanel.section.templates', icon: FileText, types: ['other'], createType: 'other', createName: '新模板', tag: '模板' },
+  { id: 'assets', labelKey: 'settingPanel.section.assets', icon: Library, types: ['item', 'other'], createType: 'item', createName: '新素材', excludeTag: '模板' },
 ]
 
 interface SettingPanelProps {
@@ -117,6 +104,7 @@ interface SettingPanelProps {
 }
 
 export function SettingPanel({ mode, workspace = '', tellers: externalTellers = EMPTY_TELLERS, onTellersChange, embedded = false }: SettingPanelProps) {
+  const { t } = useTranslation()
   const activeMode = mode || 'lore'
   const [items, setItems] = useState<LoreItem[]>([])
   const [activeId, setActiveId] = useState('')
@@ -379,7 +367,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const handleDelete = async () => {
     if (activeMode === 'teller') {
       if (!tellerDraft || !tellerDraft.custom) return
-      if (!window.confirm(`删除讲述者「${tellerDraft.name}」？`)) return
+      if (!window.confirm(t('settingPanel.confirmDeleteTeller', { name: tellerDraft.name }))) return
       setSaving(true)
       try {
         await deleteInteractiveTeller(tellerDraft.id)
@@ -390,7 +378,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       return
     }
     if (!draft) return
-    if (!window.confirm(`删除资料「${draft.name}」？`)) return
+    if (!window.confirm(t('settingPanel.confirmDeleteLore', { name: draft.name }))) return
     setSaving(true)
     try {
       if (loreAutoSaveTimer.current) {
@@ -478,7 +466,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const handleCreateLoreVersion = async () => {
     setSaving(true)
     try {
-      await createLoreVersion('手动创建资料库版本')
+      await createLoreVersion(t('settingPanel.manualLoreVersion'))
       await refreshVersions()
       setVersionsVisible(true)
     } finally {
@@ -487,7 +475,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }
 
   const handleRestoreLoreVersion = async (version: LoreVersion) => {
-    if (!window.confirm(`恢复资料库版本「${version.message || version.id}」？`)) return
+    if (!window.confirm(t('settingPanel.confirmRestoreLoreVersion', { name: version.message || version.id }))) return
     setSaving(true)
     try {
       const restored = await restoreLoreVersion(version.id)
@@ -539,9 +527,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         <div className="border-b border-[var(--nova-border)] px-3 py-3">
           <div className="flex items-center gap-2">
             <ModeIcon mode={activeMode} />
-            <div className="text-sm font-semibold text-[var(--nova-text)]">{panelTitle(activeMode)}</div>
+            <div className="text-sm font-semibold text-[var(--nova-text)]">{panelTitle(activeMode, t)}</div>
           </div>
-          <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">在目录中选择条目，右侧打开编辑。</div>
+          <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.directoryHint')}</div>
         </div>
 
         {activeMode === 'lore' ? (
@@ -572,25 +560,25 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               <ModeIcon mode={activeMode} />
-              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreAgentActive ? '资料库 Agent' : isTellerAgentActive ? '讲述者 Agent' : editorTitle(activeMode, draft, tellerDraft)}</h2>
+              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreAgentActive ? t('settingPanel.loreAgent.title') : isTellerAgentActive ? t('settingPanel.tellerAgent.title') : editorTitle(activeMode, draft, tellerDraft, t)}</h2>
             </div>
-            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreAgentActive ? '用自然语言批量整理、补充和修改资料库' : isTellerAgentActive ? '用自然语言创建或修改单个讲述者规则包' : editorSubtitle(activeMode, draft, tellerDraft)}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerAgentActive ? t('settingPanel.tellerAgent.subtitle') : editorSubtitle(activeMode, draft, tellerDraft, t)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {activeMode === 'lore' && !isLoreAgentActive && (
-              <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !draft} onClick={handleDelete} aria-label="删除资料">
+              <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !draft} onClick={handleDelete} aria-label={t('settingPanel.deleteLore')}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
             {activeMode === 'teller' && !isTellerAgentActive && (
-              <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !tellerDraft?.custom} onClick={handleDelete} aria-label="删除讲述者">
+              <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !tellerDraft?.custom} onClick={handleDelete} aria-label={t('settingPanel.deleteTeller')}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
             {!isLoreAgentActive && !isTellerAgentActive && (
               <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving || (activeMode === 'lore' && !draft) || (activeMode === 'teller' && !tellerDraft)} onClick={handleSave}>
                 <Save className="h-4 w-4" />
-                {saving ? '保存中...' : '保存'}
+                {saving ? t('common.saving') : t('common.save')}
               </Button>
             )}
           </div>
@@ -701,6 +689,7 @@ function LoreAgentChat({
   onCreateVersion: () => void
   onRestoreVersion: (version: LoreVersion) => void
 }) {
+  const { t } = useTranslation()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messageEndRef = useRef<HTMLDivElement>(null)
   const historyWorkspaceRef = useRef<string | null>(null)
@@ -749,7 +738,7 @@ function LoreAgentChat({
       })
       .catch((error) => {
         if (!cancelled) {
-          setMessages([{ id: 'load-error', role: 'error', content: error instanceof Error ? error.message : '资料库 Agent 历史加载失败' }])
+          setMessages([{ id: 'load-error', role: 'error', content: error instanceof Error ? error.message : t('settingPanel.loreAgent.historyLoadFailed') }])
         }
       })
     return () => { cancelled = true }
@@ -794,7 +783,7 @@ function LoreAgentChat({
 
   const upsertToolCall = (payload: LoreToolPayload) => {
     const id = payload.id || `tool-${Date.now()}`
-    const name = payload.name || '资料库工具'
+    const name = payload.name || t('settingPanel.loreAgent.tool')
     setMessages((current) => {
       const existing = current.findIndex((message) => message.id === id)
       const nextMessage: LoreAgentChatMessage = {
@@ -840,13 +829,13 @@ function LoreAgentChat({
       try {
         await clearLoreAgentSession()
         if (workspaceRef.current !== activeWorkspace) return
-        appendMessage({ role: 'clear', content: '已清理资料库 Agent 上下文，历史消息仍保留。' })
+        appendMessage({ role: 'clear', content: t('settingPanel.loreAgent.clearDone') })
         setValue('')
         setReferenceIds([])
         setReferenceQuery(null)
       } catch (error) {
         if (workspaceRef.current !== activeWorkspace) return
-        appendMessage({ role: 'error', content: error instanceof Error ? error.message : '资料库 Agent 上下文清理失败' })
+        appendMessage({ role: 'error', content: error instanceof Error ? error.message : t('settingPanel.loreAgent.clearFailed') })
       } finally {
         if (workspaceRef.current === activeWorkspace) setRunning(false)
       }
@@ -872,7 +861,7 @@ function LoreAgentChat({
       }
     } catch (error) {
       if (workspaceRef.current !== activeWorkspace) return
-      appendMessage({ role: 'error', content: error instanceof Error ? error.message : '资料库 Agent 执行失败' })
+      appendMessage({ role: 'error', content: error instanceof Error ? error.message : t('settingPanel.loreAgent.runFailed') })
     } finally {
       if (workspaceRef.current === activeWorkspace) {
         setRunning(false)
@@ -909,23 +898,23 @@ function LoreAgentChat({
     }
     if (event.event === 'lore_status') {
       const payload = parseLoreEventData<LoreStatusPayload>(event.data)
-      const content = payload?.message || '资料库 Agent 正在处理...'
-      appendMessage({ role: 'assistant', content: payload?.ops ? `${content}（${payload.ops} 个操作）` : content })
+      const content = payload?.message || t('settingPanel.loreAgent.processing')
+      appendMessage({ role: 'assistant', content: payload?.ops ? t('settingPanel.loreAgent.ops', { message: content, count: payload.ops }) : content })
       return
     }
     if (event.event === 'lore_result') {
       const result = parseLoreEventData<LoreAgentResult>(event.data)
       if (!result) {
-        appendMessage({ role: 'error', content: '资料库 Agent 返回结果无法解析' })
+        appendMessage({ role: 'error', content: t('settingPanel.loreAgent.badResult') })
         return
       }
       onResult(result)
-      appendMessage({ role: 'assistant', content: loreAgentResultSummary(result), result })
+      appendMessage({ role: 'assistant', content: loreAgentResultSummary(result, t), result })
       return
     }
     if (event.event === 'error') {
       const payload = parseLoreEventData<{ message?: string }>(event.data)
-      appendMessage({ role: 'error', content: payload?.message || '资料库 Agent 执行失败' })
+      appendMessage({ role: 'error', content: payload?.message || t('settingPanel.loreAgent.runFailed') })
     }
   }
 
@@ -943,10 +932,10 @@ function LoreAgentChat({
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4">
-        <div className="text-xs text-[var(--nova-text-faint)]">对话已保存到当前 workspace，输入 /clear 可清理后续上下文。</div>
+        <div className="text-xs text-[var(--nova-text-faint)]">{t('settingPanel.loreAgent.persistHint')}</div>
         <Button className={actionButtonClassName} variant="outline" size="sm" onClick={onToggleVersions}>
           <History className="h-4 w-4" />
-          版本
+          {t('settingPanel.loreAgent.versions')}
         </Button>
       </div>
 
@@ -954,7 +943,7 @@ function LoreAgentChat({
         <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3">
           <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
             <div className="flex h-9 items-center justify-between border-b border-[var(--nova-border)] px-3">
-              <span className="text-xs font-medium text-[var(--nova-text-muted)]">资料库版本</span>
+              <span className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.loreAgent.versionTitle')}</span>
               <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving} onClick={onCreateVersion}>
                 <Plus className="h-3.5 w-3.5" />
               </Button>
@@ -964,19 +953,19 @@ function LoreAgentChat({
                 <div key={version.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[var(--nova-text)]">{version.message || version.id}</div>
-                    <div className="truncate text-[11px] text-[var(--nova-text-faint)]">{formatDateTime(version.created_at)} · {version.item_count} 条</div>
+                    <div className="truncate text-[11px] text-[var(--nova-text-faint)]">{formatDateTime(version.created_at)} · {t('settingPanel.loreAgent.versionItems', { count: version.item_count })}</div>
                   </div>
                   <button
                     type="button"
                     className="nova-nav-item rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                     onClick={() => onRestoreVersion(version)}
-                    aria-label="恢复资料库版本"
+                    aria-label={t('settingPanel.loreAgent.restoreVersion')}
                   >
                     <RotateCcw className="h-3.5 w-3.5" />
                   </button>
                 </div>
               )) : (
-                <div className="px-2 py-3 text-xs text-[var(--nova-text-faint)]">暂无版本</div>
+                <div className="px-2 py-3 text-xs text-[var(--nova-text-faint)]">{t('settingPanel.loreAgent.noVersions')}</div>
               )}
             </div>
           </div>
@@ -987,8 +976,8 @@ function LoreAgentChat({
         {messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="max-w-md rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 py-5 text-center">
-              <div className="text-sm font-medium text-[var(--nova-text)]">和资料库 Agent 对话</div>
-              <div className="mt-1 text-xs leading-5 text-[var(--nova-text-faint)]">直接描述要整理、补充或修改的设定；需要限定对象时，在输入框里用 @ 引用资料条目。</div>
+              <div className="text-sm font-medium text-[var(--nova-text)]">{t('settingPanel.loreAgent.emptyTitle')}</div>
+              <div className="mt-1 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.loreAgent.emptyDesc')}</div>
             </div>
           </div>
         ) : (
@@ -999,7 +988,7 @@ function LoreAgentChat({
             {running && (
               <div className="flex items-center gap-2 self-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Agent 正在处理...
+                {t('settingPanel.loreAgent.running')}
               </div>
             )}
             <div ref={messageEndRef} />
@@ -1023,10 +1012,10 @@ function LoreAgentChat({
                   onOpenAutoFocus={(event) => event.preventDefault()}
                 >
                   <Command shouldFilter={false} className="bg-transparent">
-                    <CommandInput value={referenceQuery || ''} readOnly placeholder="搜索资料条目..." />
+                    <CommandInput value={referenceQuery || ''} readOnly placeholder={t('settingPanel.loreAgent.searchLore')} />
                     <CommandList>
-                      <CommandEmpty>未找到资料</CommandEmpty>
-                      <CommandGroup heading="引用资料">
+                      <CommandEmpty>{t('settingPanel.loreAgent.noLore')}</CommandEmpty>
+                      <CommandGroup heading={t('settingPanel.loreAgent.referenceLore')}>
                         {visibleItems.map((item) => (
                           <CommandItem
                             key={item.id}
@@ -1035,7 +1024,7 @@ function LoreAgentChat({
                             className="cursor-pointer"
                           >
                             <span className="min-w-0 flex-1 truncate">@{item.name}</span>
-                            <span className="text-[11px] text-[var(--nova-text-faint)]">{loreTypeLabel(item.type)}</span>
+                            <span className="text-[11px] text-[var(--nova-text-faint)]">{loreTypeLabel(item.type, t)}</span>
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -1049,7 +1038,7 @@ function LoreAgentChat({
                 value={value}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
-                placeholder={running ? '资料库 Agent 正在执行...' : '输入资料库修改指令，Enter 发送，Shift+Enter 换行'}
+                placeholder={running ? t('settingPanel.loreAgent.executing') : t('settingPanel.loreAgent.placeholder')}
                 rows={2}
                 disabled={running}
               />
@@ -1067,7 +1056,7 @@ function LoreAgentChat({
                       type="button"
                       className="rounded text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
                       onClick={() => removeReference(item.id)}
-                      aria-label={`移除引用 ${item.name}`}
+                      aria-label={t('settingPanel.removeReference', { name: item.name })}
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -1077,7 +1066,7 @@ function LoreAgentChat({
             )}
             <Button className={actionButtonClassName} variant="outline" size="sm" disabled={running || !value.trim()} onClick={() => void send()}>
               {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {running ? '执行中...' : '发送'}
+              {running ? t('settingPanel.executing') : t('settingPanel.send')}
             </Button>
           </div>
         </div>
@@ -1099,6 +1088,7 @@ function TellerAgentChat({
   onTargetTellerIdChange: (id: string) => void
   onResult: (result: TellerAgentResult) => void
 }) {
+  const { t } = useTranslation()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messageEndRef = useRef<HTMLDivElement>(null)
   const historyWorkspaceRef = useRef<string | null>(null)
@@ -1148,7 +1138,7 @@ function TellerAgentChat({
       })
       .catch((error) => {
         if (!cancelled) {
-          setMessages([{ id: 'load-error', role: 'error', content: error instanceof Error ? error.message : '讲述者 Agent 历史加载失败' }])
+          setMessages([{ id: 'load-error', role: 'error', content: error instanceof Error ? error.message : t('settingPanel.tellerAgent.historyLoadFailed') }])
         }
       })
     return () => { cancelled = true }
@@ -1193,7 +1183,7 @@ function TellerAgentChat({
 
   const upsertToolCall = (payload: LoreToolPayload) => {
     const id = payload.id || `tool-${Date.now()}`
-    const name = payload.name || '讲述者工具'
+    const name = payload.name || t('settingPanel.tellerAgent.tool')
     setMessages((current) => {
       const existing = current.findIndex((message) => message.id === id)
       const nextMessage: TellerAgentChatMessage = {
@@ -1239,13 +1229,13 @@ function TellerAgentChat({
       try {
         await clearInteractiveTellerAgentSession()
         if (workspaceRef.current !== activeWorkspace) return
-        appendMessage({ role: 'clear', content: '已清理讲述者 Agent 上下文，历史消息仍保留。' })
+        appendMessage({ role: 'clear', content: t('settingPanel.tellerAgent.clearDone') })
         setValue('')
         setReferenceIds([])
         setReferenceQuery(null)
       } catch (error) {
         if (workspaceRef.current !== activeWorkspace) return
-        appendMessage({ role: 'error', content: error instanceof Error ? error.message : '讲述者 Agent 上下文清理失败' })
+        appendMessage({ role: 'error', content: error instanceof Error ? error.message : t('settingPanel.tellerAgent.clearFailed') })
       } finally {
         if (workspaceRef.current === activeWorkspace) setRunning(false)
       }
@@ -1271,7 +1261,7 @@ function TellerAgentChat({
       }
     } catch (error) {
       if (workspaceRef.current !== activeWorkspace) return
-      appendMessage({ role: 'error', content: error instanceof Error ? error.message : '讲述者 Agent 执行失败' })
+      appendMessage({ role: 'error', content: error instanceof Error ? error.message : t('settingPanel.tellerAgent.runFailed') })
     } finally {
       if (workspaceRef.current === activeWorkspace) {
         setRunning(false)
@@ -1309,16 +1299,16 @@ function TellerAgentChat({
     if (event.event === 'teller_result') {
       const result = parseLoreEventData<TellerAgentResult>(event.data)
       if (!result) {
-        appendMessage({ role: 'error', content: '讲述者 Agent 返回结果无法解析' })
+        appendMessage({ role: 'error', content: t('settingPanel.tellerAgent.badResult') })
         return
       }
       onResult(result)
-      appendMessage({ role: 'assistant', content: tellerAgentResultSummary(result), result })
+      appendMessage({ role: 'assistant', content: tellerAgentResultSummary(result, t), result })
       return
     }
     if (event.event === 'error') {
       const payload = parseLoreEventData<{ message?: string }>(event.data)
-      appendMessage({ role: 'error', content: payload?.message || '讲述者 Agent 执行失败' })
+      appendMessage({ role: 'error', content: payload?.message || t('settingPanel.tellerAgent.runFailed') })
     }
   }
 
@@ -1336,20 +1326,20 @@ function TellerAgentChat({
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4">
-        <div className="text-xs text-[var(--nova-text-faint)]">输入 /clear 可清理后续上下文；Agent 会根据本轮意图新建或修改一个讲述者。</div>
+        <div className="text-xs text-[var(--nova-text-faint)]">{t('settingPanel.tellerAgent.persistHint')}</div>
       </div>
 
       <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3">
         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_220px]">
           <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
-            {targetTeller ? `当前参考「${targetTeller.name}」；也可以在输入中 @ 其他讲述者或直接要求新建` : '未选择参考讲述者；Agent 会按指令自由判断'}
+            {targetTeller ? t('settingPanel.tellerAgent.referenceCurrent', { name: targetTeller.name }) : t('settingPanel.tellerAgent.noReferenceCurrent')}
           </div>
           <Select value={targetTellerId || 'none'} onValueChange={(value) => onTargetTellerIdChange(value === 'none' ? '' : value)}>
             <SelectTrigger size="sm" className={selectClassName}>
-              <SelectValue placeholder="选择参考讲述者" />
+              <SelectValue placeholder={t('settingPanel.tellerAgent.selectReference')} />
             </SelectTrigger>
             <SelectContent className="nova-panel border text-[var(--nova-text)]">
-              <SelectItem value="none">不选择，按指令判断</SelectItem>
+              <SelectItem value="none">{t('settingPanel.tellerAgent.noneReference')}</SelectItem>
               {tellers.map((teller) => (
                 <SelectItem key={teller.id} value={teller.id}>{teller.name}</SelectItem>
               ))}
@@ -1360,7 +1350,7 @@ function TellerAgentChat({
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {messages.length === 0 ? (
-          <EmptyState title="讲述者 Agent" description="描述要新建或修改的讲述者；需要限定对象时，在输入框里用 @ 引用讲述者。" />
+          <EmptyState title={t('settingPanel.tellerAgent.title')} description={t('settingPanel.tellerAgent.emptyDesc')} />
         ) : (
           <div className="mx-auto flex max-w-4xl flex-col gap-3">
             {messages.map((message) => (
@@ -1369,7 +1359,7 @@ function TellerAgentChat({
             {running && (
               <div className="flex items-center gap-2 self-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Agent 正在处理...
+                {t('settingPanel.loreAgent.running')}
               </div>
             )}
             <div ref={messageEndRef} />
@@ -1393,10 +1383,10 @@ function TellerAgentChat({
                   onOpenAutoFocus={(event) => event.preventDefault()}
                 >
                   <Command shouldFilter={false} className="bg-transparent">
-                    <CommandInput value={referenceQuery || ''} readOnly placeholder="搜索讲述者..." />
+                    <CommandInput value={referenceQuery || ''} readOnly placeholder={t('settingPanel.tellerAgent.searchTeller')} />
                     <CommandList>
-                      <CommandEmpty>未找到讲述者</CommandEmpty>
-                      <CommandGroup heading="引用讲述者">
+                      <CommandEmpty>{t('settingPanel.tellerAgent.noTeller')}</CommandEmpty>
+                      <CommandGroup heading={t('settingPanel.tellerAgent.referenceTeller')}>
                         {visibleTellers.map((teller) => (
                           <CommandItem
                             key={teller.id}
@@ -1419,7 +1409,7 @@ function TellerAgentChat({
                 value={value}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
-                placeholder={running ? '讲述者 Agent 正在执行...' : '输入讲述者创建或修改指令，可用 @ 引用，Enter 发送'}
+                placeholder={running ? t('settingPanel.tellerAgent.executing') : t('settingPanel.tellerAgent.placeholder')}
                 rows={2}
                 disabled={running}
               />
@@ -1437,7 +1427,7 @@ function TellerAgentChat({
                       type="button"
                       className="rounded text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
                       onClick={() => removeReference(teller.id)}
-                      aria-label={`移除引用 ${teller.name}`}
+                      aria-label={t('settingPanel.removeReference', { name: teller.name })}
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -1447,7 +1437,7 @@ function TellerAgentChat({
             )}
             <Button className={actionButtonClassName} variant="outline" size="sm" disabled={running || !value.trim()} onClick={() => void send()}>
               {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {running ? '执行中...' : '发送'}
+              {running ? t('settingPanel.executing') : t('settingPanel.send')}
             </Button>
           </div>
         </div>
@@ -1457,12 +1447,13 @@ function TellerAgentChat({
 }
 
 function LoreAgentMessage({ message }: { message: LoreAgentChatMessage }) {
+  const { t } = useTranslation()
   if (message.role === 'clear') {
     return (
       <div className="flex items-center gap-3 py-2">
         <div className="h-px flex-1 bg-[var(--nova-border)]" />
         <div className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1 text-[11px] text-[var(--nova-text-faint)]">
-          {message.content || '上下文已清理'}
+          {message.content || t('settingPanel.contextCleared')}
         </div>
         <div className="h-px flex-1 bg-[var(--nova-border)]" />
       </div>
@@ -1474,7 +1465,7 @@ function LoreAgentMessage({ message }: { message: LoreAgentChatMessage }) {
         <div className="max-w-[78%] rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
           <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
             <Loader2 className="h-3 w-3 animate-spin" />
-            思考过程
+            {t('settingPanel.thinking')}
           </div>
           <div className="whitespace-pre-wrap break-words">{message.content}</div>
         </div>
@@ -1488,7 +1479,7 @@ function LoreAgentMessage({ message }: { message: LoreAgentChatMessage }) {
           <div className="flex items-center gap-2">
             {message.status === 'running' ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nova-text-faint)]" /> : <Bot className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
             <span className="font-medium text-[var(--nova-text)]">{message.name || message.content}</span>
-            <span className="text-[11px] text-[var(--nova-text-faint)]">{message.status === 'running' ? '执行中' : '完成'}</span>
+            <span className="text-[11px] text-[var(--nova-text-faint)]">{message.status === 'running' ? t('settingPanel.status.running') : t('settingPanel.status.done')}</span>
           </div>
           {message.args && (
             <pre className="mt-2 max-h-40 overflow-auto rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 font-mono text-[11px] leading-4 text-[var(--nova-text-faint)]">
@@ -1530,9 +1521,9 @@ function LoreAgentMessage({ message }: { message: LoreAgentChatMessage }) {
         )}
         {message.result && (
           <div className="mt-2 space-y-1 border-t border-[var(--nova-border)] pt-2 text-xs text-[var(--nova-text-faint)]">
-            {message.result.created?.length ? <div>新增：{message.result.created.map((item) => item.name).join('，')}</div> : null}
-            {message.result.updated?.length ? <div>更新：{message.result.updated.map((item) => item.name).join('，')}</div> : null}
-            {message.result.deleted_ids?.length ? <div>删除：{message.result.deleted_ids.join('，')}</div> : null}
+            {message.result.created?.length ? <div>{t('settingPanel.result.created')}：{message.result.created.map((item) => item.name).join('，')}</div> : null}
+            {message.result.updated?.length ? <div>{t('settingPanel.result.updated')}：{message.result.updated.map((item) => item.name).join('，')}</div> : null}
+            {message.result.deleted_ids?.length ? <div>{t('settingPanel.result.deleted')}：{message.result.deleted_ids.join('，')}</div> : null}
           </div>
         )}
       </div>
@@ -1541,12 +1532,13 @@ function LoreAgentMessage({ message }: { message: LoreAgentChatMessage }) {
 }
 
 function TellerAgentMessage({ message }: { message: TellerAgentChatMessage }) {
+  const { t } = useTranslation()
   if (message.role === 'clear') {
     return (
       <div className="flex items-center gap-3 py-2">
         <div className="h-px flex-1 bg-[var(--nova-border)]" />
         <div className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1 text-[11px] text-[var(--nova-text-faint)]">
-          {message.content || '上下文已清理'}
+          {message.content || t('settingPanel.contextCleared')}
         </div>
         <div className="h-px flex-1 bg-[var(--nova-border)]" />
       </div>
@@ -1558,7 +1550,7 @@ function TellerAgentMessage({ message }: { message: TellerAgentChatMessage }) {
         <div className="max-w-[78%] rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
           <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
             <Loader2 className="h-3 w-3 animate-spin" />
-            思考过程
+            {t('settingPanel.thinking')}
           </div>
           <div className="whitespace-pre-wrap break-words">{message.content}</div>
         </div>
@@ -1572,7 +1564,7 @@ function TellerAgentMessage({ message }: { message: TellerAgentChatMessage }) {
           <div className="flex items-center gap-2">
             {message.status === 'running' ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nova-text-faint)]" /> : <Bot className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
             <span className="font-medium text-[var(--nova-text)]">{message.name || message.content}</span>
-            <span className="text-[11px] text-[var(--nova-text-faint)]">{message.status === 'running' ? '执行中' : '完成'}</span>
+            <span className="text-[11px] text-[var(--nova-text-faint)]">{message.status === 'running' ? t('settingPanel.status.running') : t('settingPanel.status.done')}</span>
           </div>
           {message.args && (
             <pre className="mt-2 max-h-40 overflow-auto rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 font-mono text-[11px] leading-4 text-[var(--nova-text-faint)]">
@@ -1605,7 +1597,7 @@ function TellerAgentMessage({ message }: { message: TellerAgentChatMessage }) {
         {message.targetTeller && (
           <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-xs text-[var(--nova-text-muted)]">
             <SlidersHorizontal className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
-            <span className="truncate">参考：{message.targetTeller.name}</span>
+            <span className="truncate">{t('settingPanel.result.reference', { name: message.targetTeller.name })}</span>
           </div>
         )}
         {message.tellerReferences && message.tellerReferences.length > 0 && (
@@ -1620,7 +1612,7 @@ function TellerAgentMessage({ message }: { message: TellerAgentChatMessage }) {
         )}
         {message.result && (
           <div className="mt-2 space-y-1 border-t border-[var(--nova-border)] pt-2 text-xs text-[var(--nova-text-faint)]">
-            <div>{message.result.action === 'update' ? '更新' : '新增'}：{message.result.teller.name}</div>
+            <div>{message.result.action === 'update' ? t('settingPanel.result.updated') : t('settingPanel.result.created')}：{message.result.teller.name}</div>
             <div>ID：{message.result.teller.id}</div>
           </div>
         )}
@@ -1646,6 +1638,7 @@ function LoreDirectory({
   onSelect: (id: string) => void
   onCreate: (section: KnowledgeSection) => void
 }) {
+  const { t } = useTranslation()
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const sections = KNOWLEDGE_SECTIONS
     .map((section) => ({ section, entries: sectionItems(items, section, query) }))
@@ -1672,7 +1665,7 @@ function LoreDirectory({
             className="min-w-0 flex-1 bg-transparent text-[var(--nova-text-muted)] outline-none placeholder:text-[var(--nova-text-faint)]"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="搜索资料"
+            placeholder={t('settingPanel.searchLore')}
           />
         </div>
         <button
@@ -1683,7 +1676,7 @@ function LoreDirectory({
           }`}
         >
           <Bot className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-          <span className="min-w-0 flex-1 truncate">资料库 Agent</span>
+          <span className="min-w-0 flex-1 truncate">{t('settingPanel.loreAgent.title')}</span>
         </button>
       </div>
       <ScrollArea className="min-h-0 flex-1">
@@ -1691,6 +1684,7 @@ function LoreDirectory({
           {sections.map(({ section, entries }) => {
             const Icon = section.icon
             const collapsed = isCollapsed(section, entries)
+            const label = t(section.labelKey)
             return (
               <section key={section.id} className={entries.length ? 'mb-2' : 'mb-1'}>
                 <div className={`flex h-8 items-center gap-2 rounded px-2 text-xs ${entries.length ? 'text-[var(--nova-text-muted)]' : 'text-[var(--nova-text-faint)]'}`}>
@@ -1698,19 +1692,19 @@ function LoreDirectory({
                     type="button"
                     className="nova-nav-item rounded p-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                     onClick={() => toggleSection(section, entries)}
-                    aria-label={collapsed ? `展开${section.label}` : `折叠${section.label}`}
+                    aria-label={collapsed ? `${t('chat.tool.expand')}${label}` : `${t('chat.tool.collapse')}${label}`}
                   >
                     <ChevronDown className={`h-3.5 w-3.5 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
                   </button>
                   <Icon className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-                  <span className="min-w-0 flex-1 truncate font-medium">{section.label}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
                   <span className="text-[11px] text-[var(--nova-text-faint)]">{entries.length}</span>
                   <button
                     type="button"
                     className="nova-nav-item rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                     disabled={saving}
                     onClick={() => onCreate(section)}
-                    aria-label={`新建${section.label}`}
+                    aria-label={`${t('chat.new')}${label}`}
                   >
                     <Plus className="h-3.5 w-3.5" />
                   </button>
@@ -1742,12 +1736,13 @@ function LoreDirectory({
 }
 
 function CreatorDirectory() {
+  const { t } = useTranslation()
   return (
     <div className="p-2">
       <div className="flex h-8 items-center gap-2 rounded px-2 text-xs text-[var(--nova-text-muted)]">
         <ChevronDown className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
         <Folder className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-        <span className="font-medium">作品根目录</span>
+        <span className="font-medium">{t('settingPanel.rootDirectory')}</span>
       </div>
       <div className="ml-5 border-l border-[var(--nova-border)] pl-2">
         <div className="flex h-8 items-center gap-2 rounded-[var(--nova-radius)] bg-[var(--nova-active)] px-2 text-xs text-[var(--nova-text)]">
@@ -1772,11 +1767,12 @@ function TellerDirectory({
   onSelect: (id: string) => void
   onCreate: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <>
       <div className="flex h-10 items-center justify-between border-b border-[var(--nova-border)] px-3">
-        <div className="text-xs font-medium text-[var(--nova-text-muted)]">讲述者目录</div>
-        <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving} onClick={onCreate} aria-label="新建讲述者">
+        <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.tellerDirectory')}</div>
+        <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving} onClick={onCreate} aria-label={t('settingPanel.newTeller')}>
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -1789,7 +1785,7 @@ function TellerDirectory({
           }`}
         >
           <Bot className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-          <span className="min-w-0 flex-1 truncate">讲述者 Agent</span>
+          <span className="min-w-0 flex-1 truncate">{t('settingPanel.tellerAgent.title')}</span>
         </button>
       </div>
       <ScrollArea className="min-h-0 flex-1">
@@ -1797,7 +1793,7 @@ function TellerDirectory({
           <div className="flex h-8 items-center gap-2 rounded px-2 text-xs text-[var(--nova-text-muted)]">
             <ChevronDown className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
             <Folder className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-            <span className="font-medium">规则包</span>
+            <span className="font-medium">{t('settingPanel.rulePackages')}</span>
           </div>
           <div className="ml-5 space-y-0.5 border-l border-[var(--nova-border)] pl-2">
             {tellers.map((teller) => (
@@ -1812,7 +1808,7 @@ function TellerDirectory({
                 <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate">{teller.name}</span>
-                  <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{teller.custom ? '自定义' : '内置'} · {(teller.slots || []).filter((slot) => slot.enabled).length} 条启用规则</span>
+                  <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{teller.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · {t('settingPanel.enabledRules', { count: (teller.slots || []).filter((slot) => slot.enabled).length })}</span>
                 </span>
               </button>
             ))}
@@ -1838,8 +1834,9 @@ function LoreEditor({
   setTagDraft: (value: string) => void
   onSave: () => void
 }) {
+  const { t } = useTranslation()
   if (!draft) {
-    return <EmptyState title="未选择资料" description="从左侧资料库目录选择或新建一个条目。" />
+    return <EmptyState title={t('settingPanel.editor.noLoreSelected')} description={t('settingPanel.editor.noLoreSelectedDesc')} />
   }
 
   const residentItemChars = draft.load_mode === 'resident' ? (draft.content || '').length : 0
@@ -1848,54 +1845,54 @@ function LoreEditor({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_160px_160px_180px]">
-        <Field label="名称">
+        <Field label={t('settingPanel.field.name')}>
           <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
         </Field>
-        <Field label="类型">
+        <Field label={t('settingPanel.field.type')}>
           <Select value={draft.type} onValueChange={(value) => setDraft({ ...draft, type: value as LoreItem['type'] })}>
             <SelectTrigger size="sm" className={selectClassName}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="nova-panel border text-[var(--nova-text)]">
               {TYPE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                <SelectItem key={option.value} value={option.value}>{loreTypeLabel(option.value, t)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </Field>
-        <Field label="重要度">
+        <Field label={t('settingPanel.field.importance')}>
           <Select value={draft.importance} onValueChange={(value) => setDraft({ ...draft, importance: value as LoreItem['importance'] })}>
             <SelectTrigger size="sm" className={selectClassName}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="nova-panel border text-[var(--nova-text)]">
               {IMPORTANCE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                <SelectItem key={option.value} value={option.value}>{loreImportanceLabel(option.value, t)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </Field>
-        <Field label="加载策略">
+        <Field label={t('settingPanel.field.loadMode')}>
           <Select value={draft.load_mode || 'auto'} onValueChange={(value) => setDraft({ ...draft, load_mode: value as LoreItem['load_mode'] })}>
             <SelectTrigger size="sm" className={selectClassName}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="nova-panel border text-[var(--nova-text)]">
               {LOAD_MODE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                <SelectItem key={option.value} value={option.value}>{loreLoadModeLabel(option.value, t)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </Field>
-        <Field label="标签">
-          <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder="用逗号分隔" />
+        <Field label={t('settingPanel.field.tags')}>
+          <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
         </Field>
-        <Field label="简介">
-          <Input className={inputClassName} value={draft.brief_description || ''} onChange={(event) => setDraft({ ...draft, brief_description: event.target.value })} placeholder="一两句说明适用场景、别名和关键设定" />
+        <Field label={t('settingPanel.field.brief')}>
+          <Input className={inputClassName} value={draft.brief_description || ''} onChange={(event) => setDraft({ ...draft, brief_description: event.target.value })} placeholder={t('settingPanel.placeholder.brief')} />
         </Field>
         <div className="lg:col-span-4 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-          {draft.load_mode === 'resident' ? '该资料会以完整正文常驻 system prompt。' : LOAD_MODE_OPTIONS.find((option) => option.value === draft.load_mode)?.description || '该资料会进入资料库索引。'}
-          {residentWarning ? <span className="ml-2 text-red-400">常驻正文较长，可能显著增加上下文成本。</span> : null}
+          {draft.load_mode === 'resident' ? t('settingPanel.lore.residentDesc') : loadModeDescription(draft.load_mode, t)}
+          {residentWarning ? <span className="ml-2 text-red-400">{t('settingPanel.lore.residentWarning')}</span> : null}
         </div>
       </div>
       <div className="min-h-0 flex-1 p-4">
@@ -1925,13 +1922,14 @@ function CreatorEditor({
   setContent: (value: string) => void
   onSave: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <div className="min-h-0 flex-1 p-4">
       <Textarea
         className="nova-field h-full min-h-[520px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
         value={content}
         onChange={(event) => setContent(event.target.value)}
-        placeholder="写下本书最高优先级的创作规则..."
+        placeholder={t('settingPanel.placeholder.creator')}
         onKeyDown={(event) => {
           if (isSaveShortcut(event)) {
             event.preventDefault()
@@ -1963,6 +1961,7 @@ function TellerEditor({
   setActiveSlotId: (id: string) => void
   onSave: () => void
 }) {
+  const { t } = useTranslation()
   const activeSlot = draft?.slots?.find((slot) => slot.id === activeSlotId) || draft?.slots?.[0] || null
   const [targetPickerOpen, setTargetPickerOpen] = useState(false)
   const [availableStyles, setAvailableStyles] = useState<string[]>([])
@@ -2023,7 +2022,7 @@ function TellerEditor({
   }
 
   if (!draft) {
-    return <EmptyState title="未选择讲述者" description="从左侧讲述者目录选择或新建一个规则包。" />
+    return <EmptyState title={t('settingPanel.editor.noTellerSelected')} description={t('settingPanel.editor.noTellerSelectedDesc')} />
   }
 
   const selectedTarget = targetOption(activeSlot?.target || 'turn_context')
@@ -2031,25 +2030,25 @@ function TellerEditor({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_150px_150px]">
-        <Field label="名称">
+        <Field label={t('settingPanel.field.name')}>
           <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
         </Field>
-        <Field label="描述">
-          <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder="选择时显示的简介" />
+        <Field label={t('settingPanel.field.description')}>
+          <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
         </Field>
-        <Field label="随机事件率">
+        <Field label={t('settingPanel.field.randomEventRate')}>
           <Input className={inputClassName} value={String(draft.random_event_rate ?? 0)} onChange={(event) => setDraft({ ...draft, random_event_rate: Number(event.target.value) || 0 })} />
         </Field>
         <SettingsNumberField
-          label="单轮目标字数"
+          label={t('settingPanel.field.replyTargetChars')}
           value={draft.reply_target_chars ?? null}
-          placeholder="默认：1200"
+          placeholder={t('settingPanel.placeholder.replyTargetChars')}
           onChange={(value) => setDraft({ ...draft, reply_target_chars: value })}
         />
-        <Field label="标签">
-          <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder="用逗号分隔" />
+        <Field label={t('settingPanel.field.tags')}>
+          <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
         </Field>
-        <Field label="上下文回合数">
+        <Field label={t('settingPanel.field.contextTurns')}>
           <Input
             className={inputClassName}
             value={String(draft.context_policy?.recent_turns ?? 0)}
@@ -2060,15 +2059,15 @@ function TellerEditor({
           />
         </Field>
         <div className="flex items-end">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{draft.custom ? '自定义' : '内置'}</span>
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{draft.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')}</span>
         </div>
       </div>
 
       <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
         <div className="mb-3">
-          <div className="text-xs font-medium text-[var(--nova-text)]">场景风格规则</div>
+          <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.styleRules.title')}</div>
           <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-            当前讲述者在 IDE 章节创作和互动故事生成时使用；本轮显式输入 # 风格参考时优先生效。
+            {t('settingPanel.styleRules.desc')}
           </div>
         </div>
         <InteractiveStyleRulesEditor
@@ -2081,8 +2080,8 @@ function TellerEditor({
       <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)]">
         <aside className="flex min-h-0 flex-col border-r border-[var(--nova-border)] bg-[var(--nova-surface)]">
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
-            <div className="text-xs font-medium text-[var(--nova-text-muted)]">注入规则</div>
-            <Button className={iconActionClassName} variant="outline" size="icon" onClick={addSlot} aria-label="新增注入规则">
+            <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.injectRules.title')}</div>
+            <Button className={iconActionClassName} variant="outline" size="icon" onClick={addSlot} aria-label={t('settingPanel.injectRules.new')}>
               <Plus className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -2106,9 +2105,9 @@ function TellerEditor({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{slot.name}</span>
                       <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]">
-                        <span className="truncate">{targetLabel(slot.target)}</span>
+                        <span className="truncate">{targetLabel(slot.target, t)}</span>
                         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${slot.enabled ? 'bg-[var(--nova-accent-green)]' : 'bg-[var(--nova-text-faint)]/35'}`} />
-                        <span className="shrink-0">{slot.enabled ? '启用' : '停用'}</span>
+                        <span className="shrink-0">{slot.enabled ? t('settingPanel.enabled') : t('settingPanel.disabled')}</span>
                       </span>
                     </span>
                   </button>
@@ -2127,19 +2126,19 @@ function TellerEditor({
           <section className="flex min-h-0 flex-col">
             <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
               <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(240px,320px)_32px]">
-                <Field label="规则名称">
+                <Field label={t('settingPanel.field.ruleName')}>
                   <Input className={inputClassName} value={activeSlot.name} onChange={(event) => updateSlot({ name: event.target.value })} />
                 </Field>
                 <div className="grid gap-1.5">
-                  <span className="text-[11px] text-[var(--nova-text-faint)]">注入位置</span>
+                  <span className="text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.field.injectTarget')}</span>
                   <Popover open={targetPickerOpen} onOpenChange={setTargetPickerOpen}>
                     <PopoverTrigger asChild>
                       <button
                         type="button"
-                        aria-label="注入位置"
+                        aria-label={t('settingPanel.field.injectTarget')}
                         className={`${selectClassName} flex w-full items-center justify-between gap-2 px-3 text-left text-[var(--nova-text)]`}
                       >
-                        <span className="min-w-0 flex-1 truncate">{selectedTarget.label} · {selectedTarget.summary}</span>
+                        <span className="min-w-0 flex-1 truncate">{targetLabel(selectedTarget.value as TellerTarget, t)} · {targetSummary(selectedTarget.value as TellerTarget, t)}</span>
                         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition ${targetPickerOpen ? 'rotate-180' : ''}`} />
                       </button>
                     </PopoverTrigger>
@@ -2164,8 +2163,8 @@ function TellerEditor({
                             <Check className="h-3 w-3" />
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block text-xs font-medium">{option.label}</span>
-                            <span className="mt-0.5 block text-[11px] leading-4 text-[var(--nova-text-faint)]">{option.summary}</span>
+                            <span className="block text-xs font-medium">{targetLabel(option.value as TellerTarget, t)}</span>
+                            <span className="mt-0.5 block text-[11px] leading-4 text-[var(--nova-text-faint)]">{targetSummary(option.value as TellerTarget, t)}</span>
                           </span>
                         </button>
                       ))}
@@ -2173,18 +2172,18 @@ function TellerEditor({
                   </Popover>
                 </div>
                 <div className="flex items-end justify-end">
-                  <Button className={iconActionClassName} variant="outline" size="icon" disabled={(draft.slots || []).length <= 1} onClick={deleteSlot} aria-label="删除注入规则">
+                  <Button className={iconActionClassName} variant="outline" size="icon" disabled={(draft.slots || []).length <= 1} onClick={deleteSlot} aria-label={t('settingPanel.injectRules.delete')}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
                 <div className="lg:col-span-3">
                   <div className="min-w-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5">
                     <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
-                      <span>{selectedTarget.label}</span>
+                      <span>{targetLabel(selectedTarget.value as TellerTarget, t)}</span>
                       <span className="h-1 w-1 rounded-full bg-[var(--nova-text-faint)]/50" />
-                      <span className="text-[var(--nova-text-faint)]">{selectedTarget.summary}</span>
+                      <span className="text-[var(--nova-text-faint)]">{targetSummary(selectedTarget.value as TellerTarget, t)}</span>
                     </div>
-                    <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">{selectedTarget.detail}</div>
+                    <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">{targetDetail(selectedTarget.value as TellerTarget, t)}</div>
                   </div>
                 </div>
               </div>
@@ -2205,7 +2204,7 @@ function TellerEditor({
             </div>
           </section>
         ) : (
-          <EmptyState title="暂无注入规则" description="为这个讲述者新增一条规则。" />
+          <EmptyState title={t('settingPanel.injectRules.emptyTitle')} description={t('settingPanel.injectRules.emptyDesc')} />
         )}
       </div>
     </div>
@@ -2239,6 +2238,7 @@ function InteractiveStyleRulesEditor({ available, rules, onChange }: {
   rules: StyleRule[]
   onChange: (rules: StyleRule[]) => void
 }) {
+  const { t } = useTranslation()
   const addRule = () => onChange([...rules, { scene: '', styles: [] }])
   const removeRule = (index: number) => onChange(rules.filter((_, i) => i !== index))
   const updateRule = (index: number, patch: Partial<StyleRule>) => {
@@ -2264,10 +2264,10 @@ function InteractiveStyleRulesEditor({ available, rules, onChange }: {
       <div className="flex flex-wrap items-center gap-2">
         <Button className={actionButtonClassName} variant="outline" size="sm" onClick={addRule}>
           <Plus className="h-3.5 w-3.5" />
-          新增规则
+          {t('settingPanel.style.addRule')}
         </Button>
         {available.length === 0 && (
-          <span className="text-xs text-[var(--nova-text-faint)]">当前用户目录 styles/ 下暂无风格文件，也可以手动添加 .md 或 .txt 路径。</span>
+          <span className="text-xs text-[var(--nova-text-faint)]">{t('settingPanel.style.emptyStylesHint')}</span>
         )}
       </div>
     </div>
@@ -2280,10 +2280,11 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
   onChange: (patch: Partial<StyleRule>) => void
   onRemove: () => void
 }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const [customPath, setCustomPath] = useState('')
   const selectedCustomStyles = rule.styles.filter((path) => !available.includes(path))
-  const summary = rule.styles.length === 0 ? '尚未选择风格文件' : rule.styles.join('、')
+  const summary = rule.styles.length === 0 ? t('settingPanel.style.noSelected') : rule.styles.join('、')
   const toggleStyle = (path: string) => {
     onChange({
       styles: rule.styles.includes(path)
@@ -2304,16 +2305,16 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
         <Input
           className={inputClassName}
           value={rule.scene}
-          placeholder="场景描述，如：激烈打斗 / 日常对话 / 压抑悬疑"
+          placeholder={t('settingPanel.placeholder.scene')}
           onChange={(event) => onChange({ scene: event.target.value })}
         />
         <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={() => setExpanded((value) => !value)}>
           {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          {expanded ? '收起' : `风格 (${rule.styles.length})`}
+          {expanded ? t('chat.tool.collapse') : t('settingPanel.style.button', { count: rule.styles.length })}
         </Button>
         <Button className={`${actionButtonClassName} justify-center hover:bg-red-500/15 hover:text-red-200`} variant="outline" size="sm" onClick={onRemove}>
           <Trash2 className="h-3.5 w-3.5" />
-          删除
+          {t('common.delete')}
         </Button>
       </div>
 
@@ -2325,7 +2326,7 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
         <div className="mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
           <div className="max-h-52 overflow-y-auto">
             {available.length === 0 ? (
-              <div className="px-2 py-2 text-xs text-[var(--nova-text-faint)]">无可用风格文件</div>
+              <div className="px-2 py-2 text-xs text-[var(--nova-text-faint)]">{t('settingPanel.style.noAvailable')}</div>
             ) : (
               available.map((path) => (
                 <label key={path} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
@@ -2345,7 +2346,7 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
             <Input
               className={inputClassName}
               value={customPath}
-              placeholder="手动添加 .md 或 .txt 文件路径"
+              placeholder={t('settingPanel.placeholder.stylePath')}
               onChange={(event) => setCustomPath(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
@@ -2356,7 +2357,7 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
             />
             <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={addCustomStyle}>
               <Plus className="h-3.5 w-3.5" />
-              添加
+              {t('settingPanel.style.add')}
             </Button>
           </div>
         </div>
@@ -2386,13 +2387,15 @@ function EmptyState({ title, description }: { title: string; description: string
 }
 
 function ToggleSwitch({ checked, onChange, compact = false }: { checked: boolean; onChange: (checked: boolean) => void; compact?: boolean }) {
+  const { t } = useTranslation()
+  const label = checked ? t('settingPanel.switch.disableRule') : t('settingPanel.switch.enableRule')
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      title={checked ? '停用规则' : '启用规则'}
+      title={label}
       className={`relative shrink-0 rounded-full border transition ${
         checked ? 'border-[var(--nova-accent-green)]/60 bg-[var(--nova-accent-green)]/25' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)]'
       } ${compact ? 'h-5 w-9' : 'h-6 w-11'}`}
@@ -2404,7 +2407,7 @@ function ToggleSwitch({ checked, onChange, compact = false }: { checked: boolean
             : `top-0.5 h-5 w-5 ${checked ? 'left-[22px]' : 'left-0.5'}`
         }`}
       />
-      <span className="sr-only">{checked ? '停用规则' : '启用规则'}</span>
+      <span className="sr-only">{label}</span>
     </button>
   )
 }
@@ -2453,7 +2456,7 @@ function loreHistoryMessageToChat(message: ChatMessage, index: number, items: Lo
     return {
       id: `history-clear-${index}`,
       role: 'clear',
-      content: '已清理资料库 Agent 上下文，历史消息仍保留。',
+      content: '',
     }
   }
   const role = message.role === 'user' ? 'user' : message.role === 'error' ? 'error' : 'assistant'
@@ -2474,7 +2477,7 @@ function tellerHistoryMessageToChat(message: ChatMessage, index: number, tellers
     return {
       id: `history-clear-${index}`,
       role: 'clear',
-      content: '已清理讲述者 Agent 上下文，历史消息仍保留。',
+      content: '',
     }
   }
   const role = message.role === 'user' ? 'user' : message.role === 'error' ? 'error' : 'assistant'
@@ -2490,30 +2493,22 @@ function tellerReferencesFromContent(content: string, tellers: Teller[]) {
   return tellers.filter((teller) => teller.name && content.includes(`@${teller.name}`))
 }
 
-function loreAgentResultSummary(result: LoreAgentResult) {
+function loreAgentResultSummary(result: LoreAgentResult, t: (key: string, options?: Record<string, unknown>) => string) {
   const changed = [
-    result.created?.length ? `新增 ${result.created.length}` : '',
-    result.updated?.length ? `更新 ${result.updated.length}` : '',
-    result.deleted_ids?.length ? `删除 ${result.deleted_ids.length}` : '',
+    result.created?.length ? `${t('settingPanel.result.created')} ${result.created.length}` : '',
+    result.updated?.length ? `${t('settingPanel.result.updated')} ${result.updated.length}` : '',
+    result.deleted_ids?.length ? `${t('settingPanel.result.deleted')} ${result.deleted_ids.length}` : '',
   ].filter(Boolean).join('，')
-  return `${result.message || '资料库 Agent 已完成'}${changed ? `（${changed}）` : ''}`
+  return `${result.message || t('settingPanel.loreAgent.done')}${changed ? `（${changed}）` : ''}`
 }
 
-function tellerAgentResultSummary(result: TellerAgentResult) {
-  const action = result.action === 'update' ? '更新' : '新增'
-  return `${result.message || '讲述者 Agent 已完成'}（${action}：${result.teller.name}）`
+function tellerAgentResultSummary(result: TellerAgentResult, t: (key: string) => string) {
+  const action = result.action === 'update' ? t('settingPanel.result.updated') : t('settingPanel.result.created')
+  return `${result.message || t('settingPanel.tellerAgent.done')}（${action}：${result.teller.name}）`
 }
 
 function formatDateTime(value: string) {
-  if (!value) return '未知时间'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+  return formatLocaleDateTime(value) || value
 }
 
 function ModeIcon({ mode }: { mode: SettingPanelMode }) {
@@ -2536,42 +2531,86 @@ function sectionItems(items: LoreItem[], section: KnowledgeSection, query = '') 
     return true
   })
 }
-function targetLabel(target: TellerTarget) {
-  return targetOption(target).label
+function targetLabel(target: TellerTarget, t: (key: string) => string) {
+  return t(targetTranslationKeys(target).label)
 }
+
+function targetSummary(target: TellerTarget, t: (key: string) => string) {
+  return t(targetTranslationKeys(target).summary)
+}
+
+function targetDetail(target: TellerTarget, t: (key: string) => string) {
+  return t(targetTranslationKeys(target).detail)
+}
+
 function targetOption(target: TellerTarget) {
   return TELLER_TARGET_OPTIONS.find((option) => option.value === target) || TELLER_TARGET_OPTIONS[1]
 }
 
-function loreTypeLabel(type: LoreItem['type']) {
-  return TYPE_OPTIONS.find((option) => option.value === type)?.label || '其他'
+function targetTranslationKeys(target: TellerTarget) {
+  if (target === 'system') {
+    return {
+      label: 'settingPanel.target.system.label',
+      summary: 'settingPanel.target.system.summary',
+      detail: 'settingPanel.target.system.detail',
+    }
+  }
+  if (target === 'state_memory') {
+    return {
+      label: 'settingPanel.target.stateMemory.label',
+      summary: 'settingPanel.target.stateMemory.summary',
+      detail: 'settingPanel.target.stateMemory.detail',
+    }
+  }
+  return {
+    label: 'settingPanel.target.turnContext.label',
+    summary: 'settingPanel.target.turnContext.summary',
+    detail: 'settingPanel.target.turnContext.detail',
+  }
 }
 
-function loreImportanceLabel(importance: LoreItem['importance']) {
-  return IMPORTANCE_OPTIONS.find((option) => option.value === importance)?.label || '重要'
+function loadModeDescription(loadMode: LoreItem['load_mode'] | undefined, t: (key: string) => string) {
+  if (loadMode === 'resident') return t('settingPanel.lore.residentDesc')
+  if (loadMode === 'manual') return t('settingPanel.lore.manualDesc')
+  if (loadMode === 'auto') return t('settingPanel.lore.autoDesc')
+  return t('settingPanel.lore.indexDesc')
 }
 
-function loreLoadModeLabel(loadMode?: LoreItem['load_mode']) {
-  return LOAD_MODE_OPTIONS.find((option) => option.value === loadMode)?.label || '简介自动匹配'
+function loreTypeLabel(type: LoreItem['type'], t: (key: string) => string) {
+  const key = `lore.type.${type}`
+  const label = t(key)
+  return label === key ? t('lore.type.other') : label
 }
 
-function panelTitle(mode: SettingPanelMode) {
-  if (mode === 'creator') return '创作者'
-  if (mode === 'teller') return '讲述者'
-  return '资料库'
+function loreImportanceLabel(importance: LoreItem['importance'], t: (key: string) => string) {
+  const key = `lore.importance.${importance}`
+  const label = t(key)
+  return label === key ? t('lore.importance.important') : label
 }
 
-function editorTitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null) {
+function loreLoadModeLabel(loadMode: LoreItem['load_mode'] | undefined, t: (key: string) => string) {
+  const key = `lore.loadMode.${loadMode || 'auto'}`
+  const label = t(key)
+  return label === key ? t('lore.loadMode.auto') : label
+}
+
+function panelTitle(mode: SettingPanelMode, t: (key: string) => string) {
+  if (mode === 'creator') return t('settingPanel.mode.creator')
+  if (mode === 'teller') return t('settingPanel.mode.teller')
+  return t('settingPanel.mode.lore')
+}
+
+function editorTitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null, t: (key: string) => string) {
   if (mode === 'creator') return CREATOR_PATH
-  if (mode === 'teller') return tellerDraft?.name || '故事讲述者'
-  return draft?.name || '资料库'
+  if (mode === 'teller') return tellerDraft?.name || t('settingPanel.editor.defaultTeller')
+  return draft?.name || t('settingPanel.mode.lore')
 }
 
-function editorSubtitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null) {
-  if (mode === 'creator') return '当前作品最高优先级规则'
-  if (mode === 'teller') return tellerDraft?.description || '用户级 prompt slot 配置'
-  if (!draft) return '角色、地点、组织、规则与素材'
-  return `${loreTypeLabel(draft.type)} · ${loreImportanceLabel(draft.importance)} · ${loreLoadModeLabel(draft.load_mode)} · ${(draft.tags || []).join('，') || '无标签'}`
+function editorSubtitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null, t: (key: string) => string) {
+  if (mode === 'creator') return t('settingPanel.editor.creatorSubtitle')
+  if (mode === 'teller') return tellerDraft?.description || t('settingPanel.editor.tellerSubtitle')
+  if (!draft) return t('settingPanel.editor.loreSubtitle')
+  return `${loreTypeLabel(draft.type, t)} · ${loreImportanceLabel(draft.importance, t)} · ${loreLoadModeLabel(draft.load_mode, t)} · ${(draft.tags || []).join('，') || t('settingPanel.editor.noTags')}`
 }
 
 function newTellerDraft(): Partial<Teller> {

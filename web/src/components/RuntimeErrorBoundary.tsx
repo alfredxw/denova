@@ -1,6 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { normalizeRuntimeError, recordRuntimeLog } from '@/lib/runtimeLog'
 import { Button } from '@/components/ui/button'
+import i18n from '@/i18n'
 
 interface RuntimeErrorBoundaryProps {
   children: ReactNode
@@ -34,9 +35,9 @@ export class RuntimeErrorBoundary extends Component<RuntimeErrorBoundaryProps, R
       return (
         <div className="flex h-screen w-screen items-center justify-center bg-[#18191b] px-6 text-[#d7dbe2]">
           <div className="max-w-xl rounded border border-[#5c2a2a] bg-[#241f1f] p-5 shadow-2xl">
-            <div className="text-base font-semibold text-[#ff8f8f]">Nova 前端渲染异常</div>
+            <div className="text-base font-semibold text-[#ff8f8f]">{i18n.t('runtime.title')}</div>
             <div className="mt-2 text-sm leading-6 text-[#c8ccd4]">
-              已记录崩溃原因到浏览器控制台和 <code>localStorage.nova.runtime.logs</code>。
+              {i18n.t('runtime.description')}
             </div>
             <pre className="mt-3 max-h-40 overflow-auto rounded bg-[#18191b] p-3 text-xs text-[#ffb3b3] whitespace-pre-wrap">
               {this.state.errorMessage}
@@ -47,7 +48,7 @@ export class RuntimeErrorBoundary extends Component<RuntimeErrorBoundaryProps, R
               className="mt-4 bg-[#4a4d54] text-white hover:bg-[#5a5d64]"
               onClick={() => window.location.reload()}
             >
-              刷新页面
+              {i18n.t('runtime.reload')}
             </Button>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import type { VersionItem } from './version-timeline'
+import { useTranslation } from 'react-i18next'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,19 +27,20 @@ export function RollbackDialog({
   onOpenChange,
   onRollback,
 }: RollbackDialogProps) {
+  const { t } = useTranslation()
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="border-[#3a3d44] bg-[#25262a] text-[#d7dbe2]">
         <AlertDialogHeader>
-          <AlertDialogTitle>确认回滚版本？</AlertDialogTitle>
+          <AlertDialogTitle>{t('versions.rollbackTitle')}</AlertDialogTitle>
           <AlertDialogDescription className="text-[#858b96]">
             {version
-              ? `将整本书回滚到版本 ${version.description || version.title}。此操作会重置当前工作区到该版本。`
-              : '请选择要回滚的版本。'}
+              ? t('versions.rollbackDescription', { version: version.description || version.title })
+              : t('versions.rollbackPickVersion')}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={loading}>取消</AlertDialogCancel>
+          <AlertDialogCancel disabled={loading}>{t('common.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             className="bg-[#ffbd5e] text-[#18191b] hover:bg-[#ffd28a]"
             disabled={loading || !version}
@@ -47,7 +49,7 @@ export function RollbackDialog({
               if (version) void onRollback(version)
             }}
           >
-            确认回滚
+            {t('versions.rollbackConfirm')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

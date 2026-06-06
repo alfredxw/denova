@@ -22,6 +22,7 @@ export interface Settings {
   ui_font_size?: number | null
   reading_font_family?: string
   reading_font_size?: number | null
+  language?: string
   max_iteration?: number | null
   model_max_retries?: number | null
   plan_mode_default?: boolean | null

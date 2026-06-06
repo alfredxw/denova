@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
@@ -218,7 +218,7 @@ describe('InteractiveLayout', () => {
     expect(await screen.findByText('进入旧酒馆')).toBeInTheDocument()
     expect(screen.getByText('林川')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /剧情路线图/ }))
+    act(() => useInteractiveStore.getState().setSubmode('timeline'))
     fireEvent.click(await screen.findByText('侧巷'))
     await waitFor(() => expect(switchCalls).toBeGreaterThan(0))
 
@@ -294,7 +294,7 @@ describe('InteractiveLayout', () => {
     expect(snapshotRequests).toBeGreaterThanOrEqual(2)
   })
 
-  it('opens the branch graph as a full workspace view from the left navigation', async () => {
+  it('opens the branch graph as a full workspace view from the timeline submode', async () => {
     useInteractiveStore.setState({
       stories: [],
       tellers: [],
@@ -345,12 +345,12 @@ describe('InteractiveLayout', () => {
     expect(await screen.findByText('进入旧酒馆')).toBeInTheDocument()
     expect(screen.queryByTestId('branch-graph-canvas')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /剧情路线图/ }))
+    act(() => useInteractiveStore.getState().setSubmode('timeline'))
 
     expect(await screen.findByTestId('branch-graph-canvas')).toBeInTheDocument()
     expect(await screen.findByText('侧巷')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '剧情' }))
+    fireEvent.click(screen.getByRole('button', { name: '返回剧情' }))
     expect(await screen.findByText('故事舞台 · 当前分支 main')).toBeInTheDocument()
     expect(screen.queryByTestId('branch-graph-canvas')).not.toBeInTheDocument()
   })

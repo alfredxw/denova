@@ -11,6 +11,7 @@ import { Plugin, PluginKey, TextSelection as PmTextSelection } from '@tiptap/pm/
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { BookOpen, Check, ChevronDown, ChevronUp, MessageSquareQuote, Palette, Rows3, Save, Search, Settings, X } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslation } from 'react-i18next'
 
 import type { TextSelection as QuoteSelection } from '@/lib/api'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
@@ -18,6 +19,7 @@ import { isEditableTarget } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { formatLocaleNumber } from '@/i18n'
 
 interface MarkdownEditorProps {
   fileName: string | null
@@ -61,61 +63,61 @@ const DEFAULT_SETTINGS: EditorSettings = {
   theme: 'ide',
 }
 
-const THEME_STYLES: Record<EditorTheme, { label: string; background: string; color: string; accent: string }> = {
+const THEME_STYLES: Record<EditorTheme, { labelKey: string; background: string; color: string; accent: string }> = {
   ide: {
-    label: 'IDE 深色',
+    labelKey: 'editor.theme.ide',
     background: '#1a1a1a',
     color: '#d7dbe2',
     accent: '#303238',
   },
   paper: {
-    label: '纸张',
+    labelKey: 'editor.theme.paper',
     background: '#f5efe4',
     color: '#252525',
     accent: '#dfd3c2',
   },
   sepia: {
-    label: '护眼',
+    labelKey: 'editor.theme.sepia',
     background: '#efe3cc',
     color: '#2f271f',
     accent: '#d8c6a6',
   },
 }
 
-const SAVE_STATUS_META: Record<SaveStatus, { label: string; ariaLabel: string; className: string; dotClassName?: string; subtle?: boolean }> = {
+const SAVE_STATUS_META: Record<SaveStatus, { labelKey: string; ariaLabelKey: string; className: string; dotClassName?: string; subtle?: boolean }> = {
   dirty: {
-    label: '有改动',
-    ariaLabel: '内容有改动，等待自动保存',
+    labelKey: 'editor.status.dirty',
+    ariaLabelKey: 'editor.status.dirtyAria',
     className: 'text-[var(--nova-text-faint)]',
     dotClassName: 'bg-[var(--nova-text-faint)] opacity-60',
     subtle: true,
   },
   'auto-saving': {
-    label: '同步中',
-    ariaLabel: '正在自动保存',
+    labelKey: 'editor.status.autoSaving',
+    ariaLabelKey: 'editor.status.autoSavingAria',
     className: 'text-[var(--nova-text-faint)]',
     dotClassName: 'animate-pulse bg-[var(--nova-text-muted)] opacity-70',
     subtle: true,
   },
   'auto-saved': {
-    label: '已同步',
-    ariaLabel: '已自动保存',
+    labelKey: 'editor.status.autoSaved',
+    ariaLabelKey: 'editor.status.autoSavedAria',
     className: 'text-[var(--nova-text-faint)]',
     subtle: true,
   },
   'manual-saving': {
-    label: '保存中…',
-    ariaLabel: '正在保存',
+    labelKey: 'editor.status.manualSaving',
+    ariaLabelKey: 'editor.status.manualSavingAria',
     className: 'text-[var(--nova-text-muted)]',
   },
   'manual-saved': {
-    label: '已保存',
-    ariaLabel: '已保存',
+    labelKey: 'editor.status.manualSaved',
+    ariaLabelKey: 'editor.status.manualSavedAria',
     className: 'text-[var(--nova-accent-green)]',
   },
   error: {
-    label: '保存失败',
-    ariaLabel: '保存失败',
+    labelKey: 'editor.status.error',
+    ariaLabelKey: 'editor.status.errorAria',
     className: 'text-[#ff6b6b]',
   },
 }
@@ -137,6 +139,7 @@ function isTxtFile(name: string | null): boolean {
 
 /** TipTap 编辑器组件，支持 Markdown 和纯文本格式 */
 export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, saveSignal = 0, chapterSummary, workspaceSummary, searchIntent }: MarkdownEditorProps) {
+  const { t } = useTranslation()
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<EditorSettings>(() => loadEditorSettings())
@@ -205,7 +208,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
         textCounter: countTextCharacters,
       }),
       Placeholder.configure({
-        placeholder: '选择一个文件开始编辑...',
+        placeholder: t('editor.placeholder'),
       }),
     ],
     content,
@@ -347,11 +350,11 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
     const nextStatus: SaveStatus = ok ? (mode === 'auto' ? 'auto-saved' : 'manual-saved') : 'error'
     setSaveStatus(nextStatus)
     if (mode === 'manual') {
-      if (ok) toast.success('保存成功')
-      else toast.error('保存失败')
+      if (ok) toast.success(t('editor.saveSuccess'))
+      else toast.error(t('editor.saveFailed'))
     }
     scheduleSaveStatusClear(nextStatus, mode === 'auto' ? 1400 : 2000)
-  }, [clearSaveStatusTimer, editor, fileName, onSave, scheduleSaveStatusClear])
+  }, [clearSaveStatusTimer, editor, fileName, onSave, scheduleSaveStatusClear, t])
 
   /** 执行手动保存 */
   const handleSave = useCallback(async () => {
@@ -465,12 +468,14 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
   if (!fileName) {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-        选择左侧 Markdown 文件开始编辑
+        {t('editor.noFile')}
       </div>
     )
   }
 
   const saveStatusMeta = saveStatus ? SAVE_STATUS_META[saveStatus] : null
+  const saveStatusLabel = saveStatusMeta ? t(saveStatusMeta.labelKey) : ''
+  const saveStatusAriaLabel = saveStatusMeta ? t(saveStatusMeta.ariaLabelKey) : ''
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -485,15 +490,15 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
             <span
               className={`inline-flex h-5 min-w-5 items-center justify-end gap-1 text-[11px] transition-colors ${saveStatusMeta.className}`}
               aria-live="polite"
-              aria-label={saveStatusMeta.ariaLabel}
-              title={saveStatusMeta.ariaLabel}
+              aria-label={saveStatusAriaLabel}
+              title={saveStatusAriaLabel}
             >
               {saveStatus === 'auto-saved' ? (
                 <Check className="h-3 w-3 opacity-45" />
               ) : saveStatusMeta.dotClassName ? (
                 <span className={`h-1.5 w-1.5 rounded-full ${saveStatusMeta.dotClassName}`} />
               ) : null}
-              <span className={saveStatusMeta.subtle ? 'sr-only' : ''}>{saveStatusMeta.label}</span>
+              <span className={saveStatusMeta.subtle ? 'sr-only' : ''}>{saveStatusLabel}</span>
             </span>
           )}
           <Button
@@ -504,7 +509,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
             className="flex items-center gap-1 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           >
             <Save className="w-3.5 h-3.5" />
-            保存
+            {t('editor.save')}
           </Button>
           <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
             <PopoverTrigger asChild>
@@ -513,10 +518,10 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
                 size="xs"
                 variant="ghost"
                 className="flex items-center gap-1 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-                aria-label="编辑器设置"
+                aria-label={t('editor.settings')}
               >
                 <Settings className="h-3.5 w-3.5" />
-                设置
+                {t('editor.settingsShort')}
               </Button>
             </PopoverTrigger>
             <PopoverContent
@@ -561,14 +566,14 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
                   closeSearch()
                 }
               }}
-              placeholder="搜索当前文章..."
+              placeholder={t('editor.searchPlaceholder')}
               className="min-w-0 flex-1 bg-transparent px-1 py-1 text-xs text-[#d7dbe2] outline-none placeholder:text-[#6f7682]"
             />
             <span className="w-14 text-center text-[11px] text-[#858b96]">
               {searchMatches.length > 0 ? `${searchIndex + 1}/${searchMatches.length}` : '0/0'}
             </span>
             <TooltipIconButton
-              label="上一处"
+              label={t('editor.searchPrev')}
               size="icon-xs"
               className="text-[#858b96] hover:bg-[#303238] hover:text-[#d7dbe2]"
               onClick={() => goToSearchMatch(-1)}
@@ -577,7 +582,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
               <ChevronUp className="h-3.5 w-3.5" />
             </TooltipIconButton>
             <TooltipIconButton
-              label="下一处"
+              label={t('editor.searchNext')}
               size="icon-xs"
               className="text-[#858b96] hover:bg-[#303238] hover:text-[#d7dbe2]"
               onClick={() => goToSearchMatch(1)}
@@ -586,7 +591,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
               <ChevronDown className="h-3.5 w-3.5" />
             </TooltipIconButton>
             <TooltipIconButton
-              label="关闭搜索"
+              label={t('editor.closeSearch')}
               size="icon-xs"
               className="text-[#858b96] hover:bg-[#303238] hover:text-[#d7dbe2]"
               onClick={closeSearch}
@@ -602,11 +607,11 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
         )}
       </div>
       <div className="nova-editor-statusbar flex h-7 shrink-0 items-center gap-4 border-t px-3 text-[11px] text-[var(--nova-text-faint)]">
-        <span>本章：{formatNumber(totalCharacters)} 字</span>
-        {workspaceSummary && <span>全书：{formatNumber(workspaceSummary.total_words)} 字</span>}
-        {chapterSummary && <span>更新：{chapterSummary.updated_at || '未知'}</span>}
+        <span>{t('editor.chapterWords', { count: formatNumber(totalCharacters) })}</span>
+        {workspaceSummary && <span>{t('editor.bookWords', { count: formatNumber(workspaceSummary.total_words) })}</span>}
+        {chapterSummary && <span>{t('editor.updatedAt', { time: chapterSummary.updated_at || t('editor.unknownTime') })}</span>}
         {selectedCharacters > 0 && (
-          <span className="text-[var(--nova-text-muted)]">已选：{formatNumber(selectedCharacters)} 字</span>
+          <span className="text-[var(--nova-text-muted)]">{t('editor.selectedWords', { count: formatNumber(selectedCharacters) })}</span>
         )}
       </div>
     </div>
@@ -622,6 +627,7 @@ function EditorSettingsPanel({
   onChange: (settings: EditorSettings) => void
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   const patch = (partial: Partial<EditorSettings>) => onChange({ ...settings, ...partial })
 
   return (
@@ -633,12 +639,12 @@ function EditorSettingsPanel({
               <Palette className="h-3.5 w-3.5" />
             </span>
             <div className="min-w-0">
-              <div className="text-xs font-medium text-[var(--nova-text)]">编辑器设置</div>
-              <div className="text-[11px] text-[var(--nova-text-faint)]">行间距与编辑器背景</div>
+              <div className="text-xs font-medium text-[var(--nova-text)]">{t('editor.settings')}</div>
+              <div className="text-[11px] text-[var(--nova-text-faint)]">{t('editor.settingsDescription')}</div>
             </div>
           </div>
           <button type="button" className="rounded px-2 py-1 text-xs text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onClose}>
-            关闭
+            {t('common.close')}
           </button>
         </div>
       </div>
@@ -648,7 +654,7 @@ function EditorSettingsPanel({
           <div className="mb-2 flex items-center justify-between gap-3 text-xs">
             <span className="flex items-center gap-2 font-medium text-[var(--nova-text-muted)]">
               <Rows3 className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-              行间距
+              {t('editor.lineHeight')}
             </span>
             <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 font-mono text-[11px] text-[var(--nova-text)]">{settings.lineHeight.toFixed(1)}</span>
           </div>
@@ -665,8 +671,8 @@ function EditorSettingsPanel({
 
         <div>
           <div className="mb-2 flex items-center justify-between text-xs text-[var(--nova-text-muted)]">
-            <span className="font-medium">背景主题</span>
-            <span className="text-[11px] text-[var(--nova-text-faint)]">当前：{THEME_STYLES[settings.theme].label}</span>
+            <span className="font-medium">{t('editor.backgroundTheme')}</span>
+            <span className="text-[11px] text-[var(--nova-text-faint)]">{t('editor.currentTheme', { theme: t(THEME_STYLES[settings.theme].labelKey) })}</span>
           </div>
           <div className="grid gap-2">
             {(Object.keys(THEME_STYLES) as EditorTheme[]).map((theme) => (
@@ -691,8 +697,8 @@ function EditorSettingsPanel({
                     Aa
                   </span>
                   <span className="min-w-0">
-                    <span className="block font-medium">{THEME_STYLES[theme].label}</span>
-                    <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">正文 / 引用 / 代码块</span>
+                    <span className="block font-medium">{t(THEME_STYLES[theme].labelKey)}</span>
+                    <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{t('editor.themePreview')}</span>
                   </span>
                 </span>
                 {settings.theme === theme && <Check className="h-3.5 w-3.5 shrink-0 text-[var(--nova-accent-green)]" />}
@@ -751,7 +757,7 @@ function countTextCharacters(text: string) {
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat('zh-CN').format(value)
+  return formatLocaleNumber(value)
 }
 
 /** 创建编辑器搜索高亮扩展，使用 ProseMirror Decoration 标记匹配项。 */
@@ -848,6 +854,7 @@ function getLineNumber(doc: ProseMirrorNode, pos: number): number {
 
 /** 选区浮动工具条，定位在光标（选区 head 端）旁边 */
 function SelectionToolbar({ editor, onQuote }: { editor: Editor; onQuote: () => void }) {
+  const { t } = useTranslation()
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
   const toolbarRef = useRef<HTMLDivElement>(null)
 
@@ -900,10 +907,10 @@ function SelectionToolbar({ editor, onQuote }: { editor: Editor; onQuote: () => 
         type="button"
         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[#c5c9d1] hover:bg-[#4a4d54]/30 hover:text-white"
         onClick={onQuote}
-        title="引用到 AI (⌘⇧L)"
+        title={t('editor.quoteSelectionShortcut')}
       >
         <MessageSquareQuote className="h-3.5 w-3.5" />
-        <span>引用到 AI</span>
+        <span>{t('editor.quoteSelection')}</span>
       </button>
     </div>
   )

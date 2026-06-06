@@ -29,7 +29,7 @@ func corsMiddleware(ctx context.Context, c *app.RequestContext) {
 		c.Response.Header.Set("Access-Control-Allow-Origin", origin)
 	}
 	c.Response.Header.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, PUT, OPTIONS")
-	c.Response.Header.Set("Access-Control-Allow-Headers", "Content-Type")
+	c.Response.Header.Set("Access-Control-Allow-Headers", "Content-Type, X-Nova-Locale")
 
 	if string(c.Request.Method()) == "OPTIONS" {
 		c.AbortWithStatus(consts.StatusNoContent)

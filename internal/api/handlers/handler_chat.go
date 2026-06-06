@@ -20,17 +20,17 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 	}
 	var req agent.ChatRequest
 	if err := c.BindJSON(&req); err != nil {
-		writeError(c, consts.StatusBadRequest, "无效请求体")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
 	if strings.TrimSpace(req.Message) == "" {
-		writeError(c, consts.StatusBadRequest, "消息不能为空")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
 		return
 	}
 
 	task := h.app.StartTask(req)
 	if task == nil {
-		writeError(c, consts.StatusConflict, "尚未选择书籍工作区，请先在书籍管理页选择或创建书籍")
+		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
 		return
 	}
 	log.Printf("[agent-sse] attach new chat task_id=%s", task.ID())
@@ -41,7 +41,7 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) {
 	task := h.app.ActiveTask()
 	if task == nil {
-		writeError(c, consts.StatusNotFound, "没有活跃任务")
+		writeErrorKey(c, consts.StatusNotFound, "api.chat.noActiveTask")
 		return
 	}
 	log.Printf("[agent-sse] attach active chat task_id=%s status=%s", task.ID(), task.Status())

@@ -42,6 +42,7 @@ type Settings struct {
 	UIFontSize        *int   `toml:"ui_font_size,omitempty" json:"ui_font_size,omitempty"`
 	ReadingFontFamily string `toml:"reading_font_family,omitempty" json:"reading_font_family,omitempty"`
 	ReadingFontSize   *int   `toml:"reading_font_size,omitempty" json:"reading_font_size,omitempty"`
+	Language          string `toml:"language,omitempty" json:"language,omitempty"`
 
 	// Agent
 	MaxIteration     *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
@@ -83,6 +84,7 @@ func DefaultSettings() Settings {
 		UIFontSize:                  intPtr(12),
 		ReadingFontFamily:           "source-han-serif",
 		ReadingFontSize:             intPtr(18),
+		Language:                    "auto",
 		MaxIteration:                intPtr(50),
 		ModelMaxRetries:             intPtr(5),
 		AgentModels: AgentModelSettings{
@@ -167,6 +169,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.ReadingFontSize != nil {
 		out.ReadingFontSize = child.ReadingFontSize
+	}
+	if child.Language != "" {
+		out.Language = child.Language
 	}
 	if child.MaxIteration != nil {
 		out.MaxIteration = child.MaxIteration
@@ -310,5 +315,15 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 func sanitizeEditableSettings(s Settings) Settings {
 	// nova_dir 是启动级定位参数，不能由用户级/工作区级配置反向修改自身位置。
 	s.NovaDir = ""
+	s.Language = normalizeLanguage(s.Language)
 	return s
+}
+
+func normalizeLanguage(language string) string {
+	switch language {
+	case "", "auto", "zh-CN", "en-US":
+		return language
+	default:
+		return ""
+	}
 }

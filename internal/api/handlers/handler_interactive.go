@@ -31,7 +31,7 @@ func (h *Handlers) HandleInteractiveStories(ctx context.Context, c *app.RequestC
 func (h *Handlers) HandleInteractiveStoryCreate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.CreateStoryRequest
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	story, err := h.app.CreateInteractiveStory(body)
@@ -45,7 +45,7 @@ func (h *Handlers) HandleInteractiveStoryCreate(ctx context.Context, c *app.Requ
 func (h *Handlers) HandleInteractiveStoryUpdate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.UpdateStoryRequest
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	story, err := h.app.UpdateInteractiveStory(c.Param("id"), body)
@@ -85,7 +85,7 @@ func (h *Handlers) HandleInteractiveBranches(ctx context.Context, c *app.Request
 func (h *Handlers) HandleInteractiveBranchCreate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.CreateBranchRequest
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	branch, err := h.app.CreateInteractiveBranch(c.Param("id"), body)
@@ -109,7 +109,7 @@ func (h *Handlers) HandleInteractiveBranchSwitch(ctx context.Context, c *app.Req
 		BranchID string `json:"branch_id"`
 	}
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	if err := h.app.SwitchInteractiveBranch(c.Param("id"), body.BranchID); err != nil {
@@ -122,7 +122,7 @@ func (h *Handlers) HandleInteractiveBranchSwitch(ctx context.Context, c *app.Req
 func (h *Handlers) HandleInteractiveTurnVersionSwitch(ctx context.Context, c *app.RequestContext) {
 	var body interactive.SwitchTurnVersionRequest
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	if err := h.app.SwitchInteractiveTurnVersion(c.Param("id"), body); err != nil {
@@ -138,7 +138,7 @@ func (h *Handlers) HandleInteractiveHotChoices(ctx context.Context, c *app.Reque
 		ExcludeChoices []string `json:"exclude_choices"`
 	}
 	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	result, err := h.app.GenerateInteractiveHotChoices(ctx, c.Param("id"), body.Branch, body.ExcludeChoices)
@@ -159,19 +159,19 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 		RegenerateFromTurn string   `json:"regenerate_from_turn_id"`
 	}
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	if strings.TrimSpace(body.Message) == "" {
-		writeError(c, consts.StatusBadRequest, "消息不能为空")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
 		return
 	}
 	if strings.TrimSpace(body.StoryID) == "" {
-		writeError(c, consts.StatusBadRequest, "故事 ID 不能为空")
+		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyIDRequired")
 		return
 	}
 	if body.Mode != "" && body.Mode != "story" {
-		writeError(c, consts.StatusBadRequest, "当前仅支持 story 子模式")
+		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyModeOnly")
 		return
 	}
 
@@ -182,7 +182,7 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 		task = h.app.StartInteractiveTask(body.StoryID, body.Branch, body.Message, body.StyleReferences)
 	}
 	if task == nil {
-		writeError(c, consts.StatusConflict, "尚未选择书籍工作区，请先在书籍管理页选择或创建书籍")
+		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
 		return
 	}
 	sse.StreamTask(c, task)
@@ -218,7 +218,7 @@ func (h *Handlers) HandleInteractiveTeller(ctx context.Context, c *app.RequestCo
 func (h *Handlers) HandleInteractiveTellerCreate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.Teller
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	teller, err := h.app.CreateInteractiveTeller(body)
@@ -232,7 +232,7 @@ func (h *Handlers) HandleInteractiveTellerCreate(ctx context.Context, c *app.Req
 func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.Teller
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	teller, err := h.app.UpdateInteractiveTeller(c.Param("id"), body)
@@ -254,16 +254,16 @@ func (h *Handlers) HandleInteractiveTellerDelete(ctx context.Context, c *app.Req
 func (h *Handlers) HandleInteractiveTellerAgentStream(ctx context.Context, c *app.RequestContext) {
 	var body tellerAgentRequest
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	if strings.TrimSpace(body.Instruction) == "" {
-		writeError(c, consts.StatusBadRequest, "讲述者编辑指令不能为空")
+		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.tellerInstructionEmpty")
 		return
 	}
 	task := h.app.StartTellerAgentTask(body.Instruction, body.TellerID, body.References)
 	if task == nil {
-		writeError(c, consts.StatusConflict, "尚未选择书籍工作区，请先在书籍管理页选择或创建书籍")
+		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
 		return
 	}
 	sse.StreamTask(c, task)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent } from 'react'
 import { ChevronDown, ChevronUp, Compass, GitBranch, MessageSquareText, PanelRight, Pencil, RefreshCw, Send, Square, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -59,6 +60,7 @@ export function StoryStage({
   onToggleSceneMemory,
   onDone,
 }: StoryStageProps) {
+  const { t } = useTranslation()
   const [input, setInput] = useState('')
   const [styleReferences, setStyleReferences] = useState<string[]>([])
   const [styleReferenceQuery, setStyleReferenceQuery] = useState<string | null>(null)
@@ -177,7 +179,7 @@ export function StoryStage({
   const displayLiveMessages = hasPersistedLiveTurn ? [] : liveMessages
   const messages = useMemo(() => [...historyMessages, ...displayLiveMessages], [displayLiveMessages, historyMessages])
   const scrollResetKey = `${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
-  const title = pickSceneTitle(snapshot, branchId)
+  const title = pickSceneTitle(snapshot, branchId, t)
   const hotChoices = useMemo(() => generatedHotChoices.map((choice) => choice.trim()).filter(Boolean).slice(0, 10), [generatedHotChoices])
   const canUseHotChoices = !streaming && !editingTurn && stagePreferences.hotChoicesEnabled && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
@@ -261,7 +263,7 @@ export function StoryStage({
     setEditingTurn(null)
     setStyleReferences([])
     setStyleReferenceQuery(null)
-    setStageActivityContent('正在连接 AI Agent…')
+    setStageActivityContent(t('storyStage.activity.connecting'))
     setStageLiveMessages([{ role: 'user', content: message }])
     updateStageRun({ rewindTurnId: nextRewindTurnId || undefined })
     liveStageKeyRef.current = stageKey
@@ -297,13 +299,13 @@ export function StoryStage({
           case 'thinking': {
             const data = JSON.parse(value.data)
             appendThinkingMessage(data.content || '')
-            setStageActivityContent('正在思考…')
+            setStageActivityContent(t('storyStage.activity.thinking'))
             break
           }
           case 'tool_call': {
             const data = JSON.parse(value.data)
             appendToolCallMessage(data)
-            setStageActivityContent(`正在处理 ${data.name || '工具调用'}…`)
+            setStageActivityContent(t('storyStage.activity.processingTool', { name: data.name || t('storyStage.activity.toolCall') }))
             break
           }
           case 'tool_args_delta': {
@@ -320,7 +322,7 @@ export function StoryStage({
           case 'error': {
             const data = JSON.parse(value.data)
             setStageActivityContent('')
-            setStageLiveMessages((prev) => [...prev, { role: 'error', content: data.message || data.error || '未知错误' }])
+            setStageLiveMessages((prev) => [...prev, { role: 'error', content: data.message || data.error || t('storyStage.activity.unknownError') }])
             break
           }
           case 'done': {
@@ -328,7 +330,7 @@ export function StoryStage({
             collapseNonNarrativeMessages()
             if (visible) appendAssistantMessage(visible)
             finishLiveMessages()
-            setStageActivityContent('完成')
+            setStageActivityContent(t('storyStage.activity.done'))
             break
           }
           case 'aborted': {
@@ -336,7 +338,7 @@ export function StoryStage({
             collapseNonNarrativeMessages()
             if (visible) appendAssistantMessage(visible)
             finishLiveMessages()
-            setStageActivityContent('已中断')
+            setStageActivityContent(t('storyStage.activity.aborted'))
             break
           }
         }
@@ -345,7 +347,7 @@ export function StoryStage({
     } catch (error) {
       if (!isAbortError(error)) {
         setStageActivityContent('')
-        setStageLiveMessages((prev) => [...prev, { role: 'error', content: error instanceof Error ? error.message : '互动 Agent 执行失败' }])
+        setStageLiveMessages((prev) => [...prev, { role: 'error', content: error instanceof Error ? error.message : t('storyStage.activity.runFailed') }])
       }
     } finally {
       setStageStreaming(false)
@@ -357,7 +359,7 @@ export function StoryStage({
   const stop = () => {
     void abortInteractiveChat()
     stageAbortControllers.get(stageKey)?.abort()
-    setStageActivityContent('正在中断…')
+    setStageActivityContent(t('storyStage.activity.aborting'))
   }
 
   const startEditingMessage = (message: ChatMessage) => {
@@ -384,7 +386,7 @@ export function StoryStage({
     const nextVersion = versions[currentIndex + direction]
     if (!nextVersion) return
     setSwitchingVersionTurnId(message.turn_id)
-    setStageActivityContent(direction > 0 ? '正在切换到更新版本…' : '正在切换到更早版本…')
+    setStageActivityContent(direction > 0 ? t('storyStage.activity.switchNewer') : t('storyStage.activity.switchOlder'))
     try {
       await switchInteractiveTurnVersion(storyId, {
         branch_id: branchId,
@@ -394,7 +396,7 @@ export function StoryStage({
       clearStoryStageRun(stageKey)
       await onDone()
     } catch (error) {
-      setStageLiveMessages((prev) => [...prev, { role: 'error', content: error instanceof Error ? error.message : '切换回合版本失败' }])
+      setStageLiveMessages((prev) => [...prev, { role: 'error', content: error instanceof Error ? error.message : t('storyStage.activity.switchFailed') }])
     } finally {
       setSwitchingVersionTurnId(null)
       setStageActivityContent('')
@@ -433,7 +435,7 @@ export function StoryStage({
       <div data-testid="story-stage-card" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
         <div className="nova-topbar flex min-h-14 flex-wrap items-center justify-between gap-3 border-b px-4 py-2">
           <div className="min-w-0">
-            <div className="text-[10px] font-medium leading-4 text-[var(--nova-text-faint)]">故事舞台 · 当前分支 {branchId || 'main'}</div>
+            <div className="text-[10px] font-medium leading-4 text-[var(--nova-text-faint)]">{t('storyStage.branchLabel', { branch: branchId || 'main' })}</div>
             <div className="truncate text-xs font-semibold leading-5 text-[var(--nova-text)]">{title}</div>
           </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
@@ -441,11 +443,11 @@ export function StoryStage({
             <TellerPicker story={story} tellers={tellers} onChange={onTellerChange} />
             <div className="flex h-7 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] text-[var(--nova-text-muted)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
               <MessageSquareText className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-              互动创作
+              {t('storyStage.mode')}
             </div>
             <Badge variant="outline" className="h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] text-[var(--nova-text-muted)]">
               <GitBranch className="h-3 w-3" />
-              {snapshot?.turns?.length || 0} 回合
+              {t('storyStage.turnCount', { count: snapshot?.turns?.length || 0 })}
             </Badge>
             {onToggleSceneMemory && (
               <Button
@@ -454,11 +456,11 @@ export function StoryStage({
                 size="sm"
                 className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${sceneMemoryVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`}
                 onClick={onToggleSceneMemory}
-                aria-label={sceneMemoryVisible ? '隐藏场景记忆' : '显示场景记忆'}
-                title={sceneMemoryVisible ? '隐藏场景记忆' : '显示场景记忆'}
+                aria-label={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')}
+                title={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')}
               >
                 <PanelRight className="h-3.5 w-3.5" />
-                场景记忆
+                {t('storyStage.sceneMemory')}
               </Button>
             )}
           </div>
@@ -469,13 +471,13 @@ export function StoryStage({
             <div className="flex h-8 shrink-0 items-center justify-between border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 text-[11px] text-[var(--nova-text-faint)]">
               <span className="flex items-center gap-1.5">
                 <MessageSquareText className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-                指令流
+                {t('storyStage.instructionStream')}
               </span>
-              <span>{messages.length} 条记录</span>
+              <span>{t('storyStage.recordCount', { count: messages.length })}</span>
             </div>
             {messages.length === 0 && !streaming ? (
               <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                输入第一句话，开始互动故事。
+                {t('storyStage.empty')}
               </div>
             ) : (
               <MessageList
@@ -500,14 +502,14 @@ export function StoryStage({
           {editingTurn && !streaming ? (
             <div className="mb-3 flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
               <Pencil className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-              <span className="min-w-0 flex-1 truncate">正在编辑这轮输入，发送后会从该回合重新生成后续内容。</span>
+              <span className="min-w-0 flex-1 truncate">{t('storyStage.editingNotice')}</span>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-xs"
                 className="h-7 w-7 shrink-0 text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
                 onClick={cancelEditing}
-                aria-label="取消编辑"
+                aria-label={t('storyStage.cancelEdit')}
               >
                 <X className="h-3.5 w-3.5" />
               </Button>
@@ -524,9 +526,9 @@ export function StoryStage({
                   aria-expanded={hotChoicesExpanded}
                 >
                   <Compass className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                  <span className="shrink-0 font-medium text-[var(--nova-text-muted)]">可选择</span>
+                  <span className="shrink-0 font-medium text-[var(--nova-text-muted)]">{t('storyStage.hotChoices.title')}</span>
                   <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
-                    {hotChoicesLoading && hotChoices.length === 0 ? '生成中…' : hotChoices.length > 0 ? `${hotChoices.length} 条行动建议` : '暂无建议'}
+                    {hotChoicesLoading && hotChoices.length === 0 ? t('storyStage.hotChoices.generating') : hotChoices.length > 0 ? t('storyStage.hotChoices.count', { count: hotChoices.length }) : t('storyStage.hotChoices.emptyShort')}
                   </span>
                   {hotChoicesExpanded ? (
                     <ChevronUp className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
@@ -542,16 +544,16 @@ export function StoryStage({
                     onClick={() => requestHotChoices(hotChoices.length > 0)}
                   >
                     <RefreshCw className="h-3 w-3" />
-                    {hotChoices.length > 0 ? '更多' : '生成'}
+                    {hotChoices.length > 0 ? t('storyStage.hotChoices.more') : t('storyStage.hotChoices.generate')}
                   </button>
                 ) : null}
               </div>
               {hotChoicesExpanded ? (
                 <div className="border-t border-[var(--nova-border)] px-2 py-2">
                   {hotChoicesLoading && hotChoices.length === 0 ? (
-                    <div className="px-1 py-1 text-xs text-[var(--nova-text-faint)]">正在生成可选择行动…</div>
+                    <div className="px-1 py-1 text-xs text-[var(--nova-text-faint)]">{t('storyStage.hotChoices.generatingLong')}</div>
                   ) : hotChoices.length === 0 ? (
-                    <div className="px-1 py-1 text-xs text-[var(--nova-text-faint)]">暂时没有可展示的行动建议，可以重新生成。</div>
+                    <div className="px-1 py-1 text-xs text-[var(--nova-text-faint)]">{t('storyStage.hotChoices.emptyLong')}</div>
                   ) : (
                     <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
                       {hotChoices.map((choice, index) => (
@@ -587,16 +589,16 @@ export function StoryStage({
                 files={styleSuggestions}
                 onSelect={selectStyleReference}
                 trigger="#"
-                placeholder="搜索风格参考..."
-                emptyText="未找到风格参考"
-                heading="风格参考"
+                placeholder={t('chat.styleReference.placeholder')}
+                emptyText={t('chat.styleReference.empty')}
+                heading={t('chat.styleReference.heading')}
               />
               <Textarea
                 ref={inputRef}
                 className="nova-field !h-11 !min-h-11 flex-1 resize-none px-3 py-2 text-sm placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
                 style={inputTextStyle}
                 value={input}
-                placeholder="你要做什么？"
+                placeholder={t('storyStage.inputPlaceholder')}
                 onChange={handleInputChange}
                 onKeyDown={(event) => {
                   if (event.key === 'Escape') {
@@ -618,21 +620,21 @@ export function StoryStage({
                 disabled={!storyId || streaming || Boolean(editingTurn)}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={toggleHotChoices}
-                aria-label={hotChoicesExpanded ? '收起行动选择' : '获取行动选择'}
-                title={hotChoicesExpanded ? '收起行动选择' : '获取行动选择'}
+                aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}
+                title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}
               >
                 <Compass className={`h-3.5 w-3.5 ${hotChoicesLoading ? 'animate-pulse' : ''}`} />
-                选择
+                {t('storyStage.hotChoices.button')}
               </Button>
             ) : null}
             <Button
               className={`h-11 w-20 border border-[var(--nova-border)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-red-500/45 hover:bg-red-500/55' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
               disabled={streaming ? false : (!storyId || !input.trim())}
               onClick={() => { streaming ? stop() : void send() }}
-              aria-label={streaming ? '中断 AI 执行' : (editingTurn ? '发送并重新生成' : '发送')}
+              aria-label={streaming ? t('chat.input.stop') : (editingTurn ? t('storyStage.sendRegenerate') : t('chat.input.send'))}
             >
               {streaming ? <Square className="h-3.5 w-3.5 fill-current" /> : editingTurn ? <RefreshCw className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
-              {streaming ? '中断' : editingTurn ? '重生成' : '发送'}
+              {streaming ? t('storyStage.stop') : editingTurn ? t('storyStage.regenerate') : t('chat.input.send')}
             </Button>
           </div>
         </div>
@@ -791,9 +793,9 @@ function parseInlineStyleReferences(input: string): string[] {
   return Array.from(result)
 }
 
-function pickSceneTitle(snapshot: Snapshot | null, branchId: string) {
+function pickSceneTitle(snapshot: Snapshot | null, branchId: string, t: (key: string) => string) {
   const current = snapshot?.graph?.nodes?.find((node) => node.current && node.branch_id === (snapshot.branch_id || branchId)) ||
     snapshot?.graph?.nodes?.find((node) => node.head && node.branch_id === (snapshot.branch_id || branchId))
   if (current?.title) return current.title
-  return '主创作区'
+  return t('storyStage.primaryArea')
 }

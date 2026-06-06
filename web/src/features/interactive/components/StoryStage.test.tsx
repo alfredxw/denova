@@ -61,7 +61,7 @@ describe('StoryStage', () => {
       />,
     )
 
-    expect(screen.getAllByText('Nova').length).toBeGreaterThan(0)
+    expect(screen.getByText('故事舞台 · 当前分支 main')).toBeInTheDocument()
     expect(screen.getByTestId('story-stage-card').parentElement).toHaveClass('h-full', 'overflow-hidden')
     expect(screen.getByText('我推开酒馆的门')).toBeInTheDocument()
     expect(screen.getByText('门后传来低沉的风声。')).toBeInTheDocument()
@@ -101,7 +101,7 @@ describe('StoryStage', () => {
     )
     expect(screen.getAllByText('我点燃火把')).toHaveLength(1)
     expect(screen.getAllByText(/火光照亮了墙上的新线索。/)).toHaveLength(1)
-    expect(container.querySelector('.streaming-markdown')).toBeInTheDocument()
+    expect(container.querySelector('.chat-agent-message')).toBeInTheDocument()
   })
 
   it('restores persisted thinking as a collapsed block after refresh', async () => {

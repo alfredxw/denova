@@ -1,4 +1,5 @@
 import type { ChatMessage } from '@/lib/api'
+import i18next from '@/i18n'
 import type { BranchSummary, HotChoicesResponse, InteractiveSSEEvent, Snapshot, StoryIndex, StorySummary, Teller } from './types'
 
 async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -72,8 +73,8 @@ export async function runInteractiveTellerAgentStream(instruction: string, telle
     })
   } catch (error) {
     throw new Error(error instanceof Error && error.name === 'AbortError'
-      ? '讲述者 Agent 请求已中断'
-      : '讲述者 Agent 连接后端失败，请确认后端已重启并加载最新代码')
+      ? i18next.t('settingPanel.tellerAgent.requestAborted')
+      : i18next.t('settingPanel.tellerAgent.connectFailed'))
   }
   if (!res.ok) {
     let message = `HTTP ${res.status}`

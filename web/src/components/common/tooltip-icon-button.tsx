@@ -3,6 +3,7 @@ import { Button, type buttonVariants } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import type { VariantProps } from 'class-variance-authority'
@@ -24,20 +25,22 @@ export function TooltipIconButton({
   ...props
 }: TooltipIconButtonProps) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          variant={variant}
-          size={size}
-          className={className}
-          aria-label={ariaLabel || label}
-          {...props}
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant={variant}
+            size={size}
+            className={className}
+            aria-label={ariaLabel || label}
+            {...props}
+          >
+            {children}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   )
 }

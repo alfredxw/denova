@@ -20,7 +20,7 @@ func (h *Handlers) HandleWorkspaceTree(ctx context.Context, c *app.RequestContex
 	}
 	tree, err := h.app.BookService().Tree()
 	if err != nil {
-		writeError(c, consts.StatusInternalServerError, "扫描目录失败: "+err.Error())
+		writeErrorKey(c, consts.StatusInternalServerError, "api.workspace.scanFailed", "detail", err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, tree)
@@ -40,7 +40,7 @@ func (h *Handlers) HandleWorkspaceSummary(ctx context.Context, c *app.RequestCon
 	}
 	summary, err := h.app.BookService().Summary()
 	if err != nil {
-		writeError(c, consts.StatusInternalServerError, "统计作品进度失败: "+err.Error())
+		writeErrorKey(c, consts.StatusInternalServerError, "api.workspace.summaryFailed", "detail", err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, summary)
@@ -53,7 +53,7 @@ func (h *Handlers) HandleWorkspaceFile(ctx context.Context, c *app.RequestContex
 	}
 	relPath := c.Query("path")
 	if relPath == "" {
-		writeError(c, consts.StatusBadRequest, "缺少 path 参数")
+		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathMissing")
 		return
 	}
 
@@ -79,7 +79,7 @@ func (h *Handlers) HandleWorkspaceSearch(ctx context.Context, c *app.RequestCont
 	if rawLimit := c.Query("limit"); rawLimit != "" {
 		parsed, err := strconv.Atoi(rawLimit)
 		if err != nil || parsed < 0 {
-			writeError(c, consts.StatusBadRequest, "limit 必须是非负整数")
+			writeErrorKey(c, consts.StatusBadRequest, "api.workspace.limitInvalid")
 			return
 		}
 		limit = parsed
@@ -87,7 +87,7 @@ func (h *Handlers) HandleWorkspaceSearch(ctx context.Context, c *app.RequestCont
 
 	results, err := h.app.BookService().Search(query, limit)
 	if err != nil {
-		writeError(c, consts.StatusInternalServerError, "搜索失败: "+err.Error())
+		writeErrorKey(c, consts.StatusInternalServerError, "api.workspace.searchFailed", "detail", err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]any{"results": results})
@@ -103,18 +103,18 @@ func (h *Handlers) HandleWorkspaceFileWrite(ctx context.Context, c *app.RequestC
 		Content string `json:"content"`
 	}
 	if err := c.BindJSON(&req); err != nil || req.Path == "" {
-		writeError(c, consts.StatusBadRequest, "请提供 path 和 content 参数")
+		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathContentRequired")
 		return
 	}
 
 	if err := h.app.BookService().WriteFile(req.Path, req.Content); err != nil {
-		writeError(c, fileWriteStatus(err), "写入文件失败: "+err.Error())
+		writeErrorKey(c, fileWriteStatus(err), "api.workspace.writeFailed", "detail", err.Error())
 		return
 	}
 	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{
 		"path":    req.Path,
-		"message": "文件已保存",
+		"message": messageKey(c, "api.workspace.fileSaved"),
 	})
 }
 
@@ -129,20 +129,20 @@ func (h *Handlers) HandleWorkspaceCreate(ctx context.Context, c *app.RequestCont
 		Content string `json:"content"`
 	}
 	if err := c.BindJSON(&req); err != nil || req.Path == "" {
-		writeError(c, consts.StatusBadRequest, "请提供 path 和 type 参数")
+		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathTypeRequired")
 		return
 	}
 
 	if err := h.app.BookService().Create(req.Path, req.Type, req.Content); err != nil {
 		if errors.Is(err, os.ErrExist) {
-			writeError(c, consts.StatusConflict, "目标已存在")
+			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
 			return
 		}
 		writeError(c, fileWriteStatus(err), err.Error())
 		return
 	}
 	h.app.MaybeCreateTimedVersion(ctx)
-	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": "创建成功"})
+	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": messageKey(c, "api.workspace.created")})
 }
 
 // handleWorkspaceDelete POST /api/workspace/delete — 删除文件或目录。
@@ -154,16 +154,16 @@ func (h *Handlers) HandleWorkspaceDelete(ctx context.Context, c *app.RequestCont
 		Path string `json:"path"`
 	}
 	if err := c.BindJSON(&req); err != nil || req.Path == "" {
-		writeError(c, consts.StatusBadRequest, "请提供 path 参数")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.pathRequired")
 		return
 	}
 
 	if err := h.app.BookService().Delete(req.Path); err != nil {
-		writeError(c, fileWriteStatus(err), "删除失败: "+err.Error())
+		writeErrorKey(c, fileWriteStatus(err), "api.workspace.deleteFailed", "detail", err.Error())
 		return
 	}
 	h.app.MaybeCreateTimedVersion(ctx)
-	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": "删除成功"})
+	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": messageKey(c, "api.workspace.deleted")})
 }
 
 // handleWorkspaceRename POST /api/workspace/rename — 重命名同目录下的文件或目录。
@@ -176,21 +176,21 @@ func (h *Handlers) HandleWorkspaceRename(ctx context.Context, c *app.RequestCont
 		NewName string `json:"new_name"`
 	}
 	if err := c.BindJSON(&req); err != nil || req.Path == "" {
-		writeError(c, consts.StatusBadRequest, "请提供 path 和 new_name 参数")
+		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathNewNameRequired")
 		return
 	}
 
 	newPath, err := h.app.BookService().Rename(req.Path, req.NewName)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
-			writeError(c, consts.StatusConflict, "目标已存在")
+			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
 			return
 		}
 		writeError(c, fileWriteStatus(err), err.Error())
 		return
 	}
 	h.app.MaybeCreateTimedVersion(ctx)
-	writeJSON(c, consts.StatusOK, map[string]string{"path": newPath, "message": "重命名成功"})
+	writeJSON(c, consts.StatusOK, map[string]string{"path": newPath, "message": messageKey(c, "api.workspace.renamed")})
 }
 
 // handleWorkspaceCopy POST /api/workspace/copy — 复制文件或目录。
@@ -203,20 +203,20 @@ func (h *Handlers) HandleWorkspaceCopy(ctx context.Context, c *app.RequestContex
 		To   string `json:"to"`
 	}
 	if err := c.BindJSON(&req); err != nil || req.From == "" || req.To == "" {
-		writeError(c, consts.StatusBadRequest, "请提供 from 和 to 参数")
+		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.fromToRequired")
 		return
 	}
 
 	if err := h.app.BookService().Copy(req.From, req.To); err != nil {
 		if errors.Is(err, os.ErrExist) {
-			writeError(c, consts.StatusConflict, "目标已存在")
+			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
 			return
 		}
-		writeError(c, fileWriteStatus(err), "复制失败: "+err.Error())
+		writeErrorKey(c, fileWriteStatus(err), "api.workspace.copyFailed", "detail", err.Error())
 		return
 	}
 	h.app.MaybeCreateTimedVersion(ctx)
-	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": "复制成功"})
+	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": messageKey(c, "api.workspace.copied")})
 }
 
 // handleWorkspaceMove POST /api/workspace/move — 移动文件或目录。
@@ -229,20 +229,20 @@ func (h *Handlers) HandleWorkspaceMove(ctx context.Context, c *app.RequestContex
 		To   string `json:"to"`
 	}
 	if err := c.BindJSON(&req); err != nil || req.From == "" || req.To == "" {
-		writeError(c, consts.StatusBadRequest, "请提供 from 和 to 参数")
+		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.fromToRequired")
 		return
 	}
 
 	if err := h.app.BookService().Move(req.From, req.To); err != nil {
 		if errors.Is(err, os.ErrExist) {
-			writeError(c, consts.StatusConflict, "目标已存在")
+			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
 			return
 		}
-		writeError(c, fileWriteStatus(err), "移动失败: "+err.Error())
+		writeErrorKey(c, fileWriteStatus(err), "api.workspace.moveFailed", "detail", err.Error())
 		return
 	}
 	h.app.MaybeCreateTimedVersion(ctx)
-	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": "移动成功"})
+	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": messageKey(c, "api.workspace.moved")})
 }
 
 // handleWorkspaceSwitch POST /api/workspace/switch — 切换工作目录。
@@ -251,7 +251,7 @@ func (h *Handlers) HandleWorkspaceSwitch(ctx context.Context, c *app.RequestCont
 		Path string `json:"path"`
 	}
 	if err := c.BindJSON(&req); err != nil || req.Path == "" {
-		writeError(c, consts.StatusBadRequest, "请提供 path 参数")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.pathRequired")
 		return
 	}
 
@@ -262,7 +262,7 @@ func (h *Handlers) HandleWorkspaceSwitch(ctx context.Context, c *app.RequestCont
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{
 		"workspace": workspace,
-		"message":   "已切换到: " + workspace,
+		"message":   messageKey(c, "api.workspace.switched", "workspace", workspace),
 	})
 }
 

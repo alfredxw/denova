@@ -53,7 +53,7 @@ func (h *Handlers) HandleVersionCreate(ctx context.Context, c *app.RequestContex
 	}
 	if len(c.Request.Body()) > 0 {
 		if err := c.BindJSON(&req); err != nil {
-			writeError(c, consts.StatusBadRequest, "版本保存请求格式不正确")
+			writeErrorKey(c, consts.StatusBadRequest, "api.versions.invalidCreateRequest")
 			return
 		}
 	}
@@ -72,7 +72,7 @@ func (h *Handlers) HandleVersionDiff(ctx context.Context, c *app.RequestContext)
 	}
 	id := c.Param("id")
 	if id == "" {
-		writeError(c, consts.StatusBadRequest, "请提供版本 ID")
+		writeErrorKey(c, consts.StatusBadRequest, "api.versions.idRequired")
 		return
 	}
 	diff, err := h.app.VersionDiff(ctx, id, c.Query("path"))
@@ -90,7 +90,7 @@ func (h *Handlers) HandleVersionRestore(ctx context.Context, c *app.RequestConte
 	}
 	id := c.Param("id")
 	if id == "" {
-		writeError(c, consts.StatusBadRequest, "请提供版本 ID")
+		writeErrorKey(c, consts.StatusBadRequest, "api.versions.idRequired")
 		return
 	}
 	result, err := h.app.RestoreVersion(ctx, id)

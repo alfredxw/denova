@@ -1,6 +1,7 @@
 import { Activity, Compass, Copy, Flag, MapPin, Package, Plus, Sparkles, Tag, UserRoundCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { Snapshot } from '../types'
@@ -10,6 +11,7 @@ function asArray(value: unknown): unknown[] {
 }
 
 export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
+  const { t } = useTranslation()
   const state = snapshot?.state || {}
   const onStage = asArray(state.on_stage)
   const events = asArray(state.events)
@@ -34,13 +36,13 @@ export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
     <aside className="nova-sidebar flex h-full min-w-0 flex-col border-l p-4">
       <div className="mb-3 flex h-8 items-center justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-[var(--nova-text)]">场景记忆</h2>
-          <div className="text-[11px] text-[var(--nova-text-faint)]">当前回合的实时上下文</div>
+          <h2 className="text-sm font-semibold text-[var(--nova-text)]">{t('snapshot.title')}</h2>
+          <div className="text-[11px] text-[var(--nova-text-faint)]">{t('snapshot.subtitle')}</div>
         </div>
         <div className="flex items-center gap-1.5">
-          {stateStatus === 'pending' ? <Badge variant="outline" className="border-[var(--nova-accent)]/40 bg-[var(--nova-accent)]/10 text-[var(--nova-accent)]">同步中</Badge> : null}
-          {stateStatus === 'failed' ? <Badge variant="outline" className="border-red-500/35 bg-red-500/10 text-red-300">同步失败</Badge> : null}
-          <Badge variant="outline" className="border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">{formatBranchName(snapshot?.branch_id)}</Badge>
+          {stateStatus === 'pending' ? <Badge variant="outline" className="border-[var(--nova-accent)]/40 bg-[var(--nova-accent)]/10 text-[var(--nova-accent)]">{t('snapshot.syncing')}</Badge> : null}
+          {stateStatus === 'failed' ? <Badge variant="outline" className="border-red-500/35 bg-red-500/10 text-red-300">{t('snapshot.syncFailed')}</Badge> : null}
+          <Badge variant="outline" className="border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">{formatBranchName(snapshot?.branch_id, t)}</Badge>
         </div>
       </div>
       {stateStatus === 'failed' && snapshot?.current_turn?.state_error ? (
@@ -52,12 +54,12 @@ export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
         <section className={panelSectionClass}>
           <div className={sectionTitleClass}>
             <MapPin className="h-3.5 w-3.5" />
-            当前场景
+            {t('snapshot.currentScene')}
           </div>
           <div className="grid grid-cols-[repeat(auto-fit,minmax(72px,1fr))] gap-2">
-            <SnapshotMetric label="地点" value={location || '未记录'} />
-            <SnapshotMetric label="时间" value={time || '未记录'} />
-            <SnapshotMetric label="视角" value={pov || '未记录'} />
+            <SnapshotMetric label={t('snapshot.field.place')} value={location || t('snapshot.noRecord')} />
+            <SnapshotMetric label={t('snapshot.field.time')} value={time || t('snapshot.noRecord')} />
+            <SnapshotMetric label={t('snapshot.field.pov')} value={pov || t('snapshot.noRecord')} />
           </div>
           {sceneEntries.length ? (
             <div className="mt-3 border-t border-[var(--nova-border)] pt-3">
@@ -67,34 +69,34 @@ export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
         </section>
 
         <section className={panelSectionClass}>
-          <div className="mb-2 text-xs font-semibold text-[var(--nova-text-muted)]">场景笔记</div>
+          <div className="mb-2 text-xs font-semibold text-[var(--nova-text-muted)]">{t('snapshot.sceneNotes')}</div>
           <div className={`${panelCardClass} px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]`}>
-            记录场景的设计意图或待完成事项...
+            {t('snapshot.sceneNotesPlaceholder')}
           </div>
         </section>
 
         <section className={panelSectionClass}>
           <div className={sectionTitleClass}>
             <UserRoundCheck className="h-3.5 w-3.5" />
-            在场角色
+            {t('snapshot.onStage')}
           </div>
           <div className="flex flex-wrap gap-1.5 text-sm text-[var(--nova-text-muted)]">
-            {onStage.length ? onStage.map((name) => <Badge key={String(name)} className="border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]" variant="secondary">{String(name)}</Badge>) : '暂无在场角色'}
+            {onStage.length ? onStage.map((name) => <Badge key={String(name)} className="border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]" variant="secondary">{String(name)}</Badge>) : t('snapshot.noOnStage')}
           </div>
         </section>
 
         <section className={panelSectionClass}>
           <div className={sectionTitleClass}>
             <Compass className="h-3.5 w-3.5" />
-            可选择
+            {t('snapshot.actionSpace')}
           </div>
-          <CompactList items={actionSpace} empty="暂无可选择" />
+          <CompactList items={actionSpace} empty={t('snapshot.noActionSpace')} />
         </section>
 
         <section className={panelSectionClass}>
           <div className={sectionTitleClass}>
             <Activity className="h-3.5 w-3.5" />
-            角色状态
+            {t('snapshot.characterStates')}
           </div>
           <div className="space-y-2 text-xs text-[var(--nova-text-muted)]">
             {characters.length ? characters.map(([name, state]) => (
@@ -102,62 +104,62 @@ export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
                 <div className="mb-1 font-medium text-[var(--nova-text)]">{name}</div>
                 <StateValue value={state} />
               </div>
-            )) : '暂无角色状态'}
+            )) : t('snapshot.noCharacterStates')}
           </div>
         </section>
 
         <section className={panelSectionClass}>
           <div className={sectionTitleClass}>
             <Package className="h-3.5 w-3.5" />
-            物品与资源
+            {t('snapshot.inventoryResources')}
           </div>
           <div className="space-y-2 text-xs text-[var(--nova-text-muted)]">
             {inventory ? (
               <div className={`${panelCardClass} p-2`}>
-                <div className="mb-1 font-medium text-[var(--nova-text)]">物品</div>
+                <div className="mb-1 font-medium text-[var(--nova-text)]">{t('snapshot.field.inventory')}</div>
                 <StateValue value={inventory} />
               </div>
             ) : null}
             {resources ? (
               <div className={`${panelCardClass} p-2`}>
-                <div className="mb-1 font-medium text-[var(--nova-text)]">资源</div>
+                <div className="mb-1 font-medium text-[var(--nova-text)]">{t('snapshot.field.resources')}</div>
                 <StateValue value={resources} />
               </div>
             ) : null}
-            {!inventory && !resources ? '暂无物品或资源变化' : null}
+            {!inventory && !resources ? t('snapshot.noInventoryResources') : null}
           </div>
         </section>
 
         <section className={panelSectionClass}>
           <div className={sectionTitleClass}>
             <Flag className="h-3.5 w-3.5" />
-            规则与暗线
+            {t('snapshot.rulesThreads')}
           </div>
           <div className="space-y-3 text-xs text-[var(--nova-text-muted)]">
-            <LabeledList label="世界规则" items={[...worldFlags, ...rules]} empty="暂无已激活规则" />
-            <LabeledList label="未解决线索" items={threads} empty="暂无未解决线索" />
+            <LabeledList label={t('snapshot.worldRules')} items={[...worldFlags, ...rules]} empty={t('snapshot.noWorldRules')} />
+            <LabeledList label={t('snapshot.unresolvedThreads')} items={threads} empty={t('snapshot.noThreads')} />
           </div>
         </section>
 
         <section className={panelSectionClass}>
           <div className={sectionTitleClass}>
             <Sparkles className="h-3.5 w-3.5" />
-            关键事件
+            {t('snapshot.keyEvents')}
           </div>
           <div className="space-y-2 text-xs text-[var(--nova-text-muted)]">
             {events.length ? events.map((event, index) => (
               <EventItem key={index} event={event} index={index} />
-            )) : '暂无关键事件'}
+            )) : t('snapshot.noKeyEvents')}
           </div>
         </section>
 
         <section className={`${panelSectionClass} mb-0`}>
-          <div className="mb-3 text-xs font-semibold text-[var(--nova-text-muted)]">快捷操作</div>
+          <div className="mb-3 text-xs font-semibold text-[var(--nova-text-muted)]">{t('snapshot.quickActions')}</div>
           <div className="grid grid-cols-2 gap-2">
-            <InspectorAction icon={Plus} label="新建场景" />
-            <InspectorAction icon={Copy} label="复制链接" />
-            <InspectorAction icon={Compass} label="添加分支" />
-            <InspectorAction icon={Tag} label="设置标签" />
+            <InspectorAction icon={Plus} label={t('snapshot.newScene')} />
+            <InspectorAction icon={Copy} label={t('snapshot.copyLink')} />
+            <InspectorAction icon={Compass} label={t('snapshot.addBranch')} />
+            <InspectorAction icon={Tag} label={t('snapshot.setTags')} />
           </div>
         </section>
       </ScrollArea>
@@ -192,33 +194,35 @@ function pickString(source: Record<string, unknown>, keys: string[]) {
 }
 
 function StateValue({ value }: { value: unknown }) {
+  const { t } = useTranslation()
   if (isPlainObject(value)) {
     const entries = Object.entries(value)
-    if (!entries.length) return <div className="text-[var(--nova-text-faint)]">暂无记录</div>
+    if (!entries.length) return <div className="text-[var(--nova-text-faint)]">{t('snapshot.noRecord')}</div>
     return (
       <dl className="grid gap-1.5">
         {entries.map(([key, item]) => (
           <div key={key} className="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
-            <dt className="truncate text-[var(--nova-text-faint)]" title={formatLabel(key)}>{formatLabel(key)}</dt>
-            <dd className="min-w-0 text-[var(--nova-text-muted)]">{renderReadableValue(item)}</dd>
+            <dt className="truncate text-[var(--nova-text-faint)]" title={formatLabel(key, t)}>{formatLabel(key, t)}</dt>
+            <dd className="min-w-0 text-[var(--nova-text-muted)]">{renderReadableValue(item, t)}</dd>
           </div>
         ))}
       </dl>
     )
   }
-  return <div className="whitespace-pre-wrap text-[var(--nova-text-muted)]">{formatScalar(value)}</div>
+  return <div className="whitespace-pre-wrap text-[var(--nova-text-muted)]">{formatScalar(value, t)}</div>
 }
 
 function EventItem({ event, index }: { event: unknown; index: number }) {
+  const { t } = useTranslation()
   if (!isPlainObject(event)) {
     return (
       <div className={`${panelCardClass} p-2 text-[var(--nova-text-muted)]`}>
-        {formatScalar(event)}
+        {formatScalar(event, t)}
       </div>
     )
   }
 
-  const title = pickEventTitle(event, index)
+  const title = pickEventTitle(event, index, t)
   const description = pickString(event, ['description', 'summary', 'content', 'text', 'event', '事件', '描述'])
   const detailEntries = Object.entries(event).filter(([key]) => !EVENT_PRIMARY_KEYS.has(key))
 
@@ -237,8 +241,8 @@ function EventItem({ event, index }: { event: unknown; index: number }) {
         <dl className="grid gap-1.5">
           {detailEntries.map(([key, value]) => (
             <div key={key} className="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
-              <dt className="truncate text-[var(--nova-text-faint)]" title={formatLabel(key)}>{formatLabel(key)}</dt>
-              <dd className="min-w-0 text-[var(--nova-text-muted)]">{renderReadableValue(value)}</dd>
+              <dt className="truncate text-[var(--nova-text-faint)]" title={formatLabel(key, t)}>{formatLabel(key, t)}</dt>
+              <dd className="min-w-0 text-[var(--nova-text-muted)]">{renderReadableValue(value, t)}</dd>
             </div>
           ))}
         </dl>
@@ -248,12 +252,13 @@ function EventItem({ event, index }: { event: unknown; index: number }) {
 }
 
 function CompactList({ items, empty }: { items: unknown[]; empty: string }) {
+  const { t } = useTranslation()
   if (!items.length) return <div className="text-xs text-[var(--nova-text-muted)]">{empty}</div>
   return (
     <div className="space-y-1.5 text-xs text-[var(--nova-text-muted)]">
       {items.map((item, index) => (
         <div key={index} className={`${panelCardClass} px-2 py-1.5`}>
-          {renderReadableValue(item)}
+          {renderReadableValue(item, t)}
         </div>
       ))}
     </div>
@@ -269,15 +274,15 @@ function LabeledList({ label, items, empty }: { label: string; items: unknown[];
   )
 }
 
-function renderReadableValue(value: unknown): ReactNode {
+function renderReadableValue(value: unknown, t: (key: string, options?: Record<string, unknown>) => string): ReactNode {
   if (Array.isArray(value)) {
-    if (!value.length) return <span className="text-[var(--nova-text-faint)]">空</span>
+    if (!value.length) return <span className="text-[var(--nova-text-faint)]">{t('snapshot.empty')}</span>
     if (value.every((item) => !isPlainObject(item) && !Array.isArray(item))) {
       return (
         <div className="flex flex-wrap gap-1">
           {value.map((item, index) => (
             <Badge key={index} variant="secondary" className="border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]">
-              {formatScalar(item)}
+              {formatScalar(item, t)}
             </Badge>
           ))}
         </div>
@@ -287,7 +292,7 @@ function renderReadableValue(value: unknown): ReactNode {
       <div className="space-y-1">
         {value.map((item, index) => (
           <div key={index} className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1">
-            {renderReadableValue(item)}
+            {renderReadableValue(item, t)}
           </div>
         ))}
       </div>
@@ -295,109 +300,44 @@ function renderReadableValue(value: unknown): ReactNode {
   }
   if (isPlainObject(value)) {
     const entries = Object.entries(value)
-    if (!entries.length) return <span className="text-[var(--nova-text-faint)]">空</span>
+    if (!entries.length) return <span className="text-[var(--nova-text-faint)]">{t('snapshot.empty')}</span>
     return (
       <div className="space-y-1">
         {entries.map(([key, item]) => (
           <div key={key} className="grid grid-cols-[64px_minmax(0,1fr)] gap-1">
-            <span className="text-[var(--nova-text-faint)]">{formatLabel(key)}</span>
-            <span className="min-w-0">{renderReadableValue(item)}</span>
+            <span className="text-[var(--nova-text-faint)]">{formatLabel(key, t)}</span>
+            <span className="min-w-0">{renderReadableValue(item, t)}</span>
           </div>
         ))}
       </div>
     )
   }
-  return <span className="whitespace-pre-wrap">{formatScalar(value)}</span>
+  return <span className="whitespace-pre-wrap">{formatScalar(value, t)}</span>
 }
 
-function pickEventTitle(event: Record<string, unknown>, index: number) {
+function pickEventTitle(event: Record<string, unknown>, index: number, t: (key: string, options?: Record<string, unknown>) => string) {
   const title = pickString(event, ['title', 'name', 'flag', 'event', '事件名'])
   if (title) return title
-  return `事件 ${index + 1}`
+  return t('snapshot.eventFallback', { index: index + 1 })
 }
 
-function formatLabel(key: string) {
+function formatLabel(key: string, t: (key: string) => string) {
   const normalized = key.trim()
-  const labels: Record<string, string> = {
-    id: '编号',
-    type: '类型',
-    title: '标题',
-    name: '名称',
-    flag: '标记',
-    description: '描述',
-    summary: '摘要',
-    content: '内容',
-    text: '内容',
-    event: '事件',
-    story_id: '故事',
-    branch_id: '剧情线',
-    parent_id: '上级节点',
-    parent_event_id: '分叉节点',
-    from_event: '来源事件',
-    created_at: '创建时间',
-    updated_at: '更新时间',
-    on_stage: '在场角色',
-    characters: '角色',
-    events: '关键事件',
-    hp: '体力',
-    mp: '精神',
-    health: '健康',
-    location: '位置',
-    place: '地点',
-    scene: '场景',
-    mood: '情绪',
-    status: '状态',
-    state: '状态',
-    relation: '关系',
-    relations: '关系',
-    relationship: '关系',
-    relationship_score: '关系值',
-    goal: '目标',
-    current_goal: '当前目标',
-    current_status: '当前状态',
-    current_location: '当前位置',
-    last_seen_at: '最后出现',
-    item: '物品',
-    items: '物品',
-    inventory: '物品',
-    resources: '资源',
-    resource: '资源',
-    danger: '危险',
-    danger_level: '危险度',
-    tension: '紧张度',
-    atmosphere: '氛围',
-    obstacle: '阻碍',
-    obstacles: '阻碍',
-    exits: '出口',
-    interactive_objects: '可交互物',
-    action_space: '可选择',
-    world_flags: '世界标记',
-    rules: '世界规则',
-    threads: '未解决线索',
-    hook: '钩子',
-    hooks: '钩子',
-    clue: '线索',
-    clues: '线索',
-    cost: '代价',
-    consequence: '后果',
-    known_info: '已知信息',
-    stance: '立场',
-    injury: '伤势',
-    ts: '时间',
-    time: '时间',
-    moment: '时刻',
-    pov: '视角',
-    viewpoint: '视角',
-  }
-  if (labels[normalized]) return labels[normalized]
+  const directKey = `snapshot.field.${normalized}`
+  const directLabel = t(directKey)
+  if (directLabel !== directKey) return directLabel
   if (/^[a-z][a-z0-9_]*$/i.test(normalized) && normalized.includes('_')) {
-    return normalized.split('_').map((part) => labels[part] || FIELD_WORDS[part] || part).join('')
+    return normalized.split('_').map((part) => {
+      const partKey = `snapshot.field.${part}`
+      const partLabel = t(partKey)
+      return partLabel === partKey ? part : partLabel
+    }).join(' ')
   }
   return normalized
 }
 
-function formatScalar(value: unknown) {
-  if (value === null || value === undefined) return '未记录'
+function formatScalar(value: unknown, t: (key: string) => string) {
+  if (value === null || value === undefined) return t('snapshot.noRecord')
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   return JSON.stringify(value)
@@ -407,31 +347,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-function formatBranchName(branchId?: string) {
-  if (!branchId || branchId === 'main') return '主线'
-  if (/^branch[_-]?\d+$/i.test(branchId)) return `剧情线 ${branchId.replace(/^branch[_-]?/i, '')}`
+function formatBranchName(branchId: string | undefined, t: (key: string) => string) {
+  if (!branchId || branchId === 'main') return t('branchTimeline.mainBranch')
+  if (/^branch[_-]?\d+$/i.test(branchId)) return `${t('branchTimeline.title')} ${branchId.replace(/^branch[_-]?/i, '')}`
   return branchId
-}
-
-const FIELD_WORDS: Record<string, string> = {
-  current: '当前',
-  last: '最后',
-  seen: '出现',
-  at: '时间',
-  score: '值',
-  level: '等级',
-  branch: '剧情线',
-  story: '故事',
-  parent: '上级',
-  from: '来源',
-  created: '创建',
-  updated: '更新',
-  stage: '在场',
-  flags: '标记',
-  space: '空间',
-  world: '世界',
-  danger: '危险',
-  action: '行动',
 }
 
 const EVENT_PRIMARY_KEYS = new Set(['title', 'name', 'flag', 'event', '事件名', 'description', 'summary', 'content', 'text', '事件', '描述', 'type'])

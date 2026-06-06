@@ -1,6 +1,7 @@
 import { BookMarked, BookOpen, ChevronDown, ChevronRight, Database, FileText, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SlidersHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { FileTree } from '@/components/Sidebar/FileTree'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel } from '@/components/Chat/AgentPanel'
@@ -98,6 +99,7 @@ interface ModeRouterProps {
 }
 
 export function ModeRouter(props: ModeRouterProps) {
+  const { t, i18n } = useTranslation()
   const {
     mode,
     booksReturnMode,
@@ -201,8 +203,14 @@ export function ModeRouter(props: ModeRouterProps) {
   const loreSuggestions = useMemo(() => loreItems.map((item) => ({
     value: item.id,
     label: item.name,
-    description: `${loreTypeLabel(item.type)} · ${loreImportanceLabel(item.importance)} · ${loreLoadModeLabel(item.load_mode)}${item.tags?.length ? ` · ${item.tags.join('、')}` : ''}${item.brief_description ? ` · 简介：${item.brief_description}` : ''}`,
-  })), [loreItems])
+    description: t('planning.loreDescription', {
+      type: loreTypeLabel(item.type, t),
+      importance: loreImportanceLabel(item.importance, t),
+      loadMode: loreLoadModeLabel(item.load_mode, t),
+      tags: item.tags?.length ? ` · ${item.tags.join(i18n.language.startsWith('zh') ? '、' : ', ')}` : '',
+      brief: item.brief_description ? t('planning.loreBrief', { brief: item.brief_description }) : '',
+    }),
+  })), [i18n.language, loreItems, t])
   const aiVisible = rightPanel === 'ai'
   const closeBooks = () => {
     if (booksReturnMode === 'interactive') {
@@ -219,9 +227,9 @@ export function ModeRouter(props: ModeRouterProps) {
       <div className="flex min-h-[92px] flex-col gap-2 border-b border-[var(--nova-border)] px-3 py-3">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-xs font-medium text-[var(--nova-text)]">{summary?.title || '作品'}</div>
+            <div className="text-xs font-medium text-[var(--nova-text)]">{summary?.title || t('router.work')}</div>
             <div className="mt-0.5 text-[11px] text-[var(--nova-text-faint)]">
-              {summary ? `${summary.chapter_count} 章 · ${formatNumber(summary.total_words)} 字` : '正在加载作品进度'}
+              {summary ? t('workbench.status.summary', { title: summary.title || t('workbench.untitled'), chapters: formatNumber(summary.chapter_count), words: formatNumber(summary.total_words) }) : t('router.loadingProgress')}
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -229,7 +237,7 @@ export function ModeRouter(props: ModeRouterProps) {
               type="button"
               onClick={onRefreshTree}
               className="nova-nav-item rounded p-1"
-              title="刷新目录"
+              title={t('router.refreshTree')}
             >
               <RefreshCw className="h-3.5 w-3.5" />
             </button>
@@ -248,27 +256,27 @@ export function ModeRouter(props: ModeRouterProps) {
             onClick={() => onSetSidebarView('outline')}
             className={`nova-nav-item flex-1 px-2 py-1 text-xs ${sidebarView === 'outline' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
           >
-            作品目录
+            {t('router.outline')}
           </button>
           <button
             type="button"
             onClick={() => onSetSidebarView('files')}
             className={`nova-nav-item flex-1 px-2 py-1 text-xs ${sidebarView === 'files' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
           >
-            项目文件
+            {t('router.files')}
           </button>
           <button
             type="button"
             onClick={() => onSetSidebarView('search')}
             className={`nova-nav-item flex-1 px-2 py-1 text-xs ${sidebarView === 'search' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
           >
-            全局搜索
+            {t('router.search')}
           </button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-2 text-xs">
         {loading ? (
-          <div className="py-4 text-center text-[#858b96]">加载中…</div>
+          <div className="py-4 text-center text-[#858b96]">{t('router.loading')}</div>
         ) : sidebarView === 'outline' ? (
           <ChapterOutline
             chapters={summary?.chapters || []}
@@ -283,7 +291,7 @@ export function ModeRouter(props: ModeRouterProps) {
             onSelectResult={onSelectSearchResult}
           />
         ) : tree.length === 0 ? (
-          <div className="py-4 text-center text-[#858b96]">暂无文件</div>
+          <div className="py-4 text-center text-[#858b96]">{t('router.noFiles')}</div>
         ) : (
           <FileTree
             nodes={tree}
@@ -334,7 +342,7 @@ export function ModeRouter(props: ModeRouterProps) {
         />
       ) : ideWorkspacePanel === 'lore' ? (
         <IdeWorkspacePanel
-          title="资料库"
+          title={t('workbench.activity.lore')}
           icon={<Database className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
           onClose={() => onSetRightPanel(null)}
         >
@@ -342,7 +350,7 @@ export function ModeRouter(props: ModeRouterProps) {
         </IdeWorkspacePanel>
       ) : ideWorkspacePanel === 'creator' ? (
         <IdeWorkspacePanel
-          title="创作者"
+          title={t('workbench.activity.creator')}
           icon={<BookMarked className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
           onClose={() => onSetRightPanel(null)}
         >
@@ -350,7 +358,7 @@ export function ModeRouter(props: ModeRouterProps) {
         </IdeWorkspacePanel>
       ) : ideWorkspacePanel === 'teller' ? (
         <IdeWorkspacePanel
-          title="讲述者"
+          title={t('workbench.activity.teller')}
           icon={<SlidersHorizontal className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
           onClose={() => onSetRightPanel(null)}
         >
@@ -387,7 +395,7 @@ export function ModeRouter(props: ModeRouterProps) {
               />
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-[#7f8590]">
-                请从左侧目录树选择文件，或打开「书籍管理」选择书籍
+                {t('router.chooseFile')}
               </div>
             )}
           </div>
@@ -470,28 +478,31 @@ function IdeWritingInfoActions({
   onToggleProjectVisible: () => void
   onToggleAgent: () => void
 }) {
+  const { t } = useTranslation()
   const ProjectIcon = projectVisible ? PanelLeftClose : PanelLeftOpen
   const AgentIcon = aiVisible ? PanelRightClose : PanelRightOpen
+  const projectLabel = projectVisible ? t('router.hideOutline') : t('router.showOutline')
+  const agentLabel = aiVisible ? t('router.hideAgent') : t('router.showAgent')
 
   return (
     <>
       <button
         type="button"
         onClick={onToggleProjectVisible}
-        aria-label={projectVisible ? '隐藏目录' : '显示目录'}
+        aria-label={projectLabel}
         aria-pressed={projectVisible}
         className={`nova-nav-item flex h-7 w-7 items-center justify-center ${projectVisible ? 'is-active' : ''}`}
-        title={projectVisible ? '隐藏目录' : '显示目录'}
+        title={projectLabel}
       >
         <ProjectIcon className="h-3.5 w-3.5" />
       </button>
       <button
         type="button"
         onClick={onToggleAgent}
-        aria-label={aiVisible ? '隐藏创作 Agent' : '显示创作 Agent'}
+        aria-label={agentLabel}
         aria-pressed={aiVisible}
         className={`nova-nav-item flex h-7 w-7 items-center justify-center ${aiVisible ? 'is-active' : ''}`}
-        title={aiVisible ? '隐藏创作 Agent' : '显示创作 Agent'}
+        title={agentLabel}
       >
         <AgentIcon className="h-3.5 w-3.5" />
       </button>
@@ -510,6 +521,7 @@ function IdeWorkspacePanel({
   children: ReactNode
   onClose: () => void
 }) {
+  const { t } = useTranslation()
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
       <div className="nova-topbar flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
@@ -517,7 +529,7 @@ function IdeWorkspacePanel({
           {icon}
           {title}
         </div>
-        <button type="button" onClick={onClose} className="nova-nav-item rounded px-1 text-xs" aria-label={`关闭${title}`}>×</button>
+        <button type="button" onClick={onClose} className="nova-nav-item rounded px-1 text-xs" aria-label={`${t('common.close')} ${title}`}>×</button>
       </div>
       <div className="min-h-0 flex-1">
         {children}
@@ -539,8 +551,9 @@ function ChapterOutline({
   selectedFile: string | null
   onSelectFile: (path: string) => void | Promise<void>
 }) {
+  const { t } = useTranslation()
   const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set())
-  const volumes = useMemo(() => groupChaptersByVolume(chapters), [chapters])
+  const volumes = useMemo(() => groupChaptersByVolume(chapters, t), [chapters, t])
   const hasPlanning = outline || chapterPlans.length > 0
 
   const toggleVolume = (key: string) => {
@@ -555,7 +568,7 @@ function ChapterOutline({
   if (!hasPlanning && chapters.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-4 text-center text-xs text-[var(--nova-text-faint)]">
-        chapters/ 下还没有章节
+        {t('planning.noChapters')}
       </div>
     )
   }
@@ -563,18 +576,18 @@ function ChapterOutline({
   return (
     <div className="space-y-3">
       <section className="space-y-1.5">
-        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">大纲</div>
+        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.outline')}</div>
         {outline ? (
           <PlanningListItem document={outline} icon="outline" selected={selectedFile === outline.path} onSelectFile={onSelectFile} />
         ) : (
-          <PlanningEmptyState text="setting/outline.md 尚未生成" />
+          <PlanningEmptyState text={t('planning.outlineEmpty')} />
         )}
       </section>
 
       <section className="space-y-1.5">
         <div className="flex items-center justify-between px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">
-          <span>章节组细纲</span>
-          {chapterPlans.length > 0 && <span>{chapterPlans.length} 组</span>}
+          <span>{t('planning.chapterPlans')}</span>
+          {chapterPlans.length > 0 && <span>{t('planning.chapterPlanCount', { count: chapterPlans.length })}</span>}
         </div>
         {chapterPlans.length > 0 ? (
           <div className="space-y-1">
@@ -583,14 +596,14 @@ function ChapterOutline({
             ))}
           </div>
         ) : (
-          <PlanningEmptyState text="setting/chapter-groups/ 下还没有细纲" />
+          <PlanningEmptyState text={t('planning.chapterPlansEmpty')} />
         )}
       </section>
 
       <section className="space-y-1.5">
-        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">分卷章节</div>
+        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.volumeChapters')}</div>
         {volumes.length === 0 ? (
-          <PlanningEmptyState text="chapters/ 下还没有章节" />
+          <PlanningEmptyState text={t('planning.noChapters')} />
         ) : (
           <div className="space-y-1.5">
             {volumes.map((volume) => {
@@ -609,7 +622,7 @@ function ChapterOutline({
                     )}
                     <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
                     <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{volume.label}</span>
-                    <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{volume.chapters.length} 章</span>
+                    <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{t('common.chapters', { count: volume.chapters.length })}</span>
                   </button>
                   {expanded && (
                     <div className="space-y-1 pl-4">
@@ -680,6 +693,7 @@ function ChapterOutlineItem({
   active: boolean
   onSelectFile: (path: string) => void | Promise<void>
 }) {
+  const { t } = useTranslation()
   return (
     <button
       type="button"
@@ -695,18 +709,18 @@ function ChapterOutlineItem({
         <span className="truncate text-xs font-medium">{chapter.display_title}</span>
       </div>
       <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--nova-text-faint)]">
-        <span>{formatNumber(chapter.words)} 字</span>
+        <span>{t('common.words', { count: formatNumber(chapter.words) })}</span>
         <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{chapter.status}</span>
       </div>
     </button>
   )
 }
 
-function groupChaptersByVolume(chapters: ChapterSummary[]) {
+function groupChaptersByVolume(chapters: ChapterSummary[], t: (key: string) => string) {
   const map = new Map<string, { key: string; label: string; chapters: ChapterSummary[] }>()
   for (const chapter of chapters) {
     const key = chapter.volume_path || chapter.volume || 'chapters'
-    const label = chapter.volume || '未分卷'
+    const label = chapter.volume || t('planning.unvolumed')
     const existing = map.get(key)
     if (existing) {
       existing.chapters.push(chapter)
@@ -717,33 +731,20 @@ function groupChaptersByVolume(chapters: ChapterSummary[]) {
   return Array.from(map.values())
 }
 
-function loreTypeLabel(type: LoreItem['type']) {
-  const labels: Record<LoreItem['type'], string> = {
-    character: '角色',
-    world: '世界观',
-    location: '地点',
-    faction: '势力',
-    rule: '规则',
-    item: '物品',
-    other: '其他',
-  }
-  return labels[type] || '资料'
+function loreTypeLabel(type: LoreItem['type'], t: (key: string) => string) {
+  const key = `lore.type.${type}`
+  const label = t(key)
+  return label === key ? t('lore.type.default') : label
 }
 
-function loreImportanceLabel(importance: LoreItem['importance']) {
-  const labels: Record<LoreItem['importance'], string> = {
-    major: '主要',
-    important: '重要',
-    minor: '次要',
-  }
-  return labels[importance] || '资料'
+function loreImportanceLabel(importance: LoreItem['importance'], t: (key: string) => string) {
+  const key = `lore.importance.${importance}`
+  const label = t(key)
+  return label === key ? t('lore.importance.default') : label
 }
 
-function loreLoadModeLabel(loadMode: LoreItem['load_mode']) {
-  const labels: Record<LoreItem['load_mode'], string> = {
-    resident: '常驻',
-    auto: '简介自动匹配',
-    manual: '手动引用',
-  }
-  return labels[loadMode] || '简介自动匹配'
+function loreLoadModeLabel(loadMode: LoreItem['load_mode'], t: (key: string) => string) {
+  const key = `lore.loadMode.${loadMode}`
+  const label = t(key)
+  return label === key ? t('lore.loadMode.default') : label
 }

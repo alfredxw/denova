@@ -23,7 +23,7 @@ func (h *Handlers) HandleSettingsGet(ctx context.Context, c *app.RequestContext)
 func (h *Handlers) HandleSettingsUserUpdate(ctx context.Context, c *app.RequestContext) {
 	var body config.Settings
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	layered, err := h.app.UpdateUserSettings(body)
@@ -38,11 +38,15 @@ func (h *Handlers) HandleSettingsUserUpdate(ctx context.Context, c *app.RequestC
 func (h *Handlers) HandleSettingsWorkspaceUpdate(ctx context.Context, c *app.RequestContext) {
 	var body config.Settings
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	layered, err := h.app.UpdateWorkspaceSettings(body)
 	if err != nil {
+		if err.Error() == "当前没有打开的工作区" {
+			writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
+			return
+		}
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}

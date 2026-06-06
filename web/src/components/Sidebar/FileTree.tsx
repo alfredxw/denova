@@ -1,4 +1,5 @@
 import { useMemo, useState, type DragEvent, type MouseEvent, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   ChevronDown,
   ChevronRight,
@@ -399,6 +400,7 @@ function FileTreeNode({
   getActionPaths,
   chapterStats,
 }: FileTreeNodeProps) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(DEFAULT_EXPANDED.has(node.name))
   const isDir = node.type === 'dir'
   const isSelected = selectedFile === path
@@ -426,7 +428,7 @@ function FileTreeNode({
     ...(!isDir && !isBatchAction
       ? [
           {
-            label: '引用到 Chat',
+            label: t('sidebar.referenceToChat'),
             icon: <AtSign className="h-3.5 w-3.5" />,
             onSelect: () => onReferenceFile?.(path),
           },
@@ -434,7 +436,7 @@ function FileTreeNode({
         ]
       : []),
     {
-      label: '新建文件',
+      label: t('sidebar.createFile'),
       icon: <FilePlus className="h-3.5 w-3.5" />,
       onSelect: () => {
         if (isDir) setExpanded(true)
@@ -442,7 +444,7 @@ function FileTreeNode({
       },
     },
     {
-      label: '新建目录',
+      label: t('sidebar.createDir'),
       icon: <FolderPlus className="h-3.5 w-3.5" />,
       onSelect: () => {
         if (isDir) setExpanded(true)
@@ -451,23 +453,23 @@ function FileTreeNode({
     },
     { separator: true },
     {
-      label: isBatchAction ? undefined : '重命名',
+      label: isBatchAction ? undefined : t('sidebar.rename'),
       icon: <Pencil className="h-3.5 w-3.5" />,
       onSelect: () => onStartInlineEdit('rename', parentPath, node.name, path),
     },
     {
-      label: isBatchAction ? `复制选中 ${actionPaths.length} 项` : '复制',
+      label: isBatchAction ? t('sidebar.copySelected', { count: actionPaths.length }) : t('sidebar.copy'),
       icon: <Copy className="h-3.5 w-3.5" />,
-      onSelect: () => onOpenOperation('copy', isBatchAction ? `${actionPaths.length} 项` : path, isBatchAction ? parentPath : defaultCopyPath, actionPaths, isBatchAction),
+      onSelect: () => onOpenOperation('copy', isBatchAction ? t('common.items', { count: actionPaths.length }) : path, isBatchAction ? parentPath : defaultCopyPath, actionPaths, isBatchAction),
     },
     {
-      label: isBatchAction ? `移动选中 ${actionPaths.length} 项` : '移动',
+      label: isBatchAction ? t('sidebar.moveSelected', { count: actionPaths.length }) : t('sidebar.move'),
       icon: <MoveRight className="h-3.5 w-3.5" />,
-      onSelect: () => onOpenOperation('move', isBatchAction ? `${actionPaths.length} 项` : path, isBatchAction ? parentPath : path, actionPaths, isBatchAction),
+      onSelect: () => onOpenOperation('move', isBatchAction ? t('common.items', { count: actionPaths.length }) : path, isBatchAction ? parentPath : path, actionPaths, isBatchAction),
     },
     { separator: true },
     {
-      label: isBatchAction ? `删除选中 ${actionPaths.length} 项` : '删除',
+      label: isBatchAction ? t('sidebar.deleteSelected', { count: actionPaths.length }) : t('sidebar.delete'),
       icon: <Trash2 className="h-3.5 w-3.5" />,
       danger: true,
       onSelect: () => onDeleteTarget(isBatchAction ? actionPaths : path),

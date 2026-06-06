@@ -15,7 +15,7 @@ func (h *Handlers) HandleStyles(ctx context.Context, c *app.RequestContext) {
 	}
 	styles, err := h.app.BookService().StyleFiles()
 	if err != nil {
-		writeError(c, consts.StatusInternalServerError, "获取风格参考失败: "+err.Error())
+		writeErrorKey(c, consts.StatusInternalServerError, "api.styles.failed", "detail", err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string][]string{"styles": styles})

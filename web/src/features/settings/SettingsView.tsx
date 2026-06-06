@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Plus, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from './types'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from './api'
-import { FONT_OPTIONS, fontLabelFor } from './font-options'
+import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
+import { settingsForLayer, useAutoSaveSettings } from './use-auto-save-settings'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { LOCALE_OPTIONS } from '@/i18n'
 
 type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
 type SettingsSection = {
   id: SettingsSectionId
-  group: '公共配置' | 'IDE 模式' | '互动模式'
+  group: string
   title: string
   children: ReactNode
 }
@@ -22,13 +25,14 @@ const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border 
 const iconButtonCls = 'nova-nav-item rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 
 export function SettingsView({ onClose }: { onClose?: () => void }) {
+  const { t } = useTranslation()
   const [layered, setLayered] = useState<LayeredSettings | null>(null)
   const [activeLayer, setActiveLayer] = useState<SettingsLayer>('user')
   const [draft, setDraft] = useState<Settings>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [availableTellers, setAvailableTellers] = useState<Teller[]>([])
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>('model')
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>('appearance')
   const [expandedSections, setExpandedSections] = useState<Record<SettingsSectionId, boolean>>({
     model: true,
     paths: true,
@@ -45,7 +49,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     try {
       const data = await fetchSettings()
       setLayered(data)
-      setDraft(activeLayer === 'user' ? data.user : data.workspace)
+      setDraft(settingsForLayer(data, activeLayer))
     } catch (e) {
       setError((e as Error).message)
     }
@@ -62,21 +66,29 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
 
   useEffect(() => {
     if (!layered) return
-    setDraft(activeLayer === 'user' ? layered.user : layered.workspace)
+    setDraft(settingsForLayer(layered, activeLayer))
   }, [activeLayer, layered])
 
   const effective = layered?.effective ?? {}
+  const saveDraft = useCallback(async (settings: Settings) => {
+    const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
+    return updater(settings)
+  }, [activeLayer])
+
+  const applySavedSettings = useCallback((next: LayeredSettings) => {
+    setLayered(next)
+    // 通知应用层重新读取分层配置（如 max_open_tabs 等需要立即生效的设置）
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+    }
+  }, [])
+
   const onSave = async () => {
     setSaving(true)
     setError(null)
     try {
-      const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
-      const next = await updater(draft)
-      setLayered(next)
-      // 通知应用层重新读取分层配置（如 max_open_tabs 等需要立即生效的设置）
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('nova:settings-updated'))
-      }
+      const next = await saveDraft(draft)
+      applySavedSettings(next)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -91,24 +103,62 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     setField('model_profiles', profiles)
   }
 
+  useAutoSaveSettings({
+    draft,
+    ready: Boolean(layered),
+    resetKey: `${activeLayer}:${JSON.stringify(layered ? settingsForLayer(layered, activeLayer) : {})}`,
+    save: saveDraft,
+    onSavingChange: setSaving,
+    onSaved: applySavedSettings,
+    onError: setError,
+  })
+
   const placeholderFor = (k: keyof Settings): string => {
     const v = effective[k]
-    if (v === undefined || v === null || v === '') return '未设置'
-    return `继承：${String(v)}`
+    if (v === undefined || v === null || v === '') return t('common.notSet')
+    return t('common.inherit', { value: String(v) })
   }
 
   const sections: SettingsSection[] = [
     {
+      id: 'appearance',
+      group: t('settings.group.common'),
+      title: t('settings.section.appearance'),
+      children: (
+        <>
+          <LanguageSelect label={t('settings.appearance.language')} value={draft.language}
+                          effective={effective.language}
+                          onChange={(v) => setField('language', v)} />
+          <FontSelect label={t('settings.appearance.uiFont')} value={draft.ui_font_family}
+                      effective={effective.ui_font_family}
+                      onChange={(v) => setField('ui_font_family', v)} />
+          <Num label={t('settings.appearance.uiFontSize')} value={draft.ui_font_size ?? null}
+               placeholder={placeholderFor('ui_font_size')}
+               min={11}
+               max={16}
+               onChange={(v) => setField('ui_font_size', v)} />
+          <FontSelect label={t('settings.appearance.readingFont')} value={draft.reading_font_family}
+                      effective={effective.reading_font_family}
+                      onChange={(v) => setField('reading_font_family', v)} />
+          <Num label={t('settings.appearance.readingFontSize')} value={draft.reading_font_size ?? null}
+               placeholder={placeholderFor('reading_font_size')}
+               min={14}
+               max={28}
+               onChange={(v) => setField('reading_font_size', v)} />
+        </>
+      ),
+    },
+    {
       id: 'model',
-      group: '公共配置',
-      title: '模型',
+      group: t('settings.group.common'),
+      title: t('settings.section.model'),
       children: (
         <>
           <Text label="API Key" value={draft.openai_api_key} placeholder={placeholderFor('openai_api_key')}
                 onChange={(v) => setField('openai_api_key', v)} type="password" />
           <Text label="Base URL" value={draft.openai_base_url} placeholder={placeholderFor('openai_base_url')}
                 onChange={(v) => setField('openai_base_url', v)} />
-          <Text label="模型" value={draft.openai_model} placeholder={placeholderFor('openai_model')}
+          <Text label={t('common.model')} value={draft.openai_model} placeholder={placeholderFor('openai_model')}
                 onChange={(v) => setField('openai_model', v)} />
           <ModelProfilesEditor
             profiles={draft.model_profiles ?? []}
@@ -120,56 +170,31 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     },
     {
       id: 'paths',
-      group: '公共配置',
-      title: '路径',
+      group: t('settings.group.common'),
+      title: t('settings.section.paths'),
       children: (
         <>
-          <Text label="Skills 目录" value={draft.skills_dir} placeholder={placeholderFor('skills_dir')}
+          <Text label={t('settings.paths.skillsDir')} value={draft.skills_dir} placeholder={placeholderFor('skills_dir')}
                 onChange={(v) => setField('skills_dir', v)} />
-          <ReadOnly label="Nova 数据目录" value={layered?.paths?.nova_dir} />
-          <ReadOnly label="用户配置文件" value={layered?.paths?.user_config} />
-          <ReadOnly label="工作区配置文件" value={layered?.paths?.workspace_config} />
-        </>
-      ),
-    },
-    {
-      id: 'appearance',
-      group: '公共配置',
-      title: '外观',
-      children: (
-        <>
-          <FontSelect label="界面字体" value={draft.ui_font_family}
-                      effective={effective.ui_font_family}
-                      onChange={(v) => setField('ui_font_family', v)} />
-          <Num label="界面字号 (px)" value={draft.ui_font_size ?? null}
-               placeholder={placeholderFor('ui_font_size')}
-               min={11}
-               max={16}
-               onChange={(v) => setField('ui_font_size', v)} />
-          <FontSelect label="阅读字体" value={draft.reading_font_family}
-                      effective={effective.reading_font_family}
-                      onChange={(v) => setField('reading_font_family', v)} />
-          <Num label="阅读字号 (px)" value={draft.reading_font_size ?? null}
-               placeholder={placeholderFor('reading_font_size')}
-               min={14}
-               max={28}
-               onChange={(v) => setField('reading_font_size', v)} />
+          <ReadOnly label={t('settings.paths.novaDir')} value={layered?.paths?.nova_dir} />
+          <ReadOnly label={t('settings.paths.userConfig')} value={layered?.paths?.user_config} />
+          <ReadOnly label={t('settings.paths.workspaceConfig')} value={layered?.paths?.workspace_config} />
         </>
       ),
     },
     {
       id: 'agent',
-      group: '公共配置',
-      title: 'Agent',
+      group: t('settings.group.common'),
+      title: t('settings.section.agent'),
       children: (
         <>
-          <Num label="最大迭代轮数" value={draft.max_iteration ?? null}
+          <Num label={t('settings.agent.maxIteration')} value={draft.max_iteration ?? null}
                placeholder={placeholderFor('max_iteration')}
                onChange={(v) => setField('max_iteration', v)} />
-          <Num label="模型重试次数" value={draft.model_max_retries ?? null}
+          <Num label={t('settings.agent.modelMaxRetries')} value={draft.model_max_retries ?? null}
                placeholder={placeholderFor('model_max_retries')}
                onChange={(v) => setField('model_max_retries', v)} />
-          <BoolTri label="默认 PlanMode" value={draft.plan_mode_default ?? null}
+          <BoolTri label={t('settings.agent.planModeDefault')} value={draft.plan_mode_default ?? null}
                    effective={effective.plan_mode_default}
                    onChange={(v) => setField('plan_mode_default', v)} />
         </>
@@ -177,34 +202,34 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     },
     {
       id: 'ide-editor',
-      group: 'IDE 模式',
-      title: '编辑器',
+      group: t('settings.group.ide'),
+      title: t('settings.section.editor'),
       children: (
         <>
-          <BoolTri label="自动保存" value={draft.auto_save_enabled ?? null}
+          <BoolTri label={t('settings.ide.autoSave')} value={draft.auto_save_enabled ?? null}
                    effective={effective.auto_save_enabled}
                    onChange={(v) => setField('auto_save_enabled', v)} />
-          <Num label="自动保存间隔 (ms)" value={draft.auto_save_interval_ms ?? null}
+          <Num label={t('settings.ide.autoSaveInterval')} value={draft.auto_save_interval_ms ?? null}
                placeholder={placeholderFor('auto_save_interval_ms')}
                onChange={(v) => setField('auto_save_interval_ms', v)} />
-          <Text label="章节文件名模板" value={draft.chapter_filename_format}
+          <Text label={t('settings.ide.chapterFilenameFormat')} value={draft.chapter_filename_format}
                 placeholder={placeholderFor('chapter_filename_format')}
                 onChange={(v) => setField('chapter_filename_format', v)} />
-          <Num label="最大同时打开 Tab 数" value={draft.max_open_tabs ?? null}
+          <Num label={t('settings.ide.maxOpenTabs')} value={draft.max_open_tabs ?? null}
                placeholder={placeholderFor('max_open_tabs')}
                onChange={(v) => setField('max_open_tabs', v)} />
-          <BoolTri label="启用草稿流程" value={draft.draft_flow_enabled ?? null}
+          <BoolTri label={t('settings.ide.draftFlow')} value={draft.draft_flow_enabled ?? null}
                    effective={effective.draft_flow_enabled}
                    onChange={(v) => setField('draft_flow_enabled', v)} />
-          <Num label="章节组最少章节" value={draft.chapter_group_min ?? null}
+          <Num label={t('settings.ide.chapterGroupMin')} value={draft.chapter_group_min ?? null}
                placeholder={placeholderFor('chapter_group_min')}
                onChange={(v) => setField('chapter_group_min', v)} />
-          <Num label="章节组最多章节" value={draft.chapter_group_max ?? null}
+          <Num label={t('settings.ide.chapterGroupMax')} value={draft.chapter_group_max ?? null}
                placeholder={placeholderFor('chapter_group_max')}
                onChange={(v) => setField('chapter_group_max', v)} />
           {activeLayer === 'workspace' && (
             <TellerSelect
-              label="默认讲述者"
+              label={t('settings.ide.defaultTeller')}
               value={draft.ide_story_teller_id}
               effective={effective.ide_story_teller_id}
               tellers={availableTellers}
@@ -216,53 +241,53 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     },
     {
       id: 'versions',
-      group: 'IDE 模式',
-      title: '版本管理',
+      group: t('settings.group.ide'),
+      title: t('settings.section.versions'),
       children: activeLayer === 'workspace' ? (
         <>
-          <BoolTri label="定时自动保存版本" value={draft.version_timed_enabled ?? null}
+          <BoolTri label={t('settings.versions.timedAuto')} value={draft.version_timed_enabled ?? null}
                    effective={effective.version_timed_enabled}
                    onChange={(v) => setField('version_timed_enabled', v)} />
-          <Num label="定时保存间隔 (分钟)" value={draft.version_timed_interval_minutes ?? null}
+          <Num label={t('settings.versions.timedInterval')} value={draft.version_timed_interval_minutes ?? null}
                placeholder={placeholderFor('version_timed_interval_minutes')}
                onChange={(v) => setField('version_timed_interval_minutes', v)} />
-          <BoolTri label="Agent 大量输出自动保存" value={draft.version_agent_enabled ?? null}
+          <BoolTri label={t('settings.versions.agentAuto')} value={draft.version_agent_enabled ?? null}
                    effective={effective.version_agent_enabled}
                    onChange={(v) => setField('version_agent_enabled', v)} />
-          <Num label="Agent 触发字数" value={draft.version_agent_char_threshold ?? null}
+          <Num label={t('settings.versions.agentThreshold')} value={draft.version_agent_char_threshold ?? null}
                placeholder={placeholderFor('version_agent_char_threshold')}
                onChange={(v) => setField('version_agent_char_threshold', v)} />
-          <Num label="自动版本保留数量" value={draft.version_auto_retention ?? null}
+          <Num label={t('settings.versions.retention')} value={draft.version_auto_retention ?? null}
                placeholder={placeholderFor('version_auto_retention')}
                onChange={(v) => setField('version_auto_retention', v)} />
         </>
       ) : (
-        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">版本管理策略按每本书单独保存，请切换到工作区配置后修改。</div>
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.versions.workspaceOnly')}</div>
       ),
     },
     {
       id: 'interactive',
-      group: '互动模式',
-      title: '故事舞台',
+      group: t('settings.group.interactive'),
+      title: t('settings.section.interactive'),
       children: activeLayer === 'workspace' ? (
         <>
-          <Num label="最大输出 Token" value={draft.interactive_max_tokens ?? null}
-               placeholder="不填则不限制，优先避免截断"
+          <Num label={t('settings.interactive.maxTokens')} value={draft.interactive_max_tokens ?? null}
+               placeholder={t('settings.interactive.maxTokensPlaceholder')}
                onChange={(v) => setField('interactive_max_tokens', v)} />
-          <BoolTri label="输入框快捷选择" value={draft.interactive_hot_choices_enabled ?? null}
+          <BoolTri label={t('settings.interactive.hotChoices')} value={draft.interactive_hot_choices_enabled ?? null}
                    effective={effective.interactive_hot_choices_enabled}
                    onChange={(v) => setField('interactive_hot_choices_enabled', v)} />
-          <Num label="故事舞台行间距" value={draft.interactive_stage_line_height ?? null}
+          <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
                placeholder={placeholderFor('interactive_stage_line_height')}
                step={0.05}
                onChange={(v) => setField('interactive_stage_line_height', v)} />
         </>
       ) : (
         <>
-          <BoolTri label="输入框快捷选择" value={draft.interactive_hot_choices_enabled ?? null}
+          <BoolTri label={t('settings.interactive.hotChoices')} value={draft.interactive_hot_choices_enabled ?? null}
                    effective={effective.interactive_hot_choices_enabled}
                    onChange={(v) => setField('interactive_hot_choices_enabled', v)} />
-          <Num label="故事舞台行间距" value={draft.interactive_stage_line_height ?? null}
+          <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
                placeholder={placeholderFor('interactive_stage_line_height')}
                step={0.05}
                onChange={(v) => setField('interactive_stage_line_height', v)} />
@@ -309,7 +334,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     <div className="nova-settings-view flex h-full min-h-0 w-full flex-col text-[var(--nova-text)]">
       <div className="nova-topbar flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs">
         <SettingsIcon className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        <span className="font-medium text-[var(--nova-text)]">设置</span>
+        <span className="font-medium text-[var(--nova-text)]">{t('settings.title')}</span>
         <div className="ml-3 flex gap-1 border-l border-[var(--nova-border)] pl-3">
           {(['user', 'workspace'] as SettingsLayer[]).map((l) => (
             <button
@@ -320,7 +345,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                 activeLayer === l ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'
               }`}
             >
-              {l === 'user' ? '用户配置' : '当前工作区'}
+              {l === 'user' ? t('settings.activeLayer.user') : t('settings.activeLayer.workspace')}
             </button>
           ))}
         </div>
@@ -331,22 +356,22 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50"
         >
           <Save className="h-3.5 w-3.5" />
-          {saving ? '保存中…' : '保存'}
+          {saving ? t('common.saving') : t('common.save')}
         </button>
         {onClose && (
           <button
             type="button"
             onClick={onClose}
             className={`${iconButtonCls} p-1`}
-            aria-label="关闭设置"
-            title="关闭设置"
+            aria-label={t('settings.close')}
+            title={t('settings.close')}
           >
             <X className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
 
-      {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title="配置保存失败" />}
+      {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('settings.error.save')} />}
 
       <div className="flex min-h-0 flex-1 text-xs">
         <aside className="w-44 shrink-0 border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-4 sm:w-52 sm:px-3 md:w-56">
@@ -460,10 +485,11 @@ function ValueRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function ReadOnly({ label, value }: { label: string; value?: string }) {
+  const { t } = useTranslation()
   return (
     <ValueRow label={label}>
       <code className="min-h-7 flex-1 truncate rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1.5 text-[var(--nova-text-muted)]">
-        {value || '未设置'}
+        {value || t('common.notSet')}
       </code>
     </ValueRow>
   )
@@ -517,7 +543,8 @@ function BoolTri({ label, value, effective, onChange }: {
   label: string; value: boolean | null; effective?: boolean | null
   onChange: (v: boolean | null) => void
 }) {
-  const eff = effective === null || effective === undefined ? '未设置' : String(effective)
+  const { t } = useTranslation()
+  const eff = effective === null || effective === undefined ? t('common.notSet') : String(effective)
   return (
     <FieldRow label={label}>
       <select
@@ -528,9 +555,9 @@ function BoolTri({ label, value, effective, onChange }: {
         }}
         className={fieldCls}
       >
-        <option value="">继承（{eff}）</option>
-        <option value="true">开启</option>
-        <option value="false">关闭</option>
+        <option value="">{t('common.inherit', { value: eff })}</option>
+        <option value="true">{t('settings.bool.true')}</option>
+        <option value="false">{t('settings.bool.false')}</option>
       </select>
     </FieldRow>
   )
@@ -542,6 +569,9 @@ function FontSelect({ label, value, effective, onChange }: {
   effective?: string
   onChange: (v: string) => void
 }) {
+  const { t } = useTranslation()
+  const effectiveLabelKey = fontLabelKeyFor(effective)
+  const effectiveLabel = effectiveLabelKey ? t(effectiveLabelKey) : (effective || t('common.notSet'))
   return (
     <FieldRow label={label}>
       <select
@@ -549,9 +579,33 @@ function FontSelect({ label, value, effective, onChange }: {
         onChange={(e) => onChange(e.target.value)}
         className={fieldCls}
       >
-        <option value="">继承（{fontLabelFor(effective)}）</option>
+        <option value="">{t('common.inherit', { value: effectiveLabel })}</option>
         {FONT_OPTIONS.map((font) => (
-          <option key={font.value} value={font.value}>{font.label}</option>
+          <option key={font.value} value={font.value}>{t(font.labelKey)}</option>
+        ))}
+      </select>
+    </FieldRow>
+  )
+}
+
+function LanguageSelect({ label, value, effective, onChange }: {
+  label: string
+  value?: string
+  effective?: string
+  onChange: (v: string) => void
+}) {
+  const { t } = useTranslation()
+  const effectiveLabel = t(LOCALE_OPTIONS.find((option) => option.value === (effective || 'auto'))?.labelKey || 'locale.auto')
+  return (
+    <FieldRow label={label}>
+      <select
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        className={fieldCls}
+      >
+        <option value="">{t('common.inherit', { value: effectiveLabel })}</option>
+        {LOCALE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
         ))}
       </select>
     </FieldRow>
@@ -565,6 +619,7 @@ function TellerSelect({ label, value, effective, tellers, onChange }: {
   tellers: Teller[]
   onChange: (v: string) => void
 }) {
+  const { t } = useTranslation()
   const effectiveName = tellers.find((teller) => teller.id === effective)?.name || effective || 'classic'
   return (
     <FieldRow label={label}>
@@ -573,7 +628,7 @@ function TellerSelect({ label, value, effective, tellers, onChange }: {
         onChange={(e) => onChange(e.target.value)}
         className={fieldCls}
       >
-        <option value="">继承（{effectiveName}）</option>
+        <option value="">{t('common.inherit', { value: effectiveName })}</option>
         {tellers.map((teller) => (
           <option key={teller.id} value={teller.id}>{teller.name}</option>
         ))}
@@ -587,9 +642,10 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
   effectiveProfiles: ModelProfileSettings[]
   onChange: (profiles: ModelProfileSettings[]) => void
 }) {
+  const { t } = useTranslation()
   const addProfile = () => {
     const nextIndex = profiles.length + 1
-    onChange([...profiles, { id: `model-${nextIndex}`, name: `模型 ${nextIndex}` }])
+    onChange([...profiles, { id: `model-${nextIndex}`, name: t('settings.model.profileName', { index: nextIndex }) }])
   }
   const updateProfile = (index: number, patch: Partial<ModelProfileSettings>) => {
     onChange(profiles.map((profile, i) => (i === index ? { ...profile, ...patch } : profile)))
@@ -600,43 +656,43 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
 
   return (
     <div className="nova-settings-row rounded-md px-2 py-1.5">
-      <div className="mb-1.5 text-[var(--nova-text-muted)]">多模型配置</div>
+      <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('settings.model.modelProfiles')}</div>
       <div className="flex flex-col gap-2">
         {profiles.length === 0 && (
           <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-2 text-[var(--nova-text-faint)]">
-            继承 {effectiveProfiles.length || 1} 个模型配置；可新增常见 OpenAI 协议平台。
+            {t('settings.model.profileEmpty', { count: effectiveProfiles.length || 1 })}
           </div>
         )}
         {profiles.map((profile, index) => (
           <div key={`${profile.id ?? 'profile'}-${index}`} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-2">
             <input
               value={profile.id ?? ''}
-              placeholder="配置 ID，如 deepseek"
+              placeholder={t('settings.model.profileIdPlaceholder')}
               onChange={(e) => updateProfile(index, { id: e.target.value })}
               className={fieldCls}
             />
             <input
               value={profile.name ?? ''}
-              placeholder="显示名称"
+              placeholder={t('settings.model.profileNamePlaceholder')}
               onChange={(e) => updateProfile(index, { name: e.target.value })}
               className={fieldCls}
             />
             <input
               value={profile.openai_base_url ?? ''}
-              placeholder="Base URL"
+              placeholder={t('common.baseUrl')}
               onChange={(e) => updateProfile(index, { openai_base_url: e.target.value })}
               className={fieldCls}
             />
             <input
               value={profile.openai_model ?? ''}
-              placeholder="模型 ID"
+              placeholder={t('settings.model.profileModelIdPlaceholder')}
               onChange={(e) => updateProfile(index, { openai_model: e.target.value })}
               className={fieldCls}
             />
             <input
               type="password"
               value={profile.openai_api_key ?? ''}
-              placeholder="API Key，不填则继承默认"
+              placeholder={t('settings.model.profileKeyInheritPlaceholder')}
               onChange={(e) => updateProfile(index, { openai_api_key: e.target.value })}
               className={fieldCls}
             />
@@ -647,7 +703,7 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                 min={0}
                 max={2}
                 value={profile.temperature ?? ''}
-                placeholder="Temperature，空为平台默认"
+                placeholder={t('settings.model.profileTemperatureDefaultPlaceholder')}
                 onChange={(e) => updateProfile(index, { temperature: e.target.value === '' ? null : Number(e.target.value) })}
                 className={fieldCls}
               />
@@ -655,8 +711,8 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                 type="button"
                 onClick={() => removeProfile(index)}
                 className={`${iconButtonCls} shrink-0 border border-[var(--nova-border)] p-1.5`}
-                aria-label="删除模型配置"
-                title="删除模型配置"
+                aria-label={t('settings.model.deleteProfile')}
+                title={t('settings.model.deleteProfile')}
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -669,7 +725,7 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
           className="nova-nav-item inline-flex w-fit items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2.5 py-1 text-[var(--nova-text)]"
         >
           <Plus className="h-3.5 w-3.5" />
-          添加模型
+          {t('settings.model.addProfile')}
         </button>
       </div>
     </div>

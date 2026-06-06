@@ -105,7 +105,7 @@ func (h *Handlers) HandleSessionCreate(ctx context.Context, c *app.RequestContex
 	}
 	var req sessionCreateRequest
 	if err := c.BindJSON(&req); err != nil {
-		writeError(c, consts.StatusBadRequest, "无效请求体")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
 	sess, err := h.app.CreateSession(req.Title)
@@ -123,7 +123,7 @@ func (h *Handlers) HandleSessionSwitch(ctx context.Context, c *app.RequestContex
 	}
 	var req sessionIDRequest
 	if err := c.BindJSON(&req); err != nil {
-		writeError(c, consts.StatusBadRequest, "无效请求体")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
 	sess, err := h.app.SwitchSession(req.ID)
@@ -141,7 +141,7 @@ func (h *Handlers) HandleSessionRename(ctx context.Context, c *app.RequestContex
 	}
 	var req sessionRenameRequest
 	if err := c.BindJSON(&req); err != nil {
-		writeError(c, consts.StatusBadRequest, "无效请求体")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
 	if err := h.app.RenameSession(req.ID, req.Title); err != nil {
@@ -158,7 +158,7 @@ func (h *Handlers) HandleSessionDelete(ctx context.Context, c *app.RequestContex
 	}
 	var req sessionIDRequest
 	if err := c.BindJSON(&req); err != nil {
-		writeError(c, consts.StatusBadRequest, "无效请求体")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
 	}
 	sess, err := h.app.DeleteSession(req.ID)

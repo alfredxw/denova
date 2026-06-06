@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Edit3, Plus, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import type { SessionSummary } from '@/lib/api'
 import {
   Select,
@@ -29,6 +30,7 @@ export function SessionManager({
   onRename,
   onDelete,
 }: SessionManagerProps) {
+  const { t } = useTranslation()
   const [isEditing, setIsEditing] = useState(false)
   const [draftTitle, setDraftTitle] = useState('')
   const activeSession = sessions.find(session => session.id === activeSessionId) ||
@@ -58,7 +60,7 @@ export function SessionManager({
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1.5">
-      <span className="shrink-0 text-[11px] font-medium text-[#858b96]">会话</span>
+      <span className="shrink-0 text-[11px] font-medium text-[#858b96]">{t('chat.view.sessions')}</span>
       {isEditing && activeSession ? (
         <input
           autoFocus
@@ -70,7 +72,7 @@ export function SessionManager({
             if (event.key === 'Escape') setIsEditing(false)
           }}
           className="min-w-0 flex-1 rounded border border-[#4b5563] bg-[#1b1c1f] px-2 py-0.5 text-xs text-[#d7dbe2] outline-none"
-          aria-label="会话标题"
+          aria-label={t('chat.sessionTitle')}
         />
       ) : (
         <Select
@@ -81,17 +83,17 @@ export function SessionManager({
           <SelectTrigger
             size="sm"
             className="min-w-0 flex-1 border-[#303238] bg-[#25262a] px-2 py-0.5 text-xs text-[#d7dbe2] outline-none hover:bg-[#303238] focus:ring-0"
-            aria-label="选择会话"
-            title={activeSession ? `${activeSession.title} · ${activeSession.message_count} 条消息` : '暂无会话'}
+            aria-label={t('chat.selectSession')}
+            title={activeSession ? `${activeSession.title} · ${t('common.messages', { count: activeSession.message_count })}` : t('chat.noSession')}
           >
-            <SelectValue placeholder="暂无会话" />
+            <SelectValue placeholder={t('chat.noSession')} />
           </SelectTrigger>
           <SelectContent className="border-[#303238] bg-[#25262a] text-[#d7dbe2]">
             {sessions.length === 0 ? (
-              <SelectItem value="empty" disabled>暂无会话</SelectItem>
+              <SelectItem value="empty" disabled>{t('chat.noSession')}</SelectItem>
             ) : sessions.map(session => (
               <SelectItem key={session.id} value={session.id}>
-                {session.title || '新会话'} · {session.message_count} 条
+                {session.title || t('chat.newSession')} · {t('chat.sessionCountShort', { count: session.message_count })}
               </SelectItem>
             ))}
           </SelectContent>
@@ -103,7 +105,7 @@ export function SessionManager({
           disabled={disabled}
           onClick={() => void onCreate()}
           className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-[#aeb4bf] hover:bg-[#303238] disabled:cursor-not-allowed disabled:opacity-50"
-          aria-label="新建会话"
+          aria-label={t('chat.newSession')}
         >
           <Plus className="h-3 w-3" />
         </button>
@@ -112,7 +114,7 @@ export function SessionManager({
           disabled={disabled || !activeSession}
           onClick={beginRename}
           className="rounded p-0.5 text-[#858b96] hover:bg-[#3a3d45] hover:text-[#d7dbe2] disabled:cursor-not-allowed disabled:opacity-40"
-          aria-label={activeSession ? `重命名会话 ${activeSession.title}` : '重命名会话'}
+          aria-label={activeSession ? `${t('chat.renameSession')} ${activeSession.title}` : t('chat.renameSession')}
         >
           <Edit3 className="h-3 w-3" />
         </button>
@@ -121,7 +123,7 @@ export function SessionManager({
           disabled={disabled || !activeSession || sessions.length <= 1}
           onClick={() => void handleDelete()}
           className="rounded p-0.5 text-[#858b96] hover:bg-[#4a2b2b] hover:text-[#ff8a8a] disabled:cursor-not-allowed disabled:opacity-30"
-          aria-label={activeSession ? `删除会话 ${activeSession.title}` : '删除会话'}
+          aria-label={activeSession ? `${t('chat.deleteSession')} ${activeSession.title}` : t('chat.deleteSession')}
         >
           <Trash2 className="h-3 w-3" />
         </button>

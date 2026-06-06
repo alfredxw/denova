@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { GripHorizontal, GripVertical } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { Layout } from 'react-resizable-panels'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, switchInteractiveBranch, updateInteractiveStory } from '../api'
@@ -23,6 +24,7 @@ export function InteractiveLayout({
   rightPanelVisible = true,
   onToggleRightPanel,
 }: InteractiveLayoutProps) {
+  const { t } = useTranslation()
   const {
     stories, tellers, branches, snapshot, currentStoryId, currentBranchId, submode,
     setStories, setTellers, setBranches, setSnapshot, setCurrentStoryId, setCurrentBranchId, setSubmode, resetWorkspaceState,
@@ -190,7 +192,7 @@ export function InteractiveLayout({
                   </Panel>
                   {rightPanelVisible && (
                     <>
-                      <InteractiveResizeHandle direction="vertical" label="调整场景记忆宽度" />
+                      <InteractiveResizeHandle direction="vertical" label={t('interactiveLayout.resizeSceneMemory')} />
                       <Panel id="snapshot" defaultSize="320px" minSize="180px" maxSize="45%" className="min-w-0">
                         <SnapshotPanel snapshot={currentBranchSnapshot} />
                       </Panel>

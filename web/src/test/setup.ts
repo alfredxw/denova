@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import { server } from './msw/server'
+import { setConfiguredLocale } from '@/i18n'
 
 class ResizeObserverMock {
   observe() {}
@@ -13,6 +14,16 @@ Object.defineProperty(window, 'ResizeObserver', {
   writable: true,
   configurable: true,
   value: ResizeObserverMock,
+})
+
+Object.defineProperty(window.navigator, 'languages', {
+  configurable: true,
+  value: ['zh-CN'],
+})
+
+Object.defineProperty(window.navigator, 'language', {
+  configurable: true,
+  value: 'zh-CN',
 })
 
 Object.defineProperty(window, 'matchMedia', {
@@ -51,6 +62,7 @@ Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
 })
 
 beforeAll(() => {
+  setConfiguredLocale('zh-CN')
   server.listen({ onUnhandledRequest: 'error' })
 })
 

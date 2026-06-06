@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, WheelEvent } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { MessageItem, ToolActivityBlock } from './MessageItem'
 import type { ChatMessage } from '@/lib/api'
 
@@ -20,6 +21,7 @@ interface MessageListProps {
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
 export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion }: MessageListProps) {
+  const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const shouldAutoScrollRef = useRef(true)
@@ -186,7 +188,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       {messages.length === 0 && !isStreaming && (
         <div className="flex h-full items-center justify-center">
           <div className="rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3 text-center text-sm text-[var(--nova-text-muted)] shadow-[0_14px_34px_rgba(0,0,0,0.22)]">
-            发送消息开始对话，或输入 /help 查看可用命令
+            {t('chat.empty')}
           </div>
         </div>
       )}
@@ -218,13 +220,14 @@ function isTraceMessage(message: ChatMessage) {
 }
 
 function TraceGroup({ messages, highlightDialogue, messageStyle }: { messages: ChatMessage[]; highlightDialogue: boolean; messageStyle?: CSSProperties }) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const toolCount = messages.filter((message) => message.role === 'tool_call').length
   const thinkingCount = messages.filter((message) => message.role === 'thinking').length
   const label = [
-    thinkingCount > 0 ? '思考过程' : '',
-    toolCount > 0 ? `${toolCount} 次工具调用` : '',
-  ].filter(Boolean).join(' · ') || '执行过程'
+    thinkingCount > 0 ? t('chat.trace.thinking') : '',
+    toolCount > 0 ? t('chat.trace.toolCalls', { count: toolCount }) : '',
+  ].filter(Boolean).join(' · ') || t('chat.trace.execution')
 
   return (
     <div className="flex justify-start">
@@ -264,13 +267,14 @@ function TraceGroup({ messages, highlightDialogue, messageStyle }: { messages: C
 
 /** 上下文清理分界线：清理前消息仍可阅读，但不再进入 Agent 上下文。 */
 function ContextClearDivider({ createdAt }: { createdAt?: string }) {
+  const { t } = useTranslation()
   const timeText = createdAt ? new Date(createdAt).toLocaleString() : ''
 
   return (
-    <div className="flex items-center gap-3 py-1" role="separator" aria-label="上下文已清理">
+    <div className="flex items-center gap-3 py-1" role="separator" aria-label={t('chat.contextCleared')}>
       <div className="h-px flex-1 bg-[#3a3d45]" />
       <div className="rounded-full border border-[#4b5563] bg-[#25262a] px-3 py-1 text-[11px] text-[#aeb4bf]">
-        上下文已清理，之前消息不再参与创作Agent上下文{timeText ? ` · ${timeText}` : ''}
+        {t('chat.contextClearedDetail', { time: timeText ? ` · ${timeText}` : '' })}
       </div>
       <div className="h-px flex-1 bg-[#3a3d45]" />
     </div>

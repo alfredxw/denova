@@ -42,6 +42,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.ReadingFontSize == nil || *s.ReadingFontSize != 18 {
 		t.Fatalf("ReadingFontSize default")
 	}
+	if s.Language != "auto" {
+		t.Fatalf("Language default: %s", s.Language)
+	}
 }
 
 func TestMergeOverridesNonZero(t *testing.T) {
@@ -53,6 +56,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		UIFontSize:                 intPtr(12),
 		ReadingFontFamily:          "source-han-serif",
 		ReadingFontSize:            intPtr(18),
+		Language:                   "auto",
 		InteractiveMaxTokens:       intPtr(0),
 		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
@@ -65,6 +69,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		UIFontSize:                 intPtr(13),
 		ReadingFontFamily:          "system-serif",
 		ReadingFontSize:            intPtr(20),
+		Language:                   "en-US",
 		InteractiveMaxTokens:       intPtr(4000),
 		InteractiveHotChoices:      boolPtr(false),
 		InteractiveStageFontSize:   intPtr(18),
@@ -91,6 +96,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.ReadingFontSize == nil || *out.ReadingFontSize != 20 {
 		t.Fatalf("ReadingFontSize should override parent")
+	}
+	if out.Language != "en-US" {
+		t.Fatalf("Language should override parent: %s", out.Language)
 	}
 	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 4000 {
 		t.Fatalf("InteractiveMaxTokens should override parent")
@@ -128,7 +136,7 @@ func TestReadSettingsFileMissingReturnsZero(t *testing.T) {
 func TestWriteThenReadSettings(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "config.toml")
-	in := Settings{OpenAIModel: "abc", AutoSaveEnabled: boolPtr(false)}
+	in := Settings{OpenAIModel: "abc", AutoSaveEnabled: boolPtr(false), Language: "en-US"}
 	if err := WriteSettingsFile(p, in); err != nil {
 		t.Fatal(err)
 	}
@@ -141,6 +149,25 @@ func TestWriteThenReadSettings(t *testing.T) {
 	}
 	if out.AutoSaveEnabled == nil || *out.AutoSaveEnabled != false {
 		t.Fatalf("auto save")
+	}
+	if out.Language != "en-US" {
+		t.Fatalf("language")
+	}
+}
+
+func TestWriteSettingsFileFiltersInvalidLanguage(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	in := Settings{OpenAIModel: "abc", Language: "fr-FR"}
+	if err := WriteSettingsFile(p, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Language != "" {
+		t.Fatalf("invalid language should be filtered: %q", out.Language)
 	}
 }
 

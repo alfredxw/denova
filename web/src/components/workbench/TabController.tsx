@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { WorkspaceSummary } from '@/lib/api'
 
 const TABS_STORAGE_PREFIX = 'nova.layout.tabs:'
@@ -124,11 +125,12 @@ export function TabController({
   onActivateTab,
   onCloseTab,
 }: TabControllerProps) {
+  const { t } = useTranslation()
   return (
     <div className="nova-sidebar flex h-9 shrink-0 items-stretch border-b text-xs">
       <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
         {tabs.length === 0 ? (
-          <div className="flex h-full items-center px-3 text-[var(--nova-text-faint)]">未打开任何页面</div>
+          <div className="flex h-full items-center px-3 text-[var(--nova-text-faint)]">{t('tab.empty')}</div>
         ) : (
           tabs.map((tab) => {
             const key = tabKey(tab)
@@ -155,8 +157,8 @@ export function TabController({
                   type="button"
                   onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
                   className="nova-nav-item rounded p-0.5 opacity-0 group-hover:opacity-100"
-                  aria-label={`关闭 ${label}`}
-                  title="关闭"
+                  aria-label={t('tab.close', { label })}
+                  title={t('common.close')}
                 >
                   <X className="h-3 w-3" />
                 </button>

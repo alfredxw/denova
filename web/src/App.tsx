@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { fetchSettings } from '@/features/settings/api'
 import { fontStackFor } from '@/features/settings/font-options'
 import { getLoreItems, importCharacterCard, previewCharacterCard, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
@@ -10,6 +11,7 @@ import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ChapterSummary } from '@/lib/api'
 import { toast } from 'sonner'
+import { setConfiguredLocale } from '@/i18n'
 import {
   dedupeTabs,
   enforceTabLimit,
@@ -36,6 +38,7 @@ type WritingRightPanel = Extract<RightPanel, 'ai'> | null
 type BooksReturnMode = 'ide' | 'interactive'
 
 function App() {
+  const { t } = useTranslation()
   const [projectVisible, setProjectVisible] = useState(() => readLayoutBoolean(PROJECT_VISIBLE_KEY, true))
   const [activityBarExpanded, setActivityBarExpanded] = useState(() => readLayoutBoolean(ACTIVITY_BAR_EXPANDED_KEY, false))
   const [interactiveRightVisible, setInteractiveRightVisible] = useState(() => readLayoutBoolean(INTERACTIVE_RIGHT_VISIBLE_KEY, true))
@@ -149,7 +152,7 @@ function App() {
   const currentBookName = summary?.title?.trim() ||
     books.find((book) => book.path === workspace)?.name?.trim() ||
     workspace.replace(/\/+$/, '').split('/').pop() ||
-    '未选择书籍'
+    t('workbench.noBook')
 
   const touchTab = useCallback((key: string) => {
     tabActivationCounterRef.current += 1
@@ -175,6 +178,7 @@ function App() {
           const v = data?.effective?.max_open_tabs
           if (typeof v === 'number' && v >= 1) setMaxOpenTabs(Math.floor(v))
           setNovaDir(data?.paths?.nova_dir || '')
+          setConfiguredLocale(data?.effective?.language)
           applyFontSettings({
             uiFont: data?.effective?.ui_font_family,
             uiFontSize: data?.effective?.ui_font_size,
@@ -373,22 +377,22 @@ function App() {
       setCharacterCardPreview(preview)
       setCharacterCardBookTitle(preview.name)
     } catch (e) {
-      setCharacterCardError(e instanceof Error ? e.message : '解析酒馆角色卡失败')
+      setCharacterCardError(e instanceof Error ? e.message : t('importCard.previewFailed'))
     } finally {
       setCharacterCardPreviewing(false)
       if (characterCardInputRef.current) {
         characterCardInputRef.current.value = ''
       }
     }
-  }, [])
+  }, [t])
 
   const handleCharacterCardImport = useCallback(async () => {
     if (!characterCardFile) {
-      setCharacterCardError('请先选择酒馆角色卡文件')
+      setCharacterCardError(t('importCard.chooseFileFirst'))
       return
     }
     if (characterCardTargetMode === 'current' && !workspace) {
-      setCharacterCardError('当前没有打开的书籍，请选择“导入成新书”')
+      setCharacterCardError(t('importCard.noCurrentBookImportNew'))
       return
     }
     setCharacterCardImporting(true)
@@ -398,7 +402,7 @@ function App() {
         targetMode: characterCardTargetMode,
         bookTitle: characterCardTargetMode === 'new_book' ? characterCardBookTitle.trim() : undefined,
       })
-      toast.success(result.message || `已导入酒馆角色卡「${result.name}」`)
+      toast.success(result.message || t('importCard.importSuccess', { name: result.name }))
       if (characterCardTargetMode === 'new_book') {
         await refreshAll()
       } else {
@@ -413,13 +417,13 @@ function App() {
       setCharacterCardDialogOpen(false)
       resetCharacterCardImport()
     } catch (e) {
-      const message = e instanceof Error ? e.message : '导入酒馆角色卡失败'
+      const message = e instanceof Error ? e.message : t('importCard.importFailed')
       setCharacterCardError(message)
       toast.error(message)
     } finally {
       setCharacterCardImporting(false)
     }
-  }, [characterCardBookTitle, characterCardFile, characterCardTargetMode, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, workspace])
+  }, [characterCardBookTitle, characterCardFile, characterCardTargetMode, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
 
   const handleActivateTab = useCallback((tab: Tab) => {
     const key = tabKey(tab)

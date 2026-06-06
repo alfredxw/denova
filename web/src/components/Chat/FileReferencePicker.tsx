@@ -7,6 +7,7 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useTranslation } from 'react-i18next'
 
 export interface ReferencePickerItem {
   value: string
@@ -32,10 +33,14 @@ export function FileReferencePicker({
   files,
   onSelect,
   trigger = '@',
-  placeholder = '搜索文件...',
-  emptyText = '未找到文件',
-  heading = '引用文件',
+  placeholder,
+  emptyText,
+  heading,
 }: FileReferencePickerProps) {
+  const { t } = useTranslation()
+  const placeholderText = placeholder ?? t('chat.fileReference.placeholder')
+  const emptyLabel = emptyText ?? t('chat.fileReference.empty')
+  const headingLabel = heading ?? t('chat.fileReference.heading')
   const normalizedQuery = query.toLowerCase()
   const visibleFiles = files
     .map(normalizeItem)
@@ -54,10 +59,10 @@ export function FileReferencePicker({
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <Command shouldFilter={false} className="bg-transparent">
-          <CommandInput value={query} readOnly placeholder={placeholder} />
+          <CommandInput value={query} readOnly placeholder={placeholderText} />
           <CommandList>
-            <CommandEmpty>{emptyText}</CommandEmpty>
-            <CommandGroup heading={heading}>
+            <CommandEmpty>{emptyLabel}</CommandEmpty>
+            <CommandGroup heading={headingLabel}>
               {visibleFiles.map((file) => (
                 <CommandItem
                   key={file.value}

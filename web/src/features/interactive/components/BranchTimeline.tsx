@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import { ArrowLeft, ChevronDown, ChevronUp, GitBranch, Move, Plus, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -110,6 +111,7 @@ export function BranchTimeline({
   onBackToStory,
   headerControls,
 }: BranchTimelineProps) {
+  const { t } = useTranslation()
   const [internalExpanded, setInternalExpanded] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedNodeSnapshot, setSelectedNodeSnapshot] = useState<PlotNode | null>(null)
@@ -120,7 +122,7 @@ export function BranchTimeline({
   const [createError, setCreateError] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
-  const graphNodes = useMemo(() => buildGraphNodes(snapshot), [snapshot])
+  const graphNodes = useMemo(() => buildGraphNodes(snapshot, t), [snapshot, t])
   const graphBranches = useMemo(() => buildGraphBranches(snapshot, branches, graphNodes), [branches, graphNodes, snapshot])
   const selectedNode = graphNodes.find((node) => node.id === selectedNodeId) ||
     (selectedNodeSnapshot?.id === selectedNodeId ? selectedNodeSnapshot : null)
@@ -166,7 +168,7 @@ export function BranchTimeline({
   const openCreateDialog = () => {
     if (!selectedNode) return
     setBranchSourceNode(selectedNode)
-    setBranchTitle(`基于「${selectedNode.title}」的新剧情线`)
+    setBranchTitle(t('branchTimeline.newFromNode', { title: selectedNode.title }))
     setCreateError('')
     setCreateDialogOpen(true)
   }
@@ -185,20 +187,20 @@ export function BranchTimeline({
     setCreatingBranch(true)
     setCreateError('')
     try {
-      await onCreateBranch(createSourceNode.id, branchTitle.trim() || '新剧情线')
+      await onCreateBranch(createSourceNode.id, branchTitle.trim() || t('branchTimeline.newBranch'))
       setCreateDialogOpen(false)
       setBranchSourceNode(null)
       setBranchTitle('')
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : '创建剧情线失败')
+      setCreateError(error instanceof Error ? error.message : t('branchTimeline.createFailed'))
     } finally {
       setCreatingBranch(false)
     }
   }
 
   const deleteBranch = (branch: BranchSummary) => {
-    const label = formatBranchName(branch)
-    if (!window.confirm(`删除空剧情线「${label}」？`)) return
+    const label = formatBranchName(branch, t)
+    if (!window.confirm(t('branchTimeline.confirmDeleteEmpty', { name: label }))) return
     onDeleteBranch(branch.id)
     if (selectedNode?.branch_id === branch.id) setSelectedNodeId(null)
   }
@@ -210,30 +212,30 @@ export function BranchTimeline({
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <div className="flex items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1 font-medium text-[var(--nova-text)]">
               <GitBranch className="h-3.5 w-3.5 text-[var(--nova-accent-blue)]" />
-              剧情路线图
+              {t('branchTimeline.title')}
             </div>
             {headerControls}
             {onBackToStory && (
               <Button variant="outline" size="xs" className="nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onBackToStory}>
                 <ArrowLeft className="h-3.5 w-3.5" />
-                返回剧情
+                {t('branchTimeline.backToStory')}
               </Button>
             )}
           </div>
         ) : (
           <button type="button" className="nova-nav-item flex items-center gap-1.5 rounded-[var(--nova-radius)] px-1.5 py-1 font-medium text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={() => setExpanded(!expanded)}>
             <GitBranch className="h-3.5 w-3.5 text-[var(--nova-accent-blue)]" />
-            剧情路线图
+            {t('branchTimeline.title')}
             {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
           </button>
         )}
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden">
-          <span className="truncate text-[var(--nova-text-faint)]">{graphNodes.length || snapshot?.turns?.length || 0} 个剧情节点</span>
-          {emptyBranchCount > 0 && <Badge variant="outline" className="hidden border-[var(--nova-accent)]/35 bg-[var(--nova-accent)]/10 text-[var(--nova-accent)] sm:inline-flex">{emptyBranchCount} 条空剧情线</Badge>}
+          <span className="truncate text-[var(--nova-text-faint)]">{t('branchTimeline.nodeCount', { count: graphNodes.length || snapshot?.turns?.length || 0 })}</span>
+          {emptyBranchCount > 0 && <Badge variant="outline" className="hidden border-[var(--nova-accent)]/35 bg-[var(--nova-accent)]/10 text-[var(--nova-accent)] sm:inline-flex">{t('branchTimeline.emptyBranchCount', { count: emptyBranchCount })}</Badge>}
           {selectedNode && (
             <Button variant="outline" size="xs" className="nova-nav-item hidden gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] sm:inline-flex" onClick={openCreateDialog}>
               <Plus className="h-3.5 w-3.5" />
-              从选中节点创建
+              {t('branchTimeline.createFromSelected')}
             </Button>
           )}
         </div>
@@ -250,23 +252,23 @@ export function BranchTimeline({
                   className={`nova-nav-item flex h-7 shrink-0 items-center gap-2 rounded-[var(--nova-radius)] border px-2 text-xs transition ${row.branchId === currentBranchId ? 'is-active text-[var(--nova-text)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]'}`}
                   style={row.branchId === currentBranchId ? { borderColor: row.color, background: row.colorSoft } : undefined}
                   onClick={() => onSwitchBranch(row.branchId)}
-                  title={formatBranchName(row.branch)}
+                  title={formatBranchName(row.branch, t)}
                 >
                   <span className="h-2.5 w-2.5 rounded-full shadow-[0_0_10px_currentColor]" style={{ background: row.color, color: row.color }} />
-                  <span className="max-w-32 truncate">{formatBranchName(row.branch)}</span>
+                  <span className="max-w-32 truncate">{formatBranchName(row.branch, t)}</span>
                   <span className="text-[var(--nova-text-faint)]">{row.nodes.length}</span>
                 </button>
               ))}
-              {layout.rows.length === 0 && <span className="text-xs text-[var(--nova-text-faint)]">还没有剧情路线。</span>}
+              {layout.rows.length === 0 && <span className="text-xs text-[var(--nova-text-faint)]">{t('branchTimeline.noRoutes')}</span>}
             </div>
             <div className="flex shrink-0 items-center gap-2 text-[var(--nova-text-faint)]">
               <span className="hidden items-center gap-1.5 text-xs sm:flex">
                 <Move className="h-3.5 w-3.5" />
-                拖动或滚轮浏览
+                {t('branchTimeline.dragHint')}
               </span>
               <Button size="xs" variant="outline" className="nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!selectedNode} onClick={openCreateDialog}>
                 <Plus className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-                创建剧情线
+                {t('branchTimeline.createBranch')}
               </Button>
             </div>
           </div>
@@ -317,7 +319,7 @@ export function BranchTimeline({
                   <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_14px_currentColor]" style={{ background: color, color }} />
                     <span className="min-w-0 flex-1">
                     <span className="block truncate text-[12px] font-medium">{node.title}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{node.summary || '剧情节点'}</span>
+                    <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{node.summary || t('branchTimeline.nodeFallback')}</span>
                   </span>
                   {node.head && <Badge variant="outline" className="h-5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-1.5 text-[10px] text-[var(--nova-text-muted)]">HEAD</Badge>}
                 </button>
@@ -330,38 +332,38 @@ export function BranchTimeline({
                   style={{ left: empty.x, top: empty.y + 5, width: layout.metrics.nodeCardWidth, borderColor: empty.color, background: empty.colorSoft }}
                 >
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: empty.color }} />
-                  <span className="min-w-0 flex-1 truncate" title={formatBranchName(empty.branch)}>空剧情线</span>
+                  <span className="min-w-0 flex-1 truncate" title={formatBranchName(empty.branch, t)}>{t('branchTimeline.emptyBranch')}</span>
                   <button
                     type="button"
                     data-no-drag
                     className="rounded p-1 text-red-300/70 hover:bg-red-500/15 hover:text-red-200"
                     onClick={() => deleteBranch(empty.branch)}
-                    aria-label={`删除空剧情线 ${formatBranchName(empty.branch)}`}
-                    title="删除空剧情线"
+                    aria-label={t('branchTimeline.deleteEmptyBranchWithName', { name: formatBranchName(empty.branch, t) })}
+                    title={t('branchTimeline.deleteEmptyBranch')}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ))}
 
-              {layout.rows.length === 0 && <span className="absolute left-6 top-6 text-xs text-[var(--nova-text-faint)]">还没有剧情节点，输入第一句话开始。</span>}
+              {layout.rows.length === 0 && <span className="absolute left-6 top-6 text-xs text-[var(--nova-text-faint)]">{t('branchTimeline.noNodes')}</span>}
             </div>
           </div>
 
           <div className="flex min-h-[48px] shrink-0 items-center justify-between gap-3 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 text-xs text-[var(--nova-text-faint)] sm:px-4">
             {selectedNode ? (
               <div className="min-w-0">
-                <span className="text-[var(--nova-text)]">已选节点：</span>
+                <span className="text-[var(--nova-text)]">{t('branchTimeline.selectedNode')}</span>
                 <span className="truncate">{selectedNode.title}</span>
               </div>
             ) : (
-              <span>点击剧情节点后，可从该节点创建新的剧情线。</span>
+              <span>{t('branchTimeline.selectHint')}</span>
             )}
-            <MiniMap layout={layout} scrollRef={scrollRef} />
+            <MiniMap layout={layout} scrollRef={scrollRef} ariaLabel={t('branchTimeline.minimap')} />
             {selectedNode && (
               <Button size="xs" className="shrink-0 gap-1.5 border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]" onClick={openCreateDialog}>
                 <Plus className="h-3.5 w-3.5" />
-                创建剧情线
+                {t('branchTimeline.createBranch')}
               </Button>
             )}
           </div>
@@ -371,21 +373,21 @@ export function BranchTimeline({
       <Dialog open={createDialogOpen} onOpenChange={handleCreateDialogOpenChange}>
         <DialogContent className="nova-panel border text-[var(--nova-text)]">
           <DialogHeader>
-            <DialogTitle>从选中节点创建剧情线</DialogTitle>
+            <DialogTitle>{t('branchTimeline.dialogTitle')}</DialogTitle>
             <DialogDescription className="text-[var(--nova-text-muted)]">
-              {createSourceNode ? `将从「${createSourceNode.title}」分叉，创建后故事舞台会切换到新剧情线。` : ''}
+              {createSourceNode ? t('branchTimeline.dialogDescription', { title: createSourceNode.title }) : ''}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <Input className="nova-field text-sm" value={branchTitle} onChange={(event) => setBranchTitle(event.target.value)} placeholder="剧情线名称" />
+            <Input className="nova-field text-sm" value={branchTitle} onChange={(event) => setBranchTitle(event.target.value)} placeholder={t('branchTimeline.namePlaceholder')} />
             {createSourceNode?.summary && <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2 text-xs leading-5 text-[var(--nova-text-muted)]">{createSourceNode.summary}</div>}
             {createError && <div className="rounded-[var(--nova-radius)] border border-red-500/35 bg-red-500/10 p-2 text-xs text-red-300">{createError}</div>}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => handleCreateDialogOpenChange(false)} disabled={creatingBranch}>取消</Button>
+            <Button variant="ghost" onClick={() => handleCreateDialogOpenChange(false)} disabled={creatingBranch}>{t('common.cancel')}</Button>
             <Button className="gap-1.5 border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]" onClick={submitCreateBranch} disabled={!createSourceNode || creatingBranch}>
               <Plus className="h-4 w-4" />
-              {creatingBranch ? '创建中...' : '创建并切换'}
+              {creatingBranch ? t('common.creating') : t('branchTimeline.createAndSwitch')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -394,7 +396,7 @@ export function BranchTimeline({
   )
 }
 
-function MiniMap({ layout, scrollRef }: { layout: GraphLayout; scrollRef: RefObject<HTMLDivElement | null> }) {
+function MiniMap({ layout, scrollRef, ariaLabel }: { layout: GraphLayout; scrollRef: RefObject<HTMLDivElement | null>; ariaLabel: string }) {
   const [viewport, setViewport] = useState({ left: 0, top: 0, width: 100, height: 100 })
   const draggingRef = useRef(false)
 
@@ -454,7 +456,7 @@ function MiniMap({ layout, scrollRef }: { layout: GraphLayout; scrollRef: RefObj
       onPointerCancel={() => {
         draggingRef.current = false
       }}
-      aria-label="剧情路线图缩略导航"
+      aria-label={ariaLabel}
     >
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0)_42%),radial-gradient(circle_at_50%_0%,rgba(180,184,192,0.12),transparent_62%)]" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-white/10" />
@@ -683,9 +685,9 @@ function isEmptyBranch(branch: BranchSummary, nodes: PlotNode[]) {
   return branch.id !== 'main' && branch.head === branch.from_event && !nodes.some((node) => node.branch_id === branch.id)
 }
 
-function buildGraphNodes(snapshot: Snapshot | null): PlotNode[] {
+function buildGraphNodes(snapshot: Snapshot | null, t: (key: string, options?: Record<string, unknown>) => string): PlotNode[] {
   if (snapshot?.graph?.nodes?.length) return snapshot.graph.nodes
-  return (snapshot?.turns || []).map((turn, index, turns) => turnToPlotNode(turn, index, turns.length))
+  return (snapshot?.turns || []).map((turn, index, turns) => turnToPlotNode(turn, index, turns.length, t))
 }
 
 function buildGraphBranches(snapshot: Snapshot | null, branches: BranchSummary[], nodes: PlotNode[]): BranchSummary[] {
@@ -700,7 +702,7 @@ function buildGraphBranches(snapshot: Snapshot | null, branches: BranchSummary[]
     summaries.set(node.branch_id, {
       id: node.branch_id,
       head: node.head || !existing ? node.id : existing.head,
-      title: node.branch_id === 'main' ? '主线' : node.branch_id,
+      title: node.branch_id === 'main' ? 'main' : node.branch_id,
       created_at: node.ts,
       current,
     })
@@ -708,14 +710,14 @@ function buildGraphBranches(snapshot: Snapshot | null, branches: BranchSummary[]
   return Array.from(summaries.values())
 }
 
-function turnToPlotNode(turn: TurnEvent, index: number, total: number): PlotNode {
-  const title = firstLine(turn.user || turn.narrative) || `剧情节点 ${index + 1}`
+function turnToPlotNode(turn: TurnEvent, index: number, total: number, t: (key: string, options?: Record<string, unknown>) => string): PlotNode {
+  const title = firstLine(turn.user || turn.narrative) || `${t('branchTimeline.nodeFallback')} ${index + 1}`
   return {
     id: turn.id,
     parent_id: turn.parent_id || undefined,
     branch_id: turn.branch_id || 'main',
     title: truncateText(title, 18),
-    summary: truncateText(firstLine(turn.narrative) || '剧情节点', 28),
+    summary: truncateText(firstLine(turn.narrative) || t('branchTimeline.nodeFallback'), 28),
     ts: turn.ts,
     current: index === total - 1,
     head: index === total - 1,
@@ -731,10 +733,10 @@ function truncateText(value: string, maxLength: number) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text
 }
 
-function formatBranchName(branch?: BranchSummary) {
-  if (!branch) return '未知剧情线'
+function formatBranchName(branch: BranchSummary | undefined, t: (key: string) => string) {
+  if (!branch) return t('branchTimeline.unknownBranch')
+  if (branch.id === 'main') return t('branchTimeline.mainBranch')
   if (branch.title?.trim()) return branch.title.trim()
-  if (branch.id === 'main') return '主线'
   return branch.id
 }
 

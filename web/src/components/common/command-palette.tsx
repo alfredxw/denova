@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Bot,
   History,
@@ -50,36 +51,37 @@ export function CommandPalette({
   onContinueWriting,
   onClosePanels,
 }: CommandPaletteProps) {
+  const { t } = useTranslation()
   const actions: CommandAction[] = [
     {
       id: 'save',
-      label: '保存当前章节',
+      label: t('command.saveChapter'),
       shortcut: '⌘S',
       icon: <Save className="h-4 w-4" />,
       onSelect: onSave,
     },
     {
       id: 'agent',
-      label: '打开创作Agent',
+      label: t('command.openAgent'),
       icon: <Bot className="h-4 w-4" />,
       onSelect: onOpenAgent,
     },
     {
       id: 'versions',
-      label: '打开版本管理',
+      label: t('command.openVersions'),
       icon: <History className="h-4 w-4" />,
       onSelect: onOpenVersions,
     },
     {
       id: 'search',
-      label: '打开全局搜索',
+      label: t('command.openSearch'),
       shortcut: '⌘⇧F',
       icon: <Search className="h-4 w-4" />,
       onSelect: onOpenSearch,
     },
     {
       id: 'continue',
-      label: '继续写作',
+      label: t('command.continueWriting'),
       shortcut: '⌘↵',
       disabled: isStreaming,
       icon: <Sparkles className="h-4 w-4" />,
@@ -87,7 +89,7 @@ export function CommandPalette({
     },
     {
       id: 'close',
-      label: '关闭面板',
+      label: t('command.closePanels'),
       shortcut: 'Esc',
       icon: <X className="h-4 w-4" />,
       onSelect: onClosePanels,
@@ -104,17 +106,17 @@ export function CommandPalette({
     <CommandDialog
       open={open}
       onOpenChange={onOpenChange}
-      title="命令面板"
-      description="搜索并执行工作台命令"
+      title={t('command.title')}
+      description={t('command.description')}
       className="border-[#303238] bg-[#202124] text-[#d7dbe2]"
     >
       <CommandInput
-        placeholder="搜索命令..."
+        placeholder={t('command.placeholder')}
         className="text-[#d7dbe2] placeholder:text-[#666d78]"
       />
       <CommandList className="max-h-[360px]">
-        <CommandEmpty>未找到匹配命令</CommandEmpty>
-        <CommandGroup heading="工作台">
+        <CommandEmpty>{t('command.empty')}</CommandEmpty>
+        <CommandGroup heading={t('command.group.workbench')}>
           {actions.map((action) => (
             <CommandItem
               key={action.id}

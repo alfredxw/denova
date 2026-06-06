@@ -38,7 +38,7 @@ func (h *Handlers) HandleLoreItemCreate(ctx context.Context, c *app.RequestConte
 	}
 	var body book.LoreItemInput
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	item, err := h.app.CreateLoreItem(body)
@@ -55,7 +55,7 @@ func (h *Handlers) HandleLoreItemUpdate(ctx context.Context, c *app.RequestConte
 	}
 	var body book.LoreItemInput
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	item, err := h.app.UpdateLoreItem(c.Param("id"), body)
@@ -83,11 +83,11 @@ func (h *Handlers) HandleLoreAgent(ctx context.Context, c *app.RequestContext) {
 	}
 	var body loreAgentRequest
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	if strings.TrimSpace(body.Instruction) == "" {
-		writeError(c, consts.StatusBadRequest, "资料库编辑指令不能为空")
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.instructionEmpty")
 		return
 	}
 	result, err := h.app.RunLoreAgent(ctx, body.Instruction, body.References)
@@ -104,16 +104,16 @@ func (h *Handlers) HandleLoreAgentStream(ctx context.Context, c *app.RequestCont
 	}
 	var body loreAgentRequest
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	if strings.TrimSpace(body.Instruction) == "" {
-		writeError(c, consts.StatusBadRequest, "资料库编辑指令不能为空")
+		writeErrorKey(c, consts.StatusBadRequest, "api.lore.instructionEmpty")
 		return
 	}
 	task := h.app.StartLoreAgentTask(body.Instruction, body.References)
 	if task == nil {
-		writeError(c, consts.StatusConflict, "尚未选择书籍工作区，请先在书籍管理页选择或创建书籍")
+		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
 		return
 	}
 	sse.StreamTask(c, task)
@@ -179,7 +179,7 @@ func (h *Handlers) HandleLoreVersionCreate(ctx context.Context, c *app.RequestCo
 	}
 	var body loreVersionCreateRequest
 	if err := c.BindJSON(&body); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效: "+err.Error())
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	version, err := h.app.CreateLoreVersion(body.Message)

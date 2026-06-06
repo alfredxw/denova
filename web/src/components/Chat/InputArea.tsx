@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { BadgeHelp, ClipboardList, Command as CommandIcon, Eraser, Layers3, ListTree, PenLine, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
 import { ReferenceChips } from './ReferenceChips'
 import type { TextSelection } from '@/lib/api'
@@ -16,15 +17,15 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 
 /** 可用命令列表 */
-const COMMANDS: Array<{ cmd: string; desc: string; hint: string; icon: LucideIcon }> = [
-  { cmd: '/plan', desc: '先规划再执行', hint: '拆解任务', icon: ClipboardList },
-  { cmd: '/clear', desc: '清空对话', hint: '重置上下文', icon: Eraser },
-  { cmd: '/status', desc: '查看状态', hint: '当前进度', icon: Sparkles },
-  { cmd: '/help', desc: '帮助信息', hint: '命令说明', icon: BadgeHelp },
-  { cmd: '/outline', desc: '生成大纲', hint: '故事骨架', icon: ListTree },
-  { cmd: '/group-plan', desc: '生成下一组细纲', hint: '章节组', icon: Layers3 },
-  { cmd: '/continue', desc: '继续写作', hint: '接续正文', icon: PenLine },
-  { cmd: '/rewrite', desc: '重写章节', hint: '优化表达', icon: WandSparkles },
+const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
+  { cmd: '/plan', descKey: 'chat.command.plan.desc', hintKey: 'chat.command.plan.hint', icon: ClipboardList },
+  { cmd: '/clear', descKey: 'chat.command.clear.desc', hintKey: 'chat.command.clear.hint', icon: Eraser },
+  { cmd: '/status', descKey: 'chat.command.status.desc', hintKey: 'chat.command.status.hint', icon: Sparkles },
+  { cmd: '/help', descKey: 'chat.command.help.desc', hintKey: 'chat.command.help.hint', icon: BadgeHelp },
+  { cmd: '/outline', descKey: 'chat.command.outline.desc', hintKey: 'chat.command.outline.hint', icon: ListTree },
+  { cmd: '/group-plan', descKey: 'chat.command.groupPlan.desc', hintKey: 'chat.command.groupPlan.hint', icon: Layers3 },
+  { cmd: '/continue', descKey: 'chat.command.continue.desc', hintKey: 'chat.command.continue.hint', icon: PenLine },
+  { cmd: '/rewrite', descKey: 'chat.command.rewrite.desc', hintKey: 'chat.command.rewrite.hint', icon: WandSparkles },
 ]
 
 interface InputAreaProps {
@@ -67,6 +68,7 @@ export function InputArea({
   textSelections = [],
   onTextSelectionRemove,
 }: InputAreaProps) {
+  const { t } = useTranslation()
   const [value, setValue] = useState('')
   const [showCommands, setShowCommands] = useState(false)
   const [filteredCommands, setFilteredCommands] = useState(COMMANDS)
@@ -308,17 +310,17 @@ export function InputArea({
                     <CommandIcon className="h-3.5 w-3.5" />
                   </span>
                   <div className="min-w-0">
-                    <div className="text-xs font-medium text-[var(--nova-text)]">快速命令</div>
-                    <div className="text-[11px] text-[var(--nova-text-faint)]">选择一个写作动作</div>
+                    <div className="text-xs font-medium text-[var(--nova-text)]">{t('chat.commands.title')}</div>
+                    <div className="text-[11px] text-[var(--nova-text-faint)]">{t('chat.commands.description')}</div>
                   </div>
                 </div>
                 <kbd className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--nova-text-faint)]">/</kbd>
               </div>
             </div>
             <CommandList className="max-h-[312px] p-1.5">
-              <CommandEmpty className="py-5 text-center text-xs text-[var(--nova-text-faint)]">未找到命令</CommandEmpty>
-              <CommandGroup heading="可用命令" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
-                {filteredCommands.map(({ cmd, desc, hint, icon: Icon }, index) => {
+              <CommandEmpty className="py-5 text-center text-xs text-[var(--nova-text-faint)]">{t('chat.commands.empty')}</CommandEmpty>
+              <CommandGroup heading={t('chat.commands.group')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
+                {filteredCommands.map(({ cmd, descKey, hintKey, icon: Icon }, index) => {
                   const active = index === activeCommandIndex
                   return (
                     <CommandItem
@@ -340,9 +342,9 @@ export function InputArea({
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="font-mono text-xs text-[var(--nova-text)]">{cmd}</span>
-                        <span className="truncate text-xs text-[var(--nova-text-muted)]">{desc}</span>
+                        <span className="truncate text-xs text-[var(--nova-text-muted)]">{t(descKey)}</span>
                       </span>
-                      <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{hint}</span>
+                      <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{t(hintKey)}</span>
                     </span>
                     </CommandItem>
                   )
@@ -369,9 +371,9 @@ export function InputArea({
         files={styleSuggestions}
         onSelect={selectStyleReference}
         trigger="#"
-        placeholder="搜索风格参考..."
-        emptyText="未找到风格参考"
-        heading="风格参考"
+        placeholder={t('chat.styleReference.placeholder')}
+        emptyText={t('chat.styleReference.empty')}
+        heading={t('chat.styleReference.heading')}
       />
 
       <div className="nova-chat-composer flex items-end gap-2 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5">
@@ -380,7 +382,7 @@ export function InputArea({
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? 'AI 正在回复…' : '输入消息，Enter 发送，Shift+Enter 换行'}
+          placeholder={disabled ? t('chat.input.disabledPlaceholder') : t('chat.input.placeholder')}
           disabled={disabled}
           rows={1}
           className="min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2.5 py-2 text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
@@ -393,7 +395,7 @@ export function InputArea({
           className={`h-9 w-9 shrink-0 rounded-md text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
             disabled ? 'bg-[#c95050] hover:bg-[#e05d5d]' : 'bg-[#4a4d54] hover:bg-[#5a5d64] disabled:bg-[var(--nova-active)]'
           }`}
-          aria-label={disabled ? '中断 AI 执行' : '发送'}
+          aria-label={disabled ? t('chat.input.stop') : t('chat.input.send')}
         >
           {disabled ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="w-4 h-4" />}
         </Button>

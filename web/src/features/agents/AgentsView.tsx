@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
 import { Bot, Brain, Check, Database, FileText, FolderOpen, ListChecks, MessageSquareText, PenLine, Save, Search, Settings2, Shield, Sparkles, Terminal, Wrench, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { AgentModelOverride, AgentModelSettings, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
 
 type AgentKey = keyof AgentModelSettings
 type VisibleAgentKey = Exclude<AgentKey, 'default'>
@@ -14,29 +16,29 @@ const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 
 const AGENTS: Array<{
   key: VisibleAgentKey
-  title: string
-  subtitle: string
-  group: string
+  titleKey: string
+  subtitleKey: string
+  groupKey: string
   capabilityMode: 'tools' | 'built_in' | 'model_only'
   icon: ElementType
 }> = [
-  { key: 'ide', title: 'IDE 创作 Agent', subtitle: '章节续写、文件编辑、设定同步', group: '创作', capabilityMode: 'tools', icon: PenLine },
-  { key: 'lore_editor', title: '资料库 Agent', subtitle: '资料条目的结构化整理', group: '创作', capabilityMode: 'built_in', icon: Database },
-  { key: 'teller_editor', title: '讲述者 Agent', subtitle: '讲述者规则创建与修改', group: '创作', capabilityMode: 'built_in', icon: Settings2 },
-  { key: 'interactive_story', title: '互动叙事 Agent', subtitle: '故事舞台回合生成', group: '互动', capabilityMode: 'tools', icon: MessageSquareText },
-  { key: 'interactive_state', title: '状态记忆 Agent', subtitle: '互动回合状态提取', group: '互动', capabilityMode: 'model_only', icon: Shield },
-  { key: 'interactive_hot_choices', title: '快捷选项 Agent', subtitle: '生成可选行动', group: '互动', capabilityMode: 'model_only', icon: Sparkles },
-  { key: 'version_summary', title: '版本说明 Agent', subtitle: '自动版本摘要', group: '版本', capabilityMode: 'model_only', icon: ListChecks },
+  { key: 'ide', titleKey: 'agents.ide.title', subtitleKey: 'agents.ide.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'tools', icon: PenLine },
+  { key: 'lore_editor', titleKey: 'agents.loreEditor.title', subtitleKey: 'agents.loreEditor.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'built_in', icon: Database },
+  { key: 'teller_editor', titleKey: 'agents.tellerEditor.title', subtitleKey: 'agents.tellerEditor.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'built_in', icon: Settings2 },
+  { key: 'interactive_story', titleKey: 'agents.interactiveStory.title', subtitleKey: 'agents.interactiveStory.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'tools', icon: MessageSquareText },
+  { key: 'interactive_state', titleKey: 'agents.interactiveState.title', subtitleKey: 'agents.interactiveState.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Shield },
+  { key: 'interactive_hot_choices', titleKey: 'agents.interactiveHotChoices.title', subtitleKey: 'agents.interactiveHotChoices.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Sparkles },
+  { key: 'version_summary', titleKey: 'agents.versionSummary.title', subtitleKey: 'agents.versionSummary.subtitle', groupKey: 'agents.group.version', capabilityMode: 'model_only', icon: ListChecks },
 ]
 
-const TOOL_ROWS: Array<{ key: ToolKey; title: string; subtitle: string; icon: ElementType }> = [
-  { key: 'file_read', title: '读取与搜索文件', subtitle: 'ls / read_file / glob / grep', icon: Search },
-  { key: 'file_write', title: '修改文件', subtitle: 'write_file / edit_file', icon: FileText },
-  { key: 'shell_execute', title: '命令执行', subtitle: 'execute', icon: Terminal },
-  { key: 'skills', title: 'Skills', subtitle: '从 Skills 目录加载创作技能', icon: FolderOpen },
-  { key: 'lore_read', title: '读取资料库', subtitle: 'read_lore_items / search_lore_items', icon: Database },
-  { key: 'lore_write', title: '写入资料库', subtitle: 'write_lore_items', icon: Wrench },
-  { key: 'todo', title: '任务清单', subtitle: 'write_todos', icon: ListChecks },
+const TOOL_ROWS: Array<{ key: ToolKey; titleKey: string; subtitleKey: string; icon: ElementType }> = [
+  { key: 'file_read', titleKey: 'agents.tool.fileRead.title', subtitleKey: 'agents.tool.fileRead.subtitle', icon: Search },
+  { key: 'file_write', titleKey: 'agents.tool.fileWrite.title', subtitleKey: 'agents.tool.fileWrite.subtitle', icon: FileText },
+  { key: 'shell_execute', titleKey: 'agents.tool.shellExecute.title', subtitleKey: 'agents.tool.shellExecute.subtitle', icon: Terminal },
+  { key: 'skills', titleKey: 'agents.tool.skills.title', subtitleKey: 'agents.tool.skills.subtitle', icon: FolderOpen },
+  { key: 'lore_read', titleKey: 'agents.tool.loreRead.title', subtitleKey: 'agents.tool.loreRead.subtitle', icon: Database },
+  { key: 'lore_write', titleKey: 'agents.tool.loreWrite.title', subtitleKey: 'agents.tool.loreWrite.subtitle', icon: Wrench },
+  { key: 'todo', titleKey: 'agents.tool.todo.title', subtitleKey: 'agents.tool.todo.subtitle', icon: ListChecks },
 ]
 
 const BASE_TOOL_VALUES: Required<AgentToolOverride> = { file_read: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true }
@@ -52,6 +54,7 @@ const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentToolOver
 }
 
 export function AgentsView({ onClose }: { onClose?: () => void }) {
+  const { t } = useTranslation()
   const [layered, setLayered] = useState<LayeredSettings | null>(null)
   const [activeLayer, setActiveLayer] = useState<SettingsLayer>('workspace')
   const [activeAgent, setActiveAgent] = useState<VisibleAgentKey>('ide')
@@ -63,7 +66,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
     try {
       const data = await fetchSettings()
       setLayered(data)
-      setDraft(activeLayer === 'user' ? data.user : data.workspace)
+      setDraft(settingsForLayer(data, activeLayer))
     } catch (e) {
       setError((e as Error).message)
     }
@@ -73,26 +76,36 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
 
   useEffect(() => {
     if (!layered) return
-    setDraft(activeLayer === 'user' ? layered.user : layered.workspace)
+    setDraft(settingsForLayer(layered, activeLayer))
   }, [activeLayer, layered])
 
   const effective = layered?.effective ?? {}
   const selected = AGENTS.find((agent) => agent.key === activeAgent) ?? AGENTS[0]
-  const profileOptions = useMemo(() => buildProfileOptions(draft, effective), [draft, effective])
+  const profileOptions = useMemo(() => buildProfileOptions(draft, effective, t), [draft, effective, t])
   const modelValue = draft.agent_models?.[activeAgent] ?? {}
   const inheritedModel = mergeAgentModelOverride(effective.agent_models?.default ?? {}, effective.agent_models?.[activeAgent] ?? {})
   const toolValue = draft.agent_tools?.[activeAgent] ?? {}
   const inheritedTools = effective.agent_tools?.[activeAgent] ?? FALLBACK_AGENT_TOOL_VALUES[activeAgent]
   const effectiveTools = resolveEffectiveTools(effective.agent_tools?.default ?? {}, inheritedTools)
 
+  const saveDraft = useCallback(async (settings: Settings) => {
+    const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
+    return updater(settings)
+  }, [activeLayer])
+
+  const applySavedSettings = useCallback((next: LayeredSettings) => {
+    setLayered(next)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+    }
+  }, [])
+
   const onSave = async () => {
     setSaving(true)
     setError(null)
     try {
-      const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
-      const next = await updater(draft)
-      setLayered(next)
-      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+      const next = await saveDraft(draft)
+      applySavedSettings(next)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -120,6 +133,16 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
     }))
   }
 
+  useAutoSaveSettings({
+    draft,
+    ready: Boolean(layered),
+    resetKey: `${activeLayer}:${JSON.stringify(layered ? settingsForLayer(layered, activeLayer) : {})}`,
+    save: saveDraft,
+    onSavingChange: setSaving,
+    onSaved: applySavedSettings,
+    onError: setError,
+  })
+
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
       <div className="nova-topbar flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs">
@@ -133,7 +156,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
               onClick={() => setActiveLayer(layer)}
               className={`${tabCls} ${activeLayer === layer ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
             >
-              {layer === 'workspace' ? '当前工作区' : '用户配置'}
+              {layer === 'workspace' ? t('agents.layer.workspace') : t('agents.layer.user')}
             </button>
           ))}
         </div>
@@ -144,16 +167,16 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
           className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50"
         >
           <Save className="h-3.5 w-3.5" />
-          {saving ? '保存中…' : '保存'}
+          {saving ? t('common.saving') : t('common.save')}
         </button>
         {onClose && (
-          <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label="关闭 Agents" title="关闭 Agents">
+          <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('agents.close')} title={t('agents.close')}>
             <X className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
 
-      {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title="配置保存失败" />}
+      {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('agents.saveError')} />}
 
       <div className="grid min-h-0 flex-1 grid-cols-[18rem_minmax(0,1fr)] text-xs">
         <aside className="min-h-0 overflow-y-auto border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
@@ -189,10 +212,11 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
 }
 
 function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (agent: VisibleAgentKey) => void }) {
+  const { t } = useTranslation()
   const groups = AGENTS.reduce<Array<{ group: string; agents: typeof AGENTS }>>((acc, agent) => {
     const last = acc[acc.length - 1]
-    if (last?.group === agent.group) last.agents.push(agent)
-    else acc.push({ group: agent.group, agents: [agent] })
+    if (last?.group === agent.groupKey) last.agents.push(agent)
+    else acc.push({ group: agent.groupKey, agents: [agent] })
     return acc
   }, [])
 
@@ -200,7 +224,7 @@ function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (a
     <nav className="space-y-4">
       {groups.map((group) => (
         <div key={group.group}>
-          <div className="mb-1.5 px-2 text-[11px] font-medium text-[var(--nova-text-faint)]">{group.group}</div>
+          <div className="mb-1.5 px-2 text-[11px] font-medium text-[var(--nova-text-faint)]">{t(group.group)}</div>
           <div className="space-y-1">
             {group.agents.map((agent) => {
               const Icon = agent.icon
@@ -213,8 +237,8 @@ function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (a
                 >
                   <Icon className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-[var(--nova-text)]">{agent.title}</span>
-                    <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{agent.subtitle}</span>
+                    <span className="block truncate font-medium text-[var(--nova-text)]">{t(agent.titleKey)}</span>
+                    <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{t(agent.subtitleKey)}</span>
                   </span>
                 </button>
               )
@@ -227,6 +251,7 @@ function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (a
 }
 
 function AgentHeader({ agent }: { agent: (typeof AGENTS)[number] }) {
+  const { t } = useTranslation()
   const Icon = agent.icon
   return (
     <section className="border-b border-[var(--nova-border)] pb-4">
@@ -235,8 +260,8 @@ function AgentHeader({ agent }: { agent: (typeof AGENTS)[number] }) {
           <Icon className="h-4 w-4 text-[var(--nova-text-muted)]" />
         </div>
         <div className="min-w-0">
-          <h1 className="truncate text-sm font-semibold">{agent.title}</h1>
-          <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{agent.subtitle}</div>
+          <h1 className="truncate text-sm font-semibold">{t(agent.titleKey)}</h1>
+          <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t(agent.subtitleKey)}</div>
         </div>
       </div>
     </section>
@@ -249,6 +274,7 @@ function AgentModelSection({ value, inherited, profiles, onChange }: {
   profiles: Array<{ id: string; label: string }>
   onChange: (patch: Partial<AgentModelOverride>) => void
 }) {
+  const { t } = useTranslation()
   const hasProfile = hasTextOverride(value.profile_id)
   const hasTemperature = value.temperature !== undefined && value.temperature !== null
   const hasThinking = value.enable_thinking !== undefined && value.enable_thinking !== null
@@ -260,9 +286,9 @@ function AgentModelSection({ value, inherited, profiles, onChange }: {
 
   return (
     <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
-      <SectionTitle icon={Brain} title="模型与思考" />
+      <SectionTitle icon={Brain} title={t('agents.section.model')} />
       <div className="grid gap-3 md:grid-cols-2">
-        <Field label="模型配置" inherited={!hasProfile} onReset={hasProfile ? () => onChange({ profile_id: '' }) : undefined}>
+        <Field label={t('agents.field.modelProfile')} inherited={!hasProfile} onReset={hasProfile ? () => onChange({ profile_id: '' }) : undefined}>
           <select value={effectiveProfile} onChange={(e) => onChange({ profile_id: e.target.value })} className={fieldCls}>
             {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
           </select>
@@ -274,25 +300,25 @@ function AgentModelSection({ value, inherited, profiles, onChange }: {
             min={0}
             max={2}
             value={effectiveTemperature ?? ''}
-            placeholder="平台默认"
+            placeholder={t('agents.option.platformDefault')}
             onChange={(e) => onChange({ temperature: e.target.value === '' ? null : Number(e.target.value) })}
             className={fieldCls}
           />
         </Field>
-        <Field label="思考开关" inherited={!hasThinking} onReset={hasThinking ? () => onChange({ enable_thinking: null }) : undefined}>
+        <Field label={t('agents.field.thinking')} inherited={!hasThinking} onReset={hasThinking ? () => onChange({ enable_thinking: null }) : undefined}>
           <select
             value={effectiveThinking === null || effectiveThinking === undefined ? '' : String(effectiveThinking)}
             onChange={(e) => onChange({ enable_thinking: e.target.value === '' ? null : e.target.value === 'true' })}
             className={fieldCls}
           >
-            <option value="">不传</option>
-            <option value="true">开启</option>
-            <option value="false">关闭</option>
+            <option value="">{t('agents.option.noSend')}</option>
+            <option value="true">{t('agents.option.on')}</option>
+            <option value="false">{t('agents.option.off')}</option>
           </select>
         </Field>
-        <Field label="推理强度" inherited={!hasEffort} onReset={hasEffort ? () => onChange({ reasoning_effort: '' }) : undefined}>
+        <Field label={t('agents.field.reasoningEffort')} inherited={!hasEffort} onReset={hasEffort ? () => onChange({ reasoning_effort: '' }) : undefined}>
           <select value={effectiveEffort} onChange={(e) => onChange({ reasoning_effort: e.target.value })} className={fieldCls}>
-            <option value="">不传</option>
+            <option value="">{t('agents.option.noSend')}</option>
             <option value="low">low</option>
             <option value="medium">medium</option>
             <option value="high">high</option>
@@ -308,9 +334,10 @@ function AgentToolSection({ value, effective, onChange }: {
   effective: Required<AgentToolOverride>
   onChange: (key: ToolKey, value: boolean | null) => void
 }) {
+  const { t } = useTranslation()
   return (
     <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
-      <SectionTitle icon={Wrench} title="工具能力" />
+      <SectionTitle icon={Wrench} title={t('agents.section.tools')} />
       <div className="grid gap-2 lg:grid-cols-2">
         {TOOL_ROWS.map((tool) => {
           const Icon = tool.icon
@@ -321,16 +348,16 @@ function AgentToolSection({ value, effective, onChange }: {
             <div key={tool.key} className="flex min-h-16 items-center gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
               <Icon className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{tool.title}</div>
-                <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{tool.subtitle}</div>
+                <div className="truncate font-medium">{t(tool.titleKey)}</div>
+                <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{t(tool.subtitleKey)}</div>
               </div>
               <select
                 value={String(current)}
                 onChange={(e) => onChange(tool.key, e.target.value === '' ? null : e.target.value === 'true')}
                 className={`${fieldCls} max-w-32 shrink-0`}
               >
-                <option value="true">开启</option>
-                <option value="false">关闭</option>
+                <option value="true">{t('agents.option.on')}</option>
+                <option value="false">{t('agents.option.off')}</option>
               </select>
               <InheritanceBadge inherited={inherited} onReset={!inherited ? () => onChange(tool.key, null) : undefined} />
             </div>
@@ -342,10 +369,11 @@ function AgentToolSection({ value, effective, onChange }: {
 }
 
 function AgentBuiltInCapabilitySection({ agent }: { agent: VisibleAgentKey }) {
-  const rows = builtInCapabilityRows(agent)
+  const { t } = useTranslation()
+  const rows = builtInCapabilityRows(agent, t)
   return (
     <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
-      <SectionTitle icon={Wrench} title="内置能力" />
+      <SectionTitle icon={Wrench} title={t('agents.section.builtIn')} />
       <div className="grid gap-2 md:grid-cols-2">
         {rows.map((row) => (
           <div key={row.title} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
@@ -355,28 +383,30 @@ function AgentBuiltInCapabilitySection({ agent }: { agent: VisibleAgentKey }) {
         ))}
       </div>
       <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-        这些写入能力由应用层执行：模型先生成结构化编辑方案，后端校验后保存；不是 deep-agent 文件/命令/Skills 工具链，所以这里不提供单项工具开关。
+        {t('agents.builtIn.note')}
       </div>
     </section>
   )
 }
 
 function AgentModelOnlySection() {
+  const { t } = useTranslation()
   return (
     <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
-      <SectionTitle icon={Wrench} title="工具能力" />
+      <SectionTitle icon={Wrench} title={t('agents.section.tools')} />
       <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-        这个 Agent 当前是纯模型调用，不修改文件、资料库或讲述者；这里只配置模型与思考参数。
+        {t('agents.modelOnly.note')}
       </div>
     </section>
   )
 }
 
 function AgentContextSection({ agent, effective }: { agent: VisibleAgentKey; effective: Settings }) {
-  const rows = contextRowsFor(agent, effective)
+  const { t } = useTranslation()
+  const rows = contextRowsFor(agent, effective, t)
   return (
     <section className="space-y-3 pb-5">
-      <SectionTitle icon={FolderOpen} title="上下文" />
+      <SectionTitle icon={FolderOpen} title={t('agents.section.context')} />
       <div className="grid gap-2 md:grid-cols-3">
         {rows.map((row) => (
           <div key={row.title} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
@@ -414,63 +444,67 @@ function Field({ label, inherited, onReset, children }: { label: string; inherit
 }
 
 function InheritanceBadge({ inherited, onReset }: { inherited: boolean; onReset?: () => void }) {
+  const { t } = useTranslation()
   return (
     <span className={`inline-flex h-7 shrink-0 items-center rounded-[var(--nova-radius)] border px-2 text-[11px] ${inherited ? 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-faint)]' : 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text-muted)]'}`}>
-      {inherited ? '继承' : (
+      {inherited ? t('agents.badge.inherited') : (
         <button type="button" onClick={onReset} className="text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]">
-          已覆盖
+          {t('agents.badge.overridden')}
         </button>
       )}
     </span>
   )
 }
 
-function buildProfileOptions(draft: Settings, effective: Settings): Array<{ id: string; label: string }> {
+function buildProfileOptions(draft: Settings, effective: Settings, t: (key: string, options?: Record<string, unknown>) => string): Array<{ id: string; label: string }> {
   const profiles = new Map<string, string>()
   const add = (profile?: ModelProfileSettings) => {
     const id = profile?.id?.trim()
     if (!id) return
     profiles.set(id, profile?.name || profile?.openai_model || id)
   }
-  profiles.set('default', effective.openai_model || '默认模型')
+  profiles.set('default', effective.openai_model || t('agents.option.defaultModel'))
   ;(effective.model_profiles ?? []).forEach(add)
   ;(draft.model_profiles ?? []).forEach(add)
-  return Array.from(profiles.entries()).map(([id, label]) => ({ id, label: id === 'default' ? `default（${label}）` : `${id}（${label}）` }))
+  return Array.from(profiles.entries()).map(([id, label]) => ({
+    id,
+    label: id === 'default' ? t('agents.option.defaultProfile', { label }) : t('agents.option.profile', { id, label }),
+  }))
 }
 
-function contextRowsFor(agent: VisibleAgentKey, effective: Settings) {
+function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: string) => string) {
   if (agent === 'ide') {
     return [
-      { title: '当前书籍', value: 'workspace' },
-      { title: '默认讲述者', value: effective.ide_story_teller_id || 'classic' },
-      { title: '会话上下文', value: '当前会话有效历史' },
+      { title: t('agents.context.currentBook'), value: 'workspace' },
+      { title: t('agents.context.defaultTeller'), value: effective.ide_story_teller_id || 'classic' },
+      { title: t('agents.context.sessionContext'), value: t('agents.context.sessionContextValue') },
     ]
   }
   if (agent === 'interactive_story') {
     return [
-      { title: '故事状态', value: 'story jsonl' },
-      { title: '讲述者', value: '当前故事讲述者' },
-      { title: '资料索引', value: '常驻与自动匹配资料' },
+      { title: t('agents.context.storyState'), value: 'story jsonl' },
+      { title: t('agents.context.teller'), value: t('agents.context.currentStoryTeller') },
+      { title: t('agents.context.loreIndex'), value: t('agents.context.loreIndexValue') },
     ]
   }
   return [
-    { title: '输入来源', value: '当前操作请求' },
-    { title: '输出形态', value: '结构化 JSON 或摘要' },
-    { title: '历史边界', value: '不读取创作对话上下文' },
+    { title: t('agents.context.inputSource'), value: t('agents.context.inputSourceValue') },
+    { title: t('agents.context.outputShape'), value: t('agents.context.outputShapeValue') },
+    { title: t('agents.context.historyBoundary'), value: t('agents.context.historyBoundaryValue') },
   ]
 }
 
-function builtInCapabilityRows(agent: VisibleAgentKey) {
+function builtInCapabilityRows(agent: VisibleAgentKey, t: (key: string) => string) {
   if (agent === 'lore_editor') {
     return [
-      { title: '读取资料库', value: '读取当前资料条目和用户引用的资料上下文。' },
-      { title: '写入资料库', value: '生成 create / update / delete 操作，由后端校验后应用到资料库。' },
+      { title: t('agents.builtIn.loreRead.title'), value: t('agents.builtIn.loreRead.value') },
+      { title: t('agents.builtIn.loreWrite.title'), value: t('agents.builtIn.loreWrite.value') },
     ]
   }
   if (agent === 'teller_editor') {
     return [
-      { title: '读取讲述者', value: '读取当前讲述者列表、选中讲述者和用户引用的讲述者。' },
-      { title: '写入讲述者', value: '生成 create / update 方案，由后端校验后保存为讲述者规则包。' },
+      { title: t('agents.builtIn.tellerRead.title'), value: t('agents.builtIn.tellerRead.value') },
+      { title: t('agents.builtIn.tellerWrite.title'), value: t('agents.builtIn.tellerWrite.value') },
     ]
   }
   return []

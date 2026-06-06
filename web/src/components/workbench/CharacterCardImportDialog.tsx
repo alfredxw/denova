@@ -1,5 +1,6 @@
 import { Upload } from 'lucide-react'
 import type { RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,6 +47,7 @@ export function CharacterCardImportDialog({
   onBookTitleChange,
   onImport,
 }: CharacterCardImportDialogProps) {
+  const { t } = useTranslation()
   const hasSelectedFile = Boolean(file)
 
   return (
@@ -63,9 +65,9 @@ export function CharacterCardImportDialog({
           aria-describedby="character-card-import-desc"
         >
           <div className="border-b border-[var(--nova-border)] px-4 py-3">
-            <DialogTitle className="text-sm font-semibold text-[var(--nova-text)]">导入酒馆角色卡</DialogTitle>
+            <DialogTitle className="text-sm font-semibold text-[var(--nova-text)]">{t('importCard.title')}</DialogTitle>
             <DialogDescription id="character-card-import-desc" className="mt-1 text-xs text-[var(--nova-text-faint)]">
-              选择 PNG 或 JSON 角色卡，并决定写入当前书还是创建一本新书。
+              {t('importCard.description')}
             </DialogDescription>
           </div>
           <div className="space-y-4 px-4 py-4 text-xs">
@@ -79,19 +81,19 @@ export function CharacterCardImportDialog({
                 disabled={previewing || importing}
               >
                 <Upload className="h-3.5 w-3.5" />
-                选择文件
+                {t('importCard.chooseFile')}
               </Button>
               <div className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
-                {file ? file.name : '未选择文件'}
+                {file ? file.name : t('importCard.noFile')}
               </div>
-              {previewing && <span className="shrink-0 text-[var(--nova-text-muted)]">解析中...</span>}
+              {previewing && <span className="shrink-0 text-[var(--nova-text-muted)]">{t('importCard.parsing')}</span>}
             </div>
 
             {preview && (
               <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
                 <div className="truncate text-sm font-medium text-[var(--nova-text)]">{preview.name}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
-                  <span>{preview.entry_count} 个世界书条目</span>
+                  <span>{t('importCard.entryCount', { count: preview.entry_count })}</span>
                   {preview.tags?.map((tag) => (
                     <span key={tag} className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{tag}</span>
                   ))}
@@ -106,9 +108,9 @@ export function CharacterCardImportDialog({
                   className={`nova-nav-item h-8 px-3 text-xs ${targetMode === 'current' ? 'is-active' : ''}`}
                   onClick={() => onTargetModeChange('current')}
                   disabled={!workspace || importing}
-                  title={workspace ? '导入到当前书籍资料库' : '当前没有打开的书籍'}
+                  title={workspace ? t('importCard.importCurrentTitle') : t('importCard.noCurrentBookTitle')}
                 >
-                  导入到本书
+                  {t('importCard.importCurrent')}
                 </button>
                 <button
                   type="button"
@@ -116,7 +118,7 @@ export function CharacterCardImportDialog({
                   onClick={() => onTargetModeChange('new_book')}
                   disabled={importing}
                 >
-                  导入成新书
+                  {t('importCard.importNewBook')}
                 </button>
               </div>
             )}
@@ -124,18 +126,18 @@ export function CharacterCardImportDialog({
             {hasSelectedFile && (
               targetMode === 'current' ? (
                 <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-[var(--nova-text-faint)]">
-                  当前书籍：<span className="text-[var(--nova-text-muted)]">{workspace ? currentBookName : '未选择书籍'}</span>
+                  {t('importCard.currentBook')}<span className="text-[var(--nova-text-muted)]">{workspace ? currentBookName : t('workbench.noBook')}</span>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <Input
                     value={bookTitle}
                     onChange={(event) => onBookTitleChange(event.target.value)}
-                    placeholder={preview?.name || '新书书名'}
+                    placeholder={preview?.name || t('importCard.newBookTitle')}
                     className="nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]"
                     disabled={importing}
                   />
-                  <div className="truncate text-[11px] text-[var(--nova-text-faint)]">新书将创建在 {novaDir || 'Nova 数据目录'}</div>
+                  <div className="truncate text-[11px] text-[var(--nova-text-faint)]">{t('importCard.createIn', { dir: novaDir || t('importCard.novaDir') })}</div>
                 </div>
               )
             )}
@@ -155,7 +157,7 @@ export function CharacterCardImportDialog({
               onClick={() => onOpenChange(false)}
               disabled={importing}
             >
-              取消
+              {t('common.cancel')}
             </Button>
             <Button
               type="button"
@@ -164,7 +166,7 @@ export function CharacterCardImportDialog({
               onClick={onImport}
               disabled={!file || !preview || previewing || importing}
             >
-              {importing ? '导入中...' : '导入'}
+              {importing ? t('importCard.importing') : t('importCard.import')}
             </Button>
           </div>
         </DialogContent>

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BookMarked, BookOpen, Bot, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
@@ -56,6 +57,7 @@ export function WorkbenchShell({
   onToggleSettings,
   onCloseSettings,
 }: WorkbenchShellProps) {
+  const { t } = useTranslation()
   const loreVisible = rightPanel === 'lore'
   const creatorVisible = rightPanel === 'creator'
   const tellerVisible = rightPanel === 'teller'
@@ -65,7 +67,7 @@ export function WorkbenchShell({
   const interactiveModeActive = mode === 'interactive' && !sharedMenuActive
   const agentsActive = mode === 'agents' && !settingsOpen
   const fullWorkspacePanelVisible = settingsOpen || mode === 'agents' || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
-  const modeLabel = settingsOpen ? '设置' : mode === 'interactive' ? '互动工作台' : mode === 'books' ? '书籍管理' : mode === 'agents' ? 'Agents' : '小说 IDE'
+  const modeLabel = settingsOpen ? t('workbench.mode.settings') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'agents' ? t('workbench.mode.agents') : t('workbench.mode.ide')
   const navigationMode = mode === 'books' || mode === 'agents' ? booksReturnMode : mode
 
   const closeSettingsIfOpen = () => {
@@ -122,20 +124,20 @@ export function WorkbenchShell({
     <header className="nova-topbar grid h-10 shrink-0 grid-cols-[auto_1fr_auto] items-center border-b px-3 text-xs">
       <div className="flex items-center gap-3">
         <div className="font-semibold text-[var(--nova-text)]">Nova</div>
-        <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label="模式切换">
+        <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
           <button
             type="button"
             onClick={() => onSetMode('ide')}
             className={`rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
-            IDE 模式
+            {t('workbench.mode.ideButton')}
           </button>
           <button
             type="button"
             onClick={() => onSetMode('interactive')}
             className={`rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
-            互动模式
+            {t('workbench.mode.interactiveButton')}
           </button>
         </div>
       </div>
@@ -153,7 +155,7 @@ export function WorkbenchShell({
     <>
       <ActivityButton
         expanded={activityBarExpanded}
-        label="资料库"
+        label={t('workbench.activity.lore')}
         onClick={() => toggleIdePanel('lore')}
         className={`nova-icon-button mb-2 ${ideModeActive && loreVisible ? 'is-active' : ''}`}
       >
@@ -161,7 +163,7 @@ export function WorkbenchShell({
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
-        label="创作者"
+        label={t('workbench.activity.creator')}
         onClick={() => toggleIdePanel('creator')}
         className={`nova-icon-button mb-2 ${ideModeActive && creatorVisible ? 'is-active' : ''}`}
       >
@@ -169,7 +171,7 @@ export function WorkbenchShell({
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
-        label="讲述者"
+        label={t('workbench.activity.teller')}
         onClick={() => toggleIdePanel('teller')}
         className={`nova-icon-button mb-2 ${ideModeActive && tellerVisible ? 'is-active' : ''}`}
       >
@@ -177,7 +179,7 @@ export function WorkbenchShell({
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
-        label="版本管理"
+        label={t('workbench.activity.versions')}
         onClick={() => toggleIdePanel('versions')}
         className={`nova-icon-button mb-2 ${ideModeActive && versionsVisible ? 'is-active' : ''}`}
       >
@@ -190,7 +192,7 @@ export function WorkbenchShell({
     <>
       <ActivityButton
         expanded={activityBarExpanded}
-        label="剧情"
+        label={t('workbench.activity.story')}
         onClick={() => openInteractiveSubmode('story')}
         className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'story' ? 'is-active' : ''}`}
       >
@@ -198,7 +200,7 @@ export function WorkbenchShell({
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
-        label="剧情路线图"
+        label={t('workbench.activity.timeline')}
         onClick={() => openInteractiveSubmode('timeline')}
         className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'timeline' ? 'is-active' : ''}`}
       >
@@ -206,7 +208,7 @@ export function WorkbenchShell({
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
-        label="资料库"
+        label={t('workbench.activity.lore')}
         onClick={() => openInteractiveSubmode('lore')}
         className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'lore' ? 'is-active' : ''}`}
       >
@@ -214,7 +216,7 @@ export function WorkbenchShell({
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
-        label="创作者"
+        label={t('workbench.activity.creator')}
         onClick={() => openInteractiveSubmode('creator')}
         className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'creator' ? 'is-active' : ''}`}
       >
@@ -222,7 +224,7 @@ export function WorkbenchShell({
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
-        label="讲述者"
+        label={t('workbench.activity.teller')}
         onClick={() => openInteractiveSubmode('teller')}
         className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'teller' ? 'is-active' : ''}`}
       >
@@ -237,7 +239,7 @@ export function WorkbenchShell({
         <>
           <ActivityButton
             expanded={activityBarExpanded}
-            label="写作"
+            label={t('workbench.activity.writing')}
             onClick={openWriting}
             className={`nova-icon-button mb-2 ${ideModeActive && !loreVisible && !creatorVisible && !tellerVisible && !versionsVisible ? 'is-active' : ''}`}
           >
@@ -248,7 +250,7 @@ export function WorkbenchShell({
       )}
       <ActivityButton
         expanded={activityBarExpanded}
-        label="书籍管理"
+        label={t('workbench.activity.books')}
         onClick={openBooks}
         className={`nova-icon-button mb-2 ${mode === 'books' && !settingsOpen ? 'is-active' : ''}`}
       >
@@ -256,7 +258,7 @@ export function WorkbenchShell({
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}
-        label="Agents"
+        label={t('workbench.activity.agents')}
         onClick={openAgents}
         className={`nova-icon-button mb-2 ${agentsActive ? 'is-active' : ''}`}
       >
@@ -265,7 +267,7 @@ export function WorkbenchShell({
       <div className="mt-auto flex flex-col gap-2">
         <ActivityButton
           expanded={activityBarExpanded}
-          label={activityBarExpanded ? '收起一级菜单' : '展开一级菜单'}
+          label={activityBarExpanded ? t('workbench.activity.toggleCollapse') : t('workbench.activity.toggleExpand')}
           onClick={onToggleActivityBarExpanded}
           className="nova-icon-button"
         >
@@ -273,7 +275,7 @@ export function WorkbenchShell({
         </ActivityButton>
         <ActivityButton
           expanded={activityBarExpanded}
-          label="设置"
+          label={t('workbench.activity.settings')}
           onClick={onToggleSettings}
           className={`nova-icon-button ${settingsOpen ? 'is-active' : ''}`}
         >
@@ -287,12 +289,12 @@ export function WorkbenchShell({
     <div className="nova-statusbar nova-topbar flex h-6 shrink-0 items-center border-t px-3">
       <span>Nova v{appVersion}</span>
       {mode === 'ide' && summary && (
-        <span className="ml-4">《{summary.title || '未命名'}》 · {summary.chapter_count} 章 · {formatNumber(summary.total_words)} 字</span>
+        <span className="ml-4">{t('workbench.status.summary', { title: summary.title || t('workbench.untitled'), chapters: formatNumber(summary.chapter_count), words: formatNumber(summary.total_words) })}</span>
       )}
       {mode === 'ide' && currentChapter && (
-        <span className="ml-4">当前：{currentChapter.display_title} · {formatNumber(currentChapter.words)} 字 · {currentChapter.status}</span>
+        <span className="ml-4">{t('workbench.status.currentChapter', { title: currentChapter.display_title, words: formatNumber(currentChapter.words), status: currentChapter.status })}</span>
       )}
-      <span className="ml-auto">{isStreaming ? '生成中' : '空闲'} · DeepSeek</span>
+      <span className="ml-auto">{isStreaming ? t('workbench.status.streaming') : t('workbench.status.idle')} · DeepSeek</span>
     </div>
   )
 

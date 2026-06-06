@@ -1,4 +1,5 @@
 import { useRef, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   abortChat,
   createSession,
@@ -30,6 +31,7 @@ const STREAM_CHARS_PER_FRAME = 8
 
 /** 聊天 hook，管理消息列表和流式响应 */
 export function useChat(options: ChatOptions = {}) {
+  const { t } = useTranslation()
   const { onAgentFileChange } = options
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [sessions, setSessions] = useState<SessionSummary[]>([])
@@ -256,7 +258,7 @@ export function useChat(options: ChatOptions = {}) {
     currentSegmentRoleRef.current = null
       segmentBufferRef.current = {}
     setIsStreaming(true)
-    setActivityContent('正在连接 AI Agent…')
+    setActivityContent(t('chat.activity.connecting'))
 
     try {
       const reader = stream.getReader()
@@ -276,7 +278,7 @@ export function useChat(options: ChatOptions = {}) {
           case 'thinking': {
             const text = JSON.parse(event.data).content || ''
             appendStreamingSegment('thinking', text)
-            setActivityContent('正在思考…')
+            setActivityContent(t('chat.activity.thinking'))
             break
           }
           case 'tool_call': {
@@ -357,19 +359,19 @@ export function useChat(options: ChatOptions = {}) {
             break
           }
           case 'done': {
-            setActivityContent('完成')
+            setActivityContent(t('chat.activity.done'))
             break
           }
           case 'aborted': {
             markPendingToolsAsError()
-            setActivityContent('已中断')
+            setActivityContent(t('chat.activity.aborted'))
             break
           }
           case 'error': {
             const data = JSON.parse(event.data)
             markPendingToolsAsError()
             setActivityContent('')
-            setMessages(prev => [...prev, { role: 'error', content: data.message || data.error || '未知错误' }])
+            setMessages(prev => [...prev, { role: 'error', content: data.message || data.error || t('chat.activity.unknownError') }])
             break
           }
         }
@@ -388,18 +390,18 @@ export function useChat(options: ChatOptions = {}) {
     } catch (e) {
       markPendingToolsAsError()
       if (isAbortError(e)) {
-        setActivityContent('已中断')
+        setActivityContent(t('chat.activity.aborted'))
         flushToolArgBuffer()
         flushStreamingSegmentBuffer(true)
         finishCurrentSegment()
         if (options.showAbortMessage) {
-          setMessages(prev => [...prev, { role: 'system', content: '已中断 AI 执行' }])
+          setMessages(prev => [...prev, { role: 'system', content: t('chat.activity.abortMessage') }])
         }
       } else {
         flushToolArgBuffer()
         flushStreamingSegmentBuffer(true)
         finishCurrentSegment()
-        setMessages(prev => [...prev, { role: 'error', content: `请求失败: ${e}` }])
+        setMessages(prev => [...prev, { role: 'error', content: t('chat.activity.requestFailed', { error: String(e) }) }])
       }
       if (options.clearInputsOnFinish) {
       clearReferences()
@@ -429,6 +431,7 @@ export function useChat(options: ChatOptions = {}) {
     flushToolArgBuffer,
     markPendingToolsAsError,
     onAgentFileChange,
+    t,
   ])
 
   /** 发送消息 */
@@ -456,7 +459,7 @@ export function useChat(options: ChatOptions = {}) {
       planMode = true
       userMessage = input.replace(/^\/plan\s*/, '').trim()
       if (!userMessage) {
-        setMessages(prev => [...prev, { role: 'system', content: '用法: /plan <需求描述>\n\n例如: /plan 给主角增加一个新的技能体系' }])
+        setMessages(prev => [...prev, { role: 'system', content: t('chat.planUsage') }])
         return
       }
     }
@@ -476,10 +479,10 @@ export function useChat(options: ChatOptions = {}) {
       const stream = await sendMessage(userMessage, mergedReferences, mergedLoreReferences, mergedStyleReferences, textSelections, abortController.signal, planMode)
       await consumeChatStream(stream, { clearInputsOnFinish: true, showAbortMessage: true })
     } catch (e) {
-      setMessages(prev => [...prev, { role: 'error', content: `请求失败: ${e}` }])
+      setMessages(prev => [...prev, { role: 'error', content: t('chat.activity.requestFailed', { error: String(e) }) }])
       setIsStreaming(false)
     }
-  }, [consumeChatStream, isStreaming, loadHistory, loadSessions, loreReferences, references, styleReferences, textSelections])
+  }, [consumeChatStream, isStreaming, loadHistory, loadSessions, loreReferences, references, styleReferences, t, textSelections])
 
   /** 恢复订阅后台仍在运行的聊天任务。 */
   const resumeActiveChat = useCallback(async () => {

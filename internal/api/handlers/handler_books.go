@@ -23,11 +23,11 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		Description string `json:"description,omitempty"`
 	}
 	if err := c.BindJSON(&req); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequest")
 		return
 	}
 	if req.Title == "" {
-		writeError(c, consts.StatusBadRequest, "title 不能为空")
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.titleRequired")
 		return
 	}
 	layered, err := h.app.Settings()
@@ -36,7 +36,7 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		return
 	}
 	if layered.Paths.NovaDir == "" {
-		writeError(c, consts.StatusInternalServerError, "Nova 数据目录未配置")
+		writeErrorKey(c, consts.StatusInternalServerError, "api.books.novaDirMissing")
 		return
 	}
 	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.NovaDir, req.Title, req.Author, req.Description)
@@ -60,21 +60,21 @@ func (h *Handlers) HandleBookRemove(ctx context.Context, c *app.RequestContext) 
 		Path string `json:"path"`
 	}
 	if err := c.BindJSON(&req); err != nil || req.Path == "" {
-		writeError(c, consts.StatusBadRequest, "请提供 path 参数")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.pathRequired")
 		return
 	}
 	if err := h.app.RemoveBook(req.Path); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]string{"message": "已移除书籍记录"})
+	writeJSON(c, consts.StatusOK, map[string]string{"message": messageKey(c, "api.books.removed")})
 }
 
 // handleBookInfo GET /api/books/info — 读取指定工作区的书籍元信息。
 func (h *Handlers) HandleBookInfo(ctx context.Context, c *app.RequestContext) {
 	path := string(c.Query("path"))
 	if path == "" {
-		writeError(c, consts.StatusBadRequest, "path 参数不能为空")
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.pathQueryRequired")
 		return
 	}
 	meta, err := h.app.BookInfo(path)
@@ -94,11 +94,11 @@ func (h *Handlers) HandleUpdateBookInfo(ctx context.Context, c *app.RequestConte
 		Description string `json:"description"`
 	}
 	if err := c.BindJSON(&req); err != nil {
-		writeError(c, consts.StatusBadRequest, "请求参数无效")
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequest")
 		return
 	}
 	if req.Path == "" {
-		writeError(c, consts.StatusBadRequest, "path 不能为空")
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.pathRequired")
 		return
 	}
 	meta, err := h.app.UpdateBookInfo(req.Path, req.Title, req.Author, req.Description)
