@@ -28,7 +28,7 @@ type writeLoreItemInput struct {
 	Name             string   `json:"name" jsonschema:"description=资料名称"`
 	Importance       string   `json:"importance" jsonschema:"description=重要度：major/important/minor"`
 	Tags             []string `json:"tags" jsonschema:"description=标签列表"`
-	BriefDescription string   `json:"brief_description" jsonschema:"description=一两句中文简介，用于 Agent 判断何时加载完整正文；创建或更新资料时必须填写，若遗漏后端会按正文自动生成"`
+	BriefDescription string   `json:"brief_description" jsonschema:"description=资料索引简介；必须写成“类型 名称。”开头，后接 3-5 句身份/别名/关键事实/适用场景/触发词说明，并以“上下文出现相关内容时，一定要参考本项详情。”收束，便于 Agent 自动判断何时读取完整正文；若遗漏后端会按正文自动生成"`
 	Keywords         []string `json:"keywords" jsonschema:"description=别名、关键词或触发词列表"`
 	LoadMode         string   `json:"load_mode" jsonschema:"description=加载策略：resident/auto/manual"`
 	Content          string   `json:"content" jsonschema:"description=中文 Markdown 正文，记录长期稳定设定、核心关系、能力体系和需要追踪的设定事实；每章后的当前位置、伤势、心理、目标等当前状态写入 setting/character-states.md，不写入资料库"`
@@ -99,7 +99,7 @@ func newLoreTools(workspace string, allowWrite bool) ([]tool.BaseTool, error) {
 	if !allowWrite {
 		return tools, nil
 	}
-	writeTool, err := utils.InferTool("write_lore_items", "批量创建、更新或删除资料库条目。用于同步角色身份、人设、长期关系、能力体系、世界规则、地点、势力和物品等稳定设定；章节定稿后的当前位置、伤势、心理、目标、持有物等当前角色状态应写入 setting/character-states.md，不要默认写入资料库；每个创建或更新的条目都要填写 brief_description，便于简介自动匹配加载；不要写入章节规划或未来剧情。", func(ctx context.Context, input writeLoreItemsInput) (string, error) {
+	writeTool, err := utils.InferTool("write_lore_items", "批量创建、更新或删除资料库条目。用于同步角色身份、人设、长期关系、能力体系、世界规则、地点、势力和物品等稳定设定；章节定稿后的当前位置、伤势、心理、目标、持有物等当前角色状态应写入 setting/character-states.md，不要默认写入资料库；每个创建或更新的条目都要填写 brief_description，格式为“类型 名称。”开头，后接 3-5 句身份/别名/关键事实/适用场景/触发词说明，并以“上下文出现相关内容时，一定要参考本项详情。”收束，便于简介自动匹配加载；不要写入章节规划或未来剧情。", func(ctx context.Context, input writeLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法写入资料库")

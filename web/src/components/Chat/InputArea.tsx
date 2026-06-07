@@ -82,7 +82,7 @@ export function InputArea({
     const el = textareaRef.current
     if (!el) return
     el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+    el.style.height = Math.min(el.scrollHeight, 240) + 'px'
   }, [])
 
   useEffect(() => { adjustHeight() }, [value, adjustHeight])
@@ -379,6 +379,7 @@ export function InputArea({
       <div className="nova-chat-composer flex items-end gap-2 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5">
         <Textarea
           ref={textareaRef}
+          autoResize
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}

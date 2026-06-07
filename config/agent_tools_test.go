@@ -16,6 +16,14 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 		t.Fatalf("互动叙事 Agent 默认不应启用 skills/资料写入/todo: %+v", story)
 	}
 
+	lore := ResolveAgentTools(&Config{}, AgentKindLoreEditor)
+	if !lore.FileRead || !lore.FileWrite || !lore.Skills || !lore.LoreRead || !lore.LoreWrite {
+		t.Fatalf("资料库 Agent 默认应启用文件、skills 和资料库工具: %+v", lore)
+	}
+	if lore.ShellExecute || lore.Todo {
+		t.Fatalf("资料库 Agent 默认不应启用命令执行或 todo: %+v", lore)
+	}
+
 	summary := ResolveAgentTools(&Config{}, AgentKindVersionSummary)
 	if summary.FileRead || summary.FileWrite || summary.ShellExecute || summary.Skills || summary.LoreRead || summary.LoreWrite || summary.Todo {
 		t.Fatalf("版本说明 Agent 默认不应注册工具: %+v", summary)

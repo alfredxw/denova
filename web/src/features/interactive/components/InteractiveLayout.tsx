@@ -14,6 +14,8 @@ import { StoryStage } from './StoryStage'
 interface InteractiveLayoutProps {
   workspace?: string
   styleSuggestions?: string[]
+  loreEmpty?: boolean
+  onRequestLoreInit?: () => void
   rightPanelVisible?: boolean
   onToggleRightPanel?: () => void
 }
@@ -21,6 +23,8 @@ interface InteractiveLayoutProps {
 export function InteractiveLayout({
   workspace,
   styleSuggestions = [],
+  loreEmpty = false,
+  onRequestLoreInit,
   rightPanelVisible = true,
   onToggleRightPanel,
 }: InteractiveLayoutProps) {
@@ -181,11 +185,13 @@ export function InteractiveLayout({
                       storyId={currentStoryId}
                       branchId={currentBranchId}
                       snapshot={currentBranchSnapshot}
+                      loreEmpty={loreEmpty}
                       sceneMemoryVisible={rightPanelVisible}
                       onStorySelect={setCurrentStoryId}
                       onStoryCreate={handleCreateStory}
                       onStoryDelete={handleDeleteStory}
                       onTellerChange={handleTellerChange}
+                      onRequestLoreInit={onRequestLoreInit}
                       onToggleSceneMemory={onToggleRightPanel}
                       onDone={reloadSnapshot}
                     />

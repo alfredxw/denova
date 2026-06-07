@@ -61,7 +61,10 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			LoreWrite: off,
 			Todo:      off,
 		},
-		LoreEditor:            noToolAgentOverride(),
+		LoreEditor: AgentToolOverride{
+			ShellExecute: off,
+			Todo:         off,
+		},
 		TellerEditor:          noToolAgentOverride(),
 		InteractiveState:      noToolAgentOverride(),
 		InteractiveHotChoices: noToolAgentOverride(),

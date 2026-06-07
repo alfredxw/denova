@@ -29,6 +29,10 @@ describe('App', () => {
         '/api/sessions': { sessions: [] },
         '/api/session/messages': [],
         '/api/chat/active': { active: false },
+        '/api/lore/items': { items: [] },
+        '/api/lore/versions': { versions: [] },
+        '/api/lore/agent/messages': [],
+        '/api/interactive/tellers': { tellers: [] },
       }
 
       return new Response(JSON.stringify(payloads[path] ?? {}), {
@@ -158,14 +162,15 @@ describe('App', () => {
     expect(screen.queryByText('Agent 模型分配')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '关闭 Agents' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '资料库 Agent资料条目的结构化整理' }))
-    expect(screen.getByText('内置能力')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '资料库 Agent资料库维护、初始化设定与 CREATOR.md 写入' }))
+    expect(screen.getByText('工具能力')).toBeInTheDocument()
+    expect(screen.getByText('修改文件')).toBeInTheDocument()
+    expect(screen.getByText('Skills')).toBeInTheDocument()
     expect(screen.getByText('读取资料库')).toBeInTheDocument()
     expect(screen.getByText('写入资料库')).toBeInTheDocument()
-    expect(screen.getByText('这些写入能力由应用层执行：模型先生成结构化编辑方案，后端校验后保存；不是 deep-agent 文件/命令/Skills 工具链，所以这里不提供单项工具开关。')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '版本说明 Agent自动版本摘要' }))
-    expect(screen.getByText('这个 Agent 当前是纯模型调用，不修改文件、资料库或导演；这里只配置模型与思考参数。')).toBeInTheDocument()
+    expect(screen.getByText('这个 Agent 当前是纯模型调用，不修改文件、资料库或叙事编排；这里只配置模型与思考参数。')).toBeInTheDocument()
 
     const agentsButton = screen.getByRole('button', { name: 'Agents' })
     expect(agentsButton).toHaveClass('is-active')
@@ -208,6 +213,25 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: '关闭 Agents' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '剧情' })).toHaveClass('is-active')
     expectOnlyActivePrimaryMenu('剧情')
+  })
+
+  it('guides an empty IDE lore store into the Lore Agent initialization flow', async () => {
+    const user = userEvent.setup()
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    expect(await screen.findByText('资料库还是空的')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '去资料库 Agent' }))
+
+    expect((await screen.findAllByText('资料库 Agent')).length).toBeGreaterThan(0)
+    await waitFor(() => {
+      expect(screen.getByDisplayValue(/lore-init/)).toBeInTheDocument()
+    })
   })
 
   it('keeps one active shared menu while switching shared pages from interactive mode', async () => {

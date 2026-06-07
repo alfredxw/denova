@@ -1,4 +1,4 @@
-import { BookMarked, BookOpen, ChevronDown, ChevronRight, Database, FileText, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SlidersHorizontal } from 'lucide-react'
+import { BookMarked, BookOpen, ChevronDown, ChevronRight, Database, FileText, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -22,6 +22,8 @@ import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
 import { WorkbenchShell } from './WorkbenchShell'
 import { flattenFileTree, formatNumber } from './workbench-utils'
+
+const LORE_AGENT_INIT_EVENT = 'nova:lore-agent-init'
 
 interface ModeRouterProps {
   mode: WorkspaceMode
@@ -211,6 +213,22 @@ export function ModeRouter(props: ModeRouterProps) {
       brief: item.brief_description ? t('planning.loreBrief', { brief: item.brief_description }) : '',
     }),
   })), [i18n.language, loreItems, t])
+  const loreEmpty = Boolean(workspace) && loreItems.length === 0
+
+  const requestLoreInit = (target: 'ide' | 'interactive') => {
+    if (target === 'interactive') {
+      onSetMode('interactive')
+      setInteractiveSubmode('lore')
+    } else {
+      onSetMode('ide')
+      onSetRightPanel('lore')
+    }
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(LORE_AGENT_INIT_EVENT, {
+        detail: { prompt: t('settingPanel.loreAgent.initPrompt') },
+      }))
+    }, 0)
+  }
   const aiVisible = rightPanel === 'ai'
   const closeBooks = () => {
     if (booksReturnMode === 'interactive') {
@@ -330,6 +348,8 @@ export function ModeRouter(props: ModeRouterProps) {
         <InteractiveLayout
           workspace={workspace}
           styleSuggestions={styles}
+          loreEmpty={loreEmpty}
+          onRequestLoreInit={() => requestLoreInit('interactive')}
           rightPanelVisible={interactiveRightVisible}
           onToggleRightPanel={onToggleInteractiveRightPanel}
         />
@@ -394,9 +414,19 @@ export function ModeRouter(props: ModeRouterProps) {
                 searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
               />
             ) : (
-              <div className="flex h-full items-center justify-center text-xs text-[#7f8590]">
-                {t('router.chooseFile')}
-              </div>
+              loreEmpty ? (
+                <EmptyLoreGuide
+                  emptyText={t('router.chooseFile')}
+                  title={t('loreInit.ideTitle')}
+                  description={t('loreInit.ideDescription')}
+                  action={t('loreInit.openAgent')}
+                  onClick={() => requestLoreInit('ide')}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-xs text-[#7f8590]">
+                  {t('router.chooseFile')}
+                </div>
+              )
             )}
           </div>
         </>
@@ -713,6 +743,40 @@ function PlanningEmptyState({ text }: { text: string }) {
   return (
     <div className="rounded border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2 text-[11px] text-[var(--nova-text-faint)]">
       {text}
+    </div>
+  )
+}
+
+function EmptyLoreGuide({
+  emptyText,
+  title,
+  description,
+  action,
+  onClick,
+}: {
+  emptyText: string
+  title: string
+  description: string
+  action: string
+  onClick: () => void
+}) {
+  return (
+    <div className="flex h-full items-center justify-center px-6 text-center">
+      <div className="flex max-w-md flex-col items-center gap-3 rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+        <Sparkles className="h-4 w-4 text-[var(--nova-text-muted)]" />
+        <div className="space-y-1">
+          <div className="text-xs text-[var(--nova-text-faint)]">{emptyText}</div>
+          <div className="text-sm font-medium text-[var(--nova-text)]">{title}</div>
+          <div className="text-xs leading-5 text-[var(--nova-text-faint)]">{description}</div>
+        </div>
+        <button
+          type="button"
+          className="nova-nav-item rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1.5 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
+          onClick={onClick}
+        >
+          {action}
+        </button>
+      </div>
     </div>
   )
 }

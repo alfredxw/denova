@@ -264,10 +264,11 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                   <span className="truncate text-[var(--nova-text-muted)]">{novaDir || t('home.novaDirLoading')}</span>
                 </div>
                 <Textarea
+                  autoResize
                   value={createDesc}
                   onChange={(e) => setCreateDesc(e.target.value)}
                   placeholder={t('home.descriptionPlaceholder')}
-                  rows={3}
+                  rows={1}
                   className={inputCls + ' min-h-0 resize-none'}
                 />
                 {createError && <div className="text-xs text-red-400">{createError}</div>}
@@ -311,10 +312,11 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                               className={inputCls}
                             />
                             <Textarea
+                              autoResize
                               value={editDesc}
                               onChange={(e) => setEditDesc(e.target.value)}
                               placeholder={t('common.description')}
-                              rows={2}
+                              rows={1}
                               className={inputCls + ' min-h-0 resize-none'}
                             />
                             <div className="flex items-center justify-end gap-2">

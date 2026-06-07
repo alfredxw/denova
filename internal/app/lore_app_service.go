@@ -8,6 +8,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
+	"nova/config"
 	"nova/internal/agent"
 	"nova/internal/book"
 	"nova/internal/session"
@@ -170,57 +171,44 @@ func (a *App) StartLoreAgentTask(instruction string, references []string) *Task 
 
 func (s *LoreAppService) StartLoreAgentTask(instruction string, references []string) *Task {
 	a := s.app
-	a.mu.RLock()
+	a.mu.Lock()
 	state := a.bookState
 	cfg := a.cfg
 	workspace := a.workspace
 	sessionStore := a.sessionStore
-	a.mu.RUnlock()
+	bookService := a.bookService
+	chatService := a.chatService
+	a.mu.Unlock()
 	if state == nil || cfg == nil || sessionStore == nil {
 		return nil
 	}
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = workspace
-	workspacePath := state.Workspace()
 	sess, err := sessionStore.GetOrCreate(loreAgentSessionID)
 	if err != nil {
 		log.Printf("[lore-agent-task] load session failed err=%v", err)
 		return nil
 	}
-	history := sess.GetEffectiveMessages()
+
+	if layered, err := config.LoadLayered(runtimeCfg.NovaDir, workspace); err == nil {
+		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+	} else {
+		log.Printf("[lore-agent-task] load layered settings failed workspace=%s err=%v", workspace, err)
+	}
+	runner, err := buildLoreAgentRunner(context.Background(), &runtimeCfg, state)
+	if err != nil {
+		log.Printf("[lore-agent-task] 构建资料库 Agent Runner 失败 workspace=%s err=%v", workspace, err)
+		return nil
+	}
 
 	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
-		store := book.NewLoreStore(workspacePath)
-		if err := sess.Append(schema.UserMessage(strings.TrimSpace(instruction))); err != nil {
-			emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
-			return
+		req := agent.ChatRequest{
+			Message:        strings.TrimSpace(instruction),
+			LoreReferences: references,
 		}
-		emitLoreToolCall(emit, "lore-read", "读取资料库", `{"source":"workspace"}`)
-		items, err := store.List()
-		if err != nil {
-			emitLoreError(sess, emit, err)
-			return
-		}
-		emitLoreToolResult(emit, "lore-read", "已读取资料库，共 "+fmt.Sprint(len(items))+" 条资料。")
-
-		emitLoreToolCall(emit, "lore-plan", "生成编辑方案", fmt.Sprintf(`{"references":%d,"history_messages":%d}`, len(references), len(history)))
-		plan, err := agent.StreamLoreEditPlan(ctx, &runtimeCfg, instruction, items, references, history, emit)
-		if err != nil {
-			emitLoreError(sess, emit, err)
-			return
-		}
-		emitLoreToolResult(emit, "lore-plan", fmt.Sprintf("已生成编辑方案，共 %d 个操作。", len(plan.Ops)))
-
-		emitLoreToolCall(emit, "lore-apply", "应用资料库变更", fmt.Sprintf(`{"ops":%d}`, len(plan.Ops)))
-		result, err := store.ApplyOperations(plan.Message, plan.Ops)
-		if err != nil {
-			emitLoreError(sess, emit, err)
-			return
-		}
-		emitLoreToolResult(emit, "lore-apply", loreResultMessage(result))
-
-		_ = sess.Append(schema.AssistantMessage(loreResultMessage(result), nil))
-		emit(agent.Event{Type: "lore_result", Data: result})
+		log.Printf("[lore-agent-task] run begin id=%s message_len=%d lore_references=%d", task.ID(), len(req.Message), len(req.LoreReferences))
+		chatService.Run(ctx, runner, agent.NewSessionConversation(sess), bookService, req, emit)
+		log.Printf("[lore-agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})
 }
 

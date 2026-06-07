@@ -667,21 +667,29 @@ func defaultLoreBriefDescription(item LoreItem) string {
 	typeLabel := loreTypeLabel(item.Type)
 	subject := typeLabel
 	if name != "" {
-		subject = fmt.Sprintf("%s“%s”", typeLabel, name)
+		subject = fmt.Sprintf("%s %s", typeLabel, name)
 	}
 
 	if summary := lorePlainTextSummary(item.Content, 72); summary != "" {
-		return truncateRunes(subject+"："+summary, 140)
+		return truncateRunes(subject+"。"+summary+"。上下文出现"+loreBriefTriggerSubject(typeLabel, name)+"相关内容时，一定要参考本项详情。", 240)
 	}
 
 	signals := normalizeLoreStringList(append(append([]string{}, item.Tags...), item.Keywords...))
 	if len(signals) > 0 {
-		return truncateRunes(subject+"，关联："+strings.Join(signals, "、"), 140)
+		return truncateRunes(subject+"。触发词："+strings.Join(signals, "、")+"。上下文出现"+loreBriefTriggerSubject(typeLabel, name)+"相关内容时，一定要参考本项详情。", 240)
 	}
 	if name != "" {
-		return subject + "，用于判断本轮是否需要加载该资料正文。"
+		return subject + "。请补充 3-5 句身份、别名、关键事实、适用场景和触发词。上下文出现" + loreBriefTriggerSubject(typeLabel, name) + "相关内容时，一定要参考本项详情。"
 	}
-	return "资料库条目，用于判断本轮是否需要加载完整正文。"
+	return "资料库条目。请补充 3-5 句类型、名称、关键事实、适用场景和触发词。上下文出现相关内容时，一定要参考本项详情。"
+}
+
+func loreBriefTriggerSubject(typeLabel, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return typeLabel
+	}
+	return name + "、" + typeLabel
 }
 
 func lorePlainTextSummary(content string, limit int) string {

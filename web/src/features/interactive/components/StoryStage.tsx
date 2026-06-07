@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent } from 'react'
-import { ChevronDown, ChevronUp, Compass, GitBranch, MessageSquareText, PanelRight, Pencil, RefreshCw, Send, Square, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Compass, GitBranch, MessageSquareText, PanelRight, Pencil, RefreshCw, Send, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,11 +28,13 @@ interface StoryStageProps {
   storyId: string
   branchId: string
   snapshot: Snapshot | null
+  loreEmpty?: boolean
   sceneMemoryVisible?: boolean
   onStorySelect?: (storyId: string) => void
   onStoryCreate?: (input: { title: string; origin: string; story_teller_id: string }) => void
   onStoryDelete?: (storyId: string) => void
   onTellerChange?: (tellerId: string) => void
+  onRequestLoreInit?: () => void
   onToggleSceneMemory?: () => void
   onDone: () => void | Promise<Snapshot | void>
 }
@@ -52,11 +54,13 @@ export function StoryStage({
   storyId,
   branchId,
   snapshot,
+  loreEmpty = false,
   sceneMemoryVisible = true,
   onStorySelect = noop,
   onStoryCreate = noop,
   onStoryDelete = noop,
   onTellerChange = noop,
+  onRequestLoreInit,
   onToggleSceneMemory,
   onDone,
 }: StoryStageProps) {
@@ -476,8 +480,26 @@ export function StoryStage({
               <span>{t('storyStage.recordCount', { count: messages.length })}</span>
             </div>
             {messages.length === 0 && !streaming ? (
-              <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                {t('storyStage.empty')}
+              <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                {loreEmpty && onRequestLoreInit ? (
+                  <div className="flex max-w-md flex-col items-center gap-3">
+                    <Sparkles className="h-4 w-4 text-[var(--nova-text-muted)]" />
+                    <div className="space-y-1">
+                      <div className="text-xs text-[var(--nova-text-faint)]">{t('storyStage.empty')}</div>
+                      <div className="text-sm font-medium text-[var(--nova-text)]">{t('loreInit.interactiveTitle')}</div>
+                      <div className="text-xs leading-5 text-[var(--nova-text-faint)]">{t('loreInit.interactiveDescription')}</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="nova-nav-item rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1.5 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
+                      onClick={onRequestLoreInit}
+                    >
+                      {t('loreInit.openAgent')}
+                    </button>
+                  </div>
+                ) : (
+                  t('storyStage.empty')
+                )}
               </div>
             ) : (
               <MessageList
@@ -595,7 +617,8 @@ export function StoryStage({
               />
               <Textarea
                 ref={inputRef}
-                className="nova-field !h-11 !min-h-11 flex-1 resize-none px-3 py-2 text-sm placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
+                autoResize
+                className="nova-field min-h-11 flex-1 resize-none px-3 py-2 text-sm placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
                 style={inputTextStyle}
                 value={input}
                 placeholder={t('storyStage.inputPlaceholder')}

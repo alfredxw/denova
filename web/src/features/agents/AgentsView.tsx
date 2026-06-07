@@ -3,6 +3,7 @@ import type { ElementType, ReactNode } from 'react'
 import { Bot, Brain, Check, Database, FileText, FolderOpen, ListChecks, MessageSquareText, PenLine, Save, ScrollText, Search, Settings2, Shield, Sparkles, Terminal, Wrench, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { AgentModelOverride, AgentModelSettings, AgentPromptOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
 import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
@@ -23,7 +24,7 @@ const AGENTS: Array<{
   icon: ElementType
 }> = [
   { key: 'ide', titleKey: 'agents.ide.title', subtitleKey: 'agents.ide.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'tools', icon: PenLine },
-  { key: 'lore_editor', titleKey: 'agents.loreEditor.title', subtitleKey: 'agents.loreEditor.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'built_in', icon: Database },
+  { key: 'lore_editor', titleKey: 'agents.loreEditor.title', subtitleKey: 'agents.loreEditor.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'tools', icon: Database },
   { key: 'teller_editor', titleKey: 'agents.tellerEditor.title', subtitleKey: 'agents.tellerEditor.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'built_in', icon: Settings2 },
   { key: 'interactive_story', titleKey: 'agents.interactiveStory.title', subtitleKey: 'agents.interactiveStory.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'tools', icon: MessageSquareText },
   { key: 'interactive_state', titleKey: 'agents.interactiveState.title', subtitleKey: 'agents.interactiveState.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Shield },
@@ -46,7 +47,7 @@ const BASE_TOOL_VALUES: Required<AgentToolOverride> = { file_read: true, file_wr
 const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentToolOverride>> = {
   ide: { file_read: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true },
   interactive_story: { file_read: true, file_write: true, shell_execute: true, skills: false, lore_read: true, lore_write: false, todo: false },
-  lore_editor: disabledTools(),
+  lore_editor: { file_read: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: false },
   teller_editor: disabledTools(),
   interactive_state: disabledTools(),
   interactive_hot_choices: disabledTools(),
@@ -358,12 +359,13 @@ function AgentPromptSection({ value, inherited, onChange }: {
     <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={ScrollText} title={t('agents.section.systemPrompt')} />
       <Field label={t('agents.field.systemPrompt')} inherited={!hasPrompt} onReset={hasPrompt ? () => onChange({ system_prompt: '' }) : undefined}>
-        <textarea
+        <Textarea
+          autoResize
           value={effectivePrompt}
           aria-label={t('agents.field.systemPrompt')}
           placeholder={t('agents.prompt.placeholder')}
           onChange={(e) => onChange({ system_prompt: e.target.value })}
-          className={`${fieldCls} min-h-36 resize-y leading-5`}
+          className={`${fieldCls} min-h-36 resize-y leading-5 shadow-none focus-visible:ring-0`}
         />
       </Field>
       <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">

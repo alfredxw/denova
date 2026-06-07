@@ -79,7 +79,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
       <PopoverContent align="start" className="nova-panel w-80 border p-3 text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
         <div className="mb-2 text-xs font-medium">{t('storyPicker.create')}</div>
         <Input className="nova-field mb-2 text-xs" placeholder={suggestedTitle} value={title} onChange={(event) => setTitle(event.target.value)} />
-        <Textarea className="nova-field mb-3 h-20 min-h-20 resize-none text-xs" placeholder={t('storyPicker.originPlaceholder')} value={origin} onChange={(event) => setOrigin(event.target.value)} />
+        <Textarea autoResize className="nova-field mb-3 min-h-20 resize-none text-xs" placeholder={t('storyPicker.originPlaceholder')} value={origin} onChange={(event) => setOrigin(event.target.value)} />
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="xs" onClick={closeCreate}>{t('common.cancel')}</Button>
           <Button size="xs" onClick={submit}>{t('common.create')}</Button>

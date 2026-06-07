@@ -116,7 +116,7 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	if item.ID == "" || len(item.Tags) != 1 {
 		t.Fatalf("unexpected item: %#v", item)
 	}
-	if item.BriefDescription == "" || !strings.Contains(item.BriefDescription, "角色“") {
+	if item.BriefDescription == "" || !strings.Contains(item.BriefDescription, "角色 林川。") || !strings.Contains(item.BriefDescription, "一定要参考本项详情") {
 		t.Fatalf("brief description should be generated: %#v", item)
 	}
 

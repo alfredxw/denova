@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 新增 `lore-init` 资料库初始化 Skill：资料库为空时引导作者先讨论题材、角色、核心冲突、世界规则、创作风格、禁忌和互动开局，用户确认后再写入资料库与 `CREATOR.md`。
+- IDE 写作主页面和互动剧情主页面在资料库为空时提供轻量引导，可跳转到资料库 Agent 并预填初始化指令。
 - Agents 页新增每个 Agent 的自定义 system prompt 配置，支持用户级/工作区级分层继承；运行时按「Nova 运行时契约（不可覆盖）→ 用户自定义提示 → Nova 内置提示」拼装，确保自定义提示能覆盖行为偏好但不能覆盖工具权限、输出协议、互动禁写、结构化 JSON 和后端校验边界。
 - 内置叙事编排新增 `直白情色` 和 `编剧风格` 两个预设，分别面向成人自愿情欲张力和编剧式场景节拍。
 - WebUI 新增 i18n 多语言基础设施，接入 `i18next` / `react-i18next`，首版提供简体中文与 English 资源，并为后续语言扩展预留统一 locale 目录。
@@ -17,6 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 资料库 Agent 从单次结构化 JSON 编辑方案升级为工具型 Agent，支持 Skills、资料库读写和文件读写工具；初始化流程要求多轮确认，最终只写资料库和 `CREATOR.md`，不写 `脑暴.md`、大纲、章节、progress、character-states，也不自动创建互动 story。
+- 资料库条目简介改为多行编辑，并统一要求 `brief_description` 使用“类型 名称 + 3-5 句触发说明 + 必须参考详情”的索引结构，提升 Agent 自动匹配并读取资料正文的准确性。
+- 指令类多行输入框改为随输入内容自动扩展，最多显示 10 行后进入内部滚动，覆盖创作 Agent、资料库 Agent、叙事编排 Agent、互动剧情输入和短表单简介。
 - 用户可见“讲述者 / Teller / 导演 / Director”统一改名为“叙事编排 / Narrative Direction”，IDE 和互动模式内的紧凑选择提示使用“叙事 / Narrative”；内部 `Teller`、`story_teller_id`、`story-tellers/` 和 API 路径保持兼容不迁移。
 - 强化内置叙事编排规则内容，旧版内置 JSON 会随 `tellerVersion` 自动刷新，规则会更明确影响剧情裁定、角色主动性、代价、节奏、伏笔和状态沉淀。
 - 设置页 General Appearance 调整到顶部，语言选项固定展示为 `Follow Browser`、`简体中文` 和 `English`，并支持设置页与 Agents 页修改后自动保存。

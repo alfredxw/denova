@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from 'react'
-import { AtSign, BookMarked, Bot, Building2, Check, ChevronDown, ChevronUp, Database, FileText, Folder, History, Library, Loader2, MapPin, Plus, RotateCcw, Save, ScrollText, Search, Send, SlidersHorizontal, Trash2, UserRound, X } from 'lucide-react'
+import { AtSign, BookMarked, Bot, Building2, Check, ChevronDown, ChevronUp, Database, FileText, Folder, History, Library, Loader2, MapPin, Plus, RotateCcw, Save, ScrollText, Search, Send, SlidersHorizontal, Sparkles, Trash2, UserRound, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -36,6 +36,7 @@ import type { StyleRule, Teller, TellerAgentResult, TellerPromptSlot } from '../
 
 const CREATOR_PATH = 'CREATOR.md'
 const LORE_AGENT_ENTRY_ID = '__lore_agent__'
+const LORE_AGENT_INIT_EVENT = 'nova:lore-agent-init'
 const TELLER_AGENT_ENTRY_ID = '__teller_agent__'
 const EMPTY_TELLERS: Teller[] = []
 
@@ -344,7 +345,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         importance: section.createType === 'character' ? 'major' : 'important',
         load_mode: section.createType === 'character' ? 'resident' : 'auto',
         tags: section.tag ? [section.tag] : [],
-        brief_description: `${section.createName}相关设定，用于判断是否需要加载该资料正文。`,
+        brief_description: `${loreTypeLabel(section.createType, t)} ${section.createName}。用 3-5 句概括本项的身份、别名、关键事实、适用场景和触发词。上下文出现相关内容时，一定要参考本项详情。`,
         content: `## ${section.createName}\n\n`,
       })
       await refreshItems(item.id)
@@ -594,6 +595,11 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
                 versionsVisible={versionsVisible}
                 saving={saving}
                 onResult={(result) => void handleLoreAgentResult(result)}
+                onToolMutation={(itemIds) => {
+                  void refreshItems(itemIds[0])
+                  void refreshVersions()
+                  notifyLoreUpdated(itemIds)
+                }}
                 onToggleVersions={() => setVersionsVisible((value) => !value)}
                 onCreateVersion={() => void handleCreateLoreVersion()}
                 onRestoreVersion={(version) => void handleRestoreLoreVersion(version)}
@@ -666,6 +672,8 @@ interface LoreToolPayload {
   args?: string
   delta?: string
   content?: string
+  item_ids?: string[]
+  deleted_ids?: string[]
 }
 
 function LoreAgentChat({
@@ -675,6 +683,7 @@ function LoreAgentChat({
   versionsVisible,
   saving,
   onResult,
+  onToolMutation,
   onToggleVersions,
   onCreateVersion,
   onRestoreVersion,
@@ -685,6 +694,7 @@ function LoreAgentChat({
   versionsVisible: boolean
   saving: boolean
   onResult: (result: LoreAgentResult) => void
+  onToolMutation: (itemIds: string[]) => void
   onToggleVersions: () => void
   onCreateVersion: () => void
   onRestoreVersion: (version: LoreVersion) => void
@@ -719,6 +729,18 @@ function LoreAgentChat({
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, running])
+
+  useEffect(() => {
+    const handleInitRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ prompt?: string }>).detail
+      setValue(detail?.prompt || t('settingPanel.loreAgent.initPrompt'))
+      setReferenceIds([])
+      setReferenceQuery(null)
+      window.requestAnimationFrame(() => textareaRef.current?.focus())
+    }
+    window.addEventListener(LORE_AGENT_INIT_EVENT, handleInitRequest)
+    return () => window.removeEventListener(LORE_AGENT_INIT_EVENT, handleInitRequest)
+  }, [t])
 
   useEffect(() => {
     workspaceRef.current = workspace
@@ -893,7 +915,11 @@ function LoreAgentChat({
     }
     if (event.event === 'tool_result') {
       const payload = parseLoreEventData<LoreToolPayload>(event.data)
-      if (payload) finishToolCall(payload)
+      if (payload) {
+        finishToolCall(payload)
+        const changedIDs = [...(payload.item_ids || []), ...(payload.deleted_ids || [])]
+        if (changedIDs.length > 0) onToolMutation(changedIDs)
+      }
       return
     }
     if (event.event === 'lore_status') {
@@ -978,6 +1004,18 @@ function LoreAgentChat({
             <div className="max-w-md rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 py-5 text-center">
               <div className="text-sm font-medium text-[var(--nova-text)]">{t('settingPanel.loreAgent.emptyTitle')}</div>
               <div className="mt-1 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.loreAgent.emptyDesc')}</div>
+              <Button
+                type="button"
+                className="mt-4 h-8 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-xs"
+                variant="outline"
+                onClick={() => {
+                  setValue(t('settingPanel.loreAgent.initPrompt'))
+                  window.requestAnimationFrame(() => textareaRef.current?.focus())
+                }}
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                {t('settingPanel.loreAgent.initAction')}
+              </Button>
             </div>
           </div>
         ) : (
@@ -1032,14 +1070,15 @@ function LoreAgentChat({
                   </Command>
                 </PopoverContent>
               </Popover>
-              <textarea
+              <Textarea
                 ref={textareaRef}
-                className="max-h-36 min-h-10 w-full resize-none bg-transparent text-sm leading-5 text-[var(--nova-text)] outline-none placeholder:text-[var(--nova-text-faint)] disabled:opacity-60"
+                autoResize
+                className="min-h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-[var(--nova-text)] shadow-none outline-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-60"
                 value={value}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
                 placeholder={running ? t('settingPanel.loreAgent.executing') : t('settingPanel.loreAgent.placeholder')}
-                rows={2}
+                rows={1}
                 disabled={running}
               />
             </div>
@@ -1403,14 +1442,15 @@ function TellerAgentChat({
                   </Command>
                 </PopoverContent>
               </Popover>
-              <textarea
+              <Textarea
                 ref={textareaRef}
-                className="max-h-36 min-h-10 w-full resize-none bg-transparent text-sm leading-5 text-[var(--nova-text)] outline-none placeholder:text-[var(--nova-text-faint)] disabled:opacity-60"
+                autoResize
+                className="min-h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-[var(--nova-text)] shadow-none outline-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-60"
                 value={value}
                 onChange={handleChange}
                 onKeyDown={handleKeyDown}
                 placeholder={running ? t('settingPanel.tellerAgent.executing') : t('settingPanel.tellerAgent.placeholder')}
-                rows={2}
+                rows={1}
                 disabled={running}
               />
             </div>
@@ -1887,8 +1927,14 @@ function LoreEditor({
         <Field label={t('settingPanel.field.tags')}>
           <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
         </Field>
-        <Field label={t('settingPanel.field.brief')}>
-          <Input className={inputClassName} value={draft.brief_description || ''} onChange={(event) => setDraft({ ...draft, brief_description: event.target.value })} placeholder={t('settingPanel.placeholder.brief')} />
+        <Field className="lg:col-span-4" label={t('settingPanel.field.brief')}>
+          <Textarea
+            autoResize
+            className="nova-field min-h-[96px] resize-y text-xs leading-5 shadow-none focus-visible:ring-0"
+            value={draft.brief_description || ''}
+            onChange={(event) => setDraft({ ...draft, brief_description: event.target.value })}
+            placeholder={t('settingPanel.placeholder.brief')}
+          />
         </Field>
         <div className="lg:col-span-4 text-[11px] leading-5 text-[var(--nova-text-faint)]">
           {draft.load_mode === 'resident' ? t('settingPanel.lore.residentDesc') : loadModeDescription(draft.load_mode, t)}
@@ -2366,9 +2412,9 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <label className="grid gap-1.5">
+    <label className={`grid gap-1.5 ${className}`}>
       <span className="text-[11px] text-[var(--nova-text-faint)]">{label}</span>
       {children}
     </label>

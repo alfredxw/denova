@@ -52,6 +52,21 @@ func TestMergeToolCallsHandlesSparseIndexes(t *testing.T) {
 	}
 }
 
+func TestParseWriteLoreItemsToolResultReturnsChangedIDs(t *testing.T) {
+	itemIDs, deletedIDs := parseWriteLoreItemsToolResult("write_lore_items", strings.Join([]string{
+		"message: 已更新资料库",
+		`item_ids: ["char_hero","world_rule"]`,
+		`deleted_ids: ["old_note"]`,
+	}, "\n"))
+
+	if got := strings.Join(itemIDs, ","); got != "char_hero,world_rule" {
+		t.Fatalf("未解析写入资料 ID: %v", itemIDs)
+	}
+	if got := strings.Join(deletedIDs, ","); got != "old_note" {
+		t.Fatalf("未解析删除资料 ID: %v", deletedIDs)
+	}
+}
+
 func TestAppendReferenceContextDedupesAndReportsReadFailure(t *testing.T) {
 	workspace := t.TempDir()
 	mustWriteTestFile(t, workspace, "chapters/ch01.md", "第一章正文")

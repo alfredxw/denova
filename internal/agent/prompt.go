@@ -79,6 +79,32 @@ func BuildInteractiveStoryInstruction(cfg *config.Config, state *book.State, tel
 	return instruction
 }
 
+func BuildLoreAgentInstruction(cfg *config.Config, state *book.State) string {
+	workspace := ""
+	creator := ""
+	if cfg != nil {
+		workspace = cfg.Workspace
+	}
+	if state != nil {
+		if workspace == "" {
+			workspace = state.Workspace()
+		}
+		creator = state.ReadCreatorPrompt()
+	}
+	builtIn := prompts.BuildLoreAgentSystemInstruction(prompts.LoreAgentSystemInstructionInput{
+		CreatorPrompt: creator,
+		Workspace:     workspace,
+	})
+	instruction := protectedSystemInstruction(cfg, config.AgentKindLoreEditor, builtIn)
+	logSystemPromptComposition("lore", workspace, creator, "", instruction, promptSource{
+		source:  "系统提示",
+		title:   "资料库 Agent 内置规则",
+		content: builtIn,
+		note:    "tool-chain",
+	})
+	return instruction
+}
+
 type promptSource struct {
 	source  string
 	title   string

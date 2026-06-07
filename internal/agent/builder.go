@@ -49,6 +49,20 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 	}, loreTools, interactiveMaxTokens(cfg))
 }
 
+// BuildLoreAgent 构建资料库 Agent（deep agent + 文件系统工具 + Skill + 资料库工具）。
+func BuildLoreAgent(ctx context.Context, cfg *config.Config, state *book.State) (adk.Agent, error) {
+	toolSettings := config.ResolveAgentTools(cfg, config.AgentKindLoreEditor)
+	var loreTools []tool.BaseTool
+	if toolSettings.LoreRead {
+		var err error
+		loreTools, err = newLoreTools(cfg.Workspace, toolSettings.LoreWrite)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return buildDeepAgent(ctx, cfg, config.AgentKindLoreEditor, "NovaLoreAgent", "AI 资料库整理助手", BuildLoreAgentInstruction(cfg, state), true, true, nil, loreTools, nil)
+}
+
 func buildDeepAgent(
 	ctx context.Context,
 	cfg *config.Config,

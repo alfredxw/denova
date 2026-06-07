@@ -133,6 +133,42 @@ describe('StoryStage', () => {
     expect(await screen.findByText('先整理当前场景和风险。')).toBeInTheDocument()
   })
 
+  it('shows a lightweight lore initialization guide only while lore is empty', () => {
+    const onRequestLoreInit = vi.fn()
+    const snapshot = {
+      story_id: 'st_1',
+      branch_id: 'main',
+      state: {},
+      turns: [],
+    }
+    const { rerender } = render(
+      <StoryStage
+        storyId="st_1"
+        branchId="main"
+        snapshot={snapshot}
+        onDone={vi.fn()}
+        loreEmpty
+        onRequestLoreInit={onRequestLoreInit}
+      />,
+    )
+
+    expect(screen.getByText('先初始化共享设定')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '去资料库 Agent' }))
+    expect(onRequestLoreInit).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <StoryStage
+        storyId="st_1"
+        branchId="main"
+        snapshot={snapshot}
+        onDone={vi.fn()}
+        loreEmpty={false}
+        onRequestLoreInit={onRequestLoreInit}
+      />,
+    )
+    expect(screen.queryByText('先初始化共享设定')).not.toBeInTheDocument()
+  })
+
   it('fills the input from generated hot choices without sending immediately', async () => {
     vi.mocked(generateInteractiveHotChoices).mockResolvedValue({
       enabled: true,

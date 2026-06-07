@@ -675,6 +675,7 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *st
 	var accumulatedToolCalls []schema.ToolCall
 	emittedTools := make(map[int]bool) // 按 index 记录已 emit tool_call 的工具
 	lastArgsLen := make(map[int]int)   // 记录上次已发送的参数长度
+	loggedToolPaths := make(map[int]bool)
 
 	for {
 		frame, err := mv.MessageStream.Recv()
@@ -725,6 +726,12 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *st
 				if currentLen > lastArgsLen[i] {
 					delta := tc.Function.Arguments[lastArgsLen[i]:currentLen]
 					lastArgsLen[i] = currentLen
+					if !loggedToolPaths[i] {
+						if path := toolPathFromArgs(tc.Function.Arguments); path != "" {
+							logToolPath(tc.Function.Name, tc.ID, path)
+							loggedToolPaths[i] = true
+						}
+					}
 					data := map[string]interface{}{
 						"id":    tc.ID,
 						"name":  tc.Function.Name,
@@ -760,6 +767,9 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 		}
 		args := tc.Function.Arguments
 		logToolCall(name, tc.ID, len(args), "non_streaming")
+		if path := toolPathFromArgs(args); path != "" {
+			logToolPath(name, tc.ID, path)
+		}
 		if len(args) > 200 {
 			args = args[:200] + "..."
 		}
@@ -804,12 +814,34 @@ func logToolCall(name, id string, argsBytes int, source string) {
 	log.Printf("[agent-tool] call source=%s name=%s id=%s args_bytes=%d", source, name, id, argsBytes)
 }
 
+func logToolPath(name, id, path string) {
+	log.Printf("[agent-tool] target_path name=%s id=%s path=%s", name, id, path)
+}
+
 func logToolResult(name, id, content string) {
 	if looksLikeToolFailure(content) {
 		log.Printf("[agent-tool] result suspected_failure=true name=%s id=%s bytes=%d preview=%q", name, id, len(content), safeLogPreview(content, 300))
 		return
 	}
 	log.Printf("[agent-tool] result name=%s id=%s bytes=%d", name, id, len(content))
+}
+
+func toolPathFromArgs(args string) string {
+	args = strings.TrimSpace(args)
+	if args == "" || !strings.HasPrefix(args, "{") {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(args), &payload); err != nil {
+		return ""
+	}
+	for _, key := range []string{"path", "file_path", "filename", "file", "pattern"} {
+		value, _ := payload[key].(string)
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func looksLikeToolFailure(content string) bool {
