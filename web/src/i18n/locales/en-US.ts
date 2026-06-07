@@ -332,7 +332,7 @@ const enUS = {
   'agents.tool.skills.title': 'Skills',
   'agents.tool.skills.subtitle': 'Load writing skills from the Skills directory',
   'agents.tool.loreRead.title': 'Read Lore',
-  'agents.tool.loreRead.subtitle': 'read_lore_items / search_lore_items',
+  'agents.tool.loreRead.subtitle': 'list_lore_items / read_lore_items',
   'agents.tool.loreWrite.title': 'Write Lore',
   'agents.tool.loreWrite.subtitle': 'write_lore_items',
   'agents.tool.todo.title': 'Task List',

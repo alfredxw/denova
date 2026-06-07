@@ -332,7 +332,7 @@ const zhCN = {
   'agents.tool.skills.title': 'Skills',
   'agents.tool.skills.subtitle': '从 Skills 目录加载创作技能',
   'agents.tool.loreRead.title': '读取资料库',
-  'agents.tool.loreRead.subtitle': 'read_lore_items / search_lore_items',
+  'agents.tool.loreRead.subtitle': 'list_lore_items / read_lore_items',
   'agents.tool.loreWrite.title': '写入资料库',
   'agents.tool.loreWrite.subtitle': 'write_lore_items',
   'agents.tool.todo.title': '任务清单',
