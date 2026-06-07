@@ -64,7 +64,7 @@ version_auto_retention = 100
 ui_font_family = "apple-system"
 ui_font_size = 12
 reading_font_family = "apple-system"
-reading_font_size = 18
+reading_font_size = 16
 
 # Agent
 max_iteration = 50

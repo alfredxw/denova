@@ -10,6 +10,7 @@ web/dist/
 plan.md
 docs/
 .worktrees/
+.pnpm-store/
 .DS_Store
 .nova
 prd

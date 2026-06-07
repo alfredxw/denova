@@ -275,6 +275,7 @@ const zhCN = {
   'planning.outlineEmpty': 'setting/outline.md 尚未生成',
   'planning.chapterPlans': '章节组细纲',
   'planning.chapterPlanCount': '{{count}} 组',
+  'planning.chapterPlanHistory': '历史章节组',
   'planning.chapterPlansEmpty': 'setting/chapter-groups/ 下还没有细纲',
   'planning.volumeChapters': '分卷章节',
   'planning.unvolumed': '未分卷',

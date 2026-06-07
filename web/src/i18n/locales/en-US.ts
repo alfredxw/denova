@@ -275,6 +275,7 @@ const enUS = {
   'planning.outlineEmpty': 'setting/outline.md has not been generated',
   'planning.chapterPlans': 'Chapter Group Outlines',
   'planning.chapterPlanCount': '{{count}} groups',
+  'planning.chapterPlanHistory': 'Older Groups',
   'planning.chapterPlansEmpty': 'No outlines under setting/chapter-groups/',
   'planning.volumeChapters': 'Volume Chapters',
   'planning.unvolumed': 'Unvolumed',

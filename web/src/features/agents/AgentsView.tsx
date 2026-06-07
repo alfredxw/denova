@@ -135,8 +135,8 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
 
   useAutoSaveSettings({
     draft,
+    saved: layered ? settingsForLayer(layered, activeLayer) : {},
     ready: Boolean(layered),
-    resetKey: `${activeLayer}:${JSON.stringify(layered ? settingsForLayer(layered, activeLayer) : {})}`,
     save: saveDraft,
     onSavingChange: setSaving,
     onSaved: applySavedSettings,

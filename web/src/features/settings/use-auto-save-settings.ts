@@ -7,27 +7,29 @@ type SaveSettings = (settings: Settings) => Promise<LayeredSettings>
 
 export function useAutoSaveSettings({
   draft,
+  saved,
   ready,
-  resetKey,
   save,
   onSavingChange,
   onSaved,
   onError,
 }: {
   draft: Settings
+  saved: Settings
   ready: boolean
-  resetKey: string
   save: SaveSettings
   onSavingChange: (saving: boolean) => void
   onSaved: (next: LayeredSettings) => void
   onError: (message: string) => void
 }) {
   const baselineRef = useRef('')
+  const waitingForDraftSyncRef = useRef(false)
   const saveRef = useRef(save)
   const onSavingChangeRef = useRef(onSavingChange)
   const onSavedRef = useRef(onSaved)
   const onErrorRef = useRef(onError)
   const draftKey = useMemo(() => stableStringifySettings(draft), [draft])
+  const savedKey = useMemo(() => stableStringifySettings(saved), [saved])
 
   useEffect(() => { saveRef.current = save }, [save])
   useEffect(() => { onSavingChangeRef.current = onSavingChange }, [onSavingChange])
@@ -35,11 +37,20 @@ export function useAutoSaveSettings({
   useEffect(() => { onErrorRef.current = onError }, [onError])
 
   useEffect(() => {
-    if (ready) baselineRef.current = draftKey
-  }, [ready, resetKey])
+    if (!ready) return
+    baselineRef.current = savedKey
+    waitingForDraftSyncRef.current = true
+  }, [ready, savedKey])
 
   useEffect(() => {
-    if (!ready || draftKey === baselineRef.current) return
+    if (!ready) return
+    if (waitingForDraftSyncRef.current) {
+      if (draftKey === baselineRef.current) {
+        waitingForDraftSyncRef.current = false
+      }
+      return
+    }
+    if (draftKey === baselineRef.current) return
     const snapshot = draft
     const snapshotKey = draftKey
     const timer = window.setTimeout(() => {

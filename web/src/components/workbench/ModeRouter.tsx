@@ -553,8 +553,17 @@ function ChapterOutline({
 }) {
   const { t } = useTranslation()
   const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set())
+  const [chapterPlanHistoryExpanded, setChapterPlanHistoryExpanded] = useState(false)
   const volumes = useMemo(() => groupChaptersByVolume(chapters, t), [chapters, t])
   const hasPlanning = outline || chapterPlans.length > 0
+  const latestChapterPlan = chapterPlans[chapterPlans.length - 1]
+  const historicalChapterPlans = useMemo(() => chapterPlans.slice(0, -1), [chapterPlans])
+
+  useEffect(() => {
+    if (selectedFile && historicalChapterPlans.some((plan) => plan.path === selectedFile)) {
+      setChapterPlanHistoryExpanded(true)
+    }
+  }, [historicalChapterPlans, selectedFile])
 
   const toggleVolume = (key: string) => {
     setCollapsedVolumes(prev => {
@@ -591,9 +600,33 @@ function ChapterOutline({
         </div>
         {chapterPlans.length > 0 ? (
           <div className="space-y-1">
-            {chapterPlans.map((plan) => (
-              <PlanningListItem key={plan.path} document={plan} icon="plan" selected={selectedFile === plan.path} onSelectFile={onSelectFile} />
-            ))}
+            {latestChapterPlan && (
+              <PlanningListItem document={latestChapterPlan} icon="plan" selected={selectedFile === latestChapterPlan.path} onSelectFile={onSelectFile} />
+            )}
+            {historicalChapterPlans.length > 0 && (
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  className="nova-nav-item flex w-full items-center gap-2 rounded-[var(--nova-radius)] px-2 py-1.5 text-left text-[11px] text-[var(--nova-text-muted)]"
+                  onClick={() => setChapterPlanHistoryExpanded((expanded) => !expanded)}
+                >
+                  {chapterPlanHistoryExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{t('planning.chapterPlanHistory')}</span>
+                  <span className="shrink-0 text-[var(--nova-text-faint)]">{t('planning.chapterPlanCount', { count: historicalChapterPlans.length })}</span>
+                </button>
+                {chapterPlanHistoryExpanded && (
+                  <div className="space-y-1 pl-4">
+                    {historicalChapterPlans.map((plan) => (
+                      <PlanningListItem key={plan.path} document={plan} icon="plan" selected={selectedFile === plan.path} onSelectFile={onSelectFile} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <PlanningEmptyState text={t('planning.chapterPlansEmpty')} />
