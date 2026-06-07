@@ -241,7 +241,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 		}
 		log.Printf("[agent-task] load ide teller id=%s workspace=%s", runtimeCfg.IDEStoryTellerID, workspace)
 
-		// 注入当前 IDE 默认讲述者自己的默认风格参考；仅在用户本轮未指定 # 风格时生效。
+		// 注入当前 IDE 默认导演自己的默认风格参考；仅在用户本轮未指定 # 风格时生效。
 		if len(req.StyleReferences) == 0 {
 			teller := loadInteractiveTeller(novaDir, runtimeCfg.IDEStoryTellerID)
 			if len(teller.StyleRules) > 0 {

@@ -13,7 +13,7 @@ import (
 	"nova/internal/prompts"
 )
 
-// IDEStoryTeller 描述 IDE 创作 Agent 本轮使用的默认讲述者规则。
+// IDEStoryTeller 描述 IDE 创作 Agent 本轮使用的默认导演规则。
 type IDEStoryTeller struct {
 	ID          string
 	Name        string
@@ -41,7 +41,7 @@ func BuildInstruction(cfg *config.Config, state *book.State, teller IDEStoryTell
 	})
 	logSystemPromptComposition("ide", cfg.Workspace, creator, stateContext, instruction, promptSource{
 		source:  "系统提示",
-		title:   "IDE 默认讲述者规则",
+		title:   "IDE 默认导演规则",
 		content: teller.Prompt,
 		note:    teller.ID,
 	})
@@ -70,7 +70,7 @@ func BuildInteractiveStoryInstruction(cfg *config.Config, state *book.State, tel
 	})
 	logSystemPromptComposition("interactive", workspace, creator, "", instruction, promptSource{
 		source:  "系统提示",
-		title:   "讲述者系统规则",
+		title:   "导演系统规则",
 		content: teller.StoryTellerSystemPrompt,
 		note:    teller.StoryTellerID,
 	})

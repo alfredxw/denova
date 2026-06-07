@@ -162,7 +162,7 @@ describe('App', () => {
     expect(screen.getByText('这些写入能力由应用层执行：模型先生成结构化编辑方案，后端校验后保存；不是 deep-agent 文件/命令/Skills 工具链，所以这里不提供单项工具开关。')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '版本说明 Agent自动版本摘要' }))
-    expect(screen.getByText('这个 Agent 当前是纯模型调用，不修改文件、资料库或讲述者；这里只配置模型与思考参数。')).toBeInTheDocument()
+    expect(screen.getByText('这个 Agent 当前是纯模型调用，不修改文件、资料库或导演；这里只配置模型与思考参数。')).toBeInTheDocument()
 
     const agentsButton = screen.getByRole('button', { name: 'Agents' })
     expect(agentsButton).toHaveClass('is-active')

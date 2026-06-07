@@ -228,7 +228,7 @@ function IdeTellerSelector({ workspace, tellers }: { workspace: string; tellers:
       await updateWorkspaceSettings({ ...settings.workspace, ide_story_teller_id: next })
       window.dispatchEvent(new CustomEvent('nova:settings-updated'))
     } catch (e) {
-      console.warn('保存 IDE 默认讲述者失败', e)
+      console.warn('保存 IDE 默认导演失败', e)
       setValue(previous)
     } finally {
       setSaving(false)

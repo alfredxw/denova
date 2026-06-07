@@ -64,10 +64,10 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if history[3].Role != schema.User || !strings.Contains(history[3].Content, "我点燃火把") || strings.Contains(history[3].Content, "</STATE_DELTA>") {
 		t.Fatalf("history[3] mismatch: %#v", history[3])
 	}
-	if !strings.Contains(history[3].Content, "讲述者本轮上下文规则") || !strings.Contains(history[3].Content, "讲述者随机事件率") {
+	if !strings.Contains(history[3].Content, "导演本轮上下文规则") || !strings.Contains(history[3].Content, "导演随机事件率") {
 		t.Fatalf("history[3] should include turn-local teller guidance: %#v", history[3])
 	}
-	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, "讲述者注入规则") || !strings.Contains(sources, "本轮上下文") {
+	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, "导演注入规则") || !strings.Contains(sources, "本轮上下文") {
 		t.Fatalf("context sources should include teller slots: %s", sources)
 	}
 
@@ -100,10 +100,10 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stateInstruction, "讲述者状态记忆规则") || !strings.Contains(stateInstruction, "帮助后续回合稳定承接") {
+	if !strings.Contains(stateInstruction, "导演状态记忆规则") || !strings.Contains(stateInstruction, "帮助后续回合稳定承接") {
 		t.Fatalf("state instruction should include state_memory rules: %s", stateInstruction)
 	}
-	if strings.Contains(stateInstruction, "经典叙事者") || strings.Contains(stateInstruction, "讲述者本轮上下文规则") {
+	if strings.Contains(stateInstruction, "经典叙事者") || strings.Contains(stateInstruction, "导演本轮上下文规则") {
 		t.Fatalf("state instruction should not include story-only teller rules: %s", stateInstruction)
 	}
 	onStage := snapshot.State["on_stage"].([]any)

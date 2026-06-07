@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 内置导演新增 `直白情色` 和 `编剧风格` 两个预设，分别面向成人自愿情欲张力和编剧式场景节拍。
 - WebUI 新增 i18n 多语言基础设施，接入 `i18next` / `react-i18next`，首版提供简体中文与 English 资源，并为后续语言扩展预留统一 locale 目录。
 - 设置页新增“界面语言”配置，支持跟随浏览器、简体中文和 English；语言配置进入现有分层设置体系，保存后可热切换。
 - 后端 API 支持 `X-Nova-Locale` 请求头，workspace、books、settings、versions、session、chat、interactive、lore、style 和角色卡导入等短错误/成功提示会按中英文返回。
@@ -15,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 用户可见“讲述者 / Teller”统一改名为“导演 / Director”，内部 `Teller`、`story_teller_id`、`story-tellers/` 和 API 路径保持兼容不迁移。
+- 强化内置导演规则内容，旧版内置 JSON 会随 `tellerVersion` 自动刷新，规则会更明确影响剧情裁定、角色主动性、代价、节奏、伏笔和状态沉淀。
 - 设置页 General Appearance 调整到顶部，语言选项固定展示为 `Follow Browser`、`简体中文` 和 `English`，并支持设置页与 Agents 页修改后自动保存。
 - 创作 Agent 的书籍脑暴前置流程现在会同时读取 `脑暴.md` 和 `CREATOR.md`，基于两份模板与作者确认顶层设定和基本创作规则，确认后先写回模板再生成大纲、进度、角色状态和资料库。
 - IDE 作品目录中的章节组细纲默认只展示最新一组，历史章节组可折叠展开；章节组生成规则同步收紧为短小可维护，方便作者阅读、评论和后续更新。

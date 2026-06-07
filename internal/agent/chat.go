@@ -42,7 +42,7 @@ type ChatRequest struct {
 	Selections      []TextSelectionRef `json:"selections"`
 	PlanMode        bool               `json:"plan_mode"`
 
-	// StyleRules 由后端按当前讲述者配置注入（场景 → 风格文件）。
+	// StyleRules 由后端按当前导演配置注入（场景 → 风格文件）。
 	// 仅当 StyleReferences 为空时才会作为"默认场景化建议"参与本轮上下文，
 	// 由 Agent 基于本轮章节内容自动匹配最相近的场景并 read_file 对应文件。
 	StyleRules []StyleRule `json:"-"`

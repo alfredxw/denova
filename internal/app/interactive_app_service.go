@@ -23,7 +23,7 @@ type TellerAgentResult struct {
 	Tellers []interactive.Teller `json:"tellers"`
 }
 
-// InteractiveAppService 负责互动故事、剧情分支、讲述者和互动 Agent 任务。
+// InteractiveAppService 负责互动故事、剧情分支、导演和互动 Agent 任务。
 type InteractiveAppService struct {
 	app *App
 }
@@ -406,22 +406,22 @@ func (s *InteractiveAppService) StartTellerAgentTask(instruction string, targetI
 			return
 		}
 
-		emitLoreToolCall(emit, "teller-read", "读取讲述者配置", fmt.Sprintf(`{"target_id":%q}`, targetID))
+		emitLoreToolCall(emit, "teller-read", "读取导演配置", fmt.Sprintf(`{"target_id":%q}`, targetID))
 		tellers, err := library.List()
 		if err != nil {
 			emitTellerError(sess, emit, err)
-			log.Printf("[teller-agent-task] 读取讲述者失败 target_id=%s err=%v", targetID, err)
+			log.Printf("[teller-agent-task] 读取导演失败 target_id=%s err=%v", targetID, err)
 			return
 		}
 		if targetID != "" && !tellerExists(tellers, targetID) {
-			err := fmt.Errorf("目标讲述者不存在: %s", targetID)
+			err := fmt.Errorf("目标导演不存在: %s", targetID)
 			emitTellerError(sess, emit, err)
-			log.Printf("[teller-agent-task] 目标讲述者不存在 target_id=%s", targetID)
+			log.Printf("[teller-agent-task] 目标导演不存在 target_id=%s", targetID)
 			return
 		}
-		emitLoreToolResult(emit, "teller-read", fmt.Sprintf("已读取讲述者配置，共 %d 个。", len(tellers)))
+		emitLoreToolResult(emit, "teller-read", fmt.Sprintf("已读取导演配置，共 %d 个。", len(tellers)))
 
-		emitLoreToolCall(emit, "teller-plan", "生成讲述者编辑方案", fmt.Sprintf(`{"selected_teller_id":%q,"references":%d,"history_messages":%d}`, targetID, len(references), len(history)))
+		emitLoreToolCall(emit, "teller-plan", "生成导演编辑方案", fmt.Sprintf(`{"selected_teller_id":%q,"references":%d,"history_messages":%d}`, targetID, len(references), len(history)))
 		plan, err := agent.StreamTellerEditPlan(ctx, &runtimeCfg, instruction, tellers, targetID, references, history, emit)
 		if err != nil {
 			emitTellerError(sess, emit, err)
@@ -431,7 +431,7 @@ func (s *InteractiveAppService) StartTellerAgentTask(instruction string, targetI
 		emitLoreToolResult(emit, "teller-plan", fmt.Sprintf("已生成 %s 方案：%s。", plan.Action, plan.Message))
 
 		applyTargetID := strings.TrimSpace(plan.Teller.ID)
-		emitLoreToolCall(emit, "teller-apply", "应用讲述者变更", fmt.Sprintf(`{"action":%q,"teller_id":%q}`, plan.Action, applyTargetID))
+		emitLoreToolCall(emit, "teller-apply", "应用导演变更", fmt.Sprintf(`{"action":%q,"teller_id":%q}`, plan.Action, applyTargetID))
 		var teller interactive.Teller
 		if plan.Action == "create" {
 			teller, err = library.Create(plan.Teller)
@@ -446,7 +446,7 @@ func (s *InteractiveAppService) StartTellerAgentTask(instruction string, targetI
 		nextTellers, err := library.List()
 		if err != nil {
 			emitTellerError(sess, emit, err)
-			log.Printf("[teller-agent-task] 刷新讲述者列表失败 action=%s teller_id=%s err=%v", plan.Action, teller.ID, err)
+			log.Printf("[teller-agent-task] 刷新导演列表失败 action=%s teller_id=%s err=%v", plan.Action, teller.ID, err)
 			return
 		}
 		result := TellerAgentResult{
@@ -523,7 +523,7 @@ func tellerResultMessage(result TellerAgentResult) string {
 	}
 	message := strings.TrimSpace(result.Message)
 	if message == "" {
-		message = "讲述者 Agent 已完成"
+		message = "导演 Agent 已完成"
 	}
 	if result.Teller.Name != "" {
 		message += fmt.Sprintf("（%s：%s）", action, result.Teller.Name)
@@ -543,14 +543,14 @@ func tellerExists(tellers []interactive.Teller, id string) bool {
 func rejectUnsupportedTellerAgentInstruction(instruction string) error {
 	normalized := strings.ToLower(strings.TrimSpace(instruction))
 	deleteWords := []string{"删除", "删掉", "移除", "remove", "delete"}
-	tellerWords := []string{"讲述者", "story teller", "teller", "规则包"}
+	tellerWords := []string{"导演", "讲述者", "story director", "director", "story teller", "teller", "规则包"}
 	for _, deleteWord := range deleteWords {
 		if !strings.Contains(normalized, deleteWord) {
 			continue
 		}
 		for _, tellerWord := range tellerWords {
 			if strings.Contains(normalized, tellerWord) {
-				return fmt.Errorf("讲述者 Agent 当前只支持创建或修改单个讲述者，不支持删除")
+				return fmt.Errorf("导演 Agent 当前只支持创建或修改单个导演，不支持删除")
 			}
 		}
 	}

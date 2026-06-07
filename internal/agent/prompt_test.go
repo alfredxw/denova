@@ -28,7 +28,7 @@ func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 			t.Fatalf("interactive story instruction should contain %q:\n%s", required, instruction)
 		}
 	}
-	if !strings.Contains(instruction, "讲述者系统规则") || !strings.Contains(instruction, "经典叙事者") {
+	if !strings.Contains(instruction, "导演系统规则") || !strings.Contains(instruction, "经典叙事者") {
 		t.Fatalf("interactive story instruction should include teller system rules:\n%s", instruction)
 	}
 }

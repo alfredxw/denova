@@ -452,7 +452,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     tellerAutoSaveTimer.current = window.setTimeout(() => {
       tellerAutoSaveTimer.current = null
       void saveTellerDraft('auto').catch((err) => {
-        console.warn('[teller-editor] 自动保存讲述者失败', err)
+        console.warn('[teller-editor] 自动保存导演失败', err)
       })
     }, 1200)
     return () => {
@@ -2617,8 +2617,8 @@ function newTellerDraft(): Partial<Teller> {
   const id = `custom-${Date.now()}`
   return {
     id,
-    name: '自定义讲述者',
-    description: '新的故事讲述规则包',
+    name: '自定义导演',
+    description: '新的故事导演规则包',
     random_event_rate: 0.15,
     reply_target_chars: 1200,
     style_rules: [],
@@ -2635,14 +2635,14 @@ function newTellerDraft(): Partial<Teller> {
         name: '系统提示',
         target: 'system',
         enabled: true,
-        content: '你是一位自定义故事讲述者。你要明确影响故事的题材倾向、角色反应和剧情推进方式。',
+        content: '你是一位自定义故事导演。你要明确影响故事的题材倾向、角色反应、剧情裁定、节奏推进和长期叙事原则。',
       },
       {
         id: 'turn_context',
         name: '本轮上下文',
         target: 'turn_context',
         enabled: true,
-        content: '每轮都要让用户行动带来具体后果，并主动制造符合讲述者风格的反馈、阻碍、发现、NPC 反应或新的行动入口。',
+        content: '每轮都要让用户行动带来具体后果，并主动制造符合导演风格的反馈、阻碍、发现、NPC 反应、代价、暗线推进或新的行动入口。',
       },
       {
         id: 'state_memory',

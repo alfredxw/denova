@@ -43,7 +43,7 @@ func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, inst
 	}
 	instruction = strings.TrimSpace(instruction)
 	if instruction == "" {
-		return "", fmt.Errorf("讲述者编辑指令不能为空")
+		return "", fmt.Errorf("导演编辑指令不能为空")
 	}
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindTellerEditor)
 	modelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
@@ -51,7 +51,7 @@ func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, inst
 	}
 	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
-		return "", fmt.Errorf("创建讲述者编辑模型失败: %w", err)
+		return "", fmt.Errorf("创建导演编辑模型失败: %w", err)
 	}
 	userPrompt, err := buildTellerUserPrompt(instruction, tellers, targetID, references, history)
 	if err != nil {
@@ -65,17 +65,17 @@ func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, inst
 	if emit == nil {
 		msg, err := cm.Generate(ctx, messages)
 		if err != nil {
-			return "", fmt.Errorf("生成讲述者编辑方案失败: %w", err)
+			return "", fmt.Errorf("生成导演编辑方案失败: %w", err)
 		}
 		if msg == nil {
-			return "", fmt.Errorf("讲述者编辑模型返回为空")
+			return "", fmt.Errorf("导演编辑模型返回为空")
 		}
 		return strings.TrimSpace(msg.Content), nil
 	}
 
 	stream, err := cm.Stream(ctx, messages)
 	if err != nil {
-		return "", fmt.Errorf("生成讲述者编辑方案失败: %w", err)
+		return "", fmt.Errorf("生成导演编辑方案失败: %w", err)
 	}
 	defer stream.Close()
 
@@ -86,7 +86,7 @@ func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, inst
 			break
 		}
 		if err != nil {
-			return "", fmt.Errorf("接收讲述者编辑方案失败: %w", err)
+			return "", fmt.Errorf("接收导演编辑方案失败: %w", err)
 		}
 		if msg == nil {
 			continue
@@ -105,47 +105,47 @@ func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, inst
 func buildTellerUserPrompt(instruction string, tellers []interactive.Teller, targetID string, references []string, history []*schema.Message) (string, error) {
 	tellersJSON, err := json.MarshalIndent(tellers, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("序列化讲述者列表失败: %w", err)
+		return "", fmt.Errorf("序列化导演列表失败: %w", err)
 	}
 	referencedTellers := collectTellerReferences(instruction, targetID, references, tellers)
-	userPrompt := fmt.Sprintf("用户编辑指令：\n%s\n\n界面当前选中的讲述者 ID（仅作为上下文参考，不强制修改）：%s\n\n当前讲述者列表 JSON：\n%s", instruction, strings.TrimSpace(targetID), string(tellersJSON))
+	userPrompt := fmt.Sprintf("用户编辑指令：\n%s\n\n界面当前选中的导演 ID（仅作为上下文参考，不强制修改）：%s\n\n当前导演列表 JSON：\n%s", instruction, strings.TrimSpace(targetID), string(tellersJSON))
 	if len(referencedTellers) > 0 {
 		refsJSON, err := json.MarshalIndent(referencedTellers, "", "  ")
 		if err != nil {
-			return "", fmt.Errorf("序列化引用讲述者失败: %w", err)
+			return "", fmt.Errorf("序列化引用导演失败: %w", err)
 		}
-		userPrompt = fmt.Sprintf("用户编辑指令：\n%s\n\n用户显式 @ 引用或界面选中的讲述者 JSON（优先作为 update 候选，但用户明确要求新建时仍应 create）：\n%s\n\n界面当前选中的讲述者 ID（仅作为上下文参考，不强制修改）：%s\n\n当前讲述者列表 JSON：\n%s", instruction, string(refsJSON), strings.TrimSpace(targetID), string(tellersJSON))
+		userPrompt = fmt.Sprintf("用户编辑指令：\n%s\n\n用户显式 @ 引用或界面选中的导演 JSON（优先作为 update 候选，但用户明确要求新建时仍应 create）：\n%s\n\n界面当前选中的导演 ID（仅作为上下文参考，不强制修改）：%s\n\n当前导演列表 JSON：\n%s", instruction, string(refsJSON), strings.TrimSpace(targetID), string(tellersJSON))
 	}
 	if historyText := formatLoreHistory(history); historyText != "" {
-		userPrompt = fmt.Sprintf("以下是 /clear 之后的讲述者 Agent 有效对话上下文，仅用于理解用户连续指令，不要把历史意图当成本轮任务：\n%s\n\n%s", historyText, userPrompt)
+		userPrompt = fmt.Sprintf("以下是 /clear 之后的导演 Agent 有效对话上下文，仅用于理解用户连续指令，不要把历史意图当成本轮任务：\n%s\n\n%s", historyText, userPrompt)
 	}
 	return userPrompt, nil
 }
 
 func parseTellerEditPlan(content string, tellers []interactive.Teller, targetID string, references []string, instruction string) (TellerEditPlan, error) {
 	if strings.TrimSpace(content) == "" {
-		return TellerEditPlan{}, fmt.Errorf("讲述者编辑模型返回为空")
+		return TellerEditPlan{}, fmt.Errorf("导演编辑模型返回为空")
 	}
 	var plan TellerEditPlan
 	if err := json.Unmarshal([]byte(strings.TrimSpace(content)), &plan); err != nil {
-		return TellerEditPlan{}, fmt.Errorf("解析讲述者编辑方案失败: %w", err)
+		return TellerEditPlan{}, fmt.Errorf("解析导演编辑方案失败: %w", err)
 	}
 	action := strings.ToLower(strings.TrimSpace(plan.Action))
 	if action == "delete" || action == "remove" || action == "merge" || action == "batch" {
-		return TellerEditPlan{}, fmt.Errorf("讲述者 Agent 当前只支持创建或修改单个讲述者，不支持删除、批量修改或合并")
+		return TellerEditPlan{}, fmt.Errorf("导演 Agent 当前只支持创建或修改单个导演，不支持删除、批量修改或合并")
 	}
 	if action != "create" && action != "update" {
-		return TellerEditPlan{}, fmt.Errorf("讲述者编辑方案 action 无效: %s", plan.Action)
+		return TellerEditPlan{}, fmt.Errorf("导演编辑方案 action 无效: %s", plan.Action)
 	}
 	plan.Action = action
 	referencedTellers := collectTellerReferences(instruction, targetID, references, tellers)
 	if plan.Action == "update" {
 		plan.Teller.ID = resolveTellerUpdateID(plan.Teller.ID, plan.Teller.Name, referencedTellers, tellers)
 		if strings.TrimSpace(plan.Teller.ID) == "" {
-			return TellerEditPlan{}, fmt.Errorf("讲述者编辑方案没有指定要修改的讲述者")
+			return TellerEditPlan{}, fmt.Errorf("导演编辑方案没有指定要修改的导演")
 		}
 		if !tellerIDExists(tellers, plan.Teller.ID) {
-			return TellerEditPlan{}, fmt.Errorf("目标讲述者不存在: %s", plan.Teller.ID)
+			return TellerEditPlan{}, fmt.Errorf("目标导演不存在: %s", plan.Teller.ID)
 		}
 	} else if plan.Action == "create" && tellerIDExists(tellers, plan.Teller.ID) {
 		plan.Teller.ID = ""
@@ -156,13 +156,13 @@ func parseTellerEditPlan(content string, tellers []interactive.Teller, targetID 
 	plan.Teller.Error = ""
 	if strings.TrimSpace(plan.Message) == "" {
 		if plan.Action == "create" {
-			plan.Message = "讲述者 Agent 创建讲述者"
+			plan.Message = "导演 Agent 创建导演"
 		} else {
-			plan.Message = "讲述者 Agent 修改讲述者"
+			plan.Message = "导演 Agent 修改导演"
 		}
 	}
 	if len(plan.Teller.Slots) == 0 {
-		return TellerEditPlan{}, fmt.Errorf("讲述者编辑方案没有生成任何注入规则")
+		return TellerEditPlan{}, fmt.Errorf("导演编辑方案没有生成任何注入规则")
 	}
 	log.Printf("[teller-editor-agent] generate done action=%s teller_id=%s message=%q slots=%d", plan.Action, plan.Teller.ID, plan.Message, len(plan.Teller.Slots))
 	return plan, nil
@@ -239,7 +239,7 @@ func tellerIDExists(tellers []interactive.Teller, id string) bool {
 }
 
 func tellerEditorSystemInstruction() string {
-	return strings.TrimSpace(`你是 Nova 的讲述者配置 Agent，负责按照用户指令创建或修改一个互动小说讲述者。
+	return strings.TrimSpace(`你是 Nova 的导演配置 Agent，负责按照用户指令创建或修改一个互动小说导演。
 
 你只能输出一个 JSON object，不要输出 Markdown、解释、代码块或额外文本。
 JSON 格式：
@@ -247,8 +247,8 @@ JSON 格式：
   "message": "一句中文变更说明",
   "action": "create | update",
   "teller": {
-    "id": "create 可省略；update 必须填写要修改的已有讲述者 ID",
-    "name": "讲述者名称",
+    "id": "create 可省略；update 必须填写要修改的已有导演 ID",
+    "name": "导演名称",
     "description": "一句中文简介",
     "random_event_rate": 0.15,
     "reply_target_chars": 1200,
@@ -271,7 +271,7 @@ JSON 格式：
         "name": "系统提示",
         "target": "system",
         "enabled": true,
-        "content": "讲述者身份、题材倾向和长期叙事原则"
+        "content": "导演身份、题材倾向和长期叙事原则"
       },
       {
         "id": "turn_context",
@@ -292,13 +292,13 @@ JSON 格式：
 }
 
 规则：
-1. 每次只创建或修改一个讲述者，不能删除、批量修改、合并或影响多个讲述者。
-2. 不要被界面当前选中项强制限制；必须根据用户本轮意图决定 action。用户要求新建、另做一版、增加一个风格时用 create；用户要求修改、调整、优化某个已有讲述者时用 update。
-3. 用户用 @ 引用讲述者或明确写出已有讲述者名称/ID 时，优先把它作为 update 对象；但用户明确要求基于它新建一版时仍用 create。
-4. update 必须填写已有讲述者 ID，并基于该讲述者的完整 JSON 修改后返回完整 teller，不要只返回局部字段，避免丢失规则。
+1. 每次只创建或修改一个导演，不能删除、批量修改、合并或影响多个导演。
+2. 不要被界面当前选中项强制限制；必须根据用户本轮意图决定 action。用户要求新建、另做一版、增加一个风格时用 create；用户要求修改、调整、优化某个已有导演时用 update。
+3. 用户用 @ 引用导演或明确写出已有导演名称/ID 时，优先把它作为 update 对象；但用户明确要求基于它新建一版时仍用 create。
+4. update 必须填写已有导演 ID，并基于该导演的完整 JSON 修改后返回完整 teller，不要只返回局部字段，避免丢失规则。
 5. slots 至少包含一条启用规则，target 只能使用 system、turn_context、state_memory。
 6. random_event_rate 使用 0 到 1 的数字；不知道时使用 0.15。
-7. reply_target_chars 和 style_rules 是这个讲述者独立的互动配置；用户没要求修改时必须原样保留，缺省或不确定时可省略。
+7. reply_target_chars 和 style_rules 是这个导演独立的互动配置；用户没要求修改时必须原样保留，缺省或不确定时可省略。
 8. context_policy 不确定时使用 creator=always、lore=relevant、runtime_state=always、recent_turns=8。
 9. 所有面向用户的 name、description、tags 和 content 优先使用中文。
 10. 用户要求删除或批量操作时，返回 action 之外的 unsupported 文本是不允许的；请改为用 message 说明当前只支持单个创建或修改，并给出一个低风险 create/update 方案。`)

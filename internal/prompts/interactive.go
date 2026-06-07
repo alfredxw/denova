@@ -51,10 +51,10 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 		sb.WriteString("\n\n---\n\n")
 	}
 	if tellerSystem := strings.TrimSpace(in.StoryTellerSystemPrompt); tellerSystem != "" {
-		sb.WriteString("# 讲述者系统规则\n\n")
-		writeField(&sb, "讲述者 ID", in.StoryTellerID)
-		writeField(&sb, "讲述者名称", in.StoryTellerName)
-		writeField(&sb, "讲述者说明", in.StoryTellerDescription)
+		sb.WriteString("# 导演系统规则\n\n")
+		writeField(&sb, "导演 ID", in.StoryTellerID)
+		writeField(&sb, "导演名称", in.StoryTellerName)
+		writeField(&sb, "导演说明", in.StoryTellerDescription)
 		sb.WriteString("\n")
 		sb.WriteString(tellerSystem)
 		sb.WriteString("\n\n---\n\n")
@@ -111,7 +111,7 @@ func InteractiveStoryContext(in InteractiveStoryPromptInput) string {
 	writeField(&sb, "标题", in.Title)
 	writeField(&sb, "开端", in.Origin)
 	writeField(&sb, "当前分支", in.BranchID)
-	writeField(&sb, "讲述者 ID", in.StoryTellerID)
+	writeField(&sb, "导演 ID", in.StoryTellerID)
 	if strings.TrimSpace(in.LoreItems) != "" {
 		writeBlock(&sb, "资料库", in.LoreItems)
 	} else {
@@ -135,7 +135,7 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 	if turnContext != "" || randomEventRate > 0 {
 		var sb strings.Builder
 		sb.WriteString(`
-讲述者本轮上下文规则：
+导演本轮上下文规则：
 `)
 		if turnContext != "" {
 			sb.WriteString(turnContext)
@@ -145,8 +145,8 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 		}
 		fmt.Fprintf(&sb, `
 
-讲述者随机事件率：%.2f。该值代表本轮主动引入意外、压力、转折或新线索的倾向；值越高，越应该让场景出现符合讲述者风格的扰动，但扰动必须遵守既有设定和因果。
-以上讲述者规则必须显著影响本轮剧情裁定、NPC 主动反应、代价、暗线推进和可选择；不要把规则文本作为正文输出。
+导演随机事件率：%.2f。该值代表本轮主动引入意外、压力、转折或新线索的倾向；值越高，越应该让场景出现符合导演风格的扰动，但扰动必须遵守既有设定和因果。
+以上导演规则必须显著影响本轮剧情裁定、NPC 主动反应、代价、暗线推进和可选择；不要把规则文本作为正文输出。
 `, randomEventRate)
 		turnBlock = sb.String()
 	}
@@ -193,7 +193,7 @@ func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) strin
 	writeField(&sb, "标题", in.Title)
 	writeField(&sb, "开端", in.Origin)
 	writeField(&sb, "当前分支", in.BranchID)
-	writeField(&sb, "讲述者 ID", in.StoryTellerID)
+	writeField(&sb, "导演 ID", in.StoryTellerID)
 	if strings.TrimSpace(in.LoreItems) != "" {
 		writeBlock(&sb, "资料库", in.LoreItems)
 	} else {
@@ -235,8 +235,8 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	writeField(&sb, "标题", in.Title)
 	writeField(&sb, "开端", in.Origin)
 	writeField(&sb, "当前分支", in.BranchID)
-	writeField(&sb, "讲述者 ID", in.StoryTellerID)
-	writeBlock(&sb, "讲述者状态记忆规则", in.StoryTellerMemory)
+	writeField(&sb, "导演 ID", in.StoryTellerID)
+	writeBlock(&sb, "导演状态记忆规则", in.StoryTellerMemory)
 	if strings.TrimSpace(in.LoreItems) != "" {
 		writeBlock(&sb, "资料库", in.LoreItems)
 	} else {

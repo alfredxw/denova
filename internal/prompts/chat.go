@@ -68,7 +68,7 @@ type StyleRule struct {
 	Styles []string
 }
 
-// StyleRulesHint 把讲述者的「场景 → 风格文件路径」映射作为建议附加到上下文。
+// StyleRulesHint 把导演的「场景 → 风格文件路径」映射作为建议附加到上下文。
 // 不直接读取文件内容，由 Agent 基于本轮章节内容自行判断是否要 read_file 对应风格。
 func StyleRulesHint(message string, rules []StyleRule) string {
 	var sb strings.Builder

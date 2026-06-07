@@ -12,7 +12,9 @@ export const LOCALE_OPTIONS: Array<{ value: LocaleCode; labelKey: string }> = [
   { value: 'en-US', labelKey: 'locale.en-US' },
 ]
 
-let configuredLocale: LocaleCode = 'auto'
+const CONFIGURED_LOCALE_STORAGE_KEY = 'nova.locale.configured'
+
+let configuredLocale: LocaleCode = readStoredConfiguredLocale()
 let fetchHeadersInstalled = false
 
 export function resolveLocale(locale: string | undefined | null, browserLanguage = browserLocaleSource()): ResolvedLocale {
@@ -24,13 +26,12 @@ export function resolveLocale(locale: string | undefined | null, browserLanguage
 
 export function setConfiguredLocale(locale: string | undefined | null) {
   configuredLocale = normalizeLocaleCode(locale)
+  writeStoredConfiguredLocale(configuredLocale)
   const resolved = resolveLocale(configuredLocale)
   if (i18next.language !== resolved) {
     void i18next.changeLanguage(resolved)
   }
-  if (typeof document !== 'undefined') {
-    document.documentElement.lang = resolved
-  }
+  applyDocumentLocale(resolved)
 }
 
 export function getConfiguredLocale(): LocaleCode {
@@ -84,6 +85,31 @@ function normalizeLocaleCode(locale: string | undefined | null): LocaleCode {
   return 'auto'
 }
 
+function readStoredConfiguredLocale(): LocaleCode {
+  if (typeof window === 'undefined') return 'auto'
+  try {
+    return normalizeLocaleCode(window.localStorage.getItem(CONFIGURED_LOCALE_STORAGE_KEY))
+  } catch (error) {
+    console.warn('[i18n] 读取本地语言配置失败', error)
+    return 'auto'
+  }
+}
+
+function writeStoredConfiguredLocale(locale: LocaleCode) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(CONFIGURED_LOCALE_STORAGE_KEY, locale)
+  } catch (error) {
+    console.warn('[i18n] 写入本地语言配置失败', error)
+  }
+}
+
+function applyDocumentLocale(locale: ResolvedLocale) {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = locale
+  }
+}
+
 function browserLocaleSource(): string {
   if (typeof navigator === 'undefined') return 'zh-CN'
   return navigator.languages?.[0] || navigator.language || 'zh-CN'
@@ -102,7 +128,7 @@ i18next
       'zh-CN': { translation: zhCN },
       'en-US': { translation: enUS },
     },
-    lng: resolveLocale('auto'),
+    lng: getResolvedLocale(),
     fallbackLng: 'zh-CN',
     keySeparator: false,
     interpolation: { escapeValue: false },
@@ -111,7 +137,7 @@ i18next
     console.error('[i18n] 初始化失败', error)
   })
 
-setConfiguredLocale('auto')
+setConfiguredLocale(configuredLocale)
 installLocaleFetchHeaders()
 
 export default i18next

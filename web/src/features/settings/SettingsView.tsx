@@ -61,7 +61,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     if (activeLayer !== 'workspace') return
     getInteractiveTellers()
       .then((items) => setAvailableTellers(items))
-      .catch((e) => console.warn('[settings] 获取讲述者列表失败', e))
+      .catch((e) => console.warn('[settings] 获取导演列表失败', e))
   }, [activeLayer])
 
   useEffect(() => {

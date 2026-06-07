@@ -397,7 +397,7 @@ func interactiveTellerSlotSources(teller interactive.Teller, targets ...string) 
 			continue
 		}
 		parts = append(parts, interactiveContextSource{
-			Source:  "讲述者注入规则",
+			Source:  "导演注入规则",
 			Title:   fmt.Sprintf("%s（%s）", slot.Name, slot.Target),
 			Content: slot.Content,
 			Note:    "teller=" + teller.ID,
