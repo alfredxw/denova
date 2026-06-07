@@ -31,6 +31,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { formatDateTime as formatLocaleDateTime } from '@/i18n'
+import { MessageList } from '@/components/Chat/MessageList'
 import { clearInteractiveTellerAgentSession, createInteractiveTeller, deleteInteractiveTeller, getInteractiveTellerAgentMessages, getInteractiveTellers, runInteractiveTellerAgentStream, updateInteractiveTeller } from '../api'
 import type { StyleRule, Teller, TellerAgentResult, TellerPromptSlot } from '../types'
 
@@ -647,6 +648,22 @@ type LoreAgentChatMessage = {
   result?: LoreAgentResult
 }
 
+const loreAgentMessageCache = new Map<string, LoreAgentChatMessage[]>()
+
+function cloneLoreAgentMessages(messages: LoreAgentChatMessage[]) {
+  return messages.map((message) => ({
+    ...message,
+    references: message.references ? [...message.references] : undefined,
+    result: message.result ? {
+      ...message.result,
+      items: [...message.result.items],
+      created: [...message.result.created],
+      updated: [...message.result.updated],
+      deleted_ids: [...message.result.deleted_ids],
+    } : undefined,
+  }))
+}
+
 type TellerAgentChatMessage = {
   id: string
   role: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'error' | 'clear'
@@ -701,13 +718,13 @@ function LoreAgentChat({
 }) {
   const { t } = useTranslation()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const messageEndRef = useRef<HTMLDivElement>(null)
-  const historyWorkspaceRef = useRef<string | null>(null)
   const workspaceRef = useRef(workspace)
   const [value, setValue] = useState('')
   const [referenceIds, setReferenceIds] = useState<string[]>([])
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
-  const [messages, setMessages] = useState<LoreAgentChatMessage[]>([])
+  const [messages, setMessages] = useState<LoreAgentChatMessage[]>(() => (
+    workspace ? cloneLoreAgentMessages(loreAgentMessageCache.get(workspace) || []) : []
+  ))
   const [running, setRunning] = useState(false)
   const referencedItems = referenceIds
     .map((id) => items.find((item) => item.id === id))
@@ -727,8 +744,10 @@ function LoreAgentChat({
   }, [items])
 
   useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages, running])
+    if (!workspace) return
+    if (messages.length === 1 && messages[0]?.id === 'load-error') return
+    loreAgentMessageCache.set(workspace, cloneLoreAgentMessages(messages))
+  }, [messages, workspace])
 
   useEffect(() => {
     const handleInitRequest = (event: Event) => {
@@ -744,19 +763,21 @@ function LoreAgentChat({
 
   useEffect(() => {
     workspaceRef.current = workspace
-    if (historyWorkspaceRef.current === workspace) return
-    historyWorkspaceRef.current = workspace || null
     setValue('')
     setReferenceIds([])
     setReferenceQuery(null)
-    setMessages([])
+    setMessages(workspace ? cloneLoreAgentMessages(loreAgentMessageCache.get(workspace) || []) : [])
     setRunning(false)
     if (!workspace) return
     let cancelled = false
     getLoreAgentMessages()
       .then((history) => {
         if (cancelled) return
-        setMessages(history.map((message, index) => loreHistoryMessageToChat(message, index, items)))
+        const nextMessages = history.map((message, index) => loreHistoryMessageToChat(message, index, items))
+        setMessages((current) => {
+          if (nextMessages.length === 0 && current.length > 0) return current
+          return nextMessages
+        })
       })
       .catch((error) => {
         if (!cancelled) {
@@ -954,6 +975,7 @@ function LoreAgentChat({
       setReferenceQuery(null)
     }
   }
+  const chatMessages = messages.map((message) => loreAgentMessageToChatMessage(message, t))
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
@@ -998,9 +1020,9 @@ function LoreAgentChat({
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-auto px-5 py-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
+          <div className="flex h-full items-center justify-center px-5 py-4">
             <div className="max-w-md rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 py-5 text-center">
               <div className="text-sm font-medium text-[var(--nova-text)]">{t('settingPanel.loreAgent.emptyTitle')}</div>
               <div className="mt-1 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.loreAgent.emptyDesc')}</div>
@@ -1019,18 +1041,14 @@ function LoreAgentChat({
             </div>
           </div>
         ) : (
-          <div className="mx-auto flex max-w-4xl flex-col gap-3">
-            {messages.map((message) => (
-              <LoreAgentMessage key={message.id} message={message} />
-            ))}
-            {running && (
-              <div className="flex items-center gap-2 self-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {t('settingPanel.loreAgent.running')}
-              </div>
-            )}
-            <div ref={messageEndRef} />
-          </div>
+          <MessageList
+            messages={chatMessages}
+            isStreaming={running}
+            activityContent={running ? t('settingPanel.loreAgent.running') : ''}
+            collapseTraceBeforeAssistant
+            scrollResetKey={`lore-agent:${workspace || 'none'}`}
+            bottomPaddingClassName="pb-6"
+          />
         )}
       </div>
 
@@ -1129,7 +1147,6 @@ function TellerAgentChat({
 }) {
   const { t } = useTranslation()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const messageEndRef = useRef<HTMLDivElement>(null)
   const historyWorkspaceRef = useRef<string | null>(null)
   const workspaceRef = useRef(workspace)
   const [value, setValue] = useState('')
@@ -1150,10 +1167,6 @@ function TellerAgentChat({
       return haystack.includes(normalizedQuery)
     })
     .slice(0, 30)
-
-  useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages, running])
 
   useEffect(() => {
     setReferenceIds((current) => current.filter((id) => tellers.some((teller) => teller.id === id)))
@@ -1361,6 +1374,7 @@ function TellerAgentChat({
       setReferenceQuery(null)
     }
   }
+  const chatMessages = messages.map((message) => tellerAgentMessageToChatMessage(message, t))
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
@@ -1387,22 +1401,20 @@ function TellerAgentChat({
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {messages.length === 0 ? (
-          <EmptyState title={t('settingPanel.tellerAgent.title')} description={t('settingPanel.tellerAgent.emptyDesc')} />
-        ) : (
-          <div className="mx-auto flex max-w-4xl flex-col gap-3">
-            {messages.map((message) => (
-              <TellerAgentMessage key={message.id} message={message} />
-            ))}
-            {running && (
-              <div className="flex items-center gap-2 self-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                {t('settingPanel.loreAgent.running')}
-              </div>
-            )}
-            <div ref={messageEndRef} />
+          <div className="h-full p-4">
+            <EmptyState title={t('settingPanel.tellerAgent.title')} description={t('settingPanel.tellerAgent.emptyDesc')} />
           </div>
+        ) : (
+          <MessageList
+            messages={chatMessages}
+            isStreaming={running}
+            activityContent={running ? t('settingPanel.loreAgent.running') : ''}
+            collapseTraceBeforeAssistant
+            scrollResetKey={`teller-agent:${workspace || 'none'}`}
+            bottomPaddingClassName="pb-6"
+          />
         )}
       </div>
 
@@ -1486,179 +1498,55 @@ function TellerAgentChat({
   )
 }
 
-function LoreAgentMessage({ message }: { message: LoreAgentChatMessage }) {
-  const { t } = useTranslation()
-  if (message.role === 'clear') {
-    return (
-      <div className="flex items-center gap-3 py-2">
-        <div className="h-px flex-1 bg-[var(--nova-border)]" />
-        <div className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1 text-[11px] text-[var(--nova-text-faint)]">
-          {message.content || t('settingPanel.contextCleared')}
-        </div>
-        <div className="h-px flex-1 bg-[var(--nova-border)]" />
-      </div>
-    )
-  }
-  if (message.role === 'thinking') {
-    return (
-      <div className="flex justify-start">
-        <div className="max-w-[78%] rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            {t('settingPanel.thinking')}
-          </div>
-          <div className="whitespace-pre-wrap break-words">{message.content}</div>
-        </div>
-      </div>
-    )
-  }
-  if (message.role === 'tool_call') {
-    return (
-      <div className="flex justify-start">
-        <div className="max-w-[78%] rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-muted)]">
-          <div className="flex items-center gap-2">
-            {message.status === 'running' ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nova-text-faint)]" /> : <Bot className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
-            <span className="font-medium text-[var(--nova-text)]">{message.name || message.content}</span>
-            <span className="text-[11px] text-[var(--nova-text-faint)]">{message.status === 'running' ? t('settingPanel.status.running') : t('settingPanel.status.done')}</span>
-          </div>
-          {message.args && (
-            <pre className="mt-2 max-h-40 overflow-auto rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 font-mono text-[11px] leading-4 text-[var(--nova-text-faint)]">
-              {message.args}
-            </pre>
-          )}
-          {message.toolResult && (
-            <div className="mt-2 whitespace-pre-wrap rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-[11px] text-[var(--nova-text-muted)]">
-              {message.toolResult}
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-  const isUser = message.role === 'user'
-  const isError = message.role === 'error'
-  return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[78%] rounded-[var(--nova-radius)] border px-3 py-2 text-sm leading-6 ${
-          isUser
-            ? 'border-[var(--nova-active)] bg-[var(--nova-active)] text-[var(--nova-text)]'
-            : isError
-              ? 'border-red-500/40 bg-red-500/10 text-red-100'
-              : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)]'
-        }`}
-      >
-        <div className="whitespace-pre-wrap break-words">{message.content}</div>
-        {message.references && message.references.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {message.references.map((item) => (
-              <span key={item.id} className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-xs text-[var(--nova-text-muted)]">
-                <AtSign className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
-                <span className="truncate">{item.name}</span>
-              </span>
-            ))}
-          </div>
-        )}
-        {message.result && (
-          <div className="mt-2 space-y-1 border-t border-[var(--nova-border)] pt-2 text-xs text-[var(--nova-text-faint)]">
-            {message.result.created?.length ? <div>{t('settingPanel.result.created')}：{message.result.created.map((item) => item.name).join('，')}</div> : null}
-            {message.result.updated?.length ? <div>{t('settingPanel.result.updated')}：{message.result.updated.map((item) => item.name).join('，')}</div> : null}
-            {message.result.deleted_ids?.length ? <div>{t('settingPanel.result.deleted')}：{message.result.deleted_ids.join('，')}</div> : null}
-          </div>
-        )}
-      </div>
-    </div>
-  )
+function loreAgentMessageToChatMessage(message: LoreAgentChatMessage, t: (key: string, options?: Record<string, unknown>) => string): ChatMessage {
+  const referenceNames = (message.references || []).map((item) => item.name).filter(Boolean)
+  return agentMessageToChatMessage(message, appendReferenceSummary(message.content, referenceNames), t)
 }
 
-function TellerAgentMessage({ message }: { message: TellerAgentChatMessage }) {
-  const { t } = useTranslation()
+function tellerAgentMessageToChatMessage(message: TellerAgentChatMessage, t: (key: string, options?: Record<string, unknown>) => string): ChatMessage {
+  const referenceNames = (message.tellerReferences || []).map((teller) => teller.name).filter(Boolean)
+  const targetName = message.targetTeller ? t('settingPanel.result.reference', { name: message.targetTeller.name }) : ''
+  const content = appendReferenceSummary(message.content, [targetName, ...referenceNames])
+  return agentMessageToChatMessage(message, content, t)
+}
+
+function agentMessageToChatMessage(
+  message: Pick<LoreAgentChatMessage, 'id' | 'role' | 'content' | 'name' | 'args' | 'status' | 'toolResult'>,
+  content: string,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): ChatMessage {
   if (message.role === 'clear') {
-    return (
-      <div className="flex items-center gap-3 py-2">
-        <div className="h-px flex-1 bg-[var(--nova-border)]" />
-        <div className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1 text-[11px] text-[var(--nova-text-faint)]">
-          {message.content || t('settingPanel.contextCleared')}
-        </div>
-        <div className="h-px flex-1 bg-[var(--nova-border)]" />
-      </div>
-    )
-  }
-  if (message.role === 'thinking') {
-    return (
-      <div className="flex justify-start">
-        <div className="max-w-[78%] rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            {t('settingPanel.thinking')}
-          </div>
-          <div className="whitespace-pre-wrap break-words">{message.content}</div>
-        </div>
-      </div>
-    )
+    return {
+      id: message.id,
+      type: 'clear',
+      role: 'system',
+      content: content || t('settingPanel.contextCleared'),
+    }
   }
   if (message.role === 'tool_call') {
-    return (
-      <div className="flex justify-start">
-        <div className="max-w-[78%] rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-muted)]">
-          <div className="flex items-center gap-2">
-            {message.status === 'running' ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nova-text-faint)]" /> : <Bot className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
-            <span className="font-medium text-[var(--nova-text)]">{message.name || message.content}</span>
-            <span className="text-[11px] text-[var(--nova-text-faint)]">{message.status === 'running' ? t('settingPanel.status.running') : t('settingPanel.status.done')}</span>
-          </div>
-          {message.args && (
-            <pre className="mt-2 max-h-40 overflow-auto rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 font-mono text-[11px] leading-4 text-[var(--nova-text-faint)]">
-              {message.args}
-            </pre>
-          )}
-          {message.toolResult && (
-            <div className="mt-2 whitespace-pre-wrap rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-[11px] text-[var(--nova-text-muted)]">
-              {message.toolResult}
-            </div>
-          )}
-        </div>
-      </div>
-    )
+    return {
+      id: message.id,
+      role: 'tool_call',
+      content: message.name || content,
+      name: message.name || content,
+      args: message.args || '',
+      status: message.status,
+      result: message.toolResult || '',
+      streaming: message.status === 'running',
+    }
   }
-  const isUser = message.role === 'user'
-  const isError = message.role === 'error'
-  return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[78%] rounded-[var(--nova-radius)] border px-3 py-2 text-sm leading-6 ${
-          isUser
-            ? 'border-[var(--nova-active)] bg-[var(--nova-active)] text-[var(--nova-text)]'
-            : isError
-              ? 'border-red-500/40 bg-red-500/10 text-red-100'
-              : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)]'
-        }`}
-      >
-        <div className="whitespace-pre-wrap break-words">{message.content}</div>
-        {message.targetTeller && (
-          <div className="mt-2 inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-xs text-[var(--nova-text-muted)]">
-            <SlidersHorizontal className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
-            <span className="truncate">{t('settingPanel.result.reference', { name: message.targetTeller.name })}</span>
-          </div>
-        )}
-        {message.tellerReferences && message.tellerReferences.length > 0 && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {message.tellerReferences.map((teller) => (
-              <span key={teller.id} className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-xs text-[var(--nova-text-muted)]">
-                <AtSign className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
-                <span className="truncate">{teller.name}</span>
-              </span>
-            ))}
-          </div>
-        )}
-        {message.result && (
-          <div className="mt-2 space-y-1 border-t border-[var(--nova-border)] pt-2 text-xs text-[var(--nova-text-faint)]">
-            <div>{message.result.action === 'update' ? t('settingPanel.result.updated') : t('settingPanel.result.created')}：{message.result.teller.name}</div>
-            <div>ID：{message.result.teller.id}</div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
+  return {
+    id: message.id,
+    role: message.role,
+    content,
+    streaming: message.role === 'thinking' && message.status === 'running',
+  }
+}
+
+function appendReferenceSummary(content: string, names: string[]) {
+  const visibleNames = names.map((name) => name.trim()).filter(Boolean)
+  if (visibleNames.length === 0) return content
+  return `${content}\n\n${visibleNames.map((name) => `@${name}`).join(' ')}`
 }
 
 function LoreDirectory({

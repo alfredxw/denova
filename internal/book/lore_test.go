@@ -116,8 +116,14 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	if item.ID == "" || len(item.Tags) != 1 {
 		t.Fatalf("unexpected item: %#v", item)
 	}
+	if !strings.HasPrefix(item.ID, "林川_") {
+		t.Fatalf("generated ID should use lore item name, got %s", item.ID)
+	}
 	if item.BriefDescription == "" || !strings.Contains(item.BriefDescription, "角色 林川。") || !strings.Contains(item.BriefDescription, "一定要参考本项详情") {
 		t.Fatalf("brief description should be generated: %#v", item)
+	}
+	if _, err := store.Create(LoreItemInput{ID: item.ID, Type: "character", Name: "重复林川"}); err == nil || !strings.Contains(err.Error(), "资料 ID 已存在") {
+		t.Fatalf("expected duplicate ID error, got %v", err)
 	}
 
 	updated, err := store.Update(item.ID, LoreItemInput{
@@ -174,7 +180,6 @@ func TestLoreStoreApplyOperationsCreatesVersionAndRestores(t *testing.T) {
 		{
 			Op: "create",
 			Item: LoreItemInput{
-				ID:         "base",
 				Type:       "location",
 				Name:       "黄泉酒馆",
 				Importance: "important",
@@ -187,6 +192,9 @@ func TestLoreStoreApplyOperationsCreatesVersionAndRestores(t *testing.T) {
 	}
 	if result.Version == nil || len(result.Updated) != 1 || len(result.Created) != 1 {
 		t.Fatalf("unexpected apply result: %#v", result)
+	}
+	if !strings.HasPrefix(result.Created[0].ID, "黄泉酒馆_") {
+		t.Fatalf("agent-created item should use name-based ID, got %s", result.Created[0].ID)
 	}
 
 	versions, err := store.Versions()

@@ -1,6 +1,7 @@
 package book
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -132,7 +134,7 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 		UpdatedAt:        now,
 	})
 	if item.ID == "" {
-		item.ID = newUniqueLoreID(collection.Items, item.Type)
+		item.ID = newUniqueLoreID(collection.Items, item.Name, item.Type)
 	}
 	if item.Name == "" {
 		return LoreItem{}, errors.New("资料名称不能为空")
@@ -251,7 +253,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				UpdatedAt:        time.Now().Format(time.RFC3339),
 			})
 			if item.ID == "" {
-				item.ID = newUniqueLoreID(next, item.Type)
+				item.ID = newUniqueLoreID(next, item.Name, item.Type)
 			}
 			if item.Name == "" {
 				return LoreApplyResult{}, errors.New("创建资料时名称不能为空")
@@ -735,7 +737,7 @@ func normalizeLoreID(id string) string {
 	}
 	var sb strings.Builder
 	for _, r := range id {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
 			sb.WriteRune(r)
 		}
 	}
@@ -805,19 +807,22 @@ func normalizeLoreStringList(values []string) []string {
 	return result
 }
 
-func newLoreID(itemType string) string {
-	itemType = normalizeLoreType(itemType)
-	return fmt.Sprintf("%s-%d", itemType, time.Now().UTC().UnixNano())
+func newLoreID(name, itemType string) string {
+	base := loreIDBaseFromName(name)
+	if base == "" {
+		base = normalizeLoreType(itemType)
+	}
+	return fmt.Sprintf("%s_%s", base, randomLoreIDSuffix())
 }
 
-func newUniqueLoreID(items []LoreItem, itemType string) string {
-	return uniqueLoreIDFromBase(items, newLoreID(itemType))
+func newUniqueLoreID(items []LoreItem, name, itemType string) string {
+	return uniqueLoreIDFromBase(items, newLoreID(name, itemType))
 }
 
 func uniqueLoreIDFromBase(items []LoreItem, base string) string {
 	base = normalizeLoreID(base)
 	if base == "" {
-		base = newLoreID("other")
+		base = newLoreID("", "other")
 	}
 	if loreItemIndex(items, base) < 0 {
 		return base
@@ -828,6 +833,49 @@ func uniqueLoreIDFromBase(items []LoreItem, base string) string {
 			return candidate
 		}
 	}
+}
+
+func loreIDBaseFromName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	var sb strings.Builder
+	lastUnderscore := false
+	for _, r := range name {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			sb.WriteRune(unicode.ToLower(r))
+			lastUnderscore = false
+		case r == '-' || r == '_' || unicode.IsSpace(r):
+			if sb.Len() > 0 && !lastUnderscore {
+				sb.WriteRune('_')
+				lastUnderscore = true
+			}
+		default:
+			if sb.Len() > 0 && !lastUnderscore {
+				sb.WriteRune('_')
+				lastUnderscore = true
+			}
+		}
+	}
+	return strings.Trim(sb.String(), "_")
+}
+
+func randomLoreIDSuffix() string {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		n := time.Now().UTC().UnixNano()
+		for i := range b {
+			b[i] = byte(n >> (i * 8))
+		}
+	}
+	var sb strings.Builder
+	for _, v := range b {
+		sb.WriteByte(alphabet[int(v)%len(alphabet)])
+	}
+	return sb.String()
 }
 
 func loreItemIndex(items []LoreItem, id string) int {
