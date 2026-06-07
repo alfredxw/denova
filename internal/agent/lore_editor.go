@@ -58,7 +58,7 @@ func generateLoreEditPlanContent(ctx context.Context, cfg *config.Config, instru
 	}
 	log.Printf("[lore-editor-agent] generate begin instruction=%s items=%d references=%d stream=%t", promptPartSummary(instruction), len(items), len(referencedItems), emit != nil)
 	messages := []*schema.Message{
-		schema.SystemMessage(loreEditorSystemInstruction()),
+		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindLoreEditor, loreEditorSystemInstruction())),
 		schema.UserMessage(userPrompt),
 	}
 	if emit == nil {

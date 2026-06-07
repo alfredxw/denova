@@ -26,7 +26,7 @@ func GenerateInteractiveState(ctx context.Context, cfg *config.Config, instructi
 	}
 	log.Printf("[interactive-state-agent] generate begin instruction=%s", promptPartSummary(instruction))
 	msg, err := cm.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(prompts.BuildInteractiveStateSystemInstruction()),
+		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction())),
 		schema.UserMessage(instruction),
 	})
 	if err != nil {

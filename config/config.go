@@ -15,6 +15,7 @@ type Config struct {
 	ModelProfiles               []ModelProfileSettings `toml:"model_profiles"`
 	AgentModels                 AgentModelSettings     `toml:"agent_models"`
 	AgentTools                  AgentToolSettings      `toml:"agent_tools"`
+	AgentPrompts                AgentPromptSettings    `toml:"agent_prompts"`
 	SkillsDir                   string                 `toml:"skills_dir"`
 	NovaDir                     string                 `toml:"nova_dir"`
 	Workspace                   string                 `toml:"workspace"`
@@ -67,6 +68,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		ModelProfiles:               s.ModelProfiles,
 		AgentModels:                 s.AgentModels,
 		AgentTools:                  s.AgentTools,
+		AgentPrompts:                s.AgentPrompts,
 		SkillsDir:                   s.SkillsDir,
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
@@ -133,6 +135,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		ModelProfiles:         cfg.ModelProfiles,
 		AgentModels:           cfg.AgentModels,
 		AgentTools:            cfg.AgentTools,
+		AgentPrompts:          cfg.AgentPrompts,
 		SkillsDir:             cfg.SkillsDir,
 		NovaDir:               cfg.NovaDir,
 		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
@@ -166,6 +169,7 @@ func Load() *Config {
 			ModelProfiles:               d.ModelProfiles,
 			AgentModels:                 d.AgentModels,
 			AgentTools:                  d.AgentTools,
+			AgentPrompts:                d.AgentPrompts,
 			SkillsDir:                   d.SkillsDir,
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,

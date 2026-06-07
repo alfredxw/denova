@@ -59,7 +59,7 @@ func generateTellerEditPlanContent(ctx context.Context, cfg *config.Config, inst
 	}
 	log.Printf("[teller-editor-agent] generate begin instruction=%s tellers=%d target_id=%s references=%d stream=%t", promptPartSummary(instruction), len(tellers), targetID, len(references), emit != nil)
 	messages := []*schema.Message{
-		schema.SystemMessage(tellerEditorSystemInstruction()),
+		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindTellerEditor, tellerEditorSystemInstruction())),
 		schema.UserMessage(userPrompt),
 	}
 	if emit == nil {

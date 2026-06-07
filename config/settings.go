@@ -18,6 +18,7 @@ type Settings struct {
 	ModelProfiles []ModelProfileSettings `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
 	AgentModels   AgentModelSettings     `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
 	AgentTools    AgentToolSettings      `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
+	AgentPrompts  AgentPromptSettings    `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
 
 	// 路径
 	SkillsDir string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -116,6 +117,7 @@ func Merge(parent, child Settings) Settings {
 	out.ModelProfiles = mergeModelProfiles(out.ModelProfiles, child.ModelProfiles)
 	out.AgentModels = MergeAgentModelSettings(out.AgentModels, child.AgentModels)
 	out.AgentTools = MergeAgentToolSettings(out.AgentTools, child.AgentTools)
+	out.AgentPrompts = MergeAgentPromptSettings(out.AgentPrompts, child.AgentPrompts)
 	if child.SkillsDir != "" {
 		out.SkillsDir = child.SkillsDir
 	}
@@ -316,6 +318,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	// nova_dir 是启动级定位参数，不能由用户级/工作区级配置反向修改自身位置。
 	s.NovaDir = ""
 	s.Language = normalizeLanguage(s.Language)
+	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
 	return s
 }
 

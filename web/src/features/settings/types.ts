@@ -5,6 +5,7 @@ export interface Settings {
   model_profiles?: ModelProfileSettings[]
   agent_models?: AgentModelSettings
   agent_tools?: AgentToolSettings
+  agent_prompts?: AgentPromptSettings
   skills_dir?: string
   auto_save_enabled?: boolean | null
   auto_save_interval_ms?: number | null
@@ -79,6 +80,21 @@ export interface AgentToolOverride {
   lore_read?: boolean | null
   lore_write?: boolean | null
   todo?: boolean | null
+}
+
+export interface AgentPromptSettings {
+  default?: AgentPromptOverride
+  ide?: AgentPromptOverride
+  interactive_story?: AgentPromptOverride
+  lore_editor?: AgentPromptOverride
+  teller_editor?: AgentPromptOverride
+  interactive_state?: AgentPromptOverride
+  interactive_hot_choices?: AgentPromptOverride
+  version_summary?: AgentPromptOverride
+}
+
+export interface AgentPromptOverride {
+  system_prompt?: string
 }
 
 export interface SettingsPaths {

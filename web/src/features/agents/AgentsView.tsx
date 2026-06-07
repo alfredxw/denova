@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, Brain, Check, Database, FileText, FolderOpen, ListChecks, MessageSquareText, PenLine, Save, Search, Settings2, Shield, Sparkles, Terminal, Wrench, X } from 'lucide-react'
+import { Bot, Brain, Check, Database, FileText, FolderOpen, ListChecks, MessageSquareText, PenLine, Save, ScrollText, Search, Settings2, Shield, Sparkles, Terminal, Wrench, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
-import type { AgentModelOverride, AgentModelSettings, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import type { AgentModelOverride, AgentModelSettings, AgentPromptOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
 import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
 
 type AgentKey = keyof AgentModelSettings
@@ -84,6 +84,8 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const profileOptions = useMemo(() => buildProfileOptions(draft, effective, t), [draft, effective, t])
   const modelValue = draft.agent_models?.[activeAgent] ?? {}
   const inheritedModel = mergeAgentModelOverride(effective.agent_models?.default ?? {}, effective.agent_models?.[activeAgent] ?? {})
+  const promptValue = draft.agent_prompts?.[activeAgent] ?? {}
+  const inheritedPrompt = mergeAgentPromptOverride(effective.agent_prompts?.default ?? {}, effective.agent_prompts?.[activeAgent] ?? {})
   const toolValue = draft.agent_tools?.[activeAgent] ?? {}
   const inheritedTools = effective.agent_tools?.[activeAgent] ?? FALLBACK_AGENT_TOOL_VALUES[activeAgent]
   const effectiveTools = resolveEffectiveTools(effective.agent_tools?.default ?? {}, inheritedTools)
@@ -129,6 +131,16 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
       agent_tools: {
         ...(current.agent_tools ?? {}),
         [activeAgent]: { ...(current.agent_tools?.[activeAgent] ?? {}), [key]: value },
+      },
+    }))
+  }
+
+  const setAgentPrompt = (patch: Partial<AgentPromptOverride>) => {
+    setDraft((current) => ({
+      ...current,
+      agent_prompts: {
+        ...(current.agent_prompts ?? {}),
+        [activeAgent]: { ...(current.agent_prompts?.[activeAgent] ?? {}), ...patch },
       },
     }))
   }
@@ -191,6 +203,11 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
               inherited={inheritedModel}
               profiles={profileOptions}
               onChange={setAgentModel}
+            />
+            <AgentPromptSection
+              value={promptValue}
+              inherited={inheritedPrompt}
+              onChange={setAgentPrompt}
             />
             {selected.capabilityMode === 'tools' ? (
               <AgentToolSection
@@ -324,6 +341,33 @@ function AgentModelSection({ value, inherited, profiles, onChange }: {
             <option value="high">high</option>
           </select>
         </Field>
+      </div>
+    </section>
+  )
+}
+
+function AgentPromptSection({ value, inherited, onChange }: {
+  value: AgentPromptOverride
+  inherited: AgentPromptOverride
+  onChange: (patch: Partial<AgentPromptOverride>) => void
+}) {
+  const { t } = useTranslation()
+  const hasPrompt = hasPromptOverride(value.system_prompt)
+  const effectivePrompt = hasPrompt ? value.system_prompt ?? '' : inherited.system_prompt ?? ''
+  return (
+    <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
+      <SectionTitle icon={ScrollText} title={t('agents.section.systemPrompt')} />
+      <Field label={t('agents.field.systemPrompt')} inherited={!hasPrompt} onReset={hasPrompt ? () => onChange({ system_prompt: '' }) : undefined}>
+        <textarea
+          value={effectivePrompt}
+          aria-label={t('agents.field.systemPrompt')}
+          placeholder={t('agents.prompt.placeholder')}
+          onChange={(e) => onChange({ system_prompt: e.target.value })}
+          className={`${fieldCls} min-h-36 resize-y leading-5`}
+        />
+      </Field>
+      <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+        {t('agents.prompt.protectedNote')}
       </div>
     </section>
   )
@@ -530,11 +574,21 @@ function hasTextOverride(value?: string) {
   return value !== undefined && value !== ''
 }
 
+function hasPromptOverride(value?: string) {
+  return value !== undefined && value.trim() !== ''
+}
+
 function mergeAgentModelOverride(parent: AgentModelOverride, child: AgentModelOverride): AgentModelOverride {
   return {
     profile_id: child.profile_id || parent.profile_id,
     temperature: child.temperature ?? parent.temperature,
     enable_thinking: child.enable_thinking ?? parent.enable_thinking,
     reasoning_effort: child.reasoning_effort || parent.reasoning_effort,
+  }
+}
+
+function mergeAgentPromptOverride(parent: AgentPromptOverride, child: AgentPromptOverride): AgentPromptOverride {
+  return {
+    system_prompt: hasPromptOverride(child.system_prompt) ? child.system_prompt : parent.system_prompt,
   }
 }

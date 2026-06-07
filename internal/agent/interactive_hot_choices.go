@@ -34,7 +34,7 @@ func GenerateInteractiveHotChoices(ctx context.Context, cfg *config.Config, inst
 	}
 	log.Printf("[interactive-hot-choices-agent] generate begin instruction=%s", promptPartSummary(instruction))
 	msg, err := cm.Generate(ctx, []*schema.Message{
-		schema.SystemMessage(prompts.BuildInteractiveHotChoicesSystemInstruction()),
+		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())),
 		schema.UserMessage(instruction),
 	})
 	if err != nil {

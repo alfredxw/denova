@@ -523,6 +523,7 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	cfg.AgentModels = config.MergeAgentModelSettings(cfg.AgentModels, settings.AgentModels)
 	cfg.AgentTools = config.MergeAgentToolSettings(cfg.AgentTools, settings.AgentTools)
+	cfg.AgentPrompts = config.MergeAgentPromptSettings(cfg.AgentPrompts, settings.AgentPrompts)
 	if settings.SkillsDir != "" && os.Getenv("NOVA_SKILLS_DIR") == "" {
 		cfg.SkillsDir = settings.SkillsDir
 	}

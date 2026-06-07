@@ -26,7 +26,7 @@ type IDEStoryTeller struct {
 func BuildInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) string {
 	creator := state.ReadCreatorPrompt()
 	stateContext := state.CompactContext()
-	instruction := prompts.BuildSystemInstruction(prompts.SystemInstructionInput{
+	builtIn := prompts.BuildSystemInstruction(prompts.SystemInstructionInput{
 		CreatorPrompt:          creator,
 		Workspace:              cfg.Workspace,
 		StateContext:           stateContext,
@@ -39,6 +39,7 @@ func BuildInstruction(cfg *config.Config, state *book.State, teller IDEStoryTell
 		ChapterGroupMin:        cfg.ChapterGroupMin,
 		ChapterGroupMax:        cfg.ChapterGroupMax,
 	})
+	instruction := protectedSystemInstruction(cfg, config.AgentKindIDE, builtIn)
 	logSystemPromptComposition("ide", cfg.Workspace, creator, stateContext, instruction, promptSource{
 		source:  "系统提示",
 		title:   "IDE 默认导演规则",
@@ -59,7 +60,7 @@ func BuildInteractiveStoryInstruction(cfg *config.Config, state *book.State, tel
 	if state != nil {
 		creator = state.ReadCreatorPrompt()
 	}
-	instruction := prompts.BuildInteractiveStorySystemInstruction(prompts.InteractiveStorySystemInstructionInput{
+	builtIn := prompts.BuildInteractiveStorySystemInstruction(prompts.InteractiveStorySystemInstructionInput{
 		CreatorPrompt:           creator,
 		Workspace:               workspace,
 		ReplyTargetChars:        replyTargetChars,
@@ -68,6 +69,7 @@ func BuildInteractiveStoryInstruction(cfg *config.Config, state *book.State, tel
 		StoryTellerDescription:  teller.StoryTellerDescription,
 		StoryTellerSystemPrompt: teller.StoryTellerSystemPrompt,
 	})
+	instruction := protectedSystemInstruction(cfg, config.AgentKindInteractiveStory, builtIn)
 	logSystemPromptComposition("interactive", workspace, creator, "", instruction, promptSource{
 		source:  "系统提示",
 		title:   "导演系统规则",
