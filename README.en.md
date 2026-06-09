@@ -1,19 +1,32 @@
+<h1 align="center">Nova</h1>
+
+<p align="center">
+  <strong>An AI creation workspace for long-form fiction and interactive storytelling</strong>
+</p>
+
+<p align="center">
+  Nova brings ideation, worldbuilding, outlining, chapter writing, interactive rehearsal, lore management, and local versioning into one IDE-like creative workspace.
+</p>
+
 <p align="center">
   English | <a href="README.md">中文</a>
 </p>
 
-# Nova
+<p align="center">
+  <a href="https://github.com/alfredxw/nova/releases"><img alt="Release" src="https://img.shields.io/github/v/release/alfredxw/nova?style=flat-square"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/alfredxw/nova?style=flat-square"></a>
+  <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go&logoColor=white">
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white">
+</p>
 
-Nova is an AI writing workspace for long-form fiction creators. It provides an IDE-like creative environment that covers inspiration, worldbuilding, outlining, chapter writing, interactive story rehearsal, lore management, and local versioning.
-
-Current version: v0.1.6 (2026-06-05)
-
-## Screenshots
+<p align="center">
+  Current version: <strong>v0.1.6</strong> (2026-06-05) · Beta
+</p>
 
 ![Nova Novel IDE](./img/ide.png)
 
 <details>
-<summary>More screenshots</summary>
+<summary>View more screenshots</summary>
 
 ### Interactive Story Workspace
 
@@ -23,34 +36,67 @@ Current version: v0.1.6 (2026-06-05)
 
 ![Nova Lore Library](./img/setting.png)
 
-### Story Style Configuration
+### Narrative Direction Configuration
 
-![Nova Story Style](./img/story-teller.png)
+![Nova Narrative Direction](./img/story-teller.png)
 
 </details>
 
-## Features
+## Why Nova
 
-- Novel IDE: file tree, Markdown editor, multiple tabs, chapter statistics, and an AI chat panel.
-- Writing Agent: streaming output, tool calls, selected-text references, `@` file references, and `#` style references.
-- Chapter workflow: brainstorming, settings, outlines, chapter-group plans, drafts, and final chapter text.
-- Interactive stories: branching plots, next-action candidates, scene memory, and storyline switching.
-- Lore library: structured long-term settings for characters, worlds, locations, factions, rules, items, and more. Per-chapter character state such as current location, injuries, mental state, and goals is tracked in `setting/character-states.md`.
-- Character card import: supports SillyTavern v2 PNG / JSON.
-- Local version management: each book uses Nova-native snapshots to create versions, view history, compare diffs, and restore previous states without Git.
-- Layered configuration: supports global, user-level, and workspace-level configuration.
+Nova is more than a chat box and more than a text completion editor. It turns fiction creation into a sustainable workflow and lets AI Agents collaborate inside bounded, source-aware context: they can read selected text, inspect files, reference lore, call tools, write drafts, update state, and create local versions at important moments.
 
-## Install
+- **Manage a book like a project**: file tree, Markdown editor, multiple tabs, chapter statistics, global search, and an AI side panel in one stable writing desk.
+- **Bring Agents into the full workflow**: brainstorming, top-level settings, outlines, chapter-group plans, drafts, final prose, and state sync all have clear entry points.
+- **Write and rehearse in the same workspace**: IDE mode produces content, while interactive mode tests plot branches and character actions.
+- **Turn lore into structured assets**: characters, worlds, locations, factions, rules, and items live in the lore library, while per-chapter character state is tracked separately.
+- **Protect the creative process by default**: Nova-native snapshots support manual saves, history, diffs, restore, and automatic saves without initializing Git for every book.
 
-### GitHub Release
+## Core Capabilities
 
-Download the archive for your platform from [Releases](https://github.com/alfredxw/nova/releases), extract it, and run:
+| Area | Capabilities |
+| --- | --- |
+| Novel IDE | File tree, Markdown editor, multiple tabs, chapter statistics, global search, AI chat panel |
+| Writing Agent | Streaming output, tool calls, selected-text references, `@` file references, `#` style references, todo tracking |
+| Chapter Workflow | Brainstorming, settings, outlines, chapter-group plans, drafts, final chapter text, state sync |
+| Interactive Stories | Plot branches, next-action candidates, scene memory, storyline switching, route map |
+| Lore Library | Structured long-term settings for characters, worlds, locations, factions, rules, items, and more |
+| Narrative Direction | Per-book or per-scene narrative rules, style constraints, pacing preferences, and interactive generation strategy |
+| Character Card Import | SillyTavern v2 PNG / JSON import into the current book or a new book |
+| Version Management | Local snapshots, history, diff comparison, restore, timed saves, and large-Agent-output auto saves |
+| Layered Configuration | Global, user-level, and workspace-level settings for different models and different books |
+
+## Recommended Workflow
+
+```text
+Ideation
+  ↓
+Top-level settings and creative rules
+  ↓
+Outline and chapter-group plan
+  ↓
+Single-chapter draft / final prose
+  ↓
+Finalize and sync progress plus character state
+  ↓
+Rehearse plot branches in interactive mode
+  ↓
+Continuously refine lore and local versions
+```
+
+Nova separates display history, model context, lore content, tool results, and workspace state as much as possible, so Agents receive only the source-backed and bounded context needed for the current task.
+
+## Quick Start
+
+### Option 1: Download a Release
+
+Download the archive for your platform from [GitHub Releases](https://github.com/alfredxw/nova/releases), extract it, and run:
 
 ```bash
 ./nova
 ```
 
-Specify a book workspace:
+Start with a specific book workspace:
 
 ```bash
 ./nova --workspace /path/to/your-novel
@@ -62,7 +108,7 @@ Windows users should run `nova.exe`. On macOS, if the system blocks the app for 
 xattr -dr com.apple.quarantine nova
 ```
 
-### From Source
+### Option 2: Run from Source
 
 Requires Go 1.26+, Node.js 20+, and pnpm.
 
@@ -78,9 +124,9 @@ Default addresses:
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8080`
 
-## Configuration
+## Models and Configuration
 
-Nova uses an OpenAI-compatible API. You can configure it with environment variables:
+Nova uses an OpenAI-compatible API. You can configure it quickly with environment variables:
 
 ```bash
 export OPENAI_API_KEY="your-api-key"
@@ -99,13 +145,13 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-You can also configure models, Agent parameters, editor options, and interactive-mode settings in `config.toml`. Configuration precedence:
+You can also configure models, Agent parameters, editor options, interactive-mode behavior, version management, and interface language in `config.toml`. Configuration precedence:
 
 ```text
 Built-in defaults < global config.toml < user-level config < workspace-level config < environment variables
 ```
 
-## Usage
+## Book Workspace
 
 After startup, if no book is specified or restored, the Web UI opens Book Management. One workspace maps to one book. Recommended structure:
 
@@ -124,11 +170,12 @@ my-novel/
 
 Common entry points:
 
-- Writing: edit chapters, browse the file tree, and collaborate with the Writing Agent.
-- Interactive: rehearse plots, explore branches, and maintain narrative direction.
-- Lore library: maintain characters, worlds, locations, factions, rules, and items. Current character state is tracked by `setting/character-states.md`.
-- Version management: manually save versions, view history and diffs, restore previous versions, and enable timed or large-Agent-output auto snapshots.
-- Settings: adjust models, editor behavior, Agent behavior, and interactive-mode parameters.
+- **Writing**: edit chapters, browse the file tree, search project files, and collaborate with the Writing Agent.
+- **Interactive**: rehearse plots, explore branches, switch storylines, and maintain scene memory.
+- **Lore Library**: maintain characters, worlds, locations, factions, rules, and items. Current character location, injuries, mental state, goals, and similar state live in `setting/character-states.md`.
+- **Narrative Direction**: configure point of view, pacing, style rules, and interactive generation preferences.
+- **Version Management**: manually save versions, view history and diffs, restore previous versions, and enable timed or large-Agent-output auto snapshots.
+- **Settings**: adjust models, editor behavior, Agent behavior, interactive-mode parameters, appearance, and language.
 
 ## Development
 
@@ -163,21 +210,6 @@ cd output
 ./nova --workspace /path/to/your-novel
 ```
 
-## Release
-
-Build a local GitHub Release package:
-
-```bash
-scripts/build-github-release.sh v0.1.6
-```
-
-After pushing the tag, GitHub Actions will create or update the Release automatically:
-
-```bash
-git tag v0.1.6
-git push origin v0.1.6
-```
-
 ## Tech Stack
 
 - Backend: Go, Hertz, Eino, SSE
@@ -195,6 +227,21 @@ git push origin v0.1.6
 ├── scripts/         # Build and release scripts
 ├── skills/          # Creative skill prompts
 └── web/             # React Web UI
+```
+
+## Release
+
+Build a local GitHub Release package:
+
+```bash
+scripts/build-github-release.sh v0.1.6
+```
+
+After pushing the tag, GitHub Actions will create or update the Release automatically:
+
+```bash
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 ## License

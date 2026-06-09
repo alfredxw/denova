@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 整体优化中英文 README：重写项目首屏定位、核心价值、能力矩阵、推荐创作流程、快速开始、配置和开发说明，提升公开项目页的专业度与可读性。
 - 资料库 Agent 从单次结构化 JSON 编辑方案升级为工具型 Agent，支持 Skills、资料库读写和文件读写工具；初始化流程要求多轮确认，最终只写资料库和 `CREATOR.md`，不写 `脑暴.md`、大纲、章节、progress、character-states，也不自动创建互动 story。
 - 资料库条目简介改为多行编辑，并统一要求 `brief_description` 使用“类型 名称 + 3-5 句触发说明 + 必须参考详情”的索引结构，提升 Agent 自动匹配并读取资料正文的准确性。
 - 指令类多行输入框改为随输入内容自动扩展，最多显示 10 行后进入内部滚动，覆盖创作 Agent、资料库 Agent、叙事编排 Agent、互动剧情输入和短表单简介。
