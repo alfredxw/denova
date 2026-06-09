@@ -13,10 +13,21 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
+func (s *Service) openExistingVersionRepo() (*git.Repository, error) {
+	repo, err := git.PlainOpen(s.workspace)
+	if errors.Is(err, git.ErrRepositoryNotExists) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return repo, nil
+}
+
 func (s *Service) openVersionRepo() (*git.Repository, error) {
 	repo, err := git.PlainOpen(s.workspace)
 	if err == nil {
-		return repo, s.ensureGitExclude()
+		return repo, nil
 	}
 	if !errors.Is(err, git.ErrRepositoryNotExists) {
 		return nil, err
@@ -25,47 +36,10 @@ func (s *Service) openVersionRepo() (*git.Repository, error) {
 	if err != nil {
 		return nil, err
 	}
-	return repo, s.ensureGitExclude()
+	return repo, nil
 }
 
-func (s *Service) ensureGitExclude() error {
-	path := filepath.Join(s.workspace, ".git", "info", "exclude")
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	}
-
-	lines := strings.Split(string(data), "\n")
-	next := make([]string, 0, len(lines)+1)
-	hasVersionsExclude := false
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == ".nova/" {
-			continue
-		}
-		if trimmed == ".nova/versions/" {
-			hasVersionsExclude = true
-		}
-		next = append(next, line)
-	}
-	if len(next) > 0 && next[len(next)-1] == "" {
-		next = next[:len(next)-1]
-	}
-	if !hasVersionsExclude {
-		next = append(next, ".nova/versions/")
-	}
-	content := strings.Join(next, "\n")
-	if content != "" {
-		content += "\n"
-	}
-	return os.WriteFile(path, []byte(content), 0o644)
-}
-
-func (s *Service) commitWorkspaceSnapshot(repo *git.Repository, files []versionFileData, message string, now time.Time) (plumbing.Hash, error) {
+func (s *Service) commitWorkspaceSnapshot(repo *git.Repository, files []versionFileData, message, source string, now time.Time) (plumbing.Hash, error) {
 	if err := s.stageWorkspaceFiles(repo, files); err != nil {
 		return plumbing.ZeroHash, err
 	}
@@ -73,7 +47,7 @@ func (s *Service) commitWorkspaceSnapshot(repo *git.Repository, files []versionF
 	if err != nil {
 		return plumbing.ZeroHash, err
 	}
-	return worktree.Commit(message, &git.CommitOptions{
+	return worktree.Commit(formatCommitMessage(message, source), &git.CommitOptions{
 		AllowEmptyCommits: true,
 		Author: &object.Signature{
 			Name:  "Nova",
@@ -222,13 +196,4 @@ func (s *Service) setRepoHeadAndIndex(repo *git.Repository, id string) error {
 		return err
 	}
 	return s.stageWorkspaceFiles(repo, files)
-}
-
-func versionEntriesContain(items []VersionEntry, id string) bool {
-	for _, item := range items {
-		if item.ID == id {
-			return true
-		}
-	}
-	return false
 }

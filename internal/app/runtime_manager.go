@@ -503,9 +503,6 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.VersionAgentCharThreshold != nil {
 		cfg.VersionAgentCharThreshold = appSettingsInt(effective.VersionAgentCharThreshold, 3000)
 	}
-	if effective.VersionAutoRetention != nil {
-		cfg.VersionAutoRetention = appSettingsInt(effective.VersionAutoRetention, 100)
-	}
 }
 
 func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
@@ -566,9 +563,6 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.VersionAgentCharThreshold != nil {
 		cfg.VersionAgentCharThreshold = appSettingsInt(settings.VersionAgentCharThreshold, 3000)
 	}
-	if settings.VersionAutoRetention != nil {
-		cfg.VersionAutoRetention = appSettingsInt(settings.VersionAutoRetention, 100)
-	}
 }
 
 func (s *WorkspaceRuntimeManager) versionService() *book.VersionService {
@@ -591,7 +585,6 @@ func (s *WorkspaceRuntimeManager) versionAutoSettings() book.VersionAutoSettings
 	settings.TimedIntervalMinutes = cfg.VersionTimedIntervalMinutes
 	settings.AgentEnabled = cfg.VersionAgentEnabled
 	settings.AgentCharThreshold = cfg.VersionAgentCharThreshold
-	settings.Retention = cfg.VersionAutoRetention
 	return settings
 }
 

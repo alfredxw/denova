@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- 版本管理底层从原生文件快照切换为 go-git 驱动的 workspace 根目录 `.git` 本地仓库；Nova 会自动初始化并提交版本，像 Git 一样保存正文、设置和 `.nova/lore`、`.nova/sessions` 等本地创作状态，仅通过 `.git/info/exclude` 忽略 `.nova/versions/` 版本系统元数据；旧 `.nova/versions/snapshots` 原生快照不再读取或迁移。
+- 版本管理底层从原生文件快照切换为 go-git 驱动的 workspace 根目录 `.git` 本地仓库；Nova 会自动初始化并提交版本，像 Git 一样保存正文、设置和 `.nova/lore`、`.nova/sessions` 等本地创作状态，历史直接来自 Git commit，恢复通过移动 HEAD 生效，不再创建 `.nova/versions` 索引、内部版本目录或裁剪 Git 历史；旧原生快照不再读取或迁移。
 - 顶层定调文件统一使用 `brainstorm.md`；新建作品会创建该文件，并同步更新 Agent 提示词、技能、前端初始化文案和 README。
 - 整体优化中英文 README：重写项目首屏定位、核心价值、能力矩阵、推荐创作流程、快速开始、配置和开发说明，提升公开项目页的专业度与可读性。
 - 资料库 Agent 从单次结构化 JSON 编辑方案升级为工具型 Agent，支持 Skills、资料库读写和文件读写工具；初始化流程要求多轮确认，最终只写资料库和 `CREATOR.md`，不写 `brainstorm.md`、大纲、章节、progress、character-states，也不自动创建互动 story。

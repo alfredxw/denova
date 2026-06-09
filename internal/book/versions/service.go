@@ -1,9 +1,6 @@
 package versions
 
-import (
-	"path/filepath"
-	"sync"
-)
+import "sync"
 
 // Service 管理当前书籍 workspace 的 go-git 本地版本库。
 type Service struct {
@@ -23,12 +20,4 @@ func DefaultAutoSettings() VersionAutoSettings {
 		AgentCharThreshold:   DefaultAgentVersionCharThreshold,
 		Retention:            DefaultAutoVersionRetention,
 	}
-}
-
-func (s *Service) versionsDir() string {
-	return filepath.Join(s.workspace, ".nova", "versions")
-}
-
-func (s *Service) indexPath() string {
-	return filepath.Join(s.versionsDir(), "index.json")
 }

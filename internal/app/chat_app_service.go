@@ -286,7 +286,6 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 			settings.TimedIntervalMinutes = runtimeCfg.VersionTimedIntervalMinutes
 			settings.AgentEnabled = runtimeCfg.VersionAgentEnabled
 			settings.AgentCharThreshold = runtimeCfg.VersionAgentCharThreshold
-			settings.Retention = runtimeCfg.VersionAutoRetention
 			result, err := versionService.MaybeCreateAgent(beforeVersionState, settings)
 			if err != nil {
 				log.Printf("[versions] Agent 自动保存失败 workspace=%s err=%v", workspace, err)

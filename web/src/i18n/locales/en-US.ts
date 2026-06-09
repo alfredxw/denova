@@ -783,7 +783,6 @@ const enUS = {
   'settings.title': 'Settings',
   'settings.versions.agentAuto': 'Agent Output Auto Version',
   'settings.versions.agentThreshold': 'Agent Trigger Characters',
-  'settings.versions.retention': 'Auto Version Retention',
   'settings.versions.timedAuto': 'Timed Auto Version',
   'settings.versions.timedInterval': 'Timed Save Interval (minutes)',
   'settings.versions.workspaceOnly': 'Version policies are saved per book. Switch to workspace config to edit them.',

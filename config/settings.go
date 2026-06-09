@@ -36,7 +36,6 @@ type Settings struct {
 	VersionTimedIntervalMinutes *int   `toml:"version_timed_interval_minutes,omitempty" json:"version_timed_interval_minutes,omitempty"`
 	VersionAgentEnabled         *bool  `toml:"version_agent_enabled,omitempty" json:"version_agent_enabled,omitempty"`
 	VersionAgentCharThreshold   *int   `toml:"version_agent_char_threshold,omitempty" json:"version_agent_char_threshold,omitempty"`
-	VersionAutoRetention        *int   `toml:"version_auto_retention,omitempty" json:"version_auto_retention,omitempty"`
 
 	// 外观
 	UIFontFamily      string `toml:"ui_font_family,omitempty" json:"ui_font_family,omitempty"`
@@ -80,7 +79,6 @@ func DefaultSettings() Settings {
 		VersionTimedIntervalMinutes: intPtr(10),
 		VersionAgentEnabled:         boolPtr(true),
 		VersionAgentCharThreshold:   intPtr(3000),
-		VersionAutoRetention:        intPtr(100),
 		UIFontFamily:                "system-sans",
 		UIFontSize:                  intPtr(12),
 		ReadingFontFamily:           "source-han-serif",
@@ -156,9 +154,6 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.VersionAgentCharThreshold != nil {
 		out.VersionAgentCharThreshold = child.VersionAgentCharThreshold
-	}
-	if child.VersionAutoRetention != nil {
-		out.VersionAutoRetention = child.VersionAutoRetention
 	}
 	if child.UIFontFamily != "" {
 		out.UIFontFamily = child.UIFontFamily

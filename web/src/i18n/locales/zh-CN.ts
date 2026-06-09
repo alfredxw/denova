@@ -783,7 +783,6 @@ const zhCN = {
   'settings.title': '设置',
   'settings.versions.agentAuto': 'Agent 大量输出自动保存',
   'settings.versions.agentThreshold': 'Agent 触发字数',
-  'settings.versions.retention': '自动版本保留数量',
   'settings.versions.timedAuto': '定时自动保存版本',
   'settings.versions.timedInterval': '定时保存间隔 (分钟)',
   'settings.versions.workspaceOnly': '版本管理策略按每本书单独保存，请切换到工作区配置后修改。',

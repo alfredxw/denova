@@ -18,7 +18,6 @@ export interface Settings {
   version_timed_interval_minutes?: number | null
   version_agent_enabled?: boolean | null
   version_agent_char_threshold?: number | null
-  version_auto_retention?: number | null
   ui_font_family?: string
   ui_font_size?: number | null
   reading_font_family?: string

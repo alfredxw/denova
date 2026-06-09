@@ -18,12 +18,12 @@ func (s *Service) createLocked(message, source string, settings VersionAutoSetti
 	if message == "" {
 		message = defaultVersionMessage(source)
 	}
-	index, err := s.loadIndex()
+	var base *VersionEntry
+	current, err := s.headVersion()
 	if err != nil {
 		return VersionCommandResult{}, err
 	}
-	var base *VersionEntry
-	if current := currentVersion(index.Items, index.CurrentID); current != nil {
+	if current != nil {
 		base = current
 		changes, err := s.diffChanges(*current)
 		if err != nil {
@@ -37,15 +37,7 @@ func (s *Service) createLocked(message, source string, settings VersionAutoSetti
 	if err != nil {
 		return VersionCommandResult{}, err
 	}
-	index.Items = append(index.Items, version)
-	index.CurrentID = version.ID
 	settings = normalizeVersionAutoSettings(settings)
-	if err := s.saveIndex(index); err != nil {
-		return VersionCommandResult{}, err
-	}
-	if err := s.pruneAutoVersions(settings.Retention); err != nil {
-		return VersionCommandResult{}, err
-	}
 	status, statusErr := s.statusLocked(settings)
 	result := VersionCommandResult{Message: "版本已保存", Version: &version}
 	if statusErr == nil {
@@ -83,7 +75,7 @@ func (s *Service) createSnapshot(message, source string, base *VersionEntry) (Ve
 	if err != nil {
 		return VersionEntry{}, err
 	}
-	hash, err := s.commitWorkspaceSnapshot(repo, files, message, now)
+	hash, err := s.commitWorkspaceSnapshot(repo, files, message, source, now)
 	if err != nil {
 		return VersionEntry{}, err
 	}

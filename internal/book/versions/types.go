@@ -6,8 +6,6 @@ const (
 	DefaultTimedVersionIntervalMinutes = 10
 	DefaultAgentVersionCharThreshold   = 3000
 	DefaultAutoVersionRetention        = 100
-
-	versionIndexVersion = 1
 )
 
 const (
@@ -31,12 +29,6 @@ type VersionEntry struct {
 	FileCount    int      `json:"file_count"`
 	TotalBytes   int64    `json:"total_bytes"`
 	ChangedPaths []string `json:"changed_paths"`
-}
-
-type VersionIndex struct {
-	Version   int            `json:"version"`
-	CurrentID string         `json:"current_id,omitempty"`
-	Items     []VersionEntry `json:"items"`
 }
 
 type VersionStatus struct {

@@ -257,9 +257,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Num label={t('settings.versions.agentThreshold')} value={draft.version_agent_char_threshold ?? null}
                placeholder={placeholderFor('version_agent_char_threshold')}
                onChange={(v) => setField('version_agent_char_threshold', v)} />
-          <Num label={t('settings.versions.retention')} value={draft.version_auto_retention ?? null}
-               placeholder={placeholderFor('version_auto_retention')}
-               onChange={(v) => setField('version_auto_retention', v)} />
         </>
       ) : (
         <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.versions.workspaceOnly')}</div>

@@ -21,7 +21,6 @@ var (
 )
 
 type VersionEntry = versions.VersionEntry
-type VersionIndex = versions.VersionIndex
 type VersionStatus = versions.VersionStatus
 type VersionAutoInfo = versions.VersionAutoInfo
 type VersionChange = versions.VersionChange

@@ -13,11 +13,11 @@ func (s *Service) MaybeCreateTimed(settings VersionAutoSettings) (VersionAutoRes
 	if !settings.TimedEnabled {
 		return VersionAutoResult{Skipped: true, Reason: "定时版本已关闭"}, nil
 	}
-	index, err := s.loadIndex()
+	items, err := s.loadVersions()
 	if err != nil {
 		return VersionAutoResult{}, err
 	}
-	if !shouldCreateTimedVersion(index.Items, settings.TimedIntervalMinutes) {
+	if !shouldCreateTimedVersion(items, settings.TimedIntervalMinutes) {
 		return VersionAutoResult{Skipped: true, Reason: "未到定时保存间隔"}, nil
 	}
 	status, err := s.statusLocked(settings)
@@ -126,10 +126,6 @@ func shouldCreateTimedVersion(items []VersionEntry, intervalMinutes int) bool {
 		return true
 	}
 	return time.Since(t) >= time.Duration(intervalMinutes)*time.Minute
-}
-
-func isPrunableAutoVersion(source string) bool {
-	return source == VersionSourceTimer || source == VersionSourceAgent
 }
 
 func changedTextChars(before, after VersionWorkspaceState) int {

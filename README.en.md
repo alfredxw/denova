@@ -50,7 +50,7 @@ Nova is more than a chat box and more than a text completion editor. It turns fi
 - **Bring Agents into the full workflow**: brainstorming, top-level settings, outlines, chapter-group plans, drafts, final prose, and state sync all have clear entry points.
 - **Write and rehearse in the same workspace**: IDE mode produces content, while interactive mode tests plot branches and character actions.
 - **Turn lore into structured assets**: characters, worlds, locations, factions, rules, and items live in the lore library, while per-chapter character state is tracked separately.
-- **Protect the creative process by default**: Nova uses go-git to maintain a local `.git` repository in the book workspace, supporting manual saves, history, diffs, restore, and automatic saves. Prose, settings, and creative state under `.nova` such as lore and sessions are versioned; only `.nova/versions/` metadata is excluded. System Git and manual repository setup are not required.
+- **Protect the creative process by default**: Nova uses go-git to maintain a local `.git` repository in the book workspace, supporting manual saves, history, diffs, restore, and automatic saves. Prose, settings, and creative state under `.nova` such as lore and sessions are versioned. System Git, manual repository setup, and an extra `.nova/versions` metadata directory are not required.
 
 ## Core Capabilities
 
@@ -167,8 +167,7 @@ my-novel/
 ├── drafts/
 └── .nova/
     ├── lore/
-    ├── sessions/
-    └── versions/
+    └── sessions/
 ```
 
 Common entry points:
@@ -177,7 +176,7 @@ Common entry points:
 - **Interactive**: rehearse plots, explore branches, switch storylines, and maintain scene memory.
 - **Lore Library**: maintain characters, worlds, locations, factions, rules, and items. Current character location, injuries, mental state, goals, and similar state live in `setting/character-states.md`.
 - **Narrative Direction**: configure point of view, pacing, style rules, and interactive generation preferences.
-- **Version Management**: manually save versions, view history and diffs, restore previous versions, and enable timed or large-Agent-output automatic versions. Local creative state such as `.nova/lore` and `.nova/sessions` is versioned; `.nova/versions/` stays outside versions as internal metadata.
+- **Version Management**: manually save versions, view history and diffs, restore previous versions, and enable timed or large-Agent-output automatic versions. Local creative state such as `.nova/lore` and `.nova/sessions` is versioned, and history comes directly from the workspace `.git`.
 - **Settings**: adjust models, editor behavior, Agent behavior, interactive-mode parameters, appearance, and language.
 
 ## Development

@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"syscall"
 )
 
@@ -30,14 +29,6 @@ func (s *Service) Restore(id string, settings VersionAutoSettings) (VersionComma
 	if err := s.restoreCommitToWorkspace(version.ID); err != nil {
 		return VersionCommandResult{}, err
 	}
-	index, err := s.loadIndex()
-	if err != nil {
-		return VersionCommandResult{}, err
-	}
-	index.CurrentID = version.ID
-	if err := s.saveIndex(index); err != nil {
-		return VersionCommandResult{}, err
-	}
 	nextStatus, statusErr := s.statusLocked(settings)
 	result := VersionCommandResult{Message: "已恢复到所选版本", Version: &version}
 	if statusErr == nil {
@@ -58,7 +49,11 @@ func (s *Service) removeEmptyVisibleDirs() error {
 		if !entry.IsDir() {
 			return nil
 		}
-		if strings.HasPrefix(entry.Name(), ".") {
+		rel, err := filepath.Rel(s.workspace, path)
+		if err != nil {
+			return nil
+		}
+		if isVersionExcludedRelPath(filepath.ToSlash(rel)) {
 			return filepath.SkipDir
 		}
 		dirs = append(dirs, path)
