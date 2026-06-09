@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -21,8 +23,28 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 	if first.Version == nil || len(first.Version.ID) != 40 {
 		t.Fatalf("expected git commit hash version id, got %#v", first.Version)
 	}
-	if _, err := os.Stat(filepath.Join(dir, ".nova", "versions", "git", ".git")); err != nil {
-		t.Fatalf("expected go-git repository: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		t.Fatalf("expected workspace .git repository: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nova", "versions", "git", ".git")); !os.IsNotExist(err) {
+		t.Fatalf("should not create internal mirror repository, err=%v", err)
+	}
+	exclude := readFile(t, dir, ".git/info/exclude")
+	if !hasExactLine(exclude, ".nova/versions/") {
+		t.Fatalf("expected .nova/versions/ in .git/info/exclude:\n%s", exclude)
+	}
+	if hasExactLine(exclude, ".nova/") {
+		t.Fatalf("should not ignore the whole .nova directory:\n%s", exclude)
+	}
+	writeFile(t, dir, ".nova/sessions/internal.txt", "内部数据")
+	writeFile(t, dir, ".nova/versions/cache.txt", "version metadata")
+	writeFile(t, dir, ".gitignore", ".nova\n")
+	files, err := service.commitFiles(first.Version.ID)
+	if err != nil {
+		t.Fatalf("commitFiles failed: %v", err)
+	}
+	if _, ok := files[".nova/sessions/internal.txt"]; ok {
+		t.Fatalf("first commit should not include .nova file created later: %v", sortedVersionFilePaths(files))
 	}
 
 	writeFile(t, dir, "chapters/ch0001.md", "第二版")
@@ -54,6 +76,19 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 	if second.Version == nil || second.Version.ID == first.Version.ID {
 		t.Fatalf("expected distinct second git commit: first=%#v second=%#v", first.Version, second.Version)
 	}
+	secondFiles, err := service.commitFiles(second.Version.ID)
+	if err != nil {
+		t.Fatalf("commitFiles second failed: %v", err)
+	}
+	if _, ok := secondFiles[".nova/sessions/internal.txt"]; !ok {
+		t.Fatalf("second commit should include .nova creative state: %v", sortedVersionFilePaths(secondFiles))
+	}
+	if _, ok := secondFiles[".gitignore"]; !ok {
+		t.Fatalf("second commit should include workspace .gitignore: %v", sortedVersionFilePaths(secondFiles))
+	}
+	if _, ok := secondFiles[".nova/versions/cache.txt"]; ok {
+		t.Fatalf("second commit should not include version metadata: %v", sortedVersionFilePaths(secondFiles))
+	}
 
 	writeFile(t, dir, "chapters/ch0001.md", "临时改动")
 	if _, err := service.Restore(first.Version.ID, settings); err != nil {
@@ -68,6 +103,12 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 	}
 	if readFile(t, dir, "setting/progress.md") != "进度一" {
 		t.Fatalf("restore should recover deleted progress")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nova", "sessions", "internal.txt")); !os.IsNotExist(err) {
+		t.Fatalf("restore should remove .nova content absent from target version, err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nova", "versions", "cache.txt")); err != nil {
+		t.Fatalf("restore should keep version metadata: %v", err)
 	}
 
 	cleanStatus, err := service.Status(settings)
@@ -155,4 +196,22 @@ func assertChange(t *testing.T, changes []VersionChange, path, status string) {
 		}
 	}
 	t.Fatalf("missing change %s %s in %#v", path, status, changes)
+}
+
+func sortedVersionFilePaths(files map[string]versionFileData) []string {
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+func hasExactLine(content, expected string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		if strings.TrimSpace(line) == expected {
+			return true
+		}
+	}
+	return false
 }

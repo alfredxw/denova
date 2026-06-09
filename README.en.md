@@ -50,7 +50,7 @@ Nova is more than a chat box and more than a text completion editor. It turns fi
 - **Bring Agents into the full workflow**: brainstorming, top-level settings, outlines, chapter-group plans, drafts, final prose, and state sync all have clear entry points.
 - **Write and rehearse in the same workspace**: IDE mode produces content, while interactive mode tests plot branches and character actions.
 - **Turn lore into structured assets**: characters, worlds, locations, factions, rules, and items live in the lore library, while per-chapter character state is tracked separately.
-- **Protect the creative process by default**: the built-in go-git local version store supports manual saves, history, diffs, restore, and automatic saves without requiring system Git or manual repository setup for every book.
+- **Protect the creative process by default**: Nova uses go-git to maintain a local `.git` repository in the book workspace, supporting manual saves, history, diffs, restore, and automatic saves. Prose, settings, and creative state under `.nova` such as lore and sessions are versioned; only `.nova/versions/` metadata is excluded. System Git and manual repository setup are not required.
 
 ## Core Capabilities
 
@@ -63,7 +63,7 @@ Nova is more than a chat box and more than a text completion editor. It turns fi
 | Lore Library | Structured long-term settings for characters, worlds, locations, factions, rules, items, and more |
 | Narrative Direction | Per-book or per-scene narrative rules, style constraints, pacing preferences, and interactive generation strategy |
 | Character Card Import | SillyTavern v2 PNG / JSON import into the current book or a new book |
-| Version Management | go-git local version store, history, diff comparison, restore, timed saves, and large-Agent-output auto saves |
+| Version Management | go-git managed workspace `.git`, history including `.nova` creative state, diff comparison, restore, timed saves, and large-Agent-output auto saves |
 | Layered Configuration | Global, user-level, and workspace-level settings for different models and different books |
 
 ## Recommended Workflow
@@ -166,6 +166,9 @@ my-novel/
 │   └── chapter-groups/
 ├── drafts/
 └── .nova/
+    ├── lore/
+    ├── sessions/
+    └── versions/
 ```
 
 Common entry points:
@@ -174,7 +177,7 @@ Common entry points:
 - **Interactive**: rehearse plots, explore branches, switch storylines, and maintain scene memory.
 - **Lore Library**: maintain characters, worlds, locations, factions, rules, and items. Current character location, injuries, mental state, goals, and similar state live in `setting/character-states.md`.
 - **Narrative Direction**: configure point of view, pacing, style rules, and interactive generation preferences.
-- **Version Management**: manually save versions, view history and diffs, restore previous versions, and enable timed or large-Agent-output automatic versions.
+- **Version Management**: manually save versions, view history and diffs, restore previous versions, and enable timed or large-Agent-output automatic versions. Local creative state such as `.nova/lore` and `.nova/sessions` is versioned; `.nova/versions/` stays outside versions as internal metadata.
 - **Settings**: adjust models, editor behavior, Agent behavior, interactive-mode parameters, appearance, and language.
 
 ## Development

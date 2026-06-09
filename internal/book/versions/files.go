@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -25,8 +24,12 @@ func collectVersionFiles(root, base string) ([]versionFileData, error) {
 		if path == root {
 			return nil
 		}
-		name := entry.Name()
-		if strings.HasPrefix(name, ".") {
+		rel, err := filepath.Rel(base, path)
+		if err != nil {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		if isVersionExcludedRelPath(relSlash) {
 			if entry.IsDir() {
 				return filepath.SkipDir
 			}
@@ -37,10 +40,6 @@ func collectVersionFiles(root, base string) ([]versionFileData, error) {
 		}
 		info, err := entry.Info()
 		if err != nil || info.Mode()&os.ModeSymlink != 0 {
-			return nil
-		}
-		rel, err := filepath.Rel(base, path)
-		if err != nil {
 			return nil
 		}
 		data, err := os.ReadFile(path)
@@ -95,21 +94,12 @@ func isTextBytes(data []byte) bool {
 	return true
 }
 
-func copyVersionFile(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		_ = out.Close()
-		return err
-	}
-	return out.Close()
+func isVersionExcludedRelPath(relPath string) bool {
+	cleanRel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relPath)))
+	return cleanRel == ".git" ||
+		strings.HasPrefix(cleanRel, ".git/") ||
+		cleanRel == ".nova/versions" ||
+		strings.HasPrefix(cleanRel, ".nova/versions/")
 }
 
 func safeVisiblePath(workspace, relPath string) (string, error) {
@@ -124,10 +114,13 @@ func safeVisiblePath(workspace, relPath string) (string, error) {
 	if cleanRel == "." || strings.HasPrefix(cleanRel, ".."+string(filepath.Separator)) || cleanRel == ".." {
 		return "", errors.New("路径不在 workspace 范围内")
 	}
+	if isVersionExcludedRelPath(filepath.ToSlash(cleanRel)) {
+		return "", errors.New("不允许操作版本内部路径")
+	}
 
 	for _, part := range strings.Split(cleanRel, string(filepath.Separator)) {
-		if part == "" || strings.HasPrefix(part, ".") {
-			return "", errors.New("不允许操作隐藏文件或隐藏目录")
+		if part == "" {
+			return "", errors.New("路径不能为空")
 		}
 	}
 

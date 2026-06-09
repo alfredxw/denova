@@ -14,63 +14,63 @@ import (
 )
 
 func (s *Service) openVersionRepo() (*git.Repository, error) {
-	repo, err := git.PlainOpen(s.repoDir())
+	repo, err := git.PlainOpen(s.workspace)
 	if err == nil {
-		return repo, nil
+		return repo, s.ensureGitExclude()
 	}
 	if !errors.Is(err, git.ErrRepositoryNotExists) {
 		return nil, err
 	}
-	if err := os.MkdirAll(s.repoDir(), 0o755); err != nil {
+	repo, err = git.PlainInit(s.workspace, false)
+	if err != nil {
 		return nil, err
 	}
-	return git.PlainInit(s.repoDir(), false)
+	return repo, s.ensureGitExclude()
 }
 
-func (s *Service) syncRepoWorktree(files []versionFileData) error {
-	if err := s.clearRepoWorktree(); err != nil {
-		return err
-	}
-	for _, file := range files {
-		dst := filepath.Join(s.repoDir(), filepath.FromSlash(file.Path))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return err
-		}
-		if err := copyVersionFile(file.Abs, dst); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Service) clearRepoWorktree() error {
-	entries, err := os.ReadDir(s.repoDir())
+func (s *Service) ensureGitExclude() error {
+	path := filepath.Join(s.workspace, ".git", "info", "exclude")
+	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+	} else if err != nil {
 		return err
 	}
-	for _, entry := range entries {
-		if entry.Name() == ".git" {
+
+	lines := strings.Split(string(data), "\n")
+	next := make([]string, 0, len(lines)+1)
+	hasVersionsExclude := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == ".nova/" {
 			continue
 		}
-		if err := os.RemoveAll(filepath.Join(s.repoDir(), entry.Name())); err != nil {
-			return err
+		if trimmed == ".nova/versions/" {
+			hasVersionsExclude = true
 		}
+		next = append(next, line)
 	}
-	return nil
+	if len(next) > 0 && next[len(next)-1] == "" {
+		next = next[:len(next)-1]
+	}
+	if !hasVersionsExclude {
+		next = append(next, ".nova/versions/")
+	}
+	content := strings.Join(next, "\n")
+	if content != "" {
+		content += "\n"
+	}
+	return os.WriteFile(path, []byte(content), 0o644)
 }
 
 func (s *Service) commitWorkspaceSnapshot(repo *git.Repository, files []versionFileData, message string, now time.Time) (plumbing.Hash, error) {
-	if err := s.syncRepoWorktree(files); err != nil {
+	if err := s.stageWorkspaceFiles(repo, files); err != nil {
 		return plumbing.ZeroHash, err
 	}
 	worktree, err := repo.Worktree()
 	if err != nil {
-		return plumbing.ZeroHash, err
-	}
-	if err := worktree.AddWithOptions(&git.AddOptions{All: true}); err != nil {
 		return plumbing.ZeroHash, err
 	}
 	return worktree.Commit(message, &git.CommitOptions{
@@ -83,15 +83,20 @@ func (s *Service) commitWorkspaceSnapshot(repo *git.Repository, files []versionF
 	})
 }
 
-func (s *Service) checkoutRepoCommit(repo *git.Repository, id string) error {
+func (s *Service) stageWorkspaceFiles(repo *git.Repository, files []versionFileData) error {
 	worktree, err := repo.Worktree()
 	if err != nil {
 		return err
 	}
-	return worktree.Checkout(&git.CheckoutOptions{
-		Hash:  plumbing.NewHash(id),
-		Force: true,
-	})
+	if err := worktree.AddWithOptions(&git.AddOptions{All: true}); err != nil {
+		return err
+	}
+	for _, file := range files {
+		if err := worktree.AddWithOptions(&git.AddOptions{Path: file.Path, SkipStatus: true}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) commitFiles(id string) (map[string]versionFileData, error) {
@@ -204,7 +209,19 @@ func (s *Service) restoreCommitToWorkspace(id string) error {
 	if err != nil {
 		return err
 	}
-	return s.checkoutRepoCommit(repo, id)
+	return s.setRepoHeadAndIndex(repo, id)
+}
+
+func (s *Service) setRepoHeadAndIndex(repo *git.Repository, id string) error {
+	hash := plumbing.NewHash(strings.TrimSpace(id))
+	if err := repo.Storer.SetReference(plumbing.NewHashReference(plumbing.HEAD, hash)); err != nil {
+		return err
+	}
+	files, err := s.collectVisibleFiles()
+	if err != nil {
+		return err
+	}
+	return s.stageWorkspaceFiles(repo, files)
 }
 
 func versionEntriesContain(items []VersionEntry, id string) bool {

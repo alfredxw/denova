@@ -29,10 +29,6 @@ func (s *Service) versionsDir() string {
 	return filepath.Join(s.workspace, ".nova", "versions")
 }
 
-func (s *Service) repoDir() string {
-	return filepath.Join(s.versionsDir(), "git")
-}
-
 func (s *Service) indexPath() string {
 	return filepath.Join(s.versionsDir(), "index.json")
 }
