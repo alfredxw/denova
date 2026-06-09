@@ -1,3 +1,7 @@
+<p align="center">
+  <a href="README.en.md">English</a> | 中文
+</p>
+
 # Nova
 
 Nova 是一个面向长篇小说创作的 AI 写作工作台，提供类似 IDE 的创作体验，覆盖灵感、设定、大纲、章节写作、互动试演、资料库和版本管理。
