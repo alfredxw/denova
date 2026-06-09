@@ -9,11 +9,12 @@ import (
 	"nova/config"
 	"nova/internal/agent"
 	"nova/internal/interactive"
+	"nova/internal/session"
 )
 
 const interactiveStateTimeout = 2 * time.Minute
 
-func startInteractiveStateTask(cfg *config.Config, conversation *interactiveConversation, turn interactive.TurnEvent) {
+func startInteractiveStateTask(cfg *config.Config, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) {
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -36,9 +37,11 @@ func startInteractiveStateTask(cfg *config.Config, conversation *interactiveConv
 		output, err := agent.GenerateInteractiveState(ctx, cfg, instruction)
 		if err != nil {
 			log.Printf("[interactive-state-agent] generate failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveState, instruction, "执行失败："+err.Error())
 			markInteractiveStateFailed(conversation, turn, err)
 			return
 		}
+		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveState, instruction, output)
 		ops, err := parseInteractiveStateOps(output)
 		if err != nil {
 			log.Printf("[interactive-state-agent] parse failed story_id=%s branch_id=%s turn_id=%s err=%v output=%q", conversation.storyID, turn.BranchID, turn.ID, err, output)

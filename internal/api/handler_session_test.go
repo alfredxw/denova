@@ -117,6 +117,30 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 	}
 }
 
+func TestAgentSessionAPIClearsBackgroundAgentContext(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+
+	clearResp := performJSONRequest(t, server, http.MethodPost, "/api/agents/interactive_hot_choices/session/clear", nil)
+	if clearResp.Code != http.StatusOK {
+		t.Fatalf("clear status = %d body=%s", clearResp.Code, clearResp.Body.String())
+	}
+	messagesResp := performJSONRequest(t, server, http.MethodGet, "/api/agents/interactive_hot_choices/session/messages", nil)
+	if messagesResp.Code != http.StatusOK {
+		t.Fatalf("messages status = %d body=%s", messagesResp.Code, messagesResp.Body.String())
+	}
+	var messages []testMessageDTO
+	decodeResponse(t, messagesResp.Body.Bytes(), &messages)
+	if len(messages) != 1 || messages[0].Type != "clear" {
+		t.Fatalf("background agent session should expose clear marker: %#v", messages)
+	}
+
+	invalidResp := performJSONRequest(t, server, http.MethodPost, "/api/agents/unknown/session/clear", nil)
+	if invalidResp.Code != http.StatusBadRequest {
+		t.Fatalf("invalid agent clear status = %d body=%s", invalidResp.Code, invalidResp.Body.String())
+	}
+}
+
 func newTestApplication(t *testing.T) *runtimeapp.App {
 	t.Helper()
 	root := t.TempDir()

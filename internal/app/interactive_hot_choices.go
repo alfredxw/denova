@@ -29,6 +29,7 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 	store := a.interactive
 	cfg := a.cfg
 	workspace := a.workspace
+	sessionStore := a.sessionStore
 	a.mu.RUnlock()
 	if store == nil || cfg == nil {
 		return InteractiveHotChoicesResult{}, ErrNoWorkspace
@@ -91,8 +92,10 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 	choices, err := agent.GenerateInteractiveHotChoices(ctx, &runtimeCfg, instruction)
 	if err != nil {
 		log.Printf("[interactive-hot-choices] generate failed story_id=%s branch_id=%s err=%v", storyID, storyCtx.Snapshot.BranchID, err)
+		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveHotChoices, instruction, "执行失败："+err.Error())
 		return InteractiveHotChoicesResult{}, err
 	}
+	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveHotChoices, instruction, formatHotChoicesSessionOutput(choices))
 	persistedChoices := mergeHotChoiceLists(cached.Choices, excludeChoices, choices)
 	if len(persistedChoices) == 0 {
 		return InteractiveHotChoicesResult{}, fmt.Errorf("互动快捷选择模型返回为空")
@@ -104,6 +107,22 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 	}
 	log.Printf("[interactive-hot-choices] persist done story_id=%s branch_id=%s parent_id=%s choices=%d", storyID, event.BranchID, event.ParentID, len(event.Choices))
 	return InteractiveHotChoicesResult{Enabled: true, Choices: event.Choices}, nil
+}
+
+func formatHotChoicesSessionOutput(choices []string) string {
+	if len(choices) == 0 {
+		return "（未生成快捷选项）"
+	}
+	var sb strings.Builder
+	sb.WriteString("快捷选项：\n")
+	for _, choice := range choices {
+		choice = strings.TrimSpace(choice)
+		if choice == "" {
+			continue
+		}
+		fmt.Fprintf(&sb, "- %s\n", choice)
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 func hotChoicesLoreContext(workspace string) string {
