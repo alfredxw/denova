@@ -14,8 +14,6 @@ import (
 	"nova/internal/session"
 )
 
-const loreAgentSessionID = "lore-agent"
-
 // LoreAppService 负责资料库 CRUD、资料库版本和资料库 Agent。
 type LoreAppService struct {
 	app *App
@@ -121,16 +119,40 @@ func (s *LoreAppService) RunLoreAgent(ctx context.Context, instruction string, r
 	}
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = workspace
+	var history []*schema.Message
+	var sess *session.Session
+	if store := s.sessionStore(); store != nil {
+		loaded, err := agentSessionFromStore(store, config.AgentKindLoreEditor)
+		if err != nil {
+			return book.LoreApplyResult{}, err
+		}
+		sess = loaded
+		history = sess.GetEffectiveMessages()
+		if err := sess.Append(schema.UserMessage(strings.TrimSpace(instruction))); err != nil {
+			return book.LoreApplyResult{}, err
+		}
+	}
 	store := book.NewLoreStore(state.Workspace())
 	items, err := store.List()
 	if err != nil {
 		return book.LoreApplyResult{}, err
 	}
-	plan, err := agent.GenerateLoreEditPlan(ctx, &runtimeCfg, instruction, items, references, nil)
+	plan, err := agent.GenerateLoreEditPlan(ctx, &runtimeCfg, instruction, items, references, history)
 	if err != nil {
+		if sess != nil {
+			_ = sess.Append(schema.AssistantMessage("执行失败："+err.Error(), nil))
+		}
 		return book.LoreApplyResult{}, err
 	}
-	return store.ApplyOperations(plan.Message, plan.Ops)
+	result, err := store.ApplyOperations(plan.Message, plan.Ops)
+	if sess != nil {
+		if err != nil {
+			_ = sess.Append(schema.AssistantMessage("执行失败："+err.Error(), nil))
+		} else {
+			_ = sess.Append(schema.AssistantMessage(loreResultMessage(result), nil))
+		}
+	}
+	return result, err
 }
 
 func (a *App) LoreAgentMessages() ([]session.HistoryEntry, error) {
@@ -158,11 +180,7 @@ func (s *LoreAppService) ClearLoreAgentSession() error {
 	if store == nil {
 		return ErrNoWorkspace
 	}
-	sess, err := store.GetOrCreate(loreAgentSessionID)
-	if err != nil {
-		return err
-	}
-	return sess.Clear()
+	return clearAgentSessionInStore(store, config.AgentKindLoreEditor)
 }
 
 func (a *App) StartLoreAgentTask(instruction string, references []string) *Task {

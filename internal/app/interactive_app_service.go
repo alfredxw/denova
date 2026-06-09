@@ -14,8 +14,6 @@ import (
 	"nova/internal/session"
 )
 
-const tellerAgentSessionID = "teller-agent"
-
 type TellerAgentResult struct {
 	Message string               `json:"message"`
 	Action  string               `json:"action"`
@@ -208,6 +206,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	state := a.bookState
 	bookService := a.bookService
 	chatService := a.chatService
+	sessionStore := a.sessionStore
 	runtimeCfg := *a.cfg
 	workspace := a.workspace
 	runtimeCfg.Workspace = workspace
@@ -269,7 +268,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_references=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleReferences))
 		chatService.Run(ctx, runner, conversation, bookService, req, emit)
 		if turn, stateReady, ok := conversation.LastTurnForState(); ok && !stateReady && ctx.Err() == nil {
-			startInteractiveStateTask(&runtimeCfg, conversation, turn)
+			startInteractiveStateTask(&runtimeCfg, conversation, turn, sessionStore)
 		}
 		log.Printf("[interactive-agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})
@@ -366,11 +365,7 @@ func (s *InteractiveAppService) ClearTellerAgentSession() error {
 	if store == nil {
 		return ErrNoWorkspace
 	}
-	sess, err := store.GetOrCreate(tellerAgentSessionID)
-	if err != nil {
-		return err
-	}
-	return sess.Clear()
+	return clearAgentSessionInStore(store, config.AgentKindTellerEditor)
 }
 
 func (a *App) StartTellerAgentTask(instruction string, targetID string, references []string) *Task {

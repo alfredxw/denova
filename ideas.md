@@ -2,10 +2,17 @@
 ## WIP
 - 基础体验: 完善的 Skills 系统, 通过skills自定义工作流
 - Agent能力：支持更完善的上下文管理，memory compact，dreaming，etc.
+- 自动化，定时任务：支持定时触发agent任务，比如更新资料库、生成章节等
 - 从0，脑暴开始初始化，在agent引导下，生成资料库（角色，世界观）、大纲。
   - 然后开始 由 细纲 到 章节 的创作
 - html渲染
-- 资料库简介框太小了，而且brief description 内容不友好，并不能让agent自动触发读取，我希望 brief description 是类似 “角色/资料/规则/{类型} {名称} + 3-5句内容简介。上下文出现相关内容的时候，一定要参考本项详情” 这样结构
+- self evolve: bugfix, feature build
+- workflow: 
+  - 故事设定
+  - 卷规划
+  - 章节组-章，定稿
+- 版本管理 go-git
+- 导入现有小说，支持从文件txt/md导入，解析章节，AI自动提取资料库
 
 ## 互动模式
 - 初始化：互动模式支持通过 agent+skill 来初始化世界观&角色&开局

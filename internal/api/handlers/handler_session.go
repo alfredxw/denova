@@ -57,31 +57,7 @@ func (h *Handlers) HandleSessionMessages(ctx context.Context, c *app.RequestCont
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
 	}
-
-	result := make([]messageDTO, 0, len(entries))
-	for _, entry := range entries {
-		if entry.Type == "clear" {
-			result = append(result, messageDTO{
-				Type:      entry.Type,
-				CreatedAt: formatTime(entry.CreatedAt),
-			})
-			continue
-		}
-		if entry.Content == "" {
-			continue
-		}
-		result = append(result, messageDTO{
-			Type:      entry.Type,
-			ID:        entry.ID,
-			Role:      entry.Role,
-			Content:   entry.Content,
-			Name:      entry.Name,
-			Status:    entry.Status,
-			CreatedAt: formatTime(entry.CreatedAt),
-		})
-	}
-
-	writeJSON(c, consts.StatusOK, result)
+	writeJSON(c, consts.StatusOK, historyEntriesToMessageDTOs(entries))
 }
 
 // handleSessions GET /api/sessions — 返回当前 workspace 下的会话列表。
@@ -194,6 +170,32 @@ func toSessionDTOs(metas []session.SessionMeta) []sessionDTO {
 			UpdatedAt:    formatTime(meta.UpdatedAt),
 			Active:       meta.Active,
 			MessageCount: meta.MessageCount,
+		})
+	}
+	return result
+}
+
+func historyEntriesToMessageDTOs(entries []session.HistoryEntry) []messageDTO {
+	result := make([]messageDTO, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Type == "clear" {
+			result = append(result, messageDTO{
+				Type:      entry.Type,
+				CreatedAt: formatTime(entry.CreatedAt),
+			})
+			continue
+		}
+		if entry.Content == "" {
+			continue
+		}
+		result = append(result, messageDTO{
+			Type:      entry.Type,
+			ID:        entry.ID,
+			Role:      entry.Role,
+			Content:   entry.Content,
+			Name:      entry.Name,
+			Status:    entry.Status,
+			CreatedAt: formatTime(entry.CreatedAt),
 		})
 	}
 	return result

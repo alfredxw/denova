@@ -36,9 +36,11 @@ func (s *WorkspaceRuntimeManager) inferVersionMessage(ctx context.Context, expli
 		summaryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
 		if summary, err := agent.GenerateVersionSummary(summaryCtx, &runtimeCfg, instruction); err == nil && strings.TrimSpace(summary) != "" {
+			s.app.persistAgentCall(config.AgentKindVersionSummary, instruction, summary)
 			return strings.TrimSpace(summary)
 		} else if err != nil {
 			log.Printf("[versions] LLM 生成版本说明失败 source=%s workspace=%s err=%v", source, workspace, err)
+			s.app.persistAgentCall(config.AgentKindVersionSummary, instruction, "执行失败："+err.Error())
 		}
 	}
 	return fallbackVersionMessage(source, status.Changes)
