@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/go-git/go-git/v5/plumbing"
 )
 
 func (s *Service) loadIndex() (VersionIndex, error) {
@@ -28,7 +29,7 @@ func (s *Service) loadIndex() (VersionIndex, error) {
 	if index.Items == nil {
 		index.Items = []VersionEntry{}
 	}
-	return index, nil
+	return s.filterIndexWithGitCommits(index)
 }
 
 func (s *Service) saveIndex(index VersionIndex) error {
@@ -47,14 +48,6 @@ func (s *Service) saveIndex(index VersionIndex) error {
 		return err
 	}
 	return os.WriteFile(s.indexPath(), append(data, '\n'), 0o644)
-}
-
-func (s *Service) saveManifest(version VersionEntry) error {
-	data, err := json.MarshalIndent(version, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(s.snapshotDir(version.ID), "manifest.json"), append(data, '\n'), 0o644)
 }
 
 func (s *Service) findVersion(id string) (VersionEntry, error) {
@@ -96,13 +89,45 @@ func (s *Service) pruneAutoVersions(retention int) error {
 	next := index.Items[:0]
 	for _, item := range index.Items {
 		if item.ID != index.CurrentID && removeIDs[item.ID] {
-			_ = os.RemoveAll(s.snapshotDir(item.ID))
 			continue
 		}
 		next = append(next, item)
 	}
 	index.Items = next
 	return s.saveIndex(index)
+}
+
+func (s *Service) filterIndexWithGitCommits(index VersionIndex) (VersionIndex, error) {
+	if len(index.Items) == 0 {
+		return index, nil
+	}
+	repo, err := s.openVersionRepo()
+	if err != nil {
+		return VersionIndex{}, err
+	}
+	filtered := index.Items[:0]
+	for _, item := range index.Items {
+		if item.ID == "" {
+			continue
+		}
+		if _, err := repo.CommitObject(plumbing.NewHash(item.ID)); err != nil {
+			if errors.Is(err, plumbing.ErrObjectNotFound) {
+				continue
+			}
+			return VersionIndex{}, err
+		}
+		filtered = append(filtered, item)
+	}
+	index.Items = filtered
+	if index.CurrentID != "" && !versionEntriesContain(index.Items, index.CurrentID) {
+		index.CurrentID = ""
+	}
+	if index.CurrentID == "" {
+		if latest := latestVersion(index.Items); latest != nil {
+			index.CurrentID = latest.ID
+		}
+	}
+	return index, nil
 }
 
 func normalizeVersionSource(source string) string {

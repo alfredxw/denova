@@ -27,7 +27,7 @@ func (s *Service) Restore(id string, settings VersionAutoSettings) (VersionComma
 			return VersionCommandResult{}, fmt.Errorf("创建回滚前自动备份失败: %w", err)
 		}
 	}
-	if err := s.restoreSnapshot(version); err != nil {
+	if err := s.restoreCommitToWorkspace(version.ID); err != nil {
 		return VersionCommandResult{}, err
 	}
 	index, err := s.loadIndex()
@@ -44,42 +44,6 @@ func (s *Service) Restore(id string, settings VersionAutoSettings) (VersionComma
 		result.Status = &nextStatus
 	}
 	return result, nil
-}
-
-func (s *Service) restoreSnapshot(version VersionEntry) error {
-	files, err := s.collectVisibleFiles()
-	if err != nil {
-		return err
-	}
-	for _, file := range files {
-		if err := os.Remove(file.Abs); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
-	if err := s.removeEmptyVisibleDirs(); err != nil {
-		return err
-	}
-	srcRoot := s.snapshotDir(version.ID)
-	return filepath.WalkDir(srcRoot, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if path == srcRoot || entry.IsDir() {
-			return nil
-		}
-		if entry.Name() == "manifest.json" && filepath.Dir(path) == srcRoot {
-			return nil
-		}
-		rel, err := filepath.Rel(srcRoot, path)
-		if err != nil {
-			return err
-		}
-		dst := filepath.Join(s.workspace, rel)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return err
-		}
-		return copyVersionFile(path, dst)
-	})
 }
 
 func (s *Service) removeEmptyVisibleDirs() error {

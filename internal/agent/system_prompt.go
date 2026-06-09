@@ -53,7 +53,7 @@ func agentRuntimeContract(agentKind string) string {
 			"- 资料库 Agent 可以使用资料库读写工具、文件读写工具和 Skills；不得臆造未启用工具。",
 			"- 资料库写入必须使用 write_lore_items，且只沉淀长期稳定设定。",
 			"- 初始化流程必须先与用户确认故事设定；只有用户明确确认后，才允许写入资料库或 CREATOR.md。",
-			"- 初始化流程不允许写 脑暴.md、章节、大纲、progress、character-states，不允许创建互动 story 或伪造互动回合。",
+			"- 初始化流程不允许写 brainstorm.md、章节、大纲、progress、character-states，不允许创建互动 story 或伪造互动回合。",
 		}, "\n")
 	case config.AgentKindTellerEditor:
 		return "- 导演 Agent 必须只输出符合内置 schema 的 JSON object；只能创建或修改单个导演，保存前仍由后端校验。"

@@ -22,6 +22,19 @@ func TestInitWorkspaceDoesNotCreateCharacterStates(t *testing.T) {
 	}
 }
 
+func TestInitWorkspaceCreatesBrainstormMarkdown(t *testing.T) {
+	dir := t.TempDir()
+	state := NewState(dir)
+
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace 失败: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, BrainstormFileName)); err != nil {
+		t.Fatalf("InitWorkspace 应创建 %s: %v", BrainstormFileName, err)
+	}
+}
+
 func TestCompactContextIncludesCharacterStates(t *testing.T) {
 	dir := t.TempDir()
 	state := NewState(dir)

@@ -610,7 +610,7 @@ const enUS = {
   'settingPanel.loreAgent.emptyTitle': 'Chat with the Lore Agent',
   'settingPanel.loreAgent.emptyDesc': 'Describe lore to organize, expand, or revise. Use @ in the input to reference specific lore items.',
   'settingPanel.loreAgent.initAction': 'Initialize story lore',
-  'settingPanel.loreAgent.initPrompt': 'Please use the lore-init skill to initialize this new story lore and CREATOR.md with me. Do not write anything yet: first ask follow-up questions and prepare a proposal for confirmation. After I explicitly confirm, write long-term setting facts into lore and creative rules into CREATOR.md. Do not write 脑暴.md, do not generate outline, chapters, progress, character-states, and do not create an interactive story.',
+  'settingPanel.loreAgent.initPrompt': 'Please use the lore-init skill to initialize this new story lore and CREATOR.md with me. Do not write anything yet: first ask follow-up questions and prepare a proposal for confirmation. After I explicitly confirm, write long-term setting facts into lore and creative rules into CREATOR.md. Do not write brainstorm.md, do not generate outline, chapters, progress, character-states, and do not create an interactive story.',
   'settingPanel.loreAgent.running': 'Agent is processing...',
   'settingPanel.loreAgent.searchLore': 'Search lore items...',
   'settingPanel.loreAgent.noLore': 'No lore found',

@@ -11,7 +11,7 @@ import (
 	"nova/internal/book"
 )
 
-// handleVersionStatus GET /api/versions/status — 返回当前书籍原生版本状态。
+// handleVersionStatus GET /api/versions/status — 返回当前书籍本地版本状态。
 func (h *Handlers) HandleVersionStatus(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return

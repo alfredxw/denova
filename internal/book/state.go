@@ -58,12 +58,12 @@ func (s *State) ChapterGroupDir() string {
 }
 
 // BrainstormFileName 顶层定调文件名，存于 workspace 根目录。
-const BrainstormFileName = "脑暴.md"
+const BrainstormFileName = "brainstorm.md"
 
 // CharacterStatesFileName 角色状态文件名，存于 setting/，用于追踪当前连续性状态。
 const CharacterStatesFileName = "character-states.md"
 
-// InitWorkspace 初始化作品工作目录结构，并在缺失时写入「脑暴.md」顶层定调模板。
+// InitWorkspace 初始化作品工作目录结构，并在缺失时写入 brainstorm.md 顶层定调模板。
 func (s *State) InitWorkspace() error {
 	dirs := []string{
 		s.NovaDir(),
@@ -98,7 +98,7 @@ func (s *State) InitWorkspace() error {
 	return nil
 }
 
-// BrainstormPath 返回脑暴文件绝对路径。
+// BrainstormPath 返回 brainstorm 文件绝对路径。
 func (s *State) BrainstormPath() string {
 	return filepath.Join(s.workspace, BrainstormFileName)
 }

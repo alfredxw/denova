@@ -16,7 +16,7 @@ import (
 	"nova/internal/session"
 )
 
-// WorkspaceRuntimeManager 负责工作区运行时、书籍元信息、原生版本服务与设置等跨领域基础能力。
+// WorkspaceRuntimeManager 负责工作区运行时、书籍元信息、本地版本服务与设置等跨领域基础能力。
 type WorkspaceRuntimeManager struct {
 	app *App
 }
@@ -245,7 +245,7 @@ func (s *WorkspaceRuntimeManager) CreateBook(ctx context.Context, parentDir, tit
 	return workspace, meta, nil
 }
 
-// VersionStatus 返回当前书籍 workspace 的原生版本状态。
+// VersionStatus 返回当前书籍 workspace 的本地版本状态。
 func (a *App) VersionStatus(ctx context.Context) (book.VersionStatus, error) {
 	return a.runtime().VersionStatus(ctx)
 }

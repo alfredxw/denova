@@ -9,27 +9,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 	"unicode/utf8"
 )
 
 func (s *Service) collectVisibleFiles() ([]versionFileData, error) {
 	return collectVersionFiles(s.workspace, s.workspace)
-}
-
-func (s *Service) collectSnapshotFiles(id string) (map[string]string, error) {
-	files, err := collectVersionFiles(s.snapshotDir(id), s.snapshotDir(id))
-	if err != nil {
-		return nil, err
-	}
-	result := make(map[string]string, len(files))
-	for _, file := range files {
-		if file.Path == "manifest.json" {
-			continue
-		}
-		result[file.Path] = file.Hash
-	}
-	return result, nil
 }
 
 func collectVersionFiles(root, base string) ([]versionFileData, error) {
@@ -63,19 +47,14 @@ func collectVersionFiles(root, base string) ([]versionFileData, error) {
 		if err != nil {
 			return nil
 		}
-		hashBytes := sha256.Sum256(data)
-		text := isTextBytes(data)
-		chars := 0
-		if text {
-			chars = utf8.RuneCount(data)
-		}
+		state := versionFileStateFromBytes(data)
 		files = append(files, versionFileData{
 			Path:  filepath.ToSlash(rel),
 			Abs:   path,
-			Hash:  hex.EncodeToString(hashBytes[:]),
+			Hash:  state.Hash,
 			Size:  info.Size(),
-			Chars: chars,
-			Text:  text,
+			Chars: state.Chars,
+			Text:  state.Text,
 		})
 		return nil
 	})
@@ -84,6 +63,21 @@ func collectVersionFiles(root, base string) ([]versionFileData, error) {
 	}
 	sort.SliceStable(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 	return files, nil
+}
+
+func versionFileStateFromBytes(data []byte) VersionFileState {
+	hashBytes := sha256.Sum256(data)
+	text := isTextBytes(data)
+	chars := 0
+	if text {
+		chars = utf8.RuneCount(data)
+	}
+	return VersionFileState{
+		Hash:  hex.EncodeToString(hashBytes[:]),
+		Size:  int64(len(data)),
+		Chars: chars,
+		Text:  text,
+	}
 }
 
 func isTextBytes(data []byte) bool {
@@ -99,17 +93,6 @@ func isTextBytes(data []byte) bool {
 		}
 	}
 	return true
-}
-
-func randomVersionSuffix(files []versionFileData) string {
-	h := sha256.New()
-	_, _ = io.WriteString(h, time.Now().Format(time.RFC3339Nano))
-	for _, file := range files {
-		_, _ = io.WriteString(h, file.Path)
-		_, _ = io.WriteString(h, file.Hash)
-	}
-	sum := h.Sum(nil)
-	return hex.EncodeToString(sum[:])[:8]
 }
 
 func copyVersionFile(src, dst string) error {

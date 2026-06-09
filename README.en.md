@@ -50,7 +50,7 @@ Nova is more than a chat box and more than a text completion editor. It turns fi
 - **Bring Agents into the full workflow**: brainstorming, top-level settings, outlines, chapter-group plans, drafts, final prose, and state sync all have clear entry points.
 - **Write and rehearse in the same workspace**: IDE mode produces content, while interactive mode tests plot branches and character actions.
 - **Turn lore into structured assets**: characters, worlds, locations, factions, rules, and items live in the lore library, while per-chapter character state is tracked separately.
-- **Protect the creative process by default**: Nova-native snapshots support manual saves, history, diffs, restore, and automatic saves without initializing Git for every book.
+- **Protect the creative process by default**: the built-in go-git local version store supports manual saves, history, diffs, restore, and automatic saves without requiring system Git or manual repository setup for every book.
 
 ## Core Capabilities
 
@@ -63,7 +63,7 @@ Nova is more than a chat box and more than a text completion editor. It turns fi
 | Lore Library | Structured long-term settings for characters, worlds, locations, factions, rules, items, and more |
 | Narrative Direction | Per-book or per-scene narrative rules, style constraints, pacing preferences, and interactive generation strategy |
 | Character Card Import | SillyTavern v2 PNG / JSON import into the current book or a new book |
-| Version Management | Local snapshots, history, diff comparison, restore, timed saves, and large-Agent-output auto saves |
+| Version Management | go-git local version store, history, diff comparison, restore, timed saves, and large-Agent-output auto saves |
 | Layered Configuration | Global, user-level, and workspace-level settings for different models and different books |
 
 ## Recommended Workflow
@@ -158,7 +158,7 @@ After startup, if no book is specified or restored, the Web UI opens Book Manage
 ```text
 my-novel/
 ├── CREATOR.md
-├── 脑暴.md
+├── brainstorm.md
 ├── chapters/
 ├── setting/
 │   ├── progress.md
@@ -174,7 +174,7 @@ Common entry points:
 - **Interactive**: rehearse plots, explore branches, switch storylines, and maintain scene memory.
 - **Lore Library**: maintain characters, worlds, locations, factions, rules, and items. Current character location, injuries, mental state, goals, and similar state live in `setting/character-states.md`.
 - **Narrative Direction**: configure point of view, pacing, style rules, and interactive generation preferences.
-- **Version Management**: manually save versions, view history and diffs, restore previous versions, and enable timed or large-Agent-output auto snapshots.
+- **Version Management**: manually save versions, view history and diffs, restore previous versions, and enable timed or large-Agent-output automatic versions.
 - **Settings**: adjust models, editor behavior, Agent behavior, interactive-mode parameters, appearance, and language.
 
 ## Development

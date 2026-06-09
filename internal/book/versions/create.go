@@ -1,8 +1,6 @@
 package versions
 
 import (
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -62,21 +60,9 @@ func (s *Service) createSnapshot(message, source string, base *VersionEntry) (Ve
 		return VersionEntry{}, err
 	}
 	now := time.Now()
-	id := "v" + now.Format("20060102150405") + "-" + randomVersionSuffix(files)
-	dstRoot := s.snapshotDir(id)
-	if err := os.MkdirAll(dstRoot, 0o755); err != nil {
-		return VersionEntry{}, err
-	}
 	var total int64
 	for _, file := range files {
 		total += file.Size
-		dst := filepath.Join(dstRoot, filepath.FromSlash(file.Path))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return VersionEntry{}, err
-		}
-		if err := copyVersionFile(file.Abs, dst); err != nil {
-			return VersionEntry{}, err
-		}
 	}
 	changed := make([]string, 0)
 	if base != nil {
@@ -93,17 +79,22 @@ func (s *Service) createSnapshot(message, source string, base *VersionEntry) (Ve
 		}
 	}
 	sort.Strings(changed)
+	repo, err := s.openVersionRepo()
+	if err != nil {
+		return VersionEntry{}, err
+	}
+	hash, err := s.commitWorkspaceSnapshot(repo, files, message, now)
+	if err != nil {
+		return VersionEntry{}, err
+	}
 	version := VersionEntry{
-		ID:           id,
+		ID:           hash.String(),
 		Message:      message,
 		CreatedAt:    now.Format(time.RFC3339),
 		Source:       source,
 		FileCount:    len(files),
 		TotalBytes:   total,
 		ChangedPaths: changed,
-	}
-	if err := s.saveManifest(version); err != nil {
-		return VersionEntry{}, err
 	}
 	return version, nil
 }

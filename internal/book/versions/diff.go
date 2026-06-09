@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
 func (s *Service) Diff(id, path string) (VersionDiff, error) {
@@ -28,11 +30,10 @@ func (s *Service) Diff(id, path string) (VersionDiff, error) {
 		return VersionDiff{}, err
 	}
 	diff.Path = filepath.ToSlash(filepath.Clean(filepath.FromSlash(path)))
-	versionPath := filepath.Join(s.snapshotDir(version.ID), filepath.FromSlash(diff.Path))
 	workspacePath := filepath.Join(s.workspace, filepath.FromSlash(diff.Path))
-	original, originalErr := os.ReadFile(versionPath)
+	original, originalErr := s.readCommitFile(version.ID, diff.Path)
 	modified, modifiedErr := os.ReadFile(workspacePath)
-	if errors.Is(originalErr, os.ErrNotExist) {
+	if errors.Is(originalErr, object.ErrFileNotFound) {
 		diff.MissingInVersion = true
 	} else if originalErr != nil {
 		return VersionDiff{}, originalErr
@@ -61,7 +62,7 @@ func (s *Service) diffChanges(version VersionEntry) ([]VersionChange, error) {
 	for _, file := range currentFiles {
 		current[file.Path] = file.Hash
 	}
-	snapshot, err := s.collectSnapshotFiles(version.ID)
+	snapshot, err := s.commitFiles(version.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -69,12 +70,12 @@ func (s *Service) diffChanges(version VersionEntry) ([]VersionChange, error) {
 	seen := map[string]bool{}
 	for path, hash := range current {
 		seen[path] = true
-		oldHash, ok := snapshot[path]
+		oldFile, ok := snapshot[path]
 		if !ok {
 			changes = append(changes, VersionChange{Path: path, Status: "added"})
 			continue
 		}
-		if oldHash != hash {
+		if oldFile.Hash != hash {
 			changes = append(changes, VersionChange{Path: path, Status: "modified"})
 		}
 	}

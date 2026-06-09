@@ -610,7 +610,7 @@ const zhCN = {
   'settingPanel.loreAgent.emptyTitle': '和资料库 Agent 对话',
   'settingPanel.loreAgent.emptyDesc': '直接描述要整理、补充或修改的设定；需要限定对象时，在输入框里用 @ 引用资料条目。',
   'settingPanel.loreAgent.initAction': '初始化故事设定',
-  'settingPanel.loreAgent.initPrompt': '请使用 lore-init skill，先和我一起初始化这个新故事的资料库和 CREATOR.md。先不要写入，先追问并整理待确认方案；等我明确确认后，再把长期设定写入资料库，并把创作规则写入 CREATOR.md。不要写 脑暴.md，不要生成大纲、章节、progress、character-states，也不要创建互动 story。',
+  'settingPanel.loreAgent.initPrompt': '请使用 lore-init skill，先和我一起初始化这个新故事的资料库和 CREATOR.md。先不要写入，先追问并整理待确认方案；等我明确确认后，再把长期设定写入资料库，并把创作规则写入 CREATOR.md。不要写 brainstorm.md，不要生成大纲、章节、progress、character-states，也不要创建互动 story。',
   'settingPanel.loreAgent.running': 'Agent 正在处理...',
   'settingPanel.loreAgent.searchLore': '搜索资料条目...',
   'settingPanel.loreAgent.noLore': '未找到资料',

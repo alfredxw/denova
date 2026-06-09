@@ -22,7 +22,7 @@ var (
 	ErrVersionClean    = errors.New("当前工作区没有可保存的变更")
 )
 
-// VersionEntry 表示一本书的一次原生快照版本。
+// VersionEntry 表示一本书的一次本地版本库提交。
 type VersionEntry struct {
 	ID           string   `json:"id"`
 	Message      string   `json:"message"`
