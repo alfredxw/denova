@@ -92,10 +92,16 @@ for target in "${TARGETS[@]}"; do
   copy_if_exists "${ROOT_DIR}/LICENSE" "${package_dir}/"
 
   if [[ "${archive_type}" == "zip" ]]; then
-    require_command zip
     (
       cd "${BUILD_DIR}/${package_name}"
-      zip -qr "${DIST_DIR}/${package_name}.zip" nova
+      if command -v zip >/dev/null 2>&1; then
+        zip -qr "${DIST_DIR}/${package_name}.zip" nova
+      elif command -v python3 >/dev/null 2>&1; then
+        python3 -m zipfile -c "${DIST_DIR}/${package_name}.zip" nova
+      else
+        echo "错误: 未找到命令 zip 或 python3，无法生成 Windows zip 包" >&2
+        exit 1
+      fi
     )
   else
     (

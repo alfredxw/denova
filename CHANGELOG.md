@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v0.1.7] - 2026-06-10
+
 ### Added
 
 - README 新增中英语言切换入口，并补充英文版 `README.en.md`。
@@ -51,6 +53,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 修复创作 Agent 和互动模式流式输出完成并刷新为持久化历史后，Markdown 段落、列表和行距重新排版导致会话区域抖动的问题。
 - 修复作品目录树和章节摘要对中文自然章节名排序不准确的问题，`序章`、`第一章`、`第十章`、`第十一章`、`第一百一十一章` 等会按实际章序排列。
 - 修复资料库 Agent 和叙事编排 Agent 复用通用消息列表后，长历史消息撑开整个页面滚动的问题；消息历史改为在 Agent 内部区域滚动。
+- 修复 GitHub Release 打包脚本在系统缺少 `zip` 命令时无法生成 Windows 压缩包的问题；现在会回退使用 `python3 -m zipfile`。
 - 小说导入智能章节识别失败时增加后端排查日志，记录工具 Agent 调用、模型输出摘要、正则命中数量和回退原因，方便定位为何回退内置规则。
 - 小说导入工具 Agent 正则识别超时时间从 25 秒提升到 90 秒，降低大样本或慢模型导致 `context deadline exceeded` 后直接回退内置规则的概率。
 - 小说导入工具 Agent 在 JSON mode 返回空内容或解析失败时，会自动降级为普通文本模式重试一次，兼容 OpenAI 协议平台对 `response_format=json_object` 支持不稳定的情况。

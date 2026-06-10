@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.1.6</strong> (2026-06-05) · Beta
+  Current version: <strong>v0.1.7</strong> (2026-06-10) · Beta
 </p>
 
 ![Nova Novel IDE](./img/ide.png)
@@ -238,14 +238,14 @@ cd output
 Build a local GitHub Release package:
 
 ```bash
-scripts/build-github-release.sh v0.1.6
+scripts/build-github-release.sh v0.1.7
 ```
 
 After pushing the tag, GitHub Actions will create or update the Release automatically:
 
 ```bash
-git tag v0.1.6
-git push origin v0.1.6
+git tag v0.1.7
+git push origin v0.1.7
 ```
 
 ## License
