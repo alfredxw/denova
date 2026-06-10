@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.1.7</strong>（2026-06-10） · Beta
+  当前版本：<strong>v0.1.8</strong>（2026-06-11） · Beta
 </p>
 
 ![Nova 小说 IDE](./img/ide.png)
@@ -62,6 +62,7 @@ Nova 不是一个简单的聊天框，也不是只负责补全文字的编辑器
 | 互动故事 | 剧情分支、下一步行动候选、场景记忆、故事线切换、路线图 |
 | 资料库 | 结构化维护角色、世界观、地点、势力、规则、物品等长期设定 |
 | 叙事编排 | 按作品或场景配置叙述规则、风格约束、节奏偏好和互动生成策略 |
+| Skills | 内置与自定义 Agent 工作流，支持用户级和工作区级 `SKILL.md`，可用 `/skill-name` 触发 |
 | 现有小说导入 | txt / md 上传后由工具 Agent 智能识别章节标题正则，可预览、调整样本字数和正则后再确认创建新书 |
 | 角色卡导入 | 支持 SillyTavern v2 PNG / JSON 导入当前作品或创建新作品 |
 | 版本管理 | go-git 管理的 workspace `.git`、包含 `.nova` 创作状态的历史记录、Diff 对比、恢复、定时与 Agent 输出自动保存 |
@@ -146,7 +147,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-也可以在 `config.toml` 中配置模型、Agent 参数、编辑器、互动模式、版本管理和界面语言。配置优先级：
+也可以在 `config.toml` 中配置模型、Agent 参数、编辑器、互动模式、版本管理和界面语言。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。配置优先级：
 
 ```text
 内置默认值 < 全局 config.toml < 用户级配置 < 工作区级配置 < 环境变量
@@ -238,14 +239,14 @@ cd output
 本地打包 GitHub Release：
 
 ```bash
-scripts/build-github-release.sh v0.1.7
+scripts/build-github-release.sh v0.1.8
 ```
 
 推送 tag 后，GitHub Actions 会自动创建或更新 Release：
 
 ```bash
-git tag v0.1.7
-git push origin v0.1.7
+git tag v0.1.8
+git push origin v0.1.8
 ```
 
 ## License

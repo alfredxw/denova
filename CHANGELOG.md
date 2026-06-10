@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v0.1.8] - 2026-06-11
+
 ### Added
 
 - Agent 工具权限新增 `web_search`，使用 Eino Ext 预制 DuckDuckGo V2 搜索工具注册为模型可调用的网页搜索能力；Agents 页同步提供中英双语开关，IDE、资料库和自动化 Agent 默认开启，互动叙事 Agent 默认关闭但可手动启用。

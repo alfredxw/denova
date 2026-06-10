@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.1.7</strong> (2026-06-10) · Beta
+  Current version: <strong>v0.1.8</strong> (2026-06-11) · Beta
 </p>
 
 ![Nova Novel IDE](./img/ide.png)
@@ -62,6 +62,7 @@ Nova is more than a chat box and more than a text completion editor. It turns fi
 | Interactive Stories | Plot branches, next-action candidates, scene memory, storyline switching, route map |
 | Lore Library | Structured long-term settings for characters, worlds, locations, factions, rules, items, and more |
 | Narrative Direction | Per-book or per-scene narrative rules, style constraints, pacing preferences, and interactive generation strategy |
+| Skills | Built-in and custom Agent workflows, user-level and workspace-level `SKILL.md`, triggerable with `/skill-name` |
 | Existing Novel Import | Upload txt / md files, let the Tool Agent detect the chapter-title regex, preview the split, adjust sample size or regex, then confirm creation as a new book |
 | Character Card Import | SillyTavern v2 PNG / JSON import into the current book or a new book |
 | Version Management | go-git managed workspace `.git`, history including `.nova` creative state, diff comparison, restore, timed saves, and large-Agent-output auto saves |
@@ -146,7 +147,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-You can also configure models, Agent parameters, editor options, interactive-mode behavior, version management, and interface language in `config.toml`. Configuration precedence:
+You can also configure models, Agent parameters, editor options, interactive-mode behavior, version management, and interface language in `config.toml`. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. Configuration precedence:
 
 ```text
 Built-in defaults < global config.toml < user-level config < workspace-level config < environment variables
@@ -238,14 +239,14 @@ cd output
 Build a local GitHub Release package:
 
 ```bash
-scripts/build-github-release.sh v0.1.7
+scripts/build-github-release.sh v0.1.8
 ```
 
 After pushing the tag, GitHub Actions will create or update the Release automatically:
 
 ```bash
-git tag v0.1.7
-git push origin v0.1.7
+git tag v0.1.8
+git push origin v0.1.8
 ```
 
 ## License
