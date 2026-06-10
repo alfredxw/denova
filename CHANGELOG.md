@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 设置页新增“界面语言”配置，支持跟随浏览器、简体中文和 English；语言配置进入现有分层设置体系，保存后可热切换。
 - 后端 API 支持 `X-Nova-Locale` 请求头，workspace、books、settings、versions、session、chat、interactive、lore、style 和角色卡导入等短错误/成功提示会按中英文返回。
 - 设置页新增全局外观字号配置，支持分别设置界面字号与阅读字号；阅读字号统一作用于 IDE 主编辑器和互动模式故事阅读区。
+- 书籍管理新增 txt/md 现有小说导入：上传后自动解析章节、创建新书并写入 `chapters/`；导入后回到 IDE 主页，由已有空资料库引导跳转资料库 Agent 生成设定资料。
 
 ### Changed
 

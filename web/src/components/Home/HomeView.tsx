@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { BookOpen, Check, Clock3, Folder, LibraryBig, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { BookOpen, Check, Clock3, FileText, Folder, LibraryBig, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { NovelImportDialog } from './NovelImportDialog'
 import {
   createBook,
   getBookInfo,
@@ -64,6 +65,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
   const [createDesc, setCreateDesc] = useState('')
   const [createError, setCreateError] = useState('')
   const [creating, setCreating] = useState(false)
+  const [showNovelImport, setShowNovelImport] = useState(false)
 
   const [editingBookPath, setEditingBookPath] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
@@ -209,7 +211,17 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                 <Folder className="h-3.5 w-3.5" />
                 {t('home.recentBooks')}
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  className={ghostButtonCls}
+                  onClick={() => setShowNovelImport(true)}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  {t('home.importNovel')}
+                </Button>
                 {onOpenCharacterCardImport && (
                   <Button
                     type="button"
@@ -392,6 +404,16 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
 
         </div>
       </ScrollArea>
+      <NovelImportDialog
+        open={showNovelImport}
+        novaDir={novaDir}
+        onOpenChange={setShowNovelImport}
+        onImported={(result) => {
+          onSwitch(result.workspace)
+          onBooksChange()
+          onClose?.()
+        }}
+      />
     </div>
   )
 }

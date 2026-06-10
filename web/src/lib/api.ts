@@ -113,6 +113,31 @@ export interface CharacterCardPreview {
   tags: string[]
 }
 
+export interface NovelImportChapter {
+  index: number
+  title: string
+  chars: number
+  path?: string
+}
+
+export interface NovelImportPreview {
+  title: string
+  chapter_count: number
+  total_chars: number
+  chapters: NovelImportChapter[]
+  warnings?: string[]
+}
+
+export interface NovelImportResult {
+  workspace: string
+  book_meta?: BookMeta
+  title: string
+  chapter_count: number
+  total_chars: number
+  chapter_paths: string[]
+  message: string
+}
+
 /** 书籍元信息 */
 export interface BookMeta {
   title: string
@@ -591,6 +616,32 @@ export async function importCharacterCard(
   if (options.targetMode) form.append('target_mode', options.targetMode)
   if (options.bookTitle) form.append('book_title', options.bookTitle)
   return requestJSON('/api/workspace/import-character-card', {
+    method: 'POST',
+    body: form,
+  })
+}
+
+/** 预览 txt/md 小说导入，不写入 workspace */
+export async function previewNovelImport(file: File): Promise<NovelImportPreview> {
+  const form = new FormData()
+  form.append('file', file)
+  return requestJSON('/api/books/import-novel/preview', {
+    method: 'POST',
+    body: form,
+  })
+}
+
+/** 导入 txt/md 小说为新书，并可选调用资料库 Agent 抽取资料 */
+export async function importNovel(
+  file: File,
+  options: { bookTitle?: string; author?: string; description?: string } = {},
+): Promise<NovelImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  if (options.bookTitle) form.append('book_title', options.bookTitle)
+  if (options.author) form.append('author', options.author)
+  if (options.description) form.append('description', options.description)
+  return requestJSON('/api/books/import-novel', {
     method: 'POST',
     body: form,
   })
