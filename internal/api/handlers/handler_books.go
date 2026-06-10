@@ -8,7 +8,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 )
 
-// handleBooks GET /api/books — 返回最近打开的书籍工作目录。
+// handleBooks GET /api/books — 返回当前 Nova 数据目录下实际存在的书籍工作目录。
 func (h *Handlers) HandleBooks(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, consts.StatusOK, map[string]interface{}{
 		"books": h.app.Books(),

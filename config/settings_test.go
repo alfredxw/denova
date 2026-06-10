@@ -27,8 +27,11 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.InteractiveStageLineHeight == nil || *s.InteractiveStageLineHeight != 1.78 {
 		t.Fatalf("InteractiveStageLineHeight default")
 	}
-	if s.ChapterFilenameFormat != "第{N}章-{title}.md" {
+	if s.ChapterFilenameFormat != "ch{order:05}-{chapter}-{title}.md" {
 		t.Fatalf("ChapterFilenameFormat default: %s", s.ChapterFilenameFormat)
+	}
+	if s.VolumeDirFormat != "v{order:05}-{volume}" {
+		t.Fatalf("VolumeDirFormat default: %s", s.VolumeDirFormat)
 	}
 	if s.InteractiveHotChoices == nil || *s.InteractiveHotChoices != true {
 		t.Fatalf("InteractiveHotChoices default")
@@ -63,6 +66,8 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		ReadingFontFamily:          "source-han-serif",
 		ReadingFontSize:            intPtr(18),
 		Language:                   "auto",
+		ChapterFilenameFormat:      "old-chapter",
+		VolumeDirFormat:            "old-volume",
 		InteractiveMaxTokens:       intPtr(0),
 		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
@@ -76,6 +81,8 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		ReadingFontFamily:          "system-serif",
 		ReadingFontSize:            intPtr(20),
 		Language:                   "en-US",
+		ChapterFilenameFormat:      "new-chapter",
+		VolumeDirFormat:            "new-volume",
 		InteractiveMaxTokens:       intPtr(4000),
 		InteractiveHotChoices:      boolPtr(false),
 		InteractiveStageFontSize:   intPtr(18),
@@ -105,6 +112,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.Language != "en-US" {
 		t.Fatalf("Language should override parent: %s", out.Language)
+	}
+	if out.ChapterFilenameFormat != "new-chapter" || out.VolumeDirFormat != "new-volume" {
+		t.Fatalf("filename formats should override parent: %#v", out)
 	}
 	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 4000 {
 		t.Fatalf("InteractiveMaxTokens should override parent")

@@ -22,6 +22,9 @@ func TestSystemInstructionRequiresCreatorDuringBrainstorm(t *testing.T) {
 		"内容保持短小、可扫读、方便作者评论和后续更新",
 		"建议控制在 800-1200 个中文字内",
 		"每章安排只写 3-5 条关键点",
+		"ch{order:05}-{chapter}-{title}.md",
+		"v{order:05}-{volume}",
+		"不要自动重命名旧章节",
 	} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("系统提示缺少 %q:\n%s", required, instruction)

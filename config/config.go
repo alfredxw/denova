@@ -23,6 +23,7 @@ type Config struct {
 	MaxIteration                int                    `toml:"max_iteration"`
 	ModelMaxRetries             int                    `toml:"model_max_retries"`
 	ChapterFilenameFormat       string                 `toml:"-"`
+	VolumeDirFormat             string                 `toml:"-"`
 	DraftFlowEnabled            bool                   `toml:"-"`
 	ChapterGroupMin             int                    `toml:"-"`
 	ChapterGroupMax             int                    `toml:"-"`
@@ -75,6 +76,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		MaxIteration:                settingsInt(s.MaxIteration, 50),
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
+		VolumeDirFormat:             s.VolumeDirFormat,
 		DraftFlowEnabled:            settingsBool(s.DraftFlowEnabled, false),
 		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
 		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
@@ -137,6 +139,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		SkillsDir:             cfg.SkillsDir,
 		NovaDir:               cfg.NovaDir,
 		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
+		VolumeDirFormat:       cfg.VolumeDirFormat,
 	}
 	if cfg.MaxIteration > 0 {
 		settings.MaxIteration = &cfg.MaxIteration
@@ -155,7 +158,7 @@ func globalConfigCandidates() []string {
 	return candidates
 }
 
-// Load 加载启动配置；默认不指定 workspace，让 App 恢复最近书籍或进入无书籍状态。
+// Load 加载启动配置；默认不指定 workspace，让 App 恢复上次打开的书籍或进入无书籍状态。
 func Load() *Config {
 	cfg, _, err := LoadWithWorkspace("")
 	if err != nil || cfg == nil {
@@ -174,6 +177,7 @@ func Load() *Config {
 			MaxIteration:                settingsInt(d.MaxIteration, 50),
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
+			VolumeDirFormat:             d.VolumeDirFormat,
 			DraftFlowEnabled:            settingsBool(d.DraftFlowEnabled, false),
 			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
 			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),

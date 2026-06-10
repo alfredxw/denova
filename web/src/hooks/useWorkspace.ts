@@ -83,7 +83,7 @@ export function useWorkspace() {
     }
   }, [])
 
-  /** 获取最近打开的书籍列表 */
+  /** 获取当前 Nova 数据目录下实际存在的书籍列表 */
   const fetchBooks = useCallback(async () => {
     try {
       setBooks(await getBooks())

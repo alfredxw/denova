@@ -78,6 +78,7 @@ type NovelImportPreview struct {
 	Title                 string               `json:"title"`
 	Language              string               `json:"language,omitempty"`
 	ChapterFilenameFormat string               `json:"chapter_filename_format,omitempty"`
+	VolumeDirFormat       string               `json:"volume_dir_format,omitempty"`
 	SplitStrategy         string               `json:"split_strategy"`
 	SplitRegex            string               `json:"split_regex"`
 	SampleChars           int                  `json:"sample_chars"`
@@ -155,10 +156,11 @@ func ImportNovelToWorkspace(workspace, filename string, data []byte, opts ...Nov
 		return NovelImportPreview{}, nil, fmt.Errorf("创建章节目录失败: %w", err)
 	}
 	paths := make([]string, 0, len(parsed.Chapters))
+	volumePaths := assignVolumePaths(parsed.Chapters)
 	for _, chapter := range parsed.Chapters {
 		rel := chapter.Path
 		if rel == "" {
-			rel = chapterPath(chapter.Index, chapter.Title, chapter.Volume, parsed.Preview.Language)
+			rel = chapterPath(chapter.Index, chapter.Title, chapter.Volume, volumePaths, parsed.Preview.Language)
 		}
 		dst := filepath.Join(workspace, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -197,6 +199,7 @@ func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (pa
 	opts.sourceExt = ext
 	language := detectNovelImportLanguage(text)
 	chapterFilenameFormat := chapterFilenameFormatForLanguage(language)
+	volumeDirFormat := volumeDirFormatForLanguage(language)
 
 	title := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
 	log.Printf("[novel-import] parse begin filename=%q bytes=%d text_chars=%d sample_chars=%d requested_strategy=%q has_split_regex=%t", name, len(data), utf8.RuneCountInString(text), opts.SampleChars, opts.SplitStrategy, opts.SplitRegex != "")
@@ -206,14 +209,15 @@ func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (pa
 		return parsedNovel{}, err
 	}
 	totalChars := 0
+	volumePaths := assignVolumePaths(chapters)
 	for i := range chapters {
 		if ext == ".txt" {
 			chapters[i].Content = formatPlainTextChapterForMarkdown(chapters[i].Content)
 		}
 		chapters[i].Index = i + 1
-		chapters[i].Path = chapterPath(chapters[i].Index, chapters[i].Title, chapters[i].Volume, language)
+		chapters[i].Path = chapterPath(chapters[i].Index, chapters[i].Title, chapters[i].Volume, volumePaths, language)
 		if chapters[i].Volume != "" {
-			chapters[i].VolumePath = volumePath(chapters[i].Volume)
+			chapters[i].VolumePath = volumePaths[chapters[i].Volume]
 		}
 		chapters[i].Chars = utf8.RuneCountInString(chapters[i].Content)
 		totalChars += chapters[i].Chars
@@ -232,6 +236,7 @@ func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (pa
 			Title:                 title,
 			Language:              language,
 			ChapterFilenameFormat: chapterFilenameFormat,
+			VolumeDirFormat:       volumeDirFormat,
 			SplitStrategy:         splitStrategy,
 			SplitRegex:            splitRegex,
 			SampleChars:           opts.SampleChars,
@@ -668,12 +673,16 @@ func firstRunes(value string, max int) string {
 	return string(runes[:max])
 }
 
-func chapterPath(index int, title, volume, language string) string {
+func chapterPath(index int, title, volume string, volumePaths map[string]string, language string) string {
 	filename := chapterFilename(index, title, language)
 	if strings.TrimSpace(volume) == "" {
 		return filepath.ToSlash(filepath.Join("chapters", filename))
 	}
-	return filepath.ToSlash(filepath.Join(volumePath(volume), filename))
+	volumePath := volumePaths[volume]
+	if volumePath == "" {
+		volumePath = prefixedVolumePath(1, volume)
+	}
+	return filepath.ToSlash(filepath.Join(volumePath, filename))
 }
 
 func chapterFilename(index int, title, language string) string {
@@ -681,31 +690,68 @@ func chapterFilename(index int, title, language string) string {
 	if cleanTitle == "" {
 		cleanTitle = "chapter"
 	}
-	switch language {
-	case NovelImportLanguageChinese:
-		if isChineseChapterLikeTitle(title) {
-			return cleanTitle + ".md"
-		}
-		return fmt.Sprintf("第%d章-%s.md", index, cleanTitle)
-	case NovelImportLanguageEnglish:
-		if isEnglishChapterLikeTitle(title) {
-			return cleanTitle + ".md"
-		}
-		return fmt.Sprintf("Chapter-%d-%s.md", index, cleanTitle)
-	default:
-		if isChineseChapterLikeTitle(title) {
-			return cleanTitle + ".md"
-		}
-		return fmt.Sprintf("第%d章-%s.md", index, cleanTitle)
+	chapterPart := cleanTitle
+	titlePart := ""
+	if split := splitChapterTitleForFilename(title, language); split.chapter != "" {
+		chapterPart = safeFilenamePart(split.chapter)
+		titlePart = safeFilenamePart(split.title)
 	}
+	parts := []string{fmt.Sprintf("ch%05d", index), chapterPart}
+	if titlePart != "" {
+		parts = append(parts, titlePart)
+	}
+	return strings.Join(parts, "-") + ".md"
 }
 
-func volumePath(volume string) string {
+func assignVolumePaths(chapters []parsedNovelChapter) map[string]string {
+	paths := map[string]string{}
+	for _, chapter := range chapters {
+		volume := strings.TrimSpace(chapter.Volume)
+		if volume == "" {
+			continue
+		}
+		if _, ok := paths[volume]; ok {
+			continue
+		}
+		paths[volume] = prefixedVolumePath(len(paths)+1, volume)
+	}
+	return paths
+}
+
+func prefixedVolumePath(index int, volume string) string {
 	cleanVolume := safeFilenamePart(volume)
 	if cleanVolume == "" {
 		return "chapters"
 	}
-	return filepath.ToSlash(filepath.Join("chapters", cleanVolume))
+	return filepath.ToSlash(filepath.Join("chapters", fmt.Sprintf("v%05d-%s", index, cleanVolume)))
+}
+
+type splitChapterFilenameParts struct {
+	chapter string
+	title   string
+}
+
+func splitChapterTitleForFilename(title, language string) splitChapterFilenameParts {
+	title = strings.TrimSpace(strings.Trim(title, "# \t"))
+	patterns := []*regexp.Regexp{}
+	switch language {
+	case NovelImportLanguageEnglish:
+		patterns = []*regexp.Regexp{
+			regexp.MustCompile(`(?i)^((?:chapter|ch)\s+[0-9ivxlcdm]+)[\s:：、\-—.．]*(.*)$`),
+			regexp.MustCompile(`(?i)^((?:prologue|epilogue))[\s:：、\-—.．]*(.*)$`),
+		}
+	default:
+		patterns = []*regexp.Regexp{
+			regexp.MustCompile(`^(第[0-9零〇一二三四五六七八九十百千万两]+[章节回集])[\s:：、\-—.．]*(.*)$`),
+			regexp.MustCompile(`^((?:序章|楔子|引子|前言|序幕|序言|尾声|后记|番外))[\s:：、\-—.．]*(.*)$`),
+		}
+	}
+	for _, pattern := range patterns {
+		if matches := pattern.FindStringSubmatch(title); len(matches) > 0 {
+			return splitChapterFilenameParts{chapter: matches[1], title: strings.TrimSpace(matches[2])}
+		}
+	}
+	return splitChapterFilenameParts{}
 }
 
 func detectNovelImportLanguage(text string) string {
@@ -731,15 +777,12 @@ func detectNovelImportLanguage(text string) string {
 	return NovelImportLanguageUnknown
 }
 
-func chapterFilenameFormatForLanguage(language string) string {
-	switch language {
-	case NovelImportLanguageChinese:
-		return "第{N}章-{title}.md"
-	case NovelImportLanguageEnglish:
-		return "Chapter {N} - {title}.md"
-	default:
-		return "第{N}章-{title}.md"
-	}
+func chapterFilenameFormatForLanguage(_ string) string {
+	return "ch{order:05}-{chapter}-{title}.md"
+}
+
+func volumeDirFormatForLanguage(_ string) string {
+	return "v{order:05}-{volume}"
 }
 
 func isChineseChapterLikeTitle(title string) bool {

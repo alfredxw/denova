@@ -215,6 +215,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Text label={t('settings.ide.chapterFilenameFormat')} value={draft.chapter_filename_format}
                 placeholder={placeholderFor('chapter_filename_format')}
                 onChange={(v) => setField('chapter_filename_format', v)} />
+          <Text label={t('settings.ide.volumeDirFormat')} value={draft.volume_dir_format}
+                placeholder={placeholderFor('volume_dir_format')}
+                onChange={(v) => setField('volume_dir_format', v)} />
           <Num label={t('settings.ide.maxOpenTabs')} value={draft.max_open_tabs ?? null}
                placeholder={placeholderFor('max_open_tabs')}
                onChange={(v) => setField('max_open_tabs', v)} />

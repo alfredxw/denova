@@ -155,9 +155,13 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 		writeErrorKey(c, status, "api.novelImport.importFailed", "detail", err.Error())
 		return
 	}
-	if preview.ChapterFilenameFormat != "" {
-		if _, settingsErr := h.app.UpdateWorkspaceSettings(config.Settings{ChapterFilenameFormat: preview.ChapterFilenameFormat}); settingsErr != nil {
-			log.Printf("[api] 小说导入写入章节文件名模板失败 workspace=%q format=%q err=%v", workspace, preview.ChapterFilenameFormat, settingsErr)
+	if preview.ChapterFilenameFormat != "" || preview.VolumeDirFormat != "" {
+		settings := config.Settings{
+			ChapterFilenameFormat: preview.ChapterFilenameFormat,
+			VolumeDirFormat:       preview.VolumeDirFormat,
+		}
+		if _, settingsErr := h.app.UpdateWorkspaceSettings(settings); settingsErr != nil {
+			log.Printf("[api] 小说导入写入章节/分卷文件名模板失败 workspace=%q chapter_format=%q volume_format=%q err=%v", workspace, preview.ChapterFilenameFormat, preview.VolumeDirFormat, settingsErr)
 		}
 	}
 

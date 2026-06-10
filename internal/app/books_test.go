@@ -34,7 +34,46 @@ func TestBookRegistryTouchListAndCurrent(t *testing.T) {
 		t.Fatalf("书籍记录数量不符合预期: %d", len(books))
 	}
 	if books[0].Path != bookB || books[1].Path != bookA {
-		t.Fatalf("最近书籍排序不符合预期: %#v", books)
+		t.Fatalf("书籍记录排序不符合预期: %#v", books)
+	}
+}
+
+func TestBookRegistryListScansNovaDirBooks(t *testing.T) {
+	root := t.TempDir()
+	bookA := filepath.Join(root, "zeta")
+	bookB := filepath.Join(root, "alpha")
+	missingBook := filepath.Join(root, "missing")
+	for _, dir := range []string{
+		filepath.Join(bookA, ".nova"),
+		filepath.Join(bookB, "chapters"),
+		filepath.Join(root, "book_meta"),
+		filepath.Join(root, "styles"),
+		filepath.Join(root, "notes"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	registry := &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root}
+	if err := registry.save(bookRegistryData{
+		Books: []BookRecord{
+			{Path: missingBook, LastOpenedAt: "2026-01-03T00:00:00Z"},
+			{Path: bookA, LastOpenedAt: "2026-01-02T00:00:00Z"},
+		},
+	}); err != nil {
+		t.Fatalf("写入注册表失败: %v", err)
+	}
+
+	books := registry.List()
+	if len(books) != 2 {
+		t.Fatalf("书籍数量不符合预期: %#v", books)
+	}
+	if books[0].Path != bookB || books[1].Path != bookA {
+		t.Fatalf("书籍应来自 Nova 目录并按名称排序: %#v", books)
+	}
+	if books[1].LastOpenedAt != "2026-01-02T00:00:00Z" {
+		t.Fatalf("应保留已有打开时间用于兼容展示: %#v", books[1])
 	}
 }
 

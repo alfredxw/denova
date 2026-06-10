@@ -35,6 +35,7 @@ func BuildInstruction(cfg *config.Config, state *book.State, teller IDEStoryTell
 		StoryTellerDescription: teller.Description,
 		StoryTellerPrompt:      teller.Prompt,
 		ChapterFilenameFormat:  cfg.ChapterFilenameFormat,
+		VolumeDirFormat:        cfg.VolumeDirFormat,
 		DraftFlowEnabled:       cfg.DraftFlowEnabled,
 		ChapterGroupMin:        cfg.ChapterGroupMin,
 		ChapterGroupMax:        cfg.ChapterGroupMax,

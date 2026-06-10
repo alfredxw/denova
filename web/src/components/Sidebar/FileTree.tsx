@@ -534,7 +534,7 @@ function FileTreeNode({
                     onCancel={onInlineCancel}
                   />
                 ) : (
-                  <span className="truncate">{node.name}</span>
+                  <span className="truncate">{displayFileNodeName(node.name)}</span>
                 )}
               </button>
               {!isRenaming && <NodeDropdown actions={actions} />}
@@ -615,7 +615,7 @@ function FileTreeNode({
                 />
               ) : (
                 <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                  <span className="truncate">{chapter?.display_title || node.name}</span>
+                  <span className="truncate">{chapter?.display_title || displayFileNodeName(node.name)}</span>
                   {chapter && (
                     <span className="flex shrink-0 items-center gap-1 text-[10px] text-[#7f8794]">
                       <span>{formatCompactWords(chapter.words)}</span>
@@ -719,18 +719,123 @@ function sortFileNodesForDisplay(nodes: FileNode[]) {
 }
 
 function compareFileNodeNames(left: string, right: string) {
-  const leftIndex = chapterIndex(left)
-  const rightIndex = chapterIndex(right)
-  if (leftIndex > 0 && rightIndex > 0 && leftIndex !== rightIndex) {
-    return leftIndex - rightIndex
+  const chapterCompare = compareChapterLikeNames(left, right)
+  if (chapterCompare !== 0) {
+    return chapterCompare
   }
   return left.localeCompare(right, 'zh-Hans-CN')
 }
 
-function chapterIndex(name: string) {
+function displayFileNodeName(name: string) {
   const baseName = name.replace(/\.[^.]+$/, '')
-  const match = /^ch(\d+)[-_ ]*/i.exec(baseName)
-  return match ? Number.parseInt(match[1], 10) : 0
+  const ext = name.slice(baseName.length)
+  const visibleBase = stripHiddenSortPrefix(baseName)
+  return visibleBase.replace(/[-_]+/g, ' ').trim() + ext
+}
+
+function stripHiddenSortPrefix(baseName: string) {
+  return baseName
+    .replace(/^ch\d{5}[-_ ]+/i, '')
+    .replace(/^v\d{5}[-_ ]+/i, '')
+}
+
+function compareChapterLikeNames(left: string, right: string) {
+  const leftKey = chapterSortKey(left)
+  const rightKey = chapterSortKey(right)
+  if (leftKey.ok && rightKey.ok) {
+    return leftKey.order - rightKey.order
+  }
+  if (leftKey.ok) return -1
+  if (rightKey.ok) return 1
+  return 0
+}
+
+function chapterSortKey(name: string) {
+  const baseName = name.replace(/\.[^.]+$/, '')
+  const hiddenMatch = /^(?:ch|v)(\d{5})[-_ ]+/i.exec(baseName)
+  if (hiddenMatch) {
+    return { ok: true, order: Number.parseInt(hiddenMatch[1], 10) }
+  }
+  const visibleBaseName = stripHiddenSortPrefix(baseName)
+  if (/^(序章|序幕|楔子|引子|前言|正文)(?:[-_ 、.．].*)?$/.test(visibleBaseName)) {
+    return { ok: true, order: 0 }
+  }
+
+  const chapterMatch =
+    /^ch(\d+)[-_ ]*/i.exec(visibleBaseName) ||
+    /^第([0-9零〇一二三四五六七八九十百千万两]+)[章节回集卷部][-_ 、.．]*/.exec(visibleBaseName) ||
+    /^(?:chapter|ch)[-_ ]*([0-9ivxlcdm]+)[-_ .:：]*/i.exec(visibleBaseName) ||
+    /^(\d{1,6})[-_ 、.．]+/.exec(visibleBaseName)
+  if (!chapterMatch) {
+    return { ok: false, order: 0 }
+  }
+  const order = parseChapterOrdinal(chapterMatch[1])
+  return { ok: order > 0, order }
+}
+
+function parseChapterOrdinal(value: string) {
+  if (/^\d+$/.test(value)) {
+    return Number.parseInt(value, 10)
+  }
+  const roman = parseRomanNumeral(value)
+  if (roman > 0) {
+    return roman
+  }
+  return parseChineseNumber(value)
+}
+
+function parseRomanNumeral(value: string) {
+  const values: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 }
+  let total = 0
+  let prev = 0
+  for (const ch of value.toUpperCase().split('').reverse()) {
+    const current = values[ch] || 0
+    if (current === 0) return 0
+    if (current < prev) {
+      total -= current
+    } else {
+      total += current
+      prev = current
+    }
+  }
+  return total
+}
+
+function parseChineseNumber(value: string) {
+  const digits: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 }
+  const units: Record<string, number> = { 十: 10, 百: 100, 千: 1000, 万: 10000 }
+  let total = 0
+  let section = 0
+  let number = 0
+  let seen = false
+
+  for (const ch of value) {
+    if (Object.prototype.hasOwnProperty.call(digits, ch)) {
+      number = digits[ch]
+      seen = true
+      continue
+    }
+    const unit = units[ch]
+    if (!unit) {
+      return 0
+    }
+    seen = true
+    if (unit === 10000) {
+      if (number !== 0) section += number
+      if (section === 0) section = 1
+      total += section * unit
+      section = 0
+      number = 0
+      continue
+    }
+    if (number === 0) number = 1
+    section += number * unit
+    number = 0
+  }
+  if (!seen) {
+    return 0
+  }
+  return total + section + number
 }
 
 function formatCompactWords(words: number) {

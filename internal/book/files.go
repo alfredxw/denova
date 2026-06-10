@@ -469,12 +469,8 @@ func BuildFileTree(dir string) ([]*FileNode, error) {
 }
 
 func compareFileNodeNames(left, right string) int {
-	leftIndex, rightIndex := chapterIndex(left), chapterIndex(right)
-	if leftIndex > 0 && rightIndex > 0 && leftIndex != rightIndex {
-		if leftIndex < rightIndex {
-			return -1
-		}
-		return 1
+	if cmp := compareChapterLikeNames(left, right); cmp != 0 {
+		return cmp
 	}
 	return strings.Compare(left, right)
 }

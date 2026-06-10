@@ -27,7 +27,7 @@ func TestLoadDoesNotDefaultWorkspaceToCurrentDir(t *testing.T) {
 		t.Fatalf("未显式指定 workspace 时不应默认打开当前目录: got=%s", cfg.Workspace)
 	}
 	if !cfg.ResumeLastWorkspace {
-		t.Fatalf("未显式指定 workspace 时应允许恢复最近书籍")
+		t.Fatalf("未显式指定 workspace 时应允许恢复上次打开的书籍")
 	}
 }
 

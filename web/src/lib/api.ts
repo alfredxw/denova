@@ -126,6 +126,7 @@ export interface NovelImportPreview {
   title: string
   language?: string
   chapter_filename_format?: string
+  volume_dir_format?: string
   split_strategy: string
   split_regex: string
   sample_chars: number
@@ -430,13 +431,13 @@ export async function switchWorkspace(path: string): Promise<{ workspace: string
   })
 }
 
-/** 获取最近打开的书籍列表 */
+/** 获取当前 Nova 数据目录下实际存在的书籍列表 */
 export async function getBooks(): Promise<BookRecord[]> {
   const data = await requestJSON<{ books: BookRecord[] }>('/api/books')
   return data.books || []
 }
 
-/** 移除书籍记录，不删除磁盘目录 */
+/** 移除旧版书籍记录，不删除磁盘目录 */
 export async function removeBook(path: string): Promise<{ message: string }> {
   return requestJSON('/api/books/remove', {
     method: 'POST',

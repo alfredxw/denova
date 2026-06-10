@@ -24,7 +24,7 @@ func main() {
 		dev       bool
 		noOpen    bool
 	)
-	flag.StringVar(&workspace, "workspace", "", "作品工作目录 (默认恢复最近打开的书籍)")
+	flag.StringVar(&workspace, "workspace", "", "作品工作目录 (默认恢复上次打开的书籍)")
 	flag.StringVar(&port, "port", port, "HTTP 服务端口")
 	flag.BoolVar(&dev, "dev", false, "开发模式：同时启动 Vite 前端 dev server")
 	flag.BoolVar(&noOpen, "no-open", false, "启动服务后不自动打开浏览器")

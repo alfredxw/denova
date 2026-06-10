@@ -45,12 +45,21 @@ type DocumentPreview struct {
 var chapterNamePattern = regexp.MustCompile(`(?i)^ch(\d+)[-_ ]*(.*)$`)
 var numericChapterNamePattern = regexp.MustCompile(`^(\d{1,6})[-_ 、.．]+(.*)$`)
 var chineseChapterNamePattern = regexp.MustCompile(`^第([0-9零〇一二三四五六七八九十百千万两]+)[章节回集][-_ 、.．]*(.*)$`)
+var chineseOrderedNamePattern = regexp.MustCompile(`^第([0-9零〇一二三四五六七八九十百千万两]+)[章节回集卷部][-_ 、.．]*(.*)$`)
 var englishChapterNamePattern = regexp.MustCompile(`(?i)^(?:chapter|ch)[-_ ]*([0-9ivxlcdm]+)[-_ .:：]*(.*)$`)
+var prefaceChapterNamePattern = regexp.MustCompile(`^(序章|序幕|楔子|引子|前言|正文)[-_ 、.．]*(.*)$`)
+var hiddenChapterPrefixPattern = regexp.MustCompile(`(?i)^ch(\d{5})[-_ ]+(.*)$`)
+var hiddenVolumePrefixPattern = regexp.MustCompile(`(?i)^v(\d{5})[-_ ]+(.*)$`)
 var groupNamePattern = regexp.MustCompile(`(?i)^group(\d+)[-_ ]*(.*)$`)
 
 type chapterNameMeta struct {
 	index   int
 	display string
+}
+
+type chapterSortKey struct {
+	ok    bool
+	order int
 }
 
 // Summary 统计 workspace 的章节进度和书籍元信息。
@@ -120,8 +129,8 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 
 	sort.Slice(summary.Chapters, func(i, j int) bool {
 		left, right := summary.Chapters[i], summary.Chapters[j]
-		if left.Index > 0 && right.Index > 0 && left.Index != right.Index {
-			return left.Index < right.Index
+		if cmp := compareChapterLikeNames(left.FileName, right.FileName); cmp != 0 {
+			return cmp < 0
 		}
 		return left.Path < right.Path
 	})
@@ -197,14 +206,31 @@ func isChapterTextFile(name string) bool {
 }
 
 func chapterDisplayTitle(name string) string {
-	base := strings.TrimSuffix(name, filepath.Ext(name))
+	base := visibleNameBase(strings.TrimSuffix(name, filepath.Ext(name)))
 	if meta, ok := parseChapterNameMeta(base); ok {
 		return meta.display
 	}
 	return displayNameFromFilenameBase(base)
 }
 
+func visibleNameBase(base string) string {
+	if matches := hiddenChapterPrefixPattern.FindStringSubmatch(base); len(matches) > 0 {
+		return matches[2]
+	}
+	if matches := hiddenVolumePrefixPattern.FindStringSubmatch(base); len(matches) > 0 {
+		return matches[2]
+	}
+	return base
+}
+
 func parseChapterNameMeta(base string) (chapterNameMeta, bool) {
+	if matches := prefaceChapterNamePattern.FindStringSubmatch(base); len(matches) > 0 {
+		title := strings.Trim(matches[2], "-_ 、.． ")
+		if title == "" {
+			return chapterNameMeta{index: 0, display: matches[1]}, true
+		}
+		return chapterNameMeta{index: 0, display: matches[1] + " " + displayNameFromFilenameBase(title)}, true
+	}
 	if matches := chapterNamePattern.FindStringSubmatch(base); len(matches) > 0 {
 		title := strings.Trim(matches[2], "-_ ")
 		if title == "" {
@@ -341,7 +367,7 @@ func parseChineseNumber(value string) int {
 }
 
 func groupDisplayTitle(name string) string {
-	base := strings.TrimSuffix(name, filepath.Ext(name))
+	base := visibleNameBase(strings.TrimSuffix(name, filepath.Ext(name)))
 	matches := groupNamePattern.FindStringSubmatch(base)
 	if len(matches) == 0 {
 		return displayNameFromFilenameBase(base)
@@ -354,8 +380,62 @@ func groupDisplayTitle(name string) string {
 }
 
 func chapterIndex(name string) int {
-	meta, _ := parseChapterNameMeta(strings.TrimSuffix(name, filepath.Ext(name)))
+	base := strings.TrimSuffix(name, filepath.Ext(name))
+	if order := hiddenSortOrder(base); order > 0 {
+		return order
+	}
+	meta, _ := parseChapterNameMeta(visibleNameBase(base))
 	return meta.index
+}
+
+func compareChapterLikeNames(left, right string) int {
+	leftKey, rightKey := chapterSortKeyForName(left), chapterSortKeyForName(right)
+	if leftKey.ok && rightKey.ok {
+		if leftKey.order < rightKey.order {
+			return -1
+		}
+		if leftKey.order > rightKey.order {
+			return 1
+		}
+		return 0
+	}
+	if leftKey.ok {
+		return -1
+	}
+	if rightKey.ok {
+		return 1
+	}
+	return 0
+}
+
+func chapterSortKeyForName(name string) chapterSortKey {
+	base := strings.TrimSuffix(name, filepath.Ext(name))
+	if order := hiddenSortOrder(base); order > 0 {
+		return chapterSortKey{ok: true, order: order}
+	}
+	base = visibleNameBase(base)
+	if prefaceChapterNamePattern.MatchString(base) {
+		return chapterSortKey{ok: true, order: 0}
+	}
+	if meta, ok := parseChapterNameMeta(base); ok && meta.index > 0 {
+		return chapterSortKey{ok: true, order: meta.index}
+	}
+	if matches := chineseOrderedNamePattern.FindStringSubmatch(base); len(matches) > 0 {
+		if index := parseChapterOrdinal(matches[1]); index > 0 {
+			return chapterSortKey{ok: true, order: index}
+		}
+	}
+	return chapterSortKey{}
+}
+
+func hiddenSortOrder(base string) int {
+	if matches := hiddenChapterPrefixPattern.FindStringSubmatch(base); len(matches) > 0 {
+		return parsePositiveInt(matches[1])
+	}
+	if matches := hiddenVolumePrefixPattern.FindStringSubmatch(base); len(matches) > 0 {
+		return parsePositiveInt(matches[1])
+	}
+	return 0
 }
 
 func chapterPlanIndex(path string) int {
@@ -381,7 +461,7 @@ func chapterVolume(relPath string) (string, string) {
 	if volume == "" {
 		return "未分卷", "chapters"
 	}
-	return volume, filepath.ToSlash(filepath.Join("chapters", filepath.FromSlash(volume)))
+	return displayNameFromFilenameBase(visibleNameBase(volume)), filepath.ToSlash(filepath.Join("chapters", filepath.FromSlash(volume)))
 }
 
 func documentTitle(content, fallbackTitle, relPath string) string {

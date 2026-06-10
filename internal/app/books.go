@@ -6,12 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
 const maxBookRecords = 20
 
-// BookRecord 表示一个最近打开的书籍工作目录。
+// BookRecord 表示 Nova 数据目录中的一个书籍工作目录。
 type BookRecord struct {
 	Name         string `json:"name"`
 	Path         string `json:"path"`
@@ -24,10 +25,11 @@ type bookRegistryData struct {
 	Books   []BookRecord `json:"books"`
 }
 
-// BookRegistry 持久化最近打开的书籍工作目录。
+// BookRegistry 持久化当前书籍，并从 Nova 数据目录发现实际存在的书籍工作目录。
 type BookRegistry struct {
 	path       string
 	legacyPath string
+	novaDir    string
 }
 
 // NewBookRegistry 创建书籍记录管理器。
@@ -35,6 +37,7 @@ func NewBookRegistry(novaDir string) *BookRegistry {
 	return &BookRegistry{
 		path:       filepath.Join(novaDir, "books.json"),
 		legacyPath: legacyBookRegistryPath(),
+		novaDir:    novaDir,
 	}
 }
 
@@ -50,11 +53,23 @@ func (r *BookRegistry) Current() string {
 	return ""
 }
 
-// List 返回最近打开的书籍列表。
+// List 返回当前 Nova 数据目录下实际存在的书籍列表。
 func (r *BookRegistry) List() []BookRecord {
 	data := r.load()
-	books := make([]BookRecord, 0, len(data.Books))
-	for _, book := range data.Books {
+	if strings.TrimSpace(r.novaDir) == "" {
+		return sortedRegistryBooks(data.Books)
+	}
+
+	books, err := r.scanNovaBooks(data)
+	if err == nil {
+		return books
+	}
+	return sortedRegistryBooks(data.Books)
+}
+
+func sortedRegistryBooks(records []BookRecord) []BookRecord {
+	books := make([]BookRecord, 0, len(records))
+	for _, book := range records {
 		if book.Path == "" {
 			continue
 		}
@@ -64,6 +79,75 @@ func (r *BookRegistry) List() []BookRecord {
 		return books[i].LastOpenedAt > books[j].LastOpenedAt
 	})
 	return books
+}
+
+func (r *BookRegistry) scanNovaBooks(data bookRegistryData) ([]BookRecord, error) {
+	absNovaDir, err := filepath.Abs(r.novaDir)
+	if err != nil {
+		return nil, err
+	}
+	entries, err := os.ReadDir(absNovaDir)
+	if err != nil {
+		return nil, err
+	}
+
+	openedAt := make(map[string]string, len(data.Books))
+	for _, book := range data.Books {
+		if book.Path == "" {
+			continue
+		}
+		absPath, err := filepath.Abs(book.Path)
+		if err != nil {
+			continue
+		}
+		openedAt[absPath] = book.LastOpenedAt
+	}
+
+	books := make([]BookRecord, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || isNovaUserDataDir(entry.Name()) {
+			continue
+		}
+		bookPath := filepath.Join(absNovaDir, entry.Name())
+		if !isBookWorkspace(bookPath) {
+			continue
+		}
+		books = append(books, BookRecord{
+			Name:         entry.Name(),
+			Path:         bookPath,
+			LastOpenedAt: openedAt[bookPath],
+		})
+	}
+
+	sort.SliceStable(books, func(i, j int) bool {
+		return strings.ToLower(books[i].Name) < strings.ToLower(books[j].Name)
+	})
+	return books, nil
+}
+
+func isNovaUserDataDir(name string) bool {
+	switch name {
+	case "book_meta", "styles":
+		return true
+	default:
+		return strings.HasPrefix(name, ".")
+	}
+}
+
+func isBookWorkspace(path string) bool {
+	markers := []string{
+		filepath.Join(path, ".nova"),
+		filepath.Join(path, "book.json"),
+		filepath.Join(path, "brainstorm.md"),
+		filepath.Join(path, "chapters"),
+		filepath.Join(path, "setting"),
+	}
+	for _, marker := range markers {
+		if _, err := os.Stat(marker); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Touch 记录并置顶一个书籍工作目录。

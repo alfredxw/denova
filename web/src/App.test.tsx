@@ -86,7 +86,7 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: '导入酒馆角色卡' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '书籍管理' }))
 
-    expect(await screen.findByText('最近书籍')).toBeInTheDocument()
+    expect(await screen.findByText('书架')).toBeInTheDocument()
     expect(screen.queryByText('打开其他目录')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '关闭书籍管理' })).toBeInTheDocument()
     expect(screen.queryByPlaceholderText('输入工作区目录路径...')).not.toBeInTheDocument()
@@ -104,7 +104,7 @@ describe('App', () => {
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
     await user.click(screen.getByRole('button', { name: '书籍管理' }))
-    await screen.findByText('最近书籍')
+    await screen.findByText('书架')
     await user.click(screen.getByRole('button', { name: '新建书籍' }))
     expect(screen.getByText('新书将创建在')).toBeInTheDocument()
     expect(screen.getByText('/nova/user')).toBeInTheDocument()

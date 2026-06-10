@@ -133,7 +133,7 @@ func (s *WorkspaceRuntimeManager) SwitchWorkspace(ctx context.Context, path stri
 	return runtime.workspace, nil
 }
 
-// Books 返回最近打开的书籍工作目录，并从 book.json 填充元信息。
+// Books 返回当前 Nova 数据目录下实际存在的书籍工作目录，并从元信息存储填充展示信息。
 func (a *App) Books() []BookRecord {
 	return a.runtime().Books()
 }
@@ -477,6 +477,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = effective.ChapterFilenameFormat
 	}
+	if effective.VolumeDirFormat != "" {
+		cfg.VolumeDirFormat = effective.VolumeDirFormat
+	}
 	if effective.DraftFlowEnabled != nil {
 		cfg.DraftFlowEnabled = *effective.DraftFlowEnabled
 	}
@@ -536,6 +539,9 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = settings.ChapterFilenameFormat
+	}
+	if settings.VolumeDirFormat != "" {
+		cfg.VolumeDirFormat = settings.VolumeDirFormat
 	}
 	if settings.DraftFlowEnabled != nil {
 		cfg.DraftFlowEnabled = *settings.DraftFlowEnabled

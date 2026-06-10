@@ -243,8 +243,8 @@ func (s *State) ChapterPathContext(limit int) string {
 	}
 	sort.Slice(entries, func(i, j int) bool {
 		left, right := entries[i], entries[j]
-		if left.Index > 0 && right.Index > 0 && left.Index != right.Index {
-			return left.Index < right.Index
+		if cmp := compareChapterLikeNames(filepath.Base(left.Path), filepath.Base(right.Path)); cmp != 0 {
+			return cmp < 0
 		}
 		return left.Path < right.Path
 	})

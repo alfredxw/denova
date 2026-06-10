@@ -109,6 +109,75 @@ func TestBuildFileTreeSortsDirsBeforeFiles(t *testing.T) {
 	}
 }
 
+func TestBuildFileTreeSortsChineseChapterOrdinals(t *testing.T) {
+	workspace := t.TempDir()
+	chapterDir := filepath.Join(workspace, "chapters")
+	if err := os.MkdirAll(chapterDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{
+		"第十一章-潮声.md",
+		"第一百一十一章-归途.md",
+		"第一章-开局.md",
+		"第一千一百一十一章-终局.md",
+		"序章.md",
+		"第十章-交锋.md",
+	} {
+		if err := os.WriteFile(filepath.Join(chapterDir, name), []byte("正文"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tree, err := BuildFileTree(workspace)
+	if err != nil {
+		t.Fatalf("构建文件树失败: %v", err)
+	}
+	if len(tree) != 1 || tree[0].Name != "chapters" {
+		t.Fatalf("文件树根节点不符合预期: %#v", tree)
+	}
+	got := make([]string, 0, len(tree[0].Children))
+	for _, node := range tree[0].Children {
+		got = append(got, node.Name)
+	}
+	want := []string{
+		"序章.md",
+		"第一章-开局.md",
+		"第十章-交锋.md",
+		"第十一章-潮声.md",
+		"第一百一十一章-归途.md",
+		"第一千一百一十一章-终局.md",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("章节文件排序不符合预期: want=%v got=%v", want, got)
+	}
+}
+
+func TestBuildFileTreeSortsChineseVolumeOrdinals(t *testing.T) {
+	workspace := t.TempDir()
+	chapterDir := filepath.Join(workspace, "chapters")
+	for _, name := range []string{"第十一卷-潮声", "第一百一十一卷-归途", "第一卷-开局", "第十卷-交锋"} {
+		if err := os.MkdirAll(filepath.Join(chapterDir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tree, err := BuildFileTree(workspace)
+	if err != nil {
+		t.Fatalf("构建文件树失败: %v", err)
+	}
+	if len(tree) != 1 || tree[0].Name != "chapters" {
+		t.Fatalf("文件树根节点不符合预期: %#v", tree)
+	}
+	got := make([]string, 0, len(tree[0].Children))
+	for _, node := range tree[0].Children {
+		got = append(got, node.Name)
+	}
+	want := []string{"第一卷-开局", "第十卷-交锋", "第十一卷-潮声", "第一百一十一卷-归途"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("分卷目录排序不符合预期: want=%v got=%v", want, got)
+	}
+}
+
 func TestServiceCreateExisting(t *testing.T) {
 	service := NewService(t.TempDir())
 	if err := service.Create("chapters/ch01.md", "file", "hello"); err != nil {

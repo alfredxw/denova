@@ -172,9 +172,9 @@ func TestImportNovelToWorkspaceWritesChaptersIntoVolumes(t *testing.T) {
 		t.Fatalf("unexpected import result preview=%#v paths=%#v", preview, paths)
 	}
 	wantPaths := []string{
-		"chapters/第一卷-蓝天之上/第一章-起飞.md",
-		"chapters/第一卷-蓝天之上/第二章-巡航.md",
-		"chapters/第二卷-风暴航线/第三章-穿云.md",
+		"chapters/v00001-第一卷-蓝天之上/ch00001-第一章-起飞.md",
+		"chapters/v00001-第一卷-蓝天之上/ch00002-第二章-巡航.md",
+		"chapters/v00002-第二卷-风暴航线/ch00003-第三章-穿云.md",
 	}
 	for i, want := range wantPaths {
 		if paths[i] != want {
@@ -184,7 +184,7 @@ func TestImportNovelToWorkspaceWritesChaptersIntoVolumes(t *testing.T) {
 			t.Fatalf("missing imported chapter %s: %v", want, err)
 		}
 	}
-	if preview.Chapters[0].Volume != "第一卷 蓝天之上" || preview.Chapters[0].VolumePath != "chapters/第一卷-蓝天之上" {
+	if preview.Chapters[0].Volume != "第一卷 蓝天之上" || preview.Chapters[0].VolumePath != "chapters/v00001-第一卷-蓝天之上" {
 		t.Fatalf("unexpected preview volume metadata: %#v", preview.Chapters[0])
 	}
 }
@@ -203,10 +203,13 @@ func TestImportNovelToWorkspaceUsesChineseChapterFilenameStyle(t *testing.T) {
 	if preview.Language != NovelImportLanguageChinese {
 		t.Fatalf("language = %q", preview.Language)
 	}
-	if preview.ChapterFilenameFormat != "第{N}章-{title}.md" {
+	if preview.ChapterFilenameFormat != "ch{order:05}-{chapter}-{title}.md" {
 		t.Fatalf("chapter filename format = %q", preview.ChapterFilenameFormat)
 	}
-	want := []string{"chapters/第一章-缘起.md", "chapters/第二章-风起.md"}
+	if preview.VolumeDirFormat != "v{order:05}-{volume}" {
+		t.Fatalf("volume dir format = %q", preview.VolumeDirFormat)
+	}
+	want := []string{"chapters/ch00001-第一章-缘起.md", "chapters/ch00002-第二章-风起.md"}
 	for i := range want {
 		if paths[i] != want[i] {
 			t.Fatalf("path %d = %q, want %q; paths=%#v", i, paths[i], want[i], paths)
@@ -228,10 +231,13 @@ func TestImportNovelToWorkspaceUsesEnglishChapterFilenameStyle(t *testing.T) {
 	if preview.Language != NovelImportLanguageEnglish {
 		t.Fatalf("language = %q", preview.Language)
 	}
-	if preview.ChapterFilenameFormat != "Chapter {N} - {title}.md" {
+	if preview.ChapterFilenameFormat != "ch{order:05}-{chapter}-{title}.md" {
 		t.Fatalf("chapter filename format = %q", preview.ChapterFilenameFormat)
 	}
-	want := []string{"chapters/Chapter-1-Origin.md", "chapters/Chapter-2-Flight.md"}
+	if preview.VolumeDirFormat != "v{order:05}-{volume}" {
+		t.Fatalf("volume dir format = %q", preview.VolumeDirFormat)
+	}
+	want := []string{"chapters/ch00001-Chapter-1-Origin.md", "chapters/ch00002-Chapter-2-Flight.md"}
 	for i := range want {
 		if paths[i] != want[i] {
 			t.Fatalf("path %d = %q, want %q; paths=%#v", i, paths[i], want[i], paths)

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { TFunction } from 'i18next'
-import { BookOpen, Check, Clock3, FileText, Folder, LibraryBig, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { BookOpen, Check, FileText, Folder, LibraryBig, Pencil, Plus, Upload, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -11,7 +10,6 @@ import { NovelImportDialog } from './NovelImportDialog'
 import {
   createBook,
   getBookInfo,
-  removeBook,
   switchWorkspace,
   updateBookInfo,
   type BookMeta,
@@ -23,7 +21,7 @@ interface HomeViewProps {
   workspace: string
   /** 用户 Nova 数据目录，新建书籍默认创建在该目录下 */
   novaDir: string
-  /** 最近书籍列表 */
+  /** Nova 数据目录下实际存在的书籍 */
   books: BookRecord[]
   /** 切换到指定 workspace 后由父组件刷新业务状态 */
   onSwitch: (path: string) => void
@@ -35,28 +33,12 @@ interface HomeViewProps {
   onClose?: () => void
 }
 
-/** 计算相对时间描述 */
-function relativeTime(isoStr: string, t: TFunction): string {
-  if (!isoStr) return ''
-  const diff = Date.now() - new Date(isoStr).getTime()
-  if (diff < 0) return t('time.justNow')
-  const minutes = Math.floor(diff / 60000)
-  if (minutes < 1) return t('time.justNow')
-  if (minutes < 60) return t('time.minutesAgo', { count: minutes })
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return t('time.hoursAgo', { count: hours })
-  const days = Math.floor(hours / 24)
-  if (days < 30) return t('time.daysAgo', { count: days })
-  const months = Math.floor(days / 30)
-  return t('time.monthsAgo', { count: months })
-}
-
 const inputCls = 'nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
 const ghostButtonCls = 'nova-nav-item border border-transparent bg-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const primaryButtonCls = 'border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]'
 const iconButtonCls = 'nova-nav-item text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 
-/** 书籍管理视图：集中展示、创建、打开和编辑最近书籍。 */
+/** 书籍管理视图：集中展示、创建、打开和编辑 Nova 数据目录中的书籍。 */
 export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, onOpenCharacterCardImport, onClose }: HomeViewProps) {
   const { t } = useTranslation()
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -115,16 +97,6 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
     }
   }
 
-  /** 移除最近书籍记录（不删除磁盘内容） */
-  const handleRemove = async (path: string) => {
-    try {
-      await removeBook(path)
-      onBooksChange()
-    } catch (e) {
-      console.error('移除书籍记录失败', e)
-    }
-  }
-
   /** 进入编辑模式，先拉取完整元信息 */
   const startEdit = async (book: BookRecord) => {
     setEditingBookPath(book.path)
@@ -166,7 +138,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
       <div className="nova-topbar flex h-10 shrink-0 items-center gap-2 border-b px-4 text-xs">
         <LibraryBig className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
         <span className="font-medium text-[var(--nova-text)]">{t('home.title')}</span>
-        <span className="text-[11px] text-[var(--nova-text-faint)]">{t('home.recentCount', { count: books.length })}</span>
+        <span className="text-[11px] text-[var(--nova-text-faint)]">{t('home.bookCount', { count: books.length })}</span>
         {onClose && (
           <button
             type="button"
@@ -195,10 +167,10 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                 </div>
                 <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">{workspace || t('home.startHint')}</div>
               </div>
-              {currentBook?.last_opened_at && (
+              {currentBook && (
                 <div className="flex shrink-0 items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">
-                  <Clock3 className="h-3 w-3" />
-                  {relativeTime(currentBook.last_opened_at, t)}
+                  <BookOpen className="h-3 w-3" />
+                  {t('common.current')}
                 </div>
               )}
             </div>
@@ -209,7 +181,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-[11px] font-medium uppercase text-[var(--nova-text-faint)]">
                 <Folder className="h-3.5 w-3.5" />
-                {t('home.recentBooks')}
+                {t('home.bookshelf')}
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 <Button
@@ -296,14 +268,14 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
             {books.length === 0 ? (
               <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-8 text-center text-xs text-[var(--nova-text-faint)]">{t('home.empty')}</div>
             ) : (
-              <div className="space-y-2">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
                 {books.map((book) => {
                   const isCurrent = book.path === workspace
                   const isEditing = editingBookPath === book.path
 
                   if (isEditing) {
                     return (
-                      <div key={book.path} className="space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+                      <div key={book.path} className="min-h-[188px] space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
                         {editLoading ? (
                           <div className="py-2 text-center text-xs text-[var(--nova-text-faint)]">{t('common.loading')}</div>
                         ) : (
@@ -357,42 +329,36 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                   return (
                     <div
                       key={book.path}
-                      className={`group relative flex items-start gap-3 rounded-[var(--nova-radius)] border px-3 py-3 text-xs transition-colors ${
+                      className={`group relative min-h-[188px] overflow-hidden rounded-[var(--nova-radius)] border text-xs transition-colors ${
                         isCurrent
-                          ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
-                          : 'border-transparent bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)]'
+                          ? 'border-[var(--nova-accent)] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
+                          : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
                       }`}
                     >
                       {isCurrent && (
-                        <div className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-[var(--nova-accent)]" />
+                        <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[var(--nova-accent)]" />
                       )}
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)]" />
                       <button
                         type="button"
-                        className="min-w-0 flex-1 pl-1 text-left"
+                        className="flex h-full min-h-[188px] w-full min-w-0 flex-col px-4 py-4 text-left"
                         onClick={() => handleSwitch(book.path)}
                       >
-                        <div className="truncate text-sm font-semibold text-[var(--nova-text)]">{book.name || t('home.unnamedBook')}</div>
-                        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
-                          {book.author && <span>{book.author}</span>}
-                          {book.last_opened_at && <span>{relativeTime(book.last_opened_at, t)}</span>}
-                          {isCurrent && <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{t('common.current')}</span>}
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <BookOpen className={`h-4 w-4 shrink-0 ${isCurrent ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
+                          {isCurrent && <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('common.current')}</span>}
                         </div>
-                        <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">{book.path}</div>
+                        <div className="line-clamp-3 text-sm font-semibold leading-5 text-[var(--nova-text)]">{book.name || t('home.unnamedBook')}</div>
+                        {book.author && <div className="mt-2 truncate text-[11px] text-[var(--nova-text-muted)]">{book.author}</div>}
+                        <div className="mt-auto truncate pt-4 text-[10px] text-[var(--nova-text-faint)]">{book.path}</div>
                       </button>
-                      <div className="flex shrink-0 items-center gap-0.5 pt-0.5">
+                      <div className="absolute right-2 top-2 flex shrink-0 items-center gap-0.5">
                         <TooltipIconButton
                           label={t('home.editInfo')}
-                          className={`${iconButtonCls} opacity-0 group-hover:opacity-100`}
+                          className={`${iconButtonCls} bg-[var(--nova-surface)] opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
                           onClick={() => startEdit(book)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
-                        </TooltipIconButton>
-                        <TooltipIconButton
-                          label={t('home.removeRecord')}
-                          className="nova-nav-item text-[var(--nova-text-faint)] opacity-0 hover:bg-red-500/15 hover:text-red-200 group-hover:opacity-100"
-                          onClick={() => handleRemove(book.path)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
                         </TooltipIconButton>
                       </div>
                     </div>

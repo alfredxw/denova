@@ -43,7 +43,7 @@ type App struct {
 	mu sync.RWMutex
 }
 
-// New 创建应用运行时。当 workspace 为空且没有最近 workspace 时，App 进入“无书籍”状态，
+// New 创建应用运行时。当 workspace 为空且没有上次打开的 workspace 时，App 进入“无书籍”状态，
 // 等待用户在前端书籍管理页选择或新建书籍后再构建 runtime。
 func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	registry := NewBookRegistry(cfg.NovaDir)
@@ -64,7 +64,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	app.ensureServices()
 
 	if workspace == "" {
-		log.Printf("[app] 启动时未指定 workspace 且无最近书籍，进入无书籍状态，等待用户在前端选择")
+		log.Printf("[app] 启动时未指定 workspace 且无上次打开的书籍，进入无书籍状态，等待用户在前端选择")
 		cfg.Workspace = ""
 		return app, nil
 	}

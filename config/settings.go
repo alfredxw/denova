@@ -28,6 +28,7 @@ type Settings struct {
 	AutoSaveEnabled             *bool  `toml:"auto_save_enabled,omitempty" json:"auto_save_enabled,omitempty"`
 	AutoSaveIntervalMs          *int   `toml:"auto_save_interval_ms,omitempty" json:"auto_save_interval_ms,omitempty"`
 	ChapterFilenameFormat       string `toml:"chapter_filename_format,omitempty" json:"chapter_filename_format,omitempty"`
+	VolumeDirFormat             string `toml:"volume_dir_format,omitempty" json:"volume_dir_format,omitempty"`
 	MaxOpenTabs                 *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
 	DraftFlowEnabled            *bool  `toml:"draft_flow_enabled,omitempty" json:"draft_flow_enabled,omitempty"`
 	ChapterGroupMin             *int   `toml:"chapter_group_min,omitempty" json:"chapter_group_min,omitempty"`
@@ -70,7 +71,8 @@ func DefaultSettings() Settings {
 		NovaDir:                     "./.nova",
 		AutoSaveEnabled:             boolPtr(true),
 		AutoSaveIntervalMs:          intPtr(1500),
-		ChapterFilenameFormat:       "第{N}章-{title}.md",
+		ChapterFilenameFormat:       "ch{order:05}-{chapter}-{title}.md",
+		VolumeDirFormat:             "v{order:05}-{volume}",
 		MaxOpenTabs:                 intPtr(5),
 		DraftFlowEnabled:            boolPtr(false),
 		ChapterGroupMin:             intPtr(3),
@@ -131,6 +133,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.ChapterFilenameFormat != "" {
 		out.ChapterFilenameFormat = child.ChapterFilenameFormat
+	}
+	if child.VolumeDirFormat != "" {
+		out.VolumeDirFormat = child.VolumeDirFormat
 	}
 	if child.MaxOpenTabs != nil {
 		out.MaxOpenTabs = child.MaxOpenTabs
