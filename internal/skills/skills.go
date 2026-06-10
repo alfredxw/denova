@@ -72,6 +72,11 @@ type record struct {
 	summary SkillSummary
 }
 
+type frontMatterFile struct {
+	Name        string `yaml:"name"`
+	Description string `yaml:"description"`
+}
+
 // NewDirectories returns the canonical skill search path for Nova.
 func NewDirectories(builtinDir, novaDir, workspace string) []Directory {
 	dirs := make([]Directory, 0, 3)
@@ -143,6 +148,7 @@ func ReadDocument(ctx context.Context, dirs []Directory, scope Scope, name strin
 	if err := ValidateName(name); err != nil {
 		return Document{}, err
 	}
+	dirs = dedupeDirectories(dirs)
 	dir, err := directoryForScope(dirs, scope)
 	if err != nil {
 		return Document{}, err
@@ -156,6 +162,8 @@ func ReadDocument(ctx context.Context, dirs []Directory, scope Scope, name strin
 	if err != nil {
 		return Document{}, err
 	}
+	active := activeRecordKeys(loadRecords(ctx, dirs))
+	rec.summary.Active = active[recordKey(rec)]
 	return Document{SkillSummary: rec.summary, Content: string(data)}, nil
 }
 
@@ -168,7 +176,7 @@ func CreateDocument(ctx context.Context, dirs []Directory, scope Scope, name, de
 		return Document{}, err
 	}
 	content := DefaultContent(name, description)
-	return writeDocument(ctx, dir, name, content, false)
+	return writeDocument(ctx, dirs, dir, name, content, false)
 }
 
 func SaveDocument(ctx context.Context, dirs []Directory, scope Scope, name, content string) (Document, error) {
@@ -179,7 +187,7 @@ func SaveDocument(ctx context.Context, dirs []Directory, scope Scope, name, cont
 	if err != nil {
 		return Document{}, err
 	}
-	return writeDocument(ctx, dir, name, content, true)
+	return writeDocument(ctx, dirs, dir, name, content, true)
 }
 
 func ValidateName(name string) error {
@@ -194,15 +202,14 @@ func DefaultContent(name, description string) string {
 	if description == "" {
 		description = fmt.Sprintf("Use this skill when the user asks for %s-specific guidance.", name)
 	}
+	frontmatter := marshalFrontmatter(name, description)
 	return fmt.Sprintf(`---
-name: %s
-description: %s
----
+%s---
 
 # %s
 
 Describe when to use this skill, what context to gather, and the concrete workflow the agent should follow.
-`, name, quoteYAML(description), name)
+`, frontmatter, name)
 }
 
 func (b *Backend) activeRecords(ctx context.Context) []record {
@@ -303,7 +310,7 @@ func parseRecord(ctx context.Context, dir Directory, path, data string) (record,
 	}, nil
 }
 
-func writeDocument(ctx context.Context, dir Directory, name, content string, overwrite bool) (Document, error) {
+func writeDocument(ctx context.Context, dirs []Directory, dir Directory, name, content string, overwrite bool) (Document, error) {
 	if ctx.Err() != nil {
 		return Document{}, ctx.Err()
 	}
@@ -327,7 +334,7 @@ func writeDocument(ctx context.Context, dir Directory, name, content string, ove
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		return Document{}, err
 	}
-	doc, err := ReadDocument(ctx, []Directory{dir}, dir.Scope, name)
+	doc, err := ReadDocument(ctx, dirs, dir.Scope, name)
 	if err != nil {
 		return Document{}, err
 	}
@@ -440,10 +447,10 @@ func scopeRank(scope Scope) int {
 	}
 }
 
-func quoteYAML(value string) string {
-	data, err := yaml.Marshal(value)
+func marshalFrontmatter(name, description string) string {
+	data, err := yaml.Marshal(frontMatterFile{Name: name, Description: description})
 	if err != nil {
-		return `""`
+		return fmt.Sprintf("name: %q\ndescription: %q\n", name, description)
 	}
-	return strings.TrimSpace(string(data))
+	return string(data)
 }

@@ -56,7 +56,7 @@ const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentToolOver
   interactive_hot_choices: disabledTools(),
   version_summary: disabledTools(),
   tool_agent: disabledTools(),
-  automation: { file_read: true, web_search: true, file_write: false, shell_execute: false, skills: false, lore_read: true, lore_write: false, todo: false },
+  automation: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true },
 }
 
 export function AgentsView({ onClose }: { onClose?: () => void }) {

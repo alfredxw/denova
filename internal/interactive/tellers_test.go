@@ -14,7 +14,7 @@ func TestTellerLibraryMaterializesBuiltinsAndListsThem(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
-	if len(tellers) < 5 {
+	if len(tellers) != len(builtinTellers) {
 		t.Fatalf("expected built-in tellers, got %#v", tellers)
 	}
 	if tellers[0].ID == "" || tellers[0].Name == "" {
@@ -85,7 +85,7 @@ func TestTellerLibraryRefreshesOldBuiltinVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get classic failed: %v", err)
 	}
-	if classic.Version != tellerVersion || classic.Name != "经典导演" || !containsTellerSlot(classic, "turn_context") || !containsTellerSlot(classic, "state_memory") {
+	if classic.Version != tellerVersion || classic.Name != builtinTellers["classic"].Name || !containsTellerSlot(classic, "turn_context") || !containsTellerSlot(classic, "state_memory") {
 		t.Fatalf("classic builtin should be refreshed to current version: %#v", classic)
 	}
 }

@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复 Skills 管理中单独打开被工作区覆盖的用户级 `SKILL.md` 时仍显示为可用的问题；创建/保存后也会按完整搜索路径返回真实 Active 状态。
+- 修复新建 Skill 默认 `SKILL.md` 在描述包含换行、冒号或列表符号时可能生成非法 YAML frontmatter 的问题。
+- 修复创作 Agent 输入框在 IDE Agent 关闭 Skills 工具后仍展示 `/<skill-name>` 命令的问题。
+- 修复 Agents 页 Automation Agent 工具权限前端兜底值与后端默认配置不一致的问题。
+- 修复内置叙事编排缺少 `screenwriter` 预设导致回归测试失败的问题，并让内置刷新测试跟随当前预设名称。
+
 ## [v0.1.8] - 2026-06-11
 
 ### Added

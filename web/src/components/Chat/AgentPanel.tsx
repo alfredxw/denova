@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Bot, FileText, MessageSquareText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
+import type { LayeredSettings } from '@/features/settings/types'
 import type { Teller } from '@/features/interactive/types'
 import { getSkills } from '@/lib/api'
 import type { ChapterSummary, ChatMessage, SessionSummary, SkillSummary, TextSelection } from '@/lib/api'
@@ -101,16 +102,22 @@ export function AgentPanel({
 
   useEffect(() => {
     let cancelled = false
+    let requestSeq = 0
     const loadSkills = () => {
-      getSkills()
-        .then((data) => {
-          if (cancelled) return
+      const requestId = ++requestSeq
+      Promise.all([getSkills(), fetchSettings()])
+        .then(([data, settings]) => {
+          if (cancelled || requestId !== requestSeq) return
+          if (!ideSkillsEnabled(settings)) {
+            setSkillCommands([])
+            return
+          }
           setSkillCommands(data.skills
             .filter((skill) => skill.active)
             .map((skill) => ({ name: skill.name, description: skill.description })))
         })
         .catch(() => {
-          if (!cancelled) setSkillCommands([])
+          if (!cancelled && requestId === requestSeq) setSkillCommands([])
         })
     }
     loadSkills()
@@ -238,6 +245,12 @@ export function AgentPanel({
       )}
     </aside>
   )
+}
+
+function ideSkillsEnabled(settings: LayeredSettings) {
+  const defaultTools = settings.effective.agent_tools?.default ?? {}
+  const ideTools = settings.effective.agent_tools?.ide ?? {}
+  return ideTools.skills ?? defaultTools.skills ?? true
 }
 
 function IdeTellerSelector({ workspace, tellers }: { workspace: string; tellers: Teller[] }) {

@@ -58,6 +58,39 @@ func TestBackendWorkspaceOverridesUserAndBuiltin(t *testing.T) {
 	}
 }
 
+func TestReadAndSaveDocumentReportActiveScope(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	user := filepath.Join(root, "user")
+	workspace := filepath.Join(root, "workspace")
+	writeSkillFile(t, user, "outline", "outline", "user desc")
+	writeSkillFile(t, workspace, "outline", "outline", "workspace desc")
+	dirs := []Directory{
+		{Scope: ScopeUser, Path: user, Writable: true},
+		{Scope: ScopeWorkspace, Path: workspace, Writable: true},
+	}
+
+	userDoc, err := ReadDocument(ctx, dirs, ScopeUser, "outline")
+	if err != nil {
+		t.Fatalf("ReadDocument(user) error = %v", err)
+	}
+	workspaceDoc, err := ReadDocument(ctx, dirs, ScopeWorkspace, "outline")
+	if err != nil {
+		t.Fatalf("ReadDocument(workspace) error = %v", err)
+	}
+	if userDoc.Active || !workspaceDoc.Active {
+		t.Fatalf("active status mismatch: user=%v workspace=%v", userDoc.Active, workspaceDoc.Active)
+	}
+
+	savedUser, err := SaveDocument(ctx, dirs, ScopeUser, "outline", DefaultContent("outline", "updated user desc"))
+	if err != nil {
+		t.Fatalf("SaveDocument(user) error = %v", err)
+	}
+	if savedUser.Active {
+		t.Fatalf("saved overridden user document should remain inactive: %#v", savedUser)
+	}
+}
+
 func TestCreateAndSaveDocument(t *testing.T) {
 	ctx := context.Background()
 	user := filepath.Join(t.TempDir(), "skills")
@@ -86,6 +119,20 @@ Use numbered beats.
 	}
 	if saved.Description != "Build chapter beat sheets." || saved.Content != content {
 		t.Fatalf("saved doc = %#v", saved)
+	}
+}
+
+func TestDefaultContentEscapesFrontmatterDescription(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "beats", SkillFileName)
+	content := DefaultContent("beats", "Line one:\n- keep as text\nkey: value")
+
+	rec, err := parseRecord(ctx, Directory{Scope: ScopeUser, Path: filepath.Dir(filepath.Dir(path)), Writable: true}, path, content)
+	if err != nil {
+		t.Fatalf("parseRecord(DefaultContent()) error = %v\ncontent:\n%s", err, content)
+	}
+	if rec.skill.Name != "beats" || rec.skill.Description != "Line one:\n- keep as text\nkey: value" {
+		t.Fatalf("parsed frontmatter = %#v", rec.skill.FrontMatter)
 	}
 }
 
