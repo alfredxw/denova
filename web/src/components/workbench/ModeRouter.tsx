@@ -13,6 +13,7 @@ import { SettingPanel } from '@/features/interactive/components/SettingPanel'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import { AgentsView } from '@/features/agents/AgentsView'
+import { AutomationsView } from '@/features/automations/AutomationsView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import type { Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
@@ -24,6 +25,7 @@ import { WorkbenchShell } from './WorkbenchShell'
 import { flattenFileTree, formatNumber } from './workbench-utils'
 
 const LORE_AGENT_INIT_EVENT = 'nova:lore-agent-init'
+const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 
 interface ModeRouterProps {
   mode: WorkspaceMode
@@ -180,6 +182,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
   const versionsVisible = rightPanel === 'versions'
   const agentsVisible = mode === 'agents'
+  const automationsVisible = mode === 'automations'
   const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'creator' || rightPanel === 'teller' || rightPanel === 'versions') ? rightPanel : null
   const interactiveSubmode = useInteractiveStore((state) => state.submode)
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
@@ -215,17 +218,21 @@ export function ModeRouter(props: ModeRouterProps) {
   })), [i18n.language, loreItems, t])
   const loreEmpty = Boolean(workspace) && loreItems.length === 0
 
-  const requestLoreInit = (target: 'ide' | 'interactive') => {
-    if (target === 'interactive') {
-      onSetMode('interactive')
-      setInteractiveSubmode('lore')
-    } else {
-      onSetMode('ide')
-      onSetRightPanel('lore')
-    }
+  const requestLoreInit = () => {
+    onSetMode('interactive')
+    setInteractiveSubmode('lore')
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent(LORE_AGENT_INIT_EVENT, {
         detail: { prompt: t('settingPanel.loreAgent.initPrompt') },
+      }))
+    }, 0)
+  }
+  const requestWritingInit = () => {
+    onSetMode('ide')
+    onSetRightPanel('ai')
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(WRITING_AGENT_INIT_EVENT, {
+        detail: { prompt: t('writingAgent.initPrompt') },
       }))
     }, 0)
   }
@@ -334,6 +341,8 @@ export function ModeRouter(props: ModeRouterProps) {
         <SettingsView onClose={onCloseSettings} />
       ) : agentsVisible ? (
         <AgentsView onClose={() => onSetMode(booksReturnMode)} />
+      ) : automationsVisible ? (
+        <AutomationsView workspace={workspace} onClose={() => onSetMode(booksReturnMode)} />
       ) : mode === 'books' ? (
         <HomeView
           workspace={workspace}
@@ -349,7 +358,7 @@ export function ModeRouter(props: ModeRouterProps) {
           workspace={workspace}
           styleSuggestions={styles}
           loreEmpty={loreEmpty}
-          onRequestLoreInit={() => requestLoreInit('interactive')}
+          onRequestLoreInit={requestLoreInit}
           rightPanelVisible={interactiveRightVisible}
           onToggleRightPanel={onToggleInteractiveRightPanel}
         />
@@ -419,8 +428,8 @@ export function ModeRouter(props: ModeRouterProps) {
                   emptyText={t('router.chooseFile')}
                   title={t('loreInit.ideTitle')}
                   description={t('loreInit.ideDescription')}
-                  action={t('loreInit.openAgent')}
-                  onClick={() => requestLoreInit('ide')}
+                  action={t('loreInit.ideAction')}
+                  onClick={requestWritingInit}
                 />
               ) : (
                 <div className="flex h-full items-center justify-center text-xs text-[#7f8590]">

@@ -22,7 +22,7 @@ func TestInitWorkspaceDoesNotCreateCharacterStates(t *testing.T) {
 	}
 }
 
-func TestInitWorkspaceCreatesBrainstormMarkdown(t *testing.T) {
+func TestInitWorkspaceCreatesIdeasMarkdown(t *testing.T) {
 	dir := t.TempDir()
 	state := NewState(dir)
 
@@ -30,8 +30,32 @@ func TestInitWorkspaceCreatesBrainstormMarkdown(t *testing.T) {
 		t.Fatalf("InitWorkspace 失败: %v", err)
 	}
 
-	if _, err := os.Stat(filepath.Join(dir, BrainstormFileName)); err != nil {
-		t.Fatalf("InitWorkspace 应创建 %s: %v", BrainstormFileName, err)
+	if _, err := os.Stat(filepath.Join(dir, IdeasFileName)); err != nil {
+		t.Fatalf("InitWorkspace 应创建 %s: %v", IdeasFileName, err)
+	}
+}
+
+func TestInitWorkspaceMigratesLegacyBrainstormMarkdown(t *testing.T) {
+	dir := t.TempDir()
+	legacyPath := filepath.Join(dir, LegacyBrainstormFileName)
+	if err := os.WriteFile(legacyPath, []byte("# 旧脑暴\n\n核心卖点"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state := NewState(dir)
+
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace 失败: %v", err)
+	}
+
+	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
+		t.Fatalf("InitWorkspace 应迁移旧 %s: %v", LegacyBrainstormFileName, err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, IdeasFileName))
+	if err != nil {
+		t.Fatalf("读取 %s 失败: %v", IdeasFileName, err)
+	}
+	if !strings.Contains(string(data), "核心卖点") {
+		t.Fatalf("迁移后的 %s 未保留旧内容: %s", IdeasFileName, data)
 	}
 }
 
@@ -81,6 +105,30 @@ func TestCompactContextIncludesCharacterStates(t *testing.T) {
 		"林川的长期人设",
 		"## 章节组细纲",
 		"章节组内容",
+	} {
+		if !strings.Contains(context, required) {
+			t.Fatalf("CompactContext 缺少 %q:\n%s", required, context)
+		}
+	}
+}
+
+func TestCompactContextIncludesBoundedIdeasWhenEdited(t *testing.T) {
+	dir := t.TempDir()
+	state := NewState(dir)
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace 失败: %v", err)
+	}
+	if context := state.CompactContext(); strings.Contains(context, "## 创作灵感") {
+		t.Fatalf("未编辑的 ideas 模板不应进入上下文:\n%s", context)
+	}
+	if err := os.WriteFile(state.IdeasPath(), []byte("# 灵感\n\n## 当前方向\n废土公路复仇。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	context := state.CompactContext()
+	for _, required := range []string{
+		"## 创作灵感（ideas.md，最多 2000 字）",
+		"废土公路复仇",
 	} {
 		if !strings.Contains(context, required) {
 			t.Fatalf("CompactContext 缺少 %q:\n%s", required, context)

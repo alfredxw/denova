@@ -77,7 +77,7 @@ function App() {
   const setSelectedChapterId = useWorkspaceStore((state) => state.setSelectedChapterId)
 
   useEffect(() => {
-    if (mode === 'books' || mode === 'agents') return
+    if (mode === 'books' || mode === 'agents' || mode === 'automations') return
     const contentMode = mode === 'interactive' ? 'interactive' : 'ide'
     booksReturnModeRef.current = contentMode
     setBooksReturnMode(contentMode)
@@ -456,7 +456,7 @@ function App() {
   }, [isStreaming, send])
 
   const handleSetMode = useCallback((nextMode: WorkspaceMode) => {
-    if (nextMode === 'books' || nextMode === 'agents') {
+    if (nextMode === 'books' || nextMode === 'agents' || nextMode === 'automations') {
       const returnMode = mode === 'ide' || mode === 'interactive' ? mode : booksReturnModeRef.current
       booksReturnModeRef.current = returnMode
       setBooksReturnMode(returnMode)

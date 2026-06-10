@@ -21,6 +21,7 @@ type AgentToolSettings struct {
 	InteractiveHotChoices AgentToolOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentToolOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 	ToolAgent             AgentToolOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
+	Automation            AgentToolOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 }
 
 // AgentToolOverride 的指针字段用于区分继承与显式关闭。
@@ -71,6 +72,15 @@ func DefaultAgentToolSettings() AgentToolSettings {
 		InteractiveHotChoices: noToolAgentOverride(),
 		VersionSummary:        noToolAgentOverride(),
 		ToolAgent:             noToolAgentOverride(),
+		Automation: AgentToolOverride{
+			FileRead:     on,
+			FileWrite:    on,
+			ShellExecute: off,
+			Skills:       on,
+			LoreRead:     on,
+			LoreWrite:    on,
+			Todo:         on,
+		},
 	}
 }
 
@@ -98,6 +108,7 @@ func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 		InteractiveHotChoices: mergeAgentToolOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentToolOverride(parent.VersionSummary, child.VersionSummary),
 		ToolAgent:             mergeAgentToolOverride(parent.ToolAgent, child.ToolAgent),
+		Automation:            mergeAgentToolOverride(parent.Automation, child.Automation),
 	}
 }
 
@@ -162,6 +173,8 @@ func agentToolOverrideFor(settings AgentToolSettings, agentKind string) AgentToo
 		return settings.VersionSummary
 	case AgentKindToolAgent:
 		return settings.ToolAgent
+	case AgentKindAutomation:
+		return settings.Automation
 	default:
 		return AgentToolOverride{}
 	}

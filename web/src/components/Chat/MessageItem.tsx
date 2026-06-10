@@ -497,9 +497,9 @@ function extractStreamingContent(rawArgs: string): string {
   return text
 }
 
-/** 流式 Markdown 渲染，避免高频重建完整 Markdown AST。 */
+/** 流式和持久化消息共用同一 Markdown 渲染器，避免刷新后段落、列表和行距重新排版。 */
 function StreamingMarkdown({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {
-  return <StreamingMarkdownContent content={content} highlightDialogue={highlightDialogue} />
+  return <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
 }
 
 const MarkdownContent = memo(function MarkdownContent({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {
@@ -512,98 +512,6 @@ const MarkdownContent = memo(function MarkdownContent({ content, highlightDialog
     </ReactMarkdown>
   )
 })
-
-/** 轻量流式 Markdown，只处理常见块级语法，保证输出即时不卡顿。 */
-const StreamingMarkdownContent = memo(function StreamingMarkdownContent({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {
-  const lines = content.split('\n')
-  const nodes = []
-  let codeLines: string[] = []
-  let inCodeBlock = false
-  let codeBlockIndex = 0
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]
-    const codeFence = line.match(/^```/)
-    if (codeFence) {
-      if (inCodeBlock) {
-        nodes.push(
-          <pre key={`code-${codeBlockIndex}`} className="my-2 overflow-x-auto rounded border border-[#303238] bg-[#1b1c20] px-3 py-2 text-xs leading-relaxed text-[#d7dbe2]">
-            <code>{codeLines.join('\n')}</code>
-          </pre>,
-        )
-        codeBlockIndex += 1
-        codeLines = []
-        inCodeBlock = false
-      } else {
-        inCodeBlock = true
-      }
-      continue
-    }
-
-    if (inCodeBlock) {
-      codeLines.push(line)
-      continue
-    }
-
-    nodes.push(renderStreamingMarkdownLine(line, index, highlightDialogue))
-  }
-
-  if (inCodeBlock) {
-    nodes.push(
-      <pre key={`code-open-${codeBlockIndex}`} className="my-2 overflow-x-auto rounded border border-[#303238] bg-[#1b1c20] px-3 py-2 text-xs leading-relaxed text-[#d7dbe2]">
-        <code>{codeLines.join('\n')}</code>
-      </pre>,
-    )
-  }
-
-  return <div className="streaming-markdown">{nodes}</div>
-})
-
-function renderStreamingMarkdownLine(line: string, index: number, highlightDialogue: boolean) {
-  if (!line.trim()) {
-    return <div key={`blank-${index}`} className="h-3" />
-  }
-
-  const heading = line.match(/^(#{1,6})\s+(.+)$/)
-  if (heading) {
-    const level = heading[1].length
-    const className = level <= 2
-      ? 'mt-3 mb-1 text-base font-semibold text-[#e4e7ee]'
-      : 'mt-2 mb-1 text-sm font-semibold text-[#d7dbe2]'
-    return <div key={`h-${index}`} className={className}>{renderInlineMarkdown(heading[2], highlightDialogue)}</div>
-  }
-
-  const listItem = line.match(/^(\s*)([-*+]|\d+\.)\s+(.+)$/)
-  if (listItem) {
-    const depth = Math.min(Math.floor(listItem[1].length / 2), 4)
-    return (
-      <div key={`li-${index}`} className="flex gap-2 leading-7 text-[#c8ccd4]" style={{ paddingLeft: `${depth * 1.25}rem` }}>
-        <span className="shrink-0 text-[#858b96]">{listItem[2].match(/\d+\./) ? listItem[2] : '•'}</span>
-        <span>{renderInlineMarkdown(listItem[3], highlightDialogue)}</span>
-      </div>
-    )
-  }
-
-  const quote = line.match(/^>\s?(.*)$/)
-  if (quote) {
-    return <div key={`quote-${index}`} className="border-l border-[#454956] pl-3 leading-7 text-[#aeb4bf]">{renderInlineMarkdown(quote[1], highlightDialogue)}</div>
-  }
-
-  return <div key={`p-${index}`} className="leading-7 text-[#c8ccd4]">{renderInlineMarkdown(line, highlightDialogue)}</div>
-}
-
-function renderInlineMarkdown(text: string, highlightDialogue = false): ReactNode[] {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g)
-  return parts.map((part, index) => {
-    if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={index} className="rounded bg-[#1b1c20] px-1 py-0.5 font-mono text-[0.9em] text-[#d7dbe2]">{part.slice(1, -1)}</code>
-    }
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={index} className="font-semibold text-[#e4e7ee]">{highlightDialogueText(part.slice(2, -2), highlightDialogue, `strong-${index}`)}</strong>
-    }
-    return highlightDialogueText(part, highlightDialogue, `text-${index}`)
-  })
-}
 
 const dialogueMarkdownComponents = {
   p: ({ children }: { children?: ReactNode }) => <p>{highlightDialogueNodes(children)}</p>,

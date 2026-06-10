@@ -11,6 +11,8 @@ import type { ReferencePickerItem } from './FileReferencePicker'
 
 type AgentPanelView = 'chat' | 'sessions'
 
+const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
+
 interface AgentPanelProps {
   workspace: string
   currentChapter?: ChapterSummary
@@ -79,9 +81,21 @@ export function AgentPanel({
 }: AgentPanelProps) {
   const { t } = useTranslation()
   const [view, setView] = useState<AgentPanelView>('chat')
+  const [inputPrefill, setInputPrefill] = useState<{ prompt: string; nonce: number } | null>(null)
   const activeSession = sessions.find((session) => session.id === activeSessionId) ||
     sessions.find((session) => session.active) ||
     sessions[0]
+
+  useEffect(() => {
+    const handleWritingInitRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ prompt?: string }>).detail
+      const prompt = detail?.prompt || t('writingAgent.initPrompt')
+      setView('chat')
+      setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
+    }
+    window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
+    return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
+  }, [t])
 
   return (
     <aside className="nova-sidebar flex h-full min-h-0 flex-col">
@@ -165,6 +179,8 @@ export function AgentPanel({
             onSend={onSend}
             onStop={onStop}
             disabled={isStreaming}
+            inputPrefill={inputPrefill}
+            onInputPrefillConsumed={() => setInputPrefill(null)}
             referencedFiles={references}
             onReferenceRemove={onReferenceRemove}
             fileSuggestions={fileSuggestions}

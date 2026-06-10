@@ -534,7 +534,7 @@ function FileTreeNode({
                     onCancel={onInlineCancel}
                   />
                 ) : (
-                  <span className="truncate">{displayFileNodeName(node.name)}</span>
+                  <span className="truncate">{displayFileNodeName(node.name, path, t)}</span>
                 )}
               </button>
               {!isRenaming && <NodeDropdown actions={actions} />}
@@ -615,7 +615,7 @@ function FileTreeNode({
                 />
               ) : (
                 <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                  <span className="truncate">{chapter?.display_title || displayFileNodeName(node.name)}</span>
+                  <span className="truncate">{chapter?.display_title || displayFileNodeName(node.name, path, t)}</span>
                   {chapter && (
                     <span className="flex shrink-0 items-center gap-1 text-[10px] text-[#7f8794]">
                       <span>{formatCompactWords(chapter.words)}</span>
@@ -726,7 +726,10 @@ function compareFileNodeNames(left: string, right: string) {
   return left.localeCompare(right, 'zh-Hans-CN')
 }
 
-function displayFileNodeName(name: string) {
+function displayFileNodeName(name: string, path?: string, t?: (key: string) => string) {
+  if (path === 'ideas.md' && t) {
+    return t('sidebar.special.ideas')
+  }
   const baseName = name.replace(/\.[^.]+$/, '')
   const ext = name.slice(baseName.length)
   const visibleBase = stripHiddenSortPrefix(baseName)

@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - README 新增中英语言切换入口，并补充英文版 `README.en.md`。
 - 新增 `lore-init` 资料库初始化 Skill：资料库为空时引导作者先讨论题材、角色、核心冲突、世界规则、创作风格、禁忌和互动开局，用户确认后再写入资料库与 `CREATOR.md`。
-- IDE 写作主页面和互动剧情主页面在资料库为空时提供轻量引导，可跳转到资料库 Agent 并预填初始化指令。
+- IDE 写作主页面和互动剧情主页面在资料库为空时提供轻量引导；IDE 会打开创作 Agent 并预填新书构思 prompt，互动模式继续跳转资料库 Agent 并预填初始化指令。
 - Agents 页新增每个 Agent 的自定义 system prompt 配置，支持用户级/工作区级分层继承；运行时按「Nova 运行时契约（不可覆盖）→ 用户自定义提示 → Nova 内置提示」拼装，确保自定义提示能覆盖行为偏好但不能覆盖工具权限、输出协议、互动禁写、结构化 JSON 和后端校验边界。
 - 内置叙事编排新增 `直白情色` 和 `编剧风格` 两个预设，分别面向成人自愿情欲张力和编剧式场景节拍。
 - WebUI 新增 i18n 多语言基础设施，接入 `i18next` / `react-i18next`，首版提供简体中文与 English 资源，并为后续语言扩展预留统一 locale 目录。
@@ -20,21 +20,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 书籍管理新增 txt/md 现有小说导入：上传后自动解析章节、创建新书并写入 `chapters/`；导入后回到 IDE 主页，由已有空资料库引导跳转资料库 Agent 生成设定资料。
 - 小说导入升级为确认式智能分割流程：上传后工具 Agent 基于前 `20000` 字样本推断章节标题 Go regexp，用户可调整 `2000-100000` 字样本范围、编辑正则并重新预览，确认后再创建书籍和写入章节；工具 Agent 默认无工具且关闭 thinking，可在 Agents 页配置模型和 system prompt。
 - 小说导入预览新增流式进度：前端会展示文件读取、章节解析、工具 Agent 正则识别、回退和预览完成等阶段，避免长时间智能识别时界面无反馈。
+- 新增一级菜单“自动化 / Automations”，作为 Books、Agents 同级共享工作台页面；点击只打开自动化页面，不自动切换 IDE/互动模式，并保持一级菜单单 active。
+- 新增 Automations 后端服务与 REST API，支持用户级任务和当前工作区任务的 JSON 存储、CRUD、手动运行、最近运行记录、结构化定时规则、调度器加载和 panic recover。
+- 新增 Automation Agent kind，接入 `agent_models`、`agent_tools`、`agent_prompts` 分层配置，并在 Agents 页展示；默认允许文件/资料库读写和 Skills，命令执行默认关闭，写文件/写资料库仍必须同时满足任务写入权限和 Agent 工具权限。
+- 自动化任务支持记忆整合、Review、续写章节和自定义 Prompt 四类模板；不再要求用户配置上下文来源，Agent 会按任务目标自行使用允许的工具读取所需章节、设定、资料库和状态。
 
 ### Changed
 
 - 书籍管理不再以“最近书籍”记录作为列表来源，改为展示当前 Nova 数据目录下实际存在的书籍目录，并将前端列表优化为书架式网格布局；旧最近打开记录仅保留用于启动恢复当前书籍。
 - 章节和分卷默认命名改为隐藏排序前缀模板：章节使用 `ch{order:05}-{chapter}-{title}.md`，分卷目录使用 `v{order:05}-{volume}`，作品目录隐藏前缀展示自然章节名；该变更只影响新章节和新导入内容，旧章节不会自动重命名。
 - 版本管理底层从原生文件快照切换为 go-git 驱动的 workspace 根目录 `.git` 本地仓库；Nova 会自动初始化并提交版本，像 Git 一样保存正文、设置和 `.nova/lore`、`.nova/sessions` 等本地创作状态，历史直接来自 Git commit，恢复通过移动 HEAD 生效，不再创建 `.nova/versions` 索引、内部版本目录或裁剪 Git 历史；旧原生快照不再读取或迁移。
-- 顶层定调文件统一使用 `brainstorm.md`；新建作品会创建该文件，并同步更新 Agent 提示词、技能、前端初始化文案和 README。
+- 顶层定调文件改为 `ideas.md`（作品目录展示为「灵感」/ Ideas）；新建作品会创建该文件，旧工作区仅存在 `brainstorm.md` 时会在初始化时迁移为 `ideas.md`，并同步更新 Agent 提示词、技能、前端初始化文案和 README。
 - 整体优化中英文 README：重写项目首屏定位、核心价值、能力矩阵、推荐创作流程、快速开始、配置和开发说明，提升公开项目页的专业度与可读性。
-- 资料库 Agent 从单次结构化 JSON 编辑方案升级为工具型 Agent，支持 Skills、资料库读写和文件读写工具；初始化流程要求多轮确认，最终只写资料库和 `CREATOR.md`，不写 `brainstorm.md`、大纲、章节、progress、character-states，也不自动创建互动 story。
+- 资料库 Agent 从单次结构化 JSON 编辑方案升级为工具型 Agent，支持 Skills、资料库读写和文件读写工具；初始化流程要求多轮确认，最终只写资料库和 `CREATOR.md`，不写 `ideas.md`、大纲、章节、progress、character-states，也不自动创建互动 story。
 - 资料库条目简介改为多行编辑，并统一要求 `brief_description` 使用“类型 名称 + 3-5 句触发说明 + 必须参考详情”的索引结构，提升 Agent 自动匹配并读取资料正文的准确性。
 - 指令类多行输入框改为随输入内容自动扩展，最多显示 10 行后进入内部滚动，覆盖创作 Agent、资料库 Agent、叙事编排 Agent、互动剧情输入和短表单简介。
 - 用户可见“讲述者 / Teller / 导演 / Director”统一改名为“叙事编排 / Narrative Direction”，IDE 和互动模式内的紧凑选择提示使用“叙事 / Narrative”；内部 `Teller`、`story_teller_id`、`story-tellers/` 和 API 路径保持兼容不迁移。
 - 强化内置叙事编排规则内容，旧版内置 JSON 会随 `tellerVersion` 自动刷新，规则会更明确影响剧情裁定、角色主动性、代价、节奏、伏笔和状态沉淀。
 - 设置页 General Appearance 调整到顶部，语言选项固定展示为 `Follow Browser`、`简体中文` 和 `English`，并支持设置页与 Agents 页修改后自动保存。
-- 创作 Agent 的书籍脑暴前置流程现在会同时读取 `brainstorm.md` 和 `CREATOR.md`，基于两份模板与作者确认顶层设定和基本创作规则，确认后先写回模板再生成大纲、进度、角色状态和资料库。
+- 创作 Agent 的新书构思前置流程现在会同时读取 `ideas.md` 和 `CREATOR.md`，并在初始化沟通中把阶段性结论、待确认点和取舍理由持续整理到 `ideas.md`；`ideas.md` 不再是一次性归档文件，而是后续生成大纲或重大方向调整时优先参考的有界指引文件。
 - IDE 作品目录中的章节组细纲默认只展示最新一组，历史章节组可折叠展开；章节组生成规则同步收紧为短小可维护，方便作者阅读、评论和后续更新。
 - 扩大 WebUI i18n 覆盖面，补齐会话管理、工具卡片、Agent 配置、互动故事舞台、剧情路线图、场景记忆、字体设置和编辑区浮层等模块内的硬编码界面文案。
 - WebUI 字号改为按层级从界面字号派生，默认保持 `text-xs`、`text-sm`、`text-[11px]` 和 `text-[10px]` 原有视觉大小，并覆盖创作 Agent 输出、用户消息、菜单、侧栏和子模块小字。
@@ -44,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复创作 Agent 和互动模式流式输出完成并刷新为持久化历史后，Markdown 段落、列表和行距重新排版导致会话区域抖动的问题。
 - 修复作品目录树和章节摘要对中文自然章节名排序不准确的问题，`序章`、`第一章`、`第十章`、`第十一章`、`第一百一十一章` 等会按实际章序排列。
 - 修复资料库 Agent 和叙事编排 Agent 复用通用消息列表后，长历史消息撑开整个页面滚动的问题；消息历史改为在 Agent 内部区域滚动。
 - 小说导入智能章节识别失败时增加后端排查日志，记录工具 Agent 调用、模型输出摘要、正则命中数量和回退原因，方便定位为何回退内置规则。

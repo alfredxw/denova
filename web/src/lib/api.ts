@@ -243,6 +243,59 @@ export interface LoreAgentResult {
   deleted_ids: string[]
 }
 
+export type AutomationScope = 'user' | 'workspace'
+export type AutomationTemplate = 'memory_consolidation' | 'review' | 'continue_writing' | 'custom_prompt'
+export type AutomationWritePolicy = 'read_only' | 'allow_lore_write' | 'allow_file_write' | 'allow_lore_and_file_write'
+export type AutomationOutputPolicy = 'run_record_only' | 'optional_file'
+export type AutomationScheduleKind = 'manual' | 'daily' | 'weekly' | 'monthly' | 'every_hours'
+
+export interface AutomationSchedule {
+  kind: AutomationScheduleKind
+  every_hours?: number
+  weekday?: number
+  day_of_month?: number
+  hour: number
+  minute: number
+  cron?: string
+}
+
+export interface AutomationRunRecord {
+  id: string
+  task_id: string
+  scope: AutomationScope
+  workspace?: string
+  trigger: 'manual' | 'schedule'
+  status: 'running' | 'success' | 'failed'
+  started_at: string
+  finished_at?: string
+  summary: string
+  error?: string
+  output_path?: string
+  tool_manifest: Array<{ source: string; allowed: boolean }>
+}
+
+export interface AutomationTask {
+  id?: string
+  scope: AutomationScope
+  enabled: boolean
+  name: string
+  template: AutomationTemplate
+  prompt: string
+  schedule: AutomationSchedule
+  write_policy: AutomationWritePolicy
+  output_policy: AutomationOutputPolicy
+  output_path: string
+  last_run?: AutomationRunRecord
+  recent_runs: AutomationRunRecord[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface AutomationRunResult {
+  task: AutomationTask
+  run: AutomationRunRecord
+}
+
 async function requestJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
   const data = await res.json()
@@ -561,6 +614,35 @@ export async function restoreLoreVersion(id: string): Promise<LoreItem[]> {
     method: 'POST',
   })
   return data.items || []
+}
+
+export async function getAutomations(): Promise<AutomationTask[]> {
+  const data = await requestJSON<{ tasks: AutomationTask[] }>('/api/automations')
+  return data.tasks || []
+}
+
+export async function createAutomation(task: AutomationTask): Promise<AutomationTask> {
+  return requestJSON('/api/automations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(task),
+  })
+}
+
+export async function updateAutomation(id: string, task: AutomationTask): Promise<AutomationTask> {
+  return requestJSON(`/api/automations/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(task),
+  })
+}
+
+export async function deleteAutomation(id: string): Promise<void> {
+  await requestJSON(`/api/automations/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function runAutomation(id: string): Promise<AutomationRunResult> {
+  return requestJSON(`/api/automations/${encodeURIComponent(id)}/run`, { method: 'POST' })
 }
 
 /** 新建文件或目录 */

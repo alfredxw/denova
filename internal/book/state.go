@@ -57,13 +57,18 @@ func (s *State) ChapterGroupDir() string {
 	return filepath.Join(s.SettingDir(), "chapter-groups")
 }
 
-// BrainstormFileName 顶层定调文件名，存于 workspace 根目录。
-const BrainstormFileName = "brainstorm.md"
+// IdeasFileName 创作灵感文件名，存于 workspace 根目录，承载新书构思阶段的阶段性结论。
+const IdeasFileName = "ideas.md"
+
+// LegacyBrainstormFileName 是旧版顶层定调文件名，仅用于初始化时迁移旧工作区。
+const LegacyBrainstormFileName = "brainstorm.md"
+
+const ideasContextMaxRunes = 2000
 
 // CharacterStatesFileName 角色状态文件名，存于 setting/，用于追踪当前连续性状态。
 const CharacterStatesFileName = "character-states.md"
 
-// InitWorkspace 初始化作品工作目录结构，并在缺失时写入 brainstorm.md 顶层定调模板。
+// InitWorkspace 初始化作品工作目录结构，并在缺失时写入 ideas.md 创作灵感模板。
 func (s *State) InitWorkspace() error {
 	dirs := []string{
 		s.NovaDir(),
@@ -80,13 +85,8 @@ func (s *State) InitWorkspace() error {
 		}
 	}
 
-	brainstormPath := filepath.Join(s.workspace, BrainstormFileName)
-	if _, err := os.Stat(brainstormPath); os.IsNotExist(err) {
-		if writeErr := os.WriteFile(brainstormPath, []byte(prompts.BrainstormTemplate), 0o644); writeErr != nil {
-			return fmt.Errorf("写入 %s 失败: %w", BrainstormFileName, writeErr)
-		}
-	} else if err != nil {
-		return fmt.Errorf("检查 %s 失败: %w", BrainstormFileName, err)
+	if err := s.ensureIdeasFile(); err != nil {
+		return err
 	}
 
 	if err := ensureCreatorTemplate(s.workspace); err != nil {
@@ -98,15 +98,21 @@ func (s *State) InitWorkspace() error {
 	return nil
 }
 
-// BrainstormPath 返回 brainstorm 文件绝对路径。
-func (s *State) BrainstormPath() string {
-	return filepath.Join(s.workspace, BrainstormFileName)
+// IdeasPath 返回创作灵感文件绝对路径。
+func (s *State) IdeasPath() string {
+	return filepath.Join(s.workspace, IdeasFileName)
 }
 
 // CompactContext 读取作品状态和结构化资料库，构建分级注入的上下文字符串。
 func (s *State) CompactContext() string {
 	var sb strings.Builder
 	loreContext := s.LoreContext()
+
+	if ideasContext := s.IdeasContext(); ideasContext != "" {
+		sb.WriteString(fmt.Sprintf("## 创作灵感（%s，最多 %d 字）\n\n", IdeasFileName, ideasContextMaxRunes))
+		sb.WriteString(ideasContext)
+		sb.WriteString("\n\n")
+	}
 
 	sections := []struct {
 		file  string
@@ -145,6 +151,47 @@ func (s *State) CompactContext() string {
 	}
 
 	return sb.String()
+}
+
+func (s *State) ensureIdeasFile() error {
+	ideasPath := filepath.Join(s.workspace, IdeasFileName)
+	if _, err := os.Stat(ideasPath); err == nil {
+		return nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("检查 %s 失败: %w", IdeasFileName, err)
+	}
+
+	legacyPath := filepath.Join(s.workspace, LegacyBrainstormFileName)
+	if _, err := os.Stat(legacyPath); err == nil {
+		if renameErr := os.Rename(legacyPath, ideasPath); renameErr != nil {
+			return fmt.Errorf("迁移 %s 到 %s 失败: %w", LegacyBrainstormFileName, IdeasFileName, renameErr)
+		}
+		return nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("检查 %s 失败: %w", LegacyBrainstormFileName, err)
+	}
+
+	if err := os.WriteFile(ideasPath, []byte(prompts.IdeasTemplate), 0o644); err != nil {
+		return fmt.Errorf("写入 %s 失败: %w", IdeasFileName, err)
+	}
+	return nil
+}
+
+// IdeasContext 返回有界的创作灵感上下文；空模板不参与模型注入。
+func (s *State) IdeasContext() string {
+	data, err := os.ReadFile(s.IdeasPath())
+	if err != nil {
+		return ""
+	}
+	content := strings.TrimSpace(string(data))
+	if content == "" || content == strings.TrimSpace(prompts.IdeasTemplate) {
+		return ""
+	}
+	runes := []rune(content)
+	if len(runes) <= ideasContextMaxRunes {
+		return content
+	}
+	return strings.TrimSpace(string(runes[:ideasContextMaxRunes])) + fmt.Sprintf("\n\n（已按 %d 字上限截断；如需全文请显式读取 %s。）", ideasContextMaxRunes, IdeasFileName)
 }
 
 // ChapterGroupContext 返回最近的章节组细纲内容，用于提示 Agent 关注当前短期写作计划。

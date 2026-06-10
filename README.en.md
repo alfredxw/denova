@@ -47,7 +47,7 @@
 Nova is more than a chat box and more than a text completion editor. It turns fiction creation into a sustainable workflow and lets AI Agents collaborate inside bounded, source-aware context: they can read selected text, inspect files, reference lore, call tools, write drafts, update state, and create local versions at important moments.
 
 - **Manage a book like a project**: file tree, Markdown editor, multiple tabs, chapter statistics, global search, and an AI side panel in one stable writing desk.
-- **Bring Agents into the full workflow**: brainstorming, top-level settings, outlines, chapter-group plans, drafts, final prose, and state sync all have clear entry points.
+- **Bring Agents into the full workflow**: ideas, top-level settings, outlines, chapter-group plans, drafts, final prose, and state sync all have clear entry points.
 - **Write and rehearse in the same workspace**: IDE mode produces content, while interactive mode tests plot branches and character actions.
 - **Turn lore into structured assets**: characters, worlds, locations, factions, rules, and items live in the lore library, while per-chapter character state is tracked separately.
 - **Protect the creative process by default**: Nova uses go-git to maintain a local `.git` repository in the book workspace, supporting manual saves, history, diffs, restore, and automatic saves. Prose, settings, and creative state under `.nova` such as lore and sessions are versioned. System Git, manual repository setup, and an extra `.nova/versions` metadata directory are not required.
@@ -58,7 +58,7 @@ Nova is more than a chat box and more than a text completion editor. It turns fi
 | --- | --- |
 | Novel IDE | File tree, Markdown editor, multiple tabs, chapter statistics, global search, AI chat panel |
 | Writing Agent | Streaming output, tool calls, selected-text references, `@` file references, `#` style references, todo tracking |
-| Chapter Workflow | Brainstorming, settings, outlines, chapter-group plans, drafts, final chapter text, state sync |
+| Chapter Workflow | Ideas, settings, outlines, chapter-group plans, drafts, final chapter text, state sync |
 | Interactive Stories | Plot branches, next-action candidates, scene memory, storyline switching, route map |
 | Lore Library | Structured long-term settings for characters, worlds, locations, factions, rules, items, and more |
 | Narrative Direction | Per-book or per-scene narrative rules, style constraints, pacing preferences, and interactive generation strategy |
@@ -70,7 +70,7 @@ Nova is more than a chat box and more than a text completion editor. It turns fi
 ## Recommended Workflow
 
 ```text
-Ideation
+Ideas
   ↓
 Top-level settings and creative rules
   ↓
@@ -159,7 +159,7 @@ After startup, if no book is specified or restored, the Web UI opens Book Manage
 ```text
 my-novel/
 ├── CREATOR.md
-├── brainstorm.md
+├── ideas.md
 ├── chapters/
 ├── setting/
 │   ├── progress.md

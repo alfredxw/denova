@@ -53,6 +53,7 @@ export interface AgentModelSettings {
   interactive_hot_choices?: AgentModelOverride
   version_summary?: AgentModelOverride
   tool_agent?: AgentModelOverride
+  automation?: AgentModelOverride
 }
 
 export interface AgentModelOverride {
@@ -72,6 +73,7 @@ export interface AgentToolSettings {
   interactive_hot_choices?: AgentToolOverride
   version_summary?: AgentToolOverride
   tool_agent?: AgentToolOverride
+  automation?: AgentToolOverride
 }
 
 export interface AgentToolOverride {
@@ -94,6 +96,7 @@ export interface AgentPromptSettings {
   interactive_hot_choices?: AgentPromptOverride
   version_summary?: AgentPromptOverride
   tool_agent?: AgentPromptOverride
+  automation?: AgentPromptOverride
 }
 
 export interface AgentPromptOverride {

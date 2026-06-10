@@ -118,3 +118,11 @@ func buildLoreAgentRunner(ctx context.Context, cfg *config.Config, state *book.S
 	}
 	return agent.NewRunner(ctx, builtAgent), nil
 }
+
+func buildAutomationAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, task agent.AutomationTaskInstruction) (*adk.Runner, error) {
+	builtAgent, err := agent.BuildAutomationAgent(ctx, cfg, state, task)
+	if err != nil {
+		return nil, fmt.Errorf("构建自动化 Agent 失败: %w", err)
+	}
+	return agent.NewRunner(ctx, builtAgent), nil
+}

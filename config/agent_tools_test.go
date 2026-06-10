@@ -32,6 +32,14 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 	if toolAgent.FileRead || toolAgent.FileWrite || toolAgent.ShellExecute || toolAgent.Skills || toolAgent.LoreRead || toolAgent.LoreWrite || toolAgent.Todo {
 		t.Fatalf("工具 Agent 默认不应注册工具: %+v", toolAgent)
 	}
+
+	automation := ResolveAgentTools(&Config{}, AgentKindAutomation)
+	if !automation.FileRead || !automation.FileWrite || !automation.Skills || !automation.LoreRead || !automation.LoreWrite || !automation.Todo {
+		t.Fatalf("Automation Agent 默认应允许常用自动化工具: %+v", automation)
+	}
+	if automation.ShellExecute {
+		t.Fatalf("Automation Agent 默认不应启用命令执行: %+v", automation)
+	}
 }
 
 func TestResolveAgentToolsPerAgentOverride(t *testing.T) {

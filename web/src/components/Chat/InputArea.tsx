@@ -32,6 +32,8 @@ interface InputAreaProps {
   onSend: (message: string) => void
   onStop?: () => void
   disabled: boolean
+  inputPrefill?: { prompt: string; nonce: number } | null
+  onInputPrefillConsumed?: () => void
   referencedFiles?: string[]
   onReferenceRemove?: (path: string) => void
   fileSuggestions?: string[]
@@ -53,6 +55,8 @@ export function InputArea({
   onSend,
   onStop,
   disabled,
+  inputPrefill,
+  onInputPrefillConsumed,
   referencedFiles = [],
   onReferenceRemove,
   fileSuggestions = [],
@@ -86,6 +90,17 @@ export function InputArea({
   }, [])
 
   useEffect(() => { adjustHeight() }, [value, adjustHeight])
+
+  useEffect(() => {
+    if (!inputPrefill) return
+    setValue(inputPrefill.prompt)
+    setShowCommands(false)
+    setActiveCommandIndex(0)
+    setReferenceQuery(null)
+    setStyleReferenceQuery(null)
+    window.requestAnimationFrame(() => textareaRef.current?.focus())
+    onInputPrefillConsumed?.()
+  }, [inputPrefill, onInputPrefillConsumed])
 
   /** 处理输入变化 */
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {

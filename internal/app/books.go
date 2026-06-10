@@ -138,6 +138,7 @@ func isBookWorkspace(path string) bool {
 	markers := []string{
 		filepath.Join(path, ".nova"),
 		filepath.Join(path, "book.json"),
+		filepath.Join(path, "ideas.md"),
 		filepath.Join(path, "brainstorm.md"),
 		filepath.Join(path, "chapters"),
 		filepath.Join(path, "setting"),

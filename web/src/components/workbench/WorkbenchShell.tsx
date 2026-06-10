@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookMarked, BookOpen, Bot, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
+import { BookMarked, BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
@@ -62,13 +62,14 @@ export function WorkbenchShell({
   const creatorVisible = rightPanel === 'creator'
   const tellerVisible = rightPanel === 'teller'
   const versionsVisible = rightPanel === 'versions'
-  const sharedMenuActive = settingsOpen || mode === 'books' || mode === 'agents'
+  const sharedMenuActive = settingsOpen || mode === 'books' || mode === 'agents' || mode === 'automations'
   const ideModeActive = mode === 'ide' && !sharedMenuActive
   const interactiveModeActive = mode === 'interactive' && !sharedMenuActive
   const agentsActive = mode === 'agents' && !settingsOpen
-  const fullWorkspacePanelVisible = settingsOpen || mode === 'agents' || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
-  const modeLabel = settingsOpen ? t('workbench.mode.settings') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'agents' ? t('workbench.mode.agents') : t('workbench.mode.ide')
-  const navigationMode = mode === 'books' || mode === 'agents' ? booksReturnMode : mode
+  const automationsActive = mode === 'automations' && !settingsOpen
+  const fullWorkspacePanelVisible = settingsOpen || mode === 'agents' || mode === 'automations' || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
+  const modeLabel = settingsOpen ? t('workbench.mode.settings') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'agents' ? t('workbench.mode.agents') : mode === 'automations' ? t('workbench.mode.automations') : t('workbench.mode.ide')
+  const navigationMode = mode === 'books' || mode === 'agents' || mode === 'automations' ? booksReturnMode : mode
 
   const closeSettingsIfOpen = () => {
     if (settingsOpen) onCloseSettings()
@@ -118,6 +119,15 @@ export function WorkbenchShell({
     }
     closeSettingsIfOpen()
     onSetMode('agents')
+  }
+
+  const openAutomations = () => {
+    if (mode === 'automations' && !settingsOpen) {
+      returnFromBooks()
+      return
+    }
+    closeSettingsIfOpen()
+    onSetMode('automations')
   }
 
   const topBar = (
@@ -263,6 +273,14 @@ export function WorkbenchShell({
         className={`nova-icon-button mb-2 ${agentsActive ? 'is-active' : ''}`}
       >
         <Bot className="h-4 w-4" />
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
+        label={t('workbench.activity.automations')}
+        onClick={openAutomations}
+        className={`nova-icon-button mb-2 ${automationsActive ? 'is-active' : ''}`}
+      >
+        <Clock3 className="h-4 w-4" />
       </ActivityButton>
       <div className="mt-auto flex flex-col gap-2">
         <ActivityButton

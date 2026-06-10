@@ -63,6 +63,20 @@ func BuildLoreAgent(ctx context.Context, cfg *config.Config, state *book.State) 
 	return buildDeepAgent(ctx, cfg, config.AgentKindLoreEditor, "NovaLoreAgent", "AI 资料库整理助手", BuildLoreAgentInstruction(cfg, state), true, true, nil, loreTools, nil)
 }
 
+// BuildAutomationAgent 构建后台自动化 Agent。工具权限由调用方按任务写入策略提前收敛到 cfg.AgentTools.Automation。
+func BuildAutomationAgent(ctx context.Context, cfg *config.Config, state *book.State, task AutomationTaskInstruction) (adk.Agent, error) {
+	toolSettings := config.ResolveAgentTools(cfg, config.AgentKindAutomation)
+	var loreTools []tool.BaseTool
+	if toolSettings.LoreRead {
+		var err error
+		loreTools, err = newLoreTools(cfg.Workspace, toolSettings.LoreWrite)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return buildDeepAgent(ctx, cfg, config.AgentKindAutomation, "NovaAutomationAgent", "AI 自动化任务助手", BuildAutomationInstruction(cfg, state, task), true, false, nil, loreTools, nil)
+}
+
 func buildDeepAgent(
 	ctx context.Context,
 	cfg *config.Config,

@@ -38,6 +38,7 @@ type App struct {
 	chatApp        *ChatAppService
 	interactiveApp *InteractiveAppService
 	loreApp        *LoreAppService
+	automationApp  *AutomationAppService
 	servicesOnce   sync.Once
 
 	mu sync.RWMutex
@@ -62,6 +63,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		bookMetaStore: bookMetaStore,
 	}
 	app.ensureServices()
+	app.StartAutomationScheduler(ctx)
 
 	if workspace == "" {
 		log.Printf("[app] 启动时未指定 workspace 且无上次打开的书籍，进入无书籍状态，等待用户在前端选择")
@@ -89,6 +91,7 @@ func (a *App) ensureServices() {
 		a.chatApp = &ChatAppService{app: a}
 		a.interactiveApp = &InteractiveAppService{app: a}
 		a.loreApp = &LoreAppService{app: a}
+		a.automationApp = &AutomationAppService{app: a}
 	})
 }
 
@@ -110,6 +113,11 @@ func (a *App) interactiveService() *InteractiveAppService {
 func (a *App) lore() *LoreAppService {
 	a.ensureServices()
 	return a.loreApp
+}
+
+func (a *App) automation() *AutomationAppService {
+	a.ensureServices()
+	return a.automationApp
 }
 
 func (a *App) applyRuntime(runtime *runtimeState) {

@@ -22,9 +22,22 @@ describe('MessageItem', () => {
   it('流式 assistant 消息即时渲染常见 Markdown 结构', () => {
     render(<MessageItem message={{ role: 'assistant', content: '# 实时标题\n- 实时条目\n`cmd`', streaming: true }} />)
 
+    expect(screen.getByRole('heading', { name: '实时标题' })).toBeInTheDocument()
     expect(screen.getByText('实时标题')).toBeInTheDocument()
     expect(screen.getByText('实时条目')).toBeInTheDocument()
     expect(screen.getByText('cmd')).toBeInTheDocument()
+  })
+
+  it('流式和持久化 assistant 消息使用一致的 Markdown DOM 结构', () => {
+    const content = '# 标题\n\n第一段。\n\n- 条目 A\n- 条目 B\n\n> 引用'
+    const { container, rerender } = render(<MessageItem message={{ role: 'assistant', content, streaming: true }} />)
+    const streamedTags = Array.from(container.querySelector('.chat-agent-message')?.children || []).map((node) => node.tagName)
+
+    rerender(<MessageItem message={{ role: 'assistant', content, streaming: false }} />)
+    const persistedTags = Array.from(container.querySelector('.chat-agent-message')?.children || []).map((node) => node.tagName)
+
+    expect(streamedTags).toEqual(['H1', 'P', 'UL', 'BLOCKQUOTE'])
+    expect(persistedTags).toEqual(streamedTags)
   })
 
   it('互动模式 assistant 消息高亮常见对白引号', () => {

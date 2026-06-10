@@ -4,6 +4,25 @@ import { FileTree } from './FileTree'
 import type { FileNode } from '@/hooks/useWorkspace'
 
 describe('FileTree', () => {
+  it('shows the root ideas file as localized inspiration label', () => {
+    const nodes: FileNode[] = [
+      { name: 'ideas.md', type: 'file' },
+      { name: 'CREATOR.md', type: 'file' },
+    ]
+
+    render(
+      <FileTree
+        nodes={nodes}
+        selectedFile={null}
+        onSelectFile={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('灵感')).toBeInTheDocument()
+    expect(screen.queryByText('ideas.md')).not.toBeInTheDocument()
+    expect(screen.getByText('CREATOR.md')).toBeInTheDocument()
+  })
+
   it('sorts Chinese chapter ordinals in reading order', () => {
     const nodes: FileNode[] = [{
       name: 'chapters',

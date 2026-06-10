@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, Brain, Check, Database, FileText, FolderOpen, ListChecks, MessageSquareText, PenLine, Save, ScrollText, Search, Settings2, Shield, Sparkles, Terminal, Wrench, X } from 'lucide-react'
+import { Bot, Brain, Check, Clock, Database, FileText, FolderOpen, ListChecks, MessageSquareText, PenLine, Save, ScrollText, Search, Settings2, Shield, Sparkles, Terminal, Wrench, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { Textarea } from '@/components/ui/textarea'
@@ -31,6 +31,7 @@ const AGENTS: Array<{
   { key: 'interactive_hot_choices', titleKey: 'agents.interactiveHotChoices.title', subtitleKey: 'agents.interactiveHotChoices.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Sparkles },
   { key: 'version_summary', titleKey: 'agents.versionSummary.title', subtitleKey: 'agents.versionSummary.subtitle', groupKey: 'agents.group.version', capabilityMode: 'model_only', icon: ListChecks },
   { key: 'tool_agent', titleKey: 'agents.toolAgent.title', subtitleKey: 'agents.toolAgent.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'model_only', icon: Wrench },
+  { key: 'automation', titleKey: 'agents.automation.title', subtitleKey: 'agents.automation.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'tools', icon: Clock },
 ]
 
 const TOOL_ROWS: Array<{ key: ToolKey; titleKey: string; subtitleKey: string; icon: ElementType }> = [
@@ -54,6 +55,7 @@ const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentToolOver
   interactive_hot_choices: disabledTools(),
   version_summary: disabledTools(),
   tool_agent: disabledTools(),
+  automation: { file_read: true, file_write: false, shell_execute: false, skills: false, lore_read: true, lore_write: false, todo: false },
 }
 
 export function AgentsView({ onClose }: { onClose?: () => void }) {

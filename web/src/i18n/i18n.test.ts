@@ -19,6 +19,20 @@ describe('i18n', () => {
     expect(Object.keys(enUS).sort()).toEqual(Object.keys(zhCN).sort())
   })
 
+  it('contains IDE writing-agent init copy in both locales', () => {
+    const requiredKeys = [
+      'loreInit.ideTitle',
+      'loreInit.ideDescription',
+      'loreInit.ideAction',
+      'writingAgent.initPrompt',
+    ]
+
+    for (const key of requiredKeys) {
+      expect((zhCN as Record<string, string>)[key]).toBeTruthy()
+      expect((enUS as Record<string, string>)[key]).toBeTruthy()
+    }
+  })
+
   it('boots from the locally cached configured locale before browser language', async () => {
     vi.resetModules()
     setBrowserLanguage('en-US')

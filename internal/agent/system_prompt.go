@@ -53,7 +53,7 @@ func agentRuntimeContract(agentKind string) string {
 			"- 资料库 Agent 可以使用资料库读写工具、文件读写工具和 Skills；不得臆造未启用工具。",
 			"- 资料库写入必须使用 write_lore_items，且只沉淀长期稳定设定。",
 			"- 初始化流程必须先与用户确认故事设定；只有用户明确确认后，才允许写入资料库或 CREATOR.md。",
-			"- 初始化流程不允许写 brainstorm.md、章节、大纲、progress、character-states，不允许创建互动 story 或伪造互动回合。",
+			"- 初始化流程不允许写 ideas.md、章节、大纲、progress、character-states，不允许创建互动 story 或伪造互动回合。",
 		}, "\n")
 	case config.AgentKindTellerEditor:
 		return "- 导演 Agent 必须只输出符合内置 schema 的 JSON object；只能创建或修改单个导演，保存前仍由后端校验。"
@@ -67,6 +67,12 @@ func agentRuntimeContract(agentKind string) string {
 		return strings.Join([]string{
 			"- 工具 Agent 是 model-only 结构化任务 Agent，不得读取或写入 workspace，不得调用文件、命令、资料库、Skills 或 todo 工具。",
 			"- 工具 Agent 必须只输出当前调用点要求的 JSON object，不得输出解释、Markdown、代码块或额外文本。",
+		}, "\n")
+	case config.AgentKindAutomation:
+		return strings.Join([]string{
+			"- Automation Agent 可以按任务目标自行使用已启用工具读取必要文件、资料库和项目状态。",
+			"- Automation Agent 的写文件和写资料库能力必须同时满足任务写入策略与 Agent 工具权限；任一关闭都不得写入。",
+			"- Automation Agent 不得无界读取完整历史、日志、大型文件或整本书；应先定位相关范围，再按需读取。",
 		}, "\n")
 	default:
 		return fmt.Sprintf("- 当前 Agent 类型为 %s；必须遵守该 Agent 调用点的输出协议和后端校验。", strings.TrimSpace(agentKind))

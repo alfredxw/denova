@@ -33,6 +33,7 @@ describe('App', () => {
         '/api/lore/versions': { versions: [] },
         '/api/lore/agent/messages': [],
         '/api/interactive/tellers': { tellers: [] },
+        '/api/automations': { tasks: [] },
       }
 
       return new Response(JSON.stringify(payloads[path] ?? {}), {
@@ -218,7 +219,7 @@ describe('App', () => {
     expectOnlyActivePrimaryMenu('剧情')
   })
 
-  it('guides an empty IDE lore store into the Lore Agent initialization flow', async () => {
+  it('opens Automations as a shared page without switching saved mode', async () => {
     const user = userEvent.setup()
     render(
       <TooltipProvider>
@@ -227,14 +228,44 @@ describe('App', () => {
     )
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
-    expect(await screen.findByText('资料库还是空的')).toBeInTheDocument()
+    const header = screen.getByText('Nova').closest('header')
+    expect(header).not.toBeNull()
+    await user.click(within(header as HTMLElement).getByRole('button', { name: '互动模式' }))
+    await user.click(screen.getByRole('button', { name: '自动化' }))
 
-    await user.click(screen.getByRole('button', { name: '去资料库 Agent' }))
+    expect(await screen.findByRole('button', { name: '关闭自动化' })).toBeInTheDocument()
+    expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
+    expectOnlyActivePrimaryMenu('自动化')
+    expect(screen.getByText('续写章节')).toBeInTheDocument()
+    expect(screen.getByText('定时规则')).toBeInTheDocument()
 
-    expect((await screen.findAllByText('资料库 Agent')).length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: '自动化' }))
+    expect(screen.queryByRole('button', { name: '关闭自动化' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '剧情' })).toHaveClass('is-active')
+    expectOnlyActivePrimaryMenu('剧情')
+  })
+
+  it('guides an empty IDE lore store into the Writing Agent ideation flow', async () => {
+    const user = userEvent.setup()
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    expect(await screen.findByText('开始构思新书')).toBeInTheDocument()
+    expect(screen.getByText('先和创作 Agent 讨论灵感、题材、核心冲突、世界观、人设、叙事风格、大纲和写作规则；阶段性结论会整理到 ideas.md（灵感），再决定是否沉淀资料库或创建章节。')).toBeInTheDocument()
+    expect(screen.queryByText('资料库还是空的')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '和创作 Agent 聊灵感' }))
+
+    expect(await screen.findByText('创作Agent')).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByDisplayValue(/lore-init/)).toBeInTheDocument()
+      expect(screen.getByDisplayValue(/专业小说创作 Agent/)).toBeInTheDocument()
     })
+    expect(screen.queryByDisplayValue(/lore-init/)).not.toBeInTheDocument()
+    expect(screen.queryByText('用自然语言批量整理、补充和修改资料库')).not.toBeInTheDocument()
   })
 
   it('keeps one active shared menu while switching shared pages from interactive mode', async () => {
@@ -266,6 +297,11 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: '关闭设置' })).toBeInTheDocument()
     expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
     expectOnlyActivePrimaryMenu('设置')
+
+    await user.click(screen.getByRole('button', { name: '自动化' }))
+    expect(await screen.findByRole('button', { name: '关闭自动化' })).toBeInTheDocument()
+    expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
+    expectOnlyActivePrimaryMenu('自动化')
 
     await user.click(screen.getByRole('button', { name: 'Agents' }))
     expect(await screen.findByRole('button', { name: '关闭 Agents' })).toBeInTheDocument()
