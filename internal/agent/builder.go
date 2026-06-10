@@ -18,6 +18,7 @@ import (
 	"nova/config"
 	"nova/internal/book"
 	"nova/internal/prompts"
+	novaskills "nova/internal/skills"
 )
 
 // Build 构建小说创作 Agent（deep agent + 文件系统工具 + Skill 中间件）。
@@ -112,18 +113,26 @@ func buildDeepAgent(
 		handlers = append(handlers, filesystemHandler)
 	}
 	if enableSkills && toolSettings.Skills {
-		if skillsDir := ResolveSkillsDir(cfg.SkillsDir); skillsDir != "" {
-			skillBackend, sbErr := skill.NewBackendFromFilesystem(ctx, &skill.BackendFromFilesystemConfig{
-				Backend: backend,
-				BaseDir: skillsDir,
-			})
-			if sbErr == nil {
-				skillMw, smErr := skill.NewMiddleware(ctx, &skill.Config{Backend: skillBackend})
-				if smErr == nil {
-					handlers = append(handlers, skillMw)
-				}
+		skillBackend := novaskills.NewBackend(novaskills.NewDirectories(cfg.SkillsDir, cfg.NovaDir, cfg.Workspace))
+		availableSkills, listErr := skillBackend.List(ctx)
+		if listErr != nil {
+			log.Printf("[agent] 加载 Skills 列表失败 agent=%s err=%v", agentKind, listErr)
+		} else if len(availableSkills) > 0 {
+			skillMw, smErr := skill.NewMiddleware(ctx, &skill.Config{Backend: skillBackend})
+			if smErr != nil {
+				log.Printf("[agent] 创建 Skill middleware 失败 agent=%s err=%v", agentKind, smErr)
+			} else {
+				handlers = append(handlers, skillMw)
 			}
 		}
+	}
+	tools := append([]tool.BaseTool{}, extraTools...)
+	if toolSettings.WebSearch {
+		webSearchTools, wsErr := newWebSearchTools(ctx)
+		if wsErr != nil {
+			return nil, wsErr
+		}
+		tools = append(tools, webSearchTools...)
 	}
 	handlers = append(handlers, extraHandlers...)
 	handlers = append(handlers, &safeToolMiddleware{})
@@ -138,7 +147,7 @@ func buildDeepAgent(
 		Handlers:          handlers,
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools: extraTools,
+				Tools: tools,
 				// 当 LLM 幻觉出不存在的工具时，把错误信息以 ToolMessage 形式回传，
 				// 让 Agent 在下一轮自行修正工具名或改用其他方案，避免整次任务被 NodeRunError 中断。
 				UnknownToolsHandler: handleUnknownTool,

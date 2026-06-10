@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Agent 工具权限新增 `web_search`，使用 Eino Ext 预制 DuckDuckGo V2 搜索工具注册为模型可调用的网页搜索能力；Agents 页同步提供中英双语开关，IDE、资料库和自动化 Agent 默认开启，互动叙事 Agent 默认关闭但可手动启用。
+- 新增一级菜单 `Skills`，支持查看内置、用户级 `<nova_dir>/skills` 和工作区级 `<workspace>/.nova/skills` 的 `SKILL.md`，可在界面中新建/编辑用户自定义 Skill；内置 `skills-creator` Skill 可通过创作 Agent 辅助创建，支持在创作 Agent 及其他启用 Skills 的 Agent 中用 `/<skill-name>` 命令触发。
+
 ## [v0.1.7] - 2026-06-10
 
 ### Added

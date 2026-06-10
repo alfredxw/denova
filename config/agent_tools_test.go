@@ -4,7 +4,7 @@ import "testing"
 
 func TestResolveAgentToolsDefaults(t *testing.T) {
 	ide := ResolveAgentTools(&Config{}, AgentKindIDE)
-	if !ide.FileRead || !ide.FileWrite || !ide.ShellExecute || !ide.Skills || !ide.LoreRead || !ide.LoreWrite || !ide.Todo {
+	if !ide.FileRead || !ide.FileWrite || !ide.ShellExecute || !ide.Skills || !ide.LoreRead || !ide.LoreWrite || !ide.Todo || !ide.WebSearch {
 		t.Fatalf("IDE Agent 默认工具应全部开启: %+v", ide)
 	}
 
@@ -12,12 +12,12 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 	if !story.FileRead || !story.FileWrite || !story.ShellExecute || !story.LoreRead {
 		t.Fatalf("互动叙事 Agent 应保留当前文件/命令/资料读取能力: %+v", story)
 	}
-	if story.Skills || story.LoreWrite || story.Todo {
-		t.Fatalf("互动叙事 Agent 默认不应启用 skills/资料写入/todo: %+v", story)
+	if story.Skills || story.LoreWrite || story.Todo || story.WebSearch {
+		t.Fatalf("互动叙事 Agent 默认不应启用 skills/资料写入/todo/web search: %+v", story)
 	}
 
 	lore := ResolveAgentTools(&Config{}, AgentKindLoreEditor)
-	if !lore.FileRead || !lore.FileWrite || !lore.Skills || !lore.LoreRead || !lore.LoreWrite {
+	if !lore.FileRead || !lore.FileWrite || !lore.Skills || !lore.LoreRead || !lore.LoreWrite || !lore.WebSearch {
 		t.Fatalf("资料库 Agent 默认应启用文件、skills 和资料库工具: %+v", lore)
 	}
 	if lore.ShellExecute || lore.Todo {
@@ -25,16 +25,16 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 	}
 
 	summary := ResolveAgentTools(&Config{}, AgentKindVersionSummary)
-	if summary.FileRead || summary.FileWrite || summary.ShellExecute || summary.Skills || summary.LoreRead || summary.LoreWrite || summary.Todo {
+	if summary.FileRead || summary.FileWrite || summary.ShellExecute || summary.Skills || summary.LoreRead || summary.LoreWrite || summary.Todo || summary.WebSearch {
 		t.Fatalf("版本说明 Agent 默认不应注册工具: %+v", summary)
 	}
 	toolAgent := ResolveAgentTools(&Config{}, AgentKindToolAgent)
-	if toolAgent.FileRead || toolAgent.FileWrite || toolAgent.ShellExecute || toolAgent.Skills || toolAgent.LoreRead || toolAgent.LoreWrite || toolAgent.Todo {
+	if toolAgent.FileRead || toolAgent.FileWrite || toolAgent.ShellExecute || toolAgent.Skills || toolAgent.LoreRead || toolAgent.LoreWrite || toolAgent.Todo || toolAgent.WebSearch {
 		t.Fatalf("工具 Agent 默认不应注册工具: %+v", toolAgent)
 	}
 
 	automation := ResolveAgentTools(&Config{}, AgentKindAutomation)
-	if !automation.FileRead || !automation.FileWrite || !automation.Skills || !automation.LoreRead || !automation.LoreWrite || !automation.Todo {
+	if !automation.FileRead || !automation.FileWrite || !automation.Skills || !automation.LoreRead || !automation.LoreWrite || !automation.Todo || !automation.WebSearch {
 		t.Fatalf("Automation Agent 默认应允许常用自动化工具: %+v", automation)
 	}
 	if automation.ShellExecute {
@@ -47,8 +47,8 @@ func TestResolveAgentToolsPerAgentOverride(t *testing.T) {
 	on := true
 	cfg := &Config{
 		AgentTools: AgentToolSettings{
-			Default: AgentToolOverride{ShellExecute: &off},
-			IDE:     AgentToolOverride{ShellExecute: &on, LoreWrite: &off},
+			Default: AgentToolOverride{ShellExecute: &off, WebSearch: &off},
+			IDE:     AgentToolOverride{ShellExecute: &on, LoreWrite: &off, WebSearch: &on},
 		},
 	}
 
@@ -59,9 +59,15 @@ func TestResolveAgentToolsPerAgentOverride(t *testing.T) {
 	if ide.LoreWrite {
 		t.Fatalf("IDE Agent 应允许单独关闭资料库写入: %+v", ide)
 	}
+	if !ide.WebSearch {
+		t.Fatalf("IDE Agent 应允许单独开启网页搜索: %+v", ide)
+	}
 
 	story := ResolveAgentTools(cfg, AgentKindInteractiveStory)
 	if story.ShellExecute {
 		t.Fatalf("互动叙事 Agent 应继承 default 关闭命令执行: %+v", story)
+	}
+	if story.WebSearch {
+		t.Fatalf("互动叙事 Agent 应继承 default 关闭网页搜索: %+v", story)
 	}
 }

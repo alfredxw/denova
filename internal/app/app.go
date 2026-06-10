@@ -39,6 +39,7 @@ type App struct {
 	interactiveApp *InteractiveAppService
 	loreApp        *LoreAppService
 	automationApp  *AutomationAppService
+	skillsApp      *SkillsAppService
 	servicesOnce   sync.Once
 
 	mu sync.RWMutex
@@ -92,6 +93,7 @@ func (a *App) ensureServices() {
 		a.interactiveApp = &InteractiveAppService{app: a}
 		a.loreApp = &LoreAppService{app: a}
 		a.automationApp = &AutomationAppService{app: a}
+		a.skillsApp = &SkillsAppService{app: a}
 	})
 }
 
@@ -118,6 +120,11 @@ func (a *App) lore() *LoreAppService {
 func (a *App) automation() *AutomationAppService {
 	a.ensureServices()
 	return a.automationApp
+}
+
+func (a *App) skills() *SkillsAppService {
+	a.ensureServices()
+	return a.skillsApp
 }
 
 func (a *App) applyRuntime(runtime *runtimeState) {

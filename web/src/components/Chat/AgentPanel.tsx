@@ -3,7 +3,8 @@ import { Bot, FileText, MessageSquareText, PenLine, Plus, SearchCheck, Sparkles,
 import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { Teller } from '@/features/interactive/types'
-import type { ChapterSummary, ChatMessage, SessionSummary, TextSelection } from '@/lib/api'
+import { getSkills } from '@/lib/api'
+import type { ChapterSummary, ChatMessage, SessionSummary, SkillSummary, TextSelection } from '@/lib/api'
 import { MessageList } from './MessageList'
 import { InputArea } from './InputArea'
 import { SessionManagementPanel } from './SessionManagementPanel'
@@ -82,6 +83,7 @@ export function AgentPanel({
   const { t } = useTranslation()
   const [view, setView] = useState<AgentPanelView>('chat')
   const [inputPrefill, setInputPrefill] = useState<{ prompt: string; nonce: number } | null>(null)
+  const [skillCommands, setSkillCommands] = useState<Array<Pick<SkillSummary, 'name' | 'description'>>>([])
   const activeSession = sessions.find((session) => session.id === activeSessionId) ||
     sessions.find((session) => session.active) ||
     sessions[0]
@@ -96,6 +98,30 @@ export function AgentPanel({
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
   }, [t])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadSkills = () => {
+      getSkills()
+        .then((data) => {
+          if (cancelled) return
+          setSkillCommands(data.skills
+            .filter((skill) => skill.active)
+            .map((skill) => ({ name: skill.name, description: skill.description })))
+        })
+        .catch(() => {
+          if (!cancelled) setSkillCommands([])
+        })
+    }
+    loadSkills()
+    window.addEventListener('nova:skills-updated', loadSkills)
+    window.addEventListener('nova:settings-updated', loadSkills)
+    return () => {
+      cancelled = true
+      window.removeEventListener('nova:skills-updated', loadSkills)
+      window.removeEventListener('nova:settings-updated', loadSkills)
+    }
+  }, [workspace])
 
   return (
     <aside className="nova-sidebar flex h-full min-h-0 flex-col">
@@ -195,6 +221,7 @@ export function AgentPanel({
             styleSuggestions={styleSuggestions}
             textSelections={textSelections}
             onTextSelectionRemove={onTextSelectionRemove}
+            skills={skillCommands}
           />
         </>
       ) : (

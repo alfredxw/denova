@@ -84,6 +84,7 @@ export interface AgentToolOverride {
   lore_read?: boolean | null
   lore_write?: boolean | null
   todo?: boolean | null
+  web_search?: boolean | null
 }
 
 export interface AgentPromptSettings {

@@ -1,9 +1,10 @@
 # Ideas
 ## WIP
-- 基础体验: 完善的 Skills 系统, 通过skills自定义工作流
+- 基础体验: 支持自定义Skills配置，Skills 放一级菜单，允许用户自己定义skills，通过和agent对话创建，内置 skills-creator
+    skill，可以在用户目录也可以在工作区。格式参考通用的 .agent/skills 即可，提示用户在创作agent和其他支持skill的
+    agent对话时可使用 /{skills} 命令触发 skill
 - Agent能力：支持更完善的上下文管理，memory compact，dreaming，etc.
-- tools
-  - websearch
+- tools: websearch
 - 从0，脑暴开始初始化，在agent引导下，生成资料库（角色，世界观）、大纲。
   - 然后开始 由 细纲 到 章节 的创作
 - html渲染

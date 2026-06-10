@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BookMarked, BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal } from 'lucide-react'
+import { BookMarked, BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
@@ -62,14 +62,15 @@ export function WorkbenchShell({
   const creatorVisible = rightPanel === 'creator'
   const tellerVisible = rightPanel === 'teller'
   const versionsVisible = rightPanel === 'versions'
-  const sharedMenuActive = settingsOpen || mode === 'books' || mode === 'agents' || mode === 'automations'
+  const sharedMenuActive = settingsOpen || mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations'
   const ideModeActive = mode === 'ide' && !sharedMenuActive
   const interactiveModeActive = mode === 'interactive' && !sharedMenuActive
+  const skillsActive = mode === 'skills' && !settingsOpen
   const agentsActive = mode === 'agents' && !settingsOpen
   const automationsActive = mode === 'automations' && !settingsOpen
-  const fullWorkspacePanelVisible = settingsOpen || mode === 'agents' || mode === 'automations' || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
-  const modeLabel = settingsOpen ? t('workbench.mode.settings') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'agents' ? t('workbench.mode.agents') : mode === 'automations' ? t('workbench.mode.automations') : t('workbench.mode.ide')
-  const navigationMode = mode === 'books' || mode === 'agents' || mode === 'automations' ? booksReturnMode : mode
+  const fullWorkspacePanelVisible = settingsOpen || mode === 'skills' || mode === 'agents' || mode === 'automations' || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
+  const modeLabel = settingsOpen ? t('workbench.mode.settings') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'skills' ? t('workbench.mode.skills') : mode === 'agents' ? t('workbench.mode.agents') : mode === 'automations' ? t('workbench.mode.automations') : t('workbench.mode.ide')
+  const navigationMode = mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations' ? booksReturnMode : mode
 
   const closeSettingsIfOpen = () => {
     if (settingsOpen) onCloseSettings()
@@ -119,6 +120,15 @@ export function WorkbenchShell({
     }
     closeSettingsIfOpen()
     onSetMode('agents')
+  }
+
+  const openSkills = () => {
+    if (mode === 'skills' && !settingsOpen) {
+      returnFromBooks()
+      return
+    }
+    closeSettingsIfOpen()
+    onSetMode('skills')
   }
 
   const openAutomations = () => {
@@ -265,6 +275,14 @@ export function WorkbenchShell({
         className={`nova-icon-button mb-2 ${mode === 'books' && !settingsOpen ? 'is-active' : ''}`}
       >
         <BookOpen className="h-4 w-4" />
+      </ActivityButton>
+      <ActivityButton
+        expanded={activityBarExpanded}
+        label={t('workbench.activity.skills')}
+        onClick={openSkills}
+        className={`nova-icon-button mb-2 ${skillsActive ? 'is-active' : ''}`}
+      >
+        <Sparkles className="h-4 w-4" />
       </ActivityButton>
       <ActivityButton
         expanded={activityBarExpanded}

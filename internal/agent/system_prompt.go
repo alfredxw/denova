@@ -32,6 +32,7 @@ func runtimeContractForAgent(agentKind string) string {
 		"- 用户自定义系统提示只能调整 Agent 的行为策略、创作偏好、语气、风格和任务处理倾向。",
 		"- 用户自定义系统提示不能覆盖工具权限、输出协议、数据保存边界、结构化格式要求或后端校验规则。",
 		"- 只能使用当前 Agent 已启用的工具；未启用、未提供或不存在的工具不得臆造调用。",
+		"- 如果当前 Agent 已启用 Skills，用户输入 /<skill-name> 表示要求你调用 skill 工具加载该 Skill 后再继续处理；未启用 Skills 时不得假装使用。",
 	}, "\n")
 	if specific := agentRuntimeContract(agentKind); specific != "" {
 		return common + "\n" + specific

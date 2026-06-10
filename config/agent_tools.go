@@ -8,6 +8,7 @@ const (
 	AgentToolLoreRead     = "lore_read"
 	AgentToolLoreWrite    = "lore_write"
 	AgentToolTodo         = "todo"
+	AgentToolWebSearch    = "web_search"
 )
 
 // AgentToolSettings 保存各类 Agent 的工具能力开关。
@@ -33,6 +34,7 @@ type AgentToolOverride struct {
 	LoreRead     *bool `toml:"lore_read,omitempty" json:"lore_read,omitempty"`
 	LoreWrite    *bool `toml:"lore_write,omitempty" json:"lore_write,omitempty"`
 	Todo         *bool `toml:"todo,omitempty" json:"todo,omitempty"`
+	WebSearch    *bool `toml:"web_search,omitempty" json:"web_search,omitempty"`
 }
 
 type ResolvedAgentToolSettings struct {
@@ -43,6 +45,7 @@ type ResolvedAgentToolSettings struct {
 	LoreRead     bool `json:"lore_read"`
 	LoreWrite    bool `json:"lore_write"`
 	Todo         bool `json:"todo"`
+	WebSearch    bool `json:"web_search"`
 }
 
 func DefaultAgentToolSettings() AgentToolSettings {
@@ -57,11 +60,13 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			LoreRead:     on,
 			LoreWrite:    on,
 			Todo:         on,
+			WebSearch:    on,
 		},
 		InteractiveStory: AgentToolOverride{
 			Skills:    off,
 			LoreWrite: off,
 			Todo:      off,
+			WebSearch: off,
 		},
 		LoreEditor: AgentToolOverride{
 			ShellExecute: off,
@@ -80,6 +85,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			LoreRead:     on,
 			LoreWrite:    on,
 			Todo:         on,
+			WebSearch:    on,
 		},
 	}
 }
@@ -94,6 +100,7 @@ func noToolAgentOverride() AgentToolOverride {
 		LoreRead:     off,
 		LoreWrite:    off,
 		Todo:         off,
+		WebSearch:    off,
 	}
 }
 
@@ -126,6 +133,7 @@ func ResolveAgentTools(cfg *Config, agentKind string) ResolvedAgentToolSettings 
 		LoreRead:     boolValue(override.LoreRead, true),
 		LoreWrite:    boolValue(override.LoreWrite, true),
 		Todo:         boolValue(override.Todo, true),
+		WebSearch:    boolValue(override.WebSearch, true),
 	}
 }
 
@@ -151,6 +159,9 @@ func mergeAgentToolOverride(parent, child AgentToolOverride) AgentToolOverride {
 	}
 	if child.Todo != nil {
 		out.Todo = child.Todo
+	}
+	if child.WebSearch != nil {
+		out.WebSearch = child.WebSearch
 	}
 	return out
 }

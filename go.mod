@@ -6,15 +6,19 @@ require (
 	github.com/cloudwego/eino v0.8.13
 	github.com/cloudwego/eino-ext/adk/backend/local v0.2.4
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13
+	github.com/cloudwego/eino-ext/components/tool/duckduckgo/v2 v2.0.0-20260610041010-8fe947165ad0
 	github.com/cloudwego/hertz v0.10.4
 	github.com/go-git/go-git/v5 v5.13.2
 	github.com/pelletier/go-toml/v2 v2.0.9
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
 	dario.cat/mergo v1.0.0 // indirect
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/ProtonMail/go-crypto v1.1.5 // indirect
+	github.com/PuerkitoBio/goquery v1.10.3 // indirect
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
@@ -26,6 +30,7 @@ require (
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.17 // indirect
 	github.com/cloudwego/gopkg v0.1.4 // indirect
 	github.com/cloudwego/netpoll v0.7.2 // indirect
+	github.com/corpix/uarand v0.2.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.3.6 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/eino-contrib/jsonschema v1.0.3 // indirect
@@ -61,14 +66,13 @@ require (
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/yargevad/filepathx v1.0.0 // indirect
 	golang.org/x/arch v0.11.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
 	golang.org/x/mod v0.19.0 // indirect
-	golang.org/x/net v0.34.0 // indirect
+	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/tools v0.23.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -14,6 +14,7 @@ import { getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import { AgentsView } from '@/features/agents/AgentsView'
 import { AutomationsView } from '@/features/automations/AutomationsView'
+import { SkillsView } from '@/features/skills/SkillsView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import type { Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
@@ -183,6 +184,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const versionsVisible = rightPanel === 'versions'
   const agentsVisible = mode === 'agents'
   const automationsVisible = mode === 'automations'
+  const skillsVisible = mode === 'skills'
   const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'creator' || rightPanel === 'teller' || rightPanel === 'versions') ? rightPanel : null
   const interactiveSubmode = useInteractiveStore((state) => state.submode)
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
@@ -233,6 +235,15 @@ export function ModeRouter(props: ModeRouterProps) {
     window.setTimeout(() => {
       window.dispatchEvent(new CustomEvent(WRITING_AGENT_INIT_EVENT, {
         detail: { prompt: t('writingAgent.initPrompt') },
+      }))
+    }, 0)
+  }
+  const requestSkillsAgent = (prompt: string) => {
+    onSetMode('ide')
+    onSetRightPanel('ai')
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(WRITING_AGENT_INIT_EVENT, {
+        detail: { prompt },
       }))
     }, 0)
   }
@@ -339,6 +350,8 @@ export function ModeRouter(props: ModeRouterProps) {
     <main className={`flex h-full min-w-0 flex-col bg-[var(--nova-bg)] ${mode === 'ide' && !settingsOpen && !ideWorkspacePanel ? 'border-r border-[var(--nova-border)]' : ''}`}>
       {settingsOpen ? (
         <SettingsView onClose={onCloseSettings} />
+      ) : skillsVisible ? (
+        <SkillsView workspace={workspace} onClose={() => onSetMode(booksReturnMode)} onRequestAgent={requestSkillsAgent} />
       ) : agentsVisible ? (
         <AgentsView onClose={() => onSetMode(booksReturnMode)} />
       ) : automationsVisible ? (

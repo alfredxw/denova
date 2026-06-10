@@ -51,8 +51,19 @@ openai_model = "deepseek-v4-pro"
 #
 # [agent_prompts.interactive_story]
 # system_prompt = "更主动地制造 NPC 反应和场景压力，但不要替玩家做重大选择。"
+#
+# 可选：按 Agent 调整工具权限。字段不填表示继承内置默认值；
+# `web_search` 使用 Eino Ext DuckDuckGo V2 预制工具注册为网页搜索。
+#
+# [agent_tools.ide]
+# web_search = true
+#
+# [agent_tools.interactive_story]
+# web_search = false
 
 # 路径
+# skills_dir 是启动时加载的内置/只读 Skills 根目录。
+# 用户自定义 Skills 由界面写入 <nova_dir>/skills 或 <workspace>/.nova/skills。
 skills_dir = "./skills"
 nova_dir = "./.nova"
 

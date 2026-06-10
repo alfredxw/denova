@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, Brain, Check, Clock, Database, FileText, FolderOpen, ListChecks, MessageSquareText, PenLine, Save, ScrollText, Search, Settings2, Shield, Sparkles, Terminal, Wrench, X } from 'lucide-react'
+import { Bot, Brain, Check, Clock, Database, FileText, FolderOpen, Globe2, ListChecks, MessageSquareText, PenLine, Save, ScrollText, Search, Settings2, Shield, Sparkles, Terminal, Wrench, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { Textarea } from '@/components/ui/textarea'
@@ -36,6 +36,7 @@ const AGENTS: Array<{
 
 const TOOL_ROWS: Array<{ key: ToolKey; titleKey: string; subtitleKey: string; icon: ElementType }> = [
   { key: 'file_read', titleKey: 'agents.tool.fileRead.title', subtitleKey: 'agents.tool.fileRead.subtitle', icon: Search },
+  { key: 'web_search', titleKey: 'agents.tool.webSearch.title', subtitleKey: 'agents.tool.webSearch.subtitle', icon: Globe2 },
   { key: 'file_write', titleKey: 'agents.tool.fileWrite.title', subtitleKey: 'agents.tool.fileWrite.subtitle', icon: FileText },
   { key: 'shell_execute', titleKey: 'agents.tool.shellExecute.title', subtitleKey: 'agents.tool.shellExecute.subtitle', icon: Terminal },
   { key: 'skills', titleKey: 'agents.tool.skills.title', subtitleKey: 'agents.tool.skills.subtitle', icon: FolderOpen },
@@ -44,18 +45,18 @@ const TOOL_ROWS: Array<{ key: ToolKey; titleKey: string; subtitleKey: string; ic
   { key: 'todo', titleKey: 'agents.tool.todo.title', subtitleKey: 'agents.tool.todo.subtitle', icon: ListChecks },
 ]
 
-const BASE_TOOL_VALUES: Required<AgentToolOverride> = { file_read: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true }
+const BASE_TOOL_VALUES: Required<AgentToolOverride> = { file_read: true, web_search: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true }
 
 const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentToolOverride>> = {
-  ide: { file_read: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true },
-  interactive_story: { file_read: true, file_write: true, shell_execute: true, skills: false, lore_read: true, lore_write: false, todo: false },
-  lore_editor: { file_read: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: false },
+  ide: { file_read: true, web_search: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true },
+  interactive_story: { file_read: true, web_search: false, file_write: true, shell_execute: true, skills: false, lore_read: true, lore_write: false, todo: false },
+  lore_editor: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: false },
   teller_editor: disabledTools(),
   interactive_state: disabledTools(),
   interactive_hot_choices: disabledTools(),
   version_summary: disabledTools(),
   tool_agent: disabledTools(),
-  automation: { file_read: true, file_write: false, shell_execute: false, skills: false, lore_read: true, lore_write: false, todo: false },
+  automation: { file_read: true, web_search: true, file_write: false, shell_execute: false, skills: false, lore_read: true, lore_write: false, todo: false },
 }
 
 export function AgentsView({ onClose }: { onClose?: () => void }) {
@@ -561,12 +562,13 @@ function builtInCapabilityRows(agent: VisibleAgentKey, t: (key: string) => strin
 }
 
 function disabledTools(): Required<AgentToolOverride> {
-  return { file_read: false, file_write: false, shell_execute: false, skills: false, lore_read: false, lore_write: false, todo: false }
+  return { file_read: false, web_search: false, file_write: false, shell_execute: false, skills: false, lore_read: false, lore_write: false, todo: false }
 }
 
 function resolveEffectiveTools(defaultTools: AgentToolOverride, tools: AgentToolOverride): Required<AgentToolOverride> {
   return {
     file_read: tools.file_read ?? defaultTools.file_read ?? BASE_TOOL_VALUES.file_read,
+    web_search: tools.web_search ?? defaultTools.web_search ?? BASE_TOOL_VALUES.web_search,
     file_write: tools.file_write ?? defaultTools.file_write ?? BASE_TOOL_VALUES.file_write,
     shell_execute: tools.shell_execute ?? defaultTools.shell_execute ?? BASE_TOOL_VALUES.shell_execute,
     skills: tools.skills ?? defaultTools.skills ?? BASE_TOOL_VALUES.skills,

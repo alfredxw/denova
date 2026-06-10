@@ -330,6 +330,7 @@ func constrainAutomationTools(cfg config.Config, writePolicy string) config.Conf
 		LoreRead:     boolPointer(resolved.LoreRead),
 		LoreWrite:    boolPointer(resolved.LoreWrite && automationTaskAllowsLoreWrite(writePolicy)),
 		Todo:         boolPointer(resolved.Todo),
+		WebSearch:    boolPointer(resolved.WebSearch),
 	}
 	return cfg
 }
@@ -344,6 +345,7 @@ func automationToolManifest(cfg *config.Config) []automation.ToolManifestItem {
 		{Source: config.AgentToolLoreRead, Allowed: tools.LoreRead},
 		{Source: config.AgentToolLoreWrite, Allowed: tools.LoreWrite},
 		{Source: config.AgentToolTodo, Allowed: tools.Todo},
+		{Source: config.AgentToolWebSearch, Allowed: tools.WebSearch},
 	}
 }
 

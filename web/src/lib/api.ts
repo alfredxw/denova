@@ -225,6 +225,36 @@ export interface LoreItem {
   updated_at: string
 }
 
+export type SkillScope = 'builtin' | 'user' | 'workspace'
+
+export interface SkillScopeInfo {
+  scope: SkillScope
+  path: string
+  writable: boolean
+}
+
+export interface SkillSummary {
+  name: string
+  description: string
+  context?: string
+  agent?: string
+  model?: string
+  scope: SkillScope
+  path: string
+  editable: boolean
+  active: boolean
+  updated_at?: string
+}
+
+export interface SkillSnapshot {
+  scopes: SkillScopeInfo[]
+  skills: SkillSummary[]
+}
+
+export interface SkillDocument extends SkillSummary {
+  content: string
+}
+
 export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at'>
 
 export interface LoreVersion {
@@ -370,6 +400,35 @@ export async function abortChat(): Promise<void> {
 export async function getStyles(): Promise<string[]> {
   const data = await requestJSON<{ styles: string[] }>('/api/styles')
   return data.styles || []
+}
+
+export async function getSkills(): Promise<SkillSnapshot> {
+  const data = await requestJSON<SkillSnapshot>('/api/skills')
+  return {
+    scopes: data.scopes || [],
+    skills: data.skills || [],
+  }
+}
+
+export async function getSkillDocument(scope: SkillScope, name: string): Promise<SkillDocument> {
+  const query = new URLSearchParams({ scope, name })
+  return requestJSON(`/api/skills/document?${query.toString()}`)
+}
+
+export async function createSkill(scope: SkillScope, name: string, description = ''): Promise<SkillDocument> {
+  return requestJSON('/api/skills', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scope, name, description }),
+  })
+}
+
+export async function saveSkillDocument(scope: SkillScope, name: string, content: string): Promise<SkillDocument> {
+  return requestJSON('/api/skills/document', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scope, name, content }),
+  })
 }
 
 /** 解析 SSE 流 */

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { BadgeHelp, ClipboardList, Command as CommandIcon, Eraser, Layers3, ListTree, PenLine, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -28,6 +28,18 @@ const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: Luc
   { cmd: '/rewrite', descKey: 'chat.command.rewrite.desc', hintKey: 'chat.command.rewrite.hint', icon: WandSparkles },
 ]
 
+export interface SkillCommand {
+  name: string
+  description: string
+}
+
+type CommandOption = {
+  cmd: string
+  description: string
+  hint: string
+  icon: LucideIcon
+}
+
 interface InputAreaProps {
   onSend: (message: string) => void
   onStop?: () => void
@@ -48,6 +60,7 @@ interface InputAreaProps {
   styleSuggestions?: string[]
   textSelections?: TextSelection[]
   onTextSelectionRemove?: (index: number) => void
+  skills?: SkillCommand[]
 }
 
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
@@ -71,15 +84,42 @@ export function InputArea({
   styleSuggestions = [],
   textSelections = [],
   onTextSelectionRemove,
+  skills = [],
 }: InputAreaProps) {
   const { t } = useTranslation()
   const [value, setValue] = useState('')
   const [showCommands, setShowCommands] = useState(false)
-  const [filteredCommands, setFilteredCommands] = useState(COMMANDS)
   const [activeCommandIndex, setActiveCommandIndex] = useState(0)
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [styleReferenceQuery, setStyleReferenceQuery] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const allCommands = useMemo<CommandOption[]>(() => {
+    const staticCommands = COMMANDS.map(({ cmd, descKey, hintKey, icon }) => ({
+      cmd,
+      description: t(descKey),
+      hint: t(hintKey),
+      icon,
+    }))
+    const seen = new Set(staticCommands.map((command) => command.cmd))
+    const skillCommands = skills
+      .map((skill) => ({
+        cmd: `/${skill.name}`,
+        description: skill.description || skill.name,
+        hint: t('chat.command.skill.hint'),
+        icon: Sparkles,
+      }))
+      .filter((command) => {
+        if (seen.has(command.cmd)) return false
+        seen.add(command.cmd)
+        return true
+      })
+    return [...staticCommands, ...skillCommands]
+  }, [skills, t])
+  const filteredCommands = useMemo(() => {
+    if (!value.startsWith('/')) return []
+    const query = value.toLowerCase()
+    return allCommands.filter((command) => command.cmd.toLowerCase().startsWith(query))
+  }, [allCommands, value])
 
   /** 自动调整高度 */
   const adjustHeight = useCallback(() => {
@@ -90,6 +130,10 @@ export function InputArea({
   }, [])
 
   useEffect(() => { adjustHeight() }, [value, adjustHeight])
+
+  useEffect(() => {
+    if (activeCommandIndex >= filteredCommands.length) setActiveCommandIndex(0)
+  }, [activeCommandIndex, filteredCommands.length])
 
   useEffect(() => {
     if (!inputPrefill) return
@@ -109,10 +153,7 @@ export function InputArea({
 
     // 检测是否输入了 /
     if (v.startsWith('/')) {
-      const query = v.toLowerCase()
-      const filtered = COMMANDS.filter(c => c.cmd.startsWith(query))
-      setFilteredCommands(filtered)
-      setShowCommands(filtered.length > 0)
+      setShowCommands(true)
       setActiveCommandIndex(0)
     } else {
       setShowCommands(false)
@@ -307,7 +348,7 @@ export function InputArea({
         </div>
       )}
 
-      <Popover open={showCommands}>
+      <Popover open={showCommands && filteredCommands.length > 0}>
         <PopoverTrigger asChild>
           <span className="absolute bottom-full left-3 h-0 w-0" />
         </PopoverTrigger>
@@ -335,7 +376,7 @@ export function InputArea({
             <CommandList className="max-h-[312px] p-1.5">
               <CommandEmpty className="py-5 text-center text-xs text-[var(--nova-text-faint)]">{t('chat.commands.empty')}</CommandEmpty>
               <CommandGroup heading={t('chat.commands.group')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
-                {filteredCommands.map(({ cmd, descKey, hintKey, icon: Icon }, index) => {
+                {filteredCommands.map(({ cmd, description, hint, icon: Icon }, index) => {
                   const active = index === activeCommandIndex
                   return (
                     <CommandItem
@@ -357,9 +398,9 @@ export function InputArea({
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="font-mono text-xs text-[var(--nova-text)]">{cmd}</span>
-                        <span className="truncate text-xs text-[var(--nova-text-muted)]">{t(descKey)}</span>
+                        <span className="truncate text-xs text-[var(--nova-text-muted)]">{description}</span>
                       </span>
-                      <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{t(hintKey)}</span>
+                      <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{hint}</span>
                     </span>
                     </CommandItem>
                   )
