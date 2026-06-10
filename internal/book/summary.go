@@ -43,7 +43,15 @@ type DocumentPreview struct {
 }
 
 var chapterNamePattern = regexp.MustCompile(`(?i)^ch(\d+)[-_ ]*(.*)$`)
+var numericChapterNamePattern = regexp.MustCompile(`^(\d{1,6})[-_ 、.．]+(.*)$`)
+var chineseChapterNamePattern = regexp.MustCompile(`^第([0-9零〇一二三四五六七八九十百千万两]+)[章节回集][-_ 、.．]*(.*)$`)
+var englishChapterNamePattern = regexp.MustCompile(`(?i)^(?:chapter|ch)[-_ ]*([0-9ivxlcdm]+)[-_ .:：]*(.*)$`)
 var groupNamePattern = regexp.MustCompile(`(?i)^group(\d+)[-_ ]*(.*)$`)
+
+type chapterNameMeta struct {
+	index   int
+	display string
+}
 
 // Summary 统计 workspace 的章节进度和书籍元信息。
 func (s *Service) Summary() (WorkspaceSummary, error) {
@@ -190,22 +198,153 @@ func isChapterTextFile(name string) bool {
 
 func chapterDisplayTitle(name string) string {
 	base := strings.TrimSuffix(name, filepath.Ext(name))
-	matches := chapterNamePattern.FindStringSubmatch(base)
-	if len(matches) == 0 {
-		return base
+	if meta, ok := parseChapterNameMeta(base); ok {
+		return meta.display
 	}
-	title := strings.Trim(matches[2], "-_ ")
-	if title == "" {
-		return "第" + matches[1] + "章"
+	return displayNameFromFilenameBase(base)
+}
+
+func parseChapterNameMeta(base string) (chapterNameMeta, bool) {
+	if matches := chapterNamePattern.FindStringSubmatch(base); len(matches) > 0 {
+		title := strings.Trim(matches[2], "-_ ")
+		if title == "" {
+			return chapterNameMeta{index: parsePositiveInt(matches[1]), display: "第" + matches[1] + "章"}, true
+		}
+		return chapterNameMeta{index: parsePositiveInt(matches[1]), display: matches[1] + " " + displayNameFromFilenameBase(title)}, true
 	}
-	return matches[1] + " " + title
+	if matches := chineseChapterNamePattern.FindStringSubmatch(base); len(matches) > 0 {
+		index := parseChapterOrdinal(matches[1])
+		title := strings.Trim(matches[2], "-_ 、.． ")
+		prefix := "第" + matches[1] + "章"
+		if title == "" {
+			return chapterNameMeta{index: index, display: prefix}, true
+		}
+		return chapterNameMeta{index: index, display: prefix + " " + displayNameFromFilenameBase(title)}, true
+	}
+	if matches := englishChapterNamePattern.FindStringSubmatch(base); len(matches) > 0 {
+		index := parseChapterOrdinal(matches[1])
+		title := strings.Trim(matches[2], "-_ .:： ")
+		prefix := "Chapter " + matches[1]
+		if title == "" {
+			return chapterNameMeta{index: index, display: prefix}, true
+		}
+		return chapterNameMeta{index: index, display: prefix + " " + displayNameFromFilenameBase(title)}, true
+	}
+	if matches := numericChapterNamePattern.FindStringSubmatch(base); len(matches) > 0 {
+		title := strings.Trim(matches[2], "-_ 、.． ")
+		if title == "" {
+			return chapterNameMeta{index: parsePositiveInt(matches[1]), display: matches[1]}, true
+		}
+		return chapterNameMeta{index: parsePositiveInt(matches[1]), display: matches[1] + " " + displayNameFromFilenameBase(title)}, true
+	}
+	return chapterNameMeta{}, false
+}
+
+func displayNameFromFilenameBase(base string) string {
+	return strings.TrimSpace(strings.NewReplacer("-", " ", "_", " ").Replace(base))
+}
+
+func parsePositiveInt(value string) int {
+	n := 0
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return 0
+		}
+		n = n*10 + int(ch-'0')
+	}
+	return n
+}
+
+func parseChapterOrdinal(value string) int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if allASCIIDigits(value) {
+		return parsePositiveInt(value)
+	}
+	if n := parseRomanNumeral(value); n > 0 {
+		return n
+	}
+	return parseChineseNumber(value)
+}
+
+func allASCIIDigits(value string) bool {
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return value != ""
+}
+
+func parseRomanNumeral(value string) int {
+	values := map[rune]int{'I': 1, 'V': 5, 'X': 10, 'L': 50, 'C': 100, 'D': 500, 'M': 1000}
+	value = strings.ToUpper(value)
+	total := 0
+	prev := 0
+	for i := len(value) - 1; i >= 0; i-- {
+		current := values[rune(value[i])]
+		if current == 0 {
+			return 0
+		}
+		if current < prev {
+			total -= current
+		} else {
+			total += current
+			prev = current
+		}
+	}
+	return total
+}
+
+func parseChineseNumber(value string) int {
+	digits := map[rune]int{'零': 0, '〇': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
+	units := map[rune]int{'十': 10, '百': 100, '千': 1000, '万': 10000}
+	total := 0
+	section := 0
+	number := 0
+	seen := false
+	for _, ch := range value {
+		if digit, ok := digits[ch]; ok {
+			number = digit
+			seen = true
+			continue
+		}
+		unit, ok := units[ch]
+		if !ok {
+			return 0
+		}
+		seen = true
+		if unit == 10000 {
+			if number != 0 {
+				section += number
+			}
+			if section == 0 {
+				section = 1
+			}
+			total += section * unit
+			section = 0
+			number = 0
+			continue
+		}
+		if number == 0 {
+			number = 1
+		}
+		section += number * unit
+		number = 0
+	}
+	if !seen {
+		return 0
+	}
+	return total + section + number
 }
 
 func groupDisplayTitle(name string) string {
 	base := strings.TrimSuffix(name, filepath.Ext(name))
 	matches := groupNamePattern.FindStringSubmatch(base)
 	if len(matches) == 0 {
-		return base
+		return displayNameFromFilenameBase(base)
 	}
 	title := strings.Trim(matches[2], "-_ ")
 	if title == "" {
@@ -215,15 +354,8 @@ func groupDisplayTitle(name string) string {
 }
 
 func chapterIndex(name string) int {
-	matches := chapterNamePattern.FindStringSubmatch(strings.TrimSuffix(name, filepath.Ext(name)))
-	if len(matches) == 0 {
-		return 0
-	}
-	n := 0
-	for _, ch := range matches[1] {
-		n = n*10 + int(ch-'0')
-	}
-	return n
+	meta, _ := parseChapterNameMeta(strings.TrimSuffix(name, filepath.Ext(name)))
+	return meta.index
 }
 
 func chapterPlanIndex(path string) int {

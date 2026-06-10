@@ -27,8 +27,14 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.InteractiveStageLineHeight == nil || *s.InteractiveStageLineHeight != 1.78 {
 		t.Fatalf("InteractiveStageLineHeight default")
 	}
+	if s.ChapterFilenameFormat != "第{N}章-{title}.md" {
+		t.Fatalf("ChapterFilenameFormat default: %s", s.ChapterFilenameFormat)
+	}
 	if s.InteractiveHotChoices == nil || *s.InteractiveHotChoices != true {
 		t.Fatalf("InteractiveHotChoices default")
+	}
+	if s.AgentModels.ToolAgent.EnableThinking == nil || *s.AgentModels.ToolAgent.EnableThinking {
+		t.Fatalf("ToolAgent thinking should default off")
 	}
 	if s.UIFontFamily != "system-sans" {
 		t.Fatalf("UIFontFamily default: %s", s.UIFontFamily)

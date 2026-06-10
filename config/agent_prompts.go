@@ -12,6 +12,7 @@ type AgentPromptSettings struct {
 	InteractiveState      AgentPromptOverride `toml:"interactive_state,omitempty" json:"interactive_state,omitempty"`
 	InteractiveHotChoices AgentPromptOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentPromptOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
+	ToolAgent             AgentPromptOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 }
 
 type AgentPromptOverride struct {
@@ -32,6 +33,7 @@ func MergeAgentPromptSettings(parent, child AgentPromptSettings) AgentPromptSett
 		InteractiveState:      mergeAgentPromptOverride(parent.InteractiveState, child.InteractiveState),
 		InteractiveHotChoices: mergeAgentPromptOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentPromptOverride(parent.VersionSummary, child.VersionSummary),
+		ToolAgent:             mergeAgentPromptOverride(parent.ToolAgent, child.ToolAgent),
 	}
 }
 
@@ -69,6 +71,8 @@ func agentPromptOverrideFor(settings AgentPromptSettings, agentKind string) Agen
 		return settings.InteractiveHotChoices
 	case AgentKindVersionSummary:
 		return settings.VersionSummary
+	case AgentKindToolAgent:
+		return settings.ToolAgent
 	default:
 		return AgentPromptOverride{}
 	}
@@ -83,6 +87,7 @@ func sanitizeAgentPromptSettings(settings AgentPromptSettings) AgentPromptSettin
 	settings.InteractiveState = sanitizeAgentPromptOverride(settings.InteractiveState)
 	settings.InteractiveHotChoices = sanitizeAgentPromptOverride(settings.InteractiveHotChoices)
 	settings.VersionSummary = sanitizeAgentPromptOverride(settings.VersionSummary)
+	settings.ToolAgent = sanitizeAgentPromptOverride(settings.ToolAgent)
 	return settings
 }
 

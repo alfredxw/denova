@@ -30,6 +30,7 @@ const AGENTS: Array<{
   { key: 'interactive_state', titleKey: 'agents.interactiveState.title', subtitleKey: 'agents.interactiveState.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Shield },
   { key: 'interactive_hot_choices', titleKey: 'agents.interactiveHotChoices.title', subtitleKey: 'agents.interactiveHotChoices.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Sparkles },
   { key: 'version_summary', titleKey: 'agents.versionSummary.title', subtitleKey: 'agents.versionSummary.subtitle', groupKey: 'agents.group.version', capabilityMode: 'model_only', icon: ListChecks },
+  { key: 'tool_agent', titleKey: 'agents.toolAgent.title', subtitleKey: 'agents.toolAgent.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'model_only', icon: Wrench },
 ]
 
 const TOOL_ROWS: Array<{ key: ToolKey; titleKey: string; subtitleKey: string; icon: ElementType }> = [
@@ -52,6 +53,7 @@ const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentToolOver
   interactive_state: disabledTools(),
   interactive_hot_choices: disabledTools(),
   version_summary: disabledTools(),
+  tool_agent: disabledTools(),
 }
 
 export function AgentsView({ onClose }: { onClose?: () => void }) {

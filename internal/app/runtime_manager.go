@@ -458,6 +458,7 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	}
 	cfg.AgentModels = effective.AgentModels
 	cfg.AgentTools = effective.AgentTools
+	cfg.AgentPrompts = effective.AgentPrompts
 	if cfg.SkillsDir == "" && effective.SkillsDir != "" {
 		cfg.SkillsDir = effective.SkillsDir
 	}

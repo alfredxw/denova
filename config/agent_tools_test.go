@@ -28,6 +28,10 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 	if summary.FileRead || summary.FileWrite || summary.ShellExecute || summary.Skills || summary.LoreRead || summary.LoreWrite || summary.Todo {
 		t.Fatalf("版本说明 Agent 默认不应注册工具: %+v", summary)
 	}
+	toolAgent := ResolveAgentTools(&Config{}, AgentKindToolAgent)
+	if toolAgent.FileRead || toolAgent.FileWrite || toolAgent.ShellExecute || toolAgent.Skills || toolAgent.LoreRead || toolAgent.LoreWrite || toolAgent.Todo {
+		t.Fatalf("工具 Agent 默认不应注册工具: %+v", toolAgent)
+	}
 }
 
 func TestResolveAgentToolsPerAgentOverride(t *testing.T) {

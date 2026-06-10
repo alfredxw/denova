@@ -10,6 +10,7 @@ const (
 	AgentKindInteractiveState      = "interactive_state"
 	AgentKindInteractiveHotChoices = "interactive_hot_choices"
 	AgentKindVersionSummary        = "version_summary"
+	AgentKindToolAgent             = "tool_agent"
 )
 
 type ModelProfileSettings struct {
@@ -30,6 +31,7 @@ type AgentModelSettings struct {
 	InteractiveState      AgentModelOverride `toml:"interactive_state,omitempty" json:"interactive_state,omitempty"`
 	InteractiveHotChoices AgentModelOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentModelOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
+	ToolAgent             AgentModelOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 }
 
 type AgentModelOverride struct {
@@ -59,6 +61,7 @@ func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSetting
 		InteractiveState:      mergeAgentModelOverride(parent.InteractiveState, child.InteractiveState),
 		InteractiveHotChoices: mergeAgentModelOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentModelOverride(parent.VersionSummary, child.VersionSummary),
+		ToolAgent:             mergeAgentModelOverride(parent.ToolAgent, child.ToolAgent),
 	}
 }
 
@@ -201,6 +204,8 @@ func agentModelOverrideFor(settings AgentModelSettings, agentKind string) AgentM
 		return settings.InteractiveHotChoices
 	case AgentKindVersionSummary:
 		return settings.VersionSummary
+	case AgentKindToolAgent:
+		return settings.ToolAgent
 	default:
 		return AgentModelOverride{}
 	}

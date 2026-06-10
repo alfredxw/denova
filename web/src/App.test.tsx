@@ -171,6 +171,9 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: '版本说明 Agent自动版本摘要' }))
     expect(screen.getByText('这个 Agent 当前是纯模型调用，不修改文件、资料库或叙事编排；这里只配置模型与思考参数。')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '工具 Agent小说导入时识别章节分割正则' }))
+    expect(screen.getAllByText('小说导入时识别章节分割正则').length).toBeGreaterThan(0)
+    expect(screen.getByText('这个 Agent 当前是纯模型调用，不修改文件、资料库或叙事编排；这里只配置模型与思考参数。')).toBeInTheDocument()
 
     const agentsButton = screen.getByRole('button', { name: 'Agents' })
     expect(agentsButton).toHaveClass('is-active')

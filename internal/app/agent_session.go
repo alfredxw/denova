@@ -16,6 +16,7 @@ const (
 	interactiveStateAgentSessionID      = "interactive-state-agent"
 	interactiveHotChoicesAgentSessionID = "interactive-hot-choices-agent"
 	versionSummaryAgentSessionID        = "version-summary-agent"
+	toolAgentSessionID                  = "tool-agent"
 )
 
 func (a *App) persistAgentCall(agentKind, instruction, response string) {
@@ -104,6 +105,8 @@ func agentSessionID(agentKind string) (string, bool) {
 		return interactiveHotChoicesAgentSessionID, true
 	case config.AgentKindVersionSummary:
 		return versionSummaryAgentSessionID, true
+	case config.AgentKindToolAgent:
+		return toolAgentSessionID, true
 	default:
 		return "", false
 	}

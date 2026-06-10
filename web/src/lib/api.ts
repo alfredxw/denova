@@ -118,14 +118,25 @@ export interface NovelImportChapter {
   title: string
   chars: number
   path?: string
+  volume?: string
+  volume_path?: string
 }
 
 export interface NovelImportPreview {
   title: string
+  language?: string
+  chapter_filename_format?: string
+  split_strategy: string
+  split_regex: string
+  sample_chars: number
   chapter_count: number
   total_chars: number
   chapters: NovelImportChapter[]
   warnings?: string[]
+}
+
+export interface NovelImportProgress {
+  step: string
 }
 
 export interface NovelImportResult {
@@ -622,25 +633,56 @@ export async function importCharacterCard(
 }
 
 /** 预览 txt/md 小说导入，不写入 workspace */
-export async function previewNovelImport(file: File): Promise<NovelImportPreview> {
+export async function previewNovelImport(
+  file: File,
+  options: { sampleChars?: number; splitRegex?: string; splitStrategy?: string } = {},
+): Promise<NovelImportPreview> {
   const form = new FormData()
   form.append('file', file)
+  if (options.sampleChars !== undefined) form.append('sample_chars', String(options.sampleChars))
+  if (options.splitRegex !== undefined) form.append('split_regex', options.splitRegex)
+  if (options.splitStrategy) form.append('split_strategy', options.splitStrategy)
   return requestJSON('/api/books/import-novel/preview', {
     method: 'POST',
     body: form,
   })
 }
 
+/** 流式预览 txt/md 小说导入，返回 progress / preview / done / error 事件 */
+export async function previewNovelImportStream(
+  file: File,
+  options: { sampleChars?: number; splitRegex?: string; splitStrategy?: string } = {},
+): Promise<ReadableStream<SSEEvent>> {
+  const form = new FormData()
+  form.append('file', file)
+  if (options.sampleChars !== undefined) form.append('sample_chars', String(options.sampleChars))
+  if (options.splitRegex !== undefined) form.append('split_regex', options.splitRegex)
+  if (options.splitStrategy) form.append('split_strategy', options.splitStrategy)
+  const res = await fetch('/api/books/import-novel/preview/stream', {
+    method: 'POST',
+    body: form,
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error || `HTTP ${res.status}`)
+  }
+  if (!res.body) throw new Error('No response body')
+  return parseSSEStream(res.body)
+}
+
 /** 导入 txt/md 小说为新书，并可选调用资料库 Agent 抽取资料 */
 export async function importNovel(
   file: File,
-  options: { bookTitle?: string; author?: string; description?: string } = {},
+  options: { bookTitle?: string; author?: string; description?: string; sampleChars?: number; splitRegex?: string; splitStrategy?: string } = {},
 ): Promise<NovelImportResult> {
   const form = new FormData()
   form.append('file', file)
   if (options.bookTitle) form.append('book_title', options.bookTitle)
   if (options.author) form.append('author', options.author)
   if (options.description) form.append('description', options.description)
+  if (options.sampleChars !== undefined) form.append('sample_chars', String(options.sampleChars))
+  if (options.splitRegex !== undefined) form.append('split_regex', options.splitRegex)
+  if (options.splitStrategy) form.append('split_strategy', options.splitStrategy)
   return requestJSON('/api/books/import-novel', {
     method: 'POST',
     body: form,

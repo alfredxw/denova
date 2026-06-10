@@ -62,6 +62,7 @@ Nova is more than a chat box and more than a text completion editor. It turns fi
 | Interactive Stories | Plot branches, next-action candidates, scene memory, storyline switching, route map |
 | Lore Library | Structured long-term settings for characters, worlds, locations, factions, rules, items, and more |
 | Narrative Direction | Per-book or per-scene narrative rules, style constraints, pacing preferences, and interactive generation strategy |
+| Existing Novel Import | Upload txt / md files, let the Tool Agent detect the chapter-title regex, preview the split, adjust sample size or regex, then confirm creation as a new book |
 | Character Card Import | SillyTavern v2 PNG / JSON import into the current book or a new book |
 | Version Management | go-git managed workspace `.git`, history including `.nova` creative state, diff comparison, restore, timed saves, and large-Agent-output auto saves |
 | Layered Configuration | Global, user-level, and workspace-level settings for different models and different books |
@@ -173,6 +174,7 @@ my-novel/
 Common entry points:
 
 - **Writing**: edit chapters, browse the file tree, search project files, and collaborate with the Writing Agent.
+- **Import Existing Novel**: upload a txt/md file from Book Management, preview the Tool Agent's chapter-splitting regex and chapter list, adjust sample size or the Go regexp when needed, then confirm before Nova creates the new book and writes `chapters/`.
 - **Interactive**: rehearse plots, explore branches, switch storylines, and maintain scene memory.
 - **Lore Library**: maintain characters, worlds, locations, factions, rules, and items. Current character location, injuries, mental state, goals, and similar state live in `setting/character-states.md`.
 - **Narrative Direction**: configure point of view, pacing, style rules, and interactive generation preferences.

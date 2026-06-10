@@ -42,3 +42,28 @@ func TestServiceSummaryCountsChapters(t *testing.T) {
 		t.Fatal("expected non-zero total words")
 	}
 }
+
+func TestChapterDisplayTitleAndIndexSupportMultipleFilenameStyles(t *testing.T) {
+	tests := []struct {
+		name        string
+		wantIndex   int
+		wantDisplay string
+	}{
+		{name: "ch0001-开局.md", wantIndex: 1, wantDisplay: "0001 开局"},
+		{name: "001-开局.md", wantIndex: 1, wantDisplay: "001 开局"},
+		{name: "第一章-缘起.md", wantIndex: 1, wantDisplay: "第一章 缘起"},
+		{name: "第12章-归来.md", wantIndex: 12, wantDisplay: "第12章 归来"},
+		{name: "Chapter-2-Flight.md", wantIndex: 2, wantDisplay: "Chapter 2 Flight"},
+		{name: "Chapter XII Return.md", wantIndex: 12, wantDisplay: "Chapter XII Return"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := chapterIndex(tt.name); got != tt.wantIndex {
+				t.Fatalf("chapterIndex(%q) = %d, want %d", tt.name, got, tt.wantIndex)
+			}
+			if got := chapterDisplayTitle(tt.name); got != tt.wantDisplay {
+				t.Fatalf("chapterDisplayTitle(%q) = %q, want %q", tt.name, got, tt.wantDisplay)
+			}
+		})
+	}
+}

@@ -70,7 +70,7 @@ func DefaultSettings() Settings {
 		NovaDir:                     "./.nova",
 		AutoSaveEnabled:             boolPtr(true),
 		AutoSaveIntervalMs:          intPtr(1500),
-		ChapterFilenameFormat:       "ch{NNNN}-{title}.md",
+		ChapterFilenameFormat:       "第{N}章-{title}.md",
 		MaxOpenTabs:                 intPtr(5),
 		DraftFlowEnabled:            boolPtr(false),
 		ChapterGroupMin:             intPtr(3),
@@ -89,6 +89,7 @@ func DefaultSettings() Settings {
 		AgentModels: AgentModelSettings{
 			InteractiveHotChoices: AgentModelOverride{EnableThinking: boolPtr(false)},
 			VersionSummary:        AgentModelOverride{EnableThinking: boolPtr(false)},
+			ToolAgent:             AgentModelOverride{EnableThinking: boolPtr(false)},
 		},
 		AgentTools:                 DefaultAgentToolSettings(),
 		PlanModeDefault:            boolPtr(false),
