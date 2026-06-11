@@ -39,6 +39,15 @@ export function useWorkspace() {
   const selectedFileRef = useRef<string | null>(null)
   selectedFileRef.current = selectedFile
 
+  const resetWorkspaceState = useCallback(() => {
+    setTree([])
+    setLoading(false)
+    setSelectedFile(null)
+    setFileContent('')
+    setSummary(null)
+    setStyles([])
+  }, [])
+
   /** 获取当前 workspace 路径 */
   const fetchWorkspace = useCallback(async () => {
     try {
@@ -46,42 +55,58 @@ export function useWorkspace() {
       setWorkspace(data.workspace || '')
     } catch (e) {
       console.error('获取 workspace 失败', e)
+      setWorkspace('')
     } finally {
       setWorkspaceLoaded(true)
     }
   }, [])
 
   const fetchTree = useCallback(async () => {
+    if (!workspace) {
+      setTree([])
+      setLoading(false)
+      return
+    }
+    setLoading(true)
     try {
       const res = await fetch('/api/workspace/tree')
       const data = await res.json()
-      setTree(data)
+      setTree(Array.isArray(data) ? data : [])
     } catch (e) {
       console.error('获取目录树失败', e)
+      setTree([])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [workspace])
 
   /** 获取当前作品章节统计 */
   const fetchSummary = useCallback(async () => {
+    if (!workspace) {
+      setSummary(null)
+      return
+    }
     try {
       setSummary(await getWorkspaceSummary())
     } catch (e) {
       console.error('获取作品统计失败', e)
       setSummary(null)
     }
-  }, [])
+  }, [workspace])
 
   /** 获取用户级 styles 下的风格参考文件 */
   const fetchStyles = useCallback(async () => {
+    if (!workspace) {
+      setStyles([])
+      return
+    }
     try {
       setStyles(await getStyles())
     } catch (e) {
       console.error('获取风格参考失败', e)
       setStyles([])
     }
-  }, [])
+  }, [workspace])
 
   /** 获取当前 Nova 数据目录下实际存在的书籍列表 */
   const fetchBooks = useCallback(async () => {
@@ -94,15 +119,21 @@ export function useWorkspace() {
   }, [])
 
   useEffect(() => {
-    fetchWorkspace()
-    fetchTree()
-    fetchStyles()
-    fetchSummary()
-    fetchBooks()
-  }, [fetchWorkspace, fetchTree, fetchStyles, fetchSummary, fetchBooks])
+    void Promise.all([fetchWorkspace(), fetchBooks()])
+  }, [fetchWorkspace, fetchBooks])
+
+  useEffect(() => {
+    if (!workspaceLoaded) return
+    if (!workspace) {
+      resetWorkspaceState()
+      return
+    }
+    void Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
+  }, [fetchSummary, fetchStyles, fetchTree, resetWorkspaceState, workspace, workspaceLoaded])
 
   // 自动刷新目录树，覆盖 AI Agent 直接写入文件后的结构变化。
   useEffect(() => {
+    if (!workspaceLoaded || !workspace) return
     const refreshIfVisible = () => {
       if (document.visibilityState === 'visible') {
         void Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
@@ -118,7 +149,7 @@ export function useWorkspace() {
       window.removeEventListener('focus', refreshIfVisible)
       document.removeEventListener('visibilitychange', refreshIfVisible)
     }
-  }, [fetchTree, fetchStyles, fetchSummary])
+  }, [fetchTree, fetchStyles, fetchSummary, workspace, workspaceLoaded])
 
   /** 选中文件并加载内容 */
   const selectFile = useCallback(async (path: string) => {
@@ -146,6 +177,7 @@ export function useWorkspace() {
 
   /** Agent 写入或创建文件后，刷新目录树并同步当前打开文件内容。 */
   const refreshAfterAgentFileChange = useCallback(async (changedPath?: string) => {
+    if (!workspace) return
     await Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
     const currentFile = selectedFileRef.current
     if (!currentFile) return
@@ -166,11 +198,11 @@ export function useWorkspace() {
     } catch (e) {
       console.error('刷新当前文件失败', e)
     }
-  }, [fetchTree, fetchStyles, fetchSummary])
+  }, [fetchTree, fetchStyles, fetchSummary, workspace])
 
   /** 保存当前文件内容 */
   const saveCurrentFile = useCallback(async (content: string): Promise<boolean> => {
-    if (!selectedFile) return false
+    if (!workspace || !selectedFile) return false
     try {
       await saveFile(selectedFile, content)
       await fetchSummary()
@@ -179,14 +211,14 @@ export function useWorkspace() {
       console.error('保存文件失败', e)
       return false
     }
-  }, [fetchSummary, selectedFile])
+  }, [fetchSummary, selectedFile, workspace])
 
   /** 切换 workspace 后刷新所有状态 */
   const refreshAll = useCallback(async () => {
     setSelectedFile(null)
     setFileContent('')
-    await Promise.all([fetchWorkspace(), fetchTree(), fetchStyles(), fetchSummary(), fetchBooks()])
-  }, [fetchWorkspace, fetchTree, fetchStyles, fetchSummary, fetchBooks])
+    await Promise.all([fetchWorkspace(), fetchBooks()])
+  }, [fetchWorkspace, fetchBooks])
 
   /** 新建文件或目录 */
   const createItem = useCallback(async (path: string, type: 'file' | 'dir') => {
@@ -240,8 +272,12 @@ export function useWorkspace() {
 
   /** 刷新目录树和风格参考 */
   const refresh = useCallback(async () => {
+    if (!workspace) {
+      resetWorkspaceState()
+      return
+    }
     await Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
-  }, [fetchTree, fetchStyles, fetchSummary])
+  }, [fetchTree, fetchStyles, fetchSummary, resetWorkspaceState, workspace])
 
   return {
     tree,

@@ -64,7 +64,7 @@ function App() {
   const booksReturnModeRef = useRef<BooksReturnMode>('ide')
   const writingRightPanelRef = useRef<WritingRightPanel>('ai')
   const characterCardInputRef = useRef<HTMLInputElement>(null)
-  const chatBootstrappedRef = useRef(false)
+  const chatWorkspaceRef = useRef('')
   const tabActivationsRef = useRef<Map<string, number>>(new Map())
   const tabActivationCounterRef = useRef(0)
 
@@ -164,10 +164,10 @@ function App() {
   }, [maxOpenTabs])
 
   useEffect(() => {
-    if (chatBootstrappedRef.current) return
-    chatBootstrappedRef.current = true
+    if (!workspaceLoaded || !workspace || chatWorkspaceRef.current === workspace) return
+    chatWorkspaceRef.current = workspace
     void Promise.all([loadSessions(), loadHistory()]).then(() => resumeActiveChat())
-  }, [loadHistory, loadSessions, resumeActiveChat])
+  }, [loadHistory, loadSessions, resumeActiveChat, workspace, workspaceLoaded])
 
   useEffect(() => {
     let cancelled = false
@@ -210,14 +210,15 @@ function App() {
   useEffect(() => { window.localStorage.setItem(INTERACTIVE_RIGHT_VISIBLE_KEY, String(interactiveRightVisible)) }, [interactiveRightVisible])
 
   useEffect(() => {
-    if (!workspace) {
-      if (!workspaceLoaded) return
-      setOpenTabs([])
-      setActiveTabKey(null)
-      clearSelectedFile()
-      setMode('books')
-      return
-    }
+    if (workspace || !workspaceLoaded) return
+    setOpenTabs([])
+    setActiveTabKey(null)
+    clearSelectedFile()
+    if (mode !== 'books') setMode('books')
+  }, [clearSelectedFile, mode, setMode, workspace, workspaceLoaded])
+
+  useEffect(() => {
+    if (!workspace) return
     const tabs = readTabsFor(workspace)
     const storedKey = readActiveTabKeyFor(workspace)
     const activeKey = storedKey && tabs.some((tab) => tabKey(tab) === storedKey) ? storedKey : (tabs.length > 0 ? tabKey(tabs[0]) : null)
@@ -240,7 +241,7 @@ function App() {
     }
   // 仅在 workspace 变更时触发；selectFile/clearSelectedFile 引用稳定
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspace, workspaceLoaded])
+  }, [workspace])
 
   useEffect(() => {
     try {
@@ -269,7 +270,6 @@ function App() {
     setMode(booksReturnModeRef.current)
     refreshAll()
     notifyVersionChange()
-    void Promise.all([loadSessions(), loadHistory()]).then(() => resumeActiveChat())
   }
 
   const handleSaveCurrentFile = useCallback(async (content: string) => {

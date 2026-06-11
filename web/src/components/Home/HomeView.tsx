@@ -206,7 +206,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                     {t('home.importCard')}
                   </Button>
                 )}
-                {!showCreateForm && (
+                {!showCreateForm && books.length > 0 && (
                   <Button
                     type="button"
                     size="xs"
@@ -266,7 +266,21 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
             )}
 
             {books.length === 0 ? (
-              <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-8 text-center text-xs text-[var(--nova-text-faint)]">{t('home.empty')}</div>
+              <div className="flex flex-col items-center gap-3 rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-8 text-center text-xs text-[var(--nova-text-faint)]">
+                <div className="text-sm font-medium text-[var(--nova-text-muted)]">{t('home.empty')}</div>
+                <div className="max-w-md leading-5">{t('home.emptyDescription')}</div>
+                {!showCreateForm && (
+                  <Button
+                    type="button"
+                    size="xs"
+                    className={primaryButtonCls}
+                    onClick={openCreateForm}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {t('home.createBook')}
+                  </Button>
+                )}
+              </div>
             ) : (
               <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
                 {books.map((book) => {

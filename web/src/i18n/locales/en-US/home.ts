@@ -10,6 +10,7 @@ const home = {
   'home.descriptionPlaceholder': 'Description (optional)',
   'home.editInfo': 'Edit Info',
   'home.empty': 'No books found in the current Nova data directory',
+  'home.emptyDescription': 'Create a book first, or import an existing novel or character card. Writing, Interactive, Agent, and Automation workflows become available after a book is open.',
   'home.importCard': 'Import Tavern Card',
   'home.importNovel': 'Import Existing Novel',
   'home.novaDirLoading': 'Nova data directory loading...',

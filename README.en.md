@@ -44,31 +44,21 @@
 
 ## Why Nova
 
-Nova is more than a chat box and more than a text completion editor. It turns fiction creation into a sustainable workflow and lets AI Agents collaborate inside bounded, source-aware context: they can read selected text, inspect files, reference lore, call tools, write drafts, update state, and create local versions at important moments.
+Nova is closer to an AI creative workspace for fiction than a one-off writing assistant. Many AI novel tools focus on "enter a prompt, generate a passage"; Nova focuses on continuity for long-form work: book files, lore, chapter state, interactive rehearsal, Agent tool calls, and local versions all stay in the same workspace so the author can keep iterating.
 
-- **Manage a book like a project**: file tree, Markdown editor, multiple tabs, chapter statistics, global search, and an AI side panel in one stable writing desk.
-- **Bring Agents into the full workflow**: ideas, top-level settings, outlines, chapter-group plans, drafts, final prose, and state sync all have clear entry points.
-- **Write and rehearse in the same workspace**: IDE mode produces content, while interactive mode tests plot branches and character actions.
-- **Turn lore into structured assets**: characters, worlds, locations, factions, rules, and items live in the lore library, while per-chapter character state is tracked separately.
-- **Protect the creative process by default**: Nova uses go-git to maintain a local `.git` repository in the book workspace, supporting manual saves, history, diffs, restore, and automatic saves. Prose, settings, and creative state under `.nova` such as lore and sessions are versioned. System Git, manual repository setup, and an extra `.nova/versions` metadata directory are not required.
+If you want AI to do more than complete the next paragraph, and instead collaborate around the same book, read bounded context, accumulate lore, maintain chapter progress, and leave restorable versions at important moments, Nova is the better fit.
 
-## Core Capabilities
-
-| Area | Capabilities |
+| What you need | How Nova handles it |
 | --- | --- |
-| Novel IDE | File tree, Markdown editor, multiple tabs, chapter statistics, global search, AI chat panel |
-| Writing Agent | Streaming output, tool calls, selected-text references, `@` file references, `#` style references, todo tracking |
-| Chapter Workflow | Ideas, settings, outlines, chapter-group plans, drafts, final chapter text, state sync |
-| Interactive Stories | Plot branches, next-action candidates, scene memory, storyline switching, route map |
-| Lore Library | Structured long-term settings for characters, worlds, locations, factions, rules, items, and more |
-| Narrative Direction | Per-book or per-scene narrative rules, style constraints, pacing preferences, and interactive generation strategy |
-| Skills | Built-in and custom Agent workflows, user-level and workspace-level `SKILL.md`, triggerable with `/skill-name` |
-| Existing Novel Import | Upload txt / md files, let the Tool Agent detect the chapter-title regex, preview the split, adjust sample size or regex, then confirm creation as a new book |
-| Character Card Import | SillyTavern v2 PNG / JSON import into the current book or a new book |
-| Version Management | go-git managed workspace `.git`, history including `.nova` creative state, diff comparison, restore, timed saves, and large-Agent-output auto saves |
-| Layered Configuration | Global, user-level, and workspace-level settings for different models and different books |
+| Long-form book management | An IDE-like workspace with file tree, Markdown editor, multiple tabs, chapter statistics, global search, and AI side panel |
+| Deeper AI collaboration | Agents can read selections and files, reference lore, call tools, track todos, and write drafts |
+| Continuous creation workflow | Ideas, settings, outlines, chapter-group plans, drafts, final prose, and state sync share clear entry points |
+| Plot validation | IDE mode is for writing; interactive mode rehearses branches, character actions, scene memory, and storylines |
+| Durable lore | Characters, worlds, locations, factions, rules, and items live in structured lore, while current character state is tracked separately |
+| Personalized workflow | Built-in and custom Skills, narrative direction, layered settings, and per-book model configuration |
+| Version confidence | go-git maintains a local `.git` in the book folder with history, diffs, restore, timed saves, and Agent-output auto saves |
 
-## Recommended Workflow
+The recommended path is to start with ideas, settle top-level settings and creative rules, then build the outline and chapter-group plan. For each chapter, use the Agent to draft or write prose, finalize it, and sync progress plus character state. When a plot needs testing, switch to interactive mode to rehearse branches, then fold stable decisions back into lore and keep saving local versions.
 
 ```text
 Ideas

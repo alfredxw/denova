@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - P0 工程治理：拆分 Agent 聊天主流程、互动故事存储/快照/状态逻辑，以及互动设置面板的 Agent 对话、目录/编辑器和叙事编排编辑器组件，降低核心文件体量和职责耦合。
 - Agent 运行和后台任务关键路径改用 `slog` 结构化日志，沿用现有日志输出目标，并为任务生命周期、事件广播、上下文组装和中断恢复输出稳定字段。
 - Agent 上下文审计新增结构化来源明细，记录每个注入片段的来源、标题、字节数、字符数、预览和备注，方便排查模型实际可见上下文。
+- README 新增微信交流图与“快速迭代中，欢迎交流”说明。
+- README 合并“为什么选择 Nova”、核心能力和推荐创作流程，简化 Nova 与普通 AI 小说工具的差异说明。
 
 ### Added
 
@@ -23,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - 修复 Skills 管理中单独打开被工作区覆盖的用户级 `SKILL.md` 时仍显示为可用的问题；创建/保存后也会按完整搜索路径返回真实 Active 状态。
+- 修复首次启动 `.nova` 下没有书籍或未选工作区时，前端仍请求目录、统计、styles、chat session 和 active chat 等工作区 API 导致后端报错的问题；空书架会先引导用户创建或导入书籍。
 - 修复新建 Skill 默认 `SKILL.md` 在描述包含换行、冒号或列表符号时可能生成非法 YAML frontmatter 的问题。
 - 修复创作 Agent 输入框在 IDE Agent 关闭 Skills 工具后仍展示 `/<skill-name>` 命令的问题。
 - 修复 Agents 页 Automation Agent 工具权限前端兜底值与后端默认配置不一致的问题。

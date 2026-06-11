@@ -5,47 +5,76 @@ import App from './App'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useWorkspaceStore } from './stores/workspace-store'
 
+const defaultPayloads: Record<string, unknown> = {
+  '/api/workspace/current': { workspace: '/books/demo', has_state: true },
+  '/api/workspace/tree': [],
+  '/api/workspace/summary': { title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] },
+  '/api/styles': { styles: [] },
+  '/api/books': { books: [] },
+  '/api/settings': {
+    user: {},
+    workspace: {},
+    effective: { max_open_tabs: 5 },
+    paths: { nova_dir: '/nova/user', user_config: '', workspace_config: '' },
+  },
+  '/api/books/create': { workspace: '/nova/user/新书', book_meta: { title: '新书', author: '', description: '' } },
+  '/api/workspace/switch': { workspace: '/books/from-picker', message: '已切换到: /books/from-picker' },
+  '/api/sessions': { sessions: [] },
+  '/api/session/messages': [],
+  '/api/chat/active': { active: false },
+  '/api/lore/items': { items: [] },
+  '/api/lore/versions': { versions: [] },
+  '/api/lore/agent/messages': [],
+  '/api/interactive/tellers': { tellers: [] },
+  '/api/automations': { tasks: [] },
+}
+
 describe('App', () => {
   beforeEach(() => {
     window.localStorage.clear()
     useWorkspaceStore.setState({ mode: 'ide', rightPanel: 'ai', commandOpen: false })
-    globalThis.fetch = vi.fn(async (input) => {
-      const rawUrl = typeof input === 'string' ? input : input.url
-      const path = new URL(rawUrl, 'http://localhost').pathname
-      const payloads: Record<string, unknown> = {
-        '/api/workspace/current': { workspace: '/books/demo', has_state: true },
-        '/api/workspace/tree': [],
-        '/api/workspace/summary': { title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] },
-        '/api/styles': { styles: [] },
-        '/api/books': { books: [] },
-        '/api/settings': {
-          user: {},
-          workspace: {},
-          effective: { max_open_tabs: 5 },
-          paths: { nova_dir: '/nova/user', user_config: '', workspace_config: '' },
-        },
-        '/api/books/create': { workspace: '/nova/user/新书', book_meta: { title: '新书', author: '', description: '' } },
-        '/api/workspace/switch': { workspace: '/books/from-picker', message: '已切换到: /books/from-picker' },
-        '/api/sessions': { sessions: [] },
-        '/api/session/messages': [],
-        '/api/chat/active': { active: false },
-        '/api/lore/items': { items: [] },
-        '/api/lore/versions': { versions: [] },
-        '/api/lore/agent/messages': [],
-        '/api/interactive/tellers': { tellers: [] },
-        '/api/automations': { tasks: [] },
-      }
-
-      return new Response(JSON.stringify(payloads[path] ?? {}), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }) as typeof fetch
+    mockApiFetch()
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+  })
+
+  it('opens book management first without workspace and avoids workspace-bound APIs', async () => {
+    const user = userEvent.setup()
+    mockApiFetch({
+      '/api/workspace/current': { workspace: '', has_state: false },
+      '/api/books': { books: [] },
+    })
+
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    expect(await screen.findByText('当前 Nova 数据目录下还没有书籍')).toBeInTheDocument()
+    expect(screen.getByText('请先新建一本书，或导入现有小说/角色卡创建书籍。创建后再进入写作、互动、Agent 和自动化工作流。')).toBeInTheDocument()
+
+    await waitFor(() => expect(fetchCallPaths()).toContain('/api/workspace/current'))
+    const paths = fetchCallPaths()
+    expect(paths).toContain('/api/books')
+    expect(paths).toContain('/api/settings')
+    expect(paths).not.toContain('/api/workspace/tree')
+    expect(paths).not.toContain('/api/workspace/summary')
+    expect(paths).not.toContain('/api/styles')
+    expect(paths).not.toContain('/api/sessions')
+    expect(paths).not.toContain('/api/session/messages')
+    expect(paths).not.toContain('/api/chat/active')
+    expectOnlyActivePrimaryMenu('书籍管理')
+
+    const header = screen.getByText('Nova').closest('header')
+    expect(header).not.toBeNull()
+    await user.click(within(header as HTMLElement).getByRole('button', { name: 'IDE 模式' }))
+    expect(await screen.findByText('当前 Nova 数据目录下还没有书籍')).toBeInTheDocument()
+    expectOnlyActivePrimaryMenu('书籍管理')
+    expect(fetchCallPaths()).not.toContain('/api/chat/active')
   })
 
   it('renders the IDE and interactive mode switch in the main header', async () => {
@@ -321,4 +350,29 @@ function expectOnlyActivePrimaryMenu(label: string) {
     .filter((button) => button.className.includes('is-active'))
     .map((button) => button.getAttribute('aria-label') || button.textContent || '')
   expect(activeLabels).toEqual([label])
+}
+
+function mockApiFetch(overrides: Record<string, unknown> = {}) {
+  const payloads = { ...defaultPayloads, ...overrides }
+  globalThis.fetch = vi.fn(async (input) => {
+    const rawUrl = readFetchUrl(input)
+    const path = new URL(rawUrl, 'http://localhost').pathname
+    return new Response(JSON.stringify(payloads[path] ?? {}), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }) as typeof fetch
+}
+
+function fetchCallPaths() {
+  return vi.mocked(globalThis.fetch).mock.calls.map(([input]) => {
+    const rawUrl = readFetchUrl(input)
+    return new URL(rawUrl, 'http://localhost').pathname
+  })
+}
+
+function readFetchUrl(input: RequestInfo | URL) {
+  if (typeof input === 'string') return input
+  if (input instanceof URL) return input.href
+  return input.url
 }
