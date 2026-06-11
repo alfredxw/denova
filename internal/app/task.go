@@ -2,13 +2,14 @@ package app
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"nova/internal/agent"
+	"nova/internal/observability"
 )
 
 // TaskStatus 表示后台任务的执行状态。
@@ -44,11 +45,11 @@ func NewTask(run func(ctx context.Context, task *Task, emit func(agent.Event))) 
 		status:    TaskRunning,
 		cancel:    cancel,
 	}
-	log.Printf("[agent-task] start id=%s", t.id)
+	observability.Info("agent-task", "task_start", slog.String("task_id", t.id))
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("[agent-task] panic recovered id=%s err=%v", t.id, recovered)
+				observability.Error("agent-task", "task_panic_recovered", slog.String("task_id", t.id), slog.Any("error", recovered))
 				t.emit(agent.Event{Type: "error", Data: map[string]string{"message": "Agent 后台任务异常中断"}})
 			}
 			t.finish()
@@ -73,14 +74,14 @@ func (t *Task) emit(ev agent.Event) {
 	subCount := len(t.subs)
 	t.mu.Unlock()
 	if shouldLogEvent(ev.Type, eventCount) {
-		log.Printf("[agent-task] event id=%s type=%s events=%d subscribers=%d", t.id, ev.Type, eventCount, subCount)
+		observability.Info("agent-task", "task_event", slog.String("task_id", t.id), slog.String("event_type", ev.Type), slog.Int("events", eventCount), slog.Int("subscribers", subCount))
 	}
 	for _, ch := range subs {
 		select {
 		case ch <- ev:
 		default:
 			// 订阅者消费太慢，丢弃（SSE 是尽力送达）
-			log.Printf("[agent-task] drop event id=%s type=%s reason=subscriber_slow", t.id, ev.Type)
+			observability.Warn("agent-task", "task_event_dropped", slog.String("task_id", t.id), slog.String("event_type", ev.Type), slog.String("reason", "subscriber_slow"))
 		}
 	}
 }
@@ -96,7 +97,7 @@ func (t *Task) finish() {
 		close(ch)
 	}
 	t.subs = nil
-	log.Printf("[agent-task] finish id=%s status=%s events=%d duration=%s", t.id, t.status, len(t.events), time.Since(t.startedAt).Round(time.Millisecond))
+	observability.Info("agent-task", "task_finish", slog.String("task_id", t.id), slog.String("status", string(t.status)), slog.Int("events", len(t.events)), slog.Duration("duration", time.Since(t.startedAt).Round(time.Millisecond)))
 }
 
 // Subscribe 返回已有事件的快照和一个用于接收后续事件的 channel。
@@ -111,13 +112,13 @@ func (t *Task) Subscribe() ([]agent.Event, <-chan agent.Event) {
 	if t.status != TaskRunning {
 		ch := make(chan agent.Event)
 		close(ch)
-		log.Printf("[agent-task] subscribe id=%s status=%s replay=%d live=false", t.id, t.status, len(snapshot))
+		observability.Info("agent-task", "task_subscribe", slog.String("task_id", t.id), slog.String("status", string(t.status)), slog.Int("replay", len(snapshot)), slog.Bool("live", false))
 		return snapshot, ch
 	}
 
 	ch := make(chan agent.Event, 256)
 	t.subs = append(t.subs, ch)
-	log.Printf("[agent-task] subscribe id=%s status=%s replay=%d subscribers=%d live=true", t.id, t.status, len(snapshot), len(t.subs))
+	observability.Info("agent-task", "task_subscribe", slog.String("task_id", t.id), slog.String("status", string(t.status)), slog.Int("replay", len(snapshot)), slog.Int("subscribers", len(t.subs)), slog.Bool("live", true))
 	return snapshot, ch
 }
 
@@ -128,7 +129,7 @@ func (t *Task) Unsubscribe(ch <-chan agent.Event) {
 	for i, sub := range t.subs {
 		if sub == ch {
 			t.subs = append(t.subs[:i], t.subs[i+1:]...)
-			log.Printf("[agent-task] unsubscribe id=%s subscribers=%d", t.id, len(t.subs))
+			observability.Info("agent-task", "task_unsubscribe", slog.String("task_id", t.id), slog.Int("subscribers", len(t.subs)))
 			return
 		}
 	}
@@ -139,7 +140,7 @@ func (t *Task) Abort() {
 	t.mu.Lock()
 	t.status = TaskAborted
 	t.mu.Unlock()
-	log.Printf("[agent-task] abort id=%s", t.id)
+	observability.Warn("agent-task", "task_abort", slog.String("task_id", t.id))
 	t.cancel()
 }
 

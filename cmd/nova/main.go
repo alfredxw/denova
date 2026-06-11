@@ -15,6 +15,7 @@ import (
 	"nova/config"
 	"nova/internal/api"
 	"nova/internal/app"
+	"nova/internal/observability"
 )
 
 func main() {
@@ -32,6 +33,7 @@ func main() {
 
 	logPath, closeLog := setupLogging("./log")
 	defer closeLog()
+	observability.ConfigureStructuredLogging()
 	log.Printf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath)
 	port = selectStartupPort(port, shouldAutoPickPort())
 

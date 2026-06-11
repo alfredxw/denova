@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-build:
+    name: Test and build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm --dir web install --frozen-lockfile
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Run frontend tests
+        run: pnpm --dir web test
+
+      - name: Build frontend
+        run: pnpm --dir web build
+
+      - name: Build distribution
+        run: ./build.sh
