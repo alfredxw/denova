@@ -9,15 +9,7 @@ import (
 )
 
 func TestAgentSessionIDCoversBuiltInModelAgents(t *testing.T) {
-	agents := []string{
-		config.AgentKindLoreEditor,
-		config.AgentKindTellerEditor,
-		config.AgentKindInteractiveState,
-		config.AgentKindInteractiveHotChoices,
-		config.AgentKindVersionSummary,
-	}
-
-	for _, agentKind := range agents {
+	for _, agentKind := range persistentAgentKinds() {
 		id, ok := agentSessionID(agentKind)
 		if !ok || id == "" {
 			t.Fatalf("agent %s should have a persistent session id", agentKind)
@@ -61,15 +53,7 @@ func TestClearAgentSessionInStoreMarksEffectiveContextForEveryBuiltInAgent(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	agents := []string{
-		config.AgentKindLoreEditor,
-		config.AgentKindTellerEditor,
-		config.AgentKindInteractiveState,
-		config.AgentKindInteractiveHotChoices,
-		config.AgentKindVersionSummary,
-	}
-
-	for _, agentKind := range agents {
+	for _, agentKind := range persistentAgentKinds() {
 		if err := persistAgentCallInStore(store, agentKind, "清理前", "旧输出"); err != nil {
 			t.Fatalf("persist before clear %s: %v", agentKind, err)
 		}
@@ -99,6 +83,16 @@ func TestClearAgentSessionInStoreMarksEffectiveContextForEveryBuiltInAgent(t *te
 			t.Fatalf("agent %s history should keep clear marker: %#v", agentKind, history)
 		}
 	}
+}
+
+func persistentAgentKinds() []string {
+	var kinds []string
+	for _, definition := range config.AgentKindDefinitions() {
+		if definition.SessionID != "" {
+			kinds = append(kinds, definition.Kind)
+		}
+	}
+	return kinds
 }
 
 func TestAppClearAgentSessionSupportsBackgroundAgents(t *testing.T) {

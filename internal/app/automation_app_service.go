@@ -337,16 +337,12 @@ func constrainAutomationTools(cfg config.Config, writePolicy string) config.Conf
 
 func automationToolManifest(cfg *config.Config) []automation.ToolManifestItem {
 	tools := config.ResolveAgentTools(cfg, config.AgentKindAutomation)
-	return []automation.ToolManifestItem{
-		{Source: config.AgentToolFileRead, Allowed: tools.FileRead},
-		{Source: config.AgentToolFileWrite, Allowed: tools.FileWrite},
-		{Source: config.AgentToolShellExecute, Allowed: tools.ShellExecute},
-		{Source: config.AgentToolSkills, Allowed: tools.Skills},
-		{Source: config.AgentToolLoreRead, Allowed: tools.LoreRead},
-		{Source: config.AgentToolLoreWrite, Allowed: tools.LoreWrite},
-		{Source: config.AgentToolTodo, Allowed: tools.Todo},
-		{Source: config.AgentToolWebSearch, Allowed: tools.WebSearch},
+	capabilities := config.ResolveAgentToolManifest(tools)
+	result := make([]automation.ToolManifestItem, 0, len(capabilities))
+	for _, capability := range capabilities {
+		result = append(result, automation.ToolManifestItem{Source: capability.Source, Allowed: capability.Allowed})
 	}
+	return result
 }
 
 func boolPointer(value bool) *bool {

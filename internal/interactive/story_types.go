@@ -149,7 +149,8 @@ type TurnVersion struct {
 }
 
 type StateDelta struct {
-	Ops []StateOp `json:"ops"`
+	SchemaVersion int       `json:"schema_version,omitempty"`
+	Ops           []StateOp `json:"ops"`
 }
 
 type HotState struct {
@@ -167,13 +168,14 @@ type HotChoicesEvent struct {
 }
 
 type StateDeltaEvent struct {
-	V        int       `json:"v"`
-	Type     string    `json:"type"`
-	ID       string    `json:"id"`
-	ParentID string    `json:"parent_id"`
-	BranchID string    `json:"branch_id"`
-	Ts       string    `json:"ts"`
-	Ops      []StateOp `json:"ops"`
+	V             int       `json:"v"`
+	Type          string    `json:"type"`
+	ID            string    `json:"id"`
+	ParentID      string    `json:"parent_id"`
+	BranchID      string    `json:"branch_id"`
+	Ts            string    `json:"ts"`
+	SchemaVersion int       `json:"schema_version,omitempty"`
+	Ops           []StateOp `json:"ops"`
 }
 
 type BranchEvent struct {

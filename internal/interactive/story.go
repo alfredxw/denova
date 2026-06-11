@@ -68,7 +68,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 
 	meta := StoryMeta{
 		V:             schemaVersion,
-		Type:          "meta",
+		Type:          StoryEventTypeMeta,
 		StoryID:       story.ID,
 		Title:         story.Title,
 		Origin:        story.Origin,
@@ -79,6 +79,9 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		},
 		CreatedAt: now,
 		UpdatedAt: now,
+	}
+	if err := validateStoryMeta(meta); err != nil {
+		return StorySummary{}, err
 	}
 	if err := writeJSONL(s.storyPath(story.ID), []any{meta}); err != nil {
 		return StorySummary{}, err
@@ -212,7 +215,7 @@ func (s *Store) SaveHotChoices(storyID, branchID string, choices []string) (HotC
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	event := HotChoicesEvent{
 		V:        schemaVersion,
-		Type:     "hot_choices",
+		Type:     StoryEventTypeHotChoices,
 		ID:       newID("hc"),
 		ParentID: branch.Head,
 		BranchID: branchID,
@@ -252,7 +255,7 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	event := TurnEvent{
 		V:             schemaVersion,
-		Type:          "turn",
+		Type:          StoryEventTypeTurn,
 		ID:            newID("ev"),
 		ParentID:      parentID,
 		BranchID:      branchID,
@@ -298,7 +301,7 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	turn := TurnEvent{
 		V:             schemaVersion,
-		Type:          "turn",
+		Type:          StoryEventTypeTurn,
 		ID:            newID("ev"),
 		ParentID:      parentID,
 		BranchID:      branchID,
@@ -314,18 +317,11 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 
 	var delta *StateDeltaEvent
 	if len(req.Ops) > 0 {
-		turn.StateDelta = &StateDelta{Ops: req.Ops}
+		stateDelta := newStateDelta(req.Ops)
+		turn.StateDelta = &stateDelta
 		turn.StateStatus = "ready"
-		stateDelta := StateDeltaEvent{
-			V:        schemaVersion,
-			Type:     "state_delta",
-			ID:       turn.ID,
-			ParentID: parentIDString(parentID),
-			BranchID: branchID,
-			Ts:       now,
-			Ops:      req.Ops,
-		}
-		delta = &stateDelta
+		stateDeltaEvent := newStateDeltaEvent(turn.ID, parentIDString(parentID), branchID, now, req.Ops)
+		delta = &stateDeltaEvent
 	} else {
 		turn.StateStatus = "pending"
 	}
@@ -366,19 +362,17 @@ func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error 
 	if !pathSet[turnID] {
 		return fmt.Errorf("只能编辑当前剧情路径上的回合: %s", turnID)
 	}
-	var target map[string]any
-	for _, raw := range path {
-		id, _ := raw["id"].(string)
-		eventType, _ := raw["type"].(string)
-		if id == turnID && eventType == "turn" {
-			target = raw
+	var target *StoryEventRecord
+	for i := range path {
+		if path[i].Envelope.ID == turnID && path[i].Envelope.Type == StoryEventTypeTurn {
+			target = &path[i]
 			break
 		}
 	}
 	if target == nil {
 		return fmt.Errorf("回合不存在: %s", turnID)
 	}
-	branch.Head = parentIDFromRaw(target)
+	branch.Head = parentIDFromRaw(target.Raw)
 	meta.Branches[branchID] = branch
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	meta.UpdatedAt = now
@@ -414,12 +408,10 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 	if !pathSet[turnID] {
 		return fmt.Errorf("只能切换当前剧情路径上的回合版本: %s", turnID)
 	}
-	var current map[string]any
-	for _, raw := range path {
-		id, _ := raw["id"].(string)
-		eventType, _ := raw["type"].(string)
-		if id == turnID && eventType == "turn" {
-			current = raw
+	var current *StoryEventRecord
+	for i := range path {
+		if path[i].Envelope.ID == turnID && path[i].Envelope.Type == StoryEventTypeTurn {
+			current = &path[i]
 			break
 		}
 	}
@@ -430,13 +422,13 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 	if !ok {
 		return fmt.Errorf("目标版本不存在: %s", versionTurnID)
 	}
-	if eventType, _ := target["type"].(string); eventType != "turn" {
+	if target.Envelope.Type != StoryEventTypeTurn {
 		return fmt.Errorf("目标版本不是互动回合: %s", versionTurnID)
 	}
-	if rawBranchID, _ := target["branch_id"].(string); rawBranchID != branchID {
+	if target.Envelope.BranchID != branchID {
 		return fmt.Errorf("目标版本不属于当前分支: %s", versionTurnID)
 	}
-	if parentIDFromRaw(target) != parentIDFromRaw(current) {
+	if parentIDFromRaw(target.Raw) != parentIDFromRaw(current.Raw) {
 		return fmt.Errorf("只能在同一剧情位置切换版本")
 	}
 
@@ -477,20 +469,11 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 		return StateDeltaEvent{}, fmt.Errorf("状态变化缺少所属回合")
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	event := StateDeltaEvent{
-		V:        schemaVersion,
-		Type:     "state_delta",
-		ID:       parentID,
-		ParentID: parentID,
-		BranchID: branchID,
-		Ts:       now,
-		Ops:      req.Ops,
-	}
+	event := newStateDeltaEvent(parentID, parentID, branchID, now, req.Ops)
 	updated := false
-	for _, raw := range lines {
-		id, _ := raw["id"].(string)
-		eventType, _ := raw["type"].(string)
-		if id != parentID || eventType != "turn" {
+	for i := range lines {
+		raw := lines[i].Raw
+		if lines[i].Envelope.ID != parentID || lines[i].Envelope.Type != StoryEventTypeTurn {
 			continue
 		}
 		var turn TurnEvent
@@ -501,7 +484,7 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 		if turn.StateDelta != nil && len(turn.StateDelta.Ops) > 0 {
 			ops = append(append([]StateOp(nil), turn.StateDelta.Ops...), req.Ops...)
 		}
-		raw["state_delta"] = StateDelta{Ops: ops}
+		raw["state_delta"] = newStateDelta(ops)
 		raw["state_status"] = "ready"
 		delete(raw, "state_error")
 		updated = true
@@ -546,10 +529,9 @@ func (s *Store) MarkStateFailed(storyID string, req MarkStateFailedRequest) erro
 		errText = "状态生成失败"
 	}
 	updated := false
-	for _, raw := range lines {
-		id, _ := raw["id"].(string)
-		eventType, _ := raw["type"].(string)
-		if id != parentID || eventType != "turn" {
+	for _, record := range lines {
+		raw := record.Raw
+		if record.Envelope.ID != parentID || record.Envelope.Type != StoryEventTypeTurn {
 			continue
 		}
 		raw["state_status"] = "failed"
@@ -601,7 +583,7 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 	meta.UpdatedAt = now
 	event := BranchEvent{
 		V:        schemaVersion,
-		Type:     "branch",
+		Type:     StoryEventTypeBranch,
 		ID:       newID("ev"),
 		ParentID: parentID,
 		BranchID: branchID,
@@ -661,16 +643,14 @@ func (s *Store) DeleteBranch(storyID, branchID string) error {
 			return fmt.Errorf("该分支已有子分支，不能删除")
 		}
 	}
-	nextLines := make([]map[string]any, 0, len(lines))
+	nextLines := make([]StoryEventRecord, 0, len(lines))
 	removedEvents := 0
-	for _, raw := range lines {
-		eventType, _ := raw["type"].(string)
-		rawBranchID, _ := raw["branch_id"].(string)
-		if eventType == "branch" && rawBranchID == branchID {
+	for _, record := range lines {
+		if record.Envelope.Type == StoryEventTypeBranch && record.Envelope.BranchID == branchID {
 			removedEvents++
 			continue
 		}
-		nextLines = append(nextLines, raw)
+		nextLines = append(nextLines, record)
 	}
 	if removedEvents == 0 {
 		return fmt.Errorf("分支记录不存在: %s", branchID)
@@ -713,14 +693,12 @@ func (s *Store) Snapshot(storyID, branchID string) (Snapshot, error) {
 	return snapshotFromLines(storyID, branchID, meta, lines)
 }
 
-func findEventBranch(lines []map[string]any, eventID string) (string, bool) {
-	for _, raw := range lines {
-		id, _ := raw["id"].(string)
-		if id != eventID {
+func findEventBranch(lines []StoryEventRecord, eventID string) (string, bool) {
+	for _, record := range lines {
+		if record.Envelope.ID != eventID {
 			continue
 		}
-		branchID, _ := raw["branch_id"].(string)
-		return branchID, branchID != ""
+		return record.Envelope.BranchID, record.Envelope.BranchID != ""
 	}
 	return "", false
 }

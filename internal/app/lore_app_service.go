@@ -164,7 +164,7 @@ func (s *LoreAppService) LoreAgentMessages() ([]session.HistoryEntry, error) {
 	if store == nil {
 		return nil, ErrNoWorkspace
 	}
-	sess, err := store.GetOrCreate(loreAgentSessionID)
+	sess, err := agentSessionFromStore(store, config.AgentKindLoreEditor)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ func (s *LoreAppService) StartLoreAgentTask(instruction string, references []str
 	}
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = workspace
-	sess, err := sessionStore.GetOrCreate(loreAgentSessionID)
+	sess, err := agentSessionFromStore(sessionStore, config.AgentKindLoreEditor)
 	if err != nil {
 		log.Printf("[lore-agent-task] load session failed err=%v", err)
 		return nil

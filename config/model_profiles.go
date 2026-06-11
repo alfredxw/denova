@@ -2,18 +2,6 @@ package config
 
 import "strings"
 
-const (
-	AgentKindIDE                   = "ide"
-	AgentKindInteractiveStory      = "interactive_story"
-	AgentKindLoreEditor            = "lore_editor"
-	AgentKindTellerEditor          = "teller_editor"
-	AgentKindInteractiveState      = "interactive_state"
-	AgentKindInteractiveHotChoices = "interactive_hot_choices"
-	AgentKindVersionSummary        = "version_summary"
-	AgentKindToolAgent             = "tool_agent"
-	AgentKindAutomation            = "automation"
-)
-
 type ModelProfileSettings struct {
 	ID            string   `toml:"id,omitempty" json:"id,omitempty"`
 	Name          string   `toml:"name,omitempty" json:"name,omitempty"`
@@ -192,28 +180,10 @@ func mergeAgentModelOverride(parent, child AgentModelOverride) AgentModelOverrid
 }
 
 func agentModelOverrideFor(settings AgentModelSettings, agentKind string) AgentModelOverride {
-	switch agentKind {
-	case AgentKindIDE:
-		return settings.IDE
-	case AgentKindInteractiveStory:
-		return settings.InteractiveStory
-	case AgentKindLoreEditor:
-		return settings.LoreEditor
-	case AgentKindTellerEditor:
-		return settings.TellerEditor
-	case AgentKindInteractiveState:
-		return settings.InteractiveState
-	case AgentKindInteractiveHotChoices:
-		return settings.InteractiveHotChoices
-	case AgentKindVersionSummary:
-		return settings.VersionSummary
-	case AgentKindToolAgent:
-		return settings.ToolAgent
-	case AgentKindAutomation:
-		return settings.Automation
-	default:
-		return AgentModelOverride{}
+	if definition, ok := LookupAgentKind(agentKind); ok && definition.ModelOverride != nil {
+		return definition.ModelOverride(settings)
 	}
+	return AgentModelOverride{}
 }
 
 func legacyModelProfile(cfg *Config) ModelProfileSettings {

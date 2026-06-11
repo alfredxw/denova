@@ -48,9 +48,16 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		config.AgentKindInteractiveState:      "状态记忆 Agent",
 		config.AgentKindInteractiveHotChoices: "快捷选项 Agent",
 		config.AgentKindVersionSummary:        "版本说明 Agent",
+		config.AgentKindToolAgent:             "model-only",
+		config.AgentKindAutomation:            "Automation Agent",
 	}
-	for agentKind, required := range tests {
-		t.Run(agentKind, func(t *testing.T) {
+	for _, definition := range config.AgentKindDefinitions() {
+		required, ok := tests[definition.Kind]
+		if !ok {
+			t.Fatalf("agent %s should declare a runtime contract assertion", definition.Kind)
+		}
+		t.Run(definition.Kind, func(t *testing.T) {
+			agentKind := definition.Kind
 			instruction := protectedSystemInstruction(&config.Config{}, agentKind, "BUILT IN PROMPT")
 			if !strings.Contains(instruction, required) {
 				t.Fatalf("contract for %s should contain %q:\n%s", agentKind, required, instruction)

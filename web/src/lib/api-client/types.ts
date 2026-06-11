@@ -1,0 +1,331 @@
+export interface ChatMessage {
+  type?: 'message' | 'clear'
+  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'system' | 'error'
+  content?: string
+  id?: string
+  turn_id?: string
+  name?: string
+  args?: string
+  status?: 'running' | 'success' | 'error'
+  result?: string
+  streaming?: boolean
+  created_at?: string
+  turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
+  turn_version_index?: number
+}
+
+export interface SessionSummary {
+  id: string
+  title: string
+  created_at: string
+  updated_at: string
+  active: boolean
+  message_count: number
+}
+
+export interface SSEEvent {
+  event: string
+  data: string
+}
+
+export interface FileOperationResult {
+  path: string
+  message: string
+}
+
+export interface CreateFileRequest {
+  path: string
+  type: 'file' | 'dir'
+  content?: string
+}
+
+export interface CopyMoveRequest {
+  from: string
+  to: string
+}
+
+export interface RenameRequest {
+  path: string
+  new_name: string
+}
+
+export interface BookRecord {
+  name: string
+  path: string
+  author: string
+  last_opened_at: string
+}
+
+export interface ChapterSummary {
+  path: string
+  file_name: string
+  display_title: string
+  index: number
+  words: number
+  status: string
+  updated_at: string
+  volume: string
+  volume_path: string
+}
+
+export interface DocumentPreview {
+  path: string
+  title: string
+  excerpt: string
+  words: number
+  updated_at: string
+}
+
+export interface WorkspaceSummary {
+  title: string
+  author: string
+  chapter_count: number
+  total_words: number
+  chapters: ChapterSummary[]
+  outline?: DocumentPreview
+  chapter_plans: DocumentPreview[]
+}
+
+export interface WorkspaceSearchResult {
+  path: string
+  line: number
+  column: number
+  preview: string
+  match_text: string
+}
+
+export interface CharacterCardImportResult {
+  name: string
+  target_path: string
+  entry_count: number
+  item_count: number
+  item_ids: string[]
+  workspace?: string
+  book_meta?: BookMeta
+  message: string
+}
+
+export interface CharacterCardPreview {
+  name: string
+  entry_count: number
+  tags: string[]
+}
+
+export interface NovelImportChapter {
+  index: number
+  title: string
+  chars: number
+  path?: string
+  volume?: string
+  volume_path?: string
+}
+
+export interface NovelImportPreview {
+  title: string
+  language?: string
+  chapter_filename_format?: string
+  volume_dir_format?: string
+  split_strategy: string
+  split_regex: string
+  sample_chars: number
+  chapter_count: number
+  total_chars: number
+  chapters: NovelImportChapter[]
+  warnings?: string[]
+}
+
+export interface NovelImportProgress {
+  step: string
+}
+
+export interface NovelImportResult {
+  workspace: string
+  book_meta?: BookMeta
+  title: string
+  chapter_count: number
+  total_chars: number
+  chapter_paths: string[]
+  message: string
+}
+
+export interface BookMeta {
+  title: string
+  author: string
+  description: string
+  created_at: string
+  updated_at: string
+}
+
+export type VersionSource = 'manual' | 'timer' | 'agent' | 'rollback_backup'
+
+export interface VersionChange {
+  path: string
+  status: 'added' | 'modified' | 'deleted' | string
+}
+
+export interface VersionEntry {
+  id: string
+  message: string
+  created_at: string
+  source: VersionSource
+  file_count: number
+  total_bytes: number
+  changed_paths: string[]
+}
+
+export interface VersionAutoInfo {
+  timed_enabled: boolean
+  timed_interval_minutes: number
+  agent_enabled: boolean
+  agent_char_threshold: number
+  retention: number
+  last_auto_at?: string
+}
+
+export interface VersionStatus {
+  has_versions: boolean
+  clean: boolean
+  changes: VersionChange[]
+  latest?: VersionEntry
+  auto: VersionAutoInfo
+}
+
+export interface VersionCommandResult {
+  message: string
+  version?: VersionEntry
+  status?: VersionStatus
+}
+
+export interface VersionDiff {
+  version: VersionEntry
+  changes: VersionChange[]
+  path?: string
+  original?: string
+  modified?: string
+  text: boolean
+  binary: boolean
+  missing_in_version?: boolean
+  missing_in_workspace?: boolean
+}
+
+export interface LoreItem {
+  id: string
+  type: 'character' | 'world' | 'location' | 'faction' | 'rule' | 'item' | 'other'
+  name: string
+  importance: 'major' | 'important' | 'minor'
+  load_mode: 'resident' | 'auto' | 'manual'
+  tags: string[]
+  brief_description: string
+  keywords: string[]
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+export type SkillScope = 'builtin' | 'user' | 'workspace'
+
+export interface SkillScopeInfo {
+  scope: SkillScope
+  path: string
+  writable: boolean
+}
+
+export interface SkillSummary {
+  name: string
+  description: string
+  context?: string
+  agent?: string
+  model?: string
+  scope: SkillScope
+  path: string
+  editable: boolean
+  active: boolean
+  updated_at?: string
+}
+
+export interface SkillSnapshot {
+  scopes: SkillScopeInfo[]
+  skills: SkillSummary[]
+}
+
+export interface SkillDocument extends SkillSummary {
+  content: string
+}
+
+export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at'>
+
+export interface LoreVersion {
+  id: string
+  message: string
+  created_at: string
+  item_count: number
+}
+
+export interface LoreAgentResult {
+  message: string
+  version?: LoreVersion
+  items: LoreItem[]
+  created: LoreItem[]
+  updated: LoreItem[]
+  deleted_ids: string[]
+}
+
+export type AutomationScope = 'user' | 'workspace'
+export type AutomationTemplate = 'memory_consolidation' | 'review' | 'continue_writing' | 'custom_prompt'
+export type AutomationWritePolicy = 'read_only' | 'allow_lore_write' | 'allow_file_write' | 'allow_lore_and_file_write'
+export type AutomationOutputPolicy = 'run_record_only' | 'optional_file'
+export type AutomationScheduleKind = 'manual' | 'daily' | 'weekly' | 'monthly' | 'every_hours'
+
+export interface AutomationSchedule {
+  kind: AutomationScheduleKind
+  every_hours?: number
+  weekday?: number
+  day_of_month?: number
+  hour: number
+  minute: number
+  cron?: string
+}
+
+export interface AutomationRunRecord {
+  id: string
+  task_id: string
+  scope: AutomationScope
+  workspace?: string
+  trigger: 'manual' | 'schedule'
+  status: 'running' | 'success' | 'failed'
+  started_at: string
+  finished_at?: string
+  summary: string
+  error?: string
+  output_path?: string
+  tool_manifest: Array<{ source: string; allowed: boolean }>
+}
+
+export interface AutomationTask {
+  id?: string
+  scope: AutomationScope
+  enabled: boolean
+  name: string
+  template: AutomationTemplate
+  prompt: string
+  schedule: AutomationSchedule
+  write_policy: AutomationWritePolicy
+  output_policy: AutomationOutputPolicy
+  output_path: string
+  last_run?: AutomationRunRecord
+  recent_runs: AutomationRunRecord[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface AutomationRunResult {
+  task: AutomationTask
+  run: AutomationRunRecord
+}
+
+export interface TextSelection {
+  fileName: string
+  startLine: number
+  endLine: number
+  content: string
+}

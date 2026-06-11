@@ -1,0 +1,94 @@
+package config
+
+import "testing"
+
+func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
+	definitions := AgentKindDefinitions()
+	if len(definitions) == 0 {
+		t.Fatal("agent registry should not be empty")
+	}
+	seen := map[string]bool{}
+	for _, definition := range definitions {
+		if definition.Kind == "" {
+			t.Fatal("agent registry contains empty kind")
+		}
+		if seen[definition.Kind] {
+			t.Fatalf("duplicate agent kind registered: %s", definition.Kind)
+		}
+		seen[definition.Kind] = true
+		if definition.ModelOverride == nil || definition.ToolOverride == nil || definition.PromptOverride == nil {
+			t.Fatalf("agent %s should declare model/tool/prompt accessors", definition.Kind)
+		}
+	}
+
+	models := AgentModelSettings{
+		IDE:                   AgentModelOverride{ProfileID: AgentKindIDE},
+		InteractiveStory:      AgentModelOverride{ProfileID: AgentKindInteractiveStory},
+		LoreEditor:            AgentModelOverride{ProfileID: AgentKindLoreEditor},
+		TellerEditor:          AgentModelOverride{ProfileID: AgentKindTellerEditor},
+		InteractiveState:      AgentModelOverride{ProfileID: AgentKindInteractiveState},
+		InteractiveHotChoices: AgentModelOverride{ProfileID: AgentKindInteractiveHotChoices},
+		VersionSummary:        AgentModelOverride{ProfileID: AgentKindVersionSummary},
+		ToolAgent:             AgentModelOverride{ProfileID: AgentKindToolAgent},
+		Automation:            AgentModelOverride{ProfileID: AgentKindAutomation},
+	}
+	prompts := AgentPromptSettings{
+		IDE:                   AgentPromptOverride{SystemPrompt: AgentKindIDE},
+		InteractiveStory:      AgentPromptOverride{SystemPrompt: AgentKindInteractiveStory},
+		LoreEditor:            AgentPromptOverride{SystemPrompt: AgentKindLoreEditor},
+		TellerEditor:          AgentPromptOverride{SystemPrompt: AgentKindTellerEditor},
+		InteractiveState:      AgentPromptOverride{SystemPrompt: AgentKindInteractiveState},
+		InteractiveHotChoices: AgentPromptOverride{SystemPrompt: AgentKindInteractiveHotChoices},
+		VersionSummary:        AgentPromptOverride{SystemPrompt: AgentKindVersionSummary},
+		ToolAgent:             AgentPromptOverride{SystemPrompt: AgentKindToolAgent},
+		Automation:            AgentPromptOverride{SystemPrompt: AgentKindAutomation},
+	}
+	on := true
+	tools := AgentToolSettings{
+		IDE:                   AgentToolOverride{FileRead: &on},
+		InteractiveStory:      AgentToolOverride{FileWrite: &on},
+		LoreEditor:            AgentToolOverride{ShellExecute: &on},
+		TellerEditor:          AgentToolOverride{Skills: &on},
+		InteractiveState:      AgentToolOverride{LoreRead: &on},
+		InteractiveHotChoices: AgentToolOverride{LoreWrite: &on},
+		VersionSummary:        AgentToolOverride{Todo: &on},
+		ToolAgent:             AgentToolOverride{WebSearch: &on},
+		Automation:            AgentToolOverride{FileRead: &on, WebSearch: &on},
+	}
+
+	for _, definition := range definitions {
+		if got := definition.ModelOverride(models).ProfileID; got != definition.Kind {
+			t.Fatalf("model accessor for %s returned %q", definition.Kind, got)
+		}
+		if got := definition.PromptOverride(prompts).SystemPrompt; got != definition.Kind {
+			t.Fatalf("prompt accessor for %s returned %q", definition.Kind, got)
+		}
+		if got := definition.ToolOverride(tools); got == (AgentToolOverride{}) {
+			t.Fatalf("tool accessor for %s returned zero override", definition.Kind)
+		}
+	}
+}
+
+func TestResolveAgentToolManifestUsesCapabilityRegistryOrder(t *testing.T) {
+	settings := ResolvedAgentToolSettings{
+		FileRead:  true,
+		LoreRead:  true,
+		WebSearch: true,
+	}
+	manifest := ResolveAgentToolManifest(settings)
+	capabilities := AgentToolCapabilities()
+	if len(manifest) != len(capabilities) {
+		t.Fatalf("manifest length = %d, want %d", len(manifest), len(capabilities))
+	}
+	for i, capability := range capabilities {
+		if manifest[i].Source != capability.Source {
+			t.Fatalf("manifest[%d].source = %q, want %q", i, manifest[i].Source, capability.Source)
+		}
+	}
+	if !manifest[0].Allowed || !manifest[4].Allowed || !manifest[7].Allowed {
+		t.Fatalf("expected file_read/lore_read/web_search to be allowed: %#v", manifest)
+	}
+	if manifest[1].Allowed || manifest[2].Allowed || manifest[3].Allowed || manifest[5].Allowed || manifest[6].Allowed {
+		t.Fatalf("unexpected allowed capability: %#v", manifest)
+	}
+}

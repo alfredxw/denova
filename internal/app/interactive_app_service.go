@@ -349,7 +349,7 @@ func (s *InteractiveAppService) TellerAgentMessages() ([]session.HistoryEntry, e
 	if store == nil {
 		return nil, ErrNoWorkspace
 	}
-	sess, err := store.GetOrCreate(tellerAgentSessionID)
+	sess, err := agentSessionFromStore(store, config.AgentKindTellerEditor)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func (s *InteractiveAppService) StartTellerAgentTask(instruction string, targetI
 	runtimeCfg := *cfg
 	library := interactive.NewTellerLibrary(runtimeCfg.NovaDir)
 	targetID = strings.TrimSpace(targetID)
-	sess, err := sessionStore.GetOrCreate(tellerAgentSessionID)
+	sess, err := agentSessionFromStore(sessionStore, config.AgentKindTellerEditor)
 	if err != nil {
 		log.Printf("[teller-agent-task] 加载会话失败 err=%v", err)
 		return nil

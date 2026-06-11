@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- P1 复杂度治理：新增 Agent kind/tool capability registry，模型、工具、prompt 配置解析和后台 Agent 会话 ID 统一从 registry 获取；deep agent 构建参数收敛为运行时 spec，降低新增 Agent 时的分支同步成本。
+- 互动故事 JSONL 存储新增 typed event envelope 与 state op schema 校验，读取/写入/快照构建统一经过事件类型、schema version、ID、branch 和状态操作校验。
+- 前端 API client 拆分为 `api-client` 领域模块，`@/lib/api` 保留兼容 barrel；互动和设置 API 复用共享 JSON/SSE 客户端，避免重复 fetch/parser 逻辑。
+- WebUI i18n locale 按 key namespace 拆分为独立资源文件，新增 `npm --prefix web run check:i18n` 校验中英文 key 对齐、重复 key 和 namespace 前缀。
 - P0 工程治理：拆分 Agent 聊天主流程、互动故事存储/快照/状态逻辑，以及互动设置面板的 Agent 对话、目录/编辑器和叙事编排编辑器组件，降低核心文件体量和职责耦合。
 - Agent 运行和后台任务关键路径改用 `slog` 结构化日志，沿用现有日志输出目标，并为任务生命周期、事件广播、上下文组装和中断恢复输出稳定字段。
 - Agent 上下文审计新增结构化来源明细，记录每个注入片段的来源、标题、字节数、字符数、预览和备注，方便排查模型实际可见上下文。

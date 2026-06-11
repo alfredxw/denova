@@ -167,28 +167,10 @@ func mergeAgentToolOverride(parent, child AgentToolOverride) AgentToolOverride {
 }
 
 func agentToolOverrideFor(settings AgentToolSettings, agentKind string) AgentToolOverride {
-	switch agentKind {
-	case AgentKindIDE:
-		return settings.IDE
-	case AgentKindInteractiveStory:
-		return settings.InteractiveStory
-	case AgentKindLoreEditor:
-		return settings.LoreEditor
-	case AgentKindTellerEditor:
-		return settings.TellerEditor
-	case AgentKindInteractiveState:
-		return settings.InteractiveState
-	case AgentKindInteractiveHotChoices:
-		return settings.InteractiveHotChoices
-	case AgentKindVersionSummary:
-		return settings.VersionSummary
-	case AgentKindToolAgent:
-		return settings.ToolAgent
-	case AgentKindAutomation:
-		return settings.Automation
-	default:
-		return AgentToolOverride{}
+	if definition, ok := LookupAgentKind(agentKind); ok && definition.ToolOverride != nil {
+		return definition.ToolOverride(settings)
 	}
+	return AgentToolOverride{}
 }
 
 func boolValue(v *bool, fallback bool) bool {

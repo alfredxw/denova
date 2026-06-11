@@ -77,7 +77,7 @@ func (s *Store) updateIndexBranchesLocked(storyID string, branches int, updatedA
 	return fmt.Errorf("故事不存在: %s", storyID)
 }
 
-func (s *Store) readStoryLocked(storyID string) (StoryMeta, []map[string]any, error) {
+func (s *Store) readStoryLocked(storyID string) (StoryMeta, []StoryEventRecord, error) {
 	file, err := os.Open(s.storyPath(storyID))
 	if err != nil {
 		return StoryMeta{}, nil, err
@@ -93,13 +93,16 @@ func (s *Store) readStoryLocked(storyID string) (StoryMeta, []map[string]any, er
 	if err := json.Unmarshal(scanner.Bytes(), &meta); err != nil {
 		return StoryMeta{}, nil, fmt.Errorf("解析故事元信息失败: %w", err)
 	}
-	var lines []map[string]any
+	if err := validateStoryMeta(meta); err != nil {
+		return StoryMeta{}, nil, fmt.Errorf("校验故事元信息失败: %w", err)
+	}
+	var lines []StoryEventRecord
 	for scanner.Scan() {
-		var raw map[string]any
-		if err := json.Unmarshal(scanner.Bytes(), &raw); err != nil {
+		record, err := decodeStoryEventRecord(scanner.Bytes())
+		if err != nil {
 			return StoryMeta{}, nil, fmt.Errorf("解析故事事件失败: %w", err)
 		}
-		lines = append(lines, raw)
+		lines = append(lines, record)
 	}
 	if err := scanner.Err(); err != nil {
 		return StoryMeta{}, nil, err
@@ -107,13 +110,26 @@ func (s *Store) readStoryLocked(storyID string) (StoryMeta, []map[string]any, er
 	return meta, lines, nil
 }
 
-func (s *Store) rewriteStoryLocked(storyID string, meta StoryMeta, events []map[string]any, newEvents ...any) error {
+func (s *Store) rewriteStoryLocked(storyID string, meta StoryMeta, events []StoryEventRecord, newEvents ...any) error {
+	if err := validateStoryMeta(meta); err != nil {
+		return err
+	}
 	lines := make([]any, 0, len(events)+len(newEvents)+1)
 	lines = append(lines, meta)
 	for _, event := range events {
-		lines = append(lines, event)
+		record, err := mapToStoryEventRecord(event.Raw)
+		if err != nil {
+			return err
+		}
+		lines = append(lines, record.Raw)
 	}
-	lines = append(lines, newEvents...)
+	for _, event := range newEvents {
+		record, err := storyEventRecordForWrite(event)
+		if err != nil {
+			return err
+		}
+		lines = append(lines, record.Raw)
+	}
 	return writeJSONL(s.storyPath(storyID), lines)
 }
 

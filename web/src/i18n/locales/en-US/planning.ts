@@ -1,0 +1,15 @@
+const planning = {
+  'planning.noChapters': 'No chapters under chapters/',
+  'planning.outline': 'Outline',
+  'planning.outlineEmpty': 'setting/outline.md has not been generated',
+  'planning.chapterPlans': 'Chapter Group Outlines',
+  'planning.chapterPlanCount': '{{count}} groups',
+  'planning.chapterPlanHistory': 'Older Groups',
+  'planning.chapterPlansEmpty': 'No outlines under setting/chapter-groups/',
+  'planning.volumeChapters': 'Volume Chapters',
+  'planning.unvolumed': 'Unvolumed',
+  'planning.loreDescription': '{{type}} · {{importance}} · {{loadMode}}{{tags}}{{brief}}',
+  'planning.loreBrief': ' · Brief: {{brief}}',
+} as const
+
+export default planning

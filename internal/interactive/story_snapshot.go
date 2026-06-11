@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[string]any) (Snapshot, error) {
+func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEventRecord) (Snapshot, error) {
 	if branchID == "" {
 		branchID = meta.CurrentBranch
 	}
@@ -19,15 +19,14 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[str
 	eventsByID := eventsByID(lines)
 	path, pathSet := eventPath(branch.Head, eventsByID)
 	turnVersions := buildTurnVersionIndex(lines)
-	for _, raw := range path {
-		eventType, _ := raw["type"].(string)
-		switch eventType {
-		case "turn":
+	for _, record := range path {
+		switch record.Envelope.Type {
+		case StoryEventTypeTurn:
 			var turn TurnEvent
-			if err := mapToStruct(raw, &turn); err != nil {
+			if err := mapToStruct(record.Raw, &turn); err != nil {
 				return Snapshot{}, err
 			}
-			versions := turnVersions[turnVersionKey(turn.BranchID, parentIDFromRaw(raw))]
+			versions := turnVersions[turnVersionKey(turn.BranchID, parentIDFromRaw(record.Raw))]
 			if len(versions) > 1 {
 				turn.Versions = versions
 				for index, version := range versions {
@@ -46,9 +45,9 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[str
 					applyStateOp(state, op)
 				}
 			}
-		case "state_delta":
+		case StoryEventTypeStateDelta:
 			var delta StateDeltaEvent
-			if err := mapToStruct(raw, &delta); err != nil {
+			if err := mapToStruct(record.Raw, &delta); err != nil {
 				return Snapshot{}, err
 			}
 			for _, op := range delta.Ops {
@@ -60,19 +59,19 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []map[str
 	return snapshot, nil
 }
 
-func buildTurnVersionIndex(lines []map[string]any) map[string][]TurnVersion {
+func buildTurnVersionIndex(lines []StoryEventRecord) map[string][]TurnVersion {
 	result := map[string][]TurnVersion{}
-	for _, raw := range lines {
-		if eventType, _ := raw["type"].(string); eventType != "turn" {
+	for _, record := range lines {
+		if record.Envelope.Type != StoryEventTypeTurn {
 			continue
 		}
-		id, _ := raw["id"].(string)
-		branchID, _ := raw["branch_id"].(string)
-		ts, _ := raw["ts"].(string)
+		id := record.Envelope.ID
+		branchID := record.Envelope.BranchID
+		ts := record.Envelope.Ts
 		if id == "" || branchID == "" {
 			continue
 		}
-		key := turnVersionKey(branchID, parentIDFromRaw(raw))
+		key := turnVersionKey(branchID, parentIDFromRaw(record.Raw))
 		result[key] = append(result[key], TurnVersion{TurnID: id, Ts: ts})
 	}
 	for key := range result {
@@ -143,20 +142,20 @@ func resolveBranch(meta StoryMeta, branchID string) (string, BranchMeta, error) 
 	return branchID, branch, nil
 }
 
-func latestHotChoicesForHead(lines []map[string]any, branchID, parentID string) (HotChoicesEvent, bool) {
+func latestHotChoicesForHead(lines []StoryEventRecord, branchID, parentID string) (HotChoicesEvent, bool) {
 	var latest HotChoicesEvent
-	for _, raw := range lines {
-		if eventType, _ := raw["type"].(string); eventType != "hot_choices" {
+	for _, record := range lines {
+		if record.Envelope.Type != StoryEventTypeHotChoices {
 			continue
 		}
-		if rawBranchID, _ := raw["branch_id"].(string); rawBranchID != branchID {
+		if record.Envelope.BranchID != branchID {
 			continue
 		}
-		if parentIDFromRaw(raw) != parentID {
+		if parentIDFromRaw(record.Raw) != parentID {
 			continue
 		}
 		var event HotChoicesEvent
-		if err := mapToStruct(raw, &event); err != nil {
+		if err := mapToStruct(record.Raw, &event); err != nil {
 			continue
 		}
 		event.Choices = normalizeChoiceListLimit(event.Choices, 10)
@@ -170,28 +169,27 @@ func latestHotChoicesForHead(lines []map[string]any, branchID, parentID string) 
 	return latest, latest.ID != ""
 }
 
-func eventsByID(lines []map[string]any) map[string]map[string]any {
-	events := make(map[string]map[string]any, len(lines))
-	for _, raw := range lines {
-		id, _ := raw["id"].(string)
-		if id != "" {
-			events[id] = raw
+func eventsByID(lines []StoryEventRecord) map[string]StoryEventRecord {
+	events := make(map[string]StoryEventRecord, len(lines))
+	for _, record := range lines {
+		if record.Envelope.ID != "" {
+			events[record.Envelope.ID] = record
 		}
 	}
 	return events
 }
 
-func eventPath(head string, events map[string]map[string]any) ([]map[string]any, map[string]bool) {
-	reversed := make([]map[string]any, 0)
+func eventPath(head string, events map[string]StoryEventRecord) ([]StoryEventRecord, map[string]bool) {
+	reversed := make([]StoryEventRecord, 0)
 	inPath := map[string]bool{}
 	for id := head; id != ""; {
-		raw, ok := events[id]
+		record, ok := events[id]
 		if !ok || inPath[id] {
 			break
 		}
-		reversed = append(reversed, raw)
+		reversed = append(reversed, record)
 		inPath[id] = true
-		id = parentIDFromRaw(raw)
+		id = parentIDFromRaw(record.Raw)
 	}
 	for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {
 		reversed[i], reversed[j] = reversed[j], reversed[i]
@@ -199,7 +197,7 @@ func eventPath(head string, events map[string]map[string]any) ([]map[string]any,
 	return reversed, inPath
 }
 
-func buildStoryGraph(meta StoryMeta, lines []map[string]any, events map[string]map[string]any, currentPath map[string]bool) StoryGraph {
+func buildStoryGraph(meta StoryMeta, lines []StoryEventRecord, events map[string]StoryEventRecord, currentPath map[string]bool) StoryGraph {
 	headTurns := map[string]bool{}
 	for _, branch := range meta.Branches {
 		if headTurn := nearestTurnAncestor(branch.Head, events); headTurn != "" {
@@ -207,15 +205,15 @@ func buildStoryGraph(meta StoryMeta, lines []map[string]any, events map[string]m
 		}
 	}
 	nodes := make([]PlotNode, 0)
-	for _, raw := range lines {
-		if eventType, _ := raw["type"].(string); eventType != "turn" {
+	for _, record := range lines {
+		if record.Envelope.Type != StoryEventTypeTurn {
 			continue
 		}
 		var turn TurnEvent
-		if err := mapToStruct(raw, &turn); err != nil {
+		if err := mapToStruct(record.Raw, &turn); err != nil {
 			continue
 		}
-		parentID := parentIDFromRaw(raw)
+		parentID := parentIDFromRaw(record.Raw)
 		if parentID != "" {
 			parentID = nearestTurnAncestor(parentID, events)
 		}
@@ -233,16 +231,16 @@ func buildStoryGraph(meta StoryMeta, lines []map[string]any, events map[string]m
 	return StoryGraph{Nodes: nodes, Branches: branchSummaries(meta)}
 }
 
-func nearestTurnAncestor(head string, events map[string]map[string]any) string {
+func nearestTurnAncestor(head string, events map[string]StoryEventRecord) string {
 	for id := head; id != ""; {
-		raw, ok := events[id]
+		record, ok := events[id]
 		if !ok {
 			return ""
 		}
-		if eventType, _ := raw["type"].(string); eventType == "turn" {
+		if record.Envelope.Type == StoryEventTypeTurn {
 			return id
 		}
-		id = parentIDFromRaw(raw)
+		id = parentIDFromRaw(record.Raw)
 	}
 	return ""
 }

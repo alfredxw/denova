@@ -1,0 +1,25 @@
+const home = {
+  'home.authorPlaceholder': 'Author (optional)',
+  'home.bookTitlePlaceholder': 'Book title (required)',
+  'home.close': 'Close Book Management',
+  'home.currentBook': 'Current Book',
+  'home.currentWorkspaceUnset': 'No workspace set',
+  'home.createBook': 'New Book',
+  'home.createError': 'Create failed',
+  'home.createIn': 'New book will be created in',
+  'home.descriptionPlaceholder': 'Description (optional)',
+  'home.editInfo': 'Edit Info',
+  'home.empty': 'No books found in the current Nova data directory',
+  'home.importCard': 'Import Tavern Card',
+  'home.importNovel': 'Import Existing Novel',
+  'home.novaDirLoading': 'Nova data directory loading...',
+  'home.bookshelf': 'Bookshelf',
+  'home.bookCount': '{{count}} books',
+  'home.startHint': 'Create or choose a book to start writing',
+  'home.title': 'Book Management',
+  'home.titleRequired': 'Book title is required',
+  'home.unnamedBook': 'Untitled Book',
+  'home.waitNovaDir': 'Nova data directory is not ready. Try again later.',
+} as const
+
+export default home

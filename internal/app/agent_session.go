@@ -10,15 +10,6 @@ import (
 	"nova/internal/session"
 )
 
-const (
-	loreAgentSessionID                  = "lore-agent"
-	tellerAgentSessionID                = "teller-agent"
-	interactiveStateAgentSessionID      = "interactive-state-agent"
-	interactiveHotChoicesAgentSessionID = "interactive-hot-choices-agent"
-	versionSummaryAgentSessionID        = "version-summary-agent"
-	toolAgentSessionID                  = "tool-agent"
-)
-
 func (a *App) persistAgentCall(agentKind, instruction, response string) {
 	a.mu.RLock()
 	store := a.sessionStore
@@ -94,20 +85,9 @@ func agentSessionFromStore(store *session.Store, agentKind string) (*session.Ses
 }
 
 func agentSessionID(agentKind string) (string, bool) {
-	switch agentKind {
-	case config.AgentKindLoreEditor:
-		return loreAgentSessionID, true
-	case config.AgentKindTellerEditor:
-		return tellerAgentSessionID, true
-	case config.AgentKindInteractiveState:
-		return interactiveStateAgentSessionID, true
-	case config.AgentKindInteractiveHotChoices:
-		return interactiveHotChoicesAgentSessionID, true
-	case config.AgentKindVersionSummary:
-		return versionSummaryAgentSessionID, true
-	case config.AgentKindToolAgent:
-		return toolAgentSessionID, true
-	default:
+	definition, ok := config.LookupAgentKind(agentKind)
+	if !ok || definition.SessionID == "" {
 		return "", false
 	}
+	return definition.SessionID, true
 }

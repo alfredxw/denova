@@ -1,63 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, Brain, Check, Clock, Database, FileText, FolderOpen, Globe2, ListChecks, MessageSquareText, PenLine, Save, ScrollText, Search, Settings2, Shield, Sparkles, Terminal, Wrench, X } from 'lucide-react'
+import { Bot, Brain, Check, FolderOpen, Save, ScrollText, Wrench, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
-import type { AgentModelOverride, AgentModelSettings, AgentPromptOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import type { AgentModelOverride, AgentPromptOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
 import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
-
-type AgentKey = keyof AgentModelSettings
-type VisibleAgentKey = Exclude<AgentKey, 'default'>
-type ToolKey = keyof AgentToolOverride
+import { AGENTS, FALLBACK_AGENT_TOOL_VALUES, TOOL_ROWS, resolveEffectiveTools } from './agent-registry'
+import type { AgentViewDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
 
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
-
-const AGENTS: Array<{
-  key: VisibleAgentKey
-  titleKey: string
-  subtitleKey: string
-  groupKey: string
-  capabilityMode: 'tools' | 'built_in' | 'model_only'
-  icon: ElementType
-}> = [
-  { key: 'ide', titleKey: 'agents.ide.title', subtitleKey: 'agents.ide.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'tools', icon: PenLine },
-  { key: 'lore_editor', titleKey: 'agents.loreEditor.title', subtitleKey: 'agents.loreEditor.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'tools', icon: Database },
-  { key: 'teller_editor', titleKey: 'agents.tellerEditor.title', subtitleKey: 'agents.tellerEditor.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'built_in', icon: Settings2 },
-  { key: 'interactive_story', titleKey: 'agents.interactiveStory.title', subtitleKey: 'agents.interactiveStory.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'tools', icon: MessageSquareText },
-  { key: 'interactive_state', titleKey: 'agents.interactiveState.title', subtitleKey: 'agents.interactiveState.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Shield },
-  { key: 'interactive_hot_choices', titleKey: 'agents.interactiveHotChoices.title', subtitleKey: 'agents.interactiveHotChoices.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Sparkles },
-  { key: 'version_summary', titleKey: 'agents.versionSummary.title', subtitleKey: 'agents.versionSummary.subtitle', groupKey: 'agents.group.version', capabilityMode: 'model_only', icon: ListChecks },
-  { key: 'tool_agent', titleKey: 'agents.toolAgent.title', subtitleKey: 'agents.toolAgent.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'model_only', icon: Wrench },
-  { key: 'automation', titleKey: 'agents.automation.title', subtitleKey: 'agents.automation.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'tools', icon: Clock },
-]
-
-const TOOL_ROWS: Array<{ key: ToolKey; titleKey: string; subtitleKey: string; icon: ElementType }> = [
-  { key: 'file_read', titleKey: 'agents.tool.fileRead.title', subtitleKey: 'agents.tool.fileRead.subtitle', icon: Search },
-  { key: 'web_search', titleKey: 'agents.tool.webSearch.title', subtitleKey: 'agents.tool.webSearch.subtitle', icon: Globe2 },
-  { key: 'file_write', titleKey: 'agents.tool.fileWrite.title', subtitleKey: 'agents.tool.fileWrite.subtitle', icon: FileText },
-  { key: 'shell_execute', titleKey: 'agents.tool.shellExecute.title', subtitleKey: 'agents.tool.shellExecute.subtitle', icon: Terminal },
-  { key: 'skills', titleKey: 'agents.tool.skills.title', subtitleKey: 'agents.tool.skills.subtitle', icon: FolderOpen },
-  { key: 'lore_read', titleKey: 'agents.tool.loreRead.title', subtitleKey: 'agents.tool.loreRead.subtitle', icon: Database },
-  { key: 'lore_write', titleKey: 'agents.tool.loreWrite.title', subtitleKey: 'agents.tool.loreWrite.subtitle', icon: Wrench },
-  { key: 'todo', titleKey: 'agents.tool.todo.title', subtitleKey: 'agents.tool.todo.subtitle', icon: ListChecks },
-]
-
-const BASE_TOOL_VALUES: Required<AgentToolOverride> = { file_read: true, web_search: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true }
-
-const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentToolOverride>> = {
-  ide: { file_read: true, web_search: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true },
-  interactive_story: { file_read: true, web_search: false, file_write: true, shell_execute: true, skills: false, lore_read: true, lore_write: false, todo: false },
-  lore_editor: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: false },
-  teller_editor: disabledTools(),
-  interactive_state: disabledTools(),
-  interactive_hot_choices: disabledTools(),
-  version_summary: disabledTools(),
-  tool_agent: disabledTools(),
-  automation: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true },
-}
 
 export function AgentsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
@@ -273,7 +227,7 @@ function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (a
   )
 }
 
-function AgentHeader({ agent }: { agent: (typeof AGENTS)[number] }) {
+function AgentHeader({ agent }: { agent: AgentViewDefinition }) {
   const { t } = useTranslation()
   const Icon = agent.icon
   return (
@@ -559,23 +513,6 @@ function builtInCapabilityRows(agent: VisibleAgentKey, t: (key: string) => strin
     ]
   }
   return []
-}
-
-function disabledTools(): Required<AgentToolOverride> {
-  return { file_read: false, web_search: false, file_write: false, shell_execute: false, skills: false, lore_read: false, lore_write: false, todo: false }
-}
-
-function resolveEffectiveTools(defaultTools: AgentToolOverride, tools: AgentToolOverride): Required<AgentToolOverride> {
-  return {
-    file_read: tools.file_read ?? defaultTools.file_read ?? BASE_TOOL_VALUES.file_read,
-    web_search: tools.web_search ?? defaultTools.web_search ?? BASE_TOOL_VALUES.web_search,
-    file_write: tools.file_write ?? defaultTools.file_write ?? BASE_TOOL_VALUES.file_write,
-    shell_execute: tools.shell_execute ?? defaultTools.shell_execute ?? BASE_TOOL_VALUES.shell_execute,
-    skills: tools.skills ?? defaultTools.skills ?? BASE_TOOL_VALUES.skills,
-    lore_read: tools.lore_read ?? defaultTools.lore_read ?? BASE_TOOL_VALUES.lore_read,
-    lore_write: tools.lore_write ?? defaultTools.lore_write ?? BASE_TOOL_VALUES.lore_write,
-    todo: tools.todo ?? defaultTools.todo ?? BASE_TOOL_VALUES.todo,
-  }
 }
 
 function hasTextOverride(value?: string) {

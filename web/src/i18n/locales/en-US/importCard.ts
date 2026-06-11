@@ -1,0 +1,25 @@
+const importCard = {
+  'importCard.title': 'Import Tavern Card',
+  'importCard.description': 'Choose a PNG or JSON character card, then import it into the current book or create a new book.',
+  'importCard.chooseFile': 'Choose File',
+  'importCard.noFile': 'No file selected',
+  'importCard.parsing': 'Parsing...',
+  'importCard.entryCount': '{{count}} world book entries',
+  'importCard.importCurrent': 'Import to This Book',
+  'importCard.importCurrentTitle': 'Import into the current book lore',
+  'importCard.noCurrentBookTitle': 'No book is open',
+  'importCard.importNewBook': 'Import as New Book',
+  'importCard.currentBook': 'Current book: ',
+  'importCard.newBookTitle': 'New book title',
+  'importCard.createIn': 'New book will be created in {{dir}}',
+  'importCard.novaDir': 'Nova data directory',
+  'importCard.import': 'Import',
+  'importCard.importing': 'Importing...',
+  'importCard.previewFailed': 'Failed to parse Tavern card',
+  'importCard.chooseFileFirst': 'Choose a Tavern card file first',
+  'importCard.noCurrentBookImportNew': 'No book is open. Choose "Import as New Book".',
+  'importCard.importSuccess': 'Imported Tavern card "{{name}}"',
+  'importCard.importFailed': 'Failed to import Tavern card',
+} as const
+
+export default importCard

@@ -32,7 +32,14 @@ func Build(ctx context.Context, cfg *config.Config, state *book.State, teller ID
 			return nil, err
 		}
 	}
-	return buildDeepAgent(ctx, cfg, config.AgentKindIDE, "NovaAgent", "AI 小说创作助手", BuildInstruction(cfg, state, teller), true, false, nil, loreTools, nil)
+	return buildDeepAgent(ctx, cfg, deepAgentSpec{
+		Kind:         config.AgentKindIDE,
+		Name:         "NovaAgent",
+		Description:  "AI 小说创作助手",
+		Instruction:  BuildInstruction(cfg, state, teller),
+		EnableSkills: true,
+		ExtraTools:   loreTools,
+	})
 }
 
 func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (adk.Agent, error) {
@@ -45,9 +52,16 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 			return nil, err
 		}
 	}
-	return buildDeepAgent(ctx, cfg, config.AgentKindInteractiveStory, "NovaInteractiveStoryAgent", "AI 互动故事叙事助手", BuildInteractiveStoryInstruction(cfg, state, teller), false, true, []adk.ChatModelAgentMiddleware{
-		newInteractiveStoryToolMiddleware(),
-	}, loreTools, interactiveMaxTokens(cfg))
+	return buildDeepAgent(ctx, cfg, deepAgentSpec{
+		Kind:              config.AgentKindInteractiveStory,
+		Name:              "NovaInteractiveStoryAgent",
+		Description:       "AI 互动故事叙事助手",
+		Instruction:       BuildInteractiveStoryInstruction(cfg, state, teller),
+		DisableWriteTodos: true,
+		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveStoryToolMiddleware()},
+		ExtraTools:        loreTools,
+		MaxTokens:         interactiveMaxTokens(cfg),
+	})
 }
 
 // BuildLoreAgent 构建资料库 Agent（deep agent + 文件系统工具 + Skill + 资料库工具）。
@@ -61,7 +75,15 @@ func BuildLoreAgent(ctx context.Context, cfg *config.Config, state *book.State) 
 			return nil, err
 		}
 	}
-	return buildDeepAgent(ctx, cfg, config.AgentKindLoreEditor, "NovaLoreAgent", "AI 资料库整理助手", BuildLoreAgentInstruction(cfg, state), true, true, nil, loreTools, nil)
+	return buildDeepAgent(ctx, cfg, deepAgentSpec{
+		Kind:              config.AgentKindLoreEditor,
+		Name:              "NovaLoreAgent",
+		Description:       "AI 资料库整理助手",
+		Instruction:       BuildLoreAgentInstruction(cfg, state),
+		EnableSkills:      true,
+		DisableWriteTodos: true,
+		ExtraTools:        loreTools,
+	})
 }
 
 // BuildAutomationAgent 构建后台自动化 Agent。工具权限由调用方按任务写入策略提前收敛到 cfg.AgentTools.Automation。
@@ -75,25 +97,32 @@ func BuildAutomationAgent(ctx context.Context, cfg *config.Config, state *book.S
 			return nil, err
 		}
 	}
-	return buildDeepAgent(ctx, cfg, config.AgentKindAutomation, "NovaAutomationAgent", "AI 自动化任务助手", BuildAutomationInstruction(cfg, state, task), true, false, nil, loreTools, nil)
+	return buildDeepAgent(ctx, cfg, deepAgentSpec{
+		Kind:         config.AgentKindAutomation,
+		Name:         "NovaAutomationAgent",
+		Description:  "AI 自动化任务助手",
+		Instruction:  BuildAutomationInstruction(cfg, state, task),
+		EnableSkills: true,
+		ExtraTools:   loreTools,
+	})
 }
 
-func buildDeepAgent(
-	ctx context.Context,
-	cfg *config.Config,
-	agentKind string,
-	name string,
-	description string,
-	instruction string,
-	enableSkills bool,
-	disableWriteTodos bool,
-	extraHandlers []adk.ChatModelAgentMiddleware,
-	extraTools []tool.BaseTool,
-	maxTokens *int,
-) (adk.Agent, error) {
-	modelCfg := chatModelConfigForAgent(cfg, agentKind)
-	modelCfg.MaxTokens = maxTokens
-	toolSettings := config.ResolveAgentTools(cfg, agentKind)
+type deepAgentSpec struct {
+	Kind              string
+	Name              string
+	Description       string
+	Instruction       string
+	EnableSkills      bool
+	DisableWriteTodos bool
+	ExtraHandlers     []adk.ChatModelAgentMiddleware
+	ExtraTools        []tool.BaseTool
+	MaxTokens         *int
+}
+
+func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec) (adk.Agent, error) {
+	modelCfg := chatModelConfigForAgent(cfg, spec.Kind)
+	modelCfg.MaxTokens = spec.MaxTokens
+	toolSettings := config.ResolveAgentTools(cfg, spec.Kind)
 	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建模型失败: %w", err)
@@ -112,21 +141,21 @@ func buildDeepAgent(
 	if filesystemHandler != nil {
 		handlers = append(handlers, filesystemHandler)
 	}
-	if enableSkills && toolSettings.Skills {
+	if spec.EnableSkills && toolSettings.Skills {
 		skillBackend := novaskills.NewBackend(novaskills.NewDirectories(cfg.SkillsDir, cfg.NovaDir, cfg.Workspace))
 		availableSkills, listErr := skillBackend.List(ctx)
 		if listErr != nil {
-			log.Printf("[agent] 加载 Skills 列表失败 agent=%s err=%v", agentKind, listErr)
+			log.Printf("[agent] 加载 Skills 列表失败 agent=%s err=%v", spec.Kind, listErr)
 		} else if len(availableSkills) > 0 {
 			skillMw, smErr := skill.NewMiddleware(ctx, &skill.Config{Backend: skillBackend})
 			if smErr != nil {
-				log.Printf("[agent] 创建 Skill middleware 失败 agent=%s err=%v", agentKind, smErr)
+				log.Printf("[agent] 创建 Skill middleware 失败 agent=%s err=%v", spec.Kind, smErr)
 			} else {
 				handlers = append(handlers, skillMw)
 			}
 		}
 	}
-	tools := append([]tool.BaseTool{}, extraTools...)
+	tools := append([]tool.BaseTool{}, spec.ExtraTools...)
 	if toolSettings.WebSearch {
 		webSearchTools, wsErr := newWebSearchTools(ctx)
 		if wsErr != nil {
@@ -134,15 +163,15 @@ func buildDeepAgent(
 		}
 		tools = append(tools, webSearchTools...)
 	}
-	handlers = append(handlers, extraHandlers...)
+	handlers = append(handlers, spec.ExtraHandlers...)
 	handlers = append(handlers, &safeToolMiddleware{})
 
 	return deep.New(ctx, &deep.Config{
-		Name:              name,
-		Description:       description,
+		Name:              spec.Name,
+		Description:       spec.Description,
 		ChatModel:         cm,
-		Instruction:       instruction,
-		WithoutWriteTodos: disableWriteTodos || !toolSettings.Todo,
+		Instruction:       spec.Instruction,
+		WithoutWriteTodos: spec.DisableWriteTodos || !toolSettings.Todo,
 		MaxIteration:      configMaxIteration(cfg),
 		Handlers:          handlers,
 		ToolsConfig: adk.ToolsConfig{

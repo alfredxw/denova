@@ -1,0 +1,25 @@
+const skills = {
+  'skills.title': 'Skills',
+  'skills.subtitle': 'Custom Agent workflows. Trigger them with /<skill-name> in Agents that support Skills',
+  'skills.error': 'Skills Error',
+  'skills.loading': 'Loading Skills...',
+  'skills.empty': 'No Skills yet. Create one on the left or ask the Agent to use skills-creator.',
+  'skills.unsaved': 'Unsaved',
+  'skills.shadowed': 'Overridden',
+  'skills.agent.button': 'Ask Agent',
+  'skills.agent.pathFallback': 'Generated after choosing a writable scope',
+  'skills.agent.prompt': 'Use the skills-creator skill to help me create or update "{{name}}". Target scope: {{scope}}; target file: {{path}}. First confirm the purpose, trigger conditions, context to gather, and output boundaries. When enough information is available, write SKILL.md in the .agent/skills format. After finishing, remind me that I can trigger it in the Writing Agent or other Skills-enabled agents with /{{name}}.',
+  'skills.create.title': 'New Skill',
+  'skills.create.invalidName': 'Skill names can only contain letters, numbers, underscores, or hyphens, and must start with a letter or number.',
+  'skills.create.namePlaceholder': 'skill-name',
+  'skills.create.descriptionPlaceholder': 'One-line use case description',
+  'skills.create.submit': 'Create SKILL.md',
+  'skills.scope.workspace': 'Workspace',
+  'skills.scope.user': 'User',
+  'skills.scope.builtin': 'Built-in',
+  'skills.scope.editable': 'Editable',
+  'skills.scope.readonly': 'Read only',
+  'skills.scope.empty': 'No Skills',
+} as const
+
+export default skills

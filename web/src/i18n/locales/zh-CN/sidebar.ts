@@ -1,0 +1,28 @@
+const sidebar = {
+  'sidebar.createFile': '新建文件',
+  'sidebar.createDir': '新建目录',
+  'sidebar.rename': '重命名',
+  'sidebar.copy': '复制',
+  'sidebar.move': '移动',
+  'sidebar.delete': '删除',
+  'sidebar.special.ideas': '灵感',
+  'sidebar.filePath': '文件路径',
+  'sidebar.dirPath': '目录路径',
+  'sidebar.newName': '新名称',
+  'sidebar.targetPath': '目标路径',
+  'sidebar.createFileDescription': '请输入相对 workspace 的文件路径。',
+  'sidebar.createDirDescription': '请输入相对 workspace 的目录路径。',
+  'sidebar.renameDescription': '请输入新名称，不包含路径分隔符。',
+  'sidebar.copyDescription': '请输入复制后的目标路径。',
+  'sidebar.moveDescription': '请输入移动后的目标路径。',
+  'sidebar.currentTarget': '当前目标：{{path}}',
+  'sidebar.confirmDeleteTitle': '确认删除？',
+  'sidebar.confirmDeleteOne': '将删除 {{path}}，文件会移入系统回收站。',
+  'sidebar.confirmDeleteMany': '将删除选中的 {{count}} 项，文件会移入系统回收站。',
+  'sidebar.referenceToChat': '引用到 Chat',
+  'sidebar.copySelected': '复制选中 {{count}} 项',
+  'sidebar.moveSelected': '移动选中 {{count}} 项',
+  'sidebar.deleteSelected': '删除选中 {{count}} 项',
+} as const
+
+export default sidebar

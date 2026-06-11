@@ -1,0 +1,25 @@
+const skills = {
+  'skills.title': 'Skills',
+  'skills.subtitle': '自定义 Agent 工作流，可在支持 Skills 的 Agent 中用 /<skill-name> 触发',
+  'skills.error': 'Skills 错误',
+  'skills.loading': '正在加载 Skills…',
+  'skills.empty': '暂无 Skills。可以在左侧新建，或让 Agent 使用 skills-creator 帮你创建。',
+  'skills.unsaved': '未保存',
+  'skills.shadowed': '已被覆盖',
+  'skills.agent.button': '让 Agent 创建',
+  'skills.agent.pathFallback': '选择一个可写 scope 后生成',
+  'skills.agent.prompt': '请使用 skills-creator skill，和我一起创建或更新 "{{name}}"。目标范围：{{scope}}；目标文件：{{path}}。请先确认用途、触发场景、需要收集的上下文和输出边界；信息足够时，按 .agent/skills 格式写入 SKILL.md。完成后提醒我可在创作 Agent 或其他支持 Skills 的 Agent 中使用 /{{name}} 触发。',
+  'skills.create.title': '新建 Skill',
+  'skills.create.invalidName': 'Skill 名称只能包含字母、数字、下划线或连字符，并且必须以字母或数字开头。',
+  'skills.create.namePlaceholder': 'skill-name',
+  'skills.create.descriptionPlaceholder': '一句话描述适用场景',
+  'skills.create.submit': '创建 SKILL.md',
+  'skills.scope.workspace': '工作区',
+  'skills.scope.user': '用户',
+  'skills.scope.builtin': '内置',
+  'skills.scope.editable': '可编辑',
+  'skills.scope.readonly': '只读',
+  'skills.scope.empty': '暂无 Skill',
+} as const
+
+export default skills

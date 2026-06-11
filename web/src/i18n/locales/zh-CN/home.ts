@@ -1,0 +1,25 @@
+const home = {
+  'home.authorPlaceholder': '作者（选填）',
+  'home.bookTitlePlaceholder': '书名（必填）',
+  'home.close': '关闭书籍管理',
+  'home.currentBook': '当前书籍',
+  'home.currentWorkspaceUnset': '未设置工作区',
+  'home.createBook': '新建书籍',
+  'home.createError': '创建失败',
+  'home.createIn': '新书将创建在',
+  'home.descriptionPlaceholder': '简介（选填）',
+  'home.editInfo': '编辑信息',
+  'home.empty': '当前 Nova 数据目录下还没有书籍',
+  'home.importCard': '导入酒馆角色卡',
+  'home.importNovel': '导入现有小说',
+  'home.novaDirLoading': 'Nova 数据目录加载中...',
+  'home.bookshelf': '书架',
+  'home.bookCount': '{{count}} 本书籍',
+  'home.startHint': '请新建或选择一本书开始写作',
+  'home.title': '书籍管理',
+  'home.titleRequired': '书名不能为空',
+  'home.unnamedBook': '未命名书籍',
+  'home.waitNovaDir': 'Nova 数据目录未就绪，请稍后重试',
+} as const
+
+export default home

@@ -1,0 +1,15 @@
+const planning = {
+  'planning.noChapters': 'chapters/ 下还没有章节',
+  'planning.outline': '大纲',
+  'planning.outlineEmpty': 'setting/outline.md 尚未生成',
+  'planning.chapterPlans': '章节组细纲',
+  'planning.chapterPlanCount': '{{count}} 组',
+  'planning.chapterPlanHistory': '历史章节组',
+  'planning.chapterPlansEmpty': 'setting/chapter-groups/ 下还没有细纲',
+  'planning.volumeChapters': '分卷章节',
+  'planning.unvolumed': '未分卷',
+  'planning.loreDescription': '{{type}} · {{importance}} · {{loadMode}}{{tags}}{{brief}}',
+  'planning.loreBrief': ' · 简介：{{brief}}',
+} as const
+
+export default planning

@@ -1,0 +1,25 @@
+const importCard = {
+  'importCard.title': '导入酒馆角色卡',
+  'importCard.description': '选择 PNG 或 JSON 角色卡，并决定写入当前书还是创建一本新书。',
+  'importCard.chooseFile': '选择文件',
+  'importCard.noFile': '未选择文件',
+  'importCard.parsing': '解析中...',
+  'importCard.entryCount': '{{count}} 个世界书条目',
+  'importCard.importCurrent': '导入到本书',
+  'importCard.importCurrentTitle': '导入到当前书籍资料库',
+  'importCard.noCurrentBookTitle': '当前没有打开的书籍',
+  'importCard.importNewBook': '导入成新书',
+  'importCard.currentBook': '当前书籍：',
+  'importCard.newBookTitle': '新书书名',
+  'importCard.createIn': '新书将创建在 {{dir}}',
+  'importCard.novaDir': 'Nova 数据目录',
+  'importCard.import': '导入',
+  'importCard.importing': '导入中...',
+  'importCard.previewFailed': '解析酒馆角色卡失败',
+  'importCard.chooseFileFirst': '请先选择酒馆角色卡文件',
+  'importCard.noCurrentBookImportNew': '当前没有打开的书籍，请选择“导入成新书”',
+  'importCard.importSuccess': '已导入酒馆角色卡「{{name}}」',
+  'importCard.importFailed': '导入酒馆角色卡失败',
+} as const
+
+export default importCard

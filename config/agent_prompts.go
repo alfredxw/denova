@@ -58,28 +58,10 @@ func mergeAgentPromptOverride(parent, child AgentPromptOverride) AgentPromptOver
 }
 
 func agentPromptOverrideFor(settings AgentPromptSettings, agentKind string) AgentPromptOverride {
-	switch agentKind {
-	case AgentKindIDE:
-		return settings.IDE
-	case AgentKindInteractiveStory:
-		return settings.InteractiveStory
-	case AgentKindLoreEditor:
-		return settings.LoreEditor
-	case AgentKindTellerEditor:
-		return settings.TellerEditor
-	case AgentKindInteractiveState:
-		return settings.InteractiveState
-	case AgentKindInteractiveHotChoices:
-		return settings.InteractiveHotChoices
-	case AgentKindVersionSummary:
-		return settings.VersionSummary
-	case AgentKindToolAgent:
-		return settings.ToolAgent
-	case AgentKindAutomation:
-		return settings.Automation
-	default:
-		return AgentPromptOverride{}
+	if definition, ok := LookupAgentKind(agentKind); ok && definition.PromptOverride != nil {
+		return definition.PromptOverride(settings)
 	}
+	return AgentPromptOverride{}
 }
 
 func sanitizeAgentPromptSettings(settings AgentPromptSettings) AgentPromptSettings {

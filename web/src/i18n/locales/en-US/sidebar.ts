@@ -1,0 +1,28 @@
+const sidebar = {
+  'sidebar.createFile': 'New File',
+  'sidebar.createDir': 'New Folder',
+  'sidebar.rename': 'Rename',
+  'sidebar.copy': 'Copy',
+  'sidebar.move': 'Move',
+  'sidebar.delete': 'Delete',
+  'sidebar.special.ideas': 'Ideas',
+  'sidebar.filePath': 'File Path',
+  'sidebar.dirPath': 'Folder Path',
+  'sidebar.newName': 'New Name',
+  'sidebar.targetPath': 'Target Path',
+  'sidebar.createFileDescription': 'Enter a file path relative to the workspace.',
+  'sidebar.createDirDescription': 'Enter a folder path relative to the workspace.',
+  'sidebar.renameDescription': 'Enter a new name without path separators.',
+  'sidebar.copyDescription': 'Enter the destination path for the copy.',
+  'sidebar.moveDescription': 'Enter the destination path for the move.',
+  'sidebar.currentTarget': 'Current target: {{path}}',
+  'sidebar.confirmDeleteTitle': 'Confirm Delete?',
+  'sidebar.confirmDeleteOne': 'Delete {{path}}. The file will be moved to the system trash.',
+  'sidebar.confirmDeleteMany': 'Delete the selected {{count}} item(s). Files will be moved to the system trash.',
+  'sidebar.referenceToChat': 'Reference in Chat',
+  'sidebar.copySelected': 'Copy {{count}} Selected',
+  'sidebar.moveSelected': 'Move {{count}} Selected',
+  'sidebar.deleteSelected': 'Delete {{count}} Selected',
+} as const
+
+export default sidebar
