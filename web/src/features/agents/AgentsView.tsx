@@ -5,9 +5,11 @@ import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
-import type { AgentModelOverride, AgentPromptOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import type { AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
 import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
-import { AGENTS, FALLBACK_AGENT_TOOL_VALUES, TOOL_ROWS, resolveEffectiveTools } from './agent-registry'
+import { getSkills } from '@/lib/api'
+import type { SkillSummary } from '@/lib/api'
+import { AGENTS, FALLBACK_AGENT_TOOL_VALUES, TOOL_ROWS, resolveEffectiveTools, skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
 import type { AgentViewDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
 
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
@@ -19,6 +21,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const [activeLayer, setActiveLayer] = useState<SettingsLayer>('workspace')
   const [activeAgent, setActiveAgent] = useState<VisibleAgentKey>('ide')
   const [draft, setDraft] = useState<Settings>({})
+  const [skills, setSkills] = useState<SkillSummary[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -35,6 +38,25 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   useEffect(() => { void load() }, [load])
 
   useEffect(() => {
+    let cancelled = false
+    const loadSkills = () => {
+      getSkills()
+        .then((snapshot) => {
+          if (!cancelled) setSkills(snapshot.skills.filter((skill) => skill.active))
+        })
+        .catch((error) => {
+          if (!cancelled) console.warn('[agents] load skills failed', error)
+        })
+    }
+    loadSkills()
+    window.addEventListener('nova:skills-updated', loadSkills)
+    return () => {
+      cancelled = true
+      window.removeEventListener('nova:skills-updated', loadSkills)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!layered) return
     setDraft(settingsForLayer(layered, activeLayer))
   }, [activeLayer, layered])
@@ -49,6 +71,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const toolValue = draft.agent_tools?.[activeAgent] ?? {}
   const inheritedTools = effective.agent_tools?.[activeAgent] ?? FALLBACK_AGENT_TOOL_VALUES[activeAgent]
   const effectiveTools = resolveEffectiveTools(effective.agent_tools?.default ?? {}, inheritedTools)
+  const skillValue = draft.agent_skills?.[activeAgent] ?? {}
 
   const saveDraft = useCallback(async (settings: Settings) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
@@ -103,6 +126,20 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
         [activeAgent]: { ...(current.agent_prompts?.[activeAgent] ?? {}), ...patch },
       },
     }))
+  }
+
+  const setAgentSkill = (name: string, value: boolean | null) => {
+    setDraft((current) => {
+      const nextAgentSkills = { ...(current.agent_skills ?? {}) }
+      const nextOverrides: AgentSkillOverride = { ...(nextAgentSkills[activeAgent] ?? {}) }
+      if (value === null) {
+        delete nextOverrides[name]
+      } else {
+        nextOverrides[name] = value
+      }
+      nextAgentSkills[activeAgent] = nextOverrides
+      return { ...current, agent_skills: nextAgentSkills }
+    })
   }
 
   useAutoSaveSettings({
@@ -170,11 +207,22 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
               onChange={setAgentPrompt}
             />
             {selected.capabilityMode === 'tools' ? (
-              <AgentToolSection
-                value={toolValue}
-                effective={effectiveTools}
-                onChange={setAgentTool}
-              />
+              <>
+                <AgentToolSection
+                  value={toolValue}
+                  effective={effectiveTools}
+                  onChange={setAgentTool}
+                />
+                {effectiveTools.skills && (
+                  <AgentSkillSection
+                    agent={activeAgent}
+                    skills={skills}
+                    value={skillValue}
+                    effective={effective.agent_skills}
+                    onChange={setAgentSkill}
+                  />
+                )}
+              </>
             ) : selected.capabilityMode === 'built_in' ? (
               <AgentBuiltInCapabilitySection agent={selected.key} />
             ) : (
@@ -368,6 +416,65 @@ function AgentToolSection({ value, effective, onChange }: {
             </div>
           )
         })}
+      </div>
+    </section>
+  )
+}
+
+function AgentSkillSection({ agent, skills, value, effective, onChange }: {
+  agent: VisibleAgentKey
+  skills: SkillSummary[]
+  value: AgentSkillOverride
+  effective: Settings['agent_skills']
+  onChange: (name: string, value: boolean | null) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
+      <SectionTitle icon={FolderOpen} title={t('agents.section.skills')} />
+      {skills.length === 0 ? (
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-3 text-[11px] text-[var(--nova-text-faint)]">
+          {t('agents.skills.empty')}
+        </div>
+      ) : (
+        <div className="grid gap-2 lg:grid-cols-2">
+          {skills.map((skill) => {
+            const explicit = value[skill.name]
+            const inherited = explicit === undefined
+            const current = inherited ? skillAvailableForAgent(skill, agent, effective) : explicit
+            const defaultAvailable = skillAgentFieldMatches(skill.agent, agent)
+            return (
+              <div key={`${skill.scope}:${skill.name}`} className="flex min-h-16 items-center gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
+                <FolderOpen className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate font-mono font-medium">/{skill.name}</span>
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${current ? 'bg-[#2f9e44]/20 text-[#b2f2bb]' : 'bg-[#7f1d1d]/25 text-[#fecaca]'}`}>
+                      {current ? t('agents.skills.available') : t('agents.skills.unavailable')}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]" title={skill.description}>{skill.description}</div>
+                  <div className="mt-0.5 truncate text-[10px] text-[var(--nova-text-faint)]">
+                    {defaultAvailable ? t('agents.skills.defaultAvailable') : t('agents.skills.defaultUnavailable')}
+                    {skill.agent ? ` · ${skill.agent}` : ''}
+                  </div>
+                </div>
+                <select
+                  value={inherited ? '' : String(explicit)}
+                  onChange={(event) => onChange(skill.name, event.target.value === '' ? null : event.target.value === 'true')}
+                  className={`${fieldCls} max-w-32 shrink-0`}
+                >
+                  <option value="">{t('agents.option.inherit')}</option>
+                  <option value="true">{t('agents.option.on')}</option>
+                  <option value="false">{t('agents.option.off')}</option>
+                </select>
+              </div>
+            )
+          })}
+        </div>
+      )}
+      <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+        {t('agents.skills.note')}
       </div>
     </section>
   )

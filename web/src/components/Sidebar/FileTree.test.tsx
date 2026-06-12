@@ -4,7 +4,7 @@ import { FileTree } from './FileTree'
 import type { FileNode } from '@/hooks/useWorkspace'
 
 describe('FileTree', () => {
-  it('shows the root ideas file as localized inspiration label', () => {
+  it('shows original file names without localized aliases', () => {
     const nodes: FileNode[] = [
       { name: 'ideas.md', type: 'file' },
       { name: 'CREATOR.md', type: 'file' },
@@ -18,8 +18,8 @@ describe('FileTree', () => {
       />,
     )
 
-    expect(screen.getByText('灵感')).toBeInTheDocument()
-    expect(screen.queryByText('ideas.md')).not.toBeInTheDocument()
+    expect(screen.getByText('ideas.md')).toBeInTheDocument()
+    expect(screen.queryByText('灵感')).not.toBeInTheDocument()
     expect(screen.getByText('CREATOR.md')).toBeInTheDocument()
   })
 
@@ -47,11 +47,11 @@ describe('FileTree', () => {
 
     const order = [
       '序章.md',
-      '第一章 开局.md',
-      '第十章 交锋.md',
-      '第十一章 潮声.md',
-      '第一百一十一章 归途.md',
-      '第一千一百一十一章 终局.md',
+      '第一章-开局.md',
+      '第十章-交锋.md',
+      '第十一章-潮声.md',
+      '第一百一十一章-归途.md',
+      '第一千一百一十一章-终局.md',
     ]
     const elements = order.map((name) => screen.getByText(name))
     for (let i = 0; i < elements.length - 1; i += 1) {
@@ -59,7 +59,7 @@ describe('FileTree', () => {
     }
   })
 
-  it('sorts by hidden prefixes and hides them in labels', () => {
+  it('sorts by hidden prefixes while keeping original labels', () => {
     const nodes: FileNode[] = [{
       name: 'chapters',
       type: 'dir',
@@ -82,10 +82,9 @@ describe('FileTree', () => {
       />,
     )
 
-    expect(screen.queryByText('v00001-第一卷-风起')).not.toBeInTheDocument()
-    expect(screen.getByText('第一卷 风起')).toBeInTheDocument()
+    expect(screen.getByText('v00001-第一卷-风起')).toBeInTheDocument()
 
-    const order = ['序章.md', '第一章 开局.md', '第十章 交锋.md', '第一百一十一章 归途.md']
+    const order = ['ch00001-序章.md', 'ch00002-第一章-开局.md', 'ch00011-第十章-交锋.md', 'ch00111-第一百一十一章-归途.md']
     const elements = order.map((name) => screen.getByText(name))
     for (let i = 0; i < elements.length - 1; i += 1) {
       expect(elements[i].compareDocumentPosition(elements[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

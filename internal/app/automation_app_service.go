@@ -21,6 +21,11 @@ type AutomationAppService struct {
 	app *App
 }
 
+type automationRunState struct {
+	Run    automation.RunRecord
+	TaskID string
+}
+
 func (a *App) StartAutomationScheduler(ctx context.Context) {
 	go func() {
 		defer func() {
@@ -93,15 +98,190 @@ func (s *AutomationAppService) Run(ctx context.Context, id, trigger string) (res
 	if err != nil {
 		return automation.RunResult{}, err
 	}
-	run := automation.RunRecord{
-		ID:        automation.NewRunID(),
-		TaskID:    task.ID,
-		Scope:     task.Scope,
-		Workspace: s.workspace(),
-		Trigger:   normalizeAutomationTrigger(trigger),
-		Status:    automation.RunStatusRunning,
-		StartedAt: time.Now().UTC(),
+	run := s.newRunRecord(task, trigger)
+	conversation := &automationConversation{}
+	return s.runAutomation(ctx, task, run, conversation, nil)
+}
+
+func (a *App) StartAutomationTask(ctx context.Context, id, trigger string) (*Task, automation.RunRecord, error) {
+	return a.automation().StartTask(ctx, id, trigger)
+}
+
+func (s *AutomationAppService) StartTask(ctx context.Context, id, trigger string) (*Task, automation.RunRecord, error) {
+	taskDef, err := s.store().Get(id)
+	if err != nil {
+		return nil, automation.RunRecord{}, err
 	}
+	if active, run, ok := s.activeTaskForAutomation(taskDef.ID); ok {
+		log.Printf("[automation] attach active run task_id=%s run_id=%s status=%s", taskDef.ID, run.ID, active.Status())
+		return active, run, nil
+	}
+
+	run := s.newRunRecord(taskDef, trigger)
+	conversation, err := s.newRunConversation(run, taskDef)
+	if err != nil {
+		return nil, automation.RunRecord{}, err
+	}
+
+	task := NewTask(func(taskCtx context.Context, task *Task, emit func(agent.Event)) {
+		emit(agent.Event{Type: "automation_run", Data: run})
+		result, _ := s.runAutomation(taskCtx, taskDef, run, conversation, emit)
+		if result.Run.ID != "" {
+			emit(agent.Event{Type: "automation_run", Data: result.Run})
+		}
+		s.clearActiveAutomationTask(taskDef.ID, run.ID)
+	})
+	s.setActiveAutomationTask(taskDef.ID, run.ID, task, run)
+	return task, run, nil
+}
+
+func (a *App) ContinueAutomationRun(ctx context.Context, runID, message string) (*Task, automation.RunRecord, error) {
+	return a.automation().ContinueRun(ctx, runID, message)
+}
+
+func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, message string) (*Task, automation.RunRecord, error) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return nil, automation.RunRecord{}, fmt.Errorf("message is required")
+	}
+	if active, run, ok := s.ActiveAutomationTaskByRunID(runID); ok {
+		log.Printf("[automation] attach active follow-up run_id=%s status=%s", runID, active.Status())
+		return active, run, nil
+	}
+	run, err := s.automationRunByID(runID)
+	if err != nil {
+		return nil, automation.RunRecord{}, err
+	}
+	if strings.TrimSpace(run.SessionID) == "" {
+		return nil, automation.RunRecord{}, fmt.Errorf("automation run %s has no session history", runID)
+	}
+	taskDef, err := s.store().Get(run.TaskID)
+	if err != nil {
+		return nil, automation.RunRecord{}, err
+	}
+	conversation, err := s.newRunConversation(run, taskDef)
+	if err != nil {
+		return nil, automation.RunRecord{}, err
+	}
+	activeRun := run
+	activeRun.Status = automation.RunStatusRunning
+	activeRun.Error = ""
+	task := NewTask(func(taskCtx context.Context, task *Task, emit func(agent.Event)) {
+		emit(agent.Event{Type: "automation_run", Data: activeRun})
+		s.runAutomationFollowUp(taskCtx, taskDef, activeRun, conversation, message, emit)
+		finalRun := run
+		if taskCtx.Err() != nil {
+			finalRun.Status = automation.RunStatusAborted
+			finalRun.Error = taskCtx.Err().Error()
+		}
+		emit(agent.Event{Type: "automation_run", Data: finalRun})
+		s.clearActiveAutomationTask(taskDef.ID, run.ID)
+	})
+	s.setActiveAutomationTask(taskDef.ID, run.ID, task, activeRun)
+	return task, activeRun, nil
+}
+
+func (s *AutomationAppService) ActiveAutomationRuns() []automation.ActiveRun {
+	s.app.mu.RLock()
+	defer s.app.mu.RUnlock()
+	result := make([]automation.ActiveRun, 0, len(s.app.activeAutomationRuns))
+	for _, state := range s.app.activeAutomationRuns {
+		task := s.app.activeAutomationTasks[state.TaskID]
+		if task == nil || task.Status() != TaskRunning {
+			continue
+		}
+		result = append(result, automation.ActiveRun{Run: state.Run, TaskID: state.TaskID})
+	}
+	return result
+}
+
+func (a *App) ActiveAutomationRuns() []automation.ActiveRun {
+	return a.automation().ActiveAutomationRuns()
+}
+
+func (s *AutomationAppService) ActiveAutomationTaskByRunID(runID string) (*Task, automation.RunRecord, bool) {
+	s.app.mu.RLock()
+	defer s.app.mu.RUnlock()
+	if s.app.activeAutomationRuns == nil {
+		return nil, automation.RunRecord{}, false
+	}
+	state, ok := s.app.activeAutomationRuns[runID]
+	if !ok {
+		return nil, automation.RunRecord{}, false
+	}
+	task := s.app.activeAutomationTasks[state.TaskID]
+	if task == nil || task.Status() != TaskRunning {
+		return nil, automation.RunRecord{}, false
+	}
+	return task, state.Run, true
+}
+
+func (a *App) ActiveAutomationTaskByRunID(runID string) (*Task, automation.RunRecord, bool) {
+	return a.automation().ActiveAutomationTaskByRunID(runID)
+}
+
+func (s *AutomationAppService) AbortAutomationRun(runID string) bool {
+	task, _, ok := s.ActiveAutomationTaskByRunID(runID)
+	if !ok {
+		return false
+	}
+	task.Abort()
+	return true
+}
+
+func (a *App) AbortAutomationRun(runID string) bool {
+	return a.automation().AbortAutomationRun(runID)
+}
+
+func (s *AutomationAppService) AutomationRunMessages(runID string) ([]session.HistoryEntry, error) {
+	run, err := s.automationRunByID(runID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(run.SessionID) == "" {
+		return nil, fmt.Errorf("automation run %s has no session history", runID)
+	}
+	s.app.mu.RLock()
+	store := s.app.sessionStore
+	s.app.mu.RUnlock()
+	if store == nil {
+		return nil, ErrNoWorkspace
+	}
+	sess, err := store.Get(run.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	return sess.History(), nil
+}
+
+func (a *App) AutomationRunMessages(sessionID string) ([]session.HistoryEntry, error) {
+	return a.automation().AutomationRunMessages(sessionID)
+}
+
+func (s *AutomationAppService) automationRunByID(runID string) (automation.RunRecord, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return automation.RunRecord{}, fmt.Errorf("run_id is required")
+	}
+	if _, run, ok := s.ActiveAutomationTaskByRunID(runID); ok {
+		return run, nil
+	}
+	tasks, err := s.List()
+	if err != nil {
+		return automation.RunRecord{}, err
+	}
+	for _, task := range tasks {
+		for _, run := range task.RecentRuns {
+			if run.ID == runID {
+				return run, nil
+			}
+		}
+	}
+	return automation.RunRecord{}, fmt.Errorf("automation run %s not found", runID)
+}
+
+func (s *AutomationAppService) runAutomation(ctx context.Context, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, emit func(agent.Event)) (result automation.RunResult, err error) {
+	errorForwarded := false
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			err = fmt.Errorf("automation panic recovered: %v", recovered)
@@ -113,6 +293,9 @@ func (s *AutomationAppService) Run(ctx context.Context, id, trigger string) (res
 			run.FinishedAt = time.Now().UTC()
 			if updated, appendErr := s.store().AppendRun(task.ID, run); appendErr == nil {
 				result = automation.RunResult{Task: updated, Run: run}
+			}
+			if emit != nil && !errorForwarded {
+				emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 			}
 		}
 	}()
@@ -135,21 +318,37 @@ func (s *AutomationAppService) Run(ctx context.Context, id, trigger string) (res
 		err = buildErr
 		return result, err
 	}
-	conversation := &automationConversation{}
 	var runError string
-	emit := func(ev agent.Event) {
+	forward := func(ev agent.Event) {
 		switch ev.Type {
 		case "error":
 			runError = eventMessage(ev.Data)
+			errorForwarded = true
 		case "tool_call":
 			log.Printf("[automation] tool call task_id=%s data=%v", task.ID, ev.Data)
 		case "tool_result":
 			log.Printf("[automation] tool result task_id=%s data=%v", task.ID, ev.Data)
 		}
+		if emit != nil {
+			emit(ev)
+		}
 	}
 	s.app.ChatService().Run(ctx, runner, conversation, s.app.BookService(), agent.ChatRequest{
 		Message: buildAutomationUserMessage(task, run),
-	}, emit)
+	}, forward)
+	if ctx.Err() != nil {
+		output := conversation.Output()
+		run.Summary = strings.TrimSpace(output)
+		run.Status = automation.RunStatusAborted
+		run.Error = ctx.Err().Error()
+		run.FinishedAt = time.Now().UTC()
+		updated, appendErr := s.store().AppendRun(task.ID, run)
+		if appendErr != nil {
+			return automation.RunResult{}, appendErr
+		}
+		log.Printf("[automation] run aborted task_id=%s scope=%s workspace=%q trigger=%s", task.ID, task.Scope, run.Workspace, run.Trigger)
+		return automation.RunResult{Task: updated, Run: run}, nil
+	}
 	if runError != "" {
 		err = fmt.Errorf("%s", runError)
 		return result, err
@@ -175,6 +374,36 @@ func (s *AutomationAppService) Run(ctx context.Context, id, trigger string) (res
 	return automation.RunResult{Task: updated, Run: run}, nil
 }
 
+func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, message string, emit func(agent.Event)) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("[automation] follow-up panic recovered task_id=%s run_id=%s err=%v", task.ID, run.ID, recovered)
+			emit(agent.Event{Type: "error", Data: map[string]string{"message": fmt.Sprintf("automation follow-up panic recovered: %v", recovered)}})
+		}
+	}()
+	log.Printf("[automation] follow-up begin task_id=%s run_id=%s message_len=%d", task.ID, run.ID, len(message))
+	runtimeCfg := s.runtimeConfig()
+	runtimeCfg = constrainAutomationTools(runtimeCfg, task.WritePolicy)
+	taskInstruction := agent.AutomationTaskInstruction{
+		Name:         task.Name,
+		Template:     task.Template,
+		Prompt:       task.Prompt,
+		WritePolicy:  task.WritePolicy,
+		OutputPolicy: task.OutputPolicy,
+		OutputPath:   task.OutputPath,
+		Workspace:    run.Workspace,
+	}
+	runner, err := buildAutomationAgentRunner(ctx, &runtimeCfg, s.bookState(), taskInstruction)
+	if err != nil {
+		emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+		return
+	}
+	s.app.ChatService().Run(ctx, runner, conversation, s.app.BookService(), agent.ChatRequest{
+		Message: message,
+	}, emit)
+	log.Printf("[automation] follow-up end task_id=%s run_id=%s", task.ID, run.ID)
+}
+
 func (a *App) RunDueAutomations(ctx context.Context, now time.Time) []automation.RunResult {
 	return a.automation().RunDue(ctx, now)
 }
@@ -190,11 +419,12 @@ func (s *AutomationAppService) RunDue(ctx context.Context, now time.Time) []auto
 		if !automation.Due(now, task) {
 			continue
 		}
-		result, err := s.Run(ctx, task.ID, automation.TriggerSchedule)
+		_, run, err := s.StartTask(ctx, task.ID, automation.TriggerSchedule)
 		if err != nil {
 			log.Printf("[automation] due task failed task_id=%s scope=%s workspace=%q err=%v", task.ID, task.Scope, s.workspace(), err)
+			continue
 		}
-		results = append(results, result)
+		results = append(results, automation.RunResult{Task: task, Run: run})
 	}
 	return results
 }
@@ -223,6 +453,96 @@ func (s *AutomationAppService) bookState() *book.State {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.bookState
+}
+
+func (s *AutomationAppService) newRunRecord(task automation.Task, trigger string) automation.RunRecord {
+	run := automation.RunRecord{
+		ID:        automation.NewRunID(),
+		TaskID:    task.ID,
+		Scope:     task.Scope,
+		Workspace: s.workspace(),
+		Trigger:   normalizeAutomationTrigger(trigger),
+		Status:    automation.RunStatusRunning,
+		StartedAt: time.Now().UTC(),
+	}
+	run.SessionID = automationRunSessionID(run.ID)
+	return run
+}
+
+func (s *AutomationAppService) newRunConversation(run automation.RunRecord, task automation.Task) (*automationRunConversation, error) {
+	s.app.mu.RLock()
+	store := s.app.sessionStore
+	s.app.mu.RUnlock()
+	if store == nil {
+		return nil, ErrNoWorkspace
+	}
+	sess, err := store.GetOrCreate(run.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	title := fmt.Sprintf("%s · %s · %s", strings.TrimSpace(task.Name), run.Trigger, run.StartedAt.Local().Format("2006-01-02 15:04"))
+	if strings.TrimSpace(task.Name) == "" {
+		title = fmt.Sprintf("Automation · %s · %s", run.Trigger, run.StartedAt.Local().Format("2006-01-02 15:04"))
+	}
+	if err := sess.Rename(title); err != nil {
+		return nil, err
+	}
+	return &automationRunConversation{base: agent.NewSessionConversation(sess)}, nil
+}
+
+func (s *AutomationAppService) activeTaskForAutomation(taskID string) (*Task, automation.RunRecord, bool) {
+	s.app.mu.RLock()
+	defer s.app.mu.RUnlock()
+	if s.app.activeAutomationTasks == nil {
+		return nil, automation.RunRecord{}, false
+	}
+	task := s.app.activeAutomationTasks[taskID]
+	if task == nil || task.Status() != TaskRunning {
+		return nil, automation.RunRecord{}, false
+	}
+	for _, state := range s.app.activeAutomationRuns {
+		if state.TaskID == taskID {
+			return task, state.Run, true
+		}
+	}
+	return nil, automation.RunRecord{}, false
+}
+
+func (s *AutomationAppService) setActiveAutomationTask(taskID, runID string, task *Task, run automation.RunRecord) {
+	s.app.mu.Lock()
+	defer s.app.mu.Unlock()
+	if s.app.activeAutomationTasks == nil {
+		s.app.activeAutomationTasks = make(map[string]*Task)
+	}
+	if s.app.activeAutomationRuns == nil {
+		s.app.activeAutomationRuns = make(map[string]automationRunState)
+	}
+	s.app.activeAutomationTasks[taskID] = task
+	s.app.activeAutomationRuns[runID] = automationRunState{Run: run, TaskID: taskID}
+}
+
+func (s *AutomationAppService) clearActiveAutomationTask(taskID, runID string) {
+	s.app.mu.Lock()
+	defer s.app.mu.Unlock()
+	if s.app.activeAutomationTasks != nil {
+		delete(s.app.activeAutomationTasks, taskID)
+	}
+	if s.app.activeAutomationRuns != nil {
+		delete(s.app.activeAutomationRuns, runID)
+	}
+}
+
+func automationRunSessionID(runID string) string {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		runID = automation.NewRunID()
+	}
+	return "automation-run-" + runID
+}
+
+type automationOutputConversation interface {
+	agent.Conversation
+	Output() string
 }
 
 type automationConversation struct {
@@ -256,6 +576,60 @@ func (c *automationConversation) ResolveInterruption(string) error {
 }
 
 func (c *automationConversation) Output() string {
+	if c == nil {
+		return ""
+	}
+	return strings.TrimSpace(c.output)
+}
+
+type automationRunConversation struct {
+	base   *agent.SessionConversation
+	output string
+}
+
+func (c *automationRunConversation) PrepareMessages(originalMessage, agentMessage string) ([]*schema.Message, error) {
+	return c.base.PrepareMessages(originalMessage, agentMessage)
+}
+
+func (c *automationRunConversation) AppendAssistant(content string) error {
+	c.output = content
+	return c.base.AppendAssistant(content)
+}
+
+func (c *automationRunConversation) AppendAssistantWithThinking(content, _ string) error {
+	c.output = content
+	return c.base.AppendAssistant(content)
+}
+
+func (c *automationRunConversation) AppendDisplayEvent(event session.DisplayEvent) error {
+	return c.base.AppendDisplayEvent(event)
+}
+
+func (c *automationRunConversation) UpdateDisplayToolStatus(id, name, status string) error {
+	return c.base.UpdateDisplayToolStatus(id, name, status)
+}
+
+func (c *automationRunConversation) AppendDisplayToolArgs(id, name, delta string) error {
+	return c.base.AppendDisplayToolArgs(id, name, delta)
+}
+
+func (c *automationRunConversation) UpdateDisplayToolResult(id, name, status, result string) error {
+	return c.base.UpdateDisplayToolResult(id, name, status, result)
+}
+
+func (c *automationRunConversation) MarkInterrupted(userMessage, assistantContent, reason string) error {
+	return c.base.MarkInterrupted(userMessage, assistantContent, reason)
+}
+
+func (c *automationRunConversation) PendingInterruption() *session.Interruption {
+	return c.base.PendingInterruption()
+}
+
+func (c *automationRunConversation) ResolveInterruption(id string) error {
+	return c.base.ResolveInterruption(id)
+}
+
+func (c *automationRunConversation) Output() string {
 	if c == nil {
 		return ""
 	}

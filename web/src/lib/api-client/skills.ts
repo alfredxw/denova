@@ -19,11 +19,11 @@ export async function getSkillDocument(scope: SkillScope, name: string): Promise
   return requestJSON(`/api/skills/document?${query.toString()}`)
 }
 
-export async function createSkill(scope: SkillScope, name: string, description = ''): Promise<SkillDocument> {
+export async function createSkill(scope: SkillScope, name: string, description = '', agents: string[] = []): Promise<SkillDocument> {
   return requestJSON('/api/skills', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ scope, name, description }),
+    body: JSON.stringify({ scope, name, description, agents }),
   })
 }
 

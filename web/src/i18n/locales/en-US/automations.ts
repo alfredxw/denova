@@ -6,10 +6,13 @@ const automations = {
   'automations.empty': 'No automations in this scope.',
   'automations.runNow': 'Run now',
   'automations.running': 'Running',
+  'automations.stopRun': 'Stop run',
   'automations.enabled': 'Enabled',
   'automations.disabled': 'Disabled',
   'automations.scope.workspace': 'Workspace',
   'automations.scope.user': 'User',
+  'automations.view.config': 'Task Config',
+  'automations.view.run': 'Run Timeline',
   'automations.field.name': 'Name',
   'automations.field.enabled': 'Status',
   'automations.field.template': 'Template',
@@ -25,6 +28,7 @@ const automations = {
   'automations.template.custom': 'Custom prompt',
   'automations.section.schedule': 'Schedule',
   'automations.section.runs': 'Recent Runs',
+  'automations.section.runTimeline': 'Run Timeline',
   'automations.write.readOnly': 'Read only',
   'automations.write.lore': 'Allow lore writes',
   'automations.write.file': 'Allow file writes',
@@ -48,6 +52,10 @@ const automations = {
   'automations.schedule.previewMonthly': 'Runs every month on day {{day}} at {{hour}}:{{minute}}.',
   'automations.schedule.previewEveryHours': 'Runs every {{hours}} hour(s), around minute {{minute}}.',
   'automations.runs.empty': 'No run records yet.',
+  'automations.runs.viewTimeline': 'View timeline',
+  'automations.run.userMessage': 'Run automation: {{name}}',
+  'automations.run.attached': 'Attached to running automation: {{name}}',
+  'automations.run.empty': 'Open a recent run or click Run now to inspect the live timeline and continue the conversation here.',
 } as const
 
 export default automations

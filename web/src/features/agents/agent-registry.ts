@@ -1,6 +1,7 @@
 import type { ElementType } from 'react'
 import { Clock, Database, FileText, FolderOpen, Globe2, ListChecks, MessageSquareText, PenLine, Search, Settings2, Shield, Sparkles, Terminal, Wrench } from 'lucide-react'
-import type { AgentModelSettings, AgentToolOverride } from '@/features/settings/types'
+import type { AgentModelSettings, AgentSkillSettings, AgentToolOverride } from '@/features/settings/types'
+import type { SkillSummary } from '@/lib/api'
 
 export type AgentKey = keyof AgentModelSettings
 export type VisibleAgentKey = Exclude<AgentKey, 'default'>
@@ -59,7 +60,7 @@ export const BASE_TOOL_VALUES: Required<AgentToolOverride> = {
 
 export const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentToolOverride>> = {
   ide: { file_read: true, web_search: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true },
-  interactive_story: { file_read: true, web_search: false, file_write: true, shell_execute: true, skills: false, lore_read: true, lore_write: false, todo: false },
+  interactive_story: { file_read: true, web_search: false, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: false, todo: false },
   lore_editor: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: false },
   teller_editor: disabledTools(),
   interactive_state: disabledTools(),
@@ -67,6 +68,22 @@ export const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentT
   version_summary: disabledTools(),
   tool_agent: disabledTools(),
   automation: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true },
+}
+
+export function skillAvailableForAgent(skill: Pick<SkillSummary, 'name' | 'agent'>, agentKey: VisibleAgentKey, settings?: AgentSkillSettings) {
+  const explicit = settings?.[agentKey]?.[skill.name] ?? settings?.default?.[skill.name]
+  if (explicit !== undefined) return explicit
+  return skillAgentFieldMatches(skill.agent, agentKey)
+}
+
+export function skillAgentFieldMatches(agentField: string | undefined, agentKey: VisibleAgentKey) {
+  const value = (agentField || '').trim()
+  if (!value) return true
+  return value
+    .split(/[,\s;]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .some((part) => part === '*' || part.toLowerCase() === 'all' || part === agentKey)
 }
 
 export function disabledTools(): Required<AgentToolOverride> {

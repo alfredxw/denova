@@ -6,10 +6,13 @@ const automations = {
   'automations.empty': '当前范围暂无自动化任务。',
   'automations.runNow': '立即运行',
   'automations.running': '运行中',
+  'automations.stopRun': '中断运行',
   'automations.enabled': '已启用',
   'automations.disabled': '已停用',
   'automations.scope.workspace': '工作区',
   'automations.scope.user': '用户',
+  'automations.view.config': '任务配置',
+  'automations.view.run': '运行过程',
   'automations.field.name': '名称',
   'automations.field.enabled': '状态',
   'automations.field.template': '模板',
@@ -25,6 +28,7 @@ const automations = {
   'automations.template.custom': '自定义 Prompt',
   'automations.section.schedule': '定时规则',
   'automations.section.runs': '最近运行',
+  'automations.section.runTimeline': '运行过程',
   'automations.write.readOnly': '只读',
   'automations.write.lore': '允许写资料库',
   'automations.write.file': '允许写文件',
@@ -48,6 +52,10 @@ const automations = {
   'automations.schedule.previewMonthly': '每月 {{day}} 日 {{hour}}:{{minute}} 运行。',
   'automations.schedule.previewEveryHours': '每 {{hours}} 小时运行一次，大约在第 {{minute}} 分钟。',
   'automations.runs.empty': '暂无运行记录。',
+  'automations.runs.viewTimeline': '查看过程',
+  'automations.run.userMessage': '运行自动化：{{name}}',
+  'automations.run.attached': '已接入正在运行的自动化：{{name}}',
+  'automations.run.empty': '选择最近运行或点击立即运行后，可在这里查看流式过程并继续追问。',
 } as const
 
 export default automations

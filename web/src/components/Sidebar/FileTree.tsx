@@ -534,7 +534,7 @@ function FileTreeNode({
                     onCancel={onInlineCancel}
                   />
                 ) : (
-                  <span className="truncate">{displayFileNodeName(node.name, path, t)}</span>
+                  <span className="truncate">{node.name}</span>
                 )}
               </button>
               {!isRenaming && <NodeDropdown actions={actions} />}
@@ -615,7 +615,7 @@ function FileTreeNode({
                 />
               ) : (
                 <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-                  <span className="truncate">{chapter?.display_title || displayFileNodeName(node.name, path, t)}</span>
+                  <span className="truncate">{node.name}</span>
                   {chapter && (
                     <span className="flex shrink-0 items-center gap-1 text-[10px] text-[#7f8794]">
                       <span>{formatCompactWords(chapter.words)}</span>
@@ -726,22 +726,6 @@ function compareFileNodeNames(left: string, right: string) {
   return left.localeCompare(right, 'zh-Hans-CN')
 }
 
-function displayFileNodeName(name: string, path?: string, t?: (key: string) => string) {
-  if (path === 'ideas.md' && t) {
-    return t('sidebar.special.ideas')
-  }
-  const baseName = name.replace(/\.[^.]+$/, '')
-  const ext = name.slice(baseName.length)
-  const visibleBase = stripHiddenSortPrefix(baseName)
-  return visibleBase.replace(/[-_]+/g, ' ').trim() + ext
-}
-
-function stripHiddenSortPrefix(baseName: string) {
-  return baseName
-    .replace(/^ch\d{5}[-_ ]+/i, '')
-    .replace(/^v\d{5}[-_ ]+/i, '')
-}
-
 function compareChapterLikeNames(left: string, right: string) {
   const leftKey = chapterSortKey(left)
   const rightKey = chapterSortKey(right)
@@ -751,6 +735,12 @@ function compareChapterLikeNames(left: string, right: string) {
   if (leftKey.ok) return -1
   if (rightKey.ok) return 1
   return 0
+}
+
+function stripHiddenSortPrefix(baseName: string) {
+  return baseName
+    .replace(/^ch\d{5}[-_ ]+/i, '')
+    .replace(/^v\d{5}[-_ ]+/i, '')
 }
 
 function chapterSortKey(name: string) {

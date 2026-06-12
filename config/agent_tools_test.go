@@ -12,8 +12,11 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 	if !story.FileRead || !story.FileWrite || !story.ShellExecute || !story.LoreRead {
 		t.Fatalf("互动叙事 Agent 应保留当前文件/命令/资料读取能力: %+v", story)
 	}
-	if story.Skills || story.LoreWrite || story.Todo || story.WebSearch {
-		t.Fatalf("互动叙事 Agent 默认不应启用 skills/资料写入/todo/web search: %+v", story)
+	if !story.Skills {
+		t.Fatalf("互动叙事 Agent 默认应启用 skills: %+v", story)
+	}
+	if story.LoreWrite || story.Todo || story.WebSearch {
+		t.Fatalf("互动叙事 Agent 默认不应启用资料写入/todo/web search: %+v", story)
 	}
 
 	lore := ResolveAgentTools(&Config{}, AgentKindLoreEditor)

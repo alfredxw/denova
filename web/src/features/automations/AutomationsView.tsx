@@ -1,29 +1,35 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Clock3, FileText, Play, Save, Trash2, X } from 'lucide-react'
+import { Clock3, FileText, MessageSquareText, Play, Save, Settings2, Square, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { MessageList } from '@/components/Chat/MessageList'
+import { InputArea } from '@/components/Chat/InputArea'
 import { Textarea } from '@/components/ui/textarea'
 import {
   createAutomation,
   deleteAutomation,
   getAutomations,
-  runAutomation,
+  getActiveAutomationRuns,
   updateAutomation,
+  type AutomationRunRecord,
   type AutomationScheduleKind,
   type AutomationTask,
 } from '@/lib/api'
+import { useSkillCommands } from '@/hooks/useSkillCommands'
+import { useAutomationRunStream } from './useAutomationRunStream'
 
 const fieldCls = 'nova-field min-h-7 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
+type AutomationPanelView = 'config' | 'run'
 
-export function AutomationsView({ onClose }: { workspace: string; onClose?: () => void }) {
+export function AutomationsView({ workspace, onClose }: { workspace: string; onClose?: () => void }) {
   const { t } = useTranslation()
   const [tasks, setTasks] = useState<AutomationTask[]>([])
   const [activeId, setActiveId] = useState<string>('')
   const [draft, setDraft] = useState<AutomationTask>(() => newTask('workspace'))
   const [scopeFilter, setScopeFilter] = useState<'workspace' | 'user'>('workspace')
+  const [panelView, setPanelView] = useState<AutomationPanelView>('config')
   const [saving, setSaving] = useState(false)
-  const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -43,7 +49,35 @@ export function AutomationsView({ onClose }: { workspace: string; onClose?: () =
     }
   }, [scopeFilter])
 
+  const runStream = useAutomationRunStream({ onFinished: load })
+  const { resume: resumeAutomationRun } = runStream
+  const running = runStream.isStreaming
+  const skillCommands = useSkillCommands({ agentKey: 'automation', workspace, fallbackEnabled: true })
+
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    if (running || tasks.length === 0) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const activeRuns = await getActiveAutomationRuns()
+        if (cancelled || activeRuns.length === 0) return
+        const active = activeRuns[0]
+        const task = tasks.find(item => item.id === active.task_id)
+        if (task) {
+          setScopeFilter(task.scope)
+          setActiveId(task.id || '')
+          setDraft(cloneTask(task))
+        }
+        setPanelView('run')
+        await resumeAutomationRun(active.run, t('automations.run.attached', { name: task?.name || active.run.task_id }))
+      } catch (e) {
+        if (!cancelled) console.error('resume automation run failed', e)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [resumeAutomationRun, running, t, tasks])
 
   const filteredTasks = useMemo(() => tasks.filter((task) => task.scope === scopeFilter), [scopeFilter, tasks])
   const schedulePreview = scheduleToText(draft.schedule, t)
@@ -51,12 +85,14 @@ export function AutomationsView({ onClose }: { workspace: string; onClose?: () =
   const selectTask = (task: AutomationTask) => {
     setActiveId(task.id || '')
     setDraft(cloneTask(task))
+    setPanelView('config')
   }
 
   const createNew = (scope: 'workspace' | 'user') => {
     setActiveId('')
     setScopeFilter(scope)
     setDraft(newTask(scope))
+    setPanelView('config')
   }
 
   const switchScope = (scope: 'workspace' | 'user') => {
@@ -65,10 +101,12 @@ export function AutomationsView({ onClose }: { workspace: string; onClose?: () =
     if (first) {
       setActiveId(first.id || '')
       setDraft(cloneTask(first))
+      setPanelView('config')
       return
     }
     setActiveId('')
     setDraft(newTask(scope))
+    setPanelView('config')
   }
 
   const save = async () => {
@@ -106,16 +144,32 @@ export function AutomationsView({ onClose }: { workspace: string; onClose?: () =
 
   const runNow = async () => {
     if (!activeId) return
-    setRunning(true)
     setError(null)
+    setPanelView('run')
     try {
-      const result = await runAutomation(activeId)
-      setDraft(cloneTask(result.task))
-      setTasks((current) => upsertTask(current, result.task))
+      await runStream.start(activeId, buildRunUserMessage(draft, t))
     } catch (e) {
       setError((e as Error).message)
-    } finally {
-      setRunning(false)
+    }
+  }
+
+  const openRun = async (run: AutomationRunRecord) => {
+    setError(null)
+    setPanelView('run')
+    try {
+      await runStream.loadHistory(run)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  const sendRunMessage = async (message: string) => {
+    setError(null)
+    setPanelView('run')
+    try {
+      await runStream.send(message)
+    } catch (e) {
+      setError((e as Error).message)
     }
   }
 
@@ -144,6 +198,12 @@ export function AutomationsView({ onClose }: { workspace: string; onClose?: () =
           <Play className="h-3.5 w-3.5" />
           {running ? t('automations.running') : t('automations.runNow')}
         </button>
+        {running && (
+          <button type="button" onClick={runStream.stop} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1 text-[var(--nova-text-muted)]">
+            <Square className="h-3.5 w-3.5" />
+            {t('automations.stopRun')}
+          </button>
+        )}
         <button type="button" onClick={save} disabled={saving || running} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50">
           <Save className="h-3.5 w-3.5" />
           {saving ? t('common.saving') : t('common.save')}
@@ -177,75 +237,131 @@ export function AutomationsView({ onClose }: { workspace: string; onClose?: () =
           </div>
         </aside>
 
-        <main className="min-h-0 overflow-y-auto">
-          <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
-            <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
-              <Field label={t('automations.field.name')}>
-                <input value={draft.name} onChange={(e) => setDraftField({ name: e.target.value })} className={fieldCls} />
-              </Field>
-              <Field label={t('automations.field.enabled')}>
-                <select value={String(draft.enabled)} onChange={(e) => setDraftField({ enabled: e.target.value === 'true' })} className={fieldCls}>
-                  <option value="true">{t('automations.enabled')}</option>
-                  <option value="false">{t('automations.disabled')}</option>
-                </select>
-              </Field>
-              <Field label={t('automations.field.template')}>
-                <select value={draft.template} onChange={(e) => setTemplate(e.target.value as AutomationTask['template'])} className={fieldCls}>
-                  <option value="memory_consolidation">{t('automations.template.memory')}</option>
-                  <option value="review">{t('automations.template.review')}</option>
-                  <option value="continue_writing">{t('automations.template.continueWriting')}</option>
-                  <option value="custom_prompt">{t('automations.template.custom')}</option>
-                </select>
-              </Field>
-              <Field label={t('automations.field.scope')}>
-                <select value={draft.scope} disabled={Boolean(activeId)} onChange={(e) => setDraftField({ scope: e.target.value as AutomationTask['scope'] })} className={fieldCls}>
-                  <option value="workspace">{t('automations.scope.workspace')}</option>
-                  <option value="user">{t('automations.scope.user')}</option>
-                </select>
-              </Field>
-              <div className="md:col-span-2">
-                <Field label={t('automations.field.prompt')}>
-                  <Textarea autoResize value={draft.prompt} onChange={(e) => setDraftField({ prompt: e.target.value })} placeholder={t('automations.prompt.placeholder')} className={`${fieldCls} min-h-32 resize-y leading-5 shadow-none focus-visible:ring-0`} />
-                </Field>
-              </div>
-            </section>
-
-            <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
-              <Field label={t('automations.field.writePolicy')}>
-                <select value={draft.write_policy} onChange={(e) => setDraftField({ write_policy: e.target.value as AutomationTask['write_policy'] })} className={fieldCls}>
-                  <option value="read_only">{t('automations.write.readOnly')}</option>
-                  <option value="allow_lore_write">{t('automations.write.lore')}</option>
-                  <option value="allow_file_write">{t('automations.write.file')}</option>
-                  <option value="allow_lore_and_file_write">{t('automations.write.loreFile')}</option>
-                </select>
-              </Field>
-              <Field label={t('automations.field.outputPolicy')}>
-                <select value={draft.output_policy} onChange={(e) => setDraftField({ output_policy: e.target.value as AutomationTask['output_policy'] })} className={fieldCls}>
-                  <option value="run_record_only">{t('automations.output.record')}</option>
-                  <option value="optional_file">{t('automations.output.file')}</option>
-                </select>
-              </Field>
-              <div className="md:col-span-2">
-                <Field label={t('automations.field.outputPath')}>
-                  <input value={draft.output_path} onChange={(e) => setDraftField({ output_path: e.target.value })} placeholder="reports/automation-review.md" className={fieldCls} />
-                </Field>
-              </div>
-            </section>
-
-            <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
-              <SectionTitle title={t('automations.section.schedule')} />
-              <ScheduleEditor task={draft} onChange={(schedule) => setDraftField({ schedule })} />
-              <div className="text-[11px] text-[var(--nova-text-faint)]">{schedulePreview}</div>
-            </section>
-
-            <section className="space-y-3 pb-5">
-              <div className="flex items-center justify-between">
-                <SectionTitle title={t('automations.section.runs')} />
-                {activeId && <button type="button" onClick={remove} disabled={saving || running} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] px-2 py-1 text-[var(--nova-text-muted)] disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />{t('common.delete')}</button>}
-              </div>
-              <RunList task={draft} />
-            </section>
+        <main className="flex min-h-0 flex-col">
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4">
+            <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
+              <button
+                type="button"
+                onClick={() => setPanelView('config')}
+                className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'config' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                {t('automations.view.config')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPanelView('run')}
+                className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'run' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+              >
+                <MessageSquareText className="h-3.5 w-3.5" />
+                {t('automations.view.run')}
+              </button>
+            </div>
+            <div className="min-w-0 flex-1" />
+            {runStream.activeRun && (
+              <span className="truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 font-mono text-[11px] text-[var(--nova-text-faint)]">
+                {runStream.activeRun.status || (running ? 'running' : '')} · {runStream.activeRun.id}
+              </span>
+            )}
           </div>
+
+          {panelView === 'config' ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
+                <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
+                  <Field label={t('automations.field.name')}>
+                    <input value={draft.name} onChange={(e) => setDraftField({ name: e.target.value })} className={fieldCls} />
+                  </Field>
+                  <Field label={t('automations.field.enabled')}>
+                    <select value={String(draft.enabled)} onChange={(e) => setDraftField({ enabled: e.target.value === 'true' })} className={fieldCls}>
+                      <option value="true">{t('automations.enabled')}</option>
+                      <option value="false">{t('automations.disabled')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('automations.field.template')}>
+                    <select value={draft.template} onChange={(e) => setTemplate(e.target.value as AutomationTask['template'])} className={fieldCls}>
+                      <option value="memory_consolidation">{t('automations.template.memory')}</option>
+                      <option value="review">{t('automations.template.review')}</option>
+                      <option value="continue_writing">{t('automations.template.continueWriting')}</option>
+                      <option value="custom_prompt">{t('automations.template.custom')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('automations.field.scope')}>
+                    <select value={draft.scope} disabled={Boolean(activeId)} onChange={(e) => setDraftField({ scope: e.target.value as AutomationTask['scope'] })} className={fieldCls}>
+                      <option value="workspace">{t('automations.scope.workspace')}</option>
+                      <option value="user">{t('automations.scope.user')}</option>
+                    </select>
+                  </Field>
+                  <div className="md:col-span-2">
+                    <Field label={t('automations.field.prompt')}>
+                      <Textarea autoResize value={draft.prompt} onChange={(e) => setDraftField({ prompt: e.target.value })} placeholder={t('automations.prompt.placeholder')} className={`${fieldCls} min-h-32 resize-y leading-5 shadow-none focus-visible:ring-0`} />
+                    </Field>
+                  </div>
+                </section>
+
+                <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
+                  <Field label={t('automations.field.writePolicy')}>
+                    <select value={draft.write_policy} onChange={(e) => setDraftField({ write_policy: e.target.value as AutomationTask['write_policy'] })} className={fieldCls}>
+                      <option value="read_only">{t('automations.write.readOnly')}</option>
+                      <option value="allow_lore_write">{t('automations.write.lore')}</option>
+                      <option value="allow_file_write">{t('automations.write.file')}</option>
+                      <option value="allow_lore_and_file_write">{t('automations.write.loreFile')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('automations.field.outputPolicy')}>
+                    <select value={draft.output_policy} onChange={(e) => setDraftField({ output_policy: e.target.value as AutomationTask['output_policy'] })} className={fieldCls}>
+                      <option value="run_record_only">{t('automations.output.record')}</option>
+                      <option value="optional_file">{t('automations.output.file')}</option>
+                    </select>
+                  </Field>
+                  <div className="md:col-span-2">
+                    <Field label={t('automations.field.outputPath')}>
+                      <input value={draft.output_path} onChange={(e) => setDraftField({ output_path: e.target.value })} placeholder="reports/automation-review.md" className={fieldCls} />
+                    </Field>
+                  </div>
+                </section>
+
+                <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
+                  <SectionTitle title={t('automations.section.schedule')} />
+                  <ScheduleEditor task={draft} onChange={(schedule) => setDraftField({ schedule })} />
+                  <div className="text-[11px] text-[var(--nova-text-faint)]">{schedulePreview}</div>
+                </section>
+
+                <section className="space-y-3 pb-5">
+                  <div className="flex items-center justify-between">
+                    <SectionTitle title={t('automations.section.runs')} />
+                    {activeId && <button type="button" onClick={remove} disabled={saving || running} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] px-2 py-1 text-[var(--nova-text-muted)] disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />{t('common.delete')}</button>}
+                  </div>
+                  <RunList task={draft} activeRunId={runStream.activeRun?.id || ''} onOpenRun={openRun} />
+                </section>
+              </div>
+            </div>
+          ) : (
+            <section className="flex min-h-0 flex-1 flex-col">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <MessageList
+                  messages={runStream.messages}
+                  isStreaming={runStream.isStreaming}
+                  activityContent={runStream.activityContent}
+                  scrollResetKey={runStream.activeRun?.id || activeId || 'automation'}
+                  collapseTraceBeforeAssistant
+                />
+              </div>
+              {runStream.activeRun ? (
+                <InputArea
+                  onSend={sendRunMessage}
+                  onStop={runStream.isStreaming ? runStream.stop : undefined}
+                  disabled={runStream.isStreaming}
+                  commandScope="skills"
+                  skills={skillCommands}
+                />
+              ) : (
+                <div className="border-t border-[var(--nova-border)] px-4 py-3 text-[11px] text-[var(--nova-text-faint)]">
+                  {t('automations.run.empty')}
+                </div>
+              )}
+            </section>
+          )}
         </main>
       </div>
     </div>
@@ -292,7 +408,7 @@ function ScheduleEditor({ task, onChange }: { task: AutomationTask; onChange: (s
   )
 }
 
-function RunList({ task }: { task: AutomationTask }) {
+function RunList({ task, activeRunId, onOpenRun }: { task: AutomationTask; activeRunId: string; onOpenRun: (run: AutomationRunRecord) => void }) {
   const { t } = useTranslation()
   const runs = task.recent_runs || []
   if (runs.length === 0) return <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-8 text-center text-[var(--nova-text-faint)]">{t('automations.runs.empty')}</div>
@@ -304,6 +420,15 @@ function RunList({ task }: { task: AutomationTask }) {
             <span className="font-medium">{run.status}</span>
             <span className="text-[11px] text-[var(--nova-text-faint)]">{new Date(run.started_at).toLocaleString()}</span>
             {run.output_path && <span className="ml-auto truncate text-[11px] text-[var(--nova-text-faint)]">{run.output_path}</span>}
+            {run.session_id && (
+              <button
+                type="button"
+                onClick={() => onOpenRun(run)}
+                className={`nova-nav-item ml-auto rounded-[var(--nova-radius)] px-2 py-0.5 text-[11px] ${activeRunId === run.id ? 'is-active' : 'text-[var(--nova-text-muted)]'}`}
+              >
+                {t('automations.runs.viewTimeline')}
+              </button>
+            )}
           </div>
           <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-[11px] leading-5 text-[var(--nova-text-muted)]">{run.error || run.summary}</div>
         </div>
@@ -356,4 +481,9 @@ function scheduleToText(schedule: AutomationTask['schedule'], t: (key: string, o
 
 function pad2(value: number) {
   return String(value).padStart(2, '0')
+}
+
+function buildRunUserMessage(task: AutomationTask, t: (key: string, options?: Record<string, unknown>) => string) {
+  const prompt = task.prompt?.trim() || templateLabel(task.template, t)
+  return `${t('automations.run.userMessage', { name: task.name })}\n\n${prompt}`
 }

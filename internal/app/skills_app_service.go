@@ -20,8 +20,8 @@ func (a *App) SkillDocument(ctx context.Context, scope novaskills.Scope, name st
 	return a.skills().Document(ctx, scope, name)
 }
 
-func (a *App) CreateSkillDocument(ctx context.Context, scope novaskills.Scope, name, description string) (novaskills.Document, error) {
-	return a.skills().Create(ctx, scope, name, description)
+func (a *App) CreateSkillDocument(ctx context.Context, scope novaskills.Scope, name, description string, agents []string) (novaskills.Document, error) {
+	return a.skills().Create(ctx, scope, name, description, agents)
 }
 
 func (a *App) SaveSkillDocument(ctx context.Context, scope novaskills.Scope, name, content string) (novaskills.Document, error) {
@@ -36,8 +36,8 @@ func (s *SkillsAppService) Document(ctx context.Context, scope novaskills.Scope,
 	return novaskills.ReadDocument(ctx, s.directories(), scope, name)
 }
 
-func (s *SkillsAppService) Create(ctx context.Context, scope novaskills.Scope, name, description string) (novaskills.Document, error) {
-	doc, err := novaskills.CreateDocument(ctx, s.directories(), scope, name, description)
+func (s *SkillsAppService) Create(ctx context.Context, scope novaskills.Scope, name, description string, agents []string) (novaskills.Document, error) {
+	doc, err := novaskills.CreateDocument(ctx, s.directories(), scope, name, description, agents...)
 	if err != nil {
 		return novaskills.Document{}, err
 	}

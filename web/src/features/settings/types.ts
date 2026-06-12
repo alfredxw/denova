@@ -6,6 +6,7 @@ export interface Settings {
   agent_models?: AgentModelSettings
   agent_tools?: AgentToolSettings
   agent_prompts?: AgentPromptSettings
+  agent_skills?: AgentSkillSettings
   skills_dir?: string
   auto_save_enabled?: boolean | null
   auto_save_interval_ms?: number | null
@@ -75,6 +76,21 @@ export interface AgentToolSettings {
   tool_agent?: AgentToolOverride
   automation?: AgentToolOverride
 }
+
+export interface AgentSkillSettings {
+  default?: AgentSkillOverride
+  ide?: AgentSkillOverride
+  interactive_story?: AgentSkillOverride
+  lore_editor?: AgentSkillOverride
+  teller_editor?: AgentSkillOverride
+  interactive_state?: AgentSkillOverride
+  interactive_hot_choices?: AgentSkillOverride
+  version_summary?: AgentSkillOverride
+  tool_agent?: AgentSkillOverride
+  automation?: AgentSkillOverride
+}
+
+export type AgentSkillOverride = Record<string, boolean>
 
 export interface AgentToolOverride {
   file_read?: boolean | null

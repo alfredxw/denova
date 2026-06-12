@@ -33,6 +33,8 @@ type App struct {
 	versionService         *book.VersionService
 	activeTask             *Task
 	activeInteractiveTask  *Task
+	activeAutomationTasks  map[string]*Task
+	activeAutomationRuns   map[string]automationRunState
 
 	runtimeManager *WorkspaceRuntimeManager
 	chatApp        *ChatAppService

@@ -1,5 +1,7 @@
 const planning = {
   'planning.noChapters': 'chapters/ 下还没有章节',
+  'planning.ideas': '灵感',
+  'planning.ideasEmpty': 'ideas.md 尚未生成',
   'planning.outline': '大纲',
   'planning.outlineEmpty': 'setting/outline.md 尚未生成',
   'planning.chapterPlans': '章节组细纲',

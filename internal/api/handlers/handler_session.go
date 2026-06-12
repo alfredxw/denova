@@ -18,7 +18,9 @@ type messageDTO struct {
 	Role      string `json:"role,omitempty"`
 	Content   string `json:"content,omitempty"`
 	Name      string `json:"name,omitempty"`
+	Args      string `json:"args,omitempty"`
 	Status    string `json:"status,omitempty"`
+	Result    string `json:"result,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
 }
 
@@ -194,7 +196,9 @@ func historyEntriesToMessageDTOs(entries []session.HistoryEntry) []messageDTO {
 			Role:      entry.Role,
 			Content:   entry.Content,
 			Name:      entry.Name,
+			Args:      entry.Args,
 			Status:    entry.Status,
+			Result:    entry.Result,
 			CreatedAt: formatTime(entry.CreatedAt),
 		})
 	}

@@ -75,6 +75,7 @@ type record struct {
 type frontMatterFile struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
+	Agent       string `yaml:"agent,omitempty"`
 }
 
 // NewDirectories returns the canonical skill search path for Nova.
@@ -94,11 +95,17 @@ func NewDirectories(builtinDir, novaDir, workspace string) []Directory {
 
 // Backend adapts multiple Nova skill directories to Eino's skill.Backend.
 type Backend struct {
-	dirs []Directory
+	dirs      []Directory
+	agentKind string
+	overrides map[string]bool
 }
 
 func NewBackend(dirs []Directory) *Backend {
 	return &Backend{dirs: dedupeDirectories(dirs)}
+}
+
+func NewAgentBackend(dirs []Directory, agentKind string, overrides map[string]bool) *Backend {
+	return &Backend{dirs: dedupeDirectories(dirs), agentKind: strings.TrimSpace(agentKind), overrides: normalizeOverrideMap(overrides)}
 }
 
 func (b *Backend) List(ctx context.Context) ([]einoskill.FrontMatter, error) {
@@ -167,7 +174,7 @@ func ReadDocument(ctx context.Context, dirs []Directory, scope Scope, name strin
 	return Document{SkillSummary: rec.summary, Content: string(data)}, nil
 }
 
-func CreateDocument(ctx context.Context, dirs []Directory, scope Scope, name, description string) (Document, error) {
+func CreateDocument(ctx context.Context, dirs []Directory, scope Scope, name, description string, agents ...string) (Document, error) {
 	if err := ValidateName(name); err != nil {
 		return Document{}, err
 	}
@@ -175,7 +182,7 @@ func CreateDocument(ctx context.Context, dirs []Directory, scope Scope, name, de
 	if err != nil {
 		return Document{}, err
 	}
-	content := DefaultContent(name, description)
+	content := DefaultContent(name, description, agents...)
 	return writeDocument(ctx, dirs, dir, name, content, false)
 }
 
@@ -197,12 +204,12 @@ func ValidateName(name string) error {
 	return nil
 }
 
-func DefaultContent(name, description string) string {
+func DefaultContent(name, description string, agents ...string) string {
 	description = strings.TrimSpace(description)
 	if description == "" {
 		description = fmt.Sprintf("Use this skill when the user asks for %s-specific guidance.", name)
 	}
-	frontmatter := marshalFrontmatter(name, description)
+	frontmatter := marshalFrontmatter(name, description, normalizeAgentList(agents))
 	return fmt.Sprintf(`---
 %s---
 
@@ -220,11 +227,57 @@ func (b *Backend) activeRecords(ctx context.Context) []record {
 	}
 	out := make([]record, 0, len(active))
 	for _, rec := range active {
+		if !skillAllowedForAgent(rec, b.agentKind, b.overrides) {
+			continue
+		}
 		out = append(out, rec)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].skill.Name < out[j].skill.Name
 	})
+	return out
+}
+
+func skillAllowedForAgent(rec record, agentKind string, overrides map[string]bool) bool {
+	if agentKind == "" {
+		return true
+	}
+	if enabled, ok := overrides[rec.skill.Name]; ok {
+		return enabled
+	}
+	return agentMatches(rec.skill.Agent, agentKind)
+}
+
+func agentMatches(agentField, agentKind string) bool {
+	agentField = strings.TrimSpace(agentField)
+	if agentField == "" {
+		return true
+	}
+	for _, part := range strings.FieldsFunc(agentField, func(r rune) bool {
+		return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t'
+	}) {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if part == "*" || strings.EqualFold(part, "all") || part == agentKind {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeOverrideMap(overrides map[string]bool) map[string]bool {
+	if len(overrides) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(overrides))
+	for name, enabled := range overrides {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			out[name] = enabled
+		}
+	}
 	return out
 }
 
@@ -447,10 +500,28 @@ func scopeRank(scope Scope) int {
 	}
 }
 
-func marshalFrontmatter(name, description string) string {
-	data, err := yaml.Marshal(frontMatterFile{Name: name, Description: description})
+func marshalFrontmatter(name, description string, agents []string) string {
+	data, err := yaml.Marshal(frontMatterFile{Name: name, Description: description, Agent: strings.Join(agents, ",")})
 	if err != nil {
-		return fmt.Sprintf("name: %q\ndescription: %q\n", name, description)
+		agentLine := ""
+		if len(agents) > 0 {
+			agentLine = fmt.Sprintf("agent: %q\n", strings.Join(agents, ","))
+		}
+		return fmt.Sprintf("name: %q\ndescription: %q\n%s", name, description, agentLine)
 	}
 	return string(data)
+}
+
+func normalizeAgentList(agents []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		agent = strings.TrimSpace(agent)
+		if agent == "" || seen[agent] {
+			continue
+		}
+		seen[agent] = true
+		out = append(out, agent)
+	}
+	return out
 }

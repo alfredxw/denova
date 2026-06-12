@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	einoskill "github.com/cloudwego/eino/adk/middlewares/skill"
 )
 
 func TestBackendWorkspaceOverridesUserAndBuiltin(t *testing.T) {
@@ -96,11 +98,11 @@ func TestCreateAndSaveDocument(t *testing.T) {
 	user := filepath.Join(t.TempDir(), "skills")
 	dirs := []Directory{{Scope: ScopeUser, Path: user, Writable: true}}
 
-	doc, err := CreateDocument(ctx, dirs, ScopeUser, "beats", "Draft beat sheets.")
+	doc, err := CreateDocument(ctx, dirs, ScopeUser, "beats", "Draft beat sheets.", "ide", "lore_editor")
 	if err != nil {
 		t.Fatalf("CreateDocument() error = %v", err)
 	}
-	if doc.Name != "beats" || !doc.Editable {
+	if doc.Name != "beats" || !doc.Editable || doc.Agent != "ide,lore_editor" {
 		t.Fatalf("created doc = %#v", doc)
 	}
 
@@ -119,6 +121,40 @@ Use numbered beats.
 	}
 	if saved.Description != "Build chapter beat sheets." || saved.Content != content {
 		t.Fatalf("saved doc = %#v", saved)
+	}
+}
+
+func TestAgentBackendFiltersByAgentFrontmatterAndOverrides(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	writeSkillFileForAgents(t, root, "outline", "outline", "outline desc", "ide")
+	writeSkillFileForAgents(t, root, "lore-init", "lore-init", "lore desc", "lore_editor,interactive_story")
+	writeSkillFileForAgents(t, root, "general", "general", "general desc", "")
+
+	backend := NewAgentBackend([]Directory{{Scope: ScopeUser, Path: root, Writable: true}}, "interactive_story", nil)
+	list, err := backend.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	got := skillNames(list)
+	if len(got) != 2 || !got["lore-init"] || !got["general"] {
+		t.Fatalf("interactive_story skills = %#v", got)
+	}
+	if _, err := backend.Get(ctx, "outline"); err == nil {
+		t.Fatalf("Get(outline) should be filtered out for interactive_story")
+	}
+
+	overrideBackend := NewAgentBackend([]Directory{{Scope: ScopeUser, Path: root, Writable: true}}, "interactive_story", map[string]bool{
+		"outline":   true,
+		"lore-init": false,
+	})
+	overrideList, err := overrideBackend.List(ctx)
+	if err != nil {
+		t.Fatalf("override List() error = %v", err)
+	}
+	overrideGot := skillNames(overrideList)
+	if len(overrideGot) != 2 || !overrideGot["outline"] || !overrideGot["general"] || overrideGot["lore-init"] {
+		t.Fatalf("override interactive_story skills = %#v", overrideGot)
 	}
 }
 
@@ -152,13 +188,30 @@ func TestSaveDocumentRejectsReadonlyAndMismatchedName(t *testing.T) {
 }
 
 func writeSkillFile(t *testing.T, root, dirName, skillName, description string) {
+	writeSkillFileForAgents(t, root, dirName, skillName, description, "")
+}
+
+func writeSkillFileForAgents(t *testing.T, root, dirName, skillName, description, agents string) {
 	t.Helper()
 	dir := filepath.Join(root, dirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	content := DefaultContent(skillName, description)
+	var content string
+	if agents == "" {
+		content = DefaultContent(skillName, description)
+	} else {
+		content = DefaultContent(skillName, description, agents)
+	}
 	if err := os.WriteFile(filepath.Join(dir, SkillFileName), []byte(content), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
+}
+
+func skillNames(list []einoskill.FrontMatter) map[string]bool {
+	out := map[string]bool{}
+	for _, item := range list {
+		out[item.Name] = true
+	}
+	return out
 }

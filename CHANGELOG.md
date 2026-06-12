@@ -6,8 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v0.1.9] - 2026-06-12
+
 ### Changed
 
+- Skills 新建体验改为主编辑区引导式流程：左侧专注浏览现有 Skills，新建时集中填写保存位置、名称、触发说明和可用 Agent，并在创建后直接打开生成的 `SKILL.md`。
+- Skills 支持按 Agent 分工：内置 Skills 新增默认可用 Agent 范围，互动叙事 Agent 默认启用 Skills；Agents 页可按 Agent 覆盖单个 Skill 的启用/禁用，Skills 创建表单可选择新 Skill 可用的 Agents。
+- 项目文件树改为始终显示真实文件/目录名，不再把 `ideas.md`、隐藏排序前缀章节等映射成展示名；作品目录新增 `ideas.md` 灵感入口用于快速打开创作灵感文件。
+- 自动化页面右侧改为“任务配置 / 运行过程”双页签布局；运行过程复用创作 Agent 消息流和输入框，支持在单次自动化运行会话中继续追问，新运行会清空并创建独立运行过程。
 - P1 复杂度治理：新增 Agent kind/tool capability registry，模型、工具、prompt 配置解析和后台 Agent 会话 ID 统一从 registry 获取；deep agent 构建参数收敛为运行时 spec，降低新增 Agent 时的分支同步成本。
 - 互动故事 JSONL 存储新增 typed event envelope 与 state op schema 校验，读取/写入/快照构建统一经过事件类型、schema version、ID、branch 和状态操作校验。
 - 前端 API client 拆分为 `api-client` 领域模块，`@/lib/api` 保留兼容 barrel；互动和设置 API 复用共享 JSON/SSE 客户端，避免重复 fetch/parser 逻辑。
@@ -20,10 +26,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 自动化任务新增运行流式过程视图：手动和定时触发都会生成独立运行会话，前端可像新聊天一样查看 thinking、工具调用、输出过程，并可从最近运行回看完整历史。
 - 新增 GitHub Actions CI，在 push/PR 上执行 whitespace 检查、`go test ./...`、前端测试、前端构建和完整 `./build.sh`。
 
 ### Fixed
 
+- 修复支持 Skills 的输入框提示不明确的问题；在当前 Agent 有可用 Skills 时，输入 placeholder 会提示可输入 `/` 选择 Skills，互动剧情输入框也支持 `/` Skills 候选与键盘滚动跟随。
+- 修复支持 Skills 的 Agent 输入框没有统一展示 `/<skill-name>` 候选的问题；资料库 Agent 和自动化运行对话现在会按工具权限展示 Skills 候选，并修复 `/` 候选列表用上下箭头切换时高亮项不跟随滚动的问题。
+- 修复自动化任务流式输出把每个 thinking 片段拆成独立思考过程的问题；自动化运行复用创作 Agent 的共享 SSE 消费逻辑，统一 thinking、正文、工具调用和参数增量展示。
+- 修复作品目录和项目文件定时刷新时短暂进入 loading 状态导致侧栏内容抖动的问题；后台刷新失败时也会保留当前目录和作品进度。
 - 修复 Skills 管理中单独打开被工作区覆盖的用户级 `SKILL.md` 时仍显示为可用的问题；创建/保存后也会按完整搜索路径返回真实 Active 状态。
 - 修复首次启动 `.nova` 下没有书籍或未选工作区时，前端仍请求目录、统计、styles、chat session 和 active chat 等工作区 API 导致后端报错的问题；空书架会先引导用户创建或导入书籍。
 - 修复新建 Skill 默认 `SKILL.md` 在描述包含换行、冒号或列表符号时可能生成非法 YAML frontmatter 的问题。

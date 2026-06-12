@@ -14,6 +14,7 @@ type skillCreateRequest struct {
 	Scope       novaskills.Scope `json:"scope"`
 	Name        string           `json:"name"`
 	Description string           `json:"description"`
+	Agents      []string         `json:"agents"`
 }
 
 type skillSaveRequest struct {
@@ -54,7 +55,7 @@ func (h *Handlers) HandleSkillCreate(ctx context.Context, c *app.RequestContext)
 	}
 	body.Scope = novaskills.Scope(strings.TrimSpace(string(body.Scope)))
 	body.Name = strings.TrimSpace(body.Name)
-	doc, err := h.app.CreateSkillDocument(ctx, body.Scope, body.Name, body.Description)
+	doc, err := h.app.CreateSkillDocument(ctx, body.Scope, body.Name, body.Description, body.Agents)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return

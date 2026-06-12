@@ -1,6 +1,7 @@
 ---
 name: skills-creator
 description: Use this skill when the user wants to create, revise, review, or organize Nova custom Skills in user or workspace scope.
+agent: ide,lore_editor,automation
 ---
 
 # Skills Creator

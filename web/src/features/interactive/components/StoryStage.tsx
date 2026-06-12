@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent } from 'react'
-import { ChevronDown, ChevronUp, Compass, GitBranch, MessageSquareText, PanelRight, Pencil, RefreshCw, Send, Sparkles, Square, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Command as CommandIcon, Compass, GitBranch, MessageSquareText, PanelRight, Pencil, RefreshCw, Send, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { MessageList } from '@/components/Chat/MessageList'
 import { ReferenceChips } from '@/components/Chat/ReferenceChips'
 import type { ChatMessage } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { fontStackFor } from '@/features/settings/font-options'
+import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { abortInteractiveChat, generateInteractiveHotChoices, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
 import { createInteractiveNarrativeFilter } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
@@ -68,7 +71,11 @@ export function StoryStage({
   const [input, setInput] = useState('')
   const [styleReferences, setStyleReferences] = useState<string[]>([])
   const [styleReferenceQuery, setStyleReferenceQuery] = useState<string | null>(null)
+  const [showSkillCommands, setShowSkillCommands] = useState(false)
+  const [activeSkillCommandIndex, setActiveSkillCommandIndex] = useState(0)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const skillCommandRefs = useRef<Array<HTMLDivElement | null>>([])
+  const skillCommands = useSkillCommands({ agentKey: 'interactive_story', workspace, fallbackEnabled: true })
   const snapshotKey = `${storyId || 'none'}:${snapshot?.branch_id || branchId || 'main'}:${snapshot?.turns?.[snapshot.turns.length - 1]?.id || 'empty'}`
   const stageKey = `${workspace || 'current'}:${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
   const { storyStageRuns, setStoryStageRun, clearStoryStageRun } = useInteractiveStore()
@@ -134,6 +141,11 @@ export function StoryStage({
     return normalizeMessageContent(lastTurn.user) === normalizeMessageContent(latestLiveTurn.user) &&
       normalizeMessageContent(lastTurn.narrative) === normalizeMessageContent(latestLiveTurn.narrative)
   }, [latestLiveTurn, snapshot?.turns, stageKey])
+  const filteredSkillCommands = useMemo(() => {
+    if (!input.startsWith('/')) return []
+    const query = input.slice(1).toLowerCase()
+    return skillCommands.filter((skill) => skill.name.toLowerCase().startsWith(query))
+  }, [input, skillCommands])
 
   useEffect(() => {
     if (previousSnapshotKeyRef.current === snapshotKey) return
@@ -144,6 +156,15 @@ export function StoryStage({
       clearStoryStageRun(stageKey)
     }
   }, [clearStoryStageRun, liveMessages.length, setStageActivityContent, snapshotKey, stageKey, streaming])
+
+  useEffect(() => {
+    if (activeSkillCommandIndex >= filteredSkillCommands.length) setActiveSkillCommandIndex(0)
+  }, [activeSkillCommandIndex, filteredSkillCommands.length])
+
+  useEffect(() => {
+    if (!showSkillCommands || filteredSkillCommands.length === 0) return
+    skillCommandRefs.current[activeSkillCommandIndex]?.scrollIntoView({ block: 'nearest' })
+  }, [activeSkillCommandIndex, filteredSkillCommands.length, showSkillCommands])
 
   const historyMessages = useMemo<ChatMessage[]>(() => {
     const turns = snapshot?.turns || []
@@ -267,6 +288,8 @@ export function StoryStage({
     setEditingTurn(null)
     setStyleReferences([])
     setStyleReferenceQuery(null)
+    setShowSkillCommands(false)
+    setActiveSkillCommandIndex(0)
     setStageActivityContent(t('storyStage.activity.connecting'))
     setStageLiveMessages([{ role: 'user', content: message }])
     updateStageRun({ rewindTurnId: nextRewindTurnId || undefined })
@@ -370,6 +393,8 @@ export function StoryStage({
     if (!message.turn_id || streaming) return
     setEditingTurn({ id: message.turn_id, content: message.content || '' })
     setInput(message.content || '')
+    setShowSkillCommands(false)
+    setActiveSkillCommandIndex(0)
     window.requestAnimationFrame(() => {
       const length = message.content?.length || 0
       inputRef.current?.focus()
@@ -411,13 +436,24 @@ export function StoryStage({
     setEditingTurn(null)
     setInput('')
     setStyleReferenceQuery(null)
+    setShowSkillCommands(false)
+    setActiveSkillCommandIndex(0)
   }
 
   const handleInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = event.target.value
     setInput(nextValue)
+    setShowSkillCommands(nextValue.startsWith('/'))
+    setActiveSkillCommandIndex(0)
     const styleMatch = nextValue.match(/(?:^|\s)#([^\s#]*)$/)
     setStyleReferenceQuery(styleMatch ? styleMatch[1] : null)
+  }
+
+  const selectSkillCommand = (name: string) => {
+    setInput(`/${name} `)
+    setShowSkillCommands(false)
+    setActiveSkillCommandIndex(0)
+    inputRef.current?.focus()
   }
 
   const selectStyleReference = (path: string) => {
@@ -586,6 +622,8 @@ export function StoryStage({
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => {
                             setInput(choice)
+                            setShowSkillCommands(false)
+                            setActiveSkillCommandIndex(0)
                             setHotChoicesExpanded(false)
                             window.requestAnimationFrame(() => {
                               inputRef.current?.focus()
@@ -615,21 +653,96 @@ export function StoryStage({
                 emptyText={t('chat.styleReference.empty')}
                 heading={t('chat.styleReference.heading')}
               />
+              <Popover open={showSkillCommands && filteredSkillCommands.length > 0}>
+                <PopoverTrigger asChild>
+                  <span className="absolute bottom-full left-0 h-0 w-0" />
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  side="top"
+                  className="nova-command-menu mb-2 w-[384px] overflow-hidden rounded-lg border border-[var(--nova-border)] p-0 text-[var(--nova-text)]"
+                  onOpenAutoFocus={(event) => event.preventDefault()}
+                >
+                  <Command shouldFilter={false} className="bg-transparent">
+                    <div className="border-b border-[var(--nova-border-soft)] px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#3a3a3a] bg-[#202020] text-[#a3a3a3]">
+                          <CommandIcon className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-[var(--nova-text)]">{t('chat.commands.title')}</div>
+                          <div className="text-[11px] text-[var(--nova-text-faint)]">{t('chat.commands.skillsDescription')}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <CommandList className="max-h-[312px] p-1.5">
+                      <CommandEmpty className="py-5 text-center text-xs text-[var(--nova-text-faint)]">{t('chat.commands.empty')}</CommandEmpty>
+                      <CommandGroup heading={t('chat.commands.skillsGroup')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
+                        {filteredSkillCommands.map((skill, index) => {
+                          const active = index === activeSkillCommandIndex
+                          return (
+                            <CommandItem
+                              key={skill.name}
+                              ref={(element) => { skillCommandRefs.current[index] = element }}
+                              value={skill.name}
+                              onMouseEnter={() => setActiveSkillCommandIndex(index)}
+                              onSelect={() => selectSkillCommand(skill.name)}
+                              className={`group min-h-12 cursor-pointer rounded-md border px-2.5 py-2 text-[var(--nova-text-muted)] ${
+                                active
+                                  ? 'border-[#4a4a4a] bg-[#2f2f2f] text-[var(--nova-text)]'
+                                  : 'border-transparent hover:border-[#3a3a3a] hover:bg-[#262626]'
+                              }`}
+                            >
+                              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-[var(--nova-surface-2)] ${
+                                active ? 'border-[#4a4a4a] text-[#f5f5f5]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'
+                              }`}>
+                                <Sparkles className="h-3.5 w-3.5" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-2">
+                                  <span className="font-mono text-xs text-[var(--nova-text)]">/{skill.name}</span>
+                                  <span className="truncate text-xs text-[var(--nova-text-muted)]">{skill.description || skill.name}</span>
+                                </span>
+                                <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{t('chat.command.skill.hint')}</span>
+                              </span>
+                            </CommandItem>
+                          )
+                        })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               <Textarea
                 ref={inputRef}
                 autoResize
                 className="nova-field min-h-11 flex-1 resize-none px-3 py-2 text-sm placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
                 style={inputTextStyle}
                 value={input}
-                placeholder={t('storyStage.inputPlaceholder')}
+                placeholder={skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
                 onChange={handleInputChange}
                 onKeyDown={(event) => {
+                  const canPickSkill = showSkillCommands && filteredSkillCommands.length > 0
+                  if (canPickSkill && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+                    event.preventDefault()
+                    setActiveSkillCommandIndex((current) => {
+                      const direction = event.key === 'ArrowDown' ? 1 : -1
+                      return (current + direction + filteredSkillCommands.length) % filteredSkillCommands.length
+                    })
+                    return
+                  }
                   if (event.key === 'Escape') {
                     setStyleReferenceQuery(null)
+                    setShowSkillCommands(false)
+                    setActiveSkillCommandIndex(0)
                     return
                   }
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault()
+                    if (canPickSkill) {
+                      selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)
+                      return
+                    }
                     void send()
                   }
                 }}

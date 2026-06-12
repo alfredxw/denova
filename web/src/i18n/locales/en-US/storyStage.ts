@@ -22,6 +22,7 @@ const storyStage = {
   'storyStage.hotChoices.get': 'Get action choices',
   'storyStage.hotChoices.button': 'Choices',
   'storyStage.inputPlaceholder': 'What do you do?',
+  'storyStage.inputPlaceholderWithSkills': 'What do you do? Type / to choose Skills',
   'storyStage.stop': 'Stop',
   'storyStage.regenerate': 'Regenerate',
   'storyStage.sendRegenerate': 'Send and Regenerate',

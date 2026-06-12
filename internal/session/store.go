@@ -35,7 +35,9 @@ type HistoryEntry struct {
 	Role      string          `json:"role,omitempty"`
 	Content   string          `json:"content,omitempty"`
 	Name      string          `json:"name,omitempty"`
+	Args      string          `json:"args,omitempty"`
 	Status    string          `json:"status,omitempty"`
+	Result    string          `json:"result,omitempty"`
 	Message   *schema.Message `json:"-"`
 	CreatedAt time.Time       `json:"created_at,omitempty"`
 }
@@ -54,7 +56,9 @@ type DisplayEvent struct {
 	Role      string    `json:"role"`
 	Content   string    `json:"content,omitempty"`
 	Name      string    `json:"name,omitempty"`
+	Args      string    `json:"args,omitempty"`
 	Status    string    `json:"status,omitempty"`
+	Result    string    `json:"result,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
 }
 
@@ -132,6 +136,58 @@ func (s *Session) UpdateDisplayToolStatus(id, name, status string) error {
 			continue
 		}
 		s.records[i].display.Status = status
+		s.UpdatedAt = time.Now().UTC()
+		return s.persistLocked()
+	}
+	return nil
+}
+
+// AppendDisplayToolArgs appends streamed tool arguments to a persisted tool card.
+func (s *Session) AppendDisplayToolArgs(id, name, delta string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+	if delta == "" {
+		return nil
+	}
+	for i := len(s.records) - 1; i >= 0; i-- {
+		if s.records[i].kind != historyTypeDisplay || s.records[i].display == nil || s.records[i].display.Role != "tool_call" {
+			continue
+		}
+		if id != "" && s.records[i].display.ID != id {
+			continue
+		}
+		if id == "" && name != "" && s.records[i].display.Name != name {
+			continue
+		}
+		s.records[i].display.Args += delta
+		s.UpdatedAt = time.Now().UTC()
+		return s.persistLocked()
+	}
+	return nil
+}
+
+// UpdateDisplayToolResult stores the result preview for a persisted tool card.
+func (s *Session) UpdateDisplayToolResult(id, name, status, result string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+	for i := len(s.records) - 1; i >= 0; i-- {
+		if s.records[i].kind != historyTypeDisplay || s.records[i].display == nil || s.records[i].display.Role != "tool_call" {
+			continue
+		}
+		if id != "" && s.records[i].display.ID != id {
+			continue
+		}
+		if id == "" && name != "" && s.records[i].display.Name != name {
+			continue
+		}
+		s.records[i].display.Status = status
+		s.records[i].display.Result = result
 		s.UpdatedAt = time.Now().UTC()
 		return s.persistLocked()
 	}
@@ -257,7 +313,9 @@ func (s *Session) History() []HistoryEntry {
 				Role:      record.display.Role,
 				Content:   record.display.Content,
 				Name:      record.display.Name,
+				Args:      record.display.Args,
 				Status:    record.display.Status,
+				Result:    record.display.Result,
 				CreatedAt: record.display.CreatedAt,
 			})
 		}
