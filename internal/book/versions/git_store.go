@@ -70,7 +70,28 @@ func (s *Service) stageWorkspaceFiles(repo *git.Repository, files []versionFileD
 			return err
 		}
 	}
-	return nil
+	return removeVersionExcludedIndexEntries(repo)
+}
+
+func removeVersionExcludedIndexEntries(repo *git.Repository) error {
+	idx, err := repo.Storer.Index()
+	if err != nil {
+		return err
+	}
+	kept := idx.Entries[:0]
+	changed := false
+	for _, entry := range idx.Entries {
+		if isVersionExcludedRelPath(entry.Name) {
+			changed = true
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	if !changed {
+		return nil
+	}
+	idx.Entries = kept
+	return repo.Storer.SetIndex(idx)
 }
 
 func (s *Service) commitFiles(id string) (map[string]versionFileData, error) {

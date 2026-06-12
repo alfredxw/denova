@@ -1,24 +1,191 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
-  <title id="title">Nova</title>
-  <desc id="desc">A minimal geometric N with a nova spark for the Nova creative workspace.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="AI Novel IDE app icon">
   <defs>
-    <linearGradient id="surface" x1="22" y1="16" x2="104" y2="112" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#101820"/>
-      <stop offset="1" stop-color="#06080c"/>
+    <radialGradient id="pageGlow" cx="50%" cy="46%" r="72%">
+      <stop offset="0%" stop-color="#292734"/>
+      <stop offset="54%" stop-color="#17171d"/>
+      <stop offset="100%" stop-color="#07080a"/>
+    </radialGradient>
+
+    <linearGradient id="glassFill" x1="13%" y1="7%" x2="88%" y2="94%">
+      <stop offset="0%" stop-color="#3b3c41"/>
+      <stop offset="43%" stop-color="#17181c"/>
+      <stop offset="100%" stop-color="#050607"/>
     </linearGradient>
-    <linearGradient id="mark" x1="36" y1="35" x2="94" y2="93" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff7cf"/>
-      <stop offset="0.5" stop-color="#ffffff"/>
-      <stop offset="1" stop-color="#80f3df"/>
+
+    <linearGradient id="glassStroke" x1="13%" y1="8%" x2="84%" y2="96%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.42"/>
+      <stop offset="28%" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="66%" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.26"/>
     </linearGradient>
-    <linearGradient id="spark" x1="86" y1="19" x2="109" y2="49" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#fff0a3"/>
-      <stop offset="1" stop-color="#2ee9ce"/>
+
+    <radialGradient id="plateBloom" cx="50%" cy="48%" r="64%">
+      <stop offset="0%" stop-color="#252733" stop-opacity="0.42"/>
+      <stop offset="52%" stop-color="#111216" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="leftPageFill" x1="25%" y1="16%" x2="59%" y2="88%">
+      <stop offset="0%" stop-color="#8fa4ff" stop-opacity="0.72"/>
+      <stop offset="17%" stop-color="#57559a" stop-opacity="0.78"/>
+      <stop offset="45%" stop-color="#2e2257" stop-opacity="0.82"/>
+      <stop offset="77%" stop-color="#130f25" stop-opacity="0.97"/>
+      <stop offset="100%" stop-color="#07060f"/>
     </linearGradient>
+
+    <linearGradient id="rightPageFill" x1="78%" y1="16%" x2="45%" y2="90%">
+      <stop offset="0%" stop-color="#ffb4d7" stop-opacity="0.72"/>
+      <stop offset="17%" stop-color="#8d486e" stop-opacity="0.78"/>
+      <stop offset="46%" stop-color="#442138" stop-opacity="0.84"/>
+      <stop offset="79%" stop-color="#170d18" stop-opacity="0.97"/>
+      <stop offset="100%" stop-color="#080508"/>
+    </linearGradient>
+
+    <linearGradient id="leftBackFill" x1="18%" y1="12%" x2="55%" y2="92%">
+      <stop offset="0%" stop-color="#dfe9ff" stop-opacity="0.78"/>
+      <stop offset="21%" stop-color="#80a3ff" stop-opacity="0.9"/>
+      <stop offset="63%" stop-color="#6047ff" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#25125f" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <linearGradient id="rightBackFill" x1="82%" y1="12%" x2="44%" y2="92%">
+      <stop offset="0%" stop-color="#fff1fb" stop-opacity="0.86"/>
+      <stop offset="20%" stop-color="#ff8fc9" stop-opacity="0.9"/>
+      <stop offset="61%" stop-color="#ff5aa9" stop-opacity="0.68"/>
+      <stop offset="100%" stop-color="#6d174a" stop-opacity="0.88"/>
+    </linearGradient>
+
+    <linearGradient id="leftEdge" x1="17%" y1="0%" x2="95%" y2="100%">
+      <stop offset="0%" stop-color="#fbfdff"/>
+      <stop offset="25%" stop-color="#d7e1ff"/>
+      <stop offset="61%" stop-color="#7f68ff"/>
+      <stop offset="100%" stop-color="#be5cff"/>
+    </linearGradient>
+
+    <linearGradient id="rightEdge" x1="84%" y1="0%" x2="10%" y2="100%">
+      <stop offset="0%" stop-color="#fff7fb"/>
+      <stop offset="21%" stop-color="#ffc1df"/>
+      <stop offset="65%" stop-color="#ff5aa6"/>
+      <stop offset="100%" stop-color="#c14cff"/>
+    </linearGradient>
+
+    <radialGradient id="starFill" cx="50%" cy="45%" r="58%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="21%" stop-color="#fff6fb"/>
+      <stop offset="43%" stop-color="#ffafd6"/>
+      <stop offset="72%" stop-color="#ff6bd2" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#8b6cff" stop-opacity="0.1"/>
+    </radialGradient>
+
+    <linearGradient id="starStroke" x1="18%" y1="48%" x2="84%" y2="48%">
+      <stop offset="0%" stop-color="#8d82ff" stop-opacity="0.9"/>
+      <stop offset="32%" stop-color="#ffffff"/>
+      <stop offset="67%" stop-color="#fff8fb"/>
+      <stop offset="100%" stop-color="#ff75ba" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <linearGradient id="romanFill" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" stop-color="#fff7fb"/>
+      <stop offset="58%" stop-color="#ffc1dd"/>
+      <stop offset="100%" stop-color="#ff8ac4"/>
+    </linearGradient>
+
+    <filter id="innerGlass" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="7" result="blur"/>
+      <feOffset dx="0" dy="-6" result="topBlur"/>
+      <feComposite in="topBlur" in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1" result="innerTop"/>
+      <feFlood flood-color="#ffffff" flood-opacity="0.18" result="white"/>
+      <feComposite in="white" in2="innerTop" operator="in" result="highlight"/>
+      <feMerge>
+        <feMergeNode in="SourceGraphic"/>
+        <feMergeNode in="highlight"/>
+      </feMerge>
+    </filter>
+
+    <filter id="bookGlow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="-10" dy="0" stdDeviation="10" flood-color="#6887ff" flood-opacity="0.65"/>
+      <feDropShadow dx="10" dy="0" stdDeviation="10" flood-color="#ff6ab8" flood-opacity="0.65"/>
+      <feDropShadow dx="0" dy="18" stdDeviation="17" flood-color="#8a3cff" flood-opacity="0.52"/>
+    </filter>
+
+    <filter id="edgeGlowBlue" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#7da0ff" flood-opacity="0.9"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="20" flood-color="#6148ff" flood-opacity="0.5"/>
+    </filter>
+
+    <filter id="edgeGlowPink" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#ff93c9" flood-opacity="0.92"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="20" flood-color="#ff4aa5" flood-opacity="0.48"/>
+    </filter>
+
+    <filter id="starGlow" x="-55%" y="-55%" width="210%" height="210%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="20" result="blur1"/>
+      <feColorMatrix in="blur1" type="matrix" values="1 0 0 0 0.95  0 0.7 0 0 0.12  0 0 1 0 0.84  0 0 0 0.55 0" result="pinkBlur"/>
+      <feMerge>
+        <feMergeNode in="pinkBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="softBlur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+
+    <filter id="romanGlow" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#fff4fa" flood-opacity="0.88"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#ff68b6" flood-opacity="0.7"/>
+    </filter>
+
+    <clipPath id="iconClip">
+      <rect x="80" y="80" width="864" height="864" rx="188"/>
+    </clipPath>
   </defs>
 
-  <rect x="10" y="10" width="108" height="108" rx="30" fill="url(#surface)"/>
-  <rect x="11" y="11" width="106" height="106" rx="29" fill="none" stroke="#253241" stroke-width="2"/>
-  <path d="M37 90V38l54 52V38" fill="none" stroke="url(#mark)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M95 21l4.4 12.6L112 38l-12.6 4.4L95 55l-4.4-12.6L78 38l12.6-4.4L95 21z" fill="url(#spark)"/>
+  <g clip-path="url(#iconClip)">
+    <rect x="80" y="80" width="864" height="864" rx="188" fill="url(#glassFill)"/>
+    <rect x="80" y="80" width="864" height="864" rx="188" fill="url(#plateBloom)"/>
+    <ellipse cx="514" cy="184" rx="340" ry="118" fill="#ffffff" opacity="0.06" filter="url(#softBlur)"/>
+    <ellipse cx="512" cy="878" rx="355" ry="88" fill="#000000" opacity="0.42" filter="url(#softBlur)"/>
+    <rect x="82" y="82" width="860" height="860" rx="186" fill="none" stroke="url(#glassStroke)" stroke-width="6" filter="url(#innerGlass)"/>
+    <rect x="102" y="102" width="820" height="820" rx="168" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="2"/>
+
+    <g aria-label="open book with AI sparkle" filter="url(#bookGlow)">
+      <ellipse cx="512" cy="710" rx="290" ry="52" fill="#000000" opacity="0.45" filter="url(#softBlur)"/>
+
+      <!-- Back page layers -->
+      <path d="M229 356 C303 319 431 321 506 374 C519 383 526 394 526 408 L526 742 C460 701 362 690 232 703 C218 704 206 693 206 679 L206 383 C206 370 216 361 229 356 Z" fill="url(#leftBackFill)" opacity="0.92" filter="url(#edgeGlowBlue)"/>
+      <path d="M795 356 C721 319 593 321 518 374 C505 383 498 394 498 408 L498 742 C564 701 662 690 792 703 C806 704 818 693 818 679 L818 383 C818 370 808 361 795 356 Z" fill="url(#rightBackFill)" opacity="0.92" filter="url(#edgeGlowPink)"/>
+
+      <path d="M254 423 C356 398 454 429 512 506 L512 721 C438 680 342 668 245 681 C233 683 223 674 223 662 L223 456 C223 440 235 428 254 423 Z" fill="#12131a" opacity="0.28"/>
+      <path d="M770 423 C668 398 570 429 512 506 L512 721 C586 680 682 668 779 681 C791 683 801 674 801 662 L801 456 C801 440 789 428 770 423 Z" fill="#141014" opacity="0.26"/>
+
+      <!-- Main pages -->
+      <path d="M285 293 C367 288 453 318 512 415 L512 754 C451 672 366 644 281 655 C264 657 251 644 251 627 L251 321 C251 305 266 294 285 293 Z" fill="url(#leftPageFill)" stroke="url(#leftEdge)" stroke-width="8" stroke-linejoin="round" filter="url(#edgeGlowBlue)"/>
+      <path d="M739 293 C657 288 571 318 512 415 L512 754 C573 672 658 644 743 655 C760 657 773 644 773 627 L773 321 C773 305 758 294 739 293 Z" fill="url(#rightPageFill)" stroke="url(#rightEdge)" stroke-width="8" stroke-linejoin="round" filter="url(#edgeGlowPink)"/>
+
+      <!-- Page curvature and spine -->
+      <path d="M278 656 C367 638 451 669 512 754" fill="none" stroke="#7b5bff" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+      <path d="M746 656 C657 638 573 669 512 754" fill="none" stroke="#ff5cae" stroke-width="5" stroke-linecap="round" opacity="0.75"/>
+      <path d="M512 415 L512 754" fill="none" stroke="#ffffff" stroke-opacity="0.16" stroke-width="3"/>
+      <path d="M512 754 C500 725 490 698 478 673" fill="none" stroke="#1b0d25" stroke-width="10" stroke-linecap="round" opacity="0.46"/>
+      <path d="M512 754 C524 725 534 698 546 673" fill="none" stroke="#1d0b18" stroke-width="10" stroke-linecap="round" opacity="0.34"/>
+
+      <!-- Inner page shading -->
+      <path d="M512 415 C467 343 392 304 286 297 C330 318 403 365 443 453 C466 503 485 601 512 754 Z" fill="#0c0b14" opacity="0.18"/>
+      <path d="M512 415 C557 343 632 304 738 297 C694 318 621 365 581 453 C558 503 539 601 512 754 Z" fill="#0c080c" opacity="0.18"/>
+    </g>
+
+    <!-- AI sparkle -->
+    <g filter="url(#starGlow)">
+      <path d="M512 240 C526 383 556 446 694 466 C556 486 526 551 512 754 C498 551 468 486 330 466 C468 446 498 383 512 240 Z" fill="#ff63cb" opacity="0.35"/>
+      <path d="M512 260 C524 392 550 450 671 466 C550 482 524 541 512 724 C500 541 474 482 353 466 C474 450 500 392 512 260 Z" fill="url(#starFill)" stroke="url(#starStroke)" stroke-width="3.5" stroke-linejoin="round"/>
+    </g>
+
+    <!-- Roman numeral / IDE mark -->
+    <g filter="url(#romanGlow)">
+      <path d="M664 520 C661 517 663 512 668 512 L701 512 C706 512 708 517 705 520 L695 531 C693 533 692 536 692 539 L692 598 C692 601 693 604 695 606 L705 617 C708 620 706 625 701 625 L668 625 C663 625 661 620 664 617 L674 606 C676 604 677 601 677 598 L677 539 C677 536 676 533 674 531 Z" fill="url(#romanFill)" stroke="#fff2f8" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M678 536 L678 601" stroke="#ffffff" stroke-opacity="0.38" stroke-width="2" stroke-linecap="round"/>
+    </g>
+  </g>
+
 </svg>

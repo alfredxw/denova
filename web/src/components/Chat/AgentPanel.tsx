@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bot, FileText, MessageSquareText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
+import { Activity, Bot, FileText, MessageSquareText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { Teller } from '@/features/interactive/types'
@@ -8,9 +8,10 @@ import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { MessageList } from './MessageList'
 import { InputArea } from './InputArea'
 import { SessionManagementPanel } from './SessionManagementPanel'
+import { AgentTracePanel } from './AgentTracePanel'
 import type { ReferencePickerItem } from './FileReferencePicker'
 
-type AgentPanelView = 'chat' | 'sessions'
+type AgentPanelView = 'chat' | 'sessions' | 'traces'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 
@@ -121,6 +122,15 @@ export function AgentPanel({
           >
             {t('chat.view.sessions')}
           </button>
+          <button
+            type="button"
+            onClick={() => setView('traces')}
+            className={`rounded-[6px] px-1.5 py-0.5 text-[11px] transition-colors ${view === 'traces' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+            aria-label={t('chat.view.traces')}
+            title={t('chat.view.traces')}
+          >
+            <Activity className="h-3 w-3" />
+          </button>
         </div>
         <div className="min-w-0 flex-1" />
         <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{isStreaming ? t('chat.status.streaming') : t('chat.status.idle')}</span>
@@ -200,7 +210,7 @@ export function AgentPanel({
             skills={skillCommands}
           />
         </>
-      ) : (
+      ) : view === 'sessions' ? (
         <SessionManagementPanel
           sessions={sessions}
           activeSessionId={activeSessionId}
@@ -211,6 +221,8 @@ export function AgentPanel({
           onDelete={onDeleteSession}
           onEnterChat={() => setView('chat')}
         />
+      ) : (
+        <AgentTracePanel disabled={isStreaming} />
       )}
     </aside>
   )

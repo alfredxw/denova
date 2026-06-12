@@ -96,7 +96,8 @@ func isTextBytes(data []byte) bool {
 
 func isVersionExcludedRelPath(relPath string) bool {
 	cleanRel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relPath)))
-	return cleanRel == ".git" || strings.HasPrefix(cleanRel, ".git/")
+	return cleanRel == ".git" || strings.HasPrefix(cleanRel, ".git/") ||
+		cleanRel == ".nova/runs" || strings.HasPrefix(cleanRel, ".nova/runs/")
 }
 
 func safeVisiblePath(workspace, relPath string) (string, error) {
@@ -112,7 +113,7 @@ func safeVisiblePath(workspace, relPath string) (string, error) {
 		return "", errors.New("路径不在 workspace 范围内")
 	}
 	if isVersionExcludedRelPath(filepath.ToSlash(cleanRel)) {
-		return "", errors.New("不允许操作 Git 内部路径")
+		return "", errors.New("不允许操作版本排除路径")
 	}
 
 	for _, part := range strings.Split(cleanRel, string(filepath.Separator)) {

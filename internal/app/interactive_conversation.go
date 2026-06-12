@@ -50,6 +50,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
+	turnMemory := buildInteractiveTurnMemory(storyCtx.Snapshot.Turns, teller.ContextPolicy.RecentTurns)
 	stateJSON, err := json.MarshalIndent(storyCtx.Snapshot.State, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("序列化互动状态失败: %w", err)
@@ -58,29 +59,30 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	characters := ""
 	worldBuilding := ""
 	contextMessage := prompts.InteractiveStoryContext(prompts.InteractiveStoryPromptInput{
-		Title:             storyCtx.Meta.Title,
-		Origin:            storyCtx.Meta.Origin,
-		StoryTellerID:     storyCtx.Meta.StoryTellerID,
-		BranchID:          storyCtx.Snapshot.BranchID,
-		ReplyTargetChars:  c.replyTargetChars,
-		Characters:        characters,
-		WorldBuilding:     worldBuilding,
-		LoreItems:         loreItems,
-		SnapshotStateJSON: string(stateJSON),
+		Title:                storyCtx.Meta.Title,
+		Origin:               storyCtx.Meta.Origin,
+		StoryTellerID:        storyCtx.Meta.StoryTellerID,
+		BranchID:             storyCtx.Snapshot.BranchID,
+		ReplyTargetChars:     c.replyTargetChars,
+		Characters:           characters,
+		WorldBuilding:        worldBuilding,
+		LoreItems:            loreItems,
+		SnapshotStateJSON:    string(stateJSON),
+		PreviousTurnsSummary: turnMemory.PreviousSummary,
 	})
-	history := make([]*schema.Message, 0, len(storyCtx.Snapshot.Turns)*2+2)
+	history := make([]*schema.Message, 0, len(turnMemory.RecentTurns)*2+2)
 	history = append(history, schema.UserMessage(contextMessage))
-	for _, turn := range storyCtx.Snapshot.Turns {
+	for _, turn := range turnMemory.RecentTurns {
 		history = append(history, schema.UserMessage(turn.User))
 		history = append(history, schema.AssistantMessage(turn.Narrative, nil))
 	}
 	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage, tellerTurnContextPrompt, teller.RandomEventRate)))
-	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreItems, characters, worldBuilding, string(stateJSON), storyCtx.Snapshot.Turns, agentMessage)
+	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreItems, characters, worldBuilding, string(stateJSON), turnMemory, agentMessage)
 	c.mu.Lock()
 	c.lastSources = sourceSummary
 	c.mu.Unlock()
 	log.Printf(
-		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s teller_slots=%s teller_turn_context=%s random_event_rate=%.2f characters=%s world_building=%s snapshot_state=%s turns=%d history=%s turn_instruction=%s sources=%s",
+		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s teller_slots=%s teller_turn_context=%s random_event_rate=%.2f characters=%s world_building=%s snapshot_state=%s turns=%d recent_turns=%d compressed_turns=%s history=%s turn_instruction=%s sources=%s",
 		c.storyID,
 		storyCtx.Snapshot.BranchID,
 		interactivePartSummary(storyCtx.Meta.Title),
@@ -93,6 +95,8 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		interactivePartSummary(worldBuilding),
 		interactivePartSummary(string(stateJSON)),
 		len(storyCtx.Snapshot.Turns),
+		len(turnMemory.RecentTurns),
+		interactivePartSummary(turnMemory.PreviousSummary),
 		interactiveMessageListSummary(history),
 		interactivePartSummary(history[len(history)-1].Content),
 		sourceSummary,
@@ -349,7 +353,58 @@ type interactiveContextSource struct {
 	Note    string
 }
 
-func interactiveStorySourceSummary(title, origin string, teller interactive.Teller, loreItems, characters, worldBuilding, snapshotState string, turns []interactive.TurnEvent, userAction string) string {
+type interactiveTurnMemory struct {
+	PreviousSummary string
+	RecentTurns     []interactive.TurnEvent
+	PreviousCount   int
+	OmittedCount    int
+}
+
+const (
+	interactiveMemoryMaxPreviousTurns = 80
+	interactiveMemorySummaryMaxBytes  = 16 * 1024
+)
+
+func buildInteractiveTurnMemory(turns []interactive.TurnEvent, recentLimit int) interactiveTurnMemory {
+	if recentLimit <= 0 {
+		recentLimit = 8
+	}
+	if recentLimit > 30 {
+		recentLimit = 30
+	}
+	if len(turns) <= recentLimit {
+		return interactiveTurnMemory{RecentTurns: append([]interactive.TurnEvent(nil), turns...)}
+	}
+	split := len(turns) - recentLimit
+	previous := turns[:split]
+	recent := append([]interactive.TurnEvent(nil), turns[split:]...)
+	omitted := 0
+	if len(previous) > interactiveMemoryMaxPreviousTurns {
+		omitted = len(previous) - interactiveMemoryMaxPreviousTurns
+		previous = previous[omitted:]
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "以下为较早 %d 个回合的有界摘要；完整原文不再进入本轮模型上下文。\n", split)
+	if omitted > 0 {
+		fmt.Fprintf(&sb, "更早的 %d 个回合已超过摘要上限，仅保留当前窗口前最近的压缩记忆。\n", omitted)
+	}
+	for i, turn := range previous {
+		if sb.Len() >= interactiveMemorySummaryMaxBytes {
+			sb.WriteString("- 摘要达到大小上限，剩余较早回合省略。\n")
+			break
+		}
+		turnIndex := omitted + i + 1
+		fmt.Fprintf(&sb, "- 第 %d 回合 用户：%s\n  剧情：%s\n", turnIndex, interactiveSafePreview(turn.User, 120), interactiveSafePreview(turn.Narrative, 180))
+	}
+	return interactiveTurnMemory{
+		PreviousSummary: strings.TrimSpace(sb.String()),
+		RecentTurns:     recent,
+		PreviousCount:   split,
+		OmittedCount:    omitted,
+	}
+}
+
+func interactiveStorySourceSummary(title, origin string, teller interactive.Teller, loreItems, characters, worldBuilding, snapshotState string, turnMemory interactiveTurnMemory, userAction string) string {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title},
 		{Source: "互动故事", Title: "开端", Content: origin},
@@ -359,10 +414,13 @@ func interactiveStorySourceSummary(title, origin string, teller interactive.Tell
 		parts = append(parts, interactiveContextSource{Source: "资料库", Title: ".nova/lore/items.json", Content: loreItems})
 	}
 	parts = append(parts, interactiveContextSource{Source: "互动状态", Title: "当前快照 JSON", Content: snapshotState})
-	for i, turn := range turns {
+	if strings.TrimSpace(turnMemory.PreviousSummary) != "" {
+		parts = append(parts, interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("较早 %d 回合压缩摘要", turnMemory.PreviousCount), Content: turnMemory.PreviousSummary, Note: "compressed"})
+	}
+	for i, turn := range turnMemory.RecentTurns {
 		parts = append(parts,
-			interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("第 %d 回合用户行动", i+1), Content: turn.User},
-			interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("第 %d 回合剧情", i+1), Content: turn.Narrative},
+			interactiveContextSource{Source: "最近历史回合", Title: fmt.Sprintf("最近第 %d 回合用户行动", i+1), Content: turn.User},
+			interactiveContextSource{Source: "最近历史回合", Title: fmt.Sprintf("最近第 %d 回合剧情", i+1), Content: turn.Narrative},
 		)
 	}
 	parts = append(parts, interactiveContextSource{Source: "本轮行动", Title: "当前用户行动", Content: userAction})

@@ -142,6 +142,28 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 }
 
+func TestInteractiveTurnMemoryCompressesOlderTurns(t *testing.T) {
+	turns := []interactive.TurnEvent{
+		{User: "第1次行动", Narrative: "第1段剧情"},
+		{User: "第2次行动", Narrative: "第2段剧情"},
+		{User: "第3次行动", Narrative: "第3段剧情"},
+		{User: "第4次行动", Narrative: "第4段剧情"},
+		{User: "第5次行动", Narrative: "第5段剧情"},
+	}
+	memory := buildInteractiveTurnMemory(turns, 2)
+	if len(memory.RecentTurns) != 2 {
+		t.Fatalf("recent turns = %d, want 2", len(memory.RecentTurns))
+	}
+	if memory.RecentTurns[0].User != "第4次行动" || memory.RecentTurns[1].User != "第5次行动" {
+		t.Fatalf("unexpected recent turns: %#v", memory.RecentTurns)
+	}
+	if !strings.Contains(memory.PreviousSummary, "较早 3 个回合") ||
+		!strings.Contains(memory.PreviousSummary, "第 1 回合") ||
+		strings.Contains(memory.PreviousSummary, "第4次行动") {
+		t.Fatalf("unexpected previous summary: %s", memory.PreviousSummary)
+	}
+}
+
 func TestParseInteractiveAssistantOutput(t *testing.T) {
 	narrative, ops, hotState, err := parseInteractiveAssistantOutput(`<NARRATIVE>
 门后传来低沉的风声。

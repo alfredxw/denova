@@ -54,10 +54,15 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *st
 					emittedTools[i] = true
 					lastArgsLen[i] = 0
 					logToolCall(tc.Function.Name, tc.ID, len(tc.Function.Arguments), "streaming")
+					manifest := ManifestForTool(tc.Function.Name)
 					data := map[string]interface{}{
-						"id":   tc.ID,
-						"name": tc.Function.Name,
-						"args": "",
+						"id":                  tc.ID,
+						"name":                tc.Function.Name,
+						"args":                "",
+						"source":              string(manifest.Source),
+						"mutates_workspace":   manifest.MutatesWorkspace,
+						"requires_post_check": manifest.RequiresPostCheck,
+						"max_result_bytes":    manifest.MaxResultBytes,
 					}
 					if tc.Index != nil {
 						data["index"] = *tc.Index
@@ -73,6 +78,11 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *st
 						if path := toolPathFromArgs(tc.Function.Arguments); path != "" {
 							logToolPath(tc.Function.Name, tc.ID, path)
 							loggedToolPaths[i] = true
+							emit(Event{Type: "tool_target", Data: map[string]interface{}{
+								"id":     tc.ID,
+								"name":   tc.Function.Name,
+								"target": path,
+							}})
 						}
 					}
 					data := map[string]interface{}{
@@ -110,16 +120,25 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 		}
 		args := tc.Function.Arguments
 		logToolCall(name, tc.ID, len(args), "non_streaming")
+		target := toolPathFromArgs(args)
 		if path := toolPathFromArgs(args); path != "" {
 			logToolPath(name, tc.ID, path)
 		}
+		manifest := ManifestForTool(name)
 		if len(args) > 200 {
 			args = args[:200] + "..."
 		}
 		data := map[string]interface{}{
-			"id":   tc.ID,
-			"name": name,
-			"args": args,
+			"id":                  tc.ID,
+			"name":                name,
+			"args":                args,
+			"source":              string(manifest.Source),
+			"mutates_workspace":   manifest.MutatesWorkspace,
+			"requires_post_check": manifest.RequiresPostCheck,
+			"max_result_bytes":    manifest.MaxResultBytes,
+		}
+		if target != "" {
+			data["target"] = target
 		}
 		if tc.Index != nil {
 			data["index"] = *tc.Index
