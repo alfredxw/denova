@@ -30,6 +30,10 @@
 
 ![Nova 互动故事工作台](./img/interactive.png)
 
+### 剧情分支
+
+![剧情分支](./img/branch.png)
+
 ### 资料库
 
 ![Nova 资料库](./img/setting.png)

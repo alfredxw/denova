@@ -30,6 +30,10 @@
 
 ![Nova Interactive Story Workspace](./img/interactive.png)
 
+### Branch
+
+![Branch](./img/branch.png)
+
 ### Lore Library
 
 ![Nova Lore Library](./img/setting.png)
