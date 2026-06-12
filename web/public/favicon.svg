@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="AI Novel IDE app icon">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Nova app icon">
   <defs>
     <radialGradient id="pageGlow" cx="50%" cy="46%" r="72%">
       <stop offset="0%" stop-color="#292734"/>
@@ -84,12 +84,6 @@
       <stop offset="100%" stop-color="#ff75ba" stop-opacity="0.9"/>
     </linearGradient>
 
-    <linearGradient id="romanFill" x1="50%" y1="0%" x2="50%" y2="100%">
-      <stop offset="0%" stop-color="#fff7fb"/>
-      <stop offset="58%" stop-color="#ffc1dd"/>
-      <stop offset="100%" stop-color="#ff8ac4"/>
-    </linearGradient>
-
     <filter id="innerGlass" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
       <feGaussianBlur in="SourceAlpha" stdDeviation="7" result="blur"/>
       <feOffset dx="0" dy="-6" result="topBlur"/>
@@ -131,25 +125,19 @@
       <feGaussianBlur stdDeviation="18"/>
     </filter>
 
-    <filter id="romanGlow" x="-80%" y="-80%" width="260%" height="260%" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="0" stdDeviation="4" flood-color="#fff4fa" flood-opacity="0.88"/>
-      <feDropShadow dx="0" dy="0" stdDeviation="10" flood-color="#ff68b6" flood-opacity="0.7"/>
-    </filter>
-
     <clipPath id="iconClip">
       <rect x="80" y="80" width="864" height="864" rx="188"/>
     </clipPath>
   </defs>
 
   <g clip-path="url(#iconClip)">
-    <rect x="80" y="80" width="864" height="864" rx="188" fill="url(#glassFill)"/>
-    <rect x="80" y="80" width="864" height="864" rx="188" fill="url(#plateBloom)"/>
-    <ellipse cx="514" cy="184" rx="340" ry="118" fill="#ffffff" opacity="0.06" filter="url(#softBlur)"/>
-    <ellipse cx="512" cy="878" rx="355" ry="88" fill="#000000" opacity="0.42" filter="url(#softBlur)"/>
-    <rect x="82" y="82" width="860" height="860" rx="186" fill="none" stroke="url(#glassStroke)" stroke-width="6" filter="url(#innerGlass)"/>
-    <rect x="102" y="102" width="820" height="820" rx="168" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="2"/>
+    <rect x="80" y="80" width="864" height="864" rx="188" fill="#ffffff"/>
+    <ellipse cx="512" cy="878" rx="355" ry="88" fill="#2f2558" opacity="0.08" filter="url(#softBlur)"/>
+    <rect x="82" y="82" width="860" height="860" rx="186" fill="none" stroke="#e8e7ef" stroke-width="6"/>
+    <rect x="102" y="102" width="820" height="820" rx="168" fill="none" stroke="#ffffff" stroke-opacity="0.62" stroke-width="2"/>
 
-    <g aria-label="open book with AI sparkle" filter="url(#bookGlow)">
+    <g transform="matrix(1.12 0 0 1.12 -61.44 -61.44)">
+      <g aria-label="open book with AI sparkle" filter="url(#bookGlow)">
       <ellipse cx="512" cy="710" rx="290" ry="52" fill="#000000" opacity="0.45" filter="url(#softBlur)"/>
 
       <!-- Back page layers -->
@@ -173,18 +161,13 @@
       <!-- Inner page shading -->
       <path d="M512 415 C467 343 392 304 286 297 C330 318 403 365 443 453 C466 503 485 601 512 754 Z" fill="#0c0b14" opacity="0.18"/>
       <path d="M512 415 C557 343 632 304 738 297 C694 318 621 365 581 453 C558 503 539 601 512 754 Z" fill="#0c080c" opacity="0.18"/>
-    </g>
+      </g>
 
-    <!-- AI sparkle -->
-    <g filter="url(#starGlow)">
+      <!-- AI sparkle -->
+      <g filter="url(#starGlow)">
       <path d="M512 240 C526 383 556 446 694 466 C556 486 526 551 512 754 C498 551 468 486 330 466 C468 446 498 383 512 240 Z" fill="#ff63cb" opacity="0.35"/>
       <path d="M512 260 C524 392 550 450 671 466 C550 482 524 541 512 724 C500 541 474 482 353 466 C474 450 500 392 512 260 Z" fill="url(#starFill)" stroke="url(#starStroke)" stroke-width="3.5" stroke-linejoin="round"/>
-    </g>
-
-    <!-- Roman numeral / IDE mark -->
-    <g filter="url(#romanGlow)">
-      <path d="M664 520 C661 517 663 512 668 512 L701 512 C706 512 708 517 705 520 L695 531 C693 533 692 536 692 539 L692 598 C692 601 693 604 695 606 L705 617 C708 620 706 625 701 625 L668 625 C663 625 661 620 664 617 L674 606 C676 604 677 601 677 598 L677 539 C677 536 676 533 674 531 Z" fill="url(#romanFill)" stroke="#fff2f8" stroke-width="3" stroke-linejoin="round"/>
-      <path d="M678 536 L678 601" stroke="#ffffff" stroke-opacity="0.38" stroke-width="2" stroke-linecap="round"/>
+      </g>
     </g>
   </g>
 
