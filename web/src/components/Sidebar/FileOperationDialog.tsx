@@ -89,15 +89,15 @@ export function FileOperationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-[#3a3d44] bg-[#25262a] text-[#d7dbe2]">
+      <DialogContent className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]">
         <DialogHeader>
           <DialogTitle>{t(meta.titleKey)}</DialogTitle>
-          <DialogDescription className="text-[#858b96]">
+          <DialogDescription className="text-[var(--nova-text-muted)]">
             {targetPath ? t('sidebar.currentTarget', { path: targetPath }) : t(meta.descriptionKey)}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <label className="text-xs text-[#aeb4bf]" htmlFor="file-operation-input">
+          <label className="text-xs text-[var(--nova-text-muted)]" htmlFor="file-operation-input">
             {t(meta.labelKey)}
           </label>
           <Input
@@ -110,10 +110,10 @@ export function FileOperationDialog({
                 void handleSubmit()
               }
             }}
-            className="border-[#3a3d44] bg-[#1b1c1f] text-[#d7dbe2]"
+            className="border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]"
             autoFocus
           />
-          {error && <div className="text-xs text-red-400">{error}</div>}
+          {error && <div className="text-xs text-[var(--nova-danger)]">{error}</div>}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>

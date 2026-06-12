@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
+import { ThemeProvider } from 'next-themes'
 import { setConfiguredLocale } from '@/i18n'
 import './index.css'
 import App from './App'
@@ -27,12 +28,14 @@ void bootstrapLocale().finally(() => {
   createRoot(root).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <RuntimeErrorBoundary>
-            <App />
-            <Toaster richColors closeButton />
-          </RuntimeErrorBoundary>
-        </TooltipProvider>
+        <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem themes={['light', 'dark']}>
+          <TooltipProvider>
+            <RuntimeErrorBoundary>
+              <App />
+              <Toaster richColors closeButton />
+            </RuntimeErrorBoundary>
+          </TooltipProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </StrictMode>,
   )

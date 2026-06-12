@@ -143,7 +143,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-也可以在 `config.toml` 中配置模型、Agent 参数、编辑器、互动模式、版本管理和界面语言。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。配置优先级：
+也可以在 `config.toml` 中配置模型、Agent 参数、编辑器、互动模式、版本管理和界面外观（语言、主题、字体）。`theme` 支持 `dark`（默认）、`light` 和 `system`，可保存到用户级或工作区级配置。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。配置优先级：
 
 ```text
 内置默认值 < 全局 config.toml < 用户级配置 < 工作区级配置 < 环境变量

@@ -47,7 +47,7 @@ export function statusText(status: string, t: TFunction) {
 }
 
 export function statusColor(status: string) {
-  if (status === 'deleted') return 'text-red-300'
+  if (status === 'deleted') return 'text-[var(--nova-danger)]'
   if (status === 'added') return 'text-[var(--nova-accent-green)]'
   return 'text-[var(--nova-accent)]'
 }

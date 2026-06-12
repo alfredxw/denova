@@ -19,7 +19,7 @@ const editor = {
   'editor.lineHeight': '行间距',
   'editor.backgroundTheme': '背景主题',
   'editor.currentTheme': '当前：{{theme}}',
-  'editor.theme.ide': 'IDE 深色',
+  'editor.theme.ide': 'IDE',
   'editor.theme.paper': '纸张',
   'editor.theme.sepia': '护眼',
   'editor.themePreview': '正文 / 引用 / 代码块',

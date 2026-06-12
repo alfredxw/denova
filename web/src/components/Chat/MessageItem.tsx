@@ -37,7 +37,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
               {onEdit && (
                 <TooltipIconButton
                   label={t('chat.action.editTurn')}
-                  className="h-7 w-7 border border-[#5a5d64]/50 bg-[#25262a] text-[#d7dbe2] hover:bg-[#303238]"
+                  className="h-7 w-7 border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                   onClick={() => onEdit(message)}
                 >
                   <Pencil className="h-3.5 w-3.5" />
@@ -45,7 +45,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
               )}
             </div>
           )}
-          <div className="nova-user-message max-w-[88%] rounded-lg px-3.5 py-2.5 text-sm text-white whitespace-pre-wrap" style={messageStyle}>
+          <div className="nova-user-message max-w-[88%] rounded-lg px-3.5 py-2.5 text-sm text-[var(--nova-user-message-text)] whitespace-pre-wrap" style={messageStyle}>
             {content}
           </div>
         </div>
@@ -54,7 +54,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
     case 'assistant':
       return (
         <div className="group flex justify-start">
-          <div className="chat-agent-message w-full px-1 text-sm text-[#c8ccd4]" style={messageStyle}>
+          <div className="chat-agent-message w-full px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
             {message.streaming ? (
               <StreamingMarkdown content={content} highlightDialogue={highlightDialogue} />
             ) : (
@@ -119,7 +119,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
     case 'system':
       return (
         <div className="flex justify-center">
-          <span className="rounded-full border border-[#303238] bg-[#25262a] px-3 py-1 text-xs text-[#858b96]">
+          <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1 text-xs text-[var(--nova-text-muted)]">
             {content}
           </span>
         </div>
@@ -128,7 +128,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
     case 'error':
       return (
         <div className="flex justify-center">
-          <span className="rounded-full border border-[#5c2a2a] bg-[#2a1f1f] px-3 py-1 text-xs text-[#ff6b6b]">
+          <span className="rounded-full border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-1 text-xs text-[var(--nova-danger)]">
             {content}
           </span>
         </div>
@@ -354,7 +354,7 @@ function ToolStatusIcon({ status }: { status: ChatMessage['status'] }) {
     )
   }
   if (status === 'error') {
-    return <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#ff6b6b]/55 bg-[#ff6b6b]/10 text-[10px] text-[#ff6b6b]">!</span>
+    return <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[10px] text-[var(--nova-danger)]">!</span>
   }
   return <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[var(--nova-border)] border-t-[var(--nova-text)]" />
 }
@@ -573,14 +573,14 @@ function ThinkingBlock({ content, streaming }: { content: string; streaming: boo
       <div className="w-full">
         <button
           type="button"
-          className="flex items-center gap-1 py-1 text-xs text-[#858b96] hover:text-[#c5c9d1]"
+          className="flex items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
           onClick={() => setExpanded(!expanded)}
         >
           {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
           💭 {t('chat.trace.thinking')}
         </button>
         {expanded && (
-          <div className="border-l border-[#303238] px-3 py-2 text-xs text-[#858b96] whitespace-pre-wrap">
+          <div className="border-l border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] whitespace-pre-wrap">
             {content}
           </div>
         )}

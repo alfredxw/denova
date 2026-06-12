@@ -142,7 +142,7 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   return (
     <>
       {parts.map((part, index) => part.matched ? (
-        <mark key={`${part.text}:${index}`} className="rounded bg-[#f0c674]/25 px-0.5 text-[#f4d58d]">
+        <mark key={`${part.text}:${index}`} className="rounded bg-[var(--nova-warning-bg)] px-0.5 text-[var(--nova-warning)]">
           {part.text}
         </mark>
       ) : (

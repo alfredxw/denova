@@ -89,7 +89,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
   )
 
   const deleteButton = currentStoryId && (
-    <Button variant="ghost" size="icon-xs" className="text-[var(--nova-text-faint)] hover:bg-red-500/15 hover:text-red-200" onClick={() => onDelete(currentStoryId)} aria-label={t('storyPicker.delete')}>
+    <Button variant="ghost" size="icon-xs" className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]" onClick={() => onDelete(currentStoryId)} aria-label={t('storyPicker.delete')}>
       <Trash2 className="h-3 w-3" />
     </Button>
   )

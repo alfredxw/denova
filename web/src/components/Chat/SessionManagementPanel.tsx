@@ -209,7 +209,7 @@ export function SessionManagementPanel({
                             type="button"
                             disabled={disabled || sessions.length <= 1}
                             onClick={() => void handleDelete(session.id)}
-                            className="nova-nav-item rounded p-1 hover:bg-[#4a2b2b] hover:text-[#ff8a8a] disabled:cursor-not-allowed disabled:opacity-30"
+                            className="nova-nav-item rounded p-1 hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)] disabled:cursor-not-allowed disabled:opacity-30"
                             aria-label={`${t('chat.deleteSession')} ${displaySessionTitle(session, t)}`}
                             title={sessions.length <= 1 ? t('chat.keepOneSession') : t('common.delete')}
                           >

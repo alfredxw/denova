@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useTheme } from 'next-themes'
 import { fetchSettings } from '@/features/settings/api'
 import { fontStackFor } from '@/features/settings/font-options'
 import { getLoreItems, importCharacterCard, previewCharacterCard, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
@@ -39,6 +40,7 @@ type BooksReturnMode = 'ide' | 'interactive'
 
 function App() {
   const { t } = useTranslation()
+  const { setTheme } = useTheme()
   const [projectVisible, setProjectVisible] = useState(() => readLayoutBoolean(PROJECT_VISIBLE_KEY, true))
   const [activityBarExpanded, setActivityBarExpanded] = useState(() => readLayoutBoolean(ACTIVITY_BAR_EXPANDED_KEY, false))
   const [interactiveRightVisible, setInteractiveRightVisible] = useState(() => readLayoutBoolean(INTERACTIVE_RIGHT_VISIBLE_KEY, true))
@@ -179,6 +181,7 @@ function App() {
           if (typeof v === 'number' && v >= 1) setMaxOpenTabs(Math.floor(v))
           setNovaDir(data?.paths?.nova_dir || '')
           setConfiguredLocale(data?.effective?.language)
+          setTheme(normalizeAppTheme(data?.effective?.theme))
           applyFontSettings({
             uiFont: data?.effective?.ui_font_family,
             uiFontSize: data?.effective?.ui_font_size,
@@ -195,7 +198,7 @@ function App() {
       cancelled = true
       window.removeEventListener('nova:settings-updated', onUpdated)
     }
-  }, [workspace])
+  }, [setTheme, workspace])
 
   useEffect(() => {
     if (activeTabKey) touchTab(activeTabKey)
@@ -639,6 +642,11 @@ function toWritingRightPanel(panel: RightPanel): WritingRightPanel {
   return panel === 'ai' ? 'ai' : null
 }
 
+function normalizeAppTheme(theme?: string) {
+  if (theme === 'light' || theme === 'dark' || theme === 'system') return theme
+  return 'dark'
+}
+
 function applyFontSettings({
   uiFont,
   uiFontSize,
@@ -651,11 +659,11 @@ function applyFontSettings({
   readingFontSize?: number | null
 }) {
   if (typeof document === 'undefined') return
-  const baseSize = clampFontSize(uiFontSize, 11, 16, 12)
+  const baseSize = clampFontSize(uiFontSize, 11, 16, 14)
   const smSize = clampFontSize(baseSize + 2, 12, 18, 14)
   const compactSize = clampFontSize(baseSize - 1, 10, 15, 11)
   const microSize = clampFontSize(baseSize - 2, 10, 14, 10)
-  document.documentElement.style.setProperty('--nova-ui-font-family', fontStackFor(uiFont, 'system-sans'))
+  document.documentElement.style.setProperty('--nova-ui-font-family', fontStackFor(uiFont, 'apple-system'))
   document.documentElement.style.setProperty('--nova-reading-font-family', fontStackFor(readingFont, 'source-han-serif'))
   document.documentElement.style.setProperty('--nova-ui-font-size', `${baseSize}px`)
   document.documentElement.style.setProperty('--nova-ui-line-height', `${baseSize + 6}px`)

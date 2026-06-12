@@ -45,6 +45,7 @@ type Settings struct {
 	ReadingFontFamily string `toml:"reading_font_family,omitempty" json:"reading_font_family,omitempty"`
 	ReadingFontSize   *int   `toml:"reading_font_size,omitempty" json:"reading_font_size,omitempty"`
 	Language          string `toml:"language,omitempty" json:"language,omitempty"`
+	Theme             string `toml:"theme,omitempty" json:"theme,omitempty"`
 
 	// Agent
 	MaxIteration     *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
@@ -82,11 +83,12 @@ func DefaultSettings() Settings {
 		VersionTimedIntervalMinutes: intPtr(10),
 		VersionAgentEnabled:         boolPtr(true),
 		VersionAgentCharThreshold:   intPtr(3000),
-		UIFontFamily:                "system-sans",
-		UIFontSize:                  intPtr(12),
+		UIFontFamily:                "apple-system",
+		UIFontSize:                  intPtr(14),
 		ReadingFontFamily:           "source-han-serif",
 		ReadingFontSize:             intPtr(18),
 		Language:                    "auto",
+		Theme:                       "dark",
 		MaxIteration:                intPtr(50),
 		ModelMaxRetries:             intPtr(5),
 		AgentModels: AgentModelSettings{
@@ -178,6 +180,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.Language != "" {
 		out.Language = child.Language
+	}
+	if child.Theme != "" {
+		out.Theme = child.Theme
 	}
 	if child.MaxIteration != nil {
 		out.MaxIteration = child.MaxIteration
@@ -322,6 +327,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	// nova_dir 是启动级定位参数，不能由用户级/工作区级配置反向修改自身位置。
 	s.NovaDir = ""
 	s.Language = normalizeLanguage(s.Language)
+	s.Theme = normalizeTheme(s.Theme)
 	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
 	return s
 }
@@ -330,6 +336,15 @@ func normalizeLanguage(language string) string {
 	switch language {
 	case "", "auto", "zh-CN", "en-US":
 		return language
+	default:
+		return ""
+	}
+}
+
+func normalizeTheme(theme string) string {
+	switch theme {
+	case "", "system", "dark", "light":
+		return theme
 	default:
 		return ""
 	}

@@ -336,7 +336,7 @@ export function LoreEditor({
         </Field>
         <div className="lg:col-span-4 text-[11px] leading-5 text-[var(--nova-text-faint)]">
           {draft.load_mode === 'resident' ? t('settingPanel.lore.residentDesc') : loadModeDescription(draft.load_mode, t)}
-          {residentWarning ? <span className="ml-2 text-red-400">{t('settingPanel.lore.residentWarning')}</span> : null}
+          {residentWarning ? <span className="ml-2 text-[var(--nova-danger)]">{t('settingPanel.lore.residentWarning')}</span> : null}
         </div>
       </div>
       <div className="min-h-0 flex-1 p-4">

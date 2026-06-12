@@ -66,9 +66,9 @@ const DEFAULT_SETTINGS: EditorSettings = {
 const THEME_STYLES: Record<EditorTheme, { labelKey: string; background: string; color: string; accent: string }> = {
   ide: {
     labelKey: 'editor.theme.ide',
-    background: '#1a1a1a',
-    color: '#d7dbe2',
-    accent: '#303238',
+    background: 'var(--nova-editor-ide-bg)',
+    color: 'var(--nova-editor-ide-color)',
+    accent: 'var(--nova-editor-ide-accent)',
   },
   paper: {
     labelKey: 'editor.theme.paper',
@@ -118,7 +118,7 @@ const SAVE_STATUS_META: Record<SaveStatus, { labelKey: string; ariaLabelKey: str
   error: {
     labelKey: 'editor.status.error',
     ariaLabelKey: 'editor.status.errorAria',
-    className: 'text-[#ff6b6b]',
+    className: 'text-[var(--nova-danger)]',
   },
 }
 
@@ -550,8 +550,8 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
         }}
       >
         {searchOpen && (
-          <div className="sticky top-0 z-20 ml-auto mb-3 flex w-[360px] items-center gap-1 rounded-lg border border-[#303238] bg-[#202124]/95 p-1 shadow-xl backdrop-blur">
-            <Search className="ml-2 h-3.5 w-3.5 text-[#858b96]" />
+          <div className="sticky top-0 z-20 ml-auto mb-3 flex w-[360px] items-center gap-1 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-menu-bg)] p-1 shadow-xl backdrop-blur">
+            <Search className="ml-2 h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
             <input
               ref={searchInputRef}
               value={searchQuery}
@@ -567,15 +567,15 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
                 }
               }}
               placeholder={t('editor.searchPlaceholder')}
-              className="min-w-0 flex-1 bg-transparent px-1 py-1 text-xs text-[#d7dbe2] outline-none placeholder:text-[#6f7682]"
+              className="min-w-0 flex-1 bg-transparent px-1 py-1 text-xs text-[var(--nova-text)] outline-none placeholder:text-[var(--nova-text-faint)]"
             />
-            <span className="w-14 text-center text-[11px] text-[#858b96]">
+            <span className="w-14 text-center text-[11px] text-[var(--nova-text-muted)]">
               {searchMatches.length > 0 ? `${searchIndex + 1}/${searchMatches.length}` : '0/0'}
             </span>
             <TooltipIconButton
               label={t('editor.searchPrev')}
               size="icon-xs"
-              className="text-[#858b96] hover:bg-[#303238] hover:text-[#d7dbe2]"
+              className="text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
               onClick={() => goToSearchMatch(-1)}
               disabled={searchMatches.length === 0}
             >
@@ -584,7 +584,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
             <TooltipIconButton
               label={t('editor.searchNext')}
               size="icon-xs"
-              className="text-[#858b96] hover:bg-[#303238] hover:text-[#d7dbe2]"
+              className="text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
               onClick={() => goToSearchMatch(1)}
               disabled={searchMatches.length === 0}
             >
@@ -593,7 +593,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
             <TooltipIconButton
               label={t('editor.closeSearch')}
               size="icon-xs"
-              className="text-[#858b96] hover:bg-[#303238] hover:text-[#d7dbe2]"
+              className="text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
               onClick={closeSearch}
             >
               <X className="h-3.5 w-3.5" />
@@ -635,7 +635,7 @@ function EditorSettingsPanel({
       <div className="border-b border-[var(--nova-border-soft)] px-3 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[#3a3a3a] bg-[#202020] text-[#a3a3a3]">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
               <Palette className="h-3.5 w-3.5" />
             </span>
             <div className="min-w-0">
@@ -681,8 +681,8 @@ function EditorSettingsPanel({
                 type="button"
                 className={`nova-editor-theme-option flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left text-xs ${
                   settings.theme === theme
-                    ? 'is-active border-[#4a4a4a] bg-[#2f2f2f] text-[var(--nova-text)]'
-                    : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:border-[#3a3a3a] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+                    ? 'is-active border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
+                    : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
                 }`}
                 onClick={() => patch({ theme })}
               >
@@ -900,12 +900,12 @@ function SelectionToolbar({ editor, onQuote }: { editor: Editor; onQuote: () => 
   return (
     <div
       ref={toolbarRef}
-      className="absolute z-30 flex items-center gap-1 rounded-md border border-[#303238] bg-[#25262a]/95 px-1.5 py-1 shadow-xl backdrop-blur"
+      className="absolute z-30 flex items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-menu-bg)] px-1.5 py-1 shadow-xl backdrop-blur"
       style={{ top: coords.top, left: coords.left }}
     >
       <button
         type="button"
-        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[#c5c9d1] hover:bg-[#4a4d54]/30 hover:text-white"
+        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-menu-item-hover-bg)] hover:text-[var(--nova-text)]"
         onClick={onQuote}
         title={t('editor.quoteSelectionShortcut')}
       >

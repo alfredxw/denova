@@ -33,7 +33,7 @@ interface HomeViewProps {
   onClose?: () => void
 }
 
-const inputCls = 'nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
+const inputCls = 'nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const ghostButtonCls = 'nova-nav-item border border-transparent bg-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const primaryButtonCls = 'border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]'
 const iconButtonCls = 'nova-nav-item text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
@@ -255,7 +255,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                   rows={1}
                   className={inputCls + ' min-h-0 resize-none'}
                 />
-                {createError && <div className="text-xs text-red-400">{createError}</div>}
+                {createError && <div className="text-xs text-[var(--nova-danger)]">{createError}</div>}
                 <div className="flex items-center justify-end gap-2">
                   <Button type="button" size="xs" variant="ghost" className={ghostButtonCls} onClick={() => setShowCreateForm(false)}>{t('common.cancel')}</Button>
                   <Button type="button" size="xs" className={primaryButtonCls} disabled={creating || !novaDir.trim()} onClick={handleCreate}>

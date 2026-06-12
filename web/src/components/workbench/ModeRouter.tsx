@@ -312,7 +312,7 @@ export function ModeRouter(props: ModeRouterProps) {
       </div>
       <div className="flex-1 overflow-y-auto p-2 text-xs">
         {loading ? (
-          <div className="py-4 text-center text-[#858b96]">{t('router.loading')}</div>
+          <div className="py-4 text-center text-[var(--nova-text-muted)]">{t('router.loading')}</div>
         ) : sidebarView === 'outline' ? (
           <ChapterOutline
             chapters={summary?.chapters || []}
@@ -328,7 +328,7 @@ export function ModeRouter(props: ModeRouterProps) {
             onSelectResult={onSelectSearchResult}
           />
         ) : tree.length === 0 ? (
-          <div className="py-4 text-center text-[#858b96]">{t('router.noFiles')}</div>
+          <div className="py-4 text-center text-[var(--nova-text-muted)]">{t('router.noFiles')}</div>
         ) : (
           <FileTree
             nodes={tree}
@@ -446,7 +446,7 @@ export function ModeRouter(props: ModeRouterProps) {
                   onClick={requestWritingInit}
                 />
               ) : (
-                <div className="flex h-full items-center justify-center text-xs text-[#7f8590]">
+                <div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">
                   {t('router.chooseFile')}
                 </div>
               )

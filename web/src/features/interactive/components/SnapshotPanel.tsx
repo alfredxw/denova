@@ -41,12 +41,12 @@ export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
         </div>
         <div className="flex items-center gap-1.5">
           {stateStatus === 'pending' ? <Badge variant="outline" className="border-[var(--nova-accent)]/40 bg-[var(--nova-accent)]/10 text-[var(--nova-accent)]">{t('snapshot.syncing')}</Badge> : null}
-          {stateStatus === 'failed' ? <Badge variant="outline" className="border-red-500/35 bg-red-500/10 text-red-300">{t('snapshot.syncFailed')}</Badge> : null}
+          {stateStatus === 'failed' ? <Badge variant="outline" className="border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]">{t('snapshot.syncFailed')}</Badge> : null}
           <Badge variant="outline" className="border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">{formatBranchName(snapshot?.branch_id, t)}</Badge>
         </div>
       </div>
       {stateStatus === 'failed' && snapshot?.current_turn?.state_error ? (
-        <div className="mb-3 rounded-[var(--nova-radius)] border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+        <div className="mb-3 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs text-[var(--nova-danger)]">
           {snapshot.current_turn.state_error}
         </div>
       ) : null}

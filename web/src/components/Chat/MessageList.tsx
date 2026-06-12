@@ -203,7 +203,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
           {messages.length === 0 && !activityContent && (
             <div className="flex justify-start">
               <div className="px-1 py-2">
-                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[#858b96]" />
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--nova-text-muted)]" />
               </div>
             </div>
           )}
@@ -234,18 +234,18 @@ function TraceGroup({ messages, highlightDialogue, messageStyle }: { messages: C
       <div className="w-full">
         <button
           type="button"
-          className="flex items-center gap-1 py-1 text-xs text-[#858b96] hover:text-[#c5c9d1]"
+          className="flex items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
           onClick={() => setExpanded(!expanded)}
         >
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
           {label}
         </button>
         {expanded && (
-          <div className="space-y-2 border-l border-[#303238] px-3 py-2">
+          <div className="space-y-2 border-l border-[var(--nova-border)] px-3 py-2">
             {messages.map((message, index) => (
               message.role === 'thinking'
                 ? (
-                  <div key={message.id || index} className="text-xs leading-relaxed text-[#858b96] whitespace-pre-wrap">
+                  <div key={message.id || index} className="text-xs leading-relaxed text-[var(--nova-text-muted)] whitespace-pre-wrap">
                     {message.content}
                   </div>
                 )
@@ -272,11 +272,11 @@ function ContextClearDivider({ createdAt }: { createdAt?: string }) {
 
   return (
     <div className="flex items-center gap-3 py-1" role="separator" aria-label={t('chat.contextCleared')}>
-      <div className="h-px flex-1 bg-[#3a3d45]" />
-      <div className="rounded-full border border-[#4b5563] bg-[#25262a] px-3 py-1 text-[11px] text-[#aeb4bf]">
+      <div className="h-px flex-1 bg-[var(--nova-border)]" />
+      <div className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1 text-[11px] text-[var(--nova-text-muted)]">
         {t('chat.contextClearedDetail', { time: timeText ? ` · ${timeText}` : '' })}
       </div>
-      <div className="h-px flex-1 bg-[#3a3d45]" />
+      <div className="h-px flex-1 bg-[var(--nova-border)]" />
     </div>
   )
 }

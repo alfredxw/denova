@@ -55,7 +55,7 @@ export function FileReferencePicker({
       <PopoverContent
         align="start"
         side="top"
-        className="mb-2 w-[360px] border-[#3a3d44] bg-[#25262a] p-0 text-[#d7dbe2]"
+        className="mb-2 w-[360px] border-[var(--nova-border)] bg-[var(--nova-menu-bg)] p-0 text-[var(--nova-text)]"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <Command shouldFilter={false} className="bg-transparent">
@@ -71,7 +71,7 @@ export function FileReferencePicker({
                   className="flex cursor-pointer flex-col items-start gap-0.5"
                 >
                   <span>{trigger}{file.label}</span>
-                  {file.description && <span className="text-[11px] text-[#858b96]">{file.description}</span>}
+                  {file.description && <span className="text-[11px] text-[var(--nova-text-muted)]">{file.description}</span>}
                 </CommandItem>
               ))}
             </CommandGroup>

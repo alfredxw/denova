@@ -39,10 +39,10 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AgentModels.ToolAgent.EnableThinking == nil || *s.AgentModels.ToolAgent.EnableThinking {
 		t.Fatalf("ToolAgent thinking should default off")
 	}
-	if s.UIFontFamily != "system-sans" {
+	if s.UIFontFamily != "apple-system" {
 		t.Fatalf("UIFontFamily default: %s", s.UIFontFamily)
 	}
-	if s.UIFontSize == nil || *s.UIFontSize != 12 {
+	if s.UIFontSize == nil || *s.UIFontSize != 14 {
 		t.Fatalf("UIFontSize default")
 	}
 	if s.ReadingFontFamily != "source-han-serif" {
@@ -54,6 +54,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.Language != "auto" {
 		t.Fatalf("Language default: %s", s.Language)
 	}
+	if s.Theme != "dark" {
+		t.Fatalf("Theme default: %s", s.Theme)
+	}
 }
 
 func TestMergeOverridesNonZero(t *testing.T) {
@@ -61,11 +64,12 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		OpenAIBaseURL:              "https://parent",
 		OpenAIModel:                "p-model",
 		MaxIteration:               intPtr(10),
-		UIFontFamily:               "system-sans",
-		UIFontSize:                 intPtr(12),
+		UIFontFamily:               "apple-system",
+		UIFontSize:                 intPtr(14),
 		ReadingFontFamily:          "source-han-serif",
 		ReadingFontSize:            intPtr(18),
 		Language:                   "auto",
+		Theme:                      "dark",
 		ChapterFilenameFormat:      "old-chapter",
 		VolumeDirFormat:            "old-volume",
 		InteractiveMaxTokens:       intPtr(0),
@@ -81,6 +85,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		ReadingFontFamily:          "system-serif",
 		ReadingFontSize:            intPtr(20),
 		Language:                   "en-US",
+		Theme:                      "light",
 		ChapterFilenameFormat:      "new-chapter",
 		VolumeDirFormat:            "new-volume",
 		InteractiveMaxTokens:       intPtr(4000),
@@ -112,6 +117,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.Language != "en-US" {
 		t.Fatalf("Language should override parent: %s", out.Language)
+	}
+	if out.Theme != "light" {
+		t.Fatalf("Theme should override parent: %s", out.Theme)
 	}
 	if out.ChapterFilenameFormat != "new-chapter" || out.VolumeDirFormat != "new-volume" {
 		t.Fatalf("filename formats should override parent: %#v", out)
@@ -184,6 +192,22 @@ func TestWriteSettingsFileFiltersInvalidLanguage(t *testing.T) {
 	}
 	if out.Language != "" {
 		t.Fatalf("invalid language should be filtered: %q", out.Language)
+	}
+}
+
+func TestWriteSettingsFileFiltersInvalidTheme(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	in := Settings{OpenAIModel: "abc", Theme: "neon"}
+	if err := WriteSettingsFile(p, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Theme != "" {
+		t.Fatalf("invalid theme should be filtered: %q", out.Theme)
 	}
 }
 

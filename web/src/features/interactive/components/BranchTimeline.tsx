@@ -336,7 +336,7 @@ export function BranchTimeline({
                   <button
                     type="button"
                     data-no-drag
-                    className="rounded p-1 text-red-300/70 hover:bg-red-500/15 hover:text-red-200"
+                    className="rounded p-1 text-[var(--nova-danger)] opacity-75 hover:bg-[var(--nova-danger-bg)] hover:opacity-100"
                     onClick={() => deleteBranch(empty.branch)}
                     aria-label={t('branchTimeline.deleteEmptyBranchWithName', { name: formatBranchName(empty.branch, t) })}
                     title={t('branchTimeline.deleteEmptyBranch')}
@@ -381,7 +381,7 @@ export function BranchTimeline({
           <div className="space-y-2">
             <Input className="nova-field text-sm" value={branchTitle} onChange={(event) => setBranchTitle(event.target.value)} placeholder={t('branchTimeline.namePlaceholder')} />
             {createSourceNode?.summary && <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2 text-xs leading-5 text-[var(--nova-text-muted)]">{createSourceNode.summary}</div>}
-            {createError && <div className="rounded-[var(--nova-radius)] border border-red-500/35 bg-red-500/10 p-2 text-xs text-red-300">{createError}</div>}
+            {createError && <div className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] p-2 text-xs text-[var(--nova-danger)]">{createError}</div>}
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => handleCreateDialogOpenChange(false)} disabled={creatingBranch}>{t('common.cancel')}</Button>

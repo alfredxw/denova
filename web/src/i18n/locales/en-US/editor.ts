@@ -19,7 +19,7 @@ const editor = {
   'editor.lineHeight': 'Line Height',
   'editor.backgroundTheme': 'Background Theme',
   'editor.currentTheme': 'Current: {{theme}}',
-  'editor.theme.ide': 'IDE Dark',
+  'editor.theme.ide': 'IDE',
   'editor.theme.paper': 'Paper',
   'editor.theme.sepia': 'Sepia',
   'editor.themePreview': 'Body / Quote / Code block',

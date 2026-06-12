@@ -134,7 +134,7 @@ export function CharacterCardImportDialog({
                     value={bookTitle}
                     onChange={(event) => onBookTitleChange(event.target.value)}
                     placeholder={preview?.name || t('importCard.newBookTitle')}
-                    className="nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]"
+                    className="nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]"
                     disabled={importing}
                   />
                   <div className="truncate text-[11px] text-[var(--nova-text-faint)]">{t('importCard.createIn', { dir: novaDir || t('importCard.novaDir') })}</div>
@@ -143,7 +143,7 @@ export function CharacterCardImportDialog({
             )}
 
             {error && (
-              <div className="rounded-[var(--nova-radius)] border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-200">
+              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[var(--nova-danger)]">
                 {error}
               </div>
             )}

@@ -21,7 +21,7 @@ type SettingsSection = {
 }
 
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
-const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
+const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const iconButtonCls = 'nova-nav-item rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 
 export function SettingsView({ onClose }: { onClose?: () => void }) {
@@ -129,6 +129,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <LanguageSelect label={t('settings.appearance.language')} value={draft.language}
                           effective={effective.language}
                           onChange={(v) => setField('language', v)} />
+          <ThemeSelect label={t('settings.appearance.theme')} value={draft.theme}
+                       effective={effective.theme}
+                       onChange={(v) => setField('theme', v)} />
           <FontSelect label={t('settings.appearance.uiFont')} value={draft.ui_font_family}
                       effective={effective.ui_font_family}
                       onChange={(v) => setField('ui_font_family', v)} />
@@ -605,6 +608,37 @@ function LanguageSelect({ label, value, effective, onChange }: {
       >
         <option value="">{t('common.inherit', { value: effectiveLabel })}</option>
         {LOCALE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
+        ))}
+      </select>
+    </FieldRow>
+  )
+}
+
+const THEME_OPTIONS = [
+  { value: 'dark', labelKey: 'settings.theme.dark' },
+  { value: 'light', labelKey: 'settings.theme.light' },
+  { value: 'system', labelKey: 'settings.theme.system' },
+] as const
+
+function ThemeSelect({ label, value, effective, onChange }: {
+  label: string
+  value?: string
+  effective?: string
+  onChange: (v: string) => void
+}) {
+  const { t } = useTranslation()
+  const effectiveValue = effective || 'dark'
+  const effectiveLabel = t(THEME_OPTIONS.find((option) => option.value === effectiveValue)?.labelKey || 'settings.theme.dark')
+  return (
+    <FieldRow label={label}>
+      <select
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        className={fieldCls}
+      >
+        <option value="">{t('common.inherit', { value: effectiveLabel })}</option>
+        {THEME_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
         ))}
       </select>

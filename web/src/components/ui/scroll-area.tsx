@@ -40,16 +40,16 @@ function ScrollBar({
       className={cn(
         "flex touch-none rounded-full p-px transition-colors select-none",
         orientation === "vertical" &&
-          "h-full w-2.5 border-l border-l-transparent bg-[#17191d]/70",
+          "h-full w-2.5 border-l border-l-transparent bg-[var(--nova-scrollbar-track)]",
         orientation === "horizontal" &&
-          "h-2.5 flex-col border-t border-t-transparent bg-[#17191d]/70",
+          "h-2.5 flex-col border-t border-t-transparent bg-[var(--nova-scrollbar-track)]",
         className
       )}
       {...props}
     >
       <ScrollAreaPrimitive.ScrollAreaThumb
         data-slot="scroll-area-thumb"
-        className="relative flex-1 rounded-full bg-[#3f4652] transition-colors hover:bg-[#596273]"
+        className="relative flex-1 rounded-full bg-[var(--nova-scrollbar-thumb)] transition-colors hover:bg-[var(--nova-scrollbar-thumb-hover)]"
       />
     </ScrollAreaPrimitive.ScrollAreaScrollbar>
   )

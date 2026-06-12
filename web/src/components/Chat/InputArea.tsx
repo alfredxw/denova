@@ -346,20 +346,20 @@ export function InputArea({
           {textSelections.map((sel, idx) => (
             <span
               key={idx}
-              className="inline-flex max-w-full items-center gap-1 rounded-md bg-[#2f9e44]/20 px-2 py-0.5 text-xs text-[#b2f2bb]"
+              className="inline-flex max-w-full items-center gap-1 rounded-md bg-[var(--nova-success-bg)] px-2 py-0.5 text-xs text-[var(--nova-success)]"
             >
               <span className="truncate">
                 {sel.fileName}:L{sel.startLine}
                 {sel.endLine !== sel.startLine && `-L${sel.endLine}`}
                 {' '}
-                <span className="text-[#8fbc8f]">
+                <span className="text-[var(--nova-success-muted)]">
                   {sel.content.length > 30 ? sel.content.slice(0, 30) + '…' : sel.content}
                 </span>
               </span>
               {onTextSelectionRemove && (
                 <button
                   type="button"
-                  className="rounded text-[#8fbc8f] hover:text-white"
+                  className="rounded text-[var(--nova-success-muted)] hover:text-[var(--nova-text)]"
                   onClick={() => onTextSelectionRemove(idx)}
                 >
                   ×
@@ -384,7 +384,7 @@ export function InputArea({
             <div className="border-b border-[var(--nova-border-soft)] px-3 py-2">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#3a3a3a] bg-[#202020] text-[#a3a3a3]">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
                     <CommandIcon className="h-3.5 w-3.5" />
                   </span>
                   <div className="min-w-0">
@@ -409,12 +409,12 @@ export function InputArea({
                       onSelect={() => selectCommand(cmd)}
                       className={`group min-h-12 cursor-pointer rounded-md border px-2.5 py-2 text-[var(--nova-text-muted)] ${
                         active
-                          ? 'border-[#4a4a4a] bg-[#2f2f2f] text-[var(--nova-text)]'
-                          : 'border-transparent hover:border-[#3a3a3a] hover:bg-[#262626]'
+                          ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
+                          : 'border-transparent hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)]'
                       }`}
                     >
                     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-[var(--nova-surface-2)] ${
-                      active ? 'border-[#4a4a4a] text-[#f5f5f5]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'
+                      active ? 'border-[var(--nova-border)] text-[var(--nova-text)]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'
                     }`}>
                       <Icon className="h-3.5 w-3.5" />
                     </span>
@@ -472,8 +472,8 @@ export function InputArea({
           onClick={disabled ? onStop : handleSend}
           disabled={disabled ? !onStop : !value.trim()}
           size="icon-sm"
-          className={`h-9 w-9 shrink-0 rounded-md text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
-            disabled ? 'bg-[#c95050] hover:bg-[#e05d5d]' : 'bg-[#4a4d54] hover:bg-[#5a5d64] disabled:bg-[var(--nova-active)]'
+          className={`h-9 w-9 shrink-0 rounded-md text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
+            disabled ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)] disabled:bg-[var(--nova-active)]'
           }`}
           aria-label={disabled ? t('chat.input.stop') : t('chat.input.send')}
         >

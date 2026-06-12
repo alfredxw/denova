@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { DiffEditor } from '@monaco-editor/react'
+import { useTheme } from 'next-themes'
 
 export type ChapterDiffViewProps = {
   original: string
@@ -18,6 +19,8 @@ export function ChapterDiffView({
   className = '',
 }: ChapterDiffViewProps) {
   const [compact, setCompact] = useState(false)
+  const { resolvedTheme } = useTheme()
+  const monacoTheme = resolvedTheme === 'light' ? 'light' : 'vs-dark'
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return
@@ -29,10 +32,10 @@ export function ChapterDiffView({
   }, [])
 
   return (
-    <div className={`h-full min-h-[360px] w-full overflow-hidden bg-[#050505] ${className}`}>
+    <div className={`h-full min-h-[360px] w-full overflow-hidden bg-[var(--nova-bg)] ${className}`}>
       <DiffEditor
         height="100%"
-        theme="vs-dark"
+        theme={monacoTheme}
         language={language}
         original={original}
         modified={modified}

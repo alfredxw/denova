@@ -666,7 +666,7 @@ export function StoryStage({
                   <Command shouldFilter={false} className="bg-transparent">
                     <div className="border-b border-[var(--nova-border-soft)] px-3 py-2">
                       <div className="flex items-center gap-2">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#3a3a3a] bg-[#202020] text-[#a3a3a3]">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
                           <CommandIcon className="h-3.5 w-3.5" />
                         </span>
                         <div className="min-w-0">
@@ -689,12 +689,12 @@ export function StoryStage({
                               onSelect={() => selectSkillCommand(skill.name)}
                               className={`group min-h-12 cursor-pointer rounded-md border px-2.5 py-2 text-[var(--nova-text-muted)] ${
                                 active
-                                  ? 'border-[#4a4a4a] bg-[#2f2f2f] text-[var(--nova-text)]'
-                                  : 'border-transparent hover:border-[#3a3a3a] hover:bg-[#262626]'
+                                  ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
+                                  : 'border-transparent hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)]'
                               }`}
                             >
                               <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-[var(--nova-surface-2)] ${
-                                active ? 'border-[#4a4a4a] text-[#f5f5f5]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'
+                                active ? 'border-[var(--nova-border)] text-[var(--nova-text)]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'
                               }`}>
                                 <Sparkles className="h-3.5 w-3.5" />
                               </span>
@@ -764,7 +764,7 @@ export function StoryStage({
               </Button>
             ) : null}
             <Button
-              className={`h-11 w-20 border border-[var(--nova-border)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-red-500/45 hover:bg-red-500/55' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
+              className={`h-11 w-20 border border-[var(--nova-border)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
               disabled={streaming ? false : (!storyId || !input.trim())}
               onClick={() => { streaming ? stop() : void send() }}
               aria-label={streaming ? t('chat.input.stop') : (editingTurn ? t('storyStage.sendRegenerate') : t('chat.input.send'))}

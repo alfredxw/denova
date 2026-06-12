@@ -14,7 +14,7 @@ interface NovelImportDialogProps {
   onImported: (result: NovelImportResult) => void
 }
 
-const fieldCls = 'nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
+const fieldCls = 'nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const ghostButtonCls = 'nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]'
 const defaultSampleChars = 20000
 const minSampleChars = 2000
@@ -283,7 +283,7 @@ export function NovelImportDialog({ open, novaDir, onOpenChange, onImported }: N
             )}
 
             {error && (
-              <div className="rounded-[var(--nova-radius)] border border-red-500/30 bg-red-500/10 px-3 py-2 text-red-200">
+              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[var(--nova-danger)]">
                 {error}
               </div>
             )}

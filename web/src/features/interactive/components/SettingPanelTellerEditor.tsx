@@ -392,7 +392,7 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
           {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           {expanded ? t('chat.tool.collapse') : t('settingPanel.style.button', { count: rule.styles.length })}
         </Button>
-        <Button className={`${actionButtonClassName} justify-center hover:bg-red-500/15 hover:text-red-200`} variant="outline" size="sm" onClick={onRemove}>
+        <Button className={`${actionButtonClassName} justify-center hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]`} variant="outline" size="sm" onClick={onRemove}>
           <Trash2 className="h-3.5 w-3.5" />
           {t('common.delete')}
         </Button>

@@ -33,19 +33,19 @@ export class RuntimeErrorBoundary extends Component<RuntimeErrorBoundaryProps, R
   render() {
     if (this.state.errorMessage) {
       return (
-        <div className="flex h-screen w-screen items-center justify-center bg-[#18191b] px-6 text-[#d7dbe2]">
-          <div className="max-w-xl rounded border border-[#5c2a2a] bg-[#241f1f] p-5 shadow-2xl">
-            <div className="text-base font-semibold text-[#ff8f8f]">{i18n.t('runtime.title')}</div>
-            <div className="mt-2 text-sm leading-6 text-[#c8ccd4]">
+        <div className="flex h-screen w-screen items-center justify-center bg-[var(--nova-bg)] px-6 text-[var(--nova-text)]">
+          <div className="max-w-xl rounded border border-[var(--nova-danger-border)] bg-[var(--nova-surface)] p-5 shadow-2xl">
+            <div className="text-base font-semibold text-[var(--nova-danger)]">{i18n.t('runtime.title')}</div>
+            <div className="mt-2 text-sm leading-6 text-[var(--nova-text-muted)]">
               {i18n.t('runtime.description')}
             </div>
-            <pre className="mt-3 max-h-40 overflow-auto rounded bg-[#18191b] p-3 text-xs text-[#ffb3b3] whitespace-pre-wrap">
+            <pre className="mt-3 max-h-40 overflow-auto rounded bg-[var(--nova-surface-2)] p-3 text-xs text-[var(--nova-danger)] whitespace-pre-wrap">
               {this.state.errorMessage}
             </pre>
             <Button
               type="button"
               size="sm"
-              className="mt-4 bg-[#4a4d54] text-white hover:bg-[#5a5d64]"
+              className="mt-4 bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]"
               onClick={() => window.location.reload()}
             >
               {i18n.t('runtime.reload')}

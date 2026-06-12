@@ -12,7 +12,7 @@ import type { SkillSummary } from '@/lib/api'
 import { AGENTS, FALLBACK_AGENT_TOOL_VALUES, TOOL_ROWS, resolveEffectiveTools, skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
 import type { AgentViewDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
 
-const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[#3a3a3a] focus:bg-[var(--nova-surface-3)]'
+const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 
 export function AgentsView({ onClose }: { onClose?: () => void }) {
@@ -449,7 +449,7 @@ function AgentSkillSection({ agent, skills, value, effective, onChange }: {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate font-mono font-medium">/{skill.name}</span>
-                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${current ? 'bg-[#2f9e44]/20 text-[#b2f2bb]' : 'bg-[#7f1d1d]/25 text-[#fecaca]'}`}>
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${current ? 'bg-[var(--nova-success-bg)] text-[var(--nova-success)]' : 'bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]'}`}>
                       {current ? t('agents.skills.available') : t('agents.skills.unavailable')}
                     </span>
                   </div>

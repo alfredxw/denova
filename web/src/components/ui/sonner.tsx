@@ -11,7 +11,7 @@ import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
+  const { theme = "dark" } = useTheme()
 
   return (
     <Sonner
@@ -34,10 +34,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
           actionButton: "group-[.toast]:rounded-[var(--nova-radius)] group-[.toast]:border group-[.toast]:border-[var(--nova-border)] group-[.toast]:bg-[var(--nova-active)] group-[.toast]:text-[var(--nova-text)]",
           cancelButton: "group-[.toast]:rounded-[var(--nova-radius)] group-[.toast]:border group-[.toast]:border-[var(--nova-border)] group-[.toast]:bg-[var(--nova-surface-2)] group-[.toast]:text-[var(--nova-text-muted)]",
           closeButton: "group-[.toast]:border-[var(--nova-border)] group-[.toast]:bg-[var(--nova-surface-2)] group-[.toast]:text-[var(--nova-text-muted)]",
-          error: "group toast group-[.toaster]:border-red-500/30 group-[.toaster]:bg-[var(--nova-surface)] group-[.toaster]:text-[var(--nova-text)] group-[.toaster]:[--normal-border:rgba(239,68,68,0.3)] group-[.toaster]:[--normal-bg:var(--nova-surface)] group-[.toaster]:[--normal-text:var(--nova-text)]",
+          error: "group toast group-[.toaster]:border-[var(--nova-danger-border)] group-[.toaster]:bg-[var(--nova-surface)] group-[.toaster]:text-[var(--nova-text)] group-[.toaster]:[--normal-border:var(--nova-danger-border)] group-[.toaster]:[--normal-bg:var(--nova-surface)] group-[.toaster]:[--normal-text:var(--nova-text)]",
           success: "group toast group-[.toaster]:border-[var(--nova-border)] group-[.toaster]:bg-[var(--nova-surface)] group-[.toaster]:text-[var(--nova-text)]",
           info: "group toast group-[.toaster]:border-[var(--nova-border)] group-[.toaster]:bg-[var(--nova-surface)] group-[.toaster]:text-[var(--nova-text)]",
-          warning: "group toast group-[.toaster]:border-yellow-500/30 group-[.toaster]:bg-[var(--nova-surface)] group-[.toaster]:text-[var(--nova-text)]",
+          warning: "group toast group-[.toaster]:border-[var(--nova-warning-bg)] group-[.toaster]:bg-[var(--nova-surface)] group-[.toaster]:text-[var(--nova-text)]",
         },
       }}
       style={

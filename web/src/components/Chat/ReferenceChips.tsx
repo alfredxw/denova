@@ -12,11 +12,11 @@ interface ReferenceChipsProps {
 export function ReferenceChips({ files, onRemove, prefix = '@', tone = 'file' }: ReferenceChipsProps) {
   if (files.length === 0) return null
   const toneClass = tone === 'style'
-    ? 'bg-[#8b5cf6]/20 text-[#ddd6fe] hover:bg-[#8b5cf6]/25'
+    ? 'bg-[var(--nova-style-chip-bg)] text-[var(--nova-style-chip-text)] hover:bg-[var(--nova-style-chip-hover-bg)]'
     : tone === 'lore'
-      ? 'bg-[#0f766e]/20 text-[#99f6e4] hover:bg-[#0f766e]/25'
-      : 'bg-[#4a4d54]/20 text-[#d7dbe2] hover:bg-[#4a4d54]/25'
-  const closeClass = tone === 'style' ? 'text-[#c5c9d1] hover:text-white' : 'text-[#c5c9d1] hover:text-white'
+      ? 'bg-[var(--nova-lore-chip-bg)] text-[var(--nova-lore-chip-text)] hover:bg-[var(--nova-lore-chip-hover-bg)]'
+      : 'bg-[var(--nova-chip-bg)] text-[var(--nova-text)] hover:bg-[var(--nova-chip-hover-bg)]'
+  const closeClass = 'text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]'
 
   return (
     <div className="mb-2 flex flex-wrap gap-1.5">

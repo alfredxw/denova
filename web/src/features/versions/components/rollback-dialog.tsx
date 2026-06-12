@@ -30,10 +30,10 @@ export function RollbackDialog({
   const { t } = useTranslation()
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="border-[#3a3d44] bg-[#25262a] text-[#d7dbe2]">
+      <AlertDialogContent className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]">
         <AlertDialogHeader>
           <AlertDialogTitle>{t('versions.rollbackTitle')}</AlertDialogTitle>
-          <AlertDialogDescription className="text-[#858b96]">
+          <AlertDialogDescription className="text-[var(--nova-text-muted)]">
             {version
               ? t('versions.rollbackDescription', { version: version.description || version.title })
               : t('versions.rollbackPickVersion')}
@@ -42,7 +42,7 @@ export function RollbackDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={loading}>{t('common.cancel')}</AlertDialogCancel>
           <AlertDialogAction
-            className="bg-[#ffbd5e] text-[#18191b] hover:bg-[#ffd28a]"
+            className="bg-[var(--nova-warning-bg)] text-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]"
             disabled={loading || !version}
             onClick={(event) => {
               event.preventDefault()

@@ -10,28 +10,168 @@
   --nova-active: #2f2f2f;
   --nova-border: #2a2a2a;
   --nova-border-soft: #222222;
-  --nova-text: #f5f5f5;
+  --nova-text: #ffffff;
   --nova-text-muted: #a3a3a3;
   --nova-text-faint: #737373;
   --nova-accent: #a8adb7;
   --nova-accent-blue: #7fa7d9;
   --nova-accent-green: #81b38d;
+  --nova-danger: #ff6b6b;
+  --nova-danger-bg: rgba(255, 107, 107, 0.12);
+  --nova-danger-border: rgba(255, 107, 107, 0.42);
+  --nova-warning: #f4d58d;
+  --nova-warning-bg: rgba(240, 198, 116, 0.22);
+  --nova-success: #b2f2bb;
+  --nova-success-muted: #8fbc8f;
+  --nova-success-bg: rgba(47, 158, 68, 0.2);
+  --nova-field-focus-border: #3a3a3a;
+  --nova-app-shell-glow: rgba(255, 255, 255, 0.035);
+  --nova-topbar-shadow: rgba(255, 255, 255, 0.025);
+  --nova-control-shadow: rgba(255, 255, 255, 0.028);
+  --nova-user-message-border: #4a4a4a;
+  --nova-user-message-bg-from: #4a4a4a;
+  --nova-user-message-bg-to: #3f3f3f;
+  --nova-user-message-text: #ffffff;
+  --nova-assistant-message-border: #303030;
+  --nova-assistant-message-bg: #141414;
+  --nova-chat-heading: #d7dbe2;
+  --nova-menu-bg: rgba(32, 33, 36, 0.95);
+  --nova-menu-item-hover-bg: rgba(74, 77, 84, 0.25);
+  --nova-selection-bg: rgba(74, 77, 84, 0.25);
+  --nova-drop-bg: #2c3a4d;
+  --nova-tree-text: #aeb4bf;
+  --nova-tree-icon: #858b96;
+  --nova-tree-folder: #a8adb7;
+  --nova-tree-chevron: #6f7682;
+  --nova-chip-bg: rgba(74, 77, 84, 0.2);
+  --nova-chip-hover-bg: rgba(74, 77, 84, 0.25);
+  --nova-style-chip-bg: rgba(139, 92, 246, 0.2);
+  --nova-style-chip-hover-bg: rgba(139, 92, 246, 0.25);
+  --nova-style-chip-text: #ddd6fe;
+  --nova-lore-chip-bg: rgba(15, 118, 110, 0.2);
+  --nova-lore-chip-hover-bg: rgba(15, 118, 110, 0.25);
+  --nova-lore-chip-text: #99f6e4;
+  --nova-code-bg: #303238;
+  --nova-code-text: #d7dbe2;
+  --nova-code-block-bg: #1f2023;
+  --nova-table-header-bg: #25262a;
+  --nova-markdown-border: #303238;
+  --nova-scrollbar-track: #0f0f0f;
+  --nova-scrollbar-thumb: #3f3f3f;
+  --nova-scrollbar-thumb-hover: #5a5a5a;
+  --nova-editor-ide-bg: #1a1a1a;
+  --nova-editor-ide-color: #ffffff;
+  --nova-editor-ide-accent: #303238;
   --nova-radius: 8px;
   --nova-ease: cubic-bezier(0.25, 1.1, 0.4, 1);
   --nova-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
-  --nova-ui-font-size: 12px;
-  --nova-ui-line-height: 18px;
-  --nova-ui-sm-font-size: 14px;
-  --nova-ui-sm-line-height: 20px;
-  --nova-ui-caption-size: 11px;
-  --nova-ui-compact-font-size: 11px;
-  --nova-ui-compact-line-height: 16px;
-  --nova-ui-micro-font-size: 10px;
-  --nova-ui-micro-line-height: 14px;
+  --nova-ui-font-size: 14px;
+  --nova-ui-line-height: 20px;
+  --nova-ui-sm-font-size: 16px;
+  --nova-ui-sm-line-height: 22px;
+  --nova-ui-caption-size: 13px;
+  --nova-ui-compact-font-size: 13px;
+  --nova-ui-compact-line-height: 18px;
+  --nova-ui-micro-font-size: 12px;
+  --nova-ui-micro-line-height: 16px;
   --nova-reading-font-size: 18px;
-  --nova-ui-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --nova-ui-font-family: "SF Pro Text", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", -apple-system, BlinkMacSystemFont, sans-serif;
   --nova-reading-font-family: "Source Han Serif SC", "Noto Serif CJK SC", "Songti SC", "STSong", "SimSun", serif;
   color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --nova-bg: #edf1f5;
+  --nova-bg-deep: #dfe5ec;
+  --nova-surface: #f6f8fa;
+  --nova-surface-2: #eef2f6;
+  --nova-surface-3: #e4e9f0;
+  --nova-hover: #e1e7ef;
+  --nova-active: #d7e0eb;
+  --nova-border: #cbd4df;
+  --nova-border-soft: #dce3eb;
+  --nova-text: #000000;
+  --nova-text-muted: #536071;
+  --nova-text-faint: #7a8493;
+  --nova-accent: #536a86;
+  --nova-accent-blue: #2f6fae;
+  --nova-accent-green: #3f7f54;
+  --nova-danger: #b42318;
+  --nova-danger-bg: rgba(180, 35, 24, 0.1);
+  --nova-danger-border: rgba(180, 35, 24, 0.32);
+  --nova-warning: #7a5200;
+  --nova-warning-bg: rgba(180, 122, 16, 0.18);
+  --nova-success: #156f3f;
+  --nova-success-muted: #2f6f46;
+  --nova-success-bg: rgba(21, 111, 63, 0.12);
+  --nova-field-focus-border: #9ba8b8;
+  --nova-app-shell-glow: transparent;
+  --nova-topbar-shadow: rgba(24, 32, 42, 0.08);
+  --nova-control-shadow: rgba(24, 32, 42, 0.055);
+  --nova-shadow: 0 18px 44px rgba(46, 58, 76, 0.16);
+  --nova-user-message-border: #b5c3d5;
+  --nova-user-message-bg-from: #e4ebf4;
+  --nova-user-message-bg-to: #d8e2ee;
+  --nova-user-message-text: #000000;
+  --nova-assistant-message-border: #d4dde7;
+  --nova-assistant-message-bg: #f6f8fa;
+  --nova-chat-heading: #1f2937;
+  --nova-menu-bg: rgba(246, 248, 250, 0.97);
+  --nova-menu-item-hover-bg: rgba(49, 65, 86, 0.09);
+  --nova-selection-bg: rgba(55, 87, 125, 0.15);
+  --nova-drop-bg: #d5e2f1;
+  --nova-tree-text: #000000;
+  --nova-tree-icon: #536071;
+  --nova-tree-folder: #2f6fae;
+  --nova-tree-chevron: #667085;
+  --nova-chip-bg: rgba(47, 111, 174, 0.12);
+  --nova-chip-hover-bg: rgba(47, 111, 174, 0.18);
+  --nova-style-chip-bg: rgba(96, 72, 176, 0.12);
+  --nova-style-chip-hover-bg: rgba(96, 72, 176, 0.18);
+  --nova-style-chip-text: #3d2f82;
+  --nova-lore-chip-bg: rgba(15, 118, 110, 0.12);
+  --nova-lore-chip-hover-bg: rgba(15, 118, 110, 0.18);
+  --nova-lore-chip-text: #075f57;
+  --nova-code-bg: #e1e7ef;
+  --nova-code-text: #1f2937;
+  --nova-code-block-bg: #e7edf4;
+  --nova-table-header-bg: #e3eaf2;
+  --nova-markdown-border: #ccd6e2;
+  --nova-scrollbar-track: #e7edf3;
+  --nova-scrollbar-thumb: #b6c1cf;
+  --nova-scrollbar-thumb-hover: #8f9cad;
+  --nova-editor-ide-bg: #f6f8fa;
+  --nova-editor-ide-color: #000000;
+  --nova-editor-ide-accent: #d7dee8;
+  color-scheme: light;
+}
+
+[data-theme="light"] [data-nova-app-shell="true"] {
+  background: var(--nova-bg);
+}
+
+[data-theme="light"] .nova-topbar,
+[data-theme="light"] .nova-chat-input-area,
+[data-theme="light"] .nova-editor-toolbar,
+[data-theme="light"] .nova-editor-statusbar {
+  background: var(--nova-surface);
+}
+
+[data-theme="light"] .nova-chat-canvas {
+  background: var(--nova-surface-2);
+}
+
+[data-theme="light"] .nova-chat-composer {
+  box-shadow:
+    inset 0 1px 0 var(--nova-control-shadow),
+    0 8px 20px rgba(35, 48, 66, 0.08);
+}
+
+[data-theme="light"] .nova-command-menu,
+[data-theme="light"] .nova-editor-settings-panel {
+  box-shadow:
+    0 16px 40px rgba(35, 48, 66, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
 html,
@@ -63,7 +203,7 @@ button {
 
 [data-nova-app-shell="true"] {
   background:
-    radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.035), transparent 26%),
+    radial-gradient(circle at 16% 0%, var(--nova-app-shell-glow), transparent 26%),
     var(--nova-bg);
   color: var(--nova-text);
   font-size: var(--nova-ui-font-size);
@@ -109,7 +249,7 @@ button {
   border-color: var(--nova-border);
   background: color-mix(in srgb, var(--nova-surface) 92%, transparent);
   color: var(--nova-text-muted);
-  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.025);
+  box-shadow: inset 0 -1px 0 var(--nova-topbar-shadow);
   backdrop-filter: blur(18px);
   font-size: var(--nova-ui-font-size);
   line-height: var(--nova-ui-line-height);
@@ -118,7 +258,7 @@ button {
 .nova-activity-bar {
   border-color: var(--nova-border);
   background: var(--nova-bg-deep);
-  color: var(--nova-text-faint);
+  color: var(--nova-text-muted);
 }
 
 .nova-sidebar {
@@ -143,7 +283,7 @@ button {
   width: 40px;
   min-width: 40px;
   border-radius: var(--nova-radius);
-  color: var(--nova-text-faint);
+  color: var(--nova-text-muted);
 }
 
 .nova-activity-bar.is-expanded .nova-icon-button {
@@ -196,13 +336,13 @@ button {
 
 .nova-field:hover,
 .nova-field:focus-within {
-  border-color: #3a3a3a;
+  border-color: var(--nova-field-focus-border);
   background: var(--nova-surface-3);
 }
 
 .nova-chat-canvas {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--nova-surface-2) 88%, #202020 12%), var(--nova-surface-2) 220px),
+    linear-gradient(180deg, color-mix(in srgb, var(--nova-surface-2) 88%, var(--nova-surface-3) 12%), var(--nova-surface-2) 220px),
     var(--nova-surface-2);
 }
 
@@ -210,19 +350,19 @@ button {
   background:
     linear-gradient(180deg, color-mix(in srgb, var(--nova-surface) 78%, transparent), var(--nova-surface) 42%),
     var(--nova-surface);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  box-shadow: inset 0 1px 0 var(--nova-topbar-shadow);
 }
 
 .nova-chat-composer {
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    inset 0 1px 0 var(--nova-control-shadow),
     0 10px 28px rgba(0, 0, 0, 0.18);
   transition: border-color 220ms var(--nova-ease), background-color 220ms var(--nova-ease), box-shadow 220ms var(--nova-ease);
 }
 
 .nova-chat-composer:focus-within {
-  border-color: #3f3f3f;
-  background: color-mix(in srgb, var(--nova-surface-2) 72%, #202020 28%);
+  border-color: var(--nova-field-focus-border);
+  background: color-mix(in srgb, var(--nova-surface-2) 72%, var(--nova-surface-3) 28%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 0 0 1px rgba(163, 163, 163, 0.08),
@@ -230,18 +370,16 @@ button {
 }
 
 .nova-command-menu {
-  background:
-    linear-gradient(180deg, var(--nova-surface-3), var(--nova-surface) 70%),
-    var(--nova-surface);
+  background: var(--nova-menu-bg);
   box-shadow:
     0 20px 48px rgba(0, 0, 0, 0.46),
     inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .nova-user-message {
-  border: 1px solid #4a4a4a;
+  border: 1px solid var(--nova-user-message-border);
   background:
-    linear-gradient(180deg, #4a4a4a, #3f3f3f);
+    linear-gradient(180deg, var(--nova-user-message-bg-from), var(--nova-user-message-bg-to));
   font-size: var(--nova-ui-sm-font-size);
   line-height: 1.72;
   box-shadow:
@@ -250,10 +388,10 @@ button {
 }
 
 .nova-assistant-message {
-  border: 1px solid #303030;
+  border: 1px solid var(--nova-assistant-message-border);
   border-radius: var(--nova-radius);
   background:
-    linear-gradient(180deg, #141414, var(--nova-surface) 68%);
+    linear-gradient(180deg, var(--nova-assistant-message-bg), var(--nova-surface) 68%);
   padding: 12px 14px;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.028),
@@ -263,8 +401,8 @@ button {
 .nova-editor-toolbar,
 .nova-editor-statusbar {
   border-color: var(--nova-border);
-  background: color-mix(in srgb, var(--nova-surface) 92%, #202020 8%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+  background: color-mix(in srgb, var(--nova-surface) 92%, var(--nova-surface-3) 8%);
+  box-shadow: inset 0 1px 0 var(--nova-topbar-shadow);
 }
 
 .nova-editor-settings-panel {
@@ -277,12 +415,12 @@ button {
 }
 
 .nova-editor-control {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.028);
+  box-shadow: inset 0 1px 0 var(--nova-control-shadow);
 }
 
 .nova-editor-range {
   height: 18px;
-  accent-color: #a8adb7;
+  accent-color: var(--nova-accent);
 }
 
 .nova-editor-range:focus-visible {
@@ -315,7 +453,7 @@ button {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f3f #0f0f0f;
+  scrollbar-color: var(--nova-scrollbar-thumb) var(--nova-scrollbar-track);
 }
 
 *::-webkit-scrollbar {
@@ -324,21 +462,21 @@ button {
 }
 
 *::-webkit-scrollbar-track {
-  background: #0f0f0f;
+  background: var(--nova-scrollbar-track);
 }
 
 *::-webkit-scrollbar-thumb {
-  border: 2px solid #0f0f0f;
+  border: 2px solid var(--nova-scrollbar-track);
   border-radius: 999px;
-  background: #3f3f3f;
+  background: var(--nova-scrollbar-thumb);
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: #5a5a5a;
+  background: var(--nova-scrollbar-thumb-hover);
 }
 
 *::-webkit-scrollbar-corner {
-  background: #0f0f0f;
+  background: var(--nova-scrollbar-track);
 }
 
 /* TipTap 编辑器内容样式 */
@@ -440,8 +578,8 @@ button {
 }
 
 .editor-content .tiptap pre {
-  background: #1f2937;
-  color: #e5e7eb;
+  background: var(--nova-code-block-bg);
+  color: var(--nova-code-text);
   border-radius: 6px;
   padding: 0.75em 1em;
   margin: 0.5em 0;
@@ -469,7 +607,7 @@ button {
 }
 
 .editor-content .tiptap a {
-  color: #a8adb7;
+  color: var(--nova-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -521,7 +659,7 @@ button {
 .chat-agent-message h1,
 .chat-agent-message h2,
 .chat-agent-message h3 {
-  color: #d7dbe2;
+  color: var(--nova-chat-heading);
   font-weight: 700;
   line-height: 1.35;
 }
@@ -561,23 +699,23 @@ button {
 
 .chat-agent-message hr {
   border: none;
-  border-top: 1px solid #303238;
+  border-top: 1px solid var(--nova-markdown-border);
   margin: 1em 0;
 }
 
 .chat-agent-message code {
   border-radius: 4px;
-  background: #303238;
+  background: var(--nova-code-bg);
   padding: 0.12em 0.35em;
-  color: #d7dbe2;
+  color: var(--nova-code-text);
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
 .chat-agent-message pre {
   overflow-x: auto;
-  border: 1px solid #303238;
+  border: 1px solid var(--nova-markdown-border);
   border-radius: 8px;
-  background: #1f2023;
+  background: var(--nova-code-block-bg);
   padding: 0.75em 1em;
 }
 
@@ -597,14 +735,14 @@ button {
 
 .chat-agent-message th,
 .chat-agent-message td {
-  border: 1px solid #303238;
+  border: 1px solid var(--nova-markdown-border);
   padding: 0.45em 0.65em;
   text-align: left;
 }
 
 .chat-agent-message th {
-  background: #25262a;
-  color: #d7dbe2;
+  background: var(--nova-table-header-bg);
+  color: var(--nova-chat-heading);
 }
 
 .nova-dialogue-highlight {

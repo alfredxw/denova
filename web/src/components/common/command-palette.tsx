@@ -108,11 +108,11 @@ export function CommandPalette({
       onOpenChange={onOpenChange}
       title={t('command.title')}
       description={t('command.description')}
-      className="border-[#303238] bg-[#202124] text-[#d7dbe2]"
+      className="border-[var(--nova-border)] bg-[var(--nova-menu-bg)] text-[var(--nova-text)]"
     >
       <CommandInput
         placeholder={t('command.placeholder')}
-        className="text-[#d7dbe2] placeholder:text-[#666d78]"
+        className="text-[var(--nova-text)] placeholder:text-[var(--nova-text-faint)]"
       />
       <CommandList className="max-h-[360px]">
         <CommandEmpty>{t('command.empty')}</CommandEmpty>
@@ -123,7 +123,7 @@ export function CommandPalette({
               value={action.label}
               disabled={action.disabled}
               onSelect={() => runAction(action)}
-              className="cursor-pointer text-[#d7dbe2] data-[selected=true]:bg-[#303238]"
+              className="cursor-pointer text-[var(--nova-text)] data-[selected=true]:bg-[var(--nova-menu-item-hover-bg)]"
             >
               {action.icon}
               <span>{action.label}</span>

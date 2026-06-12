@@ -64,12 +64,12 @@ interface InlineEditState {
 /** 默认展开的目录名 */
 const DEFAULT_EXPANDED = new Set(['setting', 'chapters'])
 const MENU_CONTENT_CLASS =
-  'min-w-[180px] rounded-lg border-[#303238] bg-[#202124]/95 p-1 text-[#d7dbe2] shadow-[0_12px_32px_rgba(0,0,0,0.45)] backdrop-blur'
+  'min-w-[180px] rounded-lg border-[var(--nova-border)] bg-[var(--nova-menu-bg)] p-1 text-[var(--nova-text)] shadow-[0_12px_32px_rgba(0,0,0,0.18)] backdrop-blur'
 const MENU_ITEM_CLASS =
-  'cursor-pointer rounded-md px-2 py-1.5 text-xs text-[#c5c9d1] transition-colors focus:bg-[#4a4d54]/25 focus:text-[#f0f2f5] data-[highlighted]:bg-[#4a4d54]/25 data-[highlighted]:text-[#f0f2f5] [&_svg]:text-[#858b96] focus:[&_svg]:text-[#c5c9d1] data-[highlighted]:[&_svg]:text-[#c5c9d1]'
+  'cursor-pointer rounded-md px-2 py-1.5 text-xs text-[var(--nova-text-muted)] transition-colors focus:bg-[var(--nova-menu-item-hover-bg)] focus:text-[var(--nova-text)] data-[highlighted]:bg-[var(--nova-menu-item-hover-bg)] data-[highlighted]:text-[var(--nova-text)] [&_svg]:text-[var(--nova-tree-icon)] focus:[&_svg]:text-[var(--nova-text)] data-[highlighted]:[&_svg]:text-[var(--nova-text)]'
 const MENU_DANGER_CLASS =
-  'text-red-300 focus:bg-red-500/15 focus:text-red-200 data-[highlighted]:bg-red-500/15 data-[highlighted]:text-red-200 [&_svg]:text-red-300'
-const MENU_SEPARATOR_CLASS = 'mx-1 my-1 h-px bg-[#303238]'
+  'text-[var(--nova-danger)] focus:bg-[var(--nova-danger-bg)] focus:text-[var(--nova-danger)] data-[highlighted]:bg-[var(--nova-danger-bg)] data-[highlighted]:text-[var(--nova-danger)] [&_svg]:text-[var(--nova-danger)]'
+const MENU_SEPARATOR_CLASS = 'mx-1 my-1 h-px bg-[var(--nova-border)]'
 
 /** 递归渲染目录树组件 */
 export function FileTree({
@@ -322,8 +322,8 @@ function FileTreeList(props: FileTreeListProps) {
         <li className="flex items-center gap-1 px-2 py-0.5">
           <span className="w-3.5 shrink-0" />
           {inlineEdit!.type === 'create-dir'
-            ? <Folder className="h-4 w-4 shrink-0 text-[#a8adb7]" />
-            : <FileText className="h-4 w-4 shrink-0 text-[#858b96]" />
+            ? <Folder className="h-4 w-4 shrink-0 text-[var(--nova-tree-folder)]" />
+            : <FileText className="h-4 w-4 shrink-0 text-[var(--nova-tree-icon)]" />
           }
           <InlineInput
             defaultValue={inlineEdit!.defaultValue}
@@ -484,10 +484,10 @@ function FileTreeNode({
             <div
               className={`group flex w-full items-center rounded ${
                 isMultiSelected
-                  ? 'bg-[#4a4d54]/25 text-[#f0f2f5]'
+                  ? 'bg-[var(--nova-selection-bg)] text-[var(--nova-text)]'
                   : isDragOver
-                    ? 'bg-[#2c3a4d] text-[#f0f2f5]'
-                    : 'text-[#aeb4bf] hover:bg-[#2a2c31]'
+                    ? 'bg-[var(--nova-drop-bg)] text-[var(--nova-text)]'
+                    : 'text-[var(--nova-tree-text)] hover:bg-[var(--nova-hover)]'
               }`}
               draggable={!isRenaming}
               onContextMenu={() => onContextSelectPath(path)}
@@ -517,14 +517,14 @@ function FileTreeNode({
                 }}
               >
                 {expanded ? (
-                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#6f7682]" />
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-tree-chevron)]" />
                 ) : (
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[#6f7682]" />
+                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-tree-chevron)]" />
                 )}
                 {expanded ? (
-                  <FolderOpen className="h-4 w-4 shrink-0 text-[#a8adb7]" />
+                  <FolderOpen className="h-4 w-4 shrink-0 text-[var(--nova-tree-folder)]" />
                 ) : (
-                  <Folder className="h-4 w-4 shrink-0 text-[#a8adb7]" />
+                  <Folder className="h-4 w-4 shrink-0 text-[var(--nova-tree-folder)]" />
                 )}
                 {isRenaming ? (
                   <InlineInput
@@ -583,8 +583,8 @@ function FileTreeNode({
           <div
             className={`group flex w-full items-center rounded ${
               isSelected || isMultiSelected
-                ? 'bg-[#4a4d54]/25 text-[#f0f2f5]'
-                : 'text-[#aeb4bf] hover:bg-[#2a2c31]'
+                ? 'bg-[var(--nova-selection-bg)] text-[var(--nova-text)]'
+                : 'text-[var(--nova-tree-text)] hover:bg-[var(--nova-hover)]'
             }`}
             draggable={!isRenaming}
             onContextMenu={() => onContextSelectPath(path)}
@@ -605,7 +605,7 @@ function FileTreeNode({
               }}
             >
               <span className="w-3.5 shrink-0" />
-              <FileText className="h-4 w-4 shrink-0 text-[#858b96]" />
+              <FileText className="h-4 w-4 shrink-0 text-[var(--nova-tree-icon)]" />
               {isRenaming ? (
                 <InlineInput
                   defaultValue={inlineEdit!.defaultValue}
@@ -617,9 +617,9 @@ function FileTreeNode({
                 <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
                   <span className="truncate">{node.name}</span>
                   {chapter && (
-                    <span className="flex shrink-0 items-center gap-1 text-[10px] text-[#7f8794]">
+                    <span className="flex shrink-0 items-center gap-1 text-[10px] text-[var(--nova-text-faint)]">
                       <span>{formatCompactWords(chapter.words)}</span>
-                      <span className="rounded border border-[#3a4658] bg-[#1c2430] px-1 text-[#c5c9d1]">{chapter.status}</span>
+                      <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1 text-[var(--nova-text-muted)]">{chapter.status}</span>
                     </span>
                   )}
                 </span>
@@ -642,7 +642,7 @@ function NodeDropdown({ actions }: { actions: TreeAction[] }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="mr-1 hidden rounded p-0.5 text-[#858b96] hover:bg-[#3a3d44] group-hover:block"
+          className="mr-1 hidden rounded p-0.5 text-[var(--nova-tree-icon)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] group-hover:block"
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()

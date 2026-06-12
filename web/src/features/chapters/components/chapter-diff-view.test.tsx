@@ -2,6 +2,8 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ChapterDiffView } from './chapter-diff-view'
 
+const themeState = vi.hoisted(() => ({ resolvedTheme: 'dark' }))
+
 vi.mock('@monaco-editor/react', () => ({
   DiffEditor: ({ original, modified, language, theme, options }: {
     original: string
@@ -22,8 +24,13 @@ vi.mock('@monaco-editor/react', () => ({
   ),
 }))
 
+vi.mock('next-themes', () => ({
+  useTheme: () => ({ resolvedTheme: themeState.resolvedTheme }),
+}))
+
 describe('ChapterDiffView', () => {
   it('renders Monaco diff editor with markdown defaults', () => {
+    themeState.resolvedTheme = 'dark'
     render(<ChapterDiffView original="旧章节" modified="新章节" />)
 
     const editor = screen.getByTestId('diff-editor')
@@ -32,5 +39,12 @@ describe('ChapterDiffView', () => {
     expect(editor).toHaveAttribute('data-side-by-side', 'true')
     expect(screen.getByText('旧章节')).toBeInTheDocument()
     expect(screen.getByText('新章节')).toBeInTheDocument()
+  })
+
+  it('uses the light Monaco theme when the app theme is light', () => {
+    themeState.resolvedTheme = 'light'
+    render(<ChapterDiffView original="旧章节" modified="新章节" />)
+
+    expect(screen.getByTestId('diff-editor')).toHaveAttribute('data-theme', 'light')
   })
 })

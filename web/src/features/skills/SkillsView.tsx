@@ -249,13 +249,13 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-sm text-[var(--nova-text)]">/{document.name}</span>
                     <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{scopeLabel(document.scope, t)}</span>
-                    {!document.active && <span className="rounded bg-[#6f5d2a]/30 px-1.5 py-0.5 text-[10px] text-[#e7c36a]">{t('skills.shadowed')}</span>}
+                    {!document.active && <span className="rounded bg-[var(--nova-warning-bg)] px-1.5 py-0.5 text-[10px] text-[var(--nova-warning)]">{t('skills.shadowed')}</span>}
                     {document.agent && <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{document.agent}</span>}
                     {!document.editable && <Lock className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
                   </div>
                   <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]" title={document.path}>{document.path}</div>
                 </div>
-                {dirty && <span className="text-[11px] text-[#e7c36a]">{t('skills.unsaved')}</span>}
+                {dirty && <span className="text-[11px] text-[var(--nova-warning)]">{t('skills.unsaved')}</span>}
               </div>
               <Textarea
                 value={draft}
@@ -365,9 +365,9 @@ function CreateSkillPanel({
                     aria-invalid={invalidName}
                     aria-label={t('skills.create.name')}
                     placeholder={t('skills.create.namePlaceholder')}
-                    className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 font-mono outline-none aria-invalid:border-[#b94a48]"
+                    className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 font-mono outline-none aria-invalid:border-[var(--nova-danger)]"
                   />
-                  <div className={`mt-1 text-[11px] ${invalidName ? 'text-[#fca5a5]' : 'text-[var(--nova-text-faint)]'}`}>
+                  <div className={`mt-1 text-[11px] ${invalidName ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>
                     {invalidName ? t('skills.create.invalidName') : t('skills.create.nameHint')}
                   </div>
                 </Field>
@@ -501,7 +501,7 @@ function SkillScopeList({
               >
                 <span className="flex items-center gap-2">
                   <span className="min-w-0 flex-1 truncate font-mono text-xs text-[var(--nova-text)]">/{skill.name}</span>
-                  {skill.active ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[#74c69d]" /> : <span className="shrink-0 text-[10px] text-[#e7c36a]">{t('skills.shadowed')}</span>}
+                  {skill.active ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-[var(--nova-success)]" /> : <span className="shrink-0 text-[10px] text-[var(--nova-warning)]">{t('skills.shadowed')}</span>}
                   {!skill.editable && <Lock className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
                 </span>
                 <span className="mt-1 line-clamp-2 block text-[11px] leading-4 text-[var(--nova-text-faint)]">{skill.description}</span>

@@ -60,7 +60,7 @@ export function SessionManager({
 
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1.5">
-      <span className="shrink-0 text-[11px] font-medium text-[#858b96]">{t('chat.view.sessions')}</span>
+      <span className="shrink-0 text-[11px] font-medium text-[var(--nova-text-muted)]">{t('chat.view.sessions')}</span>
       {isEditing && activeSession ? (
         <input
           autoFocus
@@ -71,7 +71,7 @@ export function SessionManager({
             if (event.key === 'Enter') void submitRename()
             if (event.key === 'Escape') setIsEditing(false)
           }}
-          className="min-w-0 flex-1 rounded border border-[#4b5563] bg-[#1b1c1f] px-2 py-0.5 text-xs text-[#d7dbe2] outline-none"
+          className="min-w-0 flex-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 text-xs text-[var(--nova-text)] outline-none"
           aria-label={t('chat.sessionTitle')}
         />
       ) : (
@@ -82,13 +82,13 @@ export function SessionManager({
         >
           <SelectTrigger
             size="sm"
-            className="min-w-0 flex-1 border-[#303238] bg-[#25262a] px-2 py-0.5 text-xs text-[#d7dbe2] outline-none hover:bg-[#303238] focus:ring-0"
+            className="min-w-0 flex-1 border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-xs text-[var(--nova-text)] outline-none hover:bg-[var(--nova-hover)] focus:ring-0"
             aria-label={t('chat.selectSession')}
             title={activeSession ? `${activeSession.title} · ${t('common.messages', { count: activeSession.message_count })}` : t('chat.noSession')}
           >
             <SelectValue placeholder={t('chat.noSession')} />
           </SelectTrigger>
-          <SelectContent className="border-[#303238] bg-[#25262a] text-[#d7dbe2]">
+          <SelectContent className="border-[var(--nova-border)] bg-[var(--nova-menu-bg)] text-[var(--nova-text)]">
             {sessions.length === 0 ? (
               <SelectItem value="empty" disabled>{t('chat.noSession')}</SelectItem>
             ) : sessions.map(session => (
@@ -104,7 +104,7 @@ export function SessionManager({
           type="button"
           disabled={disabled}
           onClick={() => void onCreate()}
-          className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-[#aeb4bf] hover:bg-[#303238] disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={t('chat.newSession')}
         >
           <Plus className="h-3 w-3" />
@@ -113,7 +113,7 @@ export function SessionManager({
           type="button"
           disabled={disabled || !activeSession}
           onClick={beginRename}
-          className="rounded p-0.5 text-[#858b96] hover:bg-[#3a3d45] hover:text-[#d7dbe2] disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded p-0.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-40"
           aria-label={activeSession ? `${t('chat.renameSession')} ${activeSession.title}` : t('chat.renameSession')}
         >
           <Edit3 className="h-3 w-3" />
@@ -122,7 +122,7 @@ export function SessionManager({
           type="button"
           disabled={disabled || !activeSession || sessions.length <= 1}
           onClick={() => void handleDelete()}
-          className="rounded p-0.5 text-[#858b96] hover:bg-[#4a2b2b] hover:text-[#ff8a8a] disabled:cursor-not-allowed disabled:opacity-30"
+          className="rounded p-0.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)] disabled:cursor-not-allowed disabled:opacity-30"
           aria-label={activeSession ? `${t('chat.deleteSession')} ${activeSession.title}` : t('chat.deleteSession')}
         >
           <Trash2 className="h-3 w-3" />
