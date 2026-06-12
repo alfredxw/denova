@@ -1,5 +1,5 @@
 import { jsonHeaders, parseSSEStream, requestJSON } from './client'
-import type { ChatMessage, SSEEvent, SessionSummary, TextSelection } from './types'
+import type { AgentRunTrace, AgentRunTraceSummary, ChatMessage, SSEEvent, SessionSummary, TextSelection } from './types'
 
 export async function sendMessage(
   message: string,
@@ -67,6 +67,15 @@ export async function getMessages(sessionId?: string): Promise<ChatMessage[]> {
 export async function getSessions(): Promise<SessionSummary[]> {
   const data = await requestJSON<{ sessions: SessionSummary[] }>('/api/sessions')
   return data.sessions || []
+}
+
+export async function getAgentRunTraces(limit = 20): Promise<AgentRunTraceSummary[]> {
+  const data = await requestJSON<{ runs: AgentRunTraceSummary[] }>(`/api/agent-runs?limit=${encodeURIComponent(String(limit))}`)
+  return data.runs || []
+}
+
+export async function getAgentRunTrace(id: string): Promise<AgentRunTrace> {
+  return requestJSON(`/api/agent-runs/${encodeURIComponent(id)}`)
 }
 
 export async function createSession(title?: string): Promise<SessionSummary> {

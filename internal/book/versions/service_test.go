@@ -1,6 +1,7 @@
 package versions
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -165,6 +166,41 @@ func TestGoGitVersionTracksNovaDeletesWhenGitIgnored(t *testing.T) {
 	}
 	if _, ok := secondFiles[".nova/lore/items.json"]; ok {
 		t.Fatalf("second commit should record ignored .nova deletion: %v", sortedVersionFilePaths(secondFiles))
+	}
+}
+
+func TestGoGitVersionExcludesRunLedgers(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	settings := DefaultAutoSettings()
+	writeFile(t, dir, "chapters/ch0001.md", "第一版")
+	writeFile(t, dir, ".nova/runs/run-1.jsonl", `{"type":"run_created"}`)
+
+	first, err := service.Create("初始版本", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create first failed: %v", err)
+	}
+	files, err := service.commitFiles(first.Version.ID)
+	if err != nil {
+		t.Fatalf("commitFiles first failed: %v", err)
+	}
+	if _, ok := files[".nova/runs/run-1.jsonl"]; ok {
+		t.Fatalf("run ledger should not be committed: %v", sortedVersionFilePaths(files))
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nova", "runs", "run-1.jsonl")); err != nil {
+		t.Fatalf("run ledger should remain in workspace: %v", err)
+	}
+
+	writeFile(t, dir, ".nova/runs/run-2.jsonl", `{"type":"run_finished"}`)
+	status, err := service.Status(settings)
+	if err != nil {
+		t.Fatalf("Status failed: %v", err)
+	}
+	if !status.Clean {
+		t.Fatalf("run ledger changes should not dirty version status: %#v", status.Changes)
+	}
+	if _, err := service.Create("只有运行账本变化", VersionSourceManual, settings); !errors.Is(err, ErrVersionClean) {
+		t.Fatalf("Create should ignore run ledger-only changes, err=%v", err)
 	}
 }
 

@@ -55,11 +55,18 @@ type TextSelectionRef struct {
 }
 
 // ChatService 编排会话历史、文件引用和 Agent 流式响应。
-type ChatService struct{}
+type ChatService struct {
+	policy LoopPolicy
+}
 
 // NewChatService 创建聊天服务。
 func NewChatService() *ChatService {
-	return &ChatService{}
+	return NewChatServiceWithPolicy(DefaultLoopPolicy())
+}
+
+// NewChatServiceWithPolicy 创建带显式 loop policy 的聊天服务，主要用于测试和后续分 Agent 配置。
+func NewChatServiceWithPolicy(policy LoopPolicy) *ChatService {
+	return &ChatService{policy: policy.normalized()}
 }
 
 // Run 运行一次聊天请求，并通过 emit 输出流式事件。
@@ -72,13 +79,59 @@ func (s *ChatService) Run(
 	emit func(Event),
 ) {
 	runLogger := observability.Logger("agent-run")
+	policy := DefaultLoopPolicy()
+	if s != nil {
+		policy = s.policy.normalized()
+	}
+	workspace := ""
+	if bookService != nil {
+		workspace = bookService.Workspace()
+	}
+	runLedger, ledgerErr := newRunLedger(workspace, policy.RunLedger)
+	if ledgerErr != nil {
+		runLogger.Warn("run_ledger_unavailable", slog.String("workspace", workspace), slog.Any("error", ledgerErr))
+	}
+	if runLedger != nil {
+		defer func() {
+			if err := runLedger.Close(); err != nil {
+				runLogger.Warn("run_ledger_close_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+			}
+		}()
+	}
+	finished := false
+	finishRun := func(status, reason string, generatedBytes int) {
+		if finished {
+			return
+		}
+		finished = true
+		if err := runLedger.RecordFinish(status, reason, generatedBytes); err != nil {
+			runLogger.Warn("run_ledger_finish_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+		}
+	}
+
 	recorder := newDisplayEventRecorder(conversation)
+	mutations := newMutationTracker()
 	rawEmit := emit
 	emit = func(ev Event) {
+		mutations.Observe(ev)
 		recorder.Record(ev)
+		if err := runLedger.RecordEvent(ev); err != nil {
+			runLogger.Warn("run_ledger_event_failed", slog.String("run_id", runLedger.ID()), slog.String("event_type", ev.Type), slog.Any("error", err))
+		}
 		rawEmit(ev)
 	}
 	originalMessage := req.Message
+	if err := runLedger.Record("run_started", map[string]any{
+		"workspace":        workspace,
+		"message":          textSummary{Bytes: len(originalMessage), Chars: len([]rune(originalMessage)), Preview: safeLogPreview(originalMessage, policy.RunLedger.PreviewChars)},
+		"references":       len(req.References),
+		"lore_references":  len(req.LoreReferences),
+		"style_references": len(req.StyleReferences),
+		"selections":       len(req.Selections),
+		"plan_mode":        req.PlanMode,
+	}); err != nil {
+		runLogger.Warn("run_ledger_start_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+	}
 	var resumeInterruption *session.Interruption
 	if shouldResumeInterruptedRequest(req.Message) {
 		resumeInterruption = conversation.PendingInterruption()
@@ -90,12 +143,13 @@ func (s *ChatService) Run(
 		if recovered := recover(); recovered != nil {
 			runLogger.Error("panic_recovered", slog.Any("error", recovered))
 			markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, "", fmt.Sprint(recovered))
+			finishRun("panic", fmt.Sprint(recovered), 0)
 			emit(Event{Type: "error", Data: map[string]string{"message": "Agent 异常中断"}})
 		}
 	}()
 
 	agentMessage := req.Message
-	contextLog := newContextBuildLog()
+	contextLog := newContextBuildLog(policy.ContextLedger)
 	contextLog.add("用户输入", "本轮原始请求", originalMessage, "")
 	if resumeInterruption != nil {
 		contextLog.add("运行时恢复", "异常中断恢复上下文", req.Message, "包含上一轮原始请求、已生成助手内容和中断原因")
@@ -126,8 +180,12 @@ func (s *ChatService) Run(
 	history, err := conversation.PrepareMessages(originalMessage, agentMessage)
 	if err != nil {
 		runLogger.Error("prepare_messages_failed", slog.Any("error", err))
+		finishRun("error", err.Error(), 0)
 		emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return
+	}
+	if err := runLedger.RecordContext(contextLog.Audit()); err != nil {
+		runLogger.Warn("run_ledger_context_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
 	}
 	runLogger.Info(
 		"context_composition",
@@ -157,7 +215,9 @@ func (s *ChatService) Run(
 	for {
 		if err := ctx.Err(); err != nil {
 			runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", err), slog.Int("generated_bytes", fullContent.Len()))
+			generatedBytes := fullContent.Len()
 			appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+			finishRun("aborted", err.Error(), generatedBytes)
 			emit(Event{Type: "aborted", Data: map[string]string{}})
 			return
 		}
@@ -169,6 +229,7 @@ func (s *ChatService) Run(
 			runLogger.Error("run_interrupted", slog.String("reason", "runner_error"), slog.Any("error", event.Err), slog.Int("generated_bytes", fullContent.Len()))
 			generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 			markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, event.Err.Error())
+			finishRun("error", event.Err.Error(), len(generated))
 			emit(Event{Type: "error", Data: map[string]string{"message": event.Err.Error()}})
 			return
 		}
@@ -212,6 +273,7 @@ func (s *ChatService) Run(
 			if !processStreamingEvent(mv, &fullContent, &fullThinking, emit) {
 				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 				markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, "stream recv error")
+				finishRun("error", "stream recv error", len(generated))
 				return
 			}
 			continue
@@ -221,12 +283,19 @@ func (s *ChatService) Run(
 		}
 	}
 
+	generatedBytes := fullContent.Len()
 	appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 	if resumeInterruption != nil {
 		if err := conversation.ResolveInterruption(resumeInterruption.ID); err != nil {
 			runLogger.Error("resolve_interruption_failed", slog.String("interruption_id", resumeInterruption.ID), slog.Any("error", err))
 		}
 	}
+	verification := VerifyPostRunMutations(bookService, mutations.Mutations())
+	if verification.Mutations > 0 {
+		runLogger.Info("post_run_verification", slog.String("status", verification.Status), slog.Int("mutations", verification.Mutations), slog.Int("checks", len(verification.Checks)), slog.Any("warnings", verification.Warnings))
+		emit(Event{Type: "verification", Data: verification})
+	}
 	runLogger.Info("run_completed")
+	finishRun("success", "", generatedBytes)
 	emit(Event{Type: "done", Data: map[string]string{}})
 }

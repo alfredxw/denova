@@ -25,6 +25,7 @@ type InteractiveStoryPromptInput struct {
 	WorldBuilding     string
 	LoreItems         string
 	SnapshotStateJSON string
+	PreviousTurnsSummary string
 }
 
 type InteractiveStatePromptInput struct {
@@ -119,6 +120,9 @@ func InteractiveStoryContext(in InteractiveStoryPromptInput) string {
 		writeBlock(&sb, "世界观设定", in.WorldBuilding)
 	}
 	writeBlock(&sb, "当前互动状态快照(JSON)", in.SnapshotStateJSON)
+	if strings.TrimSpace(in.PreviousTurnsSummary) != "" {
+		writeBlock(&sb, "较早剧情压缩记忆", in.PreviousTurnsSummary)
+	}
 	return sb.String()
 }
 

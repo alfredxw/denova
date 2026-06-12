@@ -23,6 +23,29 @@ export interface SessionSummary {
   message_count: number
 }
 
+export interface AgentRunTraceSummary {
+  id: string
+  created_at: string
+  path: string
+  status: string
+  reason?: string
+  events: number
+  context_parts: number
+}
+
+export interface AgentRunTraceRecord {
+  type: string
+  run_id: string
+  created_at: string
+  data?: Record<string, unknown>
+}
+
+export interface AgentRunTrace {
+  summary: AgentRunTraceSummary
+  records: AgentRunTraceRecord[]
+  truncated?: boolean
+}
+
 export interface SSEEvent {
   event: string
   data: string

@@ -3,7 +3,6 @@ package agent
 import (
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -25,44 +24,22 @@ func appendContextBoundaryInstruction(message string) string {
 }
 
 type contextBuildLog struct {
-	parts []contextLogPart
+	ledger *ContextLedger
 }
 
-type contextLogPart struct {
-	Source  string
-	Title   string
-	Content string
-	Note    string
-}
-
-type contextAuditPart struct {
-	Source  string `json:"source"`
-	Title   string `json:"title"`
-	Bytes   int    `json:"bytes"`
-	Chars   int    `json:"chars"`
-	Preview string `json:"preview"`
-	Note    string `json:"note,omitempty"`
-}
-
-func newContextBuildLog() *contextBuildLog {
-	return &contextBuildLog{parts: []contextLogPart{}}
+func newContextBuildLog(policies ...ContextLedgerPolicy) *contextBuildLog {
+	policy := DefaultLoopPolicy().ContextLedger
+	if len(policies) > 0 {
+		policy = policies[0]
+	}
+	return &contextBuildLog{ledger: NewContextLedger(policy)}
 }
 
 func (l *contextBuildLog) add(source, title, content, note string) {
 	if l == nil {
 		return
 	}
-	source = strings.TrimSpace(source)
-	title = strings.TrimSpace(title)
-	if source == "" && title == "" && strings.TrimSpace(content) == "" {
-		return
-	}
-	l.parts = append(l.parts, contextLogPart{
-		Source:  source,
-		Title:   title,
-		Content: content,
-		Note:    strings.TrimSpace(note),
-	})
+	l.ledger.Add(source, title, content, note)
 }
 
 func (l *contextBuildLog) addStyleRules(rules []StyleRule) {
@@ -93,44 +70,24 @@ func (l *contextBuildLog) addSelections(selections []TextSelectionRef) {
 }
 
 func (l *contextBuildLog) String() string {
-	if l == nil || len(l.parts) == 0 {
+	if l == nil || l.ledger == nil {
 		return "count=0"
 	}
-	parts := make([]string, 0, len(l.parts))
-	for i, part := range l.parts {
-		content := strings.TrimSpace(part.Content)
-		fields := []string{
-			fmt.Sprintf("%d:source=%q", i, part.Source),
-			fmt.Sprintf("title=%q", part.Title),
-			"bytes=" + intString(len(content)),
-			"chars=" + intString(utf8.RuneCountInString(content)),
-			"preview=" + strconv.Quote(safeLogPreview(content, 100)),
-		}
-		if part.Note != "" {
-			fields = append(fields, "note="+strconv.Quote(part.Note))
-		}
-		parts = append(parts, strings.Join(fields, ","))
-	}
-	return fmt.Sprintf("count=%d parts=[%s]", len(l.parts), strings.Join(parts, "; "))
+	return l.ledger.Summary()
 }
 
-func (l *contextBuildLog) Audit() []contextAuditPart {
-	if l == nil || len(l.parts) == 0 {
+func (l *contextBuildLog) Audit() []ContextLedgerPart {
+	if l == nil || l.ledger == nil {
 		return nil
 	}
-	parts := make([]contextAuditPart, 0, len(l.parts))
-	for _, part := range l.parts {
-		content := strings.TrimSpace(part.Content)
-		parts = append(parts, contextAuditPart{
-			Source:  part.Source,
-			Title:   part.Title,
-			Bytes:   len(content),
-			Chars:   utf8.RuneCountInString(content),
-			Preview: safeLogPreview(content, 100),
-			Note:    part.Note,
-		})
+	return l.ledger.Parts()
+}
+
+func (l *contextBuildLog) Ledger() *ContextLedger {
+	if l == nil {
+		return nil
 	}
-	return parts
+	return l.ledger
 }
 
 func addContextLog(logs []*contextBuildLog, source, title, content, note string) {

@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Agent loop 新增 `LoopPolicy`、`ContextLedger` 和 `.nova/runs` 运行账本，按轮记录上下文来源、大小上限、事件摘要和完成状态，为后续工具筛选、恢复和验证阶段提供稳定工程边界。
+- Agent loop 新增中心化 tool manifest 与模型可见工具结果筛选，统一标注工具来源、是否变更 workspace、输出上限、幂等键和 post-check 要求，并对 invokable/streamable 工具返回做有界回填。
+- 创作 Agent 新增写入后轻量验证阶段，会根据工具 mutation metadata 检查写入路径、章节目录约束、资料库 `brief_description` 和删除结果，并写入 `.nova/runs` trace。
+- WebUI 创作 Agent 面板新增 Agent Trace 视图，可查看最近运行的上下文账本、工具事件序列、验证结果和截断状态。
 - WebUI 接入 Motion for React，新增全局动效强度配置（跟随系统、完整、减少、关闭），并为工作台切换、一级菜单、Tab、面板和聊天消息提供更克制流畅的过渡。
 - 设置页新增浅色、深色和跟随系统主题切换；主题配置支持用户级和工作区级继承，并即时应用到主工作台。
 - 浅色/深色主题主文字分别使用纯黑/纯白，IDE 编辑器主题会跟随全局浅色/深色切换；默认界面字体改为 Apple 字体栈，界面字号改为 14px。
@@ -15,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 互动故事 Agent 上下文改为按叙事编排 `recent_turns` 保留最近回合原文，并将更早剧情压缩为有界摘要，避免长线互动把完整历史无限注入模型。
 - 重新设计 Nova 极简 SVG 品牌图标，并在中英文 README 首屏顶部展示品牌图标。
 - 新增与图标同风格的 Nova wordmark SVG，并重组中英文 README 首屏介绍，强化 AI-native fiction workspace 的高级创作工作室定位。
 

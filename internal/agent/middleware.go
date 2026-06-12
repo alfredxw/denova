@@ -91,7 +91,7 @@ func (m *safeToolMiddleware) WrapInvokableToolCall(
 			}
 			return fmt.Sprintf("[tool error] %v", err), nil
 		}
-		return result, nil
+		return FilterToolResultForModel(toolName(toolCtx), args, result).Content, nil
 	}, nil
 }
 
@@ -108,7 +108,7 @@ func (m *safeToolMiddleware) WrapStreamableToolCall(
 			}
 			return singleChunkReader(fmt.Sprintf("[tool error] %v", err)), nil
 		}
-		return safeWrapReader(sr), nil
+		return filterToolResultReader(sr, toolName(toolCtx), args), nil
 	}, nil
 }
 
@@ -133,6 +133,41 @@ func safeWrapReader(sr *schema.StreamReader[string]) *schema.StreamReader[string
 				return
 			}
 			_ = w.Send(chunk, nil)
+		}
+	}()
+	return r
+}
+
+func filterToolResultReader(sr *schema.StreamReader[string], toolName, args string) *schema.StreamReader[string] {
+	r, w := schema.Pipe[string](1)
+	go func() {
+		defer w.Close()
+		manifest := ManifestForTool(toolName)
+		limit := normalizedToolResultLimit(manifest)
+		var content strings.Builder
+		originalBytes := 0
+		for {
+			chunk, err := sr.Recv()
+			if errors.Is(err, io.EOF) {
+				filtered := filteredToolResultFromBody(manifest, args, content.String(), originalBytes, originalBytes > content.Len())
+				_ = w.Send(filtered.Content, nil)
+				return
+			}
+			if err != nil {
+				_ = w.Send(fmt.Sprintf("\n[tool error] %v", err), nil)
+				return
+			}
+			originalBytes += len(chunk)
+			if content.Len() >= limit {
+				continue
+			}
+			remaining := limit - content.Len()
+			if len(chunk) <= remaining {
+				content.WriteString(chunk)
+				continue
+			}
+			fragment, _ := truncateUTF8Bytes(chunk, remaining)
+			content.WriteString(strings.TrimSuffix(fragment, "\n[tool result truncated]"))
 		}
 	}()
 	return r
