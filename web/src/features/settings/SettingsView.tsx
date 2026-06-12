@@ -132,6 +132,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <ThemeSelect label={t('settings.appearance.theme')} value={draft.theme}
                        effective={effective.theme}
                        onChange={(v) => setField('theme', v)} />
+          {activeLayer === 'user' && (
+            <MotionIntensitySelect label={t('settings.appearance.motionIntensity')} value={draft.motion_intensity}
+                                   effective={effective.motion_intensity}
+                                   onChange={(v) => setField('motion_intensity', v)} />
+          )}
           <FontSelect label={t('settings.appearance.uiFont')} value={draft.ui_font_family}
                       effective={effective.ui_font_family}
                       onChange={(v) => setField('ui_font_family', v)} />
@@ -621,6 +626,13 @@ const THEME_OPTIONS = [
   { value: 'system', labelKey: 'settings.theme.system' },
 ] as const
 
+const MOTION_INTENSITY_OPTIONS = [
+  { value: 'system', labelKey: 'settings.motion.system' },
+  { value: 'full', labelKey: 'settings.motion.full' },
+  { value: 'reduced', labelKey: 'settings.motion.reduced' },
+  { value: 'off', labelKey: 'settings.motion.off' },
+] as const
+
 function ThemeSelect({ label, value, effective, onChange }: {
   label: string
   value?: string
@@ -639,6 +651,31 @@ function ThemeSelect({ label, value, effective, onChange }: {
       >
         <option value="">{t('common.inherit', { value: effectiveLabel })}</option>
         {THEME_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
+        ))}
+      </select>
+    </FieldRow>
+  )
+}
+
+function MotionIntensitySelect({ label, value, effective, onChange }: {
+  label: string
+  value?: string
+  effective?: string
+  onChange: (v: string) => void
+}) {
+  const { t } = useTranslation()
+  const effectiveValue = effective || 'system'
+  const effectiveLabel = t(MOTION_INTENSITY_OPTIONS.find((option) => option.value === effectiveValue)?.labelKey || 'settings.motion.system')
+  return (
+    <FieldRow label={label}>
+      <select
+        value={value ?? ''}
+        onChange={(e) => onChange(e.target.value)}
+        className={fieldCls}
+      >
+        <option value="">{t('common.inherit', { value: effectiveLabel })}</option>
+        {MOTION_INTENSITY_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>{t(option.labelKey)}</option>
         ))}
       </select>

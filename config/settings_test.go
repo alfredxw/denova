@@ -57,6 +57,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.Theme != "dark" {
 		t.Fatalf("Theme default: %s", s.Theme)
 	}
+	if s.MotionIntensity != "system" {
+		t.Fatalf("MotionIntensity default: %s", s.MotionIntensity)
+	}
 }
 
 func TestMergeOverridesNonZero(t *testing.T) {
@@ -70,6 +73,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		ReadingFontSize:            intPtr(18),
 		Language:                   "auto",
 		Theme:                      "dark",
+		MotionIntensity:            "system",
 		ChapterFilenameFormat:      "old-chapter",
 		VolumeDirFormat:            "old-volume",
 		InteractiveMaxTokens:       intPtr(0),
@@ -86,6 +90,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		ReadingFontSize:            intPtr(20),
 		Language:                   "en-US",
 		Theme:                      "light",
+		MotionIntensity:            "reduced",
 		ChapterFilenameFormat:      "new-chapter",
 		VolumeDirFormat:            "new-volume",
 		InteractiveMaxTokens:       intPtr(4000),
@@ -120,6 +125,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.Theme != "light" {
 		t.Fatalf("Theme should override parent: %s", out.Theme)
+	}
+	if out.MotionIntensity != "reduced" {
+		t.Fatalf("MotionIntensity should override parent: %s", out.MotionIntensity)
 	}
 	if out.ChapterFilenameFormat != "new-chapter" || out.VolumeDirFormat != "new-volume" {
 		t.Fatalf("filename formats should override parent: %#v", out)
@@ -208,6 +216,22 @@ func TestWriteSettingsFileFiltersInvalidTheme(t *testing.T) {
 	}
 	if out.Theme != "" {
 		t.Fatalf("invalid theme should be filtered: %q", out.Theme)
+	}
+}
+
+func TestWriteSettingsFileFiltersInvalidMotionIntensity(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	in := Settings{OpenAIModel: "abc", MotionIntensity: "chaotic"}
+	if err := WriteSettingsFile(p, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.MotionIntensity != "" {
+		t.Fatalf("invalid motion intensity should be filtered: %q", out.MotionIntensity)
 	}
 }
 

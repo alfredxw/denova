@@ -13,6 +13,7 @@ import { useInteractiveStore } from '@/features/interactive/stores/interactive-s
 import type { ChapterSummary } from '@/lib/api'
 import { toast } from 'sonner'
 import { setConfiguredLocale } from '@/i18n'
+import { NovaMotionProvider, normalizeMotionIntensity } from '@/features/motion/motion-preferences'
 import {
   dedupeTabs,
   enforceTabLimit,
@@ -50,6 +51,7 @@ function App() {
   const [openTabs, setOpenTabs] = useState<Tab[]>([])
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null)
   const [maxOpenTabs, setMaxOpenTabs] = useState<number>(MAX_OPEN_TABS_FALLBACK)
+  const [motionIntensity, setMotionIntensity] = useState('system')
   const [novaDir, setNovaDir] = useState('')
   const [sidebarView, setSidebarView] = useState<SidebarView>('outline')
   const [editorSearchIntent, setEditorSearchIntent] = useState<{ path: string; query: string; line: number; nonce: number } | null>(null)
@@ -182,6 +184,7 @@ function App() {
           setNovaDir(data?.paths?.nova_dir || '')
           setConfiguredLocale(data?.effective?.language)
           setTheme(normalizeAppTheme(data?.effective?.theme))
+          setMotionIntensity(normalizeMotionIntensity(data?.effective?.motion_intensity))
           applyFontSettings({
             uiFont: data?.effective?.ui_font_family,
             uiFontSize: data?.effective?.ui_font_size,
@@ -513,7 +516,7 @@ function App() {
   })
 
   return (
-    <>
+    <NovaMotionProvider intensity={motionIntensity}>
       <ModeRouter
         mode={mode}
         booksReturnMode={booksReturnMode}
@@ -623,7 +626,7 @@ function App() {
         onBookTitleChange={setCharacterCardBookTitle}
         onImport={handleCharacterCardImport}
       />
-    </>
+    </NovaMotionProvider>
   )
 }
 

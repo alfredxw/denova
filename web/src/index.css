@@ -64,6 +64,9 @@
   --nova-editor-ide-accent: #303238;
   --nova-radius: 8px;
   --nova-ease: cubic-bezier(0.25, 1.1, 0.4, 1);
+  --nova-motion-fast: 140ms;
+  --nova-motion-normal: 220ms;
+  --nova-motion-slow: 280ms;
   --nova-shadow: 0 18px 50px rgba(0, 0, 0, 0.36);
   --nova-ui-font-size: 14px;
   --nova-ui-line-height: 20px;
@@ -197,8 +200,29 @@ select {
 
 button {
   transition-property: color, background-color, border-color, opacity, transform, box-shadow;
-  transition-duration: 360ms;
+  transition-duration: var(--nova-motion-normal);
   transition-timing-function: var(--nova-ease);
+}
+
+html[data-nova-motion="reduced"] {
+  --nova-motion-fast: 80ms;
+  --nova-motion-normal: 120ms;
+  --nova-motion-slow: 140ms;
+}
+
+html[data-nova-motion="off"] {
+  --nova-motion-fast: 1ms;
+  --nova-motion-normal: 1ms;
+  --nova-motion-slow: 1ms;
+}
+
+html[data-nova-motion="off"] *,
+html[data-nova-motion="off"] *::before,
+html[data-nova-motion="off"] *::after {
+  scroll-behavior: auto !important;
+  transition-duration: 1ms !important;
+  animation-duration: 1ms !important;
+  animation-iteration-count: 1 !important;
 }
 
 [data-nova-app-shell="true"] {
@@ -259,6 +283,7 @@ button {
   border-color: var(--nova-border);
   background: var(--nova-bg-deep);
   color: var(--nova-text-muted);
+  transition-duration: var(--nova-motion-slow) !important;
 }
 
 .nova-sidebar {
@@ -313,7 +338,7 @@ button {
   color: var(--nova-text-muted);
   font-size: var(--nova-ui-font-size);
   line-height: var(--nova-ui-line-height);
-  transition: color 360ms var(--nova-ease), background-color 360ms var(--nova-ease), border-color 360ms var(--nova-ease), transform 360ms var(--nova-ease);
+  transition: color var(--nova-motion-normal) var(--nova-ease), background-color var(--nova-motion-normal) var(--nova-ease), border-color var(--nova-motion-normal) var(--nova-ease), transform var(--nova-motion-normal) var(--nova-ease);
 }
 
 .nova-nav-item:hover {
@@ -357,7 +382,7 @@ button {
   box-shadow:
     inset 0 1px 0 var(--nova-control-shadow),
     0 10px 28px rgba(0, 0, 0, 0.18);
-  transition: border-color 220ms var(--nova-ease), background-color 220ms var(--nova-ease), box-shadow 220ms var(--nova-ease);
+  transition: border-color var(--nova-motion-normal) var(--nova-ease), background-color var(--nova-motion-normal) var(--nova-ease), box-shadow var(--nova-motion-normal) var(--nova-ease);
 }
 
 .nova-chat-composer:focus-within {
@@ -429,7 +454,7 @@ button {
 }
 
 .nova-editor-theme-option {
-  transition: border-color 220ms var(--nova-ease), background-color 220ms var(--nova-ease), color 220ms var(--nova-ease), box-shadow 220ms var(--nova-ease);
+  transition: border-color var(--nova-motion-normal) var(--nova-ease), background-color var(--nova-motion-normal) var(--nova-ease), color var(--nova-motion-normal) var(--nova-ease), box-shadow var(--nova-motion-normal) var(--nova-ease);
 }
 
 .nova-editor-theme-option.is-active {

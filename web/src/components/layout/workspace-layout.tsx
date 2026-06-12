@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { Layout } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
+import { motion } from 'motion/react'
+import { novaEase, subtlePresence } from '@/features/motion/motion-tokens'
 
 interface WorkspaceLayoutProps {
   activityBar: ReactNode
@@ -46,7 +48,15 @@ export function WorkspaceLayout({
             {sidebarVisible && sidebar && (
               <>
                 <Panel id="sidebar" defaultSize="20%" minSize="180px" maxSize="36%" className="min-w-[180px]">
-                  {sidebar}
+                  <motion.div
+                    className="h-full min-h-0"
+                    variants={subtlePresence}
+                    initial="initial"
+                    animate="animate"
+                    transition={{ duration: 0.16, ease: novaEase }}
+                  >
+                    {sidebar}
+                  </motion.div>
                 </Panel>
                 <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.sidebar')} />
               </>
@@ -75,7 +85,15 @@ export function WorkspaceLayout({
               <>
                 <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.right')} />
                 <Panel id="right" defaultSize="34%" minSize="360px" maxSize="55%" className="min-w-[360px]">
-                  {rightPanel}
+                  <motion.div
+                    className="h-full min-h-0"
+                    variants={subtlePresence}
+                    initial="initial"
+                    animate="animate"
+                    transition={{ duration: 0.16, ease: novaEase }}
+                  >
+                    {rightPanel}
+                  </motion.div>
                 </Panel>
               </>
             )}

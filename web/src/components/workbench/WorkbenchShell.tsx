@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BookMarked, BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { novaSpring } from '@/features/motion/motion-tokens'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
@@ -144,22 +146,26 @@ export function WorkbenchShell({
     <header className="nova-topbar grid h-10 shrink-0 grid-cols-[auto_1fr_auto] items-center border-b px-3 text-xs">
       <div className="flex items-center gap-3">
         <div className="font-semibold text-[var(--nova-text)]">Nova</div>
+        <LayoutGroup id="workbench-mode-switch">
         <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
           <button
             type="button"
             onClick={() => onSetMode('ide')}
-            className={`rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+            className={`relative overflow-hidden rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
-            {t('workbench.mode.ideButton')}
+            {navigationMode === 'ide' && <motion.span layoutId="workbench-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
+            <span className="relative z-10">{t('workbench.mode.ideButton')}</span>
           </button>
           <button
             type="button"
             onClick={() => onSetMode('interactive')}
-            className={`rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+            className={`relative overflow-hidden rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
-            {t('workbench.mode.interactiveButton')}
+            {navigationMode === 'interactive' && <motion.span layoutId="workbench-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
+            <span className="relative z-10">{t('workbench.mode.interactiveButton')}</span>
           </button>
         </div>
+        </LayoutGroup>
       </div>
       <div className="mx-auto flex min-w-0 max-w-[520px] items-center justify-center gap-1.5" title={workspace || currentBookName}>
         <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
@@ -177,7 +183,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.lore')}
         onClick={() => toggleIdePanel('lore')}
-        className={`nova-icon-button mb-2 ${ideModeActive && loreVisible ? 'is-active' : ''}`}
+        active={ideModeActive && loreVisible}
+        className="nova-icon-button mb-2"
       >
         <Database className="h-4 w-4" />
       </ActivityButton>
@@ -185,7 +192,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.creator')}
         onClick={() => toggleIdePanel('creator')}
-        className={`nova-icon-button mb-2 ${ideModeActive && creatorVisible ? 'is-active' : ''}`}
+        active={ideModeActive && creatorVisible}
+        className="nova-icon-button mb-2"
       >
         <BookMarked className="h-4 w-4" />
       </ActivityButton>
@@ -193,7 +201,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.teller')}
         onClick={() => toggleIdePanel('teller')}
-        className={`nova-icon-button mb-2 ${ideModeActive && tellerVisible ? 'is-active' : ''}`}
+        active={ideModeActive && tellerVisible}
+        className="nova-icon-button mb-2"
       >
         <SlidersHorizontal className="h-4 w-4" />
       </ActivityButton>
@@ -201,7 +210,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.versions')}
         onClick={() => toggleIdePanel('versions')}
-        className={`nova-icon-button mb-2 ${ideModeActive && versionsVisible ? 'is-active' : ''}`}
+        active={ideModeActive && versionsVisible}
+        className="nova-icon-button mb-2"
       >
         <History className="h-4 w-4" />
       </ActivityButton>
@@ -214,7 +224,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.story')}
         onClick={() => openInteractiveSubmode('story')}
-        className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'story' ? 'is-active' : ''}`}
+        active={interactiveModeActive && interactiveSubmode === 'story'}
+        className="nova-icon-button mb-2"
       >
         <MessageSquareText className="h-4 w-4" />
       </ActivityButton>
@@ -222,7 +233,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.timeline')}
         onClick={() => openInteractiveSubmode('timeline')}
-        className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'timeline' ? 'is-active' : ''}`}
+        active={interactiveModeActive && interactiveSubmode === 'timeline'}
+        className="nova-icon-button mb-2"
       >
         <History className="h-4 w-4" />
       </ActivityButton>
@@ -230,7 +242,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.lore')}
         onClick={() => openInteractiveSubmode('lore')}
-        className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'lore' ? 'is-active' : ''}`}
+        active={interactiveModeActive && interactiveSubmode === 'lore'}
+        className="nova-icon-button mb-2"
       >
         <Database className="h-4 w-4" />
       </ActivityButton>
@@ -238,7 +251,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.creator')}
         onClick={() => openInteractiveSubmode('creator')}
-        className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'creator' ? 'is-active' : ''}`}
+        active={interactiveModeActive && interactiveSubmode === 'creator'}
+        className="nova-icon-button mb-2"
       >
         <BookMarked className="h-4 w-4" />
       </ActivityButton>
@@ -246,7 +260,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.teller')}
         onClick={() => openInteractiveSubmode('teller')}
-        className={`nova-icon-button mb-2 ${interactiveModeActive && interactiveSubmode === 'teller' ? 'is-active' : ''}`}
+        active={interactiveModeActive && interactiveSubmode === 'teller'}
+        className="nova-icon-button mb-2"
       >
         <SlidersHorizontal className="h-4 w-4" />
       </ActivityButton>
@@ -254,6 +269,7 @@ export function WorkbenchShell({
   )
 
   const activityBar = (
+    <LayoutGroup id="workbench-activity-bar">
     <aside className={`nova-activity-bar flex shrink-0 flex-col gap-2 border-r p-3 transition-[width] duration-500 ease-[var(--nova-ease)] ${activityBarExpanded ? 'is-expanded w-48 items-stretch' : 'w-16 items-center'}`}>
       {navigationMode === 'interactive' ? interactiveActivityButtons : (
         <>
@@ -261,7 +277,8 @@ export function WorkbenchShell({
             expanded={activityBarExpanded}
             label={t('workbench.activity.writing')}
             onClick={openWriting}
-            className={`nova-icon-button mb-2 ${ideModeActive && !loreVisible && !creatorVisible && !tellerVisible && !versionsVisible ? 'is-active' : ''}`}
+            active={ideModeActive && !loreVisible && !creatorVisible && !tellerVisible && !versionsVisible}
+            className="nova-icon-button mb-2"
           >
             <PenLine className="h-4 w-4" />
           </ActivityButton>
@@ -272,7 +289,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.books')}
         onClick={openBooks}
-        className={`nova-icon-button mb-2 ${mode === 'books' && !settingsOpen ? 'is-active' : ''}`}
+        active={mode === 'books' && !settingsOpen}
+        className="nova-icon-button mb-2"
       >
         <BookOpen className="h-4 w-4" />
       </ActivityButton>
@@ -280,7 +298,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.skills')}
         onClick={openSkills}
-        className={`nova-icon-button mb-2 ${skillsActive ? 'is-active' : ''}`}
+        active={skillsActive}
+        className="nova-icon-button mb-2"
       >
         <Sparkles className="h-4 w-4" />
       </ActivityButton>
@@ -288,7 +307,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.agents')}
         onClick={openAgents}
-        className={`nova-icon-button mb-2 ${agentsActive ? 'is-active' : ''}`}
+        active={agentsActive}
+        className="nova-icon-button mb-2"
       >
         <Bot className="h-4 w-4" />
       </ActivityButton>
@@ -296,7 +316,8 @@ export function WorkbenchShell({
         expanded={activityBarExpanded}
         label={t('workbench.activity.automations')}
         onClick={openAutomations}
-        className={`nova-icon-button mb-2 ${automationsActive ? 'is-active' : ''}`}
+        active={automationsActive}
+        className="nova-icon-button mb-2"
       >
         <Clock3 className="h-4 w-4" />
       </ActivityButton>
@@ -313,12 +334,14 @@ export function WorkbenchShell({
           expanded={activityBarExpanded}
           label={t('workbench.activity.settings')}
           onClick={onToggleSettings}
-          className={`nova-icon-button ${settingsOpen ? 'is-active' : ''}`}
+          active={settingsOpen}
+          className="nova-icon-button"
         >
           <Settings className="h-4 w-4" />
         </ActivityButton>
       </div>
     </aside>
+    </LayoutGroup>
   )
 
   const statusBar = (
@@ -353,20 +376,36 @@ function ActivityButton({
   label,
   children,
   className,
+  active = false,
   ...props
 }: React.ComponentProps<'button'> & {
   expanded: boolean
   label: string
   children: ReactNode
+  active?: boolean
 }) {
   return (
     <TooltipIconButton
       label={label}
-      className={`${className || ''} ${expanded ? 'gap-3 px-3' : ''}`}
+      className={`${className || ''} relative overflow-hidden ${expanded ? 'gap-3 px-3' : ''} ${active ? 'is-active' : ''}`}
       {...props}
     >
-      {children}
-      {expanded && <span className="min-w-0 truncate text-xs font-medium">{label}</span>}
+      {active && <motion.span layoutId="workbench-activity-active" className="absolute inset-0 rounded-[var(--nova-radius)] bg-[var(--nova-active)]" transition={novaSpring} />}
+      <span className="relative z-10 flex shrink-0 items-center justify-center">{children}</span>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.span
+            key="label"
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -4 }}
+            transition={{ duration: 0.16 }}
+            className="relative z-10 min-w-0 truncate text-xs font-medium"
+          >
+            {label}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </TooltipIconButton>
   )
 }

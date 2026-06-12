@@ -78,10 +78,10 @@ interface GraphMetrics {
 
 const DEFAULT_GRAPH_METRICS: GraphMetrics = {
   columnWidth: 220,
-  laneHeight: 64,
+  laneHeight: 74,
   nodeCardWidth: 176,
   nodeDotX: 18,
-  nodeCenterY: 21,
+  nodeCenterY: 26,
   left: 32,
   top: 26,
   right: 72,
@@ -302,7 +302,7 @@ export function BranchTimeline({
                   key={node.id}
                   type="button"
                   data-no-drag
-                  className={`absolute z-10 flex h-[42px] cursor-pointer items-start gap-2 rounded-[var(--nova-radius)] border px-3 py-1.5 text-left shadow-[0_8px_18px_rgba(0,0,0,0.20)] backdrop-blur transition ${node.id === selectedNodeId ? 'text-[var(--nova-text)] ring-2 ring-white/10' : node.current ? 'text-[var(--nova-text)]' : 'border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:border-[var(--nova-active)] hover:text-[var(--nova-text)]'}`}
+                  className={`absolute z-10 flex h-[52px] cursor-pointer items-center gap-2 overflow-hidden rounded-[var(--nova-radius)] border px-3 py-1.5 text-left shadow-[0_8px_18px_rgba(0,0,0,0.20)] backdrop-blur transition ${node.id === selectedNodeId ? 'text-[var(--nova-text)] ring-2 ring-white/10' : node.current ? 'text-[var(--nova-text)]' : 'border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:border-[var(--nova-active)] hover:text-[var(--nova-text)]'}`}
                   style={{
                     left: x,
                     top: y,
@@ -316,12 +316,12 @@ export function BranchTimeline({
                   onClick={() => selectNode(node)}
                   title={`${node.title}\n${node.summary}`}
                 >
-                  <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_14px_currentColor]" style={{ background: color, color }} />
-                    <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] font-medium">{node.title}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{node.summary || t('branchTimeline.nodeFallback')}</span>
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_14px_currentColor]" style={{ background: color, color }} />
+                  <span className="min-w-0 flex-1 overflow-hidden">
+                    <span className="block truncate text-[12px] leading-4 font-medium">{node.title}</span>
+                    <span className="mt-0.5 block truncate text-[11px] leading-4 text-[var(--nova-text-faint)]">{node.summary || t('branchTimeline.nodeFallback')}</span>
                   </span>
-                  {node.head && <Badge variant="outline" className="h-5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-1.5 text-[10px] text-[var(--nova-text-muted)]">HEAD</Badge>}
+                  {node.head && <Badge variant="outline" className="h-5 max-w-12 shrink-0 border-[var(--nova-border)] bg-[var(--nova-surface)] px-1.5 text-[10px] text-[var(--nova-text-muted)]">HEAD</Badge>}
                 </button>
               ))}
 

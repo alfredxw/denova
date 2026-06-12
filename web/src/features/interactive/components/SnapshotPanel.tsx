@@ -1,4 +1,4 @@
-import { Activity, Compass, Copy, Flag, MapPin, Package, Plus, Sparkles, Tag, UserRoundCheck } from 'lucide-react'
+import { Activity, Compass, Copy, Flag, MapPin, Package, Plus, RefreshCw, Sparkles, Tag, UserRoundCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -10,7 +10,7 @@ function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : []
 }
 
-export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
+export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapshot | null; loading?: boolean }) {
   const { t } = useTranslation()
   const state = snapshot?.state || {}
   const onStage = asArray(state.on_stage)
@@ -40,6 +40,7 @@ export function SnapshotPanel({ snapshot }: { snapshot: Snapshot | null }) {
           <div className="text-[11px] text-[var(--nova-text-faint)]">{t('snapshot.subtitle')}</div>
         </div>
         <div className="flex items-center gap-1.5">
+          {loading ? <Badge variant="outline" className="gap-1 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]"><RefreshCw className="h-3 w-3 animate-spin" />{t('common.loading')}</Badge> : null}
           {stateStatus === 'pending' ? <Badge variant="outline" className="border-[var(--nova-accent)]/40 bg-[var(--nova-accent)]/10 text-[var(--nova-accent)]">{t('snapshot.syncing')}</Badge> : null}
           {stateStatus === 'failed' ? <Badge variant="outline" className="border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]">{t('snapshot.syncFailed')}</Badge> : null}
           <Badge variant="outline" className="border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">{formatBranchName(snapshot?.branch_id, t)}</Badge>

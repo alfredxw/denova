@@ -46,6 +46,7 @@ type Settings struct {
 	ReadingFontSize   *int   `toml:"reading_font_size,omitempty" json:"reading_font_size,omitempty"`
 	Language          string `toml:"language,omitempty" json:"language,omitempty"`
 	Theme             string `toml:"theme,omitempty" json:"theme,omitempty"`
+	MotionIntensity   string `toml:"motion_intensity,omitempty" json:"motion_intensity,omitempty"`
 
 	// Agent
 	MaxIteration     *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
@@ -89,6 +90,7 @@ func DefaultSettings() Settings {
 		ReadingFontSize:             intPtr(18),
 		Language:                    "auto",
 		Theme:                       "dark",
+		MotionIntensity:             "system",
 		MaxIteration:                intPtr(50),
 		ModelMaxRetries:             intPtr(5),
 		AgentModels: AgentModelSettings{
@@ -183,6 +185,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.Theme != "" {
 		out.Theme = child.Theme
+	}
+	if child.MotionIntensity != "" {
+		out.MotionIntensity = child.MotionIntensity
 	}
 	if child.MaxIteration != nil {
 		out.MaxIteration = child.MaxIteration
@@ -328,6 +333,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.NovaDir = ""
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
+	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
 	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
 	return s
 }
@@ -345,6 +351,15 @@ func normalizeTheme(theme string) string {
 	switch theme {
 	case "", "system", "dark", "light":
 		return theme
+	default:
+		return ""
+	}
+}
+
+func normalizeMotionIntensity(intensity string) string {
+	switch intensity {
+	case "", "system", "full", "reduced", "off":
+		return intensity
 	default:
 		return ""
 	}

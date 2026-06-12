@@ -2,8 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { CSSProperties, WheelEvent } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { motion } from 'motion/react'
 import { MessageItem, ToolActivityBlock } from './MessageItem'
 import type { ChatMessage } from '@/lib/api'
+import { listItem, novaEase } from '@/features/motion/motion-tokens'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -145,11 +147,23 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     }
   }, [isNearBottom, isStreaming])
 
-  const renderMessage = (msg: ChatMessage, index: number) => (
-    msg.type === 'clear'
-      ? <ContextClearDivider key={msg.id || msg.created_at || index} createdAt={msg.created_at} />
-      : <MessageItem key={msg.id || index} message={msg} highlightDialogue={highlightDialogue} messageStyle={messageStyle} onEdit={isStreaming ? undefined : onEditMessage} onRegenerate={isStreaming ? undefined : onRegenerateMessage} onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion} />
-  )
+  const renderMessage = (msg: ChatMessage, index: number) => {
+    const key = msg.id || msg.created_at || index
+    return (
+      <motion.div
+        key={key}
+        layout="position"
+        variants={listItem}
+        initial="initial"
+        animate="animate"
+        transition={{ duration: 0.18, ease: novaEase }}
+      >
+        {msg.type === 'clear'
+          ? <ContextClearDivider createdAt={msg.created_at} />
+          : <MessageItem message={msg} highlightDialogue={highlightDialogue} messageStyle={messageStyle} onEdit={isStreaming ? undefined : onEditMessage} onRegenerate={isStreaming ? undefined : onRegenerateMessage} onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion} />}
+      </motion.div>
+    )
+  }
 
   const renderedMessages = []
   for (let index = 0; index < messages.length; index += 1) {
@@ -164,12 +178,20 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       const nextMessage = messages[nextIndex]
       if (traceMessages.length > 0 && nextMessage?.role === 'assistant' && (nextMessage.content || '').trim()) {
         renderedMessages.push(
-          <TraceGroup
+          <motion.div
             key={`trace-${traceMessages[0].id || index}`}
-            messages={traceMessages}
-            highlightDialogue={highlightDialogue}
-            messageStyle={messageStyle}
-          />,
+            layout="position"
+            variants={listItem}
+            initial="initial"
+            animate="animate"
+            transition={{ duration: 0.18, ease: novaEase }}
+          >
+            <TraceGroup
+              messages={traceMessages}
+              highlightDialogue={highlightDialogue}
+              messageStyle={messageStyle}
+            />
+          </motion.div>,
         )
         index = nextIndex - 1
         continue
@@ -198,7 +220,15 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       {isStreaming && (
         <>
           {activityContent && (
-            <ToolActivityBlock content={activityContent} />
+            <motion.div
+              layout="position"
+              variants={listItem}
+              initial="initial"
+              animate="animate"
+              transition={{ duration: 0.18, ease: novaEase }}
+            >
+              <ToolActivityBlock content={activityContent} />
+            </motion.div>
           )}
           {messages.length === 0 && !activityContent && (
             <div className="flex justify-start">

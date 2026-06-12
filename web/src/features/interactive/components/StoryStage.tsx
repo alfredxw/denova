@@ -31,6 +31,7 @@ interface StoryStageProps {
   storyId: string
   branchId: string
   snapshot: Snapshot | null
+  snapshotLoading?: boolean
   loreEmpty?: boolean
   sceneMemoryVisible?: boolean
   onStorySelect?: (storyId: string) => void
@@ -57,6 +58,7 @@ export function StoryStage({
   storyId,
   branchId,
   snapshot,
+  snapshotLoading = false,
   loreEmpty = false,
   sceneMemoryVisible = true,
   onStorySelect = noop,
@@ -486,7 +488,7 @@ export function StoryStage({
               {t('storyStage.mode')}
             </div>
             <Badge variant="outline" className="h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] text-[var(--nova-text-muted)]">
-              <GitBranch className="h-3 w-3" />
+              {snapshotLoading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <GitBranch className="h-3 w-3" />}
               {t('storyStage.turnCount', { count: snapshot?.turns?.length || 0 })}
             </Badge>
             {onToggleSceneMemory && (
@@ -515,7 +517,14 @@ export function StoryStage({
               </span>
               <span>{t('storyStage.recordCount', { count: messages.length })}</span>
             </div>
-            {messages.length === 0 && !streaming ? (
+            {snapshotLoading && messages.length === 0 && !streaming ? (
+              <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                <div className="flex max-w-md flex-col items-center gap-3">
+                  <RefreshCw className="h-4 w-4 animate-spin text-[var(--nova-text-muted)]" />
+                  <div className="text-xs leading-5 text-[var(--nova-text-faint)]">{t('common.loading')}</div>
+                </div>
+              </div>
+            ) : messages.length === 0 && !streaming ? (
               <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 {loreEmpty && onRequestLoreInit ? (
                   <div className="flex max-w-md flex-col items-center gap-3">

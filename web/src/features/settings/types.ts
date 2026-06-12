@@ -26,6 +26,7 @@ export interface Settings {
   reading_font_size?: number | null
   language?: string
   theme?: string
+  motion_intensity?: string
   max_iteration?: number | null
   model_max_retries?: number | null
   plan_mode_default?: boolean | null

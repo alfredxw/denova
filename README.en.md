@@ -1,11 +1,9 @@
-<h1 align="center">Nova</h1>
-
 <p align="center">
-  <strong>An AI creation workspace for long-form fiction and interactive storytelling</strong>
+  <img src="./web/public/favicon.svg" alt="Nova icon" width="76" height="76">
 </p>
 
 <p align="center">
-  Nova brings ideation, worldbuilding, outlining, chapter writing, interactive rehearsal, lore management, and local versioning into one IDE-like creative workspace.
+  <strong>Nova is an AI-native fiction workspace where powerful agents plan, write, revise, and orchestrate long-form novels and interactive stories. It brings ideas, lore, outlines, chapters, rehearsal, and versioned creative assets into one calm, precise workspace. It is not a one-off prompt box; it is an agentic studio for serious creative production.</strong>
 </p>
 
 <p align="center">
@@ -44,7 +42,7 @@
 
 ## Why Nova
 
-Nova is closer to an AI creative workspace for fiction than a one-off writing assistant. Many AI novel tools focus on "enter a prompt, generate a passage"; Nova focuses on continuity for long-form work: book files, lore, chapter state, interactive rehearsal, Agent tool calls, and local versions all stay in the same workspace so the author can keep iterating.
+Nova is closer to a premium creative studio for fiction than a one-off writing assistant. Many AI novel tools focus on "enter a prompt, generate a passage"; Nova focuses on continuity, control, and craft for long-form work: book files, lore, chapter state, interactive rehearsal, Agent tool calls, and local versions all stay in the same workspace so planning, drafting, revision, and story orchestration remain on one coherent production line.
 
 If you want AI to do more than complete the next paragraph, and instead collaborate around the same book, read bounded context, accumulate lore, maintain chapter progress, and leave restorable versions at important moments, Nova is the better fit.
 
@@ -59,22 +57,6 @@ If you want AI to do more than complete the next paragraph, and instead collabor
 | Version confidence | go-git maintains a local `.git` in the book folder with history, diffs, restore, timed saves, and Agent-output auto saves |
 
 The recommended path is to start with ideas, settle top-level settings and creative rules, then build the outline and chapter-group plan. For each chapter, use the Agent to draft or write prose, finalize it, and sync progress plus character state. When a plot needs testing, switch to interactive mode to rehearse branches, then fold stable decisions back into lore and keep saving local versions.
-
-```text
-Ideas
-  ↓
-Top-level settings and creative rules
-  ↓
-Outline and chapter-group plan
-  ↓
-Single-chapter draft / final prose
-  ↓
-Finalize and sync progress plus character state
-  ↓
-Rehearse plot branches in interactive mode
-  ↓
-Continuously refine lore and local versions
-```
 
 Nova separates display history, model context, lore content, tool results, and workspace state as much as possible, so Agents receive only the source-backed and bounded context needed for the current task.
 
