@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
-import { AtSign, Bot, History, Loader2, Plus, RotateCcw, Send, Sparkles, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { History, Plus, RotateCcw, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   clearLoreAgentSession,
@@ -12,10 +12,10 @@ import {
   type SSEEvent,
 } from '@/lib/api'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { MessageList } from '@/components/Chat/MessageList'
+import { InputArea } from '@/components/Chat/InputArea'
+import type { ReferencePickerItem } from '@/components/Chat/FileReferencePicker'
+import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { formatDateTime as formatLocaleDateTime } from '@/i18n'
 
 const LORE_AGENT_INIT_EVENT = 'nova:lore-agent-init'
@@ -89,27 +89,25 @@ export function LoreAgentChat({
   onRestoreVersion: (version: LoreVersion) => void
 }) {
   const { t } = useTranslation()
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const workspaceRef = useRef(workspace)
-  const [value, setValue] = useState('')
+  const [inputPrefill, setInputPrefill] = useState<{ prompt: string; nonce: number } | null>(null)
   const [referenceIds, setReferenceIds] = useState<string[]>([])
-  const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [messages, setMessages] = useState<LoreAgentChatMessage[]>(() => (
     workspace ? cloneLoreAgentMessages(loreAgentMessageCache.get(workspace) || []) : []
   ))
   const [running, setRunning] = useState(false)
-  const referencedItems = referenceIds
-    .map((id) => items.find((item) => item.id === id))
-    .filter((item): item is LoreItem => Boolean(item))
-  const normalizedQuery = (referenceQuery || '').trim().toLowerCase()
-  const visibleItems = items
+  const skillCommands = useSkillCommands({ agentKey: 'lore_editor', workspace, fallbackEnabled: true })
+  const loreReferenceLabels = useMemo(() => Object.fromEntries(items.map((item) => [item.id, item.name])), [items])
+  const loreSuggestions = useMemo<ReferencePickerItem[]>(() => items
     .filter((item) => {
       if (referenceIds.includes(item.id)) return false
-      if (!normalizedQuery) return true
-      const haystack = `${item.name}\n${item.id}\n${item.content || ''}\n${(item.tags || []).join('\n')}`.toLowerCase()
-      return haystack.includes(normalizedQuery)
+      return true
     })
-    .slice(0, 30)
+    .map((item) => ({
+      value: item.id,
+      label: item.name,
+      description: `${loreTypeLabel(item.type, t)}${item.tags?.length ? ` · ${item.tags.join(', ')}` : ''}`,
+    })), [items, referenceIds, t])
 
   useEffect(() => {
     setReferenceIds((current) => current.filter((id) => items.some((item) => item.id === id)))
@@ -124,10 +122,11 @@ export function LoreAgentChat({
   useEffect(() => {
     const handleInitRequest = (event: Event) => {
       const detail = (event as CustomEvent<{ prompt?: string }>).detail
-      setValue(detail?.prompt || t('settingPanel.loreAgent.initPrompt'))
+      setInputPrefill((current) => ({
+        prompt: detail?.prompt || t('settingPanel.loreAgent.initPrompt'),
+        nonce: (current?.nonce || 0) + 1,
+      }))
       setReferenceIds([])
-      setReferenceQuery(null)
-      window.requestAnimationFrame(() => textareaRef.current?.focus())
     }
     window.addEventListener(LORE_AGENT_INIT_EVENT, handleInitRequest)
     return () => window.removeEventListener(LORE_AGENT_INIT_EVENT, handleInitRequest)
@@ -135,9 +134,8 @@ export function LoreAgentChat({
 
   useEffect(() => {
     workspaceRef.current = workspace
-    setValue('')
+    setInputPrefill(null)
     setReferenceIds([])
-    setReferenceQuery(null)
     setMessages(workspace ? cloneLoreAgentMessages(loreAgentMessageCache.get(workspace) || []) : [])
     setRunning(false)
     if (!workspace) return
@@ -158,24 +156,6 @@ export function LoreAgentChat({
       })
     return () => { cancelled = true }
   }, [workspace])
-
-  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    const nextValue = event.target.value
-    setValue(nextValue)
-    const atMatch = nextValue.match(/(?:^|\s)@([^\s@]*)$/)
-    setReferenceQuery(atMatch ? atMatch[1] : null)
-  }
-
-  const selectReference = (item: LoreItem) => {
-    const nextValue = value.replace(/(?:^|\s)@([^\s@]*)$/, (match) => {
-      const prefix = match.startsWith(' ') ? ' ' : ''
-      return `${prefix}@${item.name} `
-    })
-    setValue(nextValue === value ? `${value.trimEnd()} @${item.name} ` : nextValue)
-    setReferenceIds((current) => current.includes(item.id) ? current : [...current, item.id])
-    setReferenceQuery(null)
-    textareaRef.current?.focus()
-  }
 
   const removeReference = (id: string) => {
     setReferenceIds((current) => current.filter((entry) => entry !== id))
@@ -235,8 +215,8 @@ export function LoreAgentChat({
     )))
   }
 
-  const send = async () => {
-    const instruction = value.trim()
+  const send = async (message: string) => {
+    const instruction = message.trim()
     if (!instruction || running) return
     const activeWorkspace = workspace
     if (instruction === '/clear') {
@@ -245,9 +225,7 @@ export function LoreAgentChat({
         await clearLoreAgentSession()
         if (workspaceRef.current !== activeWorkspace) return
         appendMessage({ role: 'clear', content: t('settingPanel.loreAgent.clearDone') })
-        setValue('')
         setReferenceIds([])
-        setReferenceQuery(null)
       } catch (error) {
         if (workspaceRef.current !== activeWorkspace) return
         appendMessage({ role: 'error', content: error instanceof Error ? error.message : t('settingPanel.loreAgent.clearFailed') })
@@ -261,9 +239,7 @@ export function LoreAgentChat({
       .map((id) => items.find((item) => item.id === id))
       .filter((item): item is LoreItem => Boolean(item))
     appendMessage({ role: 'user', content: instruction, references: userReferences })
-    setValue('')
     setReferenceIds([])
-    setReferenceQuery(null)
     setRunning(true)
     try {
       const stream = await runLoreAgentStream(instruction, refs)
@@ -278,10 +254,7 @@ export function LoreAgentChat({
       if (workspaceRef.current !== activeWorkspace) return
       appendMessage({ role: 'error', content: error instanceof Error ? error.message : t('settingPanel.loreAgent.runFailed') })
     } finally {
-      if (workspaceRef.current === activeWorkspace) {
-        setRunning(false)
-        textareaRef.current?.focus()
-      }
+      if (workspaceRef.current === activeWorkspace) setRunning(false)
     }
   }
 
@@ -337,16 +310,6 @@ export function LoreAgentChat({
     }
   }
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      void send()
-      return
-    }
-    if (event.key === 'Escape') {
-      setReferenceQuery(null)
-    }
-  }
   const chatMessages = messages.map((message) => loreAgentMessageToChatMessage(message, t))
 
   return (
@@ -403,8 +366,10 @@ export function LoreAgentChat({
                 className="mt-4 h-8 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-xs"
                 variant="outline"
                 onClick={() => {
-                  setValue(t('settingPanel.loreAgent.initPrompt'))
-                  window.requestAnimationFrame(() => textareaRef.current?.focus())
+                  setInputPrefill((current) => ({
+                    prompt: t('settingPanel.loreAgent.initPrompt'),
+                    nonce: (current?.nonce || 0) + 1,
+                  }))
                 }}
               >
                 <Sparkles className="h-3.5 w-3.5" />
@@ -424,82 +389,21 @@ export function LoreAgentChat({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
-        <div className="mx-auto max-w-4xl">
-          <div className="nova-field flex min-w-0 items-end gap-2 rounded-[var(--nova-radius)] px-3 py-2">
-            <Bot className="mb-2 h-4 w-4 shrink-0 text-[var(--nova-text-faint)]" />
-            <div className="relative min-w-0 flex-1">
-              <Popover open={referenceQuery !== null && visibleItems.length > 0}>
-                <PopoverTrigger asChild>
-                  <span className="absolute bottom-full left-0 h-0 w-0" />
-                </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  side="top"
-                  className="mb-2 w-[360px] border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)]"
-                  onOpenAutoFocus={(event) => event.preventDefault()}
-                >
-                  <Command shouldFilter={false} className="bg-transparent">
-                    <CommandInput value={referenceQuery || ''} readOnly placeholder={t('settingPanel.loreAgent.searchLore')} />
-                    <CommandList>
-                      <CommandEmpty>{t('settingPanel.loreAgent.noLore')}</CommandEmpty>
-                      <CommandGroup heading={t('settingPanel.loreAgent.referenceLore')}>
-                        {visibleItems.map((item) => (
-                          <CommandItem
-                            key={item.id}
-                            value={item.id}
-                            onSelect={() => selectReference(item)}
-                            className="cursor-pointer"
-                          >
-                            <span className="min-w-0 flex-1 truncate">@{item.name}</span>
-                            <span className="text-[11px] text-[var(--nova-text-faint)]">{loreTypeLabel(item.type, t)}</span>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-              <Textarea
-                ref={textareaRef}
-                autoResize
-                className="min-h-10 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-[var(--nova-text)] shadow-none outline-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-60"
-                value={value}
-                onChange={handleChange}
-                onKeyDown={handleKeyDown}
-                placeholder={running ? t('settingPanel.loreAgent.executing') : t('settingPanel.loreAgent.placeholder')}
-                rows={1}
-                disabled={running}
-              />
-            </div>
-            {referencedItems.length > 0 && (
-              <div className="flex max-w-[220px] flex-wrap justify-end gap-1.5">
-                {referencedItems.map((item) => (
-                  <span
-                    key={item.id}
-                    className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-xs text-[var(--nova-text-muted)]"
-                  >
-                    <AtSign className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
-                    <span className="truncate">{item.name}</span>
-                    <button
-                      type="button"
-                      className="rounded text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
-                      onClick={() => removeReference(item.id)}
-                      aria-label={t('settingPanel.removeReference', { name: item.name })}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            <Button className={actionButtonClassName} variant="outline" size="sm" disabled={running || !value.trim()} onClick={() => void send()}>
-              {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              {running ? t('settingPanel.executing') : t('settingPanel.send')}
-            </Button>
-          </div>
-        </div>
-      </div>
+      <InputArea
+        onSend={(message) => void send(message)}
+        disabled={running}
+        inputPrefill={inputPrefill}
+        onInputPrefillConsumed={() => setInputPrefill(null)}
+        loreReferences={referenceIds}
+        loreReferenceLabels={loreReferenceLabels}
+        onLoreReferenceAdd={(id) => setReferenceIds((current) => current.includes(id) ? current : [...current, id])}
+        onLoreReferenceRemove={removeReference}
+        loreSuggestions={loreSuggestions}
+        skills={skillCommands}
+        commandScope="skills"
+        placeholder={t('settingPanel.loreAgent.placeholder')}
+        disabledPlaceholder={t('settingPanel.loreAgent.executing')}
+      />
     </div>
   )
 }

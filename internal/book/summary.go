@@ -16,6 +16,7 @@ type WorkspaceSummary struct {
 	ChapterCount int               `json:"chapter_count"`
 	TotalWords   int               `json:"total_words"`
 	Chapters     []ChapterSummary  `json:"chapters"`
+	Ideas        *DocumentPreview  `json:"ideas,omitempty"`
 	Outline      *DocumentPreview  `json:"outline,omitempty"`
 	ChapterPlans []DocumentPreview `json:"chapter_plans"`
 }
@@ -71,6 +72,7 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 		ChapterPlans: []DocumentPreview{},
 	}
 
+	summary.Ideas = s.documentPreview(IdeasFileName, "灵感")
 	summary.Outline = s.documentPreview("setting/outline.md", "长期大纲")
 	summary.ChapterPlans = s.chapterPlanPreviews()
 

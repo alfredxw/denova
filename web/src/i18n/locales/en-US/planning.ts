@@ -1,5 +1,7 @@
 const planning = {
   'planning.noChapters': 'No chapters under chapters/',
+  'planning.ideas': 'Ideas',
+  'planning.ideasEmpty': 'ideas.md has not been generated',
   'planning.outline': 'Outline',
   'planning.outlineEmpty': 'setting/outline.md has not been generated',
   'planning.chapterPlans': 'Chapter Group Outlines',

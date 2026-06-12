@@ -1,6 +1,7 @@
 ---
 name: continue
 description: 续写小说章节。当用户要求写下一章、继续写、开始写某一章时使用。
+agent: ide,interactive_story
 ---
 
 # 章节续写

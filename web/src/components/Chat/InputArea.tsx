@@ -40,6 +40,8 @@ type CommandOption = {
   icon: LucideIcon
 }
 
+type CommandScope = 'all' | 'skills' | 'none'
+
 interface InputAreaProps {
   onSend: (message: string) => void
   onStop?: () => void
@@ -61,6 +63,10 @@ interface InputAreaProps {
   textSelections?: TextSelection[]
   onTextSelectionRemove?: (index: number) => void
   skills?: SkillCommand[]
+  commandsEnabled?: boolean
+  commandScope?: CommandScope
+  placeholder?: string
+  disabledPlaceholder?: string
 }
 
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
@@ -85,6 +91,10 @@ export function InputArea({
   textSelections = [],
   onTextSelectionRemove,
   skills = [],
+  commandsEnabled = true,
+  commandScope = 'all',
+  placeholder,
+  disabledPlaceholder,
 }: InputAreaProps) {
   const { t } = useTranslation()
   const [value, setValue] = useState('')
@@ -93,13 +103,18 @@ export function InputArea({
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [styleReferenceQuery, setStyleReferenceQuery] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const commandItemRefs = useRef<Array<HTMLDivElement | null>>([])
+  const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
+  const defaultPlaceholder = skills.length > 0 && effectiveCommandScope !== 'none'
+    ? t('chat.input.placeholderWithSkills')
+    : t('chat.input.placeholder')
   const allCommands = useMemo<CommandOption[]>(() => {
-    const staticCommands = COMMANDS.map(({ cmd, descKey, hintKey, icon }) => ({
+    const staticCommands = effectiveCommandScope === 'all' ? COMMANDS.map(({ cmd, descKey, hintKey, icon }) => ({
       cmd,
       description: t(descKey),
       hint: t(hintKey),
       icon,
-    }))
+    })) : []
     const seen = new Set(staticCommands.map((command) => command.cmd))
     const skillCommands = skills
       .map((skill) => ({
@@ -113,8 +128,10 @@ export function InputArea({
         seen.add(command.cmd)
         return true
       })
+    if (effectiveCommandScope === 'skills') return skillCommands
+    if (effectiveCommandScope === 'none') return []
     return [...staticCommands, ...skillCommands]
-  }, [skills, t])
+  }, [effectiveCommandScope, skills, t])
   const filteredCommands = useMemo(() => {
     if (!value.startsWith('/')) return []
     const query = value.toLowerCase()
@@ -136,6 +153,11 @@ export function InputArea({
   }, [activeCommandIndex, filteredCommands.length])
 
   useEffect(() => {
+    if (!showCommands || filteredCommands.length === 0) return
+    commandItemRefs.current[activeCommandIndex]?.scrollIntoView({ block: 'nearest' })
+  }, [activeCommandIndex, filteredCommands.length, showCommands])
+
+  useEffect(() => {
     if (!inputPrefill) return
     setValue(inputPrefill.prompt)
     setShowCommands(false)
@@ -152,7 +174,7 @@ export function InputArea({
     setValue(v)
 
     // 检测是否输入了 /
-    if (v.startsWith('/')) {
+    if (effectiveCommandScope !== 'none' && v.startsWith('/')) {
       setShowCommands(true)
       setActiveCommandIndex(0)
     } else {
@@ -169,7 +191,7 @@ export function InputArea({
   /** 处理键盘事件 */
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const isMod = e.metaKey || e.ctrlKey
-    const canPickCommand = showCommands && filteredCommands.length > 0
+    const canPickCommand = effectiveCommandScope !== 'none' && showCommands && filteredCommands.length > 0
 
     if (canPickCommand && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault()
@@ -381,6 +403,7 @@ export function InputArea({
                   return (
                     <CommandItem
                       key={cmd}
+                      ref={(element) => { commandItemRefs.current[index] = element }}
                       value={cmd}
                       onMouseEnter={() => setActiveCommandIndex(index)}
                       onSelect={() => selectCommand(cmd)}
@@ -439,7 +462,7 @@ export function InputArea({
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? t('chat.input.disabledPlaceholder') : t('chat.input.placeholder')}
+          placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
           disabled={disabled}
           rows={1}
           className="min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2.5 py-2 text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"

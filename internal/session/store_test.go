@@ -93,7 +93,10 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "read_file", Content: "read_file", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.UpdateDisplayToolStatus("call-1", "read_file", "success"); err != nil {
+	if err := sess.AppendDisplayToolArgs("call-1", "read_file", `{"path":"chapters/1.md"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.UpdateDisplayToolResult("call-1", "read_file", "success", "章节内容"); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Append(schema.AssistantMessage("规划完成", nil)); err != nil {
@@ -121,6 +124,9 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	}
 	if history[2].Role != "tool_call" || history[2].Name != "read_file" || history[2].Status != "success" {
 		t.Fatalf("工具卡片展示状态未恢复: %#v", history[2])
+	}
+	if history[2].Args != `{"path":"chapters/1.md"}` || history[2].Result != "章节内容" {
+		t.Fatalf("工具卡片参数和结果未恢复: %#v", history[2])
 	}
 }
 

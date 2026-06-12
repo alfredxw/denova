@@ -22,6 +22,7 @@ const storyStage = {
   'storyStage.hotChoices.get': '获取行动选择',
   'storyStage.hotChoices.button': '选择',
   'storyStage.inputPlaceholder': '你要做什么？',
+  'storyStage.inputPlaceholderWithSkills': '你要做什么？输入 / 可选择 Skills',
   'storyStage.stop': '中断',
   'storyStage.regenerate': '重生成',
   'storyStage.sendRegenerate': '发送并重新生成',

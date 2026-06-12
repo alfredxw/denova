@@ -41,6 +41,14 @@ type displayEventAppender interface {
 	UpdateDisplayToolStatus(id, name, status string) error
 }
 
+type displayToolArgsAppender interface {
+	AppendDisplayToolArgs(id, name, delta string) error
+}
+
+type displayToolResultUpdater interface {
+	UpdateDisplayToolResult(id, name, status, result string) error
+}
+
 type displayEventRecorder struct {
 	appender       displayEventAppender
 	thinking       strings.Builder
@@ -68,6 +76,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 		r.flushThinking()
 		id := eventDataString(ev.Data, "id")
 		name := eventDataString(ev.Data, "name")
+		args := eventDataString(ev.Data, "args")
 		if strings.TrimSpace(name) == "" {
 			name = "unknown_tool"
 		}
@@ -76,6 +85,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 			Role:    "tool_call",
 			Content: name,
 			Name:    name,
+			Args:    args,
 			Status:  "running",
 		}); err != nil {
 			log.Printf("[agent-run] persist display tool_call failed name=%s id=%s err=%v", name, id, err)
@@ -84,12 +94,28 @@ func (r *displayEventRecorder) Record(ev Event) {
 		if id != "" {
 			r.pendingToolIDs[id] = name
 		}
+	case "tool_args_delta":
+		id := eventDataString(ev.Data, "id")
+		name := eventDataString(ev.Data, "name")
+		delta := eventDataString(ev.Data, "delta")
+		argsAppender, ok := r.appender.(displayToolArgsAppender)
+		if !ok {
+			return
+		}
+		if err := argsAppender.AppendDisplayToolArgs(id, name, delta); err != nil {
+			log.Printf("[agent-run] persist display tool_args_delta failed name=%s id=%s err=%v", name, id, err)
+		}
 	case "tool_result":
 		r.flushThinking()
 		id := eventDataString(ev.Data, "id")
 		name := eventDataString(ev.Data, "name")
-		if err := r.appender.UpdateDisplayToolStatus(id, name, "success"); err != nil {
-			log.Printf("[agent-run] persist display tool_result failed name=%s id=%s err=%v", name, id, err)
+		result := eventDataString(ev.Data, "content")
+		if resultUpdater, ok := r.appender.(displayToolResultUpdater); ok {
+			if err := resultUpdater.UpdateDisplayToolResult(id, name, "success", result); err != nil {
+				log.Printf("[agent-run] persist display tool_result failed name=%s id=%s err=%v", name, id, err)
+			}
+		} else if err := r.appender.UpdateDisplayToolStatus(id, name, "success"); err != nil {
+			log.Printf("[agent-run] persist display tool_result status failed name=%s id=%s err=%v", name, id, err)
 		}
 		if id != "" {
 			delete(r.pendingToolIDs, id)

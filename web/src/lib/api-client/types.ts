@@ -82,6 +82,7 @@ export interface WorkspaceSummary {
   chapter_count: number
   total_words: number
   chapters: ChapterSummary[]
+  ideas?: DocumentPreview
   outline?: DocumentPreview
   chapter_plans: DocumentPreview[]
 }
@@ -289,10 +290,11 @@ export interface AutomationSchedule {
 export interface AutomationRunRecord {
   id: string
   task_id: string
+  session_id?: string
   scope: AutomationScope
   workspace?: string
   trigger: 'manual' | 'schedule'
-  status: 'running' | 'success' | 'failed'
+  status: 'running' | 'success' | 'failed' | 'aborted'
   started_at: string
   finished_at?: string
   summary: string
@@ -321,6 +323,11 @@ export interface AutomationTask {
 export interface AutomationRunResult {
   task: AutomationTask
   run: AutomationRunRecord
+}
+
+export interface AutomationActiveRun {
+  run: AutomationRunRecord
+  task_id: string
 }
 
 export interface TextSelection {

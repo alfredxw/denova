@@ -316,6 +316,7 @@ export function ModeRouter(props: ModeRouterProps) {
         ) : sidebarView === 'outline' ? (
           <ChapterOutline
             chapters={summary?.chapters || []}
+            ideas={summary?.ideas}
             outline={summary?.outline}
             chapterPlans={summary?.chapter_plans || []}
             selectedFile={selectedFile}
@@ -592,12 +593,14 @@ function IdeWorkspacePanel({
 
 function ChapterOutline({
   chapters,
+  ideas,
   outline,
   chapterPlans,
   selectedFile,
   onSelectFile,
 }: {
   chapters: ChapterSummary[]
+  ideas?: DocumentPreview
   outline?: DocumentPreview
   chapterPlans: DocumentPreview[]
   selectedFile: string | null
@@ -607,7 +610,7 @@ function ChapterOutline({
   const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set())
   const [chapterPlanHistoryExpanded, setChapterPlanHistoryExpanded] = useState(false)
   const volumes = useMemo(() => groupChaptersByVolume(chapters, t), [chapters, t])
-  const hasPlanning = outline || chapterPlans.length > 0
+  const hasPlanning = ideas || outline || chapterPlans.length > 0
   const latestChapterPlan = chapterPlans[chapterPlans.length - 1]
   const historicalChapterPlans = useMemo(() => chapterPlans.slice(0, -1), [chapterPlans])
 
@@ -636,6 +639,15 @@ function ChapterOutline({
 
   return (
     <div className="space-y-3">
+      <section className="space-y-1.5">
+        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.ideas')}</div>
+        {ideas ? (
+          <PlanningListItem document={ideas} icon="ideas" selected={selectedFile === ideas.path} onSelectFile={onSelectFile} />
+        ) : (
+          <PlanningEmptyState text={t('planning.ideasEmpty')} />
+        )}
+      </section>
+
       <section className="space-y-1.5">
         <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.outline')}</div>
         {outline ? (
@@ -738,7 +750,7 @@ function PlanningListItem({
   onSelectFile,
 }: {
   document: DocumentPreview
-  icon: 'outline' | 'plan'
+  icon: 'ideas' | 'outline' | 'plan'
   selected: boolean
   onSelectFile: (path: string) => void | Promise<void>
 }) {

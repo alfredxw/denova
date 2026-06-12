@@ -22,6 +22,7 @@ const (
 	RunStatusRunning = "running"
 	RunStatusSuccess = "success"
 	RunStatusFailed  = "failed"
+	RunStatusAborted = "aborted"
 
 	TriggerManual   = "manual"
 	TriggerSchedule = "schedule"
@@ -64,6 +65,7 @@ type Schedule struct {
 type RunRecord struct {
 	ID           string             `json:"id"`
 	TaskID       string             `json:"task_id"`
+	SessionID    string             `json:"session_id,omitempty"`
 	Scope        string             `json:"scope"`
 	Workspace    string             `json:"workspace,omitempty"`
 	Trigger      string             `json:"trigger"`
@@ -89,4 +91,13 @@ type ListResult struct {
 type RunResult struct {
 	Task Task      `json:"task"`
 	Run  RunRecord `json:"run"`
+}
+
+type ActiveRun struct {
+	Run    RunRecord `json:"run"`
+	TaskID string    `json:"task_id"`
+}
+
+type ActiveRunsResult struct {
+	Runs []ActiveRun `json:"runs"`
 }

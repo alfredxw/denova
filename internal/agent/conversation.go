@@ -67,6 +67,20 @@ func (c *SessionConversation) UpdateDisplayToolStatus(id, name, status string) e
 	return c.session.UpdateDisplayToolStatus(id, name, status)
 }
 
+func (c *SessionConversation) AppendDisplayToolArgs(id, name, delta string) error {
+	if c == nil || c.session == nil {
+		return fmt.Errorf("会话不存在")
+	}
+	return c.session.AppendDisplayToolArgs(id, name, delta)
+}
+
+func (c *SessionConversation) UpdateDisplayToolResult(id, name, status, result string) error {
+	if c == nil || c.session == nil {
+		return fmt.Errorf("会话不存在")
+	}
+	return c.session.UpdateDisplayToolResult(id, name, status, result)
+}
+
 func (c *SessionConversation) MarkInterrupted(userMessage, assistantContent, reason string) error {
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")

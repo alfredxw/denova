@@ -1,6 +1,7 @@
 ---
 name: lore-init
 description: 当资料库为空，或用户想初始化故事设定、世界观、角色、创作规则、互动开局时使用。
+agent: lore_editor,interactive_story
 ---
 
 # 资料库初始化

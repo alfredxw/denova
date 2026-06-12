@@ -57,6 +57,7 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 		Name:              "NovaInteractiveStoryAgent",
 		Description:       "AI 互动故事叙事助手",
 		Instruction:       BuildInteractiveStoryInstruction(cfg, state, teller),
+		EnableSkills:      true,
 		DisableWriteTodos: true,
 		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveStoryToolMiddleware()},
 		ExtraTools:        loreTools,
@@ -142,7 +143,11 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 		handlers = append(handlers, filesystemHandler)
 	}
 	if spec.EnableSkills && toolSettings.Skills {
-		skillBackend := novaskills.NewBackend(novaskills.NewDirectories(cfg.SkillsDir, cfg.NovaDir, cfg.Workspace))
+		skillBackend := novaskills.NewAgentBackend(
+			novaskills.NewDirectories(cfg.SkillsDir, cfg.NovaDir, cfg.Workspace),
+			spec.Kind,
+			config.ResolveAgentSkillOverrides(cfg, spec.Kind),
+		)
 		availableSkills, listErr := skillBackend.List(ctx)
 		if listErr != nil {
 			log.Printf("[agent] 加载 Skills 列表失败 agent=%s err=%v", spec.Kind, listErr)

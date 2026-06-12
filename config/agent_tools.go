@@ -63,7 +63,6 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			WebSearch:    on,
 		},
 		InteractiveStory: AgentToolOverride{
-			Skills:    off,
 			LoreWrite: off,
 			Todo:      off,
 			WebSearch: off,

@@ -23,6 +23,11 @@ export interface FileNode {
 
 const TREE_AUTO_REFRESH_INTERVAL_MS = 3000
 
+interface WorkspaceRefreshOptions {
+  showLoading?: boolean
+  clearOnError?: boolean
+}
+
 /** 工作区目录树 hook，负责获取目录结构、文件内容和保存 */
 export function useWorkspace() {
   const [tree, setTree] = useState<FileNode[]>([])
@@ -61,27 +66,30 @@ export function useWorkspace() {
     }
   }, [])
 
-  const fetchTree = useCallback(async () => {
+  const fetchTree = useCallback(async (options: WorkspaceRefreshOptions = {}) => {
+    const showLoading = options.showLoading ?? true
+    const clearOnError = options.clearOnError ?? true
     if (!workspace) {
       setTree([])
       setLoading(false)
       return
     }
-    setLoading(true)
+    if (showLoading) setLoading(true)
     try {
       const res = await fetch('/api/workspace/tree')
       const data = await res.json()
       setTree(Array.isArray(data) ? data : [])
     } catch (e) {
       console.error('获取目录树失败', e)
-      setTree([])
+      if (clearOnError) setTree([])
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }, [workspace])
 
   /** 获取当前作品章节统计 */
-  const fetchSummary = useCallback(async () => {
+  const fetchSummary = useCallback(async (options: WorkspaceRefreshOptions = {}) => {
+    const clearOnError = options.clearOnError ?? true
     if (!workspace) {
       setSummary(null)
       return
@@ -90,12 +98,13 @@ export function useWorkspace() {
       setSummary(await getWorkspaceSummary())
     } catch (e) {
       console.error('获取作品统计失败', e)
-      setSummary(null)
+      if (clearOnError) setSummary(null)
     }
   }, [workspace])
 
   /** 获取用户级 styles 下的风格参考文件 */
-  const fetchStyles = useCallback(async () => {
+  const fetchStyles = useCallback(async (options: WorkspaceRefreshOptions = {}) => {
+    const clearOnError = options.clearOnError ?? true
     if (!workspace) {
       setStyles([])
       return
@@ -104,7 +113,7 @@ export function useWorkspace() {
       setStyles(await getStyles())
     } catch (e) {
       console.error('获取风格参考失败', e)
-      setStyles([])
+      if (clearOnError) setStyles([])
     }
   }, [workspace])
 
@@ -136,7 +145,12 @@ export function useWorkspace() {
     if (!workspaceLoaded || !workspace) return
     const refreshIfVisible = () => {
       if (document.visibilityState === 'visible') {
-        void Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
+        const backgroundOptions = { showLoading: false, clearOnError: false }
+        void Promise.all([
+          fetchTree(backgroundOptions),
+          fetchStyles(backgroundOptions),
+          fetchSummary(backgroundOptions),
+        ])
       }
     }
 

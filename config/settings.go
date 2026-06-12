@@ -19,6 +19,7 @@ type Settings struct {
 	AgentModels   AgentModelSettings     `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
 	AgentTools    AgentToolSettings      `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
 	AgentPrompts  AgentPromptSettings    `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
+	AgentSkills   AgentSkillSettings     `toml:"agent_skills,omitempty" json:"agent_skills,omitempty"`
 
 	// 路径
 	SkillsDir string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -94,6 +95,7 @@ func DefaultSettings() Settings {
 			ToolAgent:             AgentModelOverride{EnableThinking: boolPtr(false)},
 		},
 		AgentTools:                 DefaultAgentToolSettings(),
+		AgentSkills:                AgentSkillSettings{},
 		PlanModeDefault:            boolPtr(false),
 		IDEStoryTellerID:           "classic",
 		InteractiveHotChoices:      boolPtr(true),
@@ -119,6 +121,7 @@ func Merge(parent, child Settings) Settings {
 	out.AgentModels = MergeAgentModelSettings(out.AgentModels, child.AgentModels)
 	out.AgentTools = MergeAgentToolSettings(out.AgentTools, child.AgentTools)
 	out.AgentPrompts = MergeAgentPromptSettings(out.AgentPrompts, child.AgentPrompts)
+	out.AgentSkills = MergeAgentSkillSettings(out.AgentSkills, child.AgentSkills)
 	if child.SkillsDir != "" {
 		out.SkillsDir = child.SkillsDir
 	}
