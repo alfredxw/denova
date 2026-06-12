@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 工作区文件删除不再依赖系统回收站，改为删除前保存 Nova 版本快照后直接删除，并同步更新中英文确认文案。
+
 ## [v0.1.9] - 2026-06-12
 
 ### Changed

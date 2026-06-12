@@ -2,15 +2,10 @@ package book
 
 import (
 	"errors"
-	"fmt"
-	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
-	"time"
 )
 
 // FileNode 表示文件树节点。
@@ -201,144 +196,24 @@ func (s *Service) Create(relPath, itemType, content string) error {
 	return os.WriteFile(absPath, []byte(content), 0o644)
 }
 
-// Delete 将 workspace 内文件或目录移到系统回收站。
+// Delete 直接删除 workspace 内文件或目录；恢复依赖 Nova 版本历史。
 func (s *Service) Delete(relPath string) error {
 	absPath, err := SafePath(s.workspace, relPath)
 	if err != nil {
 		return err
 	}
-	return moveToTrash(absPath)
-}
-
-// moveToTrash 按当前系统选择回收站实现，避免把删除操作退化为直接物理删除。
-func moveToTrash(absPath string) error {
-	switch runtime.GOOS {
-	case "darwin":
-		return moveToTrashDarwin(absPath)
-	case "windows":
-		return moveToTrashWindows(absPath)
-	default:
-		return moveToTrashLinux(absPath)
-	}
-}
-
-func moveToTrashDarwin(absPath string) error {
-	script := fmt.Sprintf(
-		`tell application "Finder" to delete POSIX file %q`,
-		absPath,
-	)
-	cmd := exec.Command("osascript", "-e", script)
-	output, err := cmd.CombinedOutput()
+	absPath, err = filepath.Abs(absPath)
 	if err != nil {
-		return fmt.Errorf("move to trash failed: %w, output: %s", err, string(output))
-	}
-	return nil
-}
-
-func moveToTrashWindows(absPath string) error {
-	script := `
-param([string]$Path)
-Add-Type -AssemblyName Microsoft.VisualBasic
-if (Test-Path -LiteralPath $Path -PathType Container) {
-  [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($Path, 'OnlyErrorDialogs', 'SendToRecycleBin')
-} else {
-  [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($Path, 'OnlyErrorDialogs', 'SendToRecycleBin')
-}
-`
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", script, absPath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("move to recycle bin failed: %w, output: %s", err, string(output))
-	}
-	return nil
-}
-
-func moveToTrashLinux(absPath string) error {
-	var lastErr error
-	if path, err := exec.LookPath("gio"); err == nil {
-		cmd := exec.Command(path, "trash", absPath)
-		if output, err := cmd.CombinedOutput(); err == nil {
-			return nil
-		} else {
-			lastErr = fmt.Errorf("gio trash failed: %w, output: %s", err, string(output))
-		}
-	}
-	if path, err := exec.LookPath("trash-put"); err == nil {
-		cmd := exec.Command(path, absPath)
-		if output, err := cmd.CombinedOutput(); err == nil {
-			return nil
-		} else {
-			lastErr = fmt.Errorf("trash-put failed: %w, output: %s", err, string(output))
-		}
-	}
-	if err := moveToFreedesktopTrash(absPath); err != nil {
-		if lastErr != nil {
-			return fmt.Errorf("%v; fallback failed: %w", lastErr, err)
-		}
 		return err
 	}
-	return nil
-}
-
-func moveToFreedesktopTrash(absPath string) error {
-	home, err := os.UserHomeDir()
+	info, err := os.Stat(absPath)
 	if err != nil {
-		return fmt.Errorf("读取用户主目录失败: %w", err)
+		return err
 	}
-	dataHome := os.Getenv("XDG_DATA_HOME")
-	if dataHome == "" {
-		dataHome = filepath.Join(home, ".local", "share")
+	if info.IsDir() {
+		return os.RemoveAll(absPath)
 	}
-
-	trashRoot := filepath.Join(dataHome, "Trash")
-	filesDir := filepath.Join(trashRoot, "files")
-	infoDir := filepath.Join(trashRoot, "info")
-	if err := os.MkdirAll(filesDir, 0o700); err != nil {
-		return fmt.Errorf("创建回收站文件目录失败: %w", err)
-	}
-	if err := os.MkdirAll(infoDir, 0o700); err != nil {
-		return fmt.Errorf("创建回收站信息目录失败: %w", err)
-	}
-
-	name := filepath.Base(absPath)
-	trashName := uniqueTrashName(filesDir, name)
-	target := filepath.Join(filesDir, trashName)
-	if err := os.Rename(absPath, target); err != nil {
-		if copyErr := CopyPath(absPath, target); copyErr != nil {
-			return fmt.Errorf("移动到回收站失败: %w", err)
-		}
-		if removeErr := os.RemoveAll(absPath); removeErr != nil {
-			return fmt.Errorf("清理原文件失败: %w", removeErr)
-		}
-	}
-
-	info := fmt.Sprintf(
-		"[Trash Info]\nPath=%s\nDeletionDate=%s\n",
-		escapeTrashInfoPath(absPath),
-		time.Now().Format("2006-01-02T15:04:05"),
-	)
-	if err := os.WriteFile(filepath.Join(infoDir, trashName+".trashinfo"), []byte(info), 0o600); err != nil {
-		return fmt.Errorf("写入回收站信息失败: %w", err)
-	}
-	return nil
-}
-
-func escapeTrashInfoPath(path string) string {
-	return strings.ReplaceAll(url.PathEscape(path), "%2F", "/")
-}
-
-func uniqueTrashName(filesDir, name string) string {
-	if _, err := os.Stat(filepath.Join(filesDir, name)); errors.Is(err, os.ErrNotExist) {
-		return name
-	}
-	ext := filepath.Ext(name)
-	base := strings.TrimSuffix(name, ext)
-	for i := 1; ; i++ {
-		candidate := fmt.Sprintf("%s.%d%s", base, i, ext)
-		if _, err := os.Stat(filepath.Join(filesDir, candidate)); errors.Is(err, os.ErrNotExist) {
-			return candidate
-		}
-	}
+	return os.Remove(absPath)
 }
 
 // Rename 重命名同目录下的文件或目录，并返回新相对路径。

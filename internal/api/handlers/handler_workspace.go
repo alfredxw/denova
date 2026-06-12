@@ -158,6 +158,10 @@ func (h *Handlers) HandleWorkspaceDelete(ctx context.Context, c *app.RequestCont
 		return
 	}
 
+	if _, err := h.app.CreateVersion(ctx, "删除前自动备份"); err != nil && !errors.Is(err, book.ErrVersionClean) {
+		writeErrorKey(c, fileWriteStatus(err), "api.workspace.deleteFailed", "detail", err.Error())
+		return
+	}
 	if err := h.app.BookService().Delete(req.Path); err != nil {
 		writeErrorKey(c, fileWriteStatus(err), "api.workspace.deleteFailed", "detail", err.Error())
 		return

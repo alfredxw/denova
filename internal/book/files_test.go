@@ -187,3 +187,35 @@ func TestServiceCreateExisting(t *testing.T) {
 		t.Fatalf("重复创建应返回 os.ErrExist，实际: %v", err)
 	}
 }
+
+func TestServiceDeleteRemovesFile(t *testing.T) {
+	workspace := t.TempDir()
+	service := NewService(workspace)
+	if err := service.Create("chapters/ch01.md", "file", "hello"); err != nil {
+		t.Fatalf("创建文件失败: %v", err)
+	}
+
+	if err := service.Delete("chapters/ch01.md"); err != nil {
+		t.Fatalf("删除文件失败: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(workspace, "chapters", "ch01.md")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("删除后原路径应不存在，实际错误: %v", err)
+	}
+}
+
+func TestServiceDeleteRemovesDirectory(t *testing.T) {
+	workspace := t.TempDir()
+	service := NewService(workspace)
+	if err := service.Create("chapters/volume/ch01.md", "file", "hello"); err != nil {
+		t.Fatalf("创建目录文件失败: %v", err)
+	}
+
+	if err := service.Delete("chapters/volume"); err != nil {
+		t.Fatalf("删除目录失败: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(workspace, "chapters", "volume")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("删除后目录应不存在，实际错误: %v", err)
+	}
+}
