@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 优化中英文 README 首屏定位与能力说明，补充 IDE 式作品管理、创作 Agent、互动故事、结构化资料库、版本管理、Skills/Agents、自动化和导入能力介绍。
 - 互动故事 Agent 上下文改为按叙事编排 `recent_turns` 保留最近回合原文，并将更早剧情压缩为有界摘要，避免长线互动把完整历史无限注入模型。
 - Nova favicon 去掉右下角 `I` 标记，并改为三色清爽的 iOS 风格图标。
 - 重新设计 Nova 极简 SVG 品牌图标，并在中英文 README 首屏顶部展示品牌图标。

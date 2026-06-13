@@ -6,6 +6,7 @@
 - html渲染
 - skills:
   - more built-in skills for all different type agents
+- 剧本支持
 - self evolve: bugfix, feature build
 - writing workflow: 
   - 故事设定

@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Nova is an AI-native fiction workspace where powerful agents plan, write, revise, and orchestrate long-form novels and interactive stories. It brings ideas, lore, outlines, chapters, rehearsal, and versioned creative assets into one calm, precise workspace. It is not a one-off prompt box; it is an agentic studio for serious creative production.</strong>
+  <strong>Nova is an AI-native creative workspace for storytellers: manage a book like an IDE, collaborate with Agents on planning, drafting, revision, and interactive rehearsal, and keep lore, bounded context, versions, and automation in one durable workspace.</strong>
 </p>
 
 <p align="center">
@@ -46,23 +46,22 @@
 
 ## Why Nova
 
-Nova is closer to a premium creative studio for fiction than a one-off writing assistant. Many AI novel tools focus on "enter a prompt, generate a passage"; Nova focuses on continuity, control, and craft for long-form work: book files, lore, chapter state, interactive rehearsal, Agent tool calls, and local versions all stay in the same workspace so planning, drafting, revision, and story orchestration remain on one coherent production line.
+Nova is not a one-off "prompt in, passage out" generator. It is a full workspace for long-running fiction projects. Book files, Markdown editing, multiple tabs, global search, chapter statistics, structured lore, interactive story rehearsal, Agent tool calls, and local version management live in the same workspace, so ideas, settings, outlines, chapter drafts, revisions, branch testing, and final prose stay on one continuous production line.
 
-If you want AI to do more than complete the next paragraph, and instead collaborate around the same book, read bounded context, accumulate lore, maintain chapter progress, and leave restorable versions at important moments, Nova is the better fit.
+Beyond writing original stories, Nova can import existing novels as a starting point for fan fiction, adaptation, or continuation, and it can import AI tavern character cards to quickly create interactive presets. Model-visible context is built progressively with explicit sources and limits, keeping lore, file excerpts, tool results, and display history separate instead of blindly injecting the entire project into every turn.
 
-| What you need | How Nova handles it |
-| --- | --- |
-| Long-form book management | An IDE-like workspace with file tree, Markdown editor, multiple tabs, chapter statistics, global search, and AI side panel |
-| Deeper AI collaboration | Agents can read selections and files, reference lore, call tools, track todos, and write drafts |
-| Continuous creation workflow | Ideas, settings, outlines, chapter-group plans, drafts, final prose, and state sync share clear entry points |
-| Plot validation | IDE mode is for writing; interactive mode rehearses branches, character actions, scene memory, and storylines |
-| Durable lore | Characters, worlds, locations, factions, rules, and items live in structured lore, while current character state is tracked separately |
-| Personalized workflow | Built-in and custom Skills, narrative direction, layered settings, and per-book model configuration |
-| Version confidence | go-git maintains a local `.git` in the book folder with history, diffs, restore, timed saves, and Agent-output auto saves |
+- **Book file management**: file tree, Markdown editor, multiple tabs, global search, chapter statistics, and an IDE-like writing workspace.
+- **Creative Agents**: read selections, read files, reference lore, call tools, and write into drafts or chapters.
+- **Structured lore**: characters, worlds, locations, factions, rules, items, and other durable settings become searchable long-term lore.
+- **Progressive context**: model context is organized by source, purpose, and hard size limits instead of unbounded history, logs, or full settings.
+- **Interactive story mode**: rehearse branches, character actions, scene memory, and storyline changes with the same underlying lore.
+- **Version management**: go-git powered saves, diffs, restore, timed saves, and automatic saves for large Agent outputs.
+- **Skills and Agents**: configure creative skills, prompts, tool permissions, and custom prose styles for different Agents.
+- **Automation**: schedule tasks, reviews, auto-continuation, and custom Prompt workflows.
+- **Imports and presets**: import AI tavern character cards or existing novels for fan fiction, adaptation, or continuation.
+- **Product experience**: Chinese and English UI, light and dark themes, OpenAI-compatible model configuration, and Windows, macOS, and Linux support.
 
-The recommended path is to start with ideas, settle top-level settings and creative rules, then build the outline and chapter-group plan. For each chapter, use the Agent to draft or write prose, finalize it, and sync progress plus character state. When a plot needs testing, switch to interactive mode to rehearse branches, then fold stable decisions back into lore and keep saving local versions.
-
-Nova separates display history, model context, lore content, tool results, and workspace state as much as possible, so Agents receive only the source-backed and bounded context needed for the current task.
+The recommended path is to start from an idea or an import: settle top-level settings and creative rules, build the outline and chapter-group plan, then use Agents to draft or write chapter prose. When a plot needs testing, switch to interactive mode to rehearse branches, then fold stable decisions back into lore and keep saving local versions.
 
 ## Quick Start
 
