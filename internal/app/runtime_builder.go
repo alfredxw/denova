@@ -80,7 +80,7 @@ func buildAgentRunner(ctx context.Context, cfg *config.Config, state *book.State
 	if err != nil {
 		return nil, fmt.Errorf("构建 Agent 失败: %w", err)
 	}
-	return agent.NewRunner(ctx, builtAgent), nil
+	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindIDE, Workspace: cfg.Workspace}), nil
 }
 
 func ideStoryTellerForConfig(cfg *config.Config) agent.IDEStoryTeller {
@@ -108,7 +108,7 @@ func buildInteractiveStoryRunner(ctx context.Context, cfg *config.Config, state 
 	if err != nil {
 		return nil, fmt.Errorf("构建互动故事 Agent 失败: %w", err)
 	}
-	return agent.NewRunner(ctx, builtAgent), nil
+	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindInteractiveStory, Workspace: cfg.Workspace}), nil
 }
 
 func buildLoreAgentRunner(ctx context.Context, cfg *config.Config, state *book.State) (*adk.Runner, error) {
@@ -116,7 +116,7 @@ func buildLoreAgentRunner(ctx context.Context, cfg *config.Config, state *book.S
 	if err != nil {
 		return nil, fmt.Errorf("构建资料库 Agent 失败: %w", err)
 	}
-	return agent.NewRunner(ctx, builtAgent), nil
+	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindLoreEditor, Workspace: cfg.Workspace}), nil
 }
 
 func buildAutomationAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, task agent.AutomationTaskInstruction) (*adk.Runner, error) {
@@ -124,5 +124,5 @@ func buildAutomationAgentRunner(ctx context.Context, cfg *config.Config, state *
 	if err != nil {
 		return nil, fmt.Errorf("构建自动化 Agent 失败: %w", err)
 	}
-	return agent.NewRunner(ctx, builtAgent), nil
+	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindAutomation, Workspace: cfg.Workspace}), nil
 }

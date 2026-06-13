@@ -333,8 +333,14 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 			emit(ev)
 		}
 	}
-	s.app.ChatService().Run(ctx, runner, conversation, s.app.BookService(), agent.ChatRequest{
+	s.app.ChatService().RunWithOptions(ctx, runner, conversation, s.app.BookService(), agent.ChatRequest{
 		Message: buildAutomationUserMessage(task, run),
+	}, agent.RunOptions{
+		AgentKind: agent.AgentKindAutomation,
+		TaskID:    run.ID,
+		SessionID: run.SessionID,
+		Workspace: run.Workspace,
+		Mode:      "automation",
 	}, forward)
 	if ctx.Err() != nil {
 		output := conversation.Output()
@@ -398,8 +404,14 @@ func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task a
 		emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return
 	}
-	s.app.ChatService().Run(ctx, runner, conversation, s.app.BookService(), agent.ChatRequest{
+	s.app.ChatService().RunWithOptions(ctx, runner, conversation, s.app.BookService(), agent.ChatRequest{
 		Message: message,
+	}, agent.RunOptions{
+		AgentKind: agent.AgentKindAutomation,
+		TaskID:    run.ID,
+		SessionID: run.SessionID,
+		Workspace: run.Workspace,
+		Mode:      "automation",
 	}, emit)
 	log.Printf("[automation] follow-up end task_id=%s run_id=%s", task.ID, run.ID)
 }

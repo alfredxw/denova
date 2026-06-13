@@ -37,9 +37,14 @@ type textSummary struct {
 }
 
 func newRunLedger(workspace string, policy RunLedgerPolicy) (*RunLedger, error) {
+	return newRunLedgerWithOptions(workspace, policy, RunOptions{})
+}
+
+func newRunLedgerWithOptions(workspace string, policy RunLedgerPolicy, options RunOptions) (*RunLedger, error) {
 	if !policy.Enabled || strings.TrimSpace(workspace) == "" {
 		return nil, nil
 	}
+	options = options.normalized(workspace)
 	if policy.Directory == "" {
 		policy.Directory = defaultRunLedgerDirectory
 	}
@@ -58,7 +63,12 @@ func newRunLedger(workspace string, policy RunLedgerPolicy) (*RunLedger, error) 
 	}
 	ledger := &RunLedger{id: id, path: path, previewChar: policy.PreviewChars, file: file}
 	if err := ledger.Record("run_created", map[string]any{
-		"path": path,
+		"path":       path,
+		"task_id":    options.TaskID,
+		"agent_kind": options.AgentKind,
+		"session_id": options.SessionID,
+		"workspace":  options.Workspace,
+		"mode":       options.Mode,
 	}); err != nil {
 		_ = file.Close()
 		return nil, err
@@ -96,6 +106,42 @@ func (l *RunLedger) RecordEvent(ev Event) error {
 	return l.Record("event", map[string]any{
 		"event_type": ev.Type,
 		"event_data": l.summarizeEventData(ev.Data),
+	})
+}
+
+func (l *RunLedger) RecordToolDecision(decision ToolDecision) error {
+	if l == nil {
+		return nil
+	}
+	return l.Record("tool_decision", map[string]any{
+		"decision": decision,
+	})
+}
+
+func (l *RunLedger) RecordToolExecution(result ToolExecutionRecord) error {
+	if l == nil {
+		return nil
+	}
+	return l.Record("tool_execution", map[string]any{
+		"result": result,
+	})
+}
+
+func (l *RunLedger) RecordMutations(mutations []ToolMutation) error {
+	if l == nil || len(mutations) == 0 {
+		return nil
+	}
+	return l.Record("mutations", map[string]any{
+		"mutations": mutations,
+	})
+}
+
+func (l *RunLedger) RecordVerification(verification PostRunVerification) error {
+	if l == nil {
+		return nil
+	}
+	return l.Record("post_run_verification", map[string]any{
+		"verification": verification,
 	})
 }
 

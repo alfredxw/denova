@@ -59,7 +59,6 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 		Instruction:       BuildInteractiveStoryInstruction(cfg, state, teller),
 		EnableSkills:      true,
 		DisableWriteTodos: true,
-		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveStoryToolMiddleware()},
 		ExtraTools:        loreTools,
 		MaxTokens:         interactiveMaxTokens(cfg),
 	})
@@ -169,7 +168,7 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 		tools = append(tools, webSearchTools...)
 	}
 	handlers = append(handlers, spec.ExtraHandlers...)
-	handlers = append(handlers, &safeToolMiddleware{})
+		handlers = append(handlers, &toolOrchestratorMiddleware{agentKind: spec.Kind})
 
 	return deep.New(ctx, &deep.Config{
 		Name:              spec.Name,

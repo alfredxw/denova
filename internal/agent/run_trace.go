@@ -18,13 +18,20 @@ const (
 )
 
 type RunTraceSummary struct {
-	ID           string    `json:"id"`
-	CreatedAt    time.Time `json:"created_at"`
-	Path         string    `json:"path"`
-	Status       string    `json:"status"`
-	Reason       string    `json:"reason,omitempty"`
-	Events       int       `json:"events"`
-	ContextParts int       `json:"context_parts"`
+	ID                 string    `json:"id"`
+	CreatedAt          time.Time `json:"created_at"`
+	Path               string    `json:"path"`
+	Status             string    `json:"status"`
+	Reason             string    `json:"reason,omitempty"`
+	Events             int       `json:"events"`
+	ContextParts       int       `json:"context_parts"`
+	TaskID             string    `json:"task_id,omitempty"`
+	AgentKind          string    `json:"agent_kind,omitempty"`
+	SessionID          string    `json:"session_id,omitempty"`
+	Phase              string    `json:"phase,omitempty"`
+	Mutations          int       `json:"mutations,omitempty"`
+	VerificationStatus string    `json:"verification_status,omitempty"`
+	Recoverable        bool      `json:"recoverable,omitempty"`
 }
 
 type RunTrace struct {
@@ -138,10 +145,24 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 	}
 	summary.Path = path
 	switch record.Type {
+	case "run_created":
+		summary.TaskID = stringField(record.Data, "task_id")
+		summary.AgentKind = stringField(record.Data, "agent_kind")
+		summary.SessionID = stringField(record.Data, "session_id")
+		summary.Phase = "created"
 	case "event":
 		summary.Events++
 	case "context_ledger":
 		summary.ContextParts += runTraceContextPartCount(record.Data)
+		summary.Phase = "context_ready"
+	case "tool_decision":
+		summary.Phase = "tool_running"
+	case "mutations":
+		summary.Mutations += runTraceMutationCount(record.Data)
+		summary.Phase = "verifying"
+	case "post_run_verification":
+		summary.VerificationStatus = runTraceVerificationStatus(record.Data)
+		summary.Phase = "verified"
 	case "run_finished":
 		if status, _ := record.Data["status"].(string); status != "" {
 			summary.Status = status
@@ -149,9 +170,13 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 		if reason, _ := record.Data["reason"].(string); reason != "" {
 			summary.Reason = reason
 		}
+		summary.Phase = "finished"
 	}
 	if summary.Status == "" {
 		summary.Status = "running"
+	}
+	if summary.Status == "running" {
+		summary.Recoverable = true
 	}
 }
 
@@ -161,6 +186,30 @@ func runTraceContextPartCount(data map[string]any) int {
 		return 0
 	}
 	return len(parts)
+}
+
+func runTraceMutationCount(data map[string]any) int {
+	mutations, ok := data["mutations"].([]any)
+	if !ok {
+		return 0
+	}
+	return len(mutations)
+}
+
+func runTraceVerificationStatus(data map[string]any) string {
+	verification, ok := data["verification"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	return stringField(verification, "status")
+}
+
+func stringField(data map[string]any, key string) string {
+	if data == nil {
+		return ""
+	}
+	value, _ := data[key].(string)
+	return value
 }
 
 func runTraceDir(workspace string) string {

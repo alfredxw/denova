@@ -88,7 +88,13 @@ func TestPostRunVerifierChecksLoreWriteResult(t *testing.T) {
 
 func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	workspace := t.TempDir()
-	ledger, err := newRunLedger(workspace, RunLedgerPolicy{Enabled: true, Directory: ".nova/runs", PreviewChars: 8})
+	ledger, err := newRunLedgerWithOptions(workspace, RunLedgerPolicy{Enabled: true, Directory: ".nova/runs", PreviewChars: 8}, RunOptions{
+		AgentKind: AgentKindIDE,
+		TaskID:    "task-1",
+		SessionID: "session-1",
+		Workspace: workspace,
+		Mode:      "ide",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +102,12 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordEvent(Event{Type: "verification", Data: PostRunVerification{Status: "ok", Mutations: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordMutations([]ToolMutation{{ToolName: "write_file", Source: ToolSourceWrite, Target: "chapters/ch01.md"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordVerification(PostRunVerification{Status: "ok", Mutations: 1}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordFinish("success", "", 32); err != nil {
@@ -111,11 +123,14 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	if len(summaries) != 1 || summaries[0].Status != "success" || summaries[0].Events != 1 || summaries[0].ContextParts != 1 {
 		t.Fatalf("unexpected trace summary: %#v", summaries)
 	}
+	if summaries[0].AgentKind != AgentKindIDE || summaries[0].TaskID != "task-1" || summaries[0].SessionID != "session-1" || summaries[0].Mutations != 1 || summaries[0].VerificationStatus != "ok" {
+		t.Fatalf("trace summary should include durable run state: %#v", summaries[0])
+	}
 	trace, err := ReadRunTrace(workspace, summaries[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(trace.Records) != 4 || trace.Summary.ID != summaries[0].ID {
+	if len(trace.Records) != 6 || trace.Summary.ID != summaries[0].ID {
 		t.Fatalf("unexpected trace detail: %#v", trace)
 	}
 }

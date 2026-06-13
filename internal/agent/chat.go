@@ -56,6 +56,13 @@ type TextSelectionRef struct {
 
 // ChatService 编排会话历史、文件引用和 Agent 流式响应。
 type ChatService struct {
+	policy  LoopPolicy
+	runtime *Runtime
+}
+
+// Runtime owns the task-level Agent loop: context assembly, tool observation,
+// durable run state, post-run verification, and final lifecycle events.
+type Runtime struct {
 	policy LoopPolicy
 }
 
@@ -66,7 +73,12 @@ func NewChatService() *ChatService {
 
 // NewChatServiceWithPolicy 创建带显式 loop policy 的聊天服务，主要用于测试和后续分 Agent 配置。
 func NewChatServiceWithPolicy(policy LoopPolicy) *ChatService {
-	return &ChatService{policy: policy.normalized()}
+	policy = policy.normalized()
+	return &ChatService{policy: policy, runtime: NewRuntime(policy)}
+}
+
+func NewRuntime(policy LoopPolicy) *Runtime {
+	return &Runtime{policy: policy.normalized()}
 }
 
 // Run 运行一次聊天请求，并通过 emit 输出流式事件。
@@ -78,19 +90,57 @@ func (s *ChatService) Run(
 	req ChatRequest,
 	emit func(Event),
 ) {
+	s.RunWithOptions(ctx, runner, conversation, bookService, req, RunOptions{}, emit)
+}
+
+func (s *ChatService) RunWithOptions(
+	ctx context.Context,
+	runner *adk.Runner,
+	conversation Conversation,
+	bookService *book.Service,
+	req ChatRequest,
+	options RunOptions,
+	emit func(Event),
+) {
+	runtime := NewRuntime(DefaultLoopPolicy())
+	if s != nil {
+		if s.runtime != nil {
+			runtime = s.runtime
+		} else {
+			runtime = NewRuntime(s.policy)
+		}
+	}
+	runtime.Run(ctx, runner, conversation, bookService, req, options, emit)
+}
+
+func (r *Runtime) Run(
+	ctx context.Context,
+	runner *adk.Runner,
+	conversation Conversation,
+	bookService *book.Service,
+	req ChatRequest,
+	options RunOptions,
+	emit func(Event),
+) {
+	if emit == nil {
+		emit = func(Event) {}
+	}
 	runLogger := observability.Logger("agent-run")
 	policy := DefaultLoopPolicy()
-	if s != nil {
-		policy = s.policy.normalized()
+	if r != nil {
+		policy = r.policy.normalized()
 	}
 	workspace := ""
 	if bookService != nil {
 		workspace = bookService.Workspace()
 	}
-	runLedger, ledgerErr := newRunLedger(workspace, policy.RunLedger)
+	options = options.normalized(workspace)
+	runLedger, ledgerErr := newRunLedgerWithOptions(workspace, policy.RunLedger, options)
 	if ledgerErr != nil {
 		runLogger.Warn("run_ledger_unavailable", slog.String("workspace", workspace), slog.Any("error", ledgerErr))
 	}
+	checkpointID := options.checkpointID(runLedger.ID())
+	observer := newRunObserver(runLedger)
 	if runLedger != nil {
 		defer func() {
 			if err := runLedger.Close(); err != nil {
@@ -120,15 +170,27 @@ func (s *ChatService) Run(
 		}
 		rawEmit(ev)
 	}
+	emit(Event{Type: "run_state", Data: map[string]string{
+		"run_id":     runLedger.ID(),
+		"task_id":    options.TaskID,
+		"agent_kind": options.AgentKind,
+		"session_id": options.SessionID,
+		"phase":      "started",
+	}})
 	originalMessage := req.Message
 	if err := runLedger.Record("run_started", map[string]any{
 		"workspace":        workspace,
+		"task_id":          options.TaskID,
+		"agent_kind":       options.AgentKind,
+		"session_id":       options.SessionID,
+		"mode":             options.Mode,
 		"message":          textSummary{Bytes: len(originalMessage), Chars: len([]rune(originalMessage)), Preview: safeLogPreview(originalMessage, policy.RunLedger.PreviewChars)},
 		"references":       len(req.References),
 		"lore_references":  len(req.LoreReferences),
 		"style_references": len(req.StyleReferences),
 		"selections":       len(req.Selections),
 		"plan_mode":        req.PlanMode,
+		"checkpoint_id":    checkpointID,
 	}); err != nil {
 		runLogger.Warn("run_ledger_start_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
 	}
@@ -207,7 +269,12 @@ func (s *ChatService) Run(
 		}
 	}
 
-	events := runner.Run(ctx, history)
+	runCtx := ContextWithRunObserver(ctx, observer)
+	runOptions := []adk.AgentRunOption{}
+	if checkpointID != "" {
+		runOptions = append(runOptions, adk.WithCheckPointID(checkpointID))
+	}
+	events := runner.Run(runCtx, history, runOptions...)
 	var fullContent strings.Builder
 	var fullThinking strings.Builder
 	runLogger.Info("run_started", slog.Int("history", len(history)), slog.Int("message_len", len(req.Message)), slog.Int("agent_message_len", len(agentMessage)), slog.Bool("plan_mode", req.PlanMode), slog.Int("style_references", len(req.StyleReferences)), slog.Int("style_rules", len(req.StyleRules)))
@@ -290,12 +357,24 @@ func (s *ChatService) Run(
 			runLogger.Error("resolve_interruption_failed", slog.String("interruption_id", resumeInterruption.ID), slog.Any("error", err))
 		}
 	}
-	verification := VerifyPostRunMutations(bookService, mutations.Mutations())
+	observedMutations := mutations.Mutations()
+	observer.RecordMutations(observedMutations)
+	verification := VerifyPostRunMutations(bookService, observedMutations)
+	observer.RecordVerification(verification)
 	if verification.Mutations > 0 {
 		runLogger.Info("post_run_verification", slog.String("status", verification.Status), slog.Int("mutations", verification.Mutations), slog.Int("checks", len(verification.Checks)), slog.Any("warnings", verification.Warnings))
+		emit(Event{Type: "post_run_verification", Data: verification})
 		emit(Event{Type: "verification", Data: verification})
 	}
 	runLogger.Info("run_completed")
 	finishRun("success", "", generatedBytes)
+	emit(Event{Type: "run_state", Data: map[string]string{
+		"run_id":     runLedger.ID(),
+		"task_id":    options.TaskID,
+		"agent_kind": options.AgentKind,
+		"session_id": options.SessionID,
+		"phase":      "finished",
+		"status":     "success",
+	}})
 	emit(Event{Type: "done", Data: map[string]string{}})
 }

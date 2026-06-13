@@ -266,7 +266,12 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars)
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_references=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleReferences))
-		chatService.Run(ctx, runner, conversation, bookService, req, emit)
+		chatService.RunWithOptions(ctx, runner, conversation, bookService, req, agent.RunOptions{
+			AgentKind: agent.AgentKindInteractiveStory,
+			TaskID:    task.ID(),
+			Workspace: workspace,
+			Mode:      "interactive",
+		}, emit)
 		if turn, stateReady, ok := conversation.LastTurnForState(); ok && !stateReady && ctx.Err() == nil {
 			startInteractiveStateTask(&runtimeCfg, conversation, turn, sessionStore)
 		}

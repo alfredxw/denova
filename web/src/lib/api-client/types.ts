@@ -31,6 +31,13 @@ export interface AgentRunTraceSummary {
   reason?: string
   events: number
   context_parts: number
+  task_id?: string
+  agent_kind?: string
+  session_id?: string
+  phase?: string
+  mutations?: number
+  verification_status?: string
+  recoverable?: boolean
 }
 
 export interface AgentRunTraceRecord {
