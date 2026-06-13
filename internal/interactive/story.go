@@ -14,6 +14,7 @@ import (
 const schemaVersion = 1
 const maxStoryLineBytes = 16 * 1024 * 1024
 const defaultFirstStoryTitle = "新的开始"
+const defaultStoryReplyTargetChars = 1200
 
 // Store manages interactive story data inside a workspace.
 type Store struct {
@@ -54,26 +55,28 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	story := StorySummary{
-		ID:            newID("st"),
-		Title:         title,
-		Origin:        strings.TrimSpace(req.Origin),
-		StoryTellerID: strings.TrimSpace(req.StoryTellerID),
-		CreatedAt:     now,
-		UpdatedAt:     now,
-		Branches:      1,
+		ID:               newID("st"),
+		Title:            title,
+		Origin:           strings.TrimSpace(req.Origin),
+		StoryTellerID:    strings.TrimSpace(req.StoryTellerID),
+		ReplyTargetChars: normalizeStoryReplyTargetChars(req.ReplyTargetChars),
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		Branches:         1,
 	}
 	if story.StoryTellerID == "" {
 		story.StoryTellerID = "classic"
 	}
 
 	meta := StoryMeta{
-		V:             schemaVersion,
-		Type:          StoryEventTypeMeta,
-		StoryID:       story.ID,
-		Title:         story.Title,
-		Origin:        story.Origin,
-		StoryTellerID: story.StoryTellerID,
-		CurrentBranch: "main",
+		V:                schemaVersion,
+		Type:             StoryEventTypeMeta,
+		StoryID:          story.ID,
+		Title:            story.Title,
+		Origin:           story.Origin,
+		StoryTellerID:    story.StoryTellerID,
+		ReplyTargetChars: story.ReplyTargetChars,
+		CurrentBranch:    "main",
 		Branches: map[string]BranchMeta{
 			"main": {CreatedAt: now},
 		},
@@ -110,6 +113,12 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if tellerID := strings.TrimSpace(req.StoryTellerID); tellerID != "" {
 		meta.StoryTellerID = tellerID
 	}
+	if req.ReplyTargetChars != nil {
+		if *req.ReplyTargetChars <= 0 {
+			return StorySummary{}, fmt.Errorf("互动故事单轮目标字数必须大于 0")
+		}
+		meta.ReplyTargetChars = *req.ReplyTargetChars
+	}
 	meta.UpdatedAt = now
 	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
 		return StorySummary{}, err
@@ -122,6 +131,7 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 		if index.Stories[i].ID == storyID {
 			index.Stories[i].Title = meta.Title
 			index.Stories[i].StoryTellerID = meta.StoryTellerID
+			index.Stories[i].ReplyTargetChars = meta.ReplyTargetChars
 			index.Stories[i].UpdatedAt = now
 			if err := s.writeIndexLocked(index); err != nil {
 				return StorySummary{}, err
@@ -726,6 +736,23 @@ func defaultStoryTitle(stories []StorySummary) string {
 		next = 2
 	}
 	return fmt.Sprintf("故事线 %d", next)
+}
+
+func normalizeStoryReplyTargetChars(value int) int {
+	if value <= 0 {
+		return defaultStoryReplyTargetChars
+	}
+	return value
+}
+
+func normalizeStorySummary(story StorySummary) StorySummary {
+	story.ReplyTargetChars = normalizeStoryReplyTargetChars(story.ReplyTargetChars)
+	return story
+}
+
+func normalizeStoryMeta(meta StoryMeta) StoryMeta {
+	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)
+	return meta
 }
 
 func newID(prefix string) string {

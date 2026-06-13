@@ -7,7 +7,7 @@ export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
 }
 
-export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string }): Promise<StorySummary> {
+export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; reply_target_chars?: number }): Promise<StorySummary> {
   return requestJSON('/api/interactive/stories', {
     method: 'POST',
     headers: jsonHeaders,
@@ -15,7 +15,14 @@ export function createInteractiveStory(input: { title: string; origin?: string; 
   })
 }
 
-export function updateInteractiveStory(id: string, input: { title?: string; story_teller_id?: string }): Promise<StorySummary> {
+export function updateInteractiveStory(
+  id: string,
+  input: {
+    title?: string
+    story_teller_id?: string
+    reply_target_chars?: number
+  },
+): Promise<StorySummary> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
@@ -24,7 +31,9 @@ export function updateInteractiveStory(id: string, input: { title?: string; stor
 }
 
 export function deleteInteractiveStory(id: string): Promise<void> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
 }
 
 export function getInteractiveSnapshot(storyId: string, branchId?: string): Promise<Snapshot> {
@@ -54,7 +63,9 @@ export function updateInteractiveTeller(id: string, input: Partial<Teller>): Pro
 }
 
 export function deleteInteractiveTeller(id: string): Promise<void> {
-  return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
 }
 
 export async function runInteractiveTellerAgentStream(instruction: string, tellerId = '', references: string[] = []): Promise<ReadableStream<InteractiveSSEEvent>> {
@@ -66,9 +77,7 @@ export async function runInteractiveTellerAgentStream(instruction: string, telle
       body: JSON.stringify({ instruction, teller_id: tellerId, references }),
     })
   } catch (error) {
-    throw new Error(error instanceof Error && error.name === 'AbortError'
-      ? i18next.t('settingPanel.tellerAgent.requestAborted')
-      : i18next.t('settingPanel.tellerAgent.connectFailed'))
+    throw new Error(error instanceof Error && error.name === 'AbortError' ? i18next.t('settingPanel.tellerAgent.requestAborted') : i18next.t('settingPanel.tellerAgent.connectFailed'))
   }
   if (!res.ok) {
     throw new Error(await readErrorMessage(res))
@@ -122,20 +131,15 @@ export function generateInteractiveHotChoices(storyId: string, input: { branch?:
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/hot-choices`, {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ branch: input.branch, exclude_choices: input.exclude_choices }),
+    body: JSON.stringify({
+      branch: input.branch,
+      exclude_choices: input.exclude_choices,
+    }),
     signal: input.signal,
   })
 }
 
-export async function sendInteractiveMessage(input: {
-  mode: 'story' | 'setting'
-  story_id: string
-  branch?: string
-  message: string
-  style_references?: string[]
-  regenerate_from_turn_id?: string
-  signal?: AbortSignal
-}): Promise<ReadableStream<InteractiveSSEEvent>> {
+export async function sendInteractiveMessage(input: { mode: 'story' | 'setting'; story_id: string; branch?: string; message: string; style_references?: string[]; regenerate_from_turn_id?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
   const res = await fetch('/api/interactive/chat', {
     method: 'POST',
     headers: jsonHeaders,

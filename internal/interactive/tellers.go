@@ -18,22 +18,21 @@ type TellerLibrary struct {
 }
 
 type Teller struct {
-	Version          int                 `json:"version"`
-	ID               string              `json:"id"`
-	Name             string              `json:"name"`
-	Description      string              `json:"description"`
-	RandomEventRate  float64             `json:"random_event_rate"`
-	ReplyTargetChars *int                `json:"reply_target_chars,omitempty"`
-	StyleRules       []StyleRule         `json:"style_rules,omitempty"`
-	Tags             []string            `json:"tags"`
-	ContextPolicy    TellerContextPolicy `json:"context_policy"`
-	Slots            []TellerPromptSlot  `json:"slots"`
-	Path             string              `json:"path,omitempty"`
-	Custom           bool                `json:"custom"`
-	Invalid          bool                `json:"invalid,omitempty"`
-	Error            string              `json:"error,omitempty"`
-	CreatedAt        string              `json:"created_at,omitempty"`
-	UpdatedAt        string              `json:"updated_at,omitempty"`
+	Version         int                 `json:"version"`
+	ID              string              `json:"id"`
+	Name            string              `json:"name"`
+	Description     string              `json:"description"`
+	RandomEventRate float64             `json:"random_event_rate"`
+	StyleRules      []StyleRule         `json:"style_rules,omitempty"`
+	Tags            []string            `json:"tags"`
+	ContextPolicy   TellerContextPolicy `json:"context_policy"`
+	Slots           []TellerPromptSlot  `json:"slots"`
+	Path            string              `json:"path,omitempty"`
+	Custom          bool                `json:"custom"`
+	Invalid         bool                `json:"invalid,omitempty"`
+	Error           string              `json:"error,omitempty"`
+	CreatedAt       string              `json:"created_at,omitempty"`
+	UpdatedAt       string              `json:"updated_at,omitempty"`
 }
 
 type TellerContextPolicy struct {
@@ -257,9 +256,6 @@ func normalizeTeller(teller Teller) Teller {
 	teller.ID = strings.TrimSpace(teller.ID)
 	teller.Name = strings.TrimSpace(teller.Name)
 	teller.Description = strings.TrimSpace(teller.Description)
-	if teller.ReplyTargetChars != nil && *teller.ReplyTargetChars <= 0 {
-		teller.ReplyTargetChars = nil
-	}
 	teller.StyleRules = normalizeStyleRules(teller.StyleRules)
 	teller.Tags = normalizeTellerTags(teller.Tags)
 	teller.ContextPolicy = normalizeContextPolicy(teller.ContextPolicy)

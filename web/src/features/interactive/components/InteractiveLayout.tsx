@@ -23,19 +23,9 @@ interface InteractiveLayoutProps {
   onToggleRightPanel?: () => void
 }
 
-export function InteractiveLayout({
-  workspace,
-  styleSuggestions = [],
-  loreEmpty = false,
-  onRequestLoreInit,
-  rightPanelVisible = true,
-  onToggleRightPanel,
-}: InteractiveLayoutProps) {
+export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
   const { t } = useTranslation()
-  const {
-    stories, tellers, branches, snapshot, currentStoryId, currentBranchId, submode,
-    setStories, setTellers, setBranches, setSnapshot, setCurrentStoryId, setCurrentBranchId, setSubmode, resetWorkspaceState,
-  } = useInteractiveStore()
+  const { stories, tellers, branches, snapshot, currentStoryId, currentBranchId, submode, setStories, setTellers, setBranches, setSnapshot, setCurrentStoryId, setCurrentBranchId, setSubmode, resetWorkspaceState } = useInteractiveStore()
   const currentStory = stories.find((story) => story.id === currentStoryId)
   const currentBranchSnapshot = snapshot?.story_id === currentStoryId && snapshot.branch_id === currentBranchId ? snapshot : null
   const snapshotStoryIdRef = useRef('')
@@ -48,12 +38,7 @@ export function InteractiveLayout({
     lastStableSnapshotRef.current = currentBranchSnapshot
   }
   const fallbackSnapshot = lastStableSnapshotRef.current?.story_id === currentStoryId ? lastStableSnapshotRef.current : null
-  const snapshotPending = !snapshotLoadFailed && Boolean(currentStoryId) && !currentBranchSnapshot && (
-    snapshotLoading ||
-    !snapshot ||
-    snapshot.story_id !== currentStoryId ||
-    snapshot.branch_id !== currentBranchId
-  )
+  const snapshotPending = !snapshotLoadFailed && Boolean(currentStoryId) && !currentBranchSnapshot && (snapshotLoading || !snapshot || snapshot.story_id !== currentStoryId || snapshot.branch_id !== currentBranchId)
   const displaySnapshot = currentBranchSnapshot ?? (snapshotPending ? fallbackSnapshot : null)
 
   useEffect(() => {
@@ -65,37 +50,37 @@ export function InteractiveLayout({
     setStories(index.stories || [], index.current_story_id)
   }, [setStories])
 
-  const reloadSnapshot = useCallback(async (branchOverride?: string, storyOverride?: string) => {
-    const requestSeq = snapshotRequestSeqRef.current + 1
-    snapshotRequestSeqRef.current = requestSeq
-    const storyId = storyOverride || currentStoryId
-    if (!storyId) {
-      setSnapshotLoading(false)
-      setSnapshot(null)
-      return
-    }
-    setSnapshotLoading(true)
-    setSnapshotLoadFailed(false)
-    const branchId = branchOverride ?? (snapshotStoryIdRef.current === storyId ? currentBranchId : '')
-    try {
-      const [nextSnapshot, nextBranches] = await Promise.all([
-        getInteractiveSnapshot(storyId, branchId),
-        getInteractiveBranches(storyId),
-      ])
-      if (requestSeq !== snapshotRequestSeqRef.current) return
-      setSnapshot(nextSnapshot)
-      setBranches(nextBranches)
-      return nextSnapshot
-    } catch (error) {
-      if (requestSeq === snapshotRequestSeqRef.current) {
-        console.error('[interactive-layout] 刷新互动快照失败', error)
-        setSnapshotLoadFailed(true)
+  const reloadSnapshot = useCallback(
+    async (branchOverride?: string, storyOverride?: string) => {
+      const requestSeq = snapshotRequestSeqRef.current + 1
+      snapshotRequestSeqRef.current = requestSeq
+      const storyId = storyOverride || currentStoryId
+      if (!storyId) {
+        setSnapshotLoading(false)
+        setSnapshot(null)
+        return
       }
-      throw error
-    } finally {
-      if (requestSeq === snapshotRequestSeqRef.current) setSnapshotLoading(false)
-    }
-  }, [currentBranchId, currentStoryId, setBranches, setSnapshot])
+      setSnapshotLoading(true)
+      setSnapshotLoadFailed(false)
+      const branchId = branchOverride ?? (snapshotStoryIdRef.current === storyId ? currentBranchId : '')
+      try {
+        const [nextSnapshot, nextBranches] = await Promise.all([getInteractiveSnapshot(storyId, branchId), getInteractiveBranches(storyId)])
+        if (requestSeq !== snapshotRequestSeqRef.current) return
+        setSnapshot(nextSnapshot)
+        setBranches(nextBranches)
+        return nextSnapshot
+      } catch (error) {
+        if (requestSeq === snapshotRequestSeqRef.current) {
+          console.error('[interactive-layout] 刷新互动快照失败', error)
+          setSnapshotLoadFailed(true)
+        }
+        throw error
+      } finally {
+        if (requestSeq === snapshotRequestSeqRef.current) setSnapshotLoading(false)
+      }
+    },
+    [currentBranchId, currentStoryId, setBranches, setSnapshot],
+  )
 
   useEffect(() => {
     snapshotRequestSeqRef.current += 1
@@ -119,7 +104,7 @@ export function InteractiveLayout({
     return () => window.clearInterval(timer)
   }, [reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status])
 
-  const handleCreateStory = async (input: { title: string; origin: string; story_teller_id: string }) => {
+  const handleCreateStory = async (input: { title: string; origin: string; story_teller_id: string; reply_target_chars: number }) => {
     const story = await createInteractiveStory(input)
     await reloadStories()
     setCurrentStoryId(story.id)
@@ -136,6 +121,14 @@ export function InteractiveLayout({
     await reloadStories()
   }
 
+  const handleReplyTargetCharsChange = async (replyTargetChars: number) => {
+    if (!currentStoryId) return
+    await updateInteractiveStory(currentStoryId, {
+      reply_target_chars: replyTargetChars,
+    })
+    await reloadStories()
+  }
+
   const handleSwitchBranch = async (branchId: string) => {
     const storyId = currentStoryId || useInteractiveStore.getState().currentStoryId || snapshot?.story_id
     if (!storyId) return
@@ -146,7 +139,10 @@ export function InteractiveLayout({
 
   const handleCreateBranch = async (turnId: string, title: string) => {
     if (!currentStoryId) return
-    const branch = await createInteractiveBranch(currentStoryId, { parent_event_id: turnId, title })
+    const branch = await createInteractiveBranch(currentStoryId, {
+      parent_event_id: turnId,
+      title,
+    })
     setCurrentBranchId(branch.id)
     await reloadSnapshot(branch.id)
   }
@@ -169,93 +165,28 @@ export function InteractiveLayout({
       <div data-testid="interactive-shell" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-bg)]">
         <div className="flex min-h-0 flex-1">
           <div className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
-            <motion.div
-              key={contentKey}
-              variants={panelPresence}
-              initial="initial"
-              animate="animate"
-              transition={{ duration: 0.2, ease: novaEase }}
-              className="flex min-h-0 flex-1 flex-col"
-            >
-                {settingsWorkspaceVisible ? (
-                  <SettingPanel
-                    mode={settingMode}
-                    workspace={workspace}
-                    tellers={tellers}
-                    onTellersChange={setTellers}
-                  />
-                ) : (
-                  submode === 'timeline' ? (
-                    <BranchTimeline
-                  snapshot={displaySnapshot}
-                      branches={branches}
-                      currentBranchId={currentBranchId}
-                      onSwitchBranch={handleSwitchBranch}
-                      onCreateBranch={handleCreateBranch}
-                      onDeleteBranch={handleDeleteBranch}
-                      fill
-                      variant="workspace"
-                      onBackToStory={() => setSubmode('story')}
-                      headerControls={(
-                        <StoryPicker
-                          stories={stories}
-                          currentStoryId={currentStoryId}
-                          tellers={tellers}
-                          onSelect={setCurrentStoryId}
-                          onCreate={handleCreateStory}
-                          onDelete={handleDeleteStory}
-                        />
-                      )}
-                    />
-                  ) : (
-                    <Group
-                      id="nova-interactive-horizontal"
-                      defaultLayout={readStoredLayout('nova-interactive-horizontal')}
-                      onLayoutChanged={(layout) => storeLayout('nova-interactive-horizontal', layout)}
-                      orientation="horizontal"
-                      className="min-h-0 flex-1"
-                    >
-                      <Panel id="story-stage" minSize="240px" className="min-w-0">
-                        <StoryStage
-                          workspace={workspace}
-                          styleSuggestions={styleSuggestions}
-                          stories={stories}
-                          story={currentStory}
-                          tellers={tellers}
-                          storyId={currentStoryId}
-                      branchId={currentBranchId}
-                      snapshot={displaySnapshot}
-                      snapshotLoading={snapshotPending}
-                          loreEmpty={loreEmpty}
-                          sceneMemoryVisible={rightPanelVisible}
-                          onStorySelect={setCurrentStoryId}
-                          onStoryCreate={handleCreateStory}
-                          onStoryDelete={handleDeleteStory}
-                          onTellerChange={handleTellerChange}
-                          onRequestLoreInit={onRequestLoreInit}
-                          onToggleSceneMemory={onToggleRightPanel}
-                          onDone={reloadSnapshot}
-                        />
+            <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
+              {settingsWorkspaceVisible ? (
+                <SettingPanel mode={settingMode} workspace={workspace} tellers={tellers} onTellersChange={setTellers} />
+              ) : submode === 'timeline' ? (
+                <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} tellers={tellers} onSelect={setCurrentStoryId} onCreate={handleCreateStory} onDelete={handleDeleteStory} />} />
+              ) : (
+                <Group id="nova-interactive-horizontal" defaultLayout={readStoredLayout('nova-interactive-horizontal')} onLayoutChanged={(layout) => storeLayout('nova-interactive-horizontal', layout)} orientation="horizontal" className="min-h-0 flex-1">
+                  <Panel id="story-stage" minSize="240px" className="min-w-0">
+                    <StoryStage workspace={workspace} styleSuggestions={styleSuggestions} stories={stories} story={currentStory} tellers={tellers} storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} snapshotLoading={snapshotPending} loreEmpty={loreEmpty} sceneMemoryVisible={rightPanelVisible} onStorySelect={setCurrentStoryId} onStoryCreate={handleCreateStory} onStoryDelete={handleDeleteStory} onTellerChange={handleTellerChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} onRequestLoreInit={onRequestLoreInit} onToggleSceneMemory={onToggleRightPanel} onDone={reloadSnapshot} />
+                  </Panel>
+                  {rightPanelVisible && (
+                    <>
+                      <InteractiveResizeHandle direction="vertical" label={t('interactiveLayout.resizeSceneMemory')} />
+                      <Panel id="snapshot" defaultSize="320px" minSize="180px" maxSize="45%" className="min-w-0">
+                        <motion.div className="h-full min-h-0" variants={subtlePresence} initial="initial" animate="animate" transition={{ duration: 0.16, ease: novaEase }}>
+                          <SnapshotPanel snapshot={displaySnapshot} loading={snapshotPending} />
+                        </motion.div>
                       </Panel>
-                      {rightPanelVisible && (
-                        <>
-                          <InteractiveResizeHandle direction="vertical" label={t('interactiveLayout.resizeSceneMemory')} />
-                          <Panel id="snapshot" defaultSize="320px" minSize="180px" maxSize="45%" className="min-w-0">
-                            <motion.div
-                              className="h-full min-h-0"
-                              variants={subtlePresence}
-                              initial="initial"
-                              animate="animate"
-                              transition={{ duration: 0.16, ease: novaEase }}
-                            >
-                              <SnapshotPanel snapshot={displaySnapshot} loading={snapshotPending} />
-                            </motion.div>
-                          </Panel>
-                        </>
-                      )}
-                    </Group>
-                  )
-                )}
+                    </>
+                  )}
+                </Group>
+              )}
             </motion.div>
           </div>
         </div>
@@ -266,9 +197,7 @@ export function InteractiveLayout({
 
 function InteractiveResizeHandle({ direction, label, prominent = false }: { direction: 'horizontal' | 'vertical'; label: string; prominent?: boolean }) {
   const Icon = direction === 'vertical' ? GripVertical : GripHorizontal
-  const className = direction === 'vertical'
-    ? 'nova-resize-handle group -mx-1 flex w-3 cursor-col-resize items-center justify-center bg-transparent transition-colors'
-    : `nova-resize-handle group ${prominent ? '-my-0.5 h-4' : '-my-1 h-3'} flex cursor-row-resize items-center justify-center bg-transparent transition-colors`
+  const className = direction === 'vertical' ? 'nova-resize-handle group -mx-1 flex w-3 cursor-col-resize items-center justify-center bg-transparent transition-colors' : `nova-resize-handle group ${prominent ? '-my-0.5 h-4' : '-my-1 h-3'} flex cursor-row-resize items-center justify-center bg-transparent transition-colors`
 
   return (
     <Separator aria-label={label} className={className}>

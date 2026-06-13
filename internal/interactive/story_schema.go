@@ -84,6 +84,7 @@ func storyEventRecordForWrite(event any) (StoryEventRecord, error) {
 }
 
 func validateStoryMeta(meta StoryMeta) error {
+	meta = normalizeStoryMeta(meta)
 	if meta.Type != StoryEventTypeMeta {
 		return fmt.Errorf("故事元信息类型无效: %q", meta.Type)
 	}
@@ -98,6 +99,9 @@ func validateStoryMeta(meta StoryMeta) error {
 	}
 	if len(meta.Branches) == 0 {
 		return fmt.Errorf("故事元信息缺少 branches")
+	}
+	if meta.ReplyTargetChars <= 0 {
+		return fmt.Errorf("故事单轮目标字数无效: %d", meta.ReplyTargetChars)
 	}
 	return nil
 }

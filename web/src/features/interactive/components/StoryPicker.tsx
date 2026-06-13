@@ -13,7 +13,7 @@ interface StoryPickerProps {
   currentStoryId: string
   tellers: Teller[]
   onSelect: (storyId: string) => void
-  onCreate: (input: { title: string; origin: string; story_teller_id: string }) => void
+  onCreate: (input: { title: string; origin: string; story_teller_id: string; reply_target_chars: number }) => void
   onDelete: (storyId: string) => void
   layout?: 'inline' | 'sidebar'
 }
@@ -23,6 +23,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
   const [creating, setCreating] = useState(false)
   const [title, setTitle] = useState('')
   const [origin, setOrigin] = useState('')
+  const [replyTargetChars, setReplyTargetChars] = useState('1200')
   const defaultTeller = tellers[0]?.id || 'classic'
   const sidebar = layout === 'sidebar'
   const suggestedTitle = defaultStoryTitle(stories, t)
@@ -30,30 +31,45 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
   const closeCreate = () => {
     setTitle('')
     setOrigin('')
+    setReplyTargetChars('1200')
     setCreating(false)
   }
 
   const submit = () => {
-    onCreate({ title: title.trim() || suggestedTitle, origin: origin.trim(), story_teller_id: defaultTeller })
+    onCreate({
+      title: title.trim() || suggestedTitle,
+      origin: origin.trim(),
+      story_teller_id: defaultTeller,
+      reply_target_chars: normalizeReplyTargetChars(replyTargetChars),
+    })
     closeCreate()
   }
 
   const selector = (
-    <Select value={currentStoryId || '__none'} onValueChange={(value) => { if (value !== '__none' && value !== '__empty') onSelect(value) }}>
-      <SelectTrigger
-        size="sm"
-        className={`nova-field ${sidebar ? 'w-full' : 'w-[190px]'} px-3 py-0.5 text-xs focus:ring-0`}
-        aria-label={t('storyPicker.placeholder')}
-      >
+    <Select
+      value={currentStoryId || '__none'}
+      onValueChange={(value) => {
+        if (value !== '__none' && value !== '__empty') onSelect(value)
+      }}
+    >
+      <SelectTrigger size="sm" className={`nova-field ${sidebar ? 'w-full' : 'w-[190px]'} px-3 py-0.5 text-xs focus:ring-0`} aria-label={t('storyPicker.placeholder')}>
         <SelectValue placeholder={t('storyPicker.placeholder')} />
       </SelectTrigger>
       <SelectContent className="nova-panel border text-[var(--nova-text)]">
-        <SelectItem value="__none" disabled>{t('storyPicker.placeholder')}</SelectItem>
+        <SelectItem value="__none" disabled>
+          {t('storyPicker.placeholder')}
+        </SelectItem>
         {stories.length === 0 ? (
-          <SelectItem value="__empty" disabled>{t('storyPicker.empty')}</SelectItem>
-        ) : stories.map((story) => (
-          <SelectItem key={story.id} value={story.id}>{story.title}</SelectItem>
-        ))}
+          <SelectItem value="__empty" disabled>
+            {t('storyPicker.empty')}
+          </SelectItem>
+        ) : (
+          stories.map((story) => (
+            <SelectItem key={story.id} value={story.id}>
+              {story.title}
+            </SelectItem>
+          ))
+        )}
       </SelectContent>
     </Select>
   )
@@ -67,7 +83,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
           return
         }
         setCreating(true)
-        setTitle((current) => current.trim() ? current : suggestedTitle)
+        setTitle((current) => (current.trim() ? current : suggestedTitle))
       }}
     >
       <PopoverTrigger asChild>
@@ -80,9 +96,17 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
         <div className="mb-2 text-xs font-medium">{t('storyPicker.create')}</div>
         <Input className="nova-field mb-2 text-xs" placeholder={suggestedTitle} value={title} onChange={(event) => setTitle(event.target.value)} />
         <Textarea autoResize className="nova-field mb-3 min-h-20 resize-none text-xs" placeholder={t('storyPicker.originPlaceholder')} value={origin} onChange={(event) => setOrigin(event.target.value)} />
+        <div className="mb-3">
+          <div className="mb-1.5 text-[11px] text-[var(--nova-text-faint)]">{t('storyPicker.replyTargetChars')}</div>
+          <Input className="nova-field text-xs" type="number" min={1} value={replyTargetChars} onChange={(event) => setReplyTargetChars(event.target.value)} placeholder="1200" />
+        </div>
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="xs" onClick={closeCreate}>{t('common.cancel')}</Button>
-          <Button size="xs" onClick={submit}>{t('common.create')}</Button>
+          <Button variant="ghost" size="xs" onClick={closeCreate}>
+            {t('common.cancel')}
+          </Button>
+          <Button size="xs" onClick={submit}>
+            {t('common.create')}
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
@@ -117,6 +141,11 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
       {deleteButton}
     </div>
   )
+}
+
+function normalizeReplyTargetChars(value: string) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1200
 }
 
 function defaultStoryTitle(stories: StorySummary[], t: (key: string, options?: Record<string, unknown>) => string): string {

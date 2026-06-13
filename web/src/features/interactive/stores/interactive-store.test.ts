@@ -13,9 +13,22 @@ describe('interactive-store', () => {
       submode: 'story',
     })
 
-    useInteractiveStore.getState().setStories([
-      { id: 'st_1', title: '开端', origin: '', story_teller_id: 'classic', created_at: '', updated_at: '', branches: 1, events: 0 },
-    ], 'st_1')
+    useInteractiveStore.getState().setStories(
+      [
+        {
+          id: 'st_1',
+          title: '开端',
+          origin: '',
+          story_teller_id: 'classic',
+          reply_target_chars: 1200,
+          created_at: '',
+          updated_at: '',
+          branches: 1,
+          events: 0,
+        },
+      ],
+      'st_1',
+    )
     useInteractiveStore.getState().setCurrentBranchId('br_1')
     useInteractiveStore.getState().setCurrentStoryId('st_2')
 

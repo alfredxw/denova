@@ -1,6 +1,8 @@
 package app
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -22,9 +24,10 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	novaDir := t.TempDir()
 	store := interactive.NewStore(workspace)
 	story, err := store.CreateStory(interactive.CreateStoryRequest{
-		Title:         "末日开端",
-		Origin:        "主角醒来发现世界已末日",
-		StoryTellerID: "classic",
+		Title:            "末日开端",
+		Origin:           "主角醒来发现世界已末日",
+		StoryTellerID:    "classic",
+		ReplyTargetChars: 800,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +39,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatal(err)
 	}
 
-	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我点燃火把", 1200)
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我点燃火把", story.ReplyTargetChars)
 	history, err := conversation.PrepareMessages("我点燃火把", "我点燃火把")
 	if err != nil {
 		t.Fatal(err)
@@ -49,7 +52,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		!strings.Contains(history[0].Content, "主角醒来发现世界已末日") ||
 		strings.Contains(history[0].Content, "经典叙事者") ||
 		strings.Contains(history[0].Content, "本轮上下文") ||
-		!strings.Contains(history[0].Content, "1200 个中文字") ||
+		!strings.Contains(history[0].Content, "800 个中文字") ||
 		!strings.Contains(history[0].Content, "林川：谨慎的幸存者") ||
 		!strings.Contains(history[0].Content, "世界已进入黄昏末日。") ||
 		!strings.Contains(history[0].Content, `"on_stage"`) {
@@ -139,6 +142,71 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	threads := snapshot.State["threads"].([]any)
 	if len(threads) != 1 {
 		t.Fatalf("unexpected threads: %#v", threads)
+	}
+}
+
+func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T) {
+	workspace := t.TempDir()
+	novaDir := t.TempDir()
+	tellerDir := filepath.Join(novaDir, "story-tellers")
+	if err := os.MkdirAll(tellerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacyTeller := `{
+  "version": 3,
+  "id": "legacy",
+  "name": "旧字段导演",
+  "description": "包含旧字数字段",
+  "random_event_rate": 0.15,
+  "reply_target_chars": 50,
+  "tags": ["测试"],
+  "context_policy": {
+    "creator": "always",
+    "lore": "relevant",
+    "runtime_state": "always",
+    "recent_turns": 8
+  },
+  "slots": [
+    {
+      "id": "identity",
+      "name": "系统提示",
+      "target": "system",
+      "enabled": true,
+      "content": "旧字段导演系统规则"
+    },
+    {
+      "id": "turn_context",
+      "name": "本轮上下文",
+      "target": "turn_context",
+      "enabled": true,
+      "content": "旧字段导演本轮规则"
+    }
+  ]
+}`
+	if err := os.WriteFile(filepath.Join(tellerDir, "legacy.json"), []byte(legacyTeller), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:            "旧字段测试",
+		StoryTellerID:    "legacy",
+		ReplyTargetChars: 700,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我观察四周", story.ReplyTargetChars)
+	history, err := conversation.PrepareMessages("我观察四周", "我观察四周")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) < 1 || !strings.Contains(history[0].Content, "700 个中文字") {
+		t.Fatalf("story reply target chars should be used: %#v", history)
+	}
+	if strings.Contains(history[0].Content, "50 个中文字") {
+		t.Fatalf("legacy teller reply target chars should be ignored: %#v", history[0])
 	}
 }
 

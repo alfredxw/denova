@@ -227,10 +227,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		return nil
 	}
 	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
-	runtimeCfg.InteractiveReplyTargetChars = 1200
-	if teller.ReplyTargetChars != nil && *teller.ReplyTargetChars > 0 {
-		runtimeCfg.InteractiveReplyTargetChars = *teller.ReplyTargetChars
-	}
+	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
 	var styleRules []agent.StyleRule
 	if len(styleReferences) == 0 {
 		styleRules = convertTellerStyleRules(novaDir, teller.StyleRules)
@@ -238,7 +235,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 			log.Printf("[interactive-agent-task] inject teller style rules teller_id=%s count=%d rules=%q", teller.ID, len(styleRules), appStyleRuleNames(styleRules))
 		}
 	}
-	log.Printf("[interactive-agent-task] use teller settings teller_id=%s target_chars=%d style_rules=%d", teller.ID, runtimeCfg.InteractiveReplyTargetChars, len(styleRules))
+	log.Printf("[interactive-agent-task] use story settings story_id=%s teller_id=%s target_chars=%d style_rules=%d", storyID, teller.ID, runtimeCfg.InteractiveReplyTargetChars, len(styleRules))
 	runner, err := buildInteractiveStoryRunner(context.Background(), &runtimeCfg, state, interactiveStoryTellerSystemInput(teller))
 	if err != nil {
 		log.Printf("[interactive-agent-task] 刷新互动故事 Agent Runner 失败 workspace=%s err=%v", workspace, err)

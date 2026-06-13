@@ -1,9 +1,10 @@
 package interactive
 
 type CreateStoryRequest struct {
-	Title         string `json:"title"`
-	Origin        string `json:"origin"`
-	StoryTellerID string `json:"story_teller_id"`
+	Title            string `json:"title"`
+	Origin           string `json:"origin"`
+	StoryTellerID    string `json:"story_teller_id"`
+	ReplyTargetChars int    `json:"reply_target_chars"`
 }
 
 type AppendTurnRequest struct {
@@ -48,8 +49,9 @@ type MarkStateFailedRequest struct {
 }
 
 type UpdateStoryRequest struct {
-	Title         string `json:"title"`
-	StoryTellerID string `json:"story_teller_id"`
+	Title            string `json:"title"`
+	StoryTellerID    string `json:"story_teller_id"`
+	ReplyTargetChars *int   `json:"reply_target_chars,omitempty"`
 }
 
 type CreateBranchRequest struct {
@@ -63,14 +65,15 @@ type Index struct {
 }
 
 type StorySummary struct {
-	ID            string `json:"id"`
-	Title         string `json:"title"`
-	Origin        string `json:"origin"`
-	StoryTellerID string `json:"story_teller_id"`
-	CreatedAt     string `json:"created_at"`
-	UpdatedAt     string `json:"updated_at"`
-	Branches      int    `json:"branches"`
-	Events        int    `json:"events"`
+	ID               string `json:"id"`
+	Title            string `json:"title"`
+	Origin           string `json:"origin"`
+	StoryTellerID    string `json:"story_teller_id"`
+	ReplyTargetChars int    `json:"reply_target_chars"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
+	Branches         int    `json:"branches"`
+	Events           int    `json:"events"`
 }
 
 type BranchMeta struct {
@@ -92,16 +95,17 @@ type BranchSummary struct {
 }
 
 type StoryMeta struct {
-	V             int                   `json:"v"`
-	Type          string                `json:"type"`
-	StoryID       string                `json:"story_id"`
-	Title         string                `json:"title"`
-	Origin        string                `json:"origin"`
-	StoryTellerID string                `json:"story_teller_id"`
-	CurrentBranch string                `json:"current_branch"`
-	Branches      map[string]BranchMeta `json:"branches"`
-	CreatedAt     string                `json:"created_at"`
-	UpdatedAt     string                `json:"updated_at"`
+	V                int                   `json:"v"`
+	Type             string                `json:"type"`
+	StoryID          string                `json:"story_id"`
+	Title            string                `json:"title"`
+	Origin           string                `json:"origin"`
+	StoryTellerID    string                `json:"story_teller_id"`
+	ReplyTargetChars int                   `json:"reply_target_chars"`
+	CurrentBranch    string                `json:"current_branch"`
+	Branches         map[string]BranchMeta `json:"branches"`
+	CreatedAt        string                `json:"created_at"`
+	UpdatedAt        string                `json:"updated_at"`
 }
 
 type TurnEvent struct {

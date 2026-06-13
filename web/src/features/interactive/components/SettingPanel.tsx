@@ -2,20 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BookMarked, Building2, Database, FileText, Library, MapPin, Save, ScrollText, SlidersHorizontal, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import {
-  createLoreVersion,
-  createLoreItem,
-  deleteLoreItem,
-  getLoreItems,
-  getLoreVersions,
-  readFile,
-  restoreLoreVersion,
-  saveFile,
-  updateLoreItem,
-  type LoreAgentResult,
-  type LoreItem,
-  type LoreVersion,
-} from '@/lib/api'
+import { createLoreVersion, createLoreItem, deleteLoreItem, getLoreItems, getLoreVersions, readFile, restoreLoreVersion, saveFile, updateLoreItem, type LoreAgentResult, type LoreItem, type LoreVersion } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { createInteractiveTeller, deleteInteractiveTeller, getInteractiveTellers, updateInteractiveTeller } from '../api'
 import type { Teller, TellerAgentResult } from '../types'
@@ -45,12 +32,56 @@ interface KnowledgeSection {
 }
 
 const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
-  { id: 'characters', labelKey: 'lore.type.character', icon: UserRound, types: ['character'], createType: 'character', createName: '新角色' },
-  { id: 'locations', labelKey: 'lore.type.location', icon: MapPin, types: ['location'], createType: 'location', createName: '新地点' },
-  { id: 'factions', labelKey: 'lore.type.faction', icon: Building2, types: ['faction'], createType: 'faction', createName: '新组织' },
-  { id: 'rules', labelKey: 'lore.type.rule', icon: ScrollText, types: ['world', 'rule'], createType: 'rule', createName: '新规则' },
-  { id: 'templates', labelKey: 'settingPanel.section.templates', icon: FileText, types: ['other'], createType: 'other', createName: '新模板', tag: '模板' },
-  { id: 'assets', labelKey: 'settingPanel.section.assets', icon: Library, types: ['item', 'other'], createType: 'item', createName: '新素材', excludeTag: '模板' },
+  {
+    id: 'characters',
+    labelKey: 'lore.type.character',
+    icon: UserRound,
+    types: ['character'],
+    createType: 'character',
+    createName: '新角色',
+  },
+  {
+    id: 'locations',
+    labelKey: 'lore.type.location',
+    icon: MapPin,
+    types: ['location'],
+    createType: 'location',
+    createName: '新地点',
+  },
+  {
+    id: 'factions',
+    labelKey: 'lore.type.faction',
+    icon: Building2,
+    types: ['faction'],
+    createType: 'faction',
+    createName: '新组织',
+  },
+  {
+    id: 'rules',
+    labelKey: 'lore.type.rule',
+    icon: ScrollText,
+    types: ['world', 'rule'],
+    createType: 'rule',
+    createName: '新规则',
+  },
+  {
+    id: 'templates',
+    labelKey: 'settingPanel.section.templates',
+    icon: FileText,
+    types: ['other'],
+    createType: 'other',
+    createName: '新模板',
+    tag: '模板',
+  },
+  {
+    id: 'assets',
+    labelKey: 'settingPanel.section.assets',
+    icon: Library,
+    types: ['item', 'other'],
+    createType: 'item',
+    createName: '新素材',
+    excludeTag: '模板',
+  },
 ]
 
 interface SettingPanelProps {
@@ -95,7 +126,10 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     setQuery('')
     setVersions([])
     setVersionsVisible(false)
-    if (!workspace) return () => { cancelled = true }
+    if (!workspace)
+      return () => {
+        cancelled = true
+      }
     getLoreItems()
       .then((data) => {
         if (cancelled) return
@@ -108,7 +142,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
           setActiveId(LORE_AGENT_ENTRY_ID)
         }
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [workspace])
 
   useEffect(() => {
@@ -116,7 +152,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     let cancelled = false
     if (!workspace) {
       setVersions([])
-      return () => { cancelled = true }
+      return () => {
+        cancelled = true
+      }
     }
     getLoreVersions()
       .then((data) => {
@@ -125,7 +163,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       .catch(() => {
         if (!cancelled) setVersions([])
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [activeMode, workspace])
 
   useEffect(() => {
@@ -134,11 +174,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     const nextTagDraft = (item?.tags || []).join('，')
     const currentDraft = loreDraftRef.current
     const currentTagDraft = loreTagDraftRef.current
-    const hasUnsavedCurrentDraft = Boolean(
-      currentDraft?.id &&
-      currentDraft.id === item?.id &&
-      loreDraftSignature(currentDraft, currentTagDraft) !== loreSavedSignature.current,
-    )
+    const hasUnsavedCurrentDraft = Boolean(currentDraft?.id && currentDraft.id === item?.id && loreDraftSignature(currentDraft, currentTagDraft) !== loreSavedSignature.current)
     if (!hasUnsavedCurrentDraft) {
       setDraft(nextDraft)
       setTagDraft(nextTagDraft)
@@ -155,11 +191,20 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     if (activeMode !== 'creator') return
     let cancelled = false
     setCreatorContent('')
-    if (!workspace) return () => { cancelled = true }
+    if (!workspace)
+      return () => {
+        cancelled = true
+      }
     readFile(CREATOR_PATH)
-      .then((data) => { if (!cancelled) setCreatorContent(data.content) })
-      .catch(() => { if (!cancelled) setCreatorContent('') })
-    return () => { cancelled = true }
+      .then((data) => {
+        if (!cancelled) setCreatorContent(data.content)
+      })
+      .catch(() => {
+        if (!cancelled) setCreatorContent('')
+      })
+    return () => {
+      cancelled = true
+    }
   }, [activeMode, workspace])
 
   useEffect(() => {
@@ -181,7 +226,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       .catch(() => {
         if (!cancelled) setTellers([])
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [activeMode, externalTellers.length, onTellersChange, workspace])
 
   useEffect(() => {
@@ -207,13 +254,15 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       return
     }
     const teller = tellers.find((entry) => entry.id === activeTellerId) || null
-    const nextDraft = teller ? {
-      ...teller,
-      tags: [...(teller.tags || [])],
-      slots: [...(teller.slots || [])],
-      context_policy: { ...teller.context_policy },
-      style_rules: [...(teller.style_rules || [])],
-    } : null
+    const nextDraft = teller
+      ? {
+          ...teller,
+          tags: [...(teller.tags || [])],
+          slots: [...(teller.slots || [])],
+          context_policy: { ...teller.context_policy },
+          style_rules: [...(teller.style_rules || [])],
+        }
+      : null
     setTellerDraft(nextDraft)
     setTellerTagDraft((teller?.tags || []).join('，'))
     setActiveSlotId((current) => {
@@ -253,18 +302,18 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       if (current && data.some((teller) => teller.id === current)) return current
       return data[0]?.id || ''
     })
-    setTellerAgentTargetId((current) => data.some((teller) => teller.id === current) ? current : (nextActiveId || data[0]?.id || ''))
+    setTellerAgentTargetId((current) => (data.some((teller) => teller.id === current) ? current : nextActiveId || data[0]?.id || ''))
   }
 
   const mergeSavedTeller = (teller: Teller) => {
-    setTellers((current) => current.map((entry) => entry.id === teller.id ? teller : entry))
-    onTellersChange?.(tellers.map((entry) => entry.id === teller.id ? teller : entry))
+    setTellers((current) => current.map((entry) => (entry.id === teller.id ? teller : entry)))
+    onTellersChange?.(tellers.map((entry) => (entry.id === teller.id ? teller : entry)))
     setActiveTellerId(teller.id)
     setTellerAgentTargetId((current) => current || teller.id)
   }
 
   const mergeSavedLoreItem = (item: LoreItem) => {
-    setItems((current) => current.map((entry) => entry.id === item.id ? item : entry))
+    setItems((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
   }
 
   const saveLoreDraft = async (mode: 'manual' | 'auto') => {
@@ -433,7 +482,14 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }
 
   const handleRestoreLoreVersion = async (version: LoreVersion) => {
-    if (!window.confirm(t('settingPanel.confirmRestoreLoreVersion', { name: version.message || version.id }))) return
+    if (
+      !window.confirm(
+        t('settingPanel.confirmRestoreLoreVersion', {
+          name: version.message || version.id,
+        }),
+      )
+    )
+      return
     setSaving(true)
     try {
       const restored = await restoreLoreVersion(version.id)
@@ -490,27 +546,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
           <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.directoryHint')}</div>
         </div>
 
-        {activeMode === 'lore' ? (
-          <LoreDirectory
-            items={items}
-            activeId={activeId}
-            query={query}
-            saving={saving}
-            onQueryChange={setQuery}
-            onSelect={handleSelectLore}
-            onCreate={(section) => void handleCreateLore(section)}
-          />
-        ) : activeMode === 'creator' ? (
-          <CreatorDirectory />
-        ) : (
-          <TellerDirectory
-            tellers={tellers}
-            activeTellerId={activeTellerId}
-            saving={saving}
-            onSelect={handleSelectTeller}
-            onCreate={() => void handleCreateTeller()}
-          />
-        )}
+        {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} /> : activeMode === 'creator' ? <CreatorDirectory /> : <TellerDirectory tellers={tellers} activeTellerId={activeTellerId} saving={saving} onSelect={handleSelectTeller} onCreate={() => void handleCreateTeller()} />}
       </aside>
 
       <main className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
@@ -568,24 +604,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         ) : activeMode === 'creator' ? (
           <CreatorEditor content={creatorContent} setContent={setCreatorContent} onSave={handleSave} />
         ) : isTellerAgentActive ? (
-          <TellerAgentChat
-            workspace={workspace}
-            tellers={tellers}
-            targetTellerId={tellerAgentTargetId}
-            onTargetTellerIdChange={setTellerAgentTargetId}
-            onResult={handleTellerAgentResult}
-          />
+          <TellerAgentChat workspace={workspace} tellers={tellers} targetTellerId={tellerAgentTargetId} onTargetTellerIdChange={setTellerAgentTargetId} onResult={handleTellerAgentResult} />
         ) : (
-          <TellerEditor
-            workspace={workspace}
-            draft={tellerDraft}
-            setDraft={setTellerDraft}
-            tagDraft={tellerTagDraft}
-            setTagDraft={setTellerTagDraft}
-            activeSlotId={activeSlotId}
-            setActiveSlotId={setActiveSlotId}
-            onSave={handleSave}
-          />
+          <TellerEditor workspace={workspace} draft={tellerDraft} setDraft={setTellerDraft} tagDraft={tellerTagDraft} setTagDraft={setTellerTagDraft} activeSlotId={activeSlotId} setActiveSlotId={setActiveSlotId} onSave={handleSave} />
         )}
       </main>
     </section>
@@ -671,7 +692,6 @@ function newTellerDraft(): Partial<Teller> {
     name: '自定义叙事',
     description: '新的叙事编排方案',
     random_event_rate: 0.15,
-    reply_target_chars: 1200,
     style_rules: [],
     tags: ['自定义'],
     context_policy: {

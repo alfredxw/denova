@@ -7,6 +7,7 @@ export interface StorySummary {
   title: string
   origin: string
   story_teller_id: string
+  reply_target_chars: number
   created_at: string
   updated_at: string
   branches: number
@@ -24,7 +25,6 @@ export interface Teller {
   name: string
   description: string
   random_event_rate: number
-  reply_target_chars?: number | null
   style_rules?: StyleRule[] | null
   tags: string[]
   context_policy: TellerContextPolicy

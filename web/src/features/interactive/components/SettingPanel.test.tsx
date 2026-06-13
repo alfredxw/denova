@@ -50,12 +50,15 @@ describe('SettingPanel', () => {
           updated: [],
           deleted_ids: [],
         }
-        return new Response(new ReadableStream({
-          start(controller) {
-            controller.enqueue(encoder.encode(`event: lore_result\ndata: ${JSON.stringify(result)}\n\n`))
-            controller.close()
-          },
-        }), { status: 200 })
+        return new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode(`event: lore_result\ndata: ${JSON.stringify(result)}\n\n`))
+              controller.close()
+            },
+          }),
+          { status: 200 },
+        )
       }
       const payloads: Record<string, unknown> = {
         '/api/lore/items': { items: [] },
@@ -106,24 +109,25 @@ describe('SettingPanel', () => {
       <SettingPanel
         mode="teller"
         workspace="/books/scroll-check"
-        tellers={[{
-          version: 1,
-          id: 'classic',
-          name: '经典叙事',
-          description: '默认方案',
-          random_event_rate: 0,
-          reply_target_chars: 800,
-          style_rules: [],
-          tags: [],
-          context_policy: {
-            creator: 'summary',
-            lore: 'summary',
-            runtime_state: 'summary',
-            recent_turns: 6,
+        tellers={[
+          {
+            version: 1,
+            id: 'classic',
+            name: '经典叙事',
+            description: '默认方案',
+            random_event_rate: 0,
+            style_rules: [],
+            tags: [],
+            context_policy: {
+              creator: 'summary',
+              lore: 'summary',
+              runtime_state: 'summary',
+              recent_turns: 6,
+            },
+            slots: [],
+            custom: false,
           },
-          slots: [],
-          custom: false,
-        }]}
+        ]}
       />,
     )
     await userEvent.click(await screen.findByRole('button', { name: '叙事编排 Agent' }))

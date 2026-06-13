@@ -30,6 +30,9 @@ func TestCreateStoryInitializesIndexAndStoryFile(t *testing.T) {
 	if len(index.Stories) != 1 || index.Stories[0].Title != "末日开端" {
 		t.Fatalf("unexpected index stories: %+v", index.Stories)
 	}
+	if story.ReplyTargetChars != 1200 || index.Stories[0].ReplyTargetChars != 1200 {
+		t.Fatalf("reply target chars = story:%d index:%d, want 1200", story.ReplyTargetChars, index.Stories[0].ReplyTargetChars)
+	}
 
 	storyFile := filepath.Join(store.Root(), "interactive", "story", "story-"+story.ID+".jsonl")
 	data, err := os.ReadFile(storyFile)
@@ -39,6 +42,30 @@ func TestCreateStoryInitializesIndexAndStoryFile(t *testing.T) {
 	assertContains(t, string(data), `"type":"meta"`)
 	assertContains(t, string(data), `"current_branch":"main"`)
 	assertContains(t, string(data), `"story_teller_id":"grimdark"`)
+	assertContains(t, string(data), `"reply_target_chars":1200`)
+}
+
+func TestCreateStoryPersistsCustomReplyTargetChars(t *testing.T) {
+	store := NewStore(t.TempDir())
+
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:            "短回合",
+		StoryTellerID:    "classic",
+		ReplyTargetChars: 800,
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+	if story.ReplyTargetChars != 800 {
+		t.Fatalf("reply target chars = %d, want 800", story.ReplyTargetChars)
+	}
+	ctx, err := store.StoryContext(story.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Meta.ReplyTargetChars != 800 {
+		t.Fatalf("meta reply target chars = %d, want 800", ctx.Meta.ReplyTargetChars)
+	}
 }
 
 func TestSnapshotAppliesTurnAndStateDelta(t *testing.T) {
@@ -481,12 +508,17 @@ func TestUpdateAndDeleteStory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{Title: "新标题", StoryTellerID: "grimdark"})
+	target := 900
+	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{Title: "新标题", StoryTellerID: "grimdark", ReplyTargetChars: &target})
 	if err != nil {
 		t.Fatalf("UpdateStory failed: %v", err)
 	}
-	if updated.Title != "新标题" || updated.StoryTellerID != "grimdark" {
+	if updated.Title != "新标题" || updated.StoryTellerID != "grimdark" || updated.ReplyTargetChars != 900 {
 		t.Fatalf("unexpected updated story: %#v", updated)
+	}
+	invalidTarget := 0
+	if _, err := store.UpdateStory(story.ID, UpdateStoryRequest{ReplyTargetChars: &invalidTarget}); err == nil {
+		t.Fatal("expected invalid reply target chars to fail")
 	}
 	if err := store.DeleteStory(story.ID); err != nil {
 		t.Fatalf("DeleteStory failed: %v", err)

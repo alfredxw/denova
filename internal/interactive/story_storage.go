@@ -32,6 +32,9 @@ func (s *Store) readIndexLocked() (Index, error) {
 	if err := json.Unmarshal(data, &index); err != nil {
 		return Index{}, fmt.Errorf("解析互动故事索引失败: %w", err)
 	}
+	for i := range index.Stories {
+		index.Stories[i] = normalizeStorySummary(index.Stories[i])
+	}
 	return index, nil
 }
 
@@ -93,6 +96,7 @@ func (s *Store) readStoryLocked(storyID string) (StoryMeta, []StoryEventRecord, 
 	if err := json.Unmarshal(scanner.Bytes(), &meta); err != nil {
 		return StoryMeta{}, nil, fmt.Errorf("解析故事元信息失败: %w", err)
 	}
+	meta = normalizeStoryMeta(meta)
 	if err := validateStoryMeta(meta); err != nil {
 		return StoryMeta{}, nil, fmt.Errorf("校验故事元信息失败: %w", err)
 	}
@@ -111,6 +115,7 @@ func (s *Store) readStoryLocked(storyID string) (StoryMeta, []StoryEventRecord, 
 }
 
 func (s *Store) rewriteStoryLocked(storyID string, meta StoryMeta, events []StoryEventRecord, newEvents ...any) error {
+	meta = normalizeStoryMeta(meta)
 	if err := validateStoryMeta(meta); err != nil {
 		return err
 	}

@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 互动故事单轮目标字数改为故事级运行参数，并在互动剧情主舞台顶部直接配置；不再兼容叙事编排 JSON 中的 `reply_target_chars` 旧字段，旧规则包里的该字段不会继续生效，需要在具体互动故事里重新设置。
+- 精简互动剧情主舞台顶部和消息区抬头，移除“互动创作”、回合数以及“指令流 / 记录数”状态栏，降低控制区拥挤感。
 - 优化中英文 README 首屏定位与能力说明，补充 IDE 式作品管理、创作 Agent、互动故事、结构化资料库、版本管理、Skills/Agents、自动化和导入能力介绍。
 - 互动故事 Agent 上下文改为按叙事编排 `recent_turns` 保留最近回合原文，并将更早剧情压缩为有界摘要，避免长线互动把完整历史无限注入模型。
 - Nova favicon 去掉右下角 `I` 标记，并改为三色清爽的 iOS 风格图标。

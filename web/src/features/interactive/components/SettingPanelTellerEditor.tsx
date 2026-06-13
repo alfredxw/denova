@@ -10,11 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { getStyles } from '@/lib/api'
 import type { StyleRule, Teller, TellerPromptSlot } from '../types'
 
-const TELLER_TARGET_OPTIONS = [
-  { value: 'system' },
-  { value: 'turn_context' },
-  { value: 'state_memory' },
-] as const
+const TELLER_TARGET_OPTIONS = [{ value: 'system' }, { value: 'turn_context' }, { value: 'state_memory' }] as const
 
 type TellerTarget = TellerPromptSlot['target']
 const actionButtonClassName = 'nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
@@ -22,25 +18,7 @@ const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(-
 const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
 const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
 
-export function TellerEditor({
-  workspace,
-  draft,
-  setDraft,
-  tagDraft,
-  setTagDraft,
-  activeSlotId,
-  setActiveSlotId,
-  onSave,
-}: {
-  workspace: string
-  draft: Teller | null
-  setDraft: (draft: Teller | null) => void
-  tagDraft: string
-  setTagDraft: (value: string) => void
-  activeSlotId: string
-  setActiveSlotId: (id: string) => void
-  onSave: () => void
-}) {
+export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft, activeSlotId, setActiveSlotId, onSave }: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; tagDraft: string; setTagDraft: (value: string) => void; activeSlotId: string; setActiveSlotId: (id: string) => void; onSave: () => void }) {
   const { t } = useTranslation()
   const activeSlot = draft?.slots?.find((slot) => slot.id === activeSlotId) || draft?.slots?.[0] || null
   const [targetPickerOpen, setTargetPickerOpen] = useState(false)
@@ -54,7 +32,9 @@ export function TellerEditor({
     let cancelled = false
     if (!workspace) {
       setAvailableStyles([])
-      return () => { cancelled = true }
+      return () => {
+        cancelled = true
+      }
     }
     getStyles()
       .then((styles) => {
@@ -64,14 +44,16 @@ export function TellerEditor({
         console.warn('[teller-editor] 获取风格参考列表失败', err)
         if (!cancelled) setAvailableStyles([])
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [workspace])
 
   const updateSlotById = (slotId: string, patch: Partial<TellerPromptSlot>) => {
     if (!draft) return
     setDraft({
       ...draft,
-      slots: draft.slots.map((slot) => slot.id === slotId ? { ...slot, ...patch } : slot),
+      slots: draft.slots.map((slot) => (slot.id === slotId ? { ...slot, ...patch } : slot)),
     })
   }
 
@@ -117,14 +99,17 @@ export function TellerEditor({
           <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
         </Field>
         <Field label={t('settingPanel.field.randomEventRate')}>
-          <Input className={inputClassName} value={String(draft.random_event_rate ?? 0)} onChange={(event) => setDraft({ ...draft, random_event_rate: Number(event.target.value) || 0 })} />
+          <Input
+            className={inputClassName}
+            value={String(draft.random_event_rate ?? 0)}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                random_event_rate: Number(event.target.value) || 0,
+              })
+            }
+          />
         </Field>
-        <SettingsNumberField
-          label={t('settingPanel.field.replyTargetChars')}
-          value={draft.reply_target_chars ?? null}
-          placeholder={t('settingPanel.placeholder.replyTargetChars')}
-          onChange={(value) => setDraft({ ...draft, reply_target_chars: value })}
-        />
         <Field label={t('settingPanel.field.tags')}>
           <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
         </Field>
@@ -132,10 +117,15 @@ export function TellerEditor({
           <Input
             className={inputClassName}
             value={String(draft.context_policy?.recent_turns ?? 0)}
-            onChange={(event) => setDraft({
-              ...draft,
-              context_policy: { ...draft.context_policy, recent_turns: Number(event.target.value) || 0 },
-            })}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                context_policy: {
+                  ...draft.context_policy,
+                  recent_turns: Number(event.target.value) || 0,
+                },
+              })
+            }
           />
         </Field>
         <div className="flex items-end">
@@ -146,15 +136,9 @@ export function TellerEditor({
       <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
         <div className="mb-3">
           <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.styleRules.title')}</div>
-          <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-            {t('settingPanel.styleRules.desc')}
-          </div>
+          <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.styleRules.desc')}</div>
         </div>
-        <InteractiveStyleRulesEditor
-          available={availableStyles}
-          rules={draft.style_rules ?? []}
-          onChange={(rules) => setDraft({ ...draft, style_rules: rules })}
-        />
+        <InteractiveStyleRulesEditor available={availableStyles} rules={draft.style_rules ?? []} onChange={(rules) => setDraft({ ...draft, style_rules: rules })} />
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)]">
@@ -168,19 +152,8 @@ export function TellerEditor({
           <ScrollArea className="min-h-0 flex-1">
             <div className="p-2">
               {(draft.slots || []).map((slot) => (
-                <div
-                  key={slot.id}
-                  className={`mb-1 flex min-h-12 w-full items-center gap-2 rounded-md border px-3 py-2 text-xs transition ${
-                    activeSlot?.id === slot.id
-                      ? 'border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_3px_0_0_var(--nova-accent)]'
-                      : 'border-transparent text-[var(--nova-text-muted)] hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setActiveSlotId(slot.id)}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                  >
+                <div key={slot.id} className={`mb-1 flex min-h-12 w-full items-center gap-2 rounded-md border px-3 py-2 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_3px_0_0_var(--nova-accent)]' : 'border-transparent text-[var(--nova-text-muted)] hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
+                  <button type="button" onClick={() => setActiveSlotId(slot.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
                     <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{slot.name}</span>
@@ -191,11 +164,7 @@ export function TellerEditor({
                       </span>
                     </span>
                   </button>
-                  <ToggleSwitch
-                    checked={slot.enabled}
-                    compact
-                    onChange={(enabled) => updateSlotById(slot.id, { enabled })}
-                  />
+                  <ToggleSwitch checked={slot.enabled} compact onChange={(enabled) => updateSlotById(slot.id, { enabled })} />
                 </div>
               ))}
             </div>
@@ -213,12 +182,10 @@ export function TellerEditor({
                   <span className="text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.field.injectTarget')}</span>
                   <Popover open={targetPickerOpen} onOpenChange={setTargetPickerOpen}>
                     <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        aria-label={t('settingPanel.field.injectTarget')}
-                        className={`${selectClassName} flex w-full items-center justify-between gap-2 px-3 text-left text-[var(--nova-text)]`}
-                      >
-                        <span className="min-w-0 flex-1 truncate">{targetLabel(selectedTarget.value as TellerTarget, t)} · {targetSummary(selectedTarget.value as TellerTarget, t)}</span>
+                      <button type="button" aria-label={t('settingPanel.field.injectTarget')} className={`${selectClassName} flex w-full items-center justify-between gap-2 px-3 text-left text-[var(--nova-text)]`}>
+                        <span className="min-w-0 flex-1 truncate">
+                          {targetLabel(selectedTarget.value as TellerTarget, t)} · {targetSummary(selectedTarget.value as TellerTarget, t)}
+                        </span>
                         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition ${targetPickerOpen ? 'rotate-180' : ''}`} />
                       </button>
                     </PopoverTrigger>
@@ -228,18 +195,14 @@ export function TellerEditor({
                           key={option.value}
                           type="button"
                           onClick={() => {
-                            updateSlot({ target: option.value as TellerTarget })
+                            updateSlot({
+                              target: option.value as TellerTarget,
+                            })
                             setTargetPickerOpen(false)
                           }}
-                          className={`flex w-full items-start gap-2 rounded-md px-3 py-2.5 text-left transition ${
-                            activeSlot.target === option.value
-                              ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
-                              : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-                          }`}
+                          className={`flex w-full items-start gap-2 rounded-md px-3 py-2.5 text-left transition ${activeSlot.target === option.value ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}
                         >
-                          <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
-                            activeSlot.target === option.value ? 'border-[var(--nova-accent)] bg-[var(--nova-accent)]/15 text-[var(--nova-accent)]' : 'border-[var(--nova-border)] text-transparent'
-                          }`}>
+                          <span className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${activeSlot.target === option.value ? 'border-[var(--nova-accent)] bg-[var(--nova-accent)]/15 text-[var(--nova-accent)]' : 'border-[var(--nova-border)] text-transparent'}`}>
                             <Check className="h-3 w-3" />
                           </span>
                           <span className="min-w-0 flex-1">
@@ -291,33 +254,7 @@ export function TellerEditor({
   )
 }
 
-function SettingsNumberField({ label, value, placeholder, onChange }: {
-  label: string
-  value: number | null
-  placeholder?: string
-  onChange: (value: number | null) => void
-}) {
-  return (
-    <Field label={label}>
-      <Input
-        className={inputClassName}
-        type="number"
-        value={value ?? ''}
-        placeholder={placeholder}
-        onChange={(event) => {
-          const raw = event.target.value
-          onChange(raw === '' ? null : Number(raw))
-        }}
-      />
-    </Field>
-  )
-}
-
-function InteractiveStyleRulesEditor({ available, rules, onChange }: {
-  available: string[]
-  rules: StyleRule[]
-  onChange: (rules: StyleRule[]) => void
-}) {
+function InteractiveStyleRulesEditor({ available, rules, onChange }: { available: string[]; rules: StyleRule[]; onChange: (rules: StyleRule[]) => void }) {
   const { t } = useTranslation()
   const addRule = () => onChange([...rules, { scene: '', styles: [] }])
   const removeRule = (index: number) => onChange(rules.filter((_, i) => i !== index))
@@ -330,13 +267,7 @@ function InteractiveStyleRulesEditor({ available, rules, onChange }: {
       {rules.length > 0 && (
         <div className="space-y-2">
           {rules.map((rule, index) => (
-            <InteractiveStyleRuleRow
-              key={index}
-              available={available}
-              rule={rule}
-              onChange={(patch) => updateRule(index, patch)}
-              onRemove={() => removeRule(index)}
-            />
+            <InteractiveStyleRuleRow key={index} available={available} rule={rule} onChange={(patch) => updateRule(index, patch)} onRemove={() => removeRule(index)} />
           ))}
         </div>
       )}
@@ -346,20 +277,13 @@ function InteractiveStyleRulesEditor({ available, rules, onChange }: {
           <Plus className="h-3.5 w-3.5" />
           {t('settingPanel.style.addRule')}
         </Button>
-        {available.length === 0 && (
-          <span className="text-xs text-[var(--nova-text-faint)]">{t('settingPanel.style.emptyStylesHint')}</span>
-        )}
+        {available.length === 0 && <span className="text-xs text-[var(--nova-text-faint)]">{t('settingPanel.style.emptyStylesHint')}</span>}
       </div>
     </div>
   )
 }
 
-function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
-  available: string[]
-  rule: StyleRule
-  onChange: (patch: Partial<StyleRule>) => void
-  onRemove: () => void
-}) {
+function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: { available: string[]; rule: StyleRule; onChange: (patch: Partial<StyleRule>) => void; onRemove: () => void }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const [customPath, setCustomPath] = useState('')
@@ -367,9 +291,7 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
   const summary = rule.styles.length === 0 ? t('settingPanel.style.noSelected') : rule.styles.join('、')
   const toggleStyle = (path: string) => {
     onChange({
-      styles: rule.styles.includes(path)
-        ? rule.styles.filter((item) => item !== path)
-        : [...rule.styles, path],
+      styles: rule.styles.includes(path) ? rule.styles.filter((item) => item !== path) : [...rule.styles, path],
     })
   }
   const addCustomStyle = () => {
@@ -382,12 +304,7 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
-        <Input
-          className={inputClassName}
-          value={rule.scene}
-          placeholder={t('settingPanel.placeholder.scene')}
-          onChange={(event) => onChange({ scene: event.target.value })}
-        />
+        <Input className={inputClassName} value={rule.scene} placeholder={t('settingPanel.placeholder.scene')} onChange={(event) => onChange({ scene: event.target.value })} />
         <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={() => setExpanded((value) => !value)}>
           {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           {expanded ? t('chat.tool.collapse') : t('settingPanel.style.button', { count: rule.styles.length })}
@@ -398,9 +315,7 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
         </Button>
       </div>
 
-      {!expanded && (
-        <div className="mt-1 truncate px-1 text-xs text-[var(--nova-text-faint)]">→ {summary}</div>
-      )}
+      {!expanded && <div className="mt-1 truncate px-1 text-xs text-[var(--nova-text-faint)]">→ {summary}</div>}
 
       {expanded && (
         <div className="mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
@@ -411,14 +326,18 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: {
               available.map((path) => (
                 <label key={path} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
                   <input type="checkbox" checked={rule.styles.includes(path)} onChange={() => toggleStyle(path)} />
-                  <span className="truncate" title={path}>{path}</span>
+                  <span className="truncate" title={path}>
+                    {path}
+                  </span>
                 </label>
               ))
             )}
             {selectedCustomStyles.map((path) => (
               <label key={path} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
                 <input type="checkbox" checked onChange={() => toggleStyle(path)} />
-                <span className="truncate" title={path}>{path}</span>
+                <span className="truncate" title={path}>
+                  {path}
+                </span>
               </label>
             ))}
           </div>
@@ -470,28 +389,12 @@ function ToggleSwitch({ checked, onChange, compact = false }: { checked: boolean
   const { t } = useTranslation()
   const label = checked ? t('settingPanel.switch.disableRule') : t('settingPanel.switch.enableRule')
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
-      title={label}
-      className={`relative shrink-0 rounded-full border transition ${
-        checked ? 'border-[var(--nova-accent-green)]/60 bg-[var(--nova-accent-green)]/25' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)]'
-      } ${compact ? 'h-5 w-9' : 'h-6 w-11'}`}
-    >
-      <span
-        className={`absolute rounded-full bg-[var(--nova-text)] shadow transition ${
-          compact
-            ? `top-0.5 h-4 w-4 ${checked ? 'left-[18px]' : 'left-0.5'}`
-            : `top-0.5 h-5 w-5 ${checked ? 'left-[22px]' : 'left-0.5'}`
-        }`}
-      />
+    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} title={label} className={`relative shrink-0 rounded-full border transition ${checked ? 'border-[var(--nova-accent-green)]/60 bg-[var(--nova-accent-green)]/25' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)]'} ${compact ? 'h-5 w-9' : 'h-6 w-11'}`}>
+      <span className={`absolute rounded-full bg-[var(--nova-text)] shadow transition ${compact ? `top-0.5 h-4 w-4 ${checked ? 'left-[18px]' : 'left-0.5'}` : `top-0.5 h-5 w-5 ${checked ? 'left-[22px]' : 'left-0.5'}`}`} />
       <span className="sr-only">{label}</span>
     </button>
   )
 }
-
 
 function targetLabel(target: TellerTarget, t: (key: string) => string) {
   return t(targetTranslationKeys(target).label)
