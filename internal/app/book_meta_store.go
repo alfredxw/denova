@@ -86,18 +86,6 @@ func (s *BookMetaStore) Write(path string, meta book.BookMeta) (book.BookMeta, e
 	return meta, nil
 }
 
-// Delete 删除用户级书籍元信息；元信息不存在时视为成功。
-func (s *BookMetaStore) Delete(path string) error {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("路径无效: %w", err)
-	}
-	if err := os.Remove(s.metaPath(absPath)); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("删除书籍元信息失败: %w", err)
-	}
-	return nil
-}
-
 func (s *BookMetaStore) metaPath(absPath string) string {
 	sum := sha256.Sum256([]byte(absPath))
 	return filepath.Join(s.dir, hex.EncodeToString(sum[:])+".json")

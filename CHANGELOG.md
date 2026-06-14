@@ -8,8 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- WebUI 左侧一级菜单支持拖拽排序，排序结果保存在本地并同时作用于 IDE 与互动模式的共享菜单入口。
-- 书籍管理页新增软删除、硬删除和拖拽自定义排序；软删除会从书架隐藏但保留磁盘目录，硬删除会删除书籍目录并在删除当前书籍后自动切换到下一个可用书籍。
+- WebUI 左侧一级菜单支持拖拽排序，IDE 与互动模式分别保存顺序，避免两种工作台入口互相影响。
+- 书籍管理页新增从书架移除和拖拽自定义排序；移除书籍只会从书架隐藏并保留磁盘目录，删除当前书籍后会自动切换到下一个可用书籍。
 - Agent loop 新增 `LoopPolicy`、`ContextLedger` 和 `.nova/runs` 运行账本，按轮记录上下文来源、大小上限、事件摘要和完成状态，为后续工具筛选、恢复和验证阶段提供稳定工程边界。
 - Agent loop 新增中心化 tool manifest 与模型可见工具结果筛选，统一标注工具来源、是否变更 workspace、输出上限、幂等键和 post-check 要求，并对 invokable/streamable 工具返回做有界回填。
 - 创作 Agent 新增写入后轻量验证阶段，会根据工具 mutation metadata 检查写入路径、章节目录约束、资料库 `brief_description` 和删除结果，并写入 `.nova/runs` trace。

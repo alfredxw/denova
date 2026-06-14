@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/cloudwego/eino/adk"
 
@@ -214,39 +213,6 @@ func (s *WorkspaceRuntimeManager) RemoveBook(path string) (string, error) {
 	return a.Workspace(), nil
 }
 
-// DeleteBook 从书架移除书籍并删除磁盘目录。
-func (a *App) DeleteBook(path string) (string, error) {
-	return a.runtime().DeleteBook(path)
-}
-
-func (s *WorkspaceRuntimeManager) DeleteBook(path string) (string, error) {
-	a := s.app
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "", fmt.Errorf("路径无效: %w", err)
-	}
-	if !isBookWorkspace(absPath) {
-		return "", fmt.Errorf("不是有效的书籍工作区: %s", absPath)
-	}
-	if !s.isManagedBookPath(absPath) {
-		return "", fmt.Errorf("只能删除 Nova 数据目录下的书籍: %s", absPath)
-	}
-	wasCurrent := a.Workspace() == absPath
-	if err := os.RemoveAll(absPath); err != nil {
-		return "", fmt.Errorf("删除书籍目录失败: %w", err)
-	}
-	if err := a.bookRegistry.DeleteRecord(absPath); err != nil {
-		return "", err
-	}
-	if err := a.bookMetaStore.Delete(absPath); err != nil {
-		log.Printf("[books] 删除书籍元信息失败 path=%s err=%v", absPath, err)
-	}
-	if wasCurrent {
-		return s.activateFallbackWorkspace(context.Background())
-	}
-	return a.Workspace(), nil
-}
-
 // ReorderBooks 保存书籍管理页的自定义排序。
 func (a *App) ReorderBooks(paths []string) error {
 	return a.runtime().ReorderBooks(paths)
@@ -272,24 +238,6 @@ func (s *WorkspaceRuntimeManager) activateFallbackWorkspace(ctx context.Context)
 	a.clearRuntime()
 	a.mu.Unlock()
 	return "", nil
-}
-
-func (s *WorkspaceRuntimeManager) isManagedBookPath(absPath string) bool {
-	a := s.app
-	for _, record := range a.bookRegistry.List() {
-		if record.Path == absPath {
-			return true
-		}
-	}
-	if strings.TrimSpace(a.cfg.NovaDir) == "" {
-		return false
-	}
-	absNovaDir, err := filepath.Abs(a.cfg.NovaDir)
-	if err != nil {
-		return false
-	}
-	rel, err := filepath.Rel(absNovaDir, absPath)
-	return err == nil && rel != "." && !strings.HasPrefix(rel, "..")
 }
 
 // CreateBook 创建新书籍工作区：在 parentDir 下创建以 title 命名的子目录，初始化工作区结构和元信息，然后切换到该工作区。

@@ -297,34 +297,6 @@ func (r *BookRegistry) Remove(path string) error {
 	return r.save(data)
 }
 
-// DeleteRecord 移除一个书籍记录，用于磁盘目录已被硬删除的场景。
-func (r *BookRegistry) DeleteRecord(path string) error {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return err
-	}
-	data := r.load()
-	data.Hidden = removePath(data.Hidden, absPath)
-	data.Order = removePath(data.Order, absPath)
-	books := make([]BookRecord, 0, len(data.Books))
-	for _, book := range data.Books {
-		bookPath, err := filepath.Abs(book.Path)
-		if err == nil && bookPath == absPath {
-			continue
-		}
-		books = append(books, book)
-	}
-	current, _ := filepath.Abs(data.Current)
-	if current == absPath {
-		data.Current = ""
-		if len(books) > 0 {
-			data.Current = books[0].Path
-		}
-	}
-	data.Books = books
-	return r.save(data)
-}
-
 // Reorder 保存书籍管理页的自定义排序。
 func (r *BookRegistry) Reorder(paths []string) error {
 	data := r.load()

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
@@ -40,6 +40,8 @@ interface WorkbenchShellProps {
 }
 
 type ActivityItemId = 'writing' | 'story' | 'timeline' | 'lore' | 'creator' | 'teller' | 'versions' | 'books' | 'skills' | 'agents' | 'automations'
+type ActivityOrderScope = 'ide' | 'interactive'
+type SortableActivityItemId = `${ActivityOrderScope}:${ActivityItemId}`
 
 interface ActivityItem {
   id: ActivityItemId
@@ -49,8 +51,17 @@ interface ActivityItem {
   icon: ReactNode
 }
 
-const ACTIVITY_ORDER_STORAGE_KEY = 'nova.activity.order.v1'
-const DEFAULT_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'story', 'timeline', 'lore', 'creator', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const LEGACY_ACTIVITY_ORDER_STORAGE_KEY = 'nova.activity.order.v1'
+const LEGACY_SCOPED_ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
+  ide: 'nova.activity.order.ide.v1',
+  interactive: 'nova.activity.order.interactive.v1',
+}
+const ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
+  ide: 'nova.activity.order.ide.v2',
+  interactive: 'nova.activity.order.interactive.v2',
+}
+const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'lore', 'creator', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'timeline', 'lore', 'creator', 'teller', 'books', 'skills', 'agents', 'automations']
 
 export function WorkbenchShell({
   mode,
@@ -77,11 +88,17 @@ export function WorkbenchShell({
   onCloseSettings,
 }: WorkbenchShellProps) {
   const { t } = useTranslation()
-  const [activityOrder, setActivityOrder] = useState<ActivityItemId[]>(readStoredActivityOrder)
+  const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+
+  useEffect(() => {
+    cleanupLegacyActivityOrderStorage()
+    setActivityOrders(readStoredActivityOrders())
+  }, [])
+
   const loreVisible = rightPanel === 'lore'
   const creatorVisible = rightPanel === 'creator'
   const tellerVisible = rightPanel === 'teller'
@@ -95,6 +112,8 @@ export function WorkbenchShell({
   const fullWorkspacePanelVisible = settingsOpen || mode === 'skills' || mode === 'agents' || mode === 'automations' || (mode === 'ide' && (loreVisible || creatorVisible || tellerVisible || versionsVisible))
   const modeLabel = settingsOpen ? t('workbench.mode.settings') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'skills' ? t('workbench.mode.skills') : mode === 'agents' ? t('workbench.mode.agents') : mode === 'automations' ? t('workbench.mode.automations') : t('workbench.mode.ide')
   const navigationMode = mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations' ? booksReturnMode : mode
+  const activityOrderScope: ActivityOrderScope = navigationMode === 'interactive' ? 'interactive' : 'ide'
+  const activityOrder = activityOrders[activityOrderScope]
 
   const closeSettingsIfOpen = () => {
     if (settingsOpen) onCloseSettings()
@@ -275,26 +294,25 @@ export function WorkbenchShell({
     () => sortActivityItems([
       ...(navigationMode === 'interactive' ? interactiveActivityItems : ideActivityItems),
       ...sharedActivityItems,
-    ], activityOrder),
-    [activityOrder, agentsActive, automationsActive, creatorVisible, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, tellerVisible, versionsVisible],
+    ], activityOrder, defaultActivityOrderForScope(activityOrderScope)),
+    [activityOrder, activityOrderScope, agentsActive, automationsActive, creatorVisible, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, tellerVisible, versionsVisible],
   )
 
   const handleActivityDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (!over || active.id === over.id) return
+    const activeId = parseSortableActivityId(active.id, activityOrderScope)
+    const overId = parseSortableActivityId(over.id, activityOrderScope)
+    if (!activeId || !overId) return
     const visibleIds = activityItems.map((item) => item.id)
-    const oldIndex = visibleIds.indexOf(active.id as ActivityItemId)
-    const newIndex = visibleIds.indexOf(over.id as ActivityItemId)
+    const oldIndex = visibleIds.indexOf(activeId)
+    const newIndex = visibleIds.indexOf(overId)
     if (oldIndex === -1 || newIndex === -1) return
 
     const nextVisibleIds = arrayMove(visibleIds, oldIndex, newIndex)
-    const nextVisibleSet = new Set(nextVisibleIds)
-    const hiddenIds = activityOrder.filter((id) => !nextVisibleSet.has(id))
-    const knownIds = new Set([...nextVisibleIds, ...hiddenIds])
-    const missingIds = DEFAULT_ACTIVITY_ORDER.filter((id) => !knownIds.has(id))
-    const nextOrder = [...nextVisibleIds, ...hiddenIds, ...missingIds]
-    setActivityOrder(nextOrder)
-    storeActivityOrder(nextOrder)
+    const nextOrder = mergeVisibleActivityOrder(nextVisibleIds, activityOrder, defaultActivityOrderForScope(activityOrderScope))
+    setActivityOrders((current) => ({ ...current, [activityOrderScope]: nextOrder }))
+    storeActivityOrder(activityOrderScope, nextOrder)
   }
 
   const topBar = (
@@ -334,13 +352,14 @@ export function WorkbenchShell({
 
   const activityBar = (
     <LayoutGroup id="workbench-activity-bar">
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActivityDragEnd}>
+    <DndContext key={activityOrderScope} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActivityDragEnd}>
     <aside className={`nova-activity-bar flex shrink-0 flex-col gap-2 border-r p-3 transition-[width] duration-500 ease-[var(--nova-ease)] ${activityBarExpanded ? 'is-expanded w-48 items-stretch' : 'w-16 items-center'}`}>
-      <SortableContext items={activityItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+      <SortableContext key={activityOrderScope} items={activityItems.map((item) => toSortableActivityId(activityOrderScope, item.id))} strategy={verticalListSortingStrategy}>
         {activityItems.map((item) => (
           <SortableActivityButton
-            key={item.id}
-            id={item.id}
+            key={toSortableActivityId(activityOrderScope, item.id)}
+            id={toSortableActivityId(activityOrderScope, item.id)}
+            activityId={item.id}
             expanded={activityBarExpanded}
             label={item.label}
             onClick={item.onClick}
@@ -404,9 +423,11 @@ export function WorkbenchShell({
 
 function SortableActivityButton({
   id,
+  activityId,
   ...props
 }: Omit<React.ComponentProps<'button'>, 'id'> & {
-  id: ActivityItemId
+  id: SortableActivityItemId
+  activityId: ActivityItemId
   expanded: boolean
   label: string
   children: ReactNode
@@ -421,7 +442,7 @@ function SortableActivityButton({
   return (
     <div ref={setNodeRef} style={style} className={isDragging ? 'relative z-20 opacity-80' : undefined}>
       <ActivityButton
-        data-activity-id={id}
+        data-activity-id={activityId}
         {...attributes}
         {...listeners}
         {...props}
@@ -470,35 +491,79 @@ function ActivityButton({
   )
 }
 
-function sortActivityItems(items: ActivityItem[], order: ActivityItemId[]) {
+function sortActivityItems(items: ActivityItem[], order: ActivityItemId[], defaultOrder: ActivityItemId[]) {
   const orderIndex = new Map<ActivityItemId, number>()
   order.forEach((id, index) => orderIndex.set(id, index))
   const defaultIndex = new Map<ActivityItemId, number>()
-  DEFAULT_ACTIVITY_ORDER.forEach((id, index) => defaultIndex.set(id, index))
+  defaultOrder.forEach((id, index) => defaultIndex.set(id, index))
   return [...items].sort((a, b) => {
-    const aIndex = orderIndex.get(a.id) ?? DEFAULT_ACTIVITY_ORDER.length + (defaultIndex.get(a.id) ?? 0)
-    const bIndex = orderIndex.get(b.id) ?? DEFAULT_ACTIVITY_ORDER.length + (defaultIndex.get(b.id) ?? 0)
+    const aIndex = orderIndex.get(a.id) ?? defaultOrder.length + (defaultIndex.get(a.id) ?? 0)
+    const bIndex = orderIndex.get(b.id) ?? defaultOrder.length + (defaultIndex.get(b.id) ?? 0)
     return aIndex - bIndex
   })
 }
 
-function readStoredActivityOrder(): ActivityItemId[] {
-  if (typeof window === 'undefined') return DEFAULT_ACTIVITY_ORDER
-  try {
-    const raw = window.localStorage.getItem(ACTIVITY_ORDER_STORAGE_KEY)
-    if (!raw) return DEFAULT_ACTIVITY_ORDER
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return DEFAULT_ACTIVITY_ORDER
-    const validIds = new Set(DEFAULT_ACTIVITY_ORDER)
-    const stored = parsed.filter((id): id is ActivityItemId => validIds.has(id))
-    const storedSet = new Set(stored)
-    return [...stored, ...DEFAULT_ACTIVITY_ORDER.filter((id) => !storedSet.has(id))]
-  } catch {
-    return DEFAULT_ACTIVITY_ORDER
+function mergeVisibleActivityOrder(visibleIds: ActivityItemId[], currentOrder: ActivityItemId[], defaultOrder: ActivityItemId[]) {
+  const visibleSet = new Set(visibleIds)
+  const hiddenIds = currentOrder.filter((id) => !visibleSet.has(id))
+  const knownIds = new Set([...visibleIds, ...hiddenIds])
+  const missingIds = defaultOrder.filter((id) => !knownIds.has(id))
+  return [...visibleIds, ...hiddenIds, ...missingIds]
+}
+
+function defaultActivityOrderForScope(scope: ActivityOrderScope) {
+  return scope === 'interactive' ? DEFAULT_INTERACTIVE_ACTIVITY_ORDER : DEFAULT_IDE_ACTIVITY_ORDER
+}
+
+function readStoredActivityOrders(): Record<ActivityOrderScope, ActivityItemId[]> {
+  return {
+    ide: readStoredActivityOrder('ide'),
+    interactive: readStoredActivityOrder('interactive'),
   }
 }
 
-function storeActivityOrder(order: ActivityItemId[]) {
+function readStoredActivityOrder(scope: ActivityOrderScope): ActivityItemId[] {
+  const defaultOrder = defaultActivityOrderForScope(scope)
+  if (typeof window === 'undefined') return defaultOrder
+  try {
+    const raw = window.localStorage.getItem(ACTIVITY_ORDER_STORAGE_KEYS[scope])
+    if (!raw) return defaultOrder
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return defaultOrder
+    const validIds = new Set(defaultOrder)
+    const stored = parsed.filter((id): id is ActivityItemId => validIds.has(id))
+    const storedSet = new Set(stored)
+    return [...stored, ...defaultOrder.filter((id) => !storedSet.has(id))]
+  } catch {
+    return defaultOrder
+  }
+}
+
+function storeActivityOrder(scope: ActivityOrderScope, order: ActivityItemId[]) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(ACTIVITY_ORDER_STORAGE_KEY, JSON.stringify(order))
+  window.localStorage.setItem(ACTIVITY_ORDER_STORAGE_KEYS[scope], JSON.stringify(order))
+  cleanupLegacyActivityOrderStorage()
+}
+
+function cleanupLegacyActivityOrderStorage() {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(LEGACY_ACTIVITY_ORDER_STORAGE_KEY)
+  window.localStorage.removeItem(LEGACY_SCOPED_ACTIVITY_ORDER_STORAGE_KEYS.ide)
+  window.localStorage.removeItem(LEGACY_SCOPED_ACTIVITY_ORDER_STORAGE_KEYS.interactive)
+}
+
+function toSortableActivityId(scope: ActivityOrderScope, id: ActivityItemId): SortableActivityItemId {
+  return `${scope}:${id}`
+}
+
+function parseSortableActivityId(value: unknown, scope: ActivityOrderScope): ActivityItemId | null {
+  if (typeof value !== 'string') return null
+  const prefix = `${scope}:`
+  if (!value.startsWith(prefix)) return null
+  const id = value.slice(prefix.length)
+  return isActivityItemId(id) ? id : null
+}
+
+function isActivityItemId(value: string): value is ActivityItemId {
+  return DEFAULT_IDE_ACTIVITY_ORDER.includes(value as ActivityItemId) || DEFAULT_INTERACTIVE_ACTIVITY_ORDER.includes(value as ActivityItemId)
 }

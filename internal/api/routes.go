@@ -36,7 +36,6 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.POST("/books/import-novel/preview/stream", apiHandlers.HandlePreviewNovelImportStream)
 		api.POST("/books/import-novel", apiHandlers.HandleNovelImport)
 		api.POST("/books/remove", apiHandlers.HandleBookRemove)
-		api.POST("/books/delete", apiHandlers.HandleBookDelete)
 		api.POST("/books/reorder", apiHandlers.HandleBookReorder)
 		api.GET("/books/info", apiHandlers.HandleBookInfo)
 		api.PUT("/books/info", apiHandlers.HandleUpdateBookInfo)

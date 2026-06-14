@@ -74,26 +74,6 @@ func (h *Handlers) HandleBookRemove(ctx context.Context, c *app.RequestContext) 
 	})
 }
 
-// handleBookDelete POST /api/books/delete — 删除书籍记录和磁盘目录。
-func (h *Handlers) HandleBookDelete(ctx context.Context, c *app.RequestContext) {
-	var req struct {
-		Path string `json:"path"`
-	}
-	if err := c.BindJSON(&req); err != nil || req.Path == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.pathRequired")
-		return
-	}
-	workspace, err := h.app.DeleteBook(req.Path)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{
-		"message":   messageKey(c, "api.books.deleted"),
-		"workspace": workspace,
-	})
-}
-
 // handleBookReorder POST /api/books/reorder — 保存书籍管理页自定义排序。
 func (h *Handlers) HandleBookReorder(ctx context.Context, c *app.RequestContext) {
 	var req struct {

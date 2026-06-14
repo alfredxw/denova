@@ -23,7 +23,6 @@ import {
 import { NovelImportDialog } from './NovelImportDialog'
 import {
   createBook,
-  deleteBook,
   getBookInfo,
   removeBook,
   reorderBooks,
@@ -183,14 +182,12 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
     setDeleteError('')
   }
 
-  const handleDelete = async (mode: 'soft' | 'hard') => {
+  const handleDelete = async () => {
     if (!deleteTarget) return
     setDeleting(true)
     setDeleteError('')
     try {
-      const result = mode === 'soft'
-        ? await removeBook(deleteTarget.path)
-        : await deleteBook(deleteTarget.path)
+      const result = await removeBook(deleteTarget.path)
       if (deleteTarget.path === workspace) {
         onSwitch(result.workspace || '')
       } else {
@@ -443,34 +440,38 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                               >
                                 <div className="mb-3 flex items-center justify-between gap-2">
                                   <BookOpen className={`h-4 w-4 shrink-0 ${isCurrent ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-                                  {isCurrent && <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('common.current')}</span>}
                                 </div>
                                 <div className="line-clamp-3 text-sm font-semibold leading-5 text-[var(--nova-text)]">{book.name || t('home.unnamedBook')}</div>
                                 {book.author && <div className="mt-2 truncate text-[11px] text-[var(--nova-text-muted)]">{book.author}</div>}
                                 <div className="mt-auto truncate pt-4 text-[10px] text-[var(--nova-text-faint)]">{book.path}</div>
                               </button>
-                              <div className="absolute right-2 top-2 flex shrink-0 items-center gap-0.5">
+                              <div className="absolute right-2 top-2 z-10 flex shrink-0 items-center gap-0.5">
                                 <TooltipIconButton
                                   label={t('home.dragToSort')}
-                                  className={`${iconButtonCls} cursor-grab bg-[var(--nova-surface)] opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
+                                  className={`${iconButtonCls} cursor-grab bg-[var(--nova-surface)] opacity-100 sm:pointer-events-none sm:opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100`}
                                   {...dragHandleProps}
                                 >
                                   <GripVertical className="h-3.5 w-3.5" />
                                 </TooltipIconButton>
                                 <TooltipIconButton
                                   label={t('home.editInfo')}
-                                  className={`${iconButtonCls} bg-[var(--nova-surface)] opacity-100 sm:opacity-0 sm:group-hover:opacity-100`}
+                                  className={`${iconButtonCls} bg-[var(--nova-surface)] opacity-100 sm:pointer-events-none sm:opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100`}
                                   onClick={() => startEdit(book)}
                                 >
                                   <Pencil className="h-3.5 w-3.5" />
                                 </TooltipIconButton>
                                 <TooltipIconButton
                                   label={t('home.deleteBook')}
-                                  className={`${iconButtonCls} bg-[var(--nova-surface)] text-[var(--nova-danger)] opacity-100 hover:text-[var(--nova-danger)] sm:opacity-0 sm:group-hover:opacity-100`}
+                                  className={`${iconButtonCls} bg-[var(--nova-surface)] text-[var(--nova-danger)] opacity-100 hover:text-[var(--nova-danger)] sm:pointer-events-none sm:opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100`}
                                   onClick={() => openDeleteDialog(book)}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </TooltipIconButton>
+                                {isCurrent && (
+                                  <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
+                                    {t('common.current')}
+                                  </span>
+                                )}
                               </div>
                             </div>
                           )}
@@ -516,20 +517,10 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
               disabled={deleting}
               onClick={(e) => {
                 e.preventDefault()
-                void handleDelete('soft')
+                void handleDelete()
               }}
             >
               {t('home.softDeleteBook')}
-            </AlertDialogAction>
-            <AlertDialogAction
-              className="bg-[var(--nova-danger-bg)] text-[var(--nova-danger)] hover:bg-[var(--nova-danger-bg)]"
-              disabled={deleting}
-              onClick={(e) => {
-                e.preventDefault()
-                void handleDelete('hard')
-              }}
-            >
-              {t('home.hardDeleteBook')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

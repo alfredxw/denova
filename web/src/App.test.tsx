@@ -92,7 +92,12 @@ describe('App', () => {
   })
 
   it('applies the persisted primary menu order', async () => {
-    window.localStorage.setItem('nova.activity.order.v1', JSON.stringify(['books', 'agents', 'writing', 'lore', 'creator', 'teller', 'versions', 'skills', 'automations', 'story', 'timeline']))
+    const user = userEvent.setup()
+    window.localStorage.setItem('nova.activity.order.v1', JSON.stringify(['automations', 'agents', 'books', 'writing', 'story']))
+    window.localStorage.setItem('nova.activity.order.ide.v1', JSON.stringify(['automations', 'agents', 'books', 'writing']))
+    window.localStorage.setItem('nova.activity.order.interactive.v1', JSON.stringify(['agents', 'books', 'story']))
+    window.localStorage.setItem('nova.activity.order.ide.v2', JSON.stringify(['books', 'agents', 'writing', 'lore', 'creator', 'teller', 'versions', 'skills', 'automations']))
+    window.localStorage.setItem('nova.activity.order.interactive.v2', JSON.stringify(['automations', 'story', 'timeline', 'lore', 'creator', 'teller', 'books', 'skills', 'agents']))
 
     render(
       <TooltipProvider>
@@ -102,6 +107,11 @@ describe('App', () => {
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
     expect(primaryMenuLabels().slice(0, 4)).toEqual(['书籍管理', 'Agents', '写作', '资料库'])
+
+    const header = screen.getByText('Nova').closest('header')
+    expect(header).not.toBeNull()
+    await user.click(within(header as HTMLElement).getByRole('button', { name: '互动模式' }))
+    expect(primaryMenuLabels().slice(0, 4)).toEqual(['自动化', '剧情', '剧情路线图', '资料库'])
   })
 
   it('does not render the removed task panel UI', async () => {

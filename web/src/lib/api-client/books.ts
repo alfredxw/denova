@@ -14,14 +14,6 @@ export async function removeBook(path: string): Promise<{ message: string; works
   })
 }
 
-export async function deleteBook(path: string): Promise<{ message: string; workspace: string }> {
-  return requestJSON('/api/books/delete', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ path }),
-  })
-}
-
 export async function reorderBooks(paths: string[]): Promise<{ message: string }> {
   return requestJSON('/api/books/reorder', {
     method: 'POST',
