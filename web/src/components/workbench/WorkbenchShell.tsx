@@ -1,5 +1,9 @@
+import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { BookMarked, BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
@@ -35,6 +39,19 @@ interface WorkbenchShellProps {
   onCloseSettings: () => void
 }
 
+type ActivityItemId = 'writing' | 'story' | 'timeline' | 'lore' | 'creator' | 'teller' | 'versions' | 'books' | 'skills' | 'agents' | 'automations'
+
+interface ActivityItem {
+  id: ActivityItemId
+  label: string
+  onClick: () => void
+  active: boolean
+  icon: ReactNode
+}
+
+const ACTIVITY_ORDER_STORAGE_KEY = 'nova.activity.order.v1'
+const DEFAULT_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'story', 'timeline', 'lore', 'creator', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+
 export function WorkbenchShell({
   mode,
   booksReturnMode,
@@ -60,6 +77,11 @@ export function WorkbenchShell({
   onCloseSettings,
 }: WorkbenchShellProps) {
   const { t } = useTranslation()
+  const [activityOrder, setActivityOrder] = useState<ActivityItemId[]>(readStoredActivityOrder)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
   const loreVisible = rightPanel === 'lore'
   const creatorVisible = rightPanel === 'creator'
   const tellerVisible = rightPanel === 'teller'
@@ -142,6 +164,139 @@ export function WorkbenchShell({
     onSetMode('automations')
   }
 
+  const ideActivityItems: ActivityItem[] = [
+    {
+      id: 'writing',
+      label: t('workbench.activity.writing'),
+      onClick: openWriting,
+      active: ideModeActive && !loreVisible && !creatorVisible && !tellerVisible && !versionsVisible,
+      icon: <PenLine className="h-4 w-4" />,
+    },
+    {
+      id: 'lore',
+      label: t('workbench.activity.lore'),
+      onClick: () => toggleIdePanel('lore'),
+      active: ideModeActive && loreVisible,
+      icon: <Database className="h-4 w-4" />,
+    },
+    {
+      id: 'creator',
+      label: t('workbench.activity.creator'),
+      onClick: () => toggleIdePanel('creator'),
+      active: ideModeActive && creatorVisible,
+      icon: <BookMarked className="h-4 w-4" />,
+    },
+    {
+      id: 'teller',
+      label: t('workbench.activity.teller'),
+      onClick: () => toggleIdePanel('teller'),
+      active: ideModeActive && tellerVisible,
+      icon: <SlidersHorizontal className="h-4 w-4" />,
+    },
+    {
+      id: 'versions',
+      label: t('workbench.activity.versions'),
+      onClick: () => toggleIdePanel('versions'),
+      active: ideModeActive && versionsVisible,
+      icon: <History className="h-4 w-4" />,
+    },
+  ]
+
+  const interactiveActivityItems: ActivityItem[] = [
+    {
+      id: 'story',
+      label: t('workbench.activity.story'),
+      onClick: () => openInteractiveSubmode('story'),
+      active: interactiveModeActive && interactiveSubmode === 'story',
+      icon: <MessageSquareText className="h-4 w-4" />,
+    },
+    {
+      id: 'timeline',
+      label: t('workbench.activity.timeline'),
+      onClick: () => openInteractiveSubmode('timeline'),
+      active: interactiveModeActive && interactiveSubmode === 'timeline',
+      icon: <History className="h-4 w-4" />,
+    },
+    {
+      id: 'lore',
+      label: t('workbench.activity.lore'),
+      onClick: () => openInteractiveSubmode('lore'),
+      active: interactiveModeActive && interactiveSubmode === 'lore',
+      icon: <Database className="h-4 w-4" />,
+    },
+    {
+      id: 'creator',
+      label: t('workbench.activity.creator'),
+      onClick: () => openInteractiveSubmode('creator'),
+      active: interactiveModeActive && interactiveSubmode === 'creator',
+      icon: <BookMarked className="h-4 w-4" />,
+    },
+    {
+      id: 'teller',
+      label: t('workbench.activity.teller'),
+      onClick: () => openInteractiveSubmode('teller'),
+      active: interactiveModeActive && interactiveSubmode === 'teller',
+      icon: <SlidersHorizontal className="h-4 w-4" />,
+    },
+  ]
+
+  const sharedActivityItems: ActivityItem[] = [
+    {
+      id: 'books',
+      label: t('workbench.activity.books'),
+      onClick: openBooks,
+      active: mode === 'books' && !settingsOpen,
+      icon: <BookOpen className="h-4 w-4" />,
+    },
+    {
+      id: 'skills',
+      label: t('workbench.activity.skills'),
+      onClick: openSkills,
+      active: skillsActive,
+      icon: <Sparkles className="h-4 w-4" />,
+    },
+    {
+      id: 'agents',
+      label: t('workbench.activity.agents'),
+      onClick: openAgents,
+      active: agentsActive,
+      icon: <Bot className="h-4 w-4" />,
+    },
+    {
+      id: 'automations',
+      label: t('workbench.activity.automations'),
+      onClick: openAutomations,
+      active: automationsActive,
+      icon: <Clock3 className="h-4 w-4" />,
+    },
+  ]
+
+  const activityItems = useMemo(
+    () => sortActivityItems([
+      ...(navigationMode === 'interactive' ? interactiveActivityItems : ideActivityItems),
+      ...sharedActivityItems,
+    ], activityOrder),
+    [activityOrder, agentsActive, automationsActive, creatorVisible, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, tellerVisible, versionsVisible],
+  )
+
+  const handleActivityDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const visibleIds = activityItems.map((item) => item.id)
+    const oldIndex = visibleIds.indexOf(active.id as ActivityItemId)
+    const newIndex = visibleIds.indexOf(over.id as ActivityItemId)
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const nextVisibleIds = arrayMove(visibleIds, oldIndex, newIndex)
+    const nextVisibleSet = new Set(nextVisibleIds)
+    const hiddenIds = activityOrder.filter((id) => !nextVisibleSet.has(id))
+    const knownIds = new Set([...nextVisibleIds, ...hiddenIds])
+    const missingIds = DEFAULT_ACTIVITY_ORDER.filter((id) => !knownIds.has(id))
+    const nextOrder = [...nextVisibleIds, ...hiddenIds, ...missingIds]
+    setActivityOrder(nextOrder)
+    storeActivityOrder(nextOrder)
+  }
+
   const topBar = (
     <header className="nova-topbar grid h-10 shrink-0 grid-cols-[auto_1fr_auto] items-center border-b px-3 text-xs">
       <div className="flex items-center gap-3">
@@ -177,150 +332,25 @@ export function WorkbenchShell({
     </header>
   )
 
-  const ideActivityButtons = (
-    <>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.lore')}
-        onClick={() => toggleIdePanel('lore')}
-        active={ideModeActive && loreVisible}
-        className="nova-icon-button mb-2"
-      >
-        <Database className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.creator')}
-        onClick={() => toggleIdePanel('creator')}
-        active={ideModeActive && creatorVisible}
-        className="nova-icon-button mb-2"
-      >
-        <BookMarked className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.teller')}
-        onClick={() => toggleIdePanel('teller')}
-        active={ideModeActive && tellerVisible}
-        className="nova-icon-button mb-2"
-      >
-        <SlidersHorizontal className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.versions')}
-        onClick={() => toggleIdePanel('versions')}
-        active={ideModeActive && versionsVisible}
-        className="nova-icon-button mb-2"
-      >
-        <History className="h-4 w-4" />
-      </ActivityButton>
-    </>
-  )
-
-  const interactiveActivityButtons = (
-    <>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.story')}
-        onClick={() => openInteractiveSubmode('story')}
-        active={interactiveModeActive && interactiveSubmode === 'story'}
-        className="nova-icon-button mb-2"
-      >
-        <MessageSquareText className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.timeline')}
-        onClick={() => openInteractiveSubmode('timeline')}
-        active={interactiveModeActive && interactiveSubmode === 'timeline'}
-        className="nova-icon-button mb-2"
-      >
-        <History className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.lore')}
-        onClick={() => openInteractiveSubmode('lore')}
-        active={interactiveModeActive && interactiveSubmode === 'lore'}
-        className="nova-icon-button mb-2"
-      >
-        <Database className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.creator')}
-        onClick={() => openInteractiveSubmode('creator')}
-        active={interactiveModeActive && interactiveSubmode === 'creator'}
-        className="nova-icon-button mb-2"
-      >
-        <BookMarked className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.teller')}
-        onClick={() => openInteractiveSubmode('teller')}
-        active={interactiveModeActive && interactiveSubmode === 'teller'}
-        className="nova-icon-button mb-2"
-      >
-        <SlidersHorizontal className="h-4 w-4" />
-      </ActivityButton>
-    </>
-  )
-
   const activityBar = (
     <LayoutGroup id="workbench-activity-bar">
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActivityDragEnd}>
     <aside className={`nova-activity-bar flex shrink-0 flex-col gap-2 border-r p-3 transition-[width] duration-500 ease-[var(--nova-ease)] ${activityBarExpanded ? 'is-expanded w-48 items-stretch' : 'w-16 items-center'}`}>
-      {navigationMode === 'interactive' ? interactiveActivityButtons : (
-        <>
-          <ActivityButton
+      <SortableContext items={activityItems.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+        {activityItems.map((item) => (
+          <SortableActivityButton
+            key={item.id}
+            id={item.id}
             expanded={activityBarExpanded}
-            label={t('workbench.activity.writing')}
-            onClick={openWriting}
-            active={ideModeActive && !loreVisible && !creatorVisible && !tellerVisible && !versionsVisible}
+            label={item.label}
+            onClick={item.onClick}
+            active={item.active}
             className="nova-icon-button mb-2"
           >
-            <PenLine className="h-4 w-4" />
-          </ActivityButton>
-          {ideActivityButtons}
-        </>
-      )}
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.books')}
-        onClick={openBooks}
-        active={mode === 'books' && !settingsOpen}
-        className="nova-icon-button mb-2"
-      >
-        <BookOpen className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.skills')}
-        onClick={openSkills}
-        active={skillsActive}
-        className="nova-icon-button mb-2"
-      >
-        <Sparkles className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.agents')}
-        onClick={openAgents}
-        active={agentsActive}
-        className="nova-icon-button mb-2"
-      >
-        <Bot className="h-4 w-4" />
-      </ActivityButton>
-      <ActivityButton
-        expanded={activityBarExpanded}
-        label={t('workbench.activity.automations')}
-        onClick={openAutomations}
-        active={automationsActive}
-        className="nova-icon-button mb-2"
-      >
-        <Clock3 className="h-4 w-4" />
-      </ActivityButton>
+            {item.icon}
+          </SortableActivityButton>
+        ))}
+      </SortableContext>
       <div className="mt-auto flex flex-col gap-2">
         <ActivityButton
           expanded={activityBarExpanded}
@@ -341,6 +371,7 @@ export function WorkbenchShell({
         </ActivityButton>
       </div>
     </aside>
+    </DndContext>
     </LayoutGroup>
   )
 
@@ -368,6 +399,35 @@ export function WorkbenchShell({
       rightPanelVisible={mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)}
       statusBar={statusBar}
     />
+  )
+}
+
+function SortableActivityButton({
+  id,
+  ...props
+}: Omit<React.ComponentProps<'button'>, 'id'> & {
+  id: ActivityItemId
+  expanded: boolean
+  label: string
+  children: ReactNode
+  active?: boolean
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className={isDragging ? 'relative z-20 opacity-80' : undefined}>
+      <ActivityButton
+        data-activity-id={id}
+        {...attributes}
+        {...listeners}
+        {...props}
+        className={`${props.className || ''} cursor-grab touch-none active:cursor-grabbing`}
+      />
+    </div>
   )
 }
 
@@ -408,4 +468,37 @@ function ActivityButton({
       </AnimatePresence>
     </TooltipIconButton>
   )
+}
+
+function sortActivityItems(items: ActivityItem[], order: ActivityItemId[]) {
+  const orderIndex = new Map<ActivityItemId, number>()
+  order.forEach((id, index) => orderIndex.set(id, index))
+  const defaultIndex = new Map<ActivityItemId, number>()
+  DEFAULT_ACTIVITY_ORDER.forEach((id, index) => defaultIndex.set(id, index))
+  return [...items].sort((a, b) => {
+    const aIndex = orderIndex.get(a.id) ?? DEFAULT_ACTIVITY_ORDER.length + (defaultIndex.get(a.id) ?? 0)
+    const bIndex = orderIndex.get(b.id) ?? DEFAULT_ACTIVITY_ORDER.length + (defaultIndex.get(b.id) ?? 0)
+    return aIndex - bIndex
+  })
+}
+
+function readStoredActivityOrder(): ActivityItemId[] {
+  if (typeof window === 'undefined') return DEFAULT_ACTIVITY_ORDER
+  try {
+    const raw = window.localStorage.getItem(ACTIVITY_ORDER_STORAGE_KEY)
+    if (!raw) return DEFAULT_ACTIVITY_ORDER
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return DEFAULT_ACTIVITY_ORDER
+    const validIds = new Set(DEFAULT_ACTIVITY_ORDER)
+    const stored = parsed.filter((id): id is ActivityItemId => validIds.has(id))
+    const storedSet = new Set(stored)
+    return [...stored, ...DEFAULT_ACTIVITY_ORDER.filter((id) => !storedSet.has(id))]
+  } catch {
+    return DEFAULT_ACTIVITY_ORDER
+  }
+}
+
+function storeActivityOrder(order: ActivityItemId[]) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(ACTIVITY_ORDER_STORAGE_KEY, JSON.stringify(order))
 }

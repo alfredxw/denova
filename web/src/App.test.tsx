@@ -91,6 +91,19 @@ describe('App', () => {
     expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toBeInTheDocument()
   })
 
+  it('applies the persisted primary menu order', async () => {
+    window.localStorage.setItem('nova.activity.order.v1', JSON.stringify(['books', 'agents', 'writing', 'lore', 'creator', 'teller', 'versions', 'skills', 'automations', 'story', 'timeline']))
+
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    expect(primaryMenuLabels().slice(0, 4)).toEqual(['书籍管理', 'Agents', '写作', '资料库'])
+  })
+
   it('does not render the removed task panel UI', async () => {
     render(
       <TooltipProvider>
@@ -350,6 +363,15 @@ function expectOnlyActivePrimaryMenu(label: string) {
     .filter((button) => button.className.includes('is-active'))
     .map((button) => button.getAttribute('aria-label') || button.textContent || '')
   expect(activeLabels).toEqual([label])
+}
+
+function primaryMenuLabels() {
+  const agentsButton = screen.getByRole('button', { name: 'Agents' })
+  const activityBar = agentsButton.closest('aside')
+  if (!activityBar) throw new Error('activity bar not found')
+  return within(activityBar)
+    .getAllByRole('button')
+    .map((button) => button.getAttribute('aria-label') || button.textContent || '')
 }
 
 function mockApiFetch(overrides: Record<string, unknown> = {}) {
