@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 书籍管理页新增软删除、硬删除和拖拽自定义排序；软删除会从书架隐藏但保留磁盘目录，硬删除会删除书籍目录并在删除当前书籍后自动切换到下一个可用书籍。
 - Agent loop 新增 `LoopPolicy`、`ContextLedger` 和 `.nova/runs` 运行账本，按轮记录上下文来源、大小上限、事件摘要和完成状态，为后续工具筛选、恢复和验证阶段提供稳定工程边界。
 - Agent loop 新增中心化 tool manifest 与模型可见工具结果筛选，统一标注工具来源、是否变更 workspace、输出上限、幂等键和 post-check 要求，并对 invokable/streamable 工具返回做有界回填。
 - 创作 Agent 新增写入后轻量验证阶段，会根据工具 mutation metadata 检查写入路径、章节目录约束、资料库 `brief_description` 和删除结果，并写入 `.nova/runs` trace。
@@ -29,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复设置页多模型配置编辑配置 ID 时输入框随 ID 变化反复重建，导致只能逐字输入的问题。
 - 优化互动剧情页和工作台侧栏的数据加载稳定性：切换故事、分支或刷新目录时保留上一份有效内容并显示轻量刷新状态，减少后端响应较慢时的页面抖动。
 - 修复互动模式剧情路线图节点在紧凑字号下标题、摘要或 HEAD 标记挤出卡片的问题。
 - 修复浅色主题下创作 Agent 对话、互动剧情命令菜单、一级菜单、文件树、全局命令面板、Tooltip、版本差异弹窗和错误提示仍使用暗色硬编码导致文字或图标对比度不足的问题。

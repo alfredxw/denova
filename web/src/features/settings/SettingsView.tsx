@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Plus, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -714,6 +714,16 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
   onChange: (profiles: ModelProfileSettings[]) => void
 }) {
   const { t } = useTranslation()
+  const profileKeysRef = useRef<string[]>([])
+  const profileKeys = useMemo(() => {
+    if (profileKeysRef.current.length > profiles.length) {
+      profileKeysRef.current = profileKeysRef.current.slice(0, profiles.length)
+    }
+    while (profileKeysRef.current.length < profiles.length) {
+      profileKeysRef.current.push(`profile-${Date.now()}-${profileKeysRef.current.length}`)
+    }
+    return profileKeysRef.current
+  }, [profiles.length])
   const addProfile = () => {
     const nextIndex = profiles.length + 1
     onChange([...profiles, { id: `model-${nextIndex}`, name: t('settings.model.profileName', { index: nextIndex }) }])
@@ -735,7 +745,7 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
           </div>
         )}
         {profiles.map((profile, index) => (
-          <div key={`${profile.id ?? 'profile'}-${index}`} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-2">
+          <div key={profileKeys[index]} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-2">
             <input
               value={profile.id ?? ''}
               placeholder={t('settings.model.profileIdPlaceholder')}

@@ -6,11 +6,27 @@ export async function getBooks(): Promise<BookRecord[]> {
   return data.books || []
 }
 
-export async function removeBook(path: string): Promise<{ message: string }> {
+export async function removeBook(path: string): Promise<{ message: string; workspace: string }> {
   return requestJSON('/api/books/remove', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ path }),
+  })
+}
+
+export async function deleteBook(path: string): Promise<{ message: string; workspace: string }> {
+  return requestJSON('/api/books/delete', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ path }),
+  })
+}
+
+export async function reorderBooks(paths: string[]): Promise<{ message: string }> {
+  return requestJSON('/api/books/reorder', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ paths }),
   })
 }
 

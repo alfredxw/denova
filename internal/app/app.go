@@ -140,3 +140,16 @@ func (a *App) applyRuntime(runtime *runtimeState) {
 	a.interactiveStoryRunner = runtime.interactiveStoryRunner
 	a.versionService = runtime.versionService
 }
+
+func (a *App) clearRuntime() {
+	a.workspace = ""
+	a.cfg.Workspace = ""
+	a.bookState = nil
+	a.bookService = nil
+	a.interactive = nil
+	a.sessionStore = nil
+	a.session = nil
+	a.agentRunner = nil
+	a.interactiveStoryRunner = nil
+	a.versionService = nil
+}

@@ -108,6 +108,97 @@ func TestBookRegistryRemove(t *testing.T) {
 	}
 }
 
+func TestBookRegistryRemoveHidesScannedNovaBook(t *testing.T) {
+	root := t.TempDir()
+	bookA := filepath.Join(root, "book-a")
+	bookB := filepath.Join(root, "book-b")
+	for _, dir := range []string{
+		filepath.Join(bookA, ".nova"),
+		filepath.Join(bookB, ".nova"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	registry := &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root}
+	if err := registry.Remove(bookB); err != nil {
+		t.Fatalf("软删除书籍失败: %v", err)
+	}
+
+	books := registry.List()
+	if len(books) != 1 || books[0].Path != bookA {
+		t.Fatalf("软删除后扫描列表应隐藏目标书籍: %#v", books)
+	}
+	if _, err := os.Stat(bookB); err != nil {
+		t.Fatalf("软删除不应删除磁盘目录: %v", err)
+	}
+}
+
+func TestBookRegistryReorderScannedNovaBooks(t *testing.T) {
+	root := t.TempDir()
+	bookA := filepath.Join(root, "alpha")
+	bookB := filepath.Join(root, "zeta")
+	for _, dir := range []string{
+		filepath.Join(bookA, ".nova"),
+		filepath.Join(bookB, ".nova"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	registry := &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root}
+	if err := registry.Reorder([]string{bookB, bookA}); err != nil {
+		t.Fatalf("保存排序失败: %v", err)
+	}
+
+	books := registry.List()
+	if len(books) != 2 || books[0].Path != bookB || books[1].Path != bookA {
+		t.Fatalf("书籍列表应遵循自定义排序: %#v", books)
+	}
+
+	if err := registry.Touch(bookA); err != nil {
+		t.Fatalf("打开书籍失败: %v", err)
+	}
+	books = registry.List()
+	if len(books) != 2 || books[0].Path != bookB || books[1].Path != bookA {
+		t.Fatalf("打开书籍不应打乱自定义排序: %#v", books)
+	}
+}
+
+func TestBookRegistryDeleteRecordClearsHiddenAndOrder(t *testing.T) {
+	root := t.TempDir()
+	bookA := filepath.Join(root, "book-a")
+	bookB := filepath.Join(root, "book-b")
+	for _, dir := range []string{
+		filepath.Join(bookA, ".nova"),
+		filepath.Join(bookB, ".nova"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	registry := &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root}
+	if err := registry.Reorder([]string{bookB, bookA}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Remove(bookB); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.DeleteRecord(bookB); err != nil {
+		t.Fatalf("删除记录失败: %v", err)
+	}
+
+	data := registry.load()
+	for _, path := range append(data.Hidden, data.Order...) {
+		if path == bookB {
+			t.Fatalf("硬删除记录后不应残留隐藏或排序路径: %#v", data)
+		}
+	}
+}
+
 func TestNewBookRegistryUsesNovaDir(t *testing.T) {
 	novaDir := t.TempDir()
 	registry := NewBookRegistry(novaDir)

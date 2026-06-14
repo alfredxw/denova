@@ -23,6 +23,8 @@ type BookRecord struct {
 type bookRegistryData struct {
 	Current string       `json:"current"`
 	Books   []BookRecord `json:"books"`
+	Order   []string     `json:"order,omitempty"`
+	Hidden  []string     `json:"hidden,omitempty"`
 }
 
 // BookRegistry 持久化当前书籍，并从 Nova 数据目录发现实际存在的书籍工作目录。
@@ -47,8 +49,15 @@ func (r *BookRegistry) Current() string {
 	if data.Current == "" {
 		return ""
 	}
-	if info, err := os.Stat(data.Current); err == nil && info.IsDir() {
-		return data.Current
+	current, err := filepath.Abs(data.Current)
+	if err != nil {
+		return ""
+	}
+	if pathSet(data.Hidden)[current] {
+		return ""
+	}
+	if info, err := os.Stat(current); err == nil && info.IsDir() {
+		return current
 	}
 	return ""
 }
@@ -57,23 +66,35 @@ func (r *BookRegistry) Current() string {
 func (r *BookRegistry) List() []BookRecord {
 	data := r.load()
 	if strings.TrimSpace(r.novaDir) == "" {
-		return sortedRegistryBooks(data.Books)
+		return sortedRegistryBooks(data)
 	}
 
 	books, err := r.scanNovaBooks(data)
 	if err == nil {
 		return books
 	}
-	return sortedRegistryBooks(data.Books)
+	return sortedRegistryBooks(data)
 }
 
-func sortedRegistryBooks(records []BookRecord) []BookRecord {
-	books := make([]BookRecord, 0, len(records))
-	for _, book := range records {
+func sortedRegistryBooks(data bookRegistryData) []BookRecord {
+	hidden := pathSet(data.Hidden)
+	books := make([]BookRecord, 0, len(data.Books))
+	for _, book := range data.Books {
 		if book.Path == "" {
 			continue
 		}
+		absPath, err := filepath.Abs(book.Path)
+		if err != nil || hidden[absPath] {
+			continue
+		}
+		book.Path = absPath
 		books = append(books, book)
+	}
+	if len(data.Order) > 0 {
+		sortBooksByOrder(books, data.Order, func(i, j int) bool {
+			return books[i].LastOpenedAt > books[j].LastOpenedAt
+		})
+		return books
 	}
 	sort.SliceStable(books, func(i, j int) bool {
 		return books[i].LastOpenedAt > books[j].LastOpenedAt
@@ -102,6 +123,7 @@ func (r *BookRegistry) scanNovaBooks(data bookRegistryData) ([]BookRecord, error
 		}
 		openedAt[absPath] = book.LastOpenedAt
 	}
+	hidden := pathSet(data.Hidden)
 
 	books := make([]BookRecord, 0, len(entries))
 	for _, entry := range entries {
@@ -112,6 +134,9 @@ func (r *BookRegistry) scanNovaBooks(data bookRegistryData) ([]BookRecord, error
 		if !isBookWorkspace(bookPath) {
 			continue
 		}
+		if hidden[bookPath] {
+			continue
+		}
 		books = append(books, BookRecord{
 			Name:         entry.Name(),
 			Path:         bookPath,
@@ -119,10 +144,47 @@ func (r *BookRegistry) scanNovaBooks(data bookRegistryData) ([]BookRecord, error
 		})
 	}
 
-	sort.SliceStable(books, func(i, j int) bool {
+	sortBooksByOrder(books, data.Order, func(i, j int) bool {
 		return strings.ToLower(books[i].Name) < strings.ToLower(books[j].Name)
 	})
 	return books, nil
+}
+
+func sortBooksByOrder(books []BookRecord, order []string, fallback func(i, j int) bool) {
+	rank := make(map[string]int, len(order))
+	for i, path := range order {
+		if absPath, err := filepath.Abs(path); err == nil {
+			if _, exists := rank[absPath]; !exists {
+				rank[absPath] = i
+			}
+		}
+	}
+	sort.SliceStable(books, func(i, j int) bool {
+		leftRank, leftOrdered := rank[books[i].Path]
+		rightRank, rightOrdered := rank[books[j].Path]
+		if leftOrdered && rightOrdered {
+			return leftRank < rightRank
+		}
+		if leftOrdered != rightOrdered {
+			return leftOrdered
+		}
+		return fallback(i, j)
+	})
+}
+
+func pathSet(paths []string) map[string]bool {
+	set := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			continue
+		}
+		set[absPath] = true
+	}
+	return set
 }
 
 func isNovaUserDataDir(name string) bool {
@@ -172,35 +234,60 @@ func (r *BookRegistry) Touch(path string) error {
 		Path:         absPath,
 		LastOpenedAt: now,
 	}
-	books := []BookRecord{record}
-	for _, book := range data.Books {
-		if book.Path == "" || book.Path == absPath {
-			continue
+	data.Hidden = removePath(data.Hidden, absPath)
+	if len(data.Order) > 0 {
+		found := false
+		for i, book := range data.Books {
+			bookPath, err := filepath.Abs(book.Path)
+			if err == nil && bookPath == absPath {
+				data.Books[i] = record
+				found = true
+				break
+			}
 		}
-		books = append(books, book)
-		if len(books) >= maxBookRecords {
-			break
+		if !found {
+			data.Books = append(data.Books, record)
 		}
+		if !pathSet(data.Order)[absPath] {
+			data.Order = append(data.Order, absPath)
+		}
+	} else {
+		books := []BookRecord{record}
+		for _, book := range data.Books {
+			bookPath, err := filepath.Abs(book.Path)
+			if book.Path == "" || (err == nil && bookPath == absPath) {
+				continue
+			}
+			books = append(books, book)
+			if len(books) >= maxBookRecords {
+				break
+			}
+		}
+		data.Books = books
 	}
 	data.Current = absPath
-	data.Books = books
 	return r.save(data)
 }
 
-// Remove 移除一个书籍记录，不删除磁盘文件。
+// Remove 从书架隐藏一个书籍记录，不删除磁盘文件。
 func (r *BookRegistry) Remove(path string) error {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return err
 	}
 	data := r.load()
+	data.Hidden = appendUniquePath(data.Hidden, absPath)
 	books := make([]BookRecord, 0, len(data.Books))
 	for _, book := range data.Books {
-		if book.Path != absPath {
-			books = append(books, book)
+		bookPath, err := filepath.Abs(book.Path)
+		if err == nil && bookPath == absPath {
+			continue
 		}
+		books = append(books, book)
 	}
-	if data.Current == absPath {
+	data.Order = removePath(data.Order, absPath)
+	current, _ := filepath.Abs(data.Current)
+	if current == absPath {
 		data.Current = ""
 		if len(books) > 0 {
 			data.Current = books[0].Path
@@ -208,6 +295,86 @@ func (r *BookRegistry) Remove(path string) error {
 	}
 	data.Books = books
 	return r.save(data)
+}
+
+// DeleteRecord 移除一个书籍记录，用于磁盘目录已被硬删除的场景。
+func (r *BookRegistry) DeleteRecord(path string) error {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	data := r.load()
+	data.Hidden = removePath(data.Hidden, absPath)
+	data.Order = removePath(data.Order, absPath)
+	books := make([]BookRecord, 0, len(data.Books))
+	for _, book := range data.Books {
+		bookPath, err := filepath.Abs(book.Path)
+		if err == nil && bookPath == absPath {
+			continue
+		}
+		books = append(books, book)
+	}
+	current, _ := filepath.Abs(data.Current)
+	if current == absPath {
+		data.Current = ""
+		if len(books) > 0 {
+			data.Current = books[0].Path
+		}
+	}
+	data.Books = books
+	return r.save(data)
+}
+
+// Reorder 保存书籍管理页的自定义排序。
+func (r *BookRegistry) Reorder(paths []string) error {
+	data := r.load()
+	seen := make(map[string]bool, len(paths))
+	order := make([]string, 0, len(paths))
+	for _, path := range paths {
+		absPath, err := filepath.Abs(path)
+		if err != nil || seen[absPath] {
+			continue
+		}
+		seen[absPath] = true
+		order = append(order, absPath)
+	}
+	for _, book := range r.List() {
+		if !seen[book.Path] {
+			order = append(order, book.Path)
+		}
+	}
+	data.Order = order
+	return r.save(data)
+}
+
+func appendUniquePath(paths []string, path string) []string {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return paths
+	}
+	for _, item := range paths {
+		itemAbs, err := filepath.Abs(item)
+		if err == nil && itemAbs == absPath {
+			return paths
+		}
+	}
+	return append(paths, absPath)
+}
+
+func removePath(paths []string, path string) []string {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return paths
+	}
+	next := make([]string, 0, len(paths))
+	for _, item := range paths {
+		itemAbs, err := filepath.Abs(item)
+		if err != nil || itemAbs == absPath {
+			continue
+		}
+		next = append(next, itemAbs)
+	}
+	return next
 }
 
 func (r *BookRegistry) load() bookRegistryData {
