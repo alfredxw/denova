@@ -22,8 +22,10 @@ type Settings struct {
 	AgentSkills   AgentSkillSettings     `toml:"agent_skills,omitempty" json:"agent_skills,omitempty"`
 
 	// 路径
-	SkillsDir string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
-	NovaDir   string `toml:"nova_dir,omitempty" json:"nova_dir,omitempty"`
+	SkillsDir    string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
+	NovaDir      string `toml:"nova_dir,omitempty" json:"nova_dir,omitempty"`
+	BackendPort  *int   `toml:"backend_port,omitempty" json:"backend_port,omitempty"`
+	FrontendPort *int   `toml:"frontend_port,omitempty" json:"frontend_port,omitempty"`
 
 	// 编辑器
 	AutoSaveEnabled             *bool  `toml:"auto_save_enabled,omitempty" json:"auto_save_enabled,omitempty"`
@@ -72,6 +74,8 @@ func DefaultSettings() Settings {
 		OpenAIModel:                 "deepseek-v4-pro",
 		SkillsDir:                   "./skills",
 		NovaDir:                     "./.nova",
+		BackendPort:                 intPtr(8080),
+		FrontendPort:                intPtr(5173),
 		AutoSaveEnabled:             boolPtr(true),
 		AutoSaveIntervalMs:          intPtr(1500),
 		ChapterFilenameFormat:       "ch{order:05}-{chapter}-{title}.md",
@@ -131,6 +135,12 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.NovaDir != "" {
 		out.NovaDir = child.NovaDir
+	}
+	if child.BackendPort != nil {
+		out.BackendPort = child.BackendPort
+	}
+	if child.FrontendPort != nil {
+		out.FrontendPort = child.FrontendPort
 	}
 	if child.AutoSaveEnabled != nil {
 		out.AutoSaveEnabled = child.AutoSaveEnabled
@@ -305,6 +315,10 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		if err != nil {
 			return LayeredSettings{}, err
 		}
+		// Startup ports are decided before a workspace is opened, so workspace-level
+		// files must not override them.
+		ws.BackendPort = nil
+		ws.FrontendPort = nil
 	}
 	def := DefaultSettings()
 	def.NovaDir = novaDir
@@ -331,11 +345,23 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 func sanitizeEditableSettings(s Settings) Settings {
 	// nova_dir 是启动级定位参数，不能由用户级/工作区级配置反向修改自身位置。
 	s.NovaDir = ""
+	s.BackendPort = normalizePort(s.BackendPort)
+	s.FrontendPort = normalizePort(s.FrontendPort)
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
 	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
 	return s
+}
+
+func normalizePort(port *int) *int {
+	if port == nil {
+		return nil
+	}
+	if *port < 1 || *port > 65535 {
+		return nil
+	}
+	return port
 }
 
 func normalizeLanguage(language string) string {

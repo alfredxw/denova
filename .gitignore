@@ -4,9 +4,16 @@ playground
 output/
 dist/
 log/
+.gocache/
+.gocache-pr/
+.gomodcache/
+.npm-cache/
+nova-windows-test/
+nova-test.exe
 data/
 web/node_modules/
 web/dist/
+web/pnpm-workspace.yaml
 plan.md
 docs/
 .worktrees/

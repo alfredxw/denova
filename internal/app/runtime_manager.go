@@ -504,6 +504,12 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if cfg.NovaDir == "" && layered.Paths.NovaDir != "" {
 		cfg.NovaDir = layered.Paths.NovaDir
 	}
+	if effective.BackendPort != nil {
+		cfg.BackendPort = appSettingsInt(effective.BackendPort, 8080)
+	}
+	if effective.FrontendPort != nil {
+		cfg.FrontendPort = appSettingsInt(effective.FrontendPort, 5173)
+	}
 	if cfg.IDEStoryTellerID == "" && effective.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = effective.IDEStoryTellerID
 	}

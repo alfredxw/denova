@@ -142,3 +142,52 @@ func TestLoadWithWorkspaceUsesGlobalConfigAsBaseLayer(t *testing.T) {
 		t.Fatalf("global layer should be exposed: %s", layered.Global.OpenAIModel)
 	}
 }
+
+func TestLoadWithWorkspaceUsesConfiguredStartupPorts(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	ws := t.TempDir()
+	t.Setenv("NOVA_DIR", "")
+	t.Setenv("NOVA_BACKEND_PORT", "")
+
+	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("backend_port = 18080\nfrontend_port = 15173\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, layered, err := LoadWithWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.BackendPort != 18080 {
+		t.Fatalf("global backend_port should be effective: %d", cfg.BackendPort)
+	}
+	if layered.Effective.BackendPort == nil || *layered.Effective.BackendPort != 18080 {
+		t.Fatalf("effective backend_port should be exposed")
+	}
+	if cfg.FrontendPort != 15173 {
+		t.Fatalf("global frontend_port should be effective: %d", cfg.FrontendPort)
+	}
+	if layered.Effective.FrontendPort == nil || *layered.Effective.FrontendPort != 15173 {
+		t.Fatalf("effective frontend_port should be exposed")
+	}
+}
+
+func TestLoadStartupPortEnvOverridesConfig(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	t.Setenv("NOVA_DIR", "")
+	t.Setenv("NOVA_BACKEND_PORT", "19090")
+	t.Setenv("NOVA_FRONTEND_PORT", "16173")
+
+	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("backend_port = 18080\nfrontend_port = 15173\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := Load()
+	if cfg.BackendPort != 19090 {
+		t.Fatalf("NOVA_BACKEND_PORT should override config: %d", cfg.BackendPort)
+	}
+	if cfg.FrontendPort != 16173 {
+		t.Fatalf("NOVA_FRONTEND_PORT should override config: %d", cfg.FrontendPort)
+	}
+}

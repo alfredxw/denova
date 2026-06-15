@@ -21,12 +21,15 @@ import (
 func main() {
 	var (
 		workspace string
-		port      = defaultPort()
 		dev       bool
 		noOpen    bool
 	)
+	cfg := config.Load()
+	port := defaultPort(cfg)
+	frontendPort := defaultFrontendPort(cfg)
 	flag.StringVar(&workspace, "workspace", "", "作品工作目录 (默认恢复上次打开的书籍)")
 	flag.StringVar(&port, "port", port, "HTTP 服务端口")
+	flag.StringVar(&frontendPort, "frontend-port", frontendPort, "前端开发服务端口")
 	flag.BoolVar(&dev, "dev", false, "开发模式：同时启动 Vite 前端 dev server")
 	flag.BoolVar(&noOpen, "no-open", false, "启动服务后不自动打开浏览器")
 	flag.Parse()
@@ -37,7 +40,6 @@ func main() {
 	log.Printf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath)
 	port = selectStartupPort(port, shouldAutoPickPort())
 
-	cfg := config.Load()
 	if workspace != "" {
 		cfg.Workspace = workspace
 		cfg.ResumeLastWorkspace = false
@@ -67,17 +69,17 @@ func main() {
 	fmt.Printf("  服务地址: %s\n", url)
 	fmt.Printf("  作品目录: %s\n", application.Workspace())
 	if dev {
-		fmt.Printf("  前端开发: http://localhost:5173\n")
+		fmt.Printf("  前端开发: http://localhost:%s\n", frontendPort)
 	}
 	fmt.Printf("  按 Ctrl+C 停止服务\n\n")
 
 	// 开发模式：同时启动 Vite dev server
 	if dev {
-		go startViteDev()
+		go startViteDev(frontendPort)
 	}
 	if !noOpen {
 		if dev {
-			go openBrowser("http://localhost:5173")
+			go openBrowser(fmt.Sprintf("http://localhost:%s", frontendPort))
 		} else {
 			go openBrowser(url)
 		}
@@ -103,7 +105,7 @@ func openBrowser(url string) {
 }
 
 // startViteDev 启动 Vite 前端开发服务器
-func startViteDev() {
+func startViteDev(port string) {
 	// 查找 web 目录
 	webDir := "./web"
 	if _, err := os.Stat(webDir); os.IsNotExist(err) {
@@ -115,7 +117,7 @@ func startViteDev() {
 		}
 	}
 
-	cmd := exec.Command("pnpm", "dev", "--host", "0.0.0.0")
+	cmd := exec.Command("pnpm", "dev", "--host", "0.0.0.0", "--port", port)
 	cmd.Dir = webDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -124,11 +126,18 @@ func startViteDev() {
 	}
 }
 
-func defaultPort() string {
-	if v := os.Getenv("NOVA_BACKEND_PORT"); v != "" {
-		return v
+func defaultPort(cfg *config.Config) string {
+	if cfg != nil && cfg.BackendPort > 0 {
+		return strconv.Itoa(cfg.BackendPort)
 	}
 	return "8080"
+}
+
+func defaultFrontendPort(cfg *config.Config) string {
+	if cfg != nil && cfg.FrontendPort > 0 {
+		return strconv.Itoa(cfg.FrontendPort)
+	}
+	return "5173"
 }
 
 func shouldAutoPickPort() bool {

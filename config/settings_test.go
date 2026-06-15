@@ -60,6 +60,12 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.MotionIntensity != "system" {
 		t.Fatalf("MotionIntensity default: %s", s.MotionIntensity)
 	}
+	if s.BackendPort == nil || *s.BackendPort != 8080 {
+		t.Fatalf("BackendPort default")
+	}
+	if s.FrontendPort == nil || *s.FrontendPort != 5173 {
+		t.Fatalf("FrontendPort default")
+	}
 }
 
 func TestMergeOverridesNonZero(t *testing.T) {
@@ -76,6 +82,8 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		MotionIntensity:            "system",
 		ChapterFilenameFormat:      "old-chapter",
 		VolumeDirFormat:            "old-volume",
+		BackendPort:                intPtr(8080),
+		FrontendPort:               intPtr(5173),
 		InteractiveMaxTokens:       intPtr(0),
 		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
@@ -93,6 +101,8 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		MotionIntensity:            "reduced",
 		ChapterFilenameFormat:      "new-chapter",
 		VolumeDirFormat:            "new-volume",
+		BackendPort:                intPtr(18080),
+		FrontendPort:               intPtr(15173),
 		InteractiveMaxTokens:       intPtr(4000),
 		InteractiveHotChoices:      boolPtr(false),
 		InteractiveStageFontSize:   intPtr(18),
@@ -131,6 +141,12 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.ChapterFilenameFormat != "new-chapter" || out.VolumeDirFormat != "new-volume" {
 		t.Fatalf("filename formats should override parent: %#v", out)
+	}
+	if out.BackendPort == nil || *out.BackendPort != 18080 {
+		t.Fatalf("BackendPort should override parent")
+	}
+	if out.FrontendPort == nil || *out.FrontendPort != 15173 {
+		t.Fatalf("FrontendPort should override parent")
 	}
 	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 4000 {
 		t.Fatalf("InteractiveMaxTokens should override parent")
@@ -254,6 +270,38 @@ func TestWriteSettingsFileFiltersNovaDir(t *testing.T) {
 	}
 }
 
+func TestWriteSettingsFileFiltersInvalidBackendPort(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	in := Settings{OpenAIModel: "abc", BackendPort: intPtr(70000)}
+	if err := WriteSettingsFile(p, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.BackendPort != nil {
+		t.Fatalf("invalid backend_port should be filtered: %v", *out.BackendPort)
+	}
+}
+
+func TestWriteSettingsFileFiltersInvalidFrontendPort(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	in := Settings{OpenAIModel: "abc", FrontendPort: intPtr(70000)}
+	if err := WriteSettingsFile(p, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.FrontendPort != nil {
+		t.Fatalf("invalid frontend_port should be filtered: %v", *out.FrontendPort)
+	}
+}
+
 func TestLoadLayeredAppliesAllLayers(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()
@@ -310,5 +358,36 @@ func TestLoadLayeredIgnoresNovaDirFromEditableLayers(t *testing.T) {
 	}
 	if layered.Effective.OpenAIModel != "ws-model" {
 		t.Fatalf("other editable fields should still merge: %q", layered.Effective.OpenAIModel)
+	}
+}
+
+func TestLoadLayeredIgnoresStartupPortsFromWorkspaceLayer(t *testing.T) {
+	home := t.TempDir()
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".nova"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSettingsFile(filepath.Join(home, "config.toml"), Settings{BackendPort: intPtr(18080), FrontendPort: intPtr(15173)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".nova", "config.toml"), []byte("backend_port = 19090\nfrontend_port = 16173\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	layered, err := LoadLayered(home, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layered.Workspace.BackendPort != nil {
+		t.Fatalf("workspace backend_port should be filtered")
+	}
+	if layered.Workspace.FrontendPort != nil {
+		t.Fatalf("workspace frontend_port should be filtered")
+	}
+	if layered.Effective.BackendPort == nil || *layered.Effective.BackendPort != 18080 {
+		t.Fatalf("user backend_port should remain effective")
+	}
+	if layered.Effective.FrontendPort == nil || *layered.Effective.FrontendPort != 15173 {
+		t.Fatalf("user frontend_port should remain effective")
 	}
 }
