@@ -130,7 +130,7 @@ func TestNewFilesystemMiddlewareRespectsToolSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	middleware, err := newFilesystemMiddleware(context.Background(), backend, config.ResolvedAgentToolSettings{
+	middleware, err := newFilesystemMiddleware(context.Background(), backend, backend, config.ResolvedAgentToolSettings{
 		FileRead:     true,
 		FileWrite:    false,
 		ShellExecute: false,
