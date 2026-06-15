@@ -122,7 +122,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-You can also configure models, Agent parameters, editor options, interactive-mode behavior, version management, and interface appearance (language, theme, fonts) in `config.toml`. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. Configuration precedence:
+You can also configure models, Agent parameters, editor options, interactive-mode behavior, version management, backend/frontend ports, and interface appearance (language, theme, fonts) in `config.toml`. Set the backend port with `backend_port = 8080` and the frontend dev port with `frontend_port = 5173`, or edit them from the user settings page and restart Nova; for one-off launches, `--port` / `--frontend-port` take precedence over `NOVA_BACKEND_PORT` / `NOVA_FRONTEND_PORT` and config files. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. Configuration precedence:
 
 ```text
 Built-in defaults < global config.toml < user-level config < workspace-level config < environment variables
