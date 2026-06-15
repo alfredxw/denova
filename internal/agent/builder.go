@@ -9,6 +9,7 @@ import (
 	localbk "github.com/cloudwego/eino-ext/adk/backend/local"
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/adk/filesystem"
 	filesystemmw "github.com/cloudwego/eino/adk/middlewares/filesystem"
 	"github.com/cloudwego/eino/adk/middlewares/skill"
 	"github.com/cloudwego/eino/adk/prebuilt/deep"
@@ -128,13 +129,14 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 		return nil, fmt.Errorf("创建模型失败: %w", err)
 	}
 
-	backend, err := localbk.NewBackend(ctx, &localbk.Config{})
+	localBackend, err := localbk.NewBackend(ctx, &localbk.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("创建 backend 失败: %w", err)
 	}
+	backend := newAgentFilesystemBackend(localBackend)
 
 	var handlers []adk.ChatModelAgentMiddleware
-	filesystemHandler, err := newFilesystemMiddleware(ctx, backend, toolSettings)
+	filesystemHandler, err := newFilesystemMiddleware(ctx, backend, localBackend, toolSettings)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +170,7 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 		tools = append(tools, webSearchTools...)
 	}
 	handlers = append(handlers, spec.ExtraHandlers...)
-		handlers = append(handlers, &toolOrchestratorMiddleware{agentKind: spec.Kind})
+	handlers = append(handlers, &toolOrchestratorMiddleware{agentKind: spec.Kind})
 
 	return deep.New(ctx, &deep.Config{
 		Name:              spec.Name,
@@ -197,7 +199,7 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 	})
 }
 
-func newFilesystemMiddleware(ctx context.Context, backend *localbk.Local, settings config.ResolvedAgentToolSettings) (adk.ChatModelAgentMiddleware, error) {
+func newFilesystemMiddleware(ctx context.Context, backend filesystem.Backend, streamingShell filesystem.StreamingShell, settings config.ResolvedAgentToolSettings) (adk.ChatModelAgentMiddleware, error) {
 	if backend == nil {
 		return nil, nil
 	}
@@ -226,7 +228,7 @@ func newFilesystemMiddleware(ctx context.Context, backend *localbk.Local, settin
 		},
 	}
 	if settings.ShellExecute {
-		mwConfig.StreamingShell = backend
+		mwConfig.StreamingShell = streamingShell
 	}
 	return filesystemmw.New(ctx, mwConfig)
 }
