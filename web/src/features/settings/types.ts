@@ -8,6 +8,8 @@ export interface Settings {
   agent_prompts?: AgentPromptSettings
   agent_skills?: AgentSkillSettings
   skills_dir?: string
+  backend_port?: number | null
+  frontend_port?: number | null
   auto_save_enabled?: boolean | null
   auto_save_interval_ms?: number | null
   chapter_filename_format?: string

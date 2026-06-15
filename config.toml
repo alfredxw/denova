@@ -67,6 +67,10 @@ openai_model = "deepseek-v4-pro"
 skills_dir = "./skills"
 nova_dir = "./.nova"
 
+# 修改端口号
+backend_port = 8080
+frontend_port = 8081
+
 # 编辑器
 auto_save_enabled = true
 auto_save_interval_ms = 1500

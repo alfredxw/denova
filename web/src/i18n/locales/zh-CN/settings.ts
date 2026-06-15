@@ -55,6 +55,8 @@ const settings = {
   'settings.model.addProfile': '添加模型',
   'settings.model.deleteProfile': '删除模型配置',
   'settings.paths.novaDir': 'Nova 数据目录',
+  'settings.paths.backendPort': '后端端口（重启生效）',
+  'settings.paths.frontendPort': '前端开发端口（重启生效）',
   'settings.paths.skillsDir': 'Skills 目录',
   'settings.paths.userConfig': '用户配置文件',
   'settings.paths.workspaceConfig': '工作区配置文件',

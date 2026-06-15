@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -18,6 +19,8 @@ type Config struct {
 	AgentPrompts                AgentPromptSettings    `toml:"agent_prompts"`
 	AgentSkills                 AgentSkillSettings     `toml:"agent_skills"`
 	SkillsDir                   string                 `toml:"skills_dir"`
+	BackendPort                 int                    `toml:"backend_port"`
+	FrontendPort                int                    `toml:"frontend_port"`
 	NovaDir                     string                 `toml:"nova_dir"`
 	Workspace                   string                 `toml:"workspace"`
 	IDEStoryTellerID            string                 `toml:"-"`
@@ -72,6 +75,8 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentPrompts:                s.AgentPrompts,
 		AgentSkills:                 s.AgentSkills,
 		SkillsDir:                   s.SkillsDir,
+		BackendPort:                 settingsInt(s.BackendPort, 8080),
+		FrontendPort:                settingsInt(s.FrontendPort, 5173),
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
@@ -144,6 +149,12 @@ func settingsFromConfig(cfg *Config) Settings {
 		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
 		VolumeDirFormat:       cfg.VolumeDirFormat,
 	}
+	if cfg.BackendPort > 0 {
+		settings.BackendPort = &cfg.BackendPort
+	}
+	if cfg.FrontendPort > 0 {
+		settings.FrontendPort = &cfg.FrontendPort
+	}
 	if cfg.MaxIteration > 0 {
 		settings.MaxIteration = &cfg.MaxIteration
 	}
@@ -176,6 +187,8 @@ func Load() *Config {
 			AgentPrompts:                d.AgentPrompts,
 			AgentSkills:                 d.AgentSkills,
 			SkillsDir:                   d.SkillsDir,
+			BackendPort:                 settingsInt(d.BackendPort, 8080),
+			FrontendPort:                settingsInt(d.FrontendPort, 5173),
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
 			MaxIteration:                settingsInt(d.MaxIteration, 50),
@@ -255,6 +268,16 @@ func overrideFromEnv(cfg *Config) {
 	}
 	if v := os.Getenv("NOVA_WORKSPACE"); v != "" {
 		cfg.Workspace = v
+	}
+	if v := os.Getenv("NOVA_BACKEND_PORT"); v != "" {
+		if port, err := strconv.Atoi(v); err == nil && port >= 1 && port <= 65535 {
+			cfg.BackendPort = port
+		}
+	}
+	if v := os.Getenv("NOVA_FRONTEND_PORT"); v != "" {
+		if port, err := strconv.Atoi(v); err == nil && port >= 1 && port <= 65535 {
+			cfg.FrontendPort = port
+		}
 	}
 }
 

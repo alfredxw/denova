@@ -55,6 +55,8 @@ const settings = {
   'settings.model.addProfile': 'Add Model',
   'settings.model.deleteProfile': 'Delete model profile',
   'settings.paths.novaDir': 'Nova Data Directory',
+  'settings.paths.backendPort': 'Backend Port (restart required)',
+  'settings.paths.frontendPort': 'Frontend Dev Port (restart required)',
   'settings.paths.skillsDir': 'Skills Directory',
   'settings.paths.userConfig': 'User Config File',
   'settings.paths.workspaceConfig': 'Workspace Config File',
