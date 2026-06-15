@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronUp, Plus, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, ExternalLink, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from './types'
-import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from './api'
+import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateCheckResult, UpdateInstallResult } from './types'
+import { checkForUpdate, fetchSettings, installUpdate, updateUserSettings, updateWorkspaceSettings } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { settingsForLayer, useAutoSaveSettings } from './use-auto-save-settings'
 import { getInteractiveTellers } from '@/features/interactive/api'
@@ -11,7 +11,7 @@ import type { Teller } from '@/features/interactive/types'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { LOCALE_OPTIONS } from '@/i18n'
 
-type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -32,11 +32,17 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [availableTellers, setAvailableTellers] = useState<Teller[]>([])
+  const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null)
+  const [updateInstallResult, setUpdateInstallResult] = useState<UpdateInstallResult | null>(null)
+  const [checkingUpdate, setCheckingUpdate] = useState(false)
+  const [installingUpdate, setInstallingUpdate] = useState(false)
+  const [updateError, setUpdateError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('appearance')
   const [expandedSections, setExpandedSections] = useState<Record<SettingsSectionId, boolean>>({
     model: true,
     paths: true,
     appearance: true,
+    updates: true,
     agent: true,
     'ide-editor': true,
     versions: true,
@@ -70,6 +76,40 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [activeLayer, layered])
 
   const effective = layered?.effective ?? {}
+
+  const runUpdateCheck = useCallback(async () => {
+    setCheckingUpdate(true)
+    setUpdateError(null)
+    setUpdateInstallResult(null)
+    try {
+      const result = await checkForUpdate()
+      setUpdateStatus(result)
+    } catch (e) {
+      setUpdateError((e as Error).message)
+    } finally {
+      setCheckingUpdate(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!layered || effective.update_check_enabled === false || updateStatus || checkingUpdate) return
+    void runUpdateCheck()
+  }, [checkingUpdate, effective.update_check_enabled, layered, runUpdateCheck, updateStatus])
+
+  const runUpdateInstall = useCallback(async () => {
+    setInstallingUpdate(true)
+    setUpdateError(null)
+    try {
+      const result = await installUpdate()
+      setUpdateInstallResult(result)
+      await runUpdateCheck()
+    } catch (e) {
+      setUpdateError((e as Error).message)
+    } finally {
+      setInstallingUpdate(false)
+    }
+  }, [runUpdateCheck])
+
   const saveDraft = useCallback(async (settings: Settings) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
     return updater(settings)
@@ -153,6 +193,31 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                min={14}
                max={28}
                onChange={(v) => setField('reading_font_size', v)} />
+        </>
+      ),
+    },
+    {
+      id: 'updates',
+      group: t('settings.group.common'),
+      title: t('settings.section.updates'),
+      children: (
+        <>
+          {activeLayer === 'user' ? (
+            <BoolTri label={t('settings.updates.autoCheck')} value={draft.update_check_enabled ?? null}
+                     effective={effective.update_check_enabled}
+                     onChange={(v) => setField('update_check_enabled', v)} />
+          ) : (
+            <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.updates.userOnly')}</div>
+          )}
+          <UpdatePanel
+            status={updateStatus}
+            installResult={updateInstallResult}
+            checking={checkingUpdate}
+            installing={installingUpdate}
+            error={updateError}
+            onCheck={() => void runUpdateCheck()}
+            onInstall={() => void runUpdateInstall()}
+          />
         </>
       ),
     },
@@ -486,6 +551,109 @@ function Section({
       )}
     </section>
   )
+}
+
+function UpdatePanel({
+  status,
+  installResult,
+  checking,
+  installing,
+  error,
+  onCheck,
+  onInstall,
+}: {
+  status: UpdateCheckResult | null
+  installResult: UpdateInstallResult | null
+  checking: boolean
+  installing: boolean
+  error: string | null
+  onCheck: () => void
+  onInstall: () => void
+}) {
+  const { t } = useTranslation()
+  const releaseDate = status?.published_at ? new Date(status.published_at).toLocaleString() : ''
+  const installDisabled = installing || checking || !status?.can_install
+  return (
+    <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-[var(--nova-text)]">{status ? updateStatusLabel(status, t) : t('settings.updates.notChecked')}</span>
+            {status?.update_available && (
+              <span className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-1.5 py-0.5 text-[11px] text-[var(--nova-text)]">
+                {t('settings.updates.available')}
+              </span>
+            )}
+          </div>
+          <div className="grid gap-1 text-[var(--nova-text-faint)] sm:grid-cols-2">
+            <span>{t('settings.updates.currentVersion', { version: status?.current_version || __APP_VERSION__ })}</span>
+            <span>{t('settings.updates.latestVersion', { version: status?.latest_version || t('common.notSet') })}</span>
+            <span>{t('settings.updates.platform', { platform: status?.platform || t('common.notSet') })}</span>
+            <span>{t('settings.updates.publishedAt', { time: releaseDate || t('common.notSet') })}</span>
+          </div>
+          {status?.asset && (
+            <div className="truncate text-[var(--nova-text-faint)]">
+              {t('settings.updates.asset', { name: status.asset.name, size: formatBytes(status.asset.size) })}
+            </div>
+          )}
+          {installResult?.installed && (
+            <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-1.5 text-[var(--nova-text-muted)]">
+              {installResult.staged_path ? t('settings.updates.stagedRestart') : t('settings.updates.installedRestart')}
+            </div>
+          )}
+          {error && <InlineErrorNotice className="mt-2" message={error} title={t('settings.updates.error')} />}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {status?.release_url && (
+            <a
+              href={status.release_url}
+              target="_blank"
+              rel="noreferrer"
+              className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2.5 py-1 text-[var(--nova-text)]"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              {t('settings.updates.openRelease')}
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={onCheck}
+            disabled={checking || installing}
+            className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2.5 py-1 text-[var(--nova-text)] disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${checking ? 'animate-spin' : ''}`} />
+            {checking ? t('settings.updates.checking') : t('settings.updates.check')}
+          </button>
+          <button
+            type="button"
+            onClick={onInstall}
+            disabled={installDisabled}
+            className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 text-[var(--nova-text)] disabled:opacity-50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {installing ? t('settings.updates.installing') : t('settings.updates.install')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function updateStatusLabel(status: UpdateCheckResult, t: (key: string, args?: Record<string, unknown>) => string) {
+  if (status.update_available) return t('settings.updates.updateAvailableTitle')
+  return t('settings.updates.upToDateTitle')
+}
+
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = value
+  let index = 0
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024
+    index += 1
+  }
+  return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`
 }
 
 function FieldRow({ label, children }: { label: string; children: ReactNode }) {

@@ -77,8 +77,9 @@ for target in "${TARGETS[@]}"; do
   mkdir -p "${package_dir}"
 
   echo "  -> ${key}"
+  binary_version="${VERSION#v}"
   CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
-    go build -trimpath -ldflags "-s -w" -o "${package_dir}/${exe}" ./cmd/nova
+    go build -trimpath -ldflags "-s -w -X nova/internal/buildinfo.Version=${binary_version}" -o "${package_dir}/${exe}" ./cmd/nova
 
   if [[ "${goos}" != "windows" ]]; then
     chmod 0755 "${package_dir}/${exe}"

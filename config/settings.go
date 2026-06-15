@@ -42,13 +42,14 @@ type Settings struct {
 	VersionAgentCharThreshold   *int   `toml:"version_agent_char_threshold,omitempty" json:"version_agent_char_threshold,omitempty"`
 
 	// 外观
-	UIFontFamily      string `toml:"ui_font_family,omitempty" json:"ui_font_family,omitempty"`
-	UIFontSize        *int   `toml:"ui_font_size,omitempty" json:"ui_font_size,omitempty"`
-	ReadingFontFamily string `toml:"reading_font_family,omitempty" json:"reading_font_family,omitempty"`
-	ReadingFontSize   *int   `toml:"reading_font_size,omitempty" json:"reading_font_size,omitempty"`
-	Language          string `toml:"language,omitempty" json:"language,omitempty"`
-	Theme             string `toml:"theme,omitempty" json:"theme,omitempty"`
-	MotionIntensity   string `toml:"motion_intensity,omitempty" json:"motion_intensity,omitempty"`
+	UIFontFamily       string `toml:"ui_font_family,omitempty" json:"ui_font_family,omitempty"`
+	UIFontSize         *int   `toml:"ui_font_size,omitempty" json:"ui_font_size,omitempty"`
+	ReadingFontFamily  string `toml:"reading_font_family,omitempty" json:"reading_font_family,omitempty"`
+	ReadingFontSize    *int   `toml:"reading_font_size,omitempty" json:"reading_font_size,omitempty"`
+	Language           string `toml:"language,omitempty" json:"language,omitempty"`
+	Theme              string `toml:"theme,omitempty" json:"theme,omitempty"`
+	MotionIntensity    string `toml:"motion_intensity,omitempty" json:"motion_intensity,omitempty"`
+	UpdateCheckEnabled *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
 
 	// Agent
 	MaxIteration     *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
@@ -95,6 +96,7 @@ func DefaultSettings() Settings {
 		Language:                    "auto",
 		Theme:                       "dark",
 		MotionIntensity:             "system",
+		UpdateCheckEnabled:          boolPtr(true),
 		MaxIteration:                intPtr(50),
 		ModelMaxRetries:             intPtr(5),
 		AgentModels: AgentModelSettings{
@@ -198,6 +200,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.MotionIntensity != "" {
 		out.MotionIntensity = child.MotionIntensity
+	}
+	if child.UpdateCheckEnabled != nil {
+		out.UpdateCheckEnabled = child.UpdateCheckEnabled
 	}
 	if child.MaxIteration != nil {
 		out.MaxIteration = child.MaxIteration

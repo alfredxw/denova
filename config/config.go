@@ -39,6 +39,7 @@ type Config struct {
 	InteractiveMaxTokens        int                    `toml:"-"`
 	InteractiveHotChoices       bool                   `toml:"-"`
 	ResumeLastWorkspace         bool                   `toml:"-"`
+	UpdateCheckEnabled          bool                   `toml:"-"`
 }
 
 // LoadWithWorkspace 在已知 workspace 时读取分层配置（默认 < 用户级 < 工作区级 < 环境变量）。
@@ -95,6 +96,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		InteractiveMaxTokens:        settingsInt(s.InteractiveMaxTokens, 0),
 		InteractiveHotChoices:       settingsBool(s.InteractiveHotChoices, true),
 		ResumeLastWorkspace:         true,
+		UpdateCheckEnabled:          settingsBool(s.UpdateCheckEnabled, true),
 	}
 
 	// 环境变量始终最高优先级
@@ -206,6 +208,7 @@ func Load() *Config {
 			InteractiveMaxTokens:        settingsInt(d.InteractiveMaxTokens, 0),
 			InteractiveHotChoices:       settingsBool(d.InteractiveHotChoices, true),
 			ResumeLastWorkspace:         true,
+			UpdateCheckEnabled:          settingsBool(d.UpdateCheckEnabled, true),
 		}
 		overrideFromEnv(cfg)
 		if cfg.Workspace != "" {
