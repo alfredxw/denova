@@ -7,8 +7,10 @@ import { CSS } from '@dnd-kit/utilities'
 import { BookMarked, BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Settings, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
+import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { novaSpring } from '@/features/motion/motion-tokens'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
@@ -88,6 +90,7 @@ export function WorkbenchShell({
   onCloseSettings,
 }: WorkbenchShellProps) {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -406,6 +409,85 @@ export function WorkbenchShell({
       <span className="ml-auto">{isStreaming ? t('workbench.status.streaming') : t('workbench.status.idle')} · DeepSeek</span>
     </div>
   )
+
+  if (isMobile) {
+    const mobileTopBar = (
+      <header className="nova-mobile-topbar nova-topbar shrink-0 border-b border-[var(--nova-border)] px-3 py-2">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="shrink-0 font-semibold text-[var(--nova-text)]">Nova</div>
+          <LayoutGroup id="workbench-mobile-mode-switch">
+            <div className="flex h-8 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
+              <button
+                type="button"
+                onClick={() => onSetMode('ide')}
+                className={`relative min-w-0 overflow-hidden rounded-[6px] px-2 py-1 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+              >
+                {navigationMode === 'ide' && <motion.span layoutId="workbench-mobile-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
+                <span className="relative z-10">{t('workbench.mode.ideButton')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSetMode('interactive')}
+                className={`relative min-w-0 overflow-hidden rounded-[6px] px-2 py-1 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+              >
+                {navigationMode === 'interactive' && <motion.span layoutId="workbench-mobile-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
+                <span className="relative z-10">{t('workbench.mode.interactiveButton')}</span>
+              </button>
+            </div>
+          </LayoutGroup>
+        </div>
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]" title={workspace || currentBookName}>
+          <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+          <span className="min-w-0 flex-1 truncate font-medium text-[var(--nova-text-muted)]">{currentBookName}</span>
+          <span className="shrink-0 text-[var(--nova-text-faint)]">{modeLabel}</span>
+        </div>
+      </header>
+    )
+    const mobileActivityItems: MobileNavItem[] = activityItems.map((item) => ({
+      id: item.id,
+      label: item.label,
+      icon: item.icon,
+      active: item.active,
+      onClick: item.onClick,
+    }))
+    const mobileProjectDrawer = mode === 'ide' && !fullWorkspacePanelVisible && sidebar ? {
+      id: 'project' as const,
+      title: t('workbench.mobile.project'),
+      icon: <PanelLeft className="h-4 w-4" />,
+      side: 'left' as const,
+      content: sidebar,
+    } : undefined
+    const mobileAgentDrawer = mode === 'ide' && !fullWorkspacePanelVisible ? {
+      id: 'agent' as const,
+      title: t('workbench.mobile.agent'),
+      icon: <Bot className="h-4 w-4" />,
+      side: 'right' as const,
+      content: rightPanelContent,
+      onOpen: () => onSetRightPanel('ai'),
+      onClose: () => {
+        if (rightPanel === 'ai') onSetRightPanel(null)
+      },
+    } : undefined
+
+    return (
+      <WorkspaceMobileLayout
+        topBar={mobileTopBar}
+        main={main}
+        activityItems={mobileActivityItems}
+        projectDrawer={mobileProjectDrawer}
+        agentDrawer={mobileAgentDrawer}
+        settingsItem={{
+          id: 'settings',
+          label: t('workbench.activity.settings'),
+          icon: <Settings className="h-4 w-4" />,
+          active: settingsOpen,
+          onClick: onToggleSettings,
+        }}
+        closeLabel={t('common.close')}
+        navigationLabel={t('workbench.mobile.navigation')}
+      />
+    )
+  }
 
   return (
     <WorkspaceLayout

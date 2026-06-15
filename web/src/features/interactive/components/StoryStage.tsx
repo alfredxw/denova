@@ -518,12 +518,12 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   return (
     <main className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
       <div data-testid="story-stage-card" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
-        <div className="nova-topbar flex min-h-14 flex-wrap items-center justify-between gap-3 border-b px-4 py-2">
-          <div className="min-w-0">
+        <div className="nova-story-stage-header nova-topbar flex min-h-14 flex-wrap items-center justify-between gap-3 border-b px-4 py-2">
+          <div className="nova-story-stage-title min-w-0">
             <div className="text-[10px] font-medium leading-4 text-[var(--nova-text-faint)]">{t('storyStage.branchLabel', { branch: branchId || 'main' })}</div>
             <div className="truncate text-xs font-semibold leading-5 text-[var(--nova-text)]">{title}</div>
           </div>
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <div className="nova-story-stage-controls flex min-w-0 flex-wrap items-center justify-end gap-2">
             <StoryPicker stories={stories} currentStoryId={storyId} tellers={tellers} onSelect={onStorySelect} onCreate={onStoryCreate} onDelete={onStoryDelete} />
             <TellerPicker story={story} tellers={tellers} onChange={onTellerChange} />
             <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} />
@@ -638,7 +638,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
               ) : null}
             </div>
           ) : null}
-          <div className="flex items-center gap-3">
+          <div className="nova-story-stage-composer-row flex items-center gap-3">
             <div className="relative min-w-0 flex-1">
               <ReferenceChips files={styleReferences} onRemove={removeStyleReference} prefix="#" tone="style" />
               <FileReferencePicker open={styleReferenceQuery !== null && styleSuggestions.length > 0} query={styleReferenceQuery || ''} files={styleSuggestions} onSelect={selectStyleReference} trigger="#" placeholder={t('chat.styleReference.placeholder')} emptyText={t('chat.styleReference.empty')} heading={t('chat.styleReference.heading')} />

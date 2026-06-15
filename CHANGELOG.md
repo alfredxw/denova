@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- WebUI 新增移动端工作台布局：窄屏下使用底部一级菜单、项目目录抽屉、创作 Agent 抽屉和互动场景记忆抽屉，避免桌面可拖拽面板在手机宽度下挤出主编辑/剧情区域。
 - WebUI 左侧一级菜单支持拖拽排序，IDE 与互动模式分别保存顺序，避免两种工作台入口互相影响。
 - 书籍管理页新增从书架移除和拖拽自定义排序；移除书籍只会从书架隐藏并保留磁盘目录，删除当前书籍后会自动切换到下一个可用书籍。
 - Agent loop 新增 `LoopPolicy`、`ContextLedger` 和 `.nova/runs` 运行账本，按轮记录上下文来源、大小上限、事件摘要和完成状态，为后续工具筛选、恢复和验证阶段提供稳定工程边界。
