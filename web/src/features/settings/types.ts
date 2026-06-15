@@ -29,6 +29,7 @@ export interface Settings {
   language?: string
   theme?: string
   motion_intensity?: string
+  update_check_enabled?: boolean | null
   max_iteration?: number | null
   model_max_retries?: number | null
   plan_mode_default?: boolean | null
@@ -140,3 +141,33 @@ export interface LayeredSettings {
 }
 
 export type SettingsLayer = 'user' | 'workspace'
+
+export interface UpdateAsset {
+  name: string
+  size: number
+  download_url: string
+  browser_download_url: string
+}
+
+export interface UpdateCheckResult {
+  current_version: string
+  latest_version: string
+  update_available: boolean
+  can_install: boolean
+  platform: string
+  release_url: string
+  published_at: string
+  release_notes?: string
+  asset?: UpdateAsset
+  message?: string
+}
+
+export interface UpdateInstallResult {
+  previous_version: string
+  installed_version: string
+  installed: boolean
+  restart_required: boolean
+  backup_path?: string
+  staged_path?: string
+  message?: string
+}

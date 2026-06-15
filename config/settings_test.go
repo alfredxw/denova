@@ -60,6 +60,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.MotionIntensity != "system" {
 		t.Fatalf("MotionIntensity default: %s", s.MotionIntensity)
 	}
+	if s.UpdateCheckEnabled == nil || *s.UpdateCheckEnabled != true {
+		t.Fatalf("UpdateCheckEnabled default")
+	}
 	if s.BackendPort == nil || *s.BackendPort != 8080 {
 		t.Fatalf("BackendPort default")
 	}
@@ -80,6 +83,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		Language:                   "auto",
 		Theme:                      "dark",
 		MotionIntensity:            "system",
+		UpdateCheckEnabled:         boolPtr(true),
 		ChapterFilenameFormat:      "old-chapter",
 		VolumeDirFormat:            "old-volume",
 		BackendPort:                intPtr(8080),
@@ -99,6 +103,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		Language:                   "en-US",
 		Theme:                      "light",
 		MotionIntensity:            "reduced",
+		UpdateCheckEnabled:         boolPtr(false),
 		ChapterFilenameFormat:      "new-chapter",
 		VolumeDirFormat:            "new-volume",
 		BackendPort:                intPtr(18080),
@@ -138,6 +143,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.MotionIntensity != "reduced" {
 		t.Fatalf("MotionIntensity should override parent: %s", out.MotionIntensity)
+	}
+	if out.UpdateCheckEnabled == nil || *out.UpdateCheckEnabled != false {
+		t.Fatalf("UpdateCheckEnabled should override parent")
 	}
 	if out.ChapterFilenameFormat != "new-chapter" || out.VolumeDirFormat != "new-volume" {
 		t.Fatalf("filename formats should override parent: %#v", out)

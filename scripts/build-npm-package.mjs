@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { cpSync, existsSync, mkdirSync, rmSync, chmodSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync, chmodSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = dirname(scriptDir);
 const packageDir = join(rootDir, "npm");
+const packageVersion = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf-8")).version || "dev";
 
 const platforms = [
   { key: "darwin-arm64", goos: "darwin", goarch: "arm64", exe: "nova" },
@@ -45,7 +46,7 @@ function main() {
     const outDir = join(packageDir, "vendor", target.key);
     mkdirSync(outDir, { recursive: true });
     const out = join(outDir, target.exe);
-    run("go", ["build", "-trimpath", "-ldflags", "-s -w", "-o", out, "./cmd/nova"], {
+    run("go", ["build", "-trimpath", "-ldflags", `-s -w -X nova/internal/buildinfo.Version=${packageVersion}`, "-o", out, "./cmd/nova"], {
       ...process.env,
       CGO_ENABLED: "0",
       GOOS: target.goos,
