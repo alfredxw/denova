@@ -56,11 +56,33 @@ func Due(now time.Time, task Task) bool {
 	if !task.Enabled {
 		return false
 	}
-	last := time.Time{}
-	if task.LastRun != nil {
-		last = task.LastRun.StartedAt
+	if len(task.Triggers) == 0 {
+		last := time.Time{}
+		if task.LastRun != nil {
+			last = task.LastRun.StartedAt
+		}
+		return scheduleDue(now, last, task.Schedule)
 	}
-	return scheduleDue(now, last, task.Schedule)
+	for _, trigger := range task.Triggers {
+		if trigger.Type != TriggerTypeSchedule || !trigger.Enabled {
+			continue
+		}
+		last := time.Time{}
+		if state, ok := task.TriggerState[trigger.ID]; ok {
+			last = state.LastMatchedAt
+		}
+		if last.IsZero() && task.LastRun != nil {
+			last = task.LastRun.StartedAt
+		}
+		if scheduleDue(now, last, trigger.Schedule) {
+			return true
+		}
+	}
+	return false
+}
+
+func ScheduleDue(now, last time.Time, schedule Schedule) bool {
+	return scheduleDue(now, last, schedule)
 }
 
 func scheduleDue(now, last time.Time, schedule Schedule) bool {

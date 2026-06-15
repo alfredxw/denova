@@ -101,7 +101,11 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	if err := ledger.RecordContext([]ContextLedgerPart{{Source: "用户输入", Title: "请求", Included: true}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := ledger.RecordEvent(Event{Type: "verification", Data: PostRunVerification{Status: "ok", Mutations: 1}}); err != nil {
+	if err := ledger.RecordEvent(Event{Type: "tool_result", Data: map[string]interface{}{
+		"id":      "call-1",
+		"name":    "write_file",
+		"content": "写入成功",
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordMutations([]ToolMutation{{ToolName: "write_file", Source: ToolSourceWrite, Target: "chapters/ch01.md"}}); err != nil {
@@ -193,6 +197,56 @@ func TestRunLedgerWritesBoundedJSONLTrace(t *testing.T) {
 	}
 	if strings.Contains(content["preview"].(string), "需要被截断保存") {
 		t.Fatalf("tool result preview should be bounded: %#v", content)
+	}
+}
+
+func TestRunLedgerSkipsTransportStreamEvents(t *testing.T) {
+	workspace := t.TempDir()
+	ledger, err := newRunLedger(workspace, RunLedgerPolicy{
+		Enabled:      true,
+		Directory:    ".nova/runs",
+		PreviewChars: 8,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range []Event{
+		{Type: "run_state", Data: map[string]string{"phase": "started"}},
+		{Type: "thinking", Data: map[string]string{"content": "逐帧思考"}},
+		{Type: "chunk", Data: map[string]string{"content": "逐帧正文"}},
+		{Type: "tool_args_delta", Data: map[string]string{"delta": `{"path"`}},
+		{Type: "verification", Data: PostRunVerification{Status: "ok"}},
+		{Type: "done", Data: map[string]string{}},
+	} {
+		if err := ledger.RecordEvent(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ledger.RecordEvent(Event{Type: "tool_call", Data: map[string]interface{}{
+		"id":   "call-1",
+		"name": "write_file",
+		"args": `{"path":"chapters/ch01.md"}`,
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordEvent(Event{Type: "error", Data: map[string]string{"message": "runner error"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	records := readRunLedgerRecords(t, ledger.Path())
+	if len(records) != 3 {
+		t.Fatalf("expected run_created plus 2 semantic event records, got %d: %#v", len(records), records)
+	}
+	if records[1]["type"] != "event" || records[2]["type"] != "event" {
+		t.Fatalf("expected only semantic events after run_created: %#v", records)
+	}
+	firstEvent := records[1]["data"].(map[string]any)
+	secondEvent := records[2]["data"].(map[string]any)
+	if firstEvent["event_type"] != "tool_call" || secondEvent["event_type"] != "error" {
+		t.Fatalf("unexpected persisted event types: %#v %#v", firstEvent, secondEvent)
 	}
 }
 

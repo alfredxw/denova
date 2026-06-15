@@ -103,6 +103,9 @@ func (l *RunLedger) RecordEvent(ev Event) error {
 	if l == nil {
 		return nil
 	}
+	if !shouldRecordRunLedgerEvent(ev.Type) {
+		return nil
+	}
 	return l.Record("event", map[string]any{
 		"event_type": ev.Type,
 		"event_data": l.summarizeEventData(ev.Data),
@@ -246,6 +249,15 @@ func (l *RunLedger) summarizeText(content string) textSummary {
 func shouldSummarizeRunLedgerField(key string) bool {
 	switch strings.ToLower(strings.TrimSpace(key)) {
 	case "content", "args", "delta", "message", "error", "result", "thinking":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldRecordRunLedgerEvent(eventType string) bool {
+	switch strings.TrimSpace(eventType) {
+	case "tool_call", "tool_target", "tool_result", "error", "aborted":
 		return true
 	default:
 		return false

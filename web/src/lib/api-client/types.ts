@@ -304,8 +304,15 @@ export interface LoreAgentResult {
 export type AutomationScope = 'user' | 'workspace'
 export type AutomationTemplate = 'memory_consolidation' | 'review' | 'continue_writing' | 'custom_prompt'
 export type AutomationWritePolicy = 'read_only' | 'allow_lore_write' | 'allow_file_write' | 'allow_lore_and_file_write'
+export type AutomationWriteMode = 'read_only' | 'confirm_write' | 'auto_write'
+export type AutomationWriteScope = 'none' | 'lore' | 'file' | 'lore_and_file'
 export type AutomationOutputPolicy = 'run_record_only' | 'optional_file'
 export type AutomationScheduleKind = 'manual' | 'daily' | 'weekly' | 'monthly' | 'every_hours'
+export type AutomationTriggerType = 'manual' | 'schedule' | 'semantic' | 'chapter_batch'
+export type AutomationActionPolicy = 'confirm' | 'auto_run' | 'notify_only'
+export type AutomationNotifyPolicy = 'inbox' | 'silent'
+export type AutomationInboxStatus = 'pending' | 'dismissed' | 'confirmed' | 'auto_run'
+export type AutomationInboxPurpose = 'trigger' | 'write_confirmation'
 
 export interface AutomationSchedule {
   kind: AutomationScheduleKind
@@ -317,13 +324,34 @@ export interface AutomationSchedule {
   cron?: string
 }
 
+export interface AutomationTriggerDefinition {
+  id: string
+  type: AutomationTriggerType
+  enabled: boolean
+  name?: string
+  action_policy?: AutomationActionPolicy
+  notify_policy?: AutomationNotifyPolicy
+  schedule?: AutomationSchedule
+  semantic_condition?: string
+  chapter_batch_size?: number
+}
+
+export interface AutomationTriggerState {
+  last_checked_at?: string
+  last_matched_at?: string
+  last_evidence_fingerprint?: string
+  last_observation_fingerprint?: string
+}
+
 export interface AutomationRunRecord {
   id: string
   task_id: string
   session_id?: string
   scope: AutomationScope
   workspace?: string
-  trigger: 'manual' | 'schedule'
+  trigger: 'manual' | 'schedule' | 'condition' | 'inbox_confirmation' | 'write_confirmation'
+  source_run_id?: string
+  trigger_evidence?: AutomationTriggerEvidence[]
   status: 'running' | 'success' | 'failed' | 'aborted'
   started_at: string
   finished_at?: string
@@ -340,8 +368,14 @@ export interface AutomationTask {
   name: string
   template: AutomationTemplate
   prompt: string
+  model_profile_id?: string
   schedule: AutomationSchedule
-  write_policy: AutomationWritePolicy
+  triggers: AutomationTriggerDefinition[]
+  default_action_policy: AutomationActionPolicy
+  trigger_state?: Record<string, AutomationTriggerState>
+  write_policy?: AutomationWritePolicy
+  write_mode: AutomationWriteMode
+  write_scope: AutomationWriteScope
   output_policy: AutomationOutputPolicy
   output_path: string
   last_run?: AutomationRunRecord
@@ -358,6 +392,40 @@ export interface AutomationRunResult {
 export interface AutomationActiveRun {
   run: AutomationRunRecord
   task_id: string
+}
+
+export interface AutomationTriggerEvidence {
+  source: string
+  title: string
+  ref?: string
+  snippet?: string
+}
+
+export interface AutomationInboxItem {
+  id: string
+  task_id: string
+  trigger_id: string
+  purpose?: AutomationInboxPurpose
+  scope: AutomationScope
+  workspace?: string
+  status: AutomationInboxStatus
+  action_policy: AutomationActionPolicy
+  notify_policy: AutomationNotifyPolicy
+  title: string
+  summary: string
+  evidence: AutomationTriggerEvidence[]
+  fingerprint: string
+  run_id?: string
+  source_run_id?: string
+  created_at: string
+  updated_at: string
+  read_at?: string
+  handled_at?: string
+}
+
+export interface AutomationInboxActionResult {
+  item: AutomationInboxItem
+  run?: AutomationRunRecord
 }
 
 export interface TextSelection {

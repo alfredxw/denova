@@ -1,5 +1,5 @@
 import { jsonHeaders, parseSSEStream, requestJSON } from './client'
-import type { AutomationActiveRun, AutomationRunResult, AutomationTask, ChatMessage, SSEEvent } from './types'
+import type { AutomationActiveRun, AutomationInboxActionResult, AutomationInboxItem, AutomationRunResult, AutomationTask, ChatMessage, SSEEvent } from './types'
 
 export async function getAutomations(): Promise<AutomationTask[]> {
   const data = await requestJSON<{ tasks: AutomationTask[] }>('/api/automations')
@@ -12,6 +12,28 @@ export async function createAutomation(task: AutomationTask): Promise<Automation
     headers: jsonHeaders,
     body: JSON.stringify(task),
   })
+}
+
+export async function getAutomationInbox(): Promise<AutomationInboxItem[]> {
+  const data = await requestJSON<{ items: AutomationInboxItem[] }>('/api/automations/inbox')
+  return data.items || []
+}
+
+export async function checkAutomation(id: string): Promise<AutomationInboxItem[]> {
+  const data = await requestJSON<{ items: AutomationInboxItem[] }>(`/api/automations/${encodeURIComponent(id)}/check`, { method: 'POST' })
+  return data.items || []
+}
+
+export async function confirmAutomationInboxItem(id: string): Promise<AutomationInboxActionResult> {
+  return requestJSON(`/api/automations/inbox/${encodeURIComponent(id)}/confirm`, { method: 'POST' })
+}
+
+export async function dismissAutomationInboxItem(id: string): Promise<AutomationInboxItem> {
+  return requestJSON(`/api/automations/inbox/${encodeURIComponent(id)}/dismiss`, { method: 'POST' })
+}
+
+export async function markAutomationInboxItemRead(id: string): Promise<AutomationInboxItem> {
+  return requestJSON(`/api/automations/inbox/${encodeURIComponent(id)}/read`, { method: 'POST' })
 }
 
 export async function updateAutomation(id: string, task: AutomationTask): Promise<AutomationTask> {

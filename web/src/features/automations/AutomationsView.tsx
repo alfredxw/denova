@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Clock3, FileText, MessageSquareText, Play, Save, Settings2, Square, Trash2, X } from 'lucide-react'
+import { Clock3, FileText, Inbox, MessageSquareText, Play, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { MessageList } from '@/components/Chat/MessageList'
@@ -8,23 +8,35 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   createAutomation,
   deleteAutomation,
+  checkAutomation,
+  confirmAutomationInboxItem,
+  dismissAutomationInboxItem,
+  getAutomationInbox,
   getAutomations,
   getActiveAutomationRuns,
+  markAutomationInboxItemRead,
   updateAutomation,
+  type AutomationInboxItem,
   type AutomationRunRecord,
-  type AutomationScheduleKind,
   type AutomationTask,
+  type AutomationTriggerDefinition,
 } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
+import { fetchSettings } from '@/features/settings/api'
+import type { Settings, ModelProfileSettings } from '@/features/settings/types'
 import { useAutomationRunStream } from './useAutomationRunStream'
+import { InboxPanel } from './AutomationInboxPanel'
+import { TriggerEditor, defaultScheduleTrigger } from './AutomationTriggerEditor'
 
 const fieldCls = 'nova-field min-h-7 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
-type AutomationPanelView = 'config' | 'run'
+type AutomationPanelView = 'config' | 'inbox' | 'run'
 
 export function AutomationsView({ workspace, onClose }: { workspace: string; onClose?: () => void }) {
   const { t } = useTranslation()
   const [tasks, setTasks] = useState<AutomationTask[]>([])
+  const [inboxItems, setInboxItems] = useState<AutomationInboxItem[]>([])
+  const [effectiveSettings, setEffectiveSettings] = useState<Settings | null>(null)
   const [activeId, setActiveId] = useState<string>('')
   const [draft, setDraft] = useState<AutomationTask>(() => newTask('workspace'))
   const [scopeFilter, setScopeFilter] = useState<'workspace' | 'user'>('workspace')
@@ -34,9 +46,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
   const load = useCallback(async () => {
     try {
-      const data = await getAutomations()
-      setTasks(data)
-      const first = data.find((task) => task.scope === scopeFilter) ?? data[0]
+      const [data, inbox, settings] = await Promise.all([getAutomations(), getAutomationInbox(), fetchSettings()])
+      const normalized = data.map(normalizeTaskShape)
+      setTasks(normalized)
+      setInboxItems(inbox)
+      setEffectiveSettings(settings.effective)
+      const first = normalized.find((task) => task.scope === scopeFilter) ?? normalized[0]
       if (first) {
         setActiveId(first.id || '')
         setDraft(cloneTask(first))
@@ -80,7 +95,9 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   }, [resumeAutomationRun, running, t, tasks])
 
   const filteredTasks = useMemo(() => tasks.filter((task) => task.scope === scopeFilter), [scopeFilter, tasks])
-  const schedulePreview = scheduleToText(draft.schedule, t)
+  const unreadInboxCount = useMemo(() => inboxItems.filter((item) => !item.read_at && item.status === 'pending').length, [inboxItems])
+  const modelProfileOptions = useMemo(() => buildModelProfileOptions(effectiveSettings, draft.model_profile_id, t), [draft.model_profile_id, effectiveSettings, t])
+  const inheritedAutomationProfile = useMemo(() => inheritedAutomationProfileLabel(effectiveSettings, t), [effectiveSettings, t])
 
   const selectTask = (task: AutomationTask) => {
     setActiveId(task.id || '')
@@ -153,6 +170,22 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     }
   }
 
+  const checkTriggers = async () => {
+    if (!activeId) return
+    setSaving(true)
+    setError(null)
+    try {
+      await checkAutomation(activeId)
+      const inbox = await getAutomationInbox()
+      setInboxItems(inbox)
+      setPanelView('inbox')
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const openRun = async (run: AutomationRunRecord) => {
     setError(null)
     setPanelView('run')
@@ -173,13 +206,47 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     }
   }
 
+  const confirmInboxItem = async (item: AutomationInboxItem) => {
+    setError(null)
+    try {
+      const result = await confirmAutomationInboxItem(item.id)
+      setInboxItems((current) => current.map((candidate) => candidate.id === result.item.id ? result.item : candidate))
+      if (result.run) {
+        const task = tasks.find(candidate => candidate.id === result.run?.task_id)
+        setPanelView('run')
+        await resumeAutomationRun(result.run, t('automations.run.attached', { name: task?.name || result.run.task_id }))
+      }
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  const dismissInboxItem = async (item: AutomationInboxItem) => {
+    setError(null)
+    try {
+      const updated = await dismissAutomationInboxItem(item.id)
+      setInboxItems((current) => current.map((candidate) => candidate.id === updated.id ? updated : candidate))
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  const readInboxItem = async (item: AutomationInboxItem) => {
+    if (item.read_at) return
+    try {
+      const updated = await markAutomationInboxItemRead(item.id)
+      setInboxItems((current) => current.map((candidate) => candidate.id === updated.id ? updated : candidate))
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
   const setDraftField = (patch: Partial<AutomationTask>) => setDraft((current) => ({ ...current, ...patch }))
-  const setTemplate = (template: AutomationTask['template']) => {
-    setDraft((current) => ({
-      ...current,
-      template,
-      write_policy: template === 'continue_writing' && current.write_policy === 'read_only' ? 'allow_file_write' : current.write_policy,
-    }))
+  const setDraftTriggers = (triggers: AutomationTriggerDefinition[]) => {
+    setDraft((current) => {
+      const schedule = triggers.find((trigger) => trigger.type === 'schedule')?.schedule ?? current.schedule
+      return { ...current, schedule, triggers }
+    })
   }
 
   return (
@@ -194,7 +261,11 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
             </button>
           ))}
         </div>
-        <button type="button" onClick={runNow} disabled={!activeId || running || saving} className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50">
+        <button type="button" onClick={checkTriggers} disabled={!activeId || running || saving} className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1 text-[var(--nova-text-muted)] disabled:opacity-50">
+          <RefreshCw className="h-3.5 w-3.5" />
+          {t('automations.checkTriggers')}
+        </button>
+        <button type="button" onClick={runNow} disabled={!activeId || running || saving} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50">
           <Play className="h-3.5 w-3.5" />
           {running ? t('automations.running') : t('automations.runNow')}
         </button>
@@ -228,9 +299,9 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
             ) : filteredTasks.map((task) => (
               <button key={task.id} type="button" onClick={() => selectTask(task)} className={`nova-nav-item flex w-full items-start gap-2 rounded-[var(--nova-radius)] px-2.5 py-2 text-left ${activeId === task.id ? 'is-active' : ''}`}>
                 <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
-                <span className="min-w-0 flex-1">
+                  <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-[var(--nova-text)]">{task.name}</span>
-                  <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{templateLabel(task.template, t)} · {task.enabled ? t('automations.enabled') : t('automations.disabled')}</span>
+                  <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{automationTaskSubtitle(task, t)} · {task.enabled ? t('automations.enabled') : t('automations.disabled')}</span>
                 </span>
               </button>
             ))}
@@ -247,6 +318,15 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
               >
                 <Settings2 className="h-3.5 w-3.5" />
                 {t('automations.view.config')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPanelView('inbox')}
+                className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'inbox' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+              >
+                <Inbox className="h-3.5 w-3.5" />
+                {t('automations.view.inbox')}
+                {unreadInboxCount > 0 && <span className="rounded-full bg-[var(--nova-danger-border)] px-1.5 text-[10px] text-white">{unreadInboxCount}</span>}
               </button>
               <button
                 type="button"
@@ -278,18 +358,16 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                       <option value="false">{t('automations.disabled')}</option>
                     </select>
                   </Field>
-                  <Field label={t('automations.field.template')}>
-                    <select value={draft.template} onChange={(e) => setTemplate(e.target.value as AutomationTask['template'])} className={fieldCls}>
-                      <option value="memory_consolidation">{t('automations.template.memory')}</option>
-                      <option value="review">{t('automations.template.review')}</option>
-                      <option value="continue_writing">{t('automations.template.continueWriting')}</option>
-                      <option value="custom_prompt">{t('automations.template.custom')}</option>
-                    </select>
-                  </Field>
                   <Field label={t('automations.field.scope')}>
                     <select value={draft.scope} disabled={Boolean(activeId)} onChange={(e) => setDraftField({ scope: e.target.value as AutomationTask['scope'] })} className={fieldCls}>
                       <option value="workspace">{t('automations.scope.workspace')}</option>
                       <option value="user">{t('automations.scope.user')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('automations.field.modelProfile')}>
+                    <select value={draft.model_profile_id || ''} onChange={(e) => setDraftField({ model_profile_id: e.target.value })} className={fieldCls}>
+                      <option value="">{t('automations.model.inherit', { label: inheritedAutomationProfile })}</option>
+                      {modelProfileOptions.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
                     </select>
                   </Field>
                   <div className="md:col-span-2">
@@ -300,12 +378,19 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                 </section>
 
                 <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
-                  <Field label={t('automations.field.writePolicy')}>
-                    <select value={draft.write_policy} onChange={(e) => setDraftField({ write_policy: e.target.value as AutomationTask['write_policy'] })} className={fieldCls}>
-                      <option value="read_only">{t('automations.write.readOnly')}</option>
-                      <option value="allow_lore_write">{t('automations.write.lore')}</option>
-                      <option value="allow_file_write">{t('automations.write.file')}</option>
-                      <option value="allow_lore_and_file_write">{t('automations.write.loreFile')}</option>
+                  <Field label={t('automations.field.writeMode')}>
+                    <select value={draft.write_mode} onChange={(e) => setDraftField(nextWriteModePatch(draft, e.target.value as AutomationTask['write_mode']))} className={fieldCls}>
+                      <option value="read_only">{t('automations.writeMode.readOnly')}</option>
+                      <option value="confirm_write">{t('automations.writeMode.confirmWrite')}</option>
+                      <option value="auto_write">{t('automations.writeMode.autoWrite')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('automations.field.writeScope')}>
+                    <select value={draft.write_scope} disabled={draft.write_mode === 'read_only'} onChange={(e) => setDraftField(nextWriteScopePatch(draft, e.target.value as AutomationTask['write_scope']))} className={fieldCls}>
+                      <option value="none">{t('automations.writeScope.none')}</option>
+                      <option value="lore">{t('automations.writeScope.lore')}</option>
+                      <option value="file">{t('automations.writeScope.file')}</option>
+                      <option value="lore_and_file">{t('automations.writeScope.loreFile')}</option>
                     </select>
                   </Field>
                   <Field label={t('automations.field.outputPolicy')}>
@@ -322,9 +407,8 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                 </section>
 
                 <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
-                  <SectionTitle title={t('automations.section.schedule')} />
-                  <ScheduleEditor task={draft} onChange={(schedule) => setDraftField({ schedule })} />
-                  <div className="text-[11px] text-[var(--nova-text-faint)]">{schedulePreview}</div>
+                  <SectionTitle title={t('automations.section.triggers')} />
+                  <TriggerEditor task={draft} onChange={setDraftTriggers} />
                 </section>
 
                 <section className="space-y-3 pb-5">
@@ -336,6 +420,18 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                 </section>
               </div>
             </div>
+          ) : panelView === 'inbox' ? (
+            <InboxPanel
+              items={inboxItems}
+              tasks={tasks}
+              onRead={readInboxItem}
+              onConfirm={confirmInboxItem}
+              onDismiss={dismissInboxItem}
+              onOpenRun={(runId) => {
+                const run = tasks.flatMap((task) => task.recent_runs || []).find((candidate) => candidate.id === runId)
+                if (run) void openRun(run)
+              }}
+            />
           ) : (
             <section className="flex min-h-0 flex-1 flex-col">
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -376,38 +472,6 @@ function SectionTitle({ title }: { title: string }) {
   return <div className="text-xs font-medium text-[var(--nova-text)]">{title}</div>
 }
 
-function NumberInput({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) {
-  return (
-    <Field label={label}>
-      <input type="number" min={min} max={max} value={value} onChange={(e) => onChange(Number(e.target.value))} className={fieldCls} />
-    </Field>
-  )
-}
-
-function ScheduleEditor({ task, onChange }: { task: AutomationTask; onChange: (schedule: AutomationTask['schedule']) => void }) {
-  const { t } = useTranslation()
-  const schedule = task.schedule
-  const patch = (next: Partial<AutomationTask['schedule']>) => onChange({ ...schedule, ...next })
-  return (
-    <div className="grid gap-3 md:grid-cols-5">
-      <Field label={t('automations.schedule.kind')}>
-        <select value={schedule.kind} onChange={(e) => patch({ kind: e.target.value as AutomationScheduleKind })} className={fieldCls}>
-          <option value="manual">{t('automations.schedule.manual')}</option>
-          <option value="daily">{t('automations.schedule.daily')}</option>
-          <option value="weekly">{t('automations.schedule.weekly')}</option>
-          <option value="monthly">{t('automations.schedule.monthly')}</option>
-          <option value="every_hours">{t('automations.schedule.everyHours')}</option>
-        </select>
-      </Field>
-      {schedule.kind === 'weekly' && <NumberInput label={t('automations.schedule.weekday')} value={schedule.weekday ?? 1} min={0} max={6} onChange={(v) => patch({ weekday: v })} />}
-      {schedule.kind === 'monthly' && <NumberInput label={t('automations.schedule.day')} value={schedule.day_of_month ?? 1} min={1} max={31} onChange={(v) => patch({ day_of_month: v })} />}
-      {schedule.kind === 'every_hours' && <NumberInput label={t('automations.schedule.hours')} value={schedule.every_hours ?? 6} min={1} max={168} onChange={(v) => patch({ every_hours: v })} />}
-      {schedule.kind !== 'manual' && schedule.kind !== 'every_hours' && <NumberInput label={t('automations.schedule.hour')} value={schedule.hour} min={0} max={23} onChange={(v) => patch({ hour: v })} />}
-      {schedule.kind !== 'manual' && <NumberInput label={t('automations.schedule.minute')} value={schedule.minute} min={0} max={59} onChange={(v) => patch({ minute: v })} />}
-    </div>
-  )
-}
-
 function RunList({ task, activeRunId, onOpenRun }: { task: AutomationTask; activeRunId: string; onOpenRun: (run: AutomationRunRecord) => void }) {
   const { t } = useTranslation()
   const runs = task.recent_runs || []
@@ -438,14 +502,20 @@ function RunList({ task, activeRunId, onOpenRun }: { task: AutomationTask; activ
 }
 
 function newTask(scope: 'workspace' | 'user'): AutomationTask {
+  const schedule = { kind: 'manual', hour: 9, minute: 0, weekday: 1, day_of_month: 1, every_hours: 6 } satisfies AutomationTask['schedule']
   return {
     scope,
     enabled: false,
-    name: scope === 'workspace' ? 'Workspace review' : 'User memory consolidation',
-    template: scope === 'workspace' ? 'review' : 'memory_consolidation',
+    name: scope === 'workspace' ? 'Workspace automation' : 'User automation',
+    template: 'custom_prompt',
     prompt: '',
-    schedule: { kind: 'manual', hour: 9, minute: 0, weekday: 1, day_of_month: 1, every_hours: 6 },
+    model_profile_id: '',
+    schedule,
+    triggers: [defaultScheduleTrigger(schedule)],
+    default_action_policy: 'auto_run',
     write_policy: 'read_only',
+    write_mode: 'read_only',
+    write_scope: 'none',
     output_policy: 'run_record_only',
     output_path: '',
     recent_runs: [],
@@ -453,7 +523,44 @@ function newTask(scope: 'workspace' | 'user'): AutomationTask {
 }
 
 function cloneTask(task: AutomationTask): AutomationTask {
-  return JSON.parse(JSON.stringify(task)) as AutomationTask
+  return normalizeTaskShape(JSON.parse(JSON.stringify(task)) as AutomationTask)
+}
+
+function normalizeTaskShape(task: AutomationTask): AutomationTask {
+  if (task.write_mode && task.write_scope) {
+    return { ...task, default_action_policy: actionPolicyForWriteMode(task.write_mode) }
+  }
+  const legacy = task.write_policy || 'read_only'
+  if (legacy === 'allow_lore_write') return { ...task, default_action_policy: 'auto_run', write_mode: 'auto_write', write_scope: 'lore' }
+  if (legacy === 'allow_file_write') return { ...task, default_action_policy: 'auto_run', write_mode: 'auto_write', write_scope: 'file' }
+  if (legacy === 'allow_lore_and_file_write') return { ...task, default_action_policy: 'auto_run', write_mode: 'auto_write', write_scope: 'lore_and_file' }
+  return { ...task, default_action_policy: 'auto_run', write_policy: 'read_only', write_mode: 'read_only', write_scope: 'none' }
+}
+
+function nextWriteModePatch(task: AutomationTask, writeMode: AutomationTask['write_mode']): Partial<AutomationTask> {
+  if (writeMode === 'read_only') {
+    return { default_action_policy: actionPolicyForWriteMode(writeMode), write_mode: 'read_only', write_scope: 'none', write_policy: 'read_only' }
+  }
+  const scope = task.write_scope === 'none' ? 'file' : task.write_scope
+  return { default_action_policy: actionPolicyForWriteMode(writeMode), write_mode: writeMode, write_scope: scope, write_policy: legacyWritePolicyForScope(scope) }
+}
+
+function nextWriteScopePatch(task: AutomationTask, writeScope: AutomationTask['write_scope']): Partial<AutomationTask> {
+  if (task.write_mode === 'read_only' || writeScope === 'none') {
+    return { write_mode: 'read_only', write_scope: 'none', write_policy: 'read_only' }
+  }
+  return { write_scope: writeScope, write_policy: legacyWritePolicyForScope(writeScope) }
+}
+
+function legacyWritePolicyForScope(writeScope: AutomationTask['write_scope']): AutomationTask['write_policy'] {
+  if (writeScope === 'lore') return 'allow_lore_write'
+  if (writeScope === 'file') return 'allow_file_write'
+  if (writeScope === 'lore_and_file') return 'allow_lore_and_file_write'
+  return 'read_only'
+}
+
+function actionPolicyForWriteMode(_writeMode: AutomationTask['write_mode']): AutomationTask['default_action_policy'] {
+  return 'auto_run'
 }
 
 function upsertTask(tasks: AutomationTask[], task: AutomationTask) {
@@ -464,26 +571,51 @@ function upsertTask(tasks: AutomationTask[], task: AutomationTask) {
   return next
 }
 
-function templateLabel(template: AutomationTask['template'], t: (key: string) => string) {
-  if (template === 'memory_consolidation') return t('automations.template.memory')
-  if (template === 'review') return t('automations.template.review')
-  if (template === 'continue_writing') return t('automations.template.continueWriting')
-  return t('automations.template.custom')
+function automationTaskSubtitle(task: AutomationTask, t: (key: string, options?: Record<string, unknown>) => string) {
+  const triggerCount = task.triggers?.length || 0
+  return t('automations.task.subtitle', {
+    triggerCount,
+    writeMode: t(`automations.writeMode.${writeModeKey(task.write_mode)}`),
+  })
 }
 
-function scheduleToText(schedule: AutomationTask['schedule'], t: (key: string, options?: Record<string, unknown>) => string) {
-  if (schedule.kind === 'manual') return t('automations.schedule.previewManual')
-  if (schedule.kind === 'daily') return t('automations.schedule.previewDaily', { hour: schedule.hour, minute: pad2(schedule.minute) })
-  if (schedule.kind === 'weekly') return t('automations.schedule.previewWeekly', { weekday: schedule.weekday ?? 1, hour: schedule.hour, minute: pad2(schedule.minute) })
-  if (schedule.kind === 'monthly') return t('automations.schedule.previewMonthly', { day: schedule.day_of_month ?? 1, hour: schedule.hour, minute: pad2(schedule.minute) })
-  return t('automations.schedule.previewEveryHours', { hours: schedule.every_hours ?? 6, minute: pad2(schedule.minute) })
+function writeModeKey(writeMode: AutomationTask['write_mode']) {
+  if (writeMode === 'confirm_write') return 'confirmWrite'
+  if (writeMode === 'auto_write') return 'autoWrite'
+  return 'readOnly'
 }
 
-function pad2(value: number) {
-  return String(value).padStart(2, '0')
+function buildModelProfileOptions(settings: Settings | null, selectedID: string | undefined, t: (key: string, options?: Record<string, unknown>) => string): Array<{ id: string; label: string }> {
+  const labels = modelProfileLabels(settings, t)
+  const selected = selectedID?.trim()
+  if (selected && !labels.has(selected)) {
+    labels.set(selected, t('automations.model.unknownProfile', { id: selected }))
+  }
+  return Array.from(labels.entries()).map(([id, label]) => ({
+    id,
+    label: id === 'default' ? t('automations.model.defaultProfile', { label }) : t('automations.model.profile', { id, label }),
+  }))
+}
+
+function inheritedAutomationProfileLabel(settings: Settings | null, t: (key: string, options?: Record<string, unknown>) => string) {
+  const labels = modelProfileLabels(settings, t)
+  const inheritedID = settings?.agent_models?.automation?.profile_id || settings?.agent_models?.default?.profile_id || 'default'
+  return labels.get(inheritedID) || t('automations.model.unknownProfile', { id: inheritedID })
+}
+
+function modelProfileLabels(settings: Settings | null, t: (key: string, options?: Record<string, unknown>) => string) {
+  const profiles = new Map<string, string>()
+  profiles.set('default', settings?.openai_model || t('automations.model.defaultModel'))
+  const add = (profile?: ModelProfileSettings) => {
+    const id = profile?.id?.trim()
+    if (!id) return
+    profiles.set(id, profile?.name || profile?.openai_model || id)
+  }
+  ;(settings?.model_profiles ?? []).forEach(add)
+  return profiles
 }
 
 function buildRunUserMessage(task: AutomationTask, t: (key: string, options?: Record<string, unknown>) => string) {
-  const prompt = task.prompt?.trim() || templateLabel(task.template, t)
+  const prompt = task.prompt?.trim() || task.name
   return `${t('automations.run.userMessage', { name: task.name })}\n\n${prompt}`
 }

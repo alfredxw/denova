@@ -17,8 +17,11 @@ type Store struct {
 	workspace string
 }
 
+const workspaceDefaultAutomationSeedVersion = 2
+
 type storeFile struct {
-	Tasks []Task `json:"tasks"`
+	SeedVersion int    `json:"seed_version,omitempty"`
+	Tasks       []Task `json:"tasks"`
 }
 
 func NewStore(userNovaDir, workspace string) *Store {
@@ -165,7 +168,14 @@ func (s *Store) readScope(scope string) ([]Task, error) {
 	}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return []Task{}, nil
+		file := storeFile{}
+		if scope == ScopeWorkspace {
+			file = seedWorkspaceDefaultAutomations(file)
+			if writeErr := s.writeScopeFile(scope, file); writeErr != nil {
+				return nil, writeErr
+			}
+		}
+		return normalizeTaskList(path, file.Tasks)
 	}
 	if err != nil {
 		return nil, err
@@ -174,8 +184,18 @@ func (s *Store) readScope(scope string) ([]Task, error) {
 	if err := json.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("read automations %s failed: %w", path, err)
 	}
-	out := make([]Task, 0, len(file.Tasks))
-	for _, task := range file.Tasks {
+	if scope == ScopeWorkspace && file.SeedVersion < workspaceDefaultAutomationSeedVersion {
+		file = seedWorkspaceDefaultAutomations(file)
+		if writeErr := s.writeScopeFile(scope, file); writeErr != nil {
+			return nil, writeErr
+		}
+	}
+	return normalizeTaskList(path, file.Tasks)
+}
+
+func normalizeTaskList(path string, tasks []Task) ([]Task, error) {
+	out := make([]Task, 0, len(tasks))
+	for _, task := range tasks {
 		normalized, err := NormalizeTask(task)
 		if err != nil {
 			return nil, fmt.Errorf("invalid automation task %s: %w", task.ID, err)
@@ -186,6 +206,14 @@ func (s *Store) readScope(scope string) ([]Task, error) {
 }
 
 func (s *Store) writeScope(scope string, tasks []Task) error {
+	file := storeFile{Tasks: tasks}
+	if scope == ScopeWorkspace {
+		file.SeedVersion = workspaceDefaultAutomationSeedVersion
+	}
+	return s.writeScopeFile(scope, file)
+}
+
+func (s *Store) writeScopeFile(scope string, file storeFile) error {
 	path, err := s.pathForScope(scope)
 	if err != nil {
 		return err
@@ -193,11 +221,94 @@ func (s *Store) writeScope(scope string, tasks []Task) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(storeFile{Tasks: tasks}, "", "  ")
+	data, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, append(data, '\n'), 0o644)
+}
+
+func seedWorkspaceDefaultAutomations(file storeFile) storeFile {
+	file.SeedVersion = workspaceDefaultAutomationSeedVersion
+	for _, seeded := range defaultWorkspaceAutomations() {
+		file.Tasks = fillExistingWorkspaceDefaultAutomationPrompt(file.Tasks, seeded)
+		if workspaceAutomationSeedExists(file.Tasks, seeded) {
+			continue
+		}
+		file.Tasks = append(file.Tasks, seeded)
+	}
+	return file
+}
+
+func fillExistingWorkspaceDefaultAutomationPrompt(tasks []Task, seeded Task) []Task {
+	for i := range tasks {
+		if tasks[i].ID != seeded.ID {
+			continue
+		}
+		if strings.TrimSpace(tasks[i].Prompt) == "" {
+			tasks[i].Prompt = seeded.Prompt
+		}
+	}
+	return tasks
+}
+
+func workspaceAutomationSeedExists(tasks []Task, seeded Task) bool {
+	for _, task := range tasks {
+		if task.ID == seeded.ID {
+			return true
+		}
+		if task.Scope == ScopeWorkspace && task.Template == seeded.Template {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultWorkspaceAutomations() []Task {
+	now := time.Now().UTC()
+	schedule := Schedule{Kind: ScheduleManual, Hour: 9, Minute: 0, Weekday: 1, DayOfMonth: 1, EveryHours: 6}
+	return []Task{
+		{
+			ID:                  "workspace-auto-continue-writing",
+			Scope:               ScopeWorkspace,
+			Enabled:             false,
+			Name:                "续写章节",
+			Template:            TemplateContinueWriting,
+			Prompt:              DefaultContinueWritingPrompt,
+			Schedule:            schedule,
+			Triggers:            []TriggerDefinition{legacyScheduleTrigger(schedule)},
+			DefaultActionPolicy: ActionPolicyAutoRun,
+			WriteMode:           WriteModeConfirmWrite,
+			WriteScope:          WriteScopeFile,
+			OutputPolicy:        OutputPolicyRunRecordOnly,
+			RecentRuns:          []RunRecord{},
+			CreatedAt:           now,
+			UpdatedAt:           now,
+		},
+		{
+			ID:       "workspace-auto-review",
+			Scope:    ScopeWorkspace,
+			Enabled:  false,
+			Name:     "自动 Review",
+			Template: TemplateReview,
+			Prompt:   DefaultReviewPrompt,
+			Schedule: schedule,
+			Triggers: []TriggerDefinition{{
+				ID:               "chapter_batch_review",
+				Type:             TriggerTypeChapterBatch,
+				Enabled:          true,
+				NotifyPolicy:     NotifyPolicyInbox,
+				ChapterBatchSize: 5,
+			}},
+			DefaultActionPolicy: ActionPolicyAutoRun,
+			WriteMode:           WriteModeReadOnly,
+			WriteScope:          WriteScopeNone,
+			OutputPolicy:        OutputPolicyRunRecordOnly,
+			RecentRuns:          []RunRecord{},
+			CreatedAt:           now,
+			UpdatedAt:           now,
+		},
+	}
 }
 
 func (s *Store) pathForScope(scope string) (string, error) {
@@ -236,12 +347,25 @@ func NormalizeTask(task Task) (Task, error) {
 	if !validTemplate(task.Template) {
 		return Task{}, fmt.Errorf("invalid template %q", task.Template)
 	}
+	task.ModelProfileID = strings.TrimSpace(task.ModelProfileID)
 	schedule, err := NormalizeSchedule(task.Schedule)
 	if err != nil {
 		return Task{}, err
 	}
 	task.Schedule = schedule
-	task.WritePolicy = normalizeWritePolicy(task.WritePolicy)
+	task.Triggers = normalizeTriggers(task.Triggers, task.Schedule)
+	if len(task.Triggers) == 0 {
+		task.Triggers = []TriggerDefinition{legacyScheduleTrigger(task.Schedule)}
+	}
+	if firstSchedule, ok := firstScheduleTrigger(task.Triggers); ok {
+		task.Schedule = firstSchedule.Schedule
+	}
+	if task.TriggerState == nil {
+		task.TriggerState = map[string]TriggerState{}
+	}
+	task.WriteMode, task.WriteScope = normalizeWriteModeScope(task.WriteMode, task.WriteScope, task.WritePolicy)
+	task.WritePolicy = legacyWritePolicyForModeScope(task.WriteMode, task.WriteScope)
+	task.DefaultActionPolicy = actionPolicyForWriteMode(task.WriteMode)
 	task.OutputPolicy = normalizeOutputPolicy(task.OutputPolicy)
 	task.OutputPath = filepath.ToSlash(strings.TrimSpace(task.OutputPath))
 	task.Prompt = strings.TrimSpace(task.Prompt)
@@ -270,11 +394,27 @@ func mergeTaskPatch(current, patch Task) Task {
 		next.Template = patch.Template
 	}
 	next.Prompt = patch.Prompt
+	next.ModelProfileID = patch.ModelProfileID
 	if patch.Schedule.Kind != "" {
 		next.Schedule = patch.Schedule
 	}
+	if patch.Triggers != nil {
+		next.Triggers = patch.Triggers
+	}
+	if patch.DefaultActionPolicy != "" {
+		next.DefaultActionPolicy = patch.DefaultActionPolicy
+	}
+	if patch.TriggerState != nil {
+		next.TriggerState = patch.TriggerState
+	}
 	if patch.WritePolicy != "" {
 		next.WritePolicy = patch.WritePolicy
+	}
+	if patch.WriteMode != "" {
+		next.WriteMode = patch.WriteMode
+	}
+	if patch.WriteScope != "" {
+		next.WriteScope = patch.WriteScope
 	}
 	if patch.OutputPolicy != "" {
 		next.OutputPolicy = patch.OutputPolicy
@@ -293,6 +433,57 @@ func normalizeWritePolicy(policy string) string {
 	switch policy {
 	case WritePolicyAllowLoreWrite, WritePolicyAllowFileWrite, WritePolicyAllowLoreAndFileWrite:
 		return policy
+	default:
+		return WritePolicyReadOnly
+	}
+}
+
+func normalizeWriteModeScope(mode, scope, legacyPolicy string) (string, string) {
+	mode = strings.TrimSpace(mode)
+	scope = strings.TrimSpace(scope)
+	if mode == "" {
+		mode, scope = writeModeScopeFromLegacyPolicy(legacyPolicy)
+	}
+	switch mode {
+	case WriteModeConfirmWrite, WriteModeAutoWrite:
+	default:
+		mode = WriteModeReadOnly
+	}
+	if mode == WriteModeReadOnly {
+		return WriteModeReadOnly, WriteScopeNone
+	}
+	switch scope {
+	case WriteScopeLore, WriteScopeFile, WriteScopeLoreAndFile:
+		return mode, scope
+	default:
+		return mode, WriteScopeFile
+	}
+}
+
+func writeModeScopeFromLegacyPolicy(policy string) (string, string) {
+	switch normalizeWritePolicy(policy) {
+	case WritePolicyAllowLoreWrite:
+		return WriteModeAutoWrite, WriteScopeLore
+	case WritePolicyAllowFileWrite:
+		return WriteModeAutoWrite, WriteScopeFile
+	case WritePolicyAllowLoreAndFileWrite:
+		return WriteModeAutoWrite, WriteScopeLoreAndFile
+	default:
+		return WriteModeReadOnly, WriteScopeNone
+	}
+}
+
+func legacyWritePolicyForModeScope(mode, scope string) string {
+	if mode == WriteModeReadOnly {
+		return WritePolicyReadOnly
+	}
+	switch scope {
+	case WriteScopeLore:
+		return WritePolicyAllowLoreWrite
+	case WriteScopeFile:
+		return WritePolicyAllowFileWrite
+	case WriteScopeLoreAndFile:
+		return WritePolicyAllowLoreAndFileWrite
 	default:
 		return WritePolicyReadOnly
 	}

@@ -21,6 +21,51 @@ func (h *Handlers) HandleAutomations(ctx context.Context, c *app.RequestContext)
 	writeJSON(c, consts.StatusOK, automation.ListResult{Tasks: tasks})
 }
 
+func (h *Handlers) HandleAutomationInbox(ctx context.Context, c *app.RequestContext) {
+	items, err := h.app.AutomationInbox()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, automation.InboxListResult{Items: items})
+}
+
+func (h *Handlers) HandleAutomationCheck(ctx context.Context, c *app.RequestContext) {
+	items, err := h.app.CheckAutomationTriggers(ctx, c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, automation.InboxListResult{Items: items})
+}
+
+func (h *Handlers) HandleAutomationInboxConfirm(ctx context.Context, c *app.RequestContext) {
+	result, err := h.app.ConfirmAutomationInboxItem(ctx, c.Param("item_id"))
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
+func (h *Handlers) HandleAutomationInboxDismiss(ctx context.Context, c *app.RequestContext) {
+	item, err := h.app.DismissAutomationInboxItem(c.Param("item_id"))
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleAutomationInboxRead(ctx context.Context, c *app.RequestContext) {
+	item, err := h.app.MarkAutomationInboxItemRead(c.Param("item_id"))
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
 func (h *Handlers) HandleAutomationCreate(ctx context.Context, c *app.RequestContext) {
 	var req automation.Task
 	if err := c.BindJSON(&req); err != nil {

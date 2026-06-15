@@ -108,6 +108,10 @@ func (a *App) StartAutomationTask(ctx context.Context, id, trigger string) (*Tas
 }
 
 func (s *AutomationAppService) StartTask(ctx context.Context, id, trigger string) (*Task, automation.RunRecord, error) {
+	return s.startTaskWithSourceRun(ctx, id, trigger, "", nil)
+}
+
+func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, id, trigger, sourceRunID string, triggerEvidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
 	taskDef, err := s.store().Get(id)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
@@ -118,6 +122,8 @@ func (s *AutomationAppService) StartTask(ctx context.Context, id, trigger string
 	}
 
 	run := s.newRunRecord(taskDef, trigger)
+	run.SourceRunID = strings.TrimSpace(sourceRunID)
+	run.TriggerEvidence = boundedRunTriggerEvidence(triggerEvidence)
 	conversation, err := s.newRunConversation(run, taskDef)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
@@ -301,14 +307,16 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 	}()
 
 	log.Printf("[automation] run begin task_id=%s scope=%s workspace=%q trigger=%s template=%s", task.ID, task.Scope, run.Workspace, run.Trigger, task.Template)
-	runtimeCfg := s.runtimeConfig()
-	runtimeCfg = constrainAutomationTools(runtimeCfg, task.WritePolicy)
+	runtimeCfg := s.runtimeConfigForTask(task)
+	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
+	runtimeCfg = constrainAutomationTools(runtimeCfg, writeMode, writeScope)
 	run.ToolManifest = automationToolManifest(&runtimeCfg)
 	taskInstruction := agent.AutomationTaskInstruction{
 		Name:         task.Name,
 		Template:     task.Template,
 		Prompt:       task.Prompt,
-		WritePolicy:  task.WritePolicy,
+		WriteMode:    writeMode,
+		WriteScope:   writeScope,
 		OutputPolicy: task.OutputPolicy,
 		OutputPath:   task.OutputPath,
 		Workspace:    run.Workspace,
@@ -334,7 +342,7 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 		}
 	}
 	s.app.ChatService().RunWithOptions(ctx, runner, conversation, s.app.BookService(), agent.ChatRequest{
-		Message: buildAutomationUserMessage(task, run),
+		Message: s.buildAutomationUserMessage(task, run, writeMode, writeScope),
 	}, agent.RunOptions{
 		AgentKind: agent.AgentKindAutomation,
 		TaskID:    run.ID,
@@ -364,7 +372,7 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 		output = "自动化任务已完成，Agent 未返回文字摘要。"
 	}
 	run.Summary = strings.TrimSpace(output)
-	if path, writeErr := s.writeOptionalOutput(task, output, runtimeCfg); writeErr != nil {
+	if path, writeErr := s.writeOptionalOutput(task, output, runtimeCfg, writeMode, writeScope); writeErr != nil {
 		err = writeErr
 		return result, err
 	} else if path != "" {
@@ -375,6 +383,9 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 	updated, err := s.store().AppendRun(task.ID, run)
 	if err != nil {
 		return automation.RunResult{}, err
+	}
+	if inboxErr := s.createWriteConfirmationInboxIfNeeded(updated, run, output); inboxErr != nil {
+		log.Printf("[automation] create write confirmation inbox failed task_id=%s run_id=%s err=%v", task.ID, run.ID, inboxErr)
 	}
 	log.Printf("[automation] run done task_id=%s scope=%s workspace=%q trigger=%s status=%s output_path=%q", task.ID, task.Scope, run.Workspace, run.Trigger, run.Status, run.OutputPath)
 	return automation.RunResult{Task: updated, Run: run}, nil
@@ -388,13 +399,15 @@ func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task a
 		}
 	}()
 	log.Printf("[automation] follow-up begin task_id=%s run_id=%s message_len=%d", task.ID, run.ID, len(message))
-	runtimeCfg := s.runtimeConfig()
-	runtimeCfg = constrainAutomationTools(runtimeCfg, task.WritePolicy)
+	runtimeCfg := s.runtimeConfigForTask(task)
+	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
+	runtimeCfg = constrainAutomationTools(runtimeCfg, writeMode, writeScope)
 	taskInstruction := agent.AutomationTaskInstruction{
 		Name:         task.Name,
 		Template:     task.Template,
 		Prompt:       task.Prompt,
-		WritePolicy:  task.WritePolicy,
+		WriteMode:    writeMode,
+		WriteScope:   writeScope,
 		OutputPolicy: task.OutputPolicy,
 		OutputPath:   task.OutputPath,
 		Workspace:    run.Workspace,
@@ -421,22 +434,10 @@ func (a *App) RunDueAutomations(ctx context.Context, now time.Time) []automation
 }
 
 func (s *AutomationAppService) RunDue(ctx context.Context, now time.Time) []automation.RunResult {
-	tasks, err := s.List()
+	_, results, err := s.processTriggers(ctx, "", now.UTC(), "scheduler")
 	if err != nil {
-		log.Printf("[automation] list due tasks failed err=%v", err)
+		log.Printf("[automation] process due triggers failed err=%v", err)
 		return nil
-	}
-	results := []automation.RunResult{}
-	for _, task := range tasks {
-		if !automation.Due(now, task) {
-			continue
-		}
-		_, run, err := s.StartTask(ctx, task.ID, automation.TriggerSchedule)
-		if err != nil {
-			log.Printf("[automation] due task failed task_id=%s scope=%s workspace=%q err=%v", task.ID, task.Scope, s.workspace(), err)
-			continue
-		}
-		results = append(results, automation.RunResult{Task: task, Run: run})
 	}
 	return results
 }
@@ -667,12 +668,60 @@ func (s *AutomationAppService) runtimeConfig() config.Config {
 	return runtimeCfg
 }
 
-func (s *AutomationAppService) writeOptionalOutput(task automation.Task, output string, cfg config.Config) (string, error) {
+func (s *AutomationAppService) runtimeConfigForTask(task automation.Task) config.Config {
+	runtimeCfg := s.runtimeConfig()
+	if profileID := strings.TrimSpace(task.ModelProfileID); profileID != "" {
+		runtimeCfg.AgentModels.Automation.ProfileID = profileID
+	}
+	return runtimeCfg
+}
+
+func (s *AutomationAppService) createWriteConfirmationInboxIfNeeded(task automation.Task, run automation.RunRecord, output string) error {
+	if task.WriteMode != automation.WriteModeConfirmWrite || run.Trigger == automation.TriggerWriteConfirmation {
+		return nil
+	}
+	if strings.TrimSpace(task.WriteScope) == "" || task.WriteScope == automation.WriteScopeNone {
+		return nil
+	}
+	store := s.store()
+	fingerprint := automation.EvidenceFingerprint(task.ID, automation.InboxPurposeWriteConfirmation, run.ID)
+	if existing, ok, err := store.FindOpenInboxItem(task.ID, automation.InboxPurposeWriteConfirmation, fingerprint); err != nil {
+		return err
+	} else if ok {
+		log.Printf("[automation] write confirmation inbox already open task_id=%s run_id=%s inbox_id=%s", task.ID, run.ID, existing.ID)
+		return nil
+	}
+	_, err := store.CreateInboxItem(automation.TriggerInboxItem{
+		TaskID:       task.ID,
+		TriggerID:    automation.InboxPurposeWriteConfirmation,
+		Purpose:      automation.InboxPurposeWriteConfirmation,
+		Scope:        task.Scope,
+		Workspace:    run.Workspace,
+		Status:       automation.InboxStatusPending,
+		ActionPolicy: automation.ActionPolicyConfirm,
+		NotifyPolicy: automation.NotifyPolicyInbox,
+		Title:        fmt.Sprintf("写入确认：%s", task.Name),
+		Summary:      trimForTriggerSnippet(output, 1400),
+		Evidence: []automation.TriggerEvidence{{
+			Source:  "automation_run",
+			Title:   run.ID,
+			Ref:     run.ID,
+			Snippet: trimForTriggerSnippet(output, 900),
+		}},
+		Fingerprint: fingerprint,
+		SourceRunID: run.ID,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	})
+	return err
+}
+
+func (s *AutomationAppService) writeOptionalOutput(task automation.Task, output string, cfg config.Config, writeMode, writeScope string) (string, error) {
 	if task.OutputPolicy != automation.OutputPolicyOptionalFile || strings.TrimSpace(task.OutputPath) == "" {
 		return "", nil
 	}
-	if !automationTaskAllowsFileWrite(task.WritePolicy) {
-		return "", fmt.Errorf("task write policy does not allow file output")
+	if !automationTaskAllowsFileWrite(writeMode, writeScope) {
+		return "", fmt.Errorf("task write mode/scope does not allow file output")
 	}
 	if !config.ResolveAgentTools(&cfg, config.AgentKindAutomation).FileWrite {
 		return "", fmt.Errorf("Automation Agent file_write tool is disabled")
@@ -692,29 +741,55 @@ func (s *AutomationAppService) writeOptionalOutput(task automation.Task, output 
 }
 
 func normalizeAutomationTrigger(trigger string) string {
-	if trigger == automation.TriggerSchedule {
-		return automation.TriggerSchedule
+	switch trigger {
+	case automation.TriggerSchedule, automation.TriggerCondition, automation.TriggerInboxConfirmation, automation.TriggerWriteConfirmation:
+		return trigger
+	default:
+		return automation.TriggerManual
 	}
-	return automation.TriggerManual
 }
 
-func automationTaskAllowsFileWrite(policy string) bool {
-	return policy == automation.WritePolicyAllowFileWrite || policy == automation.WritePolicyAllowLoreAndFileWrite
+func effectiveAutomationWriteModeScope(task automation.Task, run automation.RunRecord) (string, string) {
+	mode := strings.TrimSpace(task.WriteMode)
+	if mode == "" {
+		mode = automation.WriteModeReadOnly
+	}
+	scope := strings.TrimSpace(task.WriteScope)
+	if mode == automation.WriteModeReadOnly {
+		return automation.WriteModeReadOnly, automation.WriteScopeNone
+	}
+	if mode == automation.WriteModeConfirmWrite && run.Trigger != automation.TriggerWriteConfirmation {
+		return automation.WriteModeReadOnly, automation.WriteScopeNone
+	}
+	if scope == "" || scope == automation.WriteScopeNone {
+		scope = automation.WriteScopeFile
+	}
+	return automation.WriteModeAutoWrite, scope
 }
 
-func automationTaskAllowsLoreWrite(policy string) bool {
-	return policy == automation.WritePolicyAllowLoreWrite || policy == automation.WritePolicyAllowLoreAndFileWrite
+func automationTaskAllowsFileWrite(writeMode, writeScope string) bool {
+	if writeMode != automation.WriteModeAutoWrite {
+		return false
+	}
+	return writeScope == automation.WriteScopeFile || writeScope == automation.WriteScopeLoreAndFile
 }
 
-func constrainAutomationTools(cfg config.Config, writePolicy string) config.Config {
+func automationTaskAllowsLoreWrite(writeMode, writeScope string) bool {
+	if writeMode != automation.WriteModeAutoWrite {
+		return false
+	}
+	return writeScope == automation.WriteScopeLore || writeScope == automation.WriteScopeLoreAndFile
+}
+
+func constrainAutomationTools(cfg config.Config, writeMode, writeScope string) config.Config {
 	resolved := config.ResolveAgentTools(&cfg, config.AgentKindAutomation)
 	cfg.AgentTools.Automation = config.AgentToolOverride{
 		FileRead:     boolPointer(resolved.FileRead),
-		FileWrite:    boolPointer(resolved.FileWrite && automationTaskAllowsFileWrite(writePolicy)),
+		FileWrite:    boolPointer(resolved.FileWrite && automationTaskAllowsFileWrite(writeMode, writeScope)),
 		ShellExecute: boolPointer(resolved.ShellExecute),
 		Skills:       boolPointer(resolved.Skills),
 		LoreRead:     boolPointer(resolved.LoreRead),
-		LoreWrite:    boolPointer(resolved.LoreWrite && automationTaskAllowsLoreWrite(writePolicy)),
+		LoreWrite:    boolPointer(resolved.LoreWrite && automationTaskAllowsLoreWrite(writeMode, writeScope)),
 		Todo:         boolPointer(resolved.Todo),
 		WebSearch:    boolPointer(resolved.WebSearch),
 	}
@@ -748,36 +823,85 @@ func eventMessage(data interface{}) string {
 	}
 }
 
-func buildAutomationUserMessage(task automation.Task, run automation.RunRecord) string {
+func (s *AutomationAppService) buildAutomationUserMessage(task automation.Task, run automation.RunRecord, writeMode, writeScope string) string {
 	var sb strings.Builder
 	sb.WriteString("执行 Nova 自动化任务。\n\n")
 	sb.WriteString(fmt.Sprintf("任务名称：%s\n", task.Name))
-	sb.WriteString(fmt.Sprintf("模板：%s\n", task.Template))
 	sb.WriteString(fmt.Sprintf("触发来源：%s\n", run.Trigger))
-	sb.WriteString(fmt.Sprintf("写入策略：%s\n", task.WritePolicy))
+	sb.WriteString(fmt.Sprintf("执行模式：%s\n", writeMode))
+	sb.WriteString(fmt.Sprintf("写入范围：%s\n", writeScope))
 	sb.WriteString(fmt.Sprintf("输出策略：%s\n", task.OutputPolicy))
 	if task.OutputPath != "" {
 		sb.WriteString(fmt.Sprintf("输出文件：%s\n", task.OutputPath))
+	}
+	if len(run.TriggerEvidence) > 0 {
+		sb.WriteString("\n本次触发范围（有界证据，优先处理这些新增内容）：\n")
+		for _, item := range run.TriggerEvidence {
+			sb.WriteString(formatTriggerEvidenceLine(item))
+		}
+	}
+	if run.Trigger == automation.TriggerWriteConfirmation {
+		sb.WriteString("\n写入确认：用户已经确认执行上一轮只读方案。请只在写入范围内落实方案，不要扩大修改范围。\n")
+		if sourceRunID := strings.TrimSpace(run.SourceRunID); sourceRunID != "" {
+			if sourceRun, err := s.automationRunByID(sourceRunID); err == nil && strings.TrimSpace(sourceRun.Summary) != "" {
+				sb.WriteString("已确认方案摘要：\n")
+				sb.WriteString(trimForTriggerSnippet(sourceRun.Summary, 2500))
+				sb.WriteString("\n")
+			} else if err != nil {
+				log.Printf("[automation] load source run summary failed source_run_id=%s err=%v", sourceRunID, err)
+			}
+		}
+	} else if task.WriteMode == automation.WriteModeConfirmWrite {
+		sb.WriteString("\n写入确认模式：本轮强制只读。请输出具体写入方案/修订建议，包括建议修改的路径、资料库项和原因；不要实际写入。用户确认后会启动第二个写入 run。\n")
 	}
 	sb.WriteString("\n用户 Prompt：\n")
 	if task.Prompt != "" {
 		sb.WriteString(task.Prompt)
 	} else {
-		sb.WriteString(defaultAutomationPrompt(task.Template))
+		sb.WriteString(automation.GenericTaskPrompt)
 	}
 	sb.WriteString("\n\n请你自行使用可用工具读取完成任务所需的工作区文件、资料库和状态；先定位范围，再读取和写入。")
 	return sb.String()
 }
 
-func defaultAutomationPrompt(template string) string {
-	switch template {
-	case automation.TemplateMemoryConsolidation:
-		return "整理最近创作和互动信息，输出长期稳定记忆、待确认记忆和不应沉淀的短期噪音。"
-	case automation.TemplateReview:
-		return "对选定内容做结构、连续性、设定一致性和语言问题检查，按严重程度输出建议。"
-	case automation.TemplateContinueWriting:
-		return "续写下一段或下一章。请自行读取大纲、章节组细纲、进度、角色状态、资料库和最近章节，确定目标章节路径并写入正文；完成后按需同步 progress.md 和 setting/character-states.md。"
-	default:
-		return "根据所选上下文完成用户自定义自动化任务。"
+func boundedRunTriggerEvidence(evidence []automation.TriggerEvidence) []automation.TriggerEvidence {
+	const maxItems = 12
+	if len(evidence) == 0 {
+		return nil
 	}
+	limit := len(evidence)
+	if limit > maxItems {
+		limit = maxItems
+	}
+	out := make([]automation.TriggerEvidence, 0, limit)
+	for i := 0; i < limit; i++ {
+		item := evidence[i]
+		item.Source = trimForTriggerSnippet(strings.TrimSpace(item.Source), 80)
+		item.Title = trimForTriggerSnippet(strings.TrimSpace(item.Title), 160)
+		item.Ref = trimForTriggerSnippet(strings.TrimSpace(item.Ref), 240)
+		item.Snippet = trimForTriggerSnippet(strings.TrimSpace(item.Snippet), 600)
+		out = append(out, item)
+	}
+	return out
+}
+
+func formatTriggerEvidenceLine(item automation.TriggerEvidence) string {
+	source := strings.TrimSpace(item.Source)
+	if source == "" {
+		source = "unknown"
+	}
+	title := strings.TrimSpace(item.Title)
+	if title == "" {
+		title = "(untitled)"
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("- [%s] %s", source, title))
+	if ref := strings.TrimSpace(item.Ref); ref != "" {
+		sb.WriteString(fmt.Sprintf(" — %s", ref))
+	}
+	sb.WriteString("\n")
+	if snippet := strings.TrimSpace(item.Snippet); snippet != "" {
+		sb.WriteString(fmt.Sprintf("  %s\n", snippet))
+	}
+	return sb.String()
 }

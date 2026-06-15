@@ -9,7 +9,7 @@ import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { novaSpring } from '@/features/motion/motion-tokens'
-import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
+import { getAutomationInbox, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
@@ -89,6 +89,7 @@ export function WorkbenchShell({
 }: WorkbenchShellProps) {
   const { t } = useTranslation()
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
+  const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -98,6 +99,24 @@ export function WorkbenchShell({
     cleanupLegacyActivityOrderStorage()
     setActivityOrders(readStoredActivityOrders())
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadAutomationInboxCount() {
+      try {
+        const items = await getAutomationInbox()
+        if (!cancelled) setAutomationInboxUnread(items.filter((item) => item.status === 'pending' && !item.read_at).length)
+      } catch {
+        if (!cancelled) setAutomationInboxUnread(0)
+      }
+    }
+    void loadAutomationInboxCount()
+    const timer = window.setInterval(loadAutomationInboxCount, 30000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [workspace])
 
   const loreVisible = rightPanel === 'lore'
   const creatorVisible = rightPanel === 'creator'
@@ -286,7 +305,7 @@ export function WorkbenchShell({
       label: t('workbench.activity.automations'),
       onClick: openAutomations,
       active: automationsActive,
-      icon: <Clock3 className="h-4 w-4" />,
+      icon: <ActivityIconBadge count={automationInboxUnread}><Clock3 className="h-4 w-4" /></ActivityIconBadge>,
     },
   ]
 
@@ -295,7 +314,7 @@ export function WorkbenchShell({
       ...(navigationMode === 'interactive' ? interactiveActivityItems : ideActivityItems),
       ...sharedActivityItems,
     ], activityOrder, defaultActivityOrderForScope(activityOrderScope)),
-    [activityOrder, activityOrderScope, agentsActive, automationsActive, creatorVisible, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, tellerVisible, versionsVisible],
+    [activityOrder, activityOrderScope, agentsActive, automationInboxUnread, automationsActive, creatorVisible, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, tellerVisible, versionsVisible],
   )
 
   const handleActivityDragEnd = (event: DragEndEvent) => {
@@ -488,6 +507,19 @@ function ActivityButton({
         )}
       </AnimatePresence>
     </TooltipIconButton>
+  )
+}
+
+function ActivityIconBadge({ count, children }: { count: number; children: ReactNode }) {
+  return (
+    <span className="relative inline-flex h-4 w-4 items-center justify-center">
+      {children}
+      {count > 0 && (
+        <span className="absolute -right-1.5 -top-1.5 min-w-3 rounded-full bg-[var(--nova-danger-border)] px-0.5 text-center text-[8px] leading-3 text-white">
+          {count > 9 ? '9+' : count}
+        </span>
+      )}
+    </span>
   )
 }
 

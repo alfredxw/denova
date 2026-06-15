@@ -5,6 +5,44 @@ import App from './App'
 import { TooltipProvider } from './components/ui/tooltip'
 import { useWorkspaceStore } from './stores/workspace-store'
 
+const defaultContinueWritingPrompt = '续写下一章。请先读取 CREATOR.md、长期大纲、章节组细纲、progress.md、角色状态、资料库和最近章节，判断下一章所属分卷、章节标题和目标路径；再按现有故事节奏创作正文。'
+const defaultReviewPrompt = '对本次触发范围中的新增章节做自动 Review。若触发范围包含章节路径，只评审这些新增章节，不要把全书当作被评审正文；可读取必要前文、CREATOR.md、大纲、进度、角色状态和资料库作为对照依据。'
+
+const defaultAutomationTasks = [
+  {
+    id: 'workspace-auto-continue-writing',
+    scope: 'workspace',
+    enabled: false,
+    name: '续写章节',
+    template: 'continue_writing',
+    prompt: defaultContinueWritingPrompt,
+    schedule: { kind: 'manual', hour: 9, minute: 0, weekday: 1, day_of_month: 1, every_hours: 6 },
+    triggers: [{ id: 'schedule', type: 'schedule', enabled: false, notify_policy: 'silent', schedule: { kind: 'manual', hour: 9, minute: 0, weekday: 1, day_of_month: 1, every_hours: 6 } }],
+    default_action_policy: 'auto_run',
+    write_mode: 'confirm_write',
+    write_scope: 'file',
+    output_policy: 'run_record_only',
+    output_path: '',
+    recent_runs: [],
+  },
+  {
+    id: 'workspace-auto-review',
+    scope: 'workspace',
+    enabled: false,
+    name: '自动 Review',
+    template: 'review',
+    prompt: defaultReviewPrompt,
+    schedule: { kind: 'manual', hour: 9, minute: 0, weekday: 1, day_of_month: 1, every_hours: 6 },
+    triggers: [{ id: 'chapter_batch_review', type: 'chapter_batch', enabled: true, notify_policy: 'inbox', chapter_batch_size: 5 }],
+    default_action_policy: 'auto_run',
+    write_mode: 'read_only',
+    write_scope: 'none',
+    output_policy: 'run_record_only',
+    output_path: '',
+    recent_runs: [],
+  },
+]
+
 const defaultPayloads: Record<string, unknown> = {
   '/api/workspace/current': { workspace: '/books/demo', has_state: true },
   '/api/workspace/tree': [],
@@ -26,7 +64,7 @@ const defaultPayloads: Record<string, unknown> = {
   '/api/lore/versions': { versions: [] },
   '/api/lore/agent/messages': [],
   '/api/interactive/tellers': { tellers: [] },
-  '/api/automations': { tasks: [] },
+  '/api/automations': { tasks: defaultAutomationTasks },
 }
 
 describe('App', () => {
@@ -289,7 +327,16 @@ describe('App', () => {
     expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
     expectOnlyActivePrimaryMenu('自动化')
     expect(screen.getByText('续写章节')).toBeInTheDocument()
-    expect(screen.getByText('定时规则')).toBeInTheDocument()
+    expect(screen.getByText('自动 Review')).toBeInTheDocument()
+    expect(screen.queryByText('模板')).not.toBeInTheDocument()
+    expect(screen.queryByText('触发后行为')).not.toBeInTheDocument()
+    expect(screen.getByText('触发条件')).toBeInTheDocument()
+    expect(screen.getByText('执行模式')).toBeInTheDocument()
+    expect(screen.getByText('写入范围')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '自动出方案，确认后写入' })).toBeInTheDocument()
+    expect(screen.getAllByRole('option', { name: '定时' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('option', { name: '章节批次' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('option', { name: '语义条件' }).length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole('button', { name: '自动化' }))
     expect(screen.queryByRole('button', { name: '关闭自动化' })).not.toBeInTheDocument()

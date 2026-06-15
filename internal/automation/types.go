@@ -16,6 +16,15 @@ const (
 	WritePolicyAllowFileWrite        = "allow_file_write"
 	WritePolicyAllowLoreAndFileWrite = "allow_lore_and_file_write"
 
+	WriteModeReadOnly     = "read_only"
+	WriteModeConfirmWrite = "confirm_write"
+	WriteModeAutoWrite    = "auto_write"
+
+	WriteScopeNone        = "none"
+	WriteScopeLore        = "lore"
+	WriteScopeFile        = "file"
+	WriteScopeLoreAndFile = "lore_and_file"
+
 	OutputPolicyRunRecordOnly = "run_record_only"
 	OutputPolicyOptionalFile  = "optional_file"
 
@@ -24,30 +33,81 @@ const (
 	RunStatusFailed  = "failed"
 	RunStatusAborted = "aborted"
 
-	TriggerManual   = "manual"
-	TriggerSchedule = "schedule"
+	TriggerManual            = "manual"
+	TriggerSchedule          = "schedule"
+	TriggerCondition         = "condition"
+	TriggerInboxConfirmation = "inbox_confirmation"
+	TriggerWriteConfirmation = "write_confirmation"
+
+	TriggerTypeManual       = "manual"
+	TriggerTypeSchedule     = "schedule"
+	TriggerTypeSemantic     = "semantic"
+	TriggerTypeChapterBatch = "chapter_batch"
+
+	ActionPolicyConfirm    = "confirm"
+	ActionPolicyAutoRun    = "auto_run"
+	ActionPolicyNotifyOnly = "notify_only"
+
+	NotifyPolicyInbox  = "inbox"
+	NotifyPolicySilent = "silent"
+
+	InboxStatusPending   = "pending"
+	InboxStatusDismissed = "dismissed"
+	InboxStatusConfirmed = "confirmed"
+	InboxStatusAutoRun   = "auto_run"
+
+	InboxPurposeTrigger           = "trigger"
+	InboxPurposeWriteConfirmation = "write_confirmation"
 )
 
 const (
 	MaxRecentRuns = 20
+	MaxInboxItems = 100
 )
 
 // Task describes one bounded, permission-aware automation definition.
 type Task struct {
-	ID           string      `json:"id"`
-	Scope        string      `json:"scope"`
-	Enabled      bool        `json:"enabled"`
-	Name         string      `json:"name"`
-	Template     string      `json:"template"`
-	Prompt       string      `json:"prompt"`
-	Schedule     Schedule    `json:"schedule"`
-	WritePolicy  string      `json:"write_policy"`
-	OutputPolicy string      `json:"output_policy"`
-	OutputPath   string      `json:"output_path"`
-	LastRun      *RunRecord  `json:"last_run,omitempty"`
-	RecentRuns   []RunRecord `json:"recent_runs"`
-	CreatedAt    time.Time   `json:"created_at"`
-	UpdatedAt    time.Time   `json:"updated_at"`
+	ID                  string                  `json:"id"`
+	Scope               string                  `json:"scope"`
+	Enabled             bool                    `json:"enabled"`
+	Name                string                  `json:"name"`
+	Template            string                  `json:"template"`
+	Prompt              string                  `json:"prompt"`
+	ModelProfileID      string                  `json:"model_profile_id,omitempty"`
+	Schedule            Schedule                `json:"schedule"`
+	Triggers            []TriggerDefinition     `json:"triggers"`
+	DefaultActionPolicy string                  `json:"default_action_policy"`
+	TriggerState        map[string]TriggerState `json:"trigger_state,omitempty"`
+	WritePolicy         string                  `json:"write_policy,omitempty"`
+	WriteMode           string                  `json:"write_mode"`
+	WriteScope          string                  `json:"write_scope"`
+	OutputPolicy        string                  `json:"output_policy"`
+	OutputPath          string                  `json:"output_path"`
+	LastRun             *RunRecord              `json:"last_run,omitempty"`
+	RecentRuns          []RunRecord             `json:"recent_runs"`
+	CreatedAt           time.Time               `json:"created_at"`
+	UpdatedAt           time.Time               `json:"updated_at"`
+}
+
+// TriggerDefinition describes one condition that can cause an automation task to notify or run.
+type TriggerDefinition struct {
+	ID                string   `json:"id"`
+	Type              string   `json:"type"`
+	Enabled           bool     `json:"enabled"`
+	Name              string   `json:"name,omitempty"`
+	ActionPolicy      string   `json:"action_policy,omitempty"`
+	NotifyPolicy      string   `json:"notify_policy,omitempty"`
+	Schedule          Schedule `json:"schedule,omitempty"`
+	SemanticCondition string   `json:"semantic_condition,omitempty"`
+	ChapterBatchSize  int      `json:"chapter_batch_size,omitempty"`
+}
+
+// TriggerState stores persisted, per-trigger evaluation state used for dedupe.
+type TriggerState struct {
+	LastCheckedAt              time.Time `json:"last_checked_at,omitempty"`
+	LastMatchedAt              time.Time `json:"last_matched_at,omitempty"`
+	LastEvidenceFingerprint    string    `json:"last_evidence_fingerprint,omitempty"`
+	LastObservationFingerprint string    `json:"last_observation_fingerprint,omitempty"`
 }
 
 // Schedule stores a user-editable cron-style cadence without requiring raw cron input.
@@ -63,19 +123,68 @@ type Schedule struct {
 
 // RunRecord is a persisted, bounded execution summary.
 type RunRecord struct {
-	ID           string             `json:"id"`
-	TaskID       string             `json:"task_id"`
-	SessionID    string             `json:"session_id,omitempty"`
-	Scope        string             `json:"scope"`
-	Workspace    string             `json:"workspace,omitempty"`
-	Trigger      string             `json:"trigger"`
-	Status       string             `json:"status"`
-	StartedAt    time.Time          `json:"started_at"`
-	FinishedAt   time.Time          `json:"finished_at,omitempty"`
-	Summary      string             `json:"summary"`
-	Error        string             `json:"error,omitempty"`
-	OutputPath   string             `json:"output_path,omitempty"`
-	ToolManifest []ToolManifestItem `json:"tool_manifest"`
+	ID              string             `json:"id"`
+	TaskID          string             `json:"task_id"`
+	SessionID       string             `json:"session_id,omitempty"`
+	Scope           string             `json:"scope"`
+	Workspace       string             `json:"workspace,omitempty"`
+	Trigger         string             `json:"trigger"`
+	SourceRunID     string             `json:"source_run_id,omitempty"`
+	TriggerEvidence []TriggerEvidence  `json:"trigger_evidence,omitempty"`
+	Status          string             `json:"status"`
+	StartedAt       time.Time          `json:"started_at"`
+	FinishedAt      time.Time          `json:"finished_at,omitempty"`
+	Summary         string             `json:"summary"`
+	Error           string             `json:"error,omitempty"`
+	OutputPath      string             `json:"output_path,omitempty"`
+	ToolManifest    []ToolManifestItem `json:"tool_manifest"`
+}
+
+type TriggerEvidence struct {
+	Source  string `json:"source"`
+	Title   string `json:"title"`
+	Ref     string `json:"ref,omitempty"`
+	Snippet string `json:"snippet,omitempty"`
+}
+
+type TriggerInboxItem struct {
+	ID           string            `json:"id"`
+	TaskID       string            `json:"task_id"`
+	TriggerID    string            `json:"trigger_id"`
+	Purpose      string            `json:"purpose,omitempty"`
+	Scope        string            `json:"scope"`
+	Workspace    string            `json:"workspace,omitempty"`
+	Status       string            `json:"status"`
+	ActionPolicy string            `json:"action_policy"`
+	NotifyPolicy string            `json:"notify_policy"`
+	Title        string            `json:"title"`
+	Summary      string            `json:"summary"`
+	Evidence     []TriggerEvidence `json:"evidence"`
+	Fingerprint  string            `json:"fingerprint"`
+	RunID        string            `json:"run_id,omitempty"`
+	SourceRunID  string            `json:"source_run_id,omitempty"`
+	CreatedAt    time.Time         `json:"created_at"`
+	UpdatedAt    time.Time         `json:"updated_at"`
+	ReadAt       *time.Time        `json:"read_at,omitempty"`
+	HandledAt    *time.Time        `json:"handled_at,omitempty"`
+}
+
+type TriggerMatch struct {
+	TaskID      string            `json:"task_id"`
+	TriggerID   string            `json:"trigger_id"`
+	Title       string            `json:"title"`
+	Summary     string            `json:"summary"`
+	Evidence    []TriggerEvidence `json:"evidence"`
+	Fingerprint string            `json:"fingerprint"`
+}
+
+type InboxListResult struct {
+	Items []TriggerInboxItem `json:"items"`
+}
+
+type InboxActionResult struct {
+	Item TriggerInboxItem `json:"item"`
+	Run  *RunRecord       `json:"run,omitempty"`
 }
 
 // ToolManifestItem records the effective tool permission used by one automation run.

@@ -62,7 +62,10 @@ export function AgentTracePanel({ disabled }: AgentTracePanelProps) {
   }, [selectedID])
 
   const contextRecords = useMemo(() => trace?.records.filter((record) => record.type === 'context_ledger') || [], [trace])
-  const eventRecords = useMemo(() => trace?.records.filter((record) => record.type === 'event') || [], [trace])
+  const sequenceRecords = useMemo(
+    () => trace?.records.filter((record) => record.type !== 'run_created' && record.type !== 'context_ledger') || [],
+    [trace],
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--nova-surface)]">
@@ -111,7 +114,7 @@ export function AgentTracePanel({ disabled }: AgentTracePanelProps) {
           {trace ? (
             <div className="space-y-3">
               <TraceSection title={t('chat.tracePanel.contextLedger')} records={contextRecords} empty={t('chat.tracePanel.noContext')} />
-              <TraceSection title={t('chat.tracePanel.eventsTitle')} records={eventRecords} empty={t('chat.tracePanel.noEvents')} />
+              <TraceSection title={t('chat.tracePanel.eventsTitle')} records={sequenceRecords} empty={t('chat.tracePanel.noEvents')} />
               {trace.truncated && <div className="text-[11px] text-[var(--nova-text-faint)]">{t('chat.tracePanel.truncated')}</div>}
             </div>
           ) : (
