@@ -39,6 +39,7 @@ func main() {
 	observability.ConfigureStructuredLogging()
 	log.Printf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath)
 	port = selectStartupPort(port, shouldAutoPickPort())
+	frontendPort = selectFrontendPort(frontendPort)
 
 	if workspace != "" {
 		cfg.Workspace = workspace
@@ -170,6 +171,25 @@ func selectStartupPort(preferred string, autoPick bool) string {
 
 	fmt.Fprintf(os.Stderr, "提示: 端口 %s 已被占用，已自动改用 %s\n", preferred, next)
 	log.Printf("[startup] HTTP 端口 %s 已被占用，自动改用 %s", preferred, next)
+	return next
+}
+
+// selectFrontendPort 为前端 Vite dev server 自动选择一个可用端口。
+// 与 HTTP 后端端口不同，前端端口总是尝试自动选择（因为 Vite 不负责端口协商）。
+func selectFrontendPort(preferred string) string {
+	if portAvailable(preferred) {
+		return preferred
+	}
+
+	next, err := findAvailablePort(preferred, 20)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 前端端口 %s 不可用且自动选择失败: %v\n", preferred, err)
+		log.Printf("[startup] 前端端口 %s 不可用且自动选择失败 err=%v", preferred, err)
+		return preferred
+	}
+
+	fmt.Fprintf(os.Stderr, "提示: 前端端口 %s 已被占用，已自动改用 %s\n", preferred, next)
+	log.Printf("[startup] 前端端口 %s 已被占用，自动改用 %s", preferred, next)
 	return next
 }
 
