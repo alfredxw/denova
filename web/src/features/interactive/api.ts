@@ -1,7 +1,7 @@
 import type { ChatMessage } from '@/lib/api'
 import i18next from '@/i18n'
 import { jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { BranchSummary, HotChoicesResponse, InteractiveSSEEvent, Snapshot, StoryIndex, StorySummary, Teller } from './types'
+import type { BranchSummary, HotChoicesResponse, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryIndex, StorySummary, Teller } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
@@ -39,6 +39,38 @@ export function deleteInteractiveStory(id: string): Promise<void> {
 export function getInteractiveSnapshot(storyId: string, branchId?: string): Promise<Snapshot> {
   const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/snapshot${query}`)
+}
+
+export function getInteractiveMemory(storyId: string, branchId?: string, includeHidden = false): Promise<InteractiveMemoryState> {
+  const params = new URLSearchParams()
+  if (branchId) params.set('branch', branchId)
+  if (includeHidden) params.set('hidden', 'true')
+  const query = params.toString()
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory${query ? `?${query}` : ''}`)
+}
+
+export function createInteractiveMemory(storyId: string, input: Partial<InteractiveMemoryEntry> & { branch_id: string }): Promise<InteractiveMemoryEntry> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateInteractiveMemory(storyId: string, memoryId: string, input: Partial<InteractiveMemoryEntry>): Promise<InteractiveMemoryEntry> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory/${encodeURIComponent(memoryId)}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function setInteractiveMemoryHidden(storyId: string, memoryId: string, hidden: boolean): Promise<InteractiveMemoryEntry> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory/${encodeURIComponent(memoryId)}/hide`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ hidden }),
+  })
 }
 
 export async function getInteractiveTellers(): Promise<Teller[]> {

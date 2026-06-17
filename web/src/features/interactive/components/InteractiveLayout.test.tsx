@@ -11,7 +11,7 @@ describe('InteractiveLayout', () => {
     const { container } = render(<InteractiveLayout />)
 
     expect(await screen.findByText('故事舞台 · 当前分支 main')).toBeInTheDocument()
-    expect(screen.getByText('场景记忆')).toBeInTheDocument()
+    expect(screen.getByText('长期记忆')).toBeInTheDocument()
     expect(container.querySelector('[data-slot="select-trigger"]')).toBeInTheDocument()
     expect(container.querySelector('[data-slot="button"]')).toBeInTheDocument()
     expect(screen.getByTestId('interactive-shell')).not.toHaveClass('rounded-xl')
@@ -24,7 +24,7 @@ describe('InteractiveLayout', () => {
 
     expect(await screen.findByText('故事舞台 · 当前分支 main')).toBeInTheDocument()
     expect(screen.queryByText('设定条目与 Markdown 正文')).not.toBeInTheDocument()
-    expect(screen.queryByText('场景记忆')).not.toBeInTheDocument()
+    expect(screen.queryByText('长期记忆')).not.toBeInTheDocument()
   })
 
   it('reloads stories and snapshot when workspace changes', async () => {
@@ -361,7 +361,8 @@ describe('InteractiveLayout', () => {
     render(<InteractiveLayout />)
 
     expect(await screen.findByText('进入旧酒馆')).toBeInTheDocument()
-    expect(screen.getByText('林川')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('当前状态'))
+    expect(screen.getByText(/林川/)).toBeInTheDocument()
 
     act(() => useInteractiveStore.getState().setSubmode('timeline'))
     fireEvent.click(await screen.findByText('侧巷'))
@@ -376,9 +377,10 @@ describe('InteractiveLayout', () => {
     fireEvent.click(screen.getByRole('button', { name: /返回剧情/ }))
     await screen.findByText('走向另一条巷子')
     expect(screen.getByText('巷尾传来铃声。')).toBeInTheDocument()
-    await waitFor(() => expect(screen.queryByText('林川')).not.toBeInTheDocument())
-    expect(screen.getByText('阿岚')).toBeInTheDocument()
-    expect(screen.getByText('发现侧巷')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('当前状态'))
+    await waitFor(() => expect(screen.queryByText(/林川/)).not.toBeInTheDocument())
+    expect(screen.getByText(/阿岚/)).toBeInTheDocument()
+    expect(screen.getByText(/发现侧巷/)).toBeInTheDocument()
   })
 
   it('keeps polling pending turn state until scene memory is ready', async () => {
@@ -459,9 +461,10 @@ describe('InteractiveLayout', () => {
 
     render(<InteractiveLayout />)
 
-    expect(await screen.findByText('同步中')).toBeInTheDocument()
-    expect(await screen.findByText('林川', {}, { timeout: 3000 })).toBeInTheDocument()
-    await waitFor(() => expect(screen.queryByText('同步中')).not.toBeInTheDocument())
+    expect(await screen.findByText('生成中')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('当前状态'))
+    expect(await screen.findByText(/林川/, {}, { timeout: 3000 })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('生成中')).not.toBeInTheDocument())
     expect(snapshotRequests).toBeGreaterThanOrEqual(2)
   })
 

@@ -58,6 +58,44 @@ func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
 	if _, err := application.AppendInteractiveTurn(created.ID, "", "我推开酒馆的门", "门后传来低沉的风声。"); err != nil {
 		t.Fatal(err)
 	}
+	memoryCreateResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/memory", map[string]any{
+		"branch_id":  "main",
+		"title":      "酒馆风声",
+		"summary":    "门后传来低沉风声。",
+		"people":     []string{"主角"},
+		"places":     []string{"酒馆"},
+		"tags":       []string{"线索"},
+		"importance": 4,
+	})
+	if memoryCreateResp.Code != http.StatusOK {
+		t.Fatalf("create memory status = %d body=%s", memoryCreateResp.Code, memoryCreateResp.Body.String())
+	}
+	var memoryEntry struct {
+		ID     string `json:"id"`
+		Title  string `json:"title"`
+		Manual bool   `json:"manual"`
+	}
+	decodeResponse(t, memoryCreateResp.Body.Bytes(), &memoryEntry)
+	if memoryEntry.ID == "" || memoryEntry.Title != "酒馆风声" || !memoryEntry.Manual {
+		t.Fatalf("memory entry mismatch: %#v", memoryEntry)
+	}
+	memoryListResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/memory?branch=main", nil)
+	if memoryListResp.Code != http.StatusOK {
+		t.Fatalf("list memory status = %d body=%s", memoryListResp.Code, memoryListResp.Body.String())
+	}
+	var memoryList struct {
+		Entries []struct {
+			ID string `json:"id"`
+		} `json:"entries"`
+	}
+	decodeResponse(t, memoryListResp.Body.Bytes(), &memoryList)
+	if len(memoryList.Entries) != 1 || memoryList.Entries[0].ID != memoryEntry.ID {
+		t.Fatalf("memory list mismatch: %#v", memoryList)
+	}
+	hideResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/memory/"+memoryEntry.ID+"/hide", map[string]bool{"hidden": true})
+	if hideResp.Code != http.StatusOK {
+		t.Fatalf("hide memory status = %d body=%s", hideResp.Code, hideResp.Body.String())
+	}
 	snapshotResp = performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/snapshot", nil)
 	decodeResponse(t, snapshotResp.Body.Bytes(), &snapshot)
 	if len(snapshot.Turns) != 1 {

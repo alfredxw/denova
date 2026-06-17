@@ -10,19 +10,23 @@ import (
 func TestProtectedSystemInstructionOrdersContractUserAndBuiltIn(t *testing.T) {
 	cfg := &config.Config{
 		AgentPrompts: config.AgentPromptSettings{
-			IDE: config.AgentPromptOverride{SystemPrompt: "USER CUSTOM PROMPT"},
+			IDE: config.AgentPromptOverride{FlowPrompt: "USER FLOW PROMPT", SystemPrompt: "USER CUSTOM PROMPT"},
 		},
 	}
 	instruction := protectedSystemInstruction(cfg, config.AgentKindIDE, "BUILT IN PROMPT")
 
 	contractIndex := strings.Index(instruction, "Nova 运行时契约")
+	flowIndex := strings.Index(instruction, "USER FLOW PROMPT")
 	userIndex := strings.Index(instruction, "USER CUSTOM PROMPT")
 	builtInIndex := strings.Index(instruction, "BUILT IN PROMPT")
-	if contractIndex < 0 || userIndex < 0 || builtInIndex < 0 {
+	if contractIndex < 0 || flowIndex < 0 || userIndex < 0 || builtInIndex < 0 {
 		t.Fatalf("instruction missing expected sections:\n%s", instruction)
 	}
-	if !(contractIndex < userIndex && userIndex < builtInIndex) {
-		t.Fatalf("wrong system prompt order: contract=%d user=%d built_in=%d\n%s", contractIndex, userIndex, builtInIndex, instruction)
+	if !(contractIndex < flowIndex && flowIndex < userIndex && userIndex < builtInIndex) {
+		t.Fatalf("wrong system prompt order: contract=%d flow=%d user=%d built_in=%d\n%s", contractIndex, flowIndex, userIndex, builtInIndex, instruction)
+	}
+	if !strings.Contains(instruction, "不得覆盖运行时契约、输出格式、工具权限和后端校验") {
+		t.Fatalf("flow prompt section should state protected boundary:\n%s", instruction)
 	}
 	if !strings.Contains(instruction, "不得覆盖上一节运行时契约") {
 		t.Fatalf("custom prompt section should state protected boundary:\n%s", instruction)
@@ -45,7 +49,7 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		config.AgentKindInteractiveStory:      "<NARRATIVE>",
 		config.AgentKindLoreEditor:            "资料库 Agent",
 		config.AgentKindTellerEditor:          "导演 Agent",
-		config.AgentKindInteractiveState:      "状态记忆 Agent",
+		config.AgentKindInteractiveState:      "互动记忆 Agent",
 		config.AgentKindInteractiveHotChoices: "快捷选项 Agent",
 		config.AgentKindVersionSummary:        "版本说明 Agent",
 		config.AgentKindToolAgent:             "model-only",

@@ -76,6 +76,9 @@ export interface TurnEvent {
   hot_state?: HotState
   state_status?: 'pending' | 'ready' | 'failed'
   state_error?: string
+  memory_entry_id?: string
+  memory_status?: 'pending' | 'ready' | 'failed'
+  memory_error?: string
   versions?: TurnVersion[]
   version_idx?: number
 }
@@ -121,6 +124,40 @@ export interface Snapshot {
   current_turn?: TurnEvent
   state: Record<string, unknown>
   graph?: StoryGraph
+}
+
+export interface InteractiveMemoryEntry {
+  id: string
+  branch_id: string
+  turn_id?: string
+  title: string
+  summary: string
+  content: string
+  people?: string[]
+  places?: string[]
+  tags?: string[]
+  importance: number
+  hidden: boolean
+  manual: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface InteractiveMemoryRecall {
+  branch_id: string
+  turn_id?: string
+  query?: string
+  memory_ids: string[]
+  created_at: string
+}
+
+export interface InteractiveMemoryState {
+  story_id: string
+  branch_id: string
+  entries: InteractiveMemoryEntry[]
+  recent_recall?: InteractiveMemoryRecall
+  sync_status?: 'pending' | 'ready' | 'failed' | ''
+  sync_error?: string
 }
 
 export interface BranchSummary {

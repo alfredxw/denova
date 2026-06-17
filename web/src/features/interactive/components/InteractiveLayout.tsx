@@ -8,8 +8,8 @@ import type { Layout } from 'react-resizable-panels'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
+import { MemoryPanel } from './MemoryPanel'
 import { SettingPanel, type SettingPanelMode } from './SettingPanel'
-import { SnapshotPanel } from './SnapshotPanel'
 import { StoryPicker } from './StoryPicker'
 import { StoryStage } from './StoryStage'
 import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
@@ -101,12 +101,12 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
   }, [currentStoryId])
 
   useEffect(() => {
-    if (snapshot?.current_turn?.state_status !== 'pending') return
+    if (snapshot?.current_turn?.state_status !== 'pending' && snapshot?.current_turn?.memory_status !== 'pending') return
     const timer = window.setInterval(() => {
       void reloadSnapshot(snapshot.branch_id)
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status])
+  }, [reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.memory_status, snapshot?.current_turn?.state_status])
 
   useEffect(() => {
     if (!isMobile) setMobileSnapshotOpen(false)
@@ -205,8 +205,8 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
               ) : isMobile ? (
                 <div className="relative flex min-h-0 flex-1">
                   {storyStage}
-                  <MobileSnapshotDrawer open={mobileSnapshotOpen} title={t('storyStage.sceneMemory')} closeLabel={t('common.close')} onClose={() => setMobileSnapshotOpen(false)}>
-                    <SnapshotPanel snapshot={displaySnapshot} loading={snapshotPending} />
+                  <MobileSnapshotDrawer open={mobileSnapshotOpen} title={t('memoryPanel.title')} closeLabel={t('common.close')} onClose={() => setMobileSnapshotOpen(false)}>
+                    <MemoryPanel storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} />
                   </MobileSnapshotDrawer>
                 </div>
               ) : (
@@ -219,7 +219,7 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
                       <InteractiveResizeHandle direction="vertical" label={t('interactiveLayout.resizeSceneMemory')} />
                       <Panel id="snapshot" defaultSize="320px" minSize="180px" maxSize="45%" className="min-w-0">
                         <motion.div className="h-full min-h-0" variants={subtlePresence} initial="initial" animate="animate" transition={{ duration: 0.16, ease: novaEase }}>
-                          <SnapshotPanel snapshot={displaySnapshot} loading={snapshotPending} />
+                          <MemoryPanel storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} />
                         </motion.div>
                       </Panel>
                     </>

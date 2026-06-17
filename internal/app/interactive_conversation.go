@@ -14,6 +14,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
+	"nova/config"
 	"nova/internal/book"
 	"nova/internal/interactive"
 	"nova/internal/prompts"
@@ -24,6 +25,7 @@ type interactiveConversation struct {
 	store            *interactive.Store
 	novaDir          string
 	workspace        string
+	cfg              *config.Config
 	storyID          string
 	branchID         string
 	user             string
@@ -35,8 +37,8 @@ type interactiveConversation struct {
 	displayEvents    []interactive.DisplayEvent
 }
 
-func newInteractiveConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int) *interactiveConversation {
-	return &interactiveConversation{store: store, novaDir: novaDir, workspace: workspace, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
+func newInteractiveConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int, cfg *config.Config) *interactiveConversation {
+	return &interactiveConversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
 }
 
 func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage string) ([]*schema.Message, error) {
@@ -55,7 +57,6 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	if err != nil {
 		return nil, fmt.Errorf("序列化互动状态失败: %w", err)
 	}
-	loreItems := c.loreContext()
 	characters := ""
 	worldBuilding := ""
 	contextMessage := prompts.InteractiveStoryContext(prompts.InteractiveStoryPromptInput{
@@ -66,7 +67,6 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		ReplyTargetChars:     c.replyTargetChars,
 		Characters:           characters,
 		WorldBuilding:        worldBuilding,
-		LoreItems:            loreItems,
 		SnapshotStateJSON:    string(stateJSON),
 		PreviousTurnsSummary: turnMemory.PreviousSummary,
 	})
@@ -77,7 +77,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		history = append(history, schema.AssistantMessage(turn.Narrative, nil))
 	}
 	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage, tellerTurnContextPrompt, teller.RandomEventRate)))
-	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreItems, characters, worldBuilding, string(stateJSON), turnMemory, agentMessage)
+	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, characters, worldBuilding, string(stateJSON), turnMemory, agentMessage)
 	c.mu.Lock()
 	c.lastSources = sourceSummary
 	c.mu.Unlock()
@@ -91,7 +91,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		interactiveTellerSlotSummary(teller, "turn_context"),
 		interactivePartSummary(tellerTurnContextPrompt),
 		teller.RandomEventRate,
-		interactivePartSummary(firstNonEmpty(loreItems, characters)),
+		interactivePartSummary(characters),
 		interactivePartSummary(worldBuilding),
 		interactivePartSummary(string(stateJSON)),
 		len(storyCtx.Snapshot.Turns),
@@ -139,7 +139,7 @@ func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking 
 	if err == nil {
 		c.mu.Lock()
 		c.lastTurn = &turn
-		c.lastStateReady = len(ops) > 0
+		c.lastStateReady = false
 		c.mu.Unlock()
 	}
 	return err
@@ -404,15 +404,12 @@ func buildInteractiveTurnMemory(turns []interactive.TurnEvent, recentLimit int) 
 	}
 }
 
-func interactiveStorySourceSummary(title, origin string, teller interactive.Teller, loreItems, characters, worldBuilding, snapshotState string, turnMemory interactiveTurnMemory, userAction string) string {
+func interactiveStorySourceSummary(title, origin string, teller interactive.Teller, characters, worldBuilding, snapshotState string, turnMemory interactiveTurnMemory, userAction string) string {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title},
 		{Source: "互动故事", Title: "开端", Content: origin},
 	}
 	parts = append(parts, interactiveTellerSlotSources(teller, "turn_context")...)
-	if strings.TrimSpace(loreItems) != "" {
-		parts = append(parts, interactiveContextSource{Source: "资料库", Title: ".nova/lore/items.json", Content: loreItems})
-	}
 	parts = append(parts, interactiveContextSource{Source: "互动状态", Title: "当前快照 JSON", Content: snapshotState})
 	if strings.TrimSpace(turnMemory.PreviousSummary) != "" {
 		parts = append(parts, interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("较早 %d 回合压缩摘要", turnMemory.PreviousCount), Content: turnMemory.PreviousSummary, Note: "compressed"})

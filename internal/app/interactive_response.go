@@ -18,7 +18,9 @@ const (
 )
 
 type interactiveStatePayload struct {
-	Ops []interactive.StateOp `json:"ops"`
+	Ops         []interactive.StateOp                       `json:"ops"`
+	StateOps    []interactive.StateOp                       `json:"state_ops"`
+	MemoryEntry *interactive.InteractiveMemoryCreateRequest `json:"memory_entry"`
 }
 
 type interactiveHotStatePayload struct {
@@ -53,14 +55,36 @@ func parseInteractiveAssistantOutput(content string) (string, []interactive.Stat
 }
 
 func parseInteractiveStateOps(content string) ([]interactive.StateOp, error) {
-	var payload interactiveStatePayload
-	if err := json.Unmarshal([]byte(extractJSONPayload(content)), &payload); err != nil {
-		return nil, fmt.Errorf("解析互动状态失败: %w", err)
-	}
-	if err := validateStateOps(payload.Ops); err != nil {
+	result, err := parseInteractiveMemoryOutput(content)
+	if err != nil {
 		return nil, err
 	}
-	return payload.Ops, nil
+	if len(result.StateOps) == 0 {
+		return nil, fmt.Errorf("互动状态变化不能为空：STATE_DELTA.ops 至少需要一条本回合状态变化")
+	}
+	return result.StateOps, nil
+}
+
+type interactiveMemoryAgentResult struct {
+	StateOps    []interactive.StateOp
+	MemoryEntry *interactive.InteractiveMemoryCreateRequest
+}
+
+func parseInteractiveMemoryOutput(content string) (interactiveMemoryAgentResult, error) {
+	var payload interactiveStatePayload
+	if err := json.Unmarshal([]byte(extractJSONPayload(content)), &payload); err != nil {
+		return interactiveMemoryAgentResult{}, fmt.Errorf("解析互动记忆失败: %w", err)
+	}
+	ops := payload.StateOps
+	if len(ops) == 0 {
+		ops = payload.Ops
+	}
+	if len(ops) > 0 {
+		if err := validateStateOps(ops); err != nil {
+			return interactiveMemoryAgentResult{}, err
+		}
+	}
+	return interactiveMemoryAgentResult{StateOps: ops, MemoryEntry: payload.MemoryEntry}, nil
 }
 
 func parseInteractiveHotState(content string) (*interactive.HotState, error) {

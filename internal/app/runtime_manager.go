@@ -415,11 +415,26 @@ func (s *WorkspaceRuntimeManager) Settings() (config.LayeredSettings, error) {
 	a.mu.RLock()
 	workspace := a.workspace
 	novaDir := ""
+	cfg := config.Config{}
 	if a.cfg != nil {
 		novaDir = a.cfg.NovaDir
+		cfg = *a.cfg
 	}
+	state := a.bookState
 	a.mu.RUnlock()
-	return config.LoadLayered(novaDir, workspace)
+	layered, err := config.LoadLayered(novaDir, workspace)
+	if err != nil {
+		return config.LayeredSettings{}, err
+	}
+	cfg.Workspace = workspace
+	applySettingsLayerToConfig(&cfg, layered.User)
+	applySettingsLayerToConfig(&cfg, layered.Workspace)
+	cfg.AgentPrompts = config.AgentPromptSettings{}
+	ideTeller := ideStoryTellerForConfig(&cfg)
+	layered.BuiltinAgentPrompts = agent.BuiltinAgentPrompts(&cfg, state, ideTeller)
+	layered.BuiltinAgentPromptBlocks = agent.BuiltinAgentPromptBlocks(&cfg, state, ideTeller)
+	layered.BuiltinAgentPromptSources = agent.BuiltinAgentPromptSources(&cfg, state, ideTeller)
+	return layered, nil
 }
 
 // UpdateUserSettings 持久化用户级配置并返回最新分层快照。

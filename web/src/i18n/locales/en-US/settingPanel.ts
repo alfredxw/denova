@@ -133,7 +133,7 @@ const settingPanel = {
   'settingPanel.target.turnContext.label': 'Turn Context',
   'settingPanel.target.turnContext.summary': 'Close to the user action each turn',
   'settingPanel.target.turnContext.detail': 'Injected for every next-turn generation. Strongly constrains adjudication, NPC reactions, costs, hidden-thread progress, and available choices.',
-  'settingPanel.target.stateMemory.label': 'State Memory',
+  'settingPanel.target.stateMemory.label': 'Interactive Memory',
   'settingPanel.target.stateMemory.summary': 'Affects only state records',
   'settingPanel.target.stateMemory.detail': 'Injected into the state agent after prose generation to consistently record crises, relationship changes, resources, hidden threads, and action entrances.',
 } as const

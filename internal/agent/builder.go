@@ -43,15 +43,22 @@ func Build(ctx context.Context, cfg *config.Config, state *book.State, teller ID
 	})
 }
 
-func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (adk.Agent, error) {
+func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...InteractiveStoryToolContext) (adk.Agent, error) {
 	toolSettings := config.ResolveAgentTools(cfg, config.AgentKindInteractiveStory)
-	var loreTools []tool.BaseTool
+	var extraTools []tool.BaseTool
 	if toolSettings.LoreRead {
-		var err error
-		loreTools, err = newLoreTools(cfg.Workspace, false)
+		loreTools, err := newLoreTools(cfg.Workspace, false)
 		if err != nil {
 			return nil, err
 		}
+		extraTools = append(extraTools, loreTools...)
+	}
+	if len(toolContexts) > 0 {
+		memoryTools, err := newInteractiveMemoryTools(toolContexts[0])
+		if err != nil {
+			return nil, err
+		}
+		extraTools = append(extraTools, memoryTools...)
 	}
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{
 		Kind:              config.AgentKindInteractiveStory,
@@ -60,7 +67,7 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 		Instruction:       BuildInteractiveStoryInstruction(cfg, state, teller),
 		EnableSkills:      true,
 		DisableWriteTodos: true,
-		ExtraTools:        loreTools,
+		ExtraTools:        extraTools,
 		MaxTokens:         interactiveMaxTokens(cfg),
 	})
 }

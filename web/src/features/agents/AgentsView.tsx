@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, Brain, Check, FolderOpen, Save, ScrollText, Wrench, X } from 'lucide-react'
+import { Bot, Brain, Check, ChevronDown, ChevronRight, FolderOpen, Save, ScrollText, Wrench, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
-import type { AgentModelOverride, AgentPromptOverride, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import type { AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
 import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
 import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
 import { AGENTS, FALLBACK_AGENT_TOOL_VALUES, TOOL_ROWS, resolveEffectiveTools, skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
-import type { AgentViewDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
+import type { AgentToolDefinition, AgentViewDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
 
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
@@ -68,6 +68,9 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const inheritedModel = mergeAgentModelOverride(effective.agent_models?.default ?? {}, effective.agent_models?.[activeAgent] ?? {})
   const promptValue = draft.agent_prompts?.[activeAgent] ?? {}
   const inheritedPrompt = mergeAgentPromptOverride(effective.agent_prompts?.default ?? {}, effective.agent_prompts?.[activeAgent] ?? {})
+  const builtinPrompt = layered?.builtin_agent_prompts?.[activeAgent]?.system_prompt ?? ''
+  const builtinBlocks = layered?.builtin_agent_prompt_blocks?.[activeAgent]
+  const promptSources = layered?.builtin_agent_prompt_sources?.[activeAgent]?.sources
   const toolValue = draft.agent_tools?.[activeAgent] ?? {}
   const inheritedTools = effective.agent_tools?.[activeAgent] ?? FALLBACK_AGENT_TOOL_VALUES[activeAgent]
   const effectiveTools = resolveEffectiveTools(effective.agent_tools?.default ?? {}, inheritedTools)
@@ -204,11 +207,15 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
             <AgentPromptSection
               value={promptValue}
               inherited={inheritedPrompt}
+              builtin={builtinPrompt}
+              blocks={builtinBlocks}
+              sources={promptSources}
               onChange={setAgentPrompt}
             />
             {selected.capabilityMode === 'tools' ? (
               <>
                 <AgentToolSection
+                  agent={activeAgent}
                   value={toolValue}
                   effective={effectiveTools}
                   onChange={setAgentTool}
@@ -354,35 +361,137 @@ function AgentModelSection({ value, inherited, profiles, onChange }: {
   )
 }
 
-function AgentPromptSection({ value, inherited, onChange }: {
+function AgentPromptSection({ value, inherited, builtin, blocks, sources, onChange }: {
   value: AgentPromptOverride
   inherited: AgentPromptOverride
+  builtin: string
+  blocks?: AgentPromptBlocks
+  sources?: AgentPromptSource[]
   onChange: (patch: Partial<AgentPromptOverride>) => void
 }) {
   const { t } = useTranslation()
-  const hasPrompt = hasPromptOverride(value.system_prompt)
-  const effectivePrompt = hasPrompt ? value.system_prompt ?? '' : inherited.system_prompt ?? ''
+  const promptSources = sources?.length ? sources : fallbackPromptSources(blocks, builtin)
   return (
     <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={ScrollText} title={t('agents.section.systemPrompt')} />
-      <Field label={t('agents.field.systemPrompt')} inherited={!hasPrompt} onReset={hasPrompt ? () => onChange({ system_prompt: '' }) : undefined}>
-        <Textarea
-          autoResize
-          value={effectivePrompt}
-          aria-label={t('agents.field.systemPrompt')}
-          placeholder={t('agents.prompt.placeholder')}
-          onChange={(e) => onChange({ system_prompt: e.target.value })}
-          className={`${fieldCls} min-h-36 resize-y leading-5 shadow-none focus-visible:ring-0`}
-        />
-      </Field>
+      <div className="space-y-2">
+        {promptSources.map((source) => (
+          <PromptSourceBlock
+            key={`${source.id}:${source.field ?? 'readonly'}`}
+            source={source}
+            value={value}
+            inherited={inherited}
+            onChange={onChange}
+          />
+        ))}
+      </div>
       <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-        {t('agents.prompt.protectedNote')}
+        {t('agents.prompt.builtinNote')}
       </div>
     </section>
   )
 }
 
-function AgentToolSection({ value, effective, onChange }: {
+function PromptSourceBlock({ source, value, inherited, onChange }: {
+  source: AgentPromptSource
+  value: AgentPromptOverride
+  inherited: AgentPromptOverride
+  onChange: (patch: Partial<AgentPromptOverride>) => void
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const editableField = source.editable ? source.field : undefined
+  const hasOverride = editableField ? hasPromptOverride(value[editableField]) : false
+  const inheritedText = editableField ? inherited[editableField] : undefined
+  const defaultContent = source.content ?? ''
+  const effectiveContent = editableField
+    ? (hasOverride ? value[editableField] ?? '' : (hasPromptOverride(inheritedText) ? inheritedText ?? '' : defaultContent))
+    : defaultContent
+  const title = promptSourceTitle(t, source)
+  const badge = source.editable ? t('agents.prompt.badge.editable') : t('agents.prompt.badge.readonly')
+  const content = effectiveContent.trim()
+
+  return (
+    <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        aria-expanded={open}
+      >
+        {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[11px] font-medium text-[var(--nova-text)]">{title}</span>
+          <span className="block truncate text-[10px] text-[var(--nova-text-faint)]">{source.source}</span>
+        </span>
+        <span className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{badge}</span>
+        {editableField && hasOverride && <span className="rounded-[var(--nova-radius)] bg-[var(--nova-active)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('agents.badge.overridden')}</span>}
+      </button>
+      {open && (
+        <div className="border-t border-[var(--nova-border)] p-3">
+          {editableField ? (
+            <Field label={title} inherited={!hasOverride} onReset={hasOverride ? () => onChange({ [editableField]: '' }) : undefined}>
+              <Textarea
+                autoResize
+                value={effectiveContent}
+                aria-label={title}
+                placeholder={t('agents.prompt.placeholder')}
+                onChange={(e) => onChange({ [editableField]: e.target.value })}
+                className={`${fieldCls} min-h-36 resize-y leading-5 shadow-none focus-visible:ring-0`}
+              />
+            </Field>
+          ) : content ? (
+            <pre className="max-h-56 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-[var(--nova-text-faint)]">{effectiveContent}</pre>
+          ) : (
+            <div className="text-[11px] text-[var(--nova-text-faint)]">{t('agents.prompt.empty')}</div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function fallbackPromptSources(blocks?: AgentPromptBlocks, builtin?: string): AgentPromptSource[] {
+  return [
+    blocks?.runtime_contract ? {
+      id: 'runtime_contract',
+      title: 'Runtime Contract',
+      source: 'Nova runtime',
+      content: blocks.runtime_contract,
+    } : null,
+    blocks?.output_protocol ? {
+      id: 'output_protocol',
+      title: 'Output Format',
+      source: 'Nova runtime',
+      content: blocks.output_protocol,
+    } : null,
+    {
+      id: 'flow',
+      title: 'Flow Rules',
+      source: 'Nova built-in',
+      content: blocks?.editable_system_prompt || builtin || '',
+      editable: true,
+      field: 'flow_prompt' as const,
+    },
+    {
+      id: 'custom',
+      title: 'Custom Rules',
+      source: 'user/workspace config',
+      content: '',
+      editable: true,
+      field: 'system_prompt' as const,
+    },
+  ].filter(Boolean) as AgentPromptSource[]
+}
+
+function promptSourceTitle(t: ReturnType<typeof useTranslation>['t'], source: AgentPromptSource) {
+  const key = `agents.prompt.source.${source.id}`
+  const translated = t(key)
+  return translated === key ? source.title : translated
+}
+
+function AgentToolSection({ agent, value, effective, onChange }: {
+  agent: VisibleAgentKey
   value: AgentToolOverride
   effective: Required<AgentToolOverride>
   onChange: (key: ToolKey, value: boolean | null) => void
@@ -402,7 +511,7 @@ function AgentToolSection({ value, effective, onChange }: {
               <Icon className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{t(tool.titleKey)}</div>
-                <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{t(tool.subtitleKey)}</div>
+                <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{t(toolSubtitleKey(tool, agent))}</div>
               </div>
               <select
                 value={String(current)}
@@ -419,6 +528,13 @@ function AgentToolSection({ value, effective, onChange }: {
       </div>
     </section>
   )
+}
+
+function toolSubtitleKey(tool: AgentToolDefinition, agent: VisibleAgentKey) {
+  if (agent === 'interactive_story' && tool.key === 'lore_read') {
+    return 'agents.tool.loreRead.interactiveSubtitle'
+  }
+  return tool.subtitleKey
 }
 
 function AgentSkillSection({ agent, skills, value, effective, onChange }: {
@@ -641,6 +757,7 @@ function mergeAgentModelOverride(parent: AgentModelOverride, child: AgentModelOv
 
 function mergeAgentPromptOverride(parent: AgentPromptOverride, child: AgentPromptOverride): AgentPromptOverride {
   return {
+    flow_prompt: hasPromptOverride(child.flow_prompt) ? child.flow_prompt : parent.flow_prompt,
     system_prompt: hasPromptOverride(child.system_prompt) ? child.system_prompt : parent.system_prompt,
   }
 }

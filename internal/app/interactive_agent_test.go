@@ -39,7 +39,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatal(err)
 	}
 
-	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我点燃火把", story.ReplyTargetChars)
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我点燃火把", story.ReplyTargetChars, nil)
 	history, err := conversation.PrepareMessages("我点燃火把", "我点燃火把")
 	if err != nil {
 		t.Fatal(err)
@@ -53,8 +53,10 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		strings.Contains(history[0].Content, "经典叙事者") ||
 		strings.Contains(history[0].Content, "本轮上下文") ||
 		!strings.Contains(history[0].Content, "800 个中文字") ||
-		!strings.Contains(history[0].Content, "林川：谨慎的幸存者") ||
-		!strings.Contains(history[0].Content, "世界已进入黄昏末日。") ||
+		strings.Contains(history[0].Content, "林川：谨慎的幸存者") ||
+		strings.Contains(history[0].Content, "世界已进入黄昏末日。") ||
+		!strings.Contains(history[0].Content, "list_lore_items") ||
+		!strings.Contains(history[0].Content, "list_interactive_memories") ||
 		!strings.Contains(history[0].Content, `"on_stage"`) {
 		t.Fatalf("history[0] mismatch: %#v", history[0])
 	}
@@ -103,7 +105,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stateInstruction, "导演状态记忆规则") || !strings.Contains(stateInstruction, "帮助后续回合稳定承接") {
+	if !strings.Contains(stateInstruction, "导演互动记忆规则") || !strings.Contains(stateInstruction, "帮助后续回合稳定承接") {
 		t.Fatalf("state instruction should include state_memory rules: %s", stateInstruction)
 	}
 	if strings.Contains(stateInstruction, "经典叙事者") || strings.Contains(stateInstruction, "导演本轮上下文规则") {
@@ -197,7 +199,7 @@ func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T
 		t.Fatal(err)
 	}
 
-	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我观察四周", story.ReplyTargetChars)
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我观察四周", story.ReplyTargetChars, nil)
 	history, err := conversation.PrepareMessages("我观察四周", "我观察四周")
 	if err != nil {
 		t.Fatal(err)

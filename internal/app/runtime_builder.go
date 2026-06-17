@@ -103,8 +103,8 @@ func ideStoryTellerForConfig(cfg *config.Config) agent.IDEStoryTeller {
 	}
 }
 
-func buildInteractiveStoryRunner(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (*adk.Runner, error) {
-	builtAgent, err := agent.BuildInteractiveStory(ctx, cfg, state, teller)
+func buildInteractiveStoryRunner(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...agent.InteractiveStoryToolContext) (*adk.Runner, error) {
+	builtAgent, err := agent.BuildInteractiveStory(ctx, cfg, state, teller, toolContexts...)
 	if err != nil {
 		return nil, fmt.Errorf("构建互动故事 Agent 失败: %w", err)
 	}

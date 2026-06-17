@@ -73,6 +73,62 @@ func (h *Handlers) HandleInteractiveSnapshot(ctx context.Context, c *app.Request
 	writeJSON(c, consts.StatusOK, snapshot)
 }
 
+func (h *Handlers) HandleInteractiveMemory(ctx context.Context, c *app.RequestContext) {
+	includeHidden := strings.EqualFold(c.Query("hidden"), "true") || strings.EqualFold(c.Query("include_hidden"), "true")
+	state, err := h.app.InteractiveMemory(c.Param("id"), c.Query("branch"), includeHidden)
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, state)
+}
+
+func (h *Handlers) HandleInteractiveMemoryCreate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.InteractiveMemoryCreateRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	entry, err := h.app.CreateInteractiveMemory(c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, entry)
+}
+
+func (h *Handlers) HandleInteractiveMemoryUpdate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.InteractiveMemoryUpdateRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	entry, err := h.app.UpdateInteractiveMemory(c.Param("id"), c.Param("memory_id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, entry)
+}
+
+func (h *Handlers) HandleInteractiveMemoryHide(ctx context.Context, c *app.RequestContext) {
+	var body interactive.InteractiveMemoryHideRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	hidden := true
+	if body.Hidden != nil {
+		hidden = *body.Hidden
+	}
+	entry, err := h.app.SetInteractiveMemoryHidden(c.Param("id"), c.Param("memory_id"), hidden)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, entry)
+}
+
 func (h *Handlers) HandleInteractiveBranches(ctx context.Context, c *app.RequestContext) {
 	branches, err := h.app.InteractiveBranches(c.Param("id"))
 	if err != nil {

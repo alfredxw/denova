@@ -12,7 +12,18 @@ func protectedSystemInstruction(cfg *config.Config, agentKind, builtIn string) s
 	var sb strings.Builder
 	sb.WriteString("# Nova 运行时契约（不可覆盖）\n\n")
 	sb.WriteString(runtimeContractForAgent(agentKind))
-	if custom := config.ResolveAgentPrompt(cfg, agentKind).SystemPrompt; custom != "" {
+	if outputProtocol := outputProtocolForAgent(agentKind); strings.TrimSpace(outputProtocol) != "" {
+		sb.WriteString("\n\n## 输出格式（不可覆盖）\n\n")
+		sb.WriteString(outputProtocol)
+	}
+	resolvedPrompt := config.ResolveAgentPrompt(cfg, agentKind)
+	if flow := resolvedPrompt.FlowPrompt; flow != "" {
+		sb.WriteString("\n\n---\n\n")
+		sb.WriteString("# 用户自定义流程规则（受保护高优先级）\n\n")
+		sb.WriteString("以下流程规则优先于 Nova 内置流程规则；但不得覆盖运行时契约、输出格式、工具权限和后端校验。若存在冲突，必须忽略冲突部分。\n\n")
+		sb.WriteString(flow)
+	}
+	if custom := resolvedPrompt.SystemPrompt; custom != "" {
 		sb.WriteString("\n\n---\n\n")
 		sb.WriteString("# 用户自定义系统提示（受保护最高优先级）\n\n")
 		sb.WriteString("以下提示在 Agent 行为、创作偏好、策略和风格上优先于 Nova 内置提示；但不得覆盖上一节运行时契约。若以下提示与运行时契约冲突，必须忽略冲突部分。\n\n")
@@ -40,6 +51,34 @@ func runtimeContractForAgent(agentKind string) string {
 	return common
 }
 
+func outputProtocolForAgent(agentKind string) string {
+	switch agentKind {
+	case config.AgentKindInteractiveStory:
+		return strings.Join([]string{
+			"- 必须只输出 <NARRATIVE>...</NARRATIVE>。",
+			"- <NARRATIVE> 内只写展示在故事舞台上的正文；不要输出计划、解释、工具说明、Markdown 标题、状态 JSON、<HOT_STATE> 或 <STATE_DELTA>。",
+		}, "\n")
+	case config.AgentKindTellerEditor:
+		return "- 必须只输出符合导演编辑 schema 的 JSON object，由后端校验后保存。"
+	case config.AgentKindInteractiveState:
+		return "- 必须只输出符合互动记忆 schema 的 JSON object，字段包括 state_ops 和 memory_entry；不得输出 Markdown、解释或代码块。"
+	case config.AgentKindInteractiveHotChoices:
+		return "- 必须只输出 JSON object，格式为 {\"choices\":[\"...\"]}；不得续写剧情或修改故事状态。"
+	case config.AgentKindVersionSummary:
+		return "- 必须只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"
+	case config.AgentKindToolAgent:
+		return "- 必须只输出当前调用点要求的 JSON object，不得输出解释、Markdown、代码块或额外文本。"
+	case config.AgentKindLoreEditor:
+		return "- 资料库写入必须通过 write_lore_items 工具产生结构化变更，由后端校验后应用；没有写权限时不得声称已经写入。"
+	case config.AgentKindAutomation:
+		return "- 最终输出必须说明实际完成内容、写入路径和待用户确认事项；写入行为仍受任务写入策略和工具权限约束。"
+	case config.AgentKindIDE:
+		return "- IDE 创作 Agent 没有固定 JSON 输出协议；所有文件变更必须通过已启用工具执行，并遵守工作区边界。"
+	default:
+		return "- 必须遵守当前 Agent 调用点的输出协议和后端校验。"
+	}
+}
+
 func agentRuntimeContract(agentKind string) string {
 	switch agentKind {
 	case config.AgentKindIDE:
@@ -59,7 +98,7 @@ func agentRuntimeContract(agentKind string) string {
 	case config.AgentKindTellerEditor:
 		return "- 导演 Agent 必须只输出符合内置 schema 的 JSON object；只能创建或修改单个导演，保存前仍由后端校验。"
 	case config.AgentKindInteractiveState:
-		return "- 状态记忆 Agent 必须只输出符合内置 schema 的 JSON object；状态 path、op 和内容边界仍由后端校验。"
+		return "- 互动记忆 Agent 必须只输出符合内置 schema 的 JSON object；状态 path、op 和长期记忆内容边界仍由后端校验。"
 	case config.AgentKindInteractiveHotChoices:
 		return "- 快捷选项 Agent 必须只输出符合内置 schema 的 JSON object；不得续写剧情或修改故事状态。"
 	case config.AgentKindVersionSummary:

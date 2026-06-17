@@ -133,7 +133,7 @@ const settingPanel = {
   'settingPanel.target.turnContext.label': '本轮上下文',
   'settingPanel.target.turnContext.summary': '每轮贴近用户行动',
   'settingPanel.target.turnContext.detail': '每次生成下一回合时注入，强约束本轮裁定、NPC 主动反应、代价、暗线推进和可选择。',
-  'settingPanel.target.stateMemory.label': '状态记忆',
+  'settingPanel.target.stateMemory.label': '互动记忆',
   'settingPanel.target.stateMemory.summary': '只影响状态记录',
   'settingPanel.target.stateMemory.detail': '正文生成后注入状态 Agent，用于稳定记录危机、关系变化、资源压力、暗线和行动入口。',
 } as const

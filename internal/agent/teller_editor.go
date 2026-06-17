@@ -281,10 +281,10 @@ JSON 格式：
       },
       {
         "id": "state_memory",
-        "name": "状态记忆",
+        "name": "互动记忆",
         "target": "state_memory",
         "enabled": true,
-        "content": "本回合结束后状态记录应该关注的内容"
+        "content": "本回合结束后状态快照和长期记忆应该关注的内容"
       }
     ]
   }

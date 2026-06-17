@@ -53,6 +53,37 @@ const defaultPayloads: Record<string, unknown> = {
     user: {},
     workspace: {},
     effective: { max_open_tabs: 5 },
+    builtin_agent_prompt_blocks: {
+      ide: {
+        runtime_contract: '运行契约测试',
+        output_protocol: '输出格式测试',
+        editable_system_prompt: '默认流程测试',
+      },
+      interactive_story: {
+        runtime_contract: '互动运行契约测试',
+        output_protocol: '互动输出格式测试',
+        editable_system_prompt: 'list_interactive_memories read_interactive_memories',
+      },
+    },
+    builtin_agent_prompt_sources: {
+      ide: {
+        sources: [
+          { id: 'runtime_contract', title: '运行契约', source: 'Nova runtime', content: '运行契约测试' },
+          { id: 'output_protocol', title: '输出格式', source: 'Nova runtime', content: '输出格式测试' },
+          { id: 'creator', title: 'CREATOR.md', source: 'CREATOR.md', content: '创作者指令测试' },
+          { id: 'flow', title: '流程规则', source: 'Nova built-in', content: '默认流程测试', editable: true, field: 'flow_prompt' },
+          { id: 'custom', title: '用户自定义', source: 'user/workspace config', content: '', editable: true, field: 'system_prompt' },
+        ],
+      },
+      interactive_story: {
+        sources: [
+          { id: 'runtime_contract', title: '互动运行契约', source: 'Nova runtime', content: '互动运行契约测试' },
+          { id: 'output_protocol', title: '互动输出格式', source: 'Nova runtime', content: '互动输出格式测试' },
+          { id: 'flow', title: '流程规则', source: 'Nova built-in', content: 'list_interactive_memories read_interactive_memories', editable: true, field: 'flow_prompt' },
+          { id: 'custom', title: '用户自定义', source: 'user/workspace config', content: '', editable: true, field: 'system_prompt' },
+        ],
+      },
+    },
     paths: { nova_dir: '/nova/user', user_config: '', workspace_config: '' },
   },
   '/api/books/create': { workspace: '/nova/user/新书', book_meta: { title: '新书', author: '', description: '' } },
@@ -247,8 +278,12 @@ describe('App', () => {
     expect(within(screen.getByRole('navigation')).getAllByText('互动')).toHaveLength(1)
     expect(screen.getByText('模型与思考')).toBeInTheDocument()
     expect(screen.getByText('系统提示')).toBeInTheDocument()
-    expect(screen.getByLabelText('自定义 System Prompt')).toBeInTheDocument()
-    expect(screen.getByText('自定义提示在行为、创作偏好、策略和风格上优先于 Nova 内置提示，但不会覆盖工具权限、输出协议、互动禁写文件、结构化 JSON 要求和后端校验边界。')).toBeInTheDocument()
+    expect(screen.getByText('运行契约')).toBeInTheDocument()
+    expect(screen.getByText('输出格式')).toBeInTheDocument()
+    expect(screen.getAllByText('CREATOR.md').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: /流程规则/ }))
+    expect(screen.getByLabelText('流程规则')).toBeInTheDocument()
+    expect(screen.getByText('当前展示的是 Nova 内置默认系统提示；直接编辑即可在当前层保存为自定义 System Prompt。')).toBeInTheDocument()
     expect(screen.getByText('工具能力')).toBeInTheDocument()
     expect(screen.queryByText('Agent 模型分配')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '关闭 Agents' })).toBeInTheDocument()

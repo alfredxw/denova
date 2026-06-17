@@ -122,7 +122,53 @@ export interface AgentPromptSettings {
 }
 
 export interface AgentPromptOverride {
+  flow_prompt?: string
   system_prompt?: string
+}
+
+export interface AgentPromptSource {
+  id: string
+  title: string
+  source: string
+  content?: string
+  editable?: boolean
+  field?: 'flow_prompt' | 'system_prompt'
+}
+
+export interface AgentPromptSourceList {
+  sources?: AgentPromptSource[]
+}
+
+export interface AgentPromptSourceSettings {
+  default?: AgentPromptSourceList
+  ide?: AgentPromptSourceList
+  interactive_story?: AgentPromptSourceList
+  lore_editor?: AgentPromptSourceList
+  teller_editor?: AgentPromptSourceList
+  interactive_state?: AgentPromptSourceList
+  interactive_hot_choices?: AgentPromptSourceList
+  version_summary?: AgentPromptSourceList
+  tool_agent?: AgentPromptSourceList
+  automation?: AgentPromptSourceList
+}
+
+export interface AgentPromptBlocks {
+  runtime_contract?: string
+  output_protocol?: string
+  editable_system_prompt?: string
+}
+
+export interface AgentPromptBlockSettings {
+  default?: AgentPromptBlocks
+  ide?: AgentPromptBlocks
+  interactive_story?: AgentPromptBlocks
+  lore_editor?: AgentPromptBlocks
+  teller_editor?: AgentPromptBlocks
+  interactive_state?: AgentPromptBlocks
+  interactive_hot_choices?: AgentPromptBlocks
+  version_summary?: AgentPromptBlocks
+  tool_agent?: AgentPromptBlocks
+  automation?: AgentPromptBlocks
 }
 
 export interface SettingsPaths {
@@ -138,6 +184,9 @@ export interface LayeredSettings {
   workspace: Settings
   effective: Settings
   paths: SettingsPaths
+  builtin_agent_prompts?: AgentPromptSettings
+  builtin_agent_prompt_blocks?: AgentPromptBlockSettings
+  builtin_agent_prompt_sources?: AgentPromptSourceSettings
 }
 
 export type SettingsLayer = 'user' | 'workspace'

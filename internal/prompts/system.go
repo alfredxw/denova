@@ -61,6 +61,21 @@ func BuildSystemInstruction(in SystemInstructionInput) string {
 		sb.WriteString("\n---\n\n")
 	}
 
+	sb.WriteString(BuildIDEWritingFlowInstruction(in))
+
+	if state := strings.TrimSpace(in.StateContext); state != "" {
+		sb.WriteString("\n\n# 当前作品状态\n\n")
+		sb.WriteString(state)
+	} else {
+		sb.WriteString("\n\n# 当前作品状态\n\n")
+		sb.WriteString(emptyStateHint)
+	}
+
+	return sb.String()
+}
+
+func BuildIDEWritingFlowInstruction(in SystemInstructionInput) string {
+	var sb strings.Builder
 	sb.WriteString("# IDE 写作流程配置\n\n")
 	sb.WriteString("- 主流程：创作灵感 -> 大纲 -> 下一组细纲 -> 单章草稿/定稿。\n")
 	sb.WriteString("- 章节组细纲目录：setting/chapter-groups/，每个文件只规划接下来要写的一组连续章节；内容保持短小、可扫读、方便作者评论和后续更新。\n")
@@ -77,15 +92,6 @@ func BuildSystemInstruction(in SystemInstructionInput) string {
 	ws := in.Workspace
 	sb.WriteString(fmt.Sprintf(systemInstructionBody,
 		ws, ws, ws, ws, ws, ws, ws, ws, ws, ws, ws, ws))
-
-	if state := strings.TrimSpace(in.StateContext); state != "" {
-		sb.WriteString("\n\n# 当前作品状态\n\n")
-		sb.WriteString(state)
-	} else {
-		sb.WriteString("\n\n# 当前作品状态\n\n")
-		sb.WriteString(emptyStateHint)
-	}
-
 	return sb.String()
 }
 
@@ -96,6 +102,17 @@ func BuildLoreAgentSystemInstruction(in LoreAgentSystemInstructionInput) string 
 		sb.WriteString(creator)
 		sb.WriteString("\n\n---\n\n")
 	}
+	sb.WriteString(BuildLoreAgentFlowInstruction(in))
+	if ws := strings.TrimSpace(in.Workspace); ws != "" {
+		sb.WriteString("\n## 作品工作目录\n")
+		sb.WriteString(ws)
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func BuildLoreAgentFlowInstruction(in LoreAgentSystemInstructionInput) string {
+	var sb strings.Builder
 	sb.WriteString("你是 Nova 的资料库 Agent，负责通过对话维护当前书籍的结构化资料库，并在资料库为空时引导作者完成故事初始化。\n\n")
 	sb.WriteString("## 工具边界\n")
 	sb.WriteString("- 可以使用 list_lore_items、read_lore_items、write_lore_items 读取和写入资料库。\n")
@@ -114,11 +131,6 @@ func BuildLoreAgentSystemInstruction(in LoreAgentSystemInstructionInput) string 
 	sb.WriteString("## 输出方式\n")
 	sb.WriteString("- 普通回复使用自然中文，先说明结论和下一步。\n")
 	sb.WriteString("- 调用工具后简要总结创建/更新了哪些资料条目和是否更新 CREATOR.md。\n")
-	if ws := strings.TrimSpace(in.Workspace); ws != "" {
-		sb.WriteString("\n## 作品工作目录\n")
-		sb.WriteString(ws)
-		sb.WriteString("\n")
-	}
 	return sb.String()
 }
 

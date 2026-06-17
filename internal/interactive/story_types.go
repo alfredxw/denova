@@ -123,6 +123,9 @@ type TurnEvent struct {
 	HotState      *HotState       `json:"hot_state,omitempty"`
 	StateStatus   string          `json:"state_status,omitempty"`
 	StateError    string          `json:"state_error,omitempty"`
+	MemoryEntryID string          `json:"memory_entry_id,omitempty"`
+	MemoryStatus  string          `json:"memory_status,omitempty"`
+	MemoryError   string          `json:"memory_error,omitempty"`
 	Alts          []TurnAlt       `json:"alts,omitempty"`
 	AltIdx        int             `json:"alt_idx,omitempty"`
 	Versions      []TurnVersion   `json:"versions,omitempty"`
@@ -227,4 +230,64 @@ type PlotNode struct {
 type StoryContext struct {
 	Meta     StoryMeta `json:"meta"`
 	Snapshot Snapshot  `json:"snapshot"`
+}
+
+type InteractiveMemoryEntry struct {
+	ID         string   `json:"id"`
+	BranchID   string   `json:"branch_id"`
+	TurnID     string   `json:"turn_id,omitempty"`
+	Title      string   `json:"title"`
+	Summary    string   `json:"summary"`
+	Content    string   `json:"content"`
+	People     []string `json:"people,omitempty"`
+	Places     []string `json:"places,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
+	Importance int      `json:"importance"`
+	Hidden     bool     `json:"hidden"`
+	Manual     bool     `json:"manual"`
+	CreatedAt  string   `json:"created_at"`
+	UpdatedAt  string   `json:"updated_at"`
+}
+
+type InteractiveMemoryRecall struct {
+	BranchID  string   `json:"branch_id"`
+	TurnID    string   `json:"turn_id,omitempty"`
+	Query     string   `json:"query,omitempty"`
+	MemoryIDs []string `json:"memory_ids"`
+	CreatedAt string   `json:"created_at"`
+}
+
+type InteractiveMemoryState struct {
+	StoryID      string                   `json:"story_id"`
+	BranchID     string                   `json:"branch_id"`
+	Entries      []InteractiveMemoryEntry `json:"entries"`
+	RecentRecall *InteractiveMemoryRecall `json:"recent_recall,omitempty"`
+	SyncStatus   string                   `json:"sync_status,omitempty"`
+	SyncError    string                   `json:"sync_error,omitempty"`
+}
+
+type InteractiveMemoryCreateRequest struct {
+	BranchID   string   `json:"branch_id"`
+	TurnID     string   `json:"turn_id,omitempty"`
+	Title      string   `json:"title"`
+	Summary    string   `json:"summary"`
+	Content    string   `json:"content"`
+	People     []string `json:"people,omitempty"`
+	Places     []string `json:"places,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
+	Importance int      `json:"importance"`
+}
+
+type InteractiveMemoryUpdateRequest struct {
+	Title      *string  `json:"title,omitempty"`
+	Summary    *string  `json:"summary,omitempty"`
+	Content    *string  `json:"content,omitempty"`
+	People     []string `json:"people,omitempty"`
+	Places     []string `json:"places,omitempty"`
+	Tags       []string `json:"tags,omitempty"`
+	Importance *int     `json:"importance,omitempty"`
+}
+
+type InteractiveMemoryHideRequest struct {
+	Hidden *bool `json:"hidden,omitempty"`
 }

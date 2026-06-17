@@ -96,6 +96,54 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	return store.Snapshot(storyID, branchID)
 }
 
+func (a *App) InteractiveMemory(storyID, branchID string, includeHidden bool) (interactive.InteractiveMemoryState, error) {
+	return a.interactiveService().InteractiveMemory(storyID, branchID, includeHidden)
+}
+
+func (s *InteractiveAppService) InteractiveMemory(storyID, branchID string, includeHidden bool) (interactive.InteractiveMemoryState, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.InteractiveMemoryState{}, ErrNoWorkspace
+	}
+	return store.InteractiveMemory(storyID, branchID, includeHidden)
+}
+
+func (a *App) CreateInteractiveMemory(storyID string, req interactive.InteractiveMemoryCreateRequest) (interactive.InteractiveMemoryEntry, error) {
+	return a.interactiveService().CreateInteractiveMemory(storyID, req)
+}
+
+func (s *InteractiveAppService) CreateInteractiveMemory(storyID string, req interactive.InteractiveMemoryCreateRequest) (interactive.InteractiveMemoryEntry, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.InteractiveMemoryEntry{}, ErrNoWorkspace
+	}
+	return store.CreateInteractiveMemory(storyID, req)
+}
+
+func (a *App) UpdateInteractiveMemory(storyID, memoryID string, req interactive.InteractiveMemoryUpdateRequest) (interactive.InteractiveMemoryEntry, error) {
+	return a.interactiveService().UpdateInteractiveMemory(storyID, memoryID, req)
+}
+
+func (s *InteractiveAppService) UpdateInteractiveMemory(storyID, memoryID string, req interactive.InteractiveMemoryUpdateRequest) (interactive.InteractiveMemoryEntry, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.InteractiveMemoryEntry{}, ErrNoWorkspace
+	}
+	return store.UpdateInteractiveMemory(storyID, memoryID, req)
+}
+
+func (a *App) SetInteractiveMemoryHidden(storyID, memoryID string, hidden bool) (interactive.InteractiveMemoryEntry, error) {
+	return a.interactiveService().SetInteractiveMemoryHidden(storyID, memoryID, hidden)
+}
+
+func (s *InteractiveAppService) SetInteractiveMemoryHidden(storyID, memoryID string, hidden bool) (interactive.InteractiveMemoryEntry, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.InteractiveMemoryEntry{}, ErrNoWorkspace
+	}
+	return store.SetInteractiveMemoryHidden(storyID, memoryID, hidden)
+}
+
 func (a *App) CreateInteractiveBranch(storyID string, req interactive.CreateBranchRequest) (interactive.BranchSummary, error) {
 	return a.interactiveService().CreateInteractiveBranch(storyID, req)
 }
@@ -236,7 +284,11 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		}
 	}
 	log.Printf("[interactive-agent-task] use story settings story_id=%s teller_id=%s target_chars=%d style_rules=%d", storyID, teller.ID, runtimeCfg.InteractiveReplyTargetChars, len(styleRules))
-	runner, err := buildInteractiveStoryRunner(context.Background(), &runtimeCfg, state, interactiveStoryTellerSystemInput(teller))
+	runner, err := buildInteractiveStoryRunner(context.Background(), &runtimeCfg, state, interactiveStoryTellerSystemInput(teller), agent.InteractiveStoryToolContext{
+		Store:    store,
+		StoryID:  storyID,
+		BranchID: storyCtx.Snapshot.BranchID,
+	})
 	if err != nil {
 		log.Printf("[interactive-agent-task] 刷新互动故事 Agent Runner 失败 workspace=%s err=%v", workspace, err)
 		return nil
@@ -260,7 +312,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		StyleReferences: styleReferences,
 		StyleRules:      styleRules,
 	}
-	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars)
+	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_references=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleReferences))
 		chatService.RunWithOptions(ctx, runner, conversation, bookService, req, agent.RunOptions{

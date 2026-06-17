@@ -21,6 +21,10 @@ type AutomationTaskInstruction struct {
 }
 
 func BuildAutomationInstruction(cfg *config.Config, state *book.State, task AutomationTaskInstruction) string {
+	return protectedSystemInstruction(cfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(cfg, state, task))
+}
+
+func editableAutomationBuiltinInstruction(cfg *config.Config, state *book.State, task AutomationTaskInstruction) string {
 	workspace := task.Workspace
 	if workspace == "" && cfg != nil {
 		workspace = cfg.Workspace
@@ -53,5 +57,5 @@ func BuildAutomationInstruction(cfg *config.Config, state *book.State, task Auto
 		sb.WriteString("\n## 用户任务\n\n")
 		sb.WriteString("根据任务配置完成这次自动化。请先自行读取必要信息，再执行；如果任务目标不明确，只输出你需要用户补充的配置建议。")
 	}
-	return protectedSystemInstruction(cfg, config.AgentKindAutomation, sb.String())
+	return sb.String()
 }

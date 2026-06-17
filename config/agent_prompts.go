@@ -17,10 +17,57 @@ type AgentPromptSettings struct {
 }
 
 type AgentPromptOverride struct {
+	FlowPrompt   string `toml:"flow_prompt,omitempty" json:"flow_prompt,omitempty"`
 	SystemPrompt string `toml:"system_prompt,omitempty" json:"system_prompt,omitempty"`
 }
 
+type AgentPromptSourceSettings struct {
+	Default               AgentPromptSourceList `json:"default,omitempty"`
+	IDE                   AgentPromptSourceList `json:"ide,omitempty"`
+	InteractiveStory      AgentPromptSourceList `json:"interactive_story,omitempty"`
+	LoreEditor            AgentPromptSourceList `json:"lore_editor,omitempty"`
+	TellerEditor          AgentPromptSourceList `json:"teller_editor,omitempty"`
+	InteractiveState      AgentPromptSourceList `json:"interactive_state,omitempty"`
+	InteractiveHotChoices AgentPromptSourceList `json:"interactive_hot_choices,omitempty"`
+	VersionSummary        AgentPromptSourceList `json:"version_summary,omitempty"`
+	ToolAgent             AgentPromptSourceList `json:"tool_agent,omitempty"`
+	Automation            AgentPromptSourceList `json:"automation,omitempty"`
+}
+
+type AgentPromptSourceList struct {
+	Sources []AgentPromptSource `json:"sources,omitempty"`
+}
+
+type AgentPromptSource struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Source   string `json:"source"`
+	Content  string `json:"content"`
+	Editable bool   `json:"editable,omitempty"`
+	Field    string `json:"field,omitempty"`
+}
+
+type AgentPromptBlockSettings struct {
+	Default               AgentPromptBlocks `json:"default,omitempty"`
+	IDE                   AgentPromptBlocks `json:"ide,omitempty"`
+	InteractiveStory      AgentPromptBlocks `json:"interactive_story,omitempty"`
+	LoreEditor            AgentPromptBlocks `json:"lore_editor,omitempty"`
+	TellerEditor          AgentPromptBlocks `json:"teller_editor,omitempty"`
+	InteractiveState      AgentPromptBlocks `json:"interactive_state,omitempty"`
+	InteractiveHotChoices AgentPromptBlocks `json:"interactive_hot_choices,omitempty"`
+	VersionSummary        AgentPromptBlocks `json:"version_summary,omitempty"`
+	ToolAgent             AgentPromptBlocks `json:"tool_agent,omitempty"`
+	Automation            AgentPromptBlocks `json:"automation,omitempty"`
+}
+
+type AgentPromptBlocks struct {
+	RuntimeContract      string `json:"runtime_contract,omitempty"`
+	OutputProtocol       string `json:"output_protocol,omitempty"`
+	EditableSystemPrompt string `json:"editable_system_prompt,omitempty"`
+}
+
 type ResolvedAgentPromptSettings struct {
+	FlowPrompt   string `json:"flow_prompt"`
 	SystemPrompt string `json:"system_prompt"`
 }
 
@@ -45,12 +92,16 @@ func ResolveAgentPrompt(cfg *Config, agentKind string) ResolvedAgentPromptSettin
 	}
 	override := mergeAgentPromptOverride(cfg.AgentPrompts.Default, agentPromptOverrideFor(cfg.AgentPrompts, agentKind))
 	return ResolvedAgentPromptSettings{
+		FlowPrompt:   strings.TrimSpace(override.FlowPrompt),
 		SystemPrompt: strings.TrimSpace(override.SystemPrompt),
 	}
 }
 
 func mergeAgentPromptOverride(parent, child AgentPromptOverride) AgentPromptOverride {
 	out := parent
+	if strings.TrimSpace(child.FlowPrompt) != "" {
+		out.FlowPrompt = child.FlowPrompt
+	}
 	if strings.TrimSpace(child.SystemPrompt) != "" {
 		out.SystemPrompt = child.SystemPrompt
 	}
@@ -79,6 +130,9 @@ func sanitizeAgentPromptSettings(settings AgentPromptSettings) AgentPromptSettin
 }
 
 func sanitizeAgentPromptOverride(override AgentPromptOverride) AgentPromptOverride {
+	if strings.TrimSpace(override.FlowPrompt) == "" {
+		override.FlowPrompt = ""
+	}
 	if strings.TrimSpace(override.SystemPrompt) == "" {
 		override.SystemPrompt = ""
 	}

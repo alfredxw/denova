@@ -242,12 +242,15 @@ const (
 
 // LayeredSettings 暴露三层快照及合并后的 effective 值。
 type LayeredSettings struct {
-	Default   Settings      `json:"default"`
-	Global    Settings      `json:"global"`
-	User      Settings      `json:"user"`
-	Workspace Settings      `json:"workspace"`
-	Effective Settings      `json:"effective"`
-	Paths     SettingsPaths `json:"paths"`
+	Default                   Settings                  `json:"default"`
+	Global                    Settings                  `json:"global"`
+	User                      Settings                  `json:"user"`
+	Workspace                 Settings                  `json:"workspace"`
+	Effective                 Settings                  `json:"effective"`
+	Paths                     SettingsPaths             `json:"paths"`
+	BuiltinAgentPrompts       AgentPromptSettings       `json:"builtin_agent_prompts,omitempty"`
+	BuiltinAgentPromptBlocks  AgentPromptBlockSettings  `json:"builtin_agent_prompt_blocks,omitempty"`
+	BuiltinAgentPromptSources AgentPromptSourceSettings `json:"builtin_agent_prompt_sources,omitempty"`
 }
 
 // SettingsPaths 是设置页只读展示的真实配置路径。

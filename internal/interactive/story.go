@@ -321,6 +321,7 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		Thinking:      strings.TrimSpace(req.Thinking),
 		DisplayEvents: sanitizeDisplayEvents(req.DisplayEvents),
 		HotState:      normalizeHotState(req.HotState),
+		MemoryStatus:  "pending",
 		Flags:         map[string]bool{"pinned": false, "locked": false},
 	}
 	branch.Head = turn.ID
@@ -546,6 +547,8 @@ func (s *Store) MarkStateFailed(storyID string, req MarkStateFailedRequest) erro
 		}
 		raw["state_status"] = "failed"
 		raw["state_error"] = errText
+		raw["memory_status"] = "failed"
+		raw["memory_error"] = errText
 		updated = true
 		break
 	}

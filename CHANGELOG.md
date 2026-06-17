@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 互动模式新增按故事和分支隔离的外置长期记忆，后台互动记忆 Agent 会在每轮正文落盘后异步生成状态变化和长期纪要；互动故事 Agent 可通过只读工具按当前分支主动召回相关记忆。
+- 互动故事新增长期记忆 API 和右侧记忆面板，支持搜索、按人物/地点/标签匹配、手动新增、编辑、软隐藏和恢复记忆；当前状态快照保留在面板折叠区。
 - 设置页新增应用更新检查与安装：后端通过 GitHub latest Release 匹配当前平台安装包，前端支持自动检查、手动检查、一键安装并提示重启生效。
 - WebUI 新增移动端工作台布局：窄屏下使用底部一级菜单、项目目录抽屉、创作 Agent 抽屉和互动场景记忆抽屉，避免桌面可拖拽面板在手机宽度下挤出主编辑/剧情区域。
 - WebUI 左侧一级菜单支持拖拽排序，IDE 与互动模式分别保存顺序，避免两种工作台入口互相影响。
@@ -29,6 +31,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- “状态记忆 Agent”用户可见命名合并为“互动记忆 Agent / Interactive Memory Agent”，继续兼容内部 `interactive_state` 配置键，同时负责状态快照和长期纪要生成。
+- 互动故事上下文不再由后端默认整段预注入资料库和长期记忆；互动 Agent 默认 system prompt 会引导 Agent 使用 `list_lore_items` / `read_lore_items` 与 `list_interactive_memories` / `read_interactive_memories` 主动召回，且 Agents 页会直接展示可编辑的默认 system prompt。
+- Agents 页的 System Prompt 改为按来源折叠展示：运行契约、输出格式、CREATOR.md、作品状态/资料库注入和叙事编排只读，流程规则与用户自定义规则可分别在用户配置或工作区配置中编辑。
 - 旧自动化定时任务会自动迁移为任务级 `auto_run` 与 `silent` schedule trigger，保留原有到点自动运行且不额外通知的行为；新建自动化默认触发后先进入确认流程。
 - 自动化触发器不再单独配置触发后动作，触发器只负责触发条件和通知方式；任务触发后的运行方式统一由“执行模式”决定。
 - 自动化写入配置拆分为统一的 `write_mode` 与 `write_scope`，前端展示为“执行模式”和“写入范围”：支持自动只读执行、自动出方案后确认写入、自动执行并写入；旧 `write_policy` 会按原语义迁移并继续作为兼容字段回填。

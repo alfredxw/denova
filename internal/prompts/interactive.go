@@ -16,15 +16,16 @@ type InteractiveStorySystemInstructionInput struct {
 }
 
 type InteractiveStoryPromptInput struct {
-	Title             string
-	Origin            string
-	StoryTellerID     string
-	BranchID          string
-	ReplyTargetChars  int
-	Characters        string
-	WorldBuilding     string
-	LoreItems         string
-	SnapshotStateJSON string
+	Title                string
+	Origin               string
+	StoryTellerID        string
+	BranchID             string
+	ReplyTargetChars     int
+	Characters           string
+	WorldBuilding        string
+	LoreItems            string
+	LongTermMemory       string
+	SnapshotStateJSON    string
 	PreviousTurnsSummary string
 }
 
@@ -60,6 +61,22 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 		sb.WriteString(tellerSystem)
 		sb.WriteString("\n\n---\n\n")
 	}
+	sb.WriteString(BuildInteractiveStoryFlowInstruction(in))
+	sb.WriteString("\n\n")
+	sb.WriteString("## 输出协议\n")
+	sb.WriteString("必须只输出 <NARRATIVE>...</NARRATIVE>。\n")
+	sb.WriteString("- <NARRATIVE> 内只写本回合展示在故事舞台上的正文；不要输出计划、解释、工具说明、Markdown 标题或状态 JSON。\n")
+	sb.WriteString("- 不要输出 <HOT_STATE>、<STATE_DELTA> 或任何 JSON；正式状态和快捷选择由后台独立生成。\n")
+	if ws := strings.TrimSpace(in.Workspace); ws != "" {
+		sb.WriteString("\n## 作品工作目录\n")
+		sb.WriteString(ws)
+		sb.WriteString("\n")
+	}
+	return sb.String()
+}
+
+func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionInput) string {
+	var sb strings.Builder
 	sb.WriteString("你是 Nova 的互动故事模式 Agent，只负责根据用户行动生成故事舞台上的下一回合内容。\n\n")
 	sb.WriteString("## 模式边界\n")
 	sb.WriteString("- 当前模式是互动故事模式，不是 IDE 写章节模式。\n")
@@ -68,6 +85,12 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 	sb.WriteString("- 禁止调用 write_todos、任务计划工具或输出 <invoke> 工具调用片段；互动模式不维护待办列表。\n")
 	sb.WriteString("- 不要创建或修改 chapters、outline、progress、characters 等文件；互动状态由后端的状态 Agent 异步维护。\n")
 	sb.WriteString("- 可以基于已注入的故事上下文、共享设定和当前快照继续剧情；当本轮通过 # 或场景化风格规则指定风格文件时，可以使用 read_file 读取对应风格参考。\n\n")
+	sb.WriteString("## 工具化召回流程\n")
+	sb.WriteString("- 资料库和互动长期记忆不会默认整段注入；需要长期设定、角色资料、历史线索或已发生事实时，必须主动通过工具召回。\n")
+	sb.WriteString("- 资料库召回使用 list_lore_items 先看轻量索引，再用 read_lore_items 读取本轮真正相关的少量条目；不要臆造未读取的资料库正文。\n")
+	sb.WriteString("- 长期记忆召回使用 list_interactive_memories 先检索当前分支记忆索引，再用 read_interactive_memories 读取关键记忆正文；隐藏记忆和其他分支记忆不可用。\n")
+	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 结合导演规则裁定后果 → 输出 <NARRATIVE>。\n")
+	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和近期回合继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
 	sb.WriteString("## 互动主持人原则\n")
 	sb.WriteString("- 你不是普通续写器，而是文字小说 RPG 的故事主持人：每回合都要理解玩家行动、裁定世界反馈、维持角色与规则一致，并制造新的可选择。\n")
 	sb.WriteString("- 每一回合内部必须完成这条回合裁定循环，但不要把分析过程输出给用户：识别用户行动 → 判断相关角色与世界规则 → 裁定行动后果 → 推进场景 → 更新状态 → 打开新的可选择 → 一致性自检。\n")
@@ -78,16 +101,7 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 	sb.WriteString("- 不要在主角每做一个小动作时立刻停下等待用户；只有当局势出现有意义的分岔、风险、代价、信息不足或不可逆选择时，才把选择权交还给用户。\n")
 	sb.WriteString("- 回合结尾要避免封闭式 ending；优先停在可行动的选择点、悬念点或决策点，让用户能继续决定主角怎么做。\n")
 	sb.WriteString("- 正文只写场景、动作、对白和后果，不要把下一步行动整理成菜单、按钮文案或快捷选择；快捷选择由独立功能按上下文生成。\n\n")
-	fmt.Fprintf(&sb, "- 本轮回复目标长度约为 %d 个中文字以内；你需要主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。\n\n", normalizeInteractiveReplyTargetChars(in.ReplyTargetChars))
-	sb.WriteString("## 输出协议\n")
-	sb.WriteString("必须只输出 <NARRATIVE>...</NARRATIVE>。\n")
-	sb.WriteString("- <NARRATIVE> 内只写本回合展示在故事舞台上的正文；不要输出计划、解释、工具说明、Markdown 标题或状态 JSON。\n")
-	sb.WriteString("- 不要输出 <HOT_STATE>、<STATE_DELTA> 或任何 JSON；正式状态和快捷选择由后台独立生成。\n")
-	if ws := strings.TrimSpace(in.Workspace); ws != "" {
-		sb.WriteString("\n## 作品工作目录\n")
-		sb.WriteString(ws)
-		sb.WriteString("\n")
-	}
+	fmt.Fprintf(&sb, "- 本轮回复目标长度约为 %d 个中文字以内；你需要主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。", normalizeInteractiveReplyTargetChars(in.ReplyTargetChars))
 	return sb.String()
 }
 
@@ -113,11 +127,16 @@ func InteractiveStoryContext(in InteractiveStoryPromptInput) string {
 	writeField(&sb, "开端", in.Origin)
 	writeField(&sb, "当前分支", in.BranchID)
 	writeField(&sb, "导演 ID", in.StoryTellerID)
+	sb.WriteString("\n## 召回说明\n")
+	sb.WriteString("资料库和长期记忆正文不在本段上下文中预注入；需要时请通过 list_lore_items/read_lore_items 与 list_interactive_memories/read_interactive_memories 主动召回。\n\n")
 	if strings.TrimSpace(in.LoreItems) != "" {
 		writeBlock(&sb, "资料库", in.LoreItems)
 	} else {
 		writeBlock(&sb, "角色设定", in.Characters)
 		writeBlock(&sb, "世界观设定", in.WorldBuilding)
+	}
+	if strings.TrimSpace(in.LongTermMemory) != "" {
+		writeBlock(&sb, "长期记忆召回", in.LongTermMemory)
 	}
 	writeBlock(&sb, "当前互动状态快照(JSON)", in.SnapshotStateJSON)
 	if strings.TrimSpace(in.PreviousTurnsSummary) != "" {
@@ -161,6 +180,7 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 
 请基于互动故事上下文续写下一回合，并严格按输出协议返回：读者应看到的故事正文只能放在 <NARRATIVE> 内。
 本回合必须隐式完成：识别用户行动、判断相关角色和世界规则、裁定后果、制造新的可选择、保持角色和世界一致性；不要输出这些分析过程。
+资料库和长期记忆需要通过工具主动召回：先看索引，再读取少量相关正文；如果本轮行动明显依赖长期设定、既往线索、角色关系或分支内已发生事实，请优先使用 list/read 工具。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
 其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。
 不要输出 <HOT_STATE>、<STATE_DELTA> 或快捷选择列表。`, strings.TrimSpace(message), turnBlock)
@@ -215,11 +235,13 @@ func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) strin
 
 func BuildInteractiveStateSystemInstruction() string {
 	return strings.Join([]string{
-		"你是 Nova 互动故事模式的状态记录 Agent。",
-		"你只负责把一个已经生成完成的互动故事回合转换为状态变化 JSON，不负责续写剧情。",
+		"你是 Nova 互动故事模式的互动记忆 Agent。",
+		"你只负责把一个已经生成完成的互动故事回合转换为状态变化和长期记忆 JSON，不负责续写剧情。",
 		"必须只输出一个 JSON 对象，不要输出 Markdown、解释或代码块。",
-		"JSON 格式必须是 {\"ops\":[...]}，ops 不能为空。",
-		"ops 只记录本回合已经发生且确定成立的变化，不记录未来计划，不复制没有变化的旧状态。",
+		"JSON 格式必须是 {\"state_ops\":[...],\"memory_entry\":{...}}；兼容旧字段 ops，但新输出必须使用 state_ops。",
+		"state_ops 只记录本回合已经发生且确定成立的状态变化；如果确实没有结构化状态变化，可以返回空数组。",
+		"memory_entry 记录本回合值得长期承接的剧情事实、线索、因果、人物状态或重要决定；不要记录未来计划，不要复制没有变化的旧状态。",
+		"memory_entry 字段包括 title、summary、content、people、places、tags、importance；importance 为 1 到 5。",
 		"状态 path 仅允许 on_stage、characters.<角色名>、events、location、time、pov、scene、action_space、inventory、resources、world_flags、rules、threads 及其子路径。",
 		"op 仅允许 set、merge、push、pull、inc、unset。",
 	}, "\n")
@@ -227,7 +249,7 @@ func BuildInteractiveStateSystemInstruction() string {
 
 func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	var sb strings.Builder
-	sb.WriteString("请根据以下互动故事上下文，生成本回合的状态变化 JSON。\n\n")
+	sb.WriteString("请根据以下互动故事上下文，生成本回合的互动记忆 JSON。\n\n")
 	sb.WriteString("## 状态记录建议\n")
 	sb.WriteString("- characters.<角色名>：记录 location、status、mood、goal、known_info、injury、relationship、stance 等已经确定的角色状态。\n")
 	sb.WriteString("- scene：记录当前场景、危险度、氛围、可交互物、阻碍、出口、正在变化的环境因素。\n")
@@ -235,12 +257,17 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	sb.WriteString("- world_flags/rules：记录本轮激活或确认、后续必须遵守的世界规则、禁忌、能力边界、势力反应。\n")
 	sb.WriteString("- threads：记录尚未解决的线索、危机、承诺、倒计时和暗线压力。\n")
 	sb.WriteString("- 不要记录下一步行动建议、快捷选择或可选择入口；这些由独立快捷选择 Agent 生成。\n\n")
+	sb.WriteString("## 长期记忆建议\n")
+	sb.WriteString("- 只沉淀已经发生且后续可能影响剧情承接的事实、线索、关系变化、因果代价、重要物品和未解问题。\n")
+	sb.WriteString("- summary 用一句话说明记忆要点；content 可以写更完整的事实链，但不要加入猜测或未来安排。\n")
+	sb.WriteString("- people、places、tags 只填写本条记忆直接相关的实体；importance 越高表示越需要长期召回。\n")
+	sb.WriteString("- 不要把每轮普通动作流水账写成长记忆；若本回合无长期价值，memory_entry 可返回 null。\n\n")
 	sb.WriteString("## 故事信息\n")
 	writeField(&sb, "标题", in.Title)
 	writeField(&sb, "开端", in.Origin)
 	writeField(&sb, "当前分支", in.BranchID)
 	writeField(&sb, "导演 ID", in.StoryTellerID)
-	writeBlock(&sb, "导演状态记忆规则", in.StoryTellerMemory)
+	writeBlock(&sb, "导演互动记忆规则", in.StoryTellerMemory)
 	if strings.TrimSpace(in.LoreItems) != "" {
 		writeBlock(&sb, "资料库", in.LoreItems)
 	} else {
@@ -250,7 +277,7 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	writeBlock(&sb, "本回合前的互动状态快照(JSON)", in.SnapshotStateJSON)
 	writeBlock(&sb, "用户本回合行动", in.UserAction)
 	writeBlock(&sb, "已生成的本回合正文", in.Narrative)
-	sb.WriteString("\n只输出 JSON，例如：{\"ops\":[{\"op\":\"set\",\"path\":\"on_stage\",\"value\":[\"角色名\"]}]}。\n")
+	sb.WriteString("\n只输出 JSON，例如：{\"state_ops\":[{\"op\":\"set\",\"path\":\"on_stage\",\"value\":[\"角色名\"]}],\"memory_entry\":{\"title\":\"线索标题\",\"summary\":\"本回合确认的关键事实。\",\"content\":\"更完整但有界的事实链。\",\"people\":[\"角色名\"],\"places\":[\"地点\"],\"tags\":[\"线索\"],\"importance\":3}}。\n")
 	return sb.String()
 }
 

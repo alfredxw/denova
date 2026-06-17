@@ -12,12 +12,13 @@ import (
 type ToolSource string
 
 const (
-	ToolSourceOther ToolSource = "other"
-	ToolSourceRead  ToolSource = "read"
-	ToolSourceWrite ToolSource = "write"
-	ToolSourceShell ToolSource = "shell"
-	ToolSourceLore  ToolSource = "lore"
-	ToolSourceWeb   ToolSource = "web"
+	ToolSourceOther  ToolSource = "other"
+	ToolSourceRead   ToolSource = "read"
+	ToolSourceWrite  ToolSource = "write"
+	ToolSourceShell  ToolSource = "shell"
+	ToolSourceLore   ToolSource = "lore"
+	ToolSourceMemory ToolSource = "memory"
+	ToolSourceWeb    ToolSource = "web"
 )
 
 // ToolManifest describes the loop-level contract for a model-visible tool result.
@@ -44,6 +45,7 @@ const (
 	readToolResultMaxBytes    = 32 * 1024
 	writeToolResultMaxBytes   = 8 * 1024
 	loreToolResultMaxBytes    = 32 * 1024
+	memoryToolResultMaxBytes  = 12 * 1024
 )
 
 func ManifestForTool(name string) ToolManifest {
@@ -62,6 +64,9 @@ func ManifestForTool(name string) ToolManifest {
 	case normalized == "read_lore_items" || normalized == "list_lore_items":
 		manifest.Source = ToolSourceLore
 		manifest.MaxResultBytes = loreToolResultMaxBytes
+	case normalized == "read_interactive_memories" || normalized == "list_interactive_memories":
+		manifest.Source = ToolSourceMemory
+		manifest.MaxResultBytes = memoryToolResultMaxBytes
 	case isToolWriteLike(normalized):
 		manifest.Source = ToolSourceWrite
 		manifest.MutatesWorkspace = true
