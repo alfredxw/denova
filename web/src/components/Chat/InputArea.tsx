@@ -41,11 +41,13 @@ type CommandOption = {
 }
 
 type CommandScope = 'all' | 'skills' | 'none'
+const inputDrafts = new Map<string, string>()
 
 interface InputAreaProps {
   onSend: (message: string) => void
   onStop?: () => void
   disabled: boolean
+  draftKey?: string
   inputPrefill?: { prompt: string; nonce: number } | null
   onInputPrefillConsumed?: () => void
   referencedFiles?: string[]
@@ -74,6 +76,7 @@ export function InputArea({
   onSend,
   onStop,
   disabled,
+  draftKey,
   inputPrefill,
   onInputPrefillConsumed,
   referencedFiles = [],
@@ -97,7 +100,7 @@ export function InputArea({
   disabledPlaceholder,
 }: InputAreaProps) {
   const { t } = useTranslation()
-  const [value, setValue] = useState('')
+  const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
   const [showCommands, setShowCommands] = useState(false)
   const [activeCommandIndex, setActiveCommandIndex] = useState(0)
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
@@ -147,6 +150,21 @@ export function InputArea({
   }, [])
 
   useEffect(() => { adjustHeight() }, [value, adjustHeight])
+
+  useEffect(() => {
+    if (!draftKey) return
+    setValue(inputDrafts.get(draftKey) || '')
+    setShowCommands(false)
+    setActiveCommandIndex(0)
+    setReferenceQuery(null)
+    setStyleReferenceQuery(null)
+  }, [draftKey])
+
+  useEffect(() => {
+    if (!draftKey) return
+    if (value) inputDrafts.set(draftKey, value)
+    else inputDrafts.delete(draftKey)
+  }, [draftKey, value])
 
   useEffect(() => {
     if (activeCommandIndex >= filteredCommands.length) setActiveCommandIndex(0)

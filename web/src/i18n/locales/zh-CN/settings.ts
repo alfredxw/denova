@@ -43,7 +43,7 @@ const settings = {
   'settings.close': '关闭设置',
   'settings.error.save': '配置保存失败',
   'settings.group.common': '公共配置',
-  'settings.group.ide': 'IDE 模式',
+  'settings.group.ide': '写作模式',
   'settings.group.interactive': '互动模式',
   'settings.ide.autoSave': '自动保存',
   'settings.ide.autoSaveInterval': '自动保存间隔 (ms)',

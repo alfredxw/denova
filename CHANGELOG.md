@@ -12,7 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 互动故事新增长期记忆 API 和右侧记忆面板，支持搜索、按人物/地点/标签匹配、手动新增、编辑、软隐藏和恢复记忆；当前状态快照保留在面板折叠区。
 - 设置页新增应用更新检查与安装：后端通过 GitHub latest Release 匹配当前平台安装包，前端支持自动检查、手动检查、一键安装并提示重启生效。
 - WebUI 新增移动端工作台布局：窄屏下使用底部一级菜单、项目目录抽屉、创作 Agent 抽屉和互动场景记忆抽屉，避免桌面可拖拽面板在手机宽度下挤出主编辑/剧情区域。
-- WebUI 左侧一级菜单支持拖拽排序，IDE 与互动模式分别保存顺序，避免两种工作台入口互相影响。
+- WebUI 左侧一级菜单支持拖拽排序，写作模式与互动模式分别保存顺序，避免两种工作台入口互相影响。
 - 书籍管理页新增从书架移除和拖拽自定义排序；移除书籍只会从书架隐藏并保留磁盘目录，删除当前书籍后会自动切换到下一个可用书籍。
 - Agent loop 新增 `LoopPolicy`、`ContextLedger` 和 `.nova/runs` 运行账本，按轮记录上下文来源、大小上限、事件摘要和完成状态，为后续工具筛选、恢复和验证阶段提供稳定工程边界。
 - Agent loop 新增中心化 tool manifest 与模型可见工具结果筛选，统一标注工具来源、是否变更 workspace、输出上限、幂等键和 post-check 要求，并对 invokable/streamable 工具返回做有界回填。
@@ -20,17 +20,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - WebUI 创作 Agent 面板新增 Agent Trace 视图，可查看最近运行的上下文账本、工具事件序列、验证结果和截断状态。
 - WebUI 接入 Motion for React，新增全局动效强度配置（跟随系统、完整、减少、关闭），并为工作台切换、一级菜单、Tab、面板和聊天消息提供更克制流畅的过渡。
 - 设置页新增浅色、深色和跟随系统主题切换；主题配置支持用户级和工作区级继承，并即时应用到主工作台。
-- 浅色/深色主题主文字分别使用纯黑/纯白，IDE 编辑器主题会跟随全局浅色/深色切换；默认界面字体改为 Apple 字体栈，界面字号改为 14px。
+- 浅色/深色主题主文字分别使用纯黑/纯白，写作编辑器主题会跟随全局浅色/深色切换；默认界面字体改为 Apple 字体栈，界面字号改为 14px。
 - 默认主题改为深色模式，首次启动和未配置主题时会进入 dark theme。
 - 自动化新增自定义触发条件与 Trigger Inbox：支持定时触发器和由 LLM 基于有界章节上下文判断的语义触发器；触发后可按任务级行为配置为确认后执行、自动执行或仅通知，定时任务可选择静默执行或写入收件箱。
 - 自动化任务支持从现有多模型配置中选择任务级模型配置；未选择时继承 Automation Agent 默认模型。
-- 自动化新增 IDE 章节批次触发器，可按每 N 个非空章节触发 review、续写或自定义任务，并在 Trigger evidence 中记录本批次章节路径、标题、字数和更新时间。
+- 自动化新增写作模式章节批次触发器，可按每 N 个非空章节触发 review、续写或自定义任务，并在 Trigger evidence 中记录本批次章节路径、标题、字数和更新时间。
 - 工作区自动化会预置“续写章节”和“自动 Review”两个默认关闭任务，用户可直接启用并调整触发和写入配置。
 - 自动化运行会把触发 evidence 作为有界触发范围传给 Agent；默认“自动 Review”聚焦本次新增章节，并对照用户任务、`CREATOR.md`、大纲、角色和必要前文检查质量与一致性。
 - 预置自动化任务会把默认 Prompt 直接写入任务配置，用户可在自动化页自由修改；运行时不再根据内部 template 套用不同 Prompt。
 
 ### Changed
 
+- WebUI 将用户可见的 “IDE 模式 / Novel IDE” 统一改名为“写作模式 / Writing Mode”，内部 `ide` 配置键和存储 key 保持兼容。
 - “状态记忆 Agent”用户可见命名合并为“互动记忆 Agent / Interactive Memory Agent”，继续兼容内部 `interactive_state` 配置键，同时负责状态快照和长期纪要生成。
 - 互动故事上下文不再由后端默认整段预注入资料库和长期记忆；互动 Agent 默认 system prompt 会引导 Agent 使用 `list_lore_items` / `read_lore_items` 与 `list_interactive_memories` / `read_interactive_memories` 主动召回，且 Agents 页会直接展示可编辑的默认 system prompt。
 - Agents 页的 System Prompt 改为按来源折叠展示：运行契约、输出格式、CREATOR.md、作品状态/资料库注入和叙事编排只读，流程规则与用户自定义规则可分别在用户配置或工作区配置中编辑。
@@ -40,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 自动化配置页不再暴露“模板”选择，任务以具体自动化目标和 Prompt 为中心配置。
 - 互动故事单轮目标字数改为故事级运行参数，并在互动剧情主舞台顶部直接配置；不再兼容叙事编排 JSON 中的 `reply_target_chars` 旧字段，旧规则包里的该字段不会继续生效，需要在具体互动故事里重新设置。
 - 精简互动剧情主舞台顶部和消息区抬头，移除“互动创作”、回合数以及“指令流 / 记录数”状态栏，降低控制区拥挤感。
-- 优化中英文 README 首屏定位与能力说明，补充 IDE 式作品管理、创作 Agent、互动故事、结构化资料库、版本管理、Skills/Agents、自动化和导入能力介绍。
+- 优化中英文 README 首屏定位与能力说明，补充写作模式作品管理、创作 Agent、互动故事、结构化资料库、版本管理、Skills/Agents、自动化和导入能力介绍。
 - 互动故事 Agent 上下文改为按叙事编排 `recent_turns` 保留最近回合原文，并将更早剧情压缩为有界摘要，避免长线互动把完整历史无限注入模型。
 - Nova favicon 去掉右下角 `I` 标记，并改为三色清爽的 iOS 风格图标。
 - 重新设计 Nova 极简 SVG 品牌图标，并在中英文 README 首屏顶部展示品牌图标。

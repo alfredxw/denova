@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -40,6 +41,46 @@ func (a *App) CheckAutomationTriggers(ctx context.Context, id string) ([]automat
 
 func (s *AutomationAppService) CheckTriggers(ctx context.Context, id string) ([]automation.TriggerInboxItem, error) {
 	items, _, err := s.processTriggers(ctx, strings.TrimSpace(id), time.Now().UTC(), "manual_check")
+	return items, err
+}
+
+func (a *App) CheckAutomationTriggersAfterWorkspaceMutation(ctx context.Context, source string, paths []string) {
+	a.automation().CheckTriggersAfterWorkspaceMutation(ctx, source, paths)
+}
+
+func (s *AutomationAppService) CheckTriggersAfterWorkspaceMutation(ctx context.Context, source string, paths []string) {
+	targets := s.chapterContentMutationPaths(paths)
+	if len(targets) == 0 {
+		return
+	}
+	workspace := s.workspace()
+	runCtx := context.WithoutCancel(ctx)
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				log.Printf("[automation-trigger] mutation check panic recovered source=%s targets=%q err=%v", source, targets, recovered)
+			}
+		}()
+		if current := s.workspace(); current != workspace {
+			log.Printf("[automation-trigger] mutation check skipped because workspace changed source=%s workspace=%q current=%q targets=%q", source, workspace, current, targets)
+			return
+		}
+		items, runs, err := s.processContentTriggers(runCtx, time.Now().UTC(), source)
+		if err != nil {
+			log.Printf("[automation-trigger] mutation check failed source=%s targets=%q err=%v", source, targets, err)
+			return
+		}
+		if len(items) > 0 || len(runs) > 0 {
+			log.Printf("[automation-trigger] mutation check completed source=%s targets=%q inbox=%d runs=%d", source, targets, len(items), len(runs))
+		}
+	}()
+}
+
+func (s *AutomationAppService) CheckContentTriggersForWorkspaceMutation(ctx context.Context, source string, paths []string) ([]automation.TriggerInboxItem, error) {
+	if len(s.chapterContentMutationPaths(paths)) == 0 {
+		return nil, nil
+	}
+	items, _, err := s.processContentTriggers(ctx, time.Now().UTC(), source)
 	return items, err
 }
 
@@ -94,6 +135,16 @@ func (s *AutomationAppService) MarkInboxItemRead(id string) (automation.TriggerI
 }
 
 func (s *AutomationAppService) processTriggers(ctx context.Context, onlyTaskID string, now time.Time, source string) ([]automation.TriggerInboxItem, []automation.RunResult, error) {
+	return s.processTriggersMatching(ctx, onlyTaskID, now, source, nil)
+}
+
+func (s *AutomationAppService) processContentTriggers(ctx context.Context, now time.Time, source string) ([]automation.TriggerInboxItem, []automation.RunResult, error) {
+	return s.processTriggersMatching(ctx, "", now, source, func(trigger automation.TriggerDefinition) bool {
+		return trigger.Type == automation.TriggerTypeChapterBatch || trigger.Type == automation.TriggerTypeSemantic
+	})
+}
+
+func (s *AutomationAppService) processTriggersMatching(ctx context.Context, onlyTaskID string, now time.Time, source string, includeTrigger func(automation.TriggerDefinition) bool) ([]automation.TriggerInboxItem, []automation.RunResult, error) {
 	tasks, err := s.List()
 	if err != nil {
 		return nil, nil, err
@@ -109,6 +160,9 @@ func (s *AutomationAppService) processTriggers(ctx context.Context, onlyTaskID s
 		}
 		for _, trigger := range task.Triggers {
 			if !trigger.Enabled {
+				continue
+			}
+			if includeTrigger != nil && !includeTrigger(trigger) {
 				continue
 			}
 			match, nextState, matched, err := s.evaluateTrigger(ctx, now, source, task, trigger)
@@ -140,6 +194,39 @@ func (s *AutomationAppService) processTriggers(ctx context.Context, onlyTaskID s
 		}
 	}
 	return items, runs, nil
+}
+
+func (s *AutomationAppService) chapterContentMutationPaths(paths []string) []string {
+	workspace := s.workspace()
+	seen := map[string]bool{}
+	targets := make([]string, 0, len(paths))
+	for _, raw := range paths {
+		path := strings.TrimSpace(raw)
+		if path == "" {
+			continue
+		}
+		if filepath.IsAbs(path) && strings.TrimSpace(workspace) != "" {
+			if rel, err := filepath.Rel(workspace, path); err == nil {
+				path = rel
+			}
+		}
+		path = filepath.ToSlash(strings.TrimPrefix(strings.TrimSpace(path), "./"))
+		if !isChapterContentMutationPath(path) || seen[path] {
+			continue
+		}
+		seen[path] = true
+		targets = append(targets, path)
+	}
+	return targets
+}
+
+func isChapterContentMutationPath(path string) bool {
+	path = filepath.ToSlash(strings.TrimPrefix(strings.TrimSpace(path), "./"))
+	if !strings.HasPrefix(path, "chapters/") {
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".md" || ext == ".txt"
 }
 
 func (s *AutomationAppService) evaluateTrigger(ctx context.Context, now time.Time, source string, task automation.Task, trigger automation.TriggerDefinition) (automation.TriggerMatch, automation.TriggerState, bool, error) {

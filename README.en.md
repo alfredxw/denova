@@ -21,7 +21,7 @@
   Current version: <strong>v0.1.10</strong> (2026-06-12) · Beta
 </p>
 
-![Nova Novel IDE](./img/ide.png)
+![Nova Writing Mode](./img/ide.png)
 
 <details>
 <summary>View more screenshots</summary>

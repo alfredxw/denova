@@ -226,11 +226,12 @@ func (s *LoreAppService) StartLoreAgentTask(instruction string, references []str
 		}
 		log.Printf("[lore-agent-task] run begin id=%s message_len=%d lore_references=%d", task.ID(), len(req.Message), len(req.LoreReferences))
 		chatService.RunWithOptions(ctx, runner, agent.NewSessionConversation(sess), bookService, req, agent.RunOptions{
-			AgentKind: agent.AgentKindLoreEditor,
-			TaskID:    task.ID(),
-			SessionID: sess.ID,
-			Workspace: workspace,
-			Mode:      "lore",
+			AgentKind:           agent.AgentKindLoreEditor,
+			TaskID:              task.ID(),
+			SessionID:           sess.ID,
+			Workspace:           workspace,
+			Mode:                "lore",
+			OnMutationsVerified: a.automationMutationCallback("lore_agent_post_run"),
 		}, emit)
 		log.Printf("[lore-agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})

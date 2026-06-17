@@ -6,6 +6,7 @@ import {
   streamAutomationRunByID,
   streamAutomationRunMessage,
   type AutomationRunRecord,
+  type AutomationTriggerEvidence,
   type SSEEvent,
 } from '@/lib/api'
 import { normalizeRepeatedMessages, useAgentEventStream } from '@/hooks/useAgentEventStream'
@@ -41,12 +42,12 @@ export function useAutomationRunStream(options: { onFinished?: () => void | Prom
     await onFinished?.()
   }, [consumeAgentStream, onFinished])
 
-  const start = useCallback(async (taskId: string, userMessage: string) => {
+  const start = useCallback(async (taskId: string, userMessage: string, triggerEvidence: AutomationTriggerEvidence[] = []) => {
     reset()
     setMessages(userMessage ? [{ role: 'user', content: userMessage }] : [])
     const abortController = new AbortController()
     setAbortController(abortController)
-    const stream = await streamAutomationRun(taskId, abortController.signal)
+    const stream = await streamAutomationRun(taskId, abortController.signal, triggerEvidence)
     await consumeRunStream(stream)
   }, [consumeRunStream, reset, setAbortController, setMessages])
 

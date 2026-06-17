@@ -45,9 +45,9 @@ export function WorkspaceLayout({
             orientation="horizontal"
             className="min-w-0 flex-1"
           >
-            {sidebarVisible && sidebar && (
+            {sidebar && (
               <>
-                <Panel id="sidebar" defaultSize="20%" minSize="180px" maxSize="36%" className="min-w-[180px]">
+                <Panel id="sidebar" defaultSize="20%" minSize="180px" maxSize="36%" className="min-w-[180px]" hidden={!sidebarVisible} aria-hidden={!sidebarVisible}>
                   <motion.div
                     className="h-full min-h-0"
                     variants={subtlePresence}
@@ -58,7 +58,7 @@ export function WorkspaceLayout({
                     {sidebar}
                   </motion.div>
                 </Panel>
-                <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.sidebar')} />
+                <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.sidebar')} visible={sidebarVisible} />
               </>
             )}
             <Panel id="center" minSize="30%" className="min-w-0">
@@ -81,10 +81,10 @@ export function WorkspaceLayout({
                 )}
               </Group>
             </Panel>
-            {rightPanelVisible && rightPanel && (
+            {rightPanel && (
               <>
-                <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.right')} />
-                <Panel id="right" defaultSize="34%" minSize="360px" maxSize="55%" className="min-w-[360px]">
+                <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.right')} visible={rightPanelVisible} />
+                <Panel id="right" defaultSize="34%" minSize="360px" maxSize="55%" className="min-w-[360px]" hidden={!rightPanelVisible} aria-hidden={!rightPanelVisible}>
                   <motion.div
                     className="h-full min-h-0"
                     variants={subtlePresence}
@@ -105,12 +105,12 @@ export function WorkspaceLayout({
   )
 }
 
-function WorkspaceResizeHandle({ direction, label }: { direction: 'horizontal' | 'vertical'; label: string }) {
+function WorkspaceResizeHandle({ direction, label, visible = true }: { direction: 'horizontal' | 'vertical'; label: string; visible?: boolean }) {
   const className = direction === 'vertical'
     ? 'nova-resize-handle -mx-1 w-2 cursor-col-resize bg-transparent transition-colors'
     : 'nova-resize-handle -my-1 h-2 cursor-row-resize bg-transparent transition-colors'
 
-  return <Separator aria-label={label} className={className} />
+  return <Separator aria-label={label} className={className} hidden={!visible} />
 }
 
 function readStoredLayout(key: string): Layout | undefined {

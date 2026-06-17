@@ -9,7 +9,7 @@ import (
 )
 
 // Conversation 抽象 Agent 对话的上下文读取与结果写入。
-// IDE 模式写入普通 session，互动模式可写入 interactive/story。
+// 写作模式写入普通 session，互动模式可写入 interactive/story。
 type Conversation interface {
 	PrepareMessages(originalMessage, agentMessage string) ([]*schema.Message, error)
 	AppendAssistant(content string) error

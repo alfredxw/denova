@@ -280,11 +280,12 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_references=%d style_rules=%d selections=%d plan_mode=%v", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleReferences), len(req.StyleRules), len(req.Selections), req.PlanMode)
 		chatService.RunWithOptions(ctx, runner, agent.NewSessionConversation(sess), bookService, req, agent.RunOptions{
-			AgentKind: agent.AgentKindIDE,
-			TaskID:    task.ID(),
-			SessionID: sess.ID,
-			Workspace: workspace,
-			Mode:      "ide",
+			AgentKind:           agent.AgentKindIDE,
+			TaskID:              task.ID(),
+			SessionID:           sess.ID,
+			Workspace:           workspace,
+			Mode:                "ide",
+			OnMutationsVerified: a.automationMutationCallback("ide_agent_post_run"),
 		}, emit)
 		if versionService != nil && hasBeforeVersionState {
 			settings := book.DefaultVersionAutoSettings()

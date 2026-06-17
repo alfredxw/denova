@@ -7,7 +7,7 @@ const agents = {
   'agents.group.interactive': '互动',
   'agents.group.version': '版本',
   'agents.group.utility': '工具',
-  'agents.ide.title': 'IDE 创作 Agent',
+  'agents.ide.title': '写作 Agent',
   'agents.ide.subtitle': '章节续写、文件编辑、设定同步',
   'agents.loreEditor.title': '资料库 Agent',
   'agents.loreEditor.subtitle': '资料库维护、初始化设定与 CREATOR.md 写入',

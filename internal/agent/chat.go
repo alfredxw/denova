@@ -361,6 +361,9 @@ func (r *Runtime) Run(
 	observer.RecordMutations(observedMutations)
 	verification := VerifyPostRunMutations(bookService, observedMutations)
 	observer.RecordVerification(verification)
+	if options.OnMutationsVerified != nil && len(observedMutations) > 0 {
+		options.OnMutationsVerified(ctx, observedMutations, verification)
+	}
 	if verification.Mutations > 0 {
 		runLogger.Info("post_run_verification", slog.String("status", verification.Status), slog.Int("mutations", verification.Mutations), slog.Int("checks", len(verification.Checks)), slog.Any("warnings", verification.Warnings))
 		emit(Event{Type: "post_run_verification", Data: verification})

@@ -7,7 +7,7 @@ const agents = {
   'agents.group.interactive': 'Interactive',
   'agents.group.version': 'Versions',
   'agents.group.utility': 'Tools',
-  'agents.ide.title': 'IDE Writing Agent',
+  'agents.ide.title': 'Writing Agent',
   'agents.ide.subtitle': 'Chapter continuation, file edits, setting sync',
   'agents.loreEditor.title': 'Lore Agent',
   'agents.loreEditor.subtitle': 'Lore maintenance, story initialization, and CREATOR.md updates',

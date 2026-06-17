@@ -154,7 +154,14 @@ func (s *Store) AppendRun(id string, run RunRecord) (Task, error) {
 		return Task{}, err
 	}
 	task.LastRun = &run
-	task.RecentRuns = append([]RunRecord{run}, task.RecentRuns...)
+	nextRuns := []RunRecord{run}
+	for _, existing := range task.RecentRuns {
+		if existing.ID == run.ID {
+			continue
+		}
+		nextRuns = append(nextRuns, existing)
+	}
+	task.RecentRuns = nextRuns
 	if len(task.RecentRuns) > MaxRecentRuns {
 		task.RecentRuns = task.RecentRuns[:MaxRecentRuns]
 	}

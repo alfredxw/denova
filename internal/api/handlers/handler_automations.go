@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"strings"
 
@@ -116,7 +117,16 @@ func (h *Handlers) HandleAutomationRunStream(ctx context.Context, c *app.Request
 	if !h.requireWorkspace(c) {
 		return
 	}
-	task, run, err := h.app.StartAutomationTask(ctx, c.Param("id"), automation.TriggerManual)
+	var req struct {
+		TriggerEvidence []automation.TriggerEvidence `json:"trigger_evidence"`
+	}
+	if body := c.Request.Body(); len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeError(c, consts.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	task, run, err := h.app.StartAutomationTaskWithEvidence(ctx, c.Param("id"), automation.TriggerManual, req.TriggerEvidence)
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return

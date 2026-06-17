@@ -43,7 +43,7 @@ const settings = {
   'settings.close': 'Close Settings',
   'settings.error.save': 'Failed to save configuration',
   'settings.group.common': 'Common',
-  'settings.group.ide': 'IDE Mode',
+  'settings.group.ide': 'Writing Mode',
   'settings.group.interactive': 'Interactive Mode',
   'settings.ide.autoSave': 'Auto Save',
   'settings.ide.autoSaveInterval': 'Auto Save Interval (ms)',

@@ -73,7 +73,7 @@ func outputProtocolForAgent(agentKind string) string {
 	case config.AgentKindAutomation:
 		return "- 最终输出必须说明实际完成内容、写入路径和待用户确认事项；写入行为仍受任务写入策略和工具权限约束。"
 	case config.AgentKindIDE:
-		return "- IDE 创作 Agent 没有固定 JSON 输出协议；所有文件变更必须通过已启用工具执行，并遵守工作区边界。"
+		return "- 写作 Agent 没有固定 JSON 输出协议；所有文件变更必须通过已启用工具执行，并遵守工作区边界。"
 	default:
 		return "- 必须遵守当前 Agent 调用点的输出协议和后端校验。"
 	}
@@ -82,7 +82,7 @@ func outputProtocolForAgent(agentKind string) string {
 func agentRuntimeContract(agentKind string) string {
 	switch agentKind {
 	case config.AgentKindIDE:
-		return "- IDE 创作 Agent 必须遵守文件工具安全边界和作品工作区边界；书籍内容规则仍以 CREATOR.md 和用户本轮明确要求为准。"
+		return "- 写作 Agent 必须遵守文件工具安全边界和作品工作区边界；书籍内容规则仍以 CREATOR.md 和用户本轮明确要求为准。"
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
 			"- 互动叙事 Agent 禁止修改 workspace 文件，禁止输出或调用写文件、删除文件、任务计划等工具。",

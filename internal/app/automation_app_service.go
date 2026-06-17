@@ -111,6 +111,14 @@ func (s *AutomationAppService) StartTask(ctx context.Context, id, trigger string
 	return s.startTaskWithSourceRun(ctx, id, trigger, "", nil)
 }
 
+func (a *App) StartAutomationTaskWithEvidence(ctx context.Context, id, trigger string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+	return a.automation().StartTaskWithEvidence(ctx, id, trigger, evidence)
+}
+
+func (s *AutomationAppService) StartTaskWithEvidence(ctx context.Context, id, trigger string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+	return s.startTaskWithSourceRun(ctx, id, trigger, "", evidence)
+}
+
 func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, id, trigger, sourceRunID string, triggerEvidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
 	taskDef, err := s.store().Get(id)
 	if err != nil {
@@ -122,7 +130,21 @@ func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, id, t
 	}
 
 	run := s.newRunRecord(taskDef, trigger)
-	run.SourceRunID = strings.TrimSpace(sourceRunID)
+	sourceRunID = strings.TrimSpace(sourceRunID)
+	if trigger == automation.TriggerWriteConfirmation && sourceRunID != "" {
+		sourceRun, sourceErr := s.automationRunByID(sourceRunID)
+		if sourceErr != nil {
+			return nil, automation.RunRecord{}, sourceErr
+		}
+		run = sourceRun
+		run.Trigger = automation.TriggerWriteConfirmation
+		run.Status = automation.RunStatusRunning
+		run.Error = ""
+		run.FinishedAt = time.Time{}
+		run.SourceRunID = sourceRunID
+	} else {
+		run.SourceRunID = sourceRunID
+	}
 	run.TriggerEvidence = boundedRunTriggerEvidence(triggerEvidence)
 	conversation, err := s.newRunConversation(run, taskDef)
 	if err != nil {
@@ -344,11 +366,12 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 	s.app.ChatService().RunWithOptions(ctx, runner, conversation, s.app.BookService(), agent.ChatRequest{
 		Message: s.buildAutomationUserMessage(task, run, writeMode, writeScope),
 	}, agent.RunOptions{
-		AgentKind: agent.AgentKindAutomation,
-		TaskID:    run.ID,
-		SessionID: run.SessionID,
-		Workspace: run.Workspace,
-		Mode:      "automation",
+		AgentKind:           agent.AgentKindAutomation,
+		TaskID:              run.ID,
+		SessionID:           run.SessionID,
+		Workspace:           run.Workspace,
+		Mode:                "automation",
+		OnMutationsVerified: s.app.automationMutationCallback("automation_agent_post_run"),
 	}, forward)
 	if ctx.Err() != nil {
 		output := conversation.Output()
@@ -420,11 +443,12 @@ func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task a
 	s.app.ChatService().RunWithOptions(ctx, runner, conversation, s.app.BookService(), agent.ChatRequest{
 		Message: message,
 	}, agent.RunOptions{
-		AgentKind: agent.AgentKindAutomation,
-		TaskID:    run.ID,
-		SessionID: run.SessionID,
-		Workspace: run.Workspace,
-		Mode:      "automation",
+		AgentKind:           agent.AgentKindAutomation,
+		TaskID:              run.ID,
+		SessionID:           run.SessionID,
+		Workspace:           run.Workspace,
+		Mode:                "automation",
+		OnMutationsVerified: s.app.automationMutationCallback("automation_agent_post_run"),
 	}, emit)
 	log.Printf("[automation] follow-up end task_id=%s run_id=%s", task.ID, run.ID)
 }
@@ -672,6 +696,9 @@ func (s *AutomationAppService) runtimeConfigForTask(task automation.Task) config
 	runtimeCfg := s.runtimeConfig()
 	if profileID := strings.TrimSpace(task.ModelProfileID); profileID != "" {
 		runtimeCfg.AgentModels.Automation.ProfileID = profileID
+	}
+	if task.Template == automation.TemplateReview && runtimeCfg.MaxIteration < 100 {
+		runtimeCfg.MaxIteration = 100
 	}
 	return runtimeCfg
 }

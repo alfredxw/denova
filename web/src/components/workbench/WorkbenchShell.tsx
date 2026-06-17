@@ -515,7 +515,7 @@ export function WorkbenchShell({
       sidebar={sidebar}
       sidebarVisible={mode === 'ide' && projectVisible && !fullWorkspacePanelVisible}
       main={main}
-      rightPanel={mode === 'ide' && !fullWorkspacePanelVisible ? rightPanelContent : null}
+      rightPanel={rightPanelContent}
       rightPanelVisible={mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)}
       statusBar={statusBar}
     />

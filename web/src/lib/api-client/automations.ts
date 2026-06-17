@@ -1,5 +1,5 @@
 import { jsonHeaders, parseSSEStream, requestJSON } from './client'
-import type { AutomationActiveRun, AutomationInboxActionResult, AutomationInboxItem, AutomationRunResult, AutomationTask, ChatMessage, SSEEvent } from './types'
+import type { AutomationActiveRun, AutomationInboxActionResult, AutomationInboxItem, AutomationRunResult, AutomationTask, AutomationTriggerEvidence, ChatMessage, SSEEvent } from './types'
 
 export async function getAutomations(): Promise<AutomationTask[]> {
   const data = await requestJSON<{ tasks: AutomationTask[] }>('/api/automations')
@@ -52,8 +52,13 @@ export async function runAutomation(id: string): Promise<AutomationRunResult> {
   return requestJSON(`/api/automations/${encodeURIComponent(id)}/run`, { method: 'POST' })
 }
 
-export async function streamAutomationRun(id: string, signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {
-  const res = await fetch(`/api/automations/${encodeURIComponent(id)}/run/stream`, { method: 'POST', signal })
+export async function streamAutomationRun(id: string, signal?: AbortSignal, triggerEvidence: AutomationTriggerEvidence[] = []): Promise<ReadableStream<SSEEvent>> {
+  const init: RequestInit = { method: 'POST', signal }
+  if (triggerEvidence.length > 0) {
+    init.headers = jsonHeaders
+    init.body = JSON.stringify({ trigger_evidence: triggerEvidence })
+  }
+  const res = await fetch(`/api/automations/${encodeURIComponent(id)}/run/stream`, init)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   if (!res.body) throw new Error('No response body')
   return parseSSEStream(res.body)

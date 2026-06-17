@@ -84,6 +84,33 @@ func TestStoreSeedsDefaultWorkspaceAutomationsDisabled(t *testing.T) {
 	}
 }
 
+func TestStoreAppendRunUpdatesExistingRun(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	store := NewStore(filepath.Join(root, "nova"), workspace)
+	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Review", Template: TemplateReview})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	first := RunRecord{ID: "run-1", TaskID: task.ID, Scope: ScopeWorkspace, Trigger: TriggerManual, Status: RunStatusSuccess, Summary: "first"}
+	if _, err := store.AppendRun(task.ID, first); err != nil {
+		t.Fatalf("AppendRun first failed: %v", err)
+	}
+	second := first
+	second.Summary = "second"
+	updated, err := store.AppendRun(task.ID, second)
+	if err != nil {
+		t.Fatalf("AppendRun second failed: %v", err)
+	}
+	if len(updated.RecentRuns) != 1 {
+		t.Fatalf("recent runs = %#v, want one updated run", updated.RecentRuns)
+	}
+	if updated.RecentRuns[0].Summary != "second" || updated.LastRun == nil || updated.LastRun.Summary != "second" {
+		t.Fatalf("run was not updated in place: %#v last=%#v", updated.RecentRuns, updated.LastRun)
+	}
+}
+
 func TestStoreMigratesSeededDefaultAutomationPrompts(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")

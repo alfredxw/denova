@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
@@ -140,13 +140,13 @@ describe('App', () => {
 
     const header = screen.getByText('Nova').closest('header')
     expect(header).not.toBeNull()
-    await user.click(within(header as HTMLElement).getByRole('button', { name: 'IDE 模式' }))
+    await user.click(within(header as HTMLElement).getByRole('button', { name: '写作模式' }))
     expect(await screen.findByText('当前 Nova 数据目录下还没有书籍')).toBeInTheDocument()
     expectOnlyActivePrimaryMenu('书籍管理')
     expect(fetchCallPaths()).not.toContain('/api/chat/active')
   })
 
-  it('renders the IDE and interactive mode switch in the main header', async () => {
+  it('renders the writing and interactive mode switch in the main header', async () => {
     render(
       <TooltipProvider>
         <App />
@@ -156,8 +156,48 @@ describe('App', () => {
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
     const header = screen.getByText('Nova').closest('header')
     expect(header).not.toBeNull()
-    expect(within(header as HTMLElement).getByRole('button', { name: 'IDE 模式' })).toBeInTheDocument()
+    expect(within(header as HTMLElement).getByRole('button', { name: '写作模式' })).toBeInTheDocument()
     expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toBeInTheDocument()
+  })
+
+  it('opens writing Review inside the Writing Agent panel without switching to Automations', async () => {
+    const user = userEvent.setup()
+    mockApiFetch({
+      '/api/automations/inbox': {
+        items: [{
+          id: 'review-inbox-1',
+          task_id: 'workspace-auto-review',
+          trigger_id: 'chapter_batch_review',
+          purpose: 'trigger',
+          scope: 'workspace',
+          workspace: '/books/demo',
+          status: 'auto_run',
+          action_policy: 'auto_run',
+          notify_policy: 'inbox',
+          title: '第 1-5 章需要 Review',
+          summary: '新增章节已达到 Review 批次。',
+          evidence: [{ source: 'chapter_batch', title: '第 5 章', ref: 'chapters/ch05.md', snippet: 'words=3200' }],
+          fingerprint: 'review-batch-1',
+          run_id: 'run-review-1',
+          created_at: '2026-06-17T10:00:00Z',
+          updated_at: '2026-06-17T10:00:00Z',
+        }],
+      },
+      '/api/automations/runs/active': { runs: [] },
+    })
+
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    await user.click(await screen.findByRole('button', { name: 'Review' }))
+
+    expect(screen.getAllByText('自动 Review').length).toBeGreaterThan(0)
+    expect(screen.getByText('第 1-5 章需要 Review')).toBeInTheDocument()
+    expectOnlyActivePrimaryMenu('写作')
   })
 
   it('applies the persisted primary menu order', async () => {
@@ -230,13 +270,20 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: '新建书籍' }))
     expect(screen.getByText('新书将创建在')).toBeInTheDocument()
     expect(screen.getByText('/nova/user')).toBeInTheDocument()
-    await user.type(screen.getByPlaceholderText('书名（必填）'), '新书')
-    await user.click(screen.getByRole('button', { name: '创建' }))
+    const createForm = screen.getByText('新书将创建在').closest('.space-y-3')
+    expect(createForm).not.toBeNull()
+    const titleInput = within(createForm as HTMLElement).getByPlaceholderText('书名（必填）')
+    const createButton = within(createForm as HTMLElement).getByRole('button', { name: '创建' })
+    expect(titleInput).toBeVisible()
+    fireEvent.change(titleInput, { target: { value: 'New Book' } })
+    expect(titleInput).toHaveValue('New Book')
+    expect(createButton).toBeEnabled()
+    await user.click(createButton)
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith('/api/books/create', expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ title: '新书', author: '', description: '' }),
+        body: JSON.stringify({ title: 'New Book', author: '', description: '' }),
       }))
     })
   })
@@ -253,7 +300,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: '设置' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect((await screen.findAllByText('IDE 模式')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('写作模式')).length).toBeGreaterThan(0)
     expect(screen.getAllByText('互动模式').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: '编辑器' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '故事舞台' })).toBeInTheDocument()
@@ -274,7 +321,7 @@ describe('App', () => {
 
     expect(screen.queryByText('全局默认配置')).not.toBeInTheDocument()
     expect(screen.queryByText('默认 Agent')).not.toBeInTheDocument()
-    expect((await screen.findAllByText('IDE 创作 Agent')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('写作 Agent')).length).toBeGreaterThan(0)
     expect(within(screen.getByRole('navigation')).getAllByText('互动')).toHaveLength(1)
     expect(screen.getByText('模型与思考')).toBeInTheDocument()
     expect(screen.getByText('系统提示')).toBeInTheDocument()
@@ -314,7 +361,30 @@ describe('App', () => {
     await user.click(settingsButton)
     await user.click(screen.getByRole('button', { name: 'Agents' }))
     expect(screen.queryByRole('button', { name: '关闭 Agents' })).not.toBeInTheDocument()
-    expect(screen.queryByText('模型与思考')).not.toBeInTheDocument()
+    expect(screen.getByText('模型与思考')).not.toBeVisible()
+  })
+
+  it('keeps writing agent input while a shared page covers the workspace', async () => {
+    const user = userEvent.setup()
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    const input = screen.getByPlaceholderText(/输入消息/)
+    fireEvent.change(input, { target: { value: 'draft should stay' } })
+    expect(input).toHaveValue('draft should stay')
+    await user.click(screen.getByRole('button', { name: 'Agents' }))
+
+    expect(await screen.findByRole('button', { name: '关闭 Agents' })).toBeInTheDocument()
+    expect(input).not.toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: 'Agents' }))
+    const restoredInput = screen.getByDisplayValue('draft should stay')
+    expect(restoredInput).toBeVisible()
+    expectOnlyActivePrimaryMenu('写作')
   })
 
   it('opens shared Agents page without leaving interactive shell', async () => {
@@ -379,7 +449,7 @@ describe('App', () => {
     expectOnlyActivePrimaryMenu('剧情')
   })
 
-  it('guides an empty IDE lore store into the Writing Agent ideation flow', async () => {
+  it('guides an empty writing lore store into the Writing Agent ideation flow', async () => {
     const user = userEvent.setup()
     render(
       <TooltipProvider>

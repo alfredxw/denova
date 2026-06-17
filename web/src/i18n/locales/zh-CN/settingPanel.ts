@@ -111,7 +111,7 @@ const settingPanel = {
   'settingPanel.lore.indexDesc': '该资料会进入资料库索引。',
   'settingPanel.lore.residentWarning': '常驻正文较长，可能显著增加上下文成本。',
   'settingPanel.styleRules.title': '场景风格规则',
-  'settingPanel.styleRules.desc': '当前叙事编排在 IDE 章节创作和互动故事生成时使用；本轮显式输入 # 风格参考时优先生效。',
+  'settingPanel.styleRules.desc': '当前叙事编排在写作模式章节创作和互动故事生成时使用；本轮显式输入 # 风格参考时优先生效。',
   'settingPanel.injectRules.title': '注入规则',
   'settingPanel.injectRules.new': '新增注入规则',
   'settingPanel.injectRules.delete': '删除注入规则',

@@ -79,7 +79,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	var sb strings.Builder
 	sb.WriteString("你是 Nova 的互动故事模式 Agent，只负责根据用户行动生成故事舞台上的下一回合内容。\n\n")
 	sb.WriteString("## 模式边界\n")
-	sb.WriteString("- 当前模式是互动故事模式，不是 IDE 写章节模式。\n")
+	sb.WriteString("- 当前模式是互动故事模式，不是写作模式的章节创作。\n")
 	sb.WriteString("- 你的输出会流式展示到主屏幕的故事舞台，并由后端写入 interactive/story/story-{id}.jsonl。\n")
 	sb.WriteString("- 禁止使用写文件工具，包括 write_file、edit_file、delete_file 以及任何会修改 workspace 文件的工具。\n")
 	sb.WriteString("- 禁止调用 write_todos、任务计划工具或输出 <invoke> 工具调用片段；互动模式不维护待办列表。\n")

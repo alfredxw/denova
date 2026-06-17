@@ -1,6 +1,9 @@
 package agent
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 const (
 	AgentKindUnknown          = "unknown"
@@ -12,11 +15,12 @@ const (
 
 // RunOptions identifies one Agent run across runtime, trace, and UI surfaces.
 type RunOptions struct {
-	AgentKind string
-	TaskID    string
-	SessionID string
-	Workspace string
-	Mode      string
+	AgentKind           string
+	TaskID              string
+	SessionID           string
+	Workspace           string
+	Mode                string
+	OnMutationsVerified func(context.Context, []ToolMutation, PostRunVerification)
 }
 
 func (o RunOptions) normalized(defaultWorkspace string) RunOptions {

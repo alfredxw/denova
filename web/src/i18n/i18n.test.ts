@@ -19,7 +19,7 @@ describe('i18n', () => {
     expect(Object.keys(enUS).sort()).toEqual(Object.keys(zhCN).sort())
   })
 
-  it('contains IDE writing-agent init copy in both locales', () => {
+  it('contains writing-agent init copy in both locales', () => {
     const requiredKeys = [
       'loreInit.ideTitle',
       'loreInit.ideDescription',

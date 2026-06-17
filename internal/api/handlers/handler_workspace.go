@@ -112,6 +112,7 @@ func (h *Handlers) HandleWorkspaceFileWrite(ctx context.Context, c *app.RequestC
 		return
 	}
 	h.app.MaybeCreateTimedVersion(ctx)
+	h.app.CheckAutomationTriggersAfterWorkspaceMutation(ctx, "workspace_file_write", []string{req.Path})
 	writeJSON(c, consts.StatusOK, map[string]string{
 		"path":    req.Path,
 		"message": messageKey(c, "api.workspace.fileSaved"),

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"nova/config"
+	"nova/internal/agent"
 	"nova/internal/automation"
 	"nova/internal/book"
 )
@@ -215,6 +216,123 @@ func TestAutomationChapterBatchTriggerCreatesInboxAtBatchBoundaries(t *testing.T
 	}
 }
 
+func TestAutomationMutationCheckRunsOnlyContentTriggersForChapterWrites(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(filepath.Join(workspace, "chapters"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestChapter(t, workspace, 1)
+	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
+	app.ensureServices()
+	app.bookService = book.NewServiceWithStyleRoot(workspace, book.UserStyleDir(app.cfg.NovaDir))
+
+	now := time.Now()
+	if _, err := app.CreateAutomation(automation.Task{
+		Scope:      automation.ScopeWorkspace,
+		Enabled:    true,
+		Name:       "Due schedule",
+		Template:   automation.TemplateReview,
+		WriteMode:  automation.WriteModeReadOnly,
+		WriteScope: automation.WriteScopeNone,
+		Triggers: []automation.TriggerDefinition{{
+			ID:           "schedule",
+			Type:         automation.TriggerTypeSchedule,
+			Enabled:      true,
+			NotifyPolicy: automation.NotifyPolicyInbox,
+			Schedule:     automation.Schedule{Kind: automation.ScheduleDaily, Hour: now.Hour(), Minute: now.Minute()},
+		}},
+	}); err != nil {
+		t.Fatalf("CreateAutomation schedule failed: %v", err)
+	}
+	batchTask, err := app.CreateAutomation(automation.Task{
+		Scope:      automation.ScopeWorkspace,
+		Enabled:    true,
+		Name:       "Batch review",
+		Template:   automation.TemplateReview,
+		WriteMode:  automation.WriteModeReadOnly,
+		WriteScope: automation.WriteScopeNone,
+		Triggers: []automation.TriggerDefinition{{
+			ID:               "chapter_batch_1",
+			Type:             automation.TriggerTypeChapterBatch,
+			Enabled:          true,
+			NotifyPolicy:     automation.NotifyPolicyInbox,
+			ChapterBatchSize: 1,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateAutomation batch failed: %v", err)
+	}
+
+	items, err := app.automation().CheckContentTriggersForWorkspaceMutation(context.Background(), "test_mutation", []string{"setting/progress.md"})
+	if err != nil {
+		t.Fatalf("non-chapter mutation check failed: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("non-chapter mutation should not check triggers: %#v", items)
+	}
+
+	items, err = app.automation().CheckContentTriggersForWorkspaceMutation(context.Background(), "test_mutation", []string{"chapters/ch01.md"})
+	if err != nil {
+		t.Fatalf("chapter mutation check failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("content trigger item count = %d, want 1: %#v", len(items), items)
+	}
+	if items[0].TaskID != batchTask.ID || items[0].TriggerID != "chapter_batch_1" {
+		t.Fatalf("unexpected content trigger item: %#v", items[0])
+	}
+	inbox, err := app.AutomationInbox()
+	if err != nil {
+		t.Fatalf("AutomationInbox failed: %v", err)
+	}
+	if len(inbox) != 1 {
+		t.Fatalf("schedule trigger should not run from chapter mutation, inbox=%#v", inbox)
+	}
+}
+
+func TestAutomationMutationCallbackChecksAgentChapterWrites(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	if err := os.MkdirAll(filepath.Join(workspace, "chapters"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeTestChapter(t, workspace, 1)
+	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
+	app.ensureServices()
+	app.bookService = book.NewServiceWithStyleRoot(workspace, book.UserStyleDir(app.cfg.NovaDir))
+
+	task, err := app.CreateAutomation(automation.Task{
+		Scope:      automation.ScopeWorkspace,
+		Enabled:    true,
+		Name:       "Agent batch review",
+		Template:   automation.TemplateReview,
+		WriteMode:  automation.WriteModeReadOnly,
+		WriteScope: automation.WriteScopeNone,
+		Triggers: []automation.TriggerDefinition{{
+			ID:               "chapter_batch_1",
+			Type:             automation.TriggerTypeChapterBatch,
+			Enabled:          true,
+			NotifyPolicy:     automation.NotifyPolicyInbox,
+			ChapterBatchSize: 1,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CreateAutomation failed: %v", err)
+	}
+
+	callback := app.automationMutationCallback("agent_test")
+	callback(context.Background(), []agent.ToolMutation{{
+		ToolName: "write_file",
+		Target:   filepath.Join(workspace, "chapters", "ch01.md"),
+	}}, agent.PostRunVerification{Status: "ok", Mutations: 1})
+
+	inbox := waitForAutomationInbox(t, app, 1)
+	if inbox[0].TaskID != task.ID || inbox[0].TriggerID != "chapter_batch_1" {
+		t.Fatalf("unexpected inbox after agent mutation callback: %#v", inbox)
+	}
+}
+
 func TestAutomationSemanticTriggerChecksOnlyCompletedChapterBatches(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
@@ -350,6 +468,12 @@ func TestAutomationRuntimeConfigUsesTaskModelProfile(t *testing.T) {
 	if resolved.ProfileID != "default" || resolved.OpenAIModel != "base-model" {
 		t.Fatalf("resolved inherited model = %#v, want default base model", resolved)
 	}
+
+	app.cfg.MaxIteration = 20
+	cfg = app.automation().runtimeConfigForTask(automation.Task{Template: automation.TemplateReview})
+	if cfg.MaxIteration < 100 {
+		t.Fatalf("review max iteration = %d, want at least 100", cfg.MaxIteration)
+	}
 }
 
 func TestAutomationReviewMessageTargetsTriggeredChapters(t *testing.T) {
@@ -414,6 +538,25 @@ func writeTestChapter(t *testing.T, workspace string, index int) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write chapter %d: %v", index, err)
 	}
+}
+
+func waitForAutomationInbox(t *testing.T, app *App, want int) []automation.TriggerInboxItem {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	var inbox []automation.TriggerInboxItem
+	for time.Now().Before(deadline) {
+		var err error
+		inbox, err = app.AutomationInbox()
+		if err != nil {
+			t.Fatalf("AutomationInbox failed: %v", err)
+		}
+		if len(inbox) == want {
+			return inbox
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("automation inbox count = %d, want %d: %#v", len(inbox), want, inbox)
+	return nil
 }
 
 func itemsFromFirstBatch(t *testing.T, app *App, taskID string) string {

@@ -2,7 +2,6 @@ import { BookMarked, BookOpen, ChevronDown, ChevronRight, Database, FileText, Pa
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { motion } from 'motion/react'
 import { FileTree } from '@/components/Sidebar/FileTree'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel } from '@/components/Chat/AgentPanel'
@@ -25,10 +24,10 @@ import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
 import { WorkbenchShell } from './WorkbenchShell'
 import { flattenFileTree, formatNumber } from './workbench-utils'
-import { novaEase, panelPresence } from '@/features/motion/motion-tokens'
 
 const LORE_AGENT_INIT_EVENT = 'nova:lore-agent-init'
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
+type MainRouteId = 'settings' | 'skills' | 'agents' | 'automations' | 'books' | 'interactive' | 'ide-versions' | 'ide-lore' | 'ide-creator' | 'ide-teller' | 'ide-writing'
 
 interface ModeRouterProps {
   mode: WorkspaceMode
@@ -260,7 +259,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onSetMode('ide')
     if (rightPanel === 'lore' || rightPanel === 'creator' || rightPanel === 'teller' || rightPanel === 'versions') onSetRightPanel(null)
   }
-  const mainContentKey = settingsOpen
+  const visibleMainRoute: MainRouteId = settingsOpen
     ? 'settings'
     : skillsVisible
       ? 'skills'
@@ -271,10 +270,20 @@ export function ModeRouter(props: ModeRouterProps) {
           : mode === 'books'
             ? 'books'
             : mode === 'interactive'
-              ? `interactive:${interactiveSubmode}`
+              ? 'interactive'
               : ideWorkspacePanel
-                ? `ide-panel:${ideWorkspacePanel}`
+                ? `ide-${ideWorkspacePanel}`
                 : 'ide-writing'
+  const [mountedRoutes, setMountedRoutes] = useState<ReadonlySet<MainRouteId>>(() => new Set(['ide-writing', visibleMainRoute]))
+
+  useEffect(() => {
+    setMountedRoutes((current) => {
+      if (current.has(visibleMainRoute)) return current
+      const next = new Set(current)
+      next.add(visibleMainRoute)
+      return next
+    })
+  }, [visibleMainRoute])
 
   const sidebar = (
     <section className="nova-sidebar flex h-full flex-col border-r">
@@ -366,121 +375,143 @@ export function ModeRouter(props: ModeRouterProps) {
   )
 
   const main = (
-    <main className={`flex h-full min-w-0 flex-col bg-[var(--nova-bg)] ${mode === 'ide' && !settingsOpen && !ideWorkspacePanel ? 'border-r border-[var(--nova-border)]' : ''}`}>
-      <motion.div
-        key={mainContentKey}
-        variants={panelPresence}
-        initial="initial"
-        animate="animate"
-        transition={{ duration: 0.2, ease: novaEase }}
-        className="flex h-full min-h-0 flex-col"
-      >
-          {settingsOpen ? (
-            <SettingsView onClose={onCloseSettings} />
-          ) : skillsVisible ? (
-            <SkillsView workspace={workspace} onClose={() => onSetMode(booksReturnMode)} onRequestAgent={requestSkillsAgent} />
-          ) : agentsVisible ? (
-            <AgentsView onClose={() => onSetMode(booksReturnMode)} />
-          ) : automationsVisible ? (
-            <AutomationsView workspace={workspace} onClose={() => onSetMode(booksReturnMode)} />
-          ) : mode === 'books' ? (
-            <HomeView
-              workspace={workspace}
-              novaDir={novaDir}
-              books={books}
-              onSwitch={onSwitchBook}
-              onBooksChange={onBooksChange}
-              onOpenCharacterCardImport={onOpenCharacterCardImport}
-              onClose={closeBooks}
+    <main className="relative h-full min-w-0 overflow-hidden bg-[var(--nova-bg)]">
+      <MainRouteLayer visible={visibleMainRoute === 'ide-writing'}>
+        <TabController
+          tabs={openTabs}
+          activeTabKey={activeTabKey}
+          summary={summary}
+          actions={(
+            <IdeWritingInfoActions
+              projectVisible={projectVisible}
+              aiVisible={aiVisible}
+              onToggleProjectVisible={onToggleProjectVisible}
+              onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
             />
-          ) : mode === 'interactive' ? (
-            <InteractiveLayout
-              workspace={workspace}
-              styleSuggestions={styles}
-              loreEmpty={loreEmpty}
-              onRequestLoreInit={requestLoreInit}
-              rightPanelVisible={interactiveRightVisible}
-              onToggleRightPanel={onToggleInteractiveRightPanel}
-            />
-          ) : ideWorkspacePanel === 'versions' ? (
-            <VersionPanel
-              workspace={workspace}
-              refreshSignal={versionRefreshSignal}
-              visible={versionsVisible}
-              onClose={() => onSetRightPanel(null)}
-            />
-          ) : ideWorkspacePanel === 'lore' ? (
-            <IdeWorkspacePanel
-              title={t('workbench.activity.lore')}
-              icon={<Database className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
-              onClose={() => onSetRightPanel(null)}
-            >
-              <SettingPanel mode="lore" workspace={workspace} />
-            </IdeWorkspacePanel>
-          ) : ideWorkspacePanel === 'creator' ? (
-            <IdeWorkspacePanel
-              title={t('workbench.activity.creator')}
-              icon={<BookMarked className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
-              onClose={() => onSetRightPanel(null)}
-            >
-              <SettingPanel mode="creator" workspace={workspace} />
-            </IdeWorkspacePanel>
-          ) : ideWorkspacePanel === 'teller' ? (
-            <IdeWorkspacePanel
-              title={t('workbench.activity.teller')}
-              icon={<SlidersHorizontal className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
-              onClose={() => onSetRightPanel(null)}
-            >
-              <SettingPanel mode="teller" workspace={workspace} tellers={tellers} onTellersChange={setTellers} />
-            </IdeWorkspacePanel>
-          ) : (
-            <>
-              <TabController
-                tabs={openTabs}
-                activeTabKey={activeTabKey}
-                summary={summary}
-                actions={(
-                  <IdeWritingInfoActions
-                    projectVisible={projectVisible}
-                    aiVisible={aiVisible}
-                    onToggleProjectVisible={onToggleProjectVisible}
-                    onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
-                  />
-                )}
-                onActivateTab={onActivateTab}
-                onCloseTab={onCloseTab}
-              />
-              <div className="flex min-h-0 flex-1 flex-col">
-                {activeTab ? (
-                  <MarkdownEditor
-                    fileName={selectedFile}
-                    content={fileContent}
-                    onSave={onSaveCurrentFile}
-                    onQuoteSelection={onQuoteSelection}
-                    saveSignal={saveSignal}
-                    chapterSummary={currentChapter}
-                    workspaceSummary={summary}
-                    searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
-                  />
-                ) : (
-                  loreEmpty ? (
-                    <EmptyLoreGuide
-                      emptyText={t('router.chooseFile')}
-                      title={t('loreInit.ideTitle')}
-                      description={t('loreInit.ideDescription')}
-                      action={t('loreInit.ideAction')}
-                      onClick={requestWritingInit}
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">
-                      {t('router.chooseFile')}
-                    </div>
-                  )
-                )}
-              </div>
-            </>
           )}
-      </motion.div>
+          onActivateTab={onActivateTab}
+          onCloseTab={onCloseTab}
+        />
+        <div className="flex min-h-0 flex-1 flex-col">
+          {activeTab ? (
+            <MarkdownEditor
+              fileName={selectedFile}
+              content={fileContent}
+              onSave={onSaveCurrentFile}
+              onQuoteSelection={onQuoteSelection}
+              saveSignal={saveSignal}
+              chapterSummary={currentChapter}
+              workspaceSummary={summary}
+              searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
+            />
+          ) : (
+            loreEmpty ? (
+              <EmptyLoreGuide
+                emptyText={t('router.chooseFile')}
+                title={t('loreInit.ideTitle')}
+                description={t('loreInit.ideDescription')}
+                action={t('loreInit.ideAction')}
+                onClick={requestWritingInit}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">
+                {t('router.chooseFile')}
+              </div>
+            )
+          )}
+        </div>
+      </MainRouteLayer>
+
+      {mountedRoutes.has('interactive') && (
+        <MainRouteLayer visible={visibleMainRoute === 'interactive'}>
+          <InteractiveLayout
+            workspace={workspace}
+            styleSuggestions={styles}
+            loreEmpty={loreEmpty}
+            onRequestLoreInit={requestLoreInit}
+            rightPanelVisible={interactiveRightVisible}
+            onToggleRightPanel={onToggleInteractiveRightPanel}
+          />
+        </MainRouteLayer>
+      )}
+
+      {mountedRoutes.has('ide-versions') && (
+        <MainRouteLayer visible={visibleMainRoute === 'ide-versions'}>
+          <VersionPanel
+            workspace={workspace}
+            refreshSignal={versionRefreshSignal}
+            visible={versionsVisible}
+            onClose={() => onSetRightPanel(null)}
+          />
+        </MainRouteLayer>
+      )}
+      {mountedRoutes.has('ide-lore') && (
+        <MainRouteLayer visible={visibleMainRoute === 'ide-lore'}>
+          <IdeWorkspacePanel
+            title={t('workbench.activity.lore')}
+            icon={<Database className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
+            onClose={() => onSetRightPanel(null)}
+          >
+            <SettingPanel mode="lore" workspace={workspace} />
+          </IdeWorkspacePanel>
+        </MainRouteLayer>
+      )}
+      {mountedRoutes.has('ide-creator') && (
+        <MainRouteLayer visible={visibleMainRoute === 'ide-creator'}>
+          <IdeWorkspacePanel
+            title={t('workbench.activity.creator')}
+            icon={<BookMarked className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
+            onClose={() => onSetRightPanel(null)}
+          >
+            <SettingPanel mode="creator" workspace={workspace} />
+          </IdeWorkspacePanel>
+        </MainRouteLayer>
+      )}
+      {mountedRoutes.has('ide-teller') && (
+        <MainRouteLayer visible={visibleMainRoute === 'ide-teller'}>
+          <IdeWorkspacePanel
+            title={t('workbench.activity.teller')}
+            icon={<SlidersHorizontal className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
+            onClose={() => onSetRightPanel(null)}
+          >
+            <SettingPanel mode="teller" workspace={workspace} tellers={tellers} onTellersChange={setTellers} />
+          </IdeWorkspacePanel>
+        </MainRouteLayer>
+      )}
+
+      {mountedRoutes.has('books') && (
+        <MainRouteLayer visible={visibleMainRoute === 'books'}>
+          <HomeView
+            workspace={workspace}
+            novaDir={novaDir}
+            books={books}
+            onSwitch={onSwitchBook}
+            onBooksChange={onBooksChange}
+            onOpenCharacterCardImport={onOpenCharacterCardImport}
+            onClose={closeBooks}
+          />
+        </MainRouteLayer>
+      )}
+      {mountedRoutes.has('skills') && (
+        <MainRouteLayer visible={visibleMainRoute === 'skills'}>
+          <SkillsView workspace={workspace} onClose={() => onSetMode(booksReturnMode)} onRequestAgent={requestSkillsAgent} />
+        </MainRouteLayer>
+      )}
+      {mountedRoutes.has('agents') && (
+        <MainRouteLayer visible={visibleMainRoute === 'agents'}>
+          <AgentsView onClose={() => onSetMode(booksReturnMode)} />
+        </MainRouteLayer>
+      )}
+      {mountedRoutes.has('automations') && (
+        <MainRouteLayer visible={visibleMainRoute === 'automations'}>
+          <AutomationsView workspace={workspace} onClose={() => onSetMode(booksReturnMode)} />
+        </MainRouteLayer>
+      )}
+      {mountedRoutes.has('settings') && (
+        <MainRouteLayer visible={visibleMainRoute === 'settings'}>
+          <SettingsView onClose={onCloseSettings} />
+        </MainRouteLayer>
+      )}
     </main>
   )
 
@@ -515,6 +546,8 @@ export function ModeRouter(props: ModeRouterProps) {
       onStyleReferenceAdd={onStyleReferenceAdd}
       onStyleReferenceRemove={onStyleReferenceRemove}
       onTextSelectionRemove={onTextSelectionRemove}
+      onOpenReviewConfig={() => onSetMode('automations')}
+      onOpenReviewFile={onSelectFile}
       onClose={() => onSetRightPanel(null)}
     />
   ) : null
@@ -544,6 +577,14 @@ export function ModeRouter(props: ModeRouterProps) {
       onToggleSettings={onToggleSettings}
       onCloseSettings={onCloseSettings}
     />
+  )
+}
+
+function MainRouteLayer({ visible, children }: { visible: boolean; children: ReactNode }) {
+  return (
+    <section hidden={!visible} aria-hidden={!visible} className="absolute inset-0 flex min-h-0 flex-col">
+      {children}
+    </section>
   )
 }
 
