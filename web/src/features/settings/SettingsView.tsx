@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronUp, Download, ExternalLink, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateCheckResult, UpdateInstallResult } from './types'
 import { checkForUpdate, fetchSettings, installUpdate, updateUserSettings, updateWorkspaceSettings } from './api'
@@ -445,8 +445,8 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           disabled={saving}
           className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50"
         >
-          <Save className="h-3.5 w-3.5" />
-          {saving ? t('common.saving') : t('common.save')}
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {t('common.save')}
         </button>
         {onClose && (
           <button

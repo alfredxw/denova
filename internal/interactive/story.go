@@ -14,7 +14,16 @@ import (
 const schemaVersion = 1
 const maxStoryLineBytes = 16 * 1024 * 1024
 const defaultFirstStoryTitle = "新的开始"
-const defaultStoryReplyTargetChars = 1200
+
+// DefaultStoryReplyTargetChars is the default target length for one interactive story turn.
+const DefaultStoryReplyTargetChars = 2000
+const maxStoryOpeningTextRunes = 4000
+
+const (
+	StoryOpeningModeAI     = "ai"
+	StoryOpeningModePreset = "preset"
+	StoryOpeningModeCustom = "custom"
+)
 
 // Store manages interactive story data inside a workspace.
 type Store struct {
@@ -60,6 +69,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Origin:           strings.TrimSpace(req.Origin),
 		StoryTellerID:    strings.TrimSpace(req.StoryTellerID),
 		ReplyTargetChars: normalizeStoryReplyTargetChars(req.ReplyTargetChars),
+		Opening:          normalizeStoryOpeningConfig(req.Opening),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 		Branches:         1,
@@ -76,6 +86,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Origin:           story.Origin,
 		StoryTellerID:    story.StoryTellerID,
 		ReplyTargetChars: story.ReplyTargetChars,
+		Opening:          story.Opening,
 		CurrentBranch:    "main",
 		Branches: map[string]BranchMeta{
 			"main": {CreatedAt: now},
@@ -119,6 +130,9 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 		}
 		meta.ReplyTargetChars = *req.ReplyTargetChars
 	}
+	if req.Opening != nil {
+		meta.Opening = normalizeStoryOpeningConfig(*req.Opening)
+	}
 	meta.UpdatedAt = now
 	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
 		return StorySummary{}, err
@@ -132,6 +146,7 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 			index.Stories[i].Title = meta.Title
 			index.Stories[i].StoryTellerID = meta.StoryTellerID
 			index.Stories[i].ReplyTargetChars = meta.ReplyTargetChars
+			index.Stories[i].Opening = meta.Opening
 			index.Stories[i].UpdatedAt = now
 			if err := s.writeIndexLocked(index); err != nil {
 				return StorySummary{}, err
@@ -743,19 +758,56 @@ func defaultStoryTitle(stories []StorySummary) string {
 
 func normalizeStoryReplyTargetChars(value int) int {
 	if value <= 0 {
-		return defaultStoryReplyTargetChars
+		return DefaultStoryReplyTargetChars
 	}
 	return value
 }
 
 func normalizeStorySummary(story StorySummary) StorySummary {
 	story.ReplyTargetChars = normalizeStoryReplyTargetChars(story.ReplyTargetChars)
+	story.Opening = normalizeStoryOpeningConfig(story.Opening)
 	return story
 }
 
 func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)
+	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
 	return meta
+}
+
+func normalizeStoryOpeningConfig(config StoryOpeningConfig) StoryOpeningConfig {
+	mode := strings.TrimSpace(config.Mode)
+	switch mode {
+	case StoryOpeningModePreset, StoryOpeningModeCustom:
+	default:
+		mode = StoryOpeningModeAI
+	}
+	normalized := StoryOpeningConfig{
+		Mode:       mode,
+		PresetID:   strings.TrimSpace(config.PresetID),
+		PresetText: truncateStoryOpeningText(config.PresetText),
+		CustomText: truncateStoryOpeningText(config.CustomText),
+	}
+	if mode != StoryOpeningModePreset {
+		normalized.PresetID = ""
+		normalized.PresetText = ""
+	}
+	if mode != StoryOpeningModeCustom {
+		normalized.CustomText = ""
+	}
+	return normalized
+}
+
+func truncateStoryOpeningText(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= maxStoryOpeningTextRunes {
+		return text
+	}
+	return string(runes[:maxStoryOpeningTextRunes])
 }
 
 func newID(prefix string) string {

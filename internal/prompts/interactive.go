@@ -254,6 +254,7 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	sb.WriteString("- important_character：按角色姓名 upsert 重要角色的简介、关系、离场状态、技能物品和经历。\n")
 	sb.WriteString("- quest_event：按任务名 upsert 任务、危机、承诺、进度和奖惩代价。\n")
 	sb.WriteString("- plot_summary：追加已经发生且后续需要承接的剧情纪要。\n")
+	sb.WriteString("- 资料库是稳定设定校准来源；故事记忆不得写入与资料库冲突的身份、规则、地点、物品或关系。若本回合正文和资料库疑似冲突，只记录已发生事实和待核对点，不要把矛盾扩写成新设定。\n")
 	sb.WriteString("- 不要记录下一步行动建议、快捷选择或可选择入口；这些由独立快捷选择 Agent 生成。\n")
 	sb.WriteString("- 若本回合没有值得沉淀的信息，可以返回空数组。\n\n")
 	sb.WriteString("## 故事信息\n")

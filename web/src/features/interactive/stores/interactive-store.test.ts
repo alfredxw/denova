@@ -21,6 +21,7 @@ describe('interactive-store', () => {
           origin: '',
           story_teller_id: 'classic',
           reply_target_chars: 1200,
+          opening: { mode: 'ai' },
           created_at: '',
           updated_at: '',
           branches: 1,

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent } from 'react'
-import { ChevronDown, ChevronUp, Command as CommandIcon, Compass, PanelRight, Pencil, RefreshCw, Send, Sparkles, Square, X } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronUp, Command as CommandIcon, Compass, Loader2, PanelRight, Pencil, RefreshCw, Send, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
@@ -18,6 +19,7 @@ import { abortInteractiveChat, generateInteractiveHotChoices, sendInteractiveMes
 import { createInteractiveNarrativeFilter } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
+import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import type { Snapshot, StorySummary, Teller } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { TellerPicker } from './TellerPicker'
@@ -33,9 +35,10 @@ interface StoryStageProps {
   snapshot: Snapshot | null
   snapshotLoading?: boolean
   loreEmpty?: boolean
+  bookOpeningPresets?: BookOpeningPreset[]
   sceneMemoryVisible?: boolean
   onStorySelect?: (storyId: string) => void
-  onStoryCreate?: (input: { title: string; origin: string; story_teller_id: string; reply_target_chars: number }) => void
+  onStoryCreate?: (input: StoryCreateInput) => void
   onStoryDelete?: (storyId: string) => void
   onTellerChange?: (tellerId: string) => void
   onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
@@ -50,7 +53,7 @@ const DEFAULT_READING_FONT = 'source-han-serif'
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 const stageAbortControllers = new Map<string, AbortController>()
 
-export function StoryStage({ workspace, styleSuggestions = [], stories = [], story, tellers = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
+export function StoryStage({ workspace, styleSuggestions = [], stories = [], story, tellers = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const [input, setInput] = useState('')
   const [styleReferences, setStyleReferences] = useState<string[]>([])
@@ -80,6 +83,8 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   const [generatedHotChoices, setGeneratedHotChoices] = useState<string[]>([])
   const [hotChoicesExpanded, setHotChoicesExpanded] = useState(false)
   const [hotChoicesLoading, setHotChoicesLoading] = useState(false)
+  const [selectedBookOpeningPresetId, setSelectedBookOpeningPresetId] = useState('')
+  const [customOpeningText, setCustomOpeningText] = useState('')
   const hotChoicesAbortRef = useRef<AbortController | null>(null)
   const liveStageKeyRef = useRef(stageKey)
   const previousSnapshotKeyRef = useRef(snapshotKey)
@@ -235,6 +240,8 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   )
   const canUseHotChoices = !streaming && !editingTurn && stagePreferences.hotChoicesEnabled && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
+  const availableBookOpeningPresets = useMemo(() => bookOpeningPresets.filter((preset) => preset.content.trim()), [bookOpeningPresets])
+  const selectedBookOpeningPreset = availableBookOpeningPresets.find((preset) => preset.id === selectedBookOpeningPresetId) || availableBookOpeningPresets[0] || null
   const turnsById = useMemo(() => {
     const result = new Map<string, { user: string }>()
     for (const turn of snapshot?.turns || []) {
@@ -297,6 +304,13 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
       setHotChoicesLoading(false)
     }
   }, [stagePreferences.hotChoicesEnabled])
+
+  useEffect(() => {
+    setSelectedBookOpeningPresetId((current) => {
+      if (current && availableBookOpeningPresets.some((preset) => preset.id === current)) return current
+      return availableBookOpeningPresets[0]?.id || ''
+    })
+  }, [availableBookOpeningPresets])
 
   const send = async (override?: { message?: string; rewindTurnId?: string }) => {
     const sourceMessage = override?.message ?? input
@@ -445,6 +459,34 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     void send({ message: source, rewindTurnId: message.turn_id })
   }
 
+  const startOpening = (mode: 'ai' | 'book_preset' | 'custom') => {
+    if (!storyId || streaming) return
+    if (mode === 'book_preset' && !selectedBookOpeningPreset?.content.trim()) return
+    const customText = truncateStoryOpeningText(customOpeningText)
+    if (mode === 'custom' && !customText) return
+    if (mode === 'book_preset') {
+      void send({
+        message: buildOpeningPrompt(
+          story,
+          t,
+          {
+            mode: 'preset',
+            preset_id: selectedBookOpeningPreset.id,
+            preset_text: selectedBookOpeningPreset.content,
+          },
+          'book_preset',
+        ),
+      })
+      return
+    }
+    if (mode === 'custom') {
+      void send({ message: buildOpeningPrompt(story, t, { mode: 'custom', custom_text: customText }) })
+      setCustomOpeningText('')
+      return
+    }
+    void send({ message: buildOpeningPrompt(story, t, { mode: 'ai' }) })
+  }
+
   const switchMessageVersion = async (message: ChatMessage, direction: -1 | 1) => {
     if (!message.turn_id || !storyId || streaming || switchingVersionTurnId) return
     const versions = message.turn_versions || []
@@ -547,21 +589,54 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
               </div>
             ) : messages.length === 0 && !streaming ? (
               <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                {loreEmpty && onRequestLoreInit ? (
-                  <div className="flex max-w-md flex-col items-center gap-3">
-                    <Sparkles className="h-4 w-4 text-[var(--nova-text-muted)]" />
-                    <div className="space-y-1">
-                      <div className="text-xs text-[var(--nova-text-faint)]">{t('storyStage.empty')}</div>
-                      <div className="text-sm font-medium text-[var(--nova-text)]">{t('loreInit.interactiveTitle')}</div>
-                      <div className="text-xs leading-5 text-[var(--nova-text-faint)]">{t('loreInit.interactiveDescription')}</div>
-                    </div>
-                    <button type="button" className="nova-nav-item rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1.5 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={onRequestLoreInit}>
-                      {t('loreInit.openAgent')}
-                    </button>
+                <div className="flex w-full max-w-xl flex-col items-center gap-3">
+                  <Sparkles className="h-4 w-4 text-[var(--nova-text-muted)]" />
+                  <div className="space-y-1">
+                    <div className="text-sm font-medium text-[var(--nova-text)]">{t('storyStage.opening.emptyTitle')}</div>
+                    <div className="text-xs leading-5 text-[var(--nova-text-faint)]">{t('storyStage.opening.emptyDescription')}</div>
                   </div>
-                ) : (
-                  t('storyStage.empty')
-                )}
+                  {loreEmpty && onRequestLoreInit ? (
+                    <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-center">
+                      <div className="text-xs font-medium text-[var(--nova-text)]">{t('loreInit.interactiveTitle')}</div>
+                      <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('loreInit.interactiveDescription')}</div>
+                      <button type="button" className="nova-nav-item mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1.5 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={onRequestLoreInit}>
+                        {t('loreInit.openAgent')}
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="grid w-full gap-2 sm:grid-cols-2">
+                    <Button type="button" size="sm" className="gap-1.5" disabled={!storyId || streaming} onClick={() => startOpening('ai')}>
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {t('storyStage.opening.startAI')}
+                    </Button>
+                    <div className="flex min-w-0 gap-2">
+                      <Select value={selectedBookOpeningPreset?.id || ''} onValueChange={setSelectedBookOpeningPresetId} disabled={availableBookOpeningPresets.length === 0}>
+                        <SelectTrigger size="sm" className="nova-field min-w-0 flex-1 px-3 py-0.5 text-xs focus:ring-0" aria-label={t('storyStage.opening.bookPresetSelect')}>
+                          <SelectValue placeholder={t('storyStage.opening.bookPresetSelect')} />
+                        </SelectTrigger>
+                        <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                          {availableBookOpeningPresets.map((preset) => (
+                            <SelectItem key={preset.id} value={preset.id}>
+                              {preset.title || t('storyStage.opening.bookPresetUntitled')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="outline" size="sm" className="shrink-0 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !selectedBookOpeningPreset} onClick={() => startOpening('book_preset')}>
+                        <BookOpen className="h-3.5 w-3.5" />
+                        {t('storyStage.opening.startBookPreset')}
+                      </Button>
+                    </div>
+                  </div>
+                  {availableBookOpeningPresets.length === 0 ? <div className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('storyStage.opening.bookPresetMissing')}</div> : null}
+                  <div className="w-full space-y-2">
+                    <Textarea autoResize className="nova-field min-h-20 resize-none text-xs" placeholder={t('storyStage.opening.customPlaceholder')} value={customOpeningText} onChange={(event) => setCustomOpeningText(event.target.value)} />
+                    <Button type="button" variant="outline" size="sm" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !customOpeningText.trim()} onClick={() => startOpening('custom')}>
+                      <Pencil className="h-3.5 w-3.5" />
+                      {t('storyStage.opening.startCustom')}
+                    </Button>
+                  </div>
+                </div>
               </div>
             ) : (
               <MessageList messages={messages} isStreaming={streaming} activityContent={activityContent} highlightDialogue collapseTraceBeforeAssistant scrollResetKey={scrollResetKey} bottomPaddingClassName="pb-6" messageStyle={stageTextStyle} onEditMessage={startEditingMessage} onRegenerateMessage={regenerateMessage} onSwitchMessageVersion={switchMessageVersion} />
@@ -916,7 +991,8 @@ function ReplyTargetCharsControl({ story, onChange }: { story?: StorySummary; on
             {t('common.cancel')}
           </Button>
           <Button size="xs" disabled={saving} onClick={() => void save()}>
-            {saving ? t('common.saving') : t('common.save')}
+            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {t('common.save')}
           </Button>
         </div>
       </PopoverContent>
@@ -925,7 +1001,7 @@ function ReplyTargetCharsControl({ story, onChange }: { story?: StorySummary; on
 }
 
 function normalizeReplyTargetChars(value?: number) {
-  return value && value > 0 ? value : 1200
+  return value && value > 0 ? value : DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS
 }
 
 function noop() {}

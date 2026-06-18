@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { BookMarked, Building2, Database, FileText, Library, MapPin, Save, ScrollText, SlidersHorizontal, Trash2, UserRound } from 'lucide-react'
+import { BookMarked, Building2, Database, FileText, Library, Loader2, MapPin, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { createLoreItem, deleteLoreItem, getLoreItems, readFile, saveFile, updateLoreItem, type LoreAgentResult, type LoreItem } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { createInteractiveTeller, deleteInteractiveTeller, getInteractiveTellers, updateInteractiveTeller } from '../api'
+import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, INTERACTIVE_OPENING_PRESET_ENTRY_ID, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, serializeBookOpeningPresets, type BookOpeningPreset } from '../opening'
 import type { Teller, TellerAgentResult } from '../types'
 import { LoreAgentChat } from './SettingPanelAgentChats'
 import { TellerAgentChat } from './SettingPanelTellerAgentChat'
-import { CreatorDirectory, CreatorEditor, LoreDirectory, LoreEditor, TellerDirectory } from './SettingPanelSections'
+import { CreatorDirectory, CreatorEditor, LoreDirectory, LoreEditor, OpeningPresetEditor, TellerDirectory } from './SettingPanelSections'
 import { TellerEditor } from './SettingPanelTellerEditor'
 
 const CREATOR_PATH = 'CREATOR.md'
@@ -102,6 +103,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const [tagDraft, setTagDraft] = useState('')
   const [query, setQuery] = useState('')
   const [creatorContent, setCreatorContent] = useState('')
+  const [openingPresets, setOpeningPresets] = useState<BookOpeningPreset[]>([])
+  const [activeOpeningPresetId, setActiveOpeningPresetId] = useState('')
   const [tellers, setTellers] = useState<Teller[]>(externalTellers)
   const [activeTellerId, setActiveTellerId] = useState('')
   const [tellerAgentTargetId, setTellerAgentTargetId] = useState('')
@@ -177,6 +180,41 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       })
       .catch(() => {
         if (!cancelled) setCreatorContent('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeId, activeMode, workspace])
+
+  useEffect(() => {
+    if (activeMode !== 'lore' || activeId !== INTERACTIVE_OPENING_PRESET_ENTRY_ID) return
+    let cancelled = false
+    setOpeningPresets([])
+    setActiveOpeningPresetId('')
+    if (!workspace)
+      return () => {
+        cancelled = true
+      }
+    readFile(INTERACTIVE_OPENING_PRESET_PATH)
+      .then((data) => {
+        if (cancelled) return
+        const presets = parseBookOpeningPresets(data.content)
+        setOpeningPresets(presets)
+        setActiveOpeningPresetId((current) => (current && presets.some((preset) => preset.id === current) ? current : presets[0]?.id || ''))
+      })
+      .catch(async () => {
+        try {
+          const legacy = await readFile(LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
+          if (cancelled) return
+          const presets = parseBookOpeningPresets(legacy.content)
+          setOpeningPresets(presets)
+          setActiveOpeningPresetId((current) => (current && presets.some((preset) => preset.id === current) ? current : presets[0]?.id || ''))
+        } catch {
+          if (!cancelled) {
+            setOpeningPresets([])
+            setActiveOpeningPresetId('')
+          }
+        }
       })
     return () => {
       cancelled = true
@@ -377,6 +415,11 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         await saveFile(CREATOR_PATH, creatorContent)
         return
       }
+      if (activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID) {
+        await saveFile(INTERACTIVE_OPENING_PRESET_PATH, serializeBookOpeningPresets(openingPresets))
+        notifyOpeningPresetUpdated()
+        return
+      }
       if (activeMode === 'teller') {
         if (tellerAutoSaveTimer.current) {
           window.clearTimeout(tellerAutoSaveTimer.current)
@@ -471,6 +514,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }
 
   const isCreatorActive = activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)
+  const isOpeningPresetActive = activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID
   const isLoreAgentActive = activeMode === 'lore' && activeId === LORE_AGENT_ENTRY_ID
   const isTellerAgentActive = activeMode === 'teller' && activeTellerId === TELLER_AGENT_ENTRY_ID
   return (
@@ -491,13 +535,13 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         <div className="nova-topbar flex min-h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              {isCreatorActive ? <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <ModeIcon mode={activeMode} />}
-              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreAgentActive ? t('settingPanel.loreAgent.title') : isTellerAgentActive ? t('settingPanel.tellerAgent.title') : isCreatorActive ? CREATOR_PATH : editorTitle(activeMode, draft, tellerDraft, t)}</h2>
+              {isCreatorActive ? <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : isOpeningPresetActive ? <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <ModeIcon mode={activeMode} />}
+              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreAgentActive ? t('settingPanel.loreAgent.title') : isTellerAgentActive ? t('settingPanel.tellerAgent.title') : isCreatorActive ? CREATOR_PATH : isOpeningPresetActive ? t('settingPanel.openingPreset.title') : editorTitle(activeMode, draft, tellerDraft, t)}</h2>
             </div>
-            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerAgentActive ? t('settingPanel.tellerAgent.subtitle') : isCreatorActive ? t('settingPanel.editor.creatorSubtitle') : editorSubtitle(activeMode, draft, tellerDraft, t)}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerAgentActive ? t('settingPanel.tellerAgent.subtitle') : isCreatorActive ? t('settingPanel.editor.creatorSubtitle') : isOpeningPresetActive ? t('settingPanel.openingPreset.subtitle') : editorSubtitle(activeMode, draft, tellerDraft, t)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {activeMode === 'lore' && !isLoreAgentActive && !isCreatorActive && (
+            {activeMode === 'lore' && !isLoreAgentActive && !isCreatorActive && !isOpeningPresetActive && (
               <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !draft} onClick={handleDelete} aria-label={t('settingPanel.deleteLore')}>
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -508,9 +552,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
               </Button>
             )}
             {!isLoreAgentActive && !isTellerAgentActive && (
-              <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving || (activeMode === 'lore' && !isCreatorActive && !draft) || (activeMode === 'teller' && !tellerDraft)} onClick={handleSave}>
-                <Save className="h-4 w-4" />
-                {saving ? t('common.saving') : t('common.save')}
+              <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving || (activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && !draft) || (activeMode === 'teller' && !tellerDraft)} onClick={handleSave}>
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {t('common.save')}
               </Button>
             )}
           </div>
@@ -530,6 +574,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
               />
             ) : activeId === CREATOR_ENTRY_ID ? (
               <CreatorEditor content={creatorContent} setContent={setCreatorContent} onSave={handleSave} />
+            ) : activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID ? (
+              <OpeningPresetEditor presets={openingPresets} activeId={activeOpeningPresetId} setActiveId={setActiveOpeningPresetId} setPresets={setOpeningPresets} onSave={handleSave} />
             ) : (
               <LoreEditor draft={draft} tagDraft={tagDraft} residentTotalChars={items.filter((item) => item.load_mode === 'resident' && item.id !== draft?.id).reduce((total, item) => total + (item.content || '').length, draft?.load_mode === 'resident' ? (draft.content || '').length : 0)} setDraft={setDraft} setTagDraft={setTagDraft} onSave={handleSave} />
             )}
@@ -573,6 +619,11 @@ function tellerDraftSignature(teller: Partial<Teller>, tagDraft: string) {
 function notifyLoreUpdated(itemIds: string[] = []) {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent('nova:lore-updated', { detail: { item_ids: itemIds } }))
+}
+
+function notifyOpeningPresetUpdated() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(INTERACTIVE_OPENING_PRESET_UPDATED_EVENT))
 }
 
 function ModeIcon({ mode }: { mode: SettingPanelMode }) {

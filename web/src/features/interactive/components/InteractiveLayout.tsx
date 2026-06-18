@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { Layout } from 'react-resizable-panels'
+import { readFile } from '@/lib/api'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
@@ -16,6 +17,7 @@ import { StoryStage } from './StoryStage'
 import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import type { Snapshot } from '../types'
+import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 
 interface InteractiveLayoutProps {
   workspace?: string
@@ -38,6 +40,7 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false)
   const [mobileSnapshotOpen, setMobileSnapshotOpen] = useState(false)
+  const [bookOpeningPresets, setBookOpeningPresets] = useState<BookOpeningPreset[]>([])
 
   if (currentBranchSnapshot) {
     lastStableSnapshotRef.current = currentBranchSnapshot
@@ -54,6 +57,24 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
     const index = await getInteractiveStories()
     setStories(index.stories || [], index.current_story_id)
   }, [setStories])
+
+  const reloadBookOpeningPreset = useCallback(async () => {
+    if (!workspace) {
+      setBookOpeningPresets([])
+      return
+    }
+    try {
+      const data = await readFile(INTERACTIVE_OPENING_PRESET_PATH)
+      setBookOpeningPresets(parseBookOpeningPresets(data.content || ''))
+    } catch {
+      try {
+        const legacy = await readFile(LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
+        setBookOpeningPresets(parseBookOpeningPresets(legacy.content || ''))
+      } catch {
+        setBookOpeningPresets([])
+      }
+    }
+  }, [workspace])
 
   const reloadSnapshot = useCallback(
     async (branchOverride?: string, storyOverride?: string) => {
@@ -98,6 +119,13 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
   }, [reloadStories, resetWorkspaceState, setTellers, workspace])
 
   useEffect(() => {
+    void reloadBookOpeningPreset()
+    const onPresetUpdated = () => void reloadBookOpeningPreset()
+    window.addEventListener(INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, onPresetUpdated)
+    return () => window.removeEventListener(INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, onPresetUpdated)
+  }, [reloadBookOpeningPreset])
+
+  useEffect(() => {
     void reloadSnapshot()
   }, [currentStoryId])
 
@@ -113,7 +141,7 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
     if (!isMobile) setMobileSnapshotOpen(false)
   }, [isMobile])
 
-  const handleCreateStory = async (input: { title: string; origin: string; story_teller_id: string; reply_target_chars: number }) => {
+  const handleCreateStory = async (input: StoryCreateInput) => {
     const story = await createInteractiveStory(input)
     await reloadStories()
     setCurrentStoryId(story.id)
@@ -182,6 +210,7 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
       snapshot={displaySnapshot}
       snapshotLoading={snapshotPending}
       loreEmpty={loreEmpty}
+      bookOpeningPresets={bookOpeningPresets}
       sceneMemoryVisible={sceneMemoryVisible}
       onStorySelect={setCurrentStoryId}
       onStoryCreate={handleCreateStory}

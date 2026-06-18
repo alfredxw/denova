@@ -43,6 +43,7 @@ describe('StoryStage', () => {
           origin: '',
           story_teller_id: 'classic',
           reply_target_chars: 900,
+          opening: { mode: 'ai' },
           created_at: '',
           updated_at: '',
           branches: 1,
@@ -203,6 +204,50 @@ describe('StoryStage', () => {
 
     rerender(<StoryStage storyId="st_1" branchId="main" snapshot={snapshot} onDone={vi.fn()} loreEmpty={false} onRequestLoreInit={onRequestLoreInit} />)
     expect(screen.queryByText('先初始化共享设定')).not.toBeInTheDocument()
+  })
+
+  it('starts an empty story from the book preset opening', async () => {
+    vi.mocked(sendInteractiveMessage).mockResolvedValue(streamEvents([{ event: 'done', data: '{}' }]))
+    const onDone = vi.fn()
+
+    render(
+      <StoryStage
+        storyId="st_1"
+        branchId="main"
+        story={{
+          id: 'st_1',
+          title: '风雪客栈',
+          origin: '',
+          story_teller_id: 'classic',
+          reply_target_chars: 1200,
+          opening: { mode: 'ai' },
+          created_at: '',
+          updated_at: '',
+          branches: 1,
+          events: 0,
+        }}
+        bookOpeningPresets={[
+          { id: 'snow-inn', title: '风雪客栈', content: '你在风雪夜抵达一间孤灯客栈。' },
+          { id: 'river', title: '渡口', content: '你在雾气弥漫的渡口醒来。' },
+        ]}
+        snapshot={{
+          story_id: 'st_1',
+          branch_id: 'main',
+          state: {},
+          turns: [],
+        }}
+        onDone={onDone}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: '设置开场白' })).not.toBeInTheDocument()
+    expect(screen.getByText('选择开场方式')).toBeInTheDocument()
+    expect(screen.getByText('风雪客栈')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '使用书籍预设' }))
+
+    await waitFor(() => expect(sendInteractiveMessage).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(sendInteractiveMessage).mock.calls[0][0].message).toContain('本书资料库开场白配置')
+    expect(vi.mocked(sendInteractiveMessage).mock.calls[0][0].message).toContain('你在风雪夜抵达一间孤灯客栈。')
   })
 
   it('fills the input from generated hot choices without sending immediately', async () => {

@@ -21,6 +21,9 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if _, err := loreStore.Create(book.LoreItemInput{ID: "world", Type: "world", Name: "黄昏末日", Importance: "major", LoadMode: book.LoreLoadModeResident, Content: "世界已进入黄昏末日。"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := loreStore.Create(book.LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: book.LoreLoadModeAuto, BriefDescription: "黄泉酒馆据点索引", Content: "黄泉酒馆完整设定：柜台后的影子不能离开酒馆。"}); err != nil {
+		t.Fatal(err)
+	}
 	novaDir := t.TempDir()
 	store := interactive.NewStore(workspace)
 	story, err := store.CreateStory(interactive.CreateStoryRequest{
@@ -107,6 +110,9 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 	if !strings.Contains(stateInstruction, "导演互动记忆规则") || !strings.Contains(stateInstruction, "帮助后续回合稳定承接") {
 		t.Fatalf("state instruction should include state_memory rules: %s", stateInstruction)
+	}
+	if !strings.Contains(stateInstruction, "黄泉酒馆完整设定") {
+		t.Fatalf("state instruction should include bounded full lore for memory calibration: %s", stateInstruction)
 	}
 	if strings.Contains(stateInstruction, "经典叙事者") || strings.Contains(stateInstruction, "导演本轮上下文规则") {
 		t.Fatalf("state instruction should not include story-only teller rules: %s", stateInstruction)

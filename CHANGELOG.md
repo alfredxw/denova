@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 互动剧情新增故事级开场白配置：创建故事或进入舞台后可选择 AI 自动生成、预设开场或自定义开局；空故事可一键生成开场，生成后的首轮继续支持刷新和版本切换。
 - 互动模式新增独立一级模块“故事记忆 / Story Memory”，支持按结构管理当前状态、主角信息、重要角色、任务事件和剧情纪要；用户可新增自定义结构和纯文本字段，按当前故事线和分支查看、编辑、隐藏或恢复记忆内容。
 - 故事记忆存储升级为 `interactive/memory/story-<storyID>.json` v2，新增 `settings`、`structures` 和 `records`；新分支会继承分叉点前的可见记忆，分叉后的编辑和隐藏会在当前分支 copy-on-write，不污染父分支。
 - 故事记忆新增自动整理配置，默认每 3 回合触发一次后台整理，也支持在故事记忆模块中手动触发整理。
@@ -34,7 +35,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 互动模式每回合默认目标字数从 1200 调整为 2000，并统一为前后端默认值常量。
 - 互动记忆 Agent 输出协议从 `state_ops + memory_entry` 调整为 `story_memory_patches`，旧 `memory_entry` 输出会兼容映射为 `plot_summary` 故事记忆；旧 `/api/interactive/stories/:id/memory` 接口继续保留，并映射到故事记忆记录。
+- 互动记忆 Agent 生成故事记忆时会注入有硬上限的资料库上下文，优先提供完整重要资料并为未展开条目保留索引，减少记忆记录与作品设定偏差。
 - 互动模式不再把“当前状态”作为独立用户管理入口，当前时间、地点和事件改由故事记忆的默认结构维护；右侧记忆面板改为故事记忆预览，不再展示原始状态 JSON。
 - 资料库不再维护独立版本和 `.nova/lore/versions` 自动备份，资料条目跟随工作区整体版本管理统一保存与恢复；对应 `/api/lore/versions` 专用接口和资料库 Agent 面板中的版本入口已移除。
 - WebUI 移除独立的“创作者”一级菜单，`CREATOR.md` 改为在资料库页面内作为固定条目统一管理，仍保留 workspace 根目录文件和 Agent 注入契约。
@@ -58,6 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复各处保存按钮在“保存中”状态下因文案变宽导致按钮抖动的问题；保存按钮现在保持“保存”文案不变，仅将前置图标切换为加载中转圈，宽度始终稳定。
 - 修复一级菜单栏被隐藏侧栏的可调整宽度命中区覆盖，导致鼠标显示为宽度调整形状且项目侧栏拖拽调整失效的问题。
 - 修复设置页新增或修改模型配置后，Agents 页模型配置下拉不会立即刷新、必须整页刷新才出现的问题。
 - 修复设置页每次打开都会自动请求 GitHub 更新检查的问题；自动检查现在会在浏览器本地记录时间，1 小时内不重复检查，手动检查不受影响。

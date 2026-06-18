@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, CheckCircle2, FileCode2, Lock, Plus, RefreshCw, Save, Sparkles, X } from 'lucide-react'
+import { Bot, CheckCircle2, FileCode2, Loader2, Lock, Plus, RefreshCw, Save, Sparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { Textarea } from '@/components/ui/textarea'
@@ -181,8 +181,8 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
           disabled={mode === 'create' || !dirty || saving || !document?.editable}
           className="nova-nav-item inline-flex items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-45"
         >
-          <Save className="h-3.5 w-3.5" />
-          {saving ? t('common.saving') : t('common.save')}
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {t('common.save')}
         </button>
         {onClose && (
           <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('common.close')} title={t('common.close')}>
@@ -441,8 +441,8 @@ function CreateSkillPanel({
                   disabled={saving || !trimmedName || invalidName}
                   className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  <Plus className="h-3.5 w-3.5" />
-                  {saving ? t('common.saving') : t('skills.create.submit')}
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  {t('skills.create.submit')}
                 </button>
                 <button
                   type="button"

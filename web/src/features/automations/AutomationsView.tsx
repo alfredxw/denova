@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Clock3, FileText, Inbox, MessageSquareText, Play, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
+import { Clock3, FileText, Inbox, Loader2, MessageSquareText, Play, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { MessageList } from '@/components/Chat/MessageList'
@@ -276,8 +276,8 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
           </button>
         )}
         <button type="button" onClick={save} disabled={saving || running} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50">
-          <Save className="h-3.5 w-3.5" />
-          {saving ? t('common.saving') : t('common.save')}
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {t('common.save')}
         </button>
         {onClose && (
           <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('automations.close')} title={t('automations.close')}>

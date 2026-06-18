@@ -1,13 +1,13 @@
 import type { ChatMessage } from '@/lib/api'
 import i18next from '@/i18n'
 import { jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { BranchSummary, HotChoicesResponse, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StorySummary, Teller } from './types'
+import type { BranchSummary, HotChoicesResponse, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
 }
 
-export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; reply_target_chars?: number }): Promise<StorySummary> {
+export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; reply_target_chars?: number; opening?: StoryOpeningConfig }): Promise<StorySummary> {
   return requestJSON('/api/interactive/stories', {
     method: 'POST',
     headers: jsonHeaders,
@@ -21,6 +21,7 @@ export function updateInteractiveStory(
     title?: string
     story_teller_id?: string
     reply_target_chars?: number
+    opening?: StoryOpeningConfig
   },
 ): Promise<StorySummary> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(id)}`, {

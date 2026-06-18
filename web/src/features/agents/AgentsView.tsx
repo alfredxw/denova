@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, Brain, Check, ChevronDown, ChevronRight, FolderOpen, Save, ScrollText, Wrench, X } from 'lucide-react'
+import { Bot, Brain, Check, ChevronDown, ChevronRight, FolderOpen, Loader2, Save, ScrollText, Wrench, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { Textarea } from '@/components/ui/textarea'
@@ -186,8 +186,8 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
           disabled={saving}
           className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50"
         >
-          <Save className="h-3.5 w-3.5" />
-          {saving ? t('common.saving') : t('common.save')}
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {t('common.save')}
         </button>
         {onClose && (
           <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('agents.close')} title={t('agents.close')}>

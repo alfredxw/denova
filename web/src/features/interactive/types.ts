@@ -8,10 +8,20 @@ export interface StorySummary {
   origin: string
   story_teller_id: string
   reply_target_chars: number
+  opening: StoryOpeningConfig
   created_at: string
   updated_at: string
   branches: number
   events: number
+}
+
+export type StoryOpeningMode = 'ai' | 'preset' | 'custom'
+
+export interface StoryOpeningConfig {
+  mode: StoryOpeningMode
+  preset_id?: string
+  preset_text?: string
+  custom_text?: string
 }
 
 export interface StoryIndex {

@@ -1,10 +1,11 @@
 package interactive
 
 type CreateStoryRequest struct {
-	Title            string `json:"title"`
-	Origin           string `json:"origin"`
-	StoryTellerID    string `json:"story_teller_id"`
-	ReplyTargetChars int    `json:"reply_target_chars"`
+	Title            string             `json:"title"`
+	Origin           string             `json:"origin"`
+	StoryTellerID    string             `json:"story_teller_id"`
+	ReplyTargetChars int                `json:"reply_target_chars"`
+	Opening          StoryOpeningConfig `json:"opening,omitempty"`
 }
 
 type AppendTurnRequest struct {
@@ -49,9 +50,10 @@ type MarkStateFailedRequest struct {
 }
 
 type UpdateStoryRequest struct {
-	Title            string `json:"title"`
-	StoryTellerID    string `json:"story_teller_id"`
-	ReplyTargetChars *int   `json:"reply_target_chars,omitempty"`
+	Title            string              `json:"title"`
+	StoryTellerID    string              `json:"story_teller_id"`
+	ReplyTargetChars *int                `json:"reply_target_chars,omitempty"`
+	Opening          *StoryOpeningConfig `json:"opening,omitempty"`
 }
 
 type CreateBranchRequest struct {
@@ -65,15 +67,23 @@ type Index struct {
 }
 
 type StorySummary struct {
-	ID               string `json:"id"`
-	Title            string `json:"title"`
-	Origin           string `json:"origin"`
-	StoryTellerID    string `json:"story_teller_id"`
-	ReplyTargetChars int    `json:"reply_target_chars"`
-	CreatedAt        string `json:"created_at"`
-	UpdatedAt        string `json:"updated_at"`
-	Branches         int    `json:"branches"`
-	Events           int    `json:"events"`
+	ID               string             `json:"id"`
+	Title            string             `json:"title"`
+	Origin           string             `json:"origin"`
+	StoryTellerID    string             `json:"story_teller_id"`
+	ReplyTargetChars int                `json:"reply_target_chars"`
+	Opening          StoryOpeningConfig `json:"opening"`
+	CreatedAt        string             `json:"created_at"`
+	UpdatedAt        string             `json:"updated_at"`
+	Branches         int                `json:"branches"`
+	Events           int                `json:"events"`
+}
+
+type StoryOpeningConfig struct {
+	Mode       string `json:"mode"`
+	PresetID   string `json:"preset_id,omitempty"`
+	PresetText string `json:"preset_text,omitempty"`
+	CustomText string `json:"custom_text,omitempty"`
 }
 
 type BranchMeta struct {
@@ -102,6 +112,7 @@ type StoryMeta struct {
 	Origin           string                `json:"origin"`
 	StoryTellerID    string                `json:"story_teller_id"`
 	ReplyTargetChars int                   `json:"reply_target_chars"`
+	Opening          StoryOpeningConfig    `json:"opening"`
 	CurrentBranch    string                `json:"current_branch"`
 	Branches         map[string]BranchMeta `json:"branches"`
 	CreatedAt        string                `json:"created_at"`

@@ -17,7 +17,6 @@ const common = {
   'common.notSet': '未设置',
   'common.save': '保存',
   'common.saved': '已保存',
-  'common.saving': '保存中…',
   'common.refresh': '刷新',
   'common.rename': '重命名',
   'common.searching': '正在搜索...',

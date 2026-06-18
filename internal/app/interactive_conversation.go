@@ -264,6 +264,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		storyMemory = ""
 	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
+	loreContext := c.stateLoreContext()
 	instruction := prompts.InteractiveStateInstruction(prompts.InteractiveStatePromptInput{
 		Title:             storyCtx.Meta.Title,
 		Origin:            storyCtx.Meta.Origin,
@@ -272,7 +273,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		BranchID:          storyCtx.Snapshot.BranchID,
 		Characters:        "",
 		WorldBuilding:     "",
-		LoreItems:         c.loreContext(),
+		LoreItems:         loreContext,
 		SnapshotStateJSON: storyMemory,
 		UserAction:        turn.User,
 		Narrative:         turn.Narrative,
@@ -284,7 +285,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		turn.ID,
 		storyCtx.Meta.StoryTellerID,
 		interactiveTellerSlotSummary(teller, "state_memory"),
-		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, c.loreContext(), "", "", storyMemory, turn.User, turn.Narrative),
+		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreContext, "", "", storyMemory, turn.User, turn.Narrative),
 		interactivePartSummary(instruction),
 	)
 	return instruction, nil
@@ -332,6 +333,18 @@ func (c *interactiveConversation) loreContext() string {
 	return context
 }
 
+func (c *interactiveConversation) stateLoreContext() string {
+	if c.workspace == "" {
+		return ""
+	}
+	context, err := book.NewLoreStore(c.workspace).StoryMemoryContextMarkdown(interactiveStateLoreContextBytes)
+	if err != nil {
+		log.Printf("[interactive-state-agent] load lore context failed workspace=%s err=%v", c.workspace, err)
+		return ""
+	}
+	return context
+}
+
 func (c *interactiveConversation) MarkInterrupted(userMessage, assistantContent, reason string) error {
 	log.Printf("[interactive-agent] interruption ignored story_id=%s branch_id=%s reason=%s", c.storyID, c.branchID, reason)
 	return nil
@@ -370,6 +383,7 @@ type interactiveTurnMemory struct {
 const (
 	interactiveMemoryMaxPreviousTurns = 80
 	interactiveMemorySummaryMaxBytes  = 16 * 1024
+	interactiveStateLoreContextBytes  = 32 * 1024
 )
 
 func buildInteractiveTurnMemory(turns []interactive.TurnEvent, recentLimit int) interactiveTurnMemory {

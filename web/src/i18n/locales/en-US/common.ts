@@ -17,7 +17,6 @@ const common = {
   'common.notSet': 'Not set',
   'common.save': 'Save',
   'common.saved': 'Saved',
-  'common.saving': 'Saving...',
   'common.refresh': 'Refresh',
   'common.rename': 'Rename',
   'common.searching': 'Searching...',

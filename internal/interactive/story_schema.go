@@ -103,6 +103,19 @@ func validateStoryMeta(meta StoryMeta) error {
 	if meta.ReplyTargetChars <= 0 {
 		return fmt.Errorf("故事单轮目标字数无效: %d", meta.ReplyTargetChars)
 	}
+	switch meta.Opening.Mode {
+	case StoryOpeningModeAI:
+	case StoryOpeningModePreset:
+		if strings.TrimSpace(meta.Opening.PresetText) == "" {
+			return fmt.Errorf("预设开场白不能为空")
+		}
+	case StoryOpeningModeCustom:
+		if strings.TrimSpace(meta.Opening.CustomText) == "" {
+			return fmt.Errorf("自定义开场白不能为空")
+		}
+	default:
+		return fmt.Errorf("故事开场白模式无效: %q", meta.Opening.Mode)
+	}
 	return nil
 }
 

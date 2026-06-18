@@ -312,7 +312,7 @@ export function WorkbenchShell({
       label: t('workbench.activity.automations'),
       onClick: openAutomations,
       active: automationsActive,
-      icon: <ActivityIconBadge count={automationInboxUnread}><Clock3 className="h-4 w-4" /></ActivityIconBadge>,
+      icon: <ActivityIconBadge count={automationInboxUnread}><Clock3 className="size-3" /></ActivityIconBadge>,
     },
   ]
 
@@ -598,7 +598,7 @@ function ActivityButton({
 
 function ActivityIconBadge({ count, children }: { count: number; children: ReactNode }) {
   return (
-    <span className="relative inline-flex h-4 w-4 items-center justify-center">
+    <span className="relative inline-flex size-3 items-center justify-center">
       {children}
       {count > 0 && (
         <span className="absolute -right-1.5 -top-1.5 min-w-3 rounded-full bg-[var(--nova-danger-border)] px-0.5 text-center text-[8px] leading-3 text-white">

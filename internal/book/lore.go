@@ -414,14 +414,7 @@ func (s *LoreStore) IndexMarkdown() (string, error) {
 		if item.LoadMode == LoreLoadModeResident {
 			continue
 		}
-		fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  重要度: %s\n  加载策略: %s\n", item.ID, item.Name, loreTypeLabel(item.Type), loreImportanceLabel(item.Importance), loreLoadModeLabel(item.LoadMode))
-		if len(item.Tags) > 0 {
-			fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(item.Tags, "、"))
-		}
-		if item.BriefDescription != "" {
-			fmt.Fprintf(&sb, "  简介: %s\n", item.BriefDescription)
-		}
-		sb.WriteString("\n")
+		sb.WriteString(formatLoreItemIndexMarkdown(item))
 	}
 	return strings.TrimSpace(sb.String()), nil
 }
@@ -462,6 +455,72 @@ func (s *LoreStore) ContextMarkdown() (string, error) {
 		}
 		sb.WriteString(formatLoreItemMarkdown(item, true))
 		sb.WriteString("\n\n")
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
+
+// StoryMemoryContextMarkdown returns bounded lore context for interactive story-memory consolidation.
+// It prefers full entries within maxBytes and keeps an index for entries that cannot be expanded.
+func (s *LoreStore) StoryMemoryContextMarkdown(maxBytes int) (string, error) {
+	if maxBytes <= 0 {
+		maxBytes = 32 * 1024
+	}
+	items, err := s.List()
+	if err != nil {
+		return "", err
+	}
+	if len(items) == 0 {
+		return "", nil
+	}
+
+	fullBudget := maxBytes * 3 / 4
+	if fullBudget < maxBytes-8*1024 {
+		fullBudget = maxBytes - 8*1024
+	}
+	if fullBudget < maxBytes/2 {
+		fullBudget = maxBytes / 2
+	}
+
+	includedFull := map[string]bool{}
+	var full strings.Builder
+	for _, item := range items {
+		if strings.TrimSpace(item.Content) == "" {
+			continue
+		}
+		block := formatLoreItemMarkdown(item, true) + "\n\n"
+		if full.Len()+len([]byte(block)) > fullBudget {
+			continue
+		}
+		full.WriteString(block)
+		includedFull[item.ID] = true
+	}
+
+	var sb strings.Builder
+	if strings.TrimSpace(full.String()) != "" {
+		appendLoreContextPart(&sb, "## 资料库完整条目（供故事记忆校准）\n\n", maxBytes)
+		appendLoreContextPart(&sb, strings.TrimSpace(full.String())+"\n\n", maxBytes)
+	}
+
+	remaining := make([]LoreItem, 0)
+	for _, item := range items {
+		if !includedFull[item.ID] {
+			remaining = append(remaining, item)
+		}
+	}
+	if len(remaining) > 0 {
+		if sb.Len() > 0 {
+			appendLoreContextPart(&sb, "\n", maxBytes)
+		}
+		appendLoreContextPart(&sb, "## 资料库索引（未完整注入，整理记忆时不得改写这些既有设定）\n\n", maxBytes)
+		omitted := 0
+		for _, item := range remaining {
+			if !appendLoreContextPart(&sb, formatLoreItemIndexMarkdown(item), maxBytes) {
+				omitted++
+			}
+		}
+		if omitted > 0 {
+			appendLoreContextPart(&sb, fmt.Sprintf("\n（还有 %d 条资料因上下文上限未展开。）\n", omitted), maxBytes)
+		}
 	}
 	return strings.TrimSpace(sb.String()), nil
 }
@@ -843,6 +902,61 @@ func formatLoreItemMarkdown(item LoreItem, includeContent bool) string {
 		}
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+func formatLoreItemIndexMarkdown(item LoreItem) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  重要度: %s\n  加载策略: %s\n", item.ID, item.Name, loreTypeLabel(item.Type), loreImportanceLabel(item.Importance), loreLoadModeLabel(item.LoadMode))
+	if len(item.Tags) > 0 {
+		fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(item.Tags, "、"))
+	}
+	if item.BriefDescription != "" {
+		fmt.Fprintf(&sb, "  简介: %s\n", item.BriefDescription)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
+func appendLoreContextPart(sb *strings.Builder, text string, maxBytes int) bool {
+	if text == "" {
+		return true
+	}
+	if maxBytes <= 0 {
+		sb.WriteString(text)
+		return true
+	}
+	remaining := maxBytes - sb.Len()
+	if remaining <= 0 {
+		return false
+	}
+	if len([]byte(text)) <= remaining {
+		sb.WriteString(text)
+		return true
+	}
+	clipped := truncateStringBytes(text, remaining)
+	if clipped == "" {
+		return false
+	}
+	sb.WriteString(clipped)
+	return false
+}
+
+func truncateStringBytes(text string, maxBytes int) string {
+	if maxBytes <= 0 || text == "" {
+		return ""
+	}
+	if len([]byte(text)) <= maxBytes {
+		return text
+	}
+	end := 0
+	for idx, r := range text {
+		next := idx + utf8.RuneLen(r)
+		if next > maxBytes {
+			break
+		}
+		end = next
+	}
+	return text[:end]
 }
 
 func loreItemMatchesQuery(item LoreItem, query string) bool {

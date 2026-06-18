@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,8 +31,8 @@ func TestCreateStoryInitializesIndexAndStoryFile(t *testing.T) {
 	if len(index.Stories) != 1 || index.Stories[0].Title != "末日开端" {
 		t.Fatalf("unexpected index stories: %+v", index.Stories)
 	}
-	if story.ReplyTargetChars != 1200 || index.Stories[0].ReplyTargetChars != 1200 {
-		t.Fatalf("reply target chars = story:%d index:%d, want 1200", story.ReplyTargetChars, index.Stories[0].ReplyTargetChars)
+	if story.ReplyTargetChars != DefaultStoryReplyTargetChars || index.Stories[0].ReplyTargetChars != DefaultStoryReplyTargetChars {
+		t.Fatalf("reply target chars = story:%d index:%d, want %d", story.ReplyTargetChars, index.Stories[0].ReplyTargetChars, DefaultStoryReplyTargetChars)
 	}
 
 	storyFile := filepath.Join(store.Root(), "interactive", "story", "story-"+story.ID+".jsonl")
@@ -42,7 +43,7 @@ func TestCreateStoryInitializesIndexAndStoryFile(t *testing.T) {
 	assertContains(t, string(data), `"type":"meta"`)
 	assertContains(t, string(data), `"current_branch":"main"`)
 	assertContains(t, string(data), `"story_teller_id":"grimdark"`)
-	assertContains(t, string(data), `"reply_target_chars":1200`)
+	assertContains(t, string(data), fmt.Sprintf(`"reply_target_chars":%d`, DefaultStoryReplyTargetChars))
 }
 
 func TestCreateStoryPersistsCustomReplyTargetChars(t *testing.T) {
@@ -65,6 +66,104 @@ func TestCreateStoryPersistsCustomReplyTargetChars(t *testing.T) {
 	}
 	if ctx.Meta.ReplyTargetChars != 800 {
 		t.Fatalf("meta reply target chars = %d, want 800", ctx.Meta.ReplyTargetChars)
+	}
+}
+
+func TestCreateStoryPersistsOpeningConfig(t *testing.T) {
+	store := NewStore(t.TempDir())
+
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:         "雨夜",
+		StoryTellerID: "classic",
+		Opening: StoryOpeningConfig{
+			Mode:       StoryOpeningModePreset,
+			PresetID:   "arrival",
+			PresetText: "雨夜里，旧城的招牌微微发亮。",
+			CustomText: "should be dropped",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+	if story.Opening.Mode != StoryOpeningModePreset || story.Opening.PresetID != "arrival" || story.Opening.PresetText == "" {
+		t.Fatalf("unexpected story opening: %#v", story.Opening)
+	}
+	if story.Opening.CustomText != "" {
+		t.Fatalf("preset opening should drop custom text: %#v", story.Opening)
+	}
+
+	index, err := store.Index()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if index.Stories[0].Opening.Mode != StoryOpeningModePreset || index.Stories[0].Opening.PresetText == "" {
+		t.Fatalf("unexpected index opening: %#v", index.Stories[0].Opening)
+	}
+	ctx, err := store.StoryContext(story.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Meta.Opening.Mode != StoryOpeningModePreset || ctx.Meta.Opening.PresetText == "" {
+		t.Fatalf("unexpected meta opening: %#v", ctx.Meta.Opening)
+	}
+}
+
+func TestUpdateStoryRejectsEmptyCustomOpening(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "开局", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = store.UpdateStory(story.ID, UpdateStoryRequest{
+		Opening: &StoryOpeningConfig{Mode: StoryOpeningModeCustom, CustomText: "   "},
+	})
+	if err == nil {
+		t.Fatal("expected empty custom opening to be rejected")
+	}
+	if !strings.Contains(err.Error(), "自定义开场白不能为空") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestOldStoryWithoutOpeningDefaultsToAI(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(root)
+	now := "2026-06-18T00:00:00Z"
+	meta := map[string]any{
+		"v":               schemaVersion,
+		"type":            StoryEventTypeMeta,
+		"story_id":        "st_legacy",
+		"title":           "旧故事",
+		"story_teller_id": "classic",
+		"current_branch":  "main",
+		"branches":        map[string]any{"main": map[string]any{"created_at": now}},
+		"created_at":      now,
+		"updated_at":      now,
+	}
+	if err := writeJSONL(store.storyPath("st_legacy"), []any{meta}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(store.indexPath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.indexPath(), []byte(`{"current_story_id":"st_legacy","stories":[{"id":"st_legacy","title":"旧故事","story_teller_id":"classic","created_at":"`+now+`","updated_at":"`+now+`","branches":1}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	index, err := store.Index()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if index.Stories[0].Opening.Mode != StoryOpeningModeAI {
+		t.Fatalf("legacy index opening = %#v, want ai", index.Stories[0].Opening)
+	}
+	ctx, err := store.StoryContext("st_legacy", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Meta.Opening.Mode != StoryOpeningModeAI {
+		t.Fatalf("legacy meta opening = %#v, want ai", ctx.Meta.Opening)
 	}
 }
 
