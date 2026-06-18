@@ -90,14 +90,18 @@ export function CharacterCardImportDialog({
             </div>
 
             {preview && (
-              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
+              <div className="space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
                 <div className="truncate text-sm font-medium text-[var(--nova-text)]">{preview.name}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
                   <span>{t('importCard.entryCount', { count: preview.entry_count })}</span>
+                  <span>{t('importCard.openingPresetCount', { count: preview.opening_preset_count })}</span>
+                  {preview.will_import_cover && <span>{t('importCard.willImportCover')}</span>}
+                  {preview.user_placeholder_found && <span>{t('importCard.willImportUser')}</span>}
                   {preview.tags?.map((tag) => (
                     <span key={tag} className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{tag}</span>
                   ))}
                 </div>
+                <CompatibilityReport preview={preview} />
               </div>
             )}
 
@@ -172,5 +176,27 @@ export function CharacterCardImportDialog({
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+function CompatibilityReport({ preview }: { preview: CharacterCardPreview }) {
+  const { t } = useTranslation()
+  const groups = [
+    { key: 'imported', fields: preview.compatibility?.imported_fields || [] },
+    { key: 'downgraded', fields: preview.compatibility?.downgraded_fields || [] },
+    { key: 'unsupported', fields: preview.compatibility?.unsupported_fields || [] },
+  ].filter((group) => group.fields.length > 0)
+  if (groups.length === 0) return null
+  return (
+    <div className="space-y-1 border-t border-[var(--nova-border)] pt-2 text-[11px] leading-5">
+      {groups.map((group) => (
+        <div key={group.key} className="flex min-w-0 gap-2">
+          <span className="shrink-0 text-[var(--nova-text-muted)]">{t(`importCard.compat.${group.key}`)}</span>
+          <span className="min-w-0 flex-1 text-[var(--nova-text-faint)]">
+            {group.fields.map((field) => t(`importCard.compat.field.${field}`, { defaultValue: field })).join('、')}
+          </span>
+        </div>
+      ))}
+    </div>
   )
 }

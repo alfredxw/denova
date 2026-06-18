@@ -131,6 +131,11 @@ export interface CharacterCardImportResult {
   entry_count: number
   item_count: number
   item_ids: string[]
+  cover_path?: string
+  opening_preset_path?: string
+  opening_preset_count: number
+  user_placeholder_found: boolean
+  compatibility: CharacterCardCompatibilityReport
   workspace?: string
   book_meta?: BookMeta
   message: string
@@ -140,6 +145,16 @@ export interface CharacterCardPreview {
   name: string
   entry_count: number
   tags: string[]
+  opening_preset_count: number
+  user_placeholder_found: boolean
+  will_import_cover: boolean
+  compatibility: CharacterCardCompatibilityReport
+}
+
+export interface CharacterCardCompatibilityReport {
+  imported_fields: string[]
+  downgraded_fields: string[]
+  unsupported_fields: string[]
 }
 
 export interface NovelImportChapter {

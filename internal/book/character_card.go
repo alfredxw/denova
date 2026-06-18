@@ -17,26 +17,44 @@ import (
 )
 
 const loreItemsFilePath = ".nova/lore/items.json"
+const tavernCardCoverPath = "assets/image/cover.png"
+const interactiveOpeningPresetPath = "setting/interactive-openings.json"
 
 var pngSignature = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
 // CharacterCardImportResult 描述酒馆角色卡导入结果。
 type CharacterCardImportResult struct {
-	Name       string    `json:"name"`
-	TargetPath string    `json:"target_path"`
-	EntryCount int       `json:"entry_count"`
-	ItemCount  int       `json:"item_count"`
-	ItemIDs    []string  `json:"item_ids"`
-	Workspace  string    `json:"workspace,omitempty"`
-	BookMeta   *BookMeta `json:"book_meta,omitempty"`
-	Message    string    `json:"message"`
+	Name                 string                           `json:"name"`
+	TargetPath           string                           `json:"target_path"`
+	EntryCount           int                              `json:"entry_count"`
+	ItemCount            int                              `json:"item_count"`
+	ItemIDs              []string                         `json:"item_ids"`
+	CoverPath            string                           `json:"cover_path,omitempty"`
+	OpeningPresetPath    string                           `json:"opening_preset_path,omitempty"`
+	OpeningPresetCount   int                              `json:"opening_preset_count"`
+	UserPlaceholderFound bool                             `json:"user_placeholder_found"`
+	Workspace            string                           `json:"workspace,omitempty"`
+	BookMeta             *BookMeta                        `json:"book_meta,omitempty"`
+	Compatibility        CharacterCardCompatibilityReport `json:"compatibility"`
+	Message              string                           `json:"message"`
 }
 
 // CharacterCardPreview 描述酒馆角色卡预览信息，解析但不写入 workspace。
 type CharacterCardPreview struct {
-	Name       string   `json:"name"`
-	EntryCount int      `json:"entry_count"`
-	Tags       []string `json:"tags"`
+	Name                 string                           `json:"name"`
+	EntryCount           int                              `json:"entry_count"`
+	Tags                 []string                         `json:"tags"`
+	OpeningPresetCount   int                              `json:"opening_preset_count"`
+	UserPlaceholderFound bool                             `json:"user_placeholder_found"`
+	WillImportCover      bool                             `json:"will_import_cover"`
+	Compatibility        CharacterCardCompatibilityReport `json:"compatibility"`
+}
+
+// CharacterCardCompatibilityReport describes how Nova maps Tavern card fields.
+type CharacterCardCompatibilityReport struct {
+	ImportedFields    []string `json:"imported_fields"`
+	DowngradedFields  []string `json:"downgraded_fields"`
+	UnsupportedFields []string `json:"unsupported_fields"`
 }
 
 type tavernCard struct {
@@ -49,8 +67,13 @@ type tavernCard struct {
 	FirstMes                string               `json:"first_mes"`
 	MesExample              string               `json:"mes_example"`
 	CreatorNotes            string               `json:"creator_notes"`
+	CreatorComment          string               `json:"creatorcomment"`
 	SystemPrompt            string               `json:"system_prompt"`
 	PostHistoryInstructions string               `json:"post_history_instructions"`
+	Avatar                  string               `json:"avatar"`
+	Talkativeness           any                  `json:"talkativeness"`
+	Fav                     any                  `json:"fav"`
+	CreateDate              any                  `json:"create_date"`
 	Tags                    []string             `json:"tags"`
 	AlternateGreetings      []string             `json:"alternate_greetings"`
 	CharacterBook           *tavernCharacterBook `json:"character_book"`
@@ -67,6 +90,9 @@ type tavernCardData struct {
 	CreatorNotes            string               `json:"creator_notes"`
 	SystemPrompt            string               `json:"system_prompt"`
 	PostHistoryInstructions string               `json:"post_history_instructions"`
+	Creator                 string               `json:"creator"`
+	CharacterVersion        string               `json:"character_version"`
+	Extensions              map[string]any       `json:"extensions"`
 	Tags                    []string             `json:"tags"`
 	AlternateGreetings      []string             `json:"alternate_greetings"`
 	CharacterBook           *tavernCharacterBook `json:"character_book"`
@@ -100,11 +126,21 @@ type normalizedTavernCard struct {
 	FirstMes                string
 	MesExample              string
 	CreatorNotes            string
+	CreatorComment          string
 	SystemPrompt            string
 	PostHistoryInstructions string
+	Creator                 string
+	CharacterVersion        string
+	Avatar                  string
+	Talkativeness           any
+	Fav                     any
+	CreateDate              any
+	Extensions              map[string]any
 	Tags                    []string
 	AlternateGreetings      []string
 	CharacterBook           *tavernCharacterBook
+	IsPNG                   bool
+	HasUserPlaceholder      bool
 }
 
 type pngTextChunk struct {
@@ -118,7 +154,15 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte) (Chara
 	if err != nil {
 		return CharacterCardImportResult{}, err
 	}
-	ops := buildTavernCardLoreOperations(card, filename, time.Now())
+	coverPath, err := s.importTavernCardCover(card, data)
+	if err != nil {
+		return CharacterCardImportResult{}, err
+	}
+	openingCount, err := s.importTavernCardOpeningPresets(card)
+	if err != nil {
+		return CharacterCardImportResult{}, err
+	}
+	ops := buildTavernCardLoreOperations(card, filename, time.Now(), coverPath)
 	applyResult, err := NewLoreStore(s.workspace).ApplyOperations(fmt.Sprintf("导入酒馆角色卡「%s」", card.Name), ops)
 	if err != nil {
 		return CharacterCardImportResult{}, err
@@ -129,12 +173,17 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte) (Chara
 		itemIDs = append(itemIDs, item.ID)
 	}
 	result := CharacterCardImportResult{
-		Name:       card.Name,
-		TargetPath: loreItemsFilePath,
-		EntryCount: characterBookEntryCount(card.CharacterBook),
-		ItemCount:  len(itemIDs),
-		ItemIDs:    itemIDs,
-		Message:    fmt.Sprintf("已导入酒馆角色卡「%s」到互动资料库", card.Name),
+		Name:                 card.Name,
+		TargetPath:           loreItemsFilePath,
+		EntryCount:           characterBookEntryCount(card.CharacterBook),
+		ItemCount:            len(itemIDs),
+		ItemIDs:              itemIDs,
+		CoverPath:            coverPath,
+		OpeningPresetPath:    openingPresetPath(openingCount),
+		OpeningPresetCount:   openingCount,
+		UserPlaceholderFound: card.HasUserPlaceholder,
+		Compatibility:        tavernCardCompatibility(card),
+		Message:              fmt.Sprintf("已导入酒馆角色卡「%s」到互动资料库", card.Name),
 	}
 	return result, nil
 }
@@ -145,9 +194,13 @@ func PreviewTavernCharacterCard(filename string, data []byte) (CharacterCardPrev
 		return CharacterCardPreview{}, err
 	}
 	return CharacterCardPreview{
-		Name:       card.Name,
-		EntryCount: characterBookEntryCount(card.CharacterBook),
-		Tags:       tavernCardTags(card.Tags...),
+		Name:                 card.Name,
+		EntryCount:           characterBookEntryCount(card.CharacterBook),
+		Tags:                 tavernCardTags(card.Tags...),
+		OpeningPresetCount:   tavernCardOpeningPresetCount(card),
+		UserPlaceholderFound: card.HasUserPlaceholder,
+		WillImportCover:      card.IsPNG,
+		Compatibility:        tavernCardCompatibility(card),
 	}, nil
 }
 
@@ -178,6 +231,8 @@ func parseTavernCharacterCard(filename string, data []byte) (normalizedTavernCar
 	if strings.TrimSpace(card.Name) == "" {
 		return normalizedTavernCard{}, errors.New("角色卡缺少 name 字段")
 	}
+	card.IsPNG = bytes.HasPrefix(data, pngSignature) || ext == ".png"
+	card.HasUserPlaceholder = tavernCardContainsUserPlaceholder(card)
 	return card, nil
 }
 
@@ -359,8 +414,13 @@ func decodeTavernCardJSON(data []byte) (normalizedTavernCard, error) {
 		FirstMes:                raw.FirstMes,
 		MesExample:              raw.MesExample,
 		CreatorNotes:            raw.CreatorNotes,
+		CreatorComment:          raw.CreatorComment,
 		SystemPrompt:            raw.SystemPrompt,
 		PostHistoryInstructions: raw.PostHistoryInstructions,
+		Avatar:                  raw.Avatar,
+		Talkativeness:           raw.Talkativeness,
+		Fav:                     raw.Fav,
+		CreateDate:              raw.CreateDate,
 		Tags:                    raw.Tags,
 		AlternateGreetings:      raw.AlternateGreetings,
 		CharacterBook:           raw.CharacterBook,
@@ -375,6 +435,11 @@ func decodeTavernCardJSON(data []byte) (normalizedTavernCard, error) {
 		card.CreatorNotes = firstNonEmpty(raw.Data.CreatorNotes, card.CreatorNotes)
 		card.SystemPrompt = firstNonEmpty(raw.Data.SystemPrompt, card.SystemPrompt)
 		card.PostHistoryInstructions = firstNonEmpty(raw.Data.PostHistoryInstructions, card.PostHistoryInstructions)
+		card.Creator = strings.TrimSpace(raw.Data.Creator)
+		card.CharacterVersion = strings.TrimSpace(raw.Data.CharacterVersion)
+		if len(raw.Data.Extensions) > 0 {
+			card.Extensions = raw.Data.Extensions
+		}
 		if len(raw.Data.Tags) > 0 {
 			card.Tags = raw.Data.Tags
 		}
@@ -389,7 +454,7 @@ func decodeTavernCardJSON(data []byte) (normalizedTavernCard, error) {
 	return card, nil
 }
 
-func buildTavernCardLoreOperations(card normalizedTavernCard, source string, importedAt time.Time) []LoreOperation {
+func buildTavernCardLoreOperations(card normalizedTavernCard, source string, importedAt time.Time, coverPath string) []LoreOperation {
 	ops := []LoreOperation{
 		{
 			Op: "create",
@@ -398,9 +463,22 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source string, imp
 				Name:       card.Name,
 				Importance: "major",
 				Tags:       tavernCardTags(append([]string{"酒馆角色卡", card.Name}, card.Tags...)...),
-				Content:    renderTavernCardLoreContent(card, source, importedAt),
+				Content:    renderTavernCardLoreContent(card, source, importedAt, coverPath),
 			},
 		},
+	}
+	if card.HasUserPlaceholder {
+		ops = append(ops, LoreOperation{
+			Op: "create",
+			Item: LoreItemInput{
+				Type:             "character",
+				Name:             "玩家角色（{{user}}）",
+				Importance:       "major",
+				Tags:             tavernCardTags("酒馆角色卡", "{{user}}", "玩家角色"),
+				BriefDescription: "代表 Tavern 角色卡中的 {{user}} 占位符，可改名为实际主角。",
+				Content:          renderTavernUserPlaceholderLoreContent(card, source),
+			},
+		})
 	}
 	if card.CharacterBook == nil {
 		return ops
@@ -427,7 +505,7 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source string, imp
 	return ops
 }
 
-func renderTavernCardLoreContent(card normalizedTavernCard, source string, importedAt time.Time) string {
+func renderTavernCardLoreContent(card normalizedTavernCard, source string, importedAt time.Time, coverPath string) string {
 	var sb strings.Builder
 	sb.WriteString("- 来源文件：")
 	sb.WriteString(source)
@@ -445,30 +523,38 @@ func renderTavernCardLoreContent(card normalizedTavernCard, source string, impor
 		sb.WriteString(strings.Join(card.Tags, "、"))
 		sb.WriteString("\n")
 	}
+	if card.Creator != "" {
+		sb.WriteString("- 创建者：")
+		sb.WriteString(card.Creator)
+		sb.WriteString("\n")
+	}
+	if card.CharacterVersion != "" {
+		sb.WriteString("- 角色卡版本：")
+		sb.WriteString(card.CharacterVersion)
+		sb.WriteString("\n")
+	}
+	if coverPath != "" {
+		sb.WriteString("- 封面图：")
+		sb.WriteString(coverPath)
+		sb.WriteString("\n")
+	}
 	sb.WriteString("\n")
+	if coverPath != "" {
+		sb.WriteString("![")
+		sb.WriteString(card.Name)
+		sb.WriteString("](")
+		sb.WriteString(coverPath)
+		sb.WriteString(")\n\n")
+	}
 
 	writeMarkdownSection(&sb, "角色描述", card.Description)
 	writeMarkdownSection(&sb, "性格", card.Personality)
 	writeMarkdownSection(&sb, "场景", card.Scenario)
-	writeMarkdownSection(&sb, "开场白", card.FirstMes)
 	writeMarkdownSection(&sb, "对话示例", card.MesExample)
 	writeMarkdownSection(&sb, "作者备注", card.CreatorNotes)
+	writeMarkdownSection(&sb, "创建者备注", card.CreatorComment)
 	writeMarkdownSection(&sb, "系统提示", card.SystemPrompt)
 	writeMarkdownSection(&sb, "历史后置提示", card.PostHistoryInstructions)
-
-	if len(card.AlternateGreetings) > 0 {
-		sb.WriteString("### 备用开场白\n\n")
-		for i, greeting := range card.AlternateGreetings {
-			if strings.TrimSpace(greeting) == "" {
-				continue
-			}
-			sb.WriteString("#### 备用开场白 ")
-			sb.WriteString(strconv.Itoa(i + 1))
-			sb.WriteString("\n\n")
-			sb.WriteString(normalizeCardText(greeting))
-			sb.WriteString("\n\n")
-		}
-	}
 
 	if card.CharacterBook != nil {
 		sb.WriteString("### 附带世界书\n\n")
@@ -481,6 +567,18 @@ func renderTavernCardLoreContent(card normalizedTavernCard, source string, impor
 		sb.WriteString(strconv.Itoa(characterBookEntryCount(card.CharacterBook)))
 		sb.WriteString("\n\n")
 	}
+	return strings.TrimSpace(sb.String())
+}
+
+func renderTavernUserPlaceholderLoreContent(card normalizedTavernCard, source string) string {
+	var sb strings.Builder
+	sb.WriteString("- 来源文件：")
+	sb.WriteString(source)
+	sb.WriteString("\n")
+	sb.WriteString("- 关联角色卡：")
+	sb.WriteString(card.Name)
+	sb.WriteString("\n\n")
+	sb.WriteString("该条目代表 Tavern 酒馆角色卡中的 `{{user}}` 占位符。导入时未提供具体用户角色名，Nova 默认以“你 / 玩家角色”承接互动视角；如果本书有固定主角，请在资料库中把该条目改成实际姓名、身份和可见设定。\n")
 	return strings.TrimSpace(sb.String())
 }
 
