@@ -184,6 +184,23 @@ func (h *Handlers) HandleStoryMemoryGenerate(ctx context.Context, c *app.Request
 	writeJSON(c, consts.StatusOK, state)
 }
 
+func (h *Handlers) HandleStoryMemoryGenerateStream(ctx context.Context, c *app.RequestContext) {
+	var body interactive.StoryMemoryGenerateRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if body.BranchID == "" {
+		body.BranchID = c.Query("branch")
+	}
+	task := h.app.StartStoryMemoryGenerateTask(c.Param("id"), body.BranchID)
+	if task == nil {
+		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
+		return
+	}
+	sse.StreamTask(c, task)
+}
+
 func (h *Handlers) HandleInteractiveMemoryCreate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.InteractiveMemoryCreateRequest
 	if err := c.BindJSON(&body); err != nil {

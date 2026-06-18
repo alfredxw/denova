@@ -66,6 +66,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.PATCH("/interactive/stories/:id/story-memory/records/:record_id", apiHandlers.HandleStoryMemoryRecordSave)
 		api.POST("/interactive/stories/:id/story-memory/records/:record_id/hide", apiHandlers.HandleStoryMemoryRecordHide)
 		api.POST("/interactive/stories/:id/story-memory/generate", apiHandlers.HandleStoryMemoryGenerate)
+		api.POST("/interactive/stories/:id/story-memory/generate/stream", apiHandlers.HandleStoryMemoryGenerateStream)
 		api.GET("/interactive/stories/:id/branches", apiHandlers.HandleInteractiveBranches)
 		api.POST("/interactive/stories/:id/branches", apiHandlers.HandleInteractiveBranchCreate)
 		api.DELETE("/interactive/stories/:id/branches/:branch", apiHandlers.HandleInteractiveBranchDelete)

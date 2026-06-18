@@ -185,6 +185,39 @@ func (a *App) GenerateStoryMemory(ctx context.Context, storyID, branchID string)
 }
 
 func (s *InteractiveAppService) GenerateStoryMemory(ctx context.Context, storyID, branchID string) (interactive.StoryMemoryState, error) {
+	state, _, err := s.runStoryMemoryGenerate(ctx, storyID, branchID, nil)
+	return state, err
+}
+
+func (a *App) StartStoryMemoryGenerateTask(storyID, branchID string) *Task {
+	return a.interactiveService().StartStoryMemoryGenerateTask(storyID, branchID)
+}
+
+func (s *InteractiveAppService) StartStoryMemoryGenerateTask(storyID, branchID string) *Task {
+	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
+		log.Printf("[interactive-memory-agent] manual stream begin task_id=%s story_id=%s branch_id=%s", task.ID(), storyID, branchID)
+		emit(agent.Event{Type: "thinking", Data: map[string]string{"content": "正在读取当前剧情线和最近回合，准备整理故事记忆。"}})
+		state, patchCount, err := s.runStoryMemoryGenerate(ctx, storyID, branchID, emit)
+		if err != nil {
+			log.Printf("[interactive-memory-agent] manual stream failed task_id=%s story_id=%s branch_id=%s err=%v", task.ID(), storyID, branchID, err)
+			emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+			return
+		}
+		emit(agent.Event{Type: "story_memory_result", Data: map[string]any{
+			"story_id":     state.StoryID,
+			"branch_id":    state.BranchID,
+			"records":      len(state.Records),
+			"patches":      patchCount,
+			"sync_status":  state.SyncStatus,
+			"sync_error":   state.SyncError,
+			"next_auto_in": state.NextAutoInTurns,
+		}})
+		emit(agent.Event{Type: "done", Data: map[string]string{"status": "ok"}})
+		log.Printf("[interactive-memory-agent] manual stream done task_id=%s story_id=%s branch_id=%s patches=%d records=%d", task.ID(), storyID, state.BranchID, patchCount, len(state.Records))
+	})
+}
+
+func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, storyID, branchID string, emit func(agent.Event)) (interactive.StoryMemoryState, int, error) {
 	a := s.app
 	a.mu.Lock()
 	store := a.interactive
@@ -193,46 +226,82 @@ func (s *InteractiveAppService) GenerateStoryMemory(ctx context.Context, storyID
 	sessionStore := a.sessionStore
 	a.mu.Unlock()
 	if store == nil || cfg == nil {
-		return interactive.StoryMemoryState{}, ErrNoWorkspace
+		return interactive.StoryMemoryState{}, 0, ErrNoWorkspace
 	}
 	snapshot, err := store.Snapshot(storyID, branchID)
 	if err != nil {
-		return interactive.StoryMemoryState{}, err
+		return interactive.StoryMemoryState{}, 0, err
 	}
 	if snapshot.CurrentTurn == nil {
-		return interactive.StoryMemoryState{}, fmt.Errorf("当前分支还没有可整理的互动回合")
+		return interactive.StoryMemoryState{}, 0, fmt.Errorf("当前分支还没有可整理的互动回合")
 	}
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = workspace
 	conversation := newInteractiveConversation(store, runtimeCfg.NovaDir, workspace, storyID, snapshot.BranchID, snapshot.CurrentTurn.User, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
 	instruction, err := conversation.BuildStateInstruction(*snapshot.CurrentTurn)
 	if err != nil {
-		return interactive.StoryMemoryState{}, err
+		return interactive.StoryMemoryState{}, 0, err
 	}
 	runCtx, cancel := context.WithTimeout(ctx, interactiveStateTimeout)
 	defer cancel()
-	output, err := agent.GenerateInteractiveState(runCtx, &runtimeCfg, instruction)
+	if emit != nil {
+		emit(agent.Event{Type: "tool_call", Data: map[string]string{
+			"id":   "story_memory_context",
+			"name": "build_story_memory_context",
+			"args": fmt.Sprintf("story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, snapshot.CurrentTurn.ID),
+		}})
+		emit(agent.Event{Type: "tool_result", Data: map[string]string{
+			"id":      "story_memory_context",
+			"name":    "build_story_memory_context",
+			"content": "已读取当前剧情线、当前回合和有界故事记忆上下文。",
+		}})
+	}
+	var output string
+	if emit == nil {
+		output, err = agent.GenerateInteractiveState(runCtx, &runtimeCfg, instruction)
+	} else {
+		output, err = agent.StreamInteractiveState(runCtx, &runtimeCfg, instruction, emit)
+	}
 	if err != nil {
 		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveState, instruction, "执行失败："+err.Error())
 		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
-		return interactive.StoryMemoryState{}, err
+		return interactive.StoryMemoryState{}, 0, err
 	}
 	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveState, instruction, output)
 	result, err := parseInteractiveMemoryOutput(output)
 	if err != nil {
 		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
-		return interactive.StoryMemoryState{}, err
+		return interactive.StoryMemoryState{}, 0, err
 	}
+	patchCount := len(result.StoryMemoryPatches)
 	if len(result.StoryMemoryPatches) > 0 {
+		if emit != nil {
+			emit(agent.Event{Type: "tool_call", Data: map[string]string{
+				"id":   "story_memory_apply",
+				"name": "apply_story_memory_patches",
+				"args": fmt.Sprintf("patches=%d branch_id=%s", patchCount, snapshot.BranchID),
+			}})
+		}
 		if _, err := store.ApplyStoryMemoryPatches(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, result.StoryMemoryPatches); err != nil {
 			_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
-			return interactive.StoryMemoryState{}, err
+			return interactive.StoryMemoryState{}, patchCount, err
+		}
+		if emit != nil {
+			emit(agent.Event{Type: "tool_result", Data: map[string]string{
+				"id":      "story_memory_apply",
+				"name":    "apply_story_memory_patches",
+				"content": fmt.Sprintf("已写入 %d 条故事记忆更新。", patchCount),
+			}})
 		}
 	}
 	if err := store.MarkInteractiveMemoryReady(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID); err != nil {
-		return interactive.StoryMemoryState{}, err
+		return interactive.StoryMemoryState{}, patchCount, err
 	}
-	return store.StoryMemory(storyID, snapshot.BranchID, true)
+	state, err := store.StoryMemory(storyID, snapshot.BranchID, true)
+	if err != nil {
+		return interactive.StoryMemoryState{}, patchCount, err
+	}
+	return state, patchCount, nil
 }
 
 func (a *App) CreateInteractiveMemory(storyID string, req interactive.InteractiveMemoryCreateRequest) (interactive.InteractiveMemoryEntry, error) {
