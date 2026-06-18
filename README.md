@@ -66,7 +66,7 @@ Nova 不是“输入提示词，生成一段正文”的一次性工具，而是
 ## 欢迎交流
 快速迭代中，欢迎交流反馈，加下群响应更及时
 <p align="center">
-  <img src="./img/wechat.jpg" alt="微信交流" width="240">
+  <img src="./img/wechat.png" alt="微信交流" width="240">
 </p>
 
 ## 快速开始
