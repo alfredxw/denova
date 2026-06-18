@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Nova is an AI-native creative workspace for storytellers: manage a book like an IDE, collaborate with Agents on planning, drafting, revision, and interactive rehearsal, and keep lore, bounded context, versions, and automation in one durable workspace.</strong>
+  <strong>Nova is an AI-native creative workspace for storytellers: use Writing Mode for fiction creation, use Interactive Mode for interactive entertainment, and keep lore, narrative direction, bounded context, versions, and automation in one durable workspace.</strong>
 </p>
 
 <p align="center">
@@ -46,22 +46,28 @@
 
 ## Why Nova
 
-Nova is not a one-off "prompt in, passage out" generator. It is a full workspace for long-running fiction projects. Book files, Markdown editing, multiple tabs, global search, chapter statistics, structured lore, interactive story rehearsal, Agent tool calls, and local version management live in the same workspace, so ideas, settings, outlines, chapter drafts, revisions, branch testing, and final prose stay on one continuous production line.
+Nova is not a one-off "prompt in, passage out" generator. It is a full workspace for long-running fiction projects and interactive entertainment. Book files, Markdown editing, multiple tabs, global search, chapter statistics, structured lore, interactive stories, Agent tool calls, and local version management live in the same workspace, so fiction creation and interactive play can keep iterating on the same durable assets.
 
 Beyond writing original stories, Nova can import existing novels as a starting point for fan fiction, adaptation, or continuation, and it can import AI tavern character cards to quickly create interactive presets. Model-visible context is built progressively with explicit sources and limits, keeping lore, file excerpts, tool results, and display history separate instead of blindly injecting the entire project into every turn.
 
-- **Book file management**: file tree, Markdown editor, multiple tabs, global search, chapter statistics, and an IDE-like writing workspace.
+- **Writing Mode**: organize book files, outlines, chapter-group plans, progress, Markdown editing, multiple tabs, global search, and chapter statistics for fiction creation.
 - **Creative Agents**: read selections, read files, reference lore, call tools, and write into drafts or chapters.
 - **Structured lore**: characters, worlds, locations, factions, rules, items, and other durable settings become searchable long-term lore.
 - **Progressive context**: model context is organized by source, purpose, and hard size limits instead of unbounded history, logs, or full settings.
-- **Interactive story mode**: rehearse branches, character actions, scene memory, and storyline changes with the same underlying lore.
+- **Interactive Mode**: run playable story branches, character actions, scene memory, and storyline changes for interactive entertainment.
 - **Version management**: go-git powered saves, diffs, restore, timed saves, and automatic saves for large Agent outputs.
 - **Skills and Agents**: configure creative skills, prompts, tool permissions, and custom prose styles for different Agents.
 - **Automation**: schedule tasks, reviews, auto-continuation, and custom Prompt workflows.
 - **Imports and presets**: import AI tavern character cards or existing novels for fan fiction, adaptation, or continuation.
 - **Product experience**: Chinese and English UI, light and dark themes, OpenAI-compatible model configuration, and Windows, macOS, and Linux support.
 
-The recommended path is to start from an idea or an import: settle top-level settings and creative rules, build the outline and chapter-group plan, then use Agents to draft or write chapter prose. When a plot needs testing, switch to interactive mode to rehearse branches, then fold stable decisions back into lore and keep saving local versions.
+### Writing Mode and Interactive Mode
+
+Nova has two parallel workspaces. Writing Mode is for fiction creation: outlines, chapter-group plans, chapter prose, writing progress, and state sync after finalizing chapters. Interactive Mode is for interactive entertainment: player input, story branches, scene memory, storyline switching, and a playable experience that can keep moving forward.
+
+The two modes only share durable creative assets such as lore, narrative direction, model and Agent configuration, Skills, version management, and base workspace settings. Writing Mode state such as outlines, chapter-group plans, chapter progress, and `progress.md` does not automatically enter Interactive Mode; Interactive Mode also does not implicitly know where the novel is currently written to. If an interactive story should reference a passage or a writing milestone, first move stable setting into lore or explicitly reference it in the interactive input.
+
+The recommended path is to start from an idea or an import: settle top-level settings and creative rules, then build the outline and chapter-group plan in Writing Mode. During chapter work, use Agents to draft or write prose and sync progress plus character state after finalizing. For interactive entertainment, switch to Interactive Mode and create playable branches from shared lore and narrative direction, then fold only truly stable setting back into lore and keep saving local versions.
 
 ## Quick Start
 
@@ -149,10 +155,10 @@ my-novel/
 
 Common entry points:
 
-- **Writing**: edit chapters, browse the file tree, search project files, and collaborate with the Writing Agent.
+- **Writing**: edit chapters, maintain outlines and chapter-group plans, browse the file tree, search project files, and collaborate with the Writing Agent. Writing progress is tracked in `setting/progress.md`, while current character location, injuries, mental state, goals, and similar state live in `setting/character-states.md`.
 - **Import Existing Novel**: upload a txt/md file from Book Management, preview the Tool Agent's chapter-splitting regex and chapter list, adjust sample size or the Go regexp when needed, then confirm before Nova creates the new book and writes `chapters/`.
-- **Interactive**: rehearse plots, explore branches, switch storylines, and maintain scene memory.
-- **Lore Library**: maintain characters, worlds, locations, factions, rules, and items. Current character location, injuries, mental state, goals, and similar state live in `setting/character-states.md`.
+- **Interactive**: play through story branches, explore choices, switch storylines, and maintain scene memory.
+- **Lore Library**: maintain durable settings such as characters, worlds, locations, factions, rules, and items for both Writing Mode and Interactive Mode to reuse when needed.
 - **Narrative Direction**: configure point of view, pacing, style rules, and interactive generation preferences.
 - **Version Management**: manually save versions, view history and diffs, restore previous versions, and enable timed or large-Agent-output automatic versions. Local creative state such as `.nova/lore` and `.nova/sessions` is versioned, and history comes directly from the workspace `.git`.
 - **Settings**: adjust models, editor behavior, Agent behavior, interactive-mode parameters, appearance, and language.
