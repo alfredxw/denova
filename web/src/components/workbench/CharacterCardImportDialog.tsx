@@ -17,6 +17,7 @@ interface CharacterCardImportDialogProps {
   preview: CharacterCardPreview | null
   targetMode: CharacterCardTargetMode
   bookTitle: string
+  userCharacterName: string
   previewing: boolean
   importing: boolean
   error: string
@@ -25,6 +26,7 @@ interface CharacterCardImportDialogProps {
   onFileSelected: (file: File | undefined) => void | Promise<void>
   onTargetModeChange: (mode: CharacterCardTargetMode) => void
   onBookTitleChange: (title: string) => void
+  onUserCharacterNameChange: (name: string) => void
   onImport: () => void | Promise<void>
 }
 
@@ -37,6 +39,7 @@ export function CharacterCardImportDialog({
   preview,
   targetMode,
   bookTitle,
+  userCharacterName,
   previewing,
   importing,
   error,
@@ -45,6 +48,7 @@ export function CharacterCardImportDialog({
   onFileSelected,
   onTargetModeChange,
   onBookTitleChange,
+  onUserCharacterNameChange,
   onImport,
 }: CharacterCardImportDialogProps) {
   const { t } = useTranslation()
@@ -144,6 +148,19 @@ export function CharacterCardImportDialog({
                   <div className="truncate text-[11px] text-[var(--nova-text-faint)]">{t('importCard.createIn', { dir: novaDir || t('importCard.novaDir') })}</div>
                 </div>
               )
+            )}
+
+            {preview?.user_placeholder_found && (
+              <div className="space-y-2">
+                <Input
+                  value={userCharacterName}
+                  onChange={(event) => onUserCharacterNameChange(event.target.value)}
+                  placeholder={t('importCard.userCharacterName')}
+                  className="nova-field w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]"
+                  disabled={importing}
+                />
+                <div className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('importCard.userCharacterHint')}</div>
+              </div>
             )}
 
             {error && (

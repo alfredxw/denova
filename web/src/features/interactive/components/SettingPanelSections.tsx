@@ -178,10 +178,11 @@ export function LoreDirectory({
                         onClick={() => onSelect(item.id)}
                         className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
                           activeId === item.id ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-                        }`}
+                        } ${item.enabled === false ? 'opacity-50' : ''}`}
                       >
                         <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
                         <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                        {item.enabled === false ? <span className="shrink-0 text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.disabled')}</span> : null}
                       </button>
                     ))}
                   </div>
@@ -299,14 +300,25 @@ export function LoreEditor({
     return <EmptyState title={t('settingPanel.editor.noLoreSelected')} description={t('settingPanel.editor.noLoreSelectedDesc')} />
   }
 
-  const residentItemChars = draft.load_mode === 'resident' ? (draft.content || '').length : 0
-  const residentWarning = draft.load_mode === 'resident' && (residentItemChars > LORE_RESIDENT_ITEM_WARNING_CHARS || residentTotalChars > LORE_RESIDENT_TOTAL_WARNING_CHARS)
+  const residentItemChars = draft.enabled !== false && draft.load_mode === 'resident' ? (draft.content || '').length : 0
+  const residentWarning = draft.enabled !== false && draft.load_mode === 'resident' && (residentItemChars > LORE_RESIDENT_ITEM_WARNING_CHARS || residentTotalChars > LORE_RESIDENT_TOTAL_WARNING_CHARS)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_160px_160px_180px]">
+      <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_120px_150px_150px_170px]">
         <Field label={t('settingPanel.field.name')}>
           <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+        </Field>
+        <Field label={t('settingPanel.field.enabled')}>
+          <Select value={String(draft.enabled ?? true)} onValueChange={(value) => setDraft({ ...draft, enabled: value === 'true' })}>
+            <SelectTrigger size="sm" className={selectClassName}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="nova-panel border text-[var(--nova-text)]">
+              <SelectItem value="true">{t('settingPanel.enabled')}</SelectItem>
+              <SelectItem value="false">{t('settingPanel.disabled')}</SelectItem>
+            </SelectContent>
+          </Select>
         </Field>
         <Field label={t('settingPanel.field.type')}>
           <Select value={draft.type} onValueChange={(value) => setDraft({ ...draft, type: value as LoreItem['type'] })}>
@@ -347,7 +359,7 @@ export function LoreEditor({
         <Field label={t('settingPanel.field.tags')}>
           <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
         </Field>
-        <Field className="lg:col-span-4" label={t('settingPanel.field.brief')}>
+        <Field className="lg:col-span-5" label={t('settingPanel.field.brief')}>
           <Textarea
             autoResize
             className="nova-field min-h-[96px] resize-y text-xs leading-5 shadow-none focus-visible:ring-0"
@@ -356,7 +368,7 @@ export function LoreEditor({
             placeholder={t('settingPanel.placeholder.brief')}
           />
         </Field>
-        <div className="lg:col-span-4 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+        <div className="lg:col-span-5 text-[11px] leading-5 text-[var(--nova-text-faint)]">
           {draft.load_mode === 'resident' ? t('settingPanel.lore.residentDesc') : loadModeDescription(draft.load_mode, t)}
           {residentWarning ? <span className="ml-2 text-[var(--nova-danger)]">{t('settingPanel.lore.residentWarning')}</span> : null}
         </div>

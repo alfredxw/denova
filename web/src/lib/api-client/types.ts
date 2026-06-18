@@ -135,6 +135,7 @@ export interface CharacterCardImportResult {
   opening_preset_path?: string
   opening_preset_count: number
   user_placeholder_found: boolean
+  user_character_name?: string
   compatibility: CharacterCardCompatibilityReport
   workspace?: string
   book_meta?: BookMeta
@@ -256,6 +257,7 @@ export interface VersionDiff {
 
 export interface LoreItem {
   id: string
+  enabled: boolean
   type: 'character' | 'world' | 'location' | 'faction' | 'rule' | 'item' | 'other'
   name: string
   importance: 'major' | 'important' | 'minor'

@@ -28,7 +28,7 @@ func (s *LoreAppService) LoreItems() ([]book.LoreItem, error) {
 	if state == nil {
 		return nil, ErrNoWorkspace
 	}
-	return book.NewLoreStore(state.Workspace()).List()
+	return book.NewLoreStore(state.Workspace()).ListAll()
 }
 
 func (a *App) CreateLoreItem(input book.LoreItemInput) (book.LoreItem, error) {

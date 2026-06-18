@@ -29,6 +29,7 @@ const (
 // LoreItem 是用户可编辑的作品资料条目。固定字段只负责索引和展示，正文继续使用 Markdown。
 type LoreItem struct {
 	ID               string   `json:"id"`
+	Enabled          bool     `json:"enabled"`
 	Type             string   `json:"type"`
 	Name             string   `json:"name"`
 	Importance       string   `json:"importance"`
@@ -43,6 +44,7 @@ type LoreItem struct {
 
 type LoreItemInput struct {
 	ID               string   `json:"id"`
+	Enabled          *bool    `json:"enabled,omitempty"`
 	Type             string   `json:"type"`
 	Name             string   `json:"name"`
 	Importance       string   `json:"importance"`
@@ -76,17 +78,52 @@ type LoreStore struct {
 	workspace string
 }
 
+func (item *LoreItem) UnmarshalJSON(data []byte) error {
+	type loreItemAlias LoreItem
+	raw := struct {
+		Enabled *bool `json:"enabled"`
+		*loreItemAlias
+	}{
+		loreItemAlias: (*loreItemAlias)(item),
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	item.Enabled = true
+	if raw.Enabled != nil {
+		item.Enabled = *raw.Enabled
+	}
+	return nil
+}
+
 func NewLoreStore(workspace string) *LoreStore {
 	return &LoreStore{workspace: workspace}
 }
 
 func (s *LoreStore) List() ([]LoreItem, error) {
+	return s.list(false)
+}
+
+func (s *LoreStore) ListAll() ([]LoreItem, error) {
+	return s.list(true)
+}
+
+func (s *LoreStore) list(includeDisabled bool) ([]LoreItem, error) {
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return nil, err
 	}
-	items := append([]LoreItem(nil), collection.Items...)
+	items := make([]LoreItem, 0, len(collection.Items))
+	for _, item := range collection.Items {
+		if !includeDisabled && !item.Enabled {
+			continue
+		}
+		items = append(items, item)
+	}
 	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Enabled != items[j].Enabled {
+			return items[i].Enabled
+		}
 		if loreImportanceRank(items[i].Importance) != loreImportanceRank(items[j].Importance) {
 			return loreImportanceRank(items[i].Importance) < loreImportanceRank(items[j].Importance)
 		}
@@ -106,6 +143,7 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 	now := time.Now().Format(time.RFC3339)
 	item := normalizeLoreItem(LoreItem{
 		ID:               input.ID,
+		Enabled:          loreInputEnabled(input.Enabled, true),
 		Type:             input.Type,
 		Name:             input.Name,
 		Importance:       input.Importance,
@@ -148,6 +186,7 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 		}
 		updated := normalizeLoreItem(LoreItem{
 			ID:               id,
+			Enabled:          loreInputEnabled(input.Enabled, collection.Items[i].Enabled),
 			Type:             input.Type,
 			Name:             input.Name,
 			Importance:       input.Importance,
@@ -212,6 +251,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 		case "create":
 			item := normalizeLoreItem(LoreItem{
 				ID:               op.Item.ID,
+				Enabled:          loreInputEnabled(op.Item.Enabled, true),
 				Type:             op.Item.Type,
 				Name:             op.Item.Name,
 				Importance:       op.Item.Importance,
@@ -245,6 +285,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 			}
 			updated := normalizeLoreItem(LoreItem{
 				ID:               id,
+				Enabled:          loreInputEnabled(op.Item.Enabled, next[idx].Enabled),
 				Type:             firstNonEmptyLoreValue(op.Item.Type, next[idx].Type),
 				Name:             firstNonEmptyLoreValue(op.Item.Name, next[idx].Name),
 				Importance:       firstNonEmptyLoreValue(op.Item.Importance, next[idx].Importance),
@@ -601,6 +642,13 @@ func normalizeLoreItem(item LoreItem) LoreItem {
 		item.BriefDescription = defaultLoreBriefDescription(item)
 	}
 	return item
+}
+
+func loreInputEnabled(enabled *bool, fallback bool) bool {
+	if enabled == nil {
+		return fallback
+	}
+	return *enabled
 }
 
 func defaultLoreBriefDescription(item LoreItem) string {

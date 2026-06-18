@@ -33,6 +33,7 @@ type CharacterCardImportResult struct {
 	OpeningPresetPath    string                           `json:"opening_preset_path,omitempty"`
 	OpeningPresetCount   int                              `json:"opening_preset_count"`
 	UserPlaceholderFound bool                             `json:"user_placeholder_found"`
+	UserCharacterName    string                           `json:"user_character_name,omitempty"`
 	Workspace            string                           `json:"workspace,omitempty"`
 	BookMeta             *BookMeta                        `json:"book_meta,omitempty"`
 	Compatibility        CharacterCardCompatibilityReport `json:"compatibility"`
@@ -55,6 +56,10 @@ type CharacterCardCompatibilityReport struct {
 	ImportedFields    []string `json:"imported_fields"`
 	DowngradedFields  []string `json:"downgraded_fields"`
 	UnsupportedFields []string `json:"unsupported_fields"`
+}
+
+type CharacterCardImportOptions struct {
+	UserCharacterName string
 }
 
 type tavernCard struct {
@@ -149,11 +154,12 @@ type pngTextChunk struct {
 }
 
 // ImportTavernCharacterCard 将 SillyTavern 酒馆角色卡（PNG 或 JSON）转换为互动资料库条目。
-func (s *Service) ImportTavernCharacterCard(filename string, data []byte) (CharacterCardImportResult, error) {
+func (s *Service) ImportTavernCharacterCard(filename string, data []byte, opts ...CharacterCardImportOptions) (CharacterCardImportResult, error) {
 	card, err := parseTavernCharacterCard(filename, data)
 	if err != nil {
 		return CharacterCardImportResult{}, err
 	}
+	options := mergeCharacterCardImportOptions(opts...)
 	coverPath, err := s.importTavernCardCover(card, data)
 	if err != nil {
 		return CharacterCardImportResult{}, err
@@ -162,7 +168,7 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte) (Chara
 	if err != nil {
 		return CharacterCardImportResult{}, err
 	}
-	ops := buildTavernCardLoreOperations(card, filename, time.Now(), coverPath)
+	ops := buildTavernCardLoreOperations(card, filename, time.Now(), coverPath, options.UserCharacterName)
 	applyResult, err := NewLoreStore(s.workspace).ApplyOperations(fmt.Sprintf("导入酒馆角色卡「%s」", card.Name), ops)
 	if err != nil {
 		return CharacterCardImportResult{}, err
@@ -182,6 +188,7 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte) (Chara
 		OpeningPresetPath:    openingPresetPath(openingCount),
 		OpeningPresetCount:   openingCount,
 		UserPlaceholderFound: card.HasUserPlaceholder,
+		UserCharacterName:    tavernUserCharacterName(card, options.UserCharacterName),
 		Compatibility:        tavernCardCompatibility(card),
 		Message:              fmt.Sprintf("已导入酒馆角色卡「%s」到互动资料库", card.Name),
 	}
@@ -454,11 +461,12 @@ func decodeTavernCardJSON(data []byte) (normalizedTavernCard, error) {
 	return card, nil
 }
 
-func buildTavernCardLoreOperations(card normalizedTavernCard, source string, importedAt time.Time, coverPath string) []LoreOperation {
+func buildTavernCardLoreOperations(card normalizedTavernCard, source string, importedAt time.Time, coverPath, userCharacterName string) []LoreOperation {
 	ops := []LoreOperation{
 		{
 			Op: "create",
 			Item: LoreItemInput{
+				Enabled:    loreEnabledPtr(true),
 				Type:       "character",
 				Name:       card.Name,
 				Importance: "major",
@@ -468,15 +476,17 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source string, imp
 		},
 	}
 	if card.HasUserPlaceholder {
+		name := tavernUserCharacterName(card, userCharacterName)
 		ops = append(ops, LoreOperation{
 			Op: "create",
 			Item: LoreItemInput{
+				Enabled:          loreEnabledPtr(true),
 				Type:             "character",
-				Name:             "玩家角色（{{user}}）",
+				Name:             name,
 				Importance:       "major",
 				Tags:             tavernCardTags("酒馆角色卡", "{{user}}", "玩家角色"),
-				BriefDescription: "代表 Tavern 角色卡中的 {{user}} 占位符，可改名为实际主角。",
-				Content:          renderTavernUserPlaceholderLoreContent(card, source),
+				BriefDescription: fmt.Sprintf("角色 %s。代表 Tavern 角色卡中的 {{user}} 占位符，可改名或补充为实际主角。上下文出现玩家角色相关内容时，一定要参考本项详情。", name),
+				Content:          renderTavernUserPlaceholderLoreContent(card, source, name),
 			},
 		})
 	}
@@ -494,6 +504,7 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source string, imp
 		ops = append(ops, LoreOperation{
 			Op: "create",
 			Item: LoreItemInput{
+				Enabled:    tavernBookEntryEnabled(entry),
 				Type:       "world",
 				Name:       title,
 				Importance: "important",
@@ -570,7 +581,7 @@ func renderTavernCardLoreContent(card normalizedTavernCard, source string, impor
 	return strings.TrimSpace(sb.String())
 }
 
-func renderTavernUserPlaceholderLoreContent(card normalizedTavernCard, source string) string {
+func renderTavernUserPlaceholderLoreContent(card normalizedTavernCard, source, name string) string {
 	var sb strings.Builder
 	sb.WriteString("- 来源文件：")
 	sb.WriteString(source)
@@ -578,7 +589,8 @@ func renderTavernUserPlaceholderLoreContent(card normalizedTavernCard, source st
 	sb.WriteString("- 关联角色卡：")
 	sb.WriteString(card.Name)
 	sb.WriteString("\n\n")
-	sb.WriteString("该条目代表 Tavern 酒馆角色卡中的 `{{user}}` 占位符。导入时未提供具体用户角色名，Nova 默认以“你 / 玩家角色”承接互动视角；如果本书有固定主角，请在资料库中把该条目改成实际姓名、身份和可见设定。\n")
+	sb.WriteString(name)
+	sb.WriteString(" 代表 Tavern 酒馆角色卡中的 `{{user}}` 占位符。请在这里补充玩家角色的姓名、身份、和角色卡主角的关系、可见设定，以及互动中应保持稳定的个人事实。\n")
 	return strings.TrimSpace(sb.String())
 }
 
@@ -671,4 +683,36 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func mergeCharacterCardImportOptions(opts ...CharacterCardImportOptions) CharacterCardImportOptions {
+	var merged CharacterCardImportOptions
+	for _, opt := range opts {
+		if name := strings.TrimSpace(opt.UserCharacterName); name != "" {
+			merged.UserCharacterName = name
+		}
+	}
+	return merged
+}
+
+func tavernUserCharacterName(card normalizedTavernCard, name string) string {
+	if !card.HasUserPlaceholder {
+		return ""
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "玩家角色"
+	}
+	return name
+}
+
+func tavernBookEntryEnabled(entry tavernBookEntry) *bool {
+	if entry.Enabled == nil {
+		return loreEnabledPtr(true)
+	}
+	return loreEnabledPtr(*entry.Enabled)
+}
+
+func loreEnabledPtr(enabled bool) *bool {
+	return &enabled
 }

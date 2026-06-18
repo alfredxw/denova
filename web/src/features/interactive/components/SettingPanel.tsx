@@ -354,6 +354,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     setSaving(true)
     try {
       const item = await createLoreItem({
+        enabled: true,
         type: section.createType,
         name: section.createName,
         importance: section.createType === 'character' ? 'major' : 'important',
@@ -577,7 +578,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
             ) : activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID ? (
               <OpeningPresetEditor presets={openingPresets} activeId={activeOpeningPresetId} setActiveId={setActiveOpeningPresetId} setPresets={setOpeningPresets} onSave={handleSave} />
             ) : (
-              <LoreEditor draft={draft} tagDraft={tagDraft} residentTotalChars={items.filter((item) => item.load_mode === 'resident' && item.id !== draft?.id).reduce((total, item) => total + (item.content || '').length, draft?.load_mode === 'resident' ? (draft.content || '').length : 0)} setDraft={setDraft} setTagDraft={setTagDraft} onSave={handleSave} />
+              <LoreEditor draft={draft} tagDraft={tagDraft} residentTotalChars={items.filter((item) => item.enabled !== false && item.load_mode === 'resident' && item.id !== draft?.id).reduce((total, item) => total + (item.content || '').length, draft?.enabled !== false && draft?.load_mode === 'resident' ? (draft.content || '').length : 0)} setDraft={setDraft} setTagDraft={setTagDraft} onSave={handleSave} />
             )}
           </>
         ) : activeMode === 'creator' ? (
@@ -666,7 +667,7 @@ function editorSubtitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDr
   if (mode === 'creator') return t('settingPanel.editor.creatorSubtitle')
   if (mode === 'teller') return tellerDraft?.description || t('settingPanel.editor.tellerSubtitle')
   if (!draft) return t('settingPanel.editor.loreSubtitle')
-  return `${loreTypeLabel(draft.type, t)} · ${loreImportanceLabel(draft.importance, t)} · ${loreLoadModeLabel(draft.load_mode, t)} · ${(draft.tags || []).join('，') || t('settingPanel.editor.noTags')}`
+  return `${draft.enabled === false ? t('settingPanel.disabled') : t('settingPanel.enabled')} · ${loreTypeLabel(draft.type, t)} · ${loreImportanceLabel(draft.importance, t)} · ${loreLoadModeLabel(draft.load_mode, t)} · ${(draft.tags || []).join('，') || t('settingPanel.editor.noTags')}`
 }
 
 function newTellerDraft(): Partial<Teller> {

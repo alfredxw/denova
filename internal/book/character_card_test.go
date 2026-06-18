@@ -106,7 +106,8 @@ func TestServiceImportTavernCharacterCardImportsPNGCoverOpeningsAndUserPlacehold
 			"alternate_greetings": ["备用开场一", "备用开场二"],
 			"character_book": {
 				"entries": [
-					{"keys": ["实验室"], "comment": "场景", "content": "实验室里有显微镜", "enabled": true}
+					{"keys": ["实验室"], "comment": "场景", "content": "实验室里有显微镜", "enabled": true},
+					{"keys": ["隐藏"], "comment": "禁用场景", "content": "这条暂不启用", "enabled": false}
 				]
 			},
 			"extensions": {"depth_prompt": {"prompt": "仅酒馆运行时使用"}}
@@ -116,7 +117,7 @@ func TestServiceImportTavernCharacterCardImportsPNGCoverOpeningsAndUserPlacehold
 	}`))
 	png := makeTestPNGTextChunk("chara", payload)
 
-	result, err := service.ImportTavernCharacterCard("fengjiangyue.png", png)
+	result, err := service.ImportTavernCharacterCard("fengjiangyue.png", png, CharacterCardImportOptions{UserCharacterName: "韩澈"})
 	if err != nil {
 		t.Fatalf("导入 PNG 角色卡失败: %v", err)
 	}
@@ -128,6 +129,9 @@ func TestServiceImportTavernCharacterCardImportsPNGCoverOpeningsAndUserPlacehold
 	}
 	if !result.UserPlaceholderFound {
 		t.Fatalf("应检测到 {{user}} 占位符: %#v", result)
+	}
+	if result.UserCharacterName != "韩澈" {
+		t.Fatalf("用户角色名不符合预期: %#v", result)
 	}
 	cover, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(tavernCardCoverPath)))
 	if err != nil {
@@ -152,17 +156,37 @@ func TestServiceImportTavernCharacterCardImportsPNGCoverOpeningsAndUserPlacehold
 		t.Fatalf("读取资料库失败: %v", err)
 	}
 	if len(items) != 3 {
-		t.Fatalf("资料库应包含角色、{{user}} 和世界书条目: %#v", items)
+		t.Fatalf("启用资料应包含角色、{{user}} 和启用世界书条目: %#v", items)
 	}
 	combined := items[0].Content + "\n" + items[1].Content + "\n" + items[2].Content
 	if strings.Contains(combined, "主开场：枫江月站在讲台前。") || strings.Contains(combined, "备用开场一") {
 		t.Fatalf("开场白不应写入资料库条目:\n%s", combined)
 	}
-	if !strings.Contains(combined, "玩家角色") || !strings.Contains(combined, "实验室里有显微镜") {
+	if !strings.Contains(combined, "韩澈") || !strings.Contains(combined, "实验室里有显微镜") {
 		t.Fatalf("资料库缺少用户角色或世界书内容:\n%s", combined)
+	}
+	if strings.Contains(combined, "这条暂不启用") {
+		t.Fatalf("禁用世界书条目不应进入模型可见资料列表:\n%s", combined)
+	}
+	allItems, err := NewLoreStore(workspace).ListAll()
+	if err != nil {
+		t.Fatalf("读取完整资料库失败: %v", err)
+	}
+	if len(allItems) != 4 {
+		t.Fatalf("完整资料库应保留禁用世界书条目: %#v", allItems)
+	}
+	foundDisabled := false
+	for _, item := range allItems {
+		if strings.Contains(item.Content, "这条暂不启用") {
+			foundDisabled = !item.Enabled
+		}
+	}
+	if !foundDisabled {
+		t.Fatalf("禁用世界书条目应以 enabled=false 保留: %#v", allItems)
 	}
 	if !hasCompatibilityField(result.Compatibility.DowngradedFields, "first_mes") ||
 		!hasCompatibilityField(result.Compatibility.DowngradedFields, "alternate_greetings") ||
+		!hasCompatibilityField(result.Compatibility.ImportedFields, "entry_enabled") ||
 		!hasCompatibilityField(result.Compatibility.UnsupportedFields, "extensions") ||
 		!hasCompatibilityField(result.Compatibility.UnsupportedFields, "talkativeness") {
 		t.Fatalf("兼容性报告不符合预期: %#v", result.Compatibility)
@@ -176,7 +200,8 @@ func TestPreviewTavernCharacterCardReportsCompatibility(t *testing.T) {
 			"first_mes": "开场",
 			"alternate_greetings": ["备用"],
 			"creator": "tester",
-			"extensions": {"foo": "bar"}
+			"extensions": {"foo": "bar"},
+			"character_book": {"entries": [{"comment": "关闭", "content": "暂不启用", "enabled": false}]}
 		},
 		"talkativeness": 0.7
 	}`))
@@ -189,6 +214,7 @@ func TestPreviewTavernCharacterCardReportsCompatibility(t *testing.T) {
 	if !hasCompatibilityField(preview.Compatibility.DowngradedFields, "first_mes") ||
 		!hasCompatibilityField(preview.Compatibility.DowngradedFields, "alternate_greetings") ||
 		!hasCompatibilityField(preview.Compatibility.DowngradedFields, "creator") ||
+		!hasCompatibilityField(preview.Compatibility.ImportedFields, "entry_enabled") ||
 		!hasCompatibilityField(preview.Compatibility.UnsupportedFields, "extensions") ||
 		!hasCompatibilityField(preview.Compatibility.UnsupportedFields, "talkativeness") {
 		t.Fatalf("预览兼容性报告不符合预期: %#v", preview.Compatibility)

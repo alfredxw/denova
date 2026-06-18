@@ -24,6 +24,7 @@ type writeLoreItemsInput struct {
 
 type writeLoreItemInput struct {
 	ID               string   `json:"id" jsonschema:"description=资料 ID；更新已有条目时必须填写准确 ID，新建时可留空自动生成"`
+	Enabled          *bool    `json:"enabled,omitempty" jsonschema:"description=是否启用该资料条目；禁用条目会保留在资料库中，但不会进入资料库索引、读取工具或模型上下文；不确定时留空"`
 	Type             string   `json:"type" jsonschema:"description=资料类型：character/world/location/faction/rule/item/other"`
 	Name             string   `json:"name" jsonschema:"description=资料名称"`
 	Importance       string   `json:"importance" jsonschema:"description=重要度：major/important/minor"`
@@ -129,6 +130,7 @@ func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) 
 	for _, item := range input.Items {
 		loreInput := book.LoreItemInput{
 			ID:               item.ID,
+			Enabled:          item.Enabled,
 			Type:             item.Type,
 			Name:             item.Name,
 			Importance:       item.Importance,

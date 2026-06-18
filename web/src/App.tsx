@@ -60,6 +60,7 @@ function App() {
   const [characterCardPreview, setCharacterCardPreview] = useState<CharacterCardPreview | null>(null)
   const [characterCardTargetMode, setCharacterCardTargetMode] = useState<CharacterCardTargetMode>('new_book')
   const [characterCardBookTitle, setCharacterCardBookTitle] = useState('')
+  const [characterCardUserName, setCharacterCardUserName] = useState('')
   const [characterCardPreviewing, setCharacterCardPreviewing] = useState(false)
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
@@ -352,6 +353,7 @@ function App() {
     setCharacterCardPreview(null)
     setCharacterCardTargetMode('new_book')
     setCharacterCardBookTitle('')
+    setCharacterCardUserName('')
     setCharacterCardPreviewing(false)
     setCharacterCardImporting(false)
     setCharacterCardError('')
@@ -376,12 +378,14 @@ function App() {
     setCharacterCardPreview(null)
     setCharacterCardTargetMode('new_book')
     setCharacterCardBookTitle('')
+    setCharacterCardUserName('')
     setCharacterCardError('')
     setCharacterCardPreviewing(true)
     try {
       const preview = await previewCharacterCard(file)
       setCharacterCardPreview(preview)
       setCharacterCardBookTitle(preview.name)
+      setCharacterCardUserName(preview.user_placeholder_found ? t('importCard.defaultUserCharacterName') : '')
     } catch (e) {
       setCharacterCardError(e instanceof Error ? e.message : t('importCard.previewFailed'))
     } finally {
@@ -407,6 +411,7 @@ function App() {
       const result = await importCharacterCard(characterCardFile, {
         targetMode: characterCardTargetMode,
         bookTitle: characterCardTargetMode === 'new_book' ? characterCardBookTitle.trim() : undefined,
+        userCharacterName: characterCardPreview?.user_placeholder_found ? characterCardUserName.trim() : undefined,
       })
       toast.success(result.message || t('importCard.importSuccess', { name: result.name }))
       if (characterCardTargetMode === 'new_book') {
@@ -429,7 +434,7 @@ function App() {
     } finally {
       setCharacterCardImporting(false)
     }
-  }, [characterCardBookTitle, characterCardFile, characterCardTargetMode, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
+  }, [characterCardBookTitle, characterCardFile, characterCardPreview?.user_placeholder_found, characterCardTargetMode, characterCardUserName, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
 
   const handleActivateTab = useCallback((tab: Tab) => {
     const key = tabKey(tab)
@@ -618,6 +623,7 @@ function App() {
         preview={characterCardPreview}
         targetMode={characterCardTargetMode}
         bookTitle={characterCardBookTitle}
+        userCharacterName={characterCardUserName}
         previewing={characterCardPreviewing}
         importing={characterCardImporting}
         error={characterCardError}
@@ -626,6 +632,7 @@ function App() {
         onFileSelected={handleCharacterCardSelected}
         onTargetModeChange={setCharacterCardTargetMode}
         onBookTitleChange={setCharacterCardBookTitle}
+        onUserCharacterNameChange={setCharacterCardUserName}
         onImport={handleCharacterCardImport}
       />
     </NovaMotionProvider>

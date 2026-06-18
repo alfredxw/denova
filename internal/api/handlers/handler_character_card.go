@@ -71,6 +71,9 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 	if targetMode == "" {
 		targetMode = "current"
 	}
+	importOptions := book.CharacterCardImportOptions{
+		UserCharacterName: strings.TrimSpace(string(c.FormValue("user_character_name"))),
+	}
 	log.Printf("[api] 导入酒馆角色卡 filename=%q size=%d workspace=%q target_mode=%q", filename, len(data), h.app.Workspace(), targetMode)
 
 	var result book.CharacterCardImportResult
@@ -80,9 +83,9 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 		if !h.requireWorkspace(c) {
 			return
 		}
-		result, err = h.app.BookService().ImportTavernCharacterCard(filename, data)
+		result, err = h.app.BookService().ImportTavernCharacterCard(filename, data, importOptions)
 	case "new_book":
-		result, err = h.importCharacterCardToNewBook(ctx, filename, data, strings.TrimSpace(string(c.FormValue("book_title"))))
+		result, err = h.importCharacterCardToNewBook(ctx, filename, data, strings.TrimSpace(string(c.FormValue("book_title"))), importOptions)
 	default:
 		writeErrorKey(c, consts.StatusBadRequest, "api.characterCard.invalidTarget")
 		return
@@ -100,7 +103,7 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename string, data []byte, title string) (book.CharacterCardImportResult, error) {
+func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename string, data []byte, title string, options book.CharacterCardImportOptions) (book.CharacterCardImportResult, error) {
 	preview, err := book.PreviewTavernCharacterCard(filename, data)
 	if err != nil {
 		return book.CharacterCardImportResult{}, err
@@ -119,7 +122,7 @@ func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename st
 	if err != nil {
 		return book.CharacterCardImportResult{}, err
 	}
-	result, err := h.app.BookService().ImportTavernCharacterCard(filename, data)
+	result, err := h.app.BookService().ImportTavernCharacterCard(filename, data, options)
 	if err != nil {
 		return book.CharacterCardImportResult{}, err
 	}

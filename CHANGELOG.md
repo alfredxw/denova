@@ -33,10 +33,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 自动化运行会把触发 evidence 作为有界触发范围传给 Agent；默认“自动 Review”聚焦本次新增章节，并对照用户任务、`CREATOR.md`、大纲、角色和必要前文检查质量与一致性。
 - 预置自动化任务会把默认 Prompt 直接写入任务配置，用户可在自动化页自由修改；运行时不再根据内部 template 套用不同 Prompt。
 - 酒馆角色卡导入预览新增兼容性检查报告，展示已导入、降级导入和暂不兼容的 Tavern 字段，并提示 PNG 封面、开场预设和 `{{user}}` 玩家角色导入计划。
+- 资料库条目新增启用/停用状态；停用条目会保留在编辑页但不会进入资料库索引、读取工具或模型上下文。
 
 ### Changed
 
 - 酒馆 PNG 角色卡导入会把 PNG 本体写入书籍目录 `assets/image/cover.png` 作为封面图；`first_mes` 和 `alternate_greetings` 不再写进资料库角色条目，而是同步到书籍级预设开场白。
+- 酒馆角色卡导入会同步世界书条目的 `enabled` 状态，并在检测到 `{{user}}` 占位符时允许用户自定义玩家角色资料名称。
 - 互动模式每回合默认目标字数从 1200 调整为 2000，并统一为前后端默认值常量。
 - 互动记忆 Agent 输出协议从 `state_ops + memory_entry` 调整为 `story_memory_patches`，旧 `memory_entry` 输出会兼容映射为 `plot_summary` 故事记忆；旧 `/api/interactive/stories/:id/memory` 接口继续保留，并映射到故事记忆记录。
 - 互动记忆 Agent 生成故事记忆时会注入有硬上限的资料库上下文，优先提供完整重要资料并为未展开条目保留索引，减少记忆记录与作品设定偏差。

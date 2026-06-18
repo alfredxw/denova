@@ -104,12 +104,13 @@ export async function previewCharacterCard(file: File): Promise<CharacterCardPre
 
 export async function importCharacterCard(
   file: File,
-  options: { targetMode?: 'current' | 'new_book'; bookTitle?: string } = {},
+  options: { targetMode?: 'current' | 'new_book'; bookTitle?: string; userCharacterName?: string } = {},
 ): Promise<CharacterCardImportResult> {
   const form = new FormData()
   form.append('file', file)
   if (options.targetMode) form.append('target_mode', options.targetMode)
   if (options.bookTitle) form.append('book_title', options.bookTitle)
+  if (options.userCharacterName) form.append('user_character_name', options.userCharacterName)
   return requestJSON('/api/workspace/import-character-card', {
     method: 'POST',
     body: form,

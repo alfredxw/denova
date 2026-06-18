@@ -94,6 +94,7 @@ const settingPanel = {
   'settingPanel.openingPreset.emptyDesc': '点击右上角新增一个书籍预设开场白。',
   'settingPanel.openingPreset.placeholder': '写下本书预设开场白，例如主角初始处境、场景钩子、关键目标和第一轮可行动空间...',
   'settingPanel.field.name': '名称',
+  'settingPanel.field.enabled': '状态',
   'settingPanel.field.type': '类型',
   'settingPanel.field.importance': '重要度',
   'settingPanel.field.loadMode': '加载策略',

@@ -94,6 +94,7 @@ const settingPanel = {
   'settingPanel.openingPreset.emptyDesc': 'Add a book preset opening from the top right.',
   'settingPanel.openingPreset.placeholder': 'Write the book preset opening: protagonist situation, scene hook, immediate objective, and first-turn action space...',
   'settingPanel.field.name': 'Name',
+  'settingPanel.field.enabled': 'Status',
   'settingPanel.field.type': 'Type',
   'settingPanel.field.importance': 'Importance',
   'settingPanel.field.loadMode': 'Load Strategy',

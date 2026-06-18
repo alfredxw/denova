@@ -71,6 +71,9 @@ func tavernCardCompatibility(card normalizedTavernCard) CharacterCardCompatibili
 	if characterBookEntryCount(card.CharacterBook) > 0 {
 		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "character_book")
 	}
+	if tavernCardHasEntryEnabled(card) {
+		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "entry_enabled")
+	}
 	if card.IsPNG {
 		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "png_cover")
 	}
@@ -105,6 +108,18 @@ func tavernCardCompatibility(card normalizedTavernCard) CharacterCardCompatibili
 		report.UnsupportedFields = addCompatibilityFields(report.UnsupportedFields, "extensions")
 	}
 	return report
+}
+
+func tavernCardHasEntryEnabled(card normalizedTavernCard) bool {
+	if card.CharacterBook == nil {
+		return false
+	}
+	for _, entry := range card.CharacterBook.Entries {
+		if entry.Enabled != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func addCompatibilityFields(fields []string, values ...string) []string {

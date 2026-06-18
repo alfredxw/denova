@@ -38,8 +38,54 @@ func TestLoreStoreNormalizesProgressiveLoadingDefaults(t *testing.T) {
 	if byID["base"].LoadMode != LoreLoadModeAuto {
 		t.Fatalf("important legacy item should default to auto: %#v", byID["base"])
 	}
+	if !byID["hero"].Enabled || !byID["base"].Enabled {
+		t.Fatalf("legacy items should default to enabled: %#v", byID)
+	}
 	if byID["hero"].Keywords == nil || len(byID["hero"].Keywords) != 0 {
 		t.Fatalf("missing keywords should normalize to empty array: %#v", byID["hero"].Keywords)
+	}
+}
+
+func TestLoreStoreDisabledItemsStayEditableButLeaveModelContext(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	disabled := false
+	if _, err := store.Create(LoreItemInput{ID: "visible", Type: "character", Name: "可见角色", Importance: "major", LoadMode: LoreLoadModeResident, Content: "可见正文"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(LoreItemInput{ID: "hidden", Enabled: &disabled, Type: "rule", Name: "禁用规则", Importance: "important", LoadMode: LoreLoadModeAuto, Content: "禁用正文"}); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != "visible" {
+		t.Fatalf("List should only return enabled items: %#v", items)
+	}
+	all, err := store.ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("ListAll should retain disabled items for editing: %#v", all)
+	}
+	if _, err := store.Read("hidden"); err == nil {
+		t.Fatalf("disabled item should not be readable through model-facing Read")
+	}
+	context, err := store.ProgressiveContextMarkdown()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(context, "禁用规则") || strings.Contains(context, "禁用正文") {
+		t.Fatalf("disabled item leaked into progressive context: %s", context)
+	}
+	results, err := store.Search("禁用", "", 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("disabled item should not be searchable: %#v", results)
 	}
 }
 
