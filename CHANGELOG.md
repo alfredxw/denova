@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v0.1.11] - 2026-06-18
+
 ### Added
 
 - 互动剧情新增故事级开场白配置：创建故事或进入舞台后可选择 AI 自动生成、预设开场或自定义开局；空故事可一键生成开场，生成后的首轮继续支持刷新和版本切换。
@@ -40,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 酒馆 PNG 角色卡导入会把 PNG 本体写入书籍目录 `assets/image/cover.png` 作为封面图；`first_mes` 和 `alternate_greetings` 不再写进资料库角色条目，而是同步到书籍级预设开场白。
 - 酒馆角色卡导入会同步世界书条目的 `enabled` 状态，并在检测到 `{{user}}` 占位符时允许用户自定义玩家角色资料名称。
 - 互动模式每回合默认目标字数从 1200 调整为 2000，并统一为前后端默认值常量。
+- 互动剧情每轮目标字数现在作为 story 级最高篇幅约束注入，覆盖 CREATOR.md 章节篇幅、导演规则和 Nova 内置提示中的其他篇幅倾向；后端兜底默认值同步为 2000。
 - 互动记忆 Agent 输出协议从 `state_ops + memory_entry` 调整为 `story_memory_patches`，旧 `memory_entry` 输出会兼容映射为 `plot_summary` 故事记忆；旧 `/api/interactive/stories/:id/memory` 接口继续保留，并映射到故事记忆记录。
 - 互动记忆 Agent 生成故事记忆时会注入有硬上限的资料库上下文，优先提供完整重要资料并为未展开条目保留索引，减少记忆记录与作品设定偏差。
 - 互动模式不再把“当前状态”作为独立用户管理入口，当前时间、地点和事件改由故事记忆的默认结构维护；右侧记忆面板改为故事记忆预览，不再展示原始状态 JSON。

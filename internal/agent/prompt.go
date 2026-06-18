@@ -248,13 +248,8 @@ func ideFlowInstruction(cfg *config.Config, workspace string) string {
 }
 
 func interactiveStoryFlowInstruction(cfg *config.Config, workspace string) string {
-	replyTargetChars := 0
-	if cfg != nil {
-		replyTargetChars = cfg.InteractiveReplyTargetChars
-	}
 	return prompts.BuildInteractiveStoryFlowInstruction(prompts.InteractiveStorySystemInstructionInput{
-		Workspace:        workspace,
-		ReplyTargetChars: replyTargetChars,
+		Workspace: workspace,
 	})
 }
 

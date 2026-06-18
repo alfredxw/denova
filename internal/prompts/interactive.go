@@ -43,8 +43,6 @@ type InteractiveStatePromptInput struct {
 	Narrative         string
 }
 
-const defaultInteractiveReplyTargetChars = 1200
-
 func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstructionInput) string {
 	var sb strings.Builder
 	if creator := strings.TrimSpace(in.CreatorPrompt); creator != "" {
@@ -101,7 +99,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 不要在主角每做一个小动作时立刻停下等待用户；只有当局势出现有意义的分岔、风险、代价、信息不足或不可逆选择时，才把选择权交还给用户。\n")
 	sb.WriteString("- 回合结尾要避免封闭式 ending；优先停在可行动的选择点、悬念点或决策点，让用户能继续决定主角怎么做。\n")
 	sb.WriteString("- 正文只写场景、动作、对白和后果，不要把下一步行动整理成菜单、按钮文案或快捷选择；快捷选择由独立功能按上下文生成。\n\n")
-	fmt.Fprintf(&sb, "- 本轮回复目标长度约为 %d 个中文字以内；你需要主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。", normalizeInteractiveReplyTargetChars(in.ReplyTargetChars))
+	writeInteractiveReplyTargetInstruction(&sb, in.ReplyTargetChars, true)
 	return sb.String()
 }
 
@@ -121,7 +119,7 @@ func InteractiveStoryContext(in InteractiveStoryPromptInput) string {
 	sb.WriteString("5. 保留选择权：不要替用户完成重大选择、不可逆决定、长期目标或明显应由用户决定的行动。\n")
 	sb.WriteString("6. 打开可选择：回合结尾自然露出可继续行动的入口，例如可询问的人、可探索的物、正在逼近的危险、可利用的资源、需要承担代价的捷径。\n")
 	sb.WriteString("7. 一致性自检：确认角色性格、说话方式、世界规则、已记录伤势/物品/位置/关系/时间没有被遗忘或矛盾改写。\n\n")
-	fmt.Fprintf(&sb, "本轮 NARRATIVE 目标长度约为 %d 个中文字以内。请主动控制篇幅，保证结尾完整收束到开放选择点。\n\n", normalizeInteractiveReplyTargetChars(in.ReplyTargetChars))
+	writeInteractiveReplyTargetInstruction(&sb, in.ReplyTargetChars, false)
 	sb.WriteString("## 故事信息\n")
 	writeField(&sb, "标题", in.Title)
 	writeField(&sb, "开端", in.Origin)
@@ -145,11 +143,18 @@ func InteractiveStoryContext(in InteractiveStoryPromptInput) string {
 	return sb.String()
 }
 
-func normalizeInteractiveReplyTargetChars(v int) int {
-	if v <= 0 {
-		return defaultInteractiveReplyTargetChars
+func writeInteractiveReplyTargetInstruction(sb *strings.Builder, value int, bullet bool) {
+	prefix := ""
+	suffix := "\n\n"
+	if bullet {
+		prefix = "- "
+		suffix = ""
 	}
-	return v
+	if value > 0 {
+		fmt.Fprintf(sb, "%s【最高篇幅约束】当前互动故事的每轮目标字数为 %d 个中文字以内；这是互动剧情正文唯一的内置字数目标，高于 CREATOR.md 的章节篇幅、导演规则和其他 Nova 内置提示中的篇幅倾向。你需要主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。%s", prefix, value, suffix)
+		return
+	}
+	fmt.Fprintf(sb, "%s【最高篇幅约束】当前互动故事的每轮目标字数由 story 级运行参数决定；这是互动剧情正文唯一的内置字数目标，高于 CREATOR.md 的章节篇幅、导演规则和其他 Nova 内置提示中的篇幅倾向。运行时拿到具体目标后必须主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。%s", prefix, suffix)
 }
 
 func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRate float64) string {

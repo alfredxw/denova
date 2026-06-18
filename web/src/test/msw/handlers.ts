@@ -47,7 +47,7 @@ export const handlers = [
           title: '末日开端',
           origin: '',
           story_teller_id: 'classic',
-          reply_target_chars: 1200,
+          reply_target_chars: 2000,
           created_at: '',
           updated_at: '',
           branches: 1,

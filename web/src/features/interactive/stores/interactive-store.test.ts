@@ -20,7 +20,7 @@ describe('interactive-store', () => {
           title: '开端',
           origin: '',
           story_teller_id: 'classic',
-          reply_target_chars: 1200,
+          reply_target_chars: 2000,
           opening: { mode: 'ai' },
           created_at: '',
           updated_at: '',

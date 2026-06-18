@@ -162,6 +162,7 @@ export function WorkbenchShell({
 
   const openInteractiveSubmode = (nextMode: InteractiveSubmode) => {
     closeSettingsIfOpen()
+    if (versionsVisible) onSetRightPanel(null)
     onSetMode('interactive')
     onSetInteractiveSubmode(nextMode)
   }

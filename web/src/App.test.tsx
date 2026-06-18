@@ -499,6 +499,15 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '剧情' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '写作' })).not.toBeInTheDocument()
 
+    await user.click(screen.getByRole('button', { name: '剧情' }))
+    expect(screen.queryByRole('button', { name: '关闭版本管理' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '剧情' })).toHaveClass('is-active')
+    expectOnlyActivePrimaryMenu('剧情')
+
+    await user.click(screen.getByRole('button', { name: '版本管理' }))
+    expect(await screen.findByRole('button', { name: '关闭版本管理' })).toBeInTheDocument()
+    expectOnlyActivePrimaryMenu('版本管理')
+
     await user.click(screen.getByRole('button', { name: 'Agents' }))
     expect(await screen.findByRole('button', { name: '关闭 Agents' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '关闭版本管理' })).not.toBeInTheDocument()

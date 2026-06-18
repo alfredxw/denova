@@ -56,6 +56,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		strings.Contains(history[0].Content, "经典叙事者") ||
 		strings.Contains(history[0].Content, "本轮上下文") ||
 		!strings.Contains(history[0].Content, "800 个中文字") ||
+		!strings.Contains(history[0].Content, "最高篇幅约束") ||
 		strings.Contains(history[0].Content, "林川：谨慎的幸存者") ||
 		strings.Contains(history[0].Content, "世界已进入黄昏末日。") ||
 		!strings.Contains(history[0].Content, "list_lore_items") ||
@@ -212,6 +213,9 @@ func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T
 	}
 	if len(history) < 1 || !strings.Contains(history[0].Content, "700 个中文字") {
 		t.Fatalf("story reply target chars should be used: %#v", history)
+	}
+	if !strings.Contains(history[0].Content, "最高篇幅约束") {
+		t.Fatalf("story reply target chars should be marked as highest priority: %#v", history[0])
 	}
 	if strings.Contains(history[0].Content, "50 个中文字") {
 		t.Fatalf("legacy teller reply target chars should be ignored: %#v", history[0])

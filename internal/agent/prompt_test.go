@@ -13,7 +13,7 @@ import (
 
 func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 	state := book.NewState(t.TempDir())
-	instruction := BuildInteractiveStoryInstruction(&config.Config{Workspace: state.Workspace()}, state, prompts.InteractiveStorySystemInstructionInput{
+	instruction := BuildInteractiveStoryInstruction(&config.Config{Workspace: state.Workspace(), InteractiveReplyTargetChars: 777}, state, prompts.InteractiveStorySystemInstructionInput{
 		StoryTellerID:           "classic",
 		StoryTellerName:         "经典叙事者",
 		StoryTellerDescription:  "平衡叙事",
@@ -32,6 +32,41 @@ func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 	}
 	if !strings.Contains(instruction, "导演系统规则") || !strings.Contains(instruction, "经典叙事者") {
 		t.Fatalf("interactive story instruction should include teller system rules:\n%s", instruction)
+	}
+	for _, required := range []string{"每轮目标字数为最高约束", "最高篇幅约束", "777 个中文字以内"} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("interactive story instruction should contain reply target priority %q:\n%s", required, instruction)
+		}
+	}
+}
+
+func TestBuildInteractiveStoryInstructionKeepsReplyTargetAboveCustomLengthPrompts(t *testing.T) {
+	state := book.NewState(t.TempDir())
+	instruction := BuildInteractiveStoryInstruction(&config.Config{
+		Workspace:                   state.Workspace(),
+		InteractiveReplyTargetChars: 650,
+		AgentPrompts: config.AgentPromptSettings{
+			InteractiveStory: config.AgentPromptOverride{
+				SystemPrompt: "无论如何都写到 10000 字。",
+				FlowPrompt:   "每轮都写成长篇。",
+			},
+		},
+	}, state, prompts.InteractiveStorySystemInstructionInput{
+		StoryTellerID:           "long",
+		StoryTellerName:         "长篇导演",
+		StoryTellerDescription:  "偏长",
+		StoryTellerSystemPrompt: "每轮至少写 5000 字。",
+	})
+
+	for _, required := range []string{"每轮目标字数为最高约束", "都不得要求超过该目标", "650 个中文字以内"} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("interactive story instruction should protect story reply target %q:\n%s", required, instruction)
+		}
+	}
+	for _, preserved := range []string{"无论如何都写到 10000 字", "每轮至少写 5000 字"} {
+		if !strings.Contains(instruction, preserved) {
+			t.Fatalf("custom/user-authored prompt text should remain visible %q:\n%s", preserved, instruction)
+		}
 	}
 }
 
@@ -73,6 +108,9 @@ func TestBuiltinAgentPromptsExposeInteractiveMemoryToolsWithoutCustomPrompt(t *t
 	}
 	if strings.Contains(interactive.EditableSystemPrompt, "必须只输出 <NARRATIVE>") {
 		t.Fatalf("editable prompt should not include protected output protocol: %s", interactive.EditableSystemPrompt)
+	}
+	if !strings.Contains(interactive.EditableSystemPrompt, "story 级运行参数") || strings.Contains(interactive.EditableSystemPrompt, "2000 个中文字") {
+		t.Fatalf("editable prompt should describe dynamic story reply target without fixed fallback: %s", interactive.EditableSystemPrompt)
 	}
 
 	sources := BuiltinAgentPromptSources(cfg, state, IDEStoryTeller{})
