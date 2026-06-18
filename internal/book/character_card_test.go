@@ -92,6 +92,109 @@ func TestServiceImportTavernCharacterCardCreatesLoreItems(t *testing.T) {
 	}
 }
 
+func TestServiceImportTavernCharacterCardImportsPNGCoverOpeningsAndUserPlaceholder(t *testing.T) {
+	workspace := t.TempDir()
+	service := NewService(workspace)
+	payload := base64.StdEncoding.EncodeToString([]byte(`{
+		"spec": "chara_card_v2",
+		"spec_version": "2.0",
+		"data": {
+			"name": "枫江月",
+			"description": "清冷的生物女老师，会称呼 {{user}}。",
+			"scenario": "高三生物实验室",
+			"first_mes": "主开场：枫江月站在讲台前。",
+			"alternate_greetings": ["备用开场一", "备用开场二"],
+			"character_book": {
+				"entries": [
+					{"keys": ["实验室"], "comment": "场景", "content": "实验室里有显微镜", "enabled": true}
+				]
+			},
+			"extensions": {"depth_prompt": {"prompt": "仅酒馆运行时使用"}}
+		},
+		"avatar": "none",
+		"talkativeness": 0.5
+	}`))
+	png := makeTestPNGTextChunk("chara", payload)
+
+	result, err := service.ImportTavernCharacterCard("fengjiangyue.png", png)
+	if err != nil {
+		t.Fatalf("导入 PNG 角色卡失败: %v", err)
+	}
+	if result.CoverPath != tavernCardCoverPath {
+		t.Fatalf("封面路径不符合预期: %#v", result)
+	}
+	if result.OpeningPresetPath != interactiveOpeningPresetPath || result.OpeningPresetCount != 3 {
+		t.Fatalf("开场预设导入结果不符合预期: %#v", result)
+	}
+	if !result.UserPlaceholderFound {
+		t.Fatalf("应检测到 {{user}} 占位符: %#v", result)
+	}
+	cover, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(tavernCardCoverPath)))
+	if err != nil {
+		t.Fatalf("读取封面失败: %v", err)
+	}
+	if string(cover) != string(png) {
+		t.Fatalf("封面 PNG 未按原始文件写入")
+	}
+	openingData, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(interactiveOpeningPresetPath)))
+	if err != nil {
+		t.Fatalf("读取开场预设失败: %v", err)
+	}
+	openingText := string(openingData)
+	for _, want := range []string{"主开场：枫江月站在讲台前。", "备用开场一", "备用开场二"} {
+		if !strings.Contains(openingText, want) {
+			t.Fatalf("开场预设缺少 %q:\n%s", want, openingText)
+		}
+	}
+
+	items, err := NewLoreStore(workspace).List()
+	if err != nil {
+		t.Fatalf("读取资料库失败: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("资料库应包含角色、{{user}} 和世界书条目: %#v", items)
+	}
+	combined := items[0].Content + "\n" + items[1].Content + "\n" + items[2].Content
+	if strings.Contains(combined, "主开场：枫江月站在讲台前。") || strings.Contains(combined, "备用开场一") {
+		t.Fatalf("开场白不应写入资料库条目:\n%s", combined)
+	}
+	if !strings.Contains(combined, "玩家角色") || !strings.Contains(combined, "实验室里有显微镜") {
+		t.Fatalf("资料库缺少用户角色或世界书内容:\n%s", combined)
+	}
+	if !hasCompatibilityField(result.Compatibility.DowngradedFields, "first_mes") ||
+		!hasCompatibilityField(result.Compatibility.DowngradedFields, "alternate_greetings") ||
+		!hasCompatibilityField(result.Compatibility.UnsupportedFields, "extensions") ||
+		!hasCompatibilityField(result.Compatibility.UnsupportedFields, "talkativeness") {
+		t.Fatalf("兼容性报告不符合预期: %#v", result.Compatibility)
+	}
+}
+
+func TestPreviewTavernCharacterCardReportsCompatibility(t *testing.T) {
+	preview, err := PreviewTavernCharacterCard("card.json", []byte(`{
+		"data": {
+			"name": "谢眠",
+			"first_mes": "开场",
+			"alternate_greetings": ["备用"],
+			"creator": "tester",
+			"extensions": {"foo": "bar"}
+		},
+		"talkativeness": 0.7
+	}`))
+	if err != nil {
+		t.Fatalf("预览角色卡失败: %v", err)
+	}
+	if preview.OpeningPresetCount != 2 || preview.WillImportCover {
+		t.Fatalf("预览导入计划不符合预期: %#v", preview)
+	}
+	if !hasCompatibilityField(preview.Compatibility.DowngradedFields, "first_mes") ||
+		!hasCompatibilityField(preview.Compatibility.DowngradedFields, "alternate_greetings") ||
+		!hasCompatibilityField(preview.Compatibility.DowngradedFields, "creator") ||
+		!hasCompatibilityField(preview.Compatibility.UnsupportedFields, "extensions") ||
+		!hasCompatibilityField(preview.Compatibility.UnsupportedFields, "talkativeness") {
+		t.Fatalf("预览兼容性报告不符合预期: %#v", preview.Compatibility)
+	}
+}
+
 func TestParseProvidedTavernPNGReference(t *testing.T) {
 	path := filepath.Join("..", "..", "import_一家之主_8542e9.png")
 	data, err := os.ReadFile(path)
@@ -111,6 +214,15 @@ func TestParseProvidedTavernPNGReference(t *testing.T) {
 	if characterBookEntryCount(card.CharacterBook) == 0 {
 		t.Fatalf("示例角色卡应包含世界书条目")
 	}
+}
+
+func hasCompatibilityField(fields []string, want string) bool {
+	for _, field := range fields {
+		if field == want {
+			return true
+		}
+	}
+	return false
 }
 
 func makeTestPNGTextChunk(keyword, text string) []byte {
