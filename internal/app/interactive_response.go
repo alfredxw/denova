@@ -18,9 +18,10 @@ const (
 )
 
 type interactiveStatePayload struct {
-	Ops         []interactive.StateOp                       `json:"ops"`
-	StateOps    []interactive.StateOp                       `json:"state_ops"`
-	MemoryEntry *interactive.InteractiveMemoryCreateRequest `json:"memory_entry"`
+	Ops                []interactive.StateOp                       `json:"ops"`
+	StateOps           []interactive.StateOp                       `json:"state_ops"`
+	MemoryEntry        *interactive.InteractiveMemoryCreateRequest `json:"memory_entry"`
+	StoryMemoryPatches []interactive.StoryMemoryPatch              `json:"story_memory_patches"`
 }
 
 type interactiveHotStatePayload struct {
@@ -66,8 +67,9 @@ func parseInteractiveStateOps(content string) ([]interactive.StateOp, error) {
 }
 
 type interactiveMemoryAgentResult struct {
-	StateOps    []interactive.StateOp
-	MemoryEntry *interactive.InteractiveMemoryCreateRequest
+	StateOps           []interactive.StateOp
+	MemoryEntry        *interactive.InteractiveMemoryCreateRequest
+	StoryMemoryPatches []interactive.StoryMemoryPatch
 }
 
 func parseInteractiveMemoryOutput(content string) (interactiveMemoryAgentResult, error) {
@@ -84,7 +86,35 @@ func parseInteractiveMemoryOutput(content string) (interactiveMemoryAgentResult,
 			return interactiveMemoryAgentResult{}, err
 		}
 	}
-	return interactiveMemoryAgentResult{StateOps: ops, MemoryEntry: payload.MemoryEntry}, nil
+	patches := payload.StoryMemoryPatches
+	if len(patches) == 0 && payload.MemoryEntry != nil {
+		patches = []interactive.StoryMemoryPatch{interactiveMemoryEntryToStoryPatch(*payload.MemoryEntry)}
+	}
+	return interactiveMemoryAgentResult{StateOps: ops, MemoryEntry: payload.MemoryEntry, StoryMemoryPatches: patches}, nil
+}
+
+func interactiveMemoryEntryToStoryPatch(entry interactive.InteractiveMemoryCreateRequest) interactive.StoryMemoryPatch {
+	values := map[string]string{
+		"event": strings.TrimSpace(firstNonEmptyString(entry.Summary, entry.Content, entry.Title)),
+	}
+	if len(entry.Places) > 0 {
+		values["place"] = strings.Join(entry.Places, "，")
+	}
+	return interactive.StoryMemoryPatch{
+		Op:          "append",
+		StructureID: "plot_summary",
+		Key:         strings.TrimSpace(entry.Title),
+		Values:      values,
+	}
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func parseInteractiveHotState(content string) (*interactive.HotState, error) {

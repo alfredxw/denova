@@ -11,6 +11,7 @@ import { BranchTimeline } from './BranchTimeline'
 import { MemoryPanel } from './MemoryPanel'
 import { SettingPanel, type SettingPanelMode } from './SettingPanel'
 import { StoryPicker } from './StoryPicker'
+import { StoryMemoryView } from './StoryMemoryView'
 import { StoryStage } from './StoryStage'
 import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -165,9 +166,9 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
     await reloadStories()
   }
 
-  const settingMode: SettingPanelMode = submode === 'story' || submode === 'timeline' ? 'lore' : submode
-  const settingsWorkspaceVisible = submode !== 'story' && submode !== 'timeline'
-  const contentKey = settingsWorkspaceVisible ? `settings:${settingMode}` : submode === 'timeline' ? 'timeline' : 'story'
+  const settingMode: SettingPanelMode = submode === 'story' || submode === 'timeline' || submode === 'memory' ? 'lore' : submode
+  const settingsWorkspaceVisible = submode !== 'story' && submode !== 'timeline' && submode !== 'memory'
+  const contentKey = settingsWorkspaceVisible ? `settings:${settingMode}` : submode
   const sceneMemoryVisible = isMobile ? mobileSnapshotOpen : rightPanelVisible
   const storyStage = (
     <StoryStage
@@ -198,7 +199,9 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
         <div className="flex min-h-0 flex-1">
           <div className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
-              {settingsWorkspaceVisible ? (
+              {submode === 'memory' ? (
+                <StoryMemoryView storyId={currentStoryId} branchId={currentBranchId} />
+              ) : settingsWorkspaceVisible ? (
                 <SettingPanel mode={settingMode} workspace={workspace} tellers={tellers} onTellersChange={setTellers} />
               ) : submode === 'timeline' ? (
                 <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} tellers={tellers} onSelect={setCurrentStoryId} onCreate={handleCreateStory} onDelete={handleDeleteStory} />} />

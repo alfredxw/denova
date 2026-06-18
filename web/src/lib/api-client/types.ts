@@ -285,16 +285,8 @@ export interface SkillDocument extends SkillSummary {
 
 export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at'>
 
-export interface LoreVersion {
-  id: string
-  message: string
-  created_at: string
-  item_count: number
-}
-
 export interface LoreAgentResult {
   message: string
-  version?: LoreVersion
   items: LoreItem[]
   created: LoreItem[]
   updated: LoreItem[]

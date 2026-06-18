@@ -10,8 +10,8 @@ describe('SettingPanel', () => {
       const path = new URL(rawUrl, 'http://localhost').pathname
       const payloads: Record<string, unknown> = {
         '/api/lore/items': { items: [] },
-        '/api/lore/versions': { versions: [] },
         '/api/lore/agent/messages': [],
+        '/api/workspace/file': { path: 'CREATOR.md', content: '最高优先级规则' },
       }
       return new Response(JSON.stringify(payloads[path] ?? {}), {
         status: 200,
@@ -33,6 +33,25 @@ describe('SettingPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByDisplayValue(/lore-init/)).toBeInTheDocument()
+    })
+  })
+
+  it('edits CREATOR.md from the lore directory', async () => {
+    const user = userEvent.setup()
+    render(<SettingPanel mode="lore" workspace="/books/demo" />)
+
+    await user.click(await screen.findByRole('button', { name: 'CREATOR.md' }))
+    expect(await screen.findByDisplayValue('最高优先级规则')).toBeInTheDocument()
+
+    await user.clear(screen.getByDisplayValue('最高优先级规则'))
+    await user.type(screen.getByPlaceholderText('写下本书最高优先级的创作规则...'), '新的最高规则')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith('/api/workspace/file', expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ path: 'CREATOR.md', content: '新的最高规则' }),
+      }))
     })
   })
 
@@ -62,7 +81,6 @@ describe('SettingPanel', () => {
       }
       const payloads: Record<string, unknown> = {
         '/api/lore/items': { items: [] },
-        '/api/lore/versions': { versions: [] },
         '/api/lore/agent/messages': [],
       }
       return new Response(JSON.stringify(payloads[path] ?? {}), {
@@ -91,7 +109,6 @@ describe('SettingPanel', () => {
       const path = new URL(rawUrl, 'http://localhost').pathname
       const payloads: Record<string, unknown> = {
         '/api/lore/items': { items: [] },
-        '/api/lore/versions': { versions: [] },
         '/api/lore/agent/messages': [{ role: 'user', content: '资料库历史消息' }],
         '/api/interactive/tellers/agent/messages': [{ role: 'user', content: '编排历史消息' }],
       }

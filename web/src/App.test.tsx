@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { TooltipProvider } from './components/ui/tooltip'
@@ -92,9 +93,16 @@ const defaultPayloads: Record<string, unknown> = {
   '/api/session/messages': [],
   '/api/chat/active': { active: false },
   '/api/lore/items': { items: [] },
-  '/api/lore/versions': { versions: [] },
   '/api/lore/agent/messages': [],
+  '/api/workspace/file': { path: 'CREATOR.md', content: '全书最高规则' },
   '/api/interactive/tellers': { tellers: [] },
+  '/api/versions/status': {
+    has_versions: false,
+    clean: true,
+    changes: [],
+    auto: { timed_enabled: false, timed_interval_minutes: 30, agent_enabled: false, agent_char_threshold: 5000, retention: 50 },
+  },
+  '/api/versions': { versions: [] },
   '/api/automations': { tasks: defaultAutomationTasks },
 }
 
@@ -216,11 +224,29 @@ describe('App', () => {
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
     expect(primaryMenuLabels().slice(0, 4)).toEqual(['书籍管理', 'Agents', '写作', '资料库'])
+    expect(primaryMenuLabels()).not.toContain('创作者')
 
     const header = screen.getByText('Nova').closest('header')
     expect(header).not.toBeNull()
     await user.click(within(header as HTMLElement).getByRole('button', { name: '互动模式' }))
     expect(primaryMenuLabels().slice(0, 4)).toEqual(['自动化', '剧情', '剧情路线图', '资料库'])
+    expect(primaryMenuLabels()).not.toContain('创作者')
+  })
+
+  it('opens CREATOR.md from the lore workspace page', async () => {
+    const user = userEvent.setup()
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    await user.click(screen.getByRole('button', { name: '资料库' }))
+    await user.click(await screen.findByRole('button', { name: 'CREATOR.md' }))
+
+    expect(await screen.findByDisplayValue('全书最高规则')).toBeInTheDocument()
+    expectOnlyActivePrimaryMenu('资料库')
   })
 
   it('does not render the removed task panel UI', async () => {
@@ -445,6 +471,46 @@ describe('App', () => {
 
     await user.click(screen.getByRole('button', { name: '自动化' }))
     expect(screen.queryByRole('button', { name: '关闭自动化' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '剧情' })).toHaveClass('is-active')
+    expectOnlyActivePrimaryMenu('剧情')
+  })
+
+  it('opens Versions as a shared page without leaving interactive mode', async () => {
+    const user = userEvent.setup()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <App />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    const header = screen.getByText('Nova').closest('header')
+    expect(header).not.toBeNull()
+    await user.click(within(header as HTMLElement).getByRole('button', { name: '互动模式' }))
+    await user.click(screen.getByRole('button', { name: '版本管理' }))
+
+    expect(await screen.findByText('版本管理')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '版本管理' })).not.toHaveClass('cursor-grab')
+    expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
+    expectOnlyActivePrimaryMenu('版本管理')
+    expect(screen.getByRole('button', { name: '剧情' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '写作' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Agents' }))
+    expect(await screen.findByRole('button', { name: '关闭 Agents' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '关闭版本管理' })).not.toBeInTheDocument()
+    expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
+    expectOnlyActivePrimaryMenu('Agents')
+
+    await user.click(screen.getByRole('button', { name: '版本管理' }))
+    expect(await screen.findByRole('button', { name: '关闭版本管理' })).toBeInTheDocument()
+    expectOnlyActivePrimaryMenu('版本管理')
+
+    await user.click(screen.getByRole('button', { name: '关闭版本管理' }))
+    expect(screen.queryByRole('button', { name: '关闭版本管理' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '剧情' })).toHaveClass('is-active')
     expectOnlyActivePrimaryMenu('剧情')
   })

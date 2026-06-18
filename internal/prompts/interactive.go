@@ -136,9 +136,9 @@ func InteractiveStoryContext(in InteractiveStoryPromptInput) string {
 		writeBlock(&sb, "世界观设定", in.WorldBuilding)
 	}
 	if strings.TrimSpace(in.LongTermMemory) != "" {
-		writeBlock(&sb, "长期记忆召回", in.LongTermMemory)
+		writeBlock(&sb, "故事记忆", in.LongTermMemory)
 	}
-	writeBlock(&sb, "当前互动状态快照(JSON)", in.SnapshotStateJSON)
+	writeBlock(&sb, "兼容状态快照(JSON)", in.SnapshotStateJSON)
 	if strings.TrimSpace(in.PreviousTurnsSummary) != "" {
 		writeBlock(&sb, "较早剧情压缩记忆", in.PreviousTurnsSummary)
 	}
@@ -235,33 +235,27 @@ func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) strin
 
 func BuildInteractiveStateSystemInstruction() string {
 	return strings.Join([]string{
-		"你是 Nova 互动故事模式的互动记忆 Agent。",
-		"你只负责把一个已经生成完成的互动故事回合转换为状态变化和长期记忆 JSON，不负责续写剧情。",
+		"你是 Nova 互动故事模式的故事记忆 Agent。",
+		"你只负责把一个已经生成完成的互动故事回合转换为故事记忆 patch JSON，不负责续写剧情。",
 		"必须只输出一个 JSON 对象，不要输出 Markdown、解释或代码块。",
-		"JSON 格式必须是 {\"state_ops\":[...],\"memory_entry\":{...}}；兼容旧字段 ops，但新输出必须使用 state_ops。",
-		"state_ops 只记录本回合已经发生且确定成立的状态变化；如果确实没有结构化状态变化，可以返回空数组。",
-		"memory_entry 记录本回合值得长期承接的剧情事实、线索、因果、人物状态或重要决定；不要记录未来计划，不要复制没有变化的旧状态。",
-		"memory_entry 字段包括 title、summary、content、people、places、tags、importance；importance 为 1 到 5。",
-		"状态 path 仅允许 on_stage、characters.<角色名>、events、location、time、pov、scene、action_space、inventory、resources、world_flags、rules、threads 及其子路径。",
-		"op 仅允许 set、merge、push、pull、inc、unset。",
+		"JSON 格式必须是 {\"story_memory_patches\":[...]}。",
+		"story_memory_patches 用于更新用户配置的故事记忆结构；每条 patch 包含 op、structure_id、record_id、key、values 或 hidden。",
+		"op 仅使用 upsert、append、hide；current_state/protagonist 等 singleton 用 upsert，important_character/quest_event 用 key upsert，plot_summary 用 append。",
+		"values 是纯文本字段对象，字段名必须来自对应结构；不要输出未来计划，不要复制没有变化的旧状态。",
 	}, "\n")
 }
 
 func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	var sb strings.Builder
-	sb.WriteString("请根据以下互动故事上下文，生成本回合的互动记忆 JSON。\n\n")
-	sb.WriteString("## 状态记录建议\n")
-	sb.WriteString("- characters.<角色名>：记录 location、status、mood、goal、known_info、injury、relationship、stance 等已经确定的角色状态。\n")
-	sb.WriteString("- scene：记录当前场景、危险度、氛围、可交互物、阻碍、出口、正在变化的环境因素。\n")
-	sb.WriteString("- inventory/resources：记录主角或队伍获得、失去、消耗、受限的物品与资源。\n")
-	sb.WriteString("- world_flags/rules：记录本轮激活或确认、后续必须遵守的世界规则、禁忌、能力边界、势力反应。\n")
-	sb.WriteString("- threads：记录尚未解决的线索、危机、承诺、倒计时和暗线压力。\n")
-	sb.WriteString("- 不要记录下一步行动建议、快捷选择或可选择入口；这些由独立快捷选择 Agent 生成。\n\n")
-	sb.WriteString("## 长期记忆建议\n")
-	sb.WriteString("- 只沉淀已经发生且后续可能影响剧情承接的事实、线索、关系变化、因果代价、重要物品和未解问题。\n")
-	sb.WriteString("- summary 用一句话说明记忆要点；content 可以写更完整的事实链，但不要加入猜测或未来安排。\n")
-	sb.WriteString("- people、places、tags 只填写本条记忆直接相关的实体；importance 越高表示越需要长期召回。\n")
-	sb.WriteString("- 不要把每轮普通动作流水账写成长记忆；若本回合无长期价值，memory_entry 可返回 null。\n\n")
+	sb.WriteString("请根据以下互动故事上下文，生成本回合的故事记忆 patch JSON。\n\n")
+	sb.WriteString("## 故事记忆建议\n")
+	sb.WriteString("- current_state：维护当前时间、地点和正在发生的事件。\n")
+	sb.WriteString("- protagonist：维护主角稳定信息、经历、技能和物品。\n")
+	sb.WriteString("- important_character：按角色姓名 upsert 重要角色的简介、关系、离场状态、技能物品和经历。\n")
+	sb.WriteString("- quest_event：按任务名 upsert 任务、危机、承诺、进度和奖惩代价。\n")
+	sb.WriteString("- plot_summary：追加已经发生且后续需要承接的剧情纪要。\n")
+	sb.WriteString("- 不要记录下一步行动建议、快捷选择或可选择入口；这些由独立快捷选择 Agent 生成。\n")
+	sb.WriteString("- 若本回合没有值得沉淀的信息，可以返回空数组。\n\n")
 	sb.WriteString("## 故事信息\n")
 	writeField(&sb, "标题", in.Title)
 	writeField(&sb, "开端", in.Origin)
@@ -274,10 +268,10 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 		writeBlock(&sb, "角色设定", in.Characters)
 		writeBlock(&sb, "世界观设定", in.WorldBuilding)
 	}
-	writeBlock(&sb, "本回合前的互动状态快照(JSON)", in.SnapshotStateJSON)
+	writeBlock(&sb, "本回合前的故事记忆", in.SnapshotStateJSON)
 	writeBlock(&sb, "用户本回合行动", in.UserAction)
 	writeBlock(&sb, "已生成的本回合正文", in.Narrative)
-	sb.WriteString("\n只输出 JSON，例如：{\"state_ops\":[{\"op\":\"set\",\"path\":\"on_stage\",\"value\":[\"角色名\"]}],\"memory_entry\":{\"title\":\"线索标题\",\"summary\":\"本回合确认的关键事实。\",\"content\":\"更完整但有界的事实链。\",\"people\":[\"角色名\"],\"places\":[\"地点\"],\"tags\":[\"线索\"],\"importance\":3}}。\n")
+	sb.WriteString("\n只输出 JSON，例如：{\"story_memory_patches\":[{\"op\":\"upsert\",\"structure_id\":\"current_state\",\"values\":{\"time\":\"夜晚\",\"location\":\"旧宅门厅\",\"event\":\"主角发现门厅的铜铃会回应钥匙。\"}},{\"op\":\"append\",\"structure_id\":\"plot_summary\",\"values\":{\"time\":\"夜晚\",\"place\":\"旧宅门厅\",\"event\":\"主角用铜钥匙触发门厅铜铃，确认旧宅对钥匙有反应。\"}}]}。\n")
 	return sb.String()
 }
 

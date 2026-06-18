@@ -16,10 +16,6 @@ type loreAgentRequest struct {
 	References  []string `json:"references"`
 }
 
-type loreVersionCreateRequest struct {
-	Message string `json:"message"`
-}
-
 func (h *Handlers) HandleLoreItems(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return
@@ -159,45 +155,4 @@ func (h *Handlers) HandleLoreAgentClear(ctx context.Context, c *app.RequestConte
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
-}
-
-func (h *Handlers) HandleLoreVersions(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	versions, err := h.app.LoreVersions()
-	if err != nil {
-		writeError(c, consts.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]any{"versions": versions})
-}
-
-func (h *Handlers) HandleLoreVersionCreate(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var body loreVersionCreateRequest
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	version, err := h.app.CreateLoreVersion(body.Message)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, version)
-}
-
-func (h *Handlers) HandleLoreVersionRestore(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	items, err := h.app.RestoreLoreVersion(c.Param("id"))
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]any{"items": items})
 }

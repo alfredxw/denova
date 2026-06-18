@@ -27,7 +27,7 @@ import { flattenFileTree, formatNumber } from './workbench-utils'
 
 const LORE_AGENT_INIT_EVENT = 'nova:lore-agent-init'
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
-type MainRouteId = 'settings' | 'skills' | 'agents' | 'automations' | 'books' | 'interactive' | 'ide-versions' | 'ide-lore' | 'ide-creator' | 'ide-teller' | 'ide-writing'
+type MainRouteId = 'settings' | 'skills' | 'agents' | 'automations' | 'books' | 'interactive' | 'versions' | 'ide-lore' | 'ide-teller' | 'ide-writing'
 
 interface ModeRouterProps {
   mode: WorkspaceMode
@@ -186,7 +186,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const agentsVisible = mode === 'agents'
   const automationsVisible = mode === 'automations'
   const skillsVisible = mode === 'skills'
-  const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'creator' || rightPanel === 'teller' || rightPanel === 'versions') ? rightPanel : null
+  const ideWorkspacePanel = mode === 'ide' && (rightPanel === 'lore' || rightPanel === 'teller') ? rightPanel : null
   const interactiveSubmode = useInteractiveStore((state) => state.submode)
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
   const [tellers, setTellers] = useState<Teller[]>([])
@@ -257,7 +257,7 @@ export function ModeRouter(props: ModeRouterProps) {
       return
     }
     onSetMode('ide')
-    if (rightPanel === 'lore' || rightPanel === 'creator' || rightPanel === 'teller' || rightPanel === 'versions') onSetRightPanel(null)
+    if (rightPanel === 'lore' || rightPanel === 'teller' || rightPanel === 'versions') onSetRightPanel(null)
   }
   const visibleMainRoute: MainRouteId = settingsOpen
     ? 'settings'
@@ -269,11 +269,13 @@ export function ModeRouter(props: ModeRouterProps) {
           ? 'automations'
           : mode === 'books'
             ? 'books'
-            : mode === 'interactive'
-              ? 'interactive'
-              : ideWorkspacePanel
-                ? `ide-${ideWorkspacePanel}`
-                : 'ide-writing'
+            : versionsVisible
+              ? 'versions'
+              : mode === 'interactive'
+                ? 'interactive'
+                : ideWorkspacePanel
+                  ? `ide-${ideWorkspacePanel}`
+                  : 'ide-writing'
   const [mountedRoutes, setMountedRoutes] = useState<ReadonlySet<MainRouteId>>(() => new Set(['ide-writing', visibleMainRoute]))
 
   useEffect(() => {
@@ -435,8 +437,8 @@ export function ModeRouter(props: ModeRouterProps) {
         </MainRouteLayer>
       )}
 
-      {mountedRoutes.has('ide-versions') && (
-        <MainRouteLayer visible={visibleMainRoute === 'ide-versions'}>
+      {mountedRoutes.has('versions') && (
+        <MainRouteLayer visible={visibleMainRoute === 'versions'}>
           <VersionPanel
             workspace={workspace}
             refreshSignal={versionRefreshSignal}
@@ -453,17 +455,6 @@ export function ModeRouter(props: ModeRouterProps) {
             onClose={() => onSetRightPanel(null)}
           >
             <SettingPanel mode="lore" workspace={workspace} />
-          </IdeWorkspacePanel>
-        </MainRouteLayer>
-      )}
-      {mountedRoutes.has('ide-creator') && (
-        <MainRouteLayer visible={visibleMainRoute === 'ide-creator'}>
-          <IdeWorkspacePanel
-            title={t('workbench.activity.creator')}
-            icon={<BookMarked className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
-            onClose={() => onSetRightPanel(null)}
-          >
-            <SettingPanel mode="creator" workspace={workspace} />
           </IdeWorkspacePanel>
         </MainRouteLayer>
       )}

@@ -1,7 +1,7 @@
 import type { ChatMessage } from '@/lib/api'
 import i18next from '@/i18n'
 import { jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { BranchSummary, HotChoicesResponse, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryIndex, StorySummary, Teller } from './types'
+import type { BranchSummary, HotChoicesResponse, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StorySummary, Teller } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
@@ -70,6 +70,61 @@ export function setInteractiveMemoryHidden(storyId: string, memoryId: string, hi
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ hidden }),
+  })
+}
+
+export function getStoryMemory(storyId: string, branchId?: string, includeHidden = false): Promise<StoryMemoryState> {
+  const params = new URLSearchParams()
+  if (branchId) params.set('branch', branchId)
+  if (includeHidden) params.set('hidden', 'true')
+  const query = params.toString()
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory${query ? `?${query}` : ''}`)
+}
+
+export function updateStoryMemorySettings(storyId: string, input: Partial<StoryMemorySettings>): Promise<StoryMemorySettings> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/settings`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function saveStoryMemoryStructure(storyId: string, input: Partial<StoryMemoryStructure>): Promise<StoryMemoryStructure> {
+  const id = input.id?.trim()
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/structures${id ? `/${encodeURIComponent(id)}` : ''}`, {
+    method: id ? 'PATCH' : 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function deleteStoryMemoryStructure(storyId: string, structureId: string): Promise<void> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/structures/${encodeURIComponent(structureId)}`, { method: 'DELETE' })
+}
+
+export function saveStoryMemoryRecord(storyId: string, input: Partial<StoryMemoryRecord> & { structure_id: string; branch_id?: string; values: Record<string, string> }): Promise<StoryMemoryRecord> {
+  const id = input.id?.trim()
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/records${id ? `/${encodeURIComponent(id)}` : ''}`, {
+    method: id ? 'PATCH' : 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function setStoryMemoryRecordHidden(storyId: string, recordId: string, branchId: string | undefined, hidden: boolean): Promise<StoryMemoryRecord> {
+  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/records/${encodeURIComponent(recordId)}/hide${query}`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ hidden }),
+  })
+}
+
+export function generateStoryMemory(storyId: string, branchId?: string): Promise<StoryMemoryState> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/generate`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ branch_id: branchId }),
   })
 }
 

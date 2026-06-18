@@ -12,6 +12,7 @@ import { type LoreItem } from '@/lib/api'
 import type { Teller } from '../types'
 
 const CREATOR_PATH = 'CREATOR.md'
+const CREATOR_ENTRY_ID = '__creator__'
 const LORE_AGENT_ENTRY_ID = '__lore_agent__'
 const TELLER_AGENT_ENTRY_ID = '__teller_agent__'
 const TYPE_OPTIONS = [
@@ -106,6 +107,16 @@ export function LoreDirectory({
             placeholder={t('settingPanel.searchLore')}
           />
         </div>
+        <button
+          type="button"
+          onClick={() => onSelect(CREATOR_ENTRY_ID)}
+          className={`mt-2 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
+            activeId === CREATOR_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+          }`}
+        >
+          <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+          <span className="min-w-0 flex-1 truncate">{CREATOR_PATH}</span>
+        </button>
         <button
           type="button"
           onClick={() => onSelect(LORE_AGENT_ENTRY_ID)}

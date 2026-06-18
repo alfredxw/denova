@@ -4,6 +4,7 @@ const workbench = {
   'workbench.activity.books': 'Book Management',
   'workbench.activity.creator': 'Creator',
   'workbench.activity.lore': 'Lore',
+  'workbench.activity.memory': 'Story Memory',
   'workbench.activity.settings': 'Settings',
   'workbench.activity.skills': 'Skills',
   'workbench.activity.story': 'Story',

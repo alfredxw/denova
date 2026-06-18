@@ -1,6 +1,6 @@
 import type { SSEEvent } from '@/lib/api'
 
-export type InteractiveSubmode = 'story' | 'timeline' | 'lore' | 'creator' | 'teller'
+export type InteractiveSubmode = 'story' | 'timeline' | 'memory' | 'lore' | 'creator' | 'teller'
 
 export interface StorySummary {
   id: string
@@ -158,6 +158,60 @@ export interface InteractiveMemoryState {
   recent_recall?: InteractiveMemoryRecall
   sync_status?: 'pending' | 'ready' | 'failed' | ''
   sync_error?: string
+}
+
+export interface StoryMemorySettings {
+  enabled: boolean
+  auto_interval_turns: number
+}
+
+export interface StoryMemoryField {
+  id: string
+  name: string
+  description?: string
+  required?: boolean
+  order: number
+}
+
+export interface StoryMemoryStructure {
+  id: string
+  name: string
+  description?: string
+  mode: 'singleton' | 'keyed' | 'append'
+  key_field_id?: string
+  fields: StoryMemoryField[]
+  order: number
+  built_in?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface StoryMemoryRecord {
+  id: string
+  structure_id: string
+  branch_id: string
+  turn_id?: string
+  anchor_turn_id?: string
+  key?: string
+  values: Record<string, string>
+  hidden?: boolean
+  manual?: boolean
+  source?: string
+  inherited_from?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface StoryMemoryState {
+  story_id: string
+  branch_id: string
+  settings: StoryMemorySettings
+  structures: StoryMemoryStructure[]
+  records: StoryMemoryRecord[]
+  recent_recall?: InteractiveMemoryRecall
+  sync_status?: 'pending' | 'ready' | 'failed' | ''
+  sync_error?: string
+  next_auto_in_turns?: number
 }
 
 export interface BranchSummary {

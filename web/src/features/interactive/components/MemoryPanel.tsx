@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Eye, EyeOff, Loader2, Pencil, Plus, Save, Search, X } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Pencil, Plus, Save, Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { createInteractiveMemory, getInteractiveMemory, setInteractiveMemoryHidden, updateInteractiveMemory } from '../api'
 import type { InteractiveMemoryEntry, InteractiveMemoryState, Snapshot } from '../types'
@@ -42,7 +42,6 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
   const [editing, setEditing] = useState<InteractiveMemoryEntry | null>(null)
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState<MemoryFormState>(emptyForm)
-  const [stateOpen, setStateOpen] = useState(false)
 
   const effectiveBranchId = branchId || snapshot?.branch_id || ''
   const syncStatus = memory?.sync_status || snapshot?.current_turn?.memory_status || snapshot?.current_turn?.state_status || ''
@@ -196,14 +195,6 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
           </div>
         )}
       </div>
-
-      <section className="shrink-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
-        <button type="button" className="flex w-full items-center justify-between px-4 py-2.5 text-left text-xs font-medium text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={() => setStateOpen((open) => !open)}>
-          <span>{t('memoryPanel.currentState')}</span>
-          {stateOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-        </button>
-        {stateOpen && <pre className="max-h-56 overflow-auto border-t border-[var(--nova-border)] px-4 py-3 text-[11px] leading-5 text-[var(--nova-text-muted)]">{JSON.stringify(snapshot?.state || {}, null, 2)}</pre>}
-      </section>
     </aside>
   )
 }

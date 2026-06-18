@@ -291,3 +291,99 @@ type InteractiveMemoryUpdateRequest struct {
 type InteractiveMemoryHideRequest struct {
 	Hidden *bool `json:"hidden,omitempty"`
 }
+
+type StoryMemorySettings struct {
+	Enabled           bool `json:"enabled"`
+	AutoIntervalTurns int  `json:"auto_interval_turns"`
+}
+
+type StoryMemoryField struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+	Order       int    `json:"order"`
+}
+
+type StoryMemoryStructure struct {
+	ID          string             `json:"id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description,omitempty"`
+	Mode        string             `json:"mode"`
+	KeyFieldID  string             `json:"key_field_id,omitempty"`
+	Fields      []StoryMemoryField `json:"fields"`
+	Order       int                `json:"order"`
+	BuiltIn     bool               `json:"built_in,omitempty"`
+	CreatedAt   string             `json:"created_at,omitempty"`
+	UpdatedAt   string             `json:"updated_at,omitempty"`
+}
+
+type StoryMemoryRecord struct {
+	ID            string            `json:"id"`
+	StructureID   string            `json:"structure_id"`
+	BranchID      string            `json:"branch_id"`
+	TurnID        string            `json:"turn_id,omitempty"`
+	AnchorTurnID  string            `json:"anchor_turn_id,omitempty"`
+	Key           string            `json:"key,omitempty"`
+	Values        map[string]string `json:"values"`
+	Hidden        bool              `json:"hidden,omitempty"`
+	Manual        bool              `json:"manual,omitempty"`
+	Source        string            `json:"source,omitempty"`
+	InheritedFrom string            `json:"inherited_from,omitempty"`
+	CreatedAt     string            `json:"created_at"`
+	UpdatedAt     string            `json:"updated_at"`
+}
+
+type StoryMemoryState struct {
+	StoryID         string                   `json:"story_id"`
+	BranchID        string                   `json:"branch_id"`
+	Settings        StoryMemorySettings      `json:"settings"`
+	Structures      []StoryMemoryStructure   `json:"structures"`
+	Records         []StoryMemoryRecord      `json:"records"`
+	RecentRecall    *InteractiveMemoryRecall `json:"recent_recall,omitempty"`
+	SyncStatus      string                   `json:"sync_status,omitempty"`
+	SyncError       string                   `json:"sync_error,omitempty"`
+	NextAutoInTurns int                      `json:"next_auto_in_turns,omitempty"`
+}
+
+type StoryMemorySettingsUpdateRequest struct {
+	Enabled           *bool `json:"enabled,omitempty"`
+	AutoIntervalTurns *int  `json:"auto_interval_turns,omitempty"`
+}
+
+type StoryMemoryStructureRequest struct {
+	ID          string             `json:"id,omitempty"`
+	Name        string             `json:"name"`
+	Description string             `json:"description,omitempty"`
+	Mode        string             `json:"mode"`
+	KeyFieldID  string             `json:"key_field_id,omitempty"`
+	Fields      []StoryMemoryField `json:"fields"`
+	Order       int                `json:"order"`
+}
+
+type StoryMemoryRecordRequest struct {
+	ID          string            `json:"id,omitempty"`
+	BranchID    string            `json:"branch_id,omitempty"`
+	StructureID string            `json:"structure_id"`
+	TurnID      string            `json:"turn_id,omitempty"`
+	Key         string            `json:"key,omitempty"`
+	Values      map[string]string `json:"values"`
+	Manual      bool              `json:"manual,omitempty"`
+}
+
+type StoryMemoryRecordHideRequest struct {
+	Hidden *bool `json:"hidden,omitempty"`
+}
+
+type StoryMemoryPatch struct {
+	Op          string            `json:"op"`
+	StructureID string            `json:"structure_id,omitempty"`
+	RecordID    string            `json:"record_id,omitempty"`
+	Key         string            `json:"key,omitempty"`
+	Values      map[string]string `json:"values,omitempty"`
+	Hidden      *bool             `json:"hidden,omitempty"`
+}
+
+type StoryMemoryGenerateRequest struct {
+	BranchID string `json:"branch_id,omitempty"`
+}

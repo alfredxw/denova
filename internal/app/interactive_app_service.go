@@ -108,6 +108,133 @@ func (s *InteractiveAppService) InteractiveMemory(storyID, branchID string, incl
 	return store.InteractiveMemory(storyID, branchID, includeHidden)
 }
 
+func (a *App) StoryMemory(storyID, branchID string, includeHidden bool) (interactive.StoryMemoryState, error) {
+	return a.interactiveService().StoryMemory(storyID, branchID, includeHidden)
+}
+
+func (s *InteractiveAppService) StoryMemory(storyID, branchID string, includeHidden bool) (interactive.StoryMemoryState, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.StoryMemoryState{}, ErrNoWorkspace
+	}
+	return store.StoryMemory(storyID, branchID, includeHidden)
+}
+
+func (a *App) UpdateStoryMemorySettings(storyID string, req interactive.StoryMemorySettingsUpdateRequest) (interactive.StoryMemorySettings, error) {
+	return a.interactiveService().UpdateStoryMemorySettings(storyID, req)
+}
+
+func (s *InteractiveAppService) UpdateStoryMemorySettings(storyID string, req interactive.StoryMemorySettingsUpdateRequest) (interactive.StoryMemorySettings, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.StoryMemorySettings{}, ErrNoWorkspace
+	}
+	return store.UpdateStoryMemorySettings(storyID, req)
+}
+
+func (a *App) SaveStoryMemoryStructure(storyID string, req interactive.StoryMemoryStructureRequest) (interactive.StoryMemoryStructure, error) {
+	return a.interactiveService().SaveStoryMemoryStructure(storyID, req)
+}
+
+func (s *InteractiveAppService) SaveStoryMemoryStructure(storyID string, req interactive.StoryMemoryStructureRequest) (interactive.StoryMemoryStructure, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.StoryMemoryStructure{}, ErrNoWorkspace
+	}
+	return store.SaveStoryMemoryStructure(storyID, req)
+}
+
+func (a *App) DeleteStoryMemoryStructure(storyID, structureID string) error {
+	return a.interactiveService().DeleteStoryMemoryStructure(storyID, structureID)
+}
+
+func (s *InteractiveAppService) DeleteStoryMemoryStructure(storyID, structureID string) error {
+	store := s.store()
+	if store == nil {
+		return ErrNoWorkspace
+	}
+	return store.DeleteStoryMemoryStructure(storyID, structureID)
+}
+
+func (a *App) SaveStoryMemoryRecord(storyID string, req interactive.StoryMemoryRecordRequest) (interactive.StoryMemoryRecord, error) {
+	return a.interactiveService().SaveStoryMemoryRecord(storyID, req)
+}
+
+func (s *InteractiveAppService) SaveStoryMemoryRecord(storyID string, req interactive.StoryMemoryRecordRequest) (interactive.StoryMemoryRecord, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.StoryMemoryRecord{}, ErrNoWorkspace
+	}
+	return store.SaveStoryMemoryRecord(storyID, req)
+}
+
+func (a *App) SetStoryMemoryRecordHidden(storyID, recordID, branchID string, hidden bool) (interactive.StoryMemoryRecord, error) {
+	return a.interactiveService().SetStoryMemoryRecordHidden(storyID, recordID, branchID, hidden)
+}
+
+func (s *InteractiveAppService) SetStoryMemoryRecordHidden(storyID, recordID, branchID string, hidden bool) (interactive.StoryMemoryRecord, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.StoryMemoryRecord{}, ErrNoWorkspace
+	}
+	return store.SetStoryMemoryRecordHidden(storyID, recordID, branchID, hidden)
+}
+
+func (a *App) GenerateStoryMemory(ctx context.Context, storyID, branchID string) (interactive.StoryMemoryState, error) {
+	return a.interactiveService().GenerateStoryMemory(ctx, storyID, branchID)
+}
+
+func (s *InteractiveAppService) GenerateStoryMemory(ctx context.Context, storyID, branchID string) (interactive.StoryMemoryState, error) {
+	a := s.app
+	a.mu.Lock()
+	store := a.interactive
+	cfg := a.cfg
+	workspace := a.workspace
+	sessionStore := a.sessionStore
+	a.mu.Unlock()
+	if store == nil || cfg == nil {
+		return interactive.StoryMemoryState{}, ErrNoWorkspace
+	}
+	snapshot, err := store.Snapshot(storyID, branchID)
+	if err != nil {
+		return interactive.StoryMemoryState{}, err
+	}
+	if snapshot.CurrentTurn == nil {
+		return interactive.StoryMemoryState{}, fmt.Errorf("当前分支还没有可整理的互动回合")
+	}
+	runtimeCfg := *cfg
+	runtimeCfg.Workspace = workspace
+	conversation := newInteractiveConversation(store, runtimeCfg.NovaDir, workspace, storyID, snapshot.BranchID, snapshot.CurrentTurn.User, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
+	instruction, err := conversation.BuildStateInstruction(*snapshot.CurrentTurn)
+	if err != nil {
+		return interactive.StoryMemoryState{}, err
+	}
+	runCtx, cancel := context.WithTimeout(ctx, interactiveStateTimeout)
+	defer cancel()
+	output, err := agent.GenerateInteractiveState(runCtx, &runtimeCfg, instruction)
+	if err != nil {
+		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveState, instruction, "执行失败："+err.Error())
+		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
+		return interactive.StoryMemoryState{}, err
+	}
+	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveState, instruction, output)
+	result, err := parseInteractiveMemoryOutput(output)
+	if err != nil {
+		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
+		return interactive.StoryMemoryState{}, err
+	}
+	if len(result.StoryMemoryPatches) > 0 {
+		if _, err := store.ApplyStoryMemoryPatches(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, result.StoryMemoryPatches); err != nil {
+			_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
+			return interactive.StoryMemoryState{}, err
+		}
+	}
+	if err := store.MarkInteractiveMemoryReady(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID); err != nil {
+		return interactive.StoryMemoryState{}, err
+	}
+	return store.StoryMemory(storyID, snapshot.BranchID, true)
+}
+
 func (a *App) CreateInteractiveMemory(storyID string, req interactive.InteractiveMemoryCreateRequest) (interactive.InteractiveMemoryEntry, error) {
 	return a.interactiveService().CreateInteractiveMemory(storyID, req)
 }
@@ -323,7 +450,19 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
 		}, emit)
 		if turn, stateReady, ok := conversation.LastTurnForState(); ok && !stateReady && ctx.Err() == nil {
-			startInteractiveStateTask(&runtimeCfg, conversation, turn, sessionStore)
+			shouldGenerate, nextAuto, err := store.ShouldGenerateStoryMemory(storyID, turn.BranchID)
+			if err != nil {
+				log.Printf("[interactive-memory-agent] auto decision failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
+				markInteractiveStateFailed(conversation, turn, err)
+			} else if shouldGenerate {
+				log.Printf("[interactive-memory-agent] auto trigger story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
+				startInteractiveStateTask(&runtimeCfg, conversation, turn, sessionStore)
+			} else if err := store.MarkInteractiveMemoryReady(storyID, turn.BranchID, turn.ID); err != nil {
+				log.Printf("[interactive-memory-agent] mark skipped turn ready failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
+				markInteractiveStateFailed(conversation, turn, err)
+			} else {
+				log.Printf("[interactive-memory-agent] auto skipped story_id=%s branch_id=%s turn_id=%s next_auto_in_turns=%d", storyID, turn.BranchID, turn.ID, nextAuto)
+			}
 		}
 		log.Printf("[interactive-agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})

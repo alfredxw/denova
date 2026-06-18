@@ -489,9 +489,11 @@ function App() {
   }, [rightPanel, setRightPanel])
   const handleOpenVersions = useCallback(() => {
     setSettingsOpen(false)
-    setMode('ide')
+    if (mode !== 'ide' && mode !== 'interactive') {
+      setMode(booksReturnModeRef.current)
+    }
     handleSetRightPanel('versions')
-  }, [handleSetRightPanel, setMode])
+  }, [handleSetRightPanel, mode, setMode])
 
   const handleOpenGlobalSearch = useCallback(() => {
     setSettingsOpen(false)

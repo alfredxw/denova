@@ -46,7 +46,7 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 	if err != nil {
 		return nil, fmt.Errorf("创建会话存储失败: %w", err)
 	}
-	sess, err := store.GetActiveOrCreate()
+	sess, err := activeUserSessionOrCreate(store)
 	if err != nil {
 		return nil, fmt.Errorf("创建会话失败: %w", err)
 	}

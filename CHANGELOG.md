@@ -8,8 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- 互动模式新增按故事和分支隔离的外置长期记忆，后台互动记忆 Agent 会在每轮正文落盘后异步生成状态变化和长期纪要；互动故事 Agent 可通过只读工具按当前分支主动召回相关记忆。
-- 互动故事新增长期记忆 API 和右侧记忆面板，支持搜索、按人物/地点/标签匹配、手动新增、编辑、软隐藏和恢复记忆；当前状态快照保留在面板折叠区。
+- 互动模式新增独立一级模块“故事记忆 / Story Memory”，支持按结构管理当前状态、主角信息、重要角色、任务事件和剧情纪要；用户可新增自定义结构和纯文本字段，按当前故事线和分支查看、编辑、隐藏或恢复记忆内容。
+- 故事记忆存储升级为 `interactive/memory/story-<storyID>.json` v2，新增 `settings`、`structures` 和 `records`；新分支会继承分叉点前的可见记忆，分叉后的编辑和隐藏会在当前分支 copy-on-write，不污染父分支。
+- 故事记忆新增自动整理配置，默认每 3 回合触发一次后台整理，也支持在故事记忆模块中手动触发整理。
+- 互动模式新增按故事和分支隔离的故事记忆召回工具，互动故事 Agent 可通过只读工具按当前分支主动召回相关记忆。
+- 互动故事新增兼容记忆 API 和右侧故事记忆预览面板，支持搜索、手动新增、编辑、软隐藏和恢复记忆。
 - 设置页新增应用更新检查与安装：后端通过 GitHub latest Release 匹配当前平台安装包，前端支持自动检查、手动检查、一键安装并提示重启生效。
 - WebUI 新增移动端工作台布局：窄屏下使用底部一级菜单、项目目录抽屉、创作 Agent 抽屉和互动场景记忆抽屉，避免桌面可拖拽面板在手机宽度下挤出主编辑/剧情区域。
 - WebUI 左侧一级菜单支持拖拽排序，写作模式与互动模式分别保存顺序，避免两种工作台入口互相影响。
@@ -31,6 +34,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 互动记忆 Agent 输出协议从 `state_ops + memory_entry` 调整为 `story_memory_patches`，旧 `memory_entry` 输出会兼容映射为 `plot_summary` 故事记忆；旧 `/api/interactive/stories/:id/memory` 接口继续保留，并映射到故事记忆记录。
+- 互动模式不再把“当前状态”作为独立用户管理入口，当前时间、地点和事件改由故事记忆的默认结构维护；右侧记忆面板改为故事记忆预览，不再展示原始状态 JSON。
+- 资料库不再维护独立版本和 `.nova/lore/versions` 自动备份，资料条目跟随工作区整体版本管理统一保存与恢复；对应 `/api/lore/versions` 专用接口和资料库 Agent 面板中的版本入口已移除。
+- WebUI 移除独立的“创作者”一级菜单，`CREATOR.md` 改为在资料库页面内作为固定条目统一管理，仍保留 workspace 根目录文件和 Agent 注入契约。
+- WebUI 将“版本管理”调整为写作模式和互动模式共享的一级入口，打开时覆盖当前工作区但不自动切换写作/互动模式。
 - WebUI 将用户可见的 “IDE 模式 / Novel IDE” 统一改名为“写作模式 / Writing Mode”，内部 `ide` 配置键和存储 key 保持兼容。
 - “状态记忆 Agent”用户可见命名合并为“互动记忆 Agent / Interactive Memory Agent”，继续兼容内部 `interactive_state` 配置键，同时负责状态快照和长期纪要生成。
 - 互动故事上下文不再由后端默认整段预注入资料库和长期记忆；互动 Agent 默认 system prompt 会引导 Agent 使用 `list_lore_items` / `read_lore_items` 与 `list_interactive_memories` / `read_interactive_memories` 主动召回，且 Agents 页会直接展示可编辑的默认 system prompt。
@@ -50,6 +58,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复一级菜单栏被隐藏侧栏的可调整宽度命中区覆盖，导致鼠标显示为宽度调整形状且项目侧栏拖拽调整失效的问题。
+- 修复设置页新增或修改模型配置后，Agents 页模型配置下拉不会立即刷新、必须整页刷新才出现的问题。
+- 修复设置页每次打开都会自动请求 GitHub 更新检查的问题；自动检查现在会在浏览器本地记录时间，1 小时内不重复检查，手动检查不受影响。
+- 修复资料库 Agent 固定会话可能出现在创作 Agent 会话列表并被切换使用，导致创作对话和资料库 Agent 对话串在一起的问题；普通创作会话现在会过滤并拒绝操作固定 Agent 会话。
 - 修复设置页“重启服务”只让后端进程退出而没有重新启动的问题；后端现在会用当前可执行文件、启动参数和环境变量替换当前进程，并在无法安排重启时返回明确错误。
 - Agent 追踪不再把正文流、thinking 增量、工具参数增量和完成状态等 SSE 传输事件逐条写入 `.nova/runs`，只保留工具调用、工具结果和异常等语义事件，降低运行追踪噪音和空间占用。
 - 修复自动化章节批次触发器会因章节字数、更新时间变化或 `trigger_state` 丢失而重复触发同一批章节的问题；同一批次现在按章节路径和历史 Inbox evidence 去重。

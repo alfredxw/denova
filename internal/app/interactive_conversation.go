@@ -57,6 +57,11 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	if err != nil {
 		return nil, fmt.Errorf("序列化互动状态失败: %w", err)
 	}
+	storyMemory, err := c.store.StoryMemoryContextSummary(c.storyID, storyCtx.Snapshot.BranchID, 12*1024)
+	if err != nil {
+		log.Printf("[interactive-agent] load story memory failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
+		storyMemory = ""
+	}
 	characters := ""
 	worldBuilding := ""
 	contextMessage := prompts.InteractiveStoryContext(prompts.InteractiveStoryPromptInput{
@@ -67,6 +72,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		ReplyTargetChars:     c.replyTargetChars,
 		Characters:           characters,
 		WorldBuilding:        worldBuilding,
+		LongTermMemory:       storyMemory,
 		SnapshotStateJSON:    string(stateJSON),
 		PreviousTurnsSummary: turnMemory.PreviousSummary,
 	})
@@ -77,7 +83,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		history = append(history, schema.AssistantMessage(turn.Narrative, nil))
 	}
 	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage, tellerTurnContextPrompt, teller.RandomEventRate)))
-	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, characters, worldBuilding, string(stateJSON), turnMemory, agentMessage)
+	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, characters, worldBuilding, storyMemory, turnMemory, agentMessage)
 	c.mu.Lock()
 	c.lastSources = sourceSummary
 	c.mu.Unlock()
@@ -93,7 +99,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		teller.RandomEventRate,
 		interactivePartSummary(characters),
 		interactivePartSummary(worldBuilding),
-		interactivePartSummary(string(stateJSON)),
+		interactivePartSummary(storyMemory),
 		len(storyCtx.Snapshot.Turns),
 		len(turnMemory.RecentTurns),
 		interactivePartSummary(turnMemory.PreviousSummary),
@@ -252,9 +258,10 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 	if err != nil {
 		return "", err
 	}
-	stateJSON, err := json.MarshalIndent(storyCtx.Snapshot.State, "", "  ")
+	storyMemory, err := c.store.StoryMemoryContextSummary(c.storyID, storyCtx.Snapshot.BranchID, 12*1024)
 	if err != nil {
-		return "", fmt.Errorf("序列化互动状态失败: %w", err)
+		log.Printf("[interactive-state-agent] load story memory failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
+		storyMemory = ""
 	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	instruction := prompts.InteractiveStateInstruction(prompts.InteractiveStatePromptInput{
@@ -266,7 +273,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		Characters:        "",
 		WorldBuilding:     "",
 		LoreItems:         c.loreContext(),
-		SnapshotStateJSON: string(stateJSON),
+		SnapshotStateJSON: storyMemory,
 		UserAction:        turn.User,
 		Narrative:         turn.Narrative,
 	})
@@ -277,7 +284,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		turn.ID,
 		storyCtx.Meta.StoryTellerID,
 		interactiveTellerSlotSummary(teller, "state_memory"),
-		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, c.loreContext(), "", "", string(stateJSON), turn.User, turn.Narrative),
+		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, c.loreContext(), "", "", storyMemory, turn.User, turn.Narrative),
 		interactivePartSummary(instruction),
 	)
 	return instruction, nil

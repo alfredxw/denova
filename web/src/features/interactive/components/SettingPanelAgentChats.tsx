@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { History, Plus, RotateCcw, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   clearLoreAgentSession,
@@ -8,7 +8,6 @@ import {
   type ChatMessage,
   type LoreAgentResult,
   type LoreItem,
-  type LoreVersion,
   type SSEEvent,
 } from '@/lib/api'
 import { Button } from '@/components/ui/button'
@@ -16,10 +15,8 @@ import { MessageList } from '@/components/Chat/MessageList'
 import { InputArea } from '@/components/Chat/InputArea'
 import type { ReferencePickerItem } from '@/components/Chat/FileReferencePicker'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { formatDateTime as formatLocaleDateTime } from '@/i18n'
 
 const LORE_AGENT_INIT_EVENT = 'nova:lore-agent-init'
-const actionButtonClassName = 'nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 
 type LoreAgentChatMessage = {
   id: string
@@ -68,25 +65,13 @@ interface LoreToolPayload {
 export function LoreAgentChat({
   workspace,
   items,
-  versions,
-  versionsVisible,
-  saving,
   onResult,
   onToolMutation,
-  onToggleVersions,
-  onCreateVersion,
-  onRestoreVersion,
 }: {
   workspace: string
   items: LoreItem[]
-  versions: LoreVersion[]
-  versionsVisible: boolean
-  saving: boolean
   onResult: (result: LoreAgentResult) => void
   onToolMutation: (itemIds: string[]) => void
-  onToggleVersions: () => void
-  onCreateVersion: () => void
-  onRestoreVersion: (version: LoreVersion) => void
 }) {
   const { t } = useTranslation()
   const workspaceRef = useRef(workspace)
@@ -316,44 +301,7 @@ export function LoreAgentChat({
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
       <div className="flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4">
         <div className="text-xs text-[var(--nova-text-faint)]">{t('settingPanel.loreAgent.persistHint')}</div>
-        <Button className={actionButtonClassName} variant="outline" size="sm" onClick={onToggleVersions}>
-          <History className="h-4 w-4" />
-          {t('settingPanel.loreAgent.versions')}
-        </Button>
       </div>
-
-      {versionsVisible && (
-        <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3">
-          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
-            <div className="flex h-9 items-center justify-between border-b border-[var(--nova-border)] px-3">
-              <span className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.loreAgent.versionTitle')}</span>
-              <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving} onClick={onCreateVersion}>
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            <div className="max-h-36 overflow-auto p-2">
-              {versions.length ? versions.map((version) => (
-                <div key={version.id} className="flex items-center gap-2 rounded px-2 py-1.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[var(--nova-text)]">{version.message || version.id}</div>
-                    <div className="truncate text-[11px] text-[var(--nova-text-faint)]">{formatDateTime(version.created_at)} · {t('settingPanel.loreAgent.versionItems', { count: version.item_count })}</div>
-                  </div>
-                  <button
-                    type="button"
-                    className="nova-nav-item rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-                    onClick={() => onRestoreVersion(version)}
-                    aria-label={t('settingPanel.loreAgent.restoreVersion')}
-                  >
-                    <RotateCcw className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              )) : (
-                <div className="px-2 py-3 text-xs text-[var(--nova-text-faint)]">{t('settingPanel.loreAgent.noVersions')}</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {messages.length === 0 ? (
@@ -488,10 +436,6 @@ function loreAgentResultSummary(result: LoreAgentResult, t: (key: string, option
     result.deleted_ids?.length ? `${t('settingPanel.result.deleted')} ${result.deleted_ids.length}` : '',
   ].filter(Boolean).join('，')
   return `${result.message || t('settingPanel.loreAgent.done')}${changed ? `（${changed}）` : ''}`
-}
-
-function formatDateTime(value: string) {
-  return formatLocaleDateTime(value) || value
 }
 
 function loreTypeLabel(type: LoreItem['type'], t: (key: string) => string) {

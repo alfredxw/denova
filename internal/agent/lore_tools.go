@@ -183,9 +183,6 @@ func formatWriteLoreItemsResult(result book.LoreApplyResult) string {
 	lines := []string{message}
 	lines = append(lines, "item_ids: "+string(itemIDsJSON))
 	lines = append(lines, "deleted_ids: "+string(deletedIDsJSON))
-	if result.Version != nil && result.Version.ID != "" {
-		lines = append(lines, "version_id: "+result.Version.ID)
-	}
 	return strings.Join(lines, "\n")
 }
 

@@ -14,7 +14,7 @@ import (
 	"nova/internal/session"
 )
 
-// LoreAppService 负责资料库 CRUD、资料库版本和资料库 Agent。
+// LoreAppService 负责资料库 CRUD 和资料库 Agent。
 type LoreAppService struct {
 	app *App
 }
@@ -65,42 +65,6 @@ func (s *LoreAppService) DeleteLoreItem(id string) error {
 		return ErrNoWorkspace
 	}
 	return book.NewLoreStore(state.Workspace()).Delete(id)
-}
-
-func (a *App) LoreVersions() ([]book.LoreVersion, error) {
-	return a.lore().LoreVersions()
-}
-
-func (s *LoreAppService) LoreVersions() ([]book.LoreVersion, error) {
-	state := s.bookState()
-	if state == nil {
-		return nil, ErrNoWorkspace
-	}
-	return book.NewLoreStore(state.Workspace()).Versions()
-}
-
-func (a *App) CreateLoreVersion(message string) (book.LoreVersion, error) {
-	return a.lore().CreateLoreVersion(message)
-}
-
-func (s *LoreAppService) CreateLoreVersion(message string) (book.LoreVersion, error) {
-	state := s.bookState()
-	if state == nil {
-		return book.LoreVersion{}, ErrNoWorkspace
-	}
-	return book.NewLoreStore(state.Workspace()).Snapshot(message)
-}
-
-func (a *App) RestoreLoreVersion(id string) ([]book.LoreItem, error) {
-	return a.lore().RestoreLoreVersion(id)
-}
-
-func (s *LoreAppService) RestoreLoreVersion(id string) ([]book.LoreItem, error) {
-	state := s.bookState()
-	if state == nil {
-		return nil, ErrNoWorkspace
-	}
-	return book.NewLoreStore(state.Workspace()).RestoreVersion(id)
 }
 
 func (a *App) RunLoreAgent(ctx context.Context, instruction string, references []string) (book.LoreApplyResult, error) {

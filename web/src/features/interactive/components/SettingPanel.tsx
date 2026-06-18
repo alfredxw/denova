@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BookMarked, Building2, Database, FileText, Library, MapPin, Save, ScrollText, SlidersHorizontal, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { createLoreVersion, createLoreItem, deleteLoreItem, getLoreItems, getLoreVersions, readFile, restoreLoreVersion, saveFile, updateLoreItem, type LoreAgentResult, type LoreItem, type LoreVersion } from '@/lib/api'
+import { createLoreItem, deleteLoreItem, getLoreItems, readFile, saveFile, updateLoreItem, type LoreAgentResult, type LoreItem } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { createInteractiveTeller, deleteInteractiveTeller, getInteractiveTellers, updateInteractiveTeller } from '../api'
 import type { Teller, TellerAgentResult } from '../types'
@@ -12,6 +12,7 @@ import { CreatorDirectory, CreatorEditor, LoreDirectory, LoreEditor, TellerDirec
 import { TellerEditor } from './SettingPanelTellerEditor'
 
 const CREATOR_PATH = 'CREATOR.md'
+const CREATOR_ENTRY_ID = '__creator__'
 const LORE_AGENT_ENTRY_ID = '__lore_agent__'
 const TELLER_AGENT_ENTRY_ID = '__teller_agent__'
 const EMPTY_TELLERS: Teller[] = []
@@ -100,8 +101,6 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const [draft, setDraft] = useState<LoreItem | null>(null)
   const [tagDraft, setTagDraft] = useState('')
   const [query, setQuery] = useState('')
-  const [versions, setVersions] = useState<LoreVersion[]>([])
-  const [versionsVisible, setVersionsVisible] = useState(false)
   const [creatorContent, setCreatorContent] = useState('')
   const [tellers, setTellers] = useState<Teller[]>(externalTellers)
   const [activeTellerId, setActiveTellerId] = useState('')
@@ -124,8 +123,6 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     setDraft(null)
     setTagDraft('')
     setQuery('')
-    setVersions([])
-    setVersionsVisible(false)
     if (!workspace)
       return () => {
         cancelled = true
@@ -148,27 +145,6 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }, [workspace])
 
   useEffect(() => {
-    if (activeMode !== 'lore') return
-    let cancelled = false
-    if (!workspace) {
-      setVersions([])
-      return () => {
-        cancelled = true
-      }
-    }
-    getLoreVersions()
-      .then((data) => {
-        if (!cancelled) setVersions(data)
-      })
-      .catch(() => {
-        if (!cancelled) setVersions([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [activeMode, workspace])
-
-  useEffect(() => {
     const item = items.find((entry) => entry.id === activeId) || null
     const nextDraft = item ? { ...item, tags: [...(item.tags || [])] } : null
     const nextTagDraft = (item?.tags || []).join('，')
@@ -188,7 +164,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }, [draft, tagDraft])
 
   useEffect(() => {
-    if (activeMode !== 'creator') return
+    if (activeMode !== 'creator' && !(activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)) return
     let cancelled = false
     setCreatorContent('')
     if (!workspace)
@@ -205,7 +181,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     return () => {
       cancelled = true
     }
-  }, [activeMode, workspace])
+  }, [activeId, activeMode, workspace])
 
   useEffect(() => {
     setTellers(externalTellers)
@@ -278,16 +254,10 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     setActiveId(nextActiveId || LORE_AGENT_ENTRY_ID)
   }
 
-  const refreshVersions = async () => {
-    const data = await getLoreVersions()
-    setVersions(data)
-  }
-
   useEffect(() => {
     const onLoreUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ item_ids?: string[] }>).detail
       void refreshItems(detail?.item_ids?.[0])
-      void refreshVersions()
     }
     window.addEventListener('nova:lore-updated', onLoreUpdated)
     return () => window.removeEventListener('nova:lore-updated', onLoreUpdated)
@@ -403,7 +373,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const handleSave = async () => {
     setSaving(true)
     try {
-      if (activeMode === 'creator') {
+      if (activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)) {
         await saveFile(CREATOR_PATH, creatorContent)
         return
       }
@@ -470,41 +440,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     }
   }, [activeMode, activeTellerId, tellerDraft, tellerTagDraft])
 
-  const handleCreateLoreVersion = async () => {
-    setSaving(true)
-    try {
-      await createLoreVersion(t('settingPanel.manualLoreVersion'))
-      await refreshVersions()
-      setVersionsVisible(true)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleRestoreLoreVersion = async (version: LoreVersion) => {
-    if (
-      !window.confirm(
-        t('settingPanel.confirmRestoreLoreVersion', {
-          name: version.message || version.id,
-        }),
-      )
-    )
-      return
-    setSaving(true)
-    try {
-      const restored = await restoreLoreVersion(version.id)
-      setItems(restored)
-      setActiveId(LORE_AGENT_ENTRY_ID)
-      await refreshVersions()
-      notifyLoreUpdated(restored.map((item) => item.id))
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const handleLoreAgentResult = async (result: LoreAgentResult) => {
     setItems(result.items || [])
-    await refreshVersions()
     notifyLoreUpdated(result.items?.map((item) => item.id) || [])
   }
 
@@ -533,6 +470,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     setActiveId(id)
   }
 
+  const isCreatorActive = activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)
   const isLoreAgentActive = activeMode === 'lore' && activeId === LORE_AGENT_ENTRY_ID
   const isTellerAgentActive = activeMode === 'teller' && activeTellerId === TELLER_AGENT_ENTRY_ID
   return (
@@ -553,13 +491,13 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         <div className="nova-topbar flex min-h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <ModeIcon mode={activeMode} />
-              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreAgentActive ? t('settingPanel.loreAgent.title') : isTellerAgentActive ? t('settingPanel.tellerAgent.title') : editorTitle(activeMode, draft, tellerDraft, t)}</h2>
+              {isCreatorActive ? <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <ModeIcon mode={activeMode} />}
+              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreAgentActive ? t('settingPanel.loreAgent.title') : isTellerAgentActive ? t('settingPanel.tellerAgent.title') : isCreatorActive ? CREATOR_PATH : editorTitle(activeMode, draft, tellerDraft, t)}</h2>
             </div>
-            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerAgentActive ? t('settingPanel.tellerAgent.subtitle') : editorSubtitle(activeMode, draft, tellerDraft, t)}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerAgentActive ? t('settingPanel.tellerAgent.subtitle') : isCreatorActive ? t('settingPanel.editor.creatorSubtitle') : editorSubtitle(activeMode, draft, tellerDraft, t)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {activeMode === 'lore' && !isLoreAgentActive && (
+            {activeMode === 'lore' && !isLoreAgentActive && !isCreatorActive && (
               <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !draft} onClick={handleDelete} aria-label={t('settingPanel.deleteLore')}>
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -570,7 +508,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
               </Button>
             )}
             {!isLoreAgentActive && !isTellerAgentActive && (
-              <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving || (activeMode === 'lore' && !draft) || (activeMode === 'teller' && !tellerDraft)} onClick={handleSave}>
+              <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving || (activeMode === 'lore' && !isCreatorActive && !draft) || (activeMode === 'teller' && !tellerDraft)} onClick={handleSave}>
                 <Save className="h-4 w-4" />
                 {saving ? t('common.saving') : t('common.save')}
               </Button>
@@ -584,19 +522,14 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
               <LoreAgentChat
                 workspace={workspace}
                 items={items}
-                versions={versions}
-                versionsVisible={versionsVisible}
-                saving={saving}
                 onResult={(result) => void handleLoreAgentResult(result)}
                 onToolMutation={(itemIds) => {
                   void refreshItems(itemIds[0])
-                  void refreshVersions()
                   notifyLoreUpdated(itemIds)
                 }}
-                onToggleVersions={() => setVersionsVisible((value) => !value)}
-                onCreateVersion={() => void handleCreateLoreVersion()}
-                onRestoreVersion={(version) => void handleRestoreLoreVersion(version)}
               />
+            ) : activeId === CREATOR_ENTRY_ID ? (
+              <CreatorEditor content={creatorContent} setContent={setCreatorContent} onSave={handleSave} />
             ) : (
               <LoreEditor draft={draft} tagDraft={tagDraft} residentTotalChars={items.filter((item) => item.load_mode === 'resident' && item.id !== draft?.id).reduce((total, item) => total + (item.content || '').length, draft?.load_mode === 'resident' ? (draft.content || '').length : 0)} setDraft={setDraft} setTagDraft={setTagDraft} onSave={handleSave} />
             )}

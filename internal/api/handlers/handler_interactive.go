@@ -83,6 +83,107 @@ func (h *Handlers) HandleInteractiveMemory(ctx context.Context, c *app.RequestCo
 	writeJSON(c, consts.StatusOK, state)
 }
 
+func (h *Handlers) HandleStoryMemory(ctx context.Context, c *app.RequestContext) {
+	includeHidden := strings.EqualFold(c.Query("hidden"), "true") || strings.EqualFold(c.Query("include_hidden"), "true")
+	state, err := h.app.StoryMemory(c.Param("id"), c.Query("branch"), includeHidden)
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, state)
+}
+
+func (h *Handlers) HandleStoryMemorySettingsUpdate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.StoryMemorySettingsUpdateRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	settings, err := h.app.UpdateStoryMemorySettings(c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, settings)
+}
+
+func (h *Handlers) HandleStoryMemoryStructureSave(ctx context.Context, c *app.RequestContext) {
+	var body interactive.StoryMemoryStructureRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if id := strings.TrimSpace(c.Param("structure_id")); id != "" {
+		body.ID = id
+	}
+	structure, err := h.app.SaveStoryMemoryStructure(c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, structure)
+}
+
+func (h *Handlers) HandleStoryMemoryStructureDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteStoryMemoryStructure(c.Param("id"), c.Param("structure_id")); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handlers) HandleStoryMemoryRecordSave(ctx context.Context, c *app.RequestContext) {
+	var body interactive.StoryMemoryRecordRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if id := strings.TrimSpace(c.Param("record_id")); id != "" {
+		body.ID = id
+	}
+	record, err := h.app.SaveStoryMemoryRecord(c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, record)
+}
+
+func (h *Handlers) HandleStoryMemoryRecordHide(ctx context.Context, c *app.RequestContext) {
+	var body interactive.StoryMemoryRecordHideRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	hidden := true
+	if body.Hidden != nil {
+		hidden = *body.Hidden
+	}
+	record, err := h.app.SetStoryMemoryRecordHidden(c.Param("id"), c.Param("record_id"), c.Query("branch"), hidden)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, record)
+}
+
+func (h *Handlers) HandleStoryMemoryGenerate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.StoryMemoryGenerateRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if body.BranchID == "" {
+		body.BranchID = c.Query("branch")
+	}
+	state, err := h.app.GenerateStoryMemory(ctx, c.Param("id"), body.BranchID)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, state)
+}
+
 func (h *Handlers) HandleInteractiveMemoryCreate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.InteractiveMemoryCreateRequest
 	if err := c.BindJSON(&body); err != nil {

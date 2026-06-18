@@ -43,11 +43,12 @@ export function WorkspaceLayout({
             defaultLayout={readStoredLayout('nova-workspace-horizontal')}
             onLayoutChanged={(layout) => storeLayout('nova-workspace-horizontal', layout)}
             orientation="horizontal"
+            resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
             className="min-w-0 flex-1"
           >
             {sidebar && (
               <>
-                <Panel id="sidebar" defaultSize="20%" minSize="180px" maxSize="36%" className="min-w-[180px]" hidden={!sidebarVisible} aria-hidden={!sidebarVisible}>
+                <Panel id="sidebar" defaultSize="20%" minSize="180px" maxSize="36%" className="min-w-[180px]" disabled={!sidebarVisible} hidden={!sidebarVisible} aria-hidden={!sidebarVisible}>
                   <motion.div
                     className="h-full min-h-0"
                     variants={subtlePresence}
@@ -58,7 +59,7 @@ export function WorkspaceLayout({
                     {sidebar}
                   </motion.div>
                 </Panel>
-                <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.sidebar')} visible={sidebarVisible} />
+                {sidebarVisible ? <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.sidebar')} /> : null}
               </>
             )}
             <Panel id="center" minSize="30%" className="min-w-0">
@@ -67,6 +68,7 @@ export function WorkspaceLayout({
                 defaultLayout={readStoredLayout('nova-workspace-main-vertical')}
                 onLayoutChanged={(layout) => storeLayout('nova-workspace-main-vertical', layout)}
                 orientation="vertical"
+                resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
               >
                 <Panel id="main" minSize="35%" className="min-h-0">
                   {main}
@@ -83,8 +85,8 @@ export function WorkspaceLayout({
             </Panel>
             {rightPanel && (
               <>
-                <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.right')} visible={rightPanelVisible} />
-                <Panel id="right" defaultSize="34%" minSize="360px" maxSize="55%" className="min-w-[360px]" hidden={!rightPanelVisible} aria-hidden={!rightPanelVisible}>
+                {rightPanelVisible ? <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.right')} /> : null}
+                <Panel id="right" defaultSize="34%" minSize="360px" maxSize="55%" className="min-w-[360px]" disabled={!rightPanelVisible} hidden={!rightPanelVisible} aria-hidden={!rightPanelVisible}>
                   <motion.div
                     className="h-full min-h-0"
                     variants={subtlePresence}
@@ -105,12 +107,12 @@ export function WorkspaceLayout({
   )
 }
 
-function WorkspaceResizeHandle({ direction, label, visible = true }: { direction: 'horizontal' | 'vertical'; label: string; visible?: boolean }) {
+function WorkspaceResizeHandle({ direction, label }: { direction: 'horizontal' | 'vertical'; label: string }) {
   const className = direction === 'vertical'
     ? 'nova-resize-handle -mx-1 w-2 cursor-col-resize bg-transparent transition-colors'
     : 'nova-resize-handle -my-1 h-2 cursor-row-resize bg-transparent transition-colors'
 
-  return <Separator aria-label={label} className={className} hidden={!visible} />
+  return <Separator aria-label={label} className={className} />
 }
 
 function readStoredLayout(key: string): Layout | undefined {

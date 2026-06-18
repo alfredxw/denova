@@ -4,6 +4,7 @@ const workbench = {
   'workbench.activity.books': '书籍管理',
   'workbench.activity.creator': '创作者',
   'workbench.activity.lore': '资料库',
+  'workbench.activity.memory': '故事记忆',
   'workbench.activity.settings': '设置',
   'workbench.activity.skills': 'Skills',
   'workbench.activity.story': '剧情',

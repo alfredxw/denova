@@ -1,5 +1,5 @@
 import { jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
-import type { ChatMessage, LoreAgentResult, LoreItem, LoreItemInput, LoreVersion, SSEEvent } from './types'
+import type { ChatMessage, LoreAgentResult, LoreItem, LoreItemInput, SSEEvent } from './types'
 
 export async function getLoreItems(): Promise<LoreItem[]> {
   const data = await requestJSON<{ items: LoreItem[] }>('/api/lore/items')
@@ -53,24 +53,4 @@ export async function getLoreAgentMessages(): Promise<ChatMessage[]> {
 
 export async function clearLoreAgentSession(): Promise<void> {
   await requestJSON('/api/lore/agent/clear', { method: 'POST' })
-}
-
-export async function getLoreVersions(): Promise<LoreVersion[]> {
-  const data = await requestJSON<{ versions: LoreVersion[] }>('/api/lore/versions')
-  return data.versions || []
-}
-
-export async function createLoreVersion(message: string): Promise<LoreVersion> {
-  return requestJSON('/api/lore/versions', {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ message }),
-  })
-}
-
-export async function restoreLoreVersion(id: string): Promise<LoreItem[]> {
-  const data = await requestJSON<{ items: LoreItem[] }>(`/api/lore/versions/${encodeURIComponent(id)}/restore`, {
-    method: 'POST',
-  })
-  return data.items || []
 }

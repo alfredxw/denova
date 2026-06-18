@@ -151,8 +151,9 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	}
 }
 
-func TestLoreStoreApplyOperationsCreatesVersionAndRestores(t *testing.T) {
-	store := NewLoreStore(t.TempDir())
+func TestLoreStoreApplyOperationsDoesNotCreateSeparateVersions(t *testing.T) {
+	workspace := t.TempDir()
+	store := NewLoreStore(workspace)
 	item, err := store.Create(LoreItemInput{
 		ID:         "hero",
 		Type:       "character",
@@ -190,27 +191,22 @@ func TestLoreStoreApplyOperationsCreatesVersionAndRestores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Version == nil || len(result.Updated) != 1 || len(result.Created) != 1 {
+	if len(result.Updated) != 1 || len(result.Created) != 1 {
 		t.Fatalf("unexpected apply result: %#v", result)
 	}
 	if !strings.HasPrefix(result.Created[0].ID, "黄泉酒馆_") {
 		t.Fatalf("agent-created item should use name-based ID, got %s", result.Created[0].ID)
 	}
 
-	versions, err := store.Versions()
+	items, err := store.List()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(versions) == 0 {
-		t.Fatal("expected at least one lore version")
+	if len(items) != 2 {
+		t.Fatalf("apply operations should update the lore store: %#v", items)
 	}
-
-	restored, err := store.RestoreVersion(result.Version.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(restored) != 1 || restored[0].Content != "旧设定" {
-		t.Fatalf("restore should recover pre-agent snapshot: %#v", restored)
+	if _, err := os.Stat(filepath.Join(workspace, ".nova", "lore", "versions")); !os.IsNotExist(err) {
+		t.Fatalf("lore store should not create a separate versions directory, err=%v", err)
 	}
 }
 

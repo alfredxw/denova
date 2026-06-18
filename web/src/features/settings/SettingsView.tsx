@@ -10,6 +10,7 @@ import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { LOCALE_OPTIONS } from '@/i18n'
+import { markAutoUpdateChecked, shouldRunAutoUpdateCheck } from './update-check-cache'
 
 type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
@@ -77,7 +78,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
 
   const effective = layered?.effective ?? {}
 
-  const runUpdateCheck = useCallback(async () => {
+  const runUpdateCheck = useCallback(async (source: 'auto' | 'manual' = 'manual') => {
     setCheckingUpdate(true)
     setUpdateError(null)
     setUpdateInstallResult(null)
@@ -87,13 +88,15 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     } catch (e) {
       setUpdateError((e as Error).message)
     } finally {
+      if (source === 'auto') markAutoUpdateChecked()
       setCheckingUpdate(false)
     }
   }, [])
 
   useEffect(() => {
     if (!layered || effective.update_check_enabled === false || updateStatus || checkingUpdate) return
-    void runUpdateCheck()
+    if (!shouldRunAutoUpdateCheck()) return
+    void runUpdateCheck('auto')
   }, [checkingUpdate, effective.update_check_enabled, layered, runUpdateCheck, updateStatus])
 
   const runUpdateInstall = useCallback(async () => {

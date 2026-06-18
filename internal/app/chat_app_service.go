@@ -52,7 +52,7 @@ func (s *ChatAppService) Sessions() ([]session.SessionMeta, error) {
 	if store == nil {
 		return nil, ErrNoWorkspace
 	}
-	return store.List(activeID)
+	return listUserSessions(store, activeID)
 }
 
 // CreateSession 新建会话并设置为当前激活会话。
@@ -93,6 +93,9 @@ func (s *ChatAppService) SwitchSession(id string) (*session.Session, error) {
 	if a.sessionStore == nil {
 		return nil, ErrNoWorkspace
 	}
+	if isAgentSessionID(id) {
+		return nil, fmt.Errorf("不能切换到固定 Agent 会话: %s", id)
+	}
 	s.abortActiveTaskLocked()
 
 	sess, err := a.sessionStore.Get(id)
@@ -120,6 +123,9 @@ func (s *ChatAppService) RenameSession(id, title string) error {
 	if store == nil {
 		return ErrNoWorkspace
 	}
+	if isAgentSessionID(id) {
+		return fmt.Errorf("不能重命名固定 Agent 会话: %s", id)
+	}
 	return store.Rename(id, title)
 }
 
@@ -135,6 +141,17 @@ func (s *ChatAppService) DeleteSession(id string) (*session.Session, error) {
 	if a.sessionStore == nil {
 		return nil, ErrNoWorkspace
 	}
+	if isAgentSessionID(id) {
+		return nil, fmt.Errorf("不能删除固定 Agent 会话: %s", id)
+	}
+
+	userSessions, err := listUserSessions(a.sessionStore, "")
+	if err != nil {
+		return nil, err
+	}
+	if len(userSessions) <= 1 {
+		return nil, fmt.Errorf("不能删除当前唯一会话")
+	}
 
 	wasActive := a.session != nil && a.session.ID == id
 	if wasActive {
@@ -148,7 +165,7 @@ func (s *ChatAppService) DeleteSession(id string) (*session.Session, error) {
 		activeID = a.session.ID
 	}
 	if activeID == "" {
-		metas, err := a.sessionStore.List("")
+		metas, err := listUserSessions(a.sessionStore, "")
 		if err != nil {
 			return nil, err
 		}
@@ -196,6 +213,9 @@ func (s *ChatAppService) SessionMessages(id string) ([]session.HistoryEntry, err
 			return nil, ErrNoWorkspace
 		}
 		return current.History(), nil
+	}
+	if isAgentSessionID(id) {
+		return nil, fmt.Errorf("不能通过创作会话读取固定 Agent 会话: %s", id)
 	}
 	sess, err := store.Get(id)
 	if err != nil {

@@ -38,6 +38,14 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   useEffect(() => { void load() }, [load])
 
   useEffect(() => {
+    const onSettingsUpdated = () => {
+      void load()
+    }
+    window.addEventListener('nova:settings-updated', onSettingsUpdated)
+    return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
+  }, [load])
+
+  useEffect(() => {
     let cancelled = false
     const loadSkills = () => {
       getSkills()

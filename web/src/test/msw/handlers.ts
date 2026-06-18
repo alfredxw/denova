@@ -165,16 +165,6 @@ export const handlers = [
       deleted_ids: [],
     }),
   ),
-  http.get('/api/lore/versions', () => HttpResponse.json({ versions: [] })),
-  http.post('/api/lore/versions', () =>
-    HttpResponse.json({
-      id: 'v1',
-      message: '手动创建资料库版本',
-      created_at: '',
-      item_count: 0,
-    }),
-  ),
-  http.post('/api/lore/versions/:id/restore', () => HttpResponse.json({ items: [] })),
   http.get('/api/styles', () => HttpResponse.json({ styles: ['古龙.md', '番茄.txt'] })),
   http.post('/api/command', async ({ request }) => {
     const body = (await request.json()) as { command?: string }
