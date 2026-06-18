@@ -128,6 +128,18 @@ export function generateStoryMemory(storyId: string, branchId?: string): Promise
   })
 }
 
+export async function generateStoryMemoryStream(storyId: string, branchId?: string, signal?: AbortSignal): Promise<ReadableStream<InteractiveSSEEvent>> {
+  const res = await fetch(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/generate/stream`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ branch_id: branchId }),
+    signal,
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res))
+  if (!res.body) throw new Error('No response body')
+  return parseSSEStream(res.body)
+}
+
 export async function getInteractiveTellers(): Promise<Teller[]> {
   const data = await requestJSON<{ tellers: Teller[] }>('/api/interactive/tellers')
   return data.tellers || []

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Eye, EyeOff, Loader2, Pencil, Plus, Save, Search, X } from 'lucide-react'
+import { Brain, Eye, EyeOff, Loader2, Pencil, Plus, RefreshCw, Save, Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { createInteractiveMemory, getInteractiveMemory, setInteractiveMemoryHidden, updateInteractiveMemory } from '../api'
+import { MessageList } from '@/components/Chat/MessageList'
+import { useAgentEventStream } from '@/hooks/useAgentEventStream'
+import { createInteractiveMemory, generateStoryMemoryStream, getInteractiveMemory, setInteractiveMemoryHidden, updateInteractiveMemory } from '../api'
 import type { InteractiveMemoryEntry, InteractiveMemoryState, Snapshot } from '../types'
 
 interface MemoryPanelProps {
@@ -63,6 +65,20 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
       setMemoryLoading(false)
     }
   }, [effectiveBranchId, showHidden, storyId, t])
+
+  const { messages: generateMessages, setMessages: setGenerateMessages, isStreaming: generating, activityContent: generateActivity, consumeAgentStream, resetStreamingState, setAbortController, abortLocalStream } = useAgentEventStream({
+    onEvent: (event, data) => {
+      if (event.event !== 'story_memory_result') return
+      setGenerateMessages(prev => [...prev, {
+        role: 'system',
+        content: t('memoryPanel.generateDone', {
+          patches: readNumber(data.patches),
+          records: readNumber(data.records),
+        }),
+      }])
+      void loadMemory()
+    },
+  })
 
   useEffect(() => {
     void loadMemory()
@@ -136,6 +152,23 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
     await loadMemory()
   }
 
+  const runStoryMemoryGenerate = async () => {
+    if (!storyId || generating) return
+    resetStreamingState()
+    setGenerateMessages([{ role: 'user', content: t('memoryPanel.generateRequest') }])
+    const controller = new AbortController()
+    setAbortController(controller)
+    try {
+      const stream = await generateStoryMemoryStream(storyId, effectiveBranchId, controller.signal)
+      await consumeAgentStream(stream)
+      await loadMemory()
+    } catch (err) {
+      console.error('[interactive-memory-panel] generate stream failed', err)
+      setGenerateMessages(prev => [...prev, { role: 'error', content: err instanceof Error ? err.message : t('memoryPanel.generateFailed') }])
+      resetStreamingState()
+    }
+  }
+
   return (
     <aside className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface)]">
       <div className="shrink-0 border-b border-[var(--nova-border)] px-4 py-3">
@@ -154,6 +187,9 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
           <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={showHidden ? t('memoryPanel.hideHidden') : t('memoryPanel.showHidden')} onClick={() => setShowHidden((value) => !value)}>
             {showHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </button>
+          <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={t('memoryPanel.generate')} onClick={() => void runStoryMemoryGenerate()} disabled={generating || !storyId}>
+            {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          </button>
           <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('memoryPanel.add')} onClick={startCreate}>
             <Plus className="h-4 w-4" />
           </button>
@@ -162,6 +198,30 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {(generateMessages.length > 0 || generating) && (
+          <section className="mb-3 flex min-h-[180px] max-h-[320px] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--nova-border)] px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-[var(--nova-text-muted)]">
+                <Brain className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{t('memoryPanel.generateLog')}</span>
+              </div>
+              {generating && (
+                <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('memoryPanel.abortGenerate')} onClick={abortLocalStream}>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <MessageList
+              messages={generateMessages}
+              isStreaming={generating}
+              activityContent={generateActivity}
+              scrollResetKey={`${storyId || ''}:${effectiveBranchId}`}
+              bottomPaddingClassName="pb-3"
+              messageStyle={{ fontSize: '12px', lineHeight: 1.55 }}
+              collapseTraceBeforeAssistant
+            />
+          </section>
+        )}
         {(creating || editing) && <MemoryEditor form={form} setForm={setForm} onSave={saveForm} onCancel={cancelForm} />}
         {entries.length === 0 ? (
           <div className="flex min-h-[160px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs text-[var(--nova-text-muted)]">{memoryLoading ? t('memoryPanel.loading') : t('memoryPanel.empty')}</div>
@@ -255,4 +315,8 @@ function splitList(value: string): string[] {
     .split(/[，,]/)
     .map((item) => item.trim())
     .filter(Boolean)
+}
+
+function readNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }

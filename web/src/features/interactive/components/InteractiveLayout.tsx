@@ -200,7 +200,7 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
           <div className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
               {submode === 'memory' ? (
-                <StoryMemoryView storyId={currentStoryId} branchId={currentBranchId} />
+                <StoryMemoryView storyId={currentStoryId} branchId={currentBranchId} branches={branches} />
               ) : settingsWorkspaceVisible ? (
                 <SettingPanel mode={settingMode} workspace={workspace} tellers={tellers} onTellersChange={setTellers} />
               ) : submode === 'timeline' ? (

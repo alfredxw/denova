@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Brain, Eye, EyeOff, Loader2, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Brain, ChevronDown, ChevronRight, Edit3, Eye, EyeOff, Loader2, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { deleteStoryMemoryStructure, generateStoryMemory, getStoryMemory, saveStoryMemoryRecord, saveStoryMemoryStructure, setStoryMemoryRecordHidden, updateStoryMemorySettings } from '../api'
-import type { StoryMemoryField, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
+import type { BranchSummary, StoryMemoryField, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
 interface StoryMemoryViewProps {
   storyId?: string
   branchId?: string
+  branches?: BranchSummary[]
 }
 
 const emptyStructure: StoryMemoryStructure = {
@@ -19,17 +20,26 @@ const emptyStructure: StoryMemoryStructure = {
   order: 100,
 }
 
-export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
+export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemoryViewProps) {
   const { t } = useTranslation()
   const [state, setState] = useState<StoryMemoryState | null>(null)
+  const [memoryBranchId, setMemoryBranchId] = useState(branchId || '')
   const [selectedStructureId, setSelectedStructureId] = useState('')
-  const [selectedRecord, setSelectedRecord] = useState<StoryMemoryRecord | null>(null)
   const [structureDraft, setStructureDraft] = useState<StoryMemoryStructure | null>(null)
   const [recordDraft, setRecordDraft] = useState<StoryMemoryRecord | null>(null)
+  const [expandedRecordIds, setExpandedRecordIds] = useState<Set<string>>(() => new Set())
   const [showHidden, setShowHidden] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const activeBranchId = memoryBranchId || branchId || ''
+
+  useEffect(() => {
+    setMemoryBranchId(branchId || '')
+    setExpandedRecordIds(new Set())
+    setRecordDraft(null)
+    setStructureDraft(null)
+  }, [branchId, storyId])
 
   const load = useCallback(async () => {
     if (!storyId) {
@@ -39,16 +49,16 @@ export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
     setLoading(true)
     setError('')
     try {
-      const next = await getStoryMemory(storyId, branchId, showHidden)
+      const next = await getStoryMemory(storyId, activeBranchId, showHidden)
       setState(next)
-      setSelectedStructureId((current) => current || next.structures[0]?.id || '')
+      setSelectedStructureId((current) => next.structures.some((structure) => structure.id === current) ? current : next.structures[0]?.id || '')
     } catch (err) {
       console.error('[story-memory-view] load failed', err)
       setError(err instanceof Error ? err.message : t('storyMemory.loadFailed'))
     } finally {
       setLoading(false)
     }
-  }, [branchId, showHidden, storyId, t])
+  }, [activeBranchId, showHidden, storyId, t])
 
   useEffect(() => {
     void load()
@@ -56,16 +66,37 @@ export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
 
   const structures = state?.structures || []
   const selectedStructure = structures.find((item) => item.id === selectedStructureId) || structures[0]
+  const tableFields = useMemo<StoryMemoryField[]>(() => {
+    if (selectedStructure?.fields.length) return selectedStructure.fields
+    return [{ id: 'value', name: t('storyMemory.value'), order: 10 }]
+  }, [selectedStructure, t])
+  const branchOptions = useMemo(() => {
+    const options = [...branches]
+    const loadedBranch = state?.branch_id || activeBranchId
+    if (loadedBranch && !options.some((branch) => branch.id === loadedBranch)) {
+      options.unshift({
+        id: loadedBranch,
+        head: '',
+        title: loadedBranch,
+        created_at: '',
+        current: loadedBranch === branchId,
+      })
+    }
+    return options
+  }, [activeBranchId, branchId, branches, state?.branch_id])
   const records = useMemo(() => {
     const source = state?.records || []
     if (!selectedStructure) return source
     return source.filter((record) => record.structure_id === selectedStructure.id)
   }, [selectedStructure, state?.records])
+  const visibleBranchId = state?.branch_id || activeBranchId
+  const visibleBranch = branchOptions.find((branch) => branch.id === visibleBranchId)
+  const editorVisible = Boolean(structureDraft || (recordDraft && selectedStructure))
+  const recordColumnCount = tableFields.length + 4
 
   const startNewStructure = () => {
     setStructureDraft({ ...emptyStructure, fields: [...emptyStructure.fields] })
     setRecordDraft(null)
-    setSelectedRecord(null)
   }
 
   const startEditStructure = (structure: StoryMemoryStructure) => {
@@ -75,11 +106,10 @@ export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
 
   const startNewRecord = () => {
     if (!selectedStructure) return
-    setSelectedRecord(null)
     setRecordDraft({
       id: '',
       structure_id: selectedStructure.id,
-      branch_id: state?.branch_id || branchId || '',
+      branch_id: state?.branch_id || activeBranchId,
       key: '',
       values: Object.fromEntries(selectedStructure.fields.map((field) => [field.id, ''])),
       manual: true,
@@ -90,7 +120,6 @@ export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
   }
 
   const startEditRecord = (record: StoryMemoryRecord) => {
-    setSelectedRecord(record)
     setRecordDraft({ ...record, values: { ...record.values } })
     setStructureDraft(null)
   }
@@ -132,7 +161,6 @@ export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
       await saveStoryMemoryRecord(storyId, recordDraft)
       await load()
       setRecordDraft(null)
-      setSelectedRecord(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('storyMemory.saveFailed'))
     } finally {
@@ -142,7 +170,7 @@ export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
 
   const toggleRecordHidden = async (record: StoryMemoryRecord) => {
     if (!storyId) return
-    await setStoryMemoryRecordHidden(storyId, record.id, state?.branch_id || branchId, !record.hidden)
+    await setStoryMemoryRecordHidden(storyId, record.id, state?.branch_id || activeBranchId, !record.hidden)
     await load()
   }
 
@@ -151,7 +179,7 @@ export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
     setLoading(true)
     setError('')
     try {
-      setState(await generateStoryMemory(storyId, state?.branch_id || branchId))
+      setState(await generateStoryMemory(storyId, state?.branch_id || activeBranchId))
     } catch (err) {
       setError(err instanceof Error ? err.message : t('storyMemory.generateFailed'))
     } finally {
@@ -159,17 +187,52 @@ export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
     }
   }
 
+  const toggleExpanded = (recordId: string) => {
+    setExpandedRecordIds((current) => {
+      const next = new Set(current)
+      if (next.has(recordId)) next.delete(recordId)
+      else next.add(recordId)
+      return next
+    })
+  }
+
+  const changeMemoryBranch = (nextBranchId: string) => {
+    setMemoryBranchId(nextBranchId)
+    setExpandedRecordIds(new Set())
+    setRecordDraft(null)
+    setStructureDraft(null)
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      <header className="nova-topbar flex shrink-0 items-center justify-between gap-3 border-b border-[var(--nova-border)] px-4 py-3">
+      <header className="nova-topbar flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--nova-border)] px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <Brain className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold">{t('storyMemory.title')}</h2>
-            <p className="truncate text-xs text-[var(--nova-text-muted)]">{t('storyMemory.subtitle')}</p>
+            <p className="truncate text-xs text-[var(--nova-text-muted)]">
+              {t('storyMemory.branchSummary', {
+                branch: branchTitle(visibleBranch, visibleBranchId, t('branchTimeline.mainBranch')),
+                head: visibleBranch?.head ? shortId(visibleBranch.head) : t('storyMemory.noHead'),
+              })}
+            </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {branchOptions.length > 0 && (
+            <label className="flex min-w-0 items-center gap-2 text-xs text-[var(--nova-text-muted)]">
+              <span className="shrink-0">{t('storyMemory.branch')}</span>
+              <select aria-label={t('storyMemory.branch')} value={visibleBranchId} onChange={(event) => changeMemoryBranch(event.target.value)} className="h-8 max-w-[220px] rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-xs text-[var(--nova-text)] outline-none">
+                {branchOptions.map((branch) => (
+                  <option key={branch.id} value={branch.id}>
+                    {branchTitle(branch, branch.id, t('branchTimeline.mainBranch'))}
+                    {branch.id === branchId ? ` · ${t('storyMemory.currentBranch')}` : ''}
+                    {branch.head ? ` · ${shortId(branch.head)}` : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex items-center gap-2 text-xs text-[var(--nova-text-muted)]">
             <input type="checkbox" checked={state?.settings.enabled ?? true} onChange={(event) => void saveSettings({ enabled: event.target.checked })} />
             {t('storyMemory.autoEnabled')}
@@ -181,7 +244,7 @@ export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
         </div>
       </header>
       {error && <div className="border-b border-[var(--nova-border)] px-4 py-2 text-xs text-[var(--nova-danger)]">{error}</div>}
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)_360px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="min-h-0 overflow-y-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 lg:border-b-0 lg:border-r">
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-[var(--nova-text-muted)]">{t('storyMemory.structures')}</span>
@@ -200,57 +263,116 @@ export function StoryMemoryView({ storyId, branchId }: StoryMemoryViewProps) {
         </aside>
 
         <main className="min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-4">
-          <div className="mb-3 flex items-center justify-between gap-2">
+          <div className={`grid min-h-0 gap-4 ${editorVisible ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
             <div className="min-w-0">
-              <h3 className="truncate text-sm font-semibold">{selectedStructure?.name || t('storyMemory.noStructure')}</h3>
-              <p className="truncate text-xs text-[var(--nova-text-muted)]">{selectedStructure?.description || t('storyMemory.recordCount', { count: records.length })}</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {selectedStructure && (
-                <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={showHidden ? t('storyMemory.hideHidden') : t('storyMemory.showHidden')} onClick={() => setShowHidden((value) => !value)}>
-                  {showHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                </button>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="truncate text-sm font-semibold">{selectedStructure?.name || t('storyMemory.noStructure')}</h3>
+                  <p className="truncate text-xs text-[var(--nova-text-muted)]">{selectedStructure?.description || t('storyMemory.recordCount', { count: records.length })}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  {selectedStructure && (
+                    <>
+                      <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.editStructure')} onClick={() => startEditStructure(selectedStructure)}>
+                        <Edit3 className="h-4 w-4" />
+                      </button>
+                      <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={showHidden ? t('storyMemory.hideHidden') : t('storyMemory.showHidden')} onClick={() => setShowHidden((value) => !value)}>
+                        {showHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                      </button>
+                    </>
+                  )}
+                  <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.addRecord')} onClick={startNewRecord}>
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              {records.length === 0 ? (
+                <div className="flex min-h-[220px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] text-center text-xs text-[var(--nova-text-muted)]">{loading ? t('storyMemory.loading') : t('storyMemory.empty')}</div>
+              ) : (
+                <div className="overflow-x-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+                  <table className="w-full min-w-[760px] border-collapse text-left text-xs">
+                    <thead className="border-b border-[var(--nova-border)] bg-[var(--nova-table-header-bg)] text-[var(--nova-text-muted)]">
+                      <tr>
+                        <th className="w-[220px] px-3 py-2 font-medium">{t('storyMemory.record')}</th>
+                        {tableFields.map((field) => (
+                          <th key={field.id} className="min-w-[180px] px-3 py-2 font-medium">{field.name || field.id}</th>
+                        ))}
+                        <th className="w-[120px] px-3 py-2 font-medium">{t('storyMemory.updated')}</th>
+                        <th className="w-[120px] px-3 py-2 font-medium">{t('storyMemory.branch')}</th>
+                        <th className="w-[112px] px-3 py-2 text-right font-medium">{t('storyMemory.actions')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {records.map((record) => {
+                        const expanded = expandedRecordIds.has(record.id)
+                        return (
+                          <Fragment key={record.id}>
+                            <tr className={`border-b border-[var(--nova-border)] align-top ${record.hidden ? 'opacity-55' : ''}`}>
+                              <td className="px-3 py-2">
+                                <div className="flex min-w-0 items-start gap-2">
+                                  <button type="button" className="nova-icon-button mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={expanded ? t('storyMemory.collapseRecord') : t('storyMemory.expandRecord')} onClick={() => toggleExpanded(record.id)}>
+                                    {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                                  </button>
+                                  <div className="min-w-0">
+                                    <div className="truncate font-medium text-[var(--nova-text)]">{record.key || selectedStructure?.name || t('storyMemory.untitled')}</div>
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      {record.manual && <span className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('storyMemory.manual')}</span>}
+                                      {record.inherited_from && <span className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('storyMemory.inherited')}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              {tableFields.map((field) => (
+                                <td key={field.id} className="px-3 py-2 text-[var(--nova-text-muted)]">
+                                  <p className="line-clamp-2 whitespace-pre-wrap leading-5">{recordFieldValue(record, field) || t('storyMemory.noValue')}</p>
+                                </td>
+                              ))}
+                              <td className="px-3 py-2 text-[var(--nova-text-muted)]">{formatDate(record.updated_at || record.created_at)}</td>
+                              <td className="px-3 py-2 text-[var(--nova-text-muted)]">{record.branch_id === branchId ? t('storyMemory.currentBranch') : shortId(record.branch_id)}</td>
+                              <td className="px-3 py-2">
+                                <div className="flex justify-end gap-1">
+                                  <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.editRecord')} onClick={() => startEditRecord(record)}>
+                                    <Edit3 className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={record.hidden ? t('storyMemory.restore') : t('storyMemory.hide')} onClick={() => void toggleRecordHidden(record)}>
+                                    {record.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                            {expanded && (
+                              <tr className="border-b border-[var(--nova-border)] bg-[var(--nova-surface)]">
+                                <td colSpan={recordColumnCount} className="px-3 py-3">
+                                  <div className="grid gap-3 md:grid-cols-2">
+                                    {tableFields.map((field) => (
+                                      <section key={field.id} className="min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
+                                        <div className="mb-1 text-[11px] font-medium text-[var(--nova-text-muted)]">{field.name || field.id}</div>
+                                        <p className="whitespace-pre-wrap break-words text-xs leading-5 text-[var(--nova-text)]">{recordFieldValue(record, field) || t('storyMemory.noValue')}</p>
+                                      </section>
+                                    ))}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
-              <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.addRecord')} onClick={startNewRecord}>
-                <Plus className="h-4 w-4" />
-              </button>
             </div>
+            {editorVisible && (
+              <aside className="min-h-0 overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">
+                {structureDraft ? (
+                  <StructureEditor draft={structureDraft} saving={saving} onDraftChange={setStructureDraft} onSave={saveStructure} onCancel={() => setStructureDraft(null)} onDelete={structureDraft.id ? () => void removeStructure(structureDraft) : undefined} />
+                ) : recordDraft && selectedStructure ? (
+                  <RecordEditor structure={selectedStructure} draft={recordDraft} saving={saving} onDraftChange={setRecordDraft} onSave={saveRecord} onCancel={() => setRecordDraft(null)} />
+                ) : null}
+              </aside>
+            )}
           </div>
-          {records.length === 0 ? (
-            <div className="flex min-h-[220px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] text-center text-xs text-[var(--nova-text-muted)]">{loading ? t('storyMemory.loading') : t('storyMemory.empty')}</div>
-          ) : (
-            <div className="grid gap-2 xl:grid-cols-2">
-              {records.map((record) => (
-                <article key={record.id} className={`rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 ${record.hidden ? 'opacity-55' : ''}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <button type="button" className="min-w-0 flex-1 text-left" onClick={() => startEditRecord(record)}>
-                      <h4 className="truncate text-sm font-medium">{record.key || selectedStructure?.name || t('storyMemory.untitled')}</h4>
-                      <p className="mt-1 line-clamp-3 text-xs leading-5 text-[var(--nova-text-muted)]">{recordPreview(record, selectedStructure)}</p>
-                    </button>
-                    <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={record.hidden ? t('storyMemory.restore') : t('storyMemory.hide')} onClick={() => void toggleRecordHidden(record)}>
-                      {record.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
         </main>
-
-        <aside className="min-h-0 overflow-y-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 lg:border-l lg:border-t-0">
-          {structureDraft ? (
-            <StructureEditor draft={structureDraft} saving={saving} onDraftChange={setStructureDraft} onSave={saveStructure} onCancel={() => setStructureDraft(null)} onDelete={structureDraft.id ? () => void removeStructure(structureDraft) : undefined} />
-          ) : recordDraft && selectedStructure ? (
-            <RecordEditor structure={selectedStructure} draft={recordDraft} saving={saving} onDraftChange={setRecordDraft} onSave={saveRecord} onCancel={() => { setRecordDraft(null); setSelectedRecord(null) }} />
-          ) : selectedStructure ? (
-            <div className="space-y-3">
-              <button type="button" className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-3 py-2 text-left text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={() => startEditStructure(selectedStructure)}>{t('storyMemory.editStructure')}</button>
-              {selectedRecord && <button type="button" className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-3 py-2 text-left text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={() => startEditRecord(selectedRecord)}>{t('storyMemory.editRecord')}</button>}
-            </div>
-          ) : (
-            <div className="text-xs text-[var(--nova-text-muted)]">{t('storyMemory.noStructure')}</div>
-          )}
-        </aside>
       </div>
     </section>
   )
@@ -317,9 +439,28 @@ function EditorActions({ saving, onSave, onCancel, onDelete }: { saving: boolean
   )
 }
 
-function recordPreview(record: StoryMemoryRecord, structure?: StoryMemoryStructure) {
-  const fields = structure?.fields || []
-  const parts = fields.map((field) => record.values?.[field.id]).filter(Boolean)
-  if (parts.length > 0) return parts.join(' / ')
-  return Object.values(record.values || {}).filter(Boolean).join(' / ')
+function recordFieldValue(record: StoryMemoryRecord, field: StoryMemoryField) {
+  const value = record.values?.[field.id]
+  if (value) return value
+  if (field.id === 'value') return Object.values(record.values || {}).filter(Boolean).join('\n')
+  return ''
+}
+
+function branchTitle(branch: BranchSummary | undefined, fallback: string, mainLabel: string) {
+  if (!branch) return fallback || mainLabel
+  if (branch.title) return branch.title
+  if (branch.id === 'main') return mainLabel
+  return branch.id
+}
+
+function shortId(value: string) {
+  if (!value) return ''
+  return value.length > 8 ? value.slice(0, 8) : value
+}
+
+function formatDate(value: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' })
 }
