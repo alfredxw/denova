@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 网页搜索工具（`web_search`）由单一 DuckDuckGo 升级为 DuckDuckGo、Bing、百度、Google 四引擎并发聚合：四引擎多线程并行搜索，失败的引擎结果会被直接丢弃，仅合并成功引擎的结果。
 - 写作 Agent 和互动故事输入框新增上下文分析入口，可模拟当前输入发送并展示真实 SystemPrompt、上下文来源明细和实际消息列表，不调用 LLM、不写入会话或故事回合。
 
 ### Fixed
