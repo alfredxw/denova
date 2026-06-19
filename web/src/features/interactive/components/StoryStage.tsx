@@ -21,6 +21,7 @@ import { buildContextCompactionMessage, createContextCompactionMessageId, upsert
 import { subAgentSessionKey } from '@/components/Chat/subagent-session'
 import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobile-layout'
 import type { ChatMessage, ContextAnalysis } from '@/lib/api'
+import { isComposingKeyboardEvent } from '@/lib/keyboard'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveHotChoices, removeInteractiveContextCompaction, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
@@ -1078,6 +1079,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                       return
                     }
                     if (event.key === 'Enter' && !event.shiftKey) {
+                      if (isComposingKeyboardEvent(event)) return
                       event.preventDefault()
                       if (canPickSkill) {
                         selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)

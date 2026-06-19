@@ -7,6 +7,15 @@ interface KeyboardShortcutEvent {
   altKey: boolean
 }
 
+interface ComposingKeyboardEvent {
+  isComposing?: boolean
+  keyCode?: number
+  nativeEvent?: {
+    isComposing?: boolean
+    keyCode?: number
+  }
+}
+
 interface PropagatingKeyboardShortcutEvent extends KeyboardShortcutEvent {
   stopPropagation: () => void
 }
@@ -41,4 +50,9 @@ export function preserveNativeTextEditingShortcut(event: PropagatingKeyboardShor
 export function isSaveShortcut(event: KeyboardShortcutEvent): boolean {
   if (event.altKey || (!event.metaKey && !event.ctrlKey)) return false
   return event.key.toLowerCase() === 's'
+}
+
+/** 判断键盘事件是否仍在输入法组合态，避免 Enter 被误当成发送。 */
+export function isComposingKeyboardEvent(event: ComposingKeyboardEvent): boolean {
+  return Boolean(event.isComposing || event.nativeEvent?.isComposing || event.keyCode === 229 || event.nativeEvent?.keyCode === 229)
 }
