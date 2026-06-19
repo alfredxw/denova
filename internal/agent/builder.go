@@ -175,7 +175,7 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 	}
 	tools := append([]tool.BaseTool{}, spec.ExtraTools...)
 	if toolSettings.WebSearch {
-		webSearchTools, wsErr := newWebSearchTools(ctx)
+		webSearchTools, wsErr := newWebSearchTools()
 		if wsErr != nil {
 			return nil, wsErr
 		}
