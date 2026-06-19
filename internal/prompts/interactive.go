@@ -138,7 +138,6 @@ func InteractiveStoryContext(in InteractiveStoryPromptInput) string {
 	if strings.TrimSpace(in.LongTermMemory) != "" {
 		writeBlock(&sb, "故事记忆", in.LongTermMemory)
 	}
-	writeBlock(&sb, "兼容状态快照(JSON)", in.SnapshotStateJSON)
 	if strings.TrimSpace(in.PreviousTurnsSummary) != "" {
 		writeBlock(&sb, "较早剧情压缩记忆", in.PreviousTurnsSummary)
 	}
@@ -189,8 +188,7 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 本回合必须隐式完成：识别用户行动、判断相关角色和世界规则、裁定后果、制造新的可选择、保持角色和世界一致性；不要输出这些分析过程。
 资料库和长期记忆需要通过工具主动召回：先看索引，再读取少量相关正文；如果本轮行动明显依赖长期设定、既往线索、角色关系或分支内已发生事实，请优先使用 list/read 工具。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
-其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。
-不要输出 <HOT_STATE>、<STATE_DELTA> 或快捷选择列表。`, strings.TrimSpace(message), turnBlock)
+其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。`, strings.TrimSpace(message), turnBlock)
 }
 
 type InteractiveHotChoicesPromptInput struct {

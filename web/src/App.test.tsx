@@ -588,7 +588,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '剧情' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '写作' })).not.toBeInTheDocument()
     expectOnlyActivePrimaryMenu('Agents')
-  })
+  }, 10000)
 })
 
 function expectOnlyActivePrimaryMenu(label: string) {

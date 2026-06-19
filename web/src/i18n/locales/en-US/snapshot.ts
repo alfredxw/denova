@@ -167,6 +167,7 @@ const snapshot = {
   'storyMemory.interval': 'Auto interval',
   'storyMemory.generate': 'Generate memory',
   'storyMemory.agent': 'Open Config Manager Agent',
+  'storyMemory.configAgent': 'Config Agent',
   'storyMemory.structures': 'Memory Structures',
   'storyMemory.addStructure': 'Add structure',
   'storyMemory.addRecord': 'Add record',

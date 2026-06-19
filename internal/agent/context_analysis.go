@@ -129,14 +129,12 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 			Content: msg.Content,
 		}))
 	}
-	contextParts := composition.ContextLog.FullParts()
-	contextParts = append(contextParts, contextMessages...)
 	return ContextAnalysis{
 		AgentKind:         config.AgentKindInteractiveStory,
 		Mode:              "interactive",
 		SystemPrompt:      systemPrompt,
 		SystemPromptParts: systemParts,
-		ContextParts:      contextParts,
+		ContextParts:      composition.ContextLog.FullParts(),
 		ContextMessages:   contextMessages,
 		MessageCount:      len(contextMessages),
 	}, nil

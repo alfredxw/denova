@@ -245,20 +245,22 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
           <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.generate')} onClick={() => void runGenerate()}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </button>
-          <button type="button" className={`nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] ${agentOpen ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]'}`} aria-label={t('storyMemory.agent')} onClick={() => setAgentOpen((value) => !value)}>
-            <Bot className="h-4 w-4" />
-          </button>
         </div>
       </header>
       {error && <div className="border-b border-[var(--nova-border)] px-4 py-2 text-xs text-[var(--nova-danger)]">{error}</div>}
       <div className={`grid min-h-0 flex-1 grid-cols-1 overflow-hidden ${agentOpen ? 'lg:grid-cols-[240px_minmax(0,1fr)_minmax(320px,28rem)]' : 'lg:grid-cols-[240px_minmax(0,1fr)]'}`}>
         <aside className="min-h-0 overflow-y-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 lg:border-b-0 lg:border-r">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="text-xs font-medium text-[var(--nova-text-muted)]">{t('storyMemory.structures')}</span>
-            <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.addStructure')} onClick={startNewStructure}>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <button type="button" className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2 ${agentOpen ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`} onClick={() => setAgentOpen((value) => !value)}>
+              <Bot className="h-3.5 w-3.5" />
+              <span className="min-w-0 truncate">{t('storyMemory.configAgent')}</span>
+            </button>
+            <button type="button" className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2" onClick={startNewStructure}>
               <Plus className="h-3.5 w-3.5" />
+              <span className="min-w-0 truncate">{t('storyMemory.addStructure')}</span>
             </button>
           </div>
+          <div className="mb-2 text-xs font-medium text-[var(--nova-text-muted)]">{t('storyMemory.structures')}</div>
           <div className="space-y-1">
             {structures.map((structure) => (
               <button key={structure.id} type="button" onClick={() => { setSelectedStructureId(structure.id); setRecordDraft(null); setStructureDraft(null) }} className={`w-full rounded-[var(--nova-radius)] px-2 py-2 text-left text-xs ${selectedStructure?.id === structure.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)]'}`}>

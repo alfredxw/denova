@@ -167,6 +167,7 @@ const snapshot = {
   'storyMemory.interval': '自动整理间隔',
   'storyMemory.generate': '手动整理',
   'storyMemory.agent': '打开配置管理 Agent',
+  'storyMemory.configAgent': '配置 Agent',
   'storyMemory.structures': '记忆结构',
   'storyMemory.addStructure': '新增结构',
   'storyMemory.addRecord': '新增记录',

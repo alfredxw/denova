@@ -59,7 +59,8 @@ describe('SkillsView', () => {
     render(<SkillsView workspace="/books/demo" />)
 
     await screen.findByText('/outline')
-    await user.click(screen.getByRole('button', { name: '新建' }))
+    expect(screen.getByRole('button', { name: '配置 Agent' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '新建 Skill' }))
 
     expect(screen.getByText('基础信息')).toBeInTheDocument()
     expect(screen.getByLabelText('Skill 名称')).toBeInTheDocument()
@@ -99,7 +100,7 @@ agent: ide,config_manager
 
     render(<SkillsView workspace="/books/demo" />)
     await screen.findByText('/outline')
-    await user.click(screen.getByRole('button', { name: '新建' }))
+    await user.click(screen.getByRole('button', { name: '新建 Skill' }))
     await user.type(screen.getByLabelText('Skill 名称'), 'beats')
     await user.type(screen.getByLabelText('触发说明'), 'Draft chapter beats.')
     await user.click(screen.getByLabelText(/配置管理 Agent/))
@@ -119,7 +120,7 @@ agent: ide,config_manager
     render(<SkillsView workspace="/books/demo" />)
 
     await screen.findByText('/outline')
-    await user.click(screen.getByRole('button', { name: '新建' }))
+    await user.click(screen.getByRole('button', { name: '新建 Skill' }))
     await user.type(screen.getByLabelText('Skill 名称'), 'bad name')
 
     expect(screen.getByText('Skill 名称只能包含字母、数字、下划线或连字符，并且必须以字母或数字开头。')).toBeInTheDocument()
@@ -135,7 +136,7 @@ agent: ide,config_manager
     })
 
     render(<SkillsView workspace="/books/demo" />)
-    await user.click(await screen.findByRole('button', { name: '新建' }))
+    await user.click(await screen.findByRole('button', { name: '新建 Skill' }))
 
     expect(screen.getByText('当前没有可写的 Skill 目录。请检查工作区或用户级 Nova 目录配置后再创建。')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '创建 SKILL.md' })).not.toBeInTheDocument()
