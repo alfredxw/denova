@@ -13,7 +13,6 @@ import { MessageList } from '@/components/Chat/MessageList'
 import { ReferenceChips } from '@/components/Chat/ReferenceChips'
 import type { ChatMessage } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
-import { fontStackFor } from '@/features/settings/font-options'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { abortInteractiveChat, generateInteractiveHotChoices, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
 import { createInteractiveNarrativeFilter } from '../stream-parser'
@@ -49,7 +48,6 @@ interface StoryStageProps {
 
 const DEFAULT_READING_FONT_SIZE = 18
 const DEFAULT_STAGE_LINE_HEIGHT = 1.78
-const DEFAULT_READING_FONT = 'source-han-serif'
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 const stageAbortControllers = new Map<string, AbortController>()
 
@@ -91,19 +89,19 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   const stagePreferences = useStagePreferences()
   const stageTextStyle = useMemo<CSSProperties>(
     () => ({
-      fontSize: `${stagePreferences.fontSize}px`,
+      fontSize: `var(--nova-reading-font-size, ${DEFAULT_READING_FONT_SIZE}px)`,
       lineHeight: stagePreferences.lineHeight,
-      fontFamily: stagePreferences.fontFamily,
+      fontFamily: 'var(--nova-reading-font-family)',
     }),
-    [stagePreferences.fontFamily, stagePreferences.fontSize, stagePreferences.lineHeight],
+    [stagePreferences.lineHeight],
   )
   const inputTextStyle = useMemo<CSSProperties>(
     () => ({
-      fontSize: `${Math.min(stagePreferences.fontSize, 16)}px`,
+      fontSize: `min(var(--nova-reading-font-size, ${DEFAULT_READING_FONT_SIZE}px), 16px)`,
       lineHeight: 1.35,
-      fontFamily: stagePreferences.fontFamily,
+      fontFamily: 'var(--nova-reading-font-family)',
     }),
-    [stagePreferences.fontFamily, stagePreferences.fontSize],
+    [],
   )
 
   const updateStageRun = useCallback(
@@ -1008,9 +1006,7 @@ function noop() {}
 
 function useStagePreferences() {
   const [preferences, setPreferences] = useState({
-    fontSize: DEFAULT_READING_FONT_SIZE,
     lineHeight: DEFAULT_STAGE_LINE_HEIGHT,
-    fontFamily: fontStackFor(DEFAULT_READING_FONT, DEFAULT_READING_FONT),
     hotChoicesEnabled: true,
   })
 
@@ -1019,17 +1015,13 @@ function useStagePreferences() {
       const settings = await fetchSettings()
       const effective = settings.effective || {}
       setPreferences({
-        fontSize: clampNumber(effective.reading_font_size, 14, 28, DEFAULT_READING_FONT_SIZE),
         lineHeight: clampNumber(effective.interactive_stage_line_height, 1.35, 2.4, DEFAULT_STAGE_LINE_HEIGHT),
-        fontFamily: fontStackFor(effective.reading_font_family, DEFAULT_READING_FONT),
         hotChoicesEnabled: effective.interactive_hot_choices_enabled !== false,
       })
     } catch (error) {
       console.warn('[interactive-stage] 加载故事舞台显示设置失败', error)
       setPreferences({
-        fontSize: DEFAULT_READING_FONT_SIZE,
         lineHeight: DEFAULT_STAGE_LINE_HEIGHT,
-        fontFamily: fontStackFor(DEFAULT_READING_FONT, DEFAULT_READING_FONT),
         hotChoicesEnabled: true,
       })
     }

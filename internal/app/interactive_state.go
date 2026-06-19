@@ -60,11 +60,13 @@ func startInteractiveStateTask(cfg *config.Config, conversation *interactiveConv
 			}
 		}
 		if len(result.StoryMemoryPatches) > 0 {
-			if _, err := conversation.store.ApplyStoryMemoryPatches(conversation.storyID, turn.BranchID, turn.ID, result.StoryMemoryPatches); err != nil {
+			appliedRecords, err := conversation.store.ApplyStoryMemoryPatches(conversation.storyID, turn.BranchID, turn.ID, result.StoryMemoryPatches)
+			if err != nil {
 				log.Printf("[interactive-memory-agent] persist story memory failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
 				markInteractiveStateFailed(conversation, turn, err)
 				return
 			}
+			log.Printf("[interactive-memory-agent] applied story memory patches story_id=%s branch_id=%s turn_id=%s generated=%d applied=%d", conversation.storyID, turn.BranchID, turn.ID, len(result.StoryMemoryPatches), len(appliedRecords))
 		}
 		if err := conversation.store.MarkInteractiveMemoryReady(conversation.storyID, turn.BranchID, turn.ID); err != nil {
 			log.Printf("[interactive-memory-agent] mark memory ready failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)

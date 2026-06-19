@@ -3,6 +3,7 @@ package interactive
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -274,7 +275,12 @@ func (s *Store) ApplyStoryMemoryPatches(storyID, branchID, turnID string, patche
 	pathSet := eventPathSet(branch.Head, lines)
 	records := make([]StoryMemoryRecord, 0, len(patches))
 	for _, patch := range patches {
-		record, err := applyStoryMemoryPatchLocked(&book, branchID, anchorTurnID, patch, pathSet)
+		normalizedPatch, ok := normalizeStoryMemoryPatchForAgent(book, patch)
+		if !ok {
+			log.Printf("[interactive-memory] skip story memory patch with missing keyed key story_id=%s branch_id=%s structure_id=%s", storyID, branchID, patch.StructureID)
+			continue
+		}
+		record, err := applyStoryMemoryPatchLocked(&book, branchID, anchorTurnID, normalizedPatch, pathSet)
 		if err != nil {
 			return nil, err
 		}
@@ -286,6 +292,37 @@ func (s *Store) ApplyStoryMemoryPatches(storyID, branchID, turnID string, patche
 		return nil, err
 	}
 	return records, nil
+}
+
+func normalizeStoryMemoryPatchForAgent(book interactiveMemoryBook, patch StoryMemoryPatch) (StoryMemoryPatch, bool) {
+	op := strings.TrimSpace(patch.Op)
+	if op == "" {
+		op = "upsert"
+	}
+	if op == "hide" {
+		return patch, true
+	}
+	structureID := sanitizeMemoryID(patch.StructureID)
+	structure := storyMemoryStructureByID(book.Structures, structureID)
+	if structure.Mode != "keyed" {
+		return patch, true
+	}
+	if strings.TrimSpace(patch.Key) != "" {
+		return patch, true
+	}
+	if structure.KeyFieldID != "" {
+		if key := strings.TrimSpace(patch.Values[structure.KeyFieldID]); key != "" {
+			patch.Key = key
+			return patch, true
+		}
+	}
+	for _, record := range book.Records {
+		if record.ID == sanitizeMemoryID(patch.RecordID) && record.StructureID == structure.ID {
+			patch.Key = record.Key
+			return patch, strings.TrimSpace(patch.Key) != ""
+		}
+	}
+	return patch, false
 }
 
 func (s *Store) ShouldGenerateStoryMemory(storyID, branchID string) (bool, int, error) {
@@ -326,6 +363,20 @@ func (s *Store) StoryMemoryContextSummary(storyID, branchID string, limit int) (
 	}
 	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), false)
 	return formatStoryMemoryContextSummary(book.Structures, records, limit), nil
+}
+
+func (s *Store) StoryMemorySchemaContext(storyID string, limit int) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, _, err := s.readStoryLocked(storyID); err != nil {
+		return "", err
+	}
+	book, err := s.readMemoryBookLocked(storyID)
+	if err != nil {
+		return "", err
+	}
+	return formatStoryMemorySchemaContext(book.Structures, limit), nil
 }
 
 func (s *Store) CreateInteractiveMemory(storyID string, req InteractiveMemoryCreateRequest) (InteractiveMemoryEntry, error) {
@@ -1383,6 +1434,66 @@ func formatStoryMemoryContextSummary(structures []StoryMemoryStructure, records 
 			sb.WriteString(strings.Join(parts, "；"))
 			sb.WriteString("\n")
 			count++
+		}
+	}
+	return trimMemoryText(sb.String())
+}
+
+func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int) string {
+	if limit <= 0 || limit > maxMemoryTextBytes {
+		limit = maxMemoryTextBytes
+	}
+	var sb strings.Builder
+	sb.WriteString("来源: interactive/memory/story-{story_id}.json 的故事记忆结构定义\n")
+	sb.WriteString(fmt.Sprintf("上限: %d bytes\n", limit))
+	sb.WriteString("规则: story_memory_patches 只能使用下列 structure_id 和字段 ID；keyed 结构必须提供 key，且 key 应等于 key_field_id 对应字段值。\n")
+	for _, structure := range structures {
+		if sb.Len() >= limit {
+			sb.WriteString("\n(后续故事记忆结构已截断)\n")
+			return trimMemoryText(sb.String())
+		}
+		sb.WriteString("\n## ")
+		sb.WriteString(structure.ID)
+		if strings.TrimSpace(structure.Name) != "" {
+			sb.WriteString("（")
+			sb.WriteString(structure.Name)
+			sb.WriteString("）")
+		}
+		sb.WriteString("\n")
+		sb.WriteString("- mode: ")
+		sb.WriteString(firstMemoryText(structure.Mode, "append"))
+		sb.WriteString("\n")
+		if strings.TrimSpace(structure.KeyFieldID) != "" {
+			sb.WriteString("- key_field_id: ")
+			sb.WriteString(structure.KeyFieldID)
+			sb.WriteString("\n")
+		}
+		if strings.TrimSpace(structure.Description) != "" {
+			sb.WriteString("- description: ")
+			sb.WriteString(structure.Description)
+			sb.WriteString("\n")
+		}
+		sb.WriteString("- fields:\n")
+		for _, field := range structure.Fields {
+			if sb.Len() >= limit {
+				sb.WriteString("(后续字段已截断)\n")
+				return trimMemoryText(sb.String())
+			}
+			sb.WriteString("  - ")
+			sb.WriteString(field.ID)
+			if strings.TrimSpace(field.Name) != "" {
+				sb.WriteString("（")
+				sb.WriteString(field.Name)
+				sb.WriteString("）")
+			}
+			if field.Required {
+				sb.WriteString(" required")
+			}
+			if strings.TrimSpace(field.Description) != "" {
+				sb.WriteString(": ")
+				sb.WriteString(field.Description)
+			}
+			sb.WriteString("\n")
 		}
 	}
 	return trimMemoryText(sb.String())

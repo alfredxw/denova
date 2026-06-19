@@ -38,6 +38,7 @@ type InteractiveStatePromptInput struct {
 	Characters        string
 	WorldBuilding     string
 	LoreItems         string
+	StoryMemorySchema string
 	SnapshotStateJSON string
 	UserAction        string
 	Narrative         string
@@ -245,7 +246,9 @@ func BuildInteractiveStateSystemInstruction() string {
 		"必须只输出一个 JSON 对象，不要输出 Markdown、解释或代码块。",
 		"JSON 格式必须是 {\"story_memory_patches\":[...]}。",
 		"story_memory_patches 用于更新用户配置的故事记忆结构；每条 patch 包含 op、structure_id、record_id、key、values 或 hidden。",
-		"op 仅使用 upsert、append、hide；current_state/protagonist 等 singleton 用 upsert，important_character/quest_event 用 key upsert，plot_summary 用 append。",
+		"必须基于注入的“故事记忆结构与字段协议”输出 patch；structure_id、key_field_id 和 values 字段名只能来自该协议。",
+		"op 仅使用 upsert、append、hide；singleton 用 upsert，keyed 用带 key 的 upsert，append 用 append。",
+		"keyed 结构必须输出非空 key，且 values 必须包含 key_field_id 对应字段；key 必须等于该字段值。",
 		"values 是纯文本字段对象，字段名必须来自对应结构；不要输出未来计划，不要复制没有变化的旧状态。",
 	}, "\n")
 }
@@ -254,11 +257,8 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	var sb strings.Builder
 	sb.WriteString("请根据以下互动故事上下文，生成本回合的故事记忆 patch JSON。\n\n")
 	sb.WriteString("## 故事记忆建议\n")
-	sb.WriteString("- current_state：维护当前时间、地点和正在发生的事件。\n")
-	sb.WriteString("- protagonist：维护主角稳定信息、经历、技能和物品。\n")
-	sb.WriteString("- important_character：按角色姓名 upsert 重要角色的简介、关系、离场状态、技能物品和经历。\n")
-	sb.WriteString("- quest_event：按任务名 upsert 任务、危机、承诺、进度和奖惩代价。\n")
-	sb.WriteString("- plot_summary：追加已经发生且后续需要承接的剧情纪要。\n")
+	sb.WriteString("- 先读取“故事记忆结构与字段协议”，只按其中列出的结构和字段生成 patch。\n")
+	sb.WriteString("- singleton 结构维护当前状态类信息；keyed 结构按 key_field_id 对应字段 upsert；append 结构追加已经发生且后续需要承接的事实。\n")
 	sb.WriteString("- 资料库是稳定设定校准来源；故事记忆不得写入与资料库冲突的身份、规则、地点、物品或关系。若本回合正文和资料库疑似冲突，只记录已发生事实和待核对点，不要把矛盾扩写成新设定。\n")
 	sb.WriteString("- 不要记录下一步行动建议、快捷选择或可选择入口；这些由独立快捷选择 Agent 生成。\n")
 	sb.WriteString("- 若本回合没有值得沉淀的信息，可以返回空数组。\n\n")
@@ -274,10 +274,11 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 		writeBlock(&sb, "角色设定", in.Characters)
 		writeBlock(&sb, "世界观设定", in.WorldBuilding)
 	}
+	writeBlock(&sb, "故事记忆结构与字段协议", in.StoryMemorySchema)
 	writeBlock(&sb, "本回合前的故事记忆", in.SnapshotStateJSON)
 	writeBlock(&sb, "用户本回合行动", in.UserAction)
 	writeBlock(&sb, "已生成的本回合正文", in.Narrative)
-	sb.WriteString("\n只输出 JSON，例如：{\"story_memory_patches\":[{\"op\":\"upsert\",\"structure_id\":\"current_state\",\"values\":{\"time\":\"夜晚\",\"location\":\"旧宅门厅\",\"event\":\"主角发现门厅的铜铃会回应钥匙。\"}},{\"op\":\"append\",\"structure_id\":\"plot_summary\",\"values\":{\"time\":\"夜晚\",\"place\":\"旧宅门厅\",\"event\":\"主角用铜钥匙触发门厅铜铃，确认旧宅对钥匙有反应。\"}}]}。\n")
+	sb.WriteString("\n只输出 JSON，例如：{\"story_memory_patches\":[{\"op\":\"upsert\",\"structure_id\":\"current_state\",\"values\":{\"time\":\"夜晚\",\"location\":\"旧宅门厅\",\"event\":\"主角发现门厅的铜铃会回应钥匙。\"}},{\"op\":\"upsert\",\"structure_id\":\"important_character\",\"key\":\"林川\",\"values\":{\"name\":\"林川\",\"brief\":\"熟悉旧宅机关的同行者\",\"relationship\":\"提醒主角谨慎使用铜钥匙\"}},{\"op\":\"append\",\"structure_id\":\"plot_summary\",\"values\":{\"time\":\"夜晚\",\"place\":\"旧宅门厅\",\"event\":\"主角用铜钥匙触发门厅铜铃，确认旧宅对钥匙有反应。\"}}]}。\n")
 	return sb.String()
 }
 

@@ -116,6 +116,14 @@ describe('StoryStage', () => {
     expect(screen.getByTestId('story-stage-card').parentElement).toHaveClass('h-full', 'overflow-hidden')
     expect(screen.getByText('我推开酒馆的门')).toBeInTheDocument()
     expect(screen.getByText('门后传来低沉的风声。')).toBeInTheDocument()
+    expect(container.querySelector('.chat-agent-message')).toHaveStyle({
+      fontFamily: 'var(--nova-reading-font-family)',
+      fontSize: 'var(--nova-reading-font-size, 18px)',
+    })
+    expect(screen.getByPlaceholderText('你要做什么？')).toHaveStyle({
+      fontFamily: 'var(--nova-reading-font-family)',
+      fontSize: 'min(var(--nova-reading-font-size, 18px), 16px)',
+    })
 
     fireEvent.change(screen.getByPlaceholderText('你要做什么？'), {
       target: { value: '我点燃火把' },

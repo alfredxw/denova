@@ -282,10 +282,12 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 				"args": fmt.Sprintf("patches=%d branch_id=%s", patchCount, snapshot.BranchID),
 			}})
 		}
-		if _, err := store.ApplyStoryMemoryPatches(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, result.StoryMemoryPatches); err != nil {
+		appliedRecords, err := store.ApplyStoryMemoryPatches(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, result.StoryMemoryPatches)
+		if err != nil {
 			_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
 			return interactive.StoryMemoryState{}, patchCount, err
 		}
+		patchCount = len(appliedRecords)
 		if emit != nil {
 			emit(agent.Event{Type: "tool_result", Data: map[string]string{
 				"id":      "story_memory_apply",

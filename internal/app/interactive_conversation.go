@@ -263,6 +263,11 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		log.Printf("[interactive-state-agent] load story memory failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
 		storyMemory = ""
 	}
+	storyMemorySchema, err := c.store.StoryMemorySchemaContext(c.storyID, interactiveStateMemorySchemaBytes)
+	if err != nil {
+		log.Printf("[interactive-state-agent] load story memory schema failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
+		storyMemorySchema = ""
+	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	loreContext := c.stateLoreContext()
 	instruction := prompts.InteractiveStateInstruction(prompts.InteractiveStatePromptInput{
@@ -274,6 +279,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		Characters:        "",
 		WorldBuilding:     "",
 		LoreItems:         loreContext,
+		StoryMemorySchema: storyMemorySchema,
 		SnapshotStateJSON: storyMemory,
 		UserAction:        turn.User,
 		Narrative:         turn.Narrative,
@@ -285,7 +291,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		turn.ID,
 		storyCtx.Meta.StoryTellerID,
 		interactiveTellerSlotSummary(teller, "state_memory"),
-		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreContext, "", "", storyMemory, turn.User, turn.Narrative),
+		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreContext, "", "", storyMemorySchema, storyMemory, turn.User, turn.Narrative),
 		interactivePartSummary(instruction),
 	)
 	return instruction, nil
@@ -383,6 +389,7 @@ type interactiveTurnMemory struct {
 const (
 	interactiveMemoryMaxPreviousTurns = 80
 	interactiveMemorySummaryMaxBytes  = 16 * 1024
+	interactiveStateMemorySchemaBytes = 8 * 1024
 	interactiveStateLoreContextBytes  = 32 * 1024
 )
 
@@ -445,7 +452,7 @@ func interactiveStorySourceSummary(title, origin string, teller interactive.Tell
 	return interactiveContextSourceListSummary(parts)
 }
 
-func interactiveStateSourceSummary(title, origin string, teller interactive.Teller, loreItems, characters, worldBuilding, snapshotState, userAction, narrative string) string {
+func interactiveStateSourceSummary(title, origin string, teller interactive.Teller, loreItems, characters, worldBuilding, storyMemorySchema, snapshotState, userAction, narrative string) string {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title},
 		{Source: "互动故事", Title: "开端", Content: origin},
@@ -455,7 +462,8 @@ func interactiveStateSourceSummary(title, origin string, teller interactive.Tell
 		parts = append(parts, interactiveContextSource{Source: "资料库", Title: ".nova/lore/items.json", Content: loreItems})
 	}
 	parts = append(parts,
-		interactiveContextSource{Source: "互动状态", Title: "当前快照 JSON", Content: snapshotState},
+		interactiveContextSource{Source: "故事记忆结构", Title: "story memory schema", Content: storyMemorySchema},
+		interactiveContextSource{Source: "故事记忆", Title: "当前分支可见故事记忆", Content: snapshotState},
 		interactiveContextSource{Source: "本轮行动", Title: "用户行动", Content: userAction},
 		interactiveContextSource{Source: "本轮剧情", Title: "Agent 正文", Content: narrative},
 	)

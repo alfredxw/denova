@@ -115,6 +115,17 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if !strings.Contains(stateInstruction, "黄泉酒馆完整设定") {
 		t.Fatalf("state instruction should include bounded full lore for memory calibration: %s", stateInstruction)
 	}
+	for _, want := range []string{
+		"故事记忆结构与字段协议",
+		"## important_character",
+		"key_field_id: name",
+		"name（姓名） required",
+		"plot_summary",
+	} {
+		if !strings.Contains(stateInstruction, want) {
+			t.Fatalf("state instruction should include story memory schema %q: %s", want, stateInstruction)
+		}
+	}
 	if strings.Contains(stateInstruction, "经典叙事者") || strings.Contains(stateInstruction, "导演本轮上下文规则") {
 		t.Fatalf("state instruction should not include story-only teller rules: %s", stateInstruction)
 	}

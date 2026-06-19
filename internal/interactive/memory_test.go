@@ -1,6 +1,9 @@
 package interactive
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestInteractiveMemoryStoreFiltersUpdatesAndHidesByBranch(t *testing.T) {
 	store := NewStore(t.TempDir())
@@ -175,5 +178,107 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 	}
 	if len(mainState.Records) != 1 || mainState.Records[0].Values["status"] != "开始信任主角" {
 		t.Fatalf("main branch should keep original record: %#v", mainState.Records)
+	}
+}
+
+func TestStoryMemorySchemaContextIncludesStructuresWithoutRecords(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "结构上下文"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SaveStoryMemoryStructure(story.ID, StoryMemoryStructureRequest{
+		ID:          "relationship_clock",
+		Name:        "关系时钟",
+		Description: "追踪关键人物关系变化",
+		Mode:        "keyed",
+		KeyFieldID:  "name",
+		Fields: []StoryMemoryField{
+			{ID: "name", Name: "姓名", Required: true, Description: "角色姓名或称呼", Order: 10},
+			{ID: "status", Name: "状态", Description: "当前关系阶段", Order: 20},
+		},
+		Order: 90,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	context, err := store.StoryMemorySchemaContext(story.ID, 12*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"structure_id",
+		"## current_state",
+		"## important_character",
+		"## relationship_clock",
+		"mode: keyed",
+		"key_field_id: name",
+		"name（姓名） required: 角色姓名或称呼",
+		"status（状态）: 当前关系阶段",
+	} {
+		if !strings.Contains(context, want) {
+			t.Fatalf("schema context missing %q:\n%s", want, context)
+		}
+	}
+}
+
+func TestApplyStoryMemoryPatchesNormalizesKeyedAgentPatches(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "Agent 故事记忆"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := store.AppendTurn(story.ID, AppendTurnRequest{
+		BranchID:  "main",
+		User:      "我叫住林川",
+		Narrative: "林川压低声音提醒我别靠近钟楼。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := store.ApplyStoryMemoryPatches(story.ID, "main", turn.ID, []StoryMemoryPatch{
+		{
+			Op:          "upsert",
+			StructureID: "important_character",
+			Values: map[string]string{
+				"name":         "林川",
+				"relationship": "提醒主角远离钟楼",
+			},
+		},
+		{
+			Op:          "upsert",
+			StructureID: "quest_event",
+			Values: map[string]string{
+				"progress": "有人提醒钟楼危险，但任务名未知。",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 1 || records[0].Key != "林川" {
+		t.Fatalf("expected one normalized keyed record, got %#v", records)
+	}
+	state, err := store.StoryMemory(story.ID, "main", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Records) != 1 || state.Records[0].StructureID != "important_character" {
+		t.Fatalf("invalid keyless patch should be skipped without failing the batch: %#v", state.Records)
+	}
+	updated, err := store.ApplyStoryMemoryPatches(story.ID, "main", turn.ID, []StoryMemoryPatch{
+		{
+			Op:          "upsert",
+			StructureID: "important_character",
+			RecordID:    records[0].ID,
+			Values: map[string]string{
+				"relationship": "继续提醒主角远离钟楼",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated) != 1 || updated[0].Key != "林川" || updated[0].Values["relationship"] != "继续提醒主角远离钟楼" {
+		t.Fatalf("record_id update should preserve keyed record key: %#v", updated)
 	}
 }
