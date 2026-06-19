@@ -118,6 +118,21 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 	if len(state.Structures) < 5 || state.Settings.AutoIntervalTurns != defaultStoryMemoryInterval || !state.Settings.Enabled {
 		t.Fatalf("default story memory state mismatch: %#v", state)
 	}
+	currentState := storyMemoryStructureByID(state.Structures, "current_state")
+	if currentState.Description != "记录当前主角所在地点及时间相关参数。此表有且仅有一行。" {
+		t.Fatalf("current_state preset description mismatch: %#v", currentState)
+	}
+	for _, want := range []string{"location", "time", "previous_time", "elapsed_time"} {
+		if !storyMemoryStructureHasField(currentState, want) {
+			t.Fatalf("current_state preset missing field %q: %#v", want, currentState.Fields)
+		}
+	}
+	protagonist := storyMemoryStructureByID(state.Structures, "protagonist")
+	for _, want := range []string{"identity", "personality", "skills", "items"} {
+		if !storyMemoryStructureHasField(protagonist, want) {
+			t.Fatalf("protagonist preset missing field %q: %#v", want, protagonist.Fields)
+		}
+	}
 	structure, err := store.SaveStoryMemoryStructure(story.ID, StoryMemoryStructureRequest{
 		ID:         "relationship_clock",
 		Name:       "关系时钟",
@@ -181,6 +196,77 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 	}
 }
 
+func TestNormalizeMemoryBookRefreshesBuiltInStoryMemoryPresets(t *testing.T) {
+	book := normalizeMemoryBook(interactiveMemoryBook{
+		V:       2,
+		StoryID: "story-1",
+		Settings: StoryMemorySettings{
+			Enabled:           true,
+			AutoIntervalTurns: defaultStoryMemoryInterval,
+		},
+		Structures: []StoryMemoryStructure{
+			{
+				ID:      "current_state",
+				Name:    "当前状态",
+				Mode:    "singleton",
+				BuiltIn: true,
+				Fields: []StoryMemoryField{
+					{ID: "time", Name: "时间", Order: 10},
+					{ID: "location", Name: "地点", Order: 20},
+					{ID: "event", Name: "当前事件", Order: 30},
+				},
+			},
+			{
+				ID:      "plot_summary",
+				Name:    "剧情纪要",
+				Mode:    "append",
+				BuiltIn: true,
+				Fields: []StoryMemoryField{
+					{ID: "time", Name: "时间", Order: 10},
+					{ID: "place", Name: "地点", Order: 20},
+					{ID: "event", Name: "事件", Order: 30},
+				},
+			},
+			{
+				ID:     "custom",
+				Name:   "自定义",
+				Mode:   "append",
+				Fields: []StoryMemoryField{{ID: "value", Name: "内容", Order: 10}},
+			},
+		},
+		Records: []StoryMemoryRecord{
+			{
+				ID:          "mem-1",
+				StructureID: "plot_summary",
+				BranchID:    "main",
+				Values: map[string]string{
+					"time":  "旧时间",
+					"place": "旧地点",
+					"event": "旧事件",
+				},
+				CreatedAt: "2026-06-19T00:00:00Z",
+				UpdatedAt: "2026-06-19T00:00:00Z",
+			},
+		},
+	})
+
+	currentState := storyMemoryStructureByID(book.Structures, "current_state")
+	if !storyMemoryStructureHasField(currentState, "previous_time") || storyMemoryStructureHasField(currentState, "event") {
+		t.Fatalf("current_state built-in preset was not refreshed: %#v", currentState.Fields)
+	}
+	plotSummary := storyMemoryStructureByID(book.Structures, "plot_summary")
+	if plotSummary.Name != "纪要" || !storyMemoryStructureHasField(plotSummary, "time_span") || !storyMemoryStructureHasField(plotSummary, "sequence") {
+		t.Fatalf("plot_summary built-in preset was not refreshed: %#v", plotSummary)
+	}
+	custom := storyMemoryStructureByID(book.Structures, "custom")
+	if custom.Name != "自定义" || !storyMemoryStructureHasField(custom, "value") {
+		t.Fatalf("custom structure should be preserved: %#v", custom)
+	}
+	if got := book.Records[0].Values["time_span"]; got != "旧时间" {
+		t.Fatalf("legacy plot_summary time should migrate to time_span, got %q", got)
+	}
+}
+
 func TestStoryMemorySchemaContextIncludesStructuresWithoutRecords(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "结构上下文"})
@@ -188,14 +274,15 @@ func TestStoryMemorySchemaContextIncludesStructuresWithoutRecords(t *testing.T) 
 		t.Fatal(err)
 	}
 	if _, err := store.SaveStoryMemoryStructure(story.ID, StoryMemoryStructureRequest{
-		ID:          "relationship_clock",
-		Name:        "关系时钟",
-		Description: "追踪关键人物关系变化",
-		Mode:        "keyed",
-		KeyFieldID:  "name",
+		ID:                    "relationship_clock",
+		Name:                  "关系时钟",
+		Description:           "追踪关键人物关系变化",
+		GenerationInstruction: "每次整理只更新已经被剧情证实的关系变化",
+		Mode:                  "keyed",
+		KeyFieldID:            "name",
 		Fields: []StoryMemoryField{
 			{ID: "name", Name: "姓名", Required: true, Description: "角色姓名或称呼", Order: 10},
-			{ID: "status", Name: "状态", Description: "当前关系阶段", Order: 20},
+			{ID: "status", Name: "状态", Description: "当前关系阶段", GenerationInstruction: "不少于 300 字，必须包含触发事件和当前态度", Order: 20},
 		},
 		Order: 90,
 	}); err != nil {
@@ -212,13 +299,24 @@ func TestStoryMemorySchemaContextIncludesStructuresWithoutRecords(t *testing.T) 
 		"## relationship_clock",
 		"mode: keyed",
 		"key_field_id: name",
+		"generation_instruction: 每次整理只更新已经被剧情证实的关系变化",
 		"name（姓名） required: 角色姓名或称呼",
 		"status（状态）: 当前关系阶段",
+		"generation_instruction: 不少于 300 字，必须包含触发事件和当前态度",
 	} {
 		if !strings.Contains(context, want) {
 			t.Fatalf("schema context missing %q:\n%s", want, context)
 		}
 	}
+}
+
+func storyMemoryStructureHasField(structure StoryMemoryStructure, fieldID string) bool {
+	for _, field := range structure.Fields {
+		if field.ID == fieldID {
+			return true
+		}
+	}
+	return false
 }
 
 func TestApplyStoryMemoryPatchesNormalizesKeyedAgentPatches(t *testing.T) {

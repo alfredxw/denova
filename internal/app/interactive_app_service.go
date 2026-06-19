@@ -256,25 +256,18 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 			"content": "已读取当前剧情线、当前回合和有界故事记忆上下文。",
 		}})
 	}
-	var output string
-	if emit == nil {
-		output, err = agent.GenerateInteractiveState(runCtx, &runtimeCfg, instruction)
-	} else {
-		output, err = agent.StreamInteractiveState(runCtx, &runtimeCfg, instruction, emit)
+	generate := agent.GenerateInteractiveState
+	if emit != nil {
+		generate = func(ctx context.Context, cfg *config.Config, instruction string) (string, error) {
+			return agent.StreamInteractiveState(ctx, cfg, instruction, emit)
+		}
 	}
-	if err != nil {
-		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveState, instruction, "执行失败："+err.Error())
-		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
-		return interactive.StoryMemoryState{}, 0, err
-	}
-	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveState, instruction, output)
-	result, err := parseInteractiveMemoryOutput(output)
-	if err != nil {
-		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
-		return interactive.StoryMemoryState{}, 0, err
-	}
-	patchCount := len(result.StoryMemoryPatches)
-	if len(result.StoryMemoryPatches) > 0 {
+	var patchCount int
+	_, err = runInteractiveMemoryAgentWithRetry(runCtx, &runtimeCfg, instruction, sessionStore, generate, func(result interactiveMemoryAgentResult) error {
+		patchCount = len(result.StoryMemoryPatches)
+		if len(result.StoryMemoryPatches) == 0 {
+			return nil
+		}
 		if emit != nil {
 			emit(agent.Event{Type: "tool_call", Data: map[string]string{
 				"id":   "story_memory_apply",
@@ -284,8 +277,7 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 		}
 		appliedRecords, err := store.ApplyStoryMemoryPatches(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, result.StoryMemoryPatches)
 		if err != nil {
-			_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
-			return interactive.StoryMemoryState{}, patchCount, err
+			return err
 		}
 		patchCount = len(appliedRecords)
 		if emit != nil {
@@ -295,6 +287,11 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 				"content": fmt.Sprintf("已写入 %d 条故事记忆更新。", patchCount),
 			}})
 		}
+		return nil
+	})
+	if err != nil {
+		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
+		return interactive.StoryMemoryState{}, 0, err
 	}
 	if err := store.MarkInteractiveMemoryReady(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID); err != nil {
 		return interactive.StoryMemoryState{}, patchCount, err

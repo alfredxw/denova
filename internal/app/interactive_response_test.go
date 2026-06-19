@@ -35,3 +35,28 @@ func TestParseInteractiveMemoryOutputAllowsEmptyStateOps(t *testing.T) {
 		t.Fatalf("result mismatch: %#v", result)
 	}
 }
+
+func TestParseInteractiveMemoryOutputCoercesStoryMemoryPatchValuesToText(t *testing.T) {
+	result, err := parseInteractiveMemoryOutput(`{
+	  "story_memory_patches": [{
+	    "op": "append",
+	    "structure_id": "plot_summary",
+	    "values": {
+	      "sequence": 3,
+	      "confirmed": true,
+	      "event": "主角进入旧宅。",
+	      "tags": ["线索", 2]
+	    }
+	  }]
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.StoryMemoryPatches) != 1 {
+		t.Fatalf("patches mismatch: %#v", result.StoryMemoryPatches)
+	}
+	values := result.StoryMemoryPatches[0].Values
+	if values["sequence"] != "3" || values["confirmed"] != "true" || values["tags"] != `["线索",2]` {
+		t.Fatalf("values were not coerced to text: %#v", values)
+	}
+}

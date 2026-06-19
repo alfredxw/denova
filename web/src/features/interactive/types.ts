@@ -179,6 +179,7 @@ export interface StoryMemoryField {
   id: string
   name: string
   description?: string
+  generation_instruction?: string
   required?: boolean
   order: number
 }
@@ -187,6 +188,7 @@ export interface StoryMemoryStructure {
   id: string
   name: string
   description?: string
+  generation_instruction?: string
   mode: 'singleton' | 'keyed' | 'append'
   key_field_id?: string
   fields: StoryMemoryField[]

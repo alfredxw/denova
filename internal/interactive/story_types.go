@@ -1,5 +1,11 @@
 package interactive
 
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+)
+
 type CreateStoryRequest struct {
 	Title            string             `json:"title"`
 	Origin           string             `json:"origin"`
@@ -309,24 +315,26 @@ type StoryMemorySettings struct {
 }
 
 type StoryMemoryField struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Required    bool   `json:"required,omitempty"`
-	Order       int    `json:"order"`
+	ID                    string `json:"id"`
+	Name                  string `json:"name"`
+	Description           string `json:"description,omitempty"`
+	GenerationInstruction string `json:"generation_instruction,omitempty"`
+	Required              bool   `json:"required,omitempty"`
+	Order                 int    `json:"order"`
 }
 
 type StoryMemoryStructure struct {
-	ID          string             `json:"id"`
-	Name        string             `json:"name"`
-	Description string             `json:"description,omitempty"`
-	Mode        string             `json:"mode"`
-	KeyFieldID  string             `json:"key_field_id,omitempty"`
-	Fields      []StoryMemoryField `json:"fields"`
-	Order       int                `json:"order"`
-	BuiltIn     bool               `json:"built_in,omitempty"`
-	CreatedAt   string             `json:"created_at,omitempty"`
-	UpdatedAt   string             `json:"updated_at,omitempty"`
+	ID                    string             `json:"id"`
+	Name                  string             `json:"name"`
+	Description           string             `json:"description,omitempty"`
+	GenerationInstruction string             `json:"generation_instruction,omitempty"`
+	Mode                  string             `json:"mode"`
+	KeyFieldID            string             `json:"key_field_id,omitempty"`
+	Fields                []StoryMemoryField `json:"fields"`
+	Order                 int                `json:"order"`
+	BuiltIn               bool               `json:"built_in,omitempty"`
+	CreatedAt             string             `json:"created_at,omitempty"`
+	UpdatedAt             string             `json:"updated_at,omitempty"`
 }
 
 type StoryMemoryRecord struct {
@@ -363,13 +371,14 @@ type StoryMemorySettingsUpdateRequest struct {
 }
 
 type StoryMemoryStructureRequest struct {
-	ID          string             `json:"id,omitempty"`
-	Name        string             `json:"name"`
-	Description string             `json:"description,omitempty"`
-	Mode        string             `json:"mode"`
-	KeyFieldID  string             `json:"key_field_id,omitempty"`
-	Fields      []StoryMemoryField `json:"fields"`
-	Order       int                `json:"order"`
+	ID                    string             `json:"id,omitempty"`
+	Name                  string             `json:"name"`
+	Description           string             `json:"description,omitempty"`
+	GenerationInstruction string             `json:"generation_instruction,omitempty"`
+	Mode                  string             `json:"mode"`
+	KeyFieldID            string             `json:"key_field_id,omitempty"`
+	Fields                []StoryMemoryField `json:"fields"`
+	Order                 int                `json:"order"`
 }
 
 type StoryMemoryRecordRequest struct {
@@ -393,6 +402,56 @@ type StoryMemoryPatch struct {
 	Key         string            `json:"key,omitempty"`
 	Values      map[string]string `json:"values,omitempty"`
 	Hidden      *bool             `json:"hidden,omitempty"`
+}
+
+func (p *StoryMemoryPatch) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Op          string         `json:"op"`
+		StructureID string         `json:"structure_id,omitempty"`
+		RecordID    string         `json:"record_id,omitempty"`
+		Key         string         `json:"key,omitempty"`
+		Values      map[string]any `json:"values,omitempty"`
+		Hidden      *bool          `json:"hidden,omitempty"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&raw); err != nil {
+		return err
+	}
+	*p = StoryMemoryPatch{
+		Op:          raw.Op,
+		StructureID: raw.StructureID,
+		RecordID:    raw.RecordID,
+		Key:         raw.Key,
+		Hidden:      raw.Hidden,
+	}
+	if raw.Values != nil {
+		p.Values = normalizeStoryMemoryPatchValues(raw.Values)
+	}
+	return nil
+}
+
+func normalizeStoryMemoryPatchValues(values map[string]any) map[string]string {
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		switch typed := value.(type) {
+		case nil:
+			out[key] = ""
+		case string:
+			out[key] = typed
+		case json.Number:
+			out[key] = typed.String()
+		case bool:
+			out[key] = fmt.Sprintf("%t", typed)
+		default:
+			if data, err := json.Marshal(typed); err == nil {
+				out[key] = string(data)
+			} else {
+				out[key] = fmt.Sprint(typed)
+			}
+		}
+	}
+	return out
 }
 
 type StoryMemoryGenerateRequest struct {

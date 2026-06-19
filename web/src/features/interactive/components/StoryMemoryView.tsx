@@ -14,9 +14,10 @@ const emptyStructure: StoryMemoryStructure = {
   id: '',
   name: '',
   description: '',
+  generation_instruction: '',
   mode: 'append',
   key_field_id: '',
-  fields: [{ id: 'event', name: '事件', description: '', required: true, order: 10 }],
+  fields: [{ id: 'event', name: '事件', description: '', generation_instruction: '', required: true, order: 10 }],
   order: 100,
 }
 
@@ -93,6 +94,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
   const visibleBranch = branchOptions.find((branch) => branch.id === visibleBranchId)
   const editorVisible = Boolean(structureDraft || (recordDraft && selectedStructure))
   const recordColumnCount = tableFields.length + 4
+  const columnWidths = useMemo(() => storyMemoryColumnWidths(tableFields.length), [tableFields.length])
 
   const startNewStructure = () => {
     setStructureDraft({ ...emptyStructure, fields: [...emptyStructure.fields] })
@@ -289,17 +291,32 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
               {records.length === 0 ? (
                 <div className="flex min-h-[220px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] text-center text-xs text-[var(--nova-text-muted)]">{loading ? t('storyMemory.loading') : t('storyMemory.empty')}</div>
               ) : (
-                <div className="overflow-x-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
-                  <table className="w-full min-w-[760px] border-collapse text-left text-xs">
-                    <thead className="border-b border-[var(--nova-border)] bg-[var(--nova-table-header-bg)] text-[var(--nova-text-muted)]">
+                <div data-testid="story-memory-table-shell" className="max-w-full overflow-x-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+                  <table data-testid="story-memory-table" className="w-full table-fixed border-collapse text-left text-xs">
+                    <colgroup>
+                      <col style={{ width: columnWidths.record }} />
+                      {tableFields.map((field) => (
+                        <col key={field.id} style={{ width: columnWidths.field }} />
+                      ))}
+                      <col style={{ width: columnWidths.meta }} />
+                      <col style={{ width: columnWidths.meta }} />
+                      <col style={{ width: columnWidths.actions }} />
+                    </colgroup>
+                    <thead className="sticky top-0 z-10 border-b border-[var(--nova-border)] bg-[var(--nova-table-header-bg)] text-[var(--nova-text-muted)]">
                       <tr>
-                        <th className="w-[220px] px-3 py-2 font-medium">{t('storyMemory.record')}</th>
+                        <th className="min-w-0 bg-[var(--nova-table-header-bg)] px-3 py-2 font-medium">{t('storyMemory.record')}</th>
                         {tableFields.map((field) => (
-                          <th key={field.id} className="min-w-[180px] px-3 py-2 font-medium">{field.name || field.id}</th>
+                          <th key={field.id} className="min-w-0 px-3 py-2 font-medium">
+                            <div className="flex min-w-0 items-center gap-1">
+                              <span className="truncate">{field.name || field.id}</span>
+                              {field.required && <span className="shrink-0 text-[var(--nova-danger)]">*</span>}
+                            </div>
+                            {field.description && <div className="mt-0.5 line-clamp-1 break-words text-[10px] font-normal text-[var(--nova-text-faint)] [overflow-wrap:anywhere]">{field.description}</div>}
+                          </th>
                         ))}
-                        <th className="w-[120px] px-3 py-2 font-medium">{t('storyMemory.updated')}</th>
-                        <th className="w-[120px] px-3 py-2 font-medium">{t('storyMemory.branch')}</th>
-                        <th className="w-[112px] px-3 py-2 text-right font-medium">{t('storyMemory.actions')}</th>
+                        <th className="min-w-0 px-3 py-2 font-medium">{t('storyMemory.updated')}</th>
+                        <th className="min-w-0 px-3 py-2 font-medium">{t('storyMemory.branch')}</th>
+                        <th className="min-w-0 px-3 py-2 text-right font-medium">{t('storyMemory.actions')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -308,7 +325,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                         return (
                           <Fragment key={record.id}>
                             <tr className={`border-b border-[var(--nova-border)] align-top ${record.hidden ? 'opacity-55' : ''}`}>
-                              <td className="px-3 py-2">
+                              <td className="min-w-0 bg-[var(--nova-surface)] px-3 py-2">
                                 <div className="flex min-w-0 items-start gap-2">
                                   <button type="button" className="nova-icon-button mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={expanded ? t('storyMemory.collapseRecord') : t('storyMemory.expandRecord')} onClick={() => toggleExpanded(record.id)}>
                                     {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -323,13 +340,17 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                                 </div>
                               </td>
                               {tableFields.map((field) => (
-                                <td key={field.id} className="px-3 py-2 text-[var(--nova-text-muted)]">
-                                  <p className="line-clamp-2 whitespace-pre-wrap leading-5">{recordFieldValue(record, field) || t('storyMemory.noValue')}</p>
+                                <td key={field.id} className="min-w-0 px-3 py-2 text-[var(--nova-text-muted)]">
+                                  <p className="line-clamp-3 whitespace-pre-wrap break-words leading-5 [overflow-wrap:anywhere]">{recordFieldValue(record, field) || t('storyMemory.noValue')}</p>
                                 </td>
                               ))}
-                              <td className="px-3 py-2 text-[var(--nova-text-muted)]">{formatDate(record.updated_at || record.created_at)}</td>
-                              <td className="px-3 py-2 text-[var(--nova-text-muted)]">{record.branch_id === branchId ? t('storyMemory.currentBranch') : shortId(record.branch_id)}</td>
-                              <td className="px-3 py-2">
+                              <td className="min-w-0 px-3 py-2 text-[var(--nova-text-muted)]">
+                                <span className="block truncate">{formatDate(record.updated_at || record.created_at)}</span>
+                              </td>
+                              <td className="min-w-0 px-3 py-2 text-[var(--nova-text-muted)]">
+                                <span className="block truncate">{record.branch_id === branchId ? t('storyMemory.currentBranch') : shortId(record.branch_id)}</span>
+                              </td>
+                              <td className="min-w-0 px-2 py-2">
                                 <div className="flex justify-end gap-1">
                                   <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.editRecord')} onClick={() => startEditRecord(record)}>
                                     <Edit3 className="h-3.5 w-3.5" />
@@ -343,11 +364,16 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                             {expanded && (
                               <tr className="border-b border-[var(--nova-border)] bg-[var(--nova-surface)]">
                                 <td colSpan={recordColumnCount} className="px-3 py-3">
-                                  <div className="grid gap-3 md:grid-cols-2">
+                                  <div data-testid="story-memory-expanded-grid" className="grid max-w-full grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-3 overflow-hidden">
                                     {tableFields.map((field) => (
                                       <section key={field.id} className="min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-                                        <div className="mb-1 text-[11px] font-medium text-[var(--nova-text-muted)]">{field.name || field.id}</div>
-                                        <p className="whitespace-pre-wrap break-words text-xs leading-5 text-[var(--nova-text)]">{recordFieldValue(record, field) || t('storyMemory.noValue')}</p>
+                                        <div className="mb-1 flex min-w-0 items-center gap-1 text-[11px] font-medium text-[var(--nova-text-muted)]">
+                                          <span className="truncate">{field.name || field.id}</span>
+                                          {field.required && <span className="shrink-0 text-[var(--nova-danger)]">*</span>}
+                                        </div>
+                                        {field.description && <p className="mb-2 whitespace-pre-wrap break-words text-[11px] leading-4 text-[var(--nova-text-faint)] [overflow-wrap:anywhere]">{field.description}</p>}
+                                        {field.generation_instruction && <p className="mb-2 whitespace-pre-wrap break-words rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2 py-1 text-[11px] leading-4 text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">{field.generation_instruction}</p>}
+                                        <p className="whitespace-pre-wrap break-words text-xs leading-5 text-[var(--nova-text)] [overflow-wrap:anywhere]">{recordFieldValue(record, field) || t('storyMemory.noValue')}</p>
                                       </section>
                                     ))}
                                   </div>
@@ -388,6 +414,7 @@ function StructureEditor({ draft, saving, onDraftChange, onSave, onCancel, onDel
     <div className="space-y-2">
       <input value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} placeholder={t('storyMemory.structureName')} className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none" />
       <textarea value={draft.description || ''} onChange={(event) => onDraftChange({ ...draft, description: event.target.value })} placeholder={t('storyMemory.structureDescription')} rows={3} className="w-full resize-none rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none" />
+      <textarea value={draft.generation_instruction || ''} onChange={(event) => onDraftChange({ ...draft, generation_instruction: event.target.value })} placeholder={t('storyMemory.generationInstruction')} rows={3} className="w-full resize-y rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none" />
       <select value={draft.mode} onChange={(event) => onDraftChange({ ...draft, mode: event.target.value as StoryMemoryStructure['mode'] })} className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none">
         <option value="singleton">{t('storyMemory.mode.singleton')}</option>
         <option value="keyed">{t('storyMemory.mode.keyed')}</option>
@@ -402,10 +429,11 @@ function StructureEditor({ draft, saving, onDraftChange, onSave, onCancel, onDel
               <input value={field.name} onChange={(event) => updateField(index, { name: event.target.value })} placeholder={t('storyMemory.fieldName')} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs outline-none" />
             </div>
             <textarea value={field.description || ''} onChange={(event) => updateField(index, { description: event.target.value })} placeholder={t('storyMemory.fieldDescription')} rows={2} className="mt-2 w-full resize-none rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs outline-none" />
+            <textarea value={field.generation_instruction || ''} onChange={(event) => updateField(index, { generation_instruction: event.target.value })} placeholder={t('storyMemory.fieldGenerationInstruction')} rows={2} className="mt-2 w-full resize-y rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs outline-none" />
           </div>
         ))}
       </div>
-      <button type="button" className="w-full rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={() => onDraftChange({ ...draft, fields: [...draft.fields, { id: '', name: '', description: '', order: (draft.fields.length + 1) * 10 }] })}>{t('storyMemory.addField')}</button>
+      <button type="button" className="w-full rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={() => onDraftChange({ ...draft, fields: [...draft.fields, { id: '', name: '', description: '', generation_instruction: '', order: (draft.fields.length + 1) * 10 }] })}>{t('storyMemory.addField')}</button>
       <EditorActions saving={saving} onSave={onSave} onCancel={onCancel} onDelete={onDelete} />
     </div>
   )
@@ -444,6 +472,20 @@ function recordFieldValue(record: StoryMemoryRecord, field: StoryMemoryField) {
   if (value) return value
   if (field.id === 'value') return Object.values(record.values || {}).filter(Boolean).join('\n')
   return ''
+}
+
+function storyMemoryColumnWidths(fieldCount: number) {
+  const safeFieldCount = Math.max(1, fieldCount)
+  const record = safeFieldCount >= 5 ? 15 : safeFieldCount >= 3 ? 18 : 22
+  const meta = safeFieldCount >= 5 ? 7 : 8
+  const actions = 7
+  const field = Math.max(7, (100 - record - meta * 2 - actions) / safeFieldCount)
+  return {
+    record: `${record}%`,
+    field: `${field}%`,
+    meta: `${meta}%`,
+    actions: `${actions}%`,
+  }
 }
 
 function branchTitle(branch: BranchSummary | undefined, fallback: string, mainLabel: string) {

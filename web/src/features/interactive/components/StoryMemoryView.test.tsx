@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { StoryMemoryView } from './StoryMemoryView'
-import { getStoryMemory } from '../api'
+import { getStoryMemory, saveStoryMemoryStructure } from '../api'
 import type { StoryMemoryState } from '../types'
 
 vi.mock('../api', () => ({
@@ -16,6 +16,7 @@ vi.mock('../api', () => ({
 }))
 
 const getStoryMemoryMock = vi.mocked(getStoryMemory)
+const saveStoryMemoryStructureMock = vi.mocked(saveStoryMemoryStructure)
 
 describe('StoryMemoryView', () => {
   afterEach(() => {
@@ -50,6 +51,54 @@ describe('StoryMemoryView', () => {
     const row = screen.getByRole('row', { name: /支线记录/ })
     await userEvent.click(within(row).getByRole('button', { name: '展开全文' }))
     expect(screen.getByRole('button', { name: '收起全文' })).toBeInTheDocument()
+  })
+
+  it('saves structure and field generation instructions', async () => {
+    getStoryMemoryMock.mockResolvedValue(buildState('main'))
+    saveStoryMemoryStructureMock.mockImplementation(async (_storyId, input) => ({
+      id: input.id || 'plot',
+      name: input.name || '',
+      description: input.description,
+      generation_instruction: input.generation_instruction,
+      mode: input.mode || 'append',
+      key_field_id: input.key_field_id,
+      fields: input.fields || [],
+      order: input.order || 10,
+    }))
+
+    render(<StoryMemoryView storyId="story-1" branchId="main" />)
+
+    await waitFor(() => expect(getStoryMemoryMock).toHaveBeenCalledWith('story-1', 'main', false))
+    await userEvent.click(screen.getByRole('button', { name: '编辑结构' }))
+    await userEvent.type(screen.getByPlaceholderText('生成要求，例如：只记录剧情已证实的信息；每条记录需要包含动机、变化原因和后续影响'), '只记录已确认事实')
+    await userEvent.type(screen.getAllByPlaceholderText('字段生成要求，例如：不少于 300 字 / 不多于 300 字 / 必须包含触发事件和当前状态')[0], '不少于 300 字')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(saveStoryMemoryStructureMock).toHaveBeenCalledWith('story-1', expect.objectContaining({
+        generation_instruction: '只记录已确认事实',
+        fields: expect.arrayContaining([expect.objectContaining({ id: 'goal', generation_instruction: '不少于 300 字' })]),
+      }))
+    })
+  })
+
+  it('keeps story memory columns inside the available width before and after expansion', async () => {
+    getStoryMemoryMock.mockResolvedValue(buildState('main'))
+
+    render(<StoryMemoryView storyId="story-1" branchId="main" />)
+
+    await waitFor(() => expect(getStoryMemoryMock).toHaveBeenCalledWith('story-1', 'main', false))
+    const shell = screen.getByTestId('story-memory-table-shell')
+    expect(shell).toHaveClass('overflow-x-hidden')
+    expect(shell).not.toHaveClass('overflow-x-auto')
+    expect(screen.getByTestId('story-memory-table')).not.toHaveClass('min-w-[980px]')
+
+    const row = screen.getByRole('row', { name: /当前记录/ })
+    await userEvent.click(within(row).getByRole('button', { name: '展开全文' }))
+
+    const expandedGrid = screen.getByTestId('story-memory-expanded-grid')
+    expect(expandedGrid).toHaveClass('grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))]')
+    expect(expandedGrid).toHaveClass('overflow-hidden')
   })
 })
 
