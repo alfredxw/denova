@@ -11,7 +11,7 @@ describe('InteractiveLayout', () => {
     const { container } = render(<InteractiveLayout />)
 
     expect(await screen.findByText('故事舞台 · 当前分支 main')).toBeInTheDocument()
-    expect(screen.getByText('故事记忆')).toBeInTheDocument()
+    expect(screen.getByTestId('memory-panel-icon')).toBeInTheDocument()
     expect(container.querySelector('[data-slot="select-trigger"]')).toBeInTheDocument()
     expect(container.querySelector('[data-slot="button"]')).toBeInTheDocument()
     expect(screen.getByTestId('interactive-shell')).not.toHaveClass('rounded-xl')

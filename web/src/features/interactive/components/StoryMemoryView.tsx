@@ -1,8 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Bot, Brain, ChevronDown, ChevronRight, Edit3, Eye, EyeOff, Loader2, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react'
+import { Archive, Bot, Brain, ChevronDown, ChevronRight, Edit3, Loader2, Plus, RefreshCw, RotateCcw, Save, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
-import { deleteStoryMemoryStructure, generateStoryMemory, getStoryMemory, saveStoryMemoryRecord, saveStoryMemoryStructure, setStoryMemoryRecordHidden, updateStoryMemorySettings } from '../api'
+import { deleteStoryMemoryStructure, generateStoryMemory, getStoryMemory, saveStoryMemoryRecord, saveStoryMemoryStructure, setStoryMemoryRecordArchived, updateStoryMemorySettings } from '../api'
 import type { BranchSummary, StoryMemoryField, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
 interface StoryMemoryViewProps {
@@ -30,7 +30,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
   const [structureDraft, setStructureDraft] = useState<StoryMemoryStructure | null>(null)
   const [recordDraft, setRecordDraft] = useState<StoryMemoryRecord | null>(null)
   const [expandedRecordIds, setExpandedRecordIds] = useState<Set<string>>(() => new Set())
-  const [showHidden, setShowHidden] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
   const [agentOpen, setAgentOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -52,7 +52,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
     setLoading(true)
     setError('')
     try {
-      const next = await getStoryMemory(storyId, activeBranchId, showHidden)
+      const next = await getStoryMemory(storyId, activeBranchId, showArchived)
       setState(next)
       setSelectedStructureId((current) => next.structures.some((structure) => structure.id === current) ? current : next.structures[0]?.id || '')
     } catch (err) {
@@ -61,7 +61,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
     } finally {
       setLoading(false)
     }
-  }, [activeBranchId, showHidden, storyId, t])
+  }, [activeBranchId, showArchived, storyId, t])
 
   useEffect(() => {
     void load()
@@ -172,9 +172,9 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
     }
   }
 
-  const toggleRecordHidden = async (record: StoryMemoryRecord) => {
+  const toggleRecordArchived = async (record: StoryMemoryRecord) => {
     if (!storyId) return
-    await setStoryMemoryRecordHidden(storyId, record.id, state?.branch_id || activeBranchId, !record.hidden)
+    await setStoryMemoryRecordArchived(storyId, record.id, state?.branch_id || activeBranchId, !record.archived)
     await load()
   }
 
@@ -285,8 +285,8 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                       <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.editStructure')} onClick={() => startEditStructure(selectedStructure)}>
                         <Edit3 className="h-4 w-4" />
                       </button>
-                      <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={showHidden ? t('storyMemory.hideHidden') : t('storyMemory.showHidden')} onClick={() => setShowHidden((value) => !value)}>
-                        {showHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                      <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={showArchived ? t('storyMemory.hideArchived') : t('storyMemory.showArchived')} onClick={() => setShowArchived((value) => !value)}>
+                        {showArchived ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
                       </button>
                     </>
                   )}
@@ -331,7 +331,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                         const expanded = expandedRecordIds.has(record.id)
                         return (
                           <Fragment key={record.id}>
-                            <tr className={`border-b border-[var(--nova-border)] align-top ${record.hidden ? 'opacity-55' : ''}`}>
+                            <tr className={`border-b border-[var(--nova-border)] align-top ${record.archived ? 'opacity-55' : ''}`}>
                               <td className="min-w-0 bg-[var(--nova-surface)] px-3 py-2">
                                 <div className="flex min-w-0 items-start gap-2">
                                   <button type="button" className="nova-icon-button mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={expanded ? t('storyMemory.collapseRecord') : t('storyMemory.expandRecord')} onClick={() => toggleExpanded(record.id)}>
@@ -342,6 +342,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                                     <div className="mt-1 flex flex-wrap gap-1">
                                       {record.manual && <span className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('storyMemory.manual')}</span>}
                                       {record.inherited_from && <span className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('storyMemory.inherited')}</span>}
+                                      {record.archived && <span className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('storyMemory.archived')}</span>}
                                     </div>
                                   </div>
                                 </div>
@@ -362,8 +363,8 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                                   <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.editRecord')} onClick={() => startEditRecord(record)}>
                                     <Edit3 className="h-3.5 w-3.5" />
                                   </button>
-                                  <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={record.hidden ? t('storyMemory.restore') : t('storyMemory.hide')} onClick={() => void toggleRecordHidden(record)}>
-                                    {record.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                                  <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={record.archived ? t('storyMemory.restore') : t('storyMemory.archive')} onClick={() => void toggleRecordArchived(record)}>
+                                    {record.archived ? <RotateCcw className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
                                   </button>
                                 </div>
                               </td>

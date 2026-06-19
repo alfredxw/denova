@@ -73,6 +73,20 @@ export const handlers = [
       sync_status: '',
     })
   }),
+  http.get('/api/interactive/stories/:id/story-memory', ({ params, request }) => {
+    const branch = new URL(request.url).searchParams.get('branch') || 'main'
+    return HttpResponse.json({
+      story_id: params.id,
+      branch_id: branch,
+      settings: {
+        enabled: true,
+        auto_interval_turns: 3,
+      },
+      structures: [],
+      records: [],
+      sync_status: '',
+    })
+  }),
   http.get('/api/interactive/stories/:id/branches', () =>
     HttpResponse.json({
       branches: [{ id: 'main', head: '', created_at: '', current: true }],

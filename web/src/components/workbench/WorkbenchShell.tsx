@@ -63,7 +63,7 @@ const ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
   interactive: 'nova.activity.order.interactive.v2',
 }
 const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
-const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'timeline', 'memory', 'lore', 'teller', 'books', 'skills', 'agents', 'automations']
+const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'timeline', 'memory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
 
 export function WorkbenchShell({
   mode,
@@ -131,7 +131,7 @@ export function WorkbenchShell({
   const agentsActive = mode === 'agents' && !settingsOpen
   const automationsActive = mode === 'automations' && !settingsOpen
   const fullWorkspacePanelVisible = settingsOpen || versionsVisible || mode === 'skills' || mode === 'agents' || mode === 'automations' || (mode === 'ide' && (loreVisible || tellerVisible))
-  const modeLabel = settingsOpen ? t('workbench.mode.settings') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'skills' ? t('workbench.mode.skills') : mode === 'agents' ? t('workbench.mode.agents') : mode === 'automations' ? t('workbench.mode.automations') : t('workbench.mode.ide')
+  const modeLabel = settingsOpen ? t('workbench.mode.settings') : versionsVisible ? t('workbench.activity.versions') : mode === 'interactive' ? t('workbench.mode.interactive') : mode === 'books' ? t('workbench.mode.books') : mode === 'skills' ? t('workbench.mode.skills') : mode === 'agents' ? t('workbench.mode.agents') : mode === 'automations' ? t('workbench.mode.automations') : t('workbench.mode.ide')
   const navigationMode = mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations' ? booksReturnMode : mode
   const activityOrderScope: ActivityOrderScope = navigationMode === 'interactive' ? 'interactive' : 'ide'
   const activityOrder = activityOrders[activityOrderScope]
@@ -144,6 +144,12 @@ export function WorkbenchShell({
     closeSettingsIfOpen()
     onSetMode('ide')
     if (loreVisible || tellerVisible || versionsVisible) onSetRightPanel(null)
+  }
+
+  const switchNavigationMode = (nextMode: 'ide' | 'interactive') => {
+    closeSettingsIfOpen()
+    if (versionsVisible) onSetRightPanel(null)
+    onSetMode(nextMode)
   }
 
   const toggleIdePanel = (panel: NonNullable<RightPanel>) => {
@@ -350,7 +356,7 @@ export function WorkbenchShell({
         <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
           <button
             type="button"
-            onClick={() => onSetMode('ide')}
+            onClick={() => switchNavigationMode('ide')}
             className={`relative overflow-hidden rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
             {navigationMode === 'ide' && <motion.span layoutId="workbench-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
@@ -358,7 +364,7 @@ export function WorkbenchShell({
           </button>
           <button
             type="button"
-            onClick={() => onSetMode('interactive')}
+            onClick={() => switchNavigationMode('interactive')}
             className={`relative overflow-hidden rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
             {navigationMode === 'interactive' && <motion.span layoutId="workbench-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
@@ -443,7 +449,7 @@ export function WorkbenchShell({
             <div className="flex h-8 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
               <button
                 type="button"
-                onClick={() => onSetMode('ide')}
+                onClick={() => switchNavigationMode('ide')}
                 className={`relative min-w-0 overflow-hidden rounded-[6px] px-2 py-1 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
               >
                 {navigationMode === 'ide' && <motion.span layoutId="workbench-mobile-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
@@ -451,7 +457,7 @@ export function WorkbenchShell({
               </button>
               <button
                 type="button"
-                onClick={() => onSetMode('interactive')}
+                onClick={() => switchNavigationMode('interactive')}
                 className={`relative min-w-0 overflow-hidden rounded-[6px] px-2 py-1 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
               >
                 {navigationMode === 'interactive' && <motion.span layoutId="workbench-mobile-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}

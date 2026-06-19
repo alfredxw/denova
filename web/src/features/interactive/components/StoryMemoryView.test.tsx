@@ -11,7 +11,7 @@ vi.mock('../api', () => ({
   getStoryMemory: vi.fn(),
   saveStoryMemoryRecord: vi.fn(),
   saveStoryMemoryStructure: vi.fn(),
-  setStoryMemoryRecordHidden: vi.fn(),
+  setStoryMemoryRecordArchived: vi.fn(),
   updateStoryMemorySettings: vi.fn(),
 }))
 

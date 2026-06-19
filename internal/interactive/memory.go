@@ -37,7 +37,7 @@ func (s *Store) memoryPath(storyID string) string {
 	return filepath.Join(s.memoryDir(), "story-"+storyID+".json")
 }
 
-func (s *Store) InteractiveMemory(storyID, branchID string, includeHidden bool) (InteractiveMemoryState, error) {
+func (s *Store) InteractiveMemory(storyID, branchID string, includeArchived bool) (InteractiveMemoryState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -53,7 +53,7 @@ func (s *Store) InteractiveMemory(storyID, branchID string, includeHidden bool) 
 	if err != nil {
 		return InteractiveMemoryState{}, err
 	}
-	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), includeHidden)
+	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), includeArchived)
 	entries := storyMemoryRecordsToInteractiveEntries(records, book.Structures)
 	status, statusErr := latestMemorySyncStatus(lines, branchID, branch.Head)
 	return InteractiveMemoryState{
@@ -66,7 +66,7 @@ func (s *Store) InteractiveMemory(storyID, branchID string, includeHidden bool) 
 	}, nil
 }
 
-func (s *Store) StoryMemory(storyID, branchID string, includeHidden bool) (StoryMemoryState, error) {
+func (s *Store) StoryMemory(storyID, branchID string, includeArchived bool) (StoryMemoryState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -82,7 +82,7 @@ func (s *Store) StoryMemory(storyID, branchID string, includeHidden bool) (Story
 	if err != nil {
 		return StoryMemoryState{}, err
 	}
-	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), includeHidden)
+	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), includeArchived)
 	status, statusErr := latestMemorySyncStatus(lines, branchID, branch.Head)
 	_, nextAuto := storyMemoryAutoDecisionLocked(book, lines, branchID, branch.Head)
 	return StoryMemoryState{
@@ -193,7 +193,7 @@ func (s *Store) DeleteStoryMemoryStructure(storyID, structureID string) error {
 	book.Structures = next
 	for i := range book.Records {
 		if book.Records[i].StructureID == structureID {
-			book.Records[i].Hidden = true
+			book.Records[i].Archived = true
 			book.Records[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 		}
 	}
@@ -226,7 +226,7 @@ func (s *Store) SaveStoryMemoryRecord(storyID string, req StoryMemoryRecordReque
 	return record, nil
 }
 
-func (s *Store) SetStoryMemoryRecordHidden(storyID, recordID, branchID string, hidden bool) (StoryMemoryRecord, error) {
+func (s *Store) SetStoryMemoryRecordArchived(storyID, recordID, branchID string, archived bool) (StoryMemoryRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -242,7 +242,7 @@ func (s *Store) SetStoryMemoryRecordHidden(storyID, recordID, branchID string, h
 	if err != nil {
 		return StoryMemoryRecord{}, err
 	}
-	record, err := setStoryMemoryRecordHiddenLocked(&book, branchID, branch.Head, recordID, hidden, eventPathSet(branch.Head, lines))
+	record, err := setStoryMemoryRecordArchivedLocked(&book, branchID, branch.Head, recordID, archived, eventPathSet(branch.Head, lines))
 	if err != nil {
 		return StoryMemoryRecord{}, err
 	}
@@ -299,7 +299,7 @@ func normalizeStoryMemoryPatchForAgent(book interactiveMemoryBook, patch StoryMe
 	if op == "" {
 		op = "upsert"
 	}
-	if op == "hide" {
+	if op == "archive" || op == "restore" {
 		return patch, true
 	}
 	structureID := sanitizeMemoryID(patch.StructureID)
@@ -454,7 +454,7 @@ func (s *Store) UpdateInteractiveMemory(storyID, memoryID string, req Interactiv
 	return InteractiveMemoryEntry{}, fmt.Errorf("记忆不存在: %s", memoryID)
 }
 
-func (s *Store) SetInteractiveMemoryHidden(storyID, memoryID string, hidden bool) (InteractiveMemoryEntry, error) {
+func (s *Store) SetInteractiveMemoryArchived(storyID, memoryID string, archived bool) (InteractiveMemoryEntry, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -474,7 +474,7 @@ func (s *Store) SetInteractiveMemoryHidden(storyID, memoryID string, hidden bool
 		if book.Records[i].ID != memoryID {
 			continue
 		}
-		book.Records[i].Hidden = hidden
+		book.Records[i].Archived = archived
 		book.Records[i].UpdatedAt = now
 		if err := s.writeMemoryBookLocked(storyID, book); err != nil {
 			return InteractiveMemoryEntry{}, err
@@ -829,13 +829,13 @@ func validateMemoryEntry(entry InteractiveMemoryEntry) error {
 	return nil
 }
 
-func filterMemoryEntries(entries []InteractiveMemoryEntry, branchID string, includeHidden bool) []InteractiveMemoryEntry {
+func filterMemoryEntries(entries []InteractiveMemoryEntry, branchID string, includeArchived bool) []InteractiveMemoryEntry {
 	out := make([]InteractiveMemoryEntry, 0, len(entries))
 	for _, entry := range entries {
 		if entry.BranchID != branchID {
 			continue
 		}
-		if entry.Hidden && !includeHidden {
+		if entry.Archived && !includeArchived {
 			continue
 		}
 		out = append(out, entry)
@@ -921,7 +921,7 @@ func defaultStoryMemoryStructures() []StoryMemoryStructure {
 			defaultStoryMemoryField("left_scene", "是否离场", "判断该角色是否能直接与主角互动。", "只能填写“是”或“否”。", false, 60),
 			defaultStoryMemoryField("experience", "过往经历", "记录角色背景与关键事件。", "随剧情增量更新，不超过 300 字；超过时压缩，只保留影响后续剧情的事实。", false, 70),
 		}, now),
-		defaultStoryMemoryStructure("quest_event", "任务事件", "记录所有当前正在进行的任务。", "只维护仍在进行、未明确结束的任务；任务结束后应更新进度或隐藏，不要保留为当前任务。", "keyed", "name", 40, []StoryMemoryField{
+		defaultStoryMemoryStructure("quest_event", "任务事件", "记录所有当前正在进行的任务。", "只维护仍在进行、未明确结束的任务；任务结束后应更新进度或归档，不要保留为当前任务。", "keyed", "name", 40, []StoryMemoryField{
 			defaultStoryMemoryField("name", "任务名称", "任务的标题。", "用稳定、可复用的短标题。", true, 10),
 			defaultStoryMemoryField("type", "任务类型", "主线任务或支线任务。", "只能填写“主线任务”或“支线任务”。", false, 20),
 			defaultStoryMemoryField("issuer", "发布者", "发布该任务的角色或势力。", "没有明确发布者时填写触发任务的角色、势力或事件来源。", false, 30),
@@ -1106,7 +1106,7 @@ func migrateInteractiveEntriesToStoryMemoryRecords(entries []InteractiveMemoryEn
 			AnchorTurnID: entry.TurnID,
 			Key:          entry.Title,
 			Values:       values,
-			Hidden:       entry.Hidden,
+			Archived:     entry.Archived,
 			Manual:       entry.Manual,
 			Source:       "legacy",
 			CreatedAt:    entry.CreatedAt,
@@ -1123,7 +1123,7 @@ func migrateInteractiveEntriesToStoryMemoryRecords(entries []InteractiveMemoryEn
 	return records
 }
 
-func visibleStoryMemoryRecords(records []StoryMemoryRecord, branchID string, pathSet map[string]bool, includeHidden bool) []StoryMemoryRecord {
+func visibleStoryMemoryRecords(records []StoryMemoryRecord, branchID string, pathSet map[string]bool, includeArchived bool) []StoryMemoryRecord {
 	candidates := make([]StoryMemoryRecord, 0, len(records))
 	for _, record := range records {
 		if !recordVisibleOnBranch(record, branchID, pathSet) {
@@ -1142,7 +1142,7 @@ func visibleStoryMemoryRecords(records []StoryMemoryRecord, branchID string, pat
 		if overridden[record.ID] {
 			continue
 		}
-		if record.Hidden && !includeHidden {
+		if record.Archived && !includeArchived {
 			continue
 		}
 		out = append(out, record)
@@ -1204,7 +1204,7 @@ func storyMemoryRecordToInteractiveEntry(record StoryMemoryRecord, structure Sto
 		Places:     valueListFromRecord(record, []string{"location", "place"}),
 		Tags:       []string{structure.Name},
 		Importance: defaultMemoryImportance,
-		Hidden:     record.Hidden,
+		Archived:   record.Archived,
 		Manual:     record.Manual,
 		CreatedAt:  record.CreatedAt,
 		UpdatedAt:  record.UpdatedAt,
@@ -1296,6 +1296,7 @@ func saveStoryMemoryRecordLocked(book *interactiveMemoryBook, branchID, anchorTu
 			}
 			record.CreatedAt = firstMemoryText(book.Records[i].CreatedAt, now)
 			record.UpdatedAt = now
+			record.Archived = book.Records[i].Archived
 			book.Records[i] = record
 			return record, validateStoryMemoryRecord(record, structure)
 		}
@@ -1315,7 +1316,7 @@ func saveStoryMemoryRecordLocked(book *interactiveMemoryBook, branchID, anchorTu
 	return record, nil
 }
 
-func setStoryMemoryRecordHiddenLocked(book *interactiveMemoryBook, branchID, anchorTurnID, recordID string, hidden bool, pathSet map[string]bool) (StoryMemoryRecord, error) {
+func setStoryMemoryRecordArchivedLocked(book *interactiveMemoryBook, branchID, anchorTurnID, recordID string, archived bool, pathSet map[string]bool) (StoryMemoryRecord, error) {
 	recordID = sanitizeMemoryID(recordID)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for i := range book.Records {
@@ -1328,14 +1329,14 @@ func setStoryMemoryRecordHiddenLocked(book *interactiveMemoryBook, branchID, anc
 			copy.BranchID = branchID
 			copy.TurnID = ""
 			copy.AnchorTurnID = ""
-			copy.Hidden = hidden
+			copy.Archived = archived
 			copy.InheritedFrom = book.Records[i].ID
 			copy.CreatedAt = now
 			copy.UpdatedAt = now
 			book.Records = append(book.Records, copy)
 			return copy, nil
 		}
-		book.Records[i].Hidden = hidden
+		book.Records[i].Archived = archived
 		book.Records[i].UpdatedAt = now
 		return book.Records[i], nil
 	}
@@ -1348,12 +1349,14 @@ func applyStoryMemoryPatchLocked(book *interactiveMemoryBook, branchID, anchorTu
 		op = "upsert"
 	}
 	switch op {
-	case "hide":
-		hidden := true
-		if patch.Hidden != nil {
-			hidden = *patch.Hidden
+	case "archive":
+		archived := true
+		if patch.Archived != nil {
+			archived = *patch.Archived
 		}
-		return setStoryMemoryRecordHiddenLocked(book, branchID, anchorTurnID, patch.RecordID, hidden, pathSet)
+		return setStoryMemoryRecordArchivedLocked(book, branchID, anchorTurnID, patch.RecordID, archived, pathSet)
+	case "restore":
+		return setStoryMemoryRecordArchivedLocked(book, branchID, anchorTurnID, patch.RecordID, false, pathSet)
 	case "upsert", "append", "set":
 		record, err := saveStoryMemoryRecordLocked(book, branchID, anchorTurnID, StoryMemoryRecordRequest{
 			ID:          patch.RecordID,
@@ -1376,7 +1379,7 @@ func applyStoryMemoryPatchLocked(book *interactiveMemoryBook, branchID, anchorTu
 }
 
 func findStoryMemoryUpsertRecord(records []StoryMemoryRecord, structure StoryMemoryStructure, branchID, key string, pathSet map[string]bool) (StoryMemoryRecord, bool) {
-	visible := visibleStoryMemoryRecords(records, branchID, pathSet, true)
+	visible := visibleStoryMemoryRecords(records, branchID, pathSet, false)
 	for _, record := range visible {
 		if record.StructureID != structure.ID {
 			continue
@@ -1433,7 +1436,7 @@ func storyMemoryAutoDecisionLocked(book interactiveMemoryBook, lines []StoryEven
 	turns := turnPath(lines, headID)
 	lastIndex := -1
 	pathSet := eventPathSet(headID, lines)
-	for _, record := range visibleStoryMemoryRecords(book.Records, branchID, pathSet, true) {
+	for _, record := range visibleStoryMemoryRecords(book.Records, branchID, pathSet, false) {
 		if record.Source != "agent" {
 			continue
 		}

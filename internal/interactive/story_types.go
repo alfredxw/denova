@@ -260,7 +260,7 @@ type InteractiveMemoryEntry struct {
 	Places     []string `json:"places,omitempty"`
 	Tags       []string `json:"tags,omitempty"`
 	Importance int      `json:"importance"`
-	Hidden     bool     `json:"hidden"`
+	Archived   bool     `json:"archived"`
 	Manual     bool     `json:"manual"`
 	CreatedAt  string   `json:"created_at"`
 	UpdatedAt  string   `json:"updated_at"`
@@ -305,8 +305,8 @@ type InteractiveMemoryUpdateRequest struct {
 	Importance *int     `json:"importance,omitempty"`
 }
 
-type InteractiveMemoryHideRequest struct {
-	Hidden *bool `json:"hidden,omitempty"`
+type InteractiveMemoryArchiveRequest struct {
+	Archived *bool `json:"archived,omitempty"`
 }
 
 type StoryMemorySettings struct {
@@ -345,7 +345,7 @@ type StoryMemoryRecord struct {
 	AnchorTurnID  string            `json:"anchor_turn_id,omitempty"`
 	Key           string            `json:"key,omitempty"`
 	Values        map[string]string `json:"values"`
-	Hidden        bool              `json:"hidden,omitempty"`
+	Archived      bool              `json:"archived,omitempty"`
 	Manual        bool              `json:"manual,omitempty"`
 	Source        string            `json:"source,omitempty"`
 	InheritedFrom string            `json:"inherited_from,omitempty"`
@@ -391,8 +391,8 @@ type StoryMemoryRecordRequest struct {
 	Manual      bool              `json:"manual,omitempty"`
 }
 
-type StoryMemoryRecordHideRequest struct {
-	Hidden *bool `json:"hidden,omitempty"`
+type StoryMemoryRecordArchiveRequest struct {
+	Archived *bool `json:"archived,omitempty"`
 }
 
 type StoryMemoryPatch struct {
@@ -401,7 +401,7 @@ type StoryMemoryPatch struct {
 	RecordID    string            `json:"record_id,omitempty"`
 	Key         string            `json:"key,omitempty"`
 	Values      map[string]string `json:"values,omitempty"`
-	Hidden      *bool             `json:"hidden,omitempty"`
+	Archived    *bool             `json:"archived,omitempty"`
 }
 
 func (p *StoryMemoryPatch) UnmarshalJSON(data []byte) error {
@@ -411,7 +411,7 @@ func (p *StoryMemoryPatch) UnmarshalJSON(data []byte) error {
 		RecordID    string         `json:"record_id,omitempty"`
 		Key         string         `json:"key,omitempty"`
 		Values      map[string]any `json:"values,omitempty"`
-		Hidden      *bool          `json:"hidden,omitempty"`
+		Archived    *bool          `json:"archived,omitempty"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
@@ -423,7 +423,7 @@ func (p *StoryMemoryPatch) UnmarshalJSON(data []byte) error {
 		StructureID: raw.StructureID,
 		RecordID:    raw.RecordID,
 		Key:         raw.Key,
-		Hidden:      raw.Hidden,
+		Archived:    raw.Archived,
 	}
 	if raw.Values != nil {
 		p.Values = normalizeStoryMemoryPatchValues(raw.Values)

@@ -25,6 +25,8 @@ const common = {
   'common.chapters': '{{count}} 章',
   'common.messages': '{{count}} 条消息',
   'common.items': '{{count}} 项',
+  'common.backendUnavailable.title': '后端未启动',
+  'common.backendUnavailable.description': '请先启动或重启 Nova 后端服务，然后再继续操作。',
   'configManager.placeholder': '让配置管理 Agent 调整当前模块...',
   'configManager.executing': '配置管理 Agent 执行中...',
   'configManager.tool': '工具调用',
