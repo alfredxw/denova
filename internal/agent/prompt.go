@@ -115,8 +115,7 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 	return config.AgentPromptSettings{
 		IDE:                   config.AgentPromptOverride{SystemPrompt: BuildInstruction(promptCfg, state, ideTeller)},
 		InteractiveStory:      config.AgentPromptOverride{SystemPrompt: BuildInteractiveStoryInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})},
-		LoreEditor:            config.AgentPromptOverride{SystemPrompt: BuildLoreAgentInstruction(promptCfg, state)},
-		TellerEditor:          config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindTellerEditor, tellerEditorSystemInstruction())},
+		ConfigManager:         config.AgentPromptOverride{SystemPrompt: BuildConfigManagerInstruction(promptCfg, state)},
 		InteractiveState:      config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction())},
 		InteractiveHotChoices: config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())},
 		VersionSummary:        config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")},
@@ -134,12 +133,11 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 	}
 	_, ideWorkspace, _, _ := buildIDEBuiltinInstruction(promptCfg, state, ideTeller)
 	_, interactiveWorkspace, _ := buildInteractiveStoryBuiltinInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})
-	_, loreWorkspace, _ := buildLoreBuiltinInstruction(promptCfg, state)
+	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
 	return config.AgentPromptBlockSettings{
 		IDE:                   builtinPromptBlocks(config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace)),
 		InteractiveStory:      builtinPromptBlocks(config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
-		LoreEditor:            builtinPromptBlocks(config.AgentKindLoreEditor, loreFlowInstruction(loreWorkspace)),
-		TellerEditor:          builtinPromptBlocks(config.AgentKindTellerEditor, tellerEditorSystemInstruction()),
+		ConfigManager:         builtinPromptBlocks(config.AgentKindConfigManager, configManagerFlow),
 		InteractiveState:      builtinPromptBlocks(config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
 		InteractiveHotChoices: builtinPromptBlocks(config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
 		VersionSummary:        builtinPromptBlocks(config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
@@ -157,7 +155,11 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 	}
 	_, ideWorkspace, ideCreator, ideStateContext := buildIDEBuiltinInstruction(promptCfg, state, ideTeller)
 	_, interactiveWorkspace, interactiveCreator := buildInteractiveStoryBuiltinInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})
-	_, loreWorkspace, loreCreator := buildLoreBuiltinInstruction(promptCfg, state)
+	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
+	configManagerCreator := ""
+	if state != nil {
+		configManagerCreator = state.ReadCreatorPrompt()
+	}
 	return config.AgentPromptSourceSettings{
 		IDE: builtinPromptSourceList(config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace),
 			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", ideCreator),
@@ -167,8 +169,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		InteractiveStory: builtinPromptSourceList(config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace),
 			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", interactiveCreator),
 		),
-		LoreEditor:            builtinPromptSourceList(config.AgentKindLoreEditor, loreFlowInstruction(loreWorkspace), readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", loreCreator)),
-		TellerEditor:          builtinPromptSourceList(config.AgentKindTellerEditor, tellerEditorSystemInstruction()),
+		ConfigManager:         builtinPromptSourceList(config.AgentKindConfigManager, configManagerFlow, readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", configManagerCreator)),
 		InteractiveState:      builtinPromptSourceList(config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
 		InteractiveHotChoices: builtinPromptSourceList(config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
 		VersionSummary:        builtinPromptSourceList(config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
@@ -253,18 +254,8 @@ func interactiveStoryFlowInstruction(cfg *config.Config, workspace string) strin
 	})
 }
 
-func loreFlowInstruction(workspace string) string {
-	return prompts.BuildLoreAgentFlowInstruction(prompts.LoreAgentSystemInstructionInput{Workspace: workspace})
-}
-
 func editablePromptFlowForAgent(agentKind, flow string) string {
 	switch agentKind {
-	case config.AgentKindTellerEditor:
-		_, rules, ok := strings.Cut(flow, "规则：")
-		if ok {
-			return "规则：\n" + strings.TrimSpace(rules)
-		}
-		return ""
 	case config.AgentKindInteractiveState:
 		return ""
 	case config.AgentKindInteractiveHotChoices:
@@ -278,19 +269,19 @@ func editablePromptFlowForAgent(agentKind, flow string) string {
 	}
 }
 
-func BuildLoreAgentInstruction(cfg *config.Config, state *book.State) string {
-	builtIn, workspace, creator := buildLoreBuiltinInstruction(cfg, state)
-	instruction := protectedSystemInstruction(cfg, config.AgentKindLoreEditor, builtIn)
-	logSystemPromptComposition("lore", workspace, creator, "", instruction, promptSource{
+func BuildConfigManagerInstruction(cfg *config.Config, state *book.State) string {
+	builtIn, workspace, creator := buildConfigManagerBuiltinInstruction(cfg, state)
+	instruction := protectedSystemInstruction(cfg, config.AgentKindConfigManager, builtIn)
+	logSystemPromptComposition("config_manager", workspace, creator, "", instruction, promptSource{
 		source:  "系统提示",
-		title:   "资料库 Agent 内置规则",
+		title:   "配置管理 Agent 内置规则",
 		content: builtIn,
 		note:    "tool-chain",
 	})
 	return instruction
 }
 
-func buildLoreBuiltinInstruction(cfg *config.Config, state *book.State) (string, string, string) {
+func buildConfigManagerBuiltinInstruction(cfg *config.Config, state *book.State) (string, string, string) {
 	workspace := ""
 	creator := ""
 	if cfg != nil {
@@ -302,11 +293,44 @@ func buildLoreBuiltinInstruction(cfg *config.Config, state *book.State) (string,
 		}
 		creator = state.ReadCreatorPrompt()
 	}
-	builtIn := prompts.BuildLoreAgentSystemInstruction(prompts.LoreAgentSystemInstructionInput{
-		CreatorPrompt: creator,
-		Workspace:     workspace,
-	})
-	return builtIn, workspace, creator
+	return configManagerFlowInstructionFor(workspace, creator), workspace, creator
+}
+
+func configManagerFlowInstruction(cfg *config.Config, state *book.State) string {
+	builtIn, _, _ := buildConfigManagerBuiltinInstruction(cfg, state)
+	return builtIn
+}
+
+func configManagerFlowInstructionFor(workspace, creator string) string {
+	var sb strings.Builder
+	sb.WriteString("你是 Nova 的统一配置管理 Agent，负责在模块内嵌入口中帮助用户管理资料库、叙事编排、自动化任务、Skills、故事记忆结构和故事记忆记录。\n\n")
+	if strings.TrimSpace(workspace) != "" {
+		sb.WriteString("当前作品 workspace: ")
+		sb.WriteString(strings.TrimSpace(workspace))
+		sb.WriteString("\n\n")
+	}
+	if strings.TrimSpace(creator) != "" {
+		sb.WriteString("## CREATOR.md 创作约束\n\n")
+		sb.WriteString(strings.TrimSpace(creator))
+		sb.WriteString("\n\n")
+	}
+	sb.WriteString(strings.Join([]string{
+		"## 工作方式",
+		"- 根据用户所在模块和当前资源上下文，优先使用对应模块工具完成管理任务。",
+		"- 每个模块先用 list 工具查看索引；需要详情时再用 read 工具批量读取。故事记忆结构没有 read 工具，list 已返回完整结构。",
+		"- 增删改统一使用对应 write 工具批量完成，写入后用简短中文总结实际变更。",
+		"- 不要修改 Nova 设置、模型、端口、主题、Agent prompt 或工具权限。",
+		"- 不要通过文件工具直接改资料库、导演、自动化、Skills 或故事记忆的底层存储文件。",
+		"- 删除、隐藏、覆盖、大范围重写必须有用户明确指令；缺少明确指令时先询问。",
+		"",
+		"## 模块边界",
+		"- 资料库记录长期稳定设定；短期位置、伤势、心理、目标优先进入故事记忆或写作状态，不默认写资料库。",
+		"- 叙事编排只维护导演/讲述规则、槽位和互动生成偏好，不写故事正文。",
+		"- Skills 写入 SKILL.md 文档，必须说明适用场景、上下文获取和具体工作流。",
+		"- 自动化任务必须保持触发条件、通知/执行策略和写入权限清晰。",
+		"- 故事记忆结构定义字段和生成规则；故事记忆记录保存具体故事状态，两者必须分开操作。",
+	}, "\n"))
+	return sb.String()
 }
 
 type promptSource struct {

@@ -98,11 +98,11 @@ func TestCreateAndSaveDocument(t *testing.T) {
 	user := filepath.Join(t.TempDir(), "skills")
 	dirs := []Directory{{Scope: ScopeUser, Path: user, Writable: true}}
 
-	doc, err := CreateDocument(ctx, dirs, ScopeUser, "beats", "Draft beat sheets.", "ide", "lore_editor")
+	doc, err := CreateDocument(ctx, dirs, ScopeUser, "beats", "Draft beat sheets.", "ide", "config_manager")
 	if err != nil {
 		t.Fatalf("CreateDocument() error = %v", err)
 	}
-	if doc.Name != "beats" || !doc.Editable || doc.Agent != "ide,lore_editor" {
+	if doc.Name != "beats" || !doc.Editable || doc.Agent != "ide,config_manager" {
 		t.Fatalf("created doc = %#v", doc)
 	}
 
@@ -128,7 +128,7 @@ func TestAgentBackendFiltersByAgentFrontmatterAndOverrides(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	writeSkillFileForAgents(t, root, "outline", "outline", "outline desc", "ide")
-	writeSkillFileForAgents(t, root, "lore-init", "lore-init", "lore desc", "lore_editor,interactive_story")
+	writeSkillFileForAgents(t, root, "lore-init", "lore-init", "lore desc", "config_manager,interactive_story")
 	writeSkillFileForAgents(t, root, "general", "general", "general desc", "")
 
 	backend := NewAgentBackend([]Directory{{Scope: ScopeUser, Path: root, Writable: true}}, "interactive_story", nil)

@@ -40,6 +40,7 @@ type App struct {
 	chatApp        *ChatAppService
 	interactiveApp *InteractiveAppService
 	loreApp        *LoreAppService
+	configApp      *ConfigManagerAppService
 	automationApp  *AutomationAppService
 	skillsApp      *SkillsAppService
 	servicesOnce   sync.Once
@@ -94,6 +95,7 @@ func (a *App) ensureServices() {
 		a.chatApp = &ChatAppService{app: a}
 		a.interactiveApp = &InteractiveAppService{app: a}
 		a.loreApp = &LoreAppService{app: a}
+		a.configApp = &ConfigManagerAppService{app: a}
 		a.automationApp = &AutomationAppService{app: a}
 		a.skillsApp = &SkillsAppService{app: a}
 	})
@@ -117,6 +119,11 @@ func (a *App) interactiveService() *InteractiveAppService {
 func (a *App) lore() *LoreAppService {
 	a.ensureServices()
 	return a.loreApp
+}
+
+func (a *App) configManager() *ConfigManagerAppService {
+	a.ensureServices()
+	return a.configApp
 }
 
 func (a *App) automation() *AutomationAppService {

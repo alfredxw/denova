@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Clock3, FileText, Inbox, Loader2, MessageSquareText, Play, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
+import { Bot, Clock3, FileText, Inbox, Loader2, MessageSquareText, Play, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { MessageList } from '@/components/Chat/MessageList'
 import { InputArea } from '@/components/Chat/InputArea'
 import { Textarea } from '@/components/ui/textarea'
@@ -30,7 +31,7 @@ import { TriggerEditor, defaultScheduleTrigger } from './AutomationTriggerEditor
 
 const fieldCls = 'nova-field min-h-7 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
-type AutomationPanelView = 'config' | 'inbox' | 'run'
+type AutomationPanelView = 'config' | 'inbox' | 'run' | 'agent'
 
 export function AutomationsView({ workspace, onClose }: { workspace: string; onClose?: () => void }) {
   const { t } = useTranslation()
@@ -336,6 +337,14 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                 <MessageSquareText className="h-3.5 w-3.5" />
                 {t('automations.view.run')}
               </button>
+              <button
+                type="button"
+                onClick={() => setPanelView('agent')}
+                className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'agent' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                {t('automations.view.agent')}
+              </button>
             </div>
             <div className="min-w-0 flex-1" />
             {runStream.activeRun && (
@@ -432,7 +441,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                 if (run) void openRun(run)
               }}
             />
-          ) : (
+          ) : panelView === 'run' ? (
             <section className="flex min-h-0 flex-1 flex-col">
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <MessageList
@@ -457,6 +466,18 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                 </div>
               )}
             </section>
+          ) : (
+            <ConfigManagerChat
+              workspace={workspace}
+              origin="automation"
+              resourceId={activeId}
+              context={{
+                active_automation_id: activeId,
+                active_automation_name: draft.name || '',
+                automation_scope: draft.scope || scopeFilter,
+              }}
+              onMutated={() => void load()}
+            />
           )}
         </main>
       </div>

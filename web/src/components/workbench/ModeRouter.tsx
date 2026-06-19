@@ -18,14 +18,13 @@ import { SkillsView } from '@/features/skills/SkillsView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import type { Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { BookRecord, ChapterSummary, ChatMessage, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
+import type { BookRecord, ChapterSummary, ChatMessage, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
 import { WorkbenchShell } from './WorkbenchShell'
 import { flattenFileTree, formatNumber } from './workbench-utils'
 
-const LORE_AGENT_INIT_EVENT = 'nova:lore-agent-init'
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 type MainRouteId = 'settings' | 'skills' | 'agents' | 'automations' | 'books' | 'interactive' | 'versions' | 'ide-lore' | 'ide-teller' | 'ide-writing'
 
@@ -95,6 +94,7 @@ interface ModeRouterProps {
   onRenameChatSession: (id: string, title: string) => void | Promise<void>
   onDeleteChatSession: (id: string) => void | Promise<void>
   onSend: (message: string) => void
+  onAnalyzeContext: (message: string) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
@@ -172,6 +172,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onRenameChatSession,
     onDeleteChatSession,
     onSend,
+    onAnalyzeContext,
     onStop,
     onReferenceRemove,
     onLoreReferenceAdd,
@@ -225,11 +226,6 @@ export function ModeRouter(props: ModeRouterProps) {
   const requestLoreInit = () => {
     onSetMode('interactive')
     setInteractiveSubmode('lore')
-    window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent(LORE_AGENT_INIT_EVENT, {
-        detail: { prompt: t('settingPanel.loreAgent.initPrompt') },
-      }))
-    }, 0)
   }
   const requestWritingInit = () => {
     onSetMode('ide')
@@ -530,6 +526,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onRenameSession={onRenameChatSession}
       onDeleteSession={onDeleteChatSession}
       onSend={onSend}
+      onAnalyzeContext={onAnalyzeContext}
       onStop={onStop}
       onReferenceRemove={onReferenceRemove}
       onLoreReferenceAdd={onLoreReferenceAdd}

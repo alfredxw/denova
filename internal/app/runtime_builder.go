@@ -111,12 +111,12 @@ func buildInteractiveStoryRunner(ctx context.Context, cfg *config.Config, state 
 	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindInteractiveStory, Workspace: cfg.Workspace}), nil
 }
 
-func buildLoreAgentRunner(ctx context.Context, cfg *config.Config, state *book.State) (*adk.Runner, error) {
-	builtAgent, err := agent.BuildLoreAgent(ctx, cfg, state)
+func buildConfigManagerRunner(ctx context.Context, cfg *config.Config, state *book.State) (*adk.Runner, error) {
+	builtAgent, err := agent.BuildConfigManagerAgent(ctx, cfg, state)
 	if err != nil {
-		return nil, fmt.Errorf("构建资料库 Agent 失败: %w", err)
+		return nil, fmt.Errorf("构建配置管理 Agent 失败: %w", err)
 	}
-	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindLoreEditor, Workspace: cfg.Workspace}), nil
+	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindConfigManager, Workspace: cfg.Workspace}), nil
 }
 
 func buildAutomationAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, task agent.AutomationTaskInstruction) (*adk.Runner, error) {

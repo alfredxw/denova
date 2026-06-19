@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   abortChat,
+  analyzeChatContext,
   createSession,
   deleteSession,
   executeCommand,
@@ -13,7 +14,7 @@ import {
   streamActiveChat,
   switchSession,
 } from '@/lib/api'
-import type { SessionSummary, TextSelection } from '@/lib/api'
+import type { ContextAnalysis, SessionSummary, TextSelection } from '@/lib/api'
 import { isAbortError, normalizeRepeatedMessages, useAgentEventStream } from './useAgentEventStream'
 
 interface ChatOptions {
@@ -131,33 +132,21 @@ export function useChat(options: ChatOptions = {}) {
     clearTextSelections()
   }, [clearLoreReferences, clearReferences, clearStyleReferences, clearTextSelections])
 
-  /** 发送消息 */
-  const send = useCallback(async (input: string) => {
-    if (isStreaming) return
-    // 检查是否是命令
+  const prepareAgentRequest = useCallback((input: string) => {
     if (input.startsWith('/')) {
       const cmd = input.slice(1).split(' ')[0]
       if (['clear', 'status', 'help'].includes(cmd)) {
-        const result = await executeCommand(cmd)
-        if (cmd === 'clear') {
-          await loadHistory()
-          await loadSessions()
-          return
-        }
-        setMessages(prev => [...prev, { role: 'system', content: result }])
-        return
+        throw new Error(t('chat.contextAnalysis.commandUnavailable'))
       }
     }
 
-    // 检测 /plan 前缀，进入规划模式
     let planMode = false
     let userMessage = input
     if (input.startsWith('/plan')) {
       planMode = true
       userMessage = input.replace(/^\/plan\s*/, '').trim()
       if (!userMessage) {
-        setMessages(prev => [...prev, { role: 'system', content: t('chat.planUsage') }])
-        return
+        throw new Error(t('chat.planUsage'))
       }
     }
 
@@ -166,6 +155,38 @@ export function useChat(options: ChatOptions = {}) {
     const mergedLoreReferences = Array.from(new Set(loreReferences))
     const inlineStyleReferences = parseInlineStyleReferences(input)
     const mergedStyleReferences = Array.from(new Set([...styleReferences, ...inlineStyleReferences]))
+    return {
+      message: userMessage,
+      references: mergedReferences,
+      loreReferences: mergedLoreReferences,
+      styleReferences: mergedStyleReferences,
+      textSelections,
+      planMode,
+    }
+  }, [loreReferences, references, styleReferences, t, textSelections])
+
+  /** 发送消息 */
+  const send = useCallback(async (input: string) => {
+    if (isStreaming) return
+    const command = agentBypassCommand(input)
+    if (command) {
+      const result = await executeCommand(command)
+      if (command === 'clear') {
+        await loadHistory()
+        await loadSessions()
+        return
+      }
+      setMessages(prev => [...prev, { role: 'system', content: result }])
+      return
+    }
+
+    let prepared: ReturnType<typeof prepareAgentRequest>
+    try {
+      prepared = prepareAgentRequest(input)
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'system', content: (e as Error).message }])
+      return
+    }
 
     // 添加用户消息
     setMessages(prev => [...prev, { role: 'user', content: input }])
@@ -173,12 +194,18 @@ export function useChat(options: ChatOptions = {}) {
     setAbortController(abortController)
 
     try {
-      const stream = await sendMessage(userMessage, mergedReferences, mergedLoreReferences, mergedStyleReferences, textSelections, abortController.signal, planMode)
+      const stream = await sendMessage(prepared.message, prepared.references, prepared.loreReferences, prepared.styleReferences, prepared.textSelections, abortController.signal, prepared.planMode)
       await consumeAgentStream(stream, { clearInputsOnFinish: clearInputState, showAbortMessage: true })
     } catch (e) {
       setMessages(prev => [...prev, { role: 'error', content: t('chat.activity.requestFailed', { error: String(e) }) }])
     }
-  }, [clearInputState, consumeAgentStream, isStreaming, loadHistory, loadSessions, loreReferences, references, setAbortController, setMessages, styleReferences, t, textSelections])
+  }, [clearInputState, consumeAgentStream, isStreaming, loadHistory, loadSessions, prepareAgentRequest, setAbortController, setMessages, t])
+
+  const analyzeContext = useCallback(async (input: string): Promise<ContextAnalysis> => {
+    if (isStreaming) throw new Error(t('chat.contextAnalysis.streamingUnavailable'))
+    const prepared = prepareAgentRequest(input)
+    return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleReferences, prepared.textSelections, prepared.planMode)
+  }, [isStreaming, prepareAgentRequest, t])
 
   /** 恢复订阅后台仍在运行的聊天任务。 */
   const resumeActiveChat = useCallback(async () => {
@@ -249,6 +276,7 @@ export function useChat(options: ChatOptions = {}) {
     styleReferences,
     textSelections,
     send,
+    analyzeContext,
     stop,
     loadSessions,
     loadHistory,
@@ -268,6 +296,12 @@ export function useChat(options: ChatOptions = {}) {
     clearReferences,
     clearStyleReferences,
   }
+}
+
+function agentBypassCommand(input: string): string | null {
+  if (!input.startsWith('/')) return null
+  const cmd = input.slice(1).split(' ')[0]
+  return ['clear', 'status', 'help'].includes(cmd) ? cmd : null
 }
 
 function parseInlineReferences(input: string): string[] {

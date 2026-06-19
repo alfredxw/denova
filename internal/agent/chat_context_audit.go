@@ -25,6 +25,7 @@ func appendContextBoundaryInstruction(message string) string {
 
 type contextBuildLog struct {
 	ledger *ContextLedger
+	parts  []ContextAnalysisPart
 }
 
 func newContextBuildLog(policies ...ContextLedgerPolicy) *contextBuildLog {
@@ -40,6 +41,12 @@ func (l *contextBuildLog) add(source, title, content, note string) {
 		return
 	}
 	l.ledger.Add(source, title, content, note)
+	l.parts = append(l.parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+		Source:  source,
+		Title:   title,
+		Content: content,
+		Note:    note,
+	}))
 }
 
 func (l *contextBuildLog) addStyleRules(rules []StyleRule) {
@@ -88,6 +95,15 @@ func (l *contextBuildLog) Ledger() *ContextLedger {
 		return nil
 	}
 	return l.ledger
+}
+
+func (l *contextBuildLog) FullParts() []ContextAnalysisPart {
+	if l == nil || len(l.parts) == 0 {
+		return nil
+	}
+	result := make([]ContextAnalysisPart, len(l.parts))
+	copy(result, l.parts)
+	return result
 }
 
 func addContextLog(logs []*contextBuildLog, source, title, content, note string) {

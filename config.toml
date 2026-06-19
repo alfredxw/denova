@@ -38,7 +38,7 @@ openai_model = "deepseek-v4-pro"
 # enable_thinking = true       # 可选：不填则不传；适用于支持 enable_thinking 的 OpenAI 兼容平台
 # reasoning_effort = "medium"  # 可选：low / medium / high；不填则不传
 #
-# [agent_models.lore_editor]
+# [agent_models.config_manager]
 # profile_id = "openai"
 # temperature = 0.2
 #

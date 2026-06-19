@@ -135,6 +135,32 @@ func TestBuiltinAgentPromptsExposeInteractiveMemoryToolsWithoutCustomPrompt(t *t
 	}
 }
 
+func TestBuiltinInteractiveMemoryPromptUsesStoryMemoryPatchContract(t *testing.T) {
+	state := book.NewState(t.TempDir())
+	cfg := &config.Config{Workspace: state.Workspace()}
+
+	builtin := BuiltinAgentPrompts(cfg, state, IDEStoryTeller{})
+	got := builtin.InteractiveState.SystemPrompt
+	for _, required := range []string{
+		"互动记忆 Agent",
+		"story_memory_patches",
+		"故事记忆结构与字段协议",
+		"最近回合上下文历史",
+		"资料库相关人物与设定",
+		"本回合前的既有故事记忆",
+		"按该表的字段列表逐字段填写",
+	} {
+		if !strings.Contains(got, required) {
+			t.Fatalf("builtin interactive memory prompt missing %q:\n%s", required, got)
+		}
+	}
+	for _, legacy := range []string{"memory_entry", "字段包括 state_ops"} {
+		if strings.Contains(got, legacy) {
+			t.Fatalf("builtin interactive memory prompt should not contain legacy contract %q:\n%s", legacy, got)
+		}
+	}
+}
+
 func TestInteractiveFlowSourceKeepsRecallFlowWithCreatorPrompt(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	if err := os.WriteFile(filepath.Join(state.Workspace(), "CREATOR.md"), []byte("只使用第一人称。"), 0o644); err != nil {

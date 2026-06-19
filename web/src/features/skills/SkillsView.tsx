@@ -3,6 +3,7 @@ import type { ElementType, ReactNode } from 'react'
 import { Bot, CheckCircle2, FileCode2, Loader2, Lock, Plus, RefreshCw, Save, Sparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { Textarea } from '@/components/ui/textarea'
 import { createSkill, getSkillDocument, getSkills, saveSkillDocument } from '@/lib/api'
 import type { SkillDocument, SkillScope, SkillScopeInfo, SkillSnapshot, SkillSummary } from '@/lib/api'
@@ -22,6 +23,7 @@ interface SkillsViewProps {
 type SkillsMode = 'editor' | 'create'
 
 export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewProps) {
+  void onRequestAgent
   const { t } = useTranslation()
   const [snapshot, setSnapshot] = useState<SkillSnapshot>({ scopes: [], skills: [] })
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
@@ -35,6 +37,7 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
   const [newName, setNewName] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [newAgents, setNewAgents] = useState<VisibleAgentKey[]>(['ide'])
+  const [agentOpen, setAgentOpen] = useState(false)
 
   const selectedSkill = useMemo(() => snapshot.skills.find((skill) => keyOf(skill) === selectedKey) ?? null, [selectedKey, snapshot.skills])
   const dirty = document ? draft !== document.content : false
@@ -131,15 +134,19 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
   }
 
   const askAgent = () => {
+    setAgentOpen((value) => !value)
+  }
+
+  const agentContext = useMemo(() => {
     const targetName = mode === 'create' ? newName.trim() || 'new-skill' : document?.name || newName.trim() || 'new-skill'
     const scope = mode === 'create' ? newScope : document?.scope || newScope
-    const targetPath = skillFilePath(snapshot.scopes.find((item) => item.scope === scope), targetName)
-    onRequestAgent?.(t('skills.agent.prompt', {
-      name: targetName,
-      scope: scopeLabel(scope, t),
-      path: targetPath || t('skills.agent.pathFallback'),
-    }))
-  }
+    return {
+      mode,
+      skill_name: targetName,
+      skill_scope: scope,
+      skill_path: skillFilePath(snapshot.scopes.find((item) => item.scope === scope), targetName) || '',
+    }
+  }, [document?.name, document?.scope, mode, newName, newScope, snapshot.scopes])
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
@@ -170,7 +177,7 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
         <button
           type="button"
           onClick={askAgent}
-          className="nova-nav-item inline-flex items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1"
+          className={`nova-nav-item inline-flex items-center gap-1.5 rounded border border-[var(--nova-border)] px-2.5 py-1 ${agentOpen ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
         >
           <Bot className="h-3.5 w-3.5" />
           {t('skills.agent.button')}
@@ -193,7 +200,7 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
 
       {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('skills.error')} />}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[20rem_minmax(0,1fr)] text-xs">
+      <div className={`grid min-h-0 flex-1 text-xs ${agentOpen ? 'grid-cols-[20rem_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[20rem_minmax(0,1fr)]'}`}>
         <aside className="min-h-0 overflow-y-auto border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
             <button
               type="button"
@@ -271,6 +278,20 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
             </div>
           )}
         </main>
+        {agentOpen && (
+          <aside className="min-h-0 border-l border-[var(--nova-border)] bg-[var(--nova-surface)]">
+            <ConfigManagerChat
+              workspace={workspace}
+              origin="skills"
+              resourceId={agentContext.skill_name}
+              context={agentContext}
+              onMutated={() => {
+                window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+                void load()
+              }}
+            />
+          </aside>
+        )}
       </div>
     </div>
   )

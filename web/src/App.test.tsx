@@ -93,7 +93,7 @@ const defaultPayloads: Record<string, unknown> = {
   '/api/session/messages': [],
   '/api/chat/active': { active: false },
   '/api/lore/items': { items: [] },
-  '/api/lore/agent/messages': [],
+  '/api/config-manager/messages': [],
   '/api/workspace/file': { path: 'CREATOR.md', content: '全书最高规则' },
   '/api/interactive/tellers': { tellers: [] },
   '/api/versions/status': {
@@ -361,7 +361,7 @@ describe('App', () => {
     expect(screen.queryByText('Agent 模型分配')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '关闭 Agents' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '资料库 Agent资料库维护、初始化设定与 CREATOR.md 写入' }))
+    await user.click(screen.getByRole('button', { name: '配置管理 Agent资料库、叙事编排、Skills、自动化与故事记忆管理' }))
     expect(screen.getByText('工具能力')).toBeInTheDocument()
     expect(screen.getByText('修改文件')).toBeInTheDocument()
     expect(screen.getByText('Skills')).toBeInTheDocument()

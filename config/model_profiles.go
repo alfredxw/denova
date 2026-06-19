@@ -15,8 +15,7 @@ type AgentModelSettings struct {
 	Default               AgentModelOverride `toml:"default,omitempty" json:"default,omitempty"`
 	IDE                   AgentModelOverride `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory      AgentModelOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
-	LoreEditor            AgentModelOverride `toml:"lore_editor,omitempty" json:"lore_editor,omitempty"`
-	TellerEditor          AgentModelOverride `toml:"teller_editor,omitempty" json:"teller_editor,omitempty"`
+	ConfigManager         AgentModelOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
 	InteractiveState      AgentModelOverride `toml:"interactive_state,omitempty" json:"interactive_state,omitempty"`
 	InteractiveHotChoices AgentModelOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentModelOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
@@ -46,8 +45,7 @@ func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSetting
 		Default:               mergeAgentModelOverride(parent.Default, child.Default),
 		IDE:                   mergeAgentModelOverride(parent.IDE, child.IDE),
 		InteractiveStory:      mergeAgentModelOverride(parent.InteractiveStory, child.InteractiveStory),
-		LoreEditor:            mergeAgentModelOverride(parent.LoreEditor, child.LoreEditor),
-		TellerEditor:          mergeAgentModelOverride(parent.TellerEditor, child.TellerEditor),
+		ConfigManager:         mergeAgentModelOverride(parent.ConfigManager, child.ConfigManager),
 		InteractiveState:      mergeAgentModelOverride(parent.InteractiveState, child.InteractiveState),
 		InteractiveHotChoices: mergeAgentModelOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentModelOverride(parent.VersionSummary, child.VersionSummary),

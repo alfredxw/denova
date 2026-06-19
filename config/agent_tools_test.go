@@ -19,12 +19,12 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 		t.Fatalf("互动叙事 Agent 默认不应启用资料写入/todo/web search: %+v", story)
 	}
 
-	lore := ResolveAgentTools(&Config{}, AgentKindLoreEditor)
-	if !lore.FileRead || !lore.FileWrite || !lore.Skills || !lore.LoreRead || !lore.LoreWrite || !lore.WebSearch {
-		t.Fatalf("资料库 Agent 默认应启用文件、skills 和资料库工具: %+v", lore)
+	manager := ResolveAgentTools(&Config{}, AgentKindConfigManager)
+	if !manager.FileRead || !manager.FileWrite || !manager.Skills || !manager.LoreRead || !manager.LoreWrite || !manager.Todo || !manager.WebSearch {
+		t.Fatalf("配置管理 Agent 默认应启用常用资源管理工具: %+v", manager)
 	}
-	if lore.ShellExecute || lore.Todo {
-		t.Fatalf("资料库 Agent 默认不应启用命令执行或 todo: %+v", lore)
+	if manager.ShellExecute {
+		t.Fatalf("配置管理 Agent 默认不应启用命令执行: %+v", manager)
 	}
 
 	summary := ResolveAgentTools(&Config{}, AgentKindVersionSummary)

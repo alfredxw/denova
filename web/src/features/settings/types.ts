@@ -53,8 +53,7 @@ export interface AgentModelSettings {
   default?: AgentModelOverride
   ide?: AgentModelOverride
   interactive_story?: AgentModelOverride
-  lore_editor?: AgentModelOverride
-  teller_editor?: AgentModelOverride
+  config_manager?: AgentModelOverride
   interactive_state?: AgentModelOverride
   interactive_hot_choices?: AgentModelOverride
   version_summary?: AgentModelOverride
@@ -73,8 +72,7 @@ export interface AgentToolSettings {
   default?: AgentToolOverride
   ide?: AgentToolOverride
   interactive_story?: AgentToolOverride
-  lore_editor?: AgentToolOverride
-  teller_editor?: AgentToolOverride
+  config_manager?: AgentToolOverride
   interactive_state?: AgentToolOverride
   interactive_hot_choices?: AgentToolOverride
   version_summary?: AgentToolOverride
@@ -86,8 +84,7 @@ export interface AgentSkillSettings {
   default?: AgentSkillOverride
   ide?: AgentSkillOverride
   interactive_story?: AgentSkillOverride
-  lore_editor?: AgentSkillOverride
-  teller_editor?: AgentSkillOverride
+  config_manager?: AgentSkillOverride
   interactive_state?: AgentSkillOverride
   interactive_hot_choices?: AgentSkillOverride
   version_summary?: AgentSkillOverride
@@ -112,8 +109,7 @@ export interface AgentPromptSettings {
   default?: AgentPromptOverride
   ide?: AgentPromptOverride
   interactive_story?: AgentPromptOverride
-  lore_editor?: AgentPromptOverride
-  teller_editor?: AgentPromptOverride
+  config_manager?: AgentPromptOverride
   interactive_state?: AgentPromptOverride
   interactive_hot_choices?: AgentPromptOverride
   version_summary?: AgentPromptOverride
@@ -143,8 +139,7 @@ export interface AgentPromptSourceSettings {
   default?: AgentPromptSourceList
   ide?: AgentPromptSourceList
   interactive_story?: AgentPromptSourceList
-  lore_editor?: AgentPromptSourceList
-  teller_editor?: AgentPromptSourceList
+  config_manager?: AgentPromptSourceList
   interactive_state?: AgentPromptSourceList
   interactive_hot_choices?: AgentPromptSourceList
   version_summary?: AgentPromptSourceList
@@ -162,8 +157,7 @@ export interface AgentPromptBlockSettings {
   default?: AgentPromptBlocks
   ide?: AgentPromptBlocks
   interactive_story?: AgentPromptBlocks
-  lore_editor?: AgentPromptBlocks
-  teller_editor?: AgentPromptBlocks
+  config_manager?: AgentPromptBlocks
   interactive_state?: AgentPromptBlocks
   interactive_hot_choices?: AgentPromptBlocks
   version_summary?: AgentPromptBlocks

@@ -270,6 +270,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	loreContext := c.stateLoreContext()
+	recentTurns := formatInteractiveRecentTurns(storyCtx.Snapshot.Turns, teller.ContextPolicy.RecentTurns, "（暂无历史回合，请基于本回合行动、正文、资料库和既有故事记忆填表。）")
 	instruction := prompts.InteractiveStateInstruction(prompts.InteractiveStatePromptInput{
 		Title:             storyCtx.Meta.Title,
 		Origin:            storyCtx.Meta.Origin,
@@ -281,6 +282,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		LoreItems:         loreContext,
 		StoryMemorySchema: storyMemorySchema,
 		SnapshotStateJSON: storyMemory,
+		RecentTurns:       recentTurns,
 		UserAction:        turn.User,
 		Narrative:         turn.Narrative,
 	})
@@ -291,7 +293,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		turn.ID,
 		storyCtx.Meta.StoryTellerID,
 		interactiveTellerSlotSummary(teller, "state_memory"),
-		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreContext, "", "", storyMemorySchema, storyMemory, turn.User, turn.Narrative),
+		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreContext, "", "", storyMemorySchema, storyMemory, recentTurns, turn.User, turn.Narrative),
 		interactivePartSummary(instruction),
 	)
 	return instruction, nil
@@ -432,6 +434,29 @@ func buildInteractiveTurnMemory(turns []interactive.TurnEvent, recentLimit int) 
 	}
 }
 
+func formatInteractiveRecentTurns(turns []interactive.TurnEvent, recentLimit int, emptyMessage string) string {
+	if len(turns) == 0 {
+		return emptyMessage
+	}
+	if recentLimit <= 0 {
+		recentLimit = 8
+	}
+	if recentLimit > 30 {
+		recentLimit = 30
+	}
+	start := len(turns) - recentLimit
+	if start < 0 {
+		start = 0
+	}
+	var sb strings.Builder
+	for i, turn := range turns[start:] {
+		idx := start + i + 1
+		fmt.Fprintf(&sb, "第 %d 回合用户行动：%s\n", idx, strings.TrimSpace(turn.User))
+		fmt.Fprintf(&sb, "第 %d 回合剧情：%s\n\n", idx, strings.TrimSpace(turn.Narrative))
+	}
+	return strings.TrimSpace(sb.String())
+}
+
 func interactiveStorySourceSummary(title, origin string, teller interactive.Teller, characters, worldBuilding, snapshotState string, turnMemory interactiveTurnMemory, userAction string) string {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title},
@@ -452,7 +477,7 @@ func interactiveStorySourceSummary(title, origin string, teller interactive.Tell
 	return interactiveContextSourceListSummary(parts)
 }
 
-func interactiveStateSourceSummary(title, origin string, teller interactive.Teller, loreItems, characters, worldBuilding, storyMemorySchema, snapshotState, userAction, narrative string) string {
+func interactiveStateSourceSummary(title, origin string, teller interactive.Teller, loreItems, characters, worldBuilding, storyMemorySchema, snapshotState, recentTurns, userAction, narrative string) string {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title},
 		{Source: "互动故事", Title: "开端", Content: origin},
@@ -464,6 +489,7 @@ func interactiveStateSourceSummary(title, origin string, teller interactive.Tell
 	parts = append(parts,
 		interactiveContextSource{Source: "故事记忆结构", Title: "story memory schema", Content: storyMemorySchema},
 		interactiveContextSource{Source: "故事记忆", Title: "当前分支可见故事记忆", Content: snapshotState},
+		interactiveContextSource{Source: "最近历史回合", Title: "有界最近回合上下文", Content: recentTurns},
 		interactiveContextSource{Source: "本轮行动", Title: "用户行动", Content: userAction},
 		interactiveContextSource{Source: "本轮剧情", Title: "Agent 正文", Content: narrative},
 	)

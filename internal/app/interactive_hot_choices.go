@@ -138,20 +138,7 @@ func hotChoicesLoreContext(workspace string) string {
 }
 
 func formatHotChoicesRecentTurns(turns []interactive.TurnEvent) string {
-	if len(turns) == 0 {
-		return "（暂无历史回合，请基于开端给出第一步行动建议。）"
-	}
-	start := len(turns) - 6
-	if start < 0 {
-		start = 0
-	}
-	var sb strings.Builder
-	for i, turn := range turns[start:] {
-		idx := start + i + 1
-		fmt.Fprintf(&sb, "第 %d 回合用户行动：%s\n", idx, strings.TrimSpace(turn.User))
-		fmt.Fprintf(&sb, "第 %d 回合剧情：%s\n\n", idx, strings.TrimSpace(turn.Narrative))
-	}
-	return strings.TrimSpace(sb.String())
+	return formatInteractiveRecentTurns(turns, 6, "（暂无历史回合，请基于开端给出第一步行动建议。）")
 }
 
 func formatHotChoicesExcludeChoices(choices []string) string {

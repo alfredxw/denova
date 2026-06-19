@@ -3,12 +3,13 @@ import { Activity, Bot, ClipboardCheck, FileText, MessageSquareText, PenLine, Pl
 import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { Teller } from '@/features/interactive/types'
-import type { ChapterSummary, ChatMessage, SessionSummary, TextSelection } from '@/lib/api'
+import type { ChapterSummary, ChatMessage, ContextAnalysis, SessionSummary, TextSelection } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { MessageList } from './MessageList'
 import { InputArea } from './InputArea'
 import { SessionManagementPanel } from './SessionManagementPanel'
 import { AgentTracePanel } from './AgentTracePanel'
+import { ContextAnalysisDialog } from './ContextAnalysisDialog'
 import type { ReferencePickerItem } from './FileReferencePicker'
 import { WritingReviewPanel, WritingReviewTabBadge } from '@/features/automations/WritingReviewPanel'
 
@@ -39,6 +40,7 @@ interface AgentPanelProps {
   onRenameSession: (id: string, title: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
   onSend: (message: string) => void
+  onAnalyzeContext: (message: string) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
@@ -75,6 +77,7 @@ export function AgentPanel({
   onRenameSession,
   onDeleteSession,
   onSend,
+  onAnalyzeContext,
   onStop,
   onReferenceRemove,
   onLoreReferenceAdd,
@@ -89,6 +92,10 @@ export function AgentPanel({
   const { t } = useTranslation()
   const [view, setView] = useState<AgentPanelView>('chat')
   const [inputPrefill, setInputPrefill] = useState<{ prompt: string; nonce: number } | null>(null)
+  const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
+  const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
+  const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
+  const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
   const skillCommands = useSkillCommands({ agentKey: 'ide', workspace, fallbackEnabled: true })
   const activeSession = sessions.find((session) => session.id === activeSessionId) ||
     sessions.find((session) => session.active) ||
@@ -104,6 +111,20 @@ export function AgentPanel({
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
   }, [t])
+
+  const handleAnalyzeContext = async (message: string) => {
+    setContextAnalysisOpen(true)
+    setContextAnalysisLoading(true)
+    setContextAnalysisError(null)
+    try {
+      setContextAnalysis(await onAnalyzeContext(message))
+    } catch (e) {
+      setContextAnalysis(null)
+      setContextAnalysisError((e as Error).message)
+    } finally {
+      setContextAnalysisLoading(false)
+    }
+  }
 
   return (
     <aside className="nova-sidebar flex h-full min-h-0 flex-col">
@@ -225,6 +246,14 @@ export function AgentPanel({
             textSelections={textSelections}
             onTextSelectionRemove={onTextSelectionRemove}
             skills={skillCommands}
+            onContextAnalyze={handleAnalyzeContext}
+          />
+          <ContextAnalysisDialog
+            open={contextAnalysisOpen}
+            loading={contextAnalysisLoading}
+            error={contextAnalysisError}
+            analysis={contextAnalysis}
+            onOpenChange={setContextAnalysisOpen}
           />
         </>
       ) : view === 'sessions' ? (

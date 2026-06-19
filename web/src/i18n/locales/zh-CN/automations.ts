@@ -15,6 +15,7 @@ const automations = {
   'automations.view.config': '任务配置',
   'automations.view.inbox': '触发收件箱',
   'automations.view.run': '运行过程',
+  'automations.view.agent': '配置 Agent',
   'automations.field.name': '名称',
   'automations.field.enabled': '状态',
   'automations.field.template': '模板',

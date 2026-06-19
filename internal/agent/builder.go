@@ -72,25 +72,30 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 	})
 }
 
-// BuildLoreAgent 构建资料库 Agent（deep agent + 文件系统工具 + Skill + 资料库工具）。
-func BuildLoreAgent(ctx context.Context, cfg *config.Config, state *book.State) (adk.Agent, error) {
-	toolSettings := config.ResolveAgentTools(cfg, config.AgentKindLoreEditor)
-	var loreTools []tool.BaseTool
+// BuildConfigManagerAgent 构建统一配置管理 Agent（deep agent + 通用工具 + Skill + 模块资源工具）。
+func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State) (adk.Agent, error) {
+	toolSettings := config.ResolveAgentTools(cfg, config.AgentKindConfigManager)
+	var extraTools []tool.BaseTool
 	if toolSettings.LoreRead {
 		var err error
-		loreTools, err = newLoreTools(cfg.Workspace, toolSettings.LoreWrite)
+		loreTools, err := newLoreTools(cfg.Workspace, toolSettings.LoreWrite)
 		if err != nil {
 			return nil, err
 		}
+		extraTools = append(extraTools, loreTools...)
 	}
+	configTools, err := newConfigManagerTools(cfg)
+	if err != nil {
+		return nil, err
+	}
+	extraTools = append(extraTools, configTools...)
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{
-		Kind:              config.AgentKindLoreEditor,
-		Name:              "NovaLoreAgent",
-		Description:       "AI 资料库整理助手",
-		Instruction:       BuildLoreAgentInstruction(cfg, state),
-		EnableSkills:      true,
-		DisableWriteTodos: true,
-		ExtraTools:        loreTools,
+		Kind:         config.AgentKindConfigManager,
+		Name:         "NovaConfigManagerAgent",
+		Description:  "AI 配置与资源管理助手",
+		Instruction:  BuildConfigManagerInstruction(cfg, state),
+		EnableSkills: true,
+		ExtraTools:   extraTools,
 	})
 }
 

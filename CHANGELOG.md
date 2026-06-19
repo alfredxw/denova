@@ -6,13 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 写作 Agent 和互动故事输入框新增上下文分析入口，可模拟当前输入发送并展示真实 SystemPrompt、上下文来源明细和实际消息列表，不调用 LLM、不写入会话或故事回合。
+
 ### Fixed
 
 - 互动记忆 Agent 生成的故事记忆 patch 兼容数值和布尔值字段，并在生成、解析或写入失败后携带错误原因最多重试 3 次。
 - 故事记忆表格改为自适应列宽和展开详情网格，减少展开前后的横向滚动。
+- 互动右边栏故事记忆拆分为“记忆内容”和“整理过程”两个页签，整理日志不再挤占记忆列表空间。
+- 自动触发的故事记忆整理改为由右边栏消费 pending 回合并流式展示整理过程，避免后台整理无过程输出。
 
 ### Changed
 
+- 互动记忆 Agent 内置提示词改为按故事记忆表结构逐字段填表，明确使用最近回合历史、资料库人物设定和既有故事记忆作为生成来源，并在 Agents 配置页展示新版 `story_memory_patches` 输出协议。
+- 新增统一 `config_manager` Agent，替代旧资料库 Agent 和叙事编排 Agent；资料库、叙事编排、Skills、自动化和故事记忆模块改为内嵌同一个配置管理 Agent，并通过各自 list/read/write 工具直接更新资源。
+- 移除旧 `lore_editor` / `teller_editor` Agent kind、专属前端聊天组件、专属会话入口和 `/api/lore/agent*`、`/api/interactive/tellers/agent*` API；Beta 阶段不做旧会话和旧接口兼容迁移。
+- 配置管理 Agent 不暴露设置修改工具；模型、提示词、Skills 和工具权限仍在 Agents 配置页针对 `config_manager` 自身配置。
 - 优化故事记忆表格展示，增加固定记录列、字段说明和长文本展开细节；记忆结构新增结构级和字段级生成要求配置，并注入互动记忆 Agent 的故事记忆结构上下文。
 - 故事记忆内置预设表更新为当前状态、主角信息、重要角色、任务事件和轮次纪要的细分字段模板；已有故事会刷新内置表结构并迁移旧纪要时间等字段值，自定义结构保持不变。
 

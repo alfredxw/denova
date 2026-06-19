@@ -37,6 +37,28 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 	sse.StreamTask(c, task)
 }
 
+// HandleChatContextAnalysis 模拟一次聊天请求，返回真实 SystemPrompt 和上下文组成，不启动 LLM。
+func (h *Handlers) HandleChatContextAnalysis(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	var req agent.ChatRequest
+	if err := c.BindJSON(&req); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
+		return
+	}
+	if strings.TrimSpace(req.Message) == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
+		return
+	}
+	analysis, err := h.app.AnalyzeContext(req)
+	if err != nil {
+		writeError(c, consts.StatusConflict, err.Error())
+		return
+	}
+	c.JSON(consts.StatusOK, analysis)
+}
+
 // handleChatStream 重连到当前活跃任务的事件流（回放已有事件 + 继续接收新事件）。
 func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) {
 	task := h.app.ActiveTask()

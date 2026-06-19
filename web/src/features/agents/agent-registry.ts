@@ -26,8 +26,7 @@ export interface AgentToolDefinition {
 
 export const AGENTS: AgentViewDefinition[] = [
   { key: 'ide', titleKey: 'agents.ide.title', subtitleKey: 'agents.ide.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'tools', icon: PenLine },
-  { key: 'lore_editor', titleKey: 'agents.loreEditor.title', subtitleKey: 'agents.loreEditor.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'tools', icon: Database },
-  { key: 'teller_editor', titleKey: 'agents.tellerEditor.title', subtitleKey: 'agents.tellerEditor.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'built_in', icon: Settings2 },
+  { key: 'config_manager', titleKey: 'agents.configManager.title', subtitleKey: 'agents.configManager.subtitle', groupKey: 'agents.group.writing', capabilityMode: 'tools', icon: Settings2 },
   { key: 'interactive_story', titleKey: 'agents.interactiveStory.title', subtitleKey: 'agents.interactiveStory.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'tools', icon: MessageSquareText },
   { key: 'interactive_state', titleKey: 'agents.interactiveState.title', subtitleKey: 'agents.interactiveState.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Shield },
   { key: 'interactive_hot_choices', titleKey: 'agents.interactiveHotChoices.title', subtitleKey: 'agents.interactiveHotChoices.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Sparkles },
@@ -61,8 +60,7 @@ export const BASE_TOOL_VALUES: Required<AgentToolOverride> = {
 export const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentToolOverride>> = {
   ide: { file_read: true, web_search: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true },
   interactive_story: { file_read: true, web_search: false, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: false, todo: false },
-  lore_editor: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: false },
-  teller_editor: disabledTools(),
+  config_manager: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true },
   interactive_state: disabledTools(),
   interactive_hot_choices: disabledTools(),
   version_summary: disabledTools(),

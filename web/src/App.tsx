@@ -113,6 +113,7 @@ function App() {
     styleReferences,
     textSelections,
     send,
+    analyzeContext,
     stop,
     loadSessions,
     loadHistory,
@@ -590,6 +591,7 @@ function App() {
         onRenameChatSession={renameChatSession}
         onDeleteChatSession={deleteChatSession}
         onSend={send}
+        onAnalyzeContext={analyzeContext}
         onStop={stop}
         onReferenceRemove={removeReference}
         onLoreReferenceAdd={addLoreReference}

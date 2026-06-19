@@ -156,15 +156,7 @@ export const handlers = [
     }),
   ),
   http.get('/api/lore/items', () => HttpResponse.json({ items: [] })),
-  http.post('/api/lore/agent', () =>
-    HttpResponse.json({
-      message: '已更新资料库',
-      items: [],
-      created: [],
-      updated: [],
-      deleted_ids: [],
-    }),
-  ),
+  http.get('/api/config-manager/messages', () => HttpResponse.json([])),
   http.get('/api/styles', () => HttpResponse.json({ styles: ['古龙.md', '番茄.txt'] })),
   http.post('/api/command', async ({ request }) => {
     const body = (await request.json()) as { command?: string }

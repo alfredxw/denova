@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { BadgeHelp, ClipboardList, Command as CommandIcon, Eraser, Layers3, ListTree, PenLine, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
+import { BadgeHelp, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
 import { ReferenceChips } from './ReferenceChips'
@@ -15,6 +15,12 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -69,6 +75,7 @@ interface InputAreaProps {
   commandScope?: CommandScope
   placeholder?: string
   disabledPlaceholder?: string
+  onContextAnalyze?: (message: string) => void | Promise<void>
 }
 
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
@@ -98,6 +105,7 @@ export function InputArea({
   commandScope = 'all',
   placeholder,
   disabledPlaceholder,
+  onContextAnalyze,
 }: InputAreaProps) {
   const { t } = useTranslation()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
@@ -313,6 +321,12 @@ export function InputArea({
     setStyleReferenceQuery(null)
   }
 
+  const handleContextAnalyze = () => {
+    const trimmed = value.trim()
+    if (!trimmed || disabled) return
+    void onContextAnalyze?.(trimmed)
+  }
+
   /** 选择命令 */
   const selectCommand = (cmd: string) => {
     setValue(cmd + ' ')
@@ -474,6 +488,30 @@ export function InputArea({
       />
 
       <div className="nova-chat-composer flex items-end gap-2 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              className="h-9 w-9 shrink-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
+              disabled={disabled || !onContextAnalyze}
+              aria-label={t('chat.input.actions')}
+              title={t('chat.input.actions')}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" className="min-w-44 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
+            <DropdownMenuItem
+              disabled={!value.trim() || disabled}
+              onSelect={handleContextAnalyze}
+              className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+            >
+              <ScrollText className="h-3.5 w-3.5" />
+              {t('chat.contextAnalysis.action')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Textarea
           ref={textareaRef}
           autoResize

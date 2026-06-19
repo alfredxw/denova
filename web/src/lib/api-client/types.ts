@@ -53,6 +53,27 @@ export interface AgentRunTrace {
   truncated?: boolean
 }
 
+export interface ContextAnalysisPart {
+  id?: string
+  source: string
+  title: string
+  role?: string
+  content: string
+  note?: string
+  bytes: number
+  chars: number
+}
+
+export interface ContextAnalysis {
+  agent_kind: string
+  mode: string
+  system_prompt: string
+  system_prompt_parts: ContextAnalysisPart[]
+  context_parts: ContextAnalysisPart[]
+  context_messages: ContextAnalysisPart[]
+  message_count: number
+}
+
 export interface SSEEvent {
   event: string
   data: string
@@ -301,14 +322,6 @@ export interface SkillDocument extends SkillSummary {
 }
 
 export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at'>
-
-export interface LoreAgentResult {
-  message: string
-  items: LoreItem[]
-  created: LoreItem[]
-  updated: LoreItem[]
-  deleted_ids: string[]
-}
 
 export type AutomationScope = 'user' | 'workspace'
 export type AutomationTemplate = 'memory_consolidation' | 'review' | 'continue_writing' | 'custom_prompt'

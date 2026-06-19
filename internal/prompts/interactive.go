@@ -40,6 +40,7 @@ type InteractiveStatePromptInput struct {
 	LoreItems         string
 	StoryMemorySchema string
 	SnapshotStateJSON string
+	RecentTurns       string
 	UserAction        string
 	Narrative         string
 }
@@ -241,15 +242,17 @@ func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) strin
 
 func BuildInteractiveStateSystemInstruction() string {
 	return strings.Join([]string{
-		"你是 Nova 互动故事模式的故事记忆 Agent。",
-		"你只负责把一个已经生成完成的互动故事回合转换为故事记忆 patch JSON，不负责续写剧情。",
+		"你是 Nova 互动故事模式的互动记忆 Agent。",
+		"你只负责把已经生成完成的互动故事回合整理为故事记忆表格 patch JSON，不负责续写剧情。",
 		"必须只输出一个 JSON 对象，不要输出 Markdown、解释或代码块。",
 		"JSON 格式必须是 {\"story_memory_patches\":[...]}。",
-		"story_memory_patches 用于更新用户配置的故事记忆结构；每条 patch 包含 op、structure_id、record_id、key、values 或 hidden。",
-		"必须基于注入的“故事记忆结构与字段协议”输出 patch；structure_id、key_field_id 和 values 字段名只能来自该协议。",
-		"op 仅使用 upsert、append、hide；singleton 用 upsert，keyed 用带 key 的 upsert，append 用 append。",
+		"story_memory_patches 用于更新用户配置的故事记忆表；每条 patch 包含 op、structure_id、record_id、key、values 或 hidden。",
+		"必须基于注入的“故事记忆结构与字段协议”输出 patch；structure_id、key_field_id、values 字段名和值的写法要求都只能来自该协议。",
+		"每次写入某张表时，values 必须按该表的字段列表逐字段填写：优先满足 required 字段，同时尽量补齐全部字段；字段值必须遵守表级 generation_instruction 和字段级 generation_instruction。",
+		"字段值必须综合三类来源：最近回合上下文历史、资料库相关人物与设定、本回合前的既有故事记忆；新剧情负责更新变化，资料库负责校准设定，既有记忆负责保留未变化字段。",
+		"op 仅使用 upsert、append、hide；singleton 用 upsert，keyed 用带 key 的 upsert，append 结构记录新发生且后续需要承接的事实。",
 		"keyed 结构必须输出非空 key，且 values 必须包含 key_field_id 对应字段；key 必须等于该字段值。",
-		"values 是纯文本字段对象，字段名必须来自对应结构；不要输出未来计划，不要复制没有变化的旧状态。",
+		"values 是纯文本字段对象，字段名必须来自对应结构；不要输出未来计划、快捷选择或没有依据的新设定。",
 	}, "\n")
 }
 
@@ -257,8 +260,10 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	var sb strings.Builder
 	sb.WriteString("请根据以下互动故事上下文，生成本回合的故事记忆 patch JSON。\n\n")
 	sb.WriteString("## 故事记忆建议\n")
-	sb.WriteString("- 先读取“故事记忆结构与字段协议”，只按其中列出的结构和字段生成 patch。\n")
-	sb.WriteString("- singleton 结构维护当前状态类信息；keyed 结构按 key_field_id 对应字段 upsert；append 结构追加已经发生且后续需要承接的事实。\n")
+	sb.WriteString("- 先读取“故事记忆结构与字段协议”，只按其中列出的结构、字段和字段要求生成 patch。\n")
+	sb.WriteString("- 每条 patch 的 values 必须按目标表的字段逐项填写：required 字段不能为空；非 required 字段如果资料库、最近回合或既有记忆可支持，也要填写；已有值未变化时应沿用既有记忆，不要因为本回合没提到就清空。\n")
+	sb.WriteString("- 信息来源优先级：本回合用户行动与正文用于判断最新变化；最近回合上下文历史用于补足连续事件、地点、时间和关系；资料库用于校准人物、设定、规则、地点、物品；本回合前的故事记忆作为填表基础和未变化字段来源。\n")
+	sb.WriteString("- singleton 结构维护当前状态类信息，必须表现为回合结束后的最新状态；keyed 结构按 key_field_id 对应字段 upsert，更新同一个人物、地点、物品或任务时要保留并整合原记录；append 结构只追加已经发生且后续需要承接的事实。\n")
 	sb.WriteString("- 资料库是稳定设定校准来源；故事记忆不得写入与资料库冲突的身份、规则、地点、物品或关系。若本回合正文和资料库疑似冲突，只记录已发生事实和待核对点，不要把矛盾扩写成新设定。\n")
 	sb.WriteString("- 不要记录下一步行动建议、快捷选择或可选择入口；这些由独立快捷选择 Agent 生成。\n")
 	sb.WriteString("- 若本回合没有值得沉淀的信息，可以返回空数组。\n\n")
@@ -276,9 +281,10 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	}
 	writeBlock(&sb, "故事记忆结构与字段协议", in.StoryMemorySchema)
 	writeBlock(&sb, "本回合前的故事记忆", in.SnapshotStateJSON)
+	writeBlock(&sb, "最近回合上下文历史", in.RecentTurns)
 	writeBlock(&sb, "用户本回合行动", in.UserAction)
 	writeBlock(&sb, "已生成的本回合正文", in.Narrative)
-	sb.WriteString("\n只输出 JSON，例如：{\"story_memory_patches\":[{\"op\":\"upsert\",\"structure_id\":\"current_state\",\"values\":{\"time\":\"夜晚\",\"location\":\"旧宅门厅\",\"event\":\"主角发现门厅的铜铃会回应钥匙。\"}},{\"op\":\"upsert\",\"structure_id\":\"important_character\",\"key\":\"林川\",\"values\":{\"name\":\"林川\",\"brief\":\"熟悉旧宅机关的同行者\",\"relationship\":\"提醒主角谨慎使用铜钥匙\"}},{\"op\":\"append\",\"structure_id\":\"plot_summary\",\"values\":{\"time\":\"夜晚\",\"place\":\"旧宅门厅\",\"event\":\"主角用铜钥匙触发门厅铜铃，确认旧宅对钥匙有反应。\"}}]}。\n")
+	sb.WriteString("\n只输出 JSON，例如：{\"story_memory_patches\":[{\"op\":\"upsert\",\"structure_id\":\"current_state\",\"values\":{\"location\":\"旧宅门厅\",\"time\":\"2026-06-19 22:10\",\"previous_time\":\"2026-06-19 22:00\",\"elapsed_time\":\"约十分钟\",\"event\":\"主角发现门厅的铜铃会回应钥匙。\"}},{\"op\":\"upsert\",\"structure_id\":\"important_character\",\"key\":\"林川\",\"values\":{\"name\":\"林川\",\"brief\":\"熟悉旧宅机关的同行者\",\"relationship\":\"提醒主角谨慎使用铜钥匙\",\"status\":\"与主角同在旧宅门厅\"}},{\"op\":\"append\",\"structure_id\":\"plot_summary\",\"values\":{\"time\":\"2026-06-19 22:10\",\"place\":\"旧宅门厅\",\"event\":\"主角用铜钥匙触发门厅铜铃，确认旧宅对钥匙有反应。\"}}]}。\n")
 	return sb.String()
 }
 

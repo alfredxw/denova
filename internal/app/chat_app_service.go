@@ -19,6 +19,16 @@ type ChatAppService struct {
 	app *App
 }
 
+type ideChatRuntime struct {
+	sess           *session.Session
+	state          *book.State
+	bookService    *book.Service
+	chatService    *agent.ChatService
+	workspace      string
+	versionService *book.VersionService
+	cfg            config.Config
+}
+
 // ClearSession 为当前会话追加上下文清理标记。
 func (a *App) ClearSession() error {
 	return a.chat().ClearSession()
@@ -230,67 +240,30 @@ func (a *App) StartTask(req agent.ChatRequest) *Task {
 }
 
 func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
+	runtime, req, err := s.prepareIDEChatRuntime(req, true)
+	if err != nil {
+		log.Printf("[agent-task] 未选择 workspace，无法启动任务 err=%v", err)
+		return nil
+	}
+
+	runner, err := buildAgentRunner(context.Background(), &runtime.cfg, runtime.state)
+	if err != nil {
+		log.Printf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err)
+		return nil
+	}
 	a := s.app
 	a.mu.Lock()
-	if a.session == nil || a.bookState == nil || a.cfg == nil {
-		a.mu.Unlock()
-		log.Printf("[agent-task] 未选择 workspace，无法启动任务")
-		return nil
-	}
-	if a.activeTask != nil && a.activeTask.Status() == TaskRunning {
-		log.Printf("[agent-task] replace running task id=%s", a.activeTask.ID())
-		a.activeTask.Abort()
-	}
-
-	sess := a.session
-	state := a.bookState
-	bookService := a.bookService
-	chatService := a.chatService
-	workspace := a.workspace
-	versionService := a.versionService
-	runtimeCfg := *a.cfg
-	runtimeCfg.Workspace = workspace
-	novaDir := runtimeCfg.NovaDir
-	a.mu.Unlock()
-
-	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
-		applyLayeredSettingsToConfig(&runtimeCfg, layered)
-		runtimeCfg.IDEStoryTellerID = layered.Effective.IDEStoryTellerID
-		if runtimeCfg.IDEStoryTellerID == "" {
-			runtimeCfg.IDEStoryTellerID = "classic"
-		}
-		log.Printf("[agent-task] load ide teller id=%s workspace=%s", runtimeCfg.IDEStoryTellerID, workspace)
-
-		// 注入当前 IDE 默认导演自己的默认风格参考；仅在用户本轮未指定 # 风格时生效。
-		if len(req.StyleReferences) == 0 {
-			teller := loadInteractiveTeller(novaDir, runtimeCfg.IDEStoryTellerID)
-			if len(teller.StyleRules) > 0 {
-				converted := convertTellerStyleRules(novaDir, teller.StyleRules)
-				req.StyleRules = converted
-				log.Printf("[agent-task] inject teller style rules teller_id=%s count=%d rules=%q", teller.ID, len(converted), appStyleRuleNames(converted))
-			}
-		}
-	} else {
-		log.Printf("[agent-task] load layered settings failed workspace=%s err=%v", workspace, err)
-	}
-
-	runner, err := buildAgentRunner(context.Background(), &runtimeCfg, state)
-	if err != nil {
-		log.Printf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", workspace, err)
-		return nil
-	}
-	a.mu.Lock()
-	if a.workspace == workspace {
+	if a.workspace == runtime.workspace {
 		a.agentRunner = runner
 	}
 	a.mu.Unlock()
 
 	var beforeVersionState book.VersionWorkspaceState
 	var hasBeforeVersionState bool
-	if versionService != nil {
-		state, err := versionService.CaptureState()
+	if runtime.versionService != nil {
+		state, err := runtime.versionService.CaptureState()
 		if err != nil {
-			log.Printf("[versions] 捕获 Agent 运行前状态失败 workspace=%s err=%v", workspace, err)
+			log.Printf("[versions] 捕获 Agent 运行前状态失败 workspace=%s err=%v", runtime.workspace, err)
 		} else {
 			beforeVersionState = state
 			hasBeforeVersionState = true
@@ -299,27 +272,27 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_references=%d style_rules=%d selections=%d plan_mode=%v", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleReferences), len(req.StyleRules), len(req.Selections), req.PlanMode)
-		chatService.RunWithOptions(ctx, runner, agent.NewSessionConversation(sess), bookService, req, agent.RunOptions{
+		runtime.chatService.RunWithOptions(ctx, runner, agent.NewSessionConversation(runtime.sess), runtime.bookService, req, agent.RunOptions{
 			AgentKind:           agent.AgentKindIDE,
 			TaskID:              task.ID(),
-			SessionID:           sess.ID,
-			Workspace:           workspace,
+			SessionID:           runtime.sess.ID,
+			Workspace:           runtime.workspace,
 			Mode:                "ide",
 			OnMutationsVerified: a.automationMutationCallback("ide_agent_post_run"),
 		}, emit)
-		if versionService != nil && hasBeforeVersionState {
+		if runtime.versionService != nil && hasBeforeVersionState {
 			settings := book.DefaultVersionAutoSettings()
-			settings.TimedEnabled = runtimeCfg.VersionTimedEnabled
-			settings.TimedIntervalMinutes = runtimeCfg.VersionTimedIntervalMinutes
-			settings.AgentEnabled = runtimeCfg.VersionAgentEnabled
-			settings.AgentCharThreshold = runtimeCfg.VersionAgentCharThreshold
-			result, err := versionService.MaybeCreateAgent(beforeVersionState, settings)
+			settings.TimedEnabled = runtime.cfg.VersionTimedEnabled
+			settings.TimedIntervalMinutes = runtime.cfg.VersionTimedIntervalMinutes
+			settings.AgentEnabled = runtime.cfg.VersionAgentEnabled
+			settings.AgentCharThreshold = runtime.cfg.VersionAgentCharThreshold
+			result, err := runtime.versionService.MaybeCreateAgent(beforeVersionState, settings)
 			if err != nil {
-				log.Printf("[versions] Agent 自动保存失败 workspace=%s err=%v", workspace, err)
+				log.Printf("[versions] Agent 自动保存失败 workspace=%s err=%v", runtime.workspace, err)
 			} else if result.Skipped {
-				log.Printf("[versions] Agent 自动保存跳过 workspace=%s reason=%q chars=%d", workspace, result.Reason, result.Chars)
+				log.Printf("[versions] Agent 自动保存跳过 workspace=%s reason=%q chars=%d", runtime.workspace, result.Reason, result.Chars)
 			} else if result.Version != nil {
-				log.Printf("[versions] Agent 自动保存完成 workspace=%s version=%s chars=%d", workspace, result.Version.ID, result.Chars)
+				log.Printf("[versions] Agent 自动保存完成 workspace=%s version=%s chars=%d", runtime.workspace, result.Version.ID, result.Chars)
 			}
 		}
 		log.Printf("[agent-task] run end id=%s status=%s", task.ID(), task.Status())
@@ -330,6 +303,69 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 	a.mu.Unlock()
 
 	return task
+}
+
+func (a *App) AnalyzeContext(req agent.ChatRequest) (agent.ContextAnalysis, error) {
+	return a.chat().AnalyzeContext(req)
+}
+
+func (s *ChatAppService) AnalyzeContext(req agent.ChatRequest) (agent.ContextAnalysis, error) {
+	runtime, req, err := s.prepareIDEChatRuntime(req, false)
+	if err != nil {
+		return agent.ContextAnalysis{}, err
+	}
+	var pending *session.Interruption
+	if shouldResume := strings.TrimSpace(req.Message); shouldResume != "" {
+		pending = runtime.sess.PendingInterruption()
+	}
+	return agent.BuildIDEContextAnalysis(&runtime.cfg, runtime.state, ideStoryTellerForConfig(&runtime.cfg), runtime.bookService, runtime.sess.GetEffectiveMessages(), pending, req)
+}
+
+func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunning bool) (ideChatRuntime, agent.ChatRequest, error) {
+	a := s.app
+	a.mu.Lock()
+	if a.session == nil || a.bookState == nil || a.cfg == nil {
+		a.mu.Unlock()
+		return ideChatRuntime{}, req, ErrNoWorkspace
+	}
+	if abortRunning && a.activeTask != nil && a.activeTask.Status() == TaskRunning {
+		log.Printf("[agent-task] replace running task id=%s", a.activeTask.ID())
+		a.activeTask.Abort()
+	}
+
+	runtime := ideChatRuntime{
+		sess:           a.session,
+		state:          a.bookState,
+		bookService:    a.bookService,
+		chatService:    a.chatService,
+		workspace:      a.workspace,
+		versionService: a.versionService,
+		cfg:            *a.cfg,
+	}
+	runtime.cfg.Workspace = runtime.workspace
+	novaDir := runtime.cfg.NovaDir
+	a.mu.Unlock()
+
+	if layered, err := config.LoadLayered(novaDir, runtime.workspace); err == nil {
+		applyLayeredSettingsToConfig(&runtime.cfg, layered)
+		runtime.cfg.IDEStoryTellerID = layered.Effective.IDEStoryTellerID
+		if runtime.cfg.IDEStoryTellerID == "" {
+			runtime.cfg.IDEStoryTellerID = "classic"
+		}
+		log.Printf("[agent-task] load ide teller id=%s workspace=%s", runtime.cfg.IDEStoryTellerID, runtime.workspace)
+
+		if len(req.StyleReferences) == 0 {
+			teller := loadInteractiveTeller(novaDir, runtime.cfg.IDEStoryTellerID)
+			if len(teller.StyleRules) > 0 {
+				converted := convertTellerStyleRules(novaDir, teller.StyleRules)
+				req.StyleRules = converted
+				log.Printf("[agent-task] inject teller style rules teller_id=%s count=%d rules=%q", teller.ID, len(converted), appStyleRuleNames(converted))
+			}
+		}
+	} else {
+		log.Printf("[agent-task] load layered settings failed workspace=%s err=%v", runtime.workspace, err)
+	}
+	return runtime, req, nil
 }
 
 // ActiveTask 返回当前活跃任务（可能为 nil）。

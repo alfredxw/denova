@@ -207,7 +207,7 @@ describe('StoryStage', () => {
     const { rerender } = render(<StoryStage storyId="st_1" branchId="main" snapshot={snapshot} onDone={vi.fn()} loreEmpty onRequestLoreInit={onRequestLoreInit} />)
 
     expect(screen.getByText('先初始化共享设定')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '去资料库 Agent' }))
+    fireEvent.click(screen.getByRole('button', { name: '去配置管理 Agent' }))
     expect(onRequestLoreInit).toHaveBeenCalledTimes(1)
 
     rerender(<StoryStage storyId="st_1" branchId="main" snapshot={snapshot} onDone={vi.fn()} loreEmpty={false} onRequestLoreInit={onRequestLoreInit} />)

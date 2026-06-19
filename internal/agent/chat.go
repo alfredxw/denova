@@ -194,13 +194,14 @@ func (r *Runtime) Run(
 	}); err != nil {
 		runLogger.Warn("run_ledger_start_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
 	}
-	var resumeInterruption *session.Interruption
+	var pendingInterruption *session.Interruption
 	if shouldResumeInterruptedRequest(req.Message) {
-		resumeInterruption = conversation.PendingInterruption()
-		if resumeInterruption != nil {
-			req.Message = buildInterruptedResumeMessage(req.Message, resumeInterruption)
-		}
+		pendingInterruption = conversation.PendingInterruption()
 	}
+	composition := composeAgentInput(req, pendingInterruption, bookService, policy)
+	req = composition.Request
+	originalMessage = composition.OriginalMessage
+	resumeInterruption := composition.ResumeInterruption
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			runLogger.Error("panic_recovered", slog.Any("error", recovered))
@@ -210,34 +211,8 @@ func (r *Runtime) Run(
 		}
 	}()
 
-	agentMessage := req.Message
-	contextLog := newContextBuildLog(policy.ContextLedger)
-	contextLog.add("用户输入", "本轮原始请求", originalMessage, "")
-	if resumeInterruption != nil {
-		contextLog.add("运行时恢复", "异常中断恢复上下文", req.Message, "包含上一轮原始请求、已生成助手内容和中断原因")
-	}
-	if req.PlanMode {
-		agentMessage = appendPlanModeInstruction(agentMessage)
-		contextLog.add("注入规则", "规划模式", "[规划模式] 请你先制定计划，不要执行任何写操作。", "")
-	}
-	if len(req.References) > 0 {
-		agentMessage = appendReferenceContext(bookService, agentMessage, req.References, contextLog)
-	}
-	if len(req.LoreReferences) > 0 {
-		agentMessage = appendLoreReferenceContext(bookService, agentMessage, req.LoreReferences, contextLog)
-	}
-	if len(req.StyleReferences) > 0 {
-		agentMessage = appendStyleReferenceContext(bookService, agentMessage, req.StyleReferences, contextLog)
-	} else if len(req.StyleRules) > 0 {
-		agentMessage = appendStyleRulesHint(agentMessage, req.StyleRules)
-		contextLog.addStyleRules(req.StyleRules)
-	}
-	if len(req.Selections) > 0 {
-		agentMessage = appendSelectionContext(agentMessage, req.Selections)
-		contextLog.addSelections(req.Selections)
-	}
-	agentMessage = appendContextBoundaryInstruction(agentMessage)
-	contextLog.add("注入规则", "上下文边界", "[上下文边界] 当前用户请求是“这次要做什么”", "")
+	agentMessage := composition.AgentMessage
+	contextLog := composition.ContextLog
 
 	history, err := conversation.PrepareMessages(originalMessage, agentMessage)
 	if err != nil {

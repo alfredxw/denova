@@ -730,19 +730,9 @@ function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: st
   ]
 }
 
-function builtInCapabilityRows(agent: VisibleAgentKey, t: (key: string) => string) {
-  if (agent === 'lore_editor') {
-    return [
-      { title: t('agents.builtIn.loreRead.title'), value: t('agents.builtIn.loreRead.value') },
-      { title: t('agents.builtIn.loreWrite.title'), value: t('agents.builtIn.loreWrite.value') },
-    ]
-  }
-  if (agent === 'teller_editor') {
-    return [
-      { title: t('agents.builtIn.tellerRead.title'), value: t('agents.builtIn.tellerRead.value') },
-      { title: t('agents.builtIn.tellerWrite.title'), value: t('agents.builtIn.tellerWrite.value') },
-    ]
-  }
+function builtInCapabilityRows(agent: VisibleAgentKey, t: (key: string) => string): Array<{ title: string; value: string }> {
+  void agent
+  void t
   return []
 }
 

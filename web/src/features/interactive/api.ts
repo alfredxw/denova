@@ -1,6 +1,5 @@
-import type { ChatMessage } from '@/lib/api'
-import i18next from '@/i18n'
 import { jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
+import type { ContextAnalysis } from '@/lib/api-client'
 import type { BranchSummary, HotChoicesResponse, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
@@ -168,32 +167,6 @@ export function deleteInteractiveTeller(id: string): Promise<void> {
   })
 }
 
-export async function runInteractiveTellerAgentStream(instruction: string, tellerId = '', references: string[] = []): Promise<ReadableStream<InteractiveSSEEvent>> {
-  let res: Response
-  try {
-    res = await fetch('/api/interactive/tellers/agent/stream', {
-      method: 'POST',
-      headers: jsonHeaders,
-      body: JSON.stringify({ instruction, teller_id: tellerId, references }),
-    })
-  } catch (error) {
-    throw new Error(error instanceof Error && error.name === 'AbortError' ? i18next.t('settingPanel.tellerAgent.requestAborted') : i18next.t('settingPanel.tellerAgent.connectFailed'))
-  }
-  if (!res.ok) {
-    throw new Error(await readErrorMessage(res))
-  }
-  if (!res.body) throw new Error('No response body')
-  return parseSSEStream(res.body)
-}
-
-export function getInteractiveTellerAgentMessages(): Promise<ChatMessage[]> {
-  return requestJSON('/api/interactive/tellers/agent/messages')
-}
-
-export async function clearInteractiveTellerAgentSession(): Promise<void> {
-  await requestJSON('/api/interactive/tellers/agent/clear', { method: 'POST' })
-}
-
 export async function getInteractiveBranches(storyId: string): Promise<BranchSummary[]> {
   const data = await requestJSON<{ branches: BranchSummary[] }>(`/api/interactive/stories/${encodeURIComponent(storyId)}/branches`)
   return data.branches || []
@@ -249,6 +222,14 @@ export async function sendInteractiveMessage(input: { mode: 'story' | 'setting';
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   if (!res.body) throw new Error('No response body')
   return parseSSEStream(res.body)
+}
+
+export function analyzeInteractiveContext(input: { mode: 'story'; story_id: string; branch?: string; message: string; style_references?: string[] }): Promise<ContextAnalysis> {
+  return requestJSON('/api/interactive/chat/context-analysis', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
 }
 
 export async function abortInteractiveChat(): Promise<void> {

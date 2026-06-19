@@ -2,20 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import { BookMarked, Building2, Database, FileText, Library, Loader2, MapPin, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { createLoreItem, deleteLoreItem, getLoreItems, readFile, saveFile, updateLoreItem, type LoreAgentResult, type LoreItem } from '@/lib/api'
+import { createLoreItem, deleteLoreItem, getLoreItems, readFile, saveFile, updateLoreItem, type LoreItem } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { createInteractiveTeller, deleteInteractiveTeller, getInteractiveTellers, updateInteractiveTeller } from '../api'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, INTERACTIVE_OPENING_PRESET_ENTRY_ID, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, serializeBookOpeningPresets, type BookOpeningPreset } from '../opening'
-import type { Teller, TellerAgentResult } from '../types'
-import { LoreAgentChat } from './SettingPanelAgentChats'
-import { TellerAgentChat } from './SettingPanelTellerAgentChat'
+import type { Teller } from '../types'
 import { CreatorDirectory, CreatorEditor, LoreDirectory, LoreEditor, OpeningPresetEditor, TellerDirectory } from './SettingPanelSections'
 import { TellerEditor } from './SettingPanelTellerEditor'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
-const LORE_AGENT_ENTRY_ID = '__lore_agent__'
-const TELLER_AGENT_ENTRY_ID = '__teller_agent__'
+const LORE_CONFIG_AGENT_ENTRY_ID = '__config_manager_lore__'
+const TELLER_CONFIG_AGENT_ENTRY_ID = '__config_manager_teller__'
 const EMPTY_TELLERS: Teller[] = []
 
 export type SettingPanelMode = 'lore' | 'creator' | 'teller'
@@ -107,7 +106,6 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const [activeOpeningPresetId, setActiveOpeningPresetId] = useState('')
   const [tellers, setTellers] = useState<Teller[]>(externalTellers)
   const [activeTellerId, setActiveTellerId] = useState('')
-  const [tellerAgentTargetId, setTellerAgentTargetId] = useState('')
   const [tellerDraft, setTellerDraft] = useState<Teller | null>(null)
   const [tellerTagDraft, setTellerTagDraft] = useState('')
   const [activeSlotId, setActiveSlotId] = useState('')
@@ -122,7 +120,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   useEffect(() => {
     let cancelled = false
     setItems([])
-    setActiveId(LORE_AGENT_ENTRY_ID)
+    setActiveId(LORE_CONFIG_AGENT_ENTRY_ID)
     setDraft(null)
     setTagDraft('')
     setQuery('')
@@ -134,12 +132,12 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       .then((data) => {
         if (cancelled) return
         setItems(data)
-        setActiveId(LORE_AGENT_ENTRY_ID)
+        setActiveId(LORE_CONFIG_AGENT_ENTRY_ID)
       })
       .catch(() => {
         if (!cancelled) {
           setItems([])
-          setActiveId(LORE_AGENT_ENTRY_ID)
+          setActiveId(LORE_CONFIG_AGENT_ENTRY_ID)
         }
       })
     return () => {
@@ -224,7 +222,6 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   useEffect(() => {
     setTellers(externalTellers)
     setActiveTellerId((current) => current || externalTellers[0]?.id || '')
-    setTellerAgentTargetId((current) => current || externalTellers[0]?.id || '')
   }, [externalTellers])
 
   useEffect(() => {
@@ -235,7 +232,6 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         if (cancelled) return
         setTellers(data)
         setActiveTellerId((current) => current || data[0]?.id || '')
-        setTellerAgentTargetId((current) => current || data[0]?.id || '')
       })
       .catch(() => {
         if (!cancelled) setTellers([])
@@ -251,17 +247,13 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       if (current && externalTellers.some((teller) => teller.id === current)) return current
       return externalTellers[0]?.id || ''
     })
-    setTellerAgentTargetId((current) => {
-      if (current && externalTellers.some((teller) => teller.id === current)) return current
-      return externalTellers[0]?.id || ''
-    })
     setTellerDraft(null)
     setTellerTagDraft('')
     setActiveSlotId('')
   }, [externalTellers, workspace])
 
   useEffect(() => {
-    if (activeTellerId === TELLER_AGENT_ENTRY_ID) {
+    if (activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) {
       setTellerDraft(null)
       setTellerTagDraft('')
       setActiveSlotId('')
@@ -289,7 +281,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const refreshItems = async (nextActiveId?: string) => {
     const data = await getLoreItems()
     setItems(data)
-    setActiveId(nextActiveId || LORE_AGENT_ENTRY_ID)
+    setActiveId(nextActiveId || LORE_CONFIG_AGENT_ENTRY_ID)
   }
 
   useEffect(() => {
@@ -310,14 +302,12 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       if (current && data.some((teller) => teller.id === current)) return current
       return data[0]?.id || ''
     })
-    setTellerAgentTargetId((current) => (data.some((teller) => teller.id === current) ? current : nextActiveId || data[0]?.id || ''))
   }
 
   const mergeSavedTeller = (teller: Teller) => {
     setTellers((current) => current.map((entry) => (entry.id === teller.id ? teller : entry)))
     onTellersChange?.(tellers.map((entry) => (entry.id === teller.id ? teller : entry)))
     setActiveTellerId(teller.id)
-    setTellerAgentTargetId((current) => current || teller.id)
   }
 
   const mergeSavedLoreItem = (item: LoreItem) => {
@@ -443,7 +433,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }
 
   useEffect(() => {
-    if (activeMode !== 'lore' || !draft || activeId === LORE_AGENT_ENTRY_ID) return
+    if (activeMode !== 'lore' || !draft || activeId === LORE_CONFIG_AGENT_ENTRY_ID) return
     const signature = loreDraftSignature(draft, tagDraft)
     if (signature === loreSavedSignature.current) return
     if (loreAutoSaveTimer.current) {
@@ -464,7 +454,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }, [activeMode, activeId, draft, tagDraft])
 
   useEffect(() => {
-    if (activeMode !== 'teller' || !tellerDraft || activeTellerId === TELLER_AGENT_ENTRY_ID) return
+    if (activeMode !== 'teller' || !tellerDraft || activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) return
     const signature = tellerDraftSignature(tellerDraft, tellerTagDraft)
     if (signature === tellerSavedSignature.current) return
     if (tellerAutoSaveTimer.current) {
@@ -484,24 +474,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     }
   }, [activeMode, activeTellerId, tellerDraft, tellerTagDraft])
 
-  const handleLoreAgentResult = async (result: LoreAgentResult) => {
-    setItems(result.items || [])
-    notifyLoreUpdated(result.items?.map((item) => item.id) || [])
-  }
-
-  const handleTellerAgentResult = (result: TellerAgentResult) => {
-    setTellers(result.tellers || [])
-    onTellersChange?.(result.tellers || [])
-    setActiveTellerId(result.teller.id)
-    setTellerAgentTargetId(result.teller.id)
-  }
-
-  const handleSelectTeller = (id: string) => {
-    setActiveTellerId(id)
-    if (id !== TELLER_AGENT_ENTRY_ID) {
-      setTellerAgentTargetId(id)
-    }
-  }
+  const handleSelectTeller = (id: string) => setActiveTellerId(id)
 
   const handleSelectLore = (id: string) => {
     if (loreAutoSaveTimer.current) {
@@ -516,8 +489,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 
   const isCreatorActive = activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)
   const isOpeningPresetActive = activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID
-  const isLoreAgentActive = activeMode === 'lore' && activeId === LORE_AGENT_ENTRY_ID
-  const isTellerAgentActive = activeMode === 'teller' && activeTellerId === TELLER_AGENT_ENTRY_ID
+  const isLoreConfigAgentActive = activeMode === 'lore' && activeId === LORE_CONFIG_AGENT_ENTRY_ID
+  const isTellerConfigAgentActive = activeMode === 'teller' && activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
   return (
     <section className="flex h-full min-h-0 bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
       <aside className={`nova-sidebar flex shrink-0 flex-col border-r ${embedded ? 'w-56' : 'w-[320px]'}`}>
@@ -537,22 +510,22 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               {isCreatorActive ? <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : isOpeningPresetActive ? <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <ModeIcon mode={activeMode} />}
-              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreAgentActive ? t('settingPanel.loreAgent.title') : isTellerAgentActive ? t('settingPanel.tellerAgent.title') : isCreatorActive ? CREATOR_PATH : isOpeningPresetActive ? t('settingPanel.openingPreset.title') : editorTitle(activeMode, draft, tellerDraft, t)}</h2>
+              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.title') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : isCreatorActive ? CREATOR_PATH : isOpeningPresetActive ? t('settingPanel.openingPreset.title') : editorTitle(activeMode, draft, tellerDraft, t)}</h2>
             </div>
-            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerAgentActive ? t('settingPanel.tellerAgent.subtitle') : isCreatorActive ? t('settingPanel.editor.creatorSubtitle') : isOpeningPresetActive ? t('settingPanel.openingPreset.subtitle') : editorSubtitle(activeMode, draft, tellerDraft, t)}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : isCreatorActive ? t('settingPanel.editor.creatorSubtitle') : isOpeningPresetActive ? t('settingPanel.openingPreset.subtitle') : editorSubtitle(activeMode, draft, tellerDraft, t)}</p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {activeMode === 'lore' && !isLoreAgentActive && !isCreatorActive && !isOpeningPresetActive && (
+            {activeMode === 'lore' && !isLoreConfigAgentActive && !isCreatorActive && !isOpeningPresetActive && (
               <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !draft} onClick={handleDelete} aria-label={t('settingPanel.deleteLore')}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
-            {activeMode === 'teller' && !isTellerAgentActive && (
+            {activeMode === 'teller' && !isTellerConfigAgentActive && (
               <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !tellerDraft?.custom} onClick={handleDelete} aria-label={t('settingPanel.deleteTeller')}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
-            {!isLoreAgentActive && !isTellerAgentActive && (
+            {!isLoreConfigAgentActive && !isTellerConfigAgentActive && (
               <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving || (activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && !draft) || (activeMode === 'teller' && !tellerDraft)} onClick={handleSave}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {t('common.save')}
@@ -563,14 +536,15 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 
         {activeMode === 'lore' ? (
           <>
-            {activeId === LORE_AGENT_ENTRY_ID ? (
-              <LoreAgentChat
+            {activeId === LORE_CONFIG_AGENT_ENTRY_ID ? (
+              <ConfigManagerChat
                 workspace={workspace}
-                items={items}
-                onResult={(result) => void handleLoreAgentResult(result)}
-                onToolMutation={(itemIds) => {
-                  void refreshItems(itemIds[0])
-                  notifyLoreUpdated(itemIds)
+                origin="lore"
+                resourceId={LORE_CONFIG_AGENT_ENTRY_ID}
+                context={{ item_count: String(items.length) }}
+                onMutated={() => {
+                  void refreshItems()
+                  notifyLoreUpdated()
                 }}
               />
             ) : activeId === CREATOR_ENTRY_ID ? (
@@ -583,8 +557,14 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
           </>
         ) : activeMode === 'creator' ? (
           <CreatorEditor content={creatorContent} setContent={setCreatorContent} onSave={handleSave} />
-        ) : isTellerAgentActive ? (
-          <TellerAgentChat workspace={workspace} tellers={tellers} targetTellerId={tellerAgentTargetId} onTargetTellerIdChange={setTellerAgentTargetId} onResult={handleTellerAgentResult} />
+        ) : isTellerConfigAgentActive ? (
+          <ConfigManagerChat
+            workspace={workspace}
+            origin="teller"
+            resourceId={TELLER_CONFIG_AGENT_ENTRY_ID}
+            context={{ teller_count: String(tellers.length) }}
+            onMutated={() => void refreshTellers()}
+          />
         ) : (
           <TellerEditor workspace={workspace} draft={tellerDraft} setDraft={setTellerDraft} tagDraft={tellerTagDraft} setTagDraft={setTellerTagDraft} activeSlotId={activeSlotId} setActiveSlotId={setActiveSlotId} onSave={handleSave} />
         )}

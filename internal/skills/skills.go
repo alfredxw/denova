@@ -197,6 +197,18 @@ func SaveDocument(ctx context.Context, dirs []Directory, scope Scope, name, cont
 	return writeDocument(ctx, dirs, dir, name, content, true)
 }
 
+func DeleteDocument(ctx context.Context, dirs []Directory, scope Scope, name string) error {
+	_ = ctx
+	if err := ValidateName(name); err != nil {
+		return err
+	}
+	dir, err := writableDirectoryForScope(dirs, scope)
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(filepath.Join(dir.Path, name))
+}
+
 func ValidateName(name string) error {
 	if !skillNamePattern.MatchString(strings.TrimSpace(name)) {
 		return fmt.Errorf("skill name must match %s", skillNamePattern.String())

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent } from 'react'
-import { BookOpen, ChevronDown, ChevronUp, Command as CommandIcon, Compass, Loader2, PanelRight, Pencil, RefreshCw, Send, Sparkles, Square, X } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronUp, Command as CommandIcon, Compass, List, Loader2, PanelRight, Pencil, RefreshCw, ScrollText, Send, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,13 +8,15 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
+import { ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList } from '@/components/Chat/MessageList'
 import { ReferenceChips } from '@/components/Chat/ReferenceChips'
-import type { ChatMessage } from '@/lib/api'
+import type { ChatMessage, ContextAnalysis } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { abortInteractiveChat, generateInteractiveHotChoices, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
+import { abortInteractiveChat, analyzeInteractiveContext, generateInteractiveHotChoices, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
 import { createInteractiveNarrativeFilter } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
@@ -83,6 +85,10 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   const [hotChoicesLoading, setHotChoicesLoading] = useState(false)
   const [selectedBookOpeningPresetId, setSelectedBookOpeningPresetId] = useState('')
   const [customOpeningText, setCustomOpeningText] = useState('')
+  const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
+  const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
+  const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
+  const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
   const hotChoicesAbortRef = useRef<AbortController | null>(null)
   const liveStageKeyRef = useRef(stageKey)
   const previousSnapshotKeyRef = useRef(snapshotKey)
@@ -432,6 +438,30 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     }
   }
 
+  const analyzeCurrentContext = async () => {
+    const message = input.trim()
+    if (!message || !storyId || streaming) return
+    const inlineStyleReferences = parseInlineStyleReferences(message)
+    const mergedStyleReferences = Array.from(new Set([...styleReferences, ...inlineStyleReferences]))
+    setContextAnalysisOpen(true)
+    setContextAnalysisLoading(true)
+    setContextAnalysisError(null)
+    try {
+      setContextAnalysis(await analyzeInteractiveContext({
+        mode: 'story',
+        story_id: storyId,
+        branch: branchId,
+        message,
+        style_references: mergedStyleReferences,
+      }))
+    } catch (e) {
+      setContextAnalysis(null)
+      setContextAnalysisError((e as Error).message)
+    } finally {
+      setContextAnalysisLoading(false)
+    }
+  }
+
   const stop = () => {
     void abortInteractiveChat()
     stageAbortControllers.get(stageKey)?.abort()
@@ -766,40 +796,67 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                   </Command>
                 </PopoverContent>
               </Popover>
-              <Textarea
-                ref={inputRef}
-                autoResize
-                className="nova-field min-h-11 flex-1 resize-none px-3 py-2 text-sm placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
-                style={inputTextStyle}
-                value={input}
-                placeholder={skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
-                onChange={handleInputChange}
-                onKeyDown={(event) => {
-                  const canPickSkill = showSkillCommands && filteredSkillCommands.length > 0
-                  if (canPickSkill && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
-                    event.preventDefault()
-                    setActiveSkillCommandIndex((current) => {
-                      const direction = event.key === 'ArrowDown' ? 1 : -1
-                      return (current + direction + filteredSkillCommands.length) % filteredSkillCommands.length
-                    })
-                    return
-                  }
-                  if (event.key === 'Escape') {
-                    setStyleReferenceQuery(null)
-                    setShowSkillCommands(false)
-                    setActiveSkillCommandIndex(0)
-                    return
-                  }
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault()
-                    if (canPickSkill) {
-                      selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)
+              <div className="flex items-end gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon-sm"
+                      className="h-11 w-11 shrink-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                      disabled={!storyId || streaming}
+                      aria-label={t('chat.input.actions')}
+                      title={t('chat.input.actions')}
+                    >
+                      <List className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="top" className="min-w-44 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
+                    <DropdownMenuItem
+                      disabled={!input.trim() || !storyId || streaming}
+                      onSelect={() => void analyzeCurrentContext()}
+                      className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                    >
+                      <ScrollText className="h-3.5 w-3.5" />
+                      {t('chat.contextAnalysis.action')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Textarea
+                  ref={inputRef}
+                  autoResize
+                  className="nova-field min-h-11 flex-1 resize-none px-3 py-2 text-sm placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
+                  style={inputTextStyle}
+                  value={input}
+                  placeholder={skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
+                  onChange={handleInputChange}
+                  onKeyDown={(event) => {
+                    const canPickSkill = showSkillCommands && filteredSkillCommands.length > 0
+                    if (canPickSkill && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+                      event.preventDefault()
+                      setActiveSkillCommandIndex((current) => {
+                        const direction = event.key === 'ArrowDown' ? 1 : -1
+                        return (current + direction + filteredSkillCommands.length) % filteredSkillCommands.length
+                      })
                       return
                     }
-                    void send()
-                  }
-                }}
-              />
+                    if (event.key === 'Escape') {
+                      setStyleReferenceQuery(null)
+                      setShowSkillCommands(false)
+                      setActiveSkillCommandIndex(0)
+                      return
+                    }
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault()
+                      if (canPickSkill) {
+                        selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)
+                        return
+                      }
+                      void send()
+                    }
+                  }}
+                />
+              </div>
             </div>
             {stagePreferences.hotChoicesEnabled ? (
               <Button type="button" variant="outline" className={`h-11 min-w-[4.5rem] shrink-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
@@ -819,6 +876,13 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
               {streaming ? t('storyStage.stop') : editingTurn ? t('storyStage.regenerate') : t('chat.input.send')}
             </Button>
           </div>
+          <ContextAnalysisDialog
+            open={contextAnalysisOpen}
+            loading={contextAnalysisLoading}
+            error={contextAnalysisError}
+            analysis={contextAnalysis}
+            onOpenChange={setContextAnalysisOpen}
+          />
         </div>
       </div>
     </main>

@@ -14,8 +14,8 @@ import type { Teller } from '../types'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
-const LORE_AGENT_ENTRY_ID = '__lore_agent__'
-const TELLER_AGENT_ENTRY_ID = '__teller_agent__'
+const LORE_CONFIG_AGENT_ENTRY_ID = '__config_manager_lore__'
+const TELLER_CONFIG_AGENT_ENTRY_ID = '__config_manager_teller__'
 const TYPE_OPTIONS = [
   { value: 'character' },
   { value: 'world' },
@@ -130,9 +130,9 @@ export function LoreDirectory({
         </button>
         <button
           type="button"
-          onClick={() => onSelect(LORE_AGENT_ENTRY_ID)}
+          onClick={() => onSelect(LORE_CONFIG_AGENT_ENTRY_ID)}
           className={`mt-2 flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
-            activeId === LORE_AGENT_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+            activeId === LORE_CONFIG_AGENT_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
           }`}
         >
           <Bot className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
@@ -240,9 +240,9 @@ export function TellerDirectory({
       <div className="border-b border-[var(--nova-border)] p-2">
         <button
           type="button"
-          onClick={() => onSelect(TELLER_AGENT_ENTRY_ID)}
+          onClick={() => onSelect(TELLER_CONFIG_AGENT_ENTRY_ID)}
           className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
-            activeTellerId === TELLER_AGENT_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+            activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
           }`}
         >
           <Bot className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />

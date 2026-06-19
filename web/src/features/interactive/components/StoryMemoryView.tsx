@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Brain, ChevronDown, ChevronRight, Edit3, Eye, EyeOff, Loader2, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react'
+import { Bot, Brain, ChevronDown, ChevronRight, Edit3, Eye, EyeOff, Loader2, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { deleteStoryMemoryStructure, generateStoryMemory, getStoryMemory, saveStoryMemoryRecord, saveStoryMemoryStructure, setStoryMemoryRecordHidden, updateStoryMemorySettings } from '../api'
 import type { BranchSummary, StoryMemoryField, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
@@ -30,6 +31,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
   const [recordDraft, setRecordDraft] = useState<StoryMemoryRecord | null>(null)
   const [expandedRecordIds, setExpandedRecordIds] = useState<Set<string>>(() => new Set())
   const [showHidden, setShowHidden] = useState(false)
+  const [agentOpen, setAgentOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -243,10 +245,13 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
           <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.generate')} onClick={() => void runGenerate()}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </button>
+          <button type="button" className={`nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] ${agentOpen ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]'}`} aria-label={t('storyMemory.agent')} onClick={() => setAgentOpen((value) => !value)}>
+            <Bot className="h-4 w-4" />
+          </button>
         </div>
       </header>
       {error && <div className="border-b border-[var(--nova-border)] px-4 py-2 text-xs text-[var(--nova-danger)]">{error}</div>}
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]">
+      <div className={`grid min-h-0 flex-1 grid-cols-1 overflow-hidden ${agentOpen ? 'lg:grid-cols-[240px_minmax(0,1fr)_minmax(320px,28rem)]' : 'lg:grid-cols-[240px_minmax(0,1fr)]'}`}>
         <aside className="min-h-0 overflow-y-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 lg:border-b-0 lg:border-r">
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-[var(--nova-text-muted)]">{t('storyMemory.structures')}</span>
@@ -399,6 +404,22 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
             )}
           </div>
         </main>
+        {agentOpen && (
+          <aside className="min-h-0 border-l border-[var(--nova-border)] bg-[var(--nova-surface)]">
+            <ConfigManagerChat
+              origin="story_memory"
+              storyId={storyId}
+              branchId={visibleBranchId}
+              resourceId={selectedStructure?.id || ''}
+              context={{
+                selected_structure_id: selectedStructure?.id || '',
+                selected_structure_name: selectedStructure?.name || '',
+                record_count: String(records.length),
+              }}
+              onMutated={() => void load()}
+            />
+          </aside>
+        )}
       </div>
     </section>
   )

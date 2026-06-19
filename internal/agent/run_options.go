@@ -9,7 +9,7 @@ const (
 	AgentKindUnknown          = "unknown"
 	AgentKindIDE              = "ide"
 	AgentKindInteractiveStory = "interactive_story"
-	AgentKindLoreEditor       = "lore_editor"
+	AgentKindConfigManager    = "config_manager"
 	AgentKindAutomation       = "automation"
 )
 

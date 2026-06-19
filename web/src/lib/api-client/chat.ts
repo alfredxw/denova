@@ -1,5 +1,5 @@
 import { jsonHeaders, parseSSEStream, requestJSON } from './client'
-import type { AgentRunTrace, AgentRunTraceSummary, ChatMessage, SSEEvent, SessionSummary, TextSelection } from './types'
+import type { AgentRunTrace, AgentRunTraceSummary, ChatMessage, ContextAnalysis, SSEEvent, SessionSummary, TextSelection } from './types'
 
 export async function sendMessage(
   message: string,
@@ -33,6 +33,33 @@ export async function sendMessage(
   if (!res.body) throw new Error('No response body')
 
   return parseSSEStream(res.body)
+}
+
+export async function analyzeChatContext(
+  message: string,
+  references: string[] = [],
+  loreReferences: string[] = [],
+  styleReferences: string[] = [],
+  textSelections: TextSelection[] = [],
+  planMode?: boolean,
+): Promise<ContextAnalysis> {
+  return requestJSON('/api/chat/context-analysis', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      message,
+      references,
+      lore_references: loreReferences,
+      style_references: styleReferences,
+      selections: textSelections.map(s => ({
+        file_name: s.fileName,
+        start_line: s.startLine,
+        end_line: s.endLine,
+        content: s.content,
+      })),
+      plan_mode: planMode || false,
+    }),
+  })
 }
 
 export async function getActiveChatTask(): Promise<{ active: boolean; status?: string }> {

@@ -6,20 +6,11 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
-
 	"nova/config"
 	"nova/internal/agent"
 	"nova/internal/interactive"
 	"nova/internal/session"
 )
-
-type TellerAgentResult struct {
-	Message string               `json:"message"`
-	Action  string               `json:"action"`
-	Teller  interactive.Teller   `json:"teller"`
-	Tellers []interactive.Teller `json:"tellers"`
-}
 
 // InteractiveAppService 负责互动故事、剧情分支、导演和互动 Agent 任务。
 type InteractiveAppService struct {
@@ -263,7 +254,7 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 		}
 	}
 	var patchCount int
-	_, err = runInteractiveMemoryAgentWithRetry(runCtx, &runtimeCfg, instruction, sessionStore, generate, func(result interactiveMemoryAgentResult) error {
+	result, err := runInteractiveMemoryAgentWithRetry(runCtx, &runtimeCfg, instruction, sessionStore, generate, func(result interactiveMemoryAgentResult) error {
 		patchCount = len(result.StoryMemoryPatches)
 		if len(result.StoryMemoryPatches) == 0 {
 			return nil
@@ -292,6 +283,16 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 	if err != nil {
 		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
 		return interactive.StoryMemoryState{}, 0, err
+	}
+	if len(result.StateOps) > 0 && snapshot.CurrentTurn.StateStatus == "pending" {
+		if _, err := store.AppendStateDelta(storyID, interactive.AppendStateDeltaRequest{
+			ParentID: snapshot.CurrentTurn.ID,
+			BranchID: snapshot.BranchID,
+			Ops:      result.StateOps,
+		}); err != nil {
+			_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
+			return interactive.StoryMemoryState{}, patchCount, err
+		}
 	}
 	if err := store.MarkInteractiveMemoryReady(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID); err != nil {
 		return interactive.StoryMemoryState{}, patchCount, err
@@ -432,6 +433,52 @@ func (s *InteractiveAppService) StartInteractiveRegenerateTask(storyID, branchID
 	return s.startInteractiveTask(storyID, branchID, message, styleReferences, turnID)
 }
 
+func (a *App) AnalyzeInteractiveContext(storyID, branchID, message string, styleReferences []string) (agent.ContextAnalysis, error) {
+	return a.interactiveService().AnalyzeInteractiveContext(storyID, branchID, message, styleReferences)
+}
+
+func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, message string, styleReferences []string) (agent.ContextAnalysis, error) {
+	a := s.app
+	a.mu.RLock()
+	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
+		a.mu.RUnlock()
+		return agent.ContextAnalysis{}, ErrNoWorkspace
+	}
+	store := a.interactive
+	state := a.bookState
+	bookService := a.bookService
+	runtimeCfg := *a.cfg
+	workspace := a.workspace
+	runtimeCfg.Workspace = workspace
+	novaDir := runtimeCfg.NovaDir
+	a.mu.RUnlock()
+
+	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
+		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+		runtimeCfg.InteractiveMaxTokens = appSettingsInt(layered.Effective.InteractiveMaxTokens, 0)
+	} else {
+		log.Printf("[interactive-agent-analysis] load interactive settings failed workspace=%s err=%v", workspace, err)
+	}
+
+	storyCtx, err := store.StoryContext(storyID, branchID)
+	if err != nil {
+		return agent.ContextAnalysis{}, err
+	}
+	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
+	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
+	var styleRules []agent.StyleRule
+	if len(styleReferences) == 0 {
+		styleRules = convertTellerStyleRules(novaDir, teller.StyleRules)
+	}
+	req := agent.ChatRequest{
+		Message:         message,
+		StyleReferences: styleReferences,
+		StyleRules:      styleRules,
+	}
+	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
+	return agent.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveStoryTellerSystemInput(teller), bookService, req, conversation.PrepareMessages)
+}
+
 func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message string, styleReferences []string, rewindTurnID string) *Task {
 	a := s.app
 	a.mu.Lock()
@@ -449,7 +496,6 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	state := a.bookState
 	bookService := a.bookService
 	chatService := a.chatService
-	sessionStore := a.sessionStore
 	runtimeCfg := *a.cfg
 	workspace := a.workspace
 	runtimeCfg.Workspace = workspace
@@ -523,8 +569,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 				log.Printf("[interactive-memory-agent] auto decision failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
 				markInteractiveStateFailed(conversation, turn, err)
 			} else if shouldGenerate {
-				log.Printf("[interactive-memory-agent] auto trigger story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
-				startInteractiveStateTask(&runtimeCfg, conversation, turn, sessionStore)
+				log.Printf("[interactive-memory-agent] auto pending for stream story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
 			} else if err := store.MarkInteractiveMemoryReady(storyID, turn.BranchID, turn.ID); err != nil {
 				log.Printf("[interactive-memory-agent] mark skipped turn ready failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
 				markInteractiveStateFailed(conversation, turn, err)
@@ -602,123 +647,6 @@ func (s *InteractiveAppService) DeleteInteractiveTeller(id string) error {
 	return interactive.NewTellerLibrary(cfg.NovaDir).Delete(id)
 }
 
-func (a *App) TellerAgentMessages() ([]session.HistoryEntry, error) {
-	return a.interactiveService().TellerAgentMessages()
-}
-
-func (s *InteractiveAppService) TellerAgentMessages() ([]session.HistoryEntry, error) {
-	store := s.sessionStore()
-	if store == nil {
-		return nil, ErrNoWorkspace
-	}
-	sess, err := agentSessionFromStore(store, config.AgentKindTellerEditor)
-	if err != nil {
-		return nil, err
-	}
-	return sess.History(), nil
-}
-
-func (a *App) ClearTellerAgentSession() error {
-	return a.interactiveService().ClearTellerAgentSession()
-}
-
-func (s *InteractiveAppService) ClearTellerAgentSession() error {
-	store := s.sessionStore()
-	if store == nil {
-		return ErrNoWorkspace
-	}
-	return clearAgentSessionInStore(store, config.AgentKindTellerEditor)
-}
-
-func (a *App) StartTellerAgentTask(instruction string, targetID string, references []string) *Task {
-	return a.interactiveService().StartTellerAgentTask(instruction, targetID, references)
-}
-
-func (s *InteractiveAppService) StartTellerAgentTask(instruction string, targetID string, references []string) *Task {
-	cfg := s.cfg()
-	sessionStore := s.sessionStore()
-	if cfg == nil || cfg.NovaDir == "" || sessionStore == nil {
-		return nil
-	}
-	runtimeCfg := *cfg
-	library := interactive.NewTellerLibrary(runtimeCfg.NovaDir)
-	targetID = strings.TrimSpace(targetID)
-	sess, err := agentSessionFromStore(sessionStore, config.AgentKindTellerEditor)
-	if err != nil {
-		log.Printf("[teller-agent-task] 加载会话失败 err=%v", err)
-		return nil
-	}
-	history := sess.GetEffectiveMessages()
-
-	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
-		instruction = strings.TrimSpace(instruction)
-		if err := sess.Append(schema.UserMessage(instruction)); err != nil {
-			emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
-			return
-		}
-		log.Printf("[teller-agent-task] run begin id=%s target_id=%s references=%d instruction_len=%d", task.ID(), targetID, len(references), len(instruction))
-		if err := rejectUnsupportedTellerAgentInstruction(instruction); err != nil {
-			emitTellerError(sess, emit, err)
-			log.Printf("[teller-agent-task] 拒绝不支持的指令 target_id=%s err=%v", targetID, err)
-			return
-		}
-
-		emitLoreToolCall(emit, "teller-read", "读取导演配置", fmt.Sprintf(`{"target_id":%q}`, targetID))
-		tellers, err := library.List()
-		if err != nil {
-			emitTellerError(sess, emit, err)
-			log.Printf("[teller-agent-task] 读取导演失败 target_id=%s err=%v", targetID, err)
-			return
-		}
-		if targetID != "" && !tellerExists(tellers, targetID) {
-			err := fmt.Errorf("目标导演不存在: %s", targetID)
-			emitTellerError(sess, emit, err)
-			log.Printf("[teller-agent-task] 目标导演不存在 target_id=%s", targetID)
-			return
-		}
-		emitLoreToolResult(emit, "teller-read", fmt.Sprintf("已读取导演配置，共 %d 个。", len(tellers)))
-
-		emitLoreToolCall(emit, "teller-plan", "生成导演编辑方案", fmt.Sprintf(`{"selected_teller_id":%q,"references":%d,"history_messages":%d}`, targetID, len(references), len(history)))
-		plan, err := agent.StreamTellerEditPlan(ctx, &runtimeCfg, instruction, tellers, targetID, references, history, emit)
-		if err != nil {
-			emitTellerError(sess, emit, err)
-			log.Printf("[teller-agent-task] 生成编辑方案失败 target_id=%s err=%v", targetID, err)
-			return
-		}
-		emitLoreToolResult(emit, "teller-plan", fmt.Sprintf("已生成 %s 方案：%s。", plan.Action, plan.Message))
-
-		applyTargetID := strings.TrimSpace(plan.Teller.ID)
-		emitLoreToolCall(emit, "teller-apply", "应用导演变更", fmt.Sprintf(`{"action":%q,"teller_id":%q}`, plan.Action, applyTargetID))
-		var teller interactive.Teller
-		if plan.Action == "create" {
-			teller, err = library.Create(plan.Teller)
-		} else {
-			teller, err = library.Update(applyTargetID, plan.Teller)
-		}
-		if err != nil {
-			emitTellerError(sess, emit, err)
-			log.Printf("[teller-agent-task] 应用变更失败 action=%s teller_id=%s err=%v", plan.Action, applyTargetID, err)
-			return
-		}
-		nextTellers, err := library.List()
-		if err != nil {
-			emitTellerError(sess, emit, err)
-			log.Printf("[teller-agent-task] 刷新导演列表失败 action=%s teller_id=%s err=%v", plan.Action, teller.ID, err)
-			return
-		}
-		result := TellerAgentResult{
-			Message: plan.Message,
-			Action:  plan.Action,
-			Teller:  teller,
-			Tellers: nextTellers,
-		}
-		emitLoreToolResult(emit, "teller-apply", tellerResultMessage(result))
-		_ = sess.Append(schema.AssistantMessage(tellerResultMessage(result), nil))
-		emit(agent.Event{Type: "teller_result", Data: result})
-		log.Printf("[teller-agent-task] run done id=%s action=%s teller_id=%s tellers=%d", task.ID(), plan.Action, teller.ID, len(nextTellers))
-	})
-}
-
 // ActiveInteractiveTask 返回当前互动模式活跃任务（可能为 nil）。
 func (a *App) ActiveInteractiveTask() *Task {
 	return a.interactiveService().ActiveInteractiveTask()
@@ -765,51 +693,4 @@ func (s *InteractiveAppService) sessionStore() *session.Store {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.sessionStore
-}
-
-func emitTellerError(sess *session.Session, emit func(agent.Event), err error) {
-	message := err.Error()
-	_ = sess.Append(schema.AssistantMessage("执行失败："+message, nil))
-	emit(agent.Event{Type: "error", Data: map[string]string{"message": message}})
-}
-
-func tellerResultMessage(result TellerAgentResult) string {
-	action := "创建"
-	if result.Action == "update" {
-		action = "修改"
-	}
-	message := strings.TrimSpace(result.Message)
-	if message == "" {
-		message = "导演 Agent 已完成"
-	}
-	if result.Teller.Name != "" {
-		message += fmt.Sprintf("（%s：%s）", action, result.Teller.Name)
-	}
-	return message
-}
-
-func tellerExists(tellers []interactive.Teller, id string) bool {
-	for _, teller := range tellers {
-		if teller.ID == id {
-			return true
-		}
-	}
-	return false
-}
-
-func rejectUnsupportedTellerAgentInstruction(instruction string) error {
-	normalized := strings.ToLower(strings.TrimSpace(instruction))
-	deleteWords := []string{"删除", "删掉", "移除", "remove", "delete"}
-	tellerWords := []string{"导演", "讲述者", "story director", "director", "story teller", "teller", "规则包"}
-	for _, deleteWord := range deleteWords {
-		if !strings.Contains(normalized, deleteWord) {
-			continue
-		}
-		for _, tellerWord := range tellerWords {
-			if strings.Contains(normalized, tellerWord) {
-				return fmt.Errorf("导演 Agent 当前只支持创建或修改单个导演，不支持删除")
-			}
-		}
-	}
-	return nil
 }

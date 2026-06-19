@@ -15,6 +15,7 @@ const automations = {
   'automations.view.config': 'Task Config',
   'automations.view.inbox': 'Trigger Inbox',
   'automations.view.run': 'Run Timeline',
+  'automations.view.agent': 'Config Agent',
   'automations.field.name': 'Name',
   'automations.field.enabled': 'Status',
   'automations.field.template': 'Template',

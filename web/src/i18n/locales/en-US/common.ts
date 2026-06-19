@@ -25,6 +25,12 @@ const common = {
   'common.chapters': '{{count}} chapters',
   'common.messages': '{{count}} messages',
   'common.items': '{{count}} items',
+  'configManager.placeholder': 'Ask the Config Manager Agent to update this module...',
+  'configManager.executing': 'Config Manager Agent is running...',
+  'configManager.tool': 'Tool call',
+  'configManager.historyLoadFailed': 'Failed to load Config Manager Agent history',
+  'configManager.runFailed': 'Config Manager Agent failed',
+  'configManager.clearFailed': 'Failed to clear Config Manager Agent session',
 } as const
 
 export default common

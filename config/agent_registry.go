@@ -3,8 +3,7 @@ package config
 const (
 	AgentKindIDE                   = "ide"
 	AgentKindInteractiveStory      = "interactive_story"
-	AgentKindLoreEditor            = "lore_editor"
-	AgentKindTellerEditor          = "teller_editor"
+	AgentKindConfigManager         = "config_manager"
 	AgentKindInteractiveState      = "interactive_state"
 	AgentKindInteractiveHotChoices = "interactive_hot_choices"
 	AgentKindVersionSummary        = "version_summary"
@@ -40,20 +39,12 @@ var agentKindRegistry = []AgentKindDefinition{
 		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveStory },
 	},
 	{
-		Kind:           AgentKindLoreEditor,
-		SessionID:      "lore-agent",
-		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.LoreEditor },
-		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.LoreEditor },
-		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.LoreEditor },
-		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.LoreEditor },
-	},
-	{
-		Kind:           AgentKindTellerEditor,
-		SessionID:      "teller-agent",
-		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.TellerEditor },
-		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.TellerEditor },
-		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.TellerEditor },
-		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.TellerEditor },
+		Kind:           AgentKindConfigManager,
+		SessionID:      "config-manager-agent",
+		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.ConfigManager },
+		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.ConfigManager },
+		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.ConfigManager },
+		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.ConfigManager },
 	},
 	{
 		Kind:           AgentKindInteractiveState,

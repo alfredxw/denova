@@ -121,6 +121,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"key_field_id: name",
 		"name（姓名） required",
 		"plot_summary",
+		"最近回合上下文历史",
+		"第 2 回合用户行动：我点燃火把",
 	} {
 		if !strings.Contains(stateInstruction, want) {
 			t.Fatalf("state instruction should include story memory schema %q: %s", want, stateInstruction)

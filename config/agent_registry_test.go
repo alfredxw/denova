@@ -24,8 +24,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	models := AgentModelSettings{
 		IDE:                   AgentModelOverride{ProfileID: AgentKindIDE},
 		InteractiveStory:      AgentModelOverride{ProfileID: AgentKindInteractiveStory},
-		LoreEditor:            AgentModelOverride{ProfileID: AgentKindLoreEditor},
-		TellerEditor:          AgentModelOverride{ProfileID: AgentKindTellerEditor},
+		ConfigManager:         AgentModelOverride{ProfileID: AgentKindConfigManager},
 		InteractiveState:      AgentModelOverride{ProfileID: AgentKindInteractiveState},
 		InteractiveHotChoices: AgentModelOverride{ProfileID: AgentKindInteractiveHotChoices},
 		VersionSummary:        AgentModelOverride{ProfileID: AgentKindVersionSummary},
@@ -35,8 +34,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	prompts := AgentPromptSettings{
 		IDE:                   AgentPromptOverride{SystemPrompt: AgentKindIDE},
 		InteractiveStory:      AgentPromptOverride{SystemPrompt: AgentKindInteractiveStory},
-		LoreEditor:            AgentPromptOverride{SystemPrompt: AgentKindLoreEditor},
-		TellerEditor:          AgentPromptOverride{SystemPrompt: AgentKindTellerEditor},
+		ConfigManager:         AgentPromptOverride{SystemPrompt: AgentKindConfigManager},
 		InteractiveState:      AgentPromptOverride{SystemPrompt: AgentKindInteractiveState},
 		InteractiveHotChoices: AgentPromptOverride{SystemPrompt: AgentKindInteractiveHotChoices},
 		VersionSummary:        AgentPromptOverride{SystemPrompt: AgentKindVersionSummary},
@@ -47,8 +45,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	tools := AgentToolSettings{
 		IDE:                   AgentToolOverride{FileRead: &on},
 		InteractiveStory:      AgentToolOverride{FileWrite: &on},
-		LoreEditor:            AgentToolOverride{ShellExecute: &on},
-		TellerEditor:          AgentToolOverride{Skills: &on},
+		ConfigManager:         AgentToolOverride{ShellExecute: &on},
 		InteractiveState:      AgentToolOverride{LoreRead: &on},
 		InteractiveHotChoices: AgentToolOverride{LoreWrite: &on},
 		VersionSummary:        AgentToolOverride{Todo: &on},

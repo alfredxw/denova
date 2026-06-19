@@ -13,12 +13,6 @@ import (
 	"nova/internal/interactive"
 )
 
-type tellerAgentRequest struct {
-	Instruction string   `json:"instruction"`
-	TellerID    string   `json:"teller_id"`
-	References  []string `json:"references"`
-}
-
 func (h *Handlers) HandleInteractiveStories(ctx context.Context, c *app.RequestContext) {
 	index, err := h.app.InteractiveStories()
 	if err != nil {
@@ -362,6 +356,38 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 	sse.StreamTask(c, task)
 }
 
+func (h *Handlers) HandleInteractiveChatContextAnalysis(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		Mode            string   `json:"mode"`
+		StoryID         string   `json:"story_id"`
+		Branch          string   `json:"branch"`
+		Message         string   `json:"message"`
+		StyleReferences []string `json:"style_references"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Message) == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
+		return
+	}
+	if strings.TrimSpace(body.StoryID) == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyIDRequired")
+		return
+	}
+	if body.Mode != "" && body.Mode != "story" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyModeOnly")
+		return
+	}
+	analysis, err := h.app.AnalyzeInteractiveContext(body.StoryID, body.Branch, body.Message, body.StyleReferences)
+	if err != nil {
+		writeError(c, consts.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, analysis)
+}
+
 func (h *Handlers) HandleInteractiveChatAbort(ctx context.Context, c *app.RequestContext) {
 	if task := h.app.ActiveInteractiveTask(); task != nil {
 		log.Printf("[interactive-agent-sse] abort requested task_id=%s status=%s", task.ID(), task.Status())
@@ -420,66 +446,6 @@ func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.Req
 func (h *Handlers) HandleInteractiveTellerDelete(ctx context.Context, c *app.RequestContext) {
 	if err := h.app.DeleteInteractiveTeller(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
-}
-
-func (h *Handlers) HandleInteractiveTellerAgentStream(ctx context.Context, c *app.RequestContext) {
-	var body tellerAgentRequest
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	if strings.TrimSpace(body.Instruction) == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.tellerInstructionEmpty")
-		return
-	}
-	task := h.app.StartTellerAgentTask(body.Instruction, body.TellerID, body.References)
-	if task == nil {
-		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
-		return
-	}
-	sse.StreamTask(c, task)
-}
-
-func (h *Handlers) HandleInteractiveTellerAgentMessages(ctx context.Context, c *app.RequestContext) {
-	if !h.app.HasWorkspace() {
-		writeJSON(c, consts.StatusOK, []messageDTO{})
-		return
-	}
-	entries, err := h.app.TellerAgentMessages()
-	if err != nil {
-		writeError(c, consts.StatusInternalServerError, err.Error())
-		return
-	}
-	result := make([]messageDTO, 0, len(entries))
-	for _, entry := range entries {
-		if entry.Type == "clear" {
-			result = append(result, messageDTO{
-				Type:      entry.Type,
-				CreatedAt: formatTime(entry.CreatedAt),
-			})
-			continue
-		}
-		if entry.Content == "" {
-			continue
-		}
-		result = append(result, messageDTO{
-			Type:    entry.Type,
-			Role:    entry.Role,
-			Content: entry.Content,
-		})
-	}
-	writeJSON(c, consts.StatusOK, result)
-}
-
-func (h *Handlers) HandleInteractiveTellerAgentClear(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	if err := h.app.ClearTellerAgentSession(); err != nil {
-		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})

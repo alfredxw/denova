@@ -77,11 +77,11 @@ describe('SkillsView', () => {
       path: '/books/demo/.nova/skills/beats/SKILL.md',
       editable: true,
       active: true,
-      agent: 'ide,lore_editor',
+      agent: 'ide,config_manager',
       content: `---
 name: beats
 description: Draft chapter beats.
-agent: ide,lore_editor
+agent: ide,config_manager
 ---
 
 # beats
@@ -102,11 +102,11 @@ agent: ide,lore_editor
     await user.click(screen.getByRole('button', { name: '新建' }))
     await user.type(screen.getByLabelText('Skill 名称'), 'beats')
     await user.type(screen.getByLabelText('触发说明'), 'Draft chapter beats.')
-    await user.click(screen.getByLabelText(/资料库 Agent/))
+    await user.click(screen.getByLabelText(/配置管理 Agent/))
     await user.click(screen.getByRole('button', { name: '创建 SKILL.md' }))
 
     await waitFor(() => {
-      expect(createSkill).toHaveBeenCalledWith('workspace', 'beats', 'Draft chapter beats.', ['ide', 'lore_editor'])
+      expect(createSkill).toHaveBeenCalledWith('workspace', 'beats', 'Draft chapter beats.', ['ide', 'config_manager'])
     })
     await waitFor(() => {
       expect(getSkillDocument).toHaveBeenCalledWith('workspace', 'beats')

@@ -7,8 +7,7 @@ type AgentSkillSettings struct {
 	Default               AgentSkillOverride `toml:"default,omitempty" json:"default,omitempty"`
 	IDE                   AgentSkillOverride `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory      AgentSkillOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
-	LoreEditor            AgentSkillOverride `toml:"lore_editor,omitempty" json:"lore_editor,omitempty"`
-	TellerEditor          AgentSkillOverride `toml:"teller_editor,omitempty" json:"teller_editor,omitempty"`
+	ConfigManager         AgentSkillOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
 	InteractiveState      AgentSkillOverride `toml:"interactive_state,omitempty" json:"interactive_state,omitempty"`
 	InteractiveHotChoices AgentSkillOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentSkillOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
@@ -24,8 +23,7 @@ func MergeAgentSkillSettings(parent, child AgentSkillSettings) AgentSkillSetting
 		Default:               mergeAgentSkillOverride(parent.Default, child.Default),
 		IDE:                   mergeAgentSkillOverride(parent.IDE, child.IDE),
 		InteractiveStory:      mergeAgentSkillOverride(parent.InteractiveStory, child.InteractiveStory),
-		LoreEditor:            mergeAgentSkillOverride(parent.LoreEditor, child.LoreEditor),
-		TellerEditor:          mergeAgentSkillOverride(parent.TellerEditor, child.TellerEditor),
+		ConfigManager:         mergeAgentSkillOverride(parent.ConfigManager, child.ConfigManager),
 		InteractiveState:      mergeAgentSkillOverride(parent.InteractiveState, child.InteractiveState),
 		InteractiveHotChoices: mergeAgentSkillOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentSkillOverride(parent.VersionSummary, child.VersionSummary),

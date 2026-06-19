@@ -1,0 +1,336 @@
+package agent
+
+import (
+	"fmt"
+	"strings"
+	"unicode/utf8"
+
+	"github.com/cloudwego/eino/schema"
+
+	"nova/config"
+	"nova/internal/book"
+	"nova/internal/prompts"
+	"nova/internal/session"
+)
+
+type ContextAnalysis struct {
+	AgentKind         string                `json:"agent_kind"`
+	Mode              string                `json:"mode"`
+	SystemPrompt      string                `json:"system_prompt"`
+	SystemPromptParts []ContextAnalysisPart `json:"system_prompt_parts"`
+	ContextParts      []ContextAnalysisPart `json:"context_parts"`
+	ContextMessages   []ContextAnalysisPart `json:"context_messages"`
+	MessageCount      int                   `json:"message_count"`
+}
+
+type ContextAnalysisPart struct {
+	ID      string `json:"id,omitempty"`
+	Source  string `json:"source"`
+	Title   string `json:"title"`
+	Role    string `json:"role,omitempty"`
+	Content string `json:"content"`
+	Note    string `json:"note,omitempty"`
+	Bytes   int    `json:"bytes"`
+	Chars   int    `json:"chars"`
+}
+
+type ContextAnalysisPartInput struct {
+	ID      string
+	Source  string
+	Title   string
+	Role    string
+	Content string
+	Note    string
+}
+
+func NewContextAnalysisPart(in ContextAnalysisPartInput) ContextAnalysisPart {
+	content := in.Content
+	return ContextAnalysisPart{
+		ID:      strings.TrimSpace(in.ID),
+		Source:  strings.TrimSpace(in.Source),
+		Title:   strings.TrimSpace(in.Title),
+		Role:    strings.TrimSpace(in.Role),
+		Content: content,
+		Note:    strings.TrimSpace(in.Note),
+		Bytes:   len(content),
+		Chars:   utf8.RuneCountInString(content),
+	}
+}
+
+func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller, bookService *book.Service, effectiveMessages []*schema.Message, pending *session.Interruption, req ChatRequest) (ContextAnalysis, error) {
+	systemPrompt, systemParts := buildIDESystemPromptAnalysis(cfg, state, teller)
+	policy := DefaultLoopPolicy().normalized()
+	composition := composeAgentInput(req, pending, bookService, policy)
+	messages := make([]*schema.Message, 0, len(effectiveMessages)+1)
+	for _, msg := range effectiveMessages {
+		if msg != nil {
+			messages = append(messages, msg)
+		}
+	}
+	messages = append(messages, schema.UserMessage(composition.AgentMessage))
+	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
+	for i, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		source := "会话历史"
+		title := fmt.Sprintf("历史消息 %d", i+1)
+		if i == len(messages)-1 {
+			source = "本轮上下文"
+			title = "本轮发送给 Agent 的用户消息"
+		}
+		contextMessages = append(contextMessages, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      fmt.Sprintf("message_%d", i+1),
+			Source:  source,
+			Title:   title,
+			Role:    string(msg.Role),
+			Content: msg.Content,
+		}))
+	}
+	return ContextAnalysis{
+		AgentKind:         config.AgentKindIDE,
+		Mode:              "ide",
+		SystemPrompt:      systemPrompt,
+		SystemPromptParts: systemParts,
+		ContextParts:      composition.ContextLog.FullParts(),
+		ContextMessages:   contextMessages,
+		MessageCount:      len(contextMessages),
+	}, nil
+}
+
+func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, bookService *book.Service, req ChatRequest, prepareMessages func(originalMessage, agentMessage string) ([]*schema.Message, error)) (ContextAnalysis, error) {
+	systemPrompt, systemParts := buildInteractiveStorySystemPromptAnalysis(cfg, state, teller)
+	policy := DefaultLoopPolicy().normalized()
+	composition := composeAgentInput(req, nil, bookService, policy)
+	messages, err := prepareMessages(composition.OriginalMessage, composition.AgentMessage)
+	if err != nil {
+		return ContextAnalysis{}, err
+	}
+	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
+	for i, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		source := "互动故事上下文"
+		title := "故事状态与记忆"
+		switch {
+		case i == len(messages)-1:
+			source = "本轮互动指令"
+			title = "本轮发送给互动 Agent 的用户消息"
+		case i > 0:
+			source = "最近互动回合"
+			title = fmt.Sprintf("最近回合消息 %d", i)
+		}
+		contextMessages = append(contextMessages, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      fmt.Sprintf("message_%d", i+1),
+			Source:  source,
+			Title:   title,
+			Role:    string(msg.Role),
+			Content: msg.Content,
+		}))
+	}
+	contextParts := composition.ContextLog.FullParts()
+	contextParts = append(contextParts, contextMessages...)
+	return ContextAnalysis{
+		AgentKind:         config.AgentKindInteractiveStory,
+		Mode:              "interactive",
+		SystemPrompt:      systemPrompt,
+		SystemPromptParts: systemParts,
+		ContextParts:      contextParts,
+		ContextMessages:   contextMessages,
+		MessageCount:      len(contextMessages),
+	}, nil
+}
+
+func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller) (string, []ContextAnalysisPart) {
+	builtIn, workspace, creator, stateContext := buildIDEBuiltinInstruction(cfg, state, teller)
+	systemPrompt := protectedSystemInstruction(cfg, config.AgentKindIDE, builtIn)
+	resolved := config.ResolveAgentPrompt(cfg, config.AgentKindIDE)
+	parts := []ContextAnalysisPart{
+		NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "runtime_contract",
+			Source:  "Nova runtime",
+			Title:   "运行契约",
+			Content: runtimeContractForAgent(config.AgentKindIDE),
+		}),
+	}
+	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(config.AgentKindIDE)); outputProtocol != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "output_protocol",
+			Source:  "Nova runtime",
+			Title:   "输出格式",
+			Content: outputProtocol,
+		}))
+	}
+	if flow := strings.TrimSpace(resolved.FlowPrompt); flow != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "custom_flow",
+			Source:  "user/workspace config",
+			Title:   "用户自定义流程规则",
+			Content: flow,
+		}))
+	}
+	if custom := strings.TrimSpace(resolved.SystemPrompt); custom != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "custom_system",
+			Source:  "user/workspace config",
+			Title:   "用户自定义系统提示",
+			Content: custom,
+		}))
+	}
+	if strings.TrimSpace(creator) != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "creator",
+			Source:  "CREATOR.md",
+			Title:   "创作者指令",
+			Content: creator,
+		}))
+	}
+	if strings.TrimSpace(teller.Prompt) != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "ide_teller",
+			Source:  teller.ID,
+			Title:   "写作模式默认导演规则",
+			Content: teller.Prompt,
+		}))
+	}
+	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+		ID:      "flow",
+		Source:  "Nova built-in",
+		Title:   "写作模式流程配置",
+		Content: ideFlowInstruction(cfg, workspace),
+	}))
+	if sections := promptStateSections(stateContext); len(sections) > 0 {
+		for i, section := range sections {
+			parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+				ID:      fmt.Sprintf("workspace_state_%d", i+1),
+				Source:  section.Source,
+				Title:   section.Title,
+				Content: section.Content,
+			}))
+		}
+	} else {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "workspace_state_empty",
+			Source:  "workspace state",
+			Title:   "当前作品状态",
+			Content: "这是一个新的作品，尚未生成大纲和资料库。请先打开作品根目录下的 ideas.md 和 CREATOR.md，基于两份模板与作者确认创作灵感、顶层定调和基本创作规则。",
+		}))
+	}
+	return systemPrompt, parts
+}
+
+func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (string, []ContextAnalysisPart) {
+	builtIn, workspace, creator := buildInteractiveStoryBuiltinInstruction(cfg, state, teller)
+	systemPrompt := protectedSystemInstruction(cfg, config.AgentKindInteractiveStory, builtIn)
+	resolved := config.ResolveAgentPrompt(cfg, config.AgentKindInteractiveStory)
+	parts := []ContextAnalysisPart{
+		NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "runtime_contract",
+			Source:  "Nova runtime",
+			Title:   "运行契约",
+			Content: runtimeContractForAgent(config.AgentKindInteractiveStory),
+		}),
+	}
+	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(config.AgentKindInteractiveStory)); outputProtocol != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "output_protocol",
+			Source:  "Nova runtime",
+			Title:   "输出格式",
+			Content: outputProtocol,
+		}))
+	}
+	if flow := strings.TrimSpace(resolved.FlowPrompt); flow != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "custom_flow",
+			Source:  "user/workspace config",
+			Title:   "用户自定义流程规则",
+			Content: flow,
+		}))
+	}
+	if custom := strings.TrimSpace(resolved.SystemPrompt); custom != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "custom_system",
+			Source:  "user/workspace config",
+			Title:   "用户自定义系统提示",
+			Content: custom,
+		}))
+	}
+	if strings.TrimSpace(creator) != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "creator",
+			Source:  "CREATOR.md",
+			Title:   "创作者指令",
+			Content: creator,
+		}))
+	}
+	if strings.TrimSpace(teller.StoryTellerSystemPrompt) != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "interactive_teller",
+			Source:  teller.StoryTellerID,
+			Title:   "互动叙事编排系统规则",
+			Content: teller.StoryTellerSystemPrompt,
+		}))
+	}
+	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+		ID:      "flow",
+		Source:  "Nova built-in",
+		Title:   "互动故事流程规则",
+		Content: interactiveStoryFlowInstruction(cfg, workspace),
+	}))
+	return systemPrompt, parts
+}
+
+type agentInputComposition struct {
+	OriginalMessage    string
+	Request            ChatRequest
+	AgentMessage       string
+	ContextLog         *contextBuildLog
+	ResumeInterruption *session.Interruption
+}
+
+func composeAgentInput(req ChatRequest, pending *session.Interruption, bookService *book.Service, policy LoopPolicy) agentInputComposition {
+	originalMessage := req.Message
+	resumeInterruption := pending
+	if !shouldResumeInterruptedRequest(req.Message) {
+		resumeInterruption = nil
+	}
+	if resumeInterruption != nil {
+		req.Message = buildInterruptedResumeMessage(req.Message, resumeInterruption)
+	}
+	agentMessage := req.Message
+	contextLog := newContextBuildLog(policy.ContextLedger)
+	contextLog.add("用户输入", "本轮原始请求", originalMessage, "")
+	if resumeInterruption != nil {
+		contextLog.add("运行时恢复", "异常中断恢复上下文", req.Message, "包含上一轮原始请求、已生成助手内容和中断原因")
+	}
+	if req.PlanMode {
+		agentMessage = appendPlanModeInstruction(agentMessage)
+		contextLog.add("注入规则", "规划模式", "[规划模式] 请你先制定计划，不要执行任何写操作。", "")
+	}
+	if len(req.References) > 0 {
+		agentMessage = appendReferenceContext(bookService, agentMessage, req.References, contextLog)
+	}
+	if len(req.LoreReferences) > 0 {
+		agentMessage = appendLoreReferenceContext(bookService, agentMessage, req.LoreReferences, contextLog)
+	}
+	if len(req.StyleReferences) > 0 {
+		agentMessage = appendStyleReferenceContext(bookService, agentMessage, req.StyleReferences, contextLog)
+	} else if len(req.StyleRules) > 0 {
+		agentMessage = appendStyleRulesHint(agentMessage, req.StyleRules)
+		contextLog.addStyleRules(req.StyleRules)
+	}
+	if len(req.Selections) > 0 {
+		agentMessage = appendSelectionContext(agentMessage, req.Selections)
+		contextLog.addSelections(req.Selections)
+	}
+	agentMessage = appendContextBoundaryInstruction(agentMessage)
+	contextLog.add("注入规则", "上下文边界", "[上下文边界] 当前用户请求是“这次要做什么”", "")
+	return agentInputComposition{
+		OriginalMessage:    originalMessage,
+		Request:            req,
+		AgentMessage:       agentMessage,
+		ContextLog:         contextLog,
+		ResumeInterruption: resumeInterruption,
+	}
+}

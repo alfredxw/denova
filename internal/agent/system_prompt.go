@@ -58,18 +58,16 @@ func outputProtocolForAgent(agentKind string) string {
 			"- 必须只输出 <NARRATIVE>...</NARRATIVE>。",
 			"- <NARRATIVE> 内只写展示在故事舞台上的正文；不要输出计划、解释、工具说明、Markdown 标题、状态 JSON、<HOT_STATE> 或 <STATE_DELTA>。",
 		}, "\n")
-	case config.AgentKindTellerEditor:
-		return "- 必须只输出符合导演编辑 schema 的 JSON object，由后端校验后保存。"
 	case config.AgentKindInteractiveState:
-		return "- 必须只输出符合互动记忆 schema 的 JSON object，字段包括 state_ops 和 memory_entry；不得输出 Markdown、解释或代码块。"
+		return "- 必须只输出符合互动记忆 schema 的 JSON object，格式为 {\"story_memory_patches\":[...]}；每条 patch 必须按目标表的字段协议填写 values，不得输出 Markdown、解释或代码块。"
 	case config.AgentKindInteractiveHotChoices:
 		return "- 必须只输出 JSON object，格式为 {\"choices\":[\"...\"]}；不得续写剧情或修改故事状态。"
 	case config.AgentKindVersionSummary:
 		return "- 必须只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"
 	case config.AgentKindToolAgent:
 		return "- 必须只输出当前调用点要求的 JSON object，不得输出解释、Markdown、代码块或额外文本。"
-	case config.AgentKindLoreEditor:
-		return "- 资料库写入必须通过 write_lore_items 工具产生结构化变更，由后端校验后应用；没有写权限时不得声称已经写入。"
+	case config.AgentKindConfigManager:
+		return "- 没有固定 JSON 输出协议；所有资料库、叙事编排、自动化、Skills、故事记忆变更必须通过对应模块工具执行。"
 	case config.AgentKindAutomation:
 		return "- 最终输出必须说明实际完成内容、写入路径和待用户确认事项；写入行为仍受任务写入策略和工具权限约束。"
 	case config.AgentKindIDE:
@@ -89,17 +87,17 @@ func agentRuntimeContract(agentKind string) string {
 			"- 互动叙事 Agent 必须遵守内置输出协议，面向故事舞台的正文只能放在 <NARRATIVE>...</NARRATIVE> 内。",
 			"- 互动叙事 Agent 的篇幅必须以当前 story 的每轮目标字数为最高约束；其它内置提示、CREATOR.md 章节篇幅、导演规则或用户自定义提示中的篇幅倾向都不得要求超过该目标。",
 		}, "\n")
-	case config.AgentKindLoreEditor:
+	case config.AgentKindConfigManager:
 		return strings.Join([]string{
-			"- 资料库 Agent 可以使用资料库读写工具、文件读写工具和 Skills；不得臆造未启用工具。",
-			"- 资料库写入必须使用 write_lore_items，且只沉淀长期稳定设定。",
-			"- 初始化流程必须先与用户确认故事设定；只有用户明确确认后，才允许写入资料库或 CREATOR.md。",
-			"- 初始化流程不允许写 ideas.md、章节、大纲、progress、character-states，不允许创建互动 story 或伪造互动回合。",
+			"- 配置管理 Agent 负责资料库、叙事编排、自动化任务、Skills、故事记忆结构和故事记忆记录的配置、新建与维护。",
+			"- 不负责修改 Nova 设置、模型配置、端口、主题、Agent prompt 或工具权限；这些必须由设置页和 Agents 页完成。",
+			"- 资源读取先用对应 list 工具索引，再用 read 工具读取详情；故事记忆结构例外，list_story_memory_structures 已返回完整结构。",
+			"- 资源写入必须使用对应 write_* 批量工具；不得通过文件工具绕过模块校验直接改资源存储文件。",
+			"- 删除、隐藏、覆盖和大范围重写必须来自用户明确指令；不确定时先说明将如何修改并请求用户确认。",
+			"- 资料库只沉淀长期稳定设定；章节后的短期状态不默认写入资料库。",
 		}, "\n")
-	case config.AgentKindTellerEditor:
-		return "- 导演 Agent 必须只输出符合内置 schema 的 JSON object；只能创建或修改单个导演，保存前仍由后端校验。"
 	case config.AgentKindInteractiveState:
-		return "- 互动记忆 Agent 必须只输出符合内置 schema 的 JSON object；状态 path、op 和长期记忆内容边界仍由后端校验。"
+		return "- 互动记忆 Agent 必须只输出符合内置 schema 的 story_memory_patches JSON object；structure_id、op、key、字段 ID 和内容边界仍由后端校验。"
 	case config.AgentKindInteractiveHotChoices:
 		return "- 快捷选项 Agent 必须只输出符合内置 schema 的 JSON object；不得续写剧情或修改故事状态。"
 	case config.AgentKindVersionSummary:

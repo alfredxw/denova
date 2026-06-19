@@ -4,7 +4,7 @@ const loreInit = {
   'loreInit.ideAction': '和创作 Agent 聊灵感',
   'loreInit.interactiveTitle': '先初始化共享设定',
   'loreInit.interactiveDescription': '互动开局会先沉淀到资料库和 CREATOR.md，不自动创建故事线。',
-  'loreInit.openAgent': '去资料库 Agent',
+  'loreInit.openAgent': '去配置管理 Agent',
 } as const
 
 export default loreInit
