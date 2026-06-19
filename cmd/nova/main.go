@@ -53,7 +53,7 @@ func main() {
 
 	ctx := context.Background()
 
-	// 初始化应用运行时（workspace、session、agent runner）。
+	// 初始化应用运行时
 	application, err := app.New(ctx, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "初始化应用失败: %v\n", err)

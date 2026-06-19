@@ -102,7 +102,6 @@ const settingPanel = {
   'settingPanel.field.brief': 'Brief',
   'settingPanel.field.description': 'Description',
   'settingPanel.field.randomEventRate': 'Random Event Rate',
-  'settingPanel.field.contextTurns': 'Context Turns',
   'settingPanel.field.ruleName': 'Rule Name',
   'settingPanel.field.injectTarget': 'Injection Target',
   'settingPanel.placeholder.tags': 'Separate with commas',
@@ -139,9 +138,9 @@ const settingPanel = {
   'settingPanel.target.turnContext.label': 'Turn Context',
   'settingPanel.target.turnContext.summary': 'Close to the user action each turn',
   'settingPanel.target.turnContext.detail': 'Injected for every next-turn generation. Strongly constrains adjudication, NPC reactions, costs, hidden-thread progress, and available choices.',
-  'settingPanel.target.stateMemory.label': 'Interactive Memory',
-  'settingPanel.target.stateMemory.summary': 'Affects only state records',
-  'settingPanel.target.stateMemory.detail': 'Injected into the state agent after prose generation to consistently record crises, relationship changes, resources, hidden threads, and action entrances.',
+  'settingPanel.target.stateMemory.label': 'Memory Rules',
+  'settingPanel.target.stateMemory.summary': 'Affects only story-memory writes',
+  'settingPanel.target.stateMemory.detail': 'Injected into the interactive memory agent after prose generation to guide which crises, relationship changes, resources, hidden threads, and action entrances should be saved into story memory.',
 } as const
 
 export default settingPanel

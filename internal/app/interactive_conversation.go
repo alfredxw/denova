@@ -52,7 +52,8 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
-	turnMemory := buildInteractiveTurnMemory(storyCtx.Snapshot.Turns, teller.ContextPolicy.RecentTurns)
+	recentTurnsLimit := config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).RecentTurns
+	turnMemory := buildInteractiveTurnMemory(storyCtx.Snapshot.Turns, recentTurnsLimit)
 	stateJSON, err := json.MarshalIndent(storyCtx.Snapshot.State, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("序列化互动状态失败: %w", err)
@@ -270,7 +271,8 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	loreContext := c.stateLoreContext()
-	recentTurns := formatInteractiveRecentTurns(storyCtx.Snapshot.Turns, teller.ContextPolicy.RecentTurns, "（暂无历史回合，请基于本回合行动、正文、资料库和既有故事记忆填表。）")
+	recentTurnsLimit := config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveState).RecentTurns
+	recentTurns := formatInteractiveRecentTurns(storyCtx.Snapshot.Turns, recentTurnsLimit, "（暂无历史回合，请基于本回合行动、正文、资料库和既有故事记忆填表。）")
 	instruction := prompts.InteractiveStateInstruction(prompts.InteractiveStatePromptInput{
 		Title:             storyCtx.Meta.Title,
 		Origin:            storyCtx.Meta.Origin,

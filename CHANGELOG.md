@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Agents 配置页新增每个 Agent 独立的“最近回合数”上下文窗口配置，默认 30 回合，并由运行时统一按 Agent kind 生效。
 - 网页搜索工具（`web_search`）由单一 DuckDuckGo 升级为 DuckDuckGo、Bing、百度、Google 四引擎并发聚合：四引擎多线程并行搜索，失败的引擎结果会被直接丢弃，仅合并成功引擎的结果。
 - 写作 Agent 和互动故事输入框新增上下文分析入口，可模拟当前输入发送并展示真实 SystemPrompt、上下文来源明细和实际消息列表，不调用 LLM、不写入会话或故事回合。
 
@@ -22,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 叙事编排不再配置上下文回合数，互动故事、互动记忆、快捷选项、写作、配置管理和自动化等 Agent 改为读取各自的 Agents 上下文窗口配置；旧叙事编排 `context_policy.recent_turns` 字段保留但运行时不再使用。
+- 叙事编排中的 `state_memory` 可见名称改为“记忆沉淀规则 / Memory Rules”，内置叙事编排版本刷新到新版命名；内部 target 仍保持 `state_memory` 以兼容已有自定义配置。
 - 互动故事 Agent 的动态上下文从消息列表开头移动到本轮用户消息末尾，最近历史保持在前，减少故事状态、字数目标和故事记忆变动对 LLM 前缀缓存命中的影响。
 - 互动记忆 Agent 内置提示词改为按故事记忆表结构逐字段填表，明确使用最近回合历史、资料库人物设定和既有故事记忆作为生成来源，并在 Agents 配置页展示新版 `story_memory_patches` 输出协议。
 - 新增统一 `config_manager` Agent，替代旧资料库 Agent 和叙事编排 Agent；资料库、叙事编排、Skills、自动化和故事记忆模块改为内嵌同一个配置管理 Agent，并通过各自 list/read/write 工具直接更新资源。

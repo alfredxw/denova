@@ -8,6 +8,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
+	"nova/config"
 	"nova/internal/book"
 	"nova/internal/interactive"
 )
@@ -117,7 +118,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stateInstruction, "导演互动记忆规则") || !strings.Contains(stateInstruction, "帮助后续回合稳定承接") {
+	if !strings.Contains(stateInstruction, "导演记忆沉淀规则") || !strings.Contains(stateInstruction, "帮助后续回合稳定承接") {
 		t.Fatalf("state instruction should include state_memory rules: %s", stateInstruction)
 	}
 	if !strings.Contains(stateInstruction, "黄泉酒馆完整设定") {
@@ -240,6 +241,47 @@ func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T
 	}
 	if strings.Contains(history[len(history)-1].Content, "50 个中文字") {
 		t.Fatalf("legacy teller reply target chars should be ignored: %#v", history[len(history)-1])
+	}
+}
+
+func TestInteractiveConversationUsesAgentContextRecentTurns(t *testing.T) {
+	workspace := t.TempDir()
+	novaDir := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:            "窗口测试",
+		Origin:           "主角进入旧城",
+		StoryTellerID:    "classic",
+		ReplyTargetChars: 700,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 4; i++ {
+		if _, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
+			User:      "第" + string(rune('0'+i)) + "次行动",
+			Narrative: "第" + string(rune('0'+i)) + "段剧情",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recentTurns := 2
+	cfg := &config.Config{AgentContexts: config.AgentContextSettings{
+		InteractiveStory: config.AgentContextOverride{RecentTurns: &recentTurns},
+	}}
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
+	history, err := conversation.PrepareMessages("我继续探索", "我继续探索")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 5 {
+		t.Fatalf("history length = %d, want 5", len(history))
+	}
+	if history[0].Content != "第3次行动" || history[2].Content != "第4次行动" {
+		t.Fatalf("recent history should use agent context window: %#v", history)
+	}
+	if strings.Contains(history[4].Content, "第3次行动") || !strings.Contains(history[4].Content, "较早 2 个回合") {
+		t.Fatalf("older turns should be summarized in runtime context: %s", history[4].Content)
 	}
 }
 

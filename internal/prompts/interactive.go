@@ -127,6 +127,9 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	if strings.TrimSpace(in.LongTermMemory) != "" {
 		writeBlock(&sb, "当前分支故事记忆", in.LongTermMemory)
 	}
+	if strings.TrimSpace(in.SnapshotStateJSON) != "" {
+		writeBlock(&sb, "当前互动状态快照", in.SnapshotStateJSON)
+	}
 	if strings.TrimSpace(in.PreviousTurnsSummary) != "" {
 		writeBlock(&sb, "较早剧情压缩记忆", in.PreviousTurnsSummary)
 	}
@@ -263,7 +266,7 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	writeField(&sb, "开端", in.Origin)
 	writeField(&sb, "当前分支", in.BranchID)
 	writeField(&sb, "导演 ID", in.StoryTellerID)
-	writeBlock(&sb, "导演互动记忆规则", in.StoryTellerMemory)
+	writeBlock(&sb, "导演记忆沉淀规则", in.StoryTellerMemory)
 	if strings.TrimSpace(in.LoreItems) != "" {
 		writeBlock(&sb, "资料库", in.LoreItems)
 	} else {
