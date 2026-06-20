@@ -7,6 +7,7 @@ export interface Settings {
   agent_tools?: AgentToolSettings
   agent_prompts?: AgentPromptSettings
   agent_skills?: AgentSkillSettings
+  agent_context?: AgentContextSettings
   skills_dir?: string
   backend_port?: number | null
   frontend_port?: number | null
@@ -93,6 +94,22 @@ export interface AgentSkillSettings {
 }
 
 export type AgentSkillOverride = Record<string, boolean>
+
+export interface AgentContextSettings {
+  default?: AgentContextOverride
+  ide?: AgentContextOverride
+  interactive_story?: AgentContextOverride
+  config_manager?: AgentContextOverride
+  interactive_state?: AgentContextOverride
+  interactive_hot_choices?: AgentContextOverride
+  version_summary?: AgentContextOverride
+  tool_agent?: AgentContextOverride
+  automation?: AgentContextOverride
+}
+
+export interface AgentContextOverride {
+  recent_turns?: number | null
+}
 
 export interface AgentToolOverride {
   file_read?: boolean | null

@@ -62,7 +62,7 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		message := buildConfigManagerMessage(req)
 		log.Printf("[config-manager] run begin id=%s origin=%s resource_id=%s story_id=%s branch_id=%s message_len=%d", task.ID(), req.Origin, req.ResourceID, req.StoryID, req.BranchID, len(message))
-		chatService.RunWithOptions(ctx, runner, agent.NewSessionConversation(sess), bookService, agent.ChatRequest{
+		chatService.RunWithOptions(ctx, runner, agent.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindConfigManager), bookService, agent.ChatRequest{
 			Message:        message,
 			LoreReferences: req.References,
 		}, agent.RunOptions{

@@ -25,6 +25,8 @@ const common = {
   'common.chapters': '{{count}} chapters',
   'common.messages': '{{count}} messages',
   'common.items': '{{count}} items',
+  'common.backendUnavailable.title': 'Backend is not running',
+  'common.backendUnavailable.description': 'Start or restart the Nova backend service, then try again.',
   'configManager.placeholder': 'Ask the Config Manager Agent to update this module...',
   'configManager.executing': 'Config Manager Agent is running...',
   'configManager.tool': 'Tool call',

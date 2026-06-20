@@ -222,6 +222,10 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
       onDone={reloadSnapshot}
     />
   )
+  const openMemoryManager = () => {
+    setSubmode('memory')
+    setMobileSnapshotOpen(false)
+  }
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
       <div data-testid="interactive-shell" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-bg)]">
@@ -238,7 +242,7 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
                 <div className="relative flex min-h-0 flex-1">
                   {storyStage}
                   <MobileSnapshotDrawer open={mobileSnapshotOpen} title={t('memoryPanel.title')} closeLabel={t('common.close')} onClose={() => setMobileSnapshotOpen(false)}>
-                    <MemoryPanel storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} />
+                    <MemoryPanel storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} onOpenMemoryManager={openMemoryManager} />
                   </MobileSnapshotDrawer>
                 </div>
               ) : (
@@ -251,7 +255,7 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
                       <InteractiveResizeHandle direction="vertical" label={t('interactiveLayout.resizeSceneMemory')} />
                       <Panel id="snapshot" defaultSize="320px" minSize="180px" maxSize="45%" className="min-w-0">
                         <motion.div className="h-full min-h-0" variants={subtlePresence} initial="initial" animate="animate" transition={{ duration: 0.16, ease: novaEase }}>
-                          <MemoryPanel storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} />
+                          <MemoryPanel storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} onOpenMemoryManager={openMemoryManager} />
                         </motion.div>
                       </Panel>
                     </>

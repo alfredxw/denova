@@ -5,6 +5,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
+	"nova/config"
 	"nova/internal/session"
 )
 
@@ -25,11 +26,37 @@ type ContextSourceReporter interface {
 }
 
 type SessionConversation struct {
-	session *session.Session
+	session     *session.Session
+	recentTurns int
 }
 
-func NewSessionConversation(sess *session.Session) *SessionConversation {
-	return &SessionConversation{session: sess}
+func NewSessionConversation(sess *session.Session, options ...SessionConversationOption) *SessionConversation {
+	c := &SessionConversation{session: sess, recentTurns: 30}
+	for _, option := range options {
+		if option != nil {
+			option(c)
+		}
+	}
+	return c
+}
+
+func NewSessionConversationForAgent(sess *session.Session, cfg *config.Config, agentKind string) *SessionConversation {
+	return NewSessionConversation(sess, WithSessionRecentTurns(config.ResolveAgentContext(cfg, agentKind).RecentTurns))
+}
+
+type SessionConversationOption func(*SessionConversation)
+
+func WithSessionRecentTurns(recentTurns int) SessionConversationOption {
+	return func(c *SessionConversation) {
+		if recentTurns <= 0 {
+			c.recentTurns = 30
+			return
+		}
+		if recentTurns > 30 {
+			recentTurns = 30
+		}
+		c.recentTurns = recentTurns
+	}
 }
 
 func (c *SessionConversation) PrepareMessages(originalMessage, agentMessage string) ([]*schema.Message, error) {
@@ -43,7 +70,32 @@ func (c *SessionConversation) PrepareMessages(originalMessage, agentMessage stri
 	if len(history) > 0 {
 		history[len(history)-1] = schema.UserMessage(agentMessage)
 	}
-	return history, nil
+	return limitMessagesByRecentTurns(history, c.recentTurns), nil
+}
+
+func limitMessagesByRecentTurns(messages []*schema.Message, recentTurns int) []*schema.Message {
+	if recentTurns <= 0 {
+		recentTurns = 30
+	}
+	if recentTurns > 30 {
+		recentTurns = 30
+	}
+	userCount := 0
+	start := 0
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i] == nil || messages[i].Role != schema.User {
+			continue
+		}
+		userCount++
+		if userCount == recentTurns {
+			start = i
+			break
+		}
+	}
+	if userCount < recentTurns {
+		return messages
+	}
+	return append([]*schema.Message(nil), messages[start:]...)
 }
 
 func (c *SessionConversation) AppendAssistant(content string) error {

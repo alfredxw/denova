@@ -16,8 +16,8 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 			t.Fatalf("duplicate agent kind registered: %s", definition.Kind)
 		}
 		seen[definition.Kind] = true
-		if definition.ModelOverride == nil || definition.ToolOverride == nil || definition.PromptOverride == nil {
-			t.Fatalf("agent %s should declare model/tool/prompt accessors", definition.Kind)
+		if definition.ModelOverride == nil || definition.ToolOverride == nil || definition.PromptOverride == nil || definition.ContextOverride == nil {
+			t.Fatalf("agent %s should declare model/tool/prompt/context accessors", definition.Kind)
 		}
 	}
 
@@ -52,6 +52,21 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		ToolAgent:             AgentToolOverride{WebSearch: &on},
 		Automation:            AgentToolOverride{FileRead: &on, WebSearch: &on},
 	}
+	recentTurns := map[string]*int{}
+	for _, definition := range definitions {
+		value := len(recentTurns) + 1
+		recentTurns[definition.Kind] = &value
+	}
+	contexts := AgentContextSettings{
+		IDE:                   AgentContextOverride{RecentTurns: recentTurns[AgentKindIDE]},
+		InteractiveStory:      AgentContextOverride{RecentTurns: recentTurns[AgentKindInteractiveStory]},
+		ConfigManager:         AgentContextOverride{RecentTurns: recentTurns[AgentKindConfigManager]},
+		InteractiveState:      AgentContextOverride{RecentTurns: recentTurns[AgentKindInteractiveState]},
+		InteractiveHotChoices: AgentContextOverride{RecentTurns: recentTurns[AgentKindInteractiveHotChoices]},
+		VersionSummary:        AgentContextOverride{RecentTurns: recentTurns[AgentKindVersionSummary]},
+		ToolAgent:             AgentContextOverride{RecentTurns: recentTurns[AgentKindToolAgent]},
+		Automation:            AgentContextOverride{RecentTurns: recentTurns[AgentKindAutomation]},
+	}
 
 	for _, definition := range definitions {
 		if got := definition.ModelOverride(models).ProfileID; got != definition.Kind {
@@ -62,6 +77,9 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		}
 		if got := definition.ToolOverride(tools); got == (AgentToolOverride{}) {
 			t.Fatalf("tool accessor for %s returned zero override", definition.Kind)
+		}
+		if got := definition.ContextOverride(contexts).RecentTurns; got == nil || *got != *recentTurns[definition.Kind] {
+			t.Fatalf("context accessor for %s returned %#v", definition.Kind, got)
 		}
 	}
 }

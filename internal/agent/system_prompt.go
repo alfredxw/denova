@@ -56,7 +56,7 @@ func outputProtocolForAgent(agentKind string) string {
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
 			"- 必须只输出 <NARRATIVE>...</NARRATIVE>。",
-			"- <NARRATIVE> 内只写展示在故事舞台上的正文；不要输出计划、解释、工具说明、Markdown 标题、状态 JSON、<HOT_STATE> 或 <STATE_DELTA>。",
+			"- <NARRATIVE> 内只写展示在故事舞台上的正文；不要输出计划、解释、工具说明、Markdown 标题",
 		}, "\n")
 	case config.AgentKindInteractiveState:
 		return "- 必须只输出符合互动记忆 schema 的 JSON object，格式为 {\"story_memory_patches\":[...]}；每条 patch 必须按目标表的字段协议填写 values，不得输出 Markdown、解释或代码块。"

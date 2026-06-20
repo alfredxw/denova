@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
-import type { AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import type { AgentContextOverride, AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
 import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
 import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
@@ -83,6 +83,8 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const inheritedTools = effective.agent_tools?.[activeAgent] ?? FALLBACK_AGENT_TOOL_VALUES[activeAgent]
   const effectiveTools = resolveEffectiveTools(effective.agent_tools?.default ?? {}, inheritedTools)
   const skillValue = draft.agent_skills?.[activeAgent] ?? {}
+  const contextValue = draft.agent_context?.[activeAgent] ?? {}
+  const inheritedContext = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[activeAgent] ?? {})
 
   const saveDraft = useCallback(async (settings: Settings) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
@@ -153,6 +155,16 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
     })
   }
 
+  const setAgentContext = (patch: Partial<AgentContextOverride>) => {
+    setDraft((current) => ({
+      ...current,
+      agent_context: {
+        ...(current.agent_context ?? {}),
+        [activeAgent]: { ...(current.agent_context?.[activeAgent] ?? {}), ...patch },
+      },
+    }))
+  }
+
   useAutoSaveSettings({
     draft,
     saved: layered ? settingsForLayer(layered, activeLayer) : {},
@@ -219,6 +231,11 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
               blocks={builtinBlocks}
               sources={promptSources}
               onChange={setAgentPrompt}
+            />
+            <AgentRuntimeContextSection
+              value={contextValue}
+              inherited={inheritedContext}
+              onChange={setAgentContext}
             />
             {selected.capabilityMode === 'tools' ? (
               <>
@@ -492,6 +509,37 @@ function fallbackPromptSources(blocks?: AgentPromptBlocks, builtin?: string): Ag
   ].filter(Boolean) as AgentPromptSource[]
 }
 
+function AgentRuntimeContextSection({ value, inherited, onChange }: {
+  value: AgentContextOverride
+  inherited: AgentContextOverride
+  onChange: (patch: Partial<AgentContextOverride>) => void
+}) {
+  const { t } = useTranslation()
+  const hasRecentTurns = value.recent_turns !== undefined && value.recent_turns !== null
+  const effectiveRecentTurns = hasRecentTurns ? value.recent_turns : inherited.recent_turns ?? 30
+  return (
+    <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
+      <SectionTitle icon={FolderOpen} title={t('agents.section.runtimeContext')} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label={t('agents.field.recentTurns')} inherited={!hasRecentTurns} onReset={hasRecentTurns ? () => onChange({ recent_turns: null }) : undefined}>
+          <input
+            type="number"
+            min={1}
+            max={30}
+            step={1}
+            value={effectiveRecentTurns ?? 30}
+            onChange={(e) => onChange({ recent_turns: e.target.value === '' ? null : Number(e.target.value) })}
+            className={fieldCls}
+          />
+        </Field>
+      </div>
+      <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+        {t('agents.context.recentTurnsNote')}
+      </div>
+    </section>
+  )
+}
+
 function promptSourceTitle(t: ReturnType<typeof useTranslation>['t'], source: AgentPromptSource) {
   const key = `agents.prompt.source.${source.id}`
   const translated = t(key)
@@ -708,25 +756,26 @@ function buildProfileOptions(draft: Settings, effective: Settings, t: (key: stri
   }))
 }
 
-function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: string) => string) {
+function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: string, options?: Record<string, unknown>) => string) {
+  const recentTurns = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[agent] ?? {}).recent_turns ?? 30
   if (agent === 'ide') {
     return [
       { title: t('agents.context.currentBook'), value: 'workspace' },
       { title: t('agents.context.defaultTeller'), value: effective.ide_story_teller_id || 'classic' },
-      { title: t('agents.context.sessionContext'), value: t('agents.context.sessionContextValue') },
+      { title: t('agents.context.sessionContext'), value: t('agents.context.recentTurnsValue', { count: recentTurns }) },
     ]
   }
   if (agent === 'interactive_story') {
     return [
       { title: t('agents.context.storyState'), value: 'story jsonl' },
       { title: t('agents.context.teller'), value: t('agents.context.currentStoryTeller') },
-      { title: t('agents.context.loreIndex'), value: t('agents.context.loreIndexValue') },
+      { title: t('agents.context.sessionContext'), value: t('agents.context.recentTurnsValue', { count: recentTurns }) },
     ]
   }
   return [
     { title: t('agents.context.inputSource'), value: t('agents.context.inputSourceValue') },
     { title: t('agents.context.outputShape'), value: t('agents.context.outputShapeValue') },
-    { title: t('agents.context.historyBoundary'), value: t('agents.context.historyBoundaryValue') },
+    { title: t('agents.context.historyBoundary'), value: t('agents.context.recentTurnsValue', { count: recentTurns }) },
   ]
 }
 
@@ -757,5 +806,12 @@ function mergeAgentPromptOverride(parent: AgentPromptOverride, child: AgentPromp
   return {
     flow_prompt: hasPromptOverride(child.flow_prompt) ? child.flow_prompt : parent.flow_prompt,
     system_prompt: hasPromptOverride(child.system_prompt) ? child.system_prompt : parent.system_prompt,
+  }
+}
+
+function mergeAgentContextOverride(parent: AgentContextOverride, child: AgentContextOverride): AgentContextOverride {
+  const recentTurns = child.recent_turns ?? parent.recent_turns ?? 30
+  return {
+    recent_turns: Math.max(1, Math.min(30, recentTurns)),
   }
 }

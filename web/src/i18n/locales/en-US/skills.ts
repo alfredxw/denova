@@ -6,7 +6,7 @@ const skills = {
   'skills.empty': 'No Skills yet. Create one on the left or ask the Agent to use skills-creator.',
   'skills.unsaved': 'Unsaved',
   'skills.shadowed': 'Overridden',
-  'skills.agent.button': 'Ask Agent',
+  'skills.agent.button': 'Config Agent',
   'skills.agent.pathFallback': 'Generated after choosing a writable scope',
   'skills.agent.prompt': 'Use the skills-creator skill to help me create or update "{{name}}". Target scope: {{scope}}; target file: {{path}}. First confirm the purpose, trigger conditions, context to gather, and output boundaries. When enough information is available, write SKILL.md in the .agent/skills format. After finishing, remind me that I can trigger it in the Writing Agent or other Skills-enabled agents with /{{name}}.',
   'skills.create.title': 'New Skill',

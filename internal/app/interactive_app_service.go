@@ -87,28 +87,28 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	return store.Snapshot(storyID, branchID)
 }
 
-func (a *App) InteractiveMemory(storyID, branchID string, includeHidden bool) (interactive.InteractiveMemoryState, error) {
-	return a.interactiveService().InteractiveMemory(storyID, branchID, includeHidden)
+func (a *App) InteractiveMemory(storyID, branchID string, includeArchived bool) (interactive.InteractiveMemoryState, error) {
+	return a.interactiveService().InteractiveMemory(storyID, branchID, includeArchived)
 }
 
-func (s *InteractiveAppService) InteractiveMemory(storyID, branchID string, includeHidden bool) (interactive.InteractiveMemoryState, error) {
+func (s *InteractiveAppService) InteractiveMemory(storyID, branchID string, includeArchived bool) (interactive.InteractiveMemoryState, error) {
 	store := s.store()
 	if store == nil {
 		return interactive.InteractiveMemoryState{}, ErrNoWorkspace
 	}
-	return store.InteractiveMemory(storyID, branchID, includeHidden)
+	return store.InteractiveMemory(storyID, branchID, includeArchived)
 }
 
-func (a *App) StoryMemory(storyID, branchID string, includeHidden bool) (interactive.StoryMemoryState, error) {
-	return a.interactiveService().StoryMemory(storyID, branchID, includeHidden)
+func (a *App) StoryMemory(storyID, branchID string, includeArchived bool) (interactive.StoryMemoryState, error) {
+	return a.interactiveService().StoryMemory(storyID, branchID, includeArchived)
 }
 
-func (s *InteractiveAppService) StoryMemory(storyID, branchID string, includeHidden bool) (interactive.StoryMemoryState, error) {
+func (s *InteractiveAppService) StoryMemory(storyID, branchID string, includeArchived bool) (interactive.StoryMemoryState, error) {
 	store := s.store()
 	if store == nil {
 		return interactive.StoryMemoryState{}, ErrNoWorkspace
 	}
-	return store.StoryMemory(storyID, branchID, includeHidden)
+	return store.StoryMemory(storyID, branchID, includeArchived)
 }
 
 func (a *App) UpdateStoryMemorySettings(storyID string, req interactive.StoryMemorySettingsUpdateRequest) (interactive.StoryMemorySettings, error) {
@@ -159,16 +159,16 @@ func (s *InteractiveAppService) SaveStoryMemoryRecord(storyID string, req intera
 	return store.SaveStoryMemoryRecord(storyID, req)
 }
 
-func (a *App) SetStoryMemoryRecordHidden(storyID, recordID, branchID string, hidden bool) (interactive.StoryMemoryRecord, error) {
-	return a.interactiveService().SetStoryMemoryRecordHidden(storyID, recordID, branchID, hidden)
+func (a *App) SetStoryMemoryRecordArchived(storyID, recordID, branchID string, archived bool) (interactive.StoryMemoryRecord, error) {
+	return a.interactiveService().SetStoryMemoryRecordArchived(storyID, recordID, branchID, archived)
 }
 
-func (s *InteractiveAppService) SetStoryMemoryRecordHidden(storyID, recordID, branchID string, hidden bool) (interactive.StoryMemoryRecord, error) {
+func (s *InteractiveAppService) SetStoryMemoryRecordArchived(storyID, recordID, branchID string, archived bool) (interactive.StoryMemoryRecord, error) {
 	store := s.store()
 	if store == nil {
 		return interactive.StoryMemoryRecord{}, ErrNoWorkspace
 	}
-	return store.SetStoryMemoryRecordHidden(storyID, recordID, branchID, hidden)
+	return store.SetStoryMemoryRecordArchived(storyID, recordID, branchID, archived)
 }
 
 func (a *App) GenerateStoryMemory(ctx context.Context, storyID, branchID string) (interactive.StoryMemoryState, error) {
@@ -328,16 +328,16 @@ func (s *InteractiveAppService) UpdateInteractiveMemory(storyID, memoryID string
 	return store.UpdateInteractiveMemory(storyID, memoryID, req)
 }
 
-func (a *App) SetInteractiveMemoryHidden(storyID, memoryID string, hidden bool) (interactive.InteractiveMemoryEntry, error) {
-	return a.interactiveService().SetInteractiveMemoryHidden(storyID, memoryID, hidden)
+func (a *App) SetInteractiveMemoryArchived(storyID, memoryID string, archived bool) (interactive.InteractiveMemoryEntry, error) {
+	return a.interactiveService().SetInteractiveMemoryArchived(storyID, memoryID, archived)
 }
 
-func (s *InteractiveAppService) SetInteractiveMemoryHidden(storyID, memoryID string, hidden bool) (interactive.InteractiveMemoryEntry, error) {
+func (s *InteractiveAppService) SetInteractiveMemoryArchived(storyID, memoryID string, archived bool) (interactive.InteractiveMemoryEntry, error) {
 	store := s.store()
 	if store == nil {
 		return interactive.InteractiveMemoryEntry{}, ErrNoWorkspace
 	}
-	return store.SetInteractiveMemoryHidden(storyID, memoryID, hidden)
+	return store.SetInteractiveMemoryArchived(storyID, memoryID, archived)
 }
 
 func (a *App) CreateInteractiveBranch(storyID string, req interactive.CreateBranchRequest) (interactive.BranchSummary, error) {

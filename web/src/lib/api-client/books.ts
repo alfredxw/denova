@@ -1,4 +1,4 @@
-import { jsonHeaders, parseSSEStream, requestJSON } from './client'
+import { fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from './client'
 import type { BookMeta, BookRecord, NovelImportPreview, NovelImportResult, SSEEvent } from './types'
 
 export async function getBooks(): Promise<BookRecord[]> {
@@ -46,7 +46,7 @@ export async function previewNovelImportStream(
   if (options.sampleChars !== undefined) form.append('sample_chars', String(options.sampleChars))
   if (options.splitRegex !== undefined) form.append('split_regex', options.splitRegex)
   if (options.splitStrategy) form.append('split_strategy', options.splitStrategy)
-  const res = await fetch('/api/books/import-novel/preview/stream', {
+  const res = await fetchAPI('/api/books/import-novel/preview/stream', {
     method: 'POST',
     body: form,
   })

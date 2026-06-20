@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
-import { ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
+import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList } from '@/components/Chat/MessageList'
 import { ReferenceChips } from '@/components/Chat/ReferenceChips'
 import type { ChatMessage, ContextAnalysis } from '@/lib/api'
@@ -438,14 +438,14 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     }
   }
 
-  const analyzeCurrentContext = async () => {
-    const message = input.trim()
+  const analyzeCurrentContext = async (rawMessage: string) => {
+    const message = rawMessage.trim()
     if (!message || !storyId || streaming) return
     const inlineStyleReferences = parseInlineStyleReferences(message)
     const mergedStyleReferences = Array.from(new Set([...styleReferences, ...inlineStyleReferences]))
-    setContextAnalysisOpen(true)
     setContextAnalysisLoading(true)
     setContextAnalysisError(null)
+    setContextAnalysis(null)
     try {
       setContextAnalysis(await analyzeInteractiveContext({
         mode: 'story',
@@ -460,6 +460,11 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     } finally {
       setContextAnalysisLoading(false)
     }
+  }
+
+  const openContextAnalysis = () => {
+    setContextAnalysisOpen(true)
+    void analyzeCurrentContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
   const stop = () => {
@@ -813,8 +818,8 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" side="top" className="min-w-44 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
                     <DropdownMenuItem
-                      disabled={!input.trim() || !storyId || streaming}
-                      onSelect={() => void analyzeCurrentContext()}
+                      disabled={!storyId || streaming}
+                      onSelect={openContextAnalysis}
                       className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
                     >
                       <ScrollText className="h-3.5 w-3.5" />

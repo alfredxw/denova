@@ -68,8 +68,8 @@ func (h *Handlers) HandleInteractiveSnapshot(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) HandleInteractiveMemory(ctx context.Context, c *app.RequestContext) {
-	includeHidden := strings.EqualFold(c.Query("hidden"), "true") || strings.EqualFold(c.Query("include_hidden"), "true")
-	state, err := h.app.InteractiveMemory(c.Param("id"), c.Query("branch"), includeHidden)
+	includeArchived := strings.EqualFold(c.Query("archived"), "true") || strings.EqualFold(c.Query("include_archived"), "true")
+	state, err := h.app.InteractiveMemory(c.Param("id"), c.Query("branch"), includeArchived)
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -78,8 +78,8 @@ func (h *Handlers) HandleInteractiveMemory(ctx context.Context, c *app.RequestCo
 }
 
 func (h *Handlers) HandleStoryMemory(ctx context.Context, c *app.RequestContext) {
-	includeHidden := strings.EqualFold(c.Query("hidden"), "true") || strings.EqualFold(c.Query("include_hidden"), "true")
-	state, err := h.app.StoryMemory(c.Param("id"), c.Query("branch"), includeHidden)
+	includeArchived := strings.EqualFold(c.Query("archived"), "true") || strings.EqualFold(c.Query("include_archived"), "true")
+	state, err := h.app.StoryMemory(c.Param("id"), c.Query("branch"), includeArchived)
 	if err != nil {
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
@@ -143,17 +143,17 @@ func (h *Handlers) HandleStoryMemoryRecordSave(ctx context.Context, c *app.Reque
 	writeJSON(c, consts.StatusOK, record)
 }
 
-func (h *Handlers) HandleStoryMemoryRecordHide(ctx context.Context, c *app.RequestContext) {
-	var body interactive.StoryMemoryRecordHideRequest
+func (h *Handlers) HandleStoryMemoryRecordArchive(ctx context.Context, c *app.RequestContext) {
+	var body interactive.StoryMemoryRecordArchiveRequest
 	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	hidden := true
-	if body.Hidden != nil {
-		hidden = *body.Hidden
+	archived := true
+	if body.Archived != nil {
+		archived = *body.Archived
 	}
-	record, err := h.app.SetStoryMemoryRecordHidden(c.Param("id"), c.Param("record_id"), c.Query("branch"), hidden)
+	record, err := h.app.SetStoryMemoryRecordArchived(c.Param("id"), c.Param("record_id"), c.Query("branch"), archived)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -223,17 +223,17 @@ func (h *Handlers) HandleInteractiveMemoryUpdate(ctx context.Context, c *app.Req
 	writeJSON(c, consts.StatusOK, entry)
 }
 
-func (h *Handlers) HandleInteractiveMemoryHide(ctx context.Context, c *app.RequestContext) {
-	var body interactive.InteractiveMemoryHideRequest
+func (h *Handlers) HandleInteractiveMemoryArchive(ctx context.Context, c *app.RequestContext) {
+	var body interactive.InteractiveMemoryArchiveRequest
 	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	hidden := true
-	if body.Hidden != nil {
-		hidden = *body.Hidden
+	archived := true
+	if body.Archived != nil {
+		archived = *body.Archived
 	}
-	entry, err := h.app.SetInteractiveMemoryHidden(c.Param("id"), c.Param("memory_id"), hidden)
+	entry, err := h.app.SetInteractiveMemoryArchived(c.Param("id"), c.Param("memory_id"), archived)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return

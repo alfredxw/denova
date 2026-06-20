@@ -15,75 +15,84 @@ const (
 // Config accessors keep the persisted TOML/JSON shape stable while avoiding
 // scattered agent-kind switches for model, tool, prompt and session behavior.
 type AgentKindDefinition struct {
-	Kind           string
-	SessionID      string
-	ModelOverride  func(AgentModelSettings) AgentModelOverride
-	ToolOverride   func(AgentToolSettings) AgentToolOverride
-	PromptOverride func(AgentPromptSettings) AgentPromptOverride
-	SkillOverride  func(AgentSkillSettings) AgentSkillOverride
+	Kind            string
+	SessionID       string
+	ModelOverride   func(AgentModelSettings) AgentModelOverride
+	ToolOverride    func(AgentToolSettings) AgentToolOverride
+	PromptOverride  func(AgentPromptSettings) AgentPromptOverride
+	SkillOverride   func(AgentSkillSettings) AgentSkillOverride
+	ContextOverride func(AgentContextSettings) AgentContextOverride
 }
 
 var agentKindRegistry = []AgentKindDefinition{
 	{
-		Kind:           AgentKindIDE,
-		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.IDE },
-		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.IDE },
-		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.IDE },
-		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.IDE },
+		Kind:            AgentKindIDE,
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.IDE },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.IDE },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.IDE },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.IDE },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.IDE },
 	},
 	{
-		Kind:           AgentKindInteractiveStory,
-		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveStory },
-		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.InteractiveStory },
-		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveStory },
-		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveStory },
+		Kind:            AgentKindInteractiveStory,
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveStory },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.InteractiveStory },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveStory },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveStory },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.InteractiveStory },
 	},
 	{
-		Kind:           AgentKindConfigManager,
-		SessionID:      "config-manager-agent",
-		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.ConfigManager },
-		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.ConfigManager },
-		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.ConfigManager },
-		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.ConfigManager },
+		Kind:            AgentKindConfigManager,
+		SessionID:       "config-manager-agent",
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.ConfigManager },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.ConfigManager },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.ConfigManager },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.ConfigManager },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.ConfigManager },
 	},
 	{
-		Kind:           AgentKindInteractiveState,
-		SessionID:      "interactive-state-agent",
-		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveState },
-		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.InteractiveState },
-		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveState },
-		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveState },
+		Kind:            AgentKindInteractiveState,
+		SessionID:       "interactive-state-agent",
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveState },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.InteractiveState },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveState },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveState },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.InteractiveState },
 	},
 	{
-		Kind:           AgentKindInteractiveHotChoices,
-		SessionID:      "interactive-hot-choices-agent",
-		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveHotChoices },
-		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.InteractiveHotChoices },
-		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveHotChoices },
-		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveHotChoices },
+		Kind:            AgentKindInteractiveHotChoices,
+		SessionID:       "interactive-hot-choices-agent",
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveHotChoices },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.InteractiveHotChoices },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveHotChoices },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveHotChoices },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.InteractiveHotChoices },
 	},
 	{
-		Kind:           AgentKindVersionSummary,
-		SessionID:      "version-summary-agent",
-		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.VersionSummary },
-		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.VersionSummary },
-		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.VersionSummary },
-		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.VersionSummary },
+		Kind:            AgentKindVersionSummary,
+		SessionID:       "version-summary-agent",
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.VersionSummary },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.VersionSummary },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.VersionSummary },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.VersionSummary },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.VersionSummary },
 	},
 	{
-		Kind:           AgentKindToolAgent,
-		SessionID:      "tool-agent",
-		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.ToolAgent },
-		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.ToolAgent },
-		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.ToolAgent },
-		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.ToolAgent },
+		Kind:            AgentKindToolAgent,
+		SessionID:       "tool-agent",
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.ToolAgent },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.ToolAgent },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.ToolAgent },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.ToolAgent },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.ToolAgent },
 	},
 	{
-		Kind:           AgentKindAutomation,
-		ModelOverride:  func(settings AgentModelSettings) AgentModelOverride { return settings.Automation },
-		ToolOverride:   func(settings AgentToolSettings) AgentToolOverride { return settings.Automation },
-		PromptOverride: func(settings AgentPromptSettings) AgentPromptOverride { return settings.Automation },
-		SkillOverride:  func(settings AgentSkillSettings) AgentSkillOverride { return settings.Automation },
+		Kind:            AgentKindAutomation,
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.Automation },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.Automation },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.Automation },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.Automation },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.Automation },
 	},
 }
 

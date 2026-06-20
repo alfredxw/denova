@@ -8,6 +8,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
+	"nova/config"
 	"nova/internal/book"
 	"nova/internal/interactive"
 )
@@ -47,34 +48,42 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history) != 4 {
-		t.Fatalf("history length = %d, want 4", len(history))
+	if len(history) != 3 {
+		t.Fatalf("history length = %d, want 3", len(history))
 	}
-	if history[0].Role != schema.User ||
-		!strings.Contains(history[0].Content, "末日开端") ||
-		!strings.Contains(history[0].Content, "主角醒来发现世界已末日") ||
-		strings.Contains(history[0].Content, "经典叙事者") ||
-		strings.Contains(history[0].Content, "本轮上下文") ||
-		!strings.Contains(history[0].Content, "800 个中文字") ||
-		!strings.Contains(history[0].Content, "最高篇幅约束") ||
-		strings.Contains(history[0].Content, "林川：谨慎的幸存者") ||
-		strings.Contains(history[0].Content, "世界已进入黄昏末日。") ||
-		!strings.Contains(history[0].Content, "list_lore_items") ||
-		!strings.Contains(history[0].Content, "list_interactive_memories") ||
-		!strings.Contains(history[0].Content, `"on_stage"`) {
+	if history[0].Role != schema.User || history[0].Content != "我推开酒馆的门" {
 		t.Fatalf("history[0] mismatch: %#v", history[0])
 	}
-	if history[1].Role != schema.User || history[1].Content != "我推开酒馆的门" {
+	if strings.Contains(history[0].Content, "故事记忆") || strings.Contains(history[0].Content, "最高篇幅约束") {
+		t.Fatalf("history[0] should remain plain recent history, got: %#v", history[0])
+	}
+	if history[1].Role != schema.Assistant || history[1].Content != "门后传来低沉的风声。" {
 		t.Fatalf("history[1] mismatch: %#v", history[1])
 	}
-	if history[2].Role != schema.Assistant || history[2].Content != "门后传来低沉的风声。" {
+	if history[2].Role != schema.User || !strings.Contains(history[2].Content, "我点燃火把") || strings.Contains(history[2].Content, "</STATE_DELTA>") {
 		t.Fatalf("history[2] mismatch: %#v", history[2])
 	}
-	if history[3].Role != schema.User || !strings.Contains(history[3].Content, "我点燃火把") || strings.Contains(history[3].Content, "</STATE_DELTA>") {
-		t.Fatalf("history[3] mismatch: %#v", history[3])
+	for _, want := range []string{
+		"导演本轮上下文规则",
+		"导演随机事件率",
+		"[本轮动态上下文]",
+		"末日开端",
+		"主角醒来发现世界已末日",
+		"800 个中文字",
+		"最高篇幅约束",
+		"list_lore_items",
+		"list_interactive_memories",
+		"当前分支故事记忆",
+		`"on_stage"`,
+	} {
+		if !strings.Contains(history[2].Content, want) {
+			t.Fatalf("history[2] should include %q: %#v", want, history[2])
+		}
 	}
-	if !strings.Contains(history[3].Content, "导演本轮上下文规则") || !strings.Contains(history[3].Content, "导演随机事件率") {
-		t.Fatalf("history[3] should include turn-local teller guidance: %#v", history[3])
+	for _, forbidden := range []string{"经典叙事者", "林川：谨慎的幸存者", "世界已进入黄昏末日。"} {
+		if strings.Contains(history[2].Content, forbidden) {
+			t.Fatalf("history[2] should not include %q: %#v", forbidden, history[2])
+		}
 	}
 	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, "导演注入规则") || !strings.Contains(sources, "本轮上下文") {
 		t.Fatalf("context sources should include teller slots: %s", sources)
@@ -109,7 +118,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stateInstruction, "导演互动记忆规则") || !strings.Contains(stateInstruction, "帮助后续回合稳定承接") {
+	if !strings.Contains(stateInstruction, "导演记忆沉淀规则") || !strings.Contains(stateInstruction, "帮助后续回合稳定承接") {
 		t.Fatalf("state instruction should include state_memory rules: %s", stateInstruction)
 	}
 	if !strings.Contains(stateInstruction, "黄泉酒馆完整设定") {
@@ -224,14 +233,55 @@ func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history) < 1 || !strings.Contains(history[0].Content, "700 个中文字") {
+	if len(history) < 1 || !strings.Contains(history[len(history)-1].Content, "700 个中文字") {
 		t.Fatalf("story reply target chars should be used: %#v", history)
 	}
-	if !strings.Contains(history[0].Content, "最高篇幅约束") {
-		t.Fatalf("story reply target chars should be marked as highest priority: %#v", history[0])
+	if !strings.Contains(history[len(history)-1].Content, "最高篇幅约束") {
+		t.Fatalf("story reply target chars should be marked as highest priority: %#v", history[len(history)-1])
 	}
-	if strings.Contains(history[0].Content, "50 个中文字") {
-		t.Fatalf("legacy teller reply target chars should be ignored: %#v", history[0])
+	if strings.Contains(history[len(history)-1].Content, "50 个中文字") {
+		t.Fatalf("legacy teller reply target chars should be ignored: %#v", history[len(history)-1])
+	}
+}
+
+func TestInteractiveConversationUsesAgentContextRecentTurns(t *testing.T) {
+	workspace := t.TempDir()
+	novaDir := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:            "窗口测试",
+		Origin:           "主角进入旧城",
+		StoryTellerID:    "classic",
+		ReplyTargetChars: 700,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 4; i++ {
+		if _, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
+			User:      "第" + string(rune('0'+i)) + "次行动",
+			Narrative: "第" + string(rune('0'+i)) + "段剧情",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recentTurns := 2
+	cfg := &config.Config{AgentContexts: config.AgentContextSettings{
+		InteractiveStory: config.AgentContextOverride{RecentTurns: &recentTurns},
+	}}
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
+	history, err := conversation.PrepareMessages("我继续探索", "我继续探索")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 5 {
+		t.Fatalf("history length = %d, want 5", len(history))
+	}
+	if history[0].Content != "第3次行动" || history[2].Content != "第4次行动" {
+		t.Fatalf("recent history should use agent context window: %#v", history)
+	}
+	if strings.Contains(history[4].Content, "第3次行动") || !strings.Contains(history[4].Content, "较早 2 个回合") {
+		t.Fatalf("older turns should be summarized in runtime context: %s", history[4].Content)
 	}
 }
 
