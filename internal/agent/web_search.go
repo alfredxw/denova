@@ -22,8 +22,8 @@ import (
 const webSearchToolDescription = "Search the public web for current or external information. Return result titles, URLs, and short summaries; cite useful URLs in the final answer."
 
 const (
-	webSearchPerEngine = 10
-	webSearchMaxTotal  = 12
+	webSearchPerEngine = 20
+	webSearchMaxTotal  = 50
 	webSearchTimeout   = 30 * time.Second
 	// webSearchAggTimeout 是一次聚合搜索的整体时间上限（略大于单引擎超时），作为兜底
 	webSearchAggTimeout = 40 * time.Second
