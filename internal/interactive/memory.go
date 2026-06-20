@@ -304,6 +304,24 @@ func normalizeStoryMemoryPatchForAgent(book interactiveMemoryBook, patch StoryMe
 	}
 	structureID := sanitizeMemoryID(patch.StructureID)
 	structure := storyMemoryStructureByID(book.Structures, structureID)
+	if structure.ID == "" || !storyMemoryStructureEnabled(structure) {
+		return patch, false
+	}
+	if len(patch.Values) > 0 {
+		nextValues := make(map[string]string, len(patch.Values))
+		enabledFieldIDs := make(map[string]bool, len(structure.Fields))
+		for _, field := range structure.Fields {
+			if storyMemoryFieldEnabled(field) {
+				enabledFieldIDs[field.ID] = true
+			}
+		}
+		for key, value := range patch.Values {
+			if enabledFieldIDs[key] {
+				nextValues[key] = value
+			}
+		}
+		patch.Values = nextValues
+	}
 	if structure.Mode != "keyed" {
 		return patch, true
 	}
@@ -862,7 +880,6 @@ func normalizeMemoryBook(book interactiveMemoryBook) interactiveMemoryBook {
 	if len(book.Records) == 0 && len(book.Entries) > 0 {
 		book.Records = migrateInteractiveEntriesToStoryMemoryRecords(book.Entries)
 	}
-	migrateBuiltInStoryMemoryRecordValues(book.Records)
 	for i := range book.Structures {
 		book.Structures[i] = normalizeStoryMemoryStructureFromStored(book.Structures[i])
 	}
@@ -896,105 +913,151 @@ func normalizeStoryMemoryInterval(value int) int {
 func defaultStoryMemoryStructures() []StoryMemoryStructure {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	return []StoryMemoryStructure{
-		defaultStoryMemoryStructure("current_state", "当前状态", "记录当前主角所在地点及时间相关参数。此表有且仅有一行。", "每轮整理必须更新为当前回合结束后的状态；当前时间必须是明确的 YYYY-MM-DD HH:MM，若正文未给出日期时间，必须根据世界观和设定推定一个明确时间。", "singleton", "", 10, []StoryMemoryField{
-			defaultStoryMemoryField("location", "主角当前所在地点", "主角当前所在的具体场景名称。", "填写具体场景名，不要只写宽泛区域。", true, 10),
-			defaultStoryMemoryField("time", "当前时间", "游戏世界的当前时间。格式：YYYY-MM-DD HH:MM。", "必须填写明确日期和时间；初始化时若剧情没有明确日期时间，需根据世界观和设定自行设定。", true, 20),
-			defaultStoryMemoryField("previous_time", "上轮场景时间", "上一轮交互结束时的时间。", "格式同当前时间；首轮没有上一轮时填本轮开始前的合理时间。", true, 30),
-			defaultStoryMemoryField("elapsed_time", "经过的时间", "根据当前与上轮时间计算得出的文本描述。", "用自然语言描述时间跨度，例如“几分钟”“半个时辰”“两天”。", true, 40),
+		defaultStoryMemoryStructure("current_state", "当前状态", "记录当前剧情线的全局时间、地点和场景状态。此表有且仅有一行。", "每轮整理必须更新为当前回合结束后的状态；时间和天数必须自洽，不得按现实消息轮次盲目累加。", "singleton", "", true, 10, []StoryMemoryField{
+			defaultStoryMemoryField("story_start_date", "故事开局日期", "当前故事线的剧内开局日期。", "格式尽量使用 YYYY-MM-DD；初始化后除非用户明确重置开局时间，否则不要改动。", true, 10),
+			defaultStoryMemoryField("location", "当前详细地点", "主角当前所在的具体场景名称。", "填写具体场景名，不要只写宽泛区域。", true, 20),
+			defaultStoryMemoryField("previous_time", "上轮场景时间", "上一轮交互结束时的剧内时间。", "格式尽量与当前时间一致；首轮没有上一轮时填本轮开始前的合理时间。", true, 30),
+			defaultStoryMemoryField("elapsed_time", "经过的时间", "当前时间相对上轮场景时间经过了多久。", "用自然语言描述时间跨度，例如“几分钟”“半个时辰”“两天”。", true, 40),
+			defaultStoryMemoryField("time", "当前时间", "当前回合结束后的剧内时间。", "必须填写明确日期和时间；若正文未给出，需根据世界观和场景推进推定。", true, 50),
+			defaultStoryMemoryField("current_day", "当前天数", "从故事开局日期开始计算的剧内天数。", "开局日期当天为第 1 天；只有剧内日期跨日时才变化。", true, 60),
+			defaultStoryMemoryField("event", "当前事件", "当前场景正在承接的核心事件。", "一句话写清本轮结束后仍影响下一轮的当前事件，不写下一步选项。", false, 70),
 		}, now),
-		defaultStoryMemoryStructure("protagonist", "主角信息", "记录主角的核心身份信息。此表有且仅有一行。", "只记录稳定身份信息和已经发生的关键经历；过往经历随剧情增量更新，超过 300 字时压缩。技能和物品字段按子列表格式维护。", "singleton", "", 20, []StoryMemoryField{
-			defaultStoryMemoryField("name", "人物名称", "主角的名字。", "使用剧情中最稳定的称呼。", true, 10),
-			defaultStoryMemoryField("gender_age", "性别/年龄", "主角的生理性别和年龄。", "没有明确年龄时根据设定给出合理阶段或估计年龄。", false, 20),
-			defaultStoryMemoryField("appearance", "外貌特征", "对主角外貌的客观文字描写。", "只写客观可观察特征，不加入主观评价。", false, 30),
-			defaultStoryMemoryField("identity", "职业/身份", "主角在社会中的主要角色。", "填写当前最主要身份，可包含门派、职位、阶层或公开身份。", false, 40),
-			defaultStoryMemoryField("experience", "过往经历", "记录主角的背景故事和后续关键经历。", "随剧情增量更新，不超过 300 字；超过时压缩，只保留影响后续剧情的事实。", false, 50),
-			defaultStoryMemoryField("personality", "性格特点", "对主角核心性格的概括。", "概括稳定性格，不把单轮情绪当作性格。", false, 60),
-			defaultStoryMemoryField("skills", "技能项目子列表", "主角获得的所有技能。", "按“技能名称｜技能类型｜等级/阶段｜效果描述”维护多项；技能类型示例：被动、主动。", false, 70),
-			defaultStoryMemoryField("items", "物品装备子列表", "主角拥有的所有物品、装备。", "按“物品名称｜数量｜描述/效果｜类别”维护多项；类别示例：武器、消耗品、杂物。", false, 80),
+		defaultStoryMemoryStructure("protagonist", "主角信息", "记录主角的核心身份、能力、资源、关系和经历。此表有且仅有一行。", "只记录主角长期需要承接的信息；技能、物品和人物关系用纯文本子列表维护，避免拆成过多默认表。", "singleton", "", true, 20, []StoryMemoryField{
+			defaultStoryMemoryField("name", "人物名称", "主角的名字或稳定称呼。", "使用剧情中最稳定的称呼。", true, 10),
+			defaultStoryMemoryField("gender_age", "性别/年龄", "主角的性别和年龄或年龄阶段。", "没有明确年龄时根据设定给出合理阶段或估计年龄。", false, 20),
+			defaultStoryMemoryField("appearance", "外貌特征", "主角相对稳定的外貌特征。", "只写客观可观察特征；不要把临时姿态、表情或单轮状态写成外貌。", false, 30),
+			defaultStoryMemoryField("identity", "职业/身份", "主角在社会、组织或世界规则中的主要身份。", "填写当前最主要身份，可包含门派、职位、阶层、公开身份或隐藏身份。", false, 40),
+			defaultStoryMemoryField("current_condition", "当前近况", "主角当前身体、情绪或压力状态。", "写一口话的具体近况；正常时填“一切如常”。", false, 50),
+			defaultStoryMemoryField("location", "所在地点", "主角当前所在地点。", "应与当前状态表的当前详细地点保持一致或更具体。", false, 60),
+			defaultStoryMemoryField("abilities", "基础属性/特有能力", "主角能力、属性、境界或特殊能力。", "用分号分隔多项；只记录已经设定或剧情证实的能力，不临场编造。", false, 70),
+			defaultStoryMemoryField("skills", "技能列表", "主角掌握的技能。", "按“技能名称｜类型｜等级/阶段｜效果”维护多项；无技能时留空。", false, 80),
+			defaultStoryMemoryField("items", "重要物品/资源", "主角持有的重要物品、装备、资源或线索。", "按“名称｜数量/规模｜用途/意义｜状态”维护多项；只记录会影响后续剧情的内容。", false, 90),
+			defaultStoryMemoryField("relationships", "与其他人物关系", "主角与重要角色之间的关系和最近互动。", "每行一个人物，格式建议“人物：关系及最近关键互动”；只写已发生或已证实内容。", false, 100),
+			defaultStoryMemoryField("experience", "关键经历", "主角背景故事和剧情推进后的关键经历。", "随剧情增量更新，不超过 400 字；超过时压缩，只保留影响后续剧情的事实。", false, 110),
 		}, now),
-		defaultStoryMemoryStructure("important_character", "重要角色", "记录所有关键 NPC 的详细信息和动态状态。", "每个关键 NPC 一行；只基于正文明确事实更新。是否离场用于判断该角色是否能直接与主角互动，只能填写“是”或“否”。", "keyed", "name", 30, []StoryMemoryField{
-			defaultStoryMemoryField("name", "姓名", "NPC 的名字。", "使用角色最稳定的正式姓名或常用称呼。", true, 10),
-			defaultStoryMemoryField("gender_age", "性别/年龄", "NPC 的生理性别和年龄。", "没有明确年龄时根据设定给出合理阶段或估计年龄。", false, 20),
-			defaultStoryMemoryField("brief", "一句话介绍", "用不超过 15 字概括角色身份背景，不含主观评价。", "不超过 15 字；只写身份背景，不写好坏强弱等主观评价。", false, 30),
-			defaultStoryMemoryField("appearance", "外貌特征", "对 NPC 外貌和当前衣着的详细描述。", "对女性角色可包含身材描写；对男性角色无需描写。", false, 40),
-			defaultStoryMemoryField("important_items", "持有的重要物品", "NPC 拥有的关键重要物品列表。", "多项用分号分隔；只记录关键重要物品。", false, 50),
-			defaultStoryMemoryField("left_scene", "是否离场", "判断该角色是否能直接与主角互动。", "只能填写“是”或“否”。", false, 60),
-			defaultStoryMemoryField("experience", "过往经历", "记录角色背景与关键事件。", "随剧情增量更新，不超过 300 字；超过时压缩，只保留影响后续剧情的事实。", false, 70),
+		defaultStoryMemoryStructure("important_character", "重要角色", "记录会影响后续剧情的关键角色。", "每个关键角色一行；只记录会影响后续剧情承接的人物，不记录临时路人。", "keyed", "name", true, 30, []StoryMemoryField{
+			defaultStoryMemoryField("name", "姓名", "角色姓名或稳定称呼。", "使用角色最稳定的正式姓名或常用称呼。", true, 10),
+			defaultStoryMemoryField("gender_age", "性别/年龄", "角色性别和年龄或年龄阶段。", "没有明确年龄时根据设定给出合理阶段或估计年龄。", false, 20),
+			defaultStoryMemoryField("brief", "一句话介绍", "角色身份背景的一句话概括。", "不超过 30 字；只写身份背景，不写好坏强弱等主观评价。", false, 30),
+			defaultStoryMemoryField("appearance", "外貌特征", "角色相对稳定的外貌特征。", "只写客观可观察特征；临时衣着、姿态和表情放到当前状态。", false, 40),
+			defaultStoryMemoryField("identity", "身份", "角色职业、阵营、社会身份或剧情身份。", "只写已设定或已揭示身份；疑似身份写明待确认。", false, 50),
+			defaultStoryMemoryField("location", "所在地点", "角色当前或最后确认的地点。", "不知道时填“未知”；离场后写最后确认地点或去向。", false, 60),
+			defaultStoryMemoryField("current_status", "当前状态", "角色当前行为、处境、伤势、情绪基调或可互动状态。", "只写当前可承接状态，不写无依据内心独白。", false, 70),
+			defaultStoryMemoryField("relationship_to_protagonist", "与主角关系", "该角色与主角的关系和最近关键互动。", "避免只写“朋友/敌人”等标签，要补一句具体依据。", false, 80),
+			defaultStoryMemoryField("relationships", "与其他重要角色关系", "该角色与其他重要角色的关系网络。", "每行一个人物，格式建议“人物：关系及最近互动”；只写已接触或已设定关系。", false, 90),
+			defaultStoryMemoryField("known_about_protagonist", "对主角已知信息", "该角色已经知道的主角相关情报。", "上限 5 项，保留最影响后续互动的情报。", false, 100),
+			defaultStoryMemoryField("unknown_about_protagonist", "对主角未知/误解", "该角色仍想探明或误解的主角相关情报。", "上限 5 项；没有明确误解或未知点时留空。", false, 110),
+			defaultStoryMemoryField("important_items", "持有关键物品", "角色持有的重要物品、资源或线索。", "多项用分号分隔；只记录关键物品。", false, 120),
+			defaultStoryMemoryField("experience", "关键经历", "角色背景与登场后的关键经历。", "随剧情增量更新，不超过 350 字；超过时压缩，只保留影响后续剧情的事实。", false, 130),
+			defaultStoryMemoryField("left_scene", "是否离场", "该角色是否已经离开当前可互动场景。", "只能填写“是”或“否”。", false, 140),
 		}, now),
-		defaultStoryMemoryStructure("quest_event", "任务事件", "记录所有当前正在进行的任务。", "只维护仍在进行、未明确结束的任务；任务结束后应更新进度或归档，不要保留为当前任务。", "keyed", "name", 40, []StoryMemoryField{
-			defaultStoryMemoryField("name", "任务名称", "任务的标题。", "用稳定、可复用的短标题。", true, 10),
-			defaultStoryMemoryField("type", "任务类型", "主线任务或支线任务。", "只能填写“主线任务”或“支线任务”。", false, 20),
-			defaultStoryMemoryField("issuer", "发布者", "发布该任务的角色或势力。", "没有明确发布者时填写触发任务的角色、势力或事件来源。", false, 30),
-			defaultStoryMemoryField("description", "详细描述", "任务的目标和要求。", "写清任务目标、要求和关键限制，不写推测。", false, 40),
-			defaultStoryMemoryField("progress", "当前进度", "对任务完成度的简要描述。", "简要描述已完成事项和当前阻碍。", false, 50),
-			defaultStoryMemoryField("deadline", "任务时限", "完成任务的剩余时间。", "没有明确时限时填写“暂无明确时限”。", false, 60),
-			defaultStoryMemoryField("reward", "奖励", "完成任务可获得的奖励。", "没有明确奖励时填写“暂无明确奖励”。", false, 70),
-			defaultStoryMemoryField("penalty", "惩罚", "任务失败的后果。", "没有明确惩罚时填写“暂无明确惩罚”。", false, 80),
+		defaultStoryMemoryStructure("world_context", "世界上下文", "记录地点、势力、组织、阵营、关键场景和世界规则节点。", "本表记录外部结构如何影响剧情，不重复记录角色完整档案；普通地点或一次性背景无需记录。", "keyed", "name", true, 40, []StoryMemoryField{
+			defaultStoryMemoryField("name", "节点名称", "地点、势力、组织、规则或关键场景名称。", "使用稳定可复用名称。", true, 10),
+			defaultStoryMemoryField("type", "节点类型", "节点类别。", "可填地点、势力、组织、规则、场景、家族、阵营等。", true, 20),
+			defaultStoryMemoryField("scope", "所属范围", "上级区域、所属世界、阵营范围或适用范围。", "没有明确范围时填“未知”或留空。", false, 30),
+			defaultStoryMemoryField("description", "描述", "该节点的性质、环境、规则或结构说明。", "写对后续剧情有用的事实，不写百科式长篇设定。", false, 40),
+			defaultStoryMemoryField("related_characters", "相关角色", "与该节点有关的重要角色。", "多名角色用分号分隔。", false, 50),
+			defaultStoryMemoryField("plot_relation", "与主角/主线关系", "该节点如何影响主角、主线或关键关系。", "写推动、阻碍、保护、监视、误导、交易、压迫等具体作用。", false, 60),
+			defaultStoryMemoryField("stance", "当前立场", "节点对主角或当前事件的立场。", "没有明确立场时填“未知”。", false, 70),
+			defaultStoryMemoryField("status", "当前状态", "节点当前状态。", "记录开放、封锁、覆灭、隐藏、紧张、待调查等状态。", false, 80),
 		}, now),
-		defaultStoryMemoryStructure("plot_summary", "纪要", "轮次日志，每轮交互后必须立即插入一条新记录。", "每轮交互后必须 append 一条新记录；纪要以第三方视角客观记录正文明确发生的事实，不得加入推测、情绪化语言、负面解读或主观判断。", "append", "", 50, []StoryMemoryField{
-			defaultStoryMemoryField("time_span", "时间跨度", "本轮事件发生的精确时间范围。", "填写精确时间范围，格式尽量与当前状态表一致。", true, 10),
-			defaultStoryMemoryField("place", "地点", "本轮事件发生的地点，从大到小描述。", "按从大到小的层级描述地点。", true, 20),
-			defaultStoryMemoryField("event", "纪要", "以第三方视角客观记录本轮事件。", "必须基于正文明确发生的事实；不得补充未出现情节；不得加入推测、情绪化语言、负面解读或主观判断；不少于 300 字；结尾禁止总结或升华。", true, 30),
-			defaultStoryMemoryField("summary", "概要", "30 字以内，一句话概括纪要内容。", "不超过 30 字，客观概括本轮事实。", false, 40),
-			defaultStoryMemoryField("sequence", "顺序序号", "所属回合轮次。", "填写该纪要所属的交互回合轮次。", true, 50),
+		defaultStoryMemoryStructure("open_threads", "进行中事项", "记录任务、备忘录、承诺、伏笔、计划、未解决误会和待办。", "只维护仍需后续承接的事项；结束、失效或不再参与判断时归档。", "keyed", "title", true, 50, []StoryMemoryField{
+			defaultStoryMemoryField("title", "标题", "事项的稳定短标题。", "用可复用短标题，不要每轮改名。", true, 10),
+			defaultStoryMemoryField("type", "事项类型", "任务、备忘、承诺、伏笔、计划、误会、纪念日、调查等。", "选择最贴近的一类；不要新增无意义分类。", true, 20),
+			defaultStoryMemoryField("related", "相关对象", "相关角色、地点、势力或物品。", "多项用分号分隔。", false, 30),
+			defaultStoryMemoryField("detail", "详细内容", "事项来由、关键细节和当前卡点。", "写清楚为什么需要后续承接，避免一句话空泛概括。", false, 40),
+			defaultStoryMemoryField("progress", "当前进度/状态", "已完成事项、当前阻碍或当前状态。", "简要描述已发生变化；没有进展时沿用旧值。", false, 50),
+			defaultStoryMemoryField("deadline", "时限", "完成、兑现或爆发的时间限制。", "没有明确时限时填“暂无明确时限”。", false, 60),
+			defaultStoryMemoryField("stakes", "风险/收益", "事项成功、失败或拖延的后果。", "没有明确风险收益时填“暂无明确风险收益”。", false, 70),
+			defaultStoryMemoryField("result", "后续结果", "事项完结或状态变更后的结果。", "未完结时留空；完结时写具体结果，不写“已解决”等空泛收束。", false, 80),
+		}, now),
+		defaultStoryMemoryStructure("plot_summary", "剧情纪要", "轮次日志，每轮或每批整理追加一条新记录。", "纪要以第三人称客观记录正文明确发生的事实，不生成下一步行动选项，不加入推测、情绪化语言或主观判断。", "append", "", true, 60, []StoryMemoryField{
+			defaultStoryMemoryField("code_index", "编码索引", "本条纪要的唯一顺序索引。", "格式建议 AM0001 起递增；无法确认时根据已有纪要顺序推定。", true, 10),
+			defaultStoryMemoryField("time_span", "时间跨度", "本轮事件发生的精确时间范围。", "格式尽量与当前状态表一致。", true, 20),
+			defaultStoryMemoryField("place", "地点", "本轮事件发生的地点。", "按从大到小的层级描述地点。", true, 30),
+			defaultStoryMemoryField("summary", "概览", "30 字以内的一句话概括。", "不超过 30 字，客观概括本轮事实。", false, 40),
+			defaultStoryMemoryField("event", "详细纪要", "以第三人称客观记录本轮事件。", "必须基于正文明确发生的事实；记录关键因果、对话、移动、物品交互和状态变化；不少于 300 字；结尾禁止总结或升华。", true, 50),
+			defaultStoryMemoryField("key_dialogue", "重要对话", "造成事实重点或后续影响的重要原文对话。", "摘录 2-4 句并标明说话者；没有关键对话时留空。", false, 60),
+			defaultStoryMemoryField("current_day", "当前天数", "本轮结束时对应的剧内天数。", "必须与当前状态表的当前天数一致。", true, 70),
+		}, now),
+		defaultStoryMemoryStructure("romance_profile", "恋爱关系档案", "记录恋爱对象或潜在恋爱对象的关系阶段和情感变化。", "默认关闭；用户启用后才参与自动整理。只记录已发生或已表现出的关系变化，不替代重要角色表。", "keyed", "name", false, 70, []StoryMemoryField{
+			defaultStoryMemoryField("name", "姓名", "恋爱对象或潜在恋爱对象姓名。", "必须对应重要角色表中的角色。", true, 10),
+			defaultStoryMemoryField("relationship_stage", "关系阶段", "该角色与主角的关系阶段。", "用具体短语描述当前阶段，并写出依据。", false, 20),
+			defaultStoryMemoryField("affection", "好感/亲近度", "该角色对主角的亲近、好感或抗拒状态。", "用自然语言描述，不强制数值。", false, 30),
+			defaultStoryMemoryField("trust", "信任度", "该角色对主角的信任状态。", "用自然语言描述信任依据和风险。", false, 40),
+			defaultStoryMemoryField("attitude", "当前态度", "该角色当前面对主角的态度。", "只基于正文表现和已知设定，不主观脑补。", false, 50),
+			defaultStoryMemoryField("key_experience", "关键经历", "影响关系发展的关键经历。", "不超过 300 字；只保留影响后续互动的节点。", false, 60),
+		}, now),
+		defaultStoryMemoryStructure("romance_diary", "恋爱日记", "记录特定角色视角下值得长期保留的情感节点。", "默认关闭；只记录明显改变关系、误会、期待、后悔、动摇或无法说出口想法的节点，不记录普通互动流水账。", "append", "", false, 80, []StoryMemoryField{
+			defaultStoryMemoryField("writer", "写作角色", "日记视角角色。", "必须是已建档的重要角色或恋爱档案角色。", true, 10),
+			defaultStoryMemoryField("related", "关联角色", "该情感节点关联的角色。", "通常为主角，也可包含关键第三人。", false, 20),
+			defaultStoryMemoryField("content", "日记内容", "该角色视角下的情感节点。", "100-200 字；聚焦内心变化、误解、期待、动摇或确认。", true, 30),
+			defaultStoryMemoryField("time", "发生时间", "该节点发生的剧内时间。", "尽量与当前状态表时间一致。", false, 40),
+			defaultStoryMemoryField("event_type", "事件类型", "情感节点类型。", "可填初次相遇、日常互动、感情升温、冲突矛盾、和解修复、亲密接触等。", false, 50),
+			defaultStoryMemoryField("impact", "影响判断", "该节点对后续关系的影响。", "写具体影响，不写空泛总结。", false, 60),
+		}, now),
+		defaultStoryMemoryStructure("mature_relationship_profile", "成人向关系档案", "记录用户主动启用后的成人向关系扩展信息。", "默认关闭；作为可配置扩展结构存在，不照搬外部模板的私有字段。启用后只记录用户作品设定中明确允许且后续需要承接的内容。", "keyed", "name", false, 90, []StoryMemoryField{
+			defaultStoryMemoryField("name", "姓名", "角色姓名。", "必须对应重要角色表中的角色。", true, 10),
+			defaultStoryMemoryField("boundary", "边界与偏好", "角色在成人向互动中的边界、偏好或禁忌。", "只记录已设定或已明确表达的内容。", false, 20),
+			defaultStoryMemoryField("relationship_context", "关系语境", "成人向内容与主角关系、权力结构或剧情状态的关联。", "必须服务后续剧情承接，不写一次性场景细节。", false, 30),
+			defaultStoryMemoryField("continuity_notes", "连续性备注", "需要长期保持一致的成人向连续性信息。", "压缩记录，避免露骨流水账。", false, 40),
 		}, now),
 	}
 }
 
-func defaultStoryMemoryStructure(id, name, description, generationInstruction, mode, keyFieldID string, order int, fields []StoryMemoryField, now string) StoryMemoryStructure {
-	return StoryMemoryStructure{ID: id, Name: name, Description: description, GenerationInstruction: generationInstruction, Mode: mode, KeyFieldID: keyFieldID, Fields: fields, Order: order, BuiltIn: true, CreatedAt: now, UpdatedAt: now}
+func defaultStoryMemoryStructure(id, name, description, generationInstruction, mode, keyFieldID string, enabled bool, order int, fields []StoryMemoryField, now string) StoryMemoryStructure {
+	return StoryMemoryStructure{ID: id, Name: name, Description: description, GenerationInstruction: generationInstruction, Mode: mode, KeyFieldID: keyFieldID, Fields: fields, Enabled: boolPtr(enabled), Order: order, BuiltIn: true, CreatedAt: now, UpdatedAt: now}
 }
 
 func defaultStoryMemoryField(id, name, description, generationInstruction string, required bool, order int) StoryMemoryField {
 	return StoryMemoryField{ID: id, Name: name, Description: description, GenerationInstruction: generationInstruction, Required: required, Order: order}
 }
 
+func boolPtr(value bool) *bool {
+	return &value
+}
+
 func refreshBuiltInStoryMemoryStructures(structures []StoryMemoryStructure) []StoryMemoryStructure {
 	defaults := defaultStoryMemoryStructures()
-	defaultByID := make(map[string]StoryMemoryStructure, len(defaults))
-	for _, structure := range defaults {
-		defaultByID[structure.ID] = structure
-	}
-	out := make([]StoryMemoryStructure, 0, len(structures))
+	storedBuiltInByID := make(map[string]StoryMemoryStructure, len(structures))
+	custom := make([]StoryMemoryStructure, 0, len(structures))
 	for _, structure := range structures {
-		next := structure
 		if structure.BuiltIn {
-			if preset, ok := defaultByID[structure.ID]; ok {
-				next = preset
-				next.CreatedAt = firstMemoryText(structure.CreatedAt, preset.CreatedAt)
-				next.UpdatedAt = firstMemoryText(structure.UpdatedAt, preset.UpdatedAt)
+			storedBuiltInByID[structure.ID] = structure
+			continue
+		}
+		custom = append(custom, structure)
+	}
+	out := make([]StoryMemoryStructure, 0, len(defaults)+len(custom))
+	for _, preset := range defaults {
+		next := preset
+		if stored, ok := storedBuiltInByID[preset.ID]; ok {
+			next.CreatedAt = firstMemoryText(stored.CreatedAt, preset.CreatedAt)
+			next.UpdatedAt = firstMemoryText(stored.UpdatedAt, preset.UpdatedAt)
+			if stored.Enabled != nil {
+				next.Enabled = stored.Enabled
 			}
+			next.Fields = mergeBuiltInStoryMemoryFields(preset.Fields, stored.Fields)
 		}
 		out = append(out, next)
 	}
+	out = append(out, custom...)
 	return out
 }
 
-func migrateBuiltInStoryMemoryRecordValues(records []StoryMemoryRecord) {
-	for i := range records {
-		values := records[i].Values
-		if values == nil {
-			continue
+func mergeBuiltInStoryMemoryFields(defaults, stored []StoryMemoryField) []StoryMemoryField {
+	storedByID := make(map[string]StoryMemoryField, len(stored))
+	for _, field := range stored {
+		storedByID[field.ID] = field
+	}
+	out := make([]StoryMemoryField, 0, len(defaults))
+	for _, field := range defaults {
+		if storedField, ok := storedByID[field.ID]; ok && storedField.Enabled != nil {
+			field.Enabled = storedField.Enabled
 		}
-		switch records[i].StructureID {
-		case "plot_summary":
-			copyStoryMemoryValue(values, "time", "time_span")
-		case "important_character":
-			copyStoryMemoryValue(values, "skills_items", "important_items")
-		case "quest_event":
-			copyStoryMemoryValue(values, "stakes", "reward")
-			copyStoryMemoryValue(values, "stakes", "penalty")
-		}
+		out = append(out, field)
 	}
-}
-
-func copyStoryMemoryValue(values map[string]string, from, to string) {
-	if strings.TrimSpace(values[to]) != "" {
-		return
-	}
-	if value := strings.TrimSpace(values[from]); value != "" {
-		values[to] = value
-	}
+	return out
 }
 
 func normalizeStoryMemoryStructure(req StoryMemoryStructureRequest, now string) StoryMemoryStructure {
@@ -1005,6 +1068,7 @@ func normalizeStoryMemoryStructure(req StoryMemoryStructureRequest, now string) 
 		GenerationInstruction: trimMemoryText(req.GenerationInstruction),
 		Mode:                  strings.TrimSpace(req.Mode),
 		KeyFieldID:            sanitizeMemoryID(req.KeyFieldID),
+		Enabled:               req.Enabled,
 		Order:                 req.Order,
 		Fields:                normalizeStoryMemoryFields(req.Fields),
 		UpdatedAt:             now,
@@ -1084,6 +1148,14 @@ func sortStoryMemoryStructures(structures []StoryMemoryStructure) {
 		}
 		return structures[i].Order < structures[j].Order
 	})
+}
+
+func storyMemoryStructureEnabled(structure StoryMemoryStructure) bool {
+	return structure.Enabled == nil || *structure.Enabled
+}
+
+func storyMemoryFieldEnabled(field StoryMemoryField) bool {
+	return field.Enabled == nil || *field.Enabled
 }
 
 func migrateInteractiveEntriesToStoryMemoryRecords(entries []InteractiveMemoryEntry) []StoryMemoryRecord {
@@ -1463,6 +1535,9 @@ func formatStoryMemoryContextSummary(structures []StoryMemoryStructure, records 
 	sb.WriteString(fmt.Sprintf("上限: %d bytes\n", limit))
 	count := 0
 	for _, structure := range structures {
+		if !storyMemoryStructureEnabled(structure) {
+			continue
+		}
 		items := make([]StoryMemoryRecord, 0)
 		for _, record := range records {
 			if record.StructureID == structure.ID {
@@ -1489,6 +1564,9 @@ func formatStoryMemoryContextSummary(structures []StoryMemoryStructure, records 
 			}
 			parts := make([]string, 0, len(structure.Fields))
 			for _, field := range structure.Fields {
+				if !storyMemoryFieldEnabled(field) {
+					continue
+				}
 				if value := strings.TrimSpace(record.Values[field.ID]); value != "" {
 					parts = append(parts, field.Name+"="+value)
 				}
@@ -1510,11 +1588,15 @@ func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int
 	if limit <= 0 || limit > maxMemoryTextBytes {
 		limit = maxMemoryTextBytes
 	}
+	structures = storyMemorySchemaContextOrder(structures)
 	var sb strings.Builder
 	sb.WriteString("来源: interactive/memory/story-{story_id}.json 的故事记忆结构定义\n")
 	sb.WriteString(fmt.Sprintf("上限: %d bytes\n", limit))
-	sb.WriteString("规则: story_memory_patches 只能使用下列 structure_id 和字段 ID；keyed 结构必须提供 key，且 key 应等于 key_field_id 对应字段值；生成时必须遵守 structure 和 field 的 generation_instruction。\n")
+	sb.WriteString("规则: story_memory_patches 只能使用下列 structure_id 和字段 ID；每条 patch 的 values 必须包含目标结构列出的所有字段，且字段值不能为空；keyed 结构必须提供 key，且 key 应等于 key_field_id 对应字段值；生成时必须遵守 structure 和 field 的 generation_instruction。\n")
 	for _, structure := range structures {
+		if !storyMemoryStructureEnabled(structure) {
+			continue
+		}
 		if sb.Len() >= limit {
 			sb.WriteString("\n(后续故事记忆结构已截断)\n")
 			return trimMemoryText(sb.String())
@@ -1547,6 +1629,9 @@ func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int
 		}
 		sb.WriteString("- fields:\n")
 		for _, field := range structure.Fields {
+			if !storyMemoryFieldEnabled(field) {
+				continue
+			}
 			if sb.Len() >= limit {
 				sb.WriteString("(后续字段已截断)\n")
 				return trimMemoryText(sb.String())
@@ -1573,6 +1658,21 @@ func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int
 		}
 	}
 	return trimMemoryText(sb.String())
+}
+
+func storyMemorySchemaContextOrder(structures []StoryMemoryStructure) []StoryMemoryStructure {
+	out := make([]StoryMemoryStructure, 0, len(structures))
+	for _, structure := range structures {
+		if !structure.BuiltIn {
+			out = append(out, structure)
+		}
+	}
+	for _, structure := range structures {
+		if structure.BuiltIn {
+			out = append(out, structure)
+		}
+	}
+	return out
 }
 
 func eventPathSet(headID string, lines []StoryEventRecord) map[string]bool {

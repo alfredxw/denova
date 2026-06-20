@@ -2,13 +2,19 @@ package config
 
 import "strings"
 
+const (
+	DefaultContextWindowTokens = 400000
+	MaxContextWindowTokens     = 2000000
+)
+
 type ModelProfileSettings struct {
-	ID            string   `toml:"id,omitempty" json:"id,omitempty"`
-	Name          string   `toml:"name,omitempty" json:"name,omitempty"`
-	OpenAIAPIKey  string   `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
-	OpenAIBaseURL string   `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
-	OpenAIModel   string   `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
-	Temperature   *float64 `toml:"temperature,omitempty" json:"temperature,omitempty"`
+	ID                  string   `toml:"id,omitempty" json:"id,omitempty"`
+	Name                string   `toml:"name,omitempty" json:"name,omitempty"`
+	OpenAIAPIKey        string   `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
+	OpenAIBaseURL       string   `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
+	OpenAIModel         string   `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
+	Temperature         *float64 `toml:"temperature,omitempty" json:"temperature,omitempty"`
+	ContextWindowTokens *int     `toml:"context_window_tokens,omitempty" json:"context_window_tokens,omitempty"`
 }
 
 type AgentModelSettings struct {
@@ -31,13 +37,14 @@ type AgentModelOverride struct {
 }
 
 type ResolvedModelSettings struct {
-	ProfileID       string
-	OpenAIAPIKey    string
-	OpenAIBaseURL   string
-	OpenAIModel     string
-	Temperature     *float64
-	EnableThinking  *bool
-	ReasoningEffort string
+	ProfileID           string
+	OpenAIAPIKey        string
+	OpenAIBaseURL       string
+	OpenAIModel         string
+	Temperature         *float64
+	ContextWindowTokens int
+	EnableThinking      *bool
+	ReasoningEffort     string
 }
 
 func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSettings {
@@ -91,18 +98,26 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 	if profile.OpenAIModel == "" {
 		profile.OpenAIModel = cfg.OpenAIModel
 	}
+	if profile.ContextWindowTokens == nil {
+		contextWindowTokens := cfg.OpenAIContextWindowTokens
+		if contextWindowTokens <= 0 {
+			contextWindowTokens = DefaultContextWindowTokens
+		}
+		profile.ContextWindowTokens = intPtr(contextWindowTokens)
+	}
 	temperature := profile.Temperature
 	if agentOverride.Temperature != nil {
 		temperature = agentOverride.Temperature
 	}
 	return ResolvedModelSettings{
-		ProfileID:       profileID,
-		OpenAIAPIKey:    profile.OpenAIAPIKey,
-		OpenAIBaseURL:   profile.OpenAIBaseURL,
-		OpenAIModel:     profile.OpenAIModel,
-		Temperature:     temperature,
-		EnableThinking:  agentOverride.EnableThinking,
-		ReasoningEffort: normalizeReasoningEffort(agentOverride.ReasoningEffort),
+		ProfileID:           profileID,
+		OpenAIAPIKey:        profile.OpenAIAPIKey,
+		OpenAIBaseURL:       profile.OpenAIBaseURL,
+		OpenAIModel:         profile.OpenAIModel,
+		Temperature:         temperature,
+		ContextWindowTokens: *profile.ContextWindowTokens,
+		EnableThinking:      agentOverride.EnableThinking,
+		ReasoningEffort:     normalizeReasoningEffort(agentOverride.ReasoningEffort),
 	}
 }
 
@@ -137,6 +152,28 @@ func mergeModelProfiles(parent, child []ModelProfileSettings) []ModelProfileSett
 	return out
 }
 
+func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettings {
+	if len(profiles) == 0 {
+		return profiles
+	}
+	out := make([]ModelProfileSettings, 0, len(profiles))
+	for _, profile := range profiles {
+		profile.ID = normalizeModelProfileID(profile.ID)
+		if profile.ID == "" {
+			continue
+		}
+		if profile.ContextWindowTokens != nil {
+			if *profile.ContextWindowTokens <= 0 {
+				profile.ContextWindowTokens = nil
+			} else if *profile.ContextWindowTokens > MaxContextWindowTokens {
+				*profile.ContextWindowTokens = MaxContextWindowTokens
+			}
+		}
+		out = append(out, profile)
+	}
+	return out
+}
+
 func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings {
 	out := parent
 	if child.ID != "" {
@@ -156,6 +193,9 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 	}
 	if child.Temperature != nil {
 		out.Temperature = child.Temperature
+	}
+	if child.ContextWindowTokens != nil {
+		out.ContextWindowTokens = child.ContextWindowTokens
 	}
 	return out
 }
@@ -185,12 +225,17 @@ func agentModelOverrideFor(settings AgentModelSettings, agentKind string) AgentM
 }
 
 func legacyModelProfile(cfg *Config) ModelProfileSettings {
+	contextWindowTokens := cfg.OpenAIContextWindowTokens
+	if contextWindowTokens <= 0 {
+		contextWindowTokens = DefaultContextWindowTokens
+	}
 	return ModelProfileSettings{
-		ID:            "default",
-		Name:          "默认模型",
-		OpenAIAPIKey:  cfg.OpenAIAPIKey,
-		OpenAIBaseURL: cfg.OpenAIBaseURL,
-		OpenAIModel:   cfg.OpenAIModel,
+		ID:                  "default",
+		Name:                "默认模型",
+		OpenAIAPIKey:        cfg.OpenAIAPIKey,
+		OpenAIBaseURL:       cfg.OpenAIBaseURL,
+		OpenAIModel:         cfg.OpenAIModel,
+		ContextWindowTokens: intPtr(contextWindowTokens),
 	}
 }
 

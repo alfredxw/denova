@@ -14,13 +14,19 @@ import (
 )
 
 type ContextAnalysis struct {
-	AgentKind         string                `json:"agent_kind"`
-	Mode              string                `json:"mode"`
-	SystemPrompt      string                `json:"system_prompt"`
-	SystemPromptParts []ContextAnalysisPart `json:"system_prompt_parts"`
-	ContextParts      []ContextAnalysisPart `json:"context_parts"`
-	ContextMessages   []ContextAnalysisPart `json:"context_messages"`
-	MessageCount      int                   `json:"message_count"`
+	AgentKind           string                `json:"agent_kind"`
+	Mode                string                `json:"mode"`
+	SystemPrompt        string                `json:"system_prompt"`
+	SystemPromptParts   []ContextAnalysisPart `json:"system_prompt_parts"`
+	ContextParts        []ContextAnalysisPart `json:"context_parts"`
+	ContextMessages     []ContextAnalysisPart `json:"context_messages"`
+	MessageCount        int                   `json:"message_count"`
+	TokenEstimate       int                   `json:"token_estimate"`
+	ContextWindowTokens int                   `json:"context_window_tokens"`
+	ContextUsageRatio   float64               `json:"context_usage_ratio"`
+	CompactionEpoch     int                   `json:"compaction_epoch,omitempty"`
+	CompactionActive    bool                  `json:"compaction_active,omitempty"`
+	WouldCompact        bool                  `json:"would_compact,omitempty"`
 }
 
 type ContextAnalysisPart struct {
@@ -57,16 +63,11 @@ func NewContextAnalysisPart(in ContextAnalysisPartInput) ContextAnalysisPart {
 	}
 }
 
-func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller, bookService *book.Service, effectiveMessages []*schema.Message, pending *session.Interruption, req ChatRequest) (ContextAnalysis, error) {
+func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller, bookService *book.Service, effectiveMessages []*schema.Message, totalMessages int, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest) (ContextAnalysis, error) {
 	systemPrompt, systemParts := buildIDESystemPromptAnalysis(cfg, state, teller)
 	policy := DefaultLoopPolicy().normalized()
 	composition := composeAgentInput(req, pending, bookService, policy)
-	messages := make([]*schema.Message, 0, len(effectiveMessages)+1)
-	for _, msg := range effectiveMessages {
-		if msg != nil {
-			messages = append(messages, msg)
-		}
-	}
+	messages := buildIDEAnalysisMessages(cfg, effectiveMessages, totalMessages, compaction)
 	messages = append(messages, schema.UserMessage(composition.AgentMessage))
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
 	for i, msg := range messages {
@@ -75,7 +76,10 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 		}
 		source := "会话历史"
 		title := fmt.Sprintf("历史消息 %d", i+1)
-		if i == len(messages)-1 {
+		if isContextCompactionMessage(msg) {
+			source = "上下文压缩"
+			title = "模型可见压缩摘要"
+		} else if i == len(messages)-1 {
 			source = "本轮上下文"
 			title = "本轮发送给 Agent 的用户消息"
 		}
@@ -87,14 +91,21 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 			Content: msg.Content,
 		}))
 	}
+	usage := analyzeContextUsage(cfg, config.AgentKindIDE, systemPrompt, messages)
 	return ContextAnalysis{
-		AgentKind:         config.AgentKindIDE,
-		Mode:              "ide",
-		SystemPrompt:      systemPrompt,
-		SystemPromptParts: systemParts,
-		ContextParts:      composition.ContextLog.FullParts(),
-		ContextMessages:   contextMessages,
-		MessageCount:      len(contextMessages),
+		AgentKind:           config.AgentKindIDE,
+		Mode:                "ide",
+		SystemPrompt:        systemPrompt,
+		SystemPromptParts:   systemParts,
+		ContextParts:        composition.ContextLog.FullParts(),
+		ContextMessages:     contextMessages,
+		MessageCount:        len(contextMessages),
+		TokenEstimate:       usage.tokens,
+		ContextWindowTokens: usage.window,
+		ContextUsageRatio:   usage.ratio,
+		CompactionEpoch:     usage.compactionEpoch(compaction),
+		CompactionActive:    compaction != nil && strings.TrimSpace(compaction.Summary) != "",
+		WouldCompact:        usage.wouldCompact,
 	}, nil
 }
 
@@ -107,6 +118,7 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		return ContextAnalysis{}, err
 	}
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
+	compactionEpoch := 0
 	for i, msg := range messages {
 		if msg == nil {
 			continue
@@ -114,6 +126,10 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		source := "最近互动回合"
 		title := fmt.Sprintf("最近回合消息 %d", i+1)
 		switch {
+		case isContextCompactionMessage(msg):
+			source = "上下文压缩"
+			title = "模型可见压缩摘要"
+			compactionEpoch = parseCompactionEpoch(msg.Content)
 		case i == len(messages)-1:
 			source = "本轮互动指令"
 			title = "本轮互动指令与动态上下文"
@@ -126,15 +142,90 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 			Content: msg.Content,
 		}))
 	}
+	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, systemPrompt, messages)
 	return ContextAnalysis{
-		AgentKind:         config.AgentKindInteractiveStory,
-		Mode:              "interactive",
-		SystemPrompt:      systemPrompt,
-		SystemPromptParts: systemParts,
-		ContextParts:      composition.ContextLog.FullParts(),
-		ContextMessages:   contextMessages,
-		MessageCount:      len(contextMessages),
+		AgentKind:           config.AgentKindInteractiveStory,
+		Mode:                "interactive",
+		SystemPrompt:        systemPrompt,
+		SystemPromptParts:   systemParts,
+		ContextParts:        composition.ContextLog.FullParts(),
+		ContextMessages:     contextMessages,
+		MessageCount:        len(contextMessages),
+		TokenEstimate:       usage.tokens,
+		ContextWindowTokens: usage.window,
+		ContextUsageRatio:   usage.ratio,
+		CompactionEpoch:     compactionEpoch,
+		CompactionActive:    compactionEpoch > 0,
+		WouldCompact:        usage.wouldCompact,
 	}, nil
+}
+
+func buildIDEAnalysisMessages(cfg *config.Config, effectiveMessages []*schema.Message, totalMessages int, compaction *session.ContextCompaction) []*schema.Message {
+	messages := make([]*schema.Message, 0, len(effectiveMessages)+1)
+	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
+		contextSettings := config.ResolveAgentContext(cfg, config.AgentKindIDE)
+		effectiveStart := totalMessages - len(effectiveMessages)
+		tailStart := compaction.SourceEndIndex - effectiveStart
+		if tailStart < 0 {
+			tailStart = 0
+		}
+		if tailStart > len(effectiveMessages) {
+			tailStart = len(effectiveMessages)
+		}
+		tail := limitMessagesByRecentTurns(effectiveMessages[tailStart:], contextSettings.CompactionRecentTurns)
+		messages = append(messages, NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
+		messages = append(messages, tail...)
+		return messages
+	}
+	for _, msg := range effectiveMessages {
+		if msg != nil {
+			messages = append(messages, msg)
+		}
+	}
+	return messages
+}
+
+type contextUsageAnalysis struct {
+	tokens       int
+	window       int
+	ratio        float64
+	wouldCompact bool
+}
+
+func (u contextUsageAnalysis) compactionEpoch(compaction *session.ContextCompaction) int {
+	if compaction == nil {
+		return 0
+	}
+	return compaction.Epoch
+}
+
+func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, messages []*schema.Message) contextUsageAnalysis {
+	modelSettings := config.ResolveAgentModel(cfg, agentKind)
+	contextSettings := config.ResolveAgentContext(cfg, agentKind)
+	estimatedMessages := make([]*schema.Message, 0, len(messages)+1)
+	if strings.TrimSpace(systemPrompt) != "" {
+		estimatedMessages = append(estimatedMessages, schema.SystemMessage(systemPrompt))
+	}
+	estimatedMessages = append(estimatedMessages, messages...)
+	tokens := EstimateContextTokens(estimatedMessages, nil)
+	usage := contextUsageAnalysis{tokens: tokens, window: modelSettings.ContextWindowTokens}
+	if usage.window > 0 {
+		usage.ratio = float64(tokens) / float64(usage.window)
+		usage.wouldCompact = contextSettings.CompactionEnabled && usage.ratio >= contextSettings.CompactionThreshold
+	}
+	return usage
+}
+
+func parseCompactionEpoch(content string) int {
+	content = strings.TrimSpace(content)
+	if !strings.HasPrefix(content, contextCompactionSummaryPrefix) {
+		return 0
+	}
+	var epoch int
+	if _, err := fmt.Sscanf(content, contextCompactionSummaryPrefix+" epoch=%d", &epoch); err != nil {
+		return 0
+	}
+	return epoch
 }
 
 func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller) (string, []ContextAnalysisPart) {

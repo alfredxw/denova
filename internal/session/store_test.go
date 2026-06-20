@@ -130,6 +130,66 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	}
 }
 
+func TestContextCompactionPersistsOutsideVisibleHistory(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.UserMessage("第一轮")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.AssistantMessage("第一答", nil)); err != nil {
+		t.Fatal(err)
+	}
+	record, err := sess.AppendContextCompaction(ContextCompaction{
+		AgentKind:           "ide",
+		Summary:             "保留目标和决定",
+		SourceStartIndex:    0,
+		SourceEndIndex:      2,
+		RetainedTurns:       8,
+		TokensBefore:        900,
+		TokensAfter:         120,
+		ContextWindowTokens: 1000,
+		Threshold:           0.9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Epoch != 1 {
+		t.Fatalf("compaction epoch = %d, want 1", record.Epoch)
+	}
+	if len(sess.GetEffectiveMessages()) != 2 {
+		t.Fatalf("compaction must not alter effective raw messages: %#v", sess.GetEffectiveMessages())
+	}
+	if history := sess.History(); len(history) != 2 {
+		t.Fatalf("compaction must not appear in user-visible history: %#v", history)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest, ok := reloaded.LatestContextCompaction("ide")
+	if !ok {
+		t.Fatal("expected reloaded compaction record")
+	}
+	if latest.Summary != "保留目标和决定" || latest.SourceEndIndex != 2 {
+		t.Fatalf("unexpected reloaded compaction: %#v", latest)
+	}
+	if history := reloaded.History(); len(history) != 2 {
+		t.Fatalf("reloaded visible history should stay raw: %#v", history)
+	}
+}
+
 func TestMultipleSessionsAreIsolatedAndActiveSessionPersists(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {

@@ -17,12 +17,13 @@ import (
 )
 
 const (
-	defaultSessionID     = "default"
-	defaultSessionTitle  = "新会话"
-	historyTypeMessage   = "message"
-	historyTypeDisplay   = "display"
-	historyTypeClear     = "clear"
-	historyTypeInterrupt = "interrupt"
+	defaultSessionID      = "default"
+	defaultSessionTitle   = "新会话"
+	historyTypeMessage    = "message"
+	historyTypeDisplay    = "display"
+	historyTypeClear      = "clear"
+	historyTypeInterrupt  = "interrupt"
+	historyTypeCompaction = "context_compaction"
 
 	InterruptionPending  = "pending"
 	InterruptionResolved = "resolved"
@@ -47,6 +48,7 @@ type historyRecord struct {
 	message      *schema.Message
 	display      *DisplayEvent
 	interruption *Interruption
+	compaction   *ContextCompaction
 	createdAt    time.Time
 }
 
@@ -71,6 +73,27 @@ type Interruption struct {
 	Reason           string     `json:"reason,omitempty"`
 	CreatedAt        time.Time  `json:"created_at"`
 	ResolvedAt       *time.Time `json:"resolved_at,omitempty"`
+}
+
+// ContextCompaction records a model-visible summary epoch without modifying the
+// raw user-facing transcript.
+type ContextCompaction struct {
+	Type                string    `json:"type"`
+	ID                  string    `json:"id"`
+	AgentKind           string    `json:"agent_kind,omitempty"`
+	Epoch               int       `json:"epoch"`
+	Summary             string    `json:"summary"`
+	SourceStartIndex    int       `json:"source_start_index"`
+	SourceEndIndex      int       `json:"source_end_index"`
+	SourceMessageCount  int       `json:"source_message_count"`
+	RetainedTurns       int       `json:"retained_turns"`
+	TokensBefore        int       `json:"tokens_before"`
+	TokensAfter         int       `json:"tokens_after"`
+	ContextWindowTokens int       `json:"context_window_tokens"`
+	Threshold           float64   `json:"threshold"`
+	Reason              string    `json:"reason,omitempty"`
+	Phase               string    `json:"phase,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
 }
 
 // Session 保存单个会话的内存状态。
@@ -206,6 +229,40 @@ func (s *Session) AppendClearMarker() error {
 	return s.persistLocked()
 }
 
+// AppendContextCompaction persists a compaction epoch. It intentionally does
+// not append to messages, so user-visible history stays uncompressed.
+func (s *Session) AppendContextCompaction(record ContextCompaction) (ContextCompaction, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now().UTC()
+	record.Type = historyTypeCompaction
+	if strings.TrimSpace(record.ID) == "" {
+		record.ID = newContextCompactionID()
+	}
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = now
+	}
+	if record.Epoch <= 0 {
+		record.Epoch = s.nextCompactionEpochLocked(record.AgentKind)
+	}
+	if record.SourceEndIndex <= 0 || record.SourceEndIndex > len(s.messages) {
+		record.SourceEndIndex = len(s.messages)
+	}
+	if record.SourceStartIndex < s.clearAfterIndex {
+		record.SourceStartIndex = s.clearAfterIndex
+	}
+	if record.SourceStartIndex > record.SourceEndIndex {
+		record.SourceStartIndex = record.SourceEndIndex
+	}
+	if record.SourceMessageCount <= 0 {
+		record.SourceMessageCount = record.SourceEndIndex - record.SourceStartIndex
+	}
+	s.records = append(s.records, historyRecord{kind: historyTypeCompaction, compaction: &record, createdAt: record.CreatedAt})
+	s.UpdatedAt = record.CreatedAt
+	return record, s.persistLocked()
+}
+
 // MarkInterrupted 记录一次异常中断，供用户后续明确要求继续时恢复。
 func (s *Session) MarkInterrupted(userMessage, assistantContent, reason string) error {
 	s.mu.Lock()
@@ -281,6 +338,44 @@ func (s *Session) GetEffectiveMessages() []*schema.Message {
 	result := make([]*schema.Message, len(s.messages)-s.clearAfterIndex)
 	copy(result, s.messages[s.clearAfterIndex:])
 	return result
+}
+
+// LatestContextCompaction returns the newest compaction epoch after the latest
+// clear marker for the given agent kind.
+func (s *Session) LatestContextCompaction(agentKind string) (ContextCompaction, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for i := len(s.records) - 1; i >= 0; i-- {
+		record := s.records[i]
+		if record.kind != historyTypeCompaction || record.compaction == nil {
+			continue
+		}
+		compaction := *record.compaction
+		if compaction.SourceEndIndex <= s.clearAfterIndex {
+			continue
+		}
+		if strings.TrimSpace(agentKind) != "" && strings.TrimSpace(compaction.AgentKind) != "" && compaction.AgentKind != agentKind {
+			continue
+		}
+		return compaction, true
+	}
+	return ContextCompaction{}, false
+}
+
+// MessageCountSinceClear returns the number of effective raw transcript
+// messages after the latest clear marker.
+func (s *Session) MessageCountSinceClear() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.messages) - s.clearAfterIndex
+}
+
+// MessageCountTotal returns the raw persisted message count.
+func (s *Session) MessageCountTotal() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.messages)
 }
 
 // History 返回包含 clear 标记的完整会话历史。
@@ -391,6 +486,13 @@ func (s *Session) persistLocked() error {
 				continue
 			}
 			if err := writeJSONLine(&sb, interruptionRecord{Type: historyTypeInterrupt, Interruption: *record.interruption}); err != nil {
+				return err
+			}
+		case historyTypeCompaction:
+			if record.compaction == nil {
+				continue
+			}
+			if err := writeJSONLine(&sb, *record.compaction); err != nil {
 				return err
 			}
 		case historyTypeDisplay:
@@ -871,6 +973,26 @@ func appendRecordLine(sess *Session, line string) error {
 		}
 		return nil
 	}
+	if typed.Type == historyTypeCompaction {
+		var record ContextCompaction
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			return err
+		}
+		if strings.TrimSpace(record.ID) == "" {
+			record.ID = newContextCompactionID()
+		}
+		if record.CreatedAt.IsZero() {
+			record.CreatedAt = sess.UpdatedAt
+		}
+		if record.Type == "" {
+			record.Type = historyTypeCompaction
+		}
+		sess.records = append(sess.records, historyRecord{kind: historyTypeCompaction, compaction: &record, createdAt: record.CreatedAt})
+		if record.CreatedAt.After(sess.UpdatedAt) {
+			sess.UpdatedAt = record.CreatedAt
+		}
+		return nil
+	}
 	if typed.Type == historyTypeDisplay {
 		var marker displayRecord
 		if err := json.Unmarshal([]byte(line), &marker); err != nil {
@@ -900,6 +1022,22 @@ func appendMessageLine(sess *Session, line string) error {
 	sess.messages = append(sess.messages, &msg)
 	sess.records = append(sess.records, historyRecord{kind: historyTypeMessage, message: &msg})
 	return nil
+}
+
+func (s *Session) nextCompactionEpochLocked(agentKind string) int {
+	epoch := 0
+	for _, record := range s.records {
+		if record.kind != historyTypeCompaction || record.compaction == nil {
+			continue
+		}
+		if strings.TrimSpace(agentKind) != "" && strings.TrimSpace(record.compaction.AgentKind) != "" && record.compaction.AgentKind != agentKind {
+			continue
+		}
+		if record.compaction.Epoch > epoch {
+			epoch = record.compaction.Epoch
+		}
+	}
+	return epoch + 1
 }
 
 func writeJSONLine(sb *strings.Builder, v interface{}) error {
@@ -935,6 +1073,10 @@ func newSessionID() string {
 
 func newInterruptionID() string {
 	return strings.TrimPrefix(newSessionID(), "s-")
+}
+
+func newContextCompactionID() string {
+	return "cc-" + strings.TrimPrefix(newSessionID(), "s-")
 }
 
 func deriveTitle(content string) string {

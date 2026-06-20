@@ -15,6 +15,8 @@ const common = {
   'common.loading': 'Loading...',
   'common.model': 'Model',
   'common.notSet': 'Not set',
+  'common.yes': 'Yes',
+  'common.no': 'No',
   'common.save': 'Save',
   'common.saved': 'Saved',
   'common.refresh': 'Refresh',

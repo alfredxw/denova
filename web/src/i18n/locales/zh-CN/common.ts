@@ -15,6 +15,8 @@ const common = {
   'common.loading': '加载中...',
   'common.model': '模型',
   'common.notSet': '未设置',
+  'common.yes': '是',
+  'common.no': '否',
   'common.save': '保存',
   'common.saved': '已保存',
   'common.refresh': '刷新',

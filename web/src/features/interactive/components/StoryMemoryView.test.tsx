@@ -64,6 +64,7 @@ describe('StoryMemoryView', () => {
       generation_instruction: input.generation_instruction,
       mode: input.mode || 'append',
       key_field_id: input.key_field_id,
+      enabled: input.enabled,
       fields: input.fields || [],
       order: input.order || 10,
     }))
@@ -72,14 +73,17 @@ describe('StoryMemoryView', () => {
 
     await waitFor(() => expect(getStoryMemoryMock).toHaveBeenCalledWith('story-1', 'main', false))
     await userEvent.click(screen.getByRole('button', { name: '编辑结构' }))
+    await userEvent.click(screen.getByLabelText('启用此结构'))
+    await userEvent.click(screen.getAllByLabelText('启用此字段')[0])
     await userEvent.type(screen.getByPlaceholderText('生成要求，例如：只记录剧情已证实的信息；每条记录需要包含动机、变化原因和后续影响'), '只记录已确认事实')
     await userEvent.type(screen.getAllByPlaceholderText('字段生成要求，例如：不少于 300 字 / 不多于 300 字 / 必须包含触发事件和当前状态')[0], '不少于 300 字')
     await userEvent.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
       expect(saveStoryMemoryStructureMock).toHaveBeenCalledWith('story-1', expect.objectContaining({
+        enabled: false,
         generation_instruction: '只记录已确认事实',
-        fields: expect.arrayContaining([expect.objectContaining({ id: 'goal', generation_instruction: '不少于 300 字' })]),
+        fields: expect.arrayContaining([expect.objectContaining({ id: 'goal', enabled: false, generation_instruction: '不少于 300 字' })]),
       }))
     })
   })

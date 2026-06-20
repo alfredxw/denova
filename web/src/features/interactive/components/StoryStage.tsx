@@ -389,6 +389,17 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
             setStageActivityContent('')
             break
           }
+          case 'context_compaction': {
+            const data = JSON.parse(value.data)
+            if (data.status === 'started') {
+              setStageActivityContent(t('storyStage.activity.compacting'))
+            } else if (data.status === 'completed') {
+              setStageActivityContent(t('storyStage.activity.compacted'))
+            } else if (data.status === 'failed') {
+              setStageActivityContent('')
+            }
+            break
+          }
           case 'error': {
             const data = JSON.parse(value.data)
             setStageActivityContent('')

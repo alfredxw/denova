@@ -72,6 +72,12 @@ export interface ContextAnalysis {
   context_parts: ContextAnalysisPart[]
   context_messages: ContextAnalysisPart[]
   message_count: number
+  token_estimate?: number
+  context_window_tokens?: number
+  context_usage_ratio?: number
+  compaction_epoch?: number
+  compaction_active?: boolean
+  would_compact?: boolean
 }
 
 export interface SSEEvent {

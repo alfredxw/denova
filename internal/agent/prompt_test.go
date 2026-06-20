@@ -33,7 +33,7 @@ func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 	if !strings.Contains(instruction, "导演系统规则") || !strings.Contains(instruction, "经典叙事者") {
 		t.Fatalf("interactive story instruction should include teller system rules:\n%s", instruction)
 	}
-	for _, required := range []string{"每轮目标字数为最高约束", "最高篇幅约束", "777 个中文字以内"} {
+	for _, required := range []string{"每轮目标字数为最高约束", "最高篇幅约束", "777 个中文字左右"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should contain reply target priority %q:\n%s", required, instruction)
 		}
@@ -58,7 +58,7 @@ func TestBuildInteractiveStoryInstructionKeepsReplyTargetAboveCustomLengthPrompt
 		StoryTellerSystemPrompt: "每轮至少写 5000 字。",
 	})
 
-	for _, required := range []string{"每轮目标字数为最高约束", "都不得要求超过该目标", "650 个中文字以内"} {
+	for _, required := range []string{"每轮目标字数为最高约束", "都不得要求超过该目标", "650 个中文字左右"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should protect story reply target %q:\n%s", required, instruction)
 		}
@@ -149,6 +149,8 @@ func TestBuiltinInteractiveMemoryPromptUsesStoryMemoryPatchContract(t *testing.T
 		"资料库相关人物与设定",
 		"本回合前的既有故事记忆",
 		"按该表的字段列表逐字段填写",
+		"不能只填 required 字段或本回合变化字段",
+		"不得省略字段、写空字符串或 null",
 	} {
 		if !strings.Contains(got, required) {
 			t.Fatalf("builtin interactive memory prompt missing %q:\n%s", required, got)

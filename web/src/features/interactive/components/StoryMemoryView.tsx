@@ -18,7 +18,8 @@ const emptyStructure: StoryMemoryStructure = {
   generation_instruction: '',
   mode: 'append',
   key_field_id: '',
-  fields: [{ id: 'event', name: '事件', description: '', generation_instruction: '', required: true, order: 10 }],
+  enabled: true,
+  fields: [{ id: 'event', name: '事件', description: '', generation_instruction: '', enabled: true, required: true, order: 10 }],
   order: 100,
 }
 
@@ -264,7 +265,10 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
           <div className="space-y-1">
             {structures.map((structure) => (
               <button key={structure.id} type="button" onClick={() => { setSelectedStructureId(structure.id); setRecordDraft(null); setStructureDraft(null) }} className={`w-full rounded-[var(--nova-radius)] px-2 py-2 text-left text-xs ${selectedStructure?.id === structure.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)]'}`}>
-                <span className="block truncate font-medium">{structure.name}</span>
+                <span className="flex min-w-0 items-center gap-1">
+                  <span className="min-w-0 truncate font-medium">{structure.name}</span>
+                  {!storyMemoryEnabled(structure.enabled) && <span className="shrink-0 rounded-full border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] opacity-75">{t('storyMemory.disabled')}</span>}
+                </span>
                 <span className="block truncate text-[11px] opacity-75">{t(`storyMemory.mode.${structure.mode}`)}</span>
               </button>
             ))}
@@ -277,7 +281,10 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <h3 className="truncate text-sm font-semibold">{selectedStructure?.name || t('storyMemory.noStructure')}</h3>
-                  <p className="truncate text-xs text-[var(--nova-text-muted)]">{selectedStructure?.description || t('storyMemory.recordCount', { count: records.length })}</p>
+                  <p className="truncate text-xs text-[var(--nova-text-muted)]">
+                    {selectedStructure && !storyMemoryEnabled(selectedStructure.enabled) ? `${t('storyMemory.disabled')} · ` : ''}
+                    {selectedStructure?.description || t('storyMemory.recordCount', { count: records.length })}
+                  </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   {selectedStructure && (
@@ -316,6 +323,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                           <th key={field.id} className="min-w-0 px-3 py-2 font-medium">
                             <div className="flex min-w-0 items-center gap-1">
                               <span className="truncate">{field.name || field.id}</span>
+                              {!storyMemoryEnabled(field.enabled) && <span className="shrink-0 rounded-full border border-[var(--nova-border)] px-1 py-0.5 text-[10px] font-normal">{t('storyMemory.disabled')}</span>}
                               {field.required && <span className="shrink-0 text-[var(--nova-danger)]">*</span>}
                             </div>
                             {field.description && <div className="mt-0.5 line-clamp-1 break-words text-[10px] font-normal text-[var(--nova-text-faint)] [overflow-wrap:anywhere]">{field.description}</div>}
@@ -377,6 +385,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                                       <section key={field.id} className="min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
                                         <div className="mb-1 flex min-w-0 items-center gap-1 text-[11px] font-medium text-[var(--nova-text-muted)]">
                                           <span className="truncate">{field.name || field.id}</span>
+                                          {!storyMemoryEnabled(field.enabled) && <span className="shrink-0 rounded-full border border-[var(--nova-border)] px-1 py-0.5 text-[10px] font-normal">{t('storyMemory.disabled')}</span>}
                                           {field.required && <span className="shrink-0 text-[var(--nova-danger)]">*</span>}
                                         </div>
                                         {field.description && <p className="mb-2 whitespace-pre-wrap break-words text-[11px] leading-4 text-[var(--nova-text-faint)] [overflow-wrap:anywhere]">{field.description}</p>}
@@ -437,6 +446,10 @@ function StructureEditor({ draft, saving, onDraftChange, onSave, onCancel, onDel
   return (
     <div className="space-y-2">
       <input value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} placeholder={t('storyMemory.structureName')} className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none" />
+      <label className="flex items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs text-[var(--nova-text-muted)]">
+        <input type="checkbox" checked={storyMemoryEnabled(draft.enabled)} onChange={(event) => onDraftChange({ ...draft, enabled: event.target.checked })} />
+        {t('storyMemory.enabled')}
+      </label>
       <textarea value={draft.description || ''} onChange={(event) => onDraftChange({ ...draft, description: event.target.value })} placeholder={t('storyMemory.structureDescription')} rows={3} className="w-full resize-none rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none" />
       <textarea value={draft.generation_instruction || ''} onChange={(event) => onDraftChange({ ...draft, generation_instruction: event.target.value })} placeholder={t('storyMemory.generationInstruction')} rows={3} className="w-full resize-y rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none" />
       <select value={draft.mode} onChange={(event) => onDraftChange({ ...draft, mode: event.target.value as StoryMemoryStructure['mode'] })} className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none">
@@ -448,6 +461,10 @@ function StructureEditor({ draft, saving, onDraftChange, onSave, onCancel, onDel
       <div className="space-y-2">
         {draft.fields.map((field, index) => (
           <div key={`${field.id}-${index}`} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] p-2">
+            <label className="mb-2 flex items-center gap-2 text-xs text-[var(--nova-text-muted)]">
+              <input type="checkbox" checked={storyMemoryEnabled(field.enabled)} onChange={(event) => updateField(index, { enabled: event.target.checked })} />
+              {t('storyMemory.fieldEnabled')}
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <input value={field.id} onChange={(event) => updateField(index, { id: event.target.value })} placeholder={t('storyMemory.fieldId')} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs outline-none" />
               <input value={field.name} onChange={(event) => updateField(index, { name: event.target.value })} placeholder={t('storyMemory.fieldName')} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs outline-none" />
@@ -457,7 +474,7 @@ function StructureEditor({ draft, saving, onDraftChange, onSave, onCancel, onDel
           </div>
         ))}
       </div>
-      <button type="button" className="w-full rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={() => onDraftChange({ ...draft, fields: [...draft.fields, { id: '', name: '', description: '', generation_instruction: '', order: (draft.fields.length + 1) * 10 }] })}>{t('storyMemory.addField')}</button>
+      <button type="button" className="w-full rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={() => onDraftChange({ ...draft, fields: [...draft.fields, { id: '', name: '', description: '', generation_instruction: '', enabled: true, order: (draft.fields.length + 1) * 10 }] })}>{t('storyMemory.addField')}</button>
       <EditorActions saving={saving} onSave={onSave} onCancel={onCancel} onDelete={onDelete} />
     </div>
   )
@@ -496,6 +513,10 @@ function recordFieldValue(record: StoryMemoryRecord, field: StoryMemoryField) {
   if (value) return value
   if (field.id === 'value') return Object.values(record.values || {}).filter(Boolean).join('\n')
   return ''
+}
+
+function storyMemoryEnabled(value?: boolean) {
+  return value !== false
 }
 
 function storyMemoryColumnWidths(fieldCount: number) {

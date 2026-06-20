@@ -48,6 +48,8 @@ const storyStage = {
   'storyStage.primaryArea': '主创作区',
   'storyStage.activity.connecting': '正在连接 AI Agent…',
   'storyStage.activity.thinking': '正在思考…',
+  'storyStage.activity.compacting': '正在压缩上下文…',
+  'storyStage.activity.compacted': '上下文压缩完成，继续生成…',
   'storyStage.activity.processingTool': '正在处理 {{name}}…',
   'storyStage.activity.toolCall': '工具调用',
   'storyStage.activity.unknownError': '未知错误',

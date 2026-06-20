@@ -307,6 +307,30 @@ func TestInteractiveTurnMemoryCompressesOlderTurns(t *testing.T) {
 	}
 }
 
+func TestInteractiveTurnMemoryUsesCompactionSummaryAndRetainedTail(t *testing.T) {
+	turns := []interactive.TurnEvent{
+		{User: "第1次行动", Narrative: "第1段剧情"},
+		{User: "第2次行动", Narrative: "第2段剧情"},
+		{User: "第3次行动", Narrative: "第3段剧情"},
+		{User: "第4次行动", Narrative: "第4段剧情"},
+		{User: "第5次行动", Narrative: "第5段剧情"},
+	}
+	compaction := &interactive.ContextCompactionEvent{
+		Summary:         "压缩摘要：主角已进入旧城。",
+		SourceTurnCount: 3,
+	}
+	memory := buildInteractiveTurnMemoryWithCompaction(turns, compaction, 1)
+	if memory.PreviousSummary != compaction.Summary {
+		t.Fatalf("previous summary = %q, want compaction summary", memory.PreviousSummary)
+	}
+	if len(memory.RecentTurns) != 1 || memory.RecentTurns[0].User != "第5次行动" {
+		t.Fatalf("recent tail should keep only retained turns after compaction: %#v", memory.RecentTurns)
+	}
+	if memory.PreviousCount != 3 || memory.OmittedCount != 3 {
+		t.Fatalf("unexpected compaction counts: %#v", memory)
+	}
+}
+
 func TestParseInteractiveAssistantOutput(t *testing.T) {
 	narrative, ops, hotState, err := parseInteractiveAssistantOutput(`<NARRATIVE>
 门后传来低沉的风声。

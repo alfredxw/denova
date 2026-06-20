@@ -12,15 +12,16 @@ import (
 // 指针类型用于区分 "未设置"（继承上层）与 "显式置零"。
 type Settings struct {
 	// 模型
-	OpenAIAPIKey  string                 `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
-	OpenAIBaseURL string                 `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
-	OpenAIModel   string                 `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
-	ModelProfiles []ModelProfileSettings `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
-	AgentModels   AgentModelSettings     `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
-	AgentTools    AgentToolSettings      `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
-	AgentPrompts  AgentPromptSettings    `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
-	AgentSkills   AgentSkillSettings     `toml:"agent_skills,omitempty" json:"agent_skills,omitempty"`
-	AgentContexts AgentContextSettings   `toml:"agent_context,omitempty" json:"agent_context,omitempty"`
+	OpenAIAPIKey              string                 `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
+	OpenAIBaseURL             string                 `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
+	OpenAIModel               string                 `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
+	OpenAIContextWindowTokens *int                   `toml:"openai_context_window_tokens,omitempty" json:"openai_context_window_tokens,omitempty"`
+	ModelProfiles             []ModelProfileSettings `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
+	AgentModels               AgentModelSettings     `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
+	AgentTools                AgentToolSettings      `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
+	AgentPrompts              AgentPromptSettings    `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
+	AgentSkills               AgentSkillSettings     `toml:"agent_skills,omitempty" json:"agent_skills,omitempty"`
+	AgentContexts             AgentContextSettings   `toml:"agent_context,omitempty" json:"agent_context,omitempty"`
 
 	// 路径
 	SkillsDir    string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -74,6 +75,7 @@ func DefaultSettings() Settings {
 	return Settings{
 		OpenAIBaseURL:               "https://api.deepseek.com",
 		OpenAIModel:                 "deepseek-v4-pro",
+		OpenAIContextWindowTokens:   intPtr(DefaultContextWindowTokens),
 		SkillsDir:                   "./skills",
 		NovaDir:                     "./.nova",
 		BackendPort:                 intPtr(8080),
@@ -128,6 +130,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.OpenAIModel != "" {
 		out.OpenAIModel = child.OpenAIModel
+	}
+	if child.OpenAIContextWindowTokens != nil {
+		out.OpenAIContextWindowTokens = child.OpenAIContextWindowTokens
 	}
 	out.ModelProfiles = mergeModelProfiles(out.ModelProfiles, child.ModelProfiles)
 	out.AgentModels = MergeAgentModelSettings(out.AgentModels, child.AgentModels)
@@ -361,9 +366,24 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
+	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)
+	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
 	s.AgentContexts = sanitizeAgentContextSettings(s.AgentContexts)
 	return s
+}
+
+func normalizeContextWindowTokens(tokens *int) *int {
+	if tokens == nil {
+		return nil
+	}
+	if *tokens <= 0 {
+		return nil
+	}
+	if *tokens > MaxContextWindowTokens {
+		*tokens = MaxContextWindowTokens
+	}
+	return tokens
 }
 
 func normalizePort(port *int) *int {

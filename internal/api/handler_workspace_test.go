@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestWorkspaceDeleteCreatesRestorableVersion(t *testing.T) {
@@ -49,5 +50,46 @@ func TestWorkspaceDeleteCreatesRestorableVersion(t *testing.T) {
 	}
 	if string(data) != "正文" {
 		t.Fatalf("恢复内容不符合预期: %q", string(data))
+	}
+}
+
+func TestWorkspaceFileWriteRejectsStaleRevision(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	if err := application.BookService().Create("chapters/ch01.md", "file", "前端旧内容"); err != nil {
+		t.Fatalf("创建测试文件失败: %v", err)
+	}
+
+	readResp := performJSONRequest(t, server, http.MethodGet, "/api/workspace/file?path=chapters%2Fch01.md", nil)
+	if readResp.Code != http.StatusOK {
+		t.Fatalf("read status = %d body=%s", readResp.Code, readResp.Body.String())
+	}
+	var readBody struct {
+		Revision string `json:"revision"`
+	}
+	decodeResponse(t, readResp.Body.Bytes(), &readBody)
+	if readBody.Revision == "" {
+		t.Fatalf("读取文件应返回 revision")
+	}
+
+	time.Sleep(2 * time.Millisecond)
+	if err := application.BookService().WriteFile("chapters/ch01.md", "Agent 已更新的新内容"); err != nil {
+		t.Fatalf("Agent 写入失败: %v", err)
+	}
+
+	writeResp := performJSONRequest(t, server, http.MethodPost, "/api/workspace/file", map[string]string{
+		"path":          "chapters/ch01.md",
+		"content":       "前端旧内容",
+		"base_revision": readBody.Revision,
+	})
+	if writeResp.Code != http.StatusConflict {
+		t.Fatalf("write status = %d body=%s", writeResp.Code, writeResp.Body.String())
+	}
+	got, err := application.BookService().ReadFile("chapters/ch01.md")
+	if err != nil {
+		t.Fatalf("读取文件失败: %v", err)
+	}
+	if got != "Agent 已更新的新内容" {
+		t.Fatalf("冲突后应保留 Agent 内容，实际: %q", got)
 	}
 }

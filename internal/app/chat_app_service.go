@@ -318,7 +318,11 @@ func (s *ChatAppService) AnalyzeContext(req agent.ChatRequest) (agent.ContextAna
 	if shouldResume := strings.TrimSpace(req.Message); shouldResume != "" {
 		pending = runtime.sess.PendingInterruption()
 	}
-	return agent.BuildIDEContextAnalysis(&runtime.cfg, runtime.state, ideStoryTellerForConfig(&runtime.cfg), runtime.bookService, runtime.sess.GetEffectiveMessages(), pending, req)
+	var compaction *session.ContextCompaction
+	if record, ok := runtime.sess.LatestContextCompaction(config.AgentKindIDE); ok {
+		compaction = &record
+	}
+	return agent.BuildIDEContextAnalysis(&runtime.cfg, runtime.state, ideStoryTellerForConfig(&runtime.cfg), runtime.bookService, runtime.sess.GetEffectiveMessages(), runtime.sess.MessageCountTotal(), compaction, pending, req)
 }
 
 func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunning bool) (ideChatRuntime, agent.ChatRequest, error) {

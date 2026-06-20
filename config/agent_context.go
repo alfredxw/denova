@@ -14,16 +14,27 @@ type AgentContextSettings struct {
 }
 
 type AgentContextOverride struct {
-	RecentTurns *int `toml:"recent_turns,omitempty" json:"recent_turns,omitempty"`
+	RecentTurns           *int     `toml:"recent_turns,omitempty" json:"recent_turns,omitempty"`
+	CompactionEnabled     *bool    `toml:"compaction_enabled,omitempty" json:"compaction_enabled,omitempty"`
+	CompactionThreshold   *float64 `toml:"compaction_threshold,omitempty" json:"compaction_threshold,omitempty"`
+	CompactionRecentTurns *int     `toml:"compaction_recent_turns,omitempty" json:"compaction_recent_turns,omitempty"`
 }
 
 type ResolvedAgentContextSettings struct {
-	RecentTurns int `json:"recent_turns"`
+	RecentTurns           int     `json:"recent_turns"`
+	CompactionEnabled     bool    `json:"compaction_enabled"`
+	CompactionThreshold   float64 `json:"compaction_threshold"`
+	CompactionRecentTurns int     `json:"compaction_recent_turns"`
 }
 
 func DefaultAgentContextSettings() AgentContextSettings {
 	return AgentContextSettings{
-		Default: AgentContextOverride{RecentTurns: intPtr(30)},
+		Default: AgentContextOverride{
+			RecentTurns:           intPtr(30),
+			CompactionEnabled:     boolPtr(true),
+			CompactionThreshold:   floatPtr(0.90),
+			CompactionRecentTurns: intPtr(8),
+		},
 	}
 }
 
@@ -54,13 +65,48 @@ func ResolveAgentContext(cfg *Config, agentKind string) ResolvedAgentContextSett
 	if recentTurns > 30 {
 		recentTurns = 30
 	}
-	return ResolvedAgentContextSettings{RecentTurns: recentTurns}
+	compactionEnabled := true
+	if override.CompactionEnabled != nil {
+		compactionEnabled = *override.CompactionEnabled
+	}
+	compactionThreshold := 0.90
+	if override.CompactionThreshold != nil {
+		compactionThreshold = *override.CompactionThreshold
+	}
+	if compactionThreshold < 0.50 {
+		compactionThreshold = 0.50
+	}
+	if compactionThreshold > 0.98 {
+		compactionThreshold = 0.98
+	}
+	compactionRecentTurns := 8
+	if override.CompactionRecentTurns != nil && *override.CompactionRecentTurns > 0 {
+		compactionRecentTurns = *override.CompactionRecentTurns
+	}
+	if compactionRecentTurns > 30 {
+		compactionRecentTurns = 30
+	}
+	return ResolvedAgentContextSettings{
+		RecentTurns:           recentTurns,
+		CompactionEnabled:     compactionEnabled,
+		CompactionThreshold:   compactionThreshold,
+		CompactionRecentTurns: compactionRecentTurns,
+	}
 }
 
 func mergeAgentContextOverride(parent, child AgentContextOverride) AgentContextOverride {
 	out := parent
 	if child.RecentTurns != nil {
 		out.RecentTurns = child.RecentTurns
+	}
+	if child.CompactionEnabled != nil {
+		out.CompactionEnabled = child.CompactionEnabled
+	}
+	if child.CompactionThreshold != nil {
+		out.CompactionThreshold = child.CompactionThreshold
+	}
+	if child.CompactionRecentTurns != nil {
+		out.CompactionRecentTurns = child.CompactionRecentTurns
 	}
 	return out
 }
@@ -86,15 +132,27 @@ func sanitizeAgentContextSettings(settings AgentContextSettings) AgentContextSet
 }
 
 func sanitizeAgentContextOverride(override AgentContextOverride) AgentContextOverride {
-	if override.RecentTurns == nil {
-		return override
+	if override.RecentTurns != nil {
+		if *override.RecentTurns <= 0 {
+			override.RecentTurns = nil
+		} else if *override.RecentTurns > 30 {
+			*override.RecentTurns = 30
+		}
 	}
-	if *override.RecentTurns <= 0 {
-		override.RecentTurns = nil
-		return override
+	if override.CompactionThreshold != nil {
+		if *override.CompactionThreshold < 0.50 {
+			*override.CompactionThreshold = 0.50
+		}
+		if *override.CompactionThreshold > 0.98 {
+			*override.CompactionThreshold = 0.98
+		}
 	}
-	if *override.RecentTurns > 30 {
-		*override.RecentTurns = 30
+	if override.CompactionRecentTurns != nil {
+		if *override.CompactionRecentTurns <= 0 {
+			override.CompactionRecentTurns = nil
+		} else if *override.CompactionRecentTurns > 30 {
+			*override.CompactionRecentTurns = 30
+		}
 	}
 	return override
 }

@@ -2,11 +2,15 @@ package book
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+// ErrFileRevisionConflict 表示保存时文件已被其他来源更新，调用方应重新读取后再写入。
+var ErrFileRevisionConflict = errors.New("文件已被其他来源更新，请重新加载后再保存")
 
 // FileNode 表示文件树节点。
 type FileNode struct {
@@ -69,6 +73,22 @@ func (s *Service) ReadFile(relPath string) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// FileRevision 返回文件当前轻量版本，用于阻止旧编辑器内容覆盖较新的外部写入。
+func (s *Service) FileRevision(relPath string) (string, error) {
+	absPath, err := SafePath(s.workspace, relPath)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return "", errors.New("路径是目录而非文件")
+	}
+	return fileRevision(info), nil
 }
 
 // StyleFiles 返回用户级 styles/ 下所有可用的风格参考文件。
@@ -161,14 +181,43 @@ func safeStyleReferencePath(root, stylePath string) (string, error) {
 
 // WriteFile 写入 workspace 内文件内容，必要时创建父目录。
 func (s *Service) WriteFile(relPath, content string) error {
+	_, err := s.WriteFileIfRevision(relPath, content, "")
+	return err
+}
+
+// WriteFileIfRevision 写入文件；expectedRevision 非空时，只有文件仍处于该版本才允许写入。
+func (s *Service) WriteFileIfRevision(relPath, content, expectedRevision string) (string, error) {
 	absPath, err := SafePath(s.workspace, relPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-		return err
+		return "", err
 	}
-	return os.WriteFile(absPath, []byte(content), 0o644)
+	if expectedRevision != "" {
+		info, err := os.Stat(absPath)
+		if err != nil {
+			return "", err
+		}
+		if info.IsDir() {
+			return "", errors.New("路径是目录而非文件")
+		}
+		if fileRevision(info) != expectedRevision {
+			return "", ErrFileRevisionConflict
+		}
+	}
+	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
+		return "", err
+	}
+	info, err := os.Stat(absPath)
+	if err != nil {
+		return "", err
+	}
+	return fileRevision(info), nil
+}
+
+func fileRevision(info os.FileInfo) string {
+	return fmt.Sprintf("%d:%d", info.ModTime().UnixNano(), info.Size())
 }
 
 // Create 新建 workspace 内文件或目录。

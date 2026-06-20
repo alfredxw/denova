@@ -257,6 +257,18 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             }
             break
           }
+          case 'context_compaction': {
+            finishCurrentSegment()
+            const status = readString(data.status)
+            if (status === 'started') {
+              setActivityContent(t('chat.activity.compacting'))
+            } else if (status === 'completed') {
+              setActivityContent(t('chat.activity.compacted'))
+            } else if (status === 'failed') {
+              setActivityContent('')
+            }
+            break
+          }
           case 'done': {
             setActivityContent(t('chat.activity.done'))
             break

@@ -13,6 +13,7 @@ type Config struct {
 	OpenAIAPIKey                string                 `toml:"openai_api_key"`
 	OpenAIBaseURL               string                 `toml:"openai_base_url"`
 	OpenAIModel                 string                 `toml:"openai_model"`
+	OpenAIContextWindowTokens   int                    `toml:"openai_context_window_tokens"`
 	ModelProfiles               []ModelProfileSettings `toml:"model_profiles"`
 	AgentModels                 AgentModelSettings     `toml:"agent_models"`
 	AgentTools                  AgentToolSettings      `toml:"agent_tools"`
@@ -71,6 +72,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		OpenAIAPIKey:                s.OpenAIAPIKey,
 		OpenAIBaseURL:               s.OpenAIBaseURL,
 		OpenAIModel:                 s.OpenAIModel,
+		OpenAIContextWindowTokens:   settingsInt(s.OpenAIContextWindowTokens, DefaultContextWindowTokens),
 		ModelProfiles:               s.ModelProfiles,
 		AgentModels:                 s.AgentModels,
 		AgentTools:                  s.AgentTools,
@@ -166,6 +168,9 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.ModelMaxRetries > 0 {
 		settings.ModelMaxRetries = &cfg.ModelMaxRetries
 	}
+	if cfg.OpenAIContextWindowTokens > 0 {
+		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
+	}
 	return settings
 }
 
@@ -186,6 +191,7 @@ func Load() *Config {
 		cfg = &Config{
 			OpenAIBaseURL:               d.OpenAIBaseURL,
 			OpenAIModel:                 d.OpenAIModel,
+			OpenAIContextWindowTokens:   settingsInt(d.OpenAIContextWindowTokens, DefaultContextWindowTokens),
 			ModelProfiles:               d.ModelProfiles,
 			AgentModels:                 d.AgentModels,
 			AgentTools:                  d.AgentTools,

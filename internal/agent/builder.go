@@ -182,6 +182,10 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 		tools = append(tools, webSearchTools...)
 	}
 	handlers = append(handlers, spec.ExtraHandlers...)
+	handlers = append(handlers, &contextCompactionMiddleware{
+		BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
+		agentKind:                    spec.Kind,
+	})
 	handlers = append(handlers, &toolOrchestratorMiddleware{agentKind: spec.Kind})
 
 	return deep.New(ctx, &deep.Config{

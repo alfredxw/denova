@@ -507,6 +507,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if cfg.OpenAIModel == "" && effective.OpenAIModel != "" {
 		cfg.OpenAIModel = effective.OpenAIModel
 	}
+	if effective.OpenAIContextWindowTokens != nil {
+		cfg.OpenAIContextWindowTokens = appSettingsInt(effective.OpenAIContextWindowTokens, config.DefaultContextWindowTokens)
+	}
 	if len(effective.ModelProfiles) > 0 {
 		cfg.ModelProfiles = effective.ModelProfiles
 	}

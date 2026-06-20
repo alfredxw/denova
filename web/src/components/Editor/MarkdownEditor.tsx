@@ -40,6 +40,7 @@ export interface EditorSearchIntent {
 
 type EditorTheme = 'ide' | 'paper' | 'sepia'
 type SaveStatus = 'dirty' | 'auto-saving' | 'auto-saved' | 'manual-saving' | 'manual-saved' | 'error'
+type PendingSave = { text: string; mode: 'manual' | 'auto' }
 
 interface EditorSettings {
   lineHeight: number
@@ -152,6 +153,8 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
   const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
   const autoSaveTimer = useRef<number | null>(null)
   const saveStatusClearTimer = useRef<number | null>(null)
+  const saveInFlightRef = useRef(false)
+  const pendingSaveRef = useRef<PendingSave | null>(null)
   const lastSyncedFileRef = useRef<string | null>(null)
   const lastSyncedContentRef = useRef('')
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -337,13 +340,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
 
   useEffect(() => clearSaveStatusTimer, [clearSaveStatusTimer])
 
-  /** 保存当前编辑内容 */
-  const saveEditorContent = useCallback(async (mode: 'manual' | 'auto') => {
-    if (!editor || !fileName) return
-    const text = isTxtFile(fileName)
-      ? normalizeEditorText(editor.getText({ blockSeparator: '\n' }))
-      : normalizeEditorText(editor.getMarkdown())
-    lastSyncedContentRef.current = text
+  const persistEditorContent = useCallback(async (text: string, mode: 'manual' | 'auto') => {
     clearSaveStatusTimer()
     setSaveStatus(mode === 'auto' ? 'auto-saving' : 'manual-saving')
     const ok = await onSave(text)
@@ -354,7 +351,42 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
       else toast.error(t('editor.saveFailed'))
     }
     scheduleSaveStatusClear(nextStatus, mode === 'auto' ? 1400 : 2000)
-  }, [clearSaveStatusTimer, editor, fileName, onSave, scheduleSaveStatusClear, t])
+  }, [clearSaveStatusTimer, onSave, scheduleSaveStatusClear, t])
+
+  const queueEditorSave = useCallback(async (text: string, mode: 'manual' | 'auto') => {
+    lastSyncedContentRef.current = text
+    if (saveInFlightRef.current) {
+      const pendingMode = mode === 'manual' || pendingSaveRef.current?.mode === 'manual' ? 'manual' : 'auto'
+      pendingSaveRef.current = { text, mode: pendingMode }
+      setSaveStatus(pendingMode === 'auto' ? 'auto-saving' : 'manual-saving')
+      return
+    }
+
+    saveInFlightRef.current = true
+    let nextText = text
+    let nextMode = mode
+    try {
+      for (;;) {
+        pendingSaveRef.current = null
+        await persistEditorContent(nextText, nextMode)
+        const pending = pendingSaveRef.current as PendingSave | null
+        if (!pending || pending.text === nextText) break
+        nextText = pending.text
+        nextMode = pending.mode
+      }
+    } finally {
+      saveInFlightRef.current = false
+    }
+  }, [persistEditorContent])
+
+  /** 保存当前编辑内容 */
+  const saveEditorContent = useCallback(async (mode: 'manual' | 'auto') => {
+    if (!editor || !fileName) return
+    const text = isTxtFile(fileName)
+      ? normalizeEditorText(editor.getText({ blockSeparator: '\n' }))
+      : normalizeEditorText(editor.getMarkdown())
+    await queueEditorSave(text, mode)
+  }, [editor, fileName, queueEditorSave])
 
   /** 执行手动保存 */
   const handleSave = useCallback(async () => {

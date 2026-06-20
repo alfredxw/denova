@@ -2,6 +2,7 @@ export interface Settings {
   openai_api_key?: string
   openai_base_url?: string
   openai_model?: string
+  openai_context_window_tokens?: number | null
   model_profiles?: ModelProfileSettings[]
   agent_models?: AgentModelSettings
   agent_tools?: AgentToolSettings
@@ -48,6 +49,7 @@ export interface ModelProfileSettings {
   openai_base_url?: string
   openai_model?: string
   temperature?: number | null
+  context_window_tokens?: number | null
 }
 
 export interface AgentModelSettings {
@@ -109,6 +111,9 @@ export interface AgentContextSettings {
 
 export interface AgentContextOverride {
   recent_turns?: number | null
+  compaction_enabled?: boolean | null
+  compaction_threshold?: number | null
+  compaction_recent_turns?: number | null
 }
 
 export interface AgentToolOverride {

@@ -15,6 +15,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.OpenAIModel != "deepseek-v4-pro" {
 		t.Fatalf("Model: %s", s.OpenAIModel)
 	}
+	if s.OpenAIContextWindowTokens == nil || *s.OpenAIContextWindowTokens != DefaultContextWindowTokens {
+		t.Fatalf("OpenAIContextWindowTokens default")
+	}
 	if s.AutoSaveEnabled == nil || *s.AutoSaveEnabled != true {
 		t.Fatalf("AutoSaveEnabled default")
 	}
@@ -75,6 +78,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	parent := Settings{
 		OpenAIBaseURL:              "https://parent",
 		OpenAIModel:                "p-model",
+		OpenAIContextWindowTokens:  intPtr(DefaultContextWindowTokens),
 		MaxIteration:               intPtr(10),
 		UIFontFamily:               "apple-system",
 		UIFontSize:                 intPtr(14),
@@ -95,7 +99,8 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	child := Settings{
 		OpenAIModel:                "c-model", // override
-		MaxIteration:               nil,       // 继承 parent
+		OpenAIContextWindowTokens:  intPtr(1000000),
+		MaxIteration:               nil, // 继承 parent
 		UIFontFamily:               "humanist-sans",
 		UIFontSize:                 intPtr(13),
 		ReadingFontFamily:          "system-serif",
@@ -119,6 +124,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.OpenAIModel != "c-model" {
 		t.Fatalf("Model should override: %s", out.OpenAIModel)
+	}
+	if out.OpenAIContextWindowTokens == nil || *out.OpenAIContextWindowTokens != 1000000 {
+		t.Fatalf("OpenAIContextWindowTokens should override parent")
 	}
 	if out.MaxIteration == nil || *out.MaxIteration != 10 {
 		t.Fatalf("MaxIteration should inherit parent")

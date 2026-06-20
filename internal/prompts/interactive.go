@@ -127,9 +127,6 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	if strings.TrimSpace(in.LongTermMemory) != "" {
 		writeBlock(&sb, "当前分支故事记忆", in.LongTermMemory)
 	}
-	if strings.TrimSpace(in.SnapshotStateJSON) != "" {
-		writeBlock(&sb, "当前互动状态快照", in.SnapshotStateJSON)
-	}
 	if strings.TrimSpace(in.PreviousTurnsSummary) != "" {
 		writeBlock(&sb, "较早剧情压缩记忆", in.PreviousTurnsSummary)
 	}

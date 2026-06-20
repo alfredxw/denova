@@ -75,10 +75,11 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
     void loadMemory()
   }, [loadMemory, refreshKey])
 
-  const structures = memory?.structures || []
+  const structures = useMemo(() => (memory?.structures || []).filter((structure) => storyMemoryEnabled(structure.enabled)), [memory?.structures])
   const filteredRecords = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    const source = memory?.records || []
+    const enabledStructureIds = new Set(structures.map((structure) => structure.id))
+    const source = (memory?.records || []).filter((record) => enabledStructureIds.has(record.structure_id))
     if (!needle) return source
     return source.filter((record) => {
       const structure = structures.find((item) => item.id === record.structure_id)
@@ -97,7 +98,7 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
 
   const runStoryMemoryGenerate = useCallback(async (source: 'manual' | 'auto' = 'manual') => {
     if (!storyId || generating) return
-    setView('generation')
+    if (source === 'manual') setView('generation')
     resetStreamingState()
     setGenerateMessages([{ role: 'user', content: source === 'auto' ? t('memoryPanel.autoGenerateRequest') : t('memoryPanel.generateRequest') }])
     const controller = new AbortController()
@@ -288,7 +289,8 @@ function MemoryStructureHeader({ structure, count }: { structure: StoryMemoryStr
 
 function MemoryRecordCard({ record, structure }: { record: StoryMemoryRecord; structure: StoryMemoryStructure }) {
   const { t } = useTranslation()
-  const fields = structure.fields.length ? structure.fields : [{ id: 'value', name: t('storyMemory.value'), order: 10 }]
+  const enabledFields = structure.fields.filter((field) => storyMemoryEnabled(field.enabled))
+  const fields = enabledFields.length ? enabledFields : [{ id: 'value', name: t('storyMemory.value'), order: 10 }]
   const displayFields = fields.filter((field) => recordFieldValue(record, field.id).trim()).slice(0, 4)
   const visibleFields = displayFields.length > 0 ? displayFields : fields.slice(0, 1)
   return (
@@ -336,6 +338,10 @@ function MemoryChip({ children }: { children: string }) {
 
 function readNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function storyMemoryEnabled(value?: boolean) {
+  return value !== false
 }
 
 function storyMemorySearchText(record: StoryMemoryRecord, structure?: StoryMemoryStructure) {

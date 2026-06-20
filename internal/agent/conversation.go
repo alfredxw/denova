@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"context"
 	"fmt"
+	"strings"
 
 	"github.com/cloudwego/eino/schema"
 
@@ -28,6 +30,8 @@ type ContextSourceReporter interface {
 type SessionConversation struct {
 	session     *session.Session
 	recentTurns int
+	cfg         *config.Config
+	agentKind   string
 }
 
 func NewSessionConversation(sess *session.Session, options ...SessionConversationOption) *SessionConversation {
@@ -41,7 +45,12 @@ func NewSessionConversation(sess *session.Session, options ...SessionConversatio
 }
 
 func NewSessionConversationForAgent(sess *session.Session, cfg *config.Config, agentKind string) *SessionConversation {
-	return NewSessionConversation(sess, WithSessionRecentTurns(config.ResolveAgentContext(cfg, agentKind).RecentTurns))
+	contextSettings := config.ResolveAgentContext(cfg, agentKind)
+	return NewSessionConversation(
+		sess,
+		WithSessionRecentTurns(contextSettings.RecentTurns),
+		WithSessionContextConfig(cfg, agentKind),
+	)
 }
 
 type SessionConversationOption func(*SessionConversation)
@@ -59,6 +68,13 @@ func WithSessionRecentTurns(recentTurns int) SessionConversationOption {
 	}
 }
 
+func WithSessionContextConfig(cfg *config.Config, agentKind string) SessionConversationOption {
+	return func(c *SessionConversation) {
+		c.cfg = cfg
+		c.agentKind = agentKind
+	}
+}
+
 func (c *SessionConversation) PrepareMessages(originalMessage, agentMessage string) ([]*schema.Message, error) {
 	if c == nil || c.session == nil {
 		return nil, fmt.Errorf("会话不存在")
@@ -66,11 +82,142 @@ func (c *SessionConversation) PrepareMessages(originalMessage, agentMessage stri
 	if err := c.session.Append(schema.UserMessage(originalMessage)); err != nil {
 		return nil, err
 	}
+	return c.modelMessages(agentMessage), nil
+}
+
+func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input ContextCompactionInput) ([]*schema.Message, ContextCompactionResult, error) {
+	policy := c.compactionPolicy()
+	phase := strings.TrimSpace(input.Phase)
+	if phase == "" {
+		phase = contextCompactionPhasePreRun
+	}
+	tokensBefore := EstimateContextTokens(input.Messages, input.Tools)
+	result := ContextCompactionResult{
+		Phase:               phase,
+		TokensBefore:        tokensBefore,
+		ContextWindowTokens: policy.ContextWindowTokens,
+		Threshold:           policy.Threshold,
+		MessageCountBefore:  len(input.Messages),
+	}
+	shouldCompact, skipped := policy.shouldCompact(tokensBefore, input.Force)
+	if !shouldCompact {
+		result.SkippedReason = skipped
+		return input.Messages, result, nil
+	}
+	source := compactionSourceMessages(input.Messages)
+	if len(source) == 0 {
+		result.SkippedReason = "empty_source"
+		return input.Messages, result, nil
+	}
+	emitContextCompactionEvent(input.Emit, phase, "started", result)
+	summary, err := summarizeContextForCompaction(ctx, c.cfg, c.agentKind, source, policy)
+	if err != nil {
+		emitContextCompactionEvent(input.Emit, phase, "failed", result)
+		return input.Messages, result, err
+	}
+	epoch := c.nextCompactionEpoch()
+	newMessages := compactMessagesForModel(input.Messages, summary, epoch, policy.RetainedRecentTurns)
+	result.Triggered = true
+	result.Epoch = epoch
+	result.Summary = summary
+	result.TokensAfter = EstimateContextTokens(newMessages, input.Tools)
+	result.MessageCountAfter = len(newMessages)
+	sourceStart, sourceEnd := c.compactionSourceRange()
+	record := contextCompactionRecordFromResult(result, c.agentKind, sourceStart, sourceEnd, policy.RetainedRecentTurns, summary)
+	record, err = c.session.AppendContextCompaction(record)
+	if err != nil {
+		emitContextCompactionEvent(input.Emit, phase, "failed", result)
+		return input.Messages, result, err
+	}
+	if record.Epoch != epoch {
+		result.Epoch = record.Epoch
+		newMessages = compactMessagesForModel(input.Messages, summary, record.Epoch, policy.RetainedRecentTurns)
+		result.TokensAfter = EstimateContextTokens(newMessages, input.Tools)
+		result.MessageCountAfter = len(newMessages)
+	}
+	emitContextCompactionEvent(input.Emit, phase, "completed", result)
+	return newMessages, result, nil
+}
+
+func (c *SessionConversation) modelMessages(agentMessage string) []*schema.Message {
 	history := append([]*schema.Message(nil), c.session.GetEffectiveMessages()...)
+	policy := c.compactionPolicy()
+	if compaction, ok := c.session.LatestContextCompaction(c.agentKind); ok && strings.TrimSpace(compaction.Summary) != "" {
+		total := c.session.MessageCountTotal()
+		effectiveStart := total - len(history)
+		tailStart := compaction.SourceEndIndex - effectiveStart
+		if tailStart < 0 {
+			tailStart = 0
+		}
+		if tailStart > len(history) {
+			tailStart = len(history)
+		}
+		tail := limitMessagesByRecentTurns(history[tailStart:], policy.RetainedRecentTurns)
+		history = make([]*schema.Message, 0, 1+len(tail))
+		history = append(history, NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
+		history = append(history, tail...)
+	} else if !policy.Enabled || policy.ContextWindowTokens <= 0 {
+		history = limitMessagesByRecentTurns(history, c.recentTurns)
+	}
 	if len(history) > 0 {
 		history[len(history)-1] = schema.UserMessage(agentMessage)
 	}
-	return limitMessagesByRecentTurns(history, c.recentTurns), nil
+	return history
+}
+
+func (c *SessionConversation) compactionPolicy() contextCompactionPolicy {
+	if c == nil {
+		return contextCompactionPolicy{}
+	}
+	agentKind := c.agentKind
+	if strings.TrimSpace(agentKind) == "" {
+		agentKind = config.AgentKindIDE
+	}
+	policy := resolveContextCompactionPolicy(c.cfg, agentKind)
+	if policy.RetainedRecentTurns <= 0 {
+		policy.RetainedRecentTurns = c.recentTurns
+	}
+	if policy.RetainedRecentTurns > 30 {
+		policy.RetainedRecentTurns = 30
+	}
+	return policy
+}
+
+func (c *SessionConversation) nextCompactionEpoch() int {
+	latest, ok := c.session.LatestContextCompaction(c.agentKind)
+	if !ok {
+		return 1
+	}
+	return latest.Epoch + 1
+}
+
+func (c *SessionConversation) compactionSourceRange() (int, int) {
+	total := c.session.MessageCountTotal()
+	effectiveCount := c.session.MessageCountSinceClear()
+	sourceStart := total - effectiveCount
+	sourceEnd := total
+	if sourceEnd > sourceStart {
+		sourceEnd--
+	}
+	return sourceStart, sourceEnd
+}
+
+func compactionSourceMessages(messages []*schema.Message) []*schema.Message {
+	source := make([]*schema.Message, 0, len(messages))
+	for _, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		if isContextCompactionMessage(msg) {
+			source = append(source, msg)
+			continue
+		}
+		source = append(source, msg)
+	}
+	if len(source) > 0 && source[len(source)-1].Role == schema.User {
+		source = source[:len(source)-1]
+	}
+	return source
 }
 
 func limitMessagesByRecentTurns(messages []*schema.Message, recentTurns int) []*schema.Message {

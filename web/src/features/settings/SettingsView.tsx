@@ -24,6 +24,10 @@ type SettingsSection = {
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const iconButtonCls = 'nova-nav-item rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+const DEFAULT_CONTEXT_WINDOW_TOKENS = 400000
+const MIN_CONTEXT_WINDOW_TOKENS = 1024
+const MAX_CONTEXT_WINDOW_TOKENS = 2000000
+const CONTEXT_WINDOW_PRESETS = [200000, DEFAULT_CONTEXT_WINDOW_TOKENS, 1000000]
 
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
@@ -74,7 +78,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     if (!layered) return
     setDraft(settingsForLayer(layered, activeLayer))
-  }, [activeLayer, layered])
+  }, [activeLayer])
 
   const effective = layered?.effective ?? {}
 
@@ -236,6 +240,13 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                 onChange={(v) => setField('openai_base_url', v)} />
           <Text label={t('common.model')} value={draft.openai_model} placeholder={placeholderFor('openai_model')}
                 onChange={(v) => setField('openai_model', v)} />
+          <ContextWindowField
+            label={t('settings.model.contextWindow')}
+            value={draft.openai_context_window_tokens ?? null}
+            effective={effective.openai_context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS}
+            allowInherit
+            onChange={(v) => setField('openai_context_window_tokens', v)}
+          />
           <ModelProfilesEditor
             profiles={draft.model_profiles ?? []}
             effectiveProfiles={effective.model_profiles ?? []}
@@ -911,7 +922,7 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
   }, [profiles.length])
   const addProfile = () => {
     const nextIndex = profiles.length + 1
-    onChange([...profiles, { id: `model-${nextIndex}`, name: t('settings.model.profileName', { index: nextIndex }) }])
+    onChange([...profiles, { id: `model-${nextIndex}`, name: t('settings.model.profileName', { index: nextIndex }), context_window_tokens: DEFAULT_CONTEXT_WINDOW_TOKENS }])
   }
   const updateProfile = (index: number, patch: Partial<ModelProfileSettings>) => {
     onChange(profiles.map((profile, i) => (i === index ? { ...profile, ...patch } : profile)))
@@ -962,17 +973,24 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
               onChange={(e) => updateProfile(index, { openai_api_key: e.target.value })}
               className={fieldCls}
             />
-            <div className="flex gap-2">
-              <input
-                type="number"
-                step={0.1}
-                min={0}
-                max={2}
-                value={profile.temperature ?? ''}
-                placeholder={t('settings.model.profileTemperatureDefaultPlaceholder')}
-                onChange={(e) => updateProfile(index, { temperature: e.target.value === '' ? null : Number(e.target.value) })}
-                className={fieldCls}
+            <input
+              type="number"
+              step={0.1}
+              min={0}
+              max={2}
+              value={profile.temperature ?? ''}
+              placeholder={t('settings.model.profileTemperatureDefaultPlaceholder')}
+              onChange={(e) => updateProfile(index, { temperature: e.target.value === '' ? null : Number(e.target.value) })}
+              className={fieldCls}
+            />
+            <div className="flex min-w-0 flex-col gap-1">
+              <span className="text-[11px] leading-none text-[var(--nova-text-faint)]">{t('settings.model.contextWindow')}</span>
+              <ContextWindowInput
+                value={profile.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS}
+                onChange={(value) => updateProfile(index, { context_window_tokens: value })}
               />
+            </div>
+            <div className="flex justify-end md:col-span-2">
               <button
                 type="button"
                 onClick={() => removeProfile(index)}
@@ -996,4 +1014,112 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
       </div>
     </div>
   )
+}
+
+function ContextWindowField({ label, value, effective, allowInherit, onChange }: {
+  label: string
+  value: number | null
+  effective?: number | null
+  allowInherit?: boolean
+  onChange: (value: number | null) => void
+}) {
+  return (
+    <FieldRow label={label}>
+      <ContextWindowInput value={value} effective={effective} allowInherit={allowInherit} onChange={onChange} />
+    </FieldRow>
+  )
+}
+
+function ContextWindowInput({ value, effective, allowInherit = false, onChange }: {
+  value: number | null
+  effective?: number | null
+  allowInherit?: boolean
+  onChange: (value: number | null) => void
+}) {
+  const { t } = useTranslation()
+  const [customDraft, setCustomDraft] = useState<string | null>(null)
+  const selectedValue = value ?? DEFAULT_CONTEXT_WINDOW_TOKENS
+  const customEditing = customDraft !== null
+  const preset = value === null && allowInherit && !customEditing
+    ? ''
+    : (!customEditing && CONTEXT_WINDOW_PRESETS.includes(selectedValue) ? String(selectedValue) : 'custom')
+  const custom = preset === 'custom'
+  const inheritedValue = effective ?? DEFAULT_CONTEXT_WINDOW_TOKENS
+  const customValue = customDraft ?? (value === null ? '' : String(value))
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+      <select
+        value={preset}
+        onChange={(e) => {
+          if (e.target.value === '') {
+            setCustomDraft(null)
+            onChange(null)
+            return
+          }
+          if (e.target.value === 'custom') {
+            setCustomDraft(value === null ? '' : String(value))
+            return
+          }
+          setCustomDraft(null)
+          onChange(Number(e.target.value))
+        }}
+        className={fieldCls}
+        aria-label={t('settings.model.contextWindow')}
+        title={t('settings.model.contextWindow')}
+      >
+        {allowInherit && (
+          <option value="">{t('common.inherit', { value: formatContextWindow(inheritedValue) })}</option>
+        )}
+        <option value="200000">{t('settings.model.contextWindow200k')}</option>
+        <option value={String(DEFAULT_CONTEXT_WINDOW_TOKENS)}>{t('settings.model.contextWindow400k')}</option>
+        <option value="1000000">{t('settings.model.contextWindow1m')}</option>
+        <option value="custom">{t('settings.model.contextWindowCustom')}</option>
+      </select>
+      {custom && (
+        <input
+          type="number"
+          min={MIN_CONTEXT_WINDOW_TOKENS}
+          max={MAX_CONTEXT_WINDOW_TOKENS}
+          step={1000}
+          value={customValue}
+          placeholder={t('settings.model.contextWindowPlaceholder')}
+          onBlur={() => {
+            if (customDraft === null) return
+            const normalized = normalizeContextWindowDraft(customDraft)
+            setCustomDraft(normalized)
+            if (normalized === '') {
+              onChange(null)
+            } else {
+              const numeric = Number(normalized)
+              if (Number.isFinite(numeric)) onChange(numeric)
+            }
+          }}
+          onChange={(e) => {
+            const raw = e.target.value
+            setCustomDraft(raw)
+            if (raw.trim() === '') return
+            const numeric = Number(raw)
+            if (Number.isFinite(numeric) && numeric >= MIN_CONTEXT_WINDOW_TOKENS && numeric <= MAX_CONTEXT_WINDOW_TOKENS) {
+              onChange(Math.trunc(numeric))
+            }
+          }}
+          className={`${fieldCls} sm:max-w-40`}
+        />
+      )}
+    </div>
+  )
+}
+
+function normalizeContextWindowDraft(value: string) {
+  const trimmed = value.trim()
+  if (trimmed === '') return ''
+  const numeric = Number(trimmed)
+  if (!Number.isFinite(numeric)) return trimmed
+  return String(Math.min(Math.max(Math.trunc(numeric), MIN_CONTEXT_WINDOW_TOKENS), MAX_CONTEXT_WINDOW_TOKENS))
+}
+
+function formatContextWindow(value: number) {
+  if (value >= 1000000 && value % 1000000 === 0) return `${value / 1000000}M`
+  if (value >= 1000 && value % 1000 === 0) return `${value / 1000}K`
+  return String(value)
 }

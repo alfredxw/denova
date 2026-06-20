@@ -413,6 +413,35 @@ describe('App', () => {
     expectOnlyActivePrimaryMenu('写作')
   })
 
+  it('keeps primary menu clicks available after saving settings', async () => {
+    const user = userEvent.setup()
+    const settingsSnapshot = defaultPayloads['/api/settings'] as Record<string, unknown>
+    mockApiFetch({
+      '/api/settings/user': {
+        ...settingsSnapshot,
+        user: { motion_intensity: 'system' },
+        effective: { max_open_tabs: 5, motion_intensity: 'system' },
+      },
+    })
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    await user.click(screen.getByRole('button', { name: '设置' }))
+    expect(await screen.findByRole('button', { name: '关闭设置' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('动效强度'), { target: { value: 'system' } })
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(fetchCallPaths()).toContain('/api/settings/user'))
+
+    await user.click(screen.getByRole('button', { name: 'Agents' }))
+    expect(await screen.findByRole('button', { name: '关闭 Agents' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '关闭设置' })).not.toBeInTheDocument()
+    expectOnlyActivePrimaryMenu('Agents')
+  })
+
   it('opens shared Agents page without leaving interactive shell', async () => {
     const user = userEvent.setup()
     render(

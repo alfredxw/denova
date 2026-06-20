@@ -221,6 +221,34 @@ func (r *Runtime) Run(
 		emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return
 	}
+	if compactor, ok := conversation.(ContextCompactionConversation); ok {
+		compactedHistory, compactionResult, compactErr := compactor.CompactContextIfNeeded(ctx, ContextCompactionInput{
+			Messages:     history,
+			AgentMessage: agentMessage,
+			Phase:        contextCompactionPhasePreRun,
+			Emit:         emit,
+		})
+		if compactErr != nil {
+			runLogger.Error("context_compaction_failed", slog.Any("error", compactErr), slog.Int("tokens_before", compactionResult.TokensBefore), slog.Int("context_window_tokens", compactionResult.ContextWindowTokens))
+			finishRun("error", compactErr.Error(), 0)
+			emit(Event{Type: "error", Data: map[string]string{"message": compactErr.Error()}})
+			return
+		}
+		history = compactedHistory
+		if compactionResult.Triggered {
+			runLogger.Info("context_compacted", slog.String("phase", compactionResult.Phase), slog.Int("epoch", compactionResult.Epoch), slog.Int("tokens_before", compactionResult.TokensBefore), slog.Int("tokens_after", compactionResult.TokensAfter), slog.Int("context_window_tokens", compactionResult.ContextWindowTokens))
+			if err := runLedger.Record("context_compaction", map[string]any{
+				"phase":                 compactionResult.Phase,
+				"epoch":                 compactionResult.Epoch,
+				"tokens_before":         compactionResult.TokensBefore,
+				"tokens_after":          compactionResult.TokensAfter,
+				"context_window_tokens": compactionResult.ContextWindowTokens,
+				"threshold":             compactionResult.Threshold,
+			}); err != nil {
+				runLogger.Warn("run_ledger_context_compaction_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+			}
+		}
+	}
 	if err := runLedger.RecordContext(contextLog.Audit()); err != nil {
 		runLogger.Warn("run_ledger_context_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
 	}
@@ -244,7 +272,7 @@ func (r *Runtime) Run(
 		}
 	}
 
-	runCtx := ContextWithRunObserver(ctx, observer)
+	runCtx := contextWithCompactionController(ContextWithRunObserver(ctx, observer), conversation)
 	runOptions := []adk.AgentRunOption{}
 	if checkpointID != "" {
 		runOptions = append(runOptions, adk.WithCheckPointID(checkpointID))

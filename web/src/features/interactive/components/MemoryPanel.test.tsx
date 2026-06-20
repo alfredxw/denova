@@ -105,7 +105,15 @@ describe('MemoryPanel', () => {
       },
     }} />)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: '整理过程' })).toHaveClass('bg-[var(--nova-active)]'))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/story-memory/generate/stream', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ branch_id: 'main' }),
+    })))
+    expect(screen.getByRole('button', { name: '记忆内容' })).toHaveClass('bg-[var(--nova-active)]')
+    expect(screen.getAllByText('顾清漪').length).toBeGreaterThan(0)
+    expect(screen.queryByText('自动整理当前回合的故事记忆')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '整理过程' }))
     expect(screen.getByText('自动整理当前回合的故事记忆')).toBeInTheDocument()
     expect(screen.getByText('apply_story_memory_patches')).toBeInTheDocument()
     expect(screen.getByText('整理完成：写入 1 条更新，当前可见 1 条记录')).toBeInTheDocument()

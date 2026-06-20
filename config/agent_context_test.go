@@ -15,6 +15,40 @@ func TestResolveAgentContextDefaultsAndCapsRecentTurns(t *testing.T) {
 	}
 }
 
+func TestResolveAgentContextCompactionDefaultsAndCaps(t *testing.T) {
+	resolved := ResolveAgentContext(&Config{}, AgentKindIDE)
+	if !resolved.CompactionEnabled {
+		t.Fatal("context compaction should be enabled by default")
+	}
+	if resolved.CompactionThreshold != 0.90 {
+		t.Fatalf("default compaction threshold = %v, want 0.90", resolved.CompactionThreshold)
+	}
+	if resolved.CompactionRecentTurns != 8 {
+		t.Fatalf("default compaction recent turns = %d, want 8", resolved.CompactionRecentTurns)
+	}
+
+	disabled := false
+	lowThreshold := 0.30
+	highRecent := 50
+	cfg := &Config{AgentContexts: AgentContextSettings{
+		IDE: AgentContextOverride{
+			CompactionEnabled:     &disabled,
+			CompactionThreshold:   &lowThreshold,
+			CompactionRecentTurns: &highRecent,
+		},
+	}}
+	resolved = ResolveAgentContext(cfg, AgentKindIDE)
+	if resolved.CompactionEnabled {
+		t.Fatal("per-agent compaction enabled override should be respected")
+	}
+	if resolved.CompactionThreshold != 0.50 {
+		t.Fatalf("low threshold should be capped to 0.50, got %v", resolved.CompactionThreshold)
+	}
+	if resolved.CompactionRecentTurns != 30 {
+		t.Fatalf("retained recent turns should be capped to 30, got %d", resolved.CompactionRecentTurns)
+	}
+}
+
 func TestResolveAgentContextUsesPerAgentOverride(t *testing.T) {
 	defaultTurns := 20
 	hotChoicesTurns := 12

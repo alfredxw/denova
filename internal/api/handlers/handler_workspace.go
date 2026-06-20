@@ -62,9 +62,15 @@ func (h *Handlers) HandleWorkspaceFile(ctx context.Context, c *app.RequestContex
 		writeError(c, fileReadStatus(err), err.Error())
 		return
 	}
+	revision, err := h.app.BookService().FileRevision(relPath)
+	if err != nil {
+		writeError(c, fileReadStatus(err), err.Error())
+		return
+	}
 	writeJSON(c, consts.StatusOK, map[string]string{
-		"content": content,
-		"path":    relPath,
+		"content":  content,
+		"path":     relPath,
+		"revision": revision,
 	})
 }
 
@@ -99,23 +105,30 @@ func (h *Handlers) HandleWorkspaceFileWrite(ctx context.Context, c *app.RequestC
 		return
 	}
 	var req struct {
-		Path    string `json:"path"`
-		Content string `json:"content"`
+		Path         string `json:"path"`
+		Content      string `json:"content"`
+		BaseRevision string `json:"base_revision"`
 	}
 	if err := c.BindJSON(&req); err != nil || req.Path == "" {
 		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathContentRequired")
 		return
 	}
 
-	if err := h.app.BookService().WriteFile(req.Path, req.Content); err != nil {
+	revision, err := h.app.BookService().WriteFileIfRevision(req.Path, req.Content, req.BaseRevision)
+	if err != nil {
+		if errors.Is(err, book.ErrFileRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.workspace.fileRevisionConflict")
+			return
+		}
 		writeErrorKey(c, fileWriteStatus(err), "api.workspace.writeFailed", "detail", err.Error())
 		return
 	}
 	h.app.MaybeCreateTimedVersion(ctx)
 	h.app.CheckAutomationTriggersAfterWorkspaceMutation(ctx, "workspace_file_write", []string{req.Path})
 	writeJSON(c, consts.StatusOK, map[string]string{
-		"path":    req.Path,
-		"message": messageKey(c, "api.workspace.fileSaved"),
+		"path":     req.Path,
+		"revision": revision,
+		"message":  messageKey(c, "api.workspace.fileSaved"),
 	})
 }
 

@@ -257,6 +257,47 @@ func (s *Store) SaveHotChoices(storyID, branchID string, choices []string) (HotC
 	return event, nil
 }
 
+func (s *Store) AppendContextCompaction(storyID, branchID string, event ContextCompactionEvent) (ContextCompactionEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return ContextCompactionEvent{}, err
+	}
+	if branchID == "" {
+		branchID = meta.CurrentBranch
+	}
+	branch, ok := meta.Branches[branchID]
+	if !ok {
+		return ContextCompactionEvent{}, fmt.Errorf("分支不存在: %s", branchID)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if event.ID == "" {
+		event.ID = newID("cc")
+	}
+	event.V = schemaVersion
+	event.Type = StoryEventTypeCompaction
+	event.ParentID = branch.Head
+	event.BranchID = branchID
+	if event.Ts == "" {
+		event.Ts = now
+	}
+	if event.Epoch <= 0 {
+		event.Epoch = nextContextCompactionEpoch(lines, branch.Head)
+	}
+	branch.Head = event.ID
+	meta.Branches[branchID] = branch
+	meta.UpdatedAt = now
+	if err := s.rewriteStoryLocked(storyID, meta, lines, event); err != nil {
+		return ContextCompactionEvent{}, err
+	}
+	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+		return ContextCompactionEvent{}, err
+	}
+	return event, nil
+}
+
 func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

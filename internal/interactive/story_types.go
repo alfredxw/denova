@@ -202,6 +202,26 @@ type StateDeltaEvent struct {
 	Ops           []StateOp `json:"ops"`
 }
 
+type ContextCompactionEvent struct {
+	V                   int     `json:"v"`
+	Type                string  `json:"type"`
+	ID                  string  `json:"id"`
+	ParentID            string  `json:"parent_id,omitempty"`
+	BranchID            string  `json:"branch_id"`
+	Ts                  string  `json:"ts"`
+	AgentKind           string  `json:"agent_kind,omitempty"`
+	Epoch               int     `json:"epoch"`
+	Summary             string  `json:"summary"`
+	SourceTurnCount     int     `json:"source_turn_count"`
+	RetainedTurns       int     `json:"retained_turns"`
+	TokensBefore        int     `json:"tokens_before"`
+	TokensAfter         int     `json:"tokens_after"`
+	ContextWindowTokens int     `json:"context_window_tokens"`
+	Threshold           float64 `json:"threshold"`
+	Reason              string  `json:"reason,omitempty"`
+	Phase               string  `json:"phase,omitempty"`
+}
+
 type BranchEvent struct {
 	V        int    `json:"v"`
 	Type     string `json:"type"`
@@ -220,12 +240,13 @@ type StateOp struct {
 }
 
 type Snapshot struct {
-	StoryID     string         `json:"story_id"`
-	BranchID    string         `json:"branch_id"`
-	Turns       []TurnEvent    `json:"turns"`
-	CurrentTurn *TurnEvent     `json:"current_turn,omitempty"`
-	State       map[string]any `json:"state"`
-	Graph       StoryGraph     `json:"graph"`
+	StoryID           string                  `json:"story_id"`
+	BranchID          string                  `json:"branch_id"`
+	Turns             []TurnEvent             `json:"turns"`
+	CurrentTurn       *TurnEvent              `json:"current_turn,omitempty"`
+	ContextCompaction *ContextCompactionEvent `json:"context_compaction,omitempty"`
+	State             map[string]any          `json:"state"`
+	Graph             StoryGraph              `json:"graph"`
 }
 
 type StoryGraph struct {
@@ -319,6 +340,7 @@ type StoryMemoryField struct {
 	Name                  string `json:"name"`
 	Description           string `json:"description,omitempty"`
 	GenerationInstruction string `json:"generation_instruction,omitempty"`
+	Enabled               *bool  `json:"enabled,omitempty"`
 	Required              bool   `json:"required,omitempty"`
 	Order                 int    `json:"order"`
 }
@@ -331,6 +353,7 @@ type StoryMemoryStructure struct {
 	Mode                  string             `json:"mode"`
 	KeyFieldID            string             `json:"key_field_id,omitempty"`
 	Fields                []StoryMemoryField `json:"fields"`
+	Enabled               *bool              `json:"enabled,omitempty"`
 	Order                 int                `json:"order"`
 	BuiltIn               bool               `json:"built_in,omitempty"`
 	CreatedAt             string             `json:"created_at,omitempty"`
@@ -378,6 +401,7 @@ type StoryMemoryStructureRequest struct {
 	Mode                  string             `json:"mode"`
 	KeyFieldID            string             `json:"key_field_id,omitempty"`
 	Fields                []StoryMemoryField `json:"fields"`
+	Enabled               *bool              `json:"enabled,omitempty"`
 	Order                 int                `json:"order"`
 }
 

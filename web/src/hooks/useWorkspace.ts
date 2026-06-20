@@ -43,6 +43,8 @@ export function useWorkspace() {
 
   // 用 ref 追踪最新 selectedFile，避免异步回调闭包捕获旧值
   const selectedFileRef = useRef<string | null>(null)
+  const selectedFileRevisionRef = useRef<string>('')
+  const selectFileRequestRef = useRef(0)
   selectedFileRef.current = selectedFile
 
   const resetWorkspaceState = useCallback(() => {
@@ -50,6 +52,7 @@ export function useWorkspace() {
     setLoading(false)
     setSelectedFile(null)
     setFileContent('')
+    selectedFileRevisionRef.current = ''
     setSummary(null)
     setStyles([])
   }, [])
@@ -166,11 +169,15 @@ export function useWorkspace() {
 
   /** 选中文件并加载内容 */
   const selectFile = useCallback(async (path: string) => {
+    const requestID = selectFileRequestRef.current + 1
+    selectFileRequestRef.current = requestID
     try {
       const data = await readWorkspaceFile(path)
+      if (requestID !== selectFileRequestRef.current) return
       // React 18 自动批量：两个 setState 合并为一次渲染，确保 MarkdownEditor 拿到一致的 (fileName, content)
       setSelectedFile(path)
       setFileContent(data.content || '')
+      selectedFileRevisionRef.current = data.revision || ''
     } catch (e) {
       console.error('读取文件失败', e)
     }
@@ -180,6 +187,7 @@ export function useWorkspace() {
   const clearSelectedFile = useCallback(() => {
     setSelectedFile(null)
     setFileContent('')
+    selectedFileRevisionRef.current = ''
   }, [])
 
   /** 读取指定文件内容 */
@@ -207,6 +215,7 @@ export function useWorkspace() {
       // 仅当选中文件没有在异步期间改变时才更新内容
       if (selectedFileRef.current === currentFile) {
         setFileContent(data.content || '')
+        selectedFileRevisionRef.current = data.revision || ''
       }
     } catch (e) {
       console.error('刷新当前文件失败', e)
@@ -217,7 +226,8 @@ export function useWorkspace() {
   const saveCurrentFile = useCallback(async (content: string): Promise<boolean> => {
     if (!workspace || !selectedFile) return false
     try {
-      await saveFile(selectedFile, content)
+      const result = await saveFile(selectedFile, content, selectedFileRevisionRef.current)
+      if (result.revision) selectedFileRevisionRef.current = result.revision
       await fetchSummary()
       return true
     } catch (e) {
@@ -230,6 +240,7 @@ export function useWorkspace() {
   const refreshAll = useCallback(async () => {
     setSelectedFile(null)
     setFileContent('')
+    selectedFileRevisionRef.current = ''
     await Promise.all([fetchWorkspace(), fetchBooks()])
   }, [fetchWorkspace, fetchBooks])
 
@@ -245,6 +256,7 @@ export function useWorkspace() {
     if (selectedFile === path || selectedFile?.startsWith(`${path}/`)) {
       setSelectedFile(null)
       setFileContent('')
+      selectedFileRevisionRef.current = ''
     }
     await Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
   }, [fetchTree, fetchStyles, fetchSummary, selectedFile])

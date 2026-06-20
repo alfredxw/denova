@@ -42,3 +42,23 @@ func TestInteractiveContextAnalysisLabelsDynamicContextAtFinalMessage(t *testing
 		t.Fatalf("final message should include dynamic context content: %#v", last)
 	}
 }
+
+func TestInteractiveContextAnalysisUsesConfiguredContextWindow(t *testing.T) {
+	contextWindow := 650000
+	analysis, err := BuildInteractiveStoryContextAnalysis(
+		&config.Config{OpenAIContextWindowTokens: contextWindow},
+		nil,
+		prompts.InteractiveStorySystemInstructionInput{},
+		nil,
+		ChatRequest{Message: "继续"},
+		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
+			return []*schema.Message{schema.UserMessage(agentMessage)}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.ContextWindowTokens != contextWindow {
+		t.Fatalf("context window tokens = %d, want %d", analysis.ContextWindowTokens, contextWindow)
+	}
+}

@@ -393,6 +393,7 @@ export function WorkbenchShell({
             key={toSortableActivityId(activityOrderScope, item.id)}
             id={toSortableActivityId(activityOrderScope, item.id)}
             activityId={item.id}
+            dragDisabled={settingsOpen}
             expanded={activityBarExpanded}
             label={item.label}
             onClick={item.onClick}
@@ -536,16 +537,18 @@ export function WorkbenchShell({
 function SortableActivityButton({
   id,
   activityId,
+  dragDisabled,
   ...props
 }: Omit<React.ComponentProps<'button'>, 'id'> & {
   id: SortableActivityItemId
   activityId: ActivityItemId
+  dragDisabled?: boolean
   expanded: boolean
   label: string
   children: ReactNode
   active?: boolean
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled: dragDisabled })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -555,8 +558,8 @@ function SortableActivityButton({
     <div ref={setNodeRef} style={style} className={isDragging ? 'relative z-20 opacity-80' : undefined}>
       <ActivityButton
         data-activity-id={activityId}
-        {...attributes}
-        {...listeners}
+        {...(dragDisabled ? {} : attributes)}
+        {...(dragDisabled ? {} : listeners)}
         {...props}
         className={props.className}
       />

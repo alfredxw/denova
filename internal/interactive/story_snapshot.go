@@ -53,6 +53,12 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			for _, op := range delta.Ops {
 				applyStateOp(state, op)
 			}
+		case StoryEventTypeCompaction:
+			var compaction ContextCompactionEvent
+			if err := mapToStruct(record.Raw, &compaction); err != nil {
+				return Snapshot{}, err
+			}
+			snapshot.ContextCompaction = &compaction
 		}
 	}
 	snapshot.Graph = buildStoryGraph(meta, lines, eventsByID, pathSet)
@@ -243,6 +249,25 @@ func nearestTurnAncestor(head string, events map[string]StoryEventRecord) string
 		id = parentIDFromRaw(record.Raw)
 	}
 	return ""
+}
+
+func nextContextCompactionEpoch(lines []StoryEventRecord, head string) int {
+	events := eventsByID(lines)
+	path, _ := eventPath(head, events)
+	epoch := 0
+	for _, record := range path {
+		if record.Envelope.Type != StoryEventTypeCompaction {
+			continue
+		}
+		var compaction ContextCompactionEvent
+		if err := mapToStruct(record.Raw, &compaction); err != nil {
+			continue
+		}
+		if compaction.Epoch > epoch {
+			epoch = compaction.Epoch
+		}
+	}
+	return epoch + 1
 }
 
 func branchSummaries(meta StoryMeta) []BranchSummary {

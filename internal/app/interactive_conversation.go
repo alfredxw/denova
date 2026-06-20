@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -15,6 +16,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"nova/config"
+	"nova/internal/agent"
 	"nova/internal/book"
 	"nova/internal/interactive"
 	"nova/internal/prompts"
@@ -52,8 +54,12 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
-	recentTurnsLimit := config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).RecentTurns
-	turnMemory := buildInteractiveTurnMemory(storyCtx.Snapshot.Turns, recentTurnsLimit)
+	contextSettings := config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory)
+	recentTurnsLimit := contextSettings.RecentTurns
+	if storyCtx.Snapshot.ContextCompaction != nil && strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary) != "" {
+		recentTurnsLimit = contextSettings.CompactionRecentTurns
+	}
+	turnMemory := buildInteractiveTurnMemoryWithCompaction(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction, recentTurnsLimit)
 	stateJSON, err := json.MarshalIndent(storyCtx.Snapshot.State, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("序列化互动状态失败: %w", err)
@@ -77,7 +83,10 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		SnapshotStateJSON:    string(stateJSON),
 		PreviousTurnsSummary: turnMemory.PreviousSummary,
 	})
-	history := make([]*schema.Message, 0, len(turnMemory.RecentTurns)*2+2)
+	history := make([]*schema.Message, 0, len(turnMemory.RecentTurns)*2+3)
+	if storyCtx.Snapshot.ContextCompaction != nil && strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary) != "" {
+		history = append(history, agent.NewContextCompactionSummaryMessage(storyCtx.Snapshot.ContextCompaction.Epoch, storyCtx.Snapshot.ContextCompaction.Summary))
+	}
 	for _, turn := range turnMemory.RecentTurns {
 		history = append(history, schema.UserMessage(turn.User))
 		history = append(history, schema.AssistantMessage(turn.Narrative, nil))
@@ -118,6 +127,45 @@ func (c *interactiveConversation) ContextSourceSummary() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.lastSources
+}
+
+func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, input agent.ContextCompactionInput) ([]*schema.Message, agent.ContextCompactionResult, error) {
+	if c == nil || c.store == nil {
+		return input.Messages, agent.ContextCompactionResult{}, fmt.Errorf("互动故事不存在")
+	}
+	storyCtx, err := c.store.StoryContext(c.storyID, c.branchID)
+	if err != nil {
+		return input.Messages, agent.ContextCompactionResult{}, err
+	}
+	epoch := 1
+	if storyCtx.Snapshot.ContextCompaction != nil {
+		epoch = storyCtx.Snapshot.ContextCompaction.Epoch + 1
+	}
+	newMessages, result, err := agent.BuildContextCompaction(ctx, c.cfg, config.AgentKindInteractiveStory, input, epoch)
+	if err != nil || !result.Triggered {
+		return newMessages, result, err
+	}
+	event := interactive.ContextCompactionEvent{
+		AgentKind:           config.AgentKindInteractiveStory,
+		Epoch:               result.Epoch,
+		Summary:             result.Summary,
+		SourceTurnCount:     len(storyCtx.Snapshot.Turns),
+		RetainedTurns:       config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).CompactionRecentTurns,
+		TokensBefore:        result.TokensBefore,
+		TokensAfter:         result.TokensAfter,
+		ContextWindowTokens: result.ContextWindowTokens,
+		Threshold:           result.Threshold,
+		Reason:              "context_usage_threshold",
+		Phase:               result.Phase,
+	}
+	event, err = c.store.AppendContextCompaction(c.storyID, storyCtx.Snapshot.BranchID, event)
+	if err != nil {
+		return input.Messages, result, err
+	}
+	if event.Epoch != result.Epoch {
+		result.Epoch = event.Epoch
+	}
+	return newMessages, result, nil
 }
 
 func (c *interactiveConversation) AppendAssistant(content string) error {
@@ -433,6 +481,35 @@ func buildInteractiveTurnMemory(turns []interactive.TurnEvent, recentLimit int) 
 		RecentTurns:     recent,
 		PreviousCount:   split,
 		OmittedCount:    omitted,
+	}
+}
+
+func buildInteractiveTurnMemoryWithCompaction(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent, recentLimit int) interactiveTurnMemory {
+	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
+		return buildInteractiveTurnMemory(turns, recentLimit)
+	}
+	if recentLimit <= 0 {
+		recentLimit = 8
+	}
+	if recentLimit > 30 {
+		recentLimit = 30
+	}
+	sourceCount := compaction.SourceTurnCount
+	if sourceCount < 0 {
+		sourceCount = 0
+	}
+	if sourceCount > len(turns) {
+		sourceCount = len(turns)
+	}
+	recent := append([]interactive.TurnEvent(nil), turns[sourceCount:]...)
+	if len(recent) > recentLimit {
+		recent = recent[len(recent)-recentLimit:]
+	}
+	return interactiveTurnMemory{
+		PreviousSummary: strings.TrimSpace(compaction.Summary),
+		RecentTurns:     recent,
+		PreviousCount:   sourceCount,
+		OmittedCount:    sourceCount,
 	}
 }
 

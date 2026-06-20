@@ -72,3 +72,16 @@ func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
 		t.Fatalf("interactive max tokens not persisted: %v", out.InteractiveMaxTokens)
 	}
 }
+
+func TestApplyLayeredSettingsToConfigAppliesContextWindow(t *testing.T) {
+	contextWindow := 650000
+	cfg := &config.Config{}
+	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+		Effective: config.Settings{
+			OpenAIContextWindowTokens: &contextWindow,
+		},
+	})
+	if cfg.OpenAIContextWindowTokens != contextWindow {
+		t.Fatalf("context window tokens = %d, want %d", cfg.OpenAIContextWindowTokens, contextWindow)
+	}
+}

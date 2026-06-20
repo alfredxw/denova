@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestSafePath(t *testing.T) {
@@ -53,6 +54,34 @@ func TestServiceRename(t *testing.T) {
 
 	if _, err := service.Rename("chapters/ch01-new.md", "nested/name.md"); err == nil {
 		t.Fatalf("包含路径分隔符的新名称应被拒绝")
+	}
+}
+
+func TestServiceWriteFileIfRevisionRejectsStaleRevision(t *testing.T) {
+	workspace := t.TempDir()
+	service := NewService(workspace)
+	if err := service.Create("chapters/ch01.md", "file", "前端旧内容"); err != nil {
+		t.Fatalf("创建文件失败: %v", err)
+	}
+	revision, err := service.FileRevision("chapters/ch01.md")
+	if err != nil {
+		t.Fatalf("读取文件版本失败: %v", err)
+	}
+
+	time.Sleep(2 * time.Millisecond)
+	if err := service.WriteFile("chapters/ch01.md", "Agent 已更新的新内容"); err != nil {
+		t.Fatalf("Agent 写入失败: %v", err)
+	}
+
+	if _, err := service.WriteFileIfRevision("chapters/ch01.md", "前端旧内容", revision); !errors.Is(err, ErrFileRevisionConflict) {
+		t.Fatalf("期望旧版本写入被拒绝，实际: %v", err)
+	}
+	got, err := service.ReadFile("chapters/ch01.md")
+	if err != nil {
+		t.Fatalf("读取文件失败: %v", err)
+	}
+	if got != "Agent 已更新的新内容" {
+		t.Fatalf("冲突后应保留 Agent 内容，实际: %q", got)
 	}
 }
 

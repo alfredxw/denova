@@ -48,6 +48,8 @@ const storyStage = {
   'storyStage.primaryArea': 'Primary Writing Area',
   'storyStage.activity.connecting': 'Connecting to AI Agent...',
   'storyStage.activity.thinking': 'Thinking...',
+  'storyStage.activity.compacting': 'Compressing context...',
+  'storyStage.activity.compacted': 'Context compressed. Continuing...',
   'storyStage.activity.processingTool': 'Processing {{name}}...',
   'storyStage.activity.toolCall': 'tool call',
   'storyStage.activity.unknownError': 'Unknown error',
