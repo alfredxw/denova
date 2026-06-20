@@ -11,7 +11,7 @@ vi.mock('../api', () => ({
   getStoryMemory: vi.fn(),
   saveStoryMemoryRecord: vi.fn(),
   saveStoryMemoryStructure: vi.fn(),
-  setStoryMemoryRecordHidden: vi.fn(),
+  setStoryMemoryRecordArchived: vi.fn(),
   updateStoryMemorySettings: vi.fn(),
 }))
 
@@ -38,6 +38,8 @@ describe('StoryMemoryView', () => {
     )
 
     await waitFor(() => expect(getStoryMemoryMock).toHaveBeenCalledWith('story-1', 'br_current', false))
+    expect(screen.getByRole('button', { name: '配置 Agent' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新增结构' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: '目标' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: '状态' })).toBeInTheDocument()
     expect(screen.getByText('当前线 · Head turn-cur')).toBeInTheDocument()

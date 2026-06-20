@@ -509,6 +509,7 @@ func (s *AutomationAppService) newRunRecord(task automation.Task, trigger string
 func (s *AutomationAppService) newRunConversation(run automation.RunRecord, task automation.Task) (*automationRunConversation, error) {
 	s.app.mu.RLock()
 	store := s.app.sessionStore
+	cfg := s.app.cfg
 	s.app.mu.RUnlock()
 	if store == nil {
 		return nil, ErrNoWorkspace
@@ -524,7 +525,7 @@ func (s *AutomationAppService) newRunConversation(run automation.RunRecord, task
 	if err := sess.Rename(title); err != nil {
 		return nil, err
 	}
-	return &automationRunConversation{base: agent.NewSessionConversation(sess)}, nil
+	return &automationRunConversation{base: agent.NewSessionConversationForAgent(sess, cfg, config.AgentKindAutomation)}, nil
 }
 
 func (s *AutomationAppService) activeTaskForAutomation(taskID string) (*Task, automation.RunRecord, bool) {

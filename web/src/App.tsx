@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
 import { fetchSettings } from '@/features/settings/api'
-import { fontStackFor } from '@/features/settings/font-options'
+import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
 import { getLoreItems, importCharacterCard, previewCharacterCard, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
 import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
@@ -187,12 +187,7 @@ function App() {
           setConfiguredLocale(data?.effective?.language)
           setTheme(normalizeAppTheme(data?.effective?.theme))
           setMotionIntensity(normalizeMotionIntensity(data?.effective?.motion_intensity))
-          applyFontSettings({
-            uiFont: data?.effective?.ui_font_family,
-            uiFontSize: data?.effective?.ui_font_size,
-            readingFont: data?.effective?.reading_font_family,
-            readingFontSize: data?.effective?.reading_font_size,
-          })
+          applyFontSettings(fontSettingsFromEffective(data?.effective))
         })
         .catch((e) => console.warn('加载界面配置失败', e))
     }
@@ -659,42 +654,6 @@ function toWritingRightPanel(panel: RightPanel): WritingRightPanel {
 function normalizeAppTheme(theme?: string) {
   if (theme === 'light' || theme === 'dark' || theme === 'system') return theme
   return 'dark'
-}
-
-function applyFontSettings({
-  uiFont,
-  uiFontSize,
-  readingFont,
-  readingFontSize,
-}: {
-  uiFont?: string
-  uiFontSize?: number | null
-  readingFont?: string
-  readingFontSize?: number | null
-}) {
-  if (typeof document === 'undefined') return
-  const baseSize = clampFontSize(uiFontSize, 11, 16, 14)
-  const smSize = clampFontSize(baseSize + 2, 12, 18, 14)
-  const compactSize = clampFontSize(baseSize - 1, 10, 15, 11)
-  const microSize = clampFontSize(baseSize - 2, 10, 14, 10)
-  document.documentElement.style.setProperty('--nova-ui-font-family', fontStackFor(uiFont, 'apple-system'))
-  document.documentElement.style.setProperty('--nova-reading-font-family', fontStackFor(readingFont, 'source-han-serif'))
-  document.documentElement.style.setProperty('--nova-ui-font-size', `${baseSize}px`)
-  document.documentElement.style.setProperty('--nova-ui-line-height', `${baseSize + 6}px`)
-  document.documentElement.style.setProperty('--nova-ui-sm-font-size', `${smSize}px`)
-  document.documentElement.style.setProperty('--nova-ui-sm-line-height', `${smSize + 6}px`)
-  document.documentElement.style.setProperty('--nova-ui-caption-size', `${compactSize}px`)
-  document.documentElement.style.setProperty('--nova-ui-compact-font-size', `${compactSize}px`)
-  document.documentElement.style.setProperty('--nova-ui-compact-line-height', `${compactSize + 5}px`)
-  document.documentElement.style.setProperty('--nova-ui-micro-font-size', `${microSize}px`)
-  document.documentElement.style.setProperty('--nova-ui-micro-line-height', `${microSize + 4}px`)
-  document.documentElement.style.setProperty('--nova-reading-font-size', `${clampFontSize(readingFontSize, 14, 28, 18)}px`)
-}
-
-function clampFontSize(value: unknown, min: number, max: number, fallback: number) {
-  const numberValue = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(numberValue)) return fallback
-  return Math.min(max, Math.max(min, Math.round(numberValue)))
 }
 
 export default App

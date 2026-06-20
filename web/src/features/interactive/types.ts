@@ -140,7 +140,7 @@ export interface InteractiveMemoryEntry {
   places?: string[]
   tags?: string[]
   importance: number
-  hidden: boolean
+  archived: boolean
   manual: boolean
   created_at: string
   updated_at: string
@@ -199,7 +199,7 @@ export interface StoryMemoryRecord {
   anchor_turn_id?: string
   key?: string
   values: Record<string, string>
-  hidden?: boolean
+  archived?: boolean
   manual?: boolean
   source?: string
   inherited_from?: string

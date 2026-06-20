@@ -156,31 +156,12 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
         <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{t('skills.subtitle')}</span>
         <button
           type="button"
-          onClick={() => {
-            setMode('create')
-            setError(null)
-          }}
-          className={`nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded border border-[var(--nova-border)] px-2.5 py-1 ${mode === 'create' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {t('skills.create.newButton')}
-        </button>
-        <button
-          type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="nova-nav-item inline-flex items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1 disabled:opacity-50"
+          className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1 disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           {t('common.refresh')}
-        </button>
-        <button
-          type="button"
-          onClick={askAgent}
-          className={`nova-nav-item inline-flex items-center gap-1.5 rounded border border-[var(--nova-border)] px-2.5 py-1 ${agentOpen ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
-        >
-          <Bot className="h-3.5 w-3.5" />
-          {t('skills.agent.button')}
         </button>
         <button
           type="button"
@@ -202,17 +183,27 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
 
       <div className={`grid min-h-0 flex-1 text-xs ${agentOpen ? 'grid-cols-[20rem_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[20rem_minmax(0,1fr)]'}`}>
         <aside className="min-h-0 overflow-y-auto border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
+          <div className="mb-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={askAgent}
+              className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded border border-[var(--nova-border)] px-2 ${agentOpen ? 'is-active' : 'bg-[var(--nova-surface)]'}`}
+            >
+              <Bot className="h-3.5 w-3.5" />
+              <span className="min-w-0 truncate">{t('skills.agent.button')}</span>
+            </button>
             <button
               type="button"
               onClick={() => {
                 setMode('create')
                 setError(null)
               }}
-              className={`nova-nav-item mb-4 inline-flex h-8 w-full items-center justify-center gap-1.5 rounded border border-[var(--nova-border)] ${mode === 'create' ? 'is-active' : 'bg-[var(--nova-surface)]'}`}
+              className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded border border-[var(--nova-border)] px-2 ${mode === 'create' ? 'is-active' : 'bg-[var(--nova-surface)]'}`}
             >
               <Plus className="h-3.5 w-3.5" />
-              {t('skills.create.title')}
+              <span className="min-w-0 truncate">{t('skills.create.title')}</span>
             </button>
+          </div>
 
           <div className="space-y-4">
             {scopes.map((scope) => (

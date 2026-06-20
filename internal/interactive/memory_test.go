@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestInteractiveMemoryStoreFiltersUpdatesAndHidesByBranch(t *testing.T) {
+func TestInteractiveMemoryStoreFiltersUpdatesAndArchivesByBranch(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "记忆测试"})
 	if err != nil {
@@ -68,7 +68,7 @@ func TestInteractiveMemoryStoreFiltersUpdatesAndHidesByBranch(t *testing.T) {
 	if len(mainState.Entries) != 1 || mainState.Entries[0].Title != "旧宅钥匙" {
 		t.Fatalf("main branch should keep original inherited memory: %#v", mainState.Entries)
 	}
-	if _, err := store.SetInteractiveMemoryHidden(story.ID, updated.ID, true); err != nil {
+	if _, err := store.SetInteractiveMemoryArchived(story.ID, updated.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	state, err = store.InteractiveMemory(story.ID, branchState.BranchID, false)
@@ -76,14 +76,14 @@ func TestInteractiveMemoryStoreFiltersUpdatesAndHidesByBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(state.Entries) != 0 {
-		t.Fatalf("hidden memory should be excluded: %#v", state.Entries)
+		t.Fatalf("archived memory should be excluded: %#v", state.Entries)
 	}
 	state, err = store.InteractiveMemory(story.ID, branchState.BranchID, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.Entries) != 1 || !state.Entries[0].Hidden {
-		t.Fatalf("hidden memory should be restorable: %#v", state.Entries)
+	if len(state.Entries) != 1 || !state.Entries[0].Archived {
+		t.Fatalf("archived memory should be restorable: %#v", state.Entries)
 	}
 }
 
@@ -193,6 +193,30 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 	}
 	if len(mainState.Records) != 1 || mainState.Records[0].Values["status"] != "开始信任主角" {
 		t.Fatalf("main branch should keep original record: %#v", mainState.Records)
+	}
+	if _, err := store.SetStoryMemoryRecordArchived(story.ID, updated.ID, branch.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	branchState, err = store.StoryMemory(story.ID, branch.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(branchState.Records) != 0 {
+		t.Fatalf("archived story memory should be excluded by default: %#v", branchState.Records)
+	}
+	branchState, err = store.StoryMemory(story.ID, branch.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(branchState.Records) != 1 || !branchState.Records[0].Archived {
+		t.Fatalf("archived story memory should be available when requested: %#v", branchState.Records)
+	}
+	context, err := store.StoryMemoryContextSummary(story.ID, branch.ID, 12*1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(context, "怀疑主角") {
+		t.Fatalf("archived story memory should not enter model context:\n%s", context)
 	}
 }
 

@@ -492,7 +492,7 @@ describe('App', () => {
     await user.click(within(header as HTMLElement).getByRole('button', { name: '互动模式' }))
     await user.click(screen.getByRole('button', { name: '版本管理' }))
 
-    expect(await screen.findByText('版本管理')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '关闭版本管理' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '版本管理' })).not.toHaveClass('cursor-grab')
     expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
     expectOnlyActivePrimaryMenu('版本管理')
@@ -514,6 +514,16 @@ describe('App', () => {
     expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
     expectOnlyActivePrimaryMenu('Agents')
 
+    await user.click(screen.getByRole('button', { name: '版本管理' }))
+    expect(await screen.findByRole('button', { name: '关闭版本管理' })).toBeInTheDocument()
+    expectOnlyActivePrimaryMenu('版本管理')
+
+    await user.click(within(header as HTMLElement).getByRole('button', { name: '写作模式' }))
+    expect(screen.queryByRole('button', { name: '关闭版本管理' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '写作' })).toHaveClass('is-active')
+    expectOnlyActivePrimaryMenu('写作')
+
+    await user.click(within(header as HTMLElement).getByRole('button', { name: '互动模式' }))
     await user.click(screen.getByRole('button', { name: '版本管理' }))
     expect(await screen.findByRole('button', { name: '关闭版本管理' })).toBeInTheDocument()
     expectOnlyActivePrimaryMenu('版本管理')
@@ -588,7 +598,7 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '剧情' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '写作' })).not.toBeInTheDocument()
     expectOnlyActivePrimaryMenu('Agents')
-  })
+  }, 10000)
 })
 
 function expectOnlyActivePrimaryMenu(label: string) {

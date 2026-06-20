@@ -111,15 +111,12 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		if msg == nil {
 			continue
 		}
-		source := "互动故事上下文"
-		title := "故事状态与记忆"
+		source := "最近互动回合"
+		title := fmt.Sprintf("最近回合消息 %d", i+1)
 		switch {
 		case i == len(messages)-1:
 			source = "本轮互动指令"
-			title = "本轮发送给互动 Agent 的用户消息"
-		case i > 0:
-			source = "最近互动回合"
-			title = fmt.Sprintf("最近回合消息 %d", i)
+			title = "本轮互动指令与动态上下文"
 		}
 		contextMessages = append(contextMessages, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      fmt.Sprintf("message_%d", i+1),
@@ -129,14 +126,12 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 			Content: msg.Content,
 		}))
 	}
-	contextParts := composition.ContextLog.FullParts()
-	contextParts = append(contextParts, contextMessages...)
 	return ContextAnalysis{
 		AgentKind:         config.AgentKindInteractiveStory,
 		Mode:              "interactive",
 		SystemPrompt:      systemPrompt,
 		SystemPromptParts: systemParts,
-		ContextParts:      contextParts,
+		ContextParts:      composition.ContextLog.FullParts(),
 		ContextMessages:   contextMessages,
 		MessageCount:      len(contextMessages),
 	}, nil

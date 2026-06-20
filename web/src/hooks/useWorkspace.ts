@@ -7,6 +7,7 @@ import {
   getCurrentWorkspace,
   getStyles,
   getWorkspaceSummary,
+  getWorkspaceTree,
   moveWorkspaceItem,
   readFile as readWorkspaceFile,
   renameWorkspaceItem,
@@ -76,9 +77,7 @@ export function useWorkspace() {
     }
     if (showLoading) setLoading(true)
     try {
-      const res = await fetch('/api/workspace/tree')
-      const data = await res.json()
-      setTree(Array.isArray(data) ? data : [])
+      setTree((await getWorkspaceTree()) as FileNode[])
     } catch (e) {
       console.error('获取目录树失败', e)
       if (clearOnError) setTree([])

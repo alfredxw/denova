@@ -66,6 +66,7 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 	loreItems := hotChoicesLoreContext(workspace)
 	characters := ""
 	worldBuilding := ""
+	recentTurnsLimit := config.ResolveAgentContext(&runtimeCfg, config.AgentKindInteractiveHotChoices).RecentTurns
 	instruction := prompts.InteractiveHotChoicesInstruction(prompts.InteractiveHotChoicesPromptInput{
 		Title:             storyCtx.Meta.Title,
 		Origin:            storyCtx.Meta.Origin,
@@ -75,7 +76,7 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 		WorldBuilding:     worldBuilding,
 		LoreItems:         loreItems,
 		SnapshotStateJSON: string(stateJSON),
-		RecentTurns:       formatHotChoicesRecentTurns(storyCtx.Snapshot.Turns),
+		RecentTurns:       formatHotChoicesRecentTurns(storyCtx.Snapshot.Turns, recentTurnsLimit),
 		ExcludeChoices:    formatHotChoicesExcludeChoices(excludeChoices),
 	})
 	log.Printf(
@@ -137,8 +138,8 @@ func hotChoicesLoreContext(workspace string) string {
 	return context
 }
 
-func formatHotChoicesRecentTurns(turns []interactive.TurnEvent) string {
-	return formatInteractiveRecentTurns(turns, 6, "（暂无历史回合，请基于开端给出第一步行动建议。）")
+func formatHotChoicesRecentTurns(turns []interactive.TurnEvent, recentLimit int) string {
+	return formatInteractiveRecentTurns(turns, recentLimit, "（暂无历史回合，请基于开端给出第一步行动建议。）")
 }
 
 func formatHotChoicesExcludeChoices(choices []string) string {

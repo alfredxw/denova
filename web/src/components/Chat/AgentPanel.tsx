@@ -9,7 +9,7 @@ import { MessageList } from './MessageList'
 import { InputArea } from './InputArea'
 import { SessionManagementPanel } from './SessionManagementPanel'
 import { AgentTracePanel } from './AgentTracePanel'
-import { ContextAnalysisDialog } from './ContextAnalysisDialog'
+import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './ContextAnalysisDialog'
 import type { ReferencePickerItem } from './FileReferencePicker'
 import { WritingReviewPanel, WritingReviewTabBadge } from '@/features/automations/WritingReviewPanel'
 
@@ -113,9 +113,9 @@ export function AgentPanel({
   }, [t])
 
   const handleAnalyzeContext = async (message: string) => {
-    setContextAnalysisOpen(true)
     setContextAnalysisLoading(true)
     setContextAnalysisError(null)
+    setContextAnalysis(null)
     try {
       setContextAnalysis(await onAnalyzeContext(message))
     } catch (e) {
@@ -124,6 +124,11 @@ export function AgentPanel({
     } finally {
       setContextAnalysisLoading(false)
     }
+  }
+
+  const openContextAnalysis = () => {
+    setContextAnalysisOpen(true)
+    void handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
   return (
@@ -246,7 +251,7 @@ export function AgentPanel({
             textSelections={textSelections}
             onTextSelectionRemove={onTextSelectionRemove}
             skills={skillCommands}
-            onContextAnalyze={handleAnalyzeContext}
+            onContextAnalyze={openContextAnalysis}
           />
           <ContextAnalysisDialog
             open={contextAnalysisOpen}

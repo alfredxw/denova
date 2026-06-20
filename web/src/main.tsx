@@ -11,6 +11,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { queryClient } from '@/lib/query-client'
 import { installGlobalRuntimeLoggers, recordRuntimeLog, scheduleWhiteScreenCheck } from '@/lib/runtimeLog'
 import { fetchSettings } from '@/features/settings/api'
+import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
 
 installGlobalRuntimeLoggers()
 
@@ -24,7 +25,7 @@ if (!root) {
   throw new Error('root 节点不存在')
 }
 
-void bootstrapLocale().finally(() => {
+void bootstrapSettings().finally(() => {
   createRoot(root).render(
     <StrictMode>
       <QueryClientProvider client={queryClient}>
@@ -43,11 +44,12 @@ void bootstrapLocale().finally(() => {
   scheduleWhiteScreenCheck(root)
 })
 
-async function bootstrapLocale() {
+async function bootstrapSettings() {
   try {
     const settings = await fetchSettings()
     setConfiguredLocale(settings?.effective?.language)
+    applyFontSettings(fontSettingsFromEffective(settings?.effective))
   } catch (error) {
-    console.warn('[startup] 预加载界面语言失败，使用本地缓存或浏览器语言', error)
+    console.warn('[startup] 预加载界面设置失败，使用本地缓存或浏览器默认值', error)
   }
 }

@@ -65,10 +65,10 @@ type skillWriteOperation struct {
 }
 
 type storyMemoryInput struct {
-	StoryID       string   `json:"story_id" jsonschema:"description=互动故事 ID"`
-	BranchID      string   `json:"branch_id,omitempty" jsonschema:"description=分支 ID；为空时使用当前分支"`
-	IncludeHidden bool     `json:"include_hidden,omitempty" jsonschema:"description=是否包含隐藏记录"`
-	IDs           []string `json:"ids,omitempty" jsonschema:"description=要读取的故事记忆记录 ID 列表"`
+	StoryID         string   `json:"story_id" jsonschema:"description=互动故事 ID"`
+	BranchID        string   `json:"branch_id,omitempty" jsonschema:"description=分支 ID；为空时使用当前分支"`
+	IncludeArchived bool     `json:"include_archived,omitempty" jsonschema:"description=是否包含归档记录"`
+	IDs             []string `json:"ids,omitempty" jsonschema:"description=要读取的故事记忆记录 ID 列表"`
 }
 
 type storyMemoryStructureWriteInput struct {
@@ -91,8 +91,8 @@ type storyMemoryRecordWriteInput struct {
 }
 
 type storyMemoryRecordWriteOperation struct {
-	Op     string                               `json:"op" jsonschema:"description=操作类型：create/update/hide/restore/delete"`
-	ID     string                               `json:"id" jsonschema:"description=目标记录 ID；update/hide/restore/delete 必填"`
+	Op     string                               `json:"op" jsonschema:"description=操作类型：create/update/archive/restore/delete"`
+	ID     string                               `json:"id" jsonschema:"description=目标记录 ID；update/archive/restore/delete 必填"`
 	Record interactive.StoryMemoryRecordRequest `json:"record" jsonschema:"description=create/update 使用的故事记忆记录"`
 }
 
@@ -363,7 +363,7 @@ func newWriteSkillsTool(cfg *config.Config) (tool.BaseTool, error) {
 func newListStoryMemoryStructuresTool(workspace string) (tool.BaseTool, error) {
 	return utils.InferTool("list_story_memory_structures", "读取某个互动故事的完整故事记忆结构定义；结构数量较少，本工具直接返回完整结构，无需 read 工具。", func(ctx context.Context, input storyMemoryInput) (string, error) {
 		_ = ctx
-		state, err := interactive.NewStore(workspace).StoryMemory(input.StoryID, input.BranchID, input.IncludeHidden)
+		state, err := interactive.NewStore(workspace).StoryMemory(input.StoryID, input.BranchID, input.IncludeArchived)
 		if err != nil {
 			return "", err
 		}
@@ -411,14 +411,14 @@ func newWriteStoryMemoryStructuresTool(workspace string) (tool.BaseTool, error) 
 func newListStoryMemoryRecordsTool(workspace string) (tool.BaseTool, error) {
 	return utils.InferTool("list_story_memory_records", "列出某个互动故事当前分支的故事记忆记录索引；需要完整 values 时再调用 read_story_memory_records。", func(ctx context.Context, input storyMemoryInput) (string, error) {
 		_ = ctx
-		state, err := interactive.NewStore(workspace).StoryMemory(input.StoryID, input.BranchID, input.IncludeHidden)
+		state, err := interactive.NewStore(workspace).StoryMemory(input.StoryID, input.BranchID, input.IncludeArchived)
 		if err != nil {
 			return "", err
 		}
 		var sb strings.Builder
 		sb.WriteString("# 故事记忆记录索引\n\n")
 		for _, record := range state.Records {
-			fmt.Fprintf(&sb, "- id: %s\n  structure_id: %s\n  key: %s\n  hidden: %t\n  branch: %s\n  updated_at: %s\n\n", record.ID, record.StructureID, record.Key, record.Hidden, record.BranchID, record.UpdatedAt)
+			fmt.Fprintf(&sb, "- id: %s\n  structure_id: %s\n  key: %s\n  archived: %t\n  branch: %s\n  updated_at: %s\n\n", record.ID, record.StructureID, record.Key, record.Archived, record.BranchID, record.UpdatedAt)
 		}
 		if len(state.Records) == 0 {
 			return "暂无故事记忆记录。", nil
@@ -451,10 +451,10 @@ func newReadStoryMemoryRecordsTool(workspace string) (tool.BaseTool, error) {
 }
 
 func newWriteStoryMemoryRecordsTool(workspace string) (tool.BaseTool, error) {
-	return utils.InferTool("write_story_memory_records", "批量创建、更新、隐藏或恢复故事记忆记录。只改记录内容，不改故事记忆结构定义；delete 等同隐藏。", func(ctx context.Context, input storyMemoryRecordWriteInput) (string, error) {
+	return utils.InferTool("write_story_memory_records", "批量创建、更新、归档或恢复故事记忆记录。只改记录内容，不改故事记忆结构定义；delete 等同归档。", func(ctx context.Context, input storyMemoryRecordWriteInput) (string, error) {
 		_ = ctx
 		store := interactive.NewStore(workspace)
-		result := map[string][]string{"created": []string{}, "updated": []string{}, "hidden": []string{}, "restored": []string{}}
+		result := map[string][]string{"created": []string{}, "updated": []string{}, "archived": []string{}, "restored": []string{}}
 		for _, op := range input.Operations {
 			switch strings.TrimSpace(op.Op) {
 			case "create":
@@ -473,14 +473,14 @@ func newWriteStoryMemoryRecordsTool(workspace string) (tool.BaseTool, error) {
 					return "", err
 				}
 				result["updated"] = append(result["updated"], record.ID)
-			case "hide", "delete":
-				record, err := store.SetStoryMemoryRecordHidden(input.StoryID, op.ID, input.BranchID, true)
+			case "archive", "delete":
+				record, err := store.SetStoryMemoryRecordArchived(input.StoryID, op.ID, input.BranchID, true)
 				if err != nil {
 					return "", err
 				}
-				result["hidden"] = append(result["hidden"], record.ID)
+				result["archived"] = append(result["archived"], record.ID)
 			case "restore":
-				record, err := store.SetStoryMemoryRecordHidden(input.StoryID, op.ID, input.BranchID, false)
+				record, err := store.SetStoryMemoryRecordArchived(input.StoryID, op.ID, input.BranchID, false)
 				if err != nil {
 					return "", err
 				}

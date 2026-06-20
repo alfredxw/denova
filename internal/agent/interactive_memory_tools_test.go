@@ -38,17 +38,17 @@ func TestInteractiveMemoryToolsListReadAndRecordRecall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hiddenMemory, err := store.CreateInteractiveMemory(story.ID, interactive.InteractiveMemoryCreateRequest{
+	archivedMemory, err := store.CreateInteractiveMemory(story.ID, interactive.InteractiveMemoryCreateRequest{
 		BranchID:   "main",
-		Title:      "隐藏记忆",
+		Title:      "归档记忆",
 		Summary:    "这条记忆不应给模型读取。",
-		Content:    "隐藏正文",
+		Content:    "归档正文",
 		Importance: 4,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SetInteractiveMemoryHidden(story.ID, hiddenMemory.ID, true); err != nil {
+	if _, err := store.SetInteractiveMemoryArchived(story.ID, archivedMemory.ID, true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.CreateInteractiveMemory(story.ID, interactive.InteractiveMemoryCreateRequest{
@@ -87,18 +87,18 @@ func TestInteractiveMemoryToolsListReadAndRecordRecall(t *testing.T) {
 	if !strings.Contains(listOutput, mainMemory.ID) || !strings.Contains(listOutput, "站台钥匙") {
 		t.Fatalf("list output should contain visible current-branch memory:\n%s", listOutput)
 	}
-	for _, forbidden := range []string{hiddenMemory.ID, "隐藏正文", "支线记忆", "支线正文", "北门编号"} {
+	for _, forbidden := range []string{archivedMemory.ID, "归档正文", "支线记忆", "支线正文", "北门编号"} {
 		if strings.Contains(listOutput, forbidden) {
 			t.Fatalf("list output leaked %q:\n%s", forbidden, listOutput)
 		}
 	}
 
 	readTool := byName["read_interactive_memories"].(tool.InvokableTool)
-	readOutput, err := readTool.InvokableRun(context.Background(), `{"ids":["`+mainMemory.ID+`","`+hiddenMemory.ID+`"],"query":"确认钥匙来源"}`)
+	readOutput, err := readTool.InvokableRun(context.Background(), `{"ids":["`+mainMemory.ID+`","`+archivedMemory.ID+`"],"query":"确认钥匙来源"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(readOutput, "北门编号") || strings.Contains(readOutput, "隐藏正文") {
+	if !strings.Contains(readOutput, "北门编号") || strings.Contains(readOutput, "归档正文") {
 		t.Fatalf("read output should include only visible requested memory:\n%s", readOutput)
 	}
 	var parsed struct {

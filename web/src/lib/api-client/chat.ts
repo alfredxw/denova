@@ -1,4 +1,4 @@
-import { jsonHeaders, parseSSEStream, requestJSON } from './client'
+import { fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from './client'
 import type { AgentRunTrace, AgentRunTraceSummary, ChatMessage, ContextAnalysis, SSEEvent, SessionSummary, TextSelection } from './types'
 
 export async function sendMessage(
@@ -10,7 +10,7 @@ export async function sendMessage(
   signal?: AbortSignal,
   planMode?: boolean,
 ): Promise<ReadableStream<SSEEvent>> {
-  const res = await fetch('/api/chat', {
+  const res = await fetchAPI('/api/chat', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -67,7 +67,7 @@ export async function getActiveChatTask(): Promise<{ active: boolean; status?: s
 }
 
 export async function streamActiveChat(signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {
-  const res = await fetch('/api/chat/stream', { signal })
+  const res = await fetchAPI('/api/chat/stream', { signal })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   if (!res.body) throw new Error('No response body')
   return parseSSEStream(res.body)

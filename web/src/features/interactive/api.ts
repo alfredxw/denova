@@ -1,4 +1,4 @@
-import { jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
+import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ContextAnalysis } from '@/lib/api-client'
 import type { BranchSummary, HotChoicesResponse, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller } from './types'
 
@@ -41,10 +41,10 @@ export function getInteractiveSnapshot(storyId: string, branchId?: string): Prom
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/snapshot${query}`)
 }
 
-export function getInteractiveMemory(storyId: string, branchId?: string, includeHidden = false): Promise<InteractiveMemoryState> {
+export function getInteractiveMemory(storyId: string, branchId?: string, includeArchived = false): Promise<InteractiveMemoryState> {
   const params = new URLSearchParams()
   if (branchId) params.set('branch', branchId)
-  if (includeHidden) params.set('hidden', 'true')
+  if (includeArchived) params.set('include_archived', 'true')
   const query = params.toString()
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory${query ? `?${query}` : ''}`)
 }
@@ -65,18 +65,18 @@ export function updateInteractiveMemory(storyId: string, memoryId: string, input
   })
 }
 
-export function setInteractiveMemoryHidden(storyId: string, memoryId: string, hidden: boolean): Promise<InteractiveMemoryEntry> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory/${encodeURIComponent(memoryId)}/hide`, {
+export function setInteractiveMemoryArchived(storyId: string, memoryId: string, archived: boolean): Promise<InteractiveMemoryEntry> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory/${encodeURIComponent(memoryId)}/archive`, {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ hidden }),
+    body: JSON.stringify({ archived }),
   })
 }
 
-export function getStoryMemory(storyId: string, branchId?: string, includeHidden = false): Promise<StoryMemoryState> {
+export function getStoryMemory(storyId: string, branchId?: string, includeArchived = false): Promise<StoryMemoryState> {
   const params = new URLSearchParams()
   if (branchId) params.set('branch', branchId)
-  if (includeHidden) params.set('hidden', 'true')
+  if (includeArchived) params.set('include_archived', 'true')
   const query = params.toString()
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory${query ? `?${query}` : ''}`)
 }
@@ -111,12 +111,12 @@ export function saveStoryMemoryRecord(storyId: string, input: Partial<StoryMemor
   })
 }
 
-export function setStoryMemoryRecordHidden(storyId: string, recordId: string, branchId: string | undefined, hidden: boolean): Promise<StoryMemoryRecord> {
+export function setStoryMemoryRecordArchived(storyId: string, recordId: string, branchId: string | undefined, archived: boolean): Promise<StoryMemoryRecord> {
   const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/records/${encodeURIComponent(recordId)}/hide${query}`, {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/records/${encodeURIComponent(recordId)}/archive${query}`, {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ hidden }),
+    body: JSON.stringify({ archived }),
   })
 }
 
@@ -129,7 +129,7 @@ export function generateStoryMemory(storyId: string, branchId?: string): Promise
 }
 
 export async function generateStoryMemoryStream(storyId: string, branchId?: string, signal?: AbortSignal): Promise<ReadableStream<InteractiveSSEEvent>> {
-  const res = await fetch(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/generate/stream`, {
+  const res = await fetchAPI(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/generate/stream`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ branch_id: branchId }),
@@ -213,7 +213,7 @@ export function generateInteractiveHotChoices(storyId: string, input: { branch?:
 }
 
 export async function sendInteractiveMessage(input: { mode: 'story' | 'setting'; story_id: string; branch?: string; message: string; style_references?: string[]; regenerate_from_turn_id?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
-  const res = await fetch('/api/interactive/chat', {
+  const res = await fetchAPI('/api/interactive/chat', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(input),

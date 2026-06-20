@@ -92,9 +92,9 @@ func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
 	if len(memoryList.Entries) != 1 || memoryList.Entries[0].ID != memoryEntry.ID {
 		t.Fatalf("memory list mismatch: %#v", memoryList)
 	}
-	hideResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/memory/"+memoryEntry.ID+"/hide", map[string]bool{"hidden": true})
-	if hideResp.Code != http.StatusOK {
-		t.Fatalf("hide memory status = %d body=%s", hideResp.Code, hideResp.Body.String())
+	archiveResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/memory/"+memoryEntry.ID+"/archive", map[string]bool{"archived": true})
+	if archiveResp.Code != http.StatusOK {
+		t.Fatalf("archive memory status = %d body=%s", archiveResp.Code, archiveResp.Body.String())
 	}
 	snapshotResp = performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/snapshot", nil)
 	decodeResponse(t, snapshotResp.Body.Bytes(), &snapshot)

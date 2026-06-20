@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { ContextAnalysis, ContextAnalysisPart } from '@/lib/api'
 
+export const CONTEXT_ANALYSIS_SIMULATED_MESSAGE = '[Nova context analysis probe]'
+
 export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenChange }: {
   open: boolean
   loading: boolean
@@ -12,6 +14,8 @@ export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenCh
   onOpenChange: (open: boolean) => void
 }) {
   const { t } = useTranslation()
+  const finalMessageParts = analysis ? buildFinalMessageParts(analysis.context_messages) : []
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[86vh] max-w-5xl flex-col gap-0 overflow-hidden border-[var(--nova-border)] bg-[var(--nova-bg)] p-0 text-[var(--nova-text)]">
@@ -38,8 +42,7 @@ export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenCh
           ) : analysis ? (
             <div className="space-y-4">
               <ContextAnalysisSection title={t('chat.contextAnalysis.systemPrompt')} parts={analysis.system_prompt_parts} />
-              <ContextAnalysisSection title={t('chat.contextAnalysis.contextSources')} parts={analysis.context_parts} />
-              <ContextAnalysisSection title={t('chat.contextAnalysis.contextMessages')} parts={analysis.context_messages} showRole />
+              <ContextAnalysisSection title={t('chat.contextAnalysis.finalMessages')} parts={finalMessageParts} showRole />
             </div>
           ) : (
             <div className="min-h-32 text-xs text-[var(--nova-text-faint)]">{t('chat.contextAnalysis.empty')}</div>
@@ -48,6 +51,13 @@ export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenCh
       </DialogContent>
     </Dialog>
   )
+}
+
+function buildFinalMessageParts(messages: ContextAnalysisPart[]): ContextAnalysisPart[] {
+  return messages.map((part, index) => ({
+    ...part,
+    title: `#${index + 1} ${part.title || part.source}`,
+  }))
 }
 
 function ContextAnalysisSection({ title, parts, showRole = false }: {

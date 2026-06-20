@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Bot, Clock3, FileText, Inbox, Loader2, MessageSquareText, Play, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
+import { Bot, Clock3, FileText, Inbox, Loader2, MessageSquareText, Play, Plus, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
@@ -291,9 +291,16 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
       <div className="grid min-h-0 flex-1 grid-cols-[18rem_minmax(0,1fr)] text-xs">
         <aside className="min-h-0 overflow-y-auto border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-          <button type="button" onClick={() => createNew(scopeFilter)} className="nova-nav-item mb-3 w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-2 text-left">
-            {t('automations.newTask')}
-          </button>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setPanelView('agent')} className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2 ${panelView === 'agent' ? 'is-active' : 'bg-[var(--nova-surface)]'}`}>
+              <Bot className="h-3.5 w-3.5" />
+              <span className="min-w-0 truncate">{t('automations.view.agent')}</span>
+            </button>
+            <button type="button" onClick={() => createNew(scopeFilter)} className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2">
+              <Plus className="h-3.5 w-3.5" />
+              <span className="min-w-0 truncate">{t('automations.newTask')}</span>
+            </button>
+          </div>
           <div className="space-y-1">
             {filteredTasks.length === 0 ? (
               <div className="px-2 py-8 text-center text-[var(--nova-text-faint)]">{t('automations.empty')}</div>
@@ -336,14 +343,6 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
               >
                 <MessageSquareText className="h-3.5 w-3.5" />
                 {t('automations.view.run')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPanelView('agent')}
-                className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'agent' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-              >
-                <Bot className="h-3.5 w-3.5" />
-                {t('automations.view.agent')}
               </button>
             </div>
             <div className="min-w-0 flex-1" />

@@ -76,7 +76,7 @@ func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool
 	if ctx.Store == nil || ctx.StoryID == "" {
 		return nil, nil
 	}
-	listTool, err := utils.InferTool("list_interactive_memories", "列出当前互动故事分支的长期记忆轻量索引。用于根据当前行动、人物、地点、线索或标签判断本轮需要读取哪些历史事实；默认排除隐藏记忆和其他分支记忆。", func(callCtx context.Context, input listInteractiveMemoriesInput) (string, error) {
+	listTool, err := utils.InferTool("list_interactive_memories", "列出当前互动故事分支的长期记忆轻量索引。用于根据当前行动、人物、地点、线索或标签判断本轮需要读取哪些历史事实；默认排除归档记忆和其他分支记忆。", func(callCtx context.Context, input listInteractiveMemoriesInput) (string, error) {
 		_ = callCtx
 		limit := normalizeInteractiveMemoryToolLimit(input.Limit, 12, interactiveMemoryToolListLimit)
 		entries, err := ctx.Store.VisibleInteractiveMemories(ctx.StoryID, ctx.BranchID, interactiveMemoryToolListLimit)
@@ -114,7 +114,7 @@ func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool
 	if err != nil {
 		return nil, err
 	}
-	readTool, err := utils.InferTool("read_interactive_memories", "按 ID 读取当前互动故事分支的长期记忆正文。用于在 list_interactive_memories 判断相关后读取少量关键记忆；最多 6 条，隐藏记忆和其他分支记忆不可读取。", func(callCtx context.Context, input readInteractiveMemoriesInput) (string, error) {
+	readTool, err := utils.InferTool("read_interactive_memories", "按 ID 读取当前互动故事分支的长期记忆正文。用于在 list_interactive_memories 判断相关后读取少量关键记忆；最多 6 条，归档记忆和其他分支记忆不可读取。", func(callCtx context.Context, input readInteractiveMemoriesInput) (string, error) {
 		_ = callCtx
 		entries, err := ctx.Store.ReadVisibleInteractiveMemories(ctx.StoryID, ctx.BranchID, input.IDs, interactiveMemoryToolReadLimit)
 		if err != nil {

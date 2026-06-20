@@ -113,21 +113,6 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
         <Field label={t('settingPanel.field.tags')}>
           <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
         </Field>
-        <Field label={t('settingPanel.field.contextTurns')}>
-          <Input
-            className={inputClassName}
-            value={String(draft.context_policy?.recent_turns ?? 0)}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                context_policy: {
-                  ...draft.context_policy,
-                  recent_turns: Number(event.target.value) || 0,
-                },
-              })
-            }
-          />
-        </Field>
         <div className="flex items-end">
           <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{draft.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')}</span>
         </div>

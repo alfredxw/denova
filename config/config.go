@@ -18,6 +18,7 @@ type Config struct {
 	AgentTools                  AgentToolSettings      `toml:"agent_tools"`
 	AgentPrompts                AgentPromptSettings    `toml:"agent_prompts"`
 	AgentSkills                 AgentSkillSettings     `toml:"agent_skills"`
+	AgentContexts               AgentContextSettings   `toml:"agent_context"`
 	SkillsDir                   string                 `toml:"skills_dir"`
 	BackendPort                 int                    `toml:"backend_port"`
 	FrontendPort                int                    `toml:"frontend_port"`
@@ -75,6 +76,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentTools:                  s.AgentTools,
 		AgentPrompts:                s.AgentPrompts,
 		AgentSkills:                 s.AgentSkills,
+		AgentContexts:               s.AgentContexts,
 		SkillsDir:                   s.SkillsDir,
 		BackendPort:                 settingsInt(s.BackendPort, 8080),
 		FrontendPort:                settingsInt(s.FrontendPort, 5173),
@@ -146,6 +148,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		AgentTools:            cfg.AgentTools,
 		AgentPrompts:          cfg.AgentPrompts,
 		AgentSkills:           cfg.AgentSkills,
+		AgentContexts:         cfg.AgentContexts,
 		SkillsDir:             cfg.SkillsDir,
 		NovaDir:               cfg.NovaDir,
 		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
@@ -188,6 +191,7 @@ func Load() *Config {
 			AgentTools:                  d.AgentTools,
 			AgentPrompts:                d.AgentPrompts,
 			AgentSkills:                 d.AgentSkills,
+			AgentContexts:               d.AgentContexts,
 			SkillsDir:                   d.SkillsDir,
 			BackendPort:                 settingsInt(d.BackendPort, 8080),
 			FrontendPort:                settingsInt(d.FrontendPort, 5173),

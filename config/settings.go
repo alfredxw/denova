@@ -20,6 +20,7 @@ type Settings struct {
 	AgentTools    AgentToolSettings      `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
 	AgentPrompts  AgentPromptSettings    `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
 	AgentSkills   AgentSkillSettings     `toml:"agent_skills,omitempty" json:"agent_skills,omitempty"`
+	AgentContexts AgentContextSettings   `toml:"agent_context,omitempty" json:"agent_context,omitempty"`
 
 	// 路径
 	SkillsDir    string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -106,6 +107,7 @@ func DefaultSettings() Settings {
 		},
 		AgentTools:                 DefaultAgentToolSettings(),
 		AgentSkills:                AgentSkillSettings{},
+		AgentContexts:              DefaultAgentContextSettings(),
 		PlanModeDefault:            boolPtr(false),
 		IDEStoryTellerID:           "classic",
 		InteractiveHotChoices:      boolPtr(true),
@@ -132,6 +134,7 @@ func Merge(parent, child Settings) Settings {
 	out.AgentTools = MergeAgentToolSettings(out.AgentTools, child.AgentTools)
 	out.AgentPrompts = MergeAgentPromptSettings(out.AgentPrompts, child.AgentPrompts)
 	out.AgentSkills = MergeAgentSkillSettings(out.AgentSkills, child.AgentSkills)
+	out.AgentContexts = MergeAgentContextSettings(out.AgentContexts, child.AgentContexts)
 	if child.SkillsDir != "" {
 		out.SkillsDir = child.SkillsDir
 	}
@@ -359,6 +362,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
 	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
+	s.AgentContexts = sanitizeAgentContextSettings(s.AgentContexts)
 	return s
 }
 

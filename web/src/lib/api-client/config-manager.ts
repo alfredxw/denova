@@ -1,4 +1,4 @@
-import { jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
+import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
 import type { ChatMessage, SSEEvent } from './types'
 
 export interface ConfigManagerRunRequest {
@@ -12,7 +12,7 @@ export interface ConfigManagerRunRequest {
 }
 
 export async function runConfigManagerStream(req: ConfigManagerRunRequest): Promise<ReadableStream<SSEEvent>> {
-  const res = await fetch('/api/config-manager/stream', {
+  const res = await fetchAPI('/api/config-manager/stream', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(req),

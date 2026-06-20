@@ -102,7 +102,6 @@ const settingPanel = {
   'settingPanel.field.brief': '简介',
   'settingPanel.field.description': '描述',
   'settingPanel.field.randomEventRate': '随机事件率',
-  'settingPanel.field.contextTurns': '上下文回合数',
   'settingPanel.field.ruleName': '规则名称',
   'settingPanel.field.injectTarget': '注入位置',
   'settingPanel.placeholder.tags': '用逗号分隔',
@@ -139,9 +138,9 @@ const settingPanel = {
   'settingPanel.target.turnContext.label': '本轮上下文',
   'settingPanel.target.turnContext.summary': '每轮贴近用户行动',
   'settingPanel.target.turnContext.detail': '每次生成下一回合时注入，强约束本轮裁定、NPC 主动反应、代价、暗线推进和可选择。',
-  'settingPanel.target.stateMemory.label': '互动记忆',
-  'settingPanel.target.stateMemory.summary': '只影响状态记录',
-  'settingPanel.target.stateMemory.detail': '正文生成后注入状态 Agent，用于稳定记录危机、关系变化、资源压力、暗线和行动入口。',
+  'settingPanel.target.stateMemory.label': '记忆沉淀规则',
+  'settingPanel.target.stateMemory.summary': '只影响故事记忆写入',
+  'settingPanel.target.stateMemory.detail': '正文生成后注入互动记忆 Agent，用于指导哪些危机、关系变化、资源压力、暗线和行动入口需要沉淀到故事记忆。',
 } as const
 
 export default settingPanel

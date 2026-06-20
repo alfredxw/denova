@@ -513,6 +513,7 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	cfg.AgentModels = effective.AgentModels
 	cfg.AgentTools = effective.AgentTools
 	cfg.AgentPrompts = effective.AgentPrompts
+	cfg.AgentContexts = effective.AgentContexts
 	if cfg.SkillsDir == "" && effective.SkillsDir != "" {
 		cfg.SkillsDir = effective.SkillsDir
 	}
@@ -585,6 +586,7 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	cfg.AgentModels = config.MergeAgentModelSettings(cfg.AgentModels, settings.AgentModels)
 	cfg.AgentTools = config.MergeAgentToolSettings(cfg.AgentTools, settings.AgentTools)
 	cfg.AgentPrompts = config.MergeAgentPromptSettings(cfg.AgentPrompts, settings.AgentPrompts)
+	cfg.AgentContexts = config.MergeAgentContextSettings(cfg.AgentContexts, settings.AgentContexts)
 	if settings.SkillsDir != "" && os.Getenv("NOVA_SKILLS_DIR") == "" {
 		cfg.SkillsDir = settings.SkillsDir
 	}

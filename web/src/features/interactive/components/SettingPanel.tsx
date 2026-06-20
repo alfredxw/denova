@@ -663,7 +663,7 @@ function newTellerDraft(): Partial<Teller> {
       creator: 'always',
       lore: 'relevant',
       runtime_state: 'always',
-      recent_turns: 8,
+      recent_turns: 30,
     },
     slots: [
       {
@@ -682,7 +682,7 @@ function newTellerDraft(): Partial<Teller> {
       },
       {
         id: 'state_memory',
-        name: '互动记忆',
+        name: '记忆沉淀规则',
         target: 'state_memory',
         enabled: true,
         content: '记录本回合已经成立的关系变化、风险、线索、资源、暗线和可继续行动的入口。',

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Brain, Eye, EyeOff, Loader2, Pencil, Plus, RefreshCw, Save, Search, X } from 'lucide-react'
+import { Archive, Brain, Edit3, Loader2, RefreshCw, RotateCcw, Search, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MessageList } from '@/components/Chat/MessageList'
 import { useAgentEventStream } from '@/hooks/useAgentEventStream'
-import { createInteractiveMemory, generateStoryMemoryStream, getInteractiveMemory, setInteractiveMemoryHidden, updateInteractiveMemory } from '../api'
-import type { InteractiveMemoryEntry, InteractiveMemoryState, Snapshot } from '../types'
+import { generateStoryMemoryStream, getStoryMemory } from '../api'
+import type { Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
 type MemoryPanelView = 'content' | 'generation'
 
@@ -14,38 +14,19 @@ interface MemoryPanelProps {
   snapshot: Snapshot | null
   loading?: boolean
   refreshKey?: string | number
+  onOpenMemoryManager?: () => void
 }
 
-interface MemoryFormState {
-  title: string
-  summary: string
-  content: string
-  people: string
-  places: string
-  tags: string
-  importance: number
-}
+const allStructuresId = '__all__'
 
-const emptyForm: MemoryFormState = {
-  title: '',
-  summary: '',
-  content: '',
-  people: '',
-  places: '',
-  tags: '',
-  importance: 3,
-}
-
-export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refreshKey }: MemoryPanelProps) {
+export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refreshKey, onOpenMemoryManager }: MemoryPanelProps) {
   const { t } = useTranslation()
-  const [memory, setMemory] = useState<InteractiveMemoryState | null>(null)
+  const [memory, setMemory] = useState<StoryMemoryState | null>(null)
   const [memoryLoading, setMemoryLoading] = useState(false)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [showHidden, setShowHidden] = useState(false)
-  const [editing, setEditing] = useState<InteractiveMemoryEntry | null>(null)
-  const [creating, setCreating] = useState(false)
-  const [form, setForm] = useState<MemoryFormState>(emptyForm)
+  const [showArchived, setShowArchived] = useState(false)
+  const [selectedStructureId, setSelectedStructureId] = useState(allStructuresId)
   const [view, setView] = useState<MemoryPanelView>('content')
   const autoGenerateTurnKeyRef = useRef('')
 
@@ -62,14 +43,19 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
     setMemoryLoading(true)
     setError('')
     try {
-      setMemory(await getInteractiveMemory(storyId, effectiveBranchId, showHidden))
+      const next = await getStoryMemory(storyId, effectiveBranchId, showArchived)
+      setMemory(next)
+      setSelectedStructureId((current) => {
+        if (current === allStructuresId || next.structures.some((structure) => structure.id === current)) return current
+        return allStructuresId
+      })
     } catch (err) {
       console.error('[interactive-memory-panel] load failed', err)
       setError(err instanceof Error ? err.message : t('memoryPanel.loadFailed'))
     } finally {
       setMemoryLoading(false)
     }
-  }, [effectiveBranchId, showHidden, storyId, t])
+  }, [effectiveBranchId, showArchived, storyId, t])
 
   const { messages: generateMessages, setMessages: setGenerateMessages, isStreaming: generating, activityContent: generateActivity, consumeAgentStream, resetStreamingState, setAbortController, abortLocalStream } = useAgentEventStream({
     onEvent: (event, data) => {
@@ -89,73 +75,25 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
     void loadMemory()
   }, [loadMemory, refreshKey])
 
-  const entries = useMemo(() => {
+  const structures = memory?.structures || []
+  const filteredRecords = useMemo(() => {
     const needle = query.trim().toLowerCase()
-    const source = memory?.entries || []
+    const source = memory?.records || []
     if (!needle) return source
-    return source.filter((entry) => {
-      const haystack = [entry.title, entry.summary, entry.content, ...(entry.people || []), ...(entry.places || []), ...(entry.tags || [])].join('\n').toLowerCase()
-      return haystack.includes(needle)
+    return source.filter((record) => {
+      const structure = structures.find((item) => item.id === record.structure_id)
+      return storyMemorySearchText(record, structure).toLowerCase().includes(needle)
     })
-  }, [memory?.entries, query])
-
-  const startCreate = () => {
-    setCreating(true)
-    setEditing(null)
-    setForm(emptyForm)
-  }
-
-  const startEdit = (entry: InteractiveMemoryEntry) => {
-    setCreating(false)
-    setEditing(entry)
-    setForm({
-      title: entry.title || '',
-      summary: entry.summary || '',
-      content: entry.content || '',
-      people: (entry.people || []).join(', '),
-      places: (entry.places || []).join(', '),
-      tags: (entry.tags || []).join(', '),
-      importance: entry.importance || 3,
-    })
-  }
-
-  const cancelForm = () => {
-    setCreating(false)
-    setEditing(null)
-    setForm(emptyForm)
-  }
-
-  const saveForm = async () => {
-    if (!storyId) return
-    const payload = {
-      branch_id: effectiveBranchId,
-      title: form.title.trim(),
-      summary: form.summary.trim(),
-      content: form.content.trim(),
-      people: splitList(form.people),
-      places: splitList(form.places),
-      tags: splitList(form.tags),
-      importance: form.importance,
-    }
-    if (!payload.title || (!payload.summary && !payload.content)) {
-      setError(t('memoryPanel.validation'))
-      return
-    }
-    setError('')
-    if (editing) {
-      await updateInteractiveMemory(storyId, editing.id, payload)
-    } else {
-      await createInteractiveMemory(storyId, payload)
-    }
-    cancelForm()
-    await loadMemory()
-  }
-
-  const toggleHidden = async (entry: InteractiveMemoryEntry) => {
-    if (!storyId) return
-    await setInteractiveMemoryHidden(storyId, entry.id, !entry.hidden)
-    await loadMemory()
-  }
+  }, [memory?.records, query, structures])
+  const structureRecordCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    filteredRecords.forEach((record) => counts.set(record.structure_id, (counts.get(record.structure_id) || 0) + 1))
+    return counts
+  }, [filteredRecords])
+  const visibleStructures = useMemo(() => {
+    if (selectedStructureId === allStructuresId) return structures
+    return structures.filter((structure) => structure.id === selectedStructureId)
+  }, [selectedStructureId, structures])
 
   const runStoryMemoryGenerate = useCallback(async (source: 'manual' | 'auto' = 'manual') => {
     if (!storyId || generating) return
@@ -188,12 +126,8 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
     <aside className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface)]">
       <div className="shrink-0 border-b border-[var(--nova-border)] px-4 py-3">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <Brain className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-            <div className="min-w-0">
-              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{t('memoryPanel.title')}</h2>
-              <p className="mt-0.5 truncate text-xs text-[var(--nova-text-muted)]">{t('memoryPanel.subtitle')}</p>
-            </div>
+          <div data-testid="memory-panel-icon" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)]" aria-label={t('memoryPanel.title')} title={t('memoryPanel.title')}>
+            <Brain className="h-4 w-4" />
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <div className="flex h-7 min-w-0 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('memoryPanel.panelSwitch')}>
@@ -221,14 +155,14 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
               <Search className="h-3.5 w-3.5 shrink-0" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('memoryPanel.search')} className="min-w-0 flex-1 bg-transparent text-[var(--nova-text)] outline-none placeholder:text-[var(--nova-text-faint)]" />
             </label>
-            <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={showHidden ? t('memoryPanel.hideHidden') : t('memoryPanel.showHidden')} onClick={() => setShowHidden((value) => !value)}>
-              {showHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={showArchived ? t('memoryPanel.hideArchived') : t('memoryPanel.showArchived')} onClick={() => setShowArchived((value) => !value)}>
+              {showArchived ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
             </button>
             <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={t('memoryPanel.generate')} onClick={() => void runStoryMemoryGenerate()} disabled={generating || !storyId}>
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </button>
-            <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('memoryPanel.add')} onClick={startCreate}>
-              <Plus className="h-4 w-4" />
+            <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={t('memoryPanel.openManager')} onClick={onOpenMemoryManager} disabled={!onOpenMemoryManager}>
+              <Edit3 className="h-4 w-4" />
             </button>
           </div>
         ) : (
@@ -269,72 +203,114 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {(creating || editing) && <MemoryEditor form={form} setForm={setForm} onSave={saveForm} onCancel={cancelForm} />}
-        {entries.length === 0 ? (
-          <div className="flex min-h-[160px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs text-[var(--nova-text-muted)]">{memoryLoading ? t('memoryPanel.loading') : t('memoryPanel.empty')}</div>
-        ) : (
-          <div className="space-y-2">
-            {entries.map((entry) => (
-              <article key={entry.id} className={`rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3 ${entry.hidden ? 'opacity-55' : ''}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="break-words text-sm font-medium text-[var(--nova-text)]">{entry.title || t('memoryPanel.untitled')}</h3>
-                    <p className="mt-1 break-words text-xs leading-5 text-[var(--nova-text-muted)]">{entry.summary || entry.content || t('memoryPanel.noContent')}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('memoryPanel.edit')} onClick={() => startEdit(entry)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button type="button" className="nova-icon-button flex h-7 w-7 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={entry.hidden ? t('memoryPanel.restore') : t('memoryPanel.hide')} onClick={() => void toggleHidden(entry)}>
-                      {entry.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <MemoryChip>{t('memoryPanel.importance', { value: entry.importance || 3 })}</MemoryChip>
-                  {(entry.people || []).map((value) => <MemoryChip key={`p-${entry.id}-${value}`}>{value}</MemoryChip>)}
-                  {(entry.places || []).map((value) => <MemoryChip key={`l-${entry.id}-${value}`}>{value}</MemoryChip>)}
-                  {(entry.tags || []).map((value) => <MemoryChip key={`t-${entry.id}-${value}`}>{value}</MemoryChip>)}
-                  {entry.manual && <MemoryChip>{t('memoryPanel.manual')}</MemoryChip>}
-                </div>
-              </article>
-            ))}
+          <div className="-mx-1 mb-3 overflow-x-auto px-1" aria-label={t('memoryPanel.structureTabs')} data-testid="memory-panel-structure-tabs">
+            <div className="flex w-max min-w-full gap-1">
+              <StructureTab
+                active={selectedStructureId === allStructuresId}
+                label={t('memoryPanel.allStructures')}
+                count={filteredRecords.length}
+                onClick={() => setSelectedStructureId(allStructuresId)}
+              />
+              {structures.map((structure) => (
+                <StructureTab
+                  key={structure.id}
+                  active={selectedStructureId === structure.id}
+                  label={structure.name || structure.id}
+                  count={structureRecordCounts.get(structure.id) || 0}
+                  onClick={() => setSelectedStructureId(structure.id)}
+                />
+              ))}
+            </div>
           </div>
-        )}
-      </div>
+          {memoryLoading ? (
+            <div className="flex min-h-[160px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs text-[var(--nova-text-muted)]">{t('memoryPanel.loading')}</div>
+          ) : filteredRecords.length === 0 ? (
+            <div className="flex min-h-[160px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs text-[var(--nova-text-muted)]">{query.trim() ? t('memoryPanel.noMatches') : t('memoryPanel.empty')}</div>
+          ) : (
+            <div className="space-y-4">
+              {visibleStructures.map((structure) => {
+                const records = filteredRecords.filter((record) => record.structure_id === structure.id)
+                if (records.length === 0) {
+                  if (selectedStructureId === allStructuresId) return null
+                  return (
+                    <section key={structure.id} className="space-y-2">
+                      <MemoryStructureHeader structure={structure} count={0} />
+                      <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-3 py-6 text-center text-xs text-[var(--nova-text-muted)]">{t('memoryPanel.tableEmpty')}</div>
+                    </section>
+                  )
+                }
+                return (
+                  <section key={structure.id} className="space-y-2">
+                    <MemoryStructureHeader structure={structure} count={records.length} />
+                    <div className="space-y-2">
+                      {records.map((record) => (
+                        <MemoryRecordCard key={record.id} record={record} structure={structure} />
+                      ))}
+                    </div>
+                  </section>
+                )
+              })}
+            </div>
+          )}
+        </div>
       )}
     </aside>
   )
 }
 
-function MemoryEditor({ form, setForm, onSave, onCancel }: { form: MemoryFormState; setForm: (form: MemoryFormState) => void; onSave: () => void; onCancel: () => void }) {
-  const { t } = useTranslation()
-  const update = (patch: Partial<MemoryFormState>) => setForm({ ...form, ...patch })
+function StructureTab({ active, label, count, onClick }: { active: boolean; label: string; count: number; onClick: () => void }) {
   return (
-    <div className="mb-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-      <input value={form.title} onChange={(event) => update({ title: event.target.value })} placeholder={t('memoryPanel.fieldTitle')} className="mb-2 w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs text-[var(--nova-text)] outline-none" />
-      <textarea value={form.summary} onChange={(event) => update({ summary: event.target.value })} placeholder={t('memoryPanel.fieldSummary')} rows={2} className="mb-2 w-full resize-none rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs text-[var(--nova-text)] outline-none" />
-      <textarea value={form.content} onChange={(event) => update({ content: event.target.value })} placeholder={t('memoryPanel.fieldContent')} rows={4} className="mb-2 w-full resize-y rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs text-[var(--nova-text)] outline-none" />
-      <div className="grid gap-2 sm:grid-cols-3">
-        <input value={form.people} onChange={(event) => update({ people: event.target.value })} placeholder={t('memoryPanel.fieldPeople')} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs text-[var(--nova-text)] outline-none" />
-        <input value={form.places} onChange={(event) => update({ places: event.target.value })} placeholder={t('memoryPanel.fieldPlaces')} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs text-[var(--nova-text)] outline-none" />
-        <input value={form.tags} onChange={(event) => update({ tags: event.target.value })} placeholder={t('memoryPanel.fieldTags')} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs text-[var(--nova-text)] outline-none" />
+    <button
+      type="button"
+      className={`inline-flex h-7 max-w-[168px] shrink-0 items-center gap-1 rounded-[var(--nova-radius)] border px-2 text-[11px] transition-colors ${active ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]'}`}
+      aria-label={`${label} ${count}`}
+      aria-pressed={active}
+      onClick={onClick}
+    >
+      <span className="min-w-0 truncate">{label}</span>
+      <span className="shrink-0 text-[10px] opacity-70">{count}</span>
+    </button>
+  )
+}
+
+function MemoryStructureHeader({ structure, count }: { structure: StoryMemoryStructure; count: number }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-2">
+      <div className="min-w-0">
+        <h3 className="truncate text-xs font-semibold text-[var(--nova-text)]">{structure.name || structure.id}</h3>
+        {structure.description && <p className="mt-0.5 line-clamp-1 break-words text-[11px] text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">{structure.description}</p>}
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <label className="flex items-center gap-2 text-xs text-[var(--nova-text-muted)]">
-          {t('memoryPanel.fieldImportance')}
-          <input type="number" min={1} max={5} value={form.importance} onChange={(event) => update({ importance: Number(event.target.value) || 3 })} className="w-14 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 text-xs text-[var(--nova-text)] outline-none" />
-        </label>
-        <div className="flex items-center gap-1">
-          <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('common.cancel')} onClick={onCancel}>
-            <X className="h-4 w-4" />
-          </button>
-          <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('common.save')} onClick={onSave}>
-            <Save className="h-4 w-4" />
-          </button>
+      <span className="shrink-0 rounded-full border border-[var(--nova-border)] px-2 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('memoryPanel.recordCount', { count })}</span>
+    </div>
+  )
+}
+
+function MemoryRecordCard({ record, structure }: { record: StoryMemoryRecord; structure: StoryMemoryStructure }) {
+  const { t } = useTranslation()
+  const fields = structure.fields.length ? structure.fields : [{ id: 'value', name: t('storyMemory.value'), order: 10 }]
+  const displayFields = fields.filter((field) => recordFieldValue(record, field.id).trim()).slice(0, 4)
+  const visibleFields = displayFields.length > 0 ? displayFields : fields.slice(0, 1)
+  return (
+    <article className={`rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3 ${record.archived ? 'opacity-55' : ''}`}>
+      <div className="min-w-0">
+        <h4 className="break-words text-sm font-medium text-[var(--nova-text)] [overflow-wrap:anywhere]">{storyMemoryRecordTitle(record, structure, t('storyMemory.untitled'))}</h4>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {record.manual && <MemoryChip>{t('storyMemory.manual')}</MemoryChip>}
+          {record.inherited_from && <MemoryChip>{t('storyMemory.inherited')}</MemoryChip>}
+          {record.archived && <MemoryChip>{t('memoryPanel.archived')}</MemoryChip>}
+          {record.updated_at && <MemoryChip>{`${t('storyMemory.updated')} ${formatShortDate(record.updated_at)}`}</MemoryChip>}
         </div>
       </div>
-    </div>
+      <div className="mt-2 space-y-2">
+        {visibleFields.map((field) => (
+          <section key={field.id} className="min-w-0">
+            <div className="mb-0.5 truncate text-[11px] font-medium text-[var(--nova-text-muted)]">{field.name || field.id}</div>
+            <p className="line-clamp-4 whitespace-pre-wrap break-words text-xs leading-5 text-[var(--nova-text)] [overflow-wrap:anywhere]">{recordFieldValue(record, field.id) || t('storyMemory.noValue')}</p>
+          </section>
+        ))}
+      </div>
+    </article>
   )
 }
 
@@ -358,13 +334,34 @@ function MemoryChip({ children }: { children: string }) {
   return <span className="max-w-full truncate rounded-full border border-[var(--nova-border)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]">{children}</span>
 }
 
-function splitList(value: string): string[] {
-  return value
-    .split(/[，,]/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
 function readNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function storyMemorySearchText(record: StoryMemoryRecord, structure?: StoryMemoryStructure) {
+  return [
+    structure?.name,
+    structure?.description,
+    record.key,
+    ...Object.values(record.values || {}),
+  ].filter(Boolean).join('\n')
+}
+
+function storyMemoryRecordTitle(record: StoryMemoryRecord, structure: StoryMemoryStructure, fallback: string) {
+  if (record.key?.trim()) return record.key.trim()
+  const keyField = structure.key_field_id ? record.values?.[structure.key_field_id]?.trim() : ''
+  if (keyField) return keyField
+  const firstValue = structure.fields.map((field) => record.values?.[field.id]?.trim()).find(Boolean)
+  return firstValue || structure.name || fallback
+}
+
+function recordFieldValue(record: StoryMemoryRecord, fieldId: string) {
+  return record.values?.[fieldId] || ''
+}
+
+function formatShortDate(value: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleDateString()
 }

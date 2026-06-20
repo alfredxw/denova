@@ -6,7 +6,7 @@ const skills = {
   'skills.empty': '暂无 Skills。可以在左侧新建，或让 Agent 使用 skills-creator 帮你创建。',
   'skills.unsaved': '未保存',
   'skills.shadowed': '已被覆盖',
-  'skills.agent.button': '让 Agent 创建',
+  'skills.agent.button': '配置 Agent',
   'skills.agent.pathFallback': '选择一个可写 scope 后生成',
   'skills.agent.prompt': '请使用 skills-creator skill，和我一起创建或更新 "{{name}}"。目标范围：{{scope}}；目标文件：{{path}}。请先确认用途、触发场景、需要收集的上下文和输出边界；信息足够时，按 .agent/skills 格式写入 SKILL.md。完成后提醒我可在创作 Agent 或其他支持 Skills 的 Agent 中使用 /{{name}} 触发。',
   'skills.create.title': '新建 Skill',

@@ -322,9 +322,8 @@ export function InputArea({
   }
 
   const handleContextAnalyze = () => {
-    const trimmed = value.trim()
-    if (!trimmed || disabled) return
-    void onContextAnalyze?.(trimmed)
+    if (disabled) return
+    void onContextAnalyze?.(value)
   }
 
   /** 选择命令 */
@@ -503,7 +502,7 @@ export function InputArea({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top" className="min-w-44 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
             <DropdownMenuItem
-              disabled={!value.trim() || disabled}
+              disabled={disabled}
               onSelect={handleContextAnalyze}
               className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
             >

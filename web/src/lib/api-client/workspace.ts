@@ -35,6 +35,11 @@ export async function getWorkspaceSummary(): Promise<WorkspaceSummary> {
   }
 }
 
+export async function getWorkspaceTree(): Promise<unknown[]> {
+  const data = await requestJSON<unknown[]>('/api/workspace/tree')
+  return Array.isArray(data) ? data : []
+}
+
 export async function readFile(path: string): Promise<{ path: string; content: string }> {
   return requestJSON(`/api/workspace/file?path=${encodeURIComponent(path)}`)
 }
