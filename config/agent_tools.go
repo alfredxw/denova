@@ -22,6 +22,7 @@ type AgentToolSettings struct {
 	VersionSummary        AgentToolOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 	ToolAgent             AgentToolOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 	Automation            AgentToolOverride `toml:"automation,omitempty" json:"automation,omitempty"`
+	ContextCompaction     AgentToolOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
 // AgentToolOverride 的指针字段用于区分继承与显式关闭。
@@ -70,10 +71,11 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			ShellExecute: off,
 		},
 		InteractiveState:      noToolAgentOverride(),
-		InteractiveHotChoices: noToolAgentOverride(),
-		VersionSummary:        noToolAgentOverride(),
-		ToolAgent:             noToolAgentOverride(),
-		Automation: AgentToolOverride{
+			InteractiveHotChoices: noToolAgentOverride(),
+			VersionSummary:        noToolAgentOverride(),
+			ToolAgent:             noToolAgentOverride(),
+			ContextCompaction:     noToolAgentOverride(),
+			Automation: AgentToolOverride{
 			FileRead:     on,
 			FileWrite:    on,
 			ShellExecute: off,
@@ -111,6 +113,7 @@ func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 		VersionSummary:        mergeAgentToolOverride(parent.VersionSummary, child.VersionSummary),
 		ToolAgent:             mergeAgentToolOverride(parent.ToolAgent, child.ToolAgent),
 		Automation:            mergeAgentToolOverride(parent.Automation, child.Automation),
+		ContextCompaction:     mergeAgentToolOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 

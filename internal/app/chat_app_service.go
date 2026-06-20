@@ -325,6 +325,47 @@ func (s *ChatAppService) AnalyzeContext(req agent.ChatRequest) (agent.ContextAna
 	return agent.BuildIDEContextAnalysis(&runtime.cfg, runtime.state, ideStoryTellerForConfig(&runtime.cfg), runtime.bookService, runtime.sess.GetEffectiveMessages(), runtime.sess.MessageCountTotal(), compaction, pending, req)
 }
 
+func (a *App) CompactContext(ctx context.Context) (agent.ContextCompactionResult, error) {
+	return a.chat().CompactContext(ctx)
+}
+
+func (s *ChatAppService) CompactContext(ctx context.Context) (agent.ContextCompactionResult, error) {
+	runtime, _, err := s.prepareIDEChatRuntime(agent.ChatRequest{}, false)
+	if err != nil {
+		return agent.ContextCompactionResult{}, err
+	}
+	conversation := agent.NewSessionConversationForAgent(runtime.sess, &runtime.cfg, config.AgentKindIDE)
+	_, result, err := conversation.CompactContextIfNeeded(ctx, agent.ContextCompactionInput{
+		Messages:       runtime.sess.GetEffectiveMessages(),
+		Phase:          "manual",
+		Force:          true,
+		KeepLatestUser: true,
+	})
+	if err != nil {
+		return result, err
+	}
+	if !result.Triggered {
+		return result, fmt.Errorf("没有可压缩的上下文")
+	}
+	return result, nil
+}
+
+func (a *App) RemoveContextCompaction() (bool, error) {
+	return a.chat().RemoveContextCompaction()
+}
+
+func (s *ChatAppService) RemoveContextCompaction() (bool, error) {
+	a := s.app
+	a.mu.RLock()
+	sess := a.session
+	a.mu.RUnlock()
+	if sess == nil {
+		return false, ErrNoWorkspace
+	}
+	_, removed, err := sess.RemoveLatestContextCompaction(config.AgentKindIDE, "user_removed")
+	return removed, err
+}
+
 func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunning bool) (ideChatRuntime, agent.ChatRequest, error) {
 	a := s.app
 	a.mu.Lock()

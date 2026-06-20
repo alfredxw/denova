@@ -13,6 +13,7 @@ const (
 	StoryEventTypeBranch     = "branch"
 	StoryEventTypeHotChoices = "hot_choices"
 	StoryEventTypeCompaction = "context_compaction"
+	StoryEventTypeCompactionRemoved = "context_compaction_removed"
 
 	stateOpSchemaVersion = 1
 )

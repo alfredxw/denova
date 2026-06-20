@@ -53,14 +53,21 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			for _, op := range delta.Ops {
 				applyStateOp(state, op)
 			}
-		case StoryEventTypeCompaction:
-			var compaction ContextCompactionEvent
-			if err := mapToStruct(record.Raw, &compaction); err != nil {
-				return Snapshot{}, err
+			case StoryEventTypeCompaction:
+				var compaction ContextCompactionEvent
+				if err := mapToStruct(record.Raw, &compaction); err != nil {
+					return Snapshot{}, err
+				}
+				snapshot.ContextCompaction = &compaction
+			case StoryEventTypeCompactionRemoved:
+				var removal ContextCompactionRemovalEvent
+				if err := mapToStruct(record.Raw, &removal); err != nil {
+					return Snapshot{}, err
+				}
+				snapshot.ContextCompaction = nil
+				snapshot.ContextCompactionRemoval = &removal
 			}
-			snapshot.ContextCompaction = &compaction
 		}
-	}
 	snapshot.Graph = buildStoryGraph(meta, lines, eventsByID, pathSet)
 	return snapshot, nil
 }

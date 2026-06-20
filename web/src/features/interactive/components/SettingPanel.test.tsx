@@ -45,7 +45,7 @@ describe('SettingPanel', () => {
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith('/api/workspace/file', expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ path: 'CREATOR.md', content: '新的最高规则' }),
+        body: JSON.stringify({ path: 'CREATOR.md', content: '新的最高规则', base_revision: '' }),
       }))
     })
   })

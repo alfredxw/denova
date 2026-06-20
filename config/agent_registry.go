@@ -9,6 +9,7 @@ const (
 	AgentKindVersionSummary        = "version_summary"
 	AgentKindToolAgent             = "tool_agent"
 	AgentKindAutomation            = "automation"
+	AgentKindContextCompaction     = "context_compaction"
 )
 
 // AgentKindDefinition is the registry entry for one runtime Agent kind.
@@ -93,6 +94,15 @@ var agentKindRegistry = []AgentKindDefinition{
 		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.Automation },
 		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.Automation },
 		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.Automation },
+	},
+	{
+		Kind:            AgentKindContextCompaction,
+		SessionID:       "context-compaction-agent",
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.ContextCompaction },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.ContextCompaction },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.ContextCompaction },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.ContextCompaction },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.ContextCompaction },
 	},
 }
 

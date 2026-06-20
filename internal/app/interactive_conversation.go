@@ -39,6 +39,8 @@ type interactiveConversation struct {
 	displayEvents    []interactive.DisplayEvent
 }
 
+const interactiveCompactionStoryMemoryLimit = 64 * 1024
+
 func newInteractiveConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int, cfg *config.Config) *interactiveConversation {
 	return &interactiveConversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
 }
@@ -137,10 +139,19 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	if err != nil {
 		return input.Messages, agent.ContextCompactionResult{}, err
 	}
+	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= len(storyCtx.Snapshot.Turns) {
+		return input.Messages, agent.ContextCompactionResult{SkippedReason: "removed_same_source"}, nil
+	}
+	source := interactiveTurnMessages(storyCtx.Snapshot.Turns)
 	epoch := 1
 	if storyCtx.Snapshot.ContextCompaction != nil {
 		epoch = storyCtx.Snapshot.ContextCompaction.Epoch + 1
 	}
+	input.SourceMessages = source
+	if strings.TrimSpace(input.ReferenceContext) == "" {
+		input.ReferenceContext = interactiveCompactionReferenceContext(c.store, c.storyID, storyCtx.Snapshot.BranchID)
+	}
+	input.KeepLatestUser = true
 	newMessages, result, err := agent.BuildContextCompaction(ctx, c.cfg, config.AgentKindInteractiveStory, input, epoch)
 	if err != nil || !result.Triggered {
 		return newMessages, result, err
@@ -153,6 +164,7 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 		RetainedTurns:       config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).CompactionRecentTurns,
 		TokensBefore:        result.TokensBefore,
 		TokensAfter:         result.TokensAfter,
+		TargetRatio:         result.TargetRatio,
 		ContextWindowTokens: result.ContextWindowTokens,
 		Threshold:           result.Threshold,
 		Reason:              "context_usage_threshold",
@@ -164,8 +176,41 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	}
 	if event.Epoch != result.Epoch {
 		result.Epoch = event.Epoch
+		retainedTurns := config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).CompactionRecentTurns
+		newMessages = agent.BuildCompactedModelMessages(input.Messages, result.Summary, event.Epoch, retainedTurns)
+		result.TokensAfter = agent.EstimateContextTokens(newMessages, input.Tools)
+		result.MessageCountAfter = len(newMessages)
 	}
 	return newMessages, result, nil
+}
+
+func interactiveTurnMessages(turns []interactive.TurnEvent) []*schema.Message {
+	messages := make([]*schema.Message, 0, len(turns)*2)
+	for _, turn := range turns {
+		if strings.TrimSpace(turn.User) != "" {
+			messages = append(messages, schema.UserMessage(turn.User))
+		}
+		if strings.TrimSpace(turn.Narrative) != "" {
+			messages = append(messages, schema.AssistantMessage(turn.Narrative, nil))
+		}
+	}
+	return messages
+}
+
+func interactiveCompactionReferenceContext(store *interactive.Store, storyID, branchID string) string {
+	if store == nil {
+		return ""
+	}
+	storyMemory, err := store.StoryMemoryContextSummary(storyID, branchID, interactiveCompactionStoryMemoryLimit)
+	if err != nil {
+		log.Printf("[interactive-agent] load story memory for compaction failed story_id=%s branch_id=%s err=%v", storyID, branchID, err)
+		return ""
+	}
+	storyMemory = strings.TrimSpace(storyMemory)
+	if storyMemory == "" {
+		return ""
+	}
+	return "Story Memory reference for context compaction. Treat plot_summary / 剧情纪要 records as highest-priority continuity evidence.\n\n" + storyMemory
 }
 
 func (c *interactiveConversation) AppendAssistant(content string) error {

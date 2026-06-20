@@ -13,6 +13,7 @@ type AgentPromptSettings struct {
 	VersionSummary        AgentPromptOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 	ToolAgent             AgentPromptOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 	Automation            AgentPromptOverride `toml:"automation,omitempty" json:"automation,omitempty"`
+	ContextCompaction     AgentPromptOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
 type AgentPromptOverride struct {
@@ -30,6 +31,7 @@ type AgentPromptSourceSettings struct {
 	VersionSummary        AgentPromptSourceList `json:"version_summary,omitempty"`
 	ToolAgent             AgentPromptSourceList `json:"tool_agent,omitempty"`
 	Automation            AgentPromptSourceList `json:"automation,omitempty"`
+	ContextCompaction     AgentPromptSourceList `json:"context_compaction,omitempty"`
 }
 
 type AgentPromptSourceList struct {
@@ -55,6 +57,7 @@ type AgentPromptBlockSettings struct {
 	VersionSummary        AgentPromptBlocks `json:"version_summary,omitempty"`
 	ToolAgent             AgentPromptBlocks `json:"tool_agent,omitempty"`
 	Automation            AgentPromptBlocks `json:"automation,omitempty"`
+	ContextCompaction     AgentPromptBlocks `json:"context_compaction,omitempty"`
 }
 
 type AgentPromptBlocks struct {
@@ -79,6 +82,7 @@ func MergeAgentPromptSettings(parent, child AgentPromptSettings) AgentPromptSett
 		VersionSummary:        mergeAgentPromptOverride(parent.VersionSummary, child.VersionSummary),
 		ToolAgent:             mergeAgentPromptOverride(parent.ToolAgent, child.ToolAgent),
 		Automation:            mergeAgentPromptOverride(parent.Automation, child.Automation),
+		ContextCompaction:     mergeAgentPromptOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 
@@ -121,6 +125,7 @@ func sanitizeAgentPromptSettings(settings AgentPromptSettings) AgentPromptSettin
 	settings.VersionSummary = sanitizeAgentPromptOverride(settings.VersionSummary)
 	settings.ToolAgent = sanitizeAgentPromptOverride(settings.ToolAgent)
 	settings.Automation = sanitizeAgentPromptOverride(settings.Automation)
+	settings.ContextCompaction = sanitizeAgentPromptOverride(settings.ContextCompaction)
 	return settings
 }
 

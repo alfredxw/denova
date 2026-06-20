@@ -190,6 +190,69 @@ func TestContextCompactionPersistsOutsideVisibleHistory(t *testing.T) {
 	}
 }
 
+func TestContextCompactionRemovalRestoresRawHistory(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.UserMessage("第一轮")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.AssistantMessage("第一答", nil)); err != nil {
+		t.Fatal(err)
+	}
+	record, err := sess.AppendContextCompaction(ContextCompaction{
+		AgentKind:           "ide",
+		Summary:             "旧摘要",
+		SourceStartIndex:    0,
+		SourceEndIndex:      2,
+		RetainedTurns:       8,
+		TokensBefore:        900,
+		TokensAfter:         120,
+		ContextWindowTokens: 1000,
+		Threshold:           0.9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	removal, removed, err := sess.RemoveLatestContextCompaction("ide", "user_rejected")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !removed {
+		t.Fatal("expected active compaction to be removed")
+	}
+	if removal.CompactionID != record.ID || removal.SourceEndIndex != record.SourceEndIndex {
+		t.Fatalf("unexpected removal record: %#v for compaction %#v", removal, record)
+	}
+	if _, ok := sess.LatestContextCompaction("ide"); ok {
+		t.Fatal("removed compaction should not be active")
+	}
+	if latestRemoval, ok := sess.LatestContextCompactionRemoval("ide"); !ok || latestRemoval.CompactionID != record.ID {
+		t.Fatalf("expected latest removal for record %s, got %#v ok=%v", record.ID, latestRemoval, ok)
+	}
+	if history := sess.History(); len(history) != 2 {
+		t.Fatalf("visible history should stay raw after removal: %#v", history)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := reloaded.LatestContextCompaction("ide"); ok {
+		t.Fatal("removed compaction should stay inactive after reload")
+	}
+}
+
 func TestMultipleSessionsAreIsolatedAndActiveSessionPersists(t *testing.T) {
 	store, err := NewStore(t.TempDir())
 	if err != nil {

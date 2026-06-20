@@ -24,6 +24,7 @@ const (
 	historyTypeClear      = "clear"
 	historyTypeInterrupt  = "interrupt"
 	historyTypeCompaction = "context_compaction"
+	historyTypeCompactionRemoved = "context_compaction_removed"
 
 	InterruptionPending  = "pending"
 	InterruptionResolved = "resolved"
@@ -49,6 +50,7 @@ type historyRecord struct {
 	display      *DisplayEvent
 	interruption *Interruption
 	compaction   *ContextCompaction
+	compactionRemoval *ContextCompactionRemoval
 	createdAt    time.Time
 }
 
@@ -89,11 +91,25 @@ type ContextCompaction struct {
 	RetainedTurns       int       `json:"retained_turns"`
 	TokensBefore        int       `json:"tokens_before"`
 	TokensAfter         int       `json:"tokens_after"`
+	TargetRatio         float64   `json:"target_ratio,omitempty"`
 	ContextWindowTokens int       `json:"context_window_tokens"`
 	Threshold           float64   `json:"threshold"`
 	Reason              string    `json:"reason,omitempty"`
 	Phase               string    `json:"phase,omitempty"`
 	CreatedAt           time.Time `json:"created_at"`
+}
+
+// ContextCompactionRemoval soft-disables the active model-visible compaction
+// without deleting raw transcript or historical compaction records.
+type ContextCompactionRemoval struct {
+	Type             string    `json:"type"`
+	ID               string    `json:"id"`
+	AgentKind        string    `json:"agent_kind,omitempty"`
+	CompactionID     string    `json:"compaction_id,omitempty"`
+	SourceStartIndex int       `json:"source_start_index"`
+	SourceEndIndex   int       `json:"source_end_index"`
+	Reason           string    `json:"reason,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // Session 保存单个会话的内存状态。
@@ -263,6 +279,35 @@ func (s *Session) AppendContextCompaction(record ContextCompaction) (ContextComp
 	return record, s.persistLocked()
 }
 
+// RemoveLatestContextCompaction soft-disables the latest active compaction for
+// an agent. Raw messages remain untouched so context can reconnect to history.
+func (s *Session) RemoveLatestContextCompaction(agentKind, reason string) (ContextCompactionRemoval, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	compaction, ok := s.latestActiveContextCompactionLocked(agentKind)
+	if !ok {
+		return ContextCompactionRemoval{}, false, nil
+	}
+	now := time.Now().UTC()
+	record := ContextCompactionRemoval{
+		Type:             historyTypeCompactionRemoved,
+		ID:               newContextCompactionRemovalID(),
+		AgentKind:        compaction.AgentKind,
+		CompactionID:     compaction.ID,
+		SourceStartIndex: compaction.SourceStartIndex,
+		SourceEndIndex:   compaction.SourceEndIndex,
+		Reason:           strings.TrimSpace(reason),
+		CreatedAt:        now,
+	}
+	if strings.TrimSpace(record.AgentKind) == "" {
+		record.AgentKind = strings.TrimSpace(agentKind)
+	}
+	s.records = append(s.records, historyRecord{kind: historyTypeCompactionRemoved, compactionRemoval: &record, createdAt: record.CreatedAt})
+	s.UpdatedAt = record.CreatedAt
+	return record, true, s.persistLocked()
+}
+
 // MarkInterrupted 记录一次异常中断，供用户后续明确要求继续时恢复。
 func (s *Session) MarkInterrupted(userMessage, assistantContent, reason string) error {
 	s.mu.Lock()
@@ -346,8 +391,51 @@ func (s *Session) LatestContextCompaction(agentKind string) (ContextCompaction, 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	return s.latestActiveContextCompactionLocked(agentKind)
+}
+
+// LatestContextCompactionRemoval returns the newest removal marker after the
+// latest clear marker for the given agent kind.
+func (s *Session) LatestContextCompactionRemoval(agentKind string) (ContextCompactionRemoval, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	for i := len(s.records) - 1; i >= 0; i-- {
 		record := s.records[i]
+		if record.kind != historyTypeCompactionRemoved || record.compactionRemoval == nil {
+			continue
+		}
+		removal := *record.compactionRemoval
+		if removal.SourceEndIndex <= s.clearAfterIndex {
+			continue
+		}
+		if strings.TrimSpace(agentKind) != "" && strings.TrimSpace(removal.AgentKind) != "" && removal.AgentKind != agentKind {
+			continue
+		}
+		return removal, true
+	}
+	return ContextCompactionRemoval{}, false
+}
+
+func (s *Session) NextContextCompactionEpoch(agentKind string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.nextCompactionEpochLocked(agentKind)
+}
+
+func (s *Session) latestActiveContextCompactionLocked(agentKind string) (ContextCompaction, bool) {
+	for i := len(s.records) - 1; i >= 0; i-- {
+		record := s.records[i]
+		if record.kind == historyTypeCompactionRemoved && record.compactionRemoval != nil {
+			removal := *record.compactionRemoval
+			if removal.SourceEndIndex <= s.clearAfterIndex {
+				continue
+			}
+			if strings.TrimSpace(agentKind) == "" || strings.TrimSpace(removal.AgentKind) == "" || removal.AgentKind == agentKind {
+				return ContextCompaction{}, false
+			}
+			continue
+		}
 		if record.kind != historyTypeCompaction || record.compaction == nil {
 			continue
 		}
@@ -488,17 +576,24 @@ func (s *Session) persistLocked() error {
 			if err := writeJSONLine(&sb, interruptionRecord{Type: historyTypeInterrupt, Interruption: *record.interruption}); err != nil {
 				return err
 			}
-		case historyTypeCompaction:
-			if record.compaction == nil {
-				continue
-			}
-			if err := writeJSONLine(&sb, *record.compaction); err != nil {
-				return err
-			}
-		case historyTypeDisplay:
-			if record.display == nil {
-				continue
-			}
+			case historyTypeCompaction:
+				if record.compaction == nil {
+					continue
+				}
+				if err := writeJSONLine(&sb, *record.compaction); err != nil {
+					return err
+				}
+			case historyTypeCompactionRemoved:
+				if record.compactionRemoval == nil {
+					continue
+				}
+				if err := writeJSONLine(&sb, *record.compactionRemoval); err != nil {
+					return err
+				}
+			case historyTypeDisplay:
+				if record.display == nil {
+					continue
+				}
 			if err := writeJSONLine(&sb, displayRecord{Type: historyTypeDisplay, DisplayEvent: *record.display}); err != nil {
 				return err
 			}
@@ -993,6 +1088,26 @@ func appendRecordLine(sess *Session, line string) error {
 		}
 		return nil
 	}
+	if typed.Type == historyTypeCompactionRemoved {
+		var record ContextCompactionRemoval
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			return err
+		}
+		if strings.TrimSpace(record.ID) == "" {
+			record.ID = newContextCompactionRemovalID()
+		}
+		if record.CreatedAt.IsZero() {
+			record.CreatedAt = sess.UpdatedAt
+		}
+		if record.Type == "" {
+			record.Type = historyTypeCompactionRemoved
+		}
+		sess.records = append(sess.records, historyRecord{kind: historyTypeCompactionRemoved, compactionRemoval: &record, createdAt: record.CreatedAt})
+		if record.CreatedAt.After(sess.UpdatedAt) {
+			sess.UpdatedAt = record.CreatedAt
+		}
+		return nil
+	}
 	if typed.Type == historyTypeDisplay {
 		var marker displayRecord
 		if err := json.Unmarshal([]byte(line), &marker); err != nil {
@@ -1077,6 +1192,10 @@ func newInterruptionID() string {
 
 func newContextCompactionID() string {
 	return "cc-" + strings.TrimPrefix(newSessionID(), "s-")
+}
+
+func newContextCompactionRemovalID() string {
+	return "ccr-" + strings.TrimPrefix(newSessionID(), "s-")
 }
 
 func deriveTitle(content string) string {

@@ -23,6 +23,9 @@ func runInteractiveMemoryAgentWithRetry(ctx context.Context, cfg *config.Config,
 			lastErr = err
 			log.Printf("[interactive-memory-agent] attempt failed phase=generate attempt=%d/%d err=%v", attempt, interactiveMemoryAgentMaxAttempts, err)
 			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveState, attemptInstruction, interactiveMemoryAttemptFailure(attempt, err))
+			if ctx.Err() != nil {
+				return interactiveMemoryAgentResult{}, fmt.Errorf("互动记忆 Agent 请求超时或已取消: %w", err)
+			}
 			continue
 		}
 		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveState, attemptInstruction, output)

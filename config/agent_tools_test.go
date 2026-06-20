@@ -35,6 +35,10 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 	if toolAgent.FileRead || toolAgent.FileWrite || toolAgent.ShellExecute || toolAgent.Skills || toolAgent.LoreRead || toolAgent.LoreWrite || toolAgent.Todo || toolAgent.WebSearch {
 		t.Fatalf("工具 Agent 默认不应注册工具: %+v", toolAgent)
 	}
+	compaction := ResolveAgentTools(&Config{}, AgentKindContextCompaction)
+	if compaction.FileRead || compaction.FileWrite || compaction.ShellExecute || compaction.Skills || compaction.LoreRead || compaction.LoreWrite || compaction.Todo || compaction.WebSearch {
+		t.Fatalf("上下文压缩 Agent 默认不应注册工具: %+v", compaction)
+	}
 
 	automation := ResolveAgentTools(&Config{}, AgentKindAutomation)
 	if !automation.FileRead || !automation.FileWrite || !automation.Skills || !automation.LoreRead || !automation.LoreWrite || !automation.Todo || !automation.WebSearch {

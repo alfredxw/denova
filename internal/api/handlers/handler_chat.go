@@ -59,6 +59,30 @@ func (h *Handlers) HandleChatContextAnalysis(ctx context.Context, c *app.Request
 	c.JSON(consts.StatusOK, analysis)
 }
 
+func (h *Handlers) HandleChatContextCompaction(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	result, err := h.app.CompactContext(ctx)
+	if err != nil {
+		writeError(c, consts.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
+func (h *Handlers) HandleChatContextCompactionRemove(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	removed, err := h.app.RemoveContextCompaction()
+	if err != nil {
+		writeError(c, consts.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]bool{"removed": removed})
+}
+
 // handleChatStream 重连到当前活跃任务的事件流（回放已有事件 + 继续接收新事件）。
 func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) {
 	task := h.app.ActiveTask()

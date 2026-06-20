@@ -30,6 +30,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		VersionSummary:        AgentModelOverride{ProfileID: AgentKindVersionSummary},
 		ToolAgent:             AgentModelOverride{ProfileID: AgentKindToolAgent},
 		Automation:            AgentModelOverride{ProfileID: AgentKindAutomation},
+		ContextCompaction:     AgentModelOverride{ProfileID: AgentKindContextCompaction},
 	}
 	prompts := AgentPromptSettings{
 		IDE:                   AgentPromptOverride{SystemPrompt: AgentKindIDE},
@@ -40,6 +41,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		VersionSummary:        AgentPromptOverride{SystemPrompt: AgentKindVersionSummary},
 		ToolAgent:             AgentPromptOverride{SystemPrompt: AgentKindToolAgent},
 		Automation:            AgentPromptOverride{SystemPrompt: AgentKindAutomation},
+		ContextCompaction:     AgentPromptOverride{SystemPrompt: AgentKindContextCompaction},
 	}
 	on := true
 	tools := AgentToolSettings{
@@ -51,6 +53,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		VersionSummary:        AgentToolOverride{Todo: &on},
 		ToolAgent:             AgentToolOverride{WebSearch: &on},
 		Automation:            AgentToolOverride{FileRead: &on, WebSearch: &on},
+		ContextCompaction:     AgentToolOverride{Skills: &on},
 	}
 	recentTurns := map[string]*int{}
 	for _, definition := range definitions {
@@ -66,6 +69,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		VersionSummary:        AgentContextOverride{RecentTurns: recentTurns[AgentKindVersionSummary]},
 		ToolAgent:             AgentContextOverride{RecentTurns: recentTurns[AgentKindToolAgent]},
 		Automation:            AgentContextOverride{RecentTurns: recentTurns[AgentKindAutomation]},
+		ContextCompaction:     AgentContextOverride{RecentTurns: recentTurns[AgentKindContextCompaction]},
 	}
 
 	for _, definition := range definitions {

@@ -104,7 +104,7 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
     const controller = new AbortController()
     setAbortController(controller)
     try {
-      const stream = await generateStoryMemoryStream(storyId, effectiveBranchId, controller.signal)
+      const stream = await generateStoryMemoryStream(storyId, effectiveBranchId, source, controller.signal)
       await consumeAgentStream(stream)
       await loadMemory()
     } catch (err) {

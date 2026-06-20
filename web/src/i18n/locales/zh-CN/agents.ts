@@ -23,6 +23,8 @@ const agents = {
   'agents.toolAgent.subtitle': '小说导入时识别章节分割正则',
   'agents.automation.title': 'Automation Agent',
   'agents.automation.subtitle': '定时运行 Review、记忆整合和自定义 Prompt',
+  'agents.contextCompaction.title': '上下文压缩 Agent',
+  'agents.contextCompaction.subtitle': '独立压缩旧对话与互动故事上下文',
   'agents.tool.fileRead.title': '读取与搜索文件',
   'agents.tool.fileRead.subtitle': 'ls / read_file / glob / grep',
   'agents.tool.webSearch.title': '网页搜索',

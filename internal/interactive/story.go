@@ -298,6 +298,44 @@ func (s *Store) AppendContextCompaction(storyID, branchID string, event ContextC
 	return event, nil
 }
 
+func (s *Store) AppendContextCompactionRemoval(storyID, branchID string, event ContextCompactionRemovalEvent) (ContextCompactionRemovalEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return ContextCompactionRemovalEvent{}, err
+	}
+	if branchID == "" {
+		branchID = meta.CurrentBranch
+	}
+	branch, ok := meta.Branches[branchID]
+	if !ok {
+		return ContextCompactionRemovalEvent{}, fmt.Errorf("分支不存在: %s", branchID)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if event.ID == "" {
+		event.ID = newID("ccr")
+	}
+	event.V = schemaVersion
+	event.Type = StoryEventTypeCompactionRemoved
+	event.ParentID = branch.Head
+	event.BranchID = branchID
+	if event.Ts == "" {
+		event.Ts = now
+	}
+	branch.Head = event.ID
+	meta.Branches[branchID] = branch
+	meta.UpdatedAt = now
+	if err := s.rewriteStoryLocked(storyID, meta, lines, event); err != nil {
+		return ContextCompactionRemovalEvent{}, err
+	}
+	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+		return ContextCompactionRemovalEvent{}, err
+	}
+	return event, nil
+}
+
 func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"nova/config"
-	"nova/internal/agent"
 	"nova/internal/interactive"
 	"nova/internal/session"
 )
@@ -34,7 +33,7 @@ func startInteractiveStateTask(cfg *config.Config, conversation *interactiveConv
 			markInteractiveStateFailed(conversation, turn, err)
 			return
 		}
-		result, err := runInteractiveMemoryAgentWithRetry(ctx, cfg, instruction, sessionStore, agent.GenerateInteractiveState, func(result interactiveMemoryAgentResult) error {
+		result, err := runInteractiveMemoryAgentWithRetry(ctx, cfg, instruction, sessionStore, generateInteractiveStateForStoryMemory, func(result interactiveMemoryAgentResult) error {
 			if len(result.StoryMemoryPatches) == 0 {
 				return nil
 			}
@@ -47,7 +46,7 @@ func startInteractiveStateTask(cfg *config.Config, conversation *interactiveConv
 		})
 		if err != nil {
 			log.Printf("[interactive-memory-agent] run failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
-			markInteractiveStateFailed(conversation, turn, err)
+			markInteractiveStateSkipped(conversation, turn, err)
 			return
 		}
 		if len(result.StateOps) > 0 {
@@ -80,5 +79,16 @@ func markInteractiveStateFailed(conversation *interactiveConversation, turn inte
 		Error:    err.Error(),
 	}); markErr != nil {
 		log.Printf("[interactive-memory-agent] mark failed state failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, markErr)
+	}
+}
+
+func markInteractiveStateSkipped(conversation *interactiveConversation, turn interactive.TurnEvent, err error) {
+	if conversation == nil || conversation.store == nil {
+		return
+	}
+	log.Printf("[interactive-memory-agent] skip failed auto state story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+	if markErr := conversation.store.MarkInteractiveMemoryReady(conversation.storyID, turn.BranchID, turn.ID); markErr != nil {
+		log.Printf("[interactive-memory-agent] mark skipped state ready failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, markErr)
+		markInteractiveStateFailed(conversation, turn, markErr)
 	}
 }

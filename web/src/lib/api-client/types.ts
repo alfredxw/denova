@@ -64,6 +64,18 @@ export interface ContextAnalysisPart {
   chars: number
 }
 
+export interface ContextAnalysisCompaction {
+  id?: string
+  epoch: number
+  summary: string
+  tokens_before?: number
+  tokens_after?: number
+  target_ratio?: number
+  source_message_count?: number
+  source_turn_count?: number
+  removable?: boolean
+}
+
 export interface ContextAnalysis {
   agent_kind: string
   mode: string
@@ -78,6 +90,7 @@ export interface ContextAnalysis {
   compaction_epoch?: number
   compaction_active?: boolean
   would_compact?: boolean
+  compaction?: ContextAnalysisCompaction
 }
 
 export interface SSEEvent {

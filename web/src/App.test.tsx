@@ -106,6 +106,17 @@ const defaultPayloads: Record<string, unknown> = {
   '/api/automations': { tasks: defaultAutomationTasks },
 }
 
+function renderAppWithQueryClient() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>
+    </QueryClientProvider>,
+  )
+}
+
 describe('App', () => {
   beforeEach(() => {
     window.localStorage.clear()
@@ -506,14 +517,7 @@ describe('App', () => {
 
   it('opens Versions as a shared page without leaving interactive mode', async () => {
     const user = userEvent.setup()
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    render(
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <App />
-        </TooltipProvider>
-      </QueryClientProvider>,
-    )
+    renderAppWithQueryClient()
 
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
     const header = screen.getByText('Nova').closest('header')
@@ -532,6 +536,16 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: '关闭版本管理' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '剧情' })).toHaveClass('is-active')
     expectOnlyActivePrimaryMenu('剧情')
+  })
+
+  it('keeps Versions overlay state consistent across shared pages and explicit mode switches', async () => {
+    const user = userEvent.setup()
+    renderAppWithQueryClient()
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    const header = screen.getByText('Nova').closest('header')
+    expect(header).not.toBeNull()
+    await user.click(within(header as HTMLElement).getByRole('button', { name: '互动模式' }))
 
     await user.click(screen.getByRole('button', { name: '版本管理' }))
     expect(await screen.findByRole('button', { name: '关闭版本管理' })).toBeInTheDocument()

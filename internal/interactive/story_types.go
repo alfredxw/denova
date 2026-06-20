@@ -216,10 +216,24 @@ type ContextCompactionEvent struct {
 	RetainedTurns       int     `json:"retained_turns"`
 	TokensBefore        int     `json:"tokens_before"`
 	TokensAfter         int     `json:"tokens_after"`
+	TargetRatio         float64 `json:"target_ratio,omitempty"`
 	ContextWindowTokens int     `json:"context_window_tokens"`
 	Threshold           float64 `json:"threshold"`
 	Reason              string  `json:"reason,omitempty"`
 	Phase               string  `json:"phase,omitempty"`
+}
+
+type ContextCompactionRemovalEvent struct {
+	V               int    `json:"v"`
+	Type            string `json:"type"`
+	ID              string `json:"id"`
+	ParentID        string `json:"parent_id,omitempty"`
+	BranchID        string `json:"branch_id"`
+	Ts              string `json:"ts"`
+	AgentKind       string `json:"agent_kind,omitempty"`
+	CompactionID    string `json:"compaction_id,omitempty"`
+	SourceTurnCount int    `json:"source_turn_count"`
+	Reason          string `json:"reason,omitempty"`
 }
 
 type BranchEvent struct {
@@ -240,13 +254,14 @@ type StateOp struct {
 }
 
 type Snapshot struct {
-	StoryID           string                  `json:"story_id"`
-	BranchID          string                  `json:"branch_id"`
-	Turns             []TurnEvent             `json:"turns"`
-	CurrentTurn       *TurnEvent              `json:"current_turn,omitempty"`
-	ContextCompaction *ContextCompactionEvent `json:"context_compaction,omitempty"`
-	State             map[string]any          `json:"state"`
-	Graph             StoryGraph              `json:"graph"`
+	StoryID                  string                         `json:"story_id"`
+	BranchID                 string                         `json:"branch_id"`
+	Turns                    []TurnEvent                    `json:"turns"`
+	CurrentTurn              *TurnEvent                     `json:"current_turn,omitempty"`
+	ContextCompaction        *ContextCompactionEvent        `json:"context_compaction,omitempty"`
+	ContextCompactionRemoval *ContextCompactionRemovalEvent `json:"context_compaction_removal,omitempty"`
+	State                    map[string]any                 `json:"state"`
+	Graph                    StoryGraph                     `json:"graph"`
 }
 
 type StoryGraph struct {
@@ -480,4 +495,5 @@ func normalizeStoryMemoryPatchValues(values map[string]any) map[string]string {
 
 type StoryMemoryGenerateRequest struct {
 	BranchID string `json:"branch_id,omitempty"`
+	Source   string `json:"source,omitempty"`
 }

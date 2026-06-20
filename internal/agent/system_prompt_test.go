@@ -53,6 +53,7 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		config.AgentKindVersionSummary:        "版本说明 Agent",
 		config.AgentKindToolAgent:             "model-only",
 		config.AgentKindAutomation:            "Automation Agent",
+		config.AgentKindContextCompaction:     "上下文压缩 Agent",
 	}
 	for _, definition := range config.AgentKindDefinitions() {
 		required, ok := tests[definition.Kind]

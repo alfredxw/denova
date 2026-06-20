@@ -128,11 +128,11 @@ export function generateStoryMemory(storyId: string, branchId?: string): Promise
   })
 }
 
-export async function generateStoryMemoryStream(storyId: string, branchId?: string, signal?: AbortSignal): Promise<ReadableStream<InteractiveSSEEvent>> {
+export async function generateStoryMemoryStream(storyId: string, branchId?: string, source: 'manual' | 'auto' = 'manual', signal?: AbortSignal): Promise<ReadableStream<InteractiveSSEEvent>> {
   const res = await fetchAPI(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/generate/stream`, {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ branch_id: branchId }),
+    body: JSON.stringify({ branch_id: branchId, source }),
     signal,
   })
   if (!res.ok) throw new Error(await readErrorMessage(res))
@@ -230,6 +230,22 @@ export function analyzeInteractiveContext(input: { mode: 'story'; story_id: stri
     headers: jsonHeaders,
     body: JSON.stringify(input),
   })
+}
+
+export function compactInteractiveContext(storyId: string, branchId?: string): Promise<void> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ branch_id: branchId }),
+  })
+}
+
+export async function removeInteractiveContextCompaction(storyId: string, branchId?: string): Promise<boolean> {
+  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
+  const data = await requestJSON<{ removed?: boolean }>(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction/active${query}`, {
+    method: 'DELETE',
+  })
+  return Boolean(data.removed)
 }
 
 export async function abortInteractiveChat(): Promise<void> {

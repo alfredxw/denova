@@ -135,7 +135,7 @@ export function useChat(options: ChatOptions = {}) {
   const prepareAgentRequest = useCallback((input: string) => {
     if (input.startsWith('/')) {
       const cmd = input.slice(1).split(' ')[0]
-      if (['clear', 'status', 'help'].includes(cmd)) {
+      if (['clear', 'compact', 'status', 'help'].includes(cmd)) {
         throw new Error(t('chat.contextAnalysis.commandUnavailable'))
       }
     }
@@ -301,7 +301,7 @@ export function useChat(options: ChatOptions = {}) {
 function agentBypassCommand(input: string): string | null {
   if (!input.startsWith('/')) return null
   const cmd = input.slice(1).split(' ')[0]
-  return ['clear', 'status', 'help'].includes(cmd) ? cmd : null
+  return ['clear', 'compact', 'status', 'help'].includes(cmd) ? cmd : null
 }
 
 function parseInlineReferences(input: string): string[] {

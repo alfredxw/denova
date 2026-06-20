@@ -1,5 +1,5 @@
 import type { ElementType } from 'react'
-import { Clock, Database, FileText, FolderOpen, Globe2, ListChecks, MessageSquareText, PenLine, Search, Settings2, Shield, Sparkles, Terminal, Wrench } from 'lucide-react'
+import { Archive, Clock, Database, FileText, FolderOpen, Globe2, ListChecks, MessageSquareText, PenLine, Search, Settings2, Shield, Sparkles, Terminal, Wrench } from 'lucide-react'
 import type { AgentModelSettings, AgentSkillSettings, AgentToolOverride } from '@/features/settings/types'
 import type { SkillSummary } from '@/lib/api'
 
@@ -33,6 +33,7 @@ export const AGENTS: AgentViewDefinition[] = [
   { key: 'version_summary', titleKey: 'agents.versionSummary.title', subtitleKey: 'agents.versionSummary.subtitle', groupKey: 'agents.group.version', capabilityMode: 'model_only', icon: ListChecks },
   { key: 'tool_agent', titleKey: 'agents.toolAgent.title', subtitleKey: 'agents.toolAgent.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'model_only', icon: Wrench },
   { key: 'automation', titleKey: 'agents.automation.title', subtitleKey: 'agents.automation.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'tools', icon: Clock },
+  { key: 'context_compaction', titleKey: 'agents.contextCompaction.title', subtitleKey: 'agents.contextCompaction.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'model_only', icon: Archive },
 ]
 
 export const TOOL_ROWS: AgentToolDefinition[] = [
@@ -66,6 +67,7 @@ export const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentT
   version_summary: disabledTools(),
   tool_agent: disabledTools(),
   automation: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true },
+  context_compaction: disabledTools(),
 }
 
 export function skillAvailableForAgent(skill: Pick<SkillSummary, 'name' | 'agent'>, agentKey: VisibleAgentKey, settings?: AgentSkillSettings) {

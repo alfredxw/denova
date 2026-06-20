@@ -9,6 +9,7 @@ import (
 
 	"nova/config"
 	"nova/internal/book"
+	"nova/internal/interactive"
 	"nova/internal/prompts"
 	"nova/internal/session"
 )
@@ -27,6 +28,19 @@ type ContextAnalysis struct {
 	CompactionEpoch     int                   `json:"compaction_epoch,omitempty"`
 	CompactionActive    bool                  `json:"compaction_active,omitempty"`
 	WouldCompact        bool                  `json:"would_compact,omitempty"`
+	Compaction          *ContextAnalysisCompaction `json:"compaction,omitempty"`
+}
+
+type ContextAnalysisCompaction struct {
+	ID                 string  `json:"id,omitempty"`
+	Epoch              int     `json:"epoch"`
+	Summary            string  `json:"summary"`
+	TokensBefore       int     `json:"tokens_before"`
+	TokensAfter        int     `json:"tokens_after"`
+	TargetRatio        float64 `json:"target_ratio,omitempty"`
+	SourceMessageCount int     `json:"source_message_count,omitempty"`
+	SourceTurnCount    int     `json:"source_turn_count,omitempty"`
+	Removable          bool    `json:"removable"`
 }
 
 type ContextAnalysisPart struct {
@@ -106,10 +120,11 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 		CompactionEpoch:     usage.compactionEpoch(compaction),
 		CompactionActive:    compaction != nil && strings.TrimSpace(compaction.Summary) != "",
 		WouldCompact:        usage.wouldCompact,
+		Compaction:          contextAnalysisCompactionFromSession(compaction),
 	}, nil
 }
 
-func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, bookService *book.Service, req ChatRequest, prepareMessages func(originalMessage, agentMessage string) ([]*schema.Message, error)) (ContextAnalysis, error) {
+func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, bookService *book.Service, req ChatRequest, compaction *interactive.ContextCompactionEvent, prepareMessages func(originalMessage, agentMessage string) ([]*schema.Message, error)) (ContextAnalysis, error) {
 	systemPrompt, systemParts := buildInteractiveStorySystemPromptAnalysis(cfg, state, teller)
 	policy := DefaultLoopPolicy().normalized()
 	composition := composeAgentInput(req, nil, bookService, policy)
@@ -154,10 +169,50 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		TokenEstimate:       usage.tokens,
 		ContextWindowTokens: usage.window,
 		ContextUsageRatio:   usage.ratio,
-		CompactionEpoch:     compactionEpoch,
-		CompactionActive:    compactionEpoch > 0,
+		CompactionEpoch:     interactiveCompactionEpoch(compaction, compactionEpoch),
+		CompactionActive:    compaction != nil && strings.TrimSpace(compaction.Summary) != "",
 		WouldCompact:        usage.wouldCompact,
+		Compaction:          contextAnalysisCompactionFromInteractive(compaction),
 	}, nil
+}
+
+func interactiveCompactionEpoch(compaction *interactive.ContextCompactionEvent, fallback int) int {
+	if compaction == nil {
+		return fallback
+	}
+	return compaction.Epoch
+}
+
+func contextAnalysisCompactionFromSession(compaction *session.ContextCompaction) *ContextAnalysisCompaction {
+	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
+		return nil
+	}
+	return &ContextAnalysisCompaction{
+		ID:                 compaction.ID,
+		Epoch:              compaction.Epoch,
+		Summary:            compaction.Summary,
+		TokensBefore:       compaction.TokensBefore,
+		TokensAfter:        compaction.TokensAfter,
+		TargetRatio:        compaction.TargetRatio,
+		SourceMessageCount: compaction.SourceMessageCount,
+		Removable:          true,
+	}
+}
+
+func contextAnalysisCompactionFromInteractive(compaction *interactive.ContextCompactionEvent) *ContextAnalysisCompaction {
+	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
+		return nil
+	}
+	return &ContextAnalysisCompaction{
+		ID:              compaction.ID,
+		Epoch:           compaction.Epoch,
+		Summary:         compaction.Summary,
+		TokensBefore:    compaction.TokensBefore,
+		TokensAfter:     compaction.TokensAfter,
+		TargetRatio:     compaction.TargetRatio,
+		SourceTurnCount: compaction.SourceTurnCount,
+		Removable:       true,
+	}
 }
 
 func buildIDEAnalysisMessages(cfg *config.Config, effectiveMessages []*schema.Message, totalMessages int, compaction *session.ContextCompaction) []*schema.Message {

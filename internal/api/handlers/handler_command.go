@@ -39,6 +39,16 @@ func (h *Handlers) HandleCommand(ctx context.Context, c *app.RequestContext) {
 		} else {
 			result = localizer.T("api.command.cleared")
 		}
+	case "compact":
+		if !h.requireWorkspace(c) {
+			return
+		}
+		compaction, err := h.app.CompactContext(ctx)
+		if err != nil {
+			result = localizer.T("api.command.compactFailed", "detail", err.Error())
+		} else {
+			result = localizer.T("api.command.compacted", "epoch", compaction.Epoch, "before", compaction.TokensBefore, "after", compaction.TokensAfter)
+		}
 	case "status":
 		if !h.requireWorkspace(c) {
 			return

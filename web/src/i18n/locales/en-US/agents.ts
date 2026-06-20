@@ -23,6 +23,8 @@ const agents = {
   'agents.toolAgent.subtitle': 'Detects chapter splitting regex during novel import',
   'agents.automation.title': 'Automation Agent',
   'agents.automation.subtitle': 'Runs scheduled reviews, memory consolidation, and custom prompts',
+  'agents.contextCompaction.title': 'Context Compaction Agent',
+  'agents.contextCompaction.subtitle': 'Independently compresses old chat and interactive-story context',
   'agents.tool.fileRead.title': 'Read and Search Files',
   'agents.tool.fileRead.subtitle': 'ls / read_file / glob / grep',
   'agents.tool.webSearch.title': 'Web Search',

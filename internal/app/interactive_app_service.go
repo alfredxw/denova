@@ -17,6 +17,13 @@ type InteractiveAppService struct {
 	app *App
 }
 
+const (
+	storyMemoryGenerateSourceManual = "manual"
+	storyMemoryGenerateSourceAuto   = "auto"
+)
+
+var generateInteractiveStateForStoryMemory = agent.GenerateInteractiveState
+
 func (a *App) InteractiveStories() (interactive.Index, error) {
 	return a.interactiveService().InteractiveStories()
 }
@@ -176,21 +183,22 @@ func (a *App) GenerateStoryMemory(ctx context.Context, storyID, branchID string)
 }
 
 func (s *InteractiveAppService) GenerateStoryMemory(ctx context.Context, storyID, branchID string) (interactive.StoryMemoryState, error) {
-	state, _, err := s.runStoryMemoryGenerate(ctx, storyID, branchID, nil)
+	state, _, err := s.runStoryMemoryGenerate(ctx, storyID, branchID, storyMemoryGenerateSourceManual, nil)
 	return state, err
 }
 
-func (a *App) StartStoryMemoryGenerateTask(storyID, branchID string) *Task {
-	return a.interactiveService().StartStoryMemoryGenerateTask(storyID, branchID)
+func (a *App) StartStoryMemoryGenerateTask(storyID, branchID, source string) *Task {
+	return a.interactiveService().StartStoryMemoryGenerateTask(storyID, branchID, source)
 }
 
-func (s *InteractiveAppService) StartStoryMemoryGenerateTask(storyID, branchID string) *Task {
+func (s *InteractiveAppService) StartStoryMemoryGenerateTask(storyID, branchID, source string) *Task {
+	source = normalizeStoryMemoryGenerateSource(source)
 	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
-		log.Printf("[interactive-memory-agent] manual stream begin task_id=%s story_id=%s branch_id=%s", task.ID(), storyID, branchID)
+		log.Printf("[interactive-memory-agent] stream begin task_id=%s story_id=%s branch_id=%s source=%s", task.ID(), storyID, branchID, source)
 		emit(agent.Event{Type: "thinking", Data: map[string]string{"content": "正在读取当前剧情线和最近回合，准备整理故事记忆。"}})
-		state, patchCount, err := s.runStoryMemoryGenerate(ctx, storyID, branchID, emit)
+		state, patchCount, err := s.runStoryMemoryGenerate(ctx, storyID, branchID, source, emit)
 		if err != nil {
-			log.Printf("[interactive-memory-agent] manual stream failed task_id=%s story_id=%s branch_id=%s err=%v", task.ID(), storyID, branchID, err)
+			log.Printf("[interactive-memory-agent] stream failed task_id=%s story_id=%s branch_id=%s source=%s err=%v", task.ID(), storyID, branchID, source, err)
 			emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 			return
 		}
@@ -204,11 +212,12 @@ func (s *InteractiveAppService) StartStoryMemoryGenerateTask(storyID, branchID s
 			"next_auto_in": state.NextAutoInTurns,
 		}})
 		emit(agent.Event{Type: "done", Data: map[string]string{"status": "ok"}})
-		log.Printf("[interactive-memory-agent] manual stream done task_id=%s story_id=%s branch_id=%s patches=%d records=%d", task.ID(), storyID, state.BranchID, patchCount, len(state.Records))
+		log.Printf("[interactive-memory-agent] stream done task_id=%s story_id=%s branch_id=%s source=%s patches=%d records=%d", task.ID(), storyID, state.BranchID, source, patchCount, len(state.Records))
 	})
 }
 
-func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, storyID, branchID string, emit func(agent.Event)) (interactive.StoryMemoryState, int, error) {
+func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, storyID, branchID, source string, emit func(agent.Event)) (interactive.StoryMemoryState, int, error) {
+	source = normalizeStoryMemoryGenerateSource(source)
 	a := s.app
 	a.mu.Lock()
 	store := a.interactive
@@ -247,7 +256,7 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 			"content": "已读取当前剧情线、当前回合和有界故事记忆上下文。",
 		}})
 	}
-	generate := agent.GenerateInteractiveState
+	generate := generateInteractiveStateForStoryMemory
 	if emit != nil {
 		generate = func(ctx context.Context, cfg *config.Config, instruction string) (string, error) {
 			return agent.StreamInteractiveState(ctx, cfg, instruction, emit)
@@ -281,6 +290,9 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 		return nil
 	})
 	if err != nil {
+		if source == storyMemoryGenerateSourceAuto {
+			return skipAutoStoryMemoryGenerate(store, storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, err, emit)
+		}
 		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
 		return interactive.StoryMemoryState{}, 0, err
 	}
@@ -290,6 +302,9 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 			BranchID: snapshot.BranchID,
 			Ops:      result.StateOps,
 		}); err != nil {
+			if source == storyMemoryGenerateSourceAuto {
+				return skipAutoStoryMemoryGenerate(store, storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, err, emit)
+			}
 			_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
 			return interactive.StoryMemoryState{}, patchCount, err
 		}
@@ -302,6 +317,28 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 		return interactive.StoryMemoryState{}, patchCount, err
 	}
 	return state, patchCount, nil
+}
+
+func normalizeStoryMemoryGenerateSource(source string) string {
+	if strings.TrimSpace(source) == storyMemoryGenerateSourceAuto {
+		return storyMemoryGenerateSourceAuto
+	}
+	return storyMemoryGenerateSourceManual
+}
+
+func skipAutoStoryMemoryGenerate(store *interactive.Store, storyID, branchID, turnID string, cause error, emit func(agent.Event)) (interactive.StoryMemoryState, int, error) {
+	log.Printf("[interactive-memory-agent] auto generate skipped story_id=%s branch_id=%s turn_id=%s err=%v", storyID, branchID, turnID, cause)
+	if emit != nil {
+		emit(agent.Event{Type: "thinking", Data: map[string]string{"content": "故事记忆自动整理暂时不可用，本回合已先跳过；你可以稍后手动重新整理。"}})
+	}
+	if err := store.MarkInteractiveMemoryReady(storyID, branchID, turnID); err != nil {
+		return interactive.StoryMemoryState{}, 0, err
+	}
+	state, err := store.StoryMemory(storyID, branchID, true)
+	if err != nil {
+		return interactive.StoryMemoryState{}, 0, err
+	}
+	return state, 0, nil
 }
 
 func (a *App) CreateInteractiveMemory(storyID string, req interactive.InteractiveMemoryCreateRequest) (interactive.InteractiveMemoryEntry, error) {
@@ -476,7 +513,91 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 		StyleRules:      styleRules,
 	}
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
-	return agent.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveStoryTellerSystemInput(teller), bookService, req, conversation.PrepareMessages)
+	return agent.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveStoryTellerSystemInput(teller), bookService, req, storyCtx.Snapshot.ContextCompaction, conversation.PrepareMessages)
+}
+
+func (a *App) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agent.ContextCompactionResult, error) {
+	return a.interactiveService().CompactInteractiveContext(ctx, storyID, branchID)
+}
+
+func (s *InteractiveAppService) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agent.ContextCompactionResult, error) {
+	store, runtimeCfg, workspace, err := s.interactiveRuntimeConfig()
+	if err != nil {
+		return agent.ContextCompactionResult{}, err
+	}
+	storyCtx, err := store.StoryContext(storyID, branchID)
+	if err != nil {
+		return agent.ContextCompactionResult{}, err
+	}
+	source := interactiveTurnMessages(storyCtx.Snapshot.Turns)
+	referenceContext := interactiveCompactionReferenceContext(store, storyID, storyCtx.Snapshot.BranchID)
+	epoch := 1
+	if storyCtx.Snapshot.ContextCompaction != nil {
+		epoch = storyCtx.Snapshot.ContextCompaction.Epoch + 1
+	}
+	_, result, err := agent.BuildContextCompaction(ctx, &runtimeCfg, config.AgentKindInteractiveStory, agent.ContextCompactionInput{
+		Messages:         source,
+		SourceMessages:   source,
+		Phase:            "manual",
+		Force:            true,
+		ReferenceContext: referenceContext,
+		KeepLatestUser:   true,
+	}, epoch)
+	if err != nil {
+		return result, err
+	}
+	if !result.Triggered {
+		return result, fmt.Errorf("没有可压缩的互动上下文")
+	}
+	event := interactive.ContextCompactionEvent{
+		AgentKind:           config.AgentKindInteractiveStory,
+		Epoch:               result.Epoch,
+		Summary:             result.Summary,
+		SourceTurnCount:     len(storyCtx.Snapshot.Turns),
+		RetainedTurns:       config.ResolveAgentContext(&runtimeCfg, config.AgentKindInteractiveStory).CompactionRecentTurns,
+		TokensBefore:        result.TokensBefore,
+		TokensAfter:         result.TokensAfter,
+		TargetRatio:         result.TargetRatio,
+		ContextWindowTokens: result.ContextWindowTokens,
+		Threshold:           result.Threshold,
+		Reason:              "manual",
+		Phase:               result.Phase,
+	}
+	event, err = store.AppendContextCompaction(storyID, storyCtx.Snapshot.BranchID, event)
+	if err != nil {
+		return result, err
+	}
+	result.Epoch = event.Epoch
+	log.Printf("[interactive-agent] manual context compaction completed workspace=%s story_id=%s branch_id=%s epoch=%d source_turns=%d", workspace, storyID, storyCtx.Snapshot.BranchID, result.Epoch, len(storyCtx.Snapshot.Turns))
+	return result, nil
+}
+
+func (a *App) RemoveInteractiveContextCompaction(storyID, branchID string) (bool, error) {
+	return a.interactiveService().RemoveInteractiveContextCompaction(storyID, branchID)
+}
+
+func (s *InteractiveAppService) RemoveInteractiveContextCompaction(storyID, branchID string) (bool, error) {
+	store := s.store()
+	if store == nil {
+		return false, ErrNoWorkspace
+	}
+	storyCtx, err := store.StoryContext(storyID, branchID)
+	if err != nil {
+		return false, err
+	}
+	if storyCtx.Snapshot.ContextCompaction == nil {
+		return false, nil
+	}
+	_, err = store.AppendContextCompactionRemoval(storyID, storyCtx.Snapshot.BranchID, interactive.ContextCompactionRemovalEvent{
+		AgentKind:       config.AgentKindInteractiveStory,
+		CompactionID:    storyCtx.Snapshot.ContextCompaction.ID,
+		SourceTurnCount: storyCtx.Snapshot.ContextCompaction.SourceTurnCount,
+		Reason:          "user_removed",
+	})
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message string, styleReferences []string, rewindTurnID string) *Task {
@@ -679,6 +800,29 @@ func (s *InteractiveAppService) store() *interactive.Store {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.interactive
+}
+
+func (s *InteractiveAppService) interactiveRuntimeConfig() (*interactive.Store, config.Config, string, error) {
+	a := s.app
+	a.mu.RLock()
+	if a.interactive == nil || a.cfg == nil {
+		a.mu.RUnlock()
+		return nil, config.Config{}, "", ErrNoWorkspace
+	}
+	store := a.interactive
+	runtimeCfg := *a.cfg
+	workspace := a.workspace
+	runtimeCfg.Workspace = workspace
+	novaDir := runtimeCfg.NovaDir
+	a.mu.RUnlock()
+
+	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
+		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+		runtimeCfg.InteractiveMaxTokens = appSettingsInt(layered.Effective.InteractiveMaxTokens, 0)
+	} else {
+		log.Printf("[interactive-agent] load layered settings failed workspace=%s err=%v", workspace, err)
+	}
+	return store, runtimeCfg, workspace, nil
 }
 
 func (s *InteractiveAppService) cfg() *config.Config {

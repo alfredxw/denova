@@ -27,6 +27,7 @@ type AgentModelSettings struct {
 	VersionSummary        AgentModelOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 	ToolAgent             AgentModelOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
 	Automation            AgentModelOverride `toml:"automation,omitempty" json:"automation,omitempty"`
+	ContextCompaction     AgentModelOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
 type AgentModelOverride struct {
@@ -58,6 +59,7 @@ func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSetting
 		VersionSummary:        mergeAgentModelOverride(parent.VersionSummary, child.VersionSummary),
 		ToolAgent:             mergeAgentModelOverride(parent.ToolAgent, child.ToolAgent),
 		Automation:            mergeAgentModelOverride(parent.Automation, child.Automation),
+		ContextCompaction:     mergeAgentModelOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 

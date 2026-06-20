@@ -70,6 +70,8 @@ func outputProtocolForAgent(agentKind string) string {
 		return "- 没有固定 JSON 输出协议；所有资料库、叙事编排、自动化、Skills、故事记忆变更必须通过对应模块工具执行。"
 	case config.AgentKindAutomation:
 		return "- 最终输出必须说明实际完成内容、写入路径和待用户确认事项；写入行为仍受任务写入策略和工具权限约束。"
+	case config.AgentKindContextCompaction:
+		return "- 必须只输出压缩后的 Markdown 上下文摘要，不得输出解释、思考过程、代码块或额外包装。"
 	case config.AgentKindIDE:
 		return "- 写作 Agent 没有固定 JSON 输出协议；所有文件变更必须通过已启用工具执行，并遵守工作区边界。"
 	default:
@@ -112,6 +114,12 @@ func agentRuntimeContract(agentKind string) string {
 			"- Automation Agent 可以按任务目标自行使用已启用工具读取必要文件、资料库和项目状态。",
 			"- Automation Agent 的写文件和写资料库能力必须同时满足任务写入策略与 Agent 工具权限；任一关闭都不得写入。",
 			"- Automation Agent 不得无界读取完整历史、日志、大型文件或整本书；应先定位相关范围，再按需读取。",
+		}, "\n")
+	case config.AgentKindContextCompaction:
+		return strings.Join([]string{
+			"- 上下文压缩 Agent 是 model-only 摘要 Agent，不得读取或写入 workspace，不得调用文件、命令、资料库、Skills 或 todo 工具。",
+			"- 上下文压缩 Agent 只能根据调用方提供的有界对话源和参考上下文生成摘要；不得引入外部事实或补全未提供的信息。",
+			"- 上下文压缩 Agent 不得保留 thinking、工具卡片噪音或展示用日志；但必须保留用户消息的核心意图和顺序。",
 		}, "\n")
 	default:
 		return fmt.Sprintf("- 当前 Agent 类型为 %s；必须遵守该 Agent 调用点的输出协议和后端校验。", strings.TrimSpace(agentKind))
