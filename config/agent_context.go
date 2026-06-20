@@ -19,6 +19,8 @@ type AgentContextOverride struct {
 	CompactionEnabled     *bool    `toml:"compaction_enabled,omitempty" json:"compaction_enabled,omitempty"`
 	CompactionThreshold   *float64 `toml:"compaction_threshold,omitempty" json:"compaction_threshold,omitempty"`
 	CompactionRecentTurns *int     `toml:"compaction_recent_turns,omitempty" json:"compaction_recent_turns,omitempty"`
+	CompactionTargetMin   *float64 `toml:"compaction_target_min_ratio,omitempty" json:"compaction_target_min_ratio,omitempty"`
+	CompactionTargetMax   *float64 `toml:"compaction_target_max_ratio,omitempty" json:"compaction_target_max_ratio,omitempty"`
 }
 
 type ResolvedAgentContextSettings struct {
@@ -26,6 +28,8 @@ type ResolvedAgentContextSettings struct {
 	CompactionEnabled     bool    `json:"compaction_enabled"`
 	CompactionThreshold   float64 `json:"compaction_threshold"`
 	CompactionRecentTurns int     `json:"compaction_recent_turns"`
+	CompactionTargetMin   float64 `json:"compaction_target_min_ratio"`
+	CompactionTargetMax   float64 `json:"compaction_target_max_ratio"`
 }
 
 func DefaultAgentContextSettings() AgentContextSettings {
@@ -35,6 +39,8 @@ func DefaultAgentContextSettings() AgentContextSettings {
 			CompactionEnabled:     boolPtr(true),
 			CompactionThreshold:   floatPtr(0.90),
 			CompactionRecentTurns: intPtr(8),
+			CompactionTargetMin:   floatPtr(0.05),
+			CompactionTargetMax:   floatPtr(0.20),
 		},
 	}
 }
@@ -88,11 +94,26 @@ func ResolveAgentContext(cfg *Config, agentKind string) ResolvedAgentContextSett
 	if compactionRecentTurns > 30 {
 		compactionRecentTurns = 30
 	}
+	compactionTargetMin := 0.05
+	if override.CompactionTargetMin != nil {
+		compactionTargetMin = *override.CompactionTargetMin
+	}
+	compactionTargetMin = clampCompactionTargetRatio(compactionTargetMin, 0.05)
+	compactionTargetMax := 0.20
+	if override.CompactionTargetMax != nil {
+		compactionTargetMax = *override.CompactionTargetMax
+	}
+	compactionTargetMax = clampCompactionTargetRatio(compactionTargetMax, 0.20)
+	if compactionTargetMax < compactionTargetMin {
+		compactionTargetMax = compactionTargetMin
+	}
 	return ResolvedAgentContextSettings{
 		RecentTurns:           recentTurns,
 		CompactionEnabled:     compactionEnabled,
 		CompactionThreshold:   compactionThreshold,
 		CompactionRecentTurns: compactionRecentTurns,
+		CompactionTargetMin:   compactionTargetMin,
+		CompactionTargetMax:   compactionTargetMax,
 	}
 }
 
@@ -109,6 +130,12 @@ func mergeAgentContextOverride(parent, child AgentContextOverride) AgentContextO
 	}
 	if child.CompactionRecentTurns != nil {
 		out.CompactionRecentTurns = child.CompactionRecentTurns
+	}
+	if child.CompactionTargetMin != nil {
+		out.CompactionTargetMin = child.CompactionTargetMin
+	}
+	if child.CompactionTargetMax != nil {
+		out.CompactionTargetMax = child.CompactionTargetMax
 	}
 	return out
 }
@@ -157,5 +184,27 @@ func sanitizeAgentContextOverride(override AgentContextOverride) AgentContextOve
 			*override.CompactionRecentTurns = 30
 		}
 	}
+	if override.CompactionTargetMin != nil {
+		*override.CompactionTargetMin = clampCompactionTargetRatio(*override.CompactionTargetMin, 0.05)
+	}
+	if override.CompactionTargetMax != nil {
+		*override.CompactionTargetMax = clampCompactionTargetRatio(*override.CompactionTargetMax, 0.20)
+	}
+	if override.CompactionTargetMin != nil && override.CompactionTargetMax != nil && *override.CompactionTargetMax < *override.CompactionTargetMin {
+		*override.CompactionTargetMax = *override.CompactionTargetMin
+	}
 	return override
+}
+
+func clampCompactionTargetRatio(value, fallback float64) float64 {
+	if value <= 0 {
+		return fallback
+	}
+	if value < 0.01 {
+		return 0.01
+	}
+	if value > 0.80 {
+		return 0.80
+	}
+	return value
 }

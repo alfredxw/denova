@@ -74,7 +74,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"list_lore_items",
 		"list_interactive_memories",
 		"当前分支故事记忆",
-		`"on_stage"`,
+		"上限: 12288 bytes",
 	} {
 		if !strings.Contains(history[2].Content, want) {
 			t.Fatalf("history[2] should include %q: %#v", want, history[2])
@@ -285,6 +285,54 @@ func TestInteractiveConversationUsesAgentContextRecentTurns(t *testing.T) {
 	}
 }
 
+func TestInteractiveConversationUsesContextCompactionRetainedTurns(t *testing.T) {
+	workspace := t.TempDir()
+	novaDir := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:            "压缩窗口测试",
+		Origin:           "主角进入旧城",
+		StoryTellerID:    "classic",
+		ReplyTargetChars: 700,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 5; i++ {
+		if _, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
+			User:      "第" + string(rune('0'+i)) + "次行动",
+			Narrative: "第" + string(rune('0'+i)) + "段剧情",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
+		AgentKind:       config.AgentKindInteractiveStory,
+		Summary:         "压缩摘要：主角已进入旧城。",
+		SourceTurnCount: 5,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	interactiveRetainedTurns := 1
+	compactionRetainedTurns := 3
+	cfg := &config.Config{AgentContexts: config.AgentContextSettings{
+		InteractiveStory:  config.AgentContextOverride{CompactionRecentTurns: &interactiveRetainedTurns},
+		ContextCompaction: config.AgentContextOverride{CompactionRecentTurns: &compactionRetainedTurns},
+	}}
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
+	history, err := conversation.PrepareMessages("我继续探索", "我继续探索")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 8 {
+		t.Fatalf("history length = %d, want compaction summary + 3 turns + instruction", len(history))
+	}
+	if history[1].Content != "第3次行动" || history[3].Content != "第4次行动" || history[5].Content != "第5次行动" {
+		t.Fatalf("recent history should use context_compaction retained turns: %#v", history)
+	}
+}
+
 func TestInteractiveTurnMemoryCompressesOlderTurns(t *testing.T) {
 	turns := []interactive.TurnEvent{
 		{User: "第1次行动", Narrative: "第1段剧情"},
@@ -307,7 +355,7 @@ func TestInteractiveTurnMemoryCompressesOlderTurns(t *testing.T) {
 	}
 }
 
-func TestInteractiveTurnMemoryUsesCompactionSummaryAndRetainedTail(t *testing.T) {
+func TestInteractiveTurnMemoryWithCompactionUsesSingleSummaryAndRetainedTail(t *testing.T) {
 	turns := []interactive.TurnEvent{
 		{User: "第1次行动", Narrative: "第1段剧情"},
 		{User: "第2次行动", Narrative: "第2段剧情"},
@@ -320,14 +368,33 @@ func TestInteractiveTurnMemoryUsesCompactionSummaryAndRetainedTail(t *testing.T)
 		SourceTurnCount: 3,
 	}
 	memory := buildInteractiveTurnMemoryWithCompaction(turns, compaction, 1)
-	if memory.PreviousSummary != compaction.Summary {
-		t.Fatalf("previous summary = %q, want compaction summary", memory.PreviousSummary)
+	if memory.PreviousSummary != "" {
+		t.Fatalf("previous summary should stay empty when compaction summary is a model message, got %q", memory.PreviousSummary)
 	}
 	if len(memory.RecentTurns) != 1 || memory.RecentTurns[0].User != "第5次行动" {
-		t.Fatalf("recent tail should keep only retained turns after compaction: %#v", memory.RecentTurns)
+		t.Fatalf("recent tail should keep retained turns from the full turn chain: %#v", memory.RecentTurns)
 	}
 	if memory.PreviousCount != 3 || memory.OmittedCount != 3 {
 		t.Fatalf("unexpected compaction counts: %#v", memory)
+	}
+}
+
+func TestInteractiveTurnMemoryWithCompactionRetainsSourceTailImmediatelyAfterCompaction(t *testing.T) {
+	turns := []interactive.TurnEvent{
+		{User: "第1次行动", Narrative: "第1段剧情"},
+		{User: "第2次行动", Narrative: "第2段剧情"},
+		{User: "第3次行动", Narrative: "第3段剧情"},
+	}
+	compaction := &interactive.ContextCompactionEvent{
+		Summary:         "压缩摘要：主角已进入旧城。",
+		SourceTurnCount: len(turns),
+	}
+	memory := buildInteractiveTurnMemoryWithCompaction(turns, compaction, 2)
+	if memory.PreviousSummary != "" {
+		t.Fatalf("compaction summary should not be duplicated in previous summary: %q", memory.PreviousSummary)
+	}
+	if len(memory.RecentTurns) != 2 || memory.RecentTurns[0].User != "第2次行动" || memory.RecentTurns[1].User != "第3次行动" {
+		t.Fatalf("recent tail should remain available immediately after compaction: %#v", memory.RecentTurns)
 	}
 }
 

@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSkills } from '@/lib/api'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
@@ -46,6 +47,41 @@ describe('AgentsView', () => {
     await waitFor(() => {
       expect(screen.getByText('deepseek（DeepSeek V3）')).toBeInTheDocument()
     })
+  })
+
+  it('shows context compaction prompt and target ratio settings', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      effective: {
+        agent_context: {
+          context_compaction: {
+            compaction_recent_turns: 12,
+            compaction_target_min_ratio: 0.09,
+            compaction_target_max_ratio: 0.31,
+          },
+        },
+      },
+      builtin_agent_prompt_sources: {
+        context_compaction: {
+          sources: [
+            { id: 'flow', title: '流程规则', source: 'Nova built-in', content: '压缩流程', editable: true, field: 'flow_prompt' },
+            { id: 'custom', title: '用户自定义', source: 'user/workspace config', editable: true, field: 'system_prompt' },
+          ],
+        },
+      },
+    }))
+
+    render(<AgentsView />)
+
+    await user.click(await screen.findByRole('button', { name: /上下文压缩 Agent/ }))
+
+    expect(screen.getByText('压缩目标下限 (%)')).toBeInTheDocument()
+    expect(screen.getByText('压缩目标上限 (%)')).toBeInTheDocument()
+    expect(screen.getByText('压缩后保留回合')).toBeInTheDocument()
+    expect(screen.getByText('流程规则')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('12')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('9')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('31')).toBeInTheDocument()
   })
 })
 

@@ -34,3 +34,8 @@ export async function saveSkillDocument(scope: SkillScope, name: string, content
     body: JSON.stringify({ scope, name, content }),
   })
 }
+
+export async function deleteSkillDocument(scope: SkillScope, name: string): Promise<void> {
+  const query = new URLSearchParams({ scope, name })
+  await requestJSON(`/api/skills/document?${query.toString()}`, { method: 'DELETE' })
+}

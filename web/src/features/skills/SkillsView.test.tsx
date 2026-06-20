@@ -1,12 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSkill, getSkillDocument, getSkills, saveSkillDocument } from '@/lib/api'
+import { createSkill, deleteSkillDocument, getSkillDocument, getSkills, saveSkillDocument } from '@/lib/api'
 import type { SkillDocument, SkillSnapshot } from '@/lib/api'
 import { SkillsView } from './SkillsView'
 
 vi.mock('@/lib/api', () => ({
   createSkill: vi.fn(),
+  deleteSkillDocument: vi.fn(),
   getSkillDocument: vi.fn(),
   getSkills: vi.fn(),
   saveSkillDocument: vi.fn(),
@@ -48,10 +49,13 @@ describe('SkillsView', () => {
     vi.mocked(getSkills).mockReset()
     vi.mocked(getSkillDocument).mockReset()
     vi.mocked(createSkill).mockReset()
+    vi.mocked(deleteSkillDocument).mockReset()
     vi.mocked(saveSkillDocument).mockReset()
     vi.mocked(getSkills).mockResolvedValue(baseSnapshot)
     vi.mocked(getSkillDocument).mockResolvedValue(outlineDoc)
+    vi.mocked(deleteSkillDocument).mockResolvedValue(undefined)
     vi.mocked(saveSkillDocument).mockImplementation(async (_scope, _name, content) => ({ ...outlineDoc, content }))
+    vi.stubGlobal('confirm', vi.fn(() => true))
   })
 
   it('opens a guided create panel from the Skills page', async () => {
@@ -140,5 +144,45 @@ agent: ide,config_manager
 
     expect(screen.getByText('当前没有可写的 Skill 目录。请检查工作区或用户级 Nova 目录配置后再创建。')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '创建 SKILL.md' })).not.toBeInTheDocument()
+  })
+
+  it('updates skill frontmatter from the config panel', async () => {
+    const user = userEvent.setup()
+    render(<SkillsView workspace="/books/demo" />)
+
+    await screen.findByText('/outline')
+    await user.click(screen.getByRole('button', { name: /outlineBuild outlines\./ }))
+    await user.click(screen.getByRole('button', { name: '配置' }))
+    const description = screen.getByLabelText('触发说明')
+    await user.clear(description)
+    await user.type(description, 'Refine outlines.')
+    await user.click(screen.getByLabelText(/配置管理 Agent/))
+    await user.click(screen.getByRole('button', { name: '保存配置' }))
+
+    await waitFor(() => {
+      expect(saveSkillDocument).toHaveBeenCalledWith(
+        'workspace',
+        'outline',
+        expect.stringContaining('description: "Refine outlines."'),
+      )
+    })
+    expect(vi.mocked(saveSkillDocument).mock.calls[0][2]).toContain('agent: "ide,config_manager"')
+  })
+
+  it('deletes editable skills from the selected scope', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getSkills)
+      .mockResolvedValueOnce(baseSnapshot)
+      .mockResolvedValueOnce({ ...baseSnapshot, skills: [] })
+
+    render(<SkillsView workspace="/books/demo" />)
+    await screen.findByText('/outline')
+    await user.click(screen.getByRole('button', { name: /outlineBuild outlines\./ }))
+    await user.click(screen.getByRole('button', { name: '删除' }))
+
+    await waitFor(() => {
+      expect(deleteSkillDocument).toHaveBeenCalledWith('workspace', 'outline')
+    })
+    expect(window.confirm).toHaveBeenCalledWith('确定删除 Skill "outline" 吗？此操作会删除当前保存位置下的 Skill 目录。')
   })
 })

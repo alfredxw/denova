@@ -71,11 +71,11 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			ShellExecute: off,
 		},
 		InteractiveState:      noToolAgentOverride(),
-			InteractiveHotChoices: noToolAgentOverride(),
-			VersionSummary:        noToolAgentOverride(),
-			ToolAgent:             noToolAgentOverride(),
-			ContextCompaction:     noToolAgentOverride(),
-			Automation: AgentToolOverride{
+		InteractiveHotChoices: noToolAgentOverride(),
+		VersionSummary:        noToolAgentOverride(),
+		ToolAgent:             noToolAgentOverride(),
+		ContextCompaction:     noToolAgentOverride(),
+		Automation: AgentToolOverride{
 			FileRead:     on,
 			FileWrite:    on,
 			ShellExecute: off,

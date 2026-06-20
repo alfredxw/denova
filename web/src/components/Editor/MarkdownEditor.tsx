@@ -27,6 +27,8 @@ interface MarkdownEditorProps {
   onSave: (content: string) => Promise<boolean>
   onQuoteSelection?: (sel: QuoteSelection) => void
   saveSignal?: number
+  autoSaveEnabled?: boolean
+  autoSaveDelayMs?: number
   chapterSummary?: ChapterSummary
   workspaceSummary?: WorkspaceSummary | null
   searchIntent?: EditorSearchIntent | null
@@ -63,6 +65,8 @@ const DEFAULT_SETTINGS: EditorSettings = {
   lineHeight: 1.9,
   theme: 'ide',
 }
+
+const DEFAULT_AUTO_SAVE_DELAY_MS = 1500
 
 const THEME_STYLES: Record<EditorTheme, { labelKey: string; background: string; color: string; accent: string }> = {
   ide: {
@@ -138,8 +142,26 @@ function isTxtFile(name: string | null): boolean {
   return !!name && name.toLowerCase().endsWith('.txt')
 }
 
+function normalizeAutoSaveDelayMs(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return DEFAULT_AUTO_SAVE_DELAY_MS
+  }
+  return Math.floor(value)
+}
+
 /** TipTap 编辑器组件，支持 Markdown 和纯文本格式 */
-export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, saveSignal = 0, chapterSummary, workspaceSummary, searchIntent }: MarkdownEditorProps) {
+export function MarkdownEditor({
+  fileName,
+  content,
+  onSave,
+  onQuoteSelection,
+  saveSignal = 0,
+  autoSaveEnabled = true,
+  autoSaveDelayMs,
+  chapterSummary,
+  workspaceSummary,
+  searchIntent,
+}: MarkdownEditorProps) {
   const { t } = useTranslation()
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -157,6 +179,10 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
   const pendingSaveRef = useRef<PendingSave | null>(null)
   const lastSyncedFileRef = useRef<string | null>(null)
   const lastSyncedContentRef = useRef('')
+  const fileNameRef = useRef<string | null>(fileName)
+  const autoSaveEnabledRef = useRef(autoSaveEnabled)
+  const autoSaveDelayMsRef = useRef(normalizeAutoSaveDelayMs(autoSaveDelayMs))
+  const saveEditorContentRef = useRef<(mode: 'manual' | 'auto') => Promise<void>>(async () => {})
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastSaveSignalRef = useRef(saveSignal)
   const lastSearchIntentNonceRef = useRef<number | null>(null)
@@ -219,6 +245,30 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
   })
 
   const themeStyle = THEME_STYLES[settings.theme]
+  const resolvedAutoSaveDelayMs = normalizeAutoSaveDelayMs(autoSaveDelayMs)
+
+  useEffect(() => {
+    fileNameRef.current = fileName
+  }, [fileName])
+
+  useEffect(() => {
+    autoSaveEnabledRef.current = autoSaveEnabled
+    if (!autoSaveEnabled && autoSaveTimer.current) {
+      window.clearTimeout(autoSaveTimer.current)
+      autoSaveTimer.current = null
+    }
+  }, [autoSaveEnabled])
+
+  useEffect(() => {
+    autoSaveDelayMsRef.current = resolvedAutoSaveDelayMs
+  }, [resolvedAutoSaveDelayMs])
+
+  useEffect(() => {
+    if (autoSaveTimer.current) {
+      window.clearTimeout(autoSaveTimer.current)
+      autoSaveTimer.current = null
+    }
+  }, [fileName])
 
   const updateSearch = useCallback((query: string, nextIndex = 0) => {
     if (!editor) return
@@ -388,6 +438,10 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
     await queueEditorSave(text, mode)
   }, [editor, fileName, queueEditorSave])
 
+  useEffect(() => {
+    saveEditorContentRef.current = saveEditorContent
+  }, [saveEditorContent])
+
   /** 执行手动保存 */
   const handleSave = useCallback(async () => {
     if (autoSaveTimer.current) {
@@ -403,21 +457,28 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
     void handleSave()
   }, [handleSave, saveSignal])
 
-  // 编辑后防抖自动保存
+  // 用户修改后延迟自动保存；外部内容同步使用 emitUpdate: false，不会进入这里。
   useEffect(() => {
     if (!editor) return
 
     const handleUpdate = () => {
-      if (!fileName) return
+      if (!fileNameRef.current) return
       clearSaveStatusTimer()
       setSaveStatus('dirty')
+      if (!autoSaveEnabledRef.current) {
+        if (autoSaveTimer.current) {
+          window.clearTimeout(autoSaveTimer.current)
+          autoSaveTimer.current = null
+        }
+        return
+      }
       if (autoSaveTimer.current) {
         window.clearTimeout(autoSaveTimer.current)
       }
       autoSaveTimer.current = window.setTimeout(() => {
         autoSaveTimer.current = null
-        void saveEditorContent('auto')
-      }, 1200)
+        void saveEditorContentRef.current('auto')
+      }, autoSaveDelayMsRef.current)
     }
 
     editor.on('update', handleUpdate)
@@ -427,7 +488,7 @@ export function MarkdownEditor({ fileName, content, onSave, onQuoteSelection, sa
         window.clearTimeout(autoSaveTimer.current)
       }
     }
-  }, [clearSaveStatusTimer, editor, fileName, saveEditorContent])
+  }, [clearSaveStatusTimer, editor])
 
   // Ctrl+F / Cmd+F 打开文章内搜索，保存快捷键由工作台统一分发。
   useEffect(() => {

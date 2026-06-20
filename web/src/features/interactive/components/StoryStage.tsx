@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent } from 'react'
-import { BookOpen, ChevronDown, ChevronUp, Command as CommandIcon, Compass, List, Loader2, PanelRight, Pencil, RefreshCw, ScrollText, Send, Sparkles, Square, X } from 'lucide-react'
+import { Archive, BookOpen, ChevronDown, ChevronUp, Command as CommandIcon, Compass, List, Loader2, PanelRight, Pencil, RefreshCw, ScrollText, Send, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +16,7 @@ import { ReferenceChips } from '@/components/Chat/ReferenceChips'
 import type { ChatMessage, ContextAnalysis } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { abortInteractiveChat, analyzeInteractiveContext, generateInteractiveHotChoices, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
+import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveHotChoices, removeInteractiveContextCompaction, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
 import { createInteractiveNarrativeFilter } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
@@ -161,8 +161,29 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   const filteredSkillCommands = useMemo(() => {
     if (!input.startsWith('/')) return []
     const query = input.slice(1).toLowerCase()
-    return skillCommands.filter((skill) => skill.name.toLowerCase().startsWith(query))
-  }, [input, skillCommands])
+    const seen = new Set(['compact'])
+    const commands = [
+      {
+        name: 'compact',
+        description: t('chat.command.compact.desc'),
+        hint: t('chat.command.compact.hint'),
+        builtIn: true,
+      },
+      ...skillCommands
+        .filter((skill) => {
+          if (seen.has(skill.name)) return false
+          seen.add(skill.name)
+          return true
+        })
+        .map((skill) => ({
+          name: skill.name,
+          description: skill.description || skill.name,
+          hint: t('chat.command.skill.hint'),
+          builtIn: false,
+        })),
+    ]
+    return commands.filter((skill) => skill.name.toLowerCase().startsWith(query))
+  }, [input, skillCommands, t])
 
   useEffect(() => {
     if (previousSnapshotKeyRef.current === snapshotKey) return
@@ -320,6 +341,10 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     const sourceMessage = override?.message ?? input
     const message = sourceMessage.trim()
     if (!message || !storyId || streaming) return
+    if (message === '/compact') {
+      await compactCurrentContext()
+      return
+    }
     const nextRewindTurnId = override?.rewindTurnId ?? editingTurn?.id
     const inlineStyleReferences = parseInlineStyleReferences(message)
     const mergedStyleReferences = Array.from(new Set([...styleReferences, ...inlineStyleReferences]))
@@ -449,6 +474,29 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     }
   }
 
+  const compactCurrentContext = async () => {
+    if (!storyId || streaming) return
+    setInput('')
+    setEditingTurn(null)
+    setStyleReferences([])
+    setStyleReferenceQuery(null)
+    setShowSkillCommands(false)
+    setActiveSkillCommandIndex(0)
+    setStageStreaming(true)
+    setStageActivityContent(t('storyStage.activity.compacting'))
+    setStageLiveMessages([])
+    try {
+      await compactInteractiveContext(storyId, branchId)
+      setStageLiveMessages([{ role: 'system', content: t('storyStage.contextCompaction.done') }])
+      await onDone()
+    } catch (error) {
+      setStageLiveMessages([{ role: 'error', content: error instanceof Error ? error.message : t('storyStage.contextCompaction.failed') }])
+    } finally {
+      setStageStreaming(false)
+      setStageActivityContent('')
+    }
+  }
+
   const analyzeCurrentContext = async (rawMessage: string) => {
     const message = rawMessage.trim()
     if (!message || !storyId || streaming) return
@@ -476,6 +524,12 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   const openContextAnalysis = () => {
     setContextAnalysisOpen(true)
     void analyzeCurrentContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
+  }
+
+  const removeContextCompaction = async () => {
+    await removeInteractiveContextCompaction(storyId, branchId)
+    await onDone()
+    await analyzeCurrentContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
   const stop = () => {
@@ -774,13 +828,13 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                         </span>
                         <div className="min-w-0">
                           <div className="text-xs font-medium text-[var(--nova-text)]">{t('chat.commands.title')}</div>
-                          <div className="text-[11px] text-[var(--nova-text-faint)]">{t('chat.commands.skillsDescription')}</div>
+                          <div className="text-[11px] text-[var(--nova-text-faint)]">{t('chat.commands.description')}</div>
                         </div>
                       </div>
                     </div>
                     <CommandList className="max-h-[312px] p-1.5">
                       <CommandEmpty className="py-5 text-center text-xs text-[var(--nova-text-faint)]">{t('chat.commands.empty')}</CommandEmpty>
-                      <CommandGroup heading={t('chat.commands.skillsGroup')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
+                      <CommandGroup heading={t('chat.commands.group')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
                         {filteredSkillCommands.map((skill, index) => {
                           const active = index === activeSkillCommandIndex
                           return (
@@ -795,14 +849,14 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                               className={`group min-h-12 cursor-pointer rounded-md border px-2.5 py-2 text-[var(--nova-text-muted)] ${active ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-transparent hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)]'}`}
                             >
                               <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-[var(--nova-surface-2)] ${active ? 'border-[var(--nova-border)] text-[var(--nova-text)]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'}`}>
-                                <Sparkles className="h-3.5 w-3.5" />
+                                {skill.builtIn ? <Archive className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
                               </span>
                               <span className="min-w-0 flex-1">
                                 <span className="flex items-center gap-2">
                                   <span className="font-mono text-xs text-[var(--nova-text)]">/{skill.name}</span>
                                   <span className="truncate text-xs text-[var(--nova-text-muted)]">{skill.description || skill.name}</span>
                                 </span>
-                                <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{t('chat.command.skill.hint')}</span>
+                                <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{skill.hint}</span>
                               </span>
                             </CommandItem>
                           )
@@ -898,6 +952,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
             error={contextAnalysisError}
             analysis={contextAnalysis}
             onOpenChange={setContextAnalysisOpen}
+            onRemoveCompaction={removeContextCompaction}
           />
         </div>
       </div>

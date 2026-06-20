@@ -46,7 +46,7 @@ const settings = {
   'settings.group.ide': '写作模式',
   'settings.group.interactive': '互动模式',
   'settings.ide.autoSave': '自动保存',
-  'settings.ide.autoSaveInterval': '自动保存间隔 (ms)',
+  'settings.ide.autoSaveInterval': '修改后自动保存延迟 (ms)',
   'settings.ide.chapterFilenameFormat': '章节文件名模板',
   'settings.ide.volumeDirFormat': '分卷目录模板',
   'settings.ide.chapterGroupMax': '章节组最多章节',

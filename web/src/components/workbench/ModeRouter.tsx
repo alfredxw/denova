@@ -55,6 +55,8 @@ interface ModeRouterProps {
   sidebarView: 'outline' | 'files' | 'search'
   editorSearchIntent: { path: string; query: string; line: number; nonce: number } | null
   saveSignal: number
+  editorAutoSaveEnabled: boolean
+  editorAutoSaveDelayMs: number
   versionRefreshSignal: number
   messages: ChatMessage[]
   sessions: SessionSummary[]
@@ -133,6 +135,8 @@ export function ModeRouter(props: ModeRouterProps) {
     sidebarView,
     editorSearchIntent,
     saveSignal,
+    editorAutoSaveEnabled,
+    editorAutoSaveDelayMs,
     versionRefreshSignal,
     messages,
     sessions,
@@ -398,6 +402,8 @@ export function ModeRouter(props: ModeRouterProps) {
               onSave={onSaveCurrentFile}
               onQuoteSelection={onQuoteSelection}
               saveSignal={saveSignal}
+              autoSaveEnabled={editorAutoSaveEnabled}
+              autoSaveDelayMs={editorAutoSaveDelayMs}
               chapterSummary={currentChapter}
               workspaceSummary={summary}
               searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}

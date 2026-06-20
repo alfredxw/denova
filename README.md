@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.1.11</strong>（2026-06-18） · Beta
+  当前版本：<strong>v0.1.12</strong>（2026-06-20） · Beta
 </p>
 
 ![Nova 写作模式](./img/ide.png)
@@ -226,14 +226,14 @@ cd output
 本地打包 GitHub Release：
 
 ```bash
-scripts/build-github-release.sh v0.1.11
+scripts/build-github-release.sh v0.1.12
 ```
 
 推送 tag 后，GitHub Actions 会自动创建或更新 Release：
 
 ```bash
-git tag v0.1.11
-git push origin v0.1.11
+git tag v0.1.12
+git push origin v0.1.12
 ```
 
 ## Star History

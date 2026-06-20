@@ -240,6 +240,7 @@ func BuildInteractiveStateSystemInstruction() string {
 		"story_memory_patches 用于更新用户配置的故事记忆表；每条 patch 包含 op、structure_id、record_id、key、values 或 archived。",
 		"必须基于注入的“故事记忆结构与字段协议”输出 patch；structure_id、key_field_id、values 字段名和值的写法要求都只能来自该协议。",
 		"每次写入某张表时，values 必须按该表的字段列表逐字段填写：优先满足 required 字段，同时尽量补齐全部字段；字段值必须遵守表级 generation_instruction 和字段级 generation_instruction。",
+		"不能只填 required 字段或本回合变化字段；有既有记录时必须沿用并整合未变化字段，不得省略字段、写空字符串或 null。",
 		"字段值必须综合三类来源：最近回合上下文历史、资料库相关人物与设定、本回合前的既有故事记忆；新剧情负责更新变化，资料库负责校准设定，既有记忆负责保留未变化字段。",
 		"op 仅使用 upsert、append、archive、restore；singleton 用 upsert，keyed 用带 key 的 upsert，append 结构记录新发生且后续需要承接的事实；结束或不再参与后续判断的记录用 archive。",
 		"keyed 结构必须输出非空 key，且 values 必须包含 key_field_id 对应字段；key 必须等于该字段值。",

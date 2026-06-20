@@ -46,7 +46,7 @@ const settings = {
   'settings.group.ide': 'Writing Mode',
   'settings.group.interactive': 'Interactive Mode',
   'settings.ide.autoSave': 'Auto Save',
-  'settings.ide.autoSaveInterval': 'Auto Save Interval (ms)',
+  'settings.ide.autoSaveInterval': 'Auto Save Delay After Edit (ms)',
   'settings.ide.chapterFilenameFormat': 'Chapter Filename Template',
   'settings.ide.volumeDirFormat': 'Volume Directory Template',
   'settings.ide.chapterGroupMax': 'Max Chapters per Group',

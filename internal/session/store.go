@@ -17,13 +17,13 @@ import (
 )
 
 const (
-	defaultSessionID      = "default"
-	defaultSessionTitle   = "新会话"
-	historyTypeMessage    = "message"
-	historyTypeDisplay    = "display"
-	historyTypeClear      = "clear"
-	historyTypeInterrupt  = "interrupt"
-	historyTypeCompaction = "context_compaction"
+	defaultSessionID             = "default"
+	defaultSessionTitle          = "新会话"
+	historyTypeMessage           = "message"
+	historyTypeDisplay           = "display"
+	historyTypeClear             = "clear"
+	historyTypeInterrupt         = "interrupt"
+	historyTypeCompaction        = "context_compaction"
 	historyTypeCompactionRemoved = "context_compaction_removed"
 
 	InterruptionPending  = "pending"
@@ -45,13 +45,13 @@ type HistoryEntry struct {
 }
 
 type historyRecord struct {
-	kind         string
-	message      *schema.Message
-	display      *DisplayEvent
-	interruption *Interruption
-	compaction   *ContextCompaction
+	kind              string
+	message           *schema.Message
+	display           *DisplayEvent
+	interruption      *Interruption
+	compaction        *ContextCompaction
 	compactionRemoval *ContextCompactionRemoval
-	createdAt    time.Time
+	createdAt         time.Time
 }
 
 // DisplayEvent 表示只用于前端展示的非上下文事件，例如 thinking 和工具卡片。
@@ -576,24 +576,24 @@ func (s *Session) persistLocked() error {
 			if err := writeJSONLine(&sb, interruptionRecord{Type: historyTypeInterrupt, Interruption: *record.interruption}); err != nil {
 				return err
 			}
-			case historyTypeCompaction:
-				if record.compaction == nil {
-					continue
-				}
-				if err := writeJSONLine(&sb, *record.compaction); err != nil {
-					return err
-				}
-			case historyTypeCompactionRemoved:
-				if record.compactionRemoval == nil {
-					continue
-				}
-				if err := writeJSONLine(&sb, *record.compactionRemoval); err != nil {
-					return err
-				}
-			case historyTypeDisplay:
-				if record.display == nil {
-					continue
-				}
+		case historyTypeCompaction:
+			if record.compaction == nil {
+				continue
+			}
+			if err := writeJSONLine(&sb, *record.compaction); err != nil {
+				return err
+			}
+		case historyTypeCompactionRemoved:
+			if record.compactionRemoval == nil {
+				continue
+			}
+			if err := writeJSONLine(&sb, *record.compactionRemoval); err != nil {
+				return err
+			}
+		case historyTypeDisplay:
+			if record.display == nil {
+				continue
+			}
 			if err := writeJSONLine(&sb, displayRecord{Type: historyTypeDisplay, DisplayEvent: *record.display}); err != nil {
 				return err
 			}

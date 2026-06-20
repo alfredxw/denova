@@ -24,7 +24,7 @@ const editor = {
   'editor.theme.sepia': '护眼',
   'editor.themePreview': '正文 / 引用 / 代码块',
   'editor.status.dirty': '有改动',
-  'editor.status.dirtyAria': '内容有改动，等待自动保存',
+  'editor.status.dirtyAria': '内容有未保存改动',
   'editor.status.autoSaving': '同步中',
   'editor.status.autoSavingAria': '正在自动保存',
   'editor.status.autoSaved': '已同步',

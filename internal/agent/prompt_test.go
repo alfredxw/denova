@@ -33,7 +33,7 @@ func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 	if !strings.Contains(instruction, "导演系统规则") || !strings.Contains(instruction, "经典叙事者") {
 		t.Fatalf("interactive story instruction should include teller system rules:\n%s", instruction)
 	}
-	for _, required := range []string{"每轮目标字数为最高约束", "最高篇幅约束", "777 个中文字左右"} {
+	for _, required := range []string{"每轮目标字数为最高约束", "最高篇幅约束", "777 个中文字以内"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should contain reply target priority %q:\n%s", required, instruction)
 		}
@@ -58,7 +58,7 @@ func TestBuildInteractiveStoryInstructionKeepsReplyTargetAboveCustomLengthPrompt
 		StoryTellerSystemPrompt: "每轮至少写 5000 字。",
 	})
 
-	for _, required := range []string{"每轮目标字数为最高约束", "都不得要求超过该目标", "650 个中文字左右"} {
+	for _, required := range []string{"每轮目标字数为最高约束", "都不得要求超过该目标", "650 个中文字以内"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should protect story reply target %q:\n%s", required, instruction)
 		}
@@ -160,6 +160,39 @@ func TestBuiltinInteractiveMemoryPromptUsesStoryMemoryPatchContract(t *testing.T
 		if strings.Contains(got, legacy) {
 			t.Fatalf("builtin interactive memory prompt should not contain legacy contract %q:\n%s", legacy, got)
 		}
+	}
+}
+
+func TestBuiltinContextCompactionPromptIsConfigurableInAgentsView(t *testing.T) {
+	state := book.NewState(t.TempDir())
+	cfg := &config.Config{Workspace: state.Workspace()}
+
+	builtin := BuiltinAgentPrompts(cfg, state, IDEStoryTeller{})
+	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "互动小说上下文压缩器") {
+		t.Fatalf("builtin context compaction prompt missing role:\n%s", builtin.ContextCompaction.SystemPrompt)
+	}
+	for _, required := range []string{"【事件时间线】", "【长期影响账本】", "【当前阶段快照】", "目标长度由用户消息配置"} {
+		if !strings.Contains(builtin.ContextCompaction.SystemPrompt, required) {
+			t.Fatalf("builtin context compaction prompt missing %q:\n%s", required, builtin.ContextCompaction.SystemPrompt)
+		}
+	}
+	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "plot_summary") {
+		t.Fatalf("builtin context compaction prompt should mention configured target length:\n%s", builtin.ContextCompaction.SystemPrompt)
+	}
+
+	blocks := BuiltinAgentPromptBlocks(cfg, state, IDEStoryTeller{})
+	if !strings.Contains(blocks.ContextCompaction.EditableSystemPrompt, "【事件时间线】") {
+		t.Fatalf("context compaction editable prompt missing target rule:\n%s", blocks.ContextCompaction.EditableSystemPrompt)
+	}
+
+	sources := BuiltinAgentPromptSources(cfg, state, IDEStoryTeller{})
+	flowSource := findPromptSource(sources.ContextCompaction.Sources, "flow")
+	if flowSource == nil || !flowSource.Editable || flowSource.Field != "flow_prompt" {
+		t.Fatalf("context compaction flow source should be editable flow_prompt: %#v", flowSource)
+	}
+	customSource := findPromptSource(sources.ContextCompaction.Sources, "custom")
+	if customSource == nil || !customSource.Editable || customSource.Field != "system_prompt" {
+		t.Fatalf("context compaction custom source should be editable system_prompt: %#v", customSource)
 	}
 }
 

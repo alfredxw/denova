@@ -66,7 +66,7 @@ describe('MemoryPanel', () => {
     expect(screen.getAllByText('顾清漪').length).toBeGreaterThan(0)
     expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/story-memory/generate/stream', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ branch_id: 'main' }),
+      body: JSON.stringify({ branch_id: 'main', source: 'manual' }),
     }))
   })
 
@@ -107,7 +107,7 @@ describe('MemoryPanel', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/story-memory/generate/stream', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ branch_id: 'main' }),
+      body: JSON.stringify({ branch_id: 'main', source: 'auto' }),
     })))
     expect(screen.getByRole('button', { name: '记忆内容' })).toHaveClass('bg-[var(--nova-active)]')
     expect(screen.getAllByText('顾清漪').length).toBeGreaterThan(0)
@@ -119,7 +119,7 @@ describe('MemoryPanel', () => {
     expect(screen.getByText('整理完成：写入 1 条更新，当前可见 1 条记录')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/story-memory/generate/stream', expect.objectContaining({
       method: 'POST',
-      body: JSON.stringify({ branch_id: 'main' }),
+      body: JSON.stringify({ branch_id: 'main', source: 'auto' }),
     }))
   })
 })

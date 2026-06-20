@@ -35,6 +35,8 @@ const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
 const INTERACTIVE_RIGHT_VISIBLE_KEY = 'nova.layout.interactiveRightVisible'
 const APP_VERSION = __APP_VERSION__
 const MAX_OPEN_TABS_FALLBACK = 5
+const AUTO_SAVE_ENABLED_FALLBACK = true
+const AUTO_SAVE_DELAY_FALLBACK_MS = 1500
 type SidebarView = 'outline' | 'files' | 'search'
 type WritingRightPanel = Extract<RightPanel, 'ai'> | null
 type BooksReturnMode = 'ide' | 'interactive'
@@ -51,6 +53,8 @@ function App() {
   const [openTabs, setOpenTabs] = useState<Tab[]>([])
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null)
   const [maxOpenTabs, setMaxOpenTabs] = useState<number>(MAX_OPEN_TABS_FALLBACK)
+  const [editorAutoSaveEnabled, setEditorAutoSaveEnabled] = useState(AUTO_SAVE_ENABLED_FALLBACK)
+  const [editorAutoSaveDelayMs, setEditorAutoSaveDelayMs] = useState(AUTO_SAVE_DELAY_FALLBACK_MS)
   const [motionIntensity, setMotionIntensity] = useState('system')
   const [novaDir, setNovaDir] = useState('')
   const [sidebarView, setSidebarView] = useState<SidebarView>('outline')
@@ -181,13 +185,16 @@ function App() {
       fetchSettings()
         .then((data) => {
           if (cancelled) return
-          const v = data?.effective?.max_open_tabs
+          const effective = data?.effective
+          const v = effective?.max_open_tabs
           if (typeof v === 'number' && v >= 1) setMaxOpenTabs(Math.floor(v))
+          setEditorAutoSaveEnabled(effective?.auto_save_enabled ?? AUTO_SAVE_ENABLED_FALLBACK)
+          setEditorAutoSaveDelayMs(normalizeAutoSaveDelayMs(effective?.auto_save_interval_ms))
           setNovaDir(data?.paths?.nova_dir || '')
-          setConfiguredLocale(data?.effective?.language)
-          setTheme(normalizeAppTheme(data?.effective?.theme))
-          setMotionIntensity(normalizeMotionIntensity(data?.effective?.motion_intensity))
-          applyFontSettings(fontSettingsFromEffective(data?.effective))
+          setConfiguredLocale(effective?.language)
+          setTheme(normalizeAppTheme(effective?.theme))
+          setMotionIntensity(normalizeMotionIntensity(effective?.motion_intensity))
+          applyFontSettings(fontSettingsFromEffective(effective))
         })
         .catch((e) => console.warn('加载界面配置失败', e))
     }
@@ -547,6 +554,8 @@ function App() {
         sidebarView={sidebarView}
         editorSearchIntent={editorSearchIntent}
         saveSignal={saveSignal}
+        editorAutoSaveEnabled={editorAutoSaveEnabled}
+        editorAutoSaveDelayMs={editorAutoSaveDelayMs}
         versionRefreshSignal={versionRefreshSignal}
         messages={messages}
         sessions={sessions}
@@ -641,6 +650,13 @@ function readLayoutBoolean(key: string, fallback: boolean) {
   const value = window.localStorage.getItem(key)
   if (value === null) return fallback
   return value === 'true'
+}
+
+function normalizeAutoSaveDelayMs(value: number | null | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return AUTO_SAVE_DELAY_FALLBACK_MS
+  }
+  return Math.floor(value)
 }
 
 function isIdeWorkspacePanel(panel: RightPanel): panel is 'lore' | 'creator' | 'teller' | 'versions' {

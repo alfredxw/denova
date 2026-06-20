@@ -26,15 +26,25 @@ func TestResolveAgentContextCompactionDefaultsAndCaps(t *testing.T) {
 	if resolved.CompactionRecentTurns != 8 {
 		t.Fatalf("default compaction recent turns = %d, want 8", resolved.CompactionRecentTurns)
 	}
+	if resolved.CompactionTargetMin != 0.05 {
+		t.Fatalf("default compaction target min = %v, want 0.05", resolved.CompactionTargetMin)
+	}
+	if resolved.CompactionTargetMax != 0.20 {
+		t.Fatalf("default compaction target max = %v, want 0.20", resolved.CompactionTargetMax)
+	}
 
 	disabled := false
 	lowThreshold := 0.30
 	highRecent := 50
+	lowTargetMin := 0.001
+	highTargetMax := 0.95
 	cfg := &Config{AgentContexts: AgentContextSettings{
 		IDE: AgentContextOverride{
 			CompactionEnabled:     &disabled,
 			CompactionThreshold:   &lowThreshold,
 			CompactionRecentTurns: &highRecent,
+			CompactionTargetMin:   &lowTargetMin,
+			CompactionTargetMax:   &highTargetMax,
 		},
 	}}
 	resolved = ResolveAgentContext(cfg, AgentKindIDE)
@@ -46,6 +56,12 @@ func TestResolveAgentContextCompactionDefaultsAndCaps(t *testing.T) {
 	}
 	if resolved.CompactionRecentTurns != 30 {
 		t.Fatalf("retained recent turns should be capped to 30, got %d", resolved.CompactionRecentTurns)
+	}
+	if resolved.CompactionTargetMin != 0.01 {
+		t.Fatalf("target min should be capped to 0.01, got %v", resolved.CompactionTargetMin)
+	}
+	if resolved.CompactionTargetMax != 0.80 {
+		t.Fatalf("target max should be capped to 0.80, got %v", resolved.CompactionTargetMax)
 	}
 }
 

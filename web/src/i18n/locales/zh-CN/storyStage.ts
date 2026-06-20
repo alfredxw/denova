@@ -56,6 +56,8 @@ const storyStage = {
   'storyStage.activity.done': '完成',
   'storyStage.activity.aborted': '已中断',
   'storyStage.activity.runFailed': '互动 Agent 执行失败',
+  'storyStage.contextCompaction.done': '上下文压缩完成',
+  'storyStage.contextCompaction.failed': '上下文压缩失败',
   'storyStage.activity.aborting': '正在中断…',
   'storyStage.activity.switchNewer': '正在切换到更新版本…',
   'storyStage.activity.switchOlder': '正在切换到更早版本…',

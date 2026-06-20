@@ -24,7 +24,7 @@ const editor = {
   'editor.theme.sepia': 'Sepia',
   'editor.themePreview': 'Body / Quote / Code block',
   'editor.status.dirty': 'Changed',
-  'editor.status.dirtyAria': 'Content changed, waiting for auto-save',
+  'editor.status.dirtyAria': 'Content has unsaved changes',
   'editor.status.autoSaving': 'Syncing',
   'editor.status.autoSavingAria': 'Auto-saving',
   'editor.status.autoSaved': 'Synced',

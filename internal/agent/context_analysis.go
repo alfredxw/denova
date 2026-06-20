@@ -15,19 +15,19 @@ import (
 )
 
 type ContextAnalysis struct {
-	AgentKind           string                `json:"agent_kind"`
-	Mode                string                `json:"mode"`
-	SystemPrompt        string                `json:"system_prompt"`
-	SystemPromptParts   []ContextAnalysisPart `json:"system_prompt_parts"`
-	ContextParts        []ContextAnalysisPart `json:"context_parts"`
-	ContextMessages     []ContextAnalysisPart `json:"context_messages"`
-	MessageCount        int                   `json:"message_count"`
-	TokenEstimate       int                   `json:"token_estimate"`
-	ContextWindowTokens int                   `json:"context_window_tokens"`
-	ContextUsageRatio   float64               `json:"context_usage_ratio"`
-	CompactionEpoch     int                   `json:"compaction_epoch,omitempty"`
-	CompactionActive    bool                  `json:"compaction_active,omitempty"`
-	WouldCompact        bool                  `json:"would_compact,omitempty"`
+	AgentKind           string                     `json:"agent_kind"`
+	Mode                string                     `json:"mode"`
+	SystemPrompt        string                     `json:"system_prompt"`
+	SystemPromptParts   []ContextAnalysisPart      `json:"system_prompt_parts"`
+	ContextParts        []ContextAnalysisPart      `json:"context_parts"`
+	ContextMessages     []ContextAnalysisPart      `json:"context_messages"`
+	MessageCount        int                        `json:"message_count"`
+	TokenEstimate       int                        `json:"token_estimate"`
+	ContextWindowTokens int                        `json:"context_window_tokens"`
+	ContextUsageRatio   float64                    `json:"context_usage_ratio"`
+	CompactionEpoch     int                        `json:"compaction_epoch,omitempty"`
+	CompactionActive    bool                       `json:"compaction_active,omitempty"`
+	WouldCompact        bool                       `json:"would_compact,omitempty"`
 	Compaction          *ContextAnalysisCompaction `json:"compaction,omitempty"`
 }
 
@@ -218,7 +218,7 @@ func contextAnalysisCompactionFromInteractive(compaction *interactive.ContextCom
 func buildIDEAnalysisMessages(cfg *config.Config, effectiveMessages []*schema.Message, totalMessages int, compaction *session.ContextCompaction) []*schema.Message {
 	messages := make([]*schema.Message, 0, len(effectiveMessages)+1)
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		contextSettings := config.ResolveAgentContext(cfg, config.AgentKindIDE)
+		contextSettings := config.ResolveAgentContext(cfg, config.AgentKindContextCompaction)
 		effectiveStart := totalMessages - len(effectiveMessages)
 		tailStart := compaction.SourceEndIndex - effectiveStart
 		if tailStart < 0 {

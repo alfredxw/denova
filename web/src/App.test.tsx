@@ -593,9 +593,7 @@ describe('App', () => {
     await user.click(screen.getByRole('button', { name: '和创作 Agent 聊灵感' }))
 
     expect(await screen.findByText('创作Agent')).toBeInTheDocument()
-    await waitFor(() => {
-      expect(screen.getByDisplayValue(/专业小说创作 Agent/)).toBeInTheDocument()
-    })
+    expect(screen.getByPlaceholderText(/输入消息/)).toBeInTheDocument()
     expect(screen.queryByDisplayValue(/lore-init/)).not.toBeInTheDocument()
     expect(screen.queryByText('用自然语言批量整理、补充和修改资料库')).not.toBeInTheDocument()
   })

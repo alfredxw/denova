@@ -103,6 +103,7 @@ describe('MarkdownEditor', () => {
         fileName="chapters/ch01.md"
         content="初始"
         onSave={onSave}
+        autoSaveDelayMs={1200}
       />,
     )
 
@@ -131,6 +132,97 @@ describe('MarkdownEditor', () => {
 
     expect(onSave).toHaveBeenCalledTimes(2)
     expect(onSave).toHaveBeenLastCalledWith('第二版\n')
+  })
+
+  it('用户修改后按配置延迟自动保存，不按周期重复保存', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn(() => Promise.resolve(true))
+
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="初始"
+        onSave={onSave}
+        autoSaveDelayMs={900}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '修改后'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(899)
+    })
+
+    expect(onSave).not.toHaveBeenCalled()
+
+    await act(async () => {
+      vi.advanceTimersByTime(1)
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenLastCalledWith('修改后\n')
+
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+  })
+
+  it('关闭自动保存后用户修改不会自动写入文件', () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn(() => Promise.resolve(true))
+
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="初始"
+        onSave={onSave}
+        autoSaveEnabled={false}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '未自动保存'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(10000)
+    })
+
+    expect(onSave).not.toHaveBeenCalled()
+  })
+
+  it('外部内容同步不会触发自动保存', () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn(() => Promise.resolve(true))
+    const { rerender } = render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="初始"
+        onSave={onSave}
+        autoSaveDelayMs={900}
+      />,
+    )
+
+    rerender(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="Agent 写入的新内容"
+        onSave={onSave}
+        autoSaveDelayMs={900}
+      />,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(5000)
+    })
+
+    expect(onSave).not.toHaveBeenCalled()
+    expect(tiptapMock.editor.commands.setContent).toHaveBeenLastCalledWith(
+      'Agent 写入的新内容',
+      { emitUpdate: false, contentType: 'markdown' },
+    )
   })
 })
 

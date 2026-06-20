@@ -17,6 +17,7 @@ func TestInteractiveContextAnalysisLabelsDynamicContextAtFinalMessage(t *testing
 		prompts.InteractiveStorySystemInstructionInput{},
 		nil,
 		ChatRequest{Message: "我点燃火把"},
+		nil,
 		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
 			return []*schema.Message{
 				schema.UserMessage("我推开门"),
@@ -51,6 +52,7 @@ func TestInteractiveContextAnalysisUsesConfiguredContextWindow(t *testing.T) {
 		prompts.InteractiveStorySystemInstructionInput{},
 		nil,
 		ChatRequest{Message: "继续"},
+		nil,
 		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
 			return []*schema.Message{schema.UserMessage(agentMessage)}, nil
 		},

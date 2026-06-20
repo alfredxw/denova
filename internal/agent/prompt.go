@@ -121,6 +121,7 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 		VersionSummary:        config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")},
 		ToolAgent:             config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction())},
 		Automation:            config.AgentPromptOverride{SystemPrompt: BuildAutomationInstruction(promptCfg, state, AutomationTaskInstruction{})},
+		ContextCompaction:     config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindContextCompaction, contextCompactionSystemInstruction())},
 	}
 }
 
@@ -143,6 +144,7 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 		VersionSummary:        builtinPromptBlocks(config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
 		ToolAgent:             builtinPromptBlocks(config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
 		Automation:            builtinPromptBlocks(config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
+		ContextCompaction:     builtinPromptBlocks(config.AgentKindContextCompaction, contextCompactionSystemInstruction()),
 	}
 }
 
@@ -175,6 +177,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		VersionSummary:        builtinPromptSourceList(config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
 		ToolAgent:             builtinPromptSourceList(config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
 		Automation:            builtinPromptSourceList(config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
+		ContextCompaction:     builtinPromptSourceList(config.AgentKindContextCompaction, contextCompactionSystemInstruction()),
 	}
 }
 

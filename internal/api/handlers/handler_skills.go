@@ -78,3 +78,17 @@ func (h *Handlers) HandleSkillSave(ctx context.Context, c *app.RequestContext) {
 	}
 	writeJSON(c, consts.StatusOK, doc)
 }
+
+func (h *Handlers) HandleSkillDelete(ctx context.Context, c *app.RequestContext) {
+	scope := novaskills.Scope(strings.TrimSpace(c.Query("scope")))
+	name := strings.TrimSpace(c.Query("name"))
+	if scope == "" || name == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.skills.scopeNameRequired")
+		return
+	}
+	if err := h.app.DeleteSkillDocument(ctx, scope, name); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}

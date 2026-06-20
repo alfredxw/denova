@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Bot, ClipboardCheck, FileText, MessageSquareText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
+import { Activity, Bot, ClipboardCheck, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { Teller } from '@/features/interactive/types'
+import { removeChatContextCompaction } from '@/lib/api'
 import type { ChapterSummary, ChatMessage, ContextAnalysis, SessionSummary, TextSelection } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { MessageList } from './MessageList'
@@ -131,6 +132,11 @@ export function AgentPanel({
     void handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
+  const removeContextCompaction = async () => {
+    await removeChatContextCompaction()
+    await handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
+  }
+
   return (
     <aside className="nova-sidebar flex h-full min-h-0 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
@@ -207,14 +213,6 @@ export function AgentPanel({
               <Plus className="h-3.5 w-3.5" />
               {t('chat.new')}
             </button>
-            <button
-              type="button"
-              onClick={() => setView('sessions')}
-              className="nova-nav-item flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px]"
-            >
-              <MessageSquareText className="h-3.5 w-3.5" />
-              {t('chat.manage')}
-            </button>
           </div>
           {messages.length === 0 && !isStreaming && (
             <AgentQuickActions
@@ -259,6 +257,7 @@ export function AgentPanel({
             error={contextAnalysisError}
             analysis={contextAnalysis}
             onOpenChange={setContextAnalysisOpen}
+            onRemoveCompaction={removeContextCompaction}
           />
         </>
       ) : view === 'sessions' ? (

@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	StoryEventTypeMeta       = "meta"
-	StoryEventTypeTurn       = "turn"
-	StoryEventTypeStateDelta = "state_delta"
-	StoryEventTypeBranch     = "branch"
-	StoryEventTypeHotChoices = "hot_choices"
-	StoryEventTypeCompaction = "context_compaction"
+	StoryEventTypeMeta              = "meta"
+	StoryEventTypeTurn              = "turn"
+	StoryEventTypeStateDelta        = "state_delta"
+	StoryEventTypeBranch            = "branch"
+	StoryEventTypeHotChoices        = "hot_choices"
+	StoryEventTypeCompaction        = "context_compaction"
 	StoryEventTypeCompactionRemoved = "context_compaction_removed"
 
 	stateOpSchemaVersion = 1

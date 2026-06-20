@@ -554,7 +554,7 @@ func (s *InteractiveAppService) CompactInteractiveContext(ctx context.Context, s
 		Epoch:               result.Epoch,
 		Summary:             result.Summary,
 		SourceTurnCount:     len(storyCtx.Snapshot.Turns),
-		RetainedTurns:       config.ResolveAgentContext(&runtimeCfg, config.AgentKindInteractiveStory).CompactionRecentTurns,
+		RetainedTurns:       config.ResolveAgentContext(&runtimeCfg, config.AgentKindContextCompaction).CompactionRecentTurns,
 		TokensBefore:        result.TokensBefore,
 		TokensAfter:         result.TokensAfter,
 		TargetRatio:         result.TargetRatio,

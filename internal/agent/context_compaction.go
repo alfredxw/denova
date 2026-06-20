@@ -25,9 +25,7 @@ const (
 
 	contextCompactionSummaryPrefix = "[Nova Context Compaction]"
 	contextCompactionMaxInputBytes = 1024 * 1024
-	contextCompactionTargetMinRatio = 0.05
-	contextCompactionTargetMaxRatio = 0.20
-	contextCompactionMaxAttempts = 2
+	contextCompactionMaxAttempts   = 2
 )
 
 type contextCompactionPolicy struct {
@@ -36,6 +34,8 @@ type contextCompactionPolicy struct {
 	ContextWindowTokens int
 	Threshold           float64
 	RetainedRecentTurns int
+	TargetMinRatio      float64
+	TargetMaxRatio      float64
 }
 
 type ContextCompactionResult struct {
@@ -96,13 +96,16 @@ func compactionControllerFromContext(ctx context.Context) *contextCompactionCont
 
 func resolveContextCompactionPolicy(cfg *config.Config, agentKind string) contextCompactionPolicy {
 	contextSettings := config.ResolveAgentContext(cfg, agentKind)
+	compactionSettings := config.ResolveAgentContext(cfg, config.AgentKindContextCompaction)
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
 	return contextCompactionPolicy{
 		AgentKind:           agentKind,
 		Enabled:             contextSettings.CompactionEnabled,
 		ContextWindowTokens: modelSettings.ContextWindowTokens,
 		Threshold:           contextSettings.CompactionThreshold,
-		RetainedRecentTurns: contextSettings.CompactionRecentTurns,
+		RetainedRecentTurns: compactionSettings.CompactionRecentTurns,
+		TargetMinRatio:      compactionSettings.CompactionTargetMin,
+		TargetMaxRatio:      compactionSettings.CompactionTargetMax,
 	}
 }
 
@@ -308,7 +311,7 @@ func BuildCompactedModelMessages(messages []*schema.Message, summary string, epo
 
 func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, agentKind string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy) (string, error) {
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindContextCompaction)
-	maxTokens := contextCompactionSummaryMaxTokens(sourceTokens, policy.ContextWindowTokens)
+	maxTokens := contextCompactionSummaryMaxTokens(sourceTokens, policy.ContextWindowTokens, policy.TargetMaxRatio)
 	modelCfg.MaxTokens = &maxTokens
 	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
@@ -320,7 +323,7 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 	for attempt := 1; attempt <= contextCompactionMaxAttempts; attempt++ {
 		input := []*schema.Message{
 			schema.SystemMessage(systemPrompt),
-			schema.UserMessage(buildContextCompactionTranscript(source, referenceContext, sourceTokens, retryReason)),
+			schema.UserMessage(buildContextCompactionTranscript(source, referenceContext, sourceTokens, retryReason, policy)),
 		}
 		msg, err := cm.Generate(ctx, input)
 		if err != nil {
@@ -331,29 +334,32 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 			return "", fmt.Errorf("上下文压缩结果为空")
 		}
 		ratio := contextCompactionRatio(estimateStringTokens(summary), sourceTokens)
-		if ratio >= contextCompactionTargetMinRatio && ratio <= contextCompactionTargetMaxRatio {
+		if ratio >= policy.TargetMinRatio && ratio <= policy.TargetMaxRatio {
 			return summary, nil
 		}
 		if attempt == contextCompactionMaxAttempts {
 			break
 		}
-		if ratio > contextCompactionTargetMaxRatio {
-			retryReason = fmt.Sprintf("The previous summary was too long: %.1f%% of source tokens. Compress it to 5%%-20%% while preserving required facts.", ratio*100)
+		if ratio > policy.TargetMaxRatio {
+			retryReason = fmt.Sprintf("The previous summary was too long: %.1f%% of source tokens. Compress it to %s while preserving required facts.", ratio*100, compactionTargetRange(policy))
 		} else {
-			retryReason = fmt.Sprintf("The previous summary was too short: %.1f%% of source tokens. Expand it to 5%%-20%% by restoring omitted user goals, events, relationships, tasks, and state changes.", ratio*100)
+			retryReason = fmt.Sprintf("The previous summary was too short: %.1f%% of source tokens. Expand it to %s by restoring omitted user goals, events, relationships, tasks, and state changes.", ratio*100, compactionTargetRange(policy))
 		}
 	}
 	return summary, nil
 }
 
-func contextCompactionSummaryMaxTokens(sourceTokens, contextWindowTokens int) int {
+func contextCompactionSummaryMaxTokens(sourceTokens, contextWindowTokens int, targetMaxRatio float64) int {
 	if sourceTokens <= 0 {
 		sourceTokens = contextWindowTokens
 	}
 	if sourceTokens <= 0 {
 		return 6000
 	}
-	target := int(float64(sourceTokens) * contextCompactionTargetMaxRatio)
+	if targetMaxRatio <= 0 {
+		targetMaxRatio = 0.20
+	}
+	target := int(float64(sourceTokens) * targetMaxRatio)
 	if target < 128 {
 		target = 128
 	}
@@ -373,31 +379,109 @@ func contextCompactionRatio(partTokens, sourceTokens int) float64 {
 	return float64(partTokens) / float64(sourceTokens)
 }
 
+func compactionTargetRange(policy contextCompactionPolicy) string {
+	minRatio := policy.TargetMinRatio
+	if minRatio <= 0 {
+		minRatio = 0.05
+	}
+	maxRatio := policy.TargetMaxRatio
+	if maxRatio <= 0 {
+		maxRatio = 0.20
+	}
+	if maxRatio < minRatio {
+		maxRatio = minRatio
+	}
+	return fmt.Sprintf("%.0f%%-%.0f%%", minRatio*100, maxRatio*100)
+}
+
 func contextCompactionSystemInstruction() string {
 	return strings.TrimSpace(`
-You are Nova's independent context compaction Agent. Compress prior model-visible conversation context for a future writing or interactive-story turn.
+你是 Nova 的独立“互动小说上下文压缩器”，用于类似酒馆/SillyTavern 的高轮次互动小说和长对话创作场景。
 
-Rules:
-- Preserve every user message's core intent in order. Do not drop user constraints, corrections, preferences, or rejected directions.
-- Preserve all important events, important changes, character relationships, story events, tasks, unresolved decisions, commitments, files/resources mentioned, and state changes.
-- For interactive stories, use the provided Story Memory reference as authoritative continuity context, especially plot_summary records, current state, important characters/relationships, and open threads.
-- Exclude thinking/reasoning content, transport noise, display-only logs, repeated tool cards, and implementation chatter unless the outcome changes future behavior.
-- Do not invent facts. If something is uncertain, mark it as uncertain.
-- Target length: 5% to 20% of the source context. Prefer dense Markdown over prose padding.
-- Output concise Markdown with these exact sections:
-  User Messages and Intent
-  Key Decisions and Constraints
-  Workspace or Story State
-  Important Events and State Changes
-  Character Relationships and Open Threads
-  Completed Work
-  Pending Next Steps
-  Important Evidence and Files
-  Risks and Uncertainties
+你的任务是把输入上下文压缩成更精简的“事件时间线记忆”，同时保留所有会对后续剧情、写作任务或用户意图产生长期影响的信息。
+
+输入可能包含：
+1. existing_memory：此前已经压缩过的记忆，可能为空。
+2. reference_context：有界参考上下文，例如 Story Memory。互动模式必须参考其中的故事记忆，尤其 plot_summary / 剧情纪要。
+3. new_context：需要压缩的原始有效对话链或互动回合链，包括用户行动、用户对白、LLM 剧情推进、NPC 反应、环境变化、任务状态等。
+
+处理目标：
+- 将 existing_memory 与 new_context 合并，输出一份新的压缩记忆。
+- 如果 existing_memory 为空，则从 new_context 初始化压缩记忆。
+- 如果 existing_memory 不为空，则合并新信息；不要重复记录同一事件，新信息补充旧事件时应更新旧事件。
+- 不要删除旧记忆中的长期影响信息，除非 new_context 明确说明该信息已经失效、解决或被推翻。
+- 如果出现矛盾，不要自行修正；保留矛盾并标记为“待确认矛盾”。
+- 已完成任务可以压缩，但必须保留最终结果和遗留影响。
+- 未完成任务、伏笔、承诺、债务、秘密、危险不能删除。
+- 如果不确定某信息是否有长期影响，默认保留。
+
+压缩重点：
+- 必须保留事件时间顺序。
+- 必须保留所有用户消息的核心意图、关键行动、选择、对白、承诺、拒绝、欺骗、威胁、安慰、交易、背叛、失败尝试及其后果。
+- 必须保留行动造成的后果和所有长期影响信息。
+- 必须保留角色关系、角色状态、世界/阵营状态、物品资源、能力、线索、秘密、伏笔、任务、危险、倒计时和当前阶段信息。
+- 可以删除或合并氛围描写、重复心理描写、无后果闲聊、纯修辞性文本。
+- 不要写成小说文风；要写成清晰、紧凑、可供后续模型继续创作的事实账本。
+- 排除 thinking/reasoning 内容、传输噪音、展示用日志、重复工具卡片和无结果的实现过程，除非其结果会改变后续行为。
+- 禁止编造事实；不确定时明确标记“不确定”。
+- 目标长度由用户消息配置，默认是源上下文的 5%-20%。信息密度高时使用目标范围的上半区，不要为了短而丢长期影响信息。
+
+长期影响信息判定：
+只要某条信息未来可能影响角色反应、剧情分支、世界状态、任务推进、关系变化或玩家可用选择，就必须保留。以下信息一律视为长期影响信息：
+- 用户行动：关键选择、重要话语、承诺/拒绝/欺骗/威胁/安慰/交易/背叛、失败的重要行动、尚未显现的后果。
+- 角色关系：信任、好感、敌意、怀疑、依赖、恐惧、暧昧、愧疚、承诺、误会、秘密、冲突、债务、交易、NPC 间联盟/敌对/背叛/隐瞒。
+- 角色状态：受伤、死亡、失踪、昏迷、被俘、身份暴露、能力觉醒/削弱、诅咒、污染、精神状态变化、已知/未知/误解的信息、目标/动机/立场变化。
+- 世界与阵营状态：地点被破坏/封锁/占领/发现/改变、阵营态度变化、组织行动、通缉、追捕、战争、政治变化、世界规则、禁忌、异常现象、公共事件。
+- 物品、资源与能力：获得、失去、损坏、使用、隐藏的重要物品；金钱、补给、武器、钥匙、信物、证据、药物、装备；技能、权限、身份、通行资格变化。
+- 线索、秘密与伏笔：已发现线索、未解谜团、未兑现威胁、未完成任务、倒计时事件、约定地点/时间/暗号、隐藏身份/目的/计划、叙事确认但角色未必知道的信息。
+- 当前阶段：当前地点、时间/阶段、在场角色、主角状态、NPC 态度、当前目标、危险、限制、用户最后行动、LLM 最后反馈、剧情停顿点、下一轮应从哪里继续。
+
+输出必须使用以下格式：
+
+【事件时间线】
+- [重要级别][事件类型] 事件描述
+  - 触发：谁做了什么
+  - 结果：造成了什么变化
+  - 长期影响：为什么后续必须记住
+  - 相关实体：角色 / 地点 / 物品 / 阵营 / 线索
+
+重要级别：
+- P0：永久核心事实。世界观、角色身份、主线设定、绝对不能丢。
+- P1：长期影响事件。会影响后续剧情、关系、任务或世界状态，必须保留。
+- P2：当前阶段重要信息。影响当前场景连续性，必须保留。
+- P3：低影响信息。只在必要时合并，不单独展开。
+
+事件类型可选：
+用户行动 / 剧情后果 / 角色关系 / 角色状态 / 世界状态 / 物品资源 / 任务目标 / 线索伏笔 / 冲突危险 / 当前阶段 / 待确认矛盾
+
+【长期影响账本】
+- 角色关系：
+- 角色状态：
+- 世界/阵营状态：
+- 物品/资源/能力：
+- 线索/秘密/伏笔：
+- 未闭环事项：
+
+【当前阶段快照】
+- 当前地点：
+- 当前时间/阶段：
+- 当前在场角色：
+- 主角当前状态：
+- NPC当前态度：
+- 当前目标：
+- 当前危险：
+- 当前限制：
+- 用户最后行动：
+- LLM最后反馈：
+- 剧情停顿点：
+- 下一轮应从哪里继续：
+
+【已合并或舍弃的信息】
+简要说明哪些信息被合并或舍弃，以及原因。只允许舍弃无长期影响、无当前阶段影响的信息。
 	`)
 }
 
-func buildContextCompactionTranscript(messages []*schema.Message, referenceContext string, sourceTokens int, retryInstruction string) string {
+func buildContextCompactionTranscript(messages []*schema.Message, referenceContext string, sourceTokens int, retryInstruction string, policy contextCompactionPolicy) string {
 	remaining := contextCompactionMaxInputBytes
 	omitted := 0
 	blocks := make([]string, 0, len(messages))
@@ -415,21 +499,26 @@ func buildContextCompactionTranscript(messages []*schema.Message, referenceConte
 		blocks = append(blocks, block)
 	}
 	var sb strings.Builder
-	sb.WriteString("Compress the following Nova transcript. Keep only information needed for future turns.\n")
-	sb.WriteString(fmt.Sprintf("Estimated source tokens: %d. Target summary length: %.0f%%-%.0f%% of source tokens.\n\n", sourceTokens, contextCompactionTargetMinRatio*100, contextCompactionTargetMaxRatio*100))
+	sb.WriteString("请按系统要求压缩以下 Nova 上下文。保留所有会影响后续剧情、任务、关系、世界状态或用户偏好的信息。\n")
+	sb.WriteString(fmt.Sprintf("Estimated source tokens: %d. Target summary length: %s of source tokens. 信息密度高时使用目标范围上半区。\n\n", sourceTokens, compactionTargetRange(policy)))
 	if retryInstruction = strings.TrimSpace(retryInstruction); retryInstruction != "" {
 		sb.WriteString("Retry instruction:\n")
 		sb.WriteString(retryInstruction)
 		sb.WriteString("\n\n")
 	}
+	sb.WriteString("<existing_memory>\n")
+	sb.WriteString("（未提供；本次输入从原始有效上下文重新生成压缩记忆。）\n")
+	sb.WriteString("</existing_memory>\n\n")
 	if referenceContext = strings.TrimSpace(referenceContext); referenceContext != "" {
-		sb.WriteString("Reference context. Use it to preserve continuity, but do not copy unrelated noise:\n\n")
+		sb.WriteString("<reference_context>\n")
 		sb.WriteString(referenceContext)
-		sb.WriteString("\n\n")
+		sb.WriteString("\n</reference_context>\n\n")
 	}
+	sb.WriteString("<new_context>\n")
 	for i := len(blocks) - 1; i >= 0; i-- {
 		sb.WriteString(blocks[i])
 	}
+	sb.WriteString("</new_context>\n")
 	transcript := sb.String()
 	if omitted > 0 {
 		transcript = fmt.Sprintf("Older %d messages were omitted to keep compaction input bounded.\n\n%s", omitted, transcript)

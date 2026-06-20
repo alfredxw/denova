@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.1.11</strong> (2026-06-18) · Beta
+  Current version: <strong>v0.1.12</strong> (2026-06-20) · Beta
 </p>
 
 ![Nova Writing Mode](./img/ide.png)
@@ -220,14 +220,14 @@ cd output
 Build a local GitHub Release package:
 
 ```bash
-scripts/build-github-release.sh v0.1.11
+scripts/build-github-release.sh v0.1.12
 ```
 
 After pushing the tag, GitHub Actions will create or update the Release automatically:
 
 ```bash
-git tag v0.1.11
-git push origin v0.1.11
+git tag v0.1.12
+git push origin v0.1.12
 ```
 
 ## Star History

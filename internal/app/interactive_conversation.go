@@ -57,9 +57,10 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
 	contextSettings := config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory)
+	compactionSettings := config.ResolveAgentContext(c.cfg, config.AgentKindContextCompaction)
 	recentTurnsLimit := contextSettings.RecentTurns
 	if storyCtx.Snapshot.ContextCompaction != nil && strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary) != "" {
-		recentTurnsLimit = contextSettings.CompactionRecentTurns
+		recentTurnsLimit = compactionSettings.CompactionRecentTurns
 	}
 	turnMemory := buildInteractiveTurnMemoryWithCompaction(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction, recentTurnsLimit)
 	stateJSON, err := json.MarshalIndent(storyCtx.Snapshot.State, "", "  ")
@@ -161,7 +162,7 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 		Epoch:               result.Epoch,
 		Summary:             result.Summary,
 		SourceTurnCount:     len(storyCtx.Snapshot.Turns),
-		RetainedTurns:       config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).CompactionRecentTurns,
+		RetainedTurns:       config.ResolveAgentContext(c.cfg, config.AgentKindContextCompaction).CompactionRecentTurns,
 		TokensBefore:        result.TokensBefore,
 		TokensAfter:         result.TokensAfter,
 		TargetRatio:         result.TargetRatio,
@@ -176,7 +177,7 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	}
 	if event.Epoch != result.Epoch {
 		result.Epoch = event.Epoch
-		retainedTurns := config.ResolveAgentContext(c.cfg, config.AgentKindInteractiveStory).CompactionRecentTurns
+		retainedTurns := config.ResolveAgentContext(c.cfg, config.AgentKindContextCompaction).CompactionRecentTurns
 		newMessages = agent.BuildCompactedModelMessages(input.Messages, result.Summary, event.Epoch, retainedTurns)
 		result.TokensAfter = agent.EstimateContextTokens(newMessages, input.Tools)
 		result.MessageCountAfter = len(newMessages)
@@ -546,12 +547,12 @@ func buildInteractiveTurnMemoryWithCompaction(turns []interactive.TurnEvent, com
 	if sourceCount > len(turns) {
 		sourceCount = len(turns)
 	}
-	recent := append([]interactive.TurnEvent(nil), turns[sourceCount:]...)
+	recent := append([]interactive.TurnEvent(nil), turns...)
 	if len(recent) > recentLimit {
 		recent = recent[len(recent)-recentLimit:]
 	}
 	return interactiveTurnMemory{
-		PreviousSummary: strings.TrimSpace(compaction.Summary),
+		PreviousSummary: "",
 		RecentTurns:     recent,
 		PreviousCount:   sourceCount,
 		OmittedCount:    sourceCount,

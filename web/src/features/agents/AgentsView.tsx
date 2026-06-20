@@ -233,6 +233,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
               onChange={setAgentPrompt}
             />
             <AgentRuntimeContextSection
+              agent={activeAgent}
               value={contextValue}
               inherited={inheritedContext}
               onChange={setAgentContext}
@@ -509,7 +510,8 @@ function fallbackPromptSources(blocks?: AgentPromptBlocks, builtin?: string): Ag
   ].filter(Boolean) as AgentPromptSource[]
 }
 
-function AgentRuntimeContextSection({ value, inherited, onChange }: {
+function AgentRuntimeContextSection({ agent, value, inherited, onChange }: {
+  agent: VisibleAgentKey
   value: AgentContextOverride
   inherited: AgentContextOverride
   onChange: (patch: Partial<AgentContextOverride>) => void
@@ -519,60 +521,95 @@ function AgentRuntimeContextSection({ value, inherited, onChange }: {
   const hasCompactionEnabled = value.compaction_enabled !== undefined && value.compaction_enabled !== null
   const hasCompactionThreshold = value.compaction_threshold !== undefined && value.compaction_threshold !== null
   const hasCompactionRecentTurns = value.compaction_recent_turns !== undefined && value.compaction_recent_turns !== null
+  const hasCompactionTargetMin = value.compaction_target_min_ratio !== undefined && value.compaction_target_min_ratio !== null
+  const hasCompactionTargetMax = value.compaction_target_max_ratio !== undefined && value.compaction_target_max_ratio !== null
   const effectiveRecentTurns = hasRecentTurns ? value.recent_turns : inherited.recent_turns ?? 30
   const effectiveCompactionEnabled = hasCompactionEnabled ? value.compaction_enabled : inherited.compaction_enabled ?? true
   const effectiveCompactionThreshold = hasCompactionThreshold ? value.compaction_threshold : inherited.compaction_threshold ?? 0.9
   const effectiveCompactionRecentTurns = hasCompactionRecentTurns ? value.compaction_recent_turns : inherited.compaction_recent_turns ?? 8
+  const effectiveCompactionTargetMin = hasCompactionTargetMin ? value.compaction_target_min_ratio : inherited.compaction_target_min_ratio ?? 0.05
+  const effectiveCompactionTargetMax = hasCompactionTargetMax ? value.compaction_target_max_ratio : inherited.compaction_target_max_ratio ?? 0.2
+  const isCompactionAgent = agent === 'context_compaction'
   return (
     <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={FolderOpen} title={t('agents.section.runtimeContext')} />
       <div className="grid gap-3 md:grid-cols-2">
-        <Field label={t('agents.field.recentTurns')} inherited={!hasRecentTurns} onReset={hasRecentTurns ? () => onChange({ recent_turns: null }) : undefined}>
-          <input
-            type="number"
-            min={1}
-            max={30}
-            step={1}
-            value={effectiveRecentTurns ?? 30}
-            onChange={(e) => onChange({ recent_turns: e.target.value === '' ? null : Number(e.target.value) })}
-            className={fieldCls}
-          />
-        </Field>
-        <Field label={t('agents.field.compactionEnabled')} inherited={!hasCompactionEnabled} onReset={hasCompactionEnabled ? () => onChange({ compaction_enabled: null }) : undefined}>
-          <select
-            value={String(effectiveCompactionEnabled)}
-            onChange={(e) => onChange({ compaction_enabled: e.target.value === 'true' })}
-            className={fieldCls}
-          >
-            <option value="true">{t('agents.option.on')}</option>
-            <option value="false">{t('agents.option.off')}</option>
-          </select>
-        </Field>
-        <Field label={t('agents.field.compactionThreshold')} inherited={!hasCompactionThreshold} onReset={hasCompactionThreshold ? () => onChange({ compaction_threshold: null }) : undefined}>
-          <input
-            type="number"
-            min={50}
-            max={98}
-            step={1}
-            value={Math.round((effectiveCompactionThreshold ?? 0.9) * 100)}
-            onChange={(e) => onChange({ compaction_threshold: e.target.value === '' ? null : Number(e.target.value) / 100 })}
-            className={fieldCls}
-          />
-        </Field>
-        <Field label={t('agents.field.compactionRecentTurns')} inherited={!hasCompactionRecentTurns} onReset={hasCompactionRecentTurns ? () => onChange({ compaction_recent_turns: null }) : undefined}>
-          <input
-            type="number"
-            min={1}
-            max={30}
-            step={1}
-            value={effectiveCompactionRecentTurns ?? 8}
-            onChange={(e) => onChange({ compaction_recent_turns: e.target.value === '' ? null : Number(e.target.value) })}
-            className={fieldCls}
-          />
-        </Field>
+        {!isCompactionAgent && (
+          <>
+            <Field label={t('agents.field.recentTurns')} inherited={!hasRecentTurns} onReset={hasRecentTurns ? () => onChange({ recent_turns: null }) : undefined}>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                step={1}
+                value={effectiveRecentTurns ?? 30}
+                onChange={(e) => onChange({ recent_turns: e.target.value === '' ? null : Number(e.target.value) })}
+                className={fieldCls}
+              />
+            </Field>
+            <Field label={t('agents.field.compactionEnabled')} inherited={!hasCompactionEnabled} onReset={hasCompactionEnabled ? () => onChange({ compaction_enabled: null }) : undefined}>
+              <select
+                value={String(effectiveCompactionEnabled)}
+                onChange={(e) => onChange({ compaction_enabled: e.target.value === 'true' })}
+                className={fieldCls}
+              >
+                <option value="true">{t('agents.option.on')}</option>
+                <option value="false">{t('agents.option.off')}</option>
+              </select>
+            </Field>
+            <Field label={t('agents.field.compactionThreshold')} inherited={!hasCompactionThreshold} onReset={hasCompactionThreshold ? () => onChange({ compaction_threshold: null }) : undefined}>
+              <input
+                type="number"
+                min={50}
+                max={98}
+                step={1}
+                value={Math.round((effectiveCompactionThreshold ?? 0.9) * 100)}
+                onChange={(e) => onChange({ compaction_threshold: e.target.value === '' ? null : Number(e.target.value) / 100 })}
+                className={fieldCls}
+              />
+            </Field>
+          </>
+        )}
+        {isCompactionAgent && (
+          <>
+            <Field label={t('agents.field.compactionRecentTurns')} inherited={!hasCompactionRecentTurns} onReset={hasCompactionRecentTurns ? () => onChange({ compaction_recent_turns: null }) : undefined}>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                step={1}
+                value={effectiveCompactionRecentTurns ?? 8}
+                onChange={(e) => onChange({ compaction_recent_turns: e.target.value === '' ? null : Number(e.target.value) })}
+                className={fieldCls}
+              />
+            </Field>
+            <Field label={t('agents.field.compactionTargetMin')} inherited={!hasCompactionTargetMin} onReset={hasCompactionTargetMin ? () => onChange({ compaction_target_min_ratio: null }) : undefined}>
+              <input
+                type="number"
+                min={1}
+                max={80}
+                step={1}
+                value={Math.round((effectiveCompactionTargetMin ?? 0.05) * 100)}
+                onChange={(e) => onChange({ compaction_target_min_ratio: e.target.value === '' ? null : Number(e.target.value) / 100 })}
+                className={fieldCls}
+              />
+            </Field>
+            <Field label={t('agents.field.compactionTargetMax')} inherited={!hasCompactionTargetMax} onReset={hasCompactionTargetMax ? () => onChange({ compaction_target_max_ratio: null }) : undefined}>
+              <input
+                type="number"
+                min={1}
+                max={80}
+                step={1}
+                value={Math.round((effectiveCompactionTargetMax ?? 0.2) * 100)}
+                onChange={(e) => onChange({ compaction_target_max_ratio: e.target.value === '' ? null : Number(e.target.value) / 100 })}
+                className={fieldCls}
+              />
+            </Field>
+          </>
+        )}
       </div>
       <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-        {t('agents.context.recentTurnsNote')}
+        {isCompactionAgent ? t('agents.context.compactionTargetNote') : t('agents.context.recentTurnsNote')}
       </div>
     </section>
   )
@@ -796,9 +833,12 @@ function buildProfileOptions(draft: Settings, effective: Settings, t: (key: stri
 
 function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: string, options?: Record<string, unknown>) => string) {
   const context = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[agent] ?? {})
+  const compactionContext = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.context_compaction ?? {})
   const recentTurns = context.recent_turns ?? 30
-  const compactionTurns = context.compaction_recent_turns ?? 8
+  const compactionTurns = compactionContext.compaction_recent_turns ?? 8
   const threshold = Math.round((context.compaction_threshold ?? 0.9) * 100)
+  const targetMin = Math.round((compactionContext.compaction_target_min_ratio ?? 0.05) * 100)
+  const targetMax = Math.round((compactionContext.compaction_target_max_ratio ?? 0.2) * 100)
   if (agent === 'ide') {
     return [
       { title: t('agents.context.currentBook'), value: 'workspace' },
@@ -811,6 +851,13 @@ function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: st
       { title: t('agents.context.storyState'), value: 'story jsonl' },
       { title: t('agents.context.teller'), value: t('agents.context.currentStoryTeller') },
       { title: t('agents.context.sessionContext'), value: t('agents.context.compactionValue', { threshold, count: compactionTurns, fallback: recentTurns }) },
+    ]
+  }
+  if (agent === 'context_compaction') {
+    return [
+      { title: t('agents.context.inputSource'), value: t('agents.context.compactionInputValue') },
+      { title: t('agents.context.outputShape'), value: t('agents.context.compactionOutputValue') },
+      { title: t('agents.context.historyBoundary'), value: t('agents.context.compactionTargetValue', { min: targetMin, max: targetMax, count: compactionTurns }) },
     ]
   }
   return [
@@ -854,10 +901,14 @@ function mergeAgentContextOverride(parent: AgentContextOverride, child: AgentCon
   const recentTurns = child.recent_turns ?? parent.recent_turns ?? 30
   const compactionThreshold = child.compaction_threshold ?? parent.compaction_threshold ?? 0.9
   const compactionRecentTurns = child.compaction_recent_turns ?? parent.compaction_recent_turns ?? 8
+  const compactionTargetMin = child.compaction_target_min_ratio ?? parent.compaction_target_min_ratio ?? 0.05
+  const compactionTargetMax = child.compaction_target_max_ratio ?? parent.compaction_target_max_ratio ?? 0.2
   return {
     recent_turns: Math.max(1, Math.min(30, recentTurns)),
     compaction_enabled: child.compaction_enabled ?? parent.compaction_enabled ?? true,
     compaction_threshold: Math.max(0.5, Math.min(0.98, compactionThreshold)),
     compaction_recent_turns: Math.max(1, Math.min(30, compactionRecentTurns)),
+    compaction_target_min_ratio: Math.max(0.01, Math.min(0.8, compactionTargetMin)),
+    compaction_target_max_ratio: Math.max(0.01, Math.min(0.8, Math.max(compactionTargetMin, compactionTargetMax))),
   }
 }

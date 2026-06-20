@@ -56,6 +56,8 @@ const storyStage = {
   'storyStage.activity.done': 'Done',
   'storyStage.activity.aborted': 'Aborted',
   'storyStage.activity.runFailed': 'Interactive Agent execution failed',
+  'storyStage.contextCompaction.done': 'Context compaction complete',
+  'storyStage.contextCompaction.failed': 'Context compaction failed',
   'storyStage.activity.aborting': 'Aborting...',
   'storyStage.activity.switchNewer': 'Switching to a newer version...',
   'storyStage.activity.switchOlder': 'Switching to an earlier version...',
