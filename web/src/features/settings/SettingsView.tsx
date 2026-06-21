@@ -10,6 +10,7 @@ import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { LOCALE_OPTIONS } from '@/i18n'
+import { APP_VERSION } from '@/app-version'
 import { markAutoUpdateChecked, shouldRunAutoUpdateCheck } from './update-check-cache'
 
 type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
@@ -600,7 +601,7 @@ function UpdatePanel({
             )}
           </div>
           <div className="grid gap-1 text-[var(--nova-text-faint)] sm:grid-cols-2">
-            <span>{t('settings.updates.currentVersion', { version: status?.current_version || __APP_VERSION__ })}</span>
+            <span>{t('settings.updates.currentVersion', { version: status?.current_version || APP_VERSION })}</span>
             <span>{t('settings.updates.latestVersion', { version: status?.latest_version || t('common.notSet') })}</span>
             <span>{t('settings.updates.platform', { platform: status?.platform || t('common.notSet') })}</span>
             <span>{t('settings.updates.publishedAt', { time: releaseDate || t('common.notSet') })}</span>

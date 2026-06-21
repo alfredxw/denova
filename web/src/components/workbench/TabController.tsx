@@ -3,10 +3,17 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import type { WorkspaceSummary } from '@/lib/api'
-import { novaSpring } from '@/features/motion/motion-tokens'
+import { novaEase, novaSpring } from '@/features/motion/motion-tokens'
 
 const TABS_STORAGE_PREFIX = 'nova.layout.tabs:'
 const ACTIVE_TAB_STORAGE_PREFIX = 'nova.layout.activeTab:'
+const tabLayoutTransition = { duration: 0.1, ease: novaEase } as const
+const tabPresenceTransition = { duration: 0.06, ease: novaEase } as const
+const tabMotionTransition = {
+  opacity: tabPresenceTransition,
+  scale: tabPresenceTransition,
+  layout: tabLayoutTransition,
+} as const
 
 /** 编辑区 Tab：承载已打开文件。 */
 export type Tab = { kind: 'file'; path: string }
@@ -135,7 +142,7 @@ export function TabController({
         {tabs.length === 0 ? (
           <div className="flex h-full items-center px-3 text-[var(--nova-text-faint)]">{t('tab.empty')}</div>
         ) : (
-          <AnimatePresence initial={false}>
+          <AnimatePresence initial={false} mode="popLayout">
             {tabs.map((tab) => {
               const key = tabKey(tab)
               const isActive = key === activeTabKey
@@ -144,10 +151,11 @@ export function TabController({
                 <motion.div
                   key={key}
                   layout
-                  initial={{ opacity: 0, x: -8 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -8 }}
-                  transition={novaSpring}
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.99, transition: tabPresenceTransition }}
+                  transition={tabMotionTransition}
+                  style={{ originX: 0 }}
                   className={`group relative flex h-full shrink-0 items-center gap-2 overflow-hidden border-r border-[var(--nova-border)] px-3 transition-colors ${
                     isActive
                       ? 'text-[var(--nova-text)]'
