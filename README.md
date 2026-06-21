@@ -55,6 +55,8 @@ Nova 不是“输入提示词，生成一段正文”的一次性工具，而是
 - **结构化资料库**：角色、世界观、地点、势力、规则、物品等长期设定可沉淀为可检索资料。
 - **渐进式上下文**：按来源、用途和大小上限组织模型上下文，避免无界注入历史、日志或完整设定。
 - **互动模式**：围绕互动娱乐推进可游玩的故事分支、角色行动、场景记忆和故事线变化。
+- **自定义故事记忆**：支持为互动故事维护场景、故事线和自定义记忆字段，让长期游玩持续沉淀上下文。
+- **Memory Compact 与缓存优化**：压缩长历史并稳定复用上下文，提高缓存命中率，降低持续创作的 token 成本。
 - **版本管理**：基于 go-git 保存、Diff、恢复、定时保存，并在 Agent 大量输出时自动保存。
 - **Skills 与 Agents**：给不同 Agent 配置创作技能、提示词、可用工具和自定义文风。
 - **自动化**：支持定时任务、review、自动续写和自定义 Prompt 工作流。
@@ -74,6 +76,7 @@ Nova 有两个并列工作台。写作模式面向小说创作，重点是大纲
 <p align="center">
   <img src="./img/wechat.png" alt="微信交流" width="240">
 </p>
+
 
 ## 快速开始
 
@@ -134,7 +137,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-也可以在 `config.toml` 中配置模型、Agent 参数、编辑器、互动模式、版本管理、前后端端口和界面外观（语言、主题、字体）。后端端口可写为 `backend_port = 8080`，前端开发端口可写为 `frontend_port = 5173`，也可在设置页的用户配置中修改，重启后生效；临时启动时 `--port` / `--frontend-port` 优先于 `NOVA_BACKEND_PORT` / `NOVA_FRONTEND_PORT` 和配置文件。`theme` 支持 `dark`（默认）、`light` 和 `system`，可保存到用户级或工作区级配置。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。配置优先级：
+也可以在UI设置页（对应 `config.toml`）中配置模型、Agent 参数、编辑器、互动模式、版本管理、前后端端口和界面外观（语言、主题、字体）。`theme` 支持 `dark`（默认）、`light` 和 `system`，可保存到用户级或工作区级配置。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。配置优先级：
 
 ```text
 内置默认值 < 全局 config.toml < 用户级配置 < 工作区级配置 < 环境变量
@@ -177,64 +180,17 @@ my-novel/
 ./bootstrap.sh
 ```
 
-仅启动前端：
+分开启动前端：
 
 ```bash
-./bootstrap.sh fe
+./bootstrap.sh fe/be
 ```
 
-仅启动后端：
-
-```bash
-./bootstrap.sh be
-```
-
-生产构建：
-
-```bash
-./build.sh
-```
-
-运行构建产物：
-
-```bash
-cd output
-./nova --workspace /path/to/your-novel
-```
-
-## 技术栈
-
-- Backend：Go、Hertz、Eino、SSE
-- Frontend：React、TypeScript、Vite、Tailwind CSS、TipTap
-- State：TanStack Query、Zustand
-- Packaging：GitHub Actions、跨平台 Go binaries
-
-## 项目结构
-
-```text
-.
-├── cmd/nova/        # 服务入口
-├── config/          # 配置加载
-├── internal/        # 后端业务模块
-├── scripts/         # 构建和发布脚本
-├── skills/          # 创作技能提示词
-└── web/             # React Web UI
-```
-
-## 发布
-
-本地打包 GitHub Release：
-
-```bash
-scripts/build-github-release.sh v0.1.12
-```
-
-推送 tag 后，GitHub Actions 会自动创建或更新 Release：
-
-```bash
-git tag v0.1.12
-git push origin v0.1.12
-```
+## 赞助项目
+> 给作者买杯咖啡，助力他每月200刀猛猛蹬AI快速迭代
+<p align="center">
+  <img src="./img/donate.png" alt="捐赠" width="240">
+</p>
 
 ## Star History
 

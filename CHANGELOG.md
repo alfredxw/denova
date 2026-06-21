@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- 更新中英文 README 的能力介绍，补充自定义故事记忆、Memory Compact、缓存命中率优化和 token 成本说明，并同步欢迎交流、开发启动和赞助信息。
+
 ## [v0.1.12] - 2026-06-20
 
 ### Added

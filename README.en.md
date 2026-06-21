@@ -55,6 +55,8 @@ Beyond writing original stories, Nova can import existing novels as a starting p
 - **Structured lore**: characters, worlds, locations, factions, rules, items, and other durable settings become searchable long-term lore.
 - **Progressive context**: model context is organized by source, purpose, and hard size limits instead of unbounded history, logs, or full settings.
 - **Interactive Mode**: run playable story branches, character actions, scene memory, and storyline changes for interactive entertainment.
+- **Custom story memory**: maintain scenes, storylines, and custom memory fields for interactive stories so long-running play keeps durable context.
+- **Memory Compact and cache optimization**: compact long histories and reuse stable context to improve cache hits and reduce token cost during ongoing creation.
 - **Version management**: go-git powered saves, diffs, restore, timed saves, and automatic saves for large Agent outputs.
 - **Skills and Agents**: configure creative skills, prompts, tool permissions, and custom prose styles for different Agents.
 - **Automation**: schedule tasks, reviews, auto-continuation, and custom Prompt workflows.
@@ -68,6 +70,13 @@ Nova has two parallel workspaces. Writing Mode is for fiction creation: outlines
 The two modes only share durable creative assets such as lore, narrative direction, model and Agent configuration, Skills, version management, and base workspace settings. Writing Mode state such as outlines, chapter-group plans, chapter progress, and `progress.md` does not automatically enter Interactive Mode; Interactive Mode also does not implicitly know where the novel is currently written to. If an interactive story should reference a passage or a writing milestone, first move stable setting into lore or explicitly reference it in the interactive input.
 
 The recommended path is to start from an idea or an import: settle top-level settings and creative rules, then build the outline and chapter-group plan in Writing Mode. During chapter work, use Agents to draft or write prose and sync progress plus character state after finalizing. For interactive entertainment, switch to Interactive Mode and create playable branches from shared lore and narrative direction, then fold only truly stable setting back into lore and keep saving local versions.
+
+## Community
+
+Nova is iterating quickly. Feedback and discussion are welcome; joining the group usually gets a faster response.
+<p align="center">
+  <img src="./img/wechat.png" alt="WeChat group" width="240">
+</p>
 
 ## Quick Start
 
@@ -128,7 +137,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-You can also configure models, Agent parameters, editor options, interactive-mode behavior, version management, backend/frontend ports, and interface appearance (language, theme, fonts) in `config.toml`. Set the backend port with `backend_port = 8080` and the frontend dev port with `frontend_port = 5173`, or edit them from the user settings page and restart Nova; for one-off launches, `--port` / `--frontend-port` take precedence over `NOVA_BACKEND_PORT` / `NOVA_FRONTEND_PORT` and config files. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. Configuration precedence:
+You can also configure models, Agent parameters, editor options, interactive-mode behavior, version management, backend/frontend ports, and interface appearance (language, theme, fonts) from the UI settings page, which maps to `config.toml`. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. Configuration precedence:
 
 ```text
 Built-in defaults < global config.toml < user-level config < workspace-level config < environment variables
@@ -171,64 +180,18 @@ Start both frontend and backend:
 ./bootstrap.sh
 ```
 
-Start frontend only:
+Start frontend/backend separately:
 
 ```bash
-./bootstrap.sh fe
+./bootstrap.sh fe/be
 ```
 
-Start backend only:
+## Donate QR Codes
 
-```bash
-./bootstrap.sh be
-```
-
-Production build:
-
-```bash
-./build.sh
-```
-
-Run the build output:
-
-```bash
-cd output
-./nova --workspace /path/to/your-novel
-```
-
-## Tech Stack
-
-- Backend: Go, Hertz, Eino, SSE
-- Frontend: React, TypeScript, Vite, Tailwind CSS, TipTap
-- State: TanStack Query, Zustand
-- Packaging: GitHub Actions, cross-platform Go binaries
-
-## Project Structure
-
-```text
-.
-├── cmd/nova/        # Service entry point
-├── config/          # Configuration loading
-├── internal/        # Backend business modules
-├── scripts/         # Build and release scripts
-├── skills/          # Creative skill prompts
-└── web/             # React Web UI
-```
-
-## Release
-
-Build a local GitHub Release package:
-
-```bash
-scripts/build-github-release.sh v0.1.12
-```
-
-After pushing the tag, GitHub Actions will create or update the Release automatically:
-
-```bash
-git tag v0.1.12
-git push origin v0.1.12
-```
+> Buy the author a coffee and help cover the monthly AI iteration cost.
+<p align="center">
+  <img src="./img/donate.png" alt="Donate" width="240">
+</p>
 
 ## Star History
 
