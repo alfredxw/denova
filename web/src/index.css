@@ -255,6 +255,17 @@ html[data-nova-motion="off"] *::after {
   -webkit-tap-highlight-color: transparent;
 }
 
+[data-nova-mobile-shell="true"] :where(.overflow-y-auto, [data-slot="scroll-area-viewport"]) {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+[data-nova-mobile-shell="true"] :where(.overflow-auto) {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
 @supports not (height: 100dvh) {
   [data-nova-mobile-shell="true"] {
     height: 100vh;
@@ -295,13 +306,14 @@ html[data-nova-motion="off"] *::after {
 
   [data-nova-mobile-shell="true"] .nova-story-stage-header {
     min-height: auto;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
   }
 
   [data-nova-mobile-shell="true"] .nova-story-stage-title {
-    width: 100%;
+    width: auto;
+    flex: 1 1 0;
   }
 
   [data-nova-mobile-shell="true"] .nova-story-stage-controls {
@@ -322,6 +334,7 @@ html[data-nova-motion="off"] *::after {
   }
 
   [data-nova-mobile-shell="true"] .nova-story-stage-composer-row {
+    flex-wrap: nowrap;
     align-items: flex-end;
     gap: 0.5rem;
   }

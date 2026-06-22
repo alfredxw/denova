@@ -117,6 +117,21 @@ function renderAppWithQueryClient() {
   )
 }
 
+function setMobileViewport(matches: boolean) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: matches ? 390 : 1280 })
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: matches ? 844 : 900 })
+  vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })))
+}
+
 describe('App', () => {
   beforeEach(() => {
     window.localStorage.clear()
@@ -165,6 +180,18 @@ describe('App', () => {
     expect(fetchCallPaths()).not.toContain('/api/chat/active')
   })
 
+  it('does not start workspace tree, summary and styles polling in interactive mode', async () => {
+    const setIntervalSpy = vi.spyOn(window, 'setInterval')
+    useWorkspaceStore.setState({ mode: 'interactive', rightPanel: null, commandOpen: false })
+
+    renderAppWithQueryClient()
+
+    await waitFor(() => expect(fetchCallPaths()).toContain('/api/workspace/tree'))
+
+    const workspacePollingStarted = setIntervalSpy.mock.calls.some(([, timeout]) => timeout === 3000)
+    expect(workspacePollingStarted).toBe(false)
+  })
+
   it('renders the writing and interactive mode switch in the main header', async () => {
     render(
       <TooltipProvider>
@@ -177,6 +204,30 @@ describe('App', () => {
     expect(header).not.toBeNull()
     expect(within(header as HTMLElement).getByRole('button', { name: '写作模式' })).toBeInTheDocument()
     expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toBeInTheDocument()
+  })
+
+  it('keeps the mobile header to one row without workbench status text', async () => {
+    const user = userEvent.setup()
+    setMobileViewport(true)
+
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledWith('/api/chat/active', undefined))
+    const header = screen.getByText('Nova').closest('header')
+    expect(header).not.toBeNull()
+    expect(within(header as HTMLElement).getByText('demo')).toBeInTheDocument()
+    expect(within(header as HTMLElement).getByRole('button', { name: '写作模式' })).toBeInTheDocument()
+    expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toBeInTheDocument()
+
+    await user.click(within(header as HTMLElement).getByRole('button', { name: '互动模式' }))
+
+    expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
+    expect(within(header as HTMLElement).queryByText('互动工作台')).not.toBeInTheDocument()
+    expect(within(header as HTMLElement).queryByText('写作工作台')).not.toBeInTheDocument()
   })
 
   it('opens writing Review inside the Writing Agent panel without switching to Automations', async () => {
@@ -343,6 +394,33 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '故事舞台' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '关闭设置' })).toBeInTheDocument()
     expect(screen.queryByText('Agent 模型分配')).not.toBeInTheDocument()
+  })
+
+  it('shows a dismissible update notice in the primary menu', async () => {
+    const user = userEvent.setup()
+    mockApiFetch({
+      '/api/update/check': {
+        current_version: '0.1.12',
+        latest_version: '0.1.13',
+        update_available: true,
+        can_install: true,
+        platform: 'darwin-arm64',
+        release_url: 'https://example.com/releases/0.1.13',
+        published_at: '2026-06-22T00:00:00Z',
+      },
+    })
+
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    expect(await screen.findByText('发现新版本 0.1.13')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '关闭更新提示' }))
+
+    expect(screen.queryByText('发现新版本 0.1.13')).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('nova.update.dismissedLatestVersion')).toBe('0.1.13')
   })
 
   it('opens Agents as a global management page and toggles back', async () => {

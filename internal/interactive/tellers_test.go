@@ -63,8 +63,7 @@ func TestTellerLibraryRefreshesOldBuiltinVersion(t *testing.T) {
   "context_policy": {
     "creator": "always",
     "lore": "relevant",
-    "runtime_state": "always",
-    "recent_turns": 8
+    "runtime_state": "always"
   },
   "slots": [
     {

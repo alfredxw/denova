@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage, SSEEvent } from '@/lib/api'
+import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 
 interface AgentEventStreamOptions {
   onAgentFileChange?: (path?: string) => void | Promise<void>
@@ -37,6 +38,8 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
   const toolCallQueueRef = useRef<string[]>([])
   const toolKeyToMessageIdRef = useRef<Record<string, string>>({})
   const toolIdCounterRef = useRef(0)
+  const currentCompactionMessageIdRef = useRef<string | null>(null)
+  const compactionIdCounterRef = useRef(0)
   const segmentBufferRef = useRef<Record<string, string>>({})
   const segmentRafRef = useRef<number | null>(null)
   const deltaBufferRef = useRef<Record<string, string>>({})
@@ -50,6 +53,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     pendingToolCallsRef.current = {}
     toolCallQueueRef.current = []
     toolKeyToMessageIdRef.current = {}
+    currentCompactionMessageIdRef.current = null
     segmentBufferRef.current = {}
     deltaBufferRef.current = {}
     if (segmentRafRef.current !== null) {
@@ -160,6 +164,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     toolKeyToMessageIdRef.current = {}
     currentSegmentIdRef.current = null
     currentSegmentRoleRef.current = null
+    currentCompactionMessageIdRef.current = null
     segmentBufferRef.current = {}
     setIsStreaming(true)
     setActivityContent(t('chat.activity.connecting'))
@@ -260,13 +265,23 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
           case 'context_compaction': {
             finishCurrentSegment()
             const status = readString(data.status)
+            const compactionId: string = currentCompactionMessageIdRef.current || createContextCompactionMessageId(compactionIdCounterRef)
+            currentCompactionMessageIdRef.current = compactionId
+            setMessages(prev => upsertContextCompactionMessage(prev, buildContextCompactionMessage(data, compactionId)))
             if (status === 'started') {
               setActivityContent(t('chat.activity.compacting'))
             } else if (status === 'completed') {
               setActivityContent(t('chat.activity.compacted'))
+              currentCompactionMessageIdRef.current = null
             } else if (status === 'failed') {
               setActivityContent('')
+              currentCompactionMessageIdRef.current = null
             }
+            break
+          }
+          case 'token_usage': {
+            finishCurrentSegment()
+            setMessages(prev => upsertTokenUsageMessage(prev, buildTokenUsageMessage(data)))
             break
           }
           case 'done': {
@@ -310,6 +325,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
       pendingToolCallsRef.current = {}
       toolCallQueueRef.current = []
       toolKeyToMessageIdRef.current = {}
+      currentCompactionMessageIdRef.current = null
       flushToolArgBuffer()
       flushStreamingSegmentBuffer(true)
       finishCurrentSegment()
@@ -373,6 +389,15 @@ function readString(value: unknown) {
   return typeof value === 'string' ? value : ''
 }
 
+function readNumber(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return undefined
+}
+
 function getToolEventKey(data: Record<string, unknown>): string | undefined {
   if (typeof data.id === 'string' && data.id) return `id:${data.id}`
   if (typeof data.index === 'number') return `index:${data.index}`
@@ -406,6 +431,65 @@ function updateStreamingSegments(messages: ChatMessage[], buffered: Record<strin
       ? { ...message, content: (message.content || '') + buffered[message.id], streaming: true }
       : message
   ))
+}
+
+function buildTokenUsageMessage(data: Record<string, unknown>): ChatMessage {
+  const runId = readString(data.run_id)
+  return {
+    role: 'token_usage',
+    id: runId || `token-usage-${Date.now()}`,
+    content: '',
+    run_id: runId,
+    agent_kind: readString(data.agent_kind),
+    prompt_tokens: readNumber(data.prompt_tokens),
+    cached_prompt_tokens: readNumber(data.cached_prompt_tokens),
+    uncached_prompt_tokens: readNumber(data.uncached_prompt_tokens),
+    cache_hit_rate: readNumber(data.cache_hit_rate),
+    completion_tokens: readNumber(data.completion_tokens),
+    reasoning_tokens: readNumber(data.reasoning_tokens),
+    total_tokens: readNumber(data.total_tokens),
+    model_calls: readNumber(data.model_calls),
+    generated_bytes: readNumber(data.generated_bytes),
+    usage_calls: readUsageCalls(data.usage_calls),
+    created_at: readString(data.created_at) || new Date().toISOString(),
+  }
+}
+
+function readUsageCalls(value: unknown) {
+  if (!Array.isArray(value)) return undefined
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const call = item as Record<string, unknown>
+      return {
+        index: readNumber(call.index),
+        created_at: readString(call.created_at),
+        finish_reason: readString(call.finish_reason),
+        requested_tools: readStringArray(call.requested_tools),
+        after_tools: readStringArray(call.after_tools),
+        prompt_tokens: readNumber(call.prompt_tokens),
+        cached_prompt_tokens: readNumber(call.cached_prompt_tokens),
+        uncached_prompt_tokens: readNumber(call.uncached_prompt_tokens),
+        cache_hit_rate: readNumber(call.cache_hit_rate),
+        completion_tokens: readNumber(call.completion_tokens),
+        reasoning_tokens: readNumber(call.reasoning_tokens),
+        total_tokens: readNumber(call.total_tokens),
+      }
+    })
+    .filter((call): call is NonNullable<typeof call> => Boolean(call))
+}
+
+function upsertTokenUsageMessage(messages: ChatMessage[], next: ChatMessage) {
+  if (!next.run_id) return [...messages, next]
+  let found = false
+  const updated = messages.map((message) => {
+    if (message.role === 'token_usage' && message.run_id === next.run_id) {
+      found = true
+      return { ...message, ...next }
+    }
+    return message
+  })
+  return found ? updated : [...updated, next]
 }
 
 function finalizeStreamingSegment(messages: ChatMessage[], id: string) {

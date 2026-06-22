@@ -195,7 +195,7 @@ func (s *InteractiveAppService) StartStoryMemoryGenerateTask(storyID, branchID, 
 	source = normalizeStoryMemoryGenerateSource(source)
 	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[interactive-memory-agent] stream begin task_id=%s story_id=%s branch_id=%s source=%s", task.ID(), storyID, branchID, source)
-		emit(agent.Event{Type: "thinking", Data: map[string]string{"content": "正在读取当前剧情线和最近回合，准备整理故事记忆。"}})
+		emit(agent.Event{Type: "thinking", Data: map[string]string{"content": "正在读取当前剧情线和历史回合，准备整理故事记忆。"}})
 		state, patchCount, err := s.runStoryMemoryGenerate(ctx, storyID, branchID, source, emit)
 		if err != nil {
 			log.Printf("[interactive-memory-agent] stream failed task_id=%s story_id=%s branch_id=%s source=%s err=%v", task.ID(), storyID, branchID, source, err)
@@ -554,7 +554,7 @@ func (s *InteractiveAppService) CompactInteractiveContext(ctx context.Context, s
 		Epoch:               result.Epoch,
 		Summary:             result.Summary,
 		SourceTurnCount:     len(storyCtx.Snapshot.Turns),
-		RetainedTurns:       config.ResolveAgentContext(&runtimeCfg, config.AgentKindContextCompaction).CompactionRecentTurns,
+		RetainedTurns:       result.RetainedTurns,
 		TokensBefore:        result.TokensBefore,
 		TokensAfter:         result.TokensAfter,
 		TargetRatio:         result.TargetRatio,
@@ -646,7 +646,8 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		}
 	}
 	log.Printf("[interactive-agent-task] use story settings story_id=%s teller_id=%s target_chars=%d style_rules=%d", storyID, teller.ID, runtimeCfg.InteractiveReplyTargetChars, len(styleRules))
-	runner, err := buildInteractiveStoryRunner(context.Background(), &runtimeCfg, state, interactiveStoryTellerSystemInput(teller), agent.InteractiveStoryToolContext{
+	tellerSystemInput := interactiveStoryTellerSystemInput(teller)
+	runner, err := buildInteractiveStoryRunner(context.Background(), &runtimeCfg, state, tellerSystemInput, agent.InteractiveStoryToolContext{
 		Store:    store,
 		StoryID:  storyID,
 		BranchID: storyCtx.Snapshot.BranchID,
@@ -682,6 +683,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 			TaskID:              task.ID(),
 			Workspace:           workspace,
 			Mode:                "interactive",
+			SystemPromptLog:     agent.BuildInteractiveStoryInstructionComposition(&runtimeCfg, state, tellerSystemInput),
 			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
 		}, emit)
 		if turn, stateReady, ok := conversation.LastTurnForState(); ok && !stateReady && ctx.Err() == nil {

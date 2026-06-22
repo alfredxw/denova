@@ -12,6 +12,10 @@ export interface Settings {
   skills_dir?: string
   backend_port?: number | null
   frontend_port?: number | null
+  allow_lan_access?: boolean | null
+  remote_access_username?: string
+  remote_access_password?: string
+  remote_access_password_set?: boolean
   auto_save_enabled?: boolean | null
   auto_save_interval_ms?: number | null
   chapter_filename_format?: string
@@ -114,7 +118,6 @@ export interface AgentContextSettings {
 }
 
 export interface AgentContextOverride {
-  recent_turns?: number | null
   compaction_enabled?: boolean | null
   compaction_threshold?: number | null
   compaction_recent_turns?: number | null
@@ -202,6 +205,11 @@ export interface SettingsPaths {
   workspace_config: string
 }
 
+export interface SettingsAccess {
+  local_url: string
+  lan_url: string
+}
+
 export interface LayeredSettings {
   default: Settings
   global: Settings
@@ -209,6 +217,7 @@ export interface LayeredSettings {
   workspace: Settings
   effective: Settings
   paths: SettingsPaths
+  access?: SettingsAccess
   builtin_agent_prompts?: AgentPromptSettings
   builtin_agent_prompt_blocks?: AgentPromptBlockSettings
   builtin_agent_prompt_sources?: AgentPromptSourceSettings

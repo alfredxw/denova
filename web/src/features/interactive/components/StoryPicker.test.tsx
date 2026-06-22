@@ -22,7 +22,6 @@ describe('StoryPicker', () => {
               creator: 'always',
               lore: 'relevant',
               runtime_state: 'always',
-              recent_turns: 8,
             },
             slots: [],
             custom: false,

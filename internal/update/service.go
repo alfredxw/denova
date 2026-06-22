@@ -23,13 +23,18 @@ import (
 	"nova/internal/buildinfo"
 )
 
-const githubAPI = "https://api.github.com/repos/"
+const (
+	githubAPIBase         = "https://api.github.com/repos"
+	updateInstallTimeout  = 30 * time.Minute
+	updateDownloadTimeout = 20 * time.Minute
+)
 
 type Service struct {
 	repository     string
 	currentVersion string
 	httpClient     *http.Client
 	executablePath string
+	githubAPIBase  string
 }
 
 func NewService() *Service {
@@ -39,6 +44,7 @@ func NewService() *Service {
 		currentVersion: buildinfo.Version,
 		httpClient:     &http.Client{Timeout: 60 * time.Second},
 		executablePath: exe,
+		githubAPIBase:  githubAPIBase,
 	}
 }
 
@@ -82,7 +88,10 @@ func (s *Service) Check(ctx context.Context) (CheckResult, error) {
 }
 
 func (s *Service) Install(ctx context.Context) (InstallResult, error) {
-	check, err := s.Check(ctx)
+	installCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), updateInstallTimeout)
+	defer cancel()
+
+	check, err := s.Check(installCtx)
 	if err != nil {
 		return InstallResult{}, err
 	}
@@ -103,10 +112,10 @@ func (s *Service) Install(ctx context.Context) (InstallResult, error) {
 	defer os.RemoveAll(workDir)
 
 	archivePath := filepath.Join(workDir, check.Asset.Name)
-	if err := s.downloadAsset(ctx, check.Asset.DownloadURL, archivePath); err != nil {
+	if err := s.downloadAsset(installCtx, updateAssetDownloadURL(check.Asset), archivePath); err != nil {
 		return InstallResult{}, err
 	}
-	if err := s.verifyChecksum(ctx, check.Asset.Name, archivePath); err != nil {
+	if err := s.verifyChecksum(installCtx, check.Asset.Name, archivePath); err != nil {
 		return InstallResult{}, err
 	}
 
@@ -126,7 +135,7 @@ func (s *Service) Install(ctx context.Context) (InstallResult, error) {
 }
 
 func (s *Service) latestRelease(ctx context.Context) (githubRelease, error) {
-	url := githubAPI + s.repository + "/releases/latest"
+	url := s.githubLatestReleaseURL()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return githubRelease{}, err
@@ -150,14 +159,20 @@ func (s *Service) latestRelease(ctx context.Context) (githubRelease, error) {
 }
 
 func (s *Service) downloadAsset(ctx context.Context, url, target string) error {
+	if strings.TrimSpace(url) == "" {
+		return fmt.Errorf("下载更新包失败: Release 资源缺少下载地址")
+	}
 	log.Printf("[update] 开始下载更新包 url=%s target=%s", url, target)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	downloadCtx, cancel := context.WithTimeout(ctx, updateDownloadTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(downloadCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Accept", "application/octet-stream")
 	req.Header.Set("User-Agent", "nova-updater")
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.downloadHTTPClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("下载更新包失败: %w", err)
 	}
@@ -165,14 +180,26 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string) error {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("下载更新包失败: HTTP %d", resp.StatusCode)
 	}
-	out, err := os.Create(target)
+	tempTarget := target + ".download"
+	_ = os.Remove(tempTarget)
+	out, err := os.OpenFile(tempTarget, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("创建更新包文件失败: %w", err)
 	}
-	defer out.Close()
 	if _, err := io.Copy(out, resp.Body); err != nil {
+		_ = out.Close()
+		_ = os.Remove(tempTarget)
 		return fmt.Errorf("写入更新包失败: %w", err)
 	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(tempTarget)
+		return fmt.Errorf("关闭更新包文件失败: %w", err)
+	}
+	if err := os.Rename(tempTarget, target); err != nil {
+		_ = os.Remove(tempTarget)
+		return fmt.Errorf("保存更新包失败: %w", err)
+	}
+	log.Printf("[update] 更新包下载完成 target=%s content_length=%d", target, resp.ContentLength)
 	return nil
 }
 
@@ -194,7 +221,7 @@ func (s *Service) verifyChecksum(ctx context.Context, assetName, archivePath str
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	if err := s.downloadAsset(ctx, checksumAsset.DownloadURL, temp.Name()); err != nil {
+	if err := s.downloadAsset(ctx, githubAssetDownloadURL(*checksumAsset), temp.Name()); err != nil {
 		return err
 	}
 	expected, err := checksumForAsset(temp.Name(), assetName)
@@ -323,6 +350,40 @@ func selectChecksumAsset(assets []githubAsset) *githubAsset {
 		}
 	}
 	return nil
+}
+
+func (s *Service) githubLatestReleaseURL() string {
+	base := strings.TrimRight(s.githubAPIBase, "/")
+	if base == "" {
+		base = githubAPIBase
+	}
+	return base + "/" + strings.Trim(s.repository, "/") + "/releases/latest"
+}
+
+func (s *Service) downloadHTTPClient() *http.Client {
+	if s.httpClient == nil {
+		return &http.Client{}
+	}
+	client := *s.httpClient
+	client.Timeout = 0
+	return &client
+}
+
+func updateAssetDownloadURL(asset *Asset) string {
+	if asset == nil {
+		return ""
+	}
+	if strings.TrimSpace(asset.BrowserDownloadURL) != "" {
+		return asset.BrowserDownloadURL
+	}
+	return asset.DownloadURL
+}
+
+func githubAssetDownloadURL(asset githubAsset) string {
+	if strings.TrimSpace(asset.BrowserDownloadURL) != "" {
+		return asset.BrowserDownloadURL
+	}
+	return asset.DownloadURL
 }
 
 func checksumForAsset(path, assetName string) (string, error) {

@@ -8,6 +8,7 @@ const storyStage = {
   'storyStage.hideSceneMemory': 'Hide Story Memory',
   'storyStage.showSceneMemory': 'Show Story Memory',
   'storyStage.sceneMemory': 'Story Memory',
+  'storyStage.mobile.controls': 'Stage Controls',
   'storyStage.empty': 'Enter the first line to start the interactive story.',
   'storyStage.opening.title': 'Opening',
   'storyStage.opening.modePreset': 'Preset opening',

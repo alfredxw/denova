@@ -5,11 +5,15 @@ import { toast } from 'sonner'
 export const jsonHeaders = { 'Content-Type': 'application/json' }
 const BACKEND_UNAVAILABLE_TOAST_ID = 'nova-backend-unavailable'
 const BACKEND_UNAVAILABLE_STATUS = new Set([502, 503, 504])
+const REMOTE_ACCESS_CREDENTIALS_KEY = 'nova.remoteAccess.credentials'
+const REMOTE_ACCESS_REQUIRED_EVENT = 'nova:remote-access-required'
 
 export async function fetchAPI(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const requestInit = withRemoteAccessAuth(input, init)
   try {
-    const res = await fetch(input, init)
+    const res = await fetch(input, requestInit)
     notifyBackendUnavailableIfNeeded(input, res.status)
+    notifyRemoteAccessRequiredIfNeeded(input, res)
     return res
   } catch (error) {
     if (shouldNotifyBackendUnavailable(input, error)) notifyBackendUnavailable()
@@ -82,9 +86,60 @@ export function parseSSEStream<T extends SSEEvent = SSEEvent>(body: ReadableStre
   })
 }
 
+export function setRemoteAccessCredentials(username: string, password: string) {
+  const credentials = { username: username.trim(), password }
+  if (!credentials.username || !credentials.password) return
+  window.sessionStorage.setItem(REMOTE_ACCESS_CREDENTIALS_KEY, JSON.stringify(credentials))
+}
+
+export function clearRemoteAccessCredentials() {
+  window.sessionStorage.removeItem(REMOTE_ACCESS_CREDENTIALS_KEY)
+}
+
 function notifyBackendUnavailableIfNeeded(input: RequestInfo | URL, status: number) {
   if (!BACKEND_UNAVAILABLE_STATUS.has(status) || !isLocalAPIRequest(input)) return
   notifyBackendUnavailable()
+}
+
+function notifyRemoteAccessRequiredIfNeeded(input: RequestInfo | URL, res: Response) {
+  if (res.status !== 401 || !isLocalAPIRequest(input)) return
+  if (!res.headers.get('WWW-Authenticate')?.toLowerCase().includes('basic')) return
+  clearRemoteAccessCredentials()
+  window.dispatchEvent(new CustomEvent(REMOTE_ACCESS_REQUIRED_EVENT))
+}
+
+function withRemoteAccessAuth(input: RequestInfo | URL, init?: RequestInit): RequestInit | undefined {
+  if (!isLocalAPIRequest(input)) return init
+  const credentials = readRemoteAccessCredentials()
+  if (!credentials) return init
+  const headers = new Headers(init?.headers ?? requestHeaders(input))
+  if (!headers.has('Authorization')) {
+    headers.set('Authorization', `Basic ${encodeBasicAuth(credentials.username, credentials.password)}`)
+  }
+  return { ...init, headers }
+}
+
+function readRemoteAccessCredentials(): { username: string; password: string } | null {
+  try {
+    const raw = window.sessionStorage.getItem(REMOTE_ACCESS_CREDENTIALS_KEY)
+    if (!raw) return null
+    const value = JSON.parse(raw) as { username?: string; password?: string }
+    if (!value.username || !value.password) return null
+    return { username: value.username, password: value.password }
+  } catch {
+    clearRemoteAccessCredentials()
+    return null
+  }
+}
+
+function requestHeaders(input: RequestInfo | URL): HeadersInit | undefined {
+  if (typeof input === 'object' && !(input instanceof URL)) return input.headers
+  return undefined
+}
+
+function encodeBasicAuth(username: string, password: string): string {
+  const value = `${username}:${password}`
+  return window.btoa(String.fromCharCode(...new TextEncoder().encode(value)))
 }
 
 function shouldNotifyBackendUnavailable(input: RequestInfo | URL, error: unknown): boolean {

@@ -278,6 +278,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 			SessionID:           runtime.sess.ID,
 			Workspace:           runtime.workspace,
 			Mode:                "ide",
+			SystemPromptLog:     agent.BuildInstructionComposition(&runtime.cfg, runtime.state, ideStoryTellerForConfig(&runtime.cfg)),
 			OnMutationsVerified: a.automationMutationCallback("ide_agent_post_run"),
 		}, emit)
 		if runtime.versionService != nil && hasBeforeVersionState {

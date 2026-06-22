@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -28,6 +29,13 @@ type Settings struct {
 	NovaDir      string `toml:"nova_dir,omitempty" json:"nova_dir,omitempty"`
 	BackendPort  *int   `toml:"backend_port,omitempty" json:"backend_port,omitempty"`
 	FrontendPort *int   `toml:"frontend_port,omitempty" json:"frontend_port,omitempty"`
+
+	// 远程访问
+	AllowLANAccess           *bool  `toml:"allow_lan_access,omitempty" json:"allow_lan_access,omitempty"`
+	RemoteAccessUsername     string `toml:"remote_access_username,omitempty" json:"remote_access_username,omitempty"`
+	RemoteAccessPasswordHash string `toml:"remote_access_password_hash,omitempty" json:"-"`
+	RemoteAccessPassword     string `toml:"-" json:"remote_access_password,omitempty"`
+	RemoteAccessPasswordSet  bool   `toml:"-" json:"remote_access_password_set,omitempty"`
 
 	// 编辑器
 	AutoSaveEnabled             *bool  `toml:"auto_save_enabled,omitempty" json:"auto_save_enabled,omitempty"`
@@ -80,6 +88,7 @@ func DefaultSettings() Settings {
 		NovaDir:                     "./.nova",
 		BackendPort:                 intPtr(8080),
 		FrontendPort:                intPtr(5173),
+		AllowLANAccess:              boolPtr(false),
 		AutoSaveEnabled:             boolPtr(true),
 		AutoSaveIntervalMs:          intPtr(1500),
 		ChapterFilenameFormat:       "ch{order:05}-{chapter}-{title}.md",
@@ -151,6 +160,16 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.FrontendPort != nil {
 		out.FrontendPort = child.FrontendPort
+	}
+	if child.AllowLANAccess != nil {
+		out.AllowLANAccess = child.AllowLANAccess
+	}
+	if child.RemoteAccessUsername != "" {
+		out.RemoteAccessUsername = child.RemoteAccessUsername
+	}
+	if child.RemoteAccessPasswordHash != "" {
+		out.RemoteAccessPasswordHash = child.RemoteAccessPasswordHash
+		out.RemoteAccessPasswordSet = true
 	}
 	if child.AutoSaveEnabled != nil {
 		out.AutoSaveEnabled = child.AutoSaveEnabled
@@ -256,6 +275,7 @@ type LayeredSettings struct {
 	Workspace                 Settings                  `json:"workspace"`
 	Effective                 Settings                  `json:"effective"`
 	Paths                     SettingsPaths             `json:"paths"`
+	Access                    SettingsAccess            `json:"access"`
 	BuiltinAgentPrompts       AgentPromptSettings       `json:"builtin_agent_prompts,omitempty"`
 	BuiltinAgentPromptBlocks  AgentPromptBlockSettings  `json:"builtin_agent_prompt_blocks,omitempty"`
 	BuiltinAgentPromptSources AgentPromptSourceSettings `json:"builtin_agent_prompt_sources,omitempty"`
@@ -266,6 +286,12 @@ type SettingsPaths struct {
 	NovaDir         string `json:"nova_dir"`
 	UserConfig      string `json:"user_config"`
 	WorkspaceConfig string `json:"workspace_config"`
+}
+
+// SettingsAccess exposes the frontend addresses users can open in their browsers.
+type SettingsAccess struct {
+	LocalURL string `json:"local_url"`
+	LANURL   string `json:"lan_url"`
 }
 
 // ReadSettingsFile 读取 TOML，文件不存在时返回零值且无错误。
@@ -332,9 +358,15 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 			return LayeredSettings{}, err
 		}
 		// Startup ports are decided before a workspace is opened, so workspace-level
-		// files must not override them.
+		// files must not override them. Remote access is also a process-level
+		// boundary and must stay user/global scoped.
 		ws.BackendPort = nil
 		ws.FrontendPort = nil
+		ws.AllowLANAccess = nil
+		ws.RemoteAccessUsername = ""
+		ws.RemoteAccessPasswordHash = ""
+		ws.RemoteAccessPassword = ""
+		ws.RemoteAccessPasswordSet = false
 	}
 	def := DefaultSettings()
 	def.NovaDir = novaDir
@@ -344,6 +376,7 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		global.NovaDir = normalizePath(global.NovaDir)
 	}
 	eff := Merge(Merge(Merge(def, global), user), ws)
+	frontendPort := settingsInt(eff.FrontendPort, 5173)
 	return LayeredSettings{
 		Default:   def,
 		Global:    global,
@@ -355,6 +388,10 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 			UserConfig:      UserConfigPath(novaDir),
 			WorkspaceConfig: WorkspaceConfigPath(workspace),
 		},
+		Access: SettingsAccess{
+			LocalURL: LocalHTTPURL(frontendPort),
+			LANURL:   LANHTTPURL(frontendPort),
+		},
 	}, nil
 }
 
@@ -363,6 +400,9 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.NovaDir = ""
 	s.BackendPort = normalizePort(s.BackendPort)
 	s.FrontendPort = normalizePort(s.FrontendPort)
+	s.RemoteAccessUsername = strings.TrimSpace(s.RemoteAccessUsername)
+	s.RemoteAccessPassword = ""
+	s.RemoteAccessPasswordSet = s.RemoteAccessPasswordHash != ""
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)

@@ -24,10 +24,18 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 	}
 	log.Printf("[version-summary-agent] generate begin instruction=%s", promptPartSummary(instruction))
 	systemInstruction := protectedSystemInstruction(cfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")
-	msg, err := cm.Generate(ctx, []*schema.Message{
+	messages := []*schema.Message{
 		schema.SystemMessage(systemInstruction),
 		schema.UserMessage(instruction),
+	}
+	logFullModelInput(modelInputLogOptions{
+		AgentKind: config.AgentKindVersionSummary,
+		Source:    "version_summary",
+		Mode:      "generate",
+		Config:    modelCfg,
+		Messages:  messages,
 	})
+	msg, err := cm.Generate(ctx, messages)
 	if err != nil {
 		return "", fmt.Errorf("生成版本说明失败: %w", err)
 	}

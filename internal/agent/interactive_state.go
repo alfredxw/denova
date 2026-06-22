@@ -40,6 +40,13 @@ func generateInteractiveStateContent(ctx context.Context, cfg *config.Config, in
 		schema.UserMessage(instruction),
 	}
 	if emit == nil {
+		logFullModelInput(modelInputLogOptions{
+			AgentKind: config.AgentKindInteractiveState,
+			Source:    "interactive_state",
+			Mode:      "generate",
+			Config:    modelCfg,
+			Messages:  messages,
+		})
 		msg, err := cm.Generate(ctx, messages)
 		if err != nil {
 			return "", fmt.Errorf("生成互动状态失败: %w", err)
@@ -50,6 +57,13 @@ func generateInteractiveStateContent(ctx context.Context, cfg *config.Config, in
 		log.Printf("[interactive-state-agent] generate done output=%s", promptPartSummary(msg.Content))
 		return msg.Content, nil
 	}
+	logFullModelInput(modelInputLogOptions{
+		AgentKind: config.AgentKindInteractiveState,
+		Source:    "interactive_state",
+		Mode:      "stream",
+		Config:    modelCfg,
+		Messages:  messages,
+	})
 	stream, err := cm.Stream(ctx, messages)
 	if err != nil {
 		return "", fmt.Errorf("生成互动状态失败: %w", err)

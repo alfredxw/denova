@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Bot, Clock3, FileText, Inbox, Loader2, MessageSquareText, Play, Plus, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
+import { Bot, Clock3, FileText, Inbox, Loader2, MessageSquareText, PanelLeft, Play, Plus, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { MessageList } from '@/components/Chat/MessageList'
 import { InputArea } from '@/components/Chat/InputArea'
@@ -249,6 +250,33 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       return { ...current, schedule, triggers }
     })
   }
+  const taskListPanel = (
+    <div className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3">
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => setPanelView('agent')} className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2 ${panelView === 'agent' ? 'is-active' : 'bg-[var(--nova-surface)]'}`}>
+          <Bot className="h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">{t('automations.view.agent')}</span>
+        </button>
+        <button type="button" onClick={() => createNew(scopeFilter)} className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2">
+          <Plus className="h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">{t('automations.newTask')}</span>
+        </button>
+      </div>
+      <div className="space-y-1">
+        {filteredTasks.length === 0 ? (
+          <div className="px-2 py-8 text-center text-[var(--nova-text-faint)]">{t('automations.empty')}</div>
+        ) : filteredTasks.map((task) => (
+          <button key={task.id} type="button" onClick={() => selectTask(task)} className={`nova-nav-item flex w-full items-start gap-2 rounded-[var(--nova-radius)] px-2.5 py-2 text-left ${activeId === task.id ? 'is-active' : ''}`}>
+            <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium text-[var(--nova-text)]">{task.name}</span>
+              <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{automationTaskSubtitle(task, t)} · {task.enabled ? t('automations.enabled') : t('automations.disabled')}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
@@ -289,72 +317,63 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
       {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('automations.error')} />}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[18rem_minmax(0,1fr)] text-xs">
-        <aside className="min-h-0 overflow-y-auto border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-          <div className="mb-3 grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => setPanelView('agent')} className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2 ${panelView === 'agent' ? 'is-active' : 'bg-[var(--nova-surface)]'}`}>
-              <Bot className="h-3.5 w-3.5" />
-              <span className="min-w-0 truncate">{t('automations.view.agent')}</span>
-            </button>
-            <button type="button" onClick={() => createNew(scopeFilter)} className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2">
-              <Plus className="h-3.5 w-3.5" />
-              <span className="min-w-0 truncate">{t('automations.newTask')}</span>
-            </button>
-          </div>
-          <div className="space-y-1">
-            {filteredTasks.length === 0 ? (
-              <div className="px-2 py-8 text-center text-[var(--nova-text-faint)]">{t('automations.empty')}</div>
-            ) : filteredTasks.map((task) => (
-              <button key={task.id} type="button" onClick={() => selectTask(task)} className={`nova-nav-item flex w-full items-start gap-2 rounded-[var(--nova-radius)] px-2.5 py-2 text-left ${activeId === task.id ? 'is-active' : ''}`}>
-                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
-                  <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium text-[var(--nova-text)]">{task.name}</span>
-                  <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{automationTaskSubtitle(task, t)} · {task.enabled ? t('automations.enabled') : t('automations.disabled')}</span>
+      <AdaptiveSurface
+        left={{
+          id: 'automation-tasks',
+          title: t('automations.title'),
+          side: 'left',
+          icon: <Clock3 className="h-4 w-4" />,
+          content: taskListPanel,
+          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
+          mobileClassName: 'w-[min(90vw,360px)]',
+        }}
+        className="flex-1 text-xs"
+        mainClassName="min-h-0 min-w-0"
+        desktopGridClassName="grid-cols-[18rem_minmax(0,1fr)]"
+      >
+        {({ openLeft }) => (
+          <main className="flex h-full min-h-0 flex-col">
+            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4">
+              <button type="button" className="nova-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] md:hidden" aria-label={t('workbench.mobile.openSidePanel', { label: t('automations.title') })} onClick={openLeft}>
+                <PanelLeft className="h-4 w-4" />
+              </button>
+              <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPanelView('config')}
+                  className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'config' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+                >
+                  <Settings2 className="h-3.5 w-3.5" />
+                  {t('automations.view.config')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPanelView('inbox')}
+                  className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'inbox' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+                >
+                  <Inbox className="h-3.5 w-3.5" />
+                  {t('automations.view.inbox')}
+                  {unreadInboxCount > 0 && <span className="rounded-full bg-[var(--nova-danger-border)] px-1.5 text-[10px] text-white">{unreadInboxCount}</span>}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPanelView('run')}
+                  className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'run' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+                >
+                  <MessageSquareText className="h-3.5 w-3.5" />
+                  {t('automations.view.run')}
+                </button>
+              </div>
+              <div className="min-w-0 flex-1" />
+              {runStream.activeRun && (
+                <span className="truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 font-mono text-[11px] text-[var(--nova-text-faint)]">
+                  {runStream.activeRun.status || (running ? 'running' : '')} · {runStream.activeRun.id}
                 </span>
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <main className="flex min-h-0 flex-col">
-          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4">
-            <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
-              <button
-                type="button"
-                onClick={() => setPanelView('config')}
-                className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'config' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-              >
-                <Settings2 className="h-3.5 w-3.5" />
-                {t('automations.view.config')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPanelView('inbox')}
-                className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'inbox' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-              >
-                <Inbox className="h-3.5 w-3.5" />
-                {t('automations.view.inbox')}
-                {unreadInboxCount > 0 && <span className="rounded-full bg-[var(--nova-danger-border)] px-1.5 text-[10px] text-white">{unreadInboxCount}</span>}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPanelView('run')}
-                className={`inline-flex items-center gap-1.5 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${panelView === 'run' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-              >
-                <MessageSquareText className="h-3.5 w-3.5" />
-                {t('automations.view.run')}
-              </button>
+              )}
             </div>
-            <div className="min-w-0 flex-1" />
-            {runStream.activeRun && (
-              <span className="truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 font-mono text-[11px] text-[var(--nova-text-faint)]">
-                {runStream.activeRun.status || (running ? 'running' : '')} · {runStream.activeRun.id}
-              </span>
-            )}
-          </div>
 
-          {panelView === 'config' ? (
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            {panelView === 'config' ? (
+              <div className="min-h-0 flex-1 overflow-y-auto">
               <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
                 <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
                   <Field label={t('automations.field.name')}>
@@ -478,8 +497,9 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
               onMutated={() => void load()}
             />
           )}
-        </main>
-      </div>
+          </main>
+        )}
+      </AdaptiveSurface>
     </div>
   )
 }

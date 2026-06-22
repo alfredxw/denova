@@ -26,10 +26,18 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 	}
 	system := "你是 Nova 的自动化触发评估器。你的唯一任务是根据用户提供的有界创作上下文判断语义触发条件是否已经满足。不要使用工具，不要假设未给出的剧情，不要输出 JSON 以外的内容。"
 	log.Printf("[automation-trigger-agent] evaluate begin instruction=%s", promptPartSummary(instruction))
-	msg, err := cm.Generate(ctx, []*schema.Message{
+	messages := []*schema.Message{
 		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindAutomation, system)),
 		schema.UserMessage(instruction),
+	}
+	logFullModelInput(modelInputLogOptions{
+		AgentKind: config.AgentKindAutomation,
+		Source:    "automation_trigger",
+		Mode:      "generate",
+		Config:    modelCfg,
+		Messages:  messages,
 	})
+	msg, err := cm.Generate(ctx, messages)
 	if err != nil {
 		return "", fmt.Errorf("生成自动化触发评估失败: %w", err)
 	}

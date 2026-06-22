@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import { GripHorizontal, GripVertical, X } from 'lucide-react'
+import { Brain, GripHorizontal, GripVertical } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
@@ -16,6 +15,7 @@ import { StoryMemoryView } from './StoryMemoryView'
 import { StoryStage } from './StoryStage'
 import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
 import type { Snapshot } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 
@@ -88,7 +88,7 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
       }
       setSnapshotLoading(true)
       setSnapshotLoadFailed(false)
-      const branchId = branchOverride ?? (snapshotStoryIdRef.current === storyId ? currentBranchId : '')
+      const branchId = branchOverride ?? (snapshotStoryIdRef.current === storyId || currentBranchId !== 'main' ? currentBranchId : '')
       try {
         const [nextSnapshot, nextBranches] = await Promise.all([getInteractiveSnapshot(storyId, branchId), getInteractiveBranches(storyId)])
         if (requestSeq !== snapshotRequestSeqRef.current) return
@@ -239,12 +239,21 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
               ) : submode === 'timeline' ? (
                 <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} tellers={tellers} onSelect={setCurrentStoryId} onCreate={handleCreateStory} onDelete={handleDeleteStory} />} />
               ) : isMobile ? (
-                <div className="relative flex min-h-0 flex-1">
+                <MobilePaneHost
+                  panes={[{
+                    id: 'scene-memory',
+                    title: t('memoryPanel.title'),
+                    side: 'right',
+                    icon: <Brain className="h-4 w-4" />,
+                    content: <MemoryPanel storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} onOpenMemoryManager={openMemoryManager} />,
+                  }]}
+                  closeLabel={t('common.close')}
+                  openPaneId={mobileSnapshotOpen ? 'scene-memory' : null}
+                  onOpenPaneChange={(id) => setMobileSnapshotOpen(id === 'scene-memory')}
+                  className="relative flex min-h-0 flex-1"
+                >
                   {storyStage}
-                  <MobileSnapshotDrawer open={mobileSnapshotOpen} title={t('memoryPanel.title')} closeLabel={t('common.close')} onClose={() => setMobileSnapshotOpen(false)}>
-                    <MemoryPanel storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} onOpenMemoryManager={openMemoryManager} />
-                  </MobileSnapshotDrawer>
-                </div>
+                </MobilePaneHost>
               ) : (
                 <Group id="nova-interactive-horizontal" defaultLayout={readStoredLayout('nova-interactive-horizontal')} onLayoutChanged={(layout) => storeLayout('nova-interactive-horizontal', layout)} orientation="horizontal" className="min-h-0 flex-1">
                   <Panel id="story-stage" minSize="240px" className="min-w-0">
@@ -266,24 +275,6 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
           </div>
         </div>
       </div>
-    </div>
-  )
-}
-
-function MobileSnapshotDrawer({ open, title, closeLabel, onClose, children }: { open: boolean; title: string; closeLabel: string; onClose: () => void; children: ReactNode }) {
-  if (!open) return null
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <button type="button" className="nova-mobile-drawer-backdrop absolute inset-0 bg-black/45" aria-label={closeLabel} onClick={onClose} />
-      <aside role="dialog" aria-modal="true" aria-label={title} className="relative z-10 flex h-full min-h-0 w-[min(92vw,420px)] flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface-2)] shadow-[var(--nova-shadow)]">
-        <div className="nova-topbar flex h-11 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
-          <span className="min-w-0 truncate text-xs font-semibold text-[var(--nova-text)]">{title}</span>
-          <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={closeLabel} onClick={onClose}>
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
-      </aside>
     </div>
   )
 }

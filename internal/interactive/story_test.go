@@ -241,6 +241,160 @@ func TestSnapshotAppliesTurnAndStateDelta(t *testing.T) {
 	}
 }
 
+func TestAppendTokenUsageEventPersistsSeparatelyFromStory(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:         "缓存统计",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+
+	_, err = store.AppendTurn(story.ID, AppendTurnRequest{
+		BranchID:  "main",
+		User:      "继续",
+		Narrative: "故事继续。",
+	})
+	if err != nil {
+		t.Fatalf("AppendTurn failed: %v", err)
+	}
+	err = store.AppendTokenUsageEvent(story.ID, TokenUsageEvent{
+		ID:                   "usage-1",
+		BranchID:             "main",
+		CreatedAt:            "2026-06-22T10:00:00Z",
+		RunID:                "run-1",
+		AgentKind:            "interactive_story",
+		PromptTokens:         1200,
+		CachedPromptTokens:   300,
+		UncachedPromptTokens: 900,
+		CacheHitRate:         0.25,
+		CompletionTokens:     240,
+		ReasoningTokens:      16,
+		TotalTokens:          1440,
+		ModelCalls:           1,
+		GeneratedBytes:       88,
+		UsageCalls: []TokenUsageCall{{
+			Index:                1,
+			CreatedAt:            "2026-06-22T10:00:00Z",
+			FinishReason:         "tool_calls",
+			RequestedTools:       []string{"search_workspace"},
+			AfterTools:           []string{"read_workspace_file"},
+			PromptTokens:         1200,
+			CachedPromptTokens:   300,
+			UncachedPromptTokens: 900,
+			CacheHitRate:         0.25,
+			CompletionTokens:     240,
+			ReasoningTokens:      16,
+			TotalTokens:          1440,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("AppendTokenUsageEvent failed: %v", err)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if len(snapshot.Turns) != 1 || len(snapshot.Turns[0].DisplayEvents) != 0 {
+		t.Fatalf("usage should not be mixed into turn display events: %#v", snapshot.Turns)
+	}
+	if len(snapshot.TokenUsageEvents) != 1 {
+		t.Fatalf("usage event missing from snapshot: %#v", snapshot.TokenUsageEvents)
+	}
+	usage := snapshot.TokenUsageEvents[0]
+	if usage.Type != TokenUsageEventType || usage.RunID != "run-1" || usage.PromptTokens != 1200 || usage.CachedPromptTokens != 300 {
+		t.Fatalf("usage event fields were not preserved: %#v", usage)
+	}
+	if usage.UncachedPromptTokens != 900 {
+		t.Fatalf("usage uncached prompt tokens were not preserved: %#v", usage)
+	}
+	if usage.CacheHitRate != 0.25 || usage.TotalTokens != 1440 || usage.ModelCalls != 1 || usage.GeneratedBytes != 88 {
+		t.Fatalf("usage metrics were not preserved: %#v", usage)
+	}
+	if len(usage.UsageCalls) != 1 || usage.UsageCalls[0].RequestedTools[0] != "search_workspace" || usage.UsageCalls[0].AfterTools[0] != "read_workspace_file" {
+		t.Fatalf("usage call details were not preserved: %#v", usage.UsageCalls)
+	}
+	if usage.UsageCalls[0].UncachedPromptTokens != 900 {
+		t.Fatalf("usage call uncached prompt tokens were not preserved: %#v", usage.UsageCalls)
+	}
+	storyData, err := os.ReadFile(store.storyPath(story.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(storyData), TokenUsageEventType) {
+		t.Fatalf("story file should not contain token usage:\n%s", string(storyData))
+	}
+	usageData, err := os.ReadFile(store.usagePath(story.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(usageData), `"run_id":"run-1"`) {
+		t.Fatalf("usage file missing run id:\n%s", string(usageData))
+	}
+	index, err := store.Index()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(index.Stories) != 1 || index.Stories[0].Events != 1 {
+		t.Fatalf("usage should not increment story event count: %#v", index.Stories)
+	}
+}
+
+func TestSnapshotOrdersTokenUsageEventsByCreatedAt(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:         "后置用量",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+
+	err = store.AppendTokenUsageEvent(story.ID, TokenUsageEvent{
+		ID:         "usage-new",
+		BranchID:   "main",
+		CreatedAt:  "2026-06-22T10:02:00Z",
+		RunID:      "run-new",
+		ModelCalls: 1,
+		UsageCalls: []TokenUsageCall{{
+			Index:        1,
+			PromptTokens: 20,
+			TotalTokens:  20,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("AppendTokenUsageEvent new failed: %v", err)
+	}
+	err = store.AppendTokenUsageEvent(story.ID, TokenUsageEvent{
+		ID:         "usage-old",
+		BranchID:   "main",
+		CreatedAt:  "2026-06-22T10:01:00Z",
+		RunID:      "run-old",
+		ModelCalls: 1,
+		UsageCalls: []TokenUsageCall{{
+			Index:        1,
+			PromptTokens: 10,
+			TotalTokens:  10,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("AppendTokenUsageEvent old failed: %v", err)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
+	}
+	if len(snapshot.TokenUsageEvents) != 2 {
+		t.Fatalf("usage events missing from snapshot: %#v", snapshot.TokenUsageEvents)
+	}
+	if snapshot.TokenUsageEvents[0].RunID != "run-old" || snapshot.TokenUsageEvents[1].RunID != "run-new" {
+		t.Fatalf("usage events should follow created_at order: %#v", snapshot.TokenUsageEvents)
+	}
+}
+
 func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{
@@ -349,6 +503,54 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	}
 	if _, ok := turnLine["state"]; ok {
 		t.Fatalf("turn should not persist copied full state: %#v", turnLine["state"])
+	}
+}
+
+func TestAppendTurnWithStatePersistsDisplayEventTimelineDetails(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:         "工具时间线",
+		Origin:        "主角检查档案室",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		BranchID:  "main",
+		User:      "检查档案柜",
+		Narrative: "档案柜里露出一张潮湿的地图。",
+		DisplayEvents: []DisplayEvent{
+			{Role: "thinking", Content: "先确认可用线索。"},
+			{ID: "call-1", Role: "tool_call", Name: "list_lore_items", Args: `{"query":"档案柜"}`, Status: "success", Result: "找到 2 条资料"},
+			{Role: "thinking", Content: "基于资料继续判断下一步。"},
+			{ID: "call-2", Role: "tool_call", Name: "apply_story_memory_patches", Args: `{"patches":[{"table":"plot_summary"}]}`, Status: "success", Result: "已写入 1 条记忆"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("AppendTurnWithState failed: %v", err)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := snapshot.Turns[0].DisplayEvents
+	if len(events) != 4 {
+		t.Fatalf("display event count = %d, want 4: %#v", len(events), events)
+	}
+	wantRoles := []string{"thinking", "tool_call", "thinking", "tool_call"}
+	for i, want := range wantRoles {
+		if events[i].Role != want {
+			t.Fatalf("event[%d].role = %q, want %q; events=%#v", i, events[i].Role, want, events)
+		}
+	}
+	if events[1].Args != `{"query":"档案柜"}` || events[1].Result != "找到 2 条资料" {
+		t.Fatalf("first tool details not persisted: %#v", events[1])
+	}
+	if events[3].Args == "" || events[3].Result != "已写入 1 条记忆" {
+		t.Fatalf("second tool details not persisted: %#v", events[3])
 	}
 }
 
@@ -598,6 +800,146 @@ func TestBranchSnapshotFollowsParentChain(t *testing.T) {
 	if len(snapshot.Graph.Nodes) != 3 {
 		t.Fatalf("graph should expose all plot nodes, got %#v", snapshot.Graph.Nodes)
 	}
+}
+
+func TestSwitchTurnVersionKeepsLaterCanonicalPath(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "回合版本", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "推门", Narrative: "旧门发出沉闷声响。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RewindToTurnParent(story.ID, RewindTurnRequest{BranchID: "main", TurnID: first.ID}); err != nil {
+		t.Fatal(err)
+	}
+	firstAlt, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "推门", Narrative: "门后亮起冷白灯光。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "继续", Narrative: "你停在门槛前观察。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RewindToTurnParent(story.ID, RewindTurnRequest{BranchID: "main", TurnID: second.ID}); err != nil {
+		t.Fatal(err)
+	}
+	secondAlt, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "继续", Narrative: "你跨过门槛，听见远处脚步声。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != firstAlt.ID || snapshot.Turns[1].ID != secondAlt.ID {
+		t.Fatalf("unexpected path before switch: %#v", snapshot.Turns)
+	}
+	if len(snapshot.Turns[0].Versions) != 2 || len(snapshot.Turns[1].Versions) != 2 {
+		t.Fatalf("expected independent version groups before switch: %#v", snapshot.Turns)
+	}
+
+	if err := store.SwitchTurnVersion(story.ID, SwitchTurnVersionRequest{
+		BranchID:      "main",
+		TurnID:        firstAlt.ID,
+		VersionTurnID: first.ID,
+	}); err != nil {
+		t.Fatalf("SwitchTurnVersion failed: %v", err)
+	}
+	snapshot, err = store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != secondAlt.ID {
+		t.Fatalf("switching an earlier version should keep the chosen later canon path: %#v", snapshot.Turns)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != secondAlt.ID {
+		t.Fatalf("current turn should stay on later canon: %#v", snapshot.CurrentTurn)
+	}
+
+	third, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "再继续", Narrative: "你沿着脚步声走向走廊深处。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Turns) != 3 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != secondAlt.ID || snapshot.Turns[2].ID != third.ID {
+		t.Fatalf("new turn should continue from the selected canon path: %#v", snapshot.Turns)
+	}
+	if parentIDString(third.ParentID) != secondAlt.ID {
+		t.Fatalf("new turn parent = %q, want %q", parentIDString(third.ParentID), secondAlt.ID)
+	}
+}
+
+func TestBackgroundTurnUpdatesDoNotRewindBranchHead(t *testing.T) {
+	t.Run("state delta", func(t *testing.T) {
+		store := NewStore(t.TempDir())
+		story, err := store.CreateStory(CreateStoryRequest{Title: "状态晚到", StoryTellerID: "classic"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "第一步", Narrative: "第一段。"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "第二步", Narrative: "第二段。"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{
+			ParentID: first.ID,
+			BranchID: "main",
+			Ops:      []StateOp{{Op: "set", Path: "scene.phase", Value: "late-state"}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+
+		snapshot, err := store.Snapshot(story.ID, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != second.ID {
+			t.Fatalf("late state update should not rewind branch head: %#v", snapshot.Turns)
+		}
+		if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != second.ID {
+			t.Fatalf("current turn should remain latest after late state update: %#v", snapshot.CurrentTurn)
+		}
+	})
+
+	t.Run("memory ready", func(t *testing.T) {
+		store := NewStore(t.TempDir())
+		story, err := store.CreateStory(CreateStoryRequest{Title: "记忆晚到", StoryTellerID: "classic"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "第一步", Narrative: "第一段。"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "第二步", Narrative: "第二段。"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.MarkInteractiveMemoryReady(story.ID, "main", first.ID); err != nil {
+			t.Fatal(err)
+		}
+
+		snapshot, err := store.Snapshot(story.ID, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != second.ID {
+			t.Fatalf("late memory update should not rewind branch head: %#v", snapshot.Turns)
+		}
+		if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != second.ID {
+			t.Fatalf("current turn should remain latest after late memory update: %#v", snapshot.CurrentTurn)
+		}
+	})
 }
 
 func TestUpdateAndDeleteStory(t *testing.T) {

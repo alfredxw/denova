@@ -304,7 +304,7 @@ export function LoreEditor({
   const residentWarning = draft.enabled !== false && draft.load_mode === 'resident' && (residentItemChars > LORE_RESIDENT_ITEM_WARNING_CHARS || residentTotalChars > LORE_RESIDENT_TOTAL_WARNING_CHARS)
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden">
       <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_120px_150px_150px_170px]">
         <Field label={t('settingPanel.field.name')}>
           <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
@@ -373,7 +373,7 @@ export function LoreEditor({
           {residentWarning ? <span className="ml-2 text-[var(--nova-danger)]">{t('settingPanel.lore.residentWarning')}</span> : null}
         </div>
       </div>
-      <div className="min-h-0 flex-1 p-4">
+      <div className="min-h-[420px] flex-1 p-4 md:min-h-0">
         <Textarea
           className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
           value={draft.content || ''}
@@ -402,7 +402,7 @@ export function CreatorEditor({
 }) {
   const { t } = useTranslation()
   return (
-    <div className="min-h-0 flex-1 p-4">
+    <div className="min-h-0 flex-1 overflow-y-auto p-4">
       <Textarea
         className="nova-field h-full min-h-[520px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
         value={content}
@@ -451,7 +451,7 @@ export function OpeningPresetEditor({
     setActiveId(nextPresets[0]?.id || '')
   }
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden">
       <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
@@ -464,8 +464,8 @@ export function OpeningPresetEditor({
           </Button>
         </div>
       </div>
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-56 shrink-0 border-r border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <aside className="max-h-48 shrink-0 overflow-y-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-2 md:max-h-none md:w-56 md:border-b-0 md:border-r">
           {presets.length === 0 ? (
             <div className="px-2 py-3 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.openingPreset.empty')}</div>
           ) : (
@@ -486,7 +486,7 @@ export function OpeningPresetEditor({
             </div>
           )}
         </aside>
-        <div className="min-h-0 flex-1 p-4">
+        <div className="min-h-[420px] flex-1 p-4 md:min-h-0">
           {activePreset ? (
             <div className="flex h-full min-h-0 flex-col gap-3">
               <div className="flex items-end gap-3">

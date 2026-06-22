@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, NotebookText, PanelLeft, PenLine, Settings, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, NotebookText, PanelLeft, PenLine, Settings, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
@@ -33,12 +33,14 @@ interface WorkbenchShellProps {
   sidebar: ReactNode
   main: ReactNode
   rightPanelContent: ReactNode
+  updateNotice?: { latestVersion: string } | null
   onSetMode: (mode: WorkspaceMode) => void
   onToggleActivityBarExpanded: () => void
   onSetInteractiveSubmode: (mode: InteractiveSubmode) => void
   onSetRightPanel: (panel: RightPanel) => void
   onToggleSettings: () => void
   onCloseSettings: () => void
+  onDismissUpdateNotice?: () => void
 }
 
 type ActivityItemId = 'writing' | 'story' | 'timeline' | 'memory' | 'lore' | 'teller' | 'versions' | 'books' | 'skills' | 'agents' | 'automations'
@@ -82,12 +84,14 @@ export function WorkbenchShell({
   sidebar,
   main,
   rightPanelContent,
+  updateNotice,
   onSetMode,
   onToggleActivityBarExpanded,
   onSetInteractiveSubmode,
   onSetRightPanel,
   onToggleSettings,
   onCloseSettings,
+  onDismissUpdateNotice,
 }: WorkbenchShellProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
@@ -405,6 +409,14 @@ export function WorkbenchShell({
         ))}
       </SortableContext>
       <div className="mt-auto flex flex-col gap-2">
+        {updateNotice && (
+          <UpdateNoticePill
+            expanded={activityBarExpanded}
+            latestVersion={updateNotice.latestVersion}
+            onOpenSettings={onToggleSettings}
+            onDismiss={onDismissUpdateNotice}
+          />
+        )}
         <ActivityButton
           expanded={activityBarExpanded}
           label={activityBarExpanded ? t('workbench.activity.toggleCollapse') : t('workbench.activity.toggleExpand')}
@@ -442,10 +454,17 @@ export function WorkbenchShell({
   )
 
   if (isMobile) {
+    const compactMobileNavigation = mode === 'interactive' && interactiveSubmode === 'story' && !sharedMenuActive
     const mobileTopBar = (
-      <header className="nova-mobile-topbar nova-topbar shrink-0 border-b border-[var(--nova-border)] px-3 py-2">
+      <header className="nova-mobile-topbar nova-topbar shrink-0 border-b border-[var(--nova-border)] py-2 pl-3 pr-3" title={workspace || currentBookName}>
         <div className="flex min-w-0 items-center justify-between gap-2">
-          <div className="shrink-0 font-semibold text-[var(--nova-text)]">Nova</div>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="shrink-0 font-semibold text-[var(--nova-text)]">Nova</div>
+            <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]">
+              <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+              <span className="min-w-0 truncate font-medium text-[var(--nova-text-muted)]">{currentBookName}</span>
+            </div>
+          </div>
           <LayoutGroup id="workbench-mobile-mode-switch">
             <div className="flex h-8 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
               <button
@@ -467,11 +486,16 @@ export function WorkbenchShell({
             </div>
           </LayoutGroup>
         </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]" title={workspace || currentBookName}>
-          <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-          <span className="min-w-0 flex-1 truncate font-medium text-[var(--nova-text-muted)]">{currentBookName}</span>
-          <span className="shrink-0 text-[var(--nova-text-faint)]">{modeLabel}</span>
-        </div>
+        {updateNotice && (
+          <div className="mt-2 flex justify-end">
+            <UpdateNoticePill
+              expanded
+              latestVersion={updateNotice.latestVersion}
+              onOpenSettings={onToggleSettings}
+              onDismiss={onDismissUpdateNotice}
+            />
+          </div>
+        )}
       </header>
     )
     const mobileActivityItems: MobileNavItem[] = activityItems.map((item) => ({
@@ -516,6 +540,8 @@ export function WorkbenchShell({
         }}
         closeLabel={t('common.close')}
         navigationLabel={t('workbench.mobile.navigation')}
+        compactNavigation={compactMobileNavigation}
+        compactNavigationLabel={t('workbench.mobile.navigationMenu')}
       />
     )
   }
@@ -603,6 +629,47 @@ function ActivityButton({
         )}
       </AnimatePresence>
     </TooltipIconButton>
+  )
+}
+
+function UpdateNoticePill({
+  expanded,
+  latestVersion,
+  onOpenSettings,
+  onDismiss,
+}: {
+  expanded: boolean
+  latestVersion: string
+  onOpenSettings: () => void
+  onDismiss?: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 4 }}
+      transition={{ duration: 0.16 }}
+      className={`relative z-20 flex items-center rounded-[var(--nova-radius)] border border-[var(--nova-accent)] bg-[var(--nova-surface)]/95 text-[11px] text-[var(--nova-text)] shadow-[var(--nova-shadow)] backdrop-blur ${expanded ? 'w-full' : 'w-44 -translate-x-1'}`}
+    >
+      <button
+        type="button"
+        className="min-w-0 flex-1 truncate px-2 py-1.5 text-left"
+        title={t('workbench.updateNotice.available', { version: latestVersion })}
+        onClick={onOpenSettings}
+      >
+        {t('workbench.updateNotice.available', { version: latestVersion })}
+      </button>
+      <button
+        type="button"
+        className="mr-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-[6px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+        aria-label={t('workbench.updateNotice.dismiss')}
+        title={t('workbench.updateNotice.dismiss')}
+        onClick={onDismiss}
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </motion.div>
   )
 }
 

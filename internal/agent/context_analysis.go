@@ -138,8 +138,8 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		if msg == nil {
 			continue
 		}
-		source := "最近互动回合"
-		title := fmt.Sprintf("最近回合消息 %d", i+1)
+		source := "互动历史回合"
+		title := fmt.Sprintf("历史回合消息 %d", i+1)
 		switch {
 		case isContextCompactionMessage(msg):
 			source = "上下文压缩"
@@ -218,16 +218,12 @@ func contextAnalysisCompactionFromInteractive(compaction *interactive.ContextCom
 func buildIDEAnalysisMessages(cfg *config.Config, effectiveMessages []*schema.Message, totalMessages int, compaction *session.ContextCompaction) []*schema.Message {
 	messages := make([]*schema.Message, 0, len(effectiveMessages)+1)
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		contextSettings := config.ResolveAgentContext(cfg, config.AgentKindContextCompaction)
 		effectiveStart := totalMessages - len(effectiveMessages)
-		tailStart := compaction.SourceEndIndex - effectiveStart
-		if tailStart < 0 {
-			tailStart = 0
+		retainedTurns := compaction.RetainedTurns
+		if retainedTurns <= 0 {
+			retainedTurns = config.DefaultContextCompactionRetainedTurns
 		}
-		if tailStart > len(effectiveMessages) {
-			tailStart = len(effectiveMessages)
-		}
-		tail := limitMessagesByRecentTurns(effectiveMessages[tailStart:], contextSettings.CompactionRecentTurns)
+		tail := compactedMessagesAfterSource(effectiveMessages, effectiveStart, compaction.SourceEndIndex, retainedTurns)
 		messages = append(messages, NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
 		messages = append(messages, tail...)
 		return messages

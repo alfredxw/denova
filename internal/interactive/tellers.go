@@ -39,7 +39,6 @@ type TellerContextPolicy struct {
 	Creator      string `json:"creator"`
 	Lore         string `json:"lore"`
 	RuntimeState string `json:"runtime_state"`
-	RecentTurns  int    `json:"recent_turns"`
 }
 
 type TellerPromptSlot struct {
@@ -298,9 +297,6 @@ func normalizeContextPolicy(policy TellerContextPolicy) TellerContextPolicy {
 	if strings.TrimSpace(policy.RuntimeState) == "" {
 		policy.RuntimeState = "always"
 	}
-	if policy.RecentTurns <= 0 {
-		policy.RecentTurns = 8
-	}
 	return policy
 }
 
@@ -444,7 +440,6 @@ func builtinTeller(id, name, description string, randomEventRate float64, tags [
 			Creator:      "always",
 			Lore:         "relevant",
 			RuntimeState: "always",
-			RecentTurns:  8,
 		},
 		Slots: slots,
 	})

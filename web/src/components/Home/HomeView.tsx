@@ -222,7 +222,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
         )}
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="min-h-0 flex-1">
         <div className="mx-auto flex max-w-4xl flex-col gap-5 px-6 py-6">
           {/* 当前书籍 */}
           <section className="border-b border-[var(--nova-border)] pb-5">

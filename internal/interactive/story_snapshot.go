@@ -26,6 +26,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			if err := mapToStruct(record.Raw, &turn); err != nil {
 				return Snapshot{}, err
 			}
+			turn.DisplayEvents = sanitizeDisplayEvents(turn.DisplayEvents)
 			versions := turnVersions[turnVersionKey(turn.BranchID, parentIDFromRaw(record.Raw))]
 			if len(versions) > 1 {
 				turn.Versions = versions

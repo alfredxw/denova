@@ -130,6 +130,79 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	}
 }
 
+func TestTokenUsageDisplayEventPersistsOutsideEffectiveContext(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.UserMessage("统计一下")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID:                   "run-1",
+		Role:                 "token_usage",
+		Content:              "cache_hit_rate=50.0%",
+		RunID:                "run-1",
+		AgentKind:            "ide",
+		PromptTokens:         2000,
+		CachedPromptTokens:   1000,
+		UncachedPromptTokens: 1000,
+		CacheHitRate:         0.5,
+		CompletionTokens:     300,
+		ReasoningTokens:      40,
+		TotalTokens:          2300,
+		ModelCalls:           2,
+		GeneratedBytes:       128,
+		UsageCalls: []TokenUsageCall{
+			{Index: 1, PromptTokens: 800, CachedPromptTokens: 400, UncachedPromptTokens: 400, CacheHitRate: 0.5, CompletionTokens: 120, ReasoningTokens: 10, TotalTokens: 920},
+			{Index: 2, PromptTokens: 1200, CachedPromptTokens: 600, UncachedPromptTokens: 600, CacheHitRate: 0.5, CompletionTokens: 180, ReasoningTokens: 30, TotalTokens: 1380},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.AssistantMessage("统计完成", nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	effective := reloaded.GetEffectiveMessages()
+	if len(effective) != 2 {
+		t.Fatalf("usage display event must not enter effective context: %#v", effective)
+	}
+	history := reloaded.History()
+	if len(history) != 3 {
+		t.Fatalf("history should include token usage display event: %#v", history)
+	}
+	usage := history[1]
+	if usage.Role != "token_usage" || usage.RunID != "run-1" || usage.PromptTokens != 2000 || usage.CachedPromptTokens != 1000 {
+		t.Fatalf("usage event was not restored: %#v", usage)
+	}
+	if usage.UncachedPromptTokens != 1000 {
+		t.Fatalf("uncached prompt tokens were not restored: %#v", usage)
+	}
+	if usage.CacheHitRate != 0.5 || usage.TotalTokens != 2300 || usage.ModelCalls != 2 || usage.GeneratedBytes != 128 {
+		t.Fatalf("usage metrics were not restored: %#v", usage)
+	}
+	if len(usage.UsageCalls) != 2 || usage.UsageCalls[1].PromptTokens != 1200 || usage.UsageCalls[1].CachedPromptTokens != 600 {
+		t.Fatalf("usage call details were not restored: %#v", usage.UsageCalls)
+	}
+	if usage.UsageCalls[1].UncachedPromptTokens != 600 {
+		t.Fatalf("usage call uncached tokens were not restored: %#v", usage.UsageCalls)
+	}
+}
+
 func TestContextCompactionPersistsOutsideVisibleHistory(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

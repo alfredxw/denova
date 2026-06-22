@@ -168,6 +168,9 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
   const renderedMessages = []
   for (let index = 0; index < messages.length; index += 1) {
     const msg = messages[index]
+    if (msg.role === 'token_usage') {
+      continue
+    }
     if (collapseTraceBeforeAssistant && isTraceMessage(msg)) {
       const traceMessages: ChatMessage[] = []
       let nextIndex = index

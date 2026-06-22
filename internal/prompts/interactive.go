@@ -21,11 +21,7 @@ type InteractiveStoryPromptInput struct {
 	StoryTellerID        string
 	BranchID             string
 	ReplyTargetChars     int
-	Characters           string
-	WorldBuilding        string
-	LoreItems            string
 	LongTermMemory       string
-	SnapshotStateJSON    string
 	PreviousTurnsSummary string
 }
 
@@ -35,12 +31,10 @@ type InteractiveStatePromptInput struct {
 	StoryTellerID     string
 	StoryTellerMemory string
 	BranchID          string
-	Characters        string
-	WorldBuilding     string
 	LoreItems         string
 	StoryMemorySchema string
-	SnapshotStateJSON string
-	RecentTurns       string
+	StoryMemory       string
+	TurnHistory       string
 	UserAction        string
 	Narrative         string
 }
@@ -90,7 +84,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 资料库召回使用 list_lore_items 先看轻量索引，再用 read_lore_items 读取本轮真正相关的少量条目；不要臆造未读取的资料库正文。\n")
 	sb.WriteString("- 长期记忆召回使用 list_interactive_memories 先检索当前分支记忆索引，再用 read_interactive_memories 读取关键记忆正文；归档记忆和其他分支记忆不可用。\n")
 	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 结合导演规则裁定后果 → 输出 <NARRATIVE>。\n")
-	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和近期回合继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
+	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和历史上下文继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
 	sb.WriteString("## 互动主持人原则\n")
 	sb.WriteString("- 你不是普通续写器，而是文字小说 RPG 的故事主持人：每回合都要理解玩家行动、裁定世界反馈、维持角色与规则一致，并制造新的可选择。\n")
 	sb.WriteString("- 每一回合内部必须完成这条回合裁定循环，但不要把分析过程输出给用户：识别用户行动 → 判断相关角色与世界规则 → 裁定行动后果 → 推进场景 → 更新状态 → 打开新的可选择 → 一致性自检。\n")
@@ -108,22 +102,10 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	var sb strings.Builder
 	sb.WriteString("[本轮动态上下文]\n")
-	sb.WriteString("以下内容只描述当前这一轮运行时状态，优先级低于 system prompt 中的互动模式边界和输出协议。\n")
 	writeInteractiveReplyTargetInstruction(&sb, in.ReplyTargetChars, false)
-	sb.WriteString("## 故事信息\n")
-	writeField(&sb, "标题", in.Title)
-	writeField(&sb, "开端", in.Origin)
-	writeField(&sb, "当前分支", in.BranchID)
-	writeField(&sb, "导演 ID", in.StoryTellerID)
 	sb.WriteString("\n## 召回说明\n")
 	sb.WriteString("资料库正文不在本段上下文中预注入；需要时请通过 list_lore_items/read_lore_items 主动召回。\n")
 	sb.WriteString("故事记忆仅提供当前分支的有界摘要；若本轮需要更细的长期事实，请通过 list_interactive_memories/read_interactive_memories 主动召回。\n\n")
-	if strings.TrimSpace(in.LoreItems) != "" {
-		writeBlock(&sb, "资料库", in.LoreItems)
-	} else {
-		writeBlock(&sb, "角色设定", in.Characters)
-		writeBlock(&sb, "世界观设定", in.WorldBuilding)
-	}
 	if strings.TrimSpace(in.LongTermMemory) != "" {
 		writeBlock(&sb, "当前分支故事记忆", in.LongTermMemory)
 	}
@@ -141,7 +123,7 @@ func writeInteractiveReplyTargetInstruction(sb *strings.Builder, value int, bull
 		suffix = ""
 	}
 	if value > 0 {
-		fmt.Fprintf(sb, "%s【最高篇幅约束】当前互动故事的每轮目标字数为 %d 个中文字以内；这是互动剧情正文唯一的内置字数目标，高于 CREATOR.md 的章节篇幅、导演规则和其他 Nova 内置提示中的篇幅倾向。你需要主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。%s", prefix, value, suffix)
+		fmt.Fprintf(sb, "%s【最高篇幅约束】当前互动故事的每轮目标字数为 %d 个中文字左右；这是互动剧情正文唯一的内置字数目标，高于 CREATOR.md 的章节篇幅、导演规则和其他 Nova 内置提示中的篇幅倾向。你需要主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。%s", prefix, value, suffix)
 		return
 	}
 	fmt.Fprintf(sb, "%s【最高篇幅约束】当前互动故事的每轮目标字数由 story 级运行参数决定；这是互动剧情正文唯一的内置字数目标，高于 CREATOR.md 的章节篇幅、导演规则和其他 Nova 内置提示中的篇幅倾向。运行时拿到具体目标后必须主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。%s", prefix, suffix)
@@ -186,16 +168,13 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 }
 
 type InteractiveHotChoicesPromptInput struct {
-	Title             string
-	Origin            string
-	StoryTellerID     string
-	BranchID          string
-	Characters        string
-	WorldBuilding     string
-	LoreItems         string
-	SnapshotStateJSON string
-	RecentTurns       string
-	ExcludeChoices    string
+	Title          string
+	Origin         string
+	StoryTellerID  string
+	BranchID       string
+	LoreItems      string
+	TurnHistory    string
+	ExcludeChoices string
 }
 
 func BuildInteractiveHotChoicesSystemInstruction() string {
@@ -212,18 +191,10 @@ func BuildInteractiveHotChoicesSystemInstruction() string {
 func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) string {
 	var sb strings.Builder
 	sb.WriteString("请基于以下互动故事上下文，生成下一轮快捷行动建议。\n\n")
-	sb.WriteString("## 故事信息\n")
-	writeField(&sb, "标题", in.Title)
-	writeField(&sb, "开端", in.Origin)
-	writeField(&sb, "当前分支", in.BranchID)
-	writeField(&sb, "导演 ID", in.StoryTellerID)
 	if strings.TrimSpace(in.LoreItems) != "" {
 		writeBlock(&sb, "资料库", in.LoreItems)
-	} else {
-		writeBlock(&sb, "角色设定", in.Characters)
-		writeBlock(&sb, "世界观设定", in.WorldBuilding)
 	}
-	writeBlock(&sb, "最近回合", in.RecentTurns)
+	writeBlock(&sb, "历史回合", in.TurnHistory)
 	if strings.TrimSpace(in.ExcludeChoices) != "" {
 		writeBlock(&sb, "已展示过的选择（不要重复）", in.ExcludeChoices)
 	}
@@ -241,7 +212,7 @@ func BuildInteractiveStateSystemInstruction() string {
 		"必须基于注入的“故事记忆结构与字段协议”输出 patch；structure_id、key_field_id、values 字段名和值的写法要求都只能来自该协议。",
 		"每次写入某张表时，values 必须按该表的字段列表逐字段填写：优先满足 required 字段，同时尽量补齐全部字段；字段值必须遵守表级 generation_instruction 和字段级 generation_instruction。",
 		"不能只填 required 字段或本回合变化字段；有既有记录时必须沿用并整合未变化字段，不得省略字段、写空字符串或 null。",
-		"字段值必须综合三类来源：最近回合上下文历史、资料库相关人物与设定、本回合前的既有故事记忆；新剧情负责更新变化，资料库负责校准设定，既有记忆负责保留未变化字段。",
+		"字段值必须综合三类来源：历史回合上下文、资料库相关人物与设定、本回合前的既有故事记忆；新剧情负责更新变化，资料库负责校准设定，既有记忆负责保留未变化字段。",
 		"op 仅使用 upsert、append、archive、restore；singleton 用 upsert，keyed 用带 key 的 upsert，append 结构记录新发生且后续需要承接的事实；结束或不再参与后续判断的记录用 archive。",
 		"keyed 结构必须输出非空 key，且 values 必须包含 key_field_id 对应字段；key 必须等于该字段值。",
 		"values 是纯文本字段对象，字段名必须来自对应结构；不要输出未来计划、快捷选择或没有依据的新设定。",
@@ -253,27 +224,18 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	sb.WriteString("请根据以下互动故事上下文，生成本回合的故事记忆 patch JSON。\n\n")
 	sb.WriteString("## 故事记忆建议\n")
 	sb.WriteString("- 先读取“故事记忆结构与字段协议”，只按其中列出的结构、字段和字段要求生成 patch。\n")
-	sb.WriteString("- 每条 patch 的 values 必须按目标表的字段逐项填写：required 字段不能为空；非 required 字段如果资料库、最近回合或既有记忆可支持，也要填写；已有值未变化时应沿用既有记忆，不要因为本回合没提到就清空。\n")
-	sb.WriteString("- 信息来源优先级：本回合用户行动与正文用于判断最新变化；最近回合上下文历史用于补足连续事件、地点、时间和关系；资料库用于校准人物、设定、规则、地点、物品；本回合前的故事记忆作为填表基础和未变化字段来源。\n")
+	sb.WriteString("- 每条 patch 的 values 必须按目标表的字段逐项填写：required 字段不能为空；非 required 字段如果资料库、历史回合或既有记忆可支持，也要填写；已有值未变化时应沿用既有记忆，不要因为本回合没提到就清空。\n")
+	sb.WriteString("- 信息来源优先级：本回合用户行动与正文用于判断最新变化；历史回合上下文用于补足连续事件、地点、时间和关系；资料库用于校准人物、设定、规则、地点、物品；本回合前的故事记忆作为填表基础和未变化字段来源。\n")
 	sb.WriteString("- singleton 结构维护当前状态类信息，必须表现为回合结束后的最新状态；keyed 结构按 key_field_id 对应字段 upsert，更新同一个人物、地点、物品或任务时要保留并整合原记录；append 结构只追加已经发生且后续需要承接的事实。\n")
 	sb.WriteString("- 资料库是稳定设定校准来源；故事记忆不得写入与资料库冲突的身份、规则、地点、物品或关系。若本回合正文和资料库疑似冲突，只记录已发生事实和待核对点，不要把矛盾扩写成新设定。\n")
 	sb.WriteString("- 不要记录下一步行动建议、快捷选择或可选择入口；这些由独立快捷选择 Agent 生成。\n")
 	sb.WriteString("- 若本回合没有值得沉淀的信息，可以返回空数组。\n\n")
-	sb.WriteString("## 故事信息\n")
-	writeField(&sb, "标题", in.Title)
-	writeField(&sb, "开端", in.Origin)
-	writeField(&sb, "当前分支", in.BranchID)
-	writeField(&sb, "导演 ID", in.StoryTellerID)
-	writeBlock(&sb, "导演记忆沉淀规则", in.StoryTellerMemory)
 	if strings.TrimSpace(in.LoreItems) != "" {
 		writeBlock(&sb, "资料库", in.LoreItems)
-	} else {
-		writeBlock(&sb, "角色设定", in.Characters)
-		writeBlock(&sb, "世界观设定", in.WorldBuilding)
 	}
 	writeBlock(&sb, "故事记忆结构与字段协议", in.StoryMemorySchema)
-	writeBlock(&sb, "本回合前的故事记忆", in.SnapshotStateJSON)
-	writeBlock(&sb, "最近回合上下文历史", in.RecentTurns)
+	writeBlock(&sb, "本回合前的故事记忆", in.StoryMemory)
+	writeBlock(&sb, "历史回合上下文", in.TurnHistory)
 	writeBlock(&sb, "用户本回合行动", in.UserAction)
 	writeBlock(&sb, "已生成的本回合正文", in.Narrative)
 	sb.WriteString("\n只输出 JSON，例如：{\"story_memory_patches\":[{\"op\":\"upsert\",\"structure_id\":\"current_state\",\"values\":{\"location\":\"旧宅门厅\",\"time\":\"2026-06-19 22:10\",\"previous_time\":\"2026-06-19 22:00\",\"elapsed_time\":\"约十分钟\",\"event\":\"主角发现门厅的铜铃会回应钥匙。\"}},{\"op\":\"upsert\",\"structure_id\":\"important_character\",\"key\":\"林川\",\"values\":{\"name\":\"林川\",\"brief\":\"熟悉旧宅机关的同行者\",\"relationship\":\"提醒主角谨慎使用铜钥匙\",\"status\":\"与主角同在旧宅门厅\"}},{\"op\":\"append\",\"structure_id\":\"plot_summary\",\"values\":{\"time\":\"2026-06-19 22:10\",\"place\":\"旧宅门厅\",\"event\":\"主角用铜钥匙触发门厅铜铃，确认旧宅对钥匙有反应。\"}}]}。\n")

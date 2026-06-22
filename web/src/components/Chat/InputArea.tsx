@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Archive, BadgeHelp, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
+import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
 import { ReferenceChips } from './ReferenceChips'
-import type { TextSelection } from '@/lib/api'
+import { TokenUsageDialog } from './TokenUsagePanel'
+import type { ChatMessage, TextSelection } from '@/lib/api'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import {
@@ -19,6 +20,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
@@ -77,6 +79,7 @@ interface InputAreaProps {
   placeholder?: string
   disabledPlaceholder?: string
   onContextAnalyze?: (message: string) => void | Promise<void>
+  tokenUsageMessages?: ChatMessage[]
 }
 
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
@@ -107,9 +110,11 @@ export function InputArea({
   placeholder,
   disabledPlaceholder,
   onContextAnalyze,
+  tokenUsageMessages = [],
 }: InputAreaProps) {
   const { t } = useTranslation()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
+  const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
   const [showCommands, setShowCommands] = useState(false)
   const [activeCommandIndex, setActiveCommandIndex] = useState(0)
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
@@ -494,14 +499,23 @@ export function InputArea({
               type="button"
               size="icon-sm"
               className="h-9 w-9 shrink-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-              disabled={disabled || !onContextAnalyze}
+              disabled={!onContextAnalyze && tokenUsageMessages.length === 0}
               aria-label={t('chat.input.actions')}
               title={t('chat.input.actions')}
             >
               <List className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top" className="min-w-44 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
+          <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+            <DropdownMenuItem
+              onSelect={() => setTokenUsageOpen(true)}
+              className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+              <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
+              <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageMessages.length })}</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
             <DropdownMenuItem
               disabled={disabled}
               onSelect={handleContextAnalyze}
@@ -512,6 +526,7 @@ export function InputArea({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} />
         <Textarea
           ref={textareaRef}
           autoResize

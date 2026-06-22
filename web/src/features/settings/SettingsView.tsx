@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, PanelLeft, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateCheckResult, UpdateInstallResult } from './types'
 import { checkForUpdate, fetchSettings, installUpdate, updateUserSettings, updateWorkspaceSettings } from './api'
@@ -9,11 +9,12 @@ import { settingsForLayer, useAutoSaveSettings } from './use-auto-save-settings'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { LOCALE_OPTIONS } from '@/i18n'
 import { APP_VERSION } from '@/app-version'
-import { markAutoUpdateChecked, shouldRunAutoUpdateCheck } from './update-check-cache'
+import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
 
-type SettingsSectionId = 'model' | 'paths' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -47,6 +48,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [expandedSections, setExpandedSections] = useState<Record<SettingsSectionId, boolean>>({
     model: true,
     paths: true,
+    access: true,
     appearance: true,
     updates: true,
     agent: true,
@@ -90,6 +92,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     try {
       const result = await checkForUpdate()
       setUpdateStatus(result)
+      notifyUpdateCheckResult(result)
     } catch (e) {
       setUpdateError((e as Error).message)
     } finally {
@@ -110,13 +113,12 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     try {
       const result = await installUpdate()
       setUpdateInstallResult(result)
-      await runUpdateCheck()
     } catch (e) {
       setUpdateError((e as Error).message)
     } finally {
       setInstallingUpdate(false)
     }
-  }, [runUpdateCheck])
+  }, [])
 
   const saveDraft = useCallback(async (settings: Settings) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
@@ -285,6 +287,34 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       ),
     },
     {
+      id: 'access',
+      group: t('settings.group.common'),
+      title: t('settings.section.access'),
+      children: activeLayer === 'user' ? (
+        <>
+          <BoolTri label={t('settings.access.allowLan')} value={draft.allow_lan_access ?? null}
+                   effective={effective.allow_lan_access}
+                   onChange={(v) => setField('allow_lan_access', v)} />
+          <Text label={t('settings.access.username')} value={draft.remote_access_username}
+                placeholder={placeholderFor('remote_access_username')}
+                onChange={(v) => setField('remote_access_username', v)} />
+          <Text label={t('settings.access.password')} value={draft.remote_access_password}
+                placeholder={(draft.remote_access_password_set || effective.remote_access_password_set)
+                  ? t('settings.access.passwordSetPlaceholder')
+                  : t('settings.access.passwordPlaceholder')}
+                onChange={(v) => setField('remote_access_password', v)}
+                type="password" />
+          <ReadOnly label={t('settings.access.localUrl')} value={layered?.access?.local_url} />
+          <ReadOnly label={t('settings.access.lanUrl')} value={layered?.access?.lan_url} />
+          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+            {t('settings.access.restartHint')}
+          </div>
+        </>
+      ) : (
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.access.userOnly')}</div>
+      ),
+    },
+    {
       id: 'agent',
       group: t('settings.group.common'),
       title: t('settings.section.agent'),
@@ -431,6 +461,34 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     }
     return groups
   }, [])
+  const navPanel = (
+    <nav className="h-full min-h-0 space-y-4 overflow-y-auto bg-[var(--nova-surface-2)] px-2 py-4 sm:px-3">
+      {navGroups.map((group) => (
+        <div key={group.group}>
+          <div className="mb-1.5 px-2 text-[11px] font-medium text-[var(--nova-text-faint)]">{group.group}</div>
+          <div className="space-y-1">
+            {group.items.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => jumpToSection(section.id)}
+                className={`nova-nav-item flex w-full items-center justify-between rounded-[var(--nova-radius)] px-2.5 py-1.5 text-left ${
+                  activeSection === section.id ? 'is-active' : ''
+                }`}
+              >
+                <span className="truncate">{section.title}</span>
+                {expandedSections[section.id] ? (
+                  <ChevronUp className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </nav>
+  )
 
   return (
     <div className="nova-settings-view flex h-full min-h-0 w-full flex-col text-[var(--nova-text)]">
@@ -475,55 +533,45 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
 
       {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('settings.error.save')} />}
 
-      <div className="flex min-h-0 flex-1 text-xs">
-        <aside className="w-44 shrink-0 border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-4 sm:w-52 sm:px-3 md:w-56">
-          <nav className="space-y-4">
-            {navGroups.map((group) => (
-              <div key={group.group}>
-                <div className="mb-1.5 px-2 text-[11px] font-medium text-[var(--nova-text-faint)]">{group.group}</div>
-                <div className="space-y-1">
-                  {group.items.map((section) => (
-                    <button
-                      key={section.id}
-                      type="button"
-                      onClick={() => jumpToSection(section.id)}
-                      className={`nova-nav-item flex w-full items-center justify-between rounded-[var(--nova-radius)] px-2.5 py-1.5 text-left ${
-                        activeSection === section.id ? 'is-active' : ''
-                      }`}
-                    >
-                      <span className="truncate">{section.title}</span>
-                      {expandedSections[section.id] ? (
-                        <ChevronUp className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                      ) : (
-                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </nav>
-        </aside>
-
-        <div ref={contentRef} onScroll={onContentScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5">
-          <div className="mx-auto max-w-5xl">
-            {sections.map((section) => (
-              <Section
-                key={section.id}
-                ref={(node) => {
-                  sectionRefs.current[section.id] = node
-                }}
-                group={section.group}
-                title={section.title}
-                expanded={expandedSections[section.id]}
-                onToggle={() => toggleSection(section.id)}
-              >
-                {section.children}
-              </Section>
-            ))}
+      <AdaptiveSurface
+        left={{
+          id: 'settings-nav',
+          title: t('settings.title'),
+          side: 'left',
+          icon: <SettingsIcon className="h-4 w-4" />,
+          content: navPanel,
+          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
+          mobileClassName: 'w-[min(86vw,340px)]',
+        }}
+        className="flex-1 text-xs"
+        mainClassName="min-h-0 min-w-0"
+        desktopGridClassName="grid-cols-[14rem_minmax(0,1fr)]"
+      >
+        {({ openLeft }) => (
+          <div ref={contentRef} data-nova-settings-content="true" onScroll={onContentScroll} className="h-full min-h-0 overflow-y-auto overscroll-contain px-6 py-5">
+            <button type="button" className="nova-icon-button mb-3 flex h-8 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2 text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] md:hidden" aria-label={t('workbench.mobile.openSidePanel', { label: t('settings.title') })} onClick={openLeft}>
+              <PanelLeft className="h-4 w-4" />
+              <span className="text-xs">{t('settings.title')}</span>
+            </button>
+            <div className="mx-auto max-w-5xl">
+              {sections.map((section) => (
+                <Section
+                  key={section.id}
+                  ref={(node) => {
+                    sectionRefs.current[section.id] = node
+                  }}
+                  group={section.group}
+                  title={section.title}
+                  expanded={expandedSections[section.id]}
+                  onToggle={() => toggleSection(section.id)}
+                >
+                  {section.children}
+                </Section>
+              ))}
+            </div>
           </div>
-        </div>
-      </div>
+        )}
+      </AdaptiveSurface>
     </div>
   )
 }

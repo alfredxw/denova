@@ -25,6 +25,9 @@ func TestAppSettingsReturnsLayered(t *testing.T) {
 	if layered.Paths.UserConfig == "" || layered.Paths.WorkspaceConfig == "" || layered.Paths.NovaDir == "" {
 		t.Fatalf("settings paths should be exposed: %+v", layered.Paths)
 	}
+	if layered.Access.LocalURL == "" || layered.Access.LANURL == "" {
+		t.Fatalf("settings access URLs should be exposed: %+v", layered.Access)
+	}
 }
 
 func TestAppUpdateUserSettingsPersists(t *testing.T) {
@@ -45,6 +48,40 @@ func TestAppUpdateUserSettingsPersists(t *testing.T) {
 	}
 	if out.OpenAIModel != "user-model" {
 		t.Fatalf("user model not persisted: %s", out.OpenAIModel)
+	}
+}
+
+func TestAppUpdateUserSettingsPreservesRemoteAccessPasswordHash(t *testing.T) {
+	ws := t.TempDir()
+	novaDir := t.TempDir()
+	hash, err := config.HashRemoteAccessPassword("secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteSettingsFile(filepath.Join(novaDir, "config.toml"), config.Settings{RemoteAccessPasswordHash: hash}); err != nil {
+		t.Fatal(err)
+	}
+
+	a := &App{
+		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
+		workspace: ws,
+	}
+	enabled := true
+	if _, err := a.UpdateUserSettings(config.Settings{
+		AllowLANAccess:       &enabled,
+		RemoteAccessUsername: "reader",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := config.ReadSettingsFile(filepath.Join(novaDir, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.RemoteAccessPasswordHash != hash {
+		t.Fatalf("password hash should be preserved")
+	}
+	if !config.CheckRemoteAccessPassword(out.RemoteAccessPasswordHash, "secret") {
+		t.Fatalf("preserved password hash should verify")
 	}
 }
 

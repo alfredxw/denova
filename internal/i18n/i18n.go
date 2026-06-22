@@ -82,6 +82,8 @@ var catalogZH = map[string]string{
 	"api.common.invalidBody":                  "无效请求体",
 	"api.common.messageRequired":              "消息不能为空",
 	"api.common.pathRequired":                 "请提供 path 参数",
+	"api.access.authRequired":                 "请先输入 Nova 远程访问用户名和密码",
+	"api.access.lanDisabled":                  "当前未开启局域网访问",
 	"api.books.titleRequired":                 "title 不能为空",
 	"api.books.novaDirMissing":                "Nova 数据目录未配置",
 	"api.books.removed":                       "已移除书籍记录",
@@ -145,6 +147,8 @@ var catalogZH = map[string]string{
 	"api.workspace.switched":                  "已切换到: {{workspace}}",
 	"api.workspace.noWorkspace":               "尚未选择书籍工作区，请先在书籍管理页选择或创建书籍",
 	"api.settings.workspaceMissing":           "当前没有打开的工作区",
+	"api.settings.lanUsernameRequired":        "开启局域网访问时必须设置用户名",
+	"api.settings.lanPasswordRequired":        "开启局域网访问时必须设置密码",
 }
 
 var catalogEN = map[string]string{
@@ -153,6 +157,8 @@ var catalogEN = map[string]string{
 	"api.common.invalidBody":                  "Invalid request body.",
 	"api.common.messageRequired":              "Message is required.",
 	"api.common.pathRequired":                 "Provide the path parameter.",
+	"api.access.authRequired":                 "Enter the Nova remote access username and password first.",
+	"api.access.lanDisabled":                  "LAN access is not enabled.",
 	"api.books.titleRequired":                 "Title is required.",
 	"api.books.novaDirMissing":                "Nova data directory is not configured.",
 	"api.books.removed":                       "Book record removed.",
@@ -216,4 +222,6 @@ var catalogEN = map[string]string{
 	"api.workspace.switched":                  "Switched to: {{workspace}}",
 	"api.workspace.noWorkspace":               "No book workspace is selected. Choose or create a book in Book Management first.",
 	"api.settings.workspaceMissing":           "No workspace is open.",
+	"api.settings.lanUsernameRequired":        "Set a username before enabling LAN access.",
+	"api.settings.lanPasswordRequired":        "Set a password before enabling LAN access.",
 }

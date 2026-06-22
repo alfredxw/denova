@@ -135,12 +135,14 @@ func (r *Runtime) Run(
 		workspace = bookService.Workspace()
 	}
 	options = options.normalized(workspace)
+	options.SystemPromptLog.logForRun(options)
 	runLedger, ledgerErr := newRunLedgerWithOptions(workspace, policy.RunLedger, options)
 	if ledgerErr != nil {
 		runLogger.Warn("run_ledger_unavailable", slog.String("workspace", workspace), slog.Any("error", ledgerErr))
 	}
 	checkpointID := options.checkpointID(runLedger.ID())
 	observer := newRunObserver(runLedger)
+	usageCollector := newRunTokenUsageCollector(runLedger.ID(), options.AgentKind)
 	if runLedger != nil {
 		defer func() {
 			if err := runLedger.Close(); err != nil {
@@ -154,6 +156,7 @@ func (r *Runtime) Run(
 			return
 		}
 		finished = true
+		usageCollector.EmitIfAny(emit, generatedBytes)
 		if err := runLedger.RecordFinish(status, reason, generatedBytes); err != nil {
 			runLogger.Warn("run_ledger_finish_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
 		}
@@ -323,6 +326,7 @@ func (r *Runtime) Run(
 				content = content[:300] + "..."
 			}
 			logToolResult(mv.Message.ToolName, mv.Message.ToolCallID, content)
+			usageCollector.NoteToolResult(mv.Message.ToolName)
 			data := map[string]interface{}{
 				"id":      mv.Message.ToolCallID,
 				"name":    mv.Message.ToolName,
@@ -340,7 +344,9 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.IsStreaming && mv.MessageStream != nil {
-			if !processStreamingEvent(mv, &fullContent, &fullThinking, emit) {
+			msg, ok := processStreamingEvent(mv, &fullContent, &fullThinking, emit)
+			usageCollector.AddMessage(msg)
+			if !ok {
 				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 				markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, "stream recv error")
 				finishRun("error", "stream recv error", len(generated))
@@ -350,6 +356,7 @@ func (r *Runtime) Run(
 		}
 		if mv.Message != nil {
 			processNonStreamingEvent(mv, &fullContent, &fullThinking, emit)
+			usageCollector.AddMessage(mv.Message)
 		}
 	}
 

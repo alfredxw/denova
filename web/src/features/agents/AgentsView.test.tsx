@@ -55,7 +55,7 @@ describe('AgentsView', () => {
       effective: {
         agent_context: {
           context_compaction: {
-            compaction_recent_turns: 12,
+            compaction_recent_turns: 4,
             compaction_target_min_ratio: 0.09,
             compaction_target_max_ratio: 0.31,
           },
@@ -79,7 +79,8 @@ describe('AgentsView', () => {
     expect(screen.getByText('压缩目标上限 (%)')).toBeInTheDocument()
     expect(screen.getByText('压缩后保留回合')).toBeInTheDocument()
     expect(screen.getByText('流程规则')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('12')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('12')).not.toBeInTheDocument()
+    expect(screen.getByDisplayValue('4')).toBeInTheDocument()
     expect(screen.getByDisplayValue('9')).toBeInTheDocument()
     expect(screen.getByDisplayValue('31')).toBeInTheDocument()
   })

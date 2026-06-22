@@ -774,10 +774,6 @@ func (s *Store) markTurnMemoryReadyLocked(storyID string, meta StoryMeta, lines 
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	meta.UpdatedAt = now
-	if branch, ok := meta.Branches[branchID]; ok {
-		branch.Head = turnID
-		meta.Branches[branchID] = branch
-	}
 	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
 		return err
 	}

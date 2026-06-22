@@ -1,12 +1,27 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { InteractiveLayout } from './InteractiveLayout'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { server } from '@/test/msw/server'
+import type { StorySummary } from '../types'
 
 describe('InteractiveLayout', () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    useInteractiveStore.setState({
+      stories: [],
+      tellers: [],
+      branches: [],
+      snapshot: null,
+      storyStageRuns: {},
+      currentStoryId: '',
+      currentBranchId: 'main',
+      submode: 'story',
+    })
+  })
+
   it('renders story stage and snapshot panels', async () => {
     const { container } = render(<InteractiveLayout />)
 
@@ -162,6 +177,182 @@ describe('InteractiveLayout', () => {
 
     expect((await screen.findAllByText('我推开酒馆的门')).length).toBeGreaterThan(0)
     expect(screen.getAllByText('门后传来低沉的风声。').length).toBeGreaterThan(0)
+  })
+
+  it('restores the last selected story when the page is refreshed', async () => {
+    const stories: StorySummary[] = [
+      {
+        id: 'st_1',
+        title: '旧城线',
+        origin: '',
+        story_teller_id: 'classic',
+        reply_target_chars: 2000,
+        opening: { mode: 'ai' },
+        created_at: '',
+        updated_at: '',
+        branches: 1,
+        events: 1,
+      },
+      {
+        id: 'st_2',
+        title: '雪山线',
+        origin: '',
+        story_teller_id: 'classic',
+        reply_target_chars: 2000,
+        opening: { mode: 'ai' },
+        created_at: '',
+        updated_at: '',
+        branches: 1,
+        events: 1,
+      },
+    ]
+    useInteractiveStore.getState().setStories(stories, 'st_1')
+    useInteractiveStore.getState().setCurrentStoryId('st_2')
+    useInteractiveStore.setState({
+      stories: [],
+      tellers: [],
+      branches: [],
+      snapshot: null,
+      currentStoryId: '',
+      currentBranchId: 'main',
+      submode: 'story',
+    })
+    const requestedStories: string[] = []
+    server.use(
+      http.get('/api/interactive/stories', () =>
+        HttpResponse.json({
+          current_story_id: 'st_1',
+          stories,
+        }),
+      ),
+      http.get('/api/interactive/stories/:id/branches', () =>
+        HttpResponse.json({
+          branches: [{ id: 'main', head: 'ev_1', title: '主线', created_at: '', current: true }],
+        }),
+      ),
+      http.get('/api/interactive/stories/:id/snapshot', ({ params }) => {
+        requestedStories.push(String(params.id))
+        return HttpResponse.json({
+          story_id: params.id,
+          branch_id: 'main',
+          turns: [
+            {
+              id: params.id === 'st_2' ? 'snow_1' : 'city_1',
+              parent_id: null,
+              branch_id: 'main',
+              ts: '',
+              user: params.id === 'st_2' ? '踏入雪线' : '进入旧城',
+              narrative: params.id === 'st_2' ? '风雪遮住了山口。' : '钟楼响起。',
+            },
+          ],
+          state: { on_stage: [], characters: {}, events: [] },
+        })
+      }),
+    )
+
+    render(<InteractiveLayout />)
+
+    expect(await screen.findByText('踏入雪线')).toBeInTheDocument()
+    expect(screen.getByText('风雪遮住了山口。')).toBeInTheDocument()
+    expect(requestedStories).toContain('st_2')
+  })
+
+  it('restores the last selected branch when the page is refreshed', async () => {
+    useInteractiveStore.getState().setStories(
+      [
+        {
+          id: 'st_1',
+          title: '末日开端',
+          origin: '',
+          story_teller_id: 'classic',
+          reply_target_chars: 2000,
+          opening: { mode: 'ai' },
+          created_at: '',
+          updated_at: '',
+          branches: 2,
+          events: 2,
+        },
+      ],
+      'st_1',
+    )
+    useInteractiveStore.getState().setCurrentBranchId('br_alt')
+    useInteractiveStore.setState({
+      stories: [],
+      tellers: [],
+      branches: [],
+      snapshot: null,
+      currentStoryId: '',
+      currentBranchId: 'main',
+      submode: 'story',
+    })
+    const requestedBranches: string[] = []
+    server.use(
+      http.get('/api/interactive/stories', () =>
+        HttpResponse.json({
+          current_story_id: 'st_1',
+          stories: [
+            {
+              id: 'st_1',
+              title: '末日开端',
+              origin: '',
+              story_teller_id: 'classic',
+              reply_target_chars: 2000,
+              created_at: '',
+              updated_at: '',
+              branches: 2,
+              events: 2,
+            },
+          ],
+        }),
+      ),
+      http.get('/api/interactive/stories/:id/branches', () =>
+        HttpResponse.json({
+          branches: [
+            {
+              id: 'main',
+              head: 'ev_main',
+              title: '主线',
+              created_at: '',
+              current: true,
+            },
+            {
+              id: 'br_alt',
+              head: 'ev_alt',
+              from: 'main',
+              from_event: 'ev_main',
+              title: '支线',
+              created_at: '',
+              current: false,
+            },
+          ],
+        }),
+      ),
+      http.get('/api/interactive/stories/:id/snapshot', ({ request }) => {
+        const branch = new URL(request.url).searchParams.get('branch') || ''
+        requestedBranches.push(branch)
+        return HttpResponse.json({
+          story_id: 'st_1',
+          branch_id: branch || 'main',
+          turns: [
+            {
+              id: branch === 'br_alt' ? 'ev_alt' : 'ev_main',
+              parent_id: null,
+              branch_id: branch || 'main',
+              ts: '',
+              user: branch === 'br_alt' ? '走向另一条巷子' : '进入旧酒馆',
+              narrative: branch === 'br_alt' ? '巷尾传来铃声。' : '酒馆里只剩炉火。',
+            },
+          ],
+          state: { on_stage: [], characters: {}, events: [] },
+        })
+      }),
+    )
+
+    render(<InteractiveLayout />)
+
+    expect(await screen.findByText('走向另一条巷子')).toBeInTheDocument()
+    expect(screen.getByText('巷尾传来铃声。')).toBeInTheDocument()
+    expect(requestedBranches).toContain('br_alt')
   })
 
   it('refreshes stage and scene memory from the selected branch snapshot', async () => {

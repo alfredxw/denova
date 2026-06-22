@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, CheckCircle2, FileCode2, Loader2, Lock, Plus, RefreshCw, Save, Settings2, Sparkles, Trash2, X } from 'lucide-react'
+import { Bot, CheckCircle2, FileCode2, Loader2, Lock, PanelLeft, PanelRight, Plus, RefreshCw, Save, Settings2, Sparkles, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { Textarea } from '@/components/ui/textarea'
 import { createSkill, deleteSkillDocument, getSkillDocument, getSkills, saveSkillDocument } from '@/lib/api'
 import type { SkillDocument, SkillScope, SkillScopeInfo, SkillSnapshot, SkillSummary } from '@/lib/api'
@@ -202,6 +203,61 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
       skill_path: skillFilePath(snapshot.scopes.find((item) => item.scope === scope), targetName) || '',
     }
   }, [document?.name, document?.scope, mode, newName, newScope, snapshot.scopes])
+  const skillListPanel = (
+    <div className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3">
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={askAgent}
+          className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded border border-[var(--nova-border)] px-2 ${agentOpen ? 'is-active' : 'bg-[var(--nova-surface)]'}`}
+        >
+          <Bot className="h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">{t('skills.agent.button')}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setMode('create')
+            setError(null)
+          }}
+          className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded border border-[var(--nova-border)] px-2 ${mode === 'create' ? 'is-active' : 'bg-[var(--nova-surface)]'}`}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">{t('skills.create.title')}</span>
+        </button>
+      </div>
+
+      <div className="space-y-4">
+        {scopes.map((scope) => (
+          <SkillScopeList
+            key={scope}
+            scope={scope}
+            scopeInfo={snapshot.scopes.find((item) => item.scope === scope)}
+            skills={snapshot.skills.filter((skill) => skill.scope === scope)}
+            selectedKey={selectedKey}
+            onSelect={(key) => {
+              setSelectedKey(key)
+              setMode('editor')
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+  const agentPanel = agentOpen ? (
+    <div className="h-full min-h-0 bg-[var(--nova-surface)]">
+      <ConfigManagerChat
+        workspace={workspace}
+        origin="skills"
+        resourceId={agentContext.skill_name}
+        context={agentContext}
+        onMutated={() => {
+          window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+          void load()
+        }}
+      />
+    </div>
+  ) : null
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
@@ -236,78 +292,75 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
 
       {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('skills.error')} />}
 
-      <div className={`grid min-h-0 flex-1 text-xs ${agentOpen ? 'grid-cols-[20rem_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[20rem_minmax(0,1fr)]'}`}>
-        <aside className="min-h-0 overflow-y-auto border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-          <div className="mb-4 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={askAgent}
-              className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded border border-[var(--nova-border)] px-2 ${agentOpen ? 'is-active' : 'bg-[var(--nova-surface)]'}`}
-            >
-              <Bot className="h-3.5 w-3.5" />
-              <span className="min-w-0 truncate">{t('skills.agent.button')}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('create')
-                setError(null)
-              }}
-              className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded border border-[var(--nova-border)] px-2 ${mode === 'create' ? 'is-active' : 'bg-[var(--nova-surface)]'}`}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span className="min-w-0 truncate">{t('skills.create.title')}</span>
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            {scopes.map((scope) => (
-              <SkillScopeList
-                key={scope}
-                scope={scope}
-                scopeInfo={snapshot.scopes.find((item) => item.scope === scope)}
-                skills={snapshot.skills.filter((skill) => skill.scope === scope)}
-                selectedKey={selectedKey}
-                onSelect={(key) => {
-                  setSelectedKey(key)
-                  setMode('editor')
-                }}
+      <AdaptiveSurface
+        left={{
+          id: 'skills-list',
+          title: t('skills.title'),
+          side: 'left',
+          icon: <Sparkles className="h-4 w-4" />,
+          content: skillListPanel,
+          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
+          mobileClassName: 'w-[min(90vw,380px)]',
+        }}
+        right={
+          agentOpen && agentPanel
+            ? {
+                id: 'skills-agent',
+                title: t('skills.agent.button'),
+                side: 'right',
+                icon: <Bot className="h-4 w-4" />,
+                content: agentPanel,
+                desktopClassName: 'min-h-0 border-l border-[var(--nova-border)]',
+              }
+            : undefined
+        }
+        className="flex-1 text-xs"
+        mainClassName="min-h-0 min-w-0"
+        desktopGridClassName={agentOpen ? 'grid-cols-[20rem_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[20rem_minmax(0,1fr)]'}
+      >
+        {({ openLeft, openRight }) => (
+          <main className="flex h-full min-h-0 flex-col">
+            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 md:hidden">
+              <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: t('skills.title') })} onClick={openLeft}>
+                <PanelLeft className="h-4 w-4" />
+              </button>
+              <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--nova-text-muted)]">{document?.name || t('skills.title')}</span>
+              {agentOpen && (
+                <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: t('skills.agent.button') })} onClick={openRight}>
+                  <PanelRight className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            {mode === 'create' ? (
+              <CreateSkillPanel
+                name={newName}
+                description={newDescription}
+                scope={newScope}
+                agents={newAgents}
+                scopes={writableScopes}
+                scopeInfo={snapshot.scopes.find((item) => item.scope === newScope)}
+                saving={saving}
+                onNameChange={setNewName}
+                onDescriptionChange={setNewDescription}
+                onScopeChange={setNewScope}
+                onAgentsChange={setNewAgents}
+                onCreate={() => void onCreate()}
+                onAskAgent={askAgent}
               />
-            ))}
-          </div>
-        </aside>
-
-        <main className="flex min-h-0 flex-col">
-          {mode === 'create' ? (
-            <CreateSkillPanel
-              name={newName}
-              description={newDescription}
-              scope={newScope}
-              agents={newAgents}
-              scopes={writableScopes}
-              scopeInfo={snapshot.scopes.find((item) => item.scope === newScope)}
-              saving={saving}
-              onNameChange={setNewName}
-              onDescriptionChange={setNewDescription}
-              onScopeChange={setNewScope}
-              onAgentsChange={setNewAgents}
-              onCreate={() => void onCreate()}
-              onAskAgent={askAgent}
-            />
-          ) : mode === 'config' && document ? (
-            <SkillConfigPanel
-              document={document}
-              description={configDescription}
-              agents={configAgents}
-              saving={saving}
-              onDescriptionChange={setConfigDescription}
-              onAgentsChange={setConfigAgents}
-              onSave={() => void onSaveConfig()}
-              onCancel={() => setMode('editor')}
-              onDelete={() => void onDelete()}
-            />
-          ) : document ? (
-            <>
+            ) : mode === 'config' && document ? (
+              <SkillConfigPanel
+                document={document}
+                description={configDescription}
+                agents={configAgents}
+                saving={saving}
+                onDescriptionChange={setConfigDescription}
+                onAgentsChange={setConfigAgents}
+                onSave={() => void onSaveConfig()}
+                onCancel={() => setMode('editor')}
+                onDelete={() => void onDelete()}
+              />
+            ) : document ? (
+              <>
               <div className="flex min-h-12 shrink-0 items-center gap-3 border-b border-[var(--nova-border)] px-4">
                 <FileCode2 className="h-4 w-4 text-[var(--nova-text-muted)]" />
                 <div className="min-w-0 flex-1">
@@ -350,28 +403,15 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
                 spellCheck={false}
                 className="min-h-0 flex-1 resize-none rounded-none border-0 bg-[var(--nova-bg)] px-5 py-4 font-mono text-xs leading-5 text-[var(--nova-text)] shadow-none focus-visible:ring-0"
               />
-            </>
-          ) : (
-            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-[var(--nova-text-faint)]">
-              {loading ? t('skills.loading') : t('skills.empty')}
-            </div>
-          )}
-        </main>
-        {agentOpen && (
-          <aside className="min-h-0 border-l border-[var(--nova-border)] bg-[var(--nova-surface)]">
-            <ConfigManagerChat
-              workspace={workspace}
-              origin="skills"
-              resourceId={agentContext.skill_name}
-              context={agentContext}
-              onMutated={() => {
-                window.dispatchEvent(new CustomEvent('nova:skills-updated'))
-                void load()
-              }}
-            />
-          </aside>
+              </>
+            ) : (
+              <div className="flex h-full items-center justify-center px-6 text-center text-xs text-[var(--nova-text-faint)]">
+                {loading ? t('skills.loading') : t('skills.empty')}
+              </div>
+            )}
+          </main>
         )}
-      </div>
+      </AdaptiveSurface>
     </div>
   )
 }

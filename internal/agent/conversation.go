@@ -28,14 +28,13 @@ type ContextSourceReporter interface {
 }
 
 type SessionConversation struct {
-	session     *session.Session
-	recentTurns int
-	cfg         *config.Config
-	agentKind   string
+	session   *session.Session
+	cfg       *config.Config
+	agentKind string
 }
 
 func NewSessionConversation(sess *session.Session, options ...SessionConversationOption) *SessionConversation {
-	c := &SessionConversation{session: sess, recentTurns: 30}
+	c := &SessionConversation{session: sess}
 	for _, option := range options {
 		if option != nil {
 			option(c)
@@ -45,28 +44,13 @@ func NewSessionConversation(sess *session.Session, options ...SessionConversatio
 }
 
 func NewSessionConversationForAgent(sess *session.Session, cfg *config.Config, agentKind string) *SessionConversation {
-	contextSettings := config.ResolveAgentContext(cfg, agentKind)
 	return NewSessionConversation(
 		sess,
-		WithSessionRecentTurns(contextSettings.RecentTurns),
 		WithSessionContextConfig(cfg, agentKind),
 	)
 }
 
 type SessionConversationOption func(*SessionConversation)
-
-func WithSessionRecentTurns(recentTurns int) SessionConversationOption {
-	return func(c *SessionConversation) {
-		if recentTurns <= 0 {
-			c.recentTurns = 30
-			return
-		}
-		if recentTurns > 30 {
-			recentTurns = 30
-		}
-		c.recentTurns = recentTurns
-	}
-}
 
 func WithSessionContextConfig(cfg *config.Config, agentKind string) SessionConversationOption {
 	return func(c *SessionConversation) {
@@ -98,6 +82,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 		ContextWindowTokens: policy.ContextWindowTokens,
 		Threshold:           policy.Threshold,
 		MessageCountBefore:  len(input.Messages),
+		RetainedTurns:       policy.RetainedTurns,
 	}
 	shouldCompact, skipped := policy.shouldCompact(tokensBefore, input.Force)
 	if !shouldCompact {
@@ -118,13 +103,15 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	}
 	sourceTokens := EstimateContextTokens(source, nil)
 	emitContextCompactionEvent(input.Emit, phase, "started", result)
-	summary, err := summarizeContextForCompaction(ctx, c.cfg, c.agentKind, source, input.ReferenceContext, sourceTokens, policy)
+	summary, err := summarizeContextForCompaction(ctx, c.cfg, c.agentKind, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
+		emitContextCompactionDeltaEvent(input.Emit, phase, result, attempt, delta)
+	})
 	if err != nil {
 		emitContextCompactionEvent(input.Emit, phase, "failed", result)
 		return input.Messages, result, err
 	}
 	epoch := c.nextCompactionEpoch()
-	newMessages := compactMessagesForModel(input.Messages, summary, epoch, policy.RetainedRecentTurns)
+	newMessages := compactMessagesForModel(input.Messages, summary, epoch, policy.RetainedTurns)
 	result.Triggered = true
 	result.Epoch = epoch
 	result.Summary = summary
@@ -132,7 +119,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	result.TargetRatio = contextCompactionRatio(estimateStringTokens(summary), sourceTokens)
 	result.SourceMessageCount = len(source)
 	result.MessageCountAfter = len(newMessages)
-	record := contextCompactionRecordFromResult(result, c.agentKind, sourceStart, sourceEnd, policy.RetainedRecentTurns, summary)
+	record := contextCompactionRecordFromResult(result, c.agentKind, sourceStart, sourceEnd, policy.RetainedTurns, summary)
 	record, err = c.session.AppendContextCompaction(record)
 	if err != nil {
 		emitContextCompactionEvent(input.Emit, phase, "failed", result)
@@ -140,7 +127,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	}
 	if record.Epoch != epoch {
 		result.Epoch = record.Epoch
-		newMessages = compactMessagesForModel(input.Messages, summary, record.Epoch, policy.RetainedRecentTurns)
+		newMessages = compactMessagesForModel(input.Messages, summary, record.Epoch, policy.RetainedTurns)
 		result.TokensAfter = EstimateContextTokens(newMessages, input.Tools)
 		result.MessageCountAfter = len(newMessages)
 	}
@@ -154,19 +141,14 @@ func (c *SessionConversation) modelMessages(agentMessage string) []*schema.Messa
 	if compaction, ok := c.session.LatestContextCompaction(c.agentKind); ok && strings.TrimSpace(compaction.Summary) != "" {
 		total := c.session.MessageCountTotal()
 		effectiveStart := total - len(history)
-		tailStart := compaction.SourceEndIndex - effectiveStart
-		if tailStart < 0 {
-			tailStart = 0
+		retainedTurns := compaction.RetainedTurns
+		if retainedTurns <= 0 {
+			retainedTurns = policy.RetainedTurns
 		}
-		if tailStart > len(history) {
-			tailStart = len(history)
-		}
-		tail := limitMessagesByRecentTurns(history[tailStart:], policy.RetainedRecentTurns)
+		tail := compactedMessagesAfterSource(history, effectiveStart, compaction.SourceEndIndex, retainedTurns)
 		history = make([]*schema.Message, 0, 1+len(tail))
 		history = append(history, NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
 		history = append(history, tail...)
-	} else if !policy.Enabled || policy.ContextWindowTokens <= 0 {
-		history = limitMessagesByRecentTurns(history, c.recentTurns)
 	}
 	if len(history) > 0 {
 		history[len(history)-1] = schema.UserMessage(agentMessage)
@@ -183,12 +165,6 @@ func (c *SessionConversation) compactionPolicy() contextCompactionPolicy {
 		agentKind = config.AgentKindIDE
 	}
 	policy := resolveContextCompactionPolicy(c.cfg, agentKind)
-	if policy.RetainedRecentTurns <= 0 {
-		policy.RetainedRecentTurns = c.recentTurns
-	}
-	if policy.RetainedRecentTurns > 30 {
-		policy.RetainedRecentTurns = 30
-	}
 	return policy
 }
 
@@ -233,12 +209,12 @@ func sanitizeCompactionSourceMessage(msg *schema.Message) *schema.Message {
 	return &copied
 }
 
-func limitMessagesByRecentTurns(messages []*schema.Message, recentTurns int) []*schema.Message {
-	if recentTurns <= 0 {
-		recentTurns = 30
+func retainTailByUserTurns(messages []*schema.Message, retainedTurns int) []*schema.Message {
+	if retainedTurns <= 0 {
+		retainedTurns = config.DefaultContextCompactionRetainedTurns
 	}
-	if recentTurns > 30 {
-		recentTurns = 30
+	if retainedTurns > config.MaxContextCompactionRetainedTurns {
+		retainedTurns = config.MaxContextCompactionRetainedTurns
 	}
 	userCount := 0
 	start := 0
@@ -247,12 +223,12 @@ func limitMessagesByRecentTurns(messages []*schema.Message, recentTurns int) []*
 			continue
 		}
 		userCount++
-		if userCount == recentTurns {
+		if userCount == retainedTurns {
 			start = i
 			break
 		}
 	}
-	if userCount < recentTurns {
+	if userCount < retainedTurns {
 		return messages
 	}
 	return append([]*schema.Message(nil), messages[start:]...)

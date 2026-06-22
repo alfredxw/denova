@@ -8,6 +8,7 @@ const storyStage = {
   'storyStage.hideSceneMemory': '隐藏故事记忆',
   'storyStage.showSceneMemory': '显示故事记忆',
   'storyStage.sceneMemory': '故事记忆',
+  'storyStage.mobile.controls': '舞台操作',
   'storyStage.empty': '输入第一句话，开始互动故事。',
   'storyStage.opening.title': '开场白',
   'storyStage.opening.modePreset': '预设开场',

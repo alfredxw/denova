@@ -42,6 +42,19 @@ type HistoryEntry struct {
 	Result    string          `json:"result,omitempty"`
 	Message   *schema.Message `json:"-"`
 	CreatedAt time.Time       `json:"created_at,omitempty"`
+
+	RunID                string           `json:"run_id,omitempty"`
+	AgentKind            string           `json:"agent_kind,omitempty"`
+	PromptTokens         int              `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate         float64          `json:"cache_hit_rate,omitempty"`
+	CompletionTokens     int              `json:"completion_tokens,omitempty"`
+	ReasoningTokens      int              `json:"reasoning_tokens,omitempty"`
+	TotalTokens          int              `json:"total_tokens,omitempty"`
+	ModelCalls           int              `json:"model_calls,omitempty"`
+	GeneratedBytes       int              `json:"generated_bytes,omitempty"`
+	UsageCalls           []TokenUsageCall `json:"usage_calls,omitempty"`
 }
 
 type historyRecord struct {
@@ -64,6 +77,34 @@ type DisplayEvent struct {
 	Status    string    `json:"status,omitempty"`
 	Result    string    `json:"result,omitempty"`
 	CreatedAt time.Time `json:"created_at,omitempty"`
+
+	RunID                string           `json:"run_id,omitempty"`
+	AgentKind            string           `json:"agent_kind,omitempty"`
+	PromptTokens         int              `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate         float64          `json:"cache_hit_rate,omitempty"`
+	CompletionTokens     int              `json:"completion_tokens,omitempty"`
+	ReasoningTokens      int              `json:"reasoning_tokens,omitempty"`
+	TotalTokens          int              `json:"total_tokens,omitempty"`
+	ModelCalls           int              `json:"model_calls,omitempty"`
+	GeneratedBytes       int              `json:"generated_bytes,omitempty"`
+	UsageCalls           []TokenUsageCall `json:"usage_calls,omitempty"`
+}
+
+type TokenUsageCall struct {
+	Index                int      `json:"index,omitempty"`
+	CreatedAt            string   `json:"created_at,omitempty"`
+	FinishReason         string   `json:"finish_reason,omitempty"`
+	RequestedTools       []string `json:"requested_tools,omitempty"`
+	AfterTools           []string `json:"after_tools,omitempty"`
+	PromptTokens         int      `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens   int      `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens int      `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate         float64  `json:"cache_hit_rate,omitempty"`
+	CompletionTokens     int      `json:"completion_tokens,omitempty"`
+	ReasoningTokens      int      `json:"reasoning_tokens,omitempty"`
+	TotalTokens          int      `json:"total_tokens,omitempty"`
 }
 
 // Interruption 表示一次异常中断后可恢复的对话轮次。
@@ -491,17 +532,42 @@ func (s *Session) History() []HistoryEntry {
 				continue
 			}
 			result = append(result, HistoryEntry{
-				Type:      historyTypeMessage,
-				ID:        record.display.ID,
-				Role:      record.display.Role,
-				Content:   record.display.Content,
-				Name:      record.display.Name,
-				Args:      record.display.Args,
-				Status:    record.display.Status,
-				Result:    record.display.Result,
-				CreatedAt: record.display.CreatedAt,
+				Type:                 historyTypeMessage,
+				ID:                   record.display.ID,
+				Role:                 record.display.Role,
+				Content:              record.display.Content,
+				Name:                 record.display.Name,
+				Args:                 record.display.Args,
+				Status:               record.display.Status,
+				Result:               record.display.Result,
+				CreatedAt:            record.display.CreatedAt,
+				RunID:                record.display.RunID,
+				AgentKind:            record.display.AgentKind,
+				PromptTokens:         record.display.PromptTokens,
+				CachedPromptTokens:   record.display.CachedPromptTokens,
+				UncachedPromptTokens: record.display.UncachedPromptTokens,
+				CacheHitRate:         record.display.CacheHitRate,
+				CompletionTokens:     record.display.CompletionTokens,
+				ReasoningTokens:      record.display.ReasoningTokens,
+				TotalTokens:          record.display.TotalTokens,
+				ModelCalls:           record.display.ModelCalls,
+				GeneratedBytes:       record.display.GeneratedBytes,
+				UsageCalls:           cloneTokenUsageCalls(record.display.UsageCalls),
 			})
 		}
+	}
+	return result
+}
+
+func cloneTokenUsageCalls(calls []TokenUsageCall) []TokenUsageCall {
+	if len(calls) == 0 {
+		return nil
+	}
+	result := make([]TokenUsageCall, len(calls))
+	copy(result, calls)
+	for i := range result {
+		result[i].RequestedTools = append([]string(nil), result[i].RequestedTools...)
+		result[i].AfterTools = append([]string(nil), result[i].AfterTools...)
 	}
 	return result
 }

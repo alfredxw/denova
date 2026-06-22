@@ -257,7 +257,7 @@ func shouldSummarizeRunLedgerField(key string) bool {
 
 func shouldRecordRunLedgerEvent(eventType string) bool {
 	switch strings.TrimSpace(eventType) {
-	case "tool_call", "tool_target", "tool_result", "error", "aborted":
+	case "tool_call", "tool_target", "tool_result", "token_usage", "error", "aborted":
 		return true
 	default:
 		return false

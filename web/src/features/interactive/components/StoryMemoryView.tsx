@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, Bot, Brain, ChevronDown, ChevronRight, Edit3, Loader2, Plus, RefreshCw, RotateCcw, Save, Trash2, X } from 'lucide-react'
+import { Archive, Bot, Brain, ChevronDown, ChevronRight, Edit3, Loader2, PanelLeft, PanelRight, Plus, RefreshCw, RotateCcw, Save, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { deleteStoryMemoryStructure, generateStoryMemory, getStoryMemory, saveStoryMemoryRecord, saveStoryMemoryStructure, setStoryMemoryRecordArchived, updateStoryMemorySettings } from '../api'
 import type { BranchSummary, StoryMemoryField, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
@@ -208,6 +209,49 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
     setStructureDraft(null)
   }
 
+  const structurePanel = (
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-[var(--nova-surface)] p-3">
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <button type="button" className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2 ${agentOpen ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`} onClick={() => setAgentOpen((value) => !value)}>
+          <Bot className="h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">{t('storyMemory.configAgent')}</span>
+        </button>
+        <button type="button" className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2" onClick={startNewStructure}>
+          <Plus className="h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">{t('storyMemory.addStructure')}</span>
+        </button>
+      </div>
+      <div className="mb-2 text-xs font-medium text-[var(--nova-text-muted)]">{t('storyMemory.structures')}</div>
+      <div className="space-y-1">
+        {structures.map((structure) => (
+          <button key={structure.id} type="button" onClick={() => { setSelectedStructureId(structure.id); setRecordDraft(null); setStructureDraft(null) }} className={`w-full rounded-[var(--nova-radius)] px-2 py-2 text-left text-xs ${selectedStructure?.id === structure.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)]'}`}>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="min-w-0 truncate font-medium">{structure.name}</span>
+              {!storyMemoryEnabled(structure.enabled) && <span className="shrink-0 rounded-full border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] opacity-75">{t('storyMemory.disabled')}</span>}
+            </span>
+            <span className="block truncate text-[11px] opacity-75">{t(`storyMemory.mode.${structure.mode}`)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+  const agentPanel = agentOpen ? (
+    <div className="h-full min-h-0 bg-[var(--nova-surface)]">
+      <ConfigManagerChat
+        origin="story_memory"
+        storyId={storyId}
+        branchId={visibleBranchId}
+        resourceId={selectedStructure?.id || ''}
+        context={{
+          selected_structure_id: selectedStructure?.id || '',
+          selected_structure_name: selectedStructure?.name || '',
+          record_count: String(records.length),
+        }}
+        onMutated={() => void load()}
+      />
+    </div>
+  ) : null
+
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
       <header className="nova-topbar flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--nova-border)] px-4 py-3">
@@ -249,36 +293,39 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
         </div>
       </header>
       {error && <div className="border-b border-[var(--nova-border)] px-4 py-2 text-xs text-[var(--nova-danger)]">{error}</div>}
-      <div className={`grid min-h-0 flex-1 grid-cols-1 overflow-hidden ${agentOpen ? 'lg:grid-cols-[240px_minmax(0,1fr)_minmax(320px,28rem)]' : 'lg:grid-cols-[240px_minmax(0,1fr)]'}`}>
-        <aside className="min-h-0 overflow-y-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 lg:border-b-0 lg:border-r">
-          <div className="mb-3 grid grid-cols-2 gap-2">
-            <button type="button" className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2 ${agentOpen ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`} onClick={() => setAgentOpen((value) => !value)}>
-              <Bot className="h-3.5 w-3.5" />
-              <span className="min-w-0 truncate">{t('storyMemory.configAgent')}</span>
-            </button>
-            <button type="button" className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2" onClick={startNewStructure}>
-              <Plus className="h-3.5 w-3.5" />
-              <span className="min-w-0 truncate">{t('storyMemory.addStructure')}</span>
-            </button>
-          </div>
-          <div className="mb-2 text-xs font-medium text-[var(--nova-text-muted)]">{t('storyMemory.structures')}</div>
-          <div className="space-y-1">
-            {structures.map((structure) => (
-              <button key={structure.id} type="button" onClick={() => { setSelectedStructureId(structure.id); setRecordDraft(null); setStructureDraft(null) }} className={`w-full rounded-[var(--nova-radius)] px-2 py-2 text-left text-xs ${selectedStructure?.id === structure.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)]'}`}>
-                <span className="flex min-w-0 items-center gap-1">
-                  <span className="min-w-0 truncate font-medium">{structure.name}</span>
-                  {!storyMemoryEnabled(structure.enabled) && <span className="shrink-0 rounded-full border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] opacity-75">{t('storyMemory.disabled')}</span>}
-                </span>
-                <span className="block truncate text-[11px] opacity-75">{t(`storyMemory.mode.${structure.mode}`)}</span>
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <main className="min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-4">
-          <div className={`grid min-h-0 gap-4 ${editorVisible ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
+      <AdaptiveSurface
+        left={{
+          id: 'story-memory-structures',
+          title: t('storyMemory.structures'),
+          side: 'left',
+          icon: <Brain className="h-4 w-4" />,
+          content: structurePanel,
+          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
+          mobileClassName: 'w-[min(90vw,360px)]',
+        }}
+        right={agentOpen && agentPanel ? {
+          id: 'story-memory-agent',
+          title: t('storyMemory.configAgent'),
+          side: 'right',
+          icon: <Bot className="h-4 w-4" />,
+          content: agentPanel,
+          desktopClassName: 'min-h-0 border-l border-[var(--nova-border)]',
+        } : undefined}
+        className="flex-1 overflow-hidden"
+        mainClassName="min-h-0 min-w-0"
+        desktopGridClassName={agentOpen ? 'grid-cols-[240px_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[240px_minmax(0,1fr)]'}
+      >
+        {({ isMobile, openLeft, openRight }) => (
+          <main className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-4">
+            <div className={`grid min-h-0 gap-4 ${editorVisible ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
             <div className="min-w-0">
               <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  {isMobile && (
+                    <button type="button" className="nova-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: t('storyMemory.structures') })} onClick={openLeft}>
+                      <PanelLeft className="h-4 w-4" />
+                    </button>
+                  )}
                 <div className="min-w-0">
                   <h3 className="truncate text-sm font-semibold">{selectedStructure?.name || t('storyMemory.noStructure')}</h3>
                   <p className="truncate text-xs text-[var(--nova-text-muted)]">
@@ -286,7 +333,13 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                     {selectedStructure?.description || t('storyMemory.recordCount', { count: records.length })}
                   </p>
                 </div>
+                </div>
                 <div className="flex shrink-0 items-center gap-1">
+                  {isMobile && agentOpen && (
+                    <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: t('storyMemory.configAgent') })} onClick={openRight}>
+                      <PanelRight className="h-4 w-4" />
+                    </button>
+                  )}
                   {selectedStructure && (
                     <>
                       <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.editStructure')} onClick={() => startEditStructure(selectedStructure)}>
@@ -414,25 +467,10 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                 ) : null}
               </aside>
             )}
-          </div>
-        </main>
-        {agentOpen && (
-          <aside className="min-h-0 border-l border-[var(--nova-border)] bg-[var(--nova-surface)]">
-            <ConfigManagerChat
-              origin="story_memory"
-              storyId={storyId}
-              branchId={visibleBranchId}
-              resourceId={selectedStructure?.id || ''}
-              context={{
-                selected_structure_id: selectedStructure?.id || '',
-                selected_structure_name: selectedStructure?.name || '',
-                record_count: String(records.length),
-              }}
-              onMutated={() => void load()}
-            />
-          </aside>
+            </div>
+          </main>
         )}
-      </div>
+      </AdaptiveSurface>
     </section>
   )
 }

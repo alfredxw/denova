@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"time"
@@ -33,7 +34,7 @@ type contextCompactionPolicy struct {
 	Enabled             bool
 	ContextWindowTokens int
 	Threshold           float64
-	RetainedRecentTurns int
+	RetainedTurns       int
 	TargetMinRatio      float64
 	TargetMaxRatio      float64
 }
@@ -52,7 +53,10 @@ type ContextCompactionResult struct {
 	SourceMessageCount  int
 	MessageCountBefore  int
 	MessageCountAfter   int
+	RetainedTurns       int
 }
+
+type contextCompactionSummaryFunc func(ctx context.Context, cfg *config.Config, agentKind string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, error)
 
 type contextCompactionController struct {
 	conversation ContextCompactionConversation
@@ -79,7 +83,7 @@ type ContextCompactionInput struct {
 
 type contextCompactionContextKey struct{}
 
-var summarizeContextForCompaction = generateContextCompactionSummary
+var summarizeContextForCompaction contextCompactionSummaryFunc = generateContextCompactionSummary
 
 func contextWithCompactionController(ctx context.Context, conversation Conversation) context.Context {
 	compaction, ok := conversation.(ContextCompactionConversation)
@@ -103,7 +107,7 @@ func resolveContextCompactionPolicy(cfg *config.Config, agentKind string) contex
 		Enabled:             contextSettings.CompactionEnabled,
 		ContextWindowTokens: modelSettings.ContextWindowTokens,
 		Threshold:           contextSettings.CompactionThreshold,
-		RetainedRecentTurns: compactionSettings.CompactionRecentTurns,
+		RetainedTurns:       compactionSettings.CompactionRecentTurns,
 		TargetMinRatio:      compactionSettings.CompactionTargetMin,
 		TargetMaxRatio:      compactionSettings.CompactionTargetMax,
 	}
@@ -152,6 +156,7 @@ func BuildContextCompaction(ctx context.Context, cfg *config.Config, agentKind s
 		ContextWindowTokens: policy.ContextWindowTokens,
 		Threshold:           policy.Threshold,
 		MessageCountBefore:  len(input.Messages),
+		RetainedTurns:       policy.RetainedTurns,
 	}
 	shouldCompact, skipped := policy.shouldCompact(tokensBefore, input.Force)
 	if !shouldCompact {
@@ -165,7 +170,9 @@ func BuildContextCompaction(ctx context.Context, cfg *config.Config, agentKind s
 	}
 	sourceTokens := EstimateContextTokens(source, nil)
 	emitContextCompactionEvent(input.Emit, phase, "started", result)
-	summary, err := summarizeContextForCompaction(ctx, cfg, agentKind, source, input.ReferenceContext, sourceTokens, policy)
+	summary, err := summarizeContextForCompaction(ctx, cfg, agentKind, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
+		emitContextCompactionDeltaEvent(input.Emit, phase, result, attempt, delta)
+	})
 	if err != nil {
 		emitContextCompactionEvent(input.Emit, phase, "failed", result)
 		return input.Messages, result, err
@@ -173,7 +180,7 @@ func BuildContextCompaction(ctx context.Context, cfg *config.Config, agentKind s
 	if epoch <= 0 {
 		epoch = 1
 	}
-	newMessages := compactMessagesForModel(input.Messages, summary, epoch, policy.RetainedRecentTurns)
+	newMessages := compactMessagesForModel(input.Messages, summary, epoch, policy.RetainedTurns)
 	result.Triggered = true
 	result.Epoch = epoch
 	result.Summary = summary
@@ -295,12 +302,39 @@ func compactMessagesForModel(messages []*schema.Message, summary string, epoch, 
 		}
 		contextMessages = append(contextMessages, msg)
 	}
-	tail := limitMessagesByRecentTurns(contextMessages, retainedTurns)
+	tail := retainTailByUserTurns(contextMessages, retainedTurns)
 	result := make([]*schema.Message, 0, len(systemMessages)+1+len(tail))
 	result = append(result, systemMessages...)
 	result = append(result, NewContextCompactionSummaryMessage(epoch, summary))
 	result = append(result, tail...)
 	return result
+}
+
+func compactedMessagesAfterSource(messages []*schema.Message, effectiveStart, sourceEndIndex, retainedTurns int) []*schema.Message {
+	sourceEndOffset := sourceEndIndex - effectiveStart
+	if sourceEndOffset < 0 {
+		sourceEndOffset = 0
+	}
+	if sourceEndOffset > len(messages) {
+		sourceEndOffset = len(messages)
+	}
+	sourceTail := retainTailByUserTurns(compactionContextMessages(messages[:sourceEndOffset]), retainedTurns)
+	appended := compactionContextMessages(messages[sourceEndOffset:])
+	tail := make([]*schema.Message, 0, len(sourceTail)+len(appended))
+	tail = append(tail, sourceTail...)
+	tail = append(tail, appended...)
+	return tail
+}
+
+func compactionContextMessages(messages []*schema.Message) []*schema.Message {
+	filtered := make([]*schema.Message, 0, len(messages))
+	for _, msg := range messages {
+		if msg == nil || isContextCompactionMessage(msg) {
+			continue
+		}
+		filtered = append(filtered, msg)
+	}
+	return filtered
 }
 
 // BuildCompactedModelMessages rebuilds model-visible history after a compaction
@@ -309,7 +343,7 @@ func BuildCompactedModelMessages(messages []*schema.Message, summary string, epo
 	return compactMessagesForModel(messages, summary, epoch, retainedTurns)
 }
 
-func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, agentKind string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy) (string, error) {
+func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, agentKind string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, error) {
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindContextCompaction)
 	maxTokens := contextCompactionSummaryMaxTokens(sourceTokens, policy.ContextWindowTokens, policy.TargetMaxRatio)
 	modelCfg.MaxTokens = &maxTokens
@@ -325,7 +359,14 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 			schema.SystemMessage(systemPrompt),
 			schema.UserMessage(buildContextCompactionTranscript(source, referenceContext, sourceTokens, retryReason, policy)),
 		}
-		msg, err := cm.Generate(ctx, input)
+		logFullModelInput(modelInputLogOptions{
+			AgentKind: config.AgentKindContextCompaction,
+			Source:    "context_compaction",
+			Mode:      fmt.Sprintf("stream_attempt_%d", attempt),
+			Config:    modelCfg,
+			Messages:  input,
+		})
+		msg, err := streamContextCompactionAttempt(ctx, cm, input, attempt, emitDelta)
 		if err != nil {
 			return "", fmt.Errorf("上下文压缩失败: %w", err)
 		}
@@ -347,6 +388,32 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 		}
 	}
 	return summary, nil
+}
+
+func streamContextCompactionAttempt(ctx context.Context, cm *openai.ChatModel, input []*schema.Message, attempt int, emitDelta func(attempt int, delta string)) (*schema.Message, error) {
+	stream, err := cm.Stream(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+	var chunks []*schema.Message
+	for {
+		msg, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if msg == nil {
+			continue
+		}
+		chunks = append(chunks, msg)
+		if msg.Content != "" && emitDelta != nil {
+			emitDelta(attempt, msg.Content)
+		}
+	}
+	return schema.ConcatMessages(chunks)
 }
 
 func contextCompactionSummaryMaxTokens(sourceTokens, contextWindowTokens int, targetMaxRatio float64) int {
@@ -439,46 +506,33 @@ func contextCompactionSystemInstruction() string {
 输出必须使用以下格式：
 
 【事件时间线】
-- [重要级别][事件类型] 事件描述
-  - 触发：谁做了什么
-  - 结果：造成了什么变化
-  - 长期影响：为什么后续必须记住
-  - 相关实体：角色 / 地点 / 物品 / 阵营 / 线索
+[时间] 事件名
+谁做了什么，造成了什么变化，这一段要求保留核心信息，特别是有长期影响的信息
 
-重要级别：
-- P0：永久核心事实。世界观、角色身份、主线设定、绝对不能丢。
-- P1：长期影响事件。会影响后续剧情、关系、任务或世界状态，必须保留。
-- P2：当前阶段重要信息。影响当前场景连续性，必须保留。
-- P3：低影响信息。只在必要时合并，不单独展开。
-
-事件类型可选：
-用户行动 / 剧情后果 / 角色关系 / 角色状态 / 世界状态 / 物品资源 / 任务目标 / 线索伏笔 / 冲突危险 / 当前阶段 / 待确认矛盾
+时间：事件发生的时间，格式为 YYYY-MM-DD 日内时间
 
 【长期影响账本】
-- 角色关系：
-- 角色状态：
-- 世界/阵营状态：
-- 物品/资源/能力：
-- 线索/秘密/伏笔：
-- 未闭环事项：
+角色关系：
+角色状态：
+世界/阵营状态：
+物品/资源/能力：
+线索/秘密/伏笔：
+未闭环事项：
 
 【当前阶段快照】
-- 当前地点：
-- 当前时间/阶段：
-- 当前在场角色：
-- 主角当前状态：
-- NPC当前态度：
-- 当前目标：
-- 当前危险：
-- 当前限制：
-- 用户最后行动：
-- LLM最后反馈：
-- 剧情停顿点：
-- 下一轮应从哪里继续：
-
-【已合并或舍弃的信息】
-简要说明哪些信息被合并或舍弃，以及原因。只允许舍弃无长期影响、无当前阶段影响的信息。
-	`)
+当前地点：
+当前时间/阶段：
+当前在场角色：
+主角当前状态：
+NPC当前态度：
+当前目标：
+当前危险：
+当前限制：
+用户最后行动：
+LLM最后反馈：
+剧情停顿点：
+下一轮应从哪里继续：
+`)
 }
 
 func buildContextCompactionTranscript(messages []*schema.Message, referenceContext string, sourceTokens int, retryInstruction string, policy contextCompactionPolicy) string {
@@ -556,6 +610,23 @@ func emitContextCompactionEvent(emit func(Event), phase, status string, result C
 		"message_count_before":  result.MessageCountBefore,
 		"message_count_after":   result.MessageCountAfter,
 		"skipped_reason":        result.SkippedReason,
+		"summary":               result.Summary,
+	}})
+}
+
+func emitContextCompactionDeltaEvent(emit func(Event), phase string, result ContextCompactionResult, attempt int, delta string) {
+	if emit == nil || delta == "" {
+		return
+	}
+	emit(Event{Type: "context_compaction", Data: map[string]any{
+		"phase":                 phase,
+		"status":                "delta",
+		"attempt":               attempt,
+		"delta":                 delta,
+		"tokens_before":         result.TokensBefore,
+		"context_window_tokens": result.ContextWindowTokens,
+		"threshold":             result.Threshold,
+		"message_count_before":  result.MessageCountBefore,
 	}})
 }
 

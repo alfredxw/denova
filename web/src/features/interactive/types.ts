@@ -55,7 +55,6 @@ export interface TellerContextPolicy {
   creator: string
   lore: string
   runtime_state: string
-  recent_turns: number
 }
 
 export interface TellerPromptSlot {
@@ -91,8 +90,45 @@ export interface TurnDisplayEvent {
   role: 'thinking' | 'tool_call' | 'tool_result'
   content?: string
   name?: string
+  args?: string
   status?: 'running' | 'success' | 'error'
+  result?: string
   created_at?: string
+}
+
+export interface TokenUsageEvent {
+  id?: string
+  type?: 'token_usage'
+  story_id?: string
+  branch_id?: string
+  created_at?: string
+  run_id?: string
+  agent_kind?: string
+  prompt_tokens?: number
+  cached_prompt_tokens?: number
+  uncached_prompt_tokens?: number
+  cache_hit_rate?: number
+  completion_tokens?: number
+  reasoning_tokens?: number
+  total_tokens?: number
+  model_calls?: number
+  generated_bytes?: number
+  usage_calls?: TokenUsageCall[]
+}
+
+export interface TokenUsageCall {
+  index?: number
+  created_at?: string
+  finish_reason?: string
+  requested_tools?: string[]
+  after_tools?: string[]
+  prompt_tokens?: number
+  cached_prompt_tokens?: number
+  uncached_prompt_tokens?: number
+  cache_hit_rate?: number
+  completion_tokens?: number
+  reasoning_tokens?: number
+  total_tokens?: number
 }
 
 export interface TurnVersion {
@@ -125,6 +161,7 @@ export interface Snapshot {
   branch_id: string
   turns: TurnEvent[]
   current_turn?: TurnEvent
+  token_usage_events?: TokenUsageEvent[]
   state: Record<string, unknown>
   graph?: StoryGraph
 }

@@ -186,6 +186,14 @@ Start frontend/backend separately:
 ./bootstrap.sh fe/be
 ```
 
+Allow LAN devices to access the frontend dev server:
+
+```bash
+./bootstrap.sh fe --lan
+```
+
+You can also enable "Allow LAN Access" in Settings and restart Nova. Other devices should open the frontend URL shown in Settings (default `http://<LAN-IP>:5173`), then sign in on the page with the remote access username and password; the backend rejects unauthenticated remote requests.
+
 ## Donate QR Codes
 
 > Buy the author a coffee and help cover the monthly AI iteration cost.

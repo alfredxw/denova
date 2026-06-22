@@ -150,15 +150,55 @@ type TurnEvent struct {
 	Flags         map[string]bool `json:"flags,omitempty"`
 }
 
-// DisplayEvent 表示互动回合中只用于前端展示的事件，例如工具调用卡片。
-// 它不进入下一轮 Agent 上下文，并且不保存工具入参或返回正文。
+const TokenUsageEventType = "token_usage"
+
+// DisplayEvent 表示互动回合中只用于前端展示的事件，例如思考过程和工具调用卡片。
+// 它不进入下一轮 Agent 上下文；Args/Result 仅用于追溯当时的工具调用过程。
 type DisplayEvent struct {
 	ID        string `json:"id,omitempty"`
 	Role      string `json:"role"`
 	Content   string `json:"content,omitempty"`
 	Name      string `json:"name,omitempty"`
+	Args      string `json:"args,omitempty"`
 	Status    string `json:"status,omitempty"`
+	Result    string `json:"result,omitempty"`
 	CreatedAt string `json:"created_at,omitempty"`
+}
+
+type TokenUsageEvent struct {
+	V                    int              `json:"v"`
+	Type                 string           `json:"type"`
+	ID                   string           `json:"id"`
+	StoryID              string           `json:"story_id,omitempty"`
+	BranchID             string           `json:"branch_id"`
+	CreatedAt            string           `json:"created_at"`
+	RunID                string           `json:"run_id,omitempty"`
+	AgentKind            string           `json:"agent_kind,omitempty"`
+	PromptTokens         int              `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate         float64          `json:"cache_hit_rate,omitempty"`
+	CompletionTokens     int              `json:"completion_tokens,omitempty"`
+	ReasoningTokens      int              `json:"reasoning_tokens,omitempty"`
+	TotalTokens          int              `json:"total_tokens,omitempty"`
+	ModelCalls           int              `json:"model_calls,omitempty"`
+	GeneratedBytes       int              `json:"generated_bytes,omitempty"`
+	UsageCalls           []TokenUsageCall `json:"usage_calls,omitempty"`
+}
+
+type TokenUsageCall struct {
+	Index                int      `json:"index,omitempty"`
+	CreatedAt            string   `json:"created_at,omitempty"`
+	FinishReason         string   `json:"finish_reason,omitempty"`
+	RequestedTools       []string `json:"requested_tools,omitempty"`
+	AfterTools           []string `json:"after_tools,omitempty"`
+	PromptTokens         int      `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens   int      `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens int      `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate         float64  `json:"cache_hit_rate,omitempty"`
+	CompletionTokens     int      `json:"completion_tokens,omitempty"`
+	ReasoningTokens      int      `json:"reasoning_tokens,omitempty"`
+	TotalTokens          int      `json:"total_tokens,omitempty"`
 }
 
 type TurnAlt struct {
@@ -258,6 +298,7 @@ type Snapshot struct {
 	BranchID                 string                         `json:"branch_id"`
 	Turns                    []TurnEvent                    `json:"turns"`
 	CurrentTurn              *TurnEvent                     `json:"current_turn,omitempty"`
+	TokenUsageEvents         []TokenUsageEvent              `json:"token_usage_events,omitempty"`
 	ContextCompaction        *ContextCompactionEvent        `json:"context_compaction,omitempty"`
 	ContextCompactionRemoval *ContextCompactionRemovalEvent `json:"context_compaction_removal,omitempty"`
 	State                    map[string]any                 `json:"state"`

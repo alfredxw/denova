@@ -26,6 +26,8 @@ const workbench = {
   'workbench.modeSwitch': 'Mode Switch',
   'workbench.mobile.agent': 'Agent',
   'workbench.mobile.navigation': 'Mobile workbench navigation',
+  'workbench.mobile.navigationMenu': 'Navigation',
+  'workbench.mobile.openSidePanel': 'Open {{label}} panel',
   'workbench.mobile.project': 'Project',
   'workbench.noBook': 'No Book Selected',
   'workbench.status.currentChapter': 'Current: {{title}} · {{words}} words · {{status}}',
@@ -33,6 +35,8 @@ const workbench = {
   'workbench.status.streaming': 'Generating',
   'workbench.status.summary': '{{title}} · {{chapters}} chapters · {{words}} words',
   'workbench.untitled': 'Untitled',
+  'workbench.updateNotice.available': 'New version {{version}}',
+  'workbench.updateNotice.dismiss': 'Dismiss update notice',
 } as const
 
 export default workbench

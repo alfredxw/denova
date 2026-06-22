@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import { setConfiguredLocale } from '@/i18n'
-import { fetchAPI, requestJSON } from './client'
+import { clearRemoteAccessCredentials, fetchAPI, requestJSON, setRemoteAccessCredentials } from './client'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -13,6 +13,7 @@ describe('api client backend availability toast', () => {
   beforeEach(() => {
     setConfiguredLocale('zh-CN')
     vi.mocked(toast.error).mockClear()
+    window.sessionStorage.clear()
   })
 
   afterEach(() => {
@@ -53,5 +54,32 @@ describe('api client backend availability toast', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('missing', { status: 502 })))
     await expect(fetchAPI('/assets/app.js')).resolves.toHaveProperty('status', 502)
     expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('adds remote access credentials to local API requests', async () => {
+    setRemoteAccessCredentials('reader', 'secret')
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await fetchAPI('/api/settings')
+
+    const [, init] = (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit]>)[0]
+    expect(new Headers(init.headers).get('Authorization')).toBe('Basic cmVhZGVyOnNlY3JldA==')
+  })
+
+  it('clears stale credentials and requests login on remote access rejection', async () => {
+    setRemoteAccessCredentials('reader', 'wrong')
+    const listener = vi.fn()
+    window.addEventListener('nova:remote-access-required', listener)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('auth required', {
+      status: 401,
+      headers: { 'WWW-Authenticate': 'Basic realm="Nova"' },
+    })))
+
+    await expect(requestJSON('/api/settings')).rejects.toThrow('auth required')
+
+    expect(listener).toHaveBeenCalledTimes(1)
+    clearRemoteAccessCredentials()
+    window.removeEventListener('nova:remote-access-required', listener)
   })
 })

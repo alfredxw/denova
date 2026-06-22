@@ -2,7 +2,7 @@ import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useS
 import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, Pencil, RefreshCw } from 'lucide-react'
+import { Archive, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '@/lib/api'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
@@ -116,6 +116,9 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
     case 'tool_result':
       return <ToolResultBlock content={content} />
 
+    case 'context_compaction':
+      return <ContextCompactionBlock message={message} />
+
     case 'system':
       return (
         <div className="flex justify-center">
@@ -166,6 +169,75 @@ export function ToolActivityBlock({ content }: { content: string }) {
       </div>
     </div>
   )
+}
+
+function ContextCompactionBlock({ message }: { message: ChatMessage }) {
+  const { t } = useTranslation()
+  const status = message.status || 'running'
+  const isRunning = status === 'running'
+  const before = numberOrZero(message.tokens_before)
+  const after = numberOrZero(message.tokens_after)
+  const windowTokens = numberOrZero(message.context_window_tokens)
+  const usageRatio = before > 0 && windowTokens > 0 ? Math.min(before / windowTokens, 1) : 0
+  const thresholdRatio = numberOrZero(message.threshold)
+  const summary = (message.content || '').trim()
+  const stats = [
+    before > 0 ? t('chat.contextCompaction.tokensBefore', { count: formatNumber(before) }) : '',
+    after > 0 ? t('chat.contextCompaction.tokensAfter', { count: formatNumber(after) }) : '',
+    message.source_message_count ? t('chat.contextCompaction.sourceMessages', { count: message.source_message_count }) : '',
+  ].filter(Boolean).join(' · ')
+
+  return (
+    <div className="flex justify-start">
+      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)] backdrop-blur">
+        <div className="flex min-w-0 items-start gap-2 px-3 py-2.5">
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
+            <Archive className={`h-3.5 w-3.5 ${isRunning ? 'animate-pulse' : ''}`} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-medium text-[var(--nova-text)]">{t('chat.contextCompaction.title')}</span>
+              <span className={`rounded-full border px-1.5 py-0.5 text-[10px] ${status === 'error' ? 'border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}>
+                {t(`chat.contextCompaction.status.${status}`)}
+              </span>
+              {message.epoch ? (
+                <span className="font-mono text-[10px] text-[var(--nova-text-faint)]">epoch {message.epoch}</span>
+              ) : null}
+              {message.attempt && message.attempt > 1 ? (
+                <span className="font-mono text-[10px] text-[var(--nova-text-faint)]">{t('chat.contextCompaction.attempt', { count: message.attempt })}</span>
+              ) : null}
+            </div>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--nova-text-faint)]">
+              <span>{t(`chat.contextCompaction.phase.${message.phase || 'pre_run'}`)}</span>
+              {stats ? <span className="min-w-0 truncate">{stats}</span> : null}
+            </div>
+            {windowTokens > 0 ? (
+              <div className="mt-2">
+                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--nova-surface-2)]">
+                  <div className="h-full rounded-full bg-[var(--nova-accent-green)] transition-all" style={{ width: `${Math.round(usageRatio * 100)}%` }} />
+                </div>
+                <div className="mt-1 flex justify-between font-mono text-[10px] text-[var(--nova-text-faint)]">
+                  <span>{Math.round(usageRatio * 100)}%</span>
+                  {thresholdRatio > 0 ? <span>{t('chat.contextCompaction.threshold', { percent: Math.round(thresholdRatio * 100) })}</span> : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="max-h-40 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--nova-text-muted)] whitespace-pre-wrap">
+          {summary || (isRunning ? t('chat.contextCompaction.waiting') : t('chat.contextCompaction.empty'))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function numberOrZero(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat().format(value)
 }
 
 /** 工具执行卡片，默认以单行展示运行态和结果态。 */

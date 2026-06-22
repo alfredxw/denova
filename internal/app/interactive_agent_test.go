@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"nova/config"
 	"nova/internal/book"
 	"nova/internal/interactive"
+	"nova/internal/session"
 )
 
 func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *testing.T) {
@@ -55,7 +57,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatalf("history[0] mismatch: %#v", history[0])
 	}
 	if strings.Contains(history[0].Content, "故事记忆") || strings.Contains(history[0].Content, "最高篇幅约束") {
-		t.Fatalf("history[0] should remain plain recent history, got: %#v", history[0])
+		t.Fatalf("history[0] should remain plain story history, got: %#v", history[0])
 	}
 	if history[1].Role != schema.Assistant || history[1].Content != "门后传来低沉的风声。" {
 		t.Fatalf("history[1] mismatch: %#v", history[1])
@@ -130,7 +132,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"key_field_id: name",
 		"name（姓名） required",
 		"plot_summary",
-		"最近回合上下文历史",
+		"历史回合上下文",
 		"第 2 回合用户行动：我点燃火把",
 	} {
 		if !strings.Contains(stateInstruction, want) {
@@ -176,6 +178,65 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 }
 
+func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:         "工具时间线",
+		Origin:        "主角进入档案室",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "检查档案柜", 800, &config.Config{})
+
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{Role: "thinking", Content: "先分析档案室线索。"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-1", Role: "tool_call", Name: "list_lore_items", Content: "list_lore_items", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AppendDisplayToolArgs("call-1", "list_lore_items", `{"query":"档案室"}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.UpdateDisplayToolResult("call-1", "list_lore_items", "success", "找到档案室设定"); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{Role: "thinking", Content: "第二轮基于工具结果继续判断。"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-2", Role: "tool_call", Name: "apply_story_memory_patches", Content: "apply_story_memory_patches", Args: `{"patches":[{"table":"plot_summary"}]}`, Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.UpdateDisplayToolResult("call-2", "apply_story_memory_patches", "success", "已写入 1 条记忆"); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AppendAssistantWithThinking(`<NARRATIVE>
+档案柜里露出一张潮湿的地图。
+</NARRATIVE>`, "先分析档案室线索。第二轮基于工具结果继续判断。"); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := snapshot.Turns[0].DisplayEvents
+	if len(events) != 4 {
+		t.Fatalf("display event count = %d, want 4: %#v", len(events), events)
+	}
+	if events[0].Role != "thinking" || events[1].Name != "list_lore_items" || events[2].Role != "thinking" || events[3].Name != "apply_story_memory_patches" {
+		t.Fatalf("display events order mismatch: %#v", events)
+	}
+	if events[1].Args != `{"query":"档案室"}` || events[1].Result != "找到档案室设定" || events[1].Status != "success" {
+		t.Fatalf("first tool event details mismatch: %#v", events[1])
+	}
+	if events[3].Args == "" || events[3].Result != "已写入 1 条记忆" || events[3].Status != "success" {
+		t.Fatalf("second tool event details mismatch: %#v", events[3])
+	}
+}
+
 func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := t.TempDir()
@@ -194,8 +255,7 @@ func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T
   "context_policy": {
     "creator": "always",
     "lore": "relevant",
-    "runtime_state": "always",
-    "recent_turns": 8
+    "runtime_state": "always"
   },
   "slots": [
     {
@@ -244,7 +304,7 @@ func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T
 	}
 }
 
-func TestInteractiveConversationUsesAgentContextRecentTurns(t *testing.T) {
+func TestInteractiveConversationKeepsFullHistoryWithoutSlidingWindow(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := t.TempDir()
 	store := interactive.NewStore(workspace)
@@ -265,27 +325,24 @@ func TestInteractiveConversationUsesAgentContextRecentTurns(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	recentTurns := 2
-	cfg := &config.Config{AgentContexts: config.AgentContextSettings{
-		InteractiveStory: config.AgentContextOverride{RecentTurns: &recentTurns},
-	}}
+	cfg := &config.Config{}
 	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
 	history, err := conversation.PrepareMessages("我继续探索", "我继续探索")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history) != 5 {
-		t.Fatalf("history length = %d, want 5", len(history))
+	if len(history) != 9 {
+		t.Fatalf("history length = %d, want all 4 turns + instruction", len(history))
 	}
-	if history[0].Content != "第3次行动" || history[2].Content != "第4次行动" {
-		t.Fatalf("recent history should use agent context window: %#v", history)
+	if history[0].Content != "第1次行动" || history[2].Content != "第2次行动" || history[6].Content != "第4次行动" {
+		t.Fatalf("interactive story history should keep the full pre-compaction chain: %#v", history)
 	}
-	if strings.Contains(history[4].Content, "第3次行动") || !strings.Contains(history[4].Content, "较早 2 个回合") {
-		t.Fatalf("older turns should be summarized in runtime context: %s", history[4].Content)
+	if strings.Contains(history[8].Content, "较早") || strings.Contains(history[8].Content, "第1次行动") {
+		t.Fatalf("turn instruction should not carry sliding-window summaries or duplicate raw history: %s", history[8].Content)
 	}
 }
 
-func TestInteractiveConversationUsesContextCompactionRetainedTurns(t *testing.T) {
+func TestInteractiveConversationUsesDefaultCompactionRetainedTurns(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := t.TempDir()
 	store := interactive.NewStore(workspace)
@@ -298,10 +355,10 @@ func TestInteractiveConversationUsesContextCompactionRetainedTurns(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 1; i <= 5; i++ {
+	for i := 1; i <= 10; i++ {
 		if _, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
-			User:      "第" + string(rune('0'+i)) + "次行动",
-			Narrative: "第" + string(rune('0'+i)) + "段剧情",
+			User:      fmt.Sprintf("第%d次行动", i),
+			Narrative: fmt.Sprintf("第%d段剧情", i),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -309,31 +366,97 @@ func TestInteractiveConversationUsesContextCompactionRetainedTurns(t *testing.T)
 	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
 		AgentKind:       config.AgentKindInteractiveStory,
 		Summary:         "压缩摘要：主角已进入旧城。",
-		SourceTurnCount: 5,
+		SourceTurnCount: 10,
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	interactiveRetainedTurns := 1
-	compactionRetainedTurns := 3
-	cfg := &config.Config{AgentContexts: config.AgentContextSettings{
-		InteractiveStory:  config.AgentContextOverride{CompactionRecentTurns: &interactiveRetainedTurns},
-		ContextCompaction: config.AgentContextOverride{CompactionRecentTurns: &compactionRetainedTurns},
-	}}
+	cfg := &config.Config{}
 	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
 	history, err := conversation.PrepareMessages("我继续探索", "我继续探索")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history) != 8 {
-		t.Fatalf("history length = %d, want compaction summary + 3 turns + instruction", len(history))
+	if len(history) != 4 {
+		t.Fatalf("history length = %d, want compaction summary + 1 retained turn + instruction", len(history))
 	}
-	if history[1].Content != "第3次行动" || history[3].Content != "第4次行动" || history[5].Content != "第5次行动" {
-		t.Fatalf("recent history should use context_compaction retained turns: %#v", history)
+	if history[1].Content != "第10次行动" || history[2].Content != "第10段剧情" {
+		t.Fatalf("history should use default retained tail after compaction: %#v", history)
 	}
 }
 
-func TestInteractiveTurnMemoryCompressesOlderTurns(t *testing.T) {
+func TestInteractiveStateInstructionUsesModelVisibleCompactedHistory(t *testing.T) {
+	workspace := t.TempDir()
+	novaDir := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:            "记忆压缩测试",
+		Origin:           "主角进入旧城",
+		StoryTellerID:    "classic",
+		ReplyTargetChars: 700,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 10; i++ {
+		if _, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
+			User:      fmt.Sprintf("第%d次行动", i),
+			Narrative: fmt.Sprintf("第%d段剧情", i),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.AppendContextCompaction(story.ID, "main", interactive.ContextCompactionEvent{
+		AgentKind:       config.AgentKindInteractiveStory,
+		Summary:         "压缩摘要：主角已进入旧城。",
+		SourceTurnCount: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, &config.Config{})
+	instruction, err := conversation.BuildStateInstruction(interactive.TurnEvent{User: "我继续探索", Narrative: "我发现新的石门"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(instruction, "[Nova Context Compaction]") || !strings.Contains(instruction, "压缩摘要：主角已进入旧城。") {
+		t.Fatalf("state instruction should include active compaction summary: %s", instruction)
+	}
+	if strings.Contains(instruction, "第1次行动") || strings.Contains(instruction, "第9次行动") {
+		t.Fatalf("state instruction should not include turns omitted by compaction: %s", instruction)
+	}
+	if !strings.Contains(instruction, "第10次行动") {
+		t.Fatalf("state instruction should include retained model-visible tail: %s", instruction)
+	}
+}
+
+func TestHotChoicesTurnHistoryUsesModelVisibleCompactedHistory(t *testing.T) {
+	turns := make([]interactive.TurnEvent, 0, 10)
+	for i := 1; i <= 10; i++ {
+		turns = append(turns, interactive.TurnEvent{
+			User:      fmt.Sprintf("第%d次行动", i),
+			Narrative: fmt.Sprintf("第%d段剧情", i),
+		})
+	}
+	compaction := &interactive.ContextCompactionEvent{
+		Epoch:           2,
+		Summary:         "压缩摘要：主角已进入旧城。",
+		SourceTurnCount: 10,
+	}
+	turnMemory := buildInteractiveModelVisibleTurnMemory(turns, compaction)
+	history := formatHotChoicesTurnHistory(turnMemory, compaction)
+	if !strings.Contains(history, "[Nova Context Compaction] epoch=2") || !strings.Contains(history, "压缩摘要：主角已进入旧城。") {
+		t.Fatalf("hot choices history should include active compaction summary: %s", history)
+	}
+	if strings.Contains(history, "第1次行动") || strings.Contains(history, "第9次行动") {
+		t.Fatalf("hot choices history should not include turns omitted by compaction: %s", history)
+	}
+	if !strings.Contains(history, "第10次行动") {
+		t.Fatalf("hot choices history should include retained model-visible tail: %s", history)
+	}
+}
+
+func TestInteractiveTurnMemoryKeepsFullTurnChain(t *testing.T) {
 	turns := []interactive.TurnEvent{
 		{User: "第1次行动", Narrative: "第1段剧情"},
 		{User: "第2次行动", Narrative: "第2段剧情"},
@@ -341,17 +464,15 @@ func TestInteractiveTurnMemoryCompressesOlderTurns(t *testing.T) {
 		{User: "第4次行动", Narrative: "第4段剧情"},
 		{User: "第5次行动", Narrative: "第5段剧情"},
 	}
-	memory := buildInteractiveTurnMemory(turns, 2)
-	if len(memory.RecentTurns) != 2 {
-		t.Fatalf("recent turns = %d, want 2", len(memory.RecentTurns))
+	memory := buildInteractiveTurnMemory(turns)
+	if len(memory.Turns) != len(turns) {
+		t.Fatalf("turns = %d, want full chain %d", len(memory.Turns), len(turns))
 	}
-	if memory.RecentTurns[0].User != "第4次行动" || memory.RecentTurns[1].User != "第5次行动" {
-		t.Fatalf("unexpected recent turns: %#v", memory.RecentTurns)
+	if memory.Turns[0].User != "第1次行动" || memory.Turns[4].User != "第5次行动" {
+		t.Fatalf("unexpected full turn chain: %#v", memory.Turns)
 	}
-	if !strings.Contains(memory.PreviousSummary, "较早 3 个回合") ||
-		!strings.Contains(memory.PreviousSummary, "第 1 回合") ||
-		strings.Contains(memory.PreviousSummary, "第4次行动") {
-		t.Fatalf("unexpected previous summary: %s", memory.PreviousSummary)
+	if memory.PreviousSummary != "" || memory.PreviousCount != 0 || memory.OmittedCount != 0 {
+		t.Fatalf("sliding-window summary should be disabled: %#v", memory)
 	}
 }
 
@@ -371,8 +492,11 @@ func TestInteractiveTurnMemoryWithCompactionUsesSingleSummaryAndRetainedTail(t *
 	if memory.PreviousSummary != "" {
 		t.Fatalf("previous summary should stay empty when compaction summary is a model message, got %q", memory.PreviousSummary)
 	}
-	if len(memory.RecentTurns) != 1 || memory.RecentTurns[0].User != "第5次行动" {
-		t.Fatalf("recent tail should keep retained turns from the full turn chain: %#v", memory.RecentTurns)
+	if len(memory.Turns) != 3 ||
+		memory.Turns[0].User != "第3次行动" ||
+		memory.Turns[1].User != "第4次行动" ||
+		memory.Turns[2].User != "第5次行动" {
+		t.Fatalf("retained tail should keep retained source turns plus post-compaction turns: %#v", memory.Turns)
 	}
 	if memory.PreviousCount != 3 || memory.OmittedCount != 3 {
 		t.Fatalf("unexpected compaction counts: %#v", memory)
@@ -393,8 +517,8 @@ func TestInteractiveTurnMemoryWithCompactionRetainsSourceTailImmediatelyAfterCom
 	if memory.PreviousSummary != "" {
 		t.Fatalf("compaction summary should not be duplicated in previous summary: %q", memory.PreviousSummary)
 	}
-	if len(memory.RecentTurns) != 2 || memory.RecentTurns[0].User != "第2次行动" || memory.RecentTurns[1].User != "第3次行动" {
-		t.Fatalf("recent tail should remain available immediately after compaction: %#v", memory.RecentTurns)
+	if len(memory.Turns) != 2 || memory.Turns[0].User != "第2次行动" || memory.Turns[1].User != "第3次行动" {
+		t.Fatalf("retained tail should remain available immediately after compaction: %#v", memory.Turns)
 	}
 }
 

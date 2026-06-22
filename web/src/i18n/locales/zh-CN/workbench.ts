@@ -26,6 +26,8 @@ const workbench = {
   'workbench.modeSwitch': '模式切换',
   'workbench.mobile.agent': 'Agent',
   'workbench.mobile.navigation': '移动端工作台导航',
+  'workbench.mobile.navigationMenu': '导航菜单',
+  'workbench.mobile.openSidePanel': '打开{{label}}面板',
   'workbench.mobile.project': '项目',
   'workbench.noBook': '未选择书籍',
   'workbench.status.currentChapter': '当前：{{title}} · {{words}} 字 · {{status}}',
@@ -33,6 +35,8 @@ const workbench = {
   'workbench.status.streaming': '生成中',
   'workbench.status.summary': '《{{title}}》 · {{chapters}} 章 · {{words}} 字',
   'workbench.untitled': '未命名',
+  'workbench.updateNotice.available': '发现新版本 {{version}}',
+  'workbench.updateNotice.dismiss': '关闭更新提示',
 } as const
 
 export default workbench

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { act, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useWorkspace } from './useWorkspace'
 
 const apiMock = vi.hoisted(() => ({
@@ -28,6 +28,21 @@ describe('useWorkspace', () => {
     apiMock.getWorkspaceTree.mockResolvedValue([])
     apiMock.getWorkspaceSummary.mockResolvedValue({ title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] })
     apiMock.getStyles.mockResolvedValue([])
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('关闭自动刷新时不注册目录、统计和风格的后台轮询', async () => {
+    const setIntervalSpy = vi.spyOn(window, 'setInterval')
+
+    render(<WorkspaceHarness autoRefreshEnabled={false} onChange={() => {}} />)
+
+    await waitFor(() => expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1))
+    expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(1)
+    expect(apiMock.getStyles).toHaveBeenCalledTimes(1)
+    expect(setIntervalSpy.mock.calls.some(([, timeout]) => timeout === TREE_AUTO_REFRESH_INTERVAL_MS_FOR_TEST)).toBe(false)
   })
 
   it('只应用最后一次选中文件的读取结果，避免旧请求晚返回覆盖当前内容', async () => {
@@ -88,8 +103,14 @@ describe('useWorkspace', () => {
   })
 })
 
-function WorkspaceHarness({ onChange }: { onChange: (workspace: ReturnType<typeof useWorkspace>) => void }) {
-  const workspace = useWorkspace()
+function WorkspaceHarness({
+  autoRefreshEnabled,
+  onChange,
+}: {
+  autoRefreshEnabled?: boolean
+  onChange: (workspace: ReturnType<typeof useWorkspace>) => void
+}) {
+  const workspace = useWorkspace({ autoRefreshEnabled })
   useEffect(() => onChange(workspace), [onChange, workspace])
   return <div data-testid="workspace-state">{workspace.selectedFile}|{workspace.fileContent}</div>
 }
@@ -103,3 +124,5 @@ function deferred<T>() {
   })
   return { promise, resolve, reject }
 }
+
+const TREE_AUTO_REFRESH_INTERVAL_MS_FOR_TEST = 3000

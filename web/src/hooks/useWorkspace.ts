@@ -29,8 +29,13 @@ interface WorkspaceRefreshOptions {
   clearOnError?: boolean
 }
 
+interface UseWorkspaceOptions {
+  autoRefreshEnabled?: boolean
+}
+
 /** 工作区目录树 hook，负责获取目录结构、文件内容和保存 */
-export function useWorkspace() {
+export function useWorkspace(options: UseWorkspaceOptions = {}) {
+  const autoRefreshEnabled = options.autoRefreshEnabled ?? true
   const [tree, setTree] = useState<FileNode[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
@@ -144,7 +149,7 @@ export function useWorkspace() {
 
   // 自动刷新目录树，覆盖 AI Agent 直接写入文件后的结构变化。
   useEffect(() => {
-    if (!workspaceLoaded || !workspace) return
+    if (!autoRefreshEnabled || !workspaceLoaded || !workspace) return
     const refreshIfVisible = () => {
       if (document.visibilityState === 'visible') {
         const backgroundOptions = { showLoading: false, clearOnError: false }
@@ -165,7 +170,7 @@ export function useWorkspace() {
       window.removeEventListener('focus', refreshIfVisible)
       document.removeEventListener('visibilitychange', refreshIfVisible)
     }
-  }, [fetchTree, fetchStyles, fetchSummary, workspace, workspaceLoaded])
+  }, [autoRefreshEnabled, fetchTree, fetchStyles, fetchSummary, workspace, workspaceLoaded])
 
   /** 选中文件并加载内容 */
   const selectFile = useCallback(async (path: string) => {

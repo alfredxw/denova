@@ -8,6 +8,7 @@ import (
 
 	"nova/config"
 	"nova/internal/prompts"
+	"nova/internal/session"
 )
 
 func TestInteractiveContextAnalysisLabelsDynamicContextAtFinalMessage(t *testing.T) {
@@ -32,8 +33,8 @@ func TestInteractiveContextAnalysisLabelsDynamicContextAtFinalMessage(t *testing
 	if len(analysis.ContextMessages) != 3 {
 		t.Fatalf("context message count = %d, want 3", len(analysis.ContextMessages))
 	}
-	if first := analysis.ContextMessages[0]; first.Source != "最近互动回合" || strings.Contains(first.Title, "故事状态与记忆") {
-		t.Fatalf("first message should be recent history, got: %#v", first)
+	if first := analysis.ContextMessages[0]; first.Source != "互动历史回合" || strings.Contains(first.Title, "故事状态与记忆") {
+		t.Fatalf("first message should be interactive history, got: %#v", first)
 	}
 	last := analysis.ContextMessages[len(analysis.ContextMessages)-1]
 	if last.Source != "本轮互动指令" || last.Title != "本轮互动指令与动态上下文" {
@@ -62,5 +63,46 @@ func TestInteractiveContextAnalysisUsesConfiguredContextWindow(t *testing.T) {
 	}
 	if analysis.ContextWindowTokens != contextWindow {
 		t.Fatalf("context window tokens = %d, want %d", analysis.ContextWindowTokens, contextWindow)
+	}
+}
+
+func TestIDEContextAnalysisKeepsPostCompactionMessages(t *testing.T) {
+	messages := []*schema.Message{
+		schema.UserMessage("user 1"),
+		schema.AssistantMessage("assistant 1", nil),
+		schema.UserMessage("user 2"),
+		schema.AssistantMessage("assistant 2", nil),
+		schema.UserMessage("user 3"),
+		schema.AssistantMessage("assistant 3", nil),
+	}
+	compaction := &session.ContextCompaction{
+		Epoch:          1,
+		Summary:        "压缩摘要：保留早期约束。",
+		SourceEndIndex: 2,
+		RetainedTurns:  1,
+	}
+	cfg := &config.Config{}
+
+	analysisMessages := buildIDEAnalysisMessages(cfg, messages, len(messages), compaction)
+	got := messageContents(analysisMessages)
+	want := []string{
+		analysisMessages[0].Content,
+		"user 1",
+		"assistant 1",
+		"user 2",
+		"assistant 2",
+		"user 3",
+		"assistant 3",
+	}
+	if !isContextCompactionMessage(analysisMessages[0]) {
+		t.Fatalf("first message should be compaction summary: %#v", analysisMessages[0])
+	}
+	if len(got) != len(want) {
+		t.Fatalf("analysis messages = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("analysis message %d = %q, want %q; all=%#v", i, got[i], want[i], got)
+		}
 	}
 }

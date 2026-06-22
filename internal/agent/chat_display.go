@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"nova/internal/session"
 )
@@ -120,6 +121,43 @@ func (r *displayEventRecorder) Record(ev Event) {
 		if id != "" {
 			delete(r.pendingToolIDs, id)
 		}
+	case "token_usage":
+		r.flushThinking()
+		stats := runTokenUsage{
+			RunID:                eventDataString(ev.Data, "run_id"),
+			AgentKind:            eventDataString(ev.Data, "agent_kind"),
+			PromptTokens:         eventDataInt(ev.Data, "prompt_tokens"),
+			CachedPromptTokens:   eventDataInt(ev.Data, "cached_prompt_tokens"),
+			UncachedPromptTokens: eventDataInt(ev.Data, "uncached_prompt_tokens"),
+			CacheHitRate:         eventDataFloat(ev.Data, "cache_hit_rate"),
+			CompletionTokens:     eventDataInt(ev.Data, "completion_tokens"),
+			ReasoningTokens:      eventDataInt(ev.Data, "reasoning_tokens"),
+			TotalTokens:          eventDataInt(ev.Data, "total_tokens"),
+			ModelCalls:           eventDataInt(ev.Data, "model_calls"),
+			GeneratedBytes:       eventDataInt(ev.Data, "generated_bytes"),
+			Calls:                eventDataUsageCalls(ev.Data, "usage_calls"),
+		}
+		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+			ID:                   stats.RunID,
+			Role:                 "token_usage",
+			Content:              tokenUsageContent(stats),
+			Name:                 "token_usage",
+			CreatedAt:            eventDataTime(ev.Data, "created_at"),
+			RunID:                stats.RunID,
+			AgentKind:            stats.AgentKind,
+			PromptTokens:         stats.PromptTokens,
+			CachedPromptTokens:   stats.CachedPromptTokens,
+			UncachedPromptTokens: stats.UncachedPromptTokens,
+			CacheHitRate:         stats.CacheHitRate,
+			CompletionTokens:     stats.CompletionTokens,
+			ReasoningTokens:      stats.ReasoningTokens,
+			TotalTokens:          stats.TotalTokens,
+			ModelCalls:           stats.ModelCalls,
+			GeneratedBytes:       stats.GeneratedBytes,
+			UsageCalls:           usageCallsForSession(stats.Calls),
+		}); err != nil {
+			log.Printf("[agent-run] persist token_usage failed run_id=%s err=%v", stats.RunID, err)
+		}
 	case "error", "aborted":
 		r.flushThinking()
 		for id, name := range r.pendingToolIDs {
@@ -160,6 +198,124 @@ func eventDataString(data interface{}, key string) string {
 		}
 	}
 	return ""
+}
+
+func eventDataTime(data interface{}, key string) time.Time {
+	raw := strings.TrimSpace(eventDataString(data, key))
+	if raw == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339Nano, raw)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed.UTC()
+}
+
+func eventDataInt(data interface{}, key string) int {
+	switch typed := data.(type) {
+	case map[string]int:
+		return typed[key]
+	case map[string]interface{}:
+		if value, ok := typed[key]; ok {
+			switch v := value.(type) {
+			case int:
+				return v
+			case int64:
+				return int(v)
+			case float64:
+				return int(v)
+			case float32:
+				return int(v)
+			}
+		}
+	}
+	return 0
+}
+
+func eventDataFloat(data interface{}, key string) float64 {
+	switch typed := data.(type) {
+	case map[string]float64:
+		return typed[key]
+	case map[string]interface{}:
+		if value, ok := typed[key]; ok {
+			switch v := value.(type) {
+			case float64:
+				return v
+			case float32:
+				return float64(v)
+			case int:
+				return float64(v)
+			case int64:
+				return float64(v)
+			}
+		}
+	}
+	return 0
+}
+
+func eventDataUsageCalls(data interface{}, key string) []runTokenUsageCall {
+	typed, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	value, ok := typed[key]
+	if !ok {
+		return nil
+	}
+	switch calls := value.(type) {
+	case []runTokenUsageCall:
+		return append([]runTokenUsageCall(nil), calls...)
+	case []interface{}:
+		result := make([]runTokenUsageCall, 0, len(calls))
+		for _, item := range calls {
+			callMap, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			result = append(result, runTokenUsageCall{
+				Index:                eventDataInt(callMap, "index"),
+				CreatedAt:            eventDataString(callMap, "created_at"),
+				FinishReason:         eventDataString(callMap, "finish_reason"),
+				RequestedTools:       eventDataStringSlice(callMap, "requested_tools"),
+				AfterTools:           eventDataStringSlice(callMap, "after_tools"),
+				PromptTokens:         eventDataInt(callMap, "prompt_tokens"),
+				CachedPromptTokens:   eventDataInt(callMap, "cached_prompt_tokens"),
+				UncachedPromptTokens: eventDataInt(callMap, "uncached_prompt_tokens"),
+				CacheHitRate:         eventDataFloat(callMap, "cache_hit_rate"),
+				CompletionTokens:     eventDataInt(callMap, "completion_tokens"),
+				ReasoningTokens:      eventDataInt(callMap, "reasoning_tokens"),
+				TotalTokens:          eventDataInt(callMap, "total_tokens"),
+			})
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func usageCallsForSession(calls []runTokenUsageCall) []session.TokenUsageCall {
+	if len(calls) == 0 {
+		return nil
+	}
+	result := make([]session.TokenUsageCall, 0, len(calls))
+	for _, call := range calls {
+		result = append(result, session.TokenUsageCall{
+			Index:                call.Index,
+			CreatedAt:            call.CreatedAt,
+			FinishReason:         call.FinishReason,
+			RequestedTools:       append([]string(nil), call.RequestedTools...),
+			AfterTools:           append([]string(nil), call.AfterTools...),
+			PromptTokens:         call.PromptTokens,
+			CachedPromptTokens:   call.CachedPromptTokens,
+			UncachedPromptTokens: call.UncachedPromptTokens,
+			CacheHitRate:         call.CacheHitRate,
+			CompletionTokens:     call.CompletionTokens,
+			ReasoningTokens:      call.ReasoningTokens,
+			TotalTokens:          call.TotalTokens,
+		})
+	}
+	return result
 }
 
 func parseWriteLoreItemsToolResult(toolName, content string) ([]string, []string) {

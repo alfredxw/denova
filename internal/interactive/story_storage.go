@@ -20,6 +20,14 @@ func (s *Store) storyPath(storyID string) string {
 	return filepath.Join(s.storyDir(), "story-"+storyID+".jsonl")
 }
 
+func (s *Store) usageDir() string {
+	return filepath.Join(s.root, "interactive", "usage")
+}
+
+func (s *Store) usagePath(storyID string) string {
+	return filepath.Join(s.usageDir(), "usage-"+storyID+".jsonl")
+}
+
 func (s *Store) readIndexLocked() (Index, error) {
 	data, err := os.ReadFile(s.indexPath())
 	if os.IsNotExist(err) {
@@ -159,6 +167,23 @@ func writeJSONL(path string, lines []any) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+func appendJSONL(path string, line any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(file)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(line); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
 }
 
 func mapToStruct(raw map[string]any, out any) error {

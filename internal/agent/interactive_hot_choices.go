@@ -33,10 +33,18 @@ func GenerateInteractiveHotChoices(ctx context.Context, cfg *config.Config, inst
 		return nil, fmt.Errorf("创建互动快捷选择模型失败: %w", err)
 	}
 	log.Printf("[interactive-hot-choices-agent] generate begin instruction=%s", promptPartSummary(instruction))
-	msg, err := cm.Generate(ctx, []*schema.Message{
+	messages := []*schema.Message{
 		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())),
 		schema.UserMessage(instruction),
+	}
+	logFullModelInput(modelInputLogOptions{
+		AgentKind: config.AgentKindInteractiveHotChoices,
+		Source:    "interactive_hot_choices",
+		Mode:      "generate",
+		Config:    modelCfg,
+		Messages:  messages,
 	})
+	msg, err := cm.Generate(ctx, messages)
 	if err != nil {
 		return nil, fmt.Errorf("生成互动快捷选择失败: %w", err)
 	}

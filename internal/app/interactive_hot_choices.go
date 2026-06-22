@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -59,35 +58,27 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 		log.Printf("[interactive-hot-choices] cache hit story_id=%s branch_id=%s parent_id=%s choices=%d", storyID, cached.BranchID, cached.ParentID, len(cached.Choices))
 		return InteractiveHotChoicesResult{Enabled: true, Choices: cached.Choices}, nil
 	}
-	stateJSON, err := json.MarshalIndent(storyCtx.Snapshot.State, "", "  ")
-	if err != nil {
-		return InteractiveHotChoicesResult{}, fmt.Errorf("序列化互动状态失败: %w", err)
-	}
 	loreItems := hotChoicesLoreContext(workspace)
-	characters := ""
-	worldBuilding := ""
-	recentTurnsLimit := config.ResolveAgentContext(&runtimeCfg, config.AgentKindInteractiveHotChoices).RecentTurns
+	turnMemory := buildInteractiveModelVisibleTurnMemory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
 	instruction := prompts.InteractiveHotChoicesInstruction(prompts.InteractiveHotChoicesPromptInput{
-		Title:             storyCtx.Meta.Title,
-		Origin:            storyCtx.Meta.Origin,
-		StoryTellerID:     storyCtx.Meta.StoryTellerID,
-		BranchID:          storyCtx.Snapshot.BranchID,
-		Characters:        characters,
-		WorldBuilding:     worldBuilding,
-		LoreItems:         loreItems,
-		SnapshotStateJSON: string(stateJSON),
-		RecentTurns:       formatHotChoicesRecentTurns(storyCtx.Snapshot.Turns, recentTurnsLimit),
-		ExcludeChoices:    formatHotChoicesExcludeChoices(excludeChoices),
+		Title:          storyCtx.Meta.Title,
+		Origin:         storyCtx.Meta.Origin,
+		StoryTellerID:  storyCtx.Meta.StoryTellerID,
+		BranchID:       storyCtx.Snapshot.BranchID,
+		LoreItems:      loreItems,
+		TurnHistory:    formatHotChoicesTurnHistory(turnMemory, storyCtx.Snapshot.ContextCompaction),
+		ExcludeChoices: formatHotChoicesExcludeChoices(excludeChoices),
 	})
 	log.Printf(
-		"[interactive-hot-choices] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s turns=%d state=%s instruction=%s",
+		"[interactive-hot-choices] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s turns=%d model_turns=%d lore=%s instruction=%s",
 		storyID,
 		storyCtx.Snapshot.BranchID,
 		interactivePartSummary(storyCtx.Meta.Title),
 		interactivePartSummary(storyCtx.Meta.Origin),
 		storyCtx.Meta.StoryTellerID,
 		len(storyCtx.Snapshot.Turns),
-		interactivePartSummary(string(stateJSON)),
+		len(turnMemory.Turns),
+		interactivePartSummary(loreItems),
 		interactivePartSummary(instruction),
 	)
 	choices, err := agent.GenerateInteractiveHotChoices(ctx, &runtimeCfg, instruction)
@@ -138,8 +129,8 @@ func hotChoicesLoreContext(workspace string) string {
 	return context
 }
 
-func formatHotChoicesRecentTurns(turns []interactive.TurnEvent, recentLimit int) string {
-	return formatInteractiveRecentTurns(turns, recentLimit, "（暂无历史回合，请基于开端给出第一步行动建议。）")
+func formatHotChoicesTurnHistory(turnMemory interactiveTurnMemory, compaction *interactive.ContextCompactionEvent) string {
+	return formatInteractiveTurnMemoryHistory(turnMemory, compaction, "（暂无历史回合，请基于开端给出第一步行动建议。）")
 }
 
 func formatHotChoicesExcludeChoices(choices []string) string {

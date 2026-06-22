@@ -24,15 +24,101 @@ type IDEStoryTeller struct {
 // BuildInstruction 构建系统指令，包含基础 prompt + 作品状态注入。
 // 实际的 Prompt 文本集中在 internal/prompts 包，这里只负责把 cfg/state 翻译成 prompts.SystemInstructionInput。
 func BuildInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) string {
+	return BuildInstructionComposition(cfg, state, teller).Instruction()
+}
+
+// BuildInstructionComposition returns the IDE system prompt and its auditable source summary.
+func BuildInstructionComposition(cfg *config.Config, state *book.State, teller IDEStoryTeller) SystemPromptCompositionLog {
 	builtIn, workspace, creator, stateContext := buildIDEBuiltinInstruction(cfg, state, teller)
 	instruction := protectedSystemInstruction(cfg, config.AgentKindIDE, builtIn)
-	logSystemPromptComposition("ide", workspace, creator, stateContext, instruction, promptSource{
-		source:  "系统提示",
-		title:   "写作模式默认导演规则",
-		content: teller.Prompt,
-		note:    teller.ID,
-	})
-	return instruction
+	return SystemPromptCompositionLog{
+		mode:         "ide",
+		workspace:    workspace,
+		creator:      creator,
+		stateContext: stateContext,
+		instruction:  instruction,
+		extraSources: []promptSource{{
+			source:  "系统提示",
+			title:   "写作模式默认导演规则",
+			content: teller.Prompt,
+			note:    teller.ID,
+		}},
+	}
+}
+
+// SystemPromptCompositionLog records the source breakdown for one system prompt.
+type SystemPromptCompositionLog struct {
+	mode         string
+	workspace    string
+	creator      string
+	stateContext string
+	instruction  string
+	extraSources []promptSource
+}
+
+func (l SystemPromptCompositionLog) Instruction() string {
+	return l.instruction
+}
+
+func (l SystemPromptCompositionLog) isZero() bool {
+	return strings.TrimSpace(l.mode) == "" && strings.TrimSpace(l.instruction) == ""
+}
+
+func (l SystemPromptCompositionLog) logForRun(options RunOptions) {
+	if l.isZero() {
+		return
+	}
+	log.Printf(
+		"[agent-prompt] system composition mode=%s workspace=%s task_id=%s session_id=%s creator=%s state=%s instruction=%s",
+		l.mode,
+		l.workspace,
+		options.TaskID,
+		options.SessionID,
+		promptPartSummary(l.creator),
+		promptPartSummary(l.stateContext),
+		promptPartSummary(l.instruction),
+	)
+	log.Printf("[agent-prompt] system sources mode=%s workspace=%s task_id=%s session_id=%s sources=%s", l.mode, l.workspace, options.TaskID, options.SessionID, systemPromptSourceSummary(l.mode, l.creator, l.stateContext, l.extraSources...))
+}
+
+func newInteractiveStoryInstructionComposition(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) SystemPromptCompositionLog {
+	builtIn, workspace, creator := buildInteractiveStoryBuiltinInstruction(cfg, state, teller)
+	instruction := protectedSystemInstruction(cfg, config.AgentKindInteractiveStory, builtIn)
+	return SystemPromptCompositionLog{
+		mode:        "interactive",
+		workspace:   workspace,
+		creator:     creator,
+		instruction: instruction,
+		extraSources: []promptSource{{
+			source:  "系统提示",
+			title:   "导演系统规则",
+			content: teller.StoryTellerSystemPrompt,
+			note:    teller.StoryTellerID,
+		}},
+	}
+}
+
+// BuildInteractiveStoryInstructionComposition returns the interactive story prompt and its source summary.
+func BuildInteractiveStoryInstructionComposition(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) SystemPromptCompositionLog {
+	return newInteractiveStoryInstructionComposition(cfg, state, teller)
+}
+
+// BuildConfigManagerInstructionComposition returns the config manager prompt and its source summary.
+func BuildConfigManagerInstructionComposition(cfg *config.Config, state *book.State) SystemPromptCompositionLog {
+	builtIn, workspace, creator := buildConfigManagerBuiltinInstruction(cfg, state)
+	instruction := protectedSystemInstruction(cfg, config.AgentKindConfigManager, builtIn)
+	return SystemPromptCompositionLog{
+		mode:        "config_manager",
+		workspace:   workspace,
+		creator:     creator,
+		instruction: instruction,
+		extraSources: []promptSource{{
+			source:  "系统提示",
+			title:   "配置管理 Agent 内置规则",
+			content: builtIn,
+			note:    "tool-chain",
+		}},
+	}
 }
 
 func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) (string, string, string, string) {
@@ -68,15 +154,7 @@ func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller ID
 }
 
 func BuildInteractiveStoryInstruction(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) string {
-	builtIn, workspace, creator := buildInteractiveStoryBuiltinInstruction(cfg, state, teller)
-	instruction := protectedSystemInstruction(cfg, config.AgentKindInteractiveStory, builtIn)
-	logSystemPromptComposition("interactive", workspace, creator, "", instruction, promptSource{
-		source:  "系统提示",
-		title:   "导演系统规则",
-		content: teller.StoryTellerSystemPrompt,
-		note:    teller.StoryTellerID,
-	})
-	return instruction
+	return BuildInteractiveStoryInstructionComposition(cfg, state, teller).Instruction()
 }
 
 func buildInteractiveStoryBuiltinInstruction(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (string, string, string) {
@@ -273,15 +351,7 @@ func editablePromptFlowForAgent(agentKind, flow string) string {
 }
 
 func BuildConfigManagerInstruction(cfg *config.Config, state *book.State) string {
-	builtIn, workspace, creator := buildConfigManagerBuiltinInstruction(cfg, state)
-	instruction := protectedSystemInstruction(cfg, config.AgentKindConfigManager, builtIn)
-	logSystemPromptComposition("config_manager", workspace, creator, "", instruction, promptSource{
-		source:  "系统提示",
-		title:   "配置管理 Agent 内置规则",
-		content: builtIn,
-		note:    "tool-chain",
-	})
-	return instruction
+	return BuildConfigManagerInstructionComposition(cfg, state).Instruction()
 }
 
 func buildConfigManagerBuiltinInstruction(cfg *config.Config, state *book.State) (string, string, string) {
@@ -341,18 +411,6 @@ type promptSource struct {
 	title   string
 	content string
 	note    string
-}
-
-func logSystemPromptComposition(mode, workspace, creator, stateContext, instruction string, extraSources ...promptSource) {
-	log.Printf(
-		"[agent-prompt] system composition mode=%s workspace=%s creator=%s state=%s instruction=%s",
-		mode,
-		workspace,
-		promptPartSummary(creator),
-		promptPartSummary(stateContext),
-		promptPartSummary(instruction),
-	)
-	log.Printf("[agent-prompt] system sources mode=%s workspace=%s sources=%s", mode, workspace, systemPromptSourceSummary(mode, creator, stateContext, extraSources...))
 }
 
 func systemPromptSourceSummary(mode, creator, stateContext string, extraSources ...promptSource) string {

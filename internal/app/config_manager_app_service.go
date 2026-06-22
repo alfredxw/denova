@@ -71,6 +71,7 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 			SessionID:           sess.ID,
 			Workspace:           workspace,
 			Mode:                "config_manager",
+			SystemPromptLog:     agent.BuildConfigManagerInstructionComposition(&runtimeCfg, state),
 			OnMutationsVerified: a.automationMutationCallback("config_manager_post_run"),
 		}, emit)
 		log.Printf("[config-manager] run end id=%s status=%s", task.ID(), task.Status())

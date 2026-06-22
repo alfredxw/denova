@@ -13,12 +13,13 @@ import (
 // processStreamingEvent 处理流式助手消息，输出领域事件。
 // 工具调用在流中一检测到名称就立即 emit，让前端尽早展示 running 卡片。
 // 参数在流中逐帧 emit tool_args_delta，前端可实时展示 write_file 内容。
-func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, emit func(Event)) bool {
+func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, emit func(Event)) (*schema.Message, bool) {
 	mv.MessageStream.SetAutomaticClose()
 	var accumulatedToolCalls []schema.ToolCall
 	emittedTools := make(map[int]bool) // 按 index 记录已 emit tool_call 的工具
 	lastArgsLen := make(map[int]int)   // 记录上次已发送的参数长度
 	loggedToolPaths := make(map[int]bool)
+	var chunks []*schema.Message
 
 	for {
 		frame, err := mv.MessageStream.Recv()
@@ -28,11 +29,12 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *st
 		if err != nil {
 			log.Printf("[agent-run] interrupted reason=stream_recv_error err=%v generated_bytes=%d", err, fullContent.Len())
 			emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
-			return false
+			return nil, false
 		}
 		if frame == nil {
 			continue
 		}
+		chunks = append(chunks, frame)
 		if frame.ReasoningContent != "" {
 			if fullThinking != nil {
 				fullThinking.WriteString(frame.ReasoningContent)
@@ -98,7 +100,15 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *st
 			}
 		}
 	}
-	return true
+	if len(chunks) == 0 {
+		return nil, true
+	}
+	msg, err := schema.ConcatMessages(chunks)
+	if err != nil {
+		log.Printf("[agent-run] concat streaming message failed err=%v chunks=%d", err, len(chunks))
+		return nil, true
+	}
+	return msg, true
 }
 
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。

@@ -23,6 +23,9 @@ type Config struct {
 	SkillsDir                   string                 `toml:"skills_dir"`
 	BackendPort                 int                    `toml:"backend_port"`
 	FrontendPort                int                    `toml:"frontend_port"`
+	AllowLANAccess              bool                   `toml:"allow_lan_access"`
+	RemoteAccessUsername        string                 `toml:"remote_access_username"`
+	RemoteAccessPasswordHash    string                 `toml:"remote_access_password_hash"`
 	NovaDir                     string                 `toml:"nova_dir"`
 	Workspace                   string                 `toml:"workspace"`
 	IDEStoryTellerID            string                 `toml:"-"`
@@ -82,6 +85,9 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		SkillsDir:                   s.SkillsDir,
 		BackendPort:                 settingsInt(s.BackendPort, 8080),
 		FrontendPort:                settingsInt(s.FrontendPort, 5173),
+		AllowLANAccess:              settingsBool(s.AllowLANAccess, false),
+		RemoteAccessUsername:        s.RemoteAccessUsername,
+		RemoteAccessPasswordHash:    s.RemoteAccessPasswordHash,
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
@@ -142,19 +148,21 @@ func settingsFromConfig(cfg *Config) Settings {
 		return Settings{}
 	}
 	settings := Settings{
-		OpenAIAPIKey:          cfg.OpenAIAPIKey,
-		OpenAIBaseURL:         cfg.OpenAIBaseURL,
-		OpenAIModel:           cfg.OpenAIModel,
-		ModelProfiles:         cfg.ModelProfiles,
-		AgentModels:           cfg.AgentModels,
-		AgentTools:            cfg.AgentTools,
-		AgentPrompts:          cfg.AgentPrompts,
-		AgentSkills:           cfg.AgentSkills,
-		AgentContexts:         cfg.AgentContexts,
-		SkillsDir:             cfg.SkillsDir,
-		NovaDir:               cfg.NovaDir,
-		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
-		VolumeDirFormat:       cfg.VolumeDirFormat,
+		OpenAIAPIKey:             cfg.OpenAIAPIKey,
+		OpenAIBaseURL:            cfg.OpenAIBaseURL,
+		OpenAIModel:              cfg.OpenAIModel,
+		ModelProfiles:            cfg.ModelProfiles,
+		AgentModels:              cfg.AgentModels,
+		AgentTools:               cfg.AgentTools,
+		AgentPrompts:             cfg.AgentPrompts,
+		AgentSkills:              cfg.AgentSkills,
+		AgentContexts:            cfg.AgentContexts,
+		SkillsDir:                cfg.SkillsDir,
+		NovaDir:                  cfg.NovaDir,
+		RemoteAccessUsername:     cfg.RemoteAccessUsername,
+		RemoteAccessPasswordHash: cfg.RemoteAccessPasswordHash,
+		ChapterFilenameFormat:    cfg.ChapterFilenameFormat,
+		VolumeDirFormat:          cfg.VolumeDirFormat,
 	}
 	if cfg.BackendPort > 0 {
 		settings.BackendPort = &cfg.BackendPort
@@ -162,6 +170,7 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.FrontendPort > 0 {
 		settings.FrontendPort = &cfg.FrontendPort
 	}
+	settings.AllowLANAccess = &cfg.AllowLANAccess
 	if cfg.MaxIteration > 0 {
 		settings.MaxIteration = &cfg.MaxIteration
 	}
@@ -201,6 +210,9 @@ func Load() *Config {
 			SkillsDir:                   d.SkillsDir,
 			BackendPort:                 settingsInt(d.BackendPort, 8080),
 			FrontendPort:                settingsInt(d.FrontendPort, 5173),
+			AllowLANAccess:              settingsBool(d.AllowLANAccess, false),
+			RemoteAccessUsername:        d.RemoteAccessUsername,
+			RemoteAccessPasswordHash:    d.RemoteAccessPasswordHash,
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
 			MaxIteration:                settingsInt(d.MaxIteration, 50),
@@ -291,6 +303,17 @@ func overrideFromEnv(cfg *Config) {
 		if port, err := strconv.Atoi(v); err == nil && port >= 1 && port <= 65535 {
 			cfg.FrontendPort = port
 		}
+	}
+}
+
+func (cfg *Config) RemoteAccessConfig() RemoteAccessConfig {
+	if cfg == nil {
+		return RemoteAccessConfig{}
+	}
+	return RemoteAccessConfig{
+		AllowLANAccess: cfg.AllowLANAccess,
+		Username:       cfg.RemoteAccessUsername,
+		PasswordHash:   cfg.RemoteAccessPasswordHash,
 	}
 }
 

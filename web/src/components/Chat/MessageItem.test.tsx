@@ -178,4 +178,30 @@ describe('MessageItem', () => {
     expect(screen.getByText('待办列表')).toBeInTheDocument()
     expect(screen.getByText('第一项')).toBeInTheDocument()
   })
+
+  it('上下文压缩消息渲染为带进度和摘要预览的小窗', () => {
+    render(
+      <MessageItem
+        message={{
+          role: 'context_compaction',
+          status: 'running',
+          phase: 'pre_run',
+          attempt: 2,
+          tokens_before: 900,
+          context_window_tokens: 1000,
+          threshold: 0.9,
+          source_message_count: 12,
+          content: '压缩摘要流式片段',
+          streaming: true,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('上下文压缩')).toBeInTheDocument()
+    expect(screen.getByText('压缩中')).toBeInTheDocument()
+    expect(screen.getByText('第 2 次')).toBeInTheDocument()
+    expect(screen.getByText('压缩摘要流式片段')).toBeInTheDocument()
+    expect(screen.getByText('90%')).toBeInTheDocument()
+    expect(screen.getByText('阈值 90%')).toBeInTheDocument()
+  })
 })

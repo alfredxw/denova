@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -72,6 +73,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.FrontendPort == nil || *s.FrontendPort != 5173 {
 		t.Fatalf("FrontendPort default")
 	}
+	if s.AllowLANAccess == nil || *s.AllowLANAccess {
+		t.Fatalf("AllowLANAccess should default off")
+	}
 }
 
 func TestMergeOverridesNonZero(t *testing.T) {
@@ -92,6 +96,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		VolumeDirFormat:            "old-volume",
 		BackendPort:                intPtr(8080),
 		FrontendPort:               intPtr(5173),
+		AllowLANAccess:             boolPtr(false),
 		InteractiveMaxTokens:       intPtr(0),
 		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
@@ -113,6 +118,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		VolumeDirFormat:            "new-volume",
 		BackendPort:                intPtr(18080),
 		FrontendPort:               intPtr(15173),
+		AllowLANAccess:             boolPtr(true),
+		RemoteAccessUsername:       "reader",
+		RemoteAccessPasswordHash:   "$2a$10$hash",
 		InteractiveMaxTokens:       intPtr(4000),
 		InteractiveHotChoices:      boolPtr(false),
 		InteractiveStageFontSize:   intPtr(18),
@@ -163,6 +171,12 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.FrontendPort == nil || *out.FrontendPort != 15173 {
 		t.Fatalf("FrontendPort should override parent")
+	}
+	if out.AllowLANAccess == nil || !*out.AllowLANAccess {
+		t.Fatalf("AllowLANAccess should override parent")
+	}
+	if out.RemoteAccessUsername != "reader" || out.RemoteAccessPasswordHash == "" || !out.RemoteAccessPasswordSet {
+		t.Fatalf("remote access credentials should override parent: %#v", out)
 	}
 	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 4000 {
 		t.Fatalf("InteractiveMaxTokens should override parent")
@@ -318,6 +332,59 @@ func TestWriteSettingsFileFiltersInvalidFrontendPort(t *testing.T) {
 	}
 }
 
+func TestPrepareUserSettingsForWriteHashesRemoteAccessPassword(t *testing.T) {
+	enabled := true
+	prepared, err := PrepareUserSettingsForWrite(Settings{}, Settings{
+		AllowLANAccess:       &enabled,
+		RemoteAccessUsername: " reader ",
+		RemoteAccessPassword: "secret",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.RemoteAccessUsername != "reader" {
+		t.Fatalf("username should be trimmed: %q", prepared.RemoteAccessUsername)
+	}
+	if prepared.RemoteAccessPassword != "" {
+		t.Fatalf("plain password should be cleared")
+	}
+	if prepared.RemoteAccessPasswordHash == "" || !prepared.RemoteAccessPasswordSet {
+		t.Fatalf("password hash should be set: %#v", prepared)
+	}
+	if !CheckRemoteAccessPassword(prepared.RemoteAccessPasswordHash, "secret") {
+		t.Fatalf("password hash should verify")
+	}
+	data, err := json.Marshal(prepared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "remote_access_password_hash") {
+		t.Fatalf("password hash should not be exposed in JSON: %s", string(data))
+	}
+}
+
+func TestPrepareUserSettingsForWritePreservesRemoteAccessPasswordHash(t *testing.T) {
+	enabled := true
+	existing := Settings{RemoteAccessPasswordHash: "$2a$10$existing", RemoteAccessPasswordSet: true}
+	prepared, err := PrepareUserSettingsForWrite(existing, Settings{
+		AllowLANAccess:       &enabled,
+		RemoteAccessUsername: "reader",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.RemoteAccessPasswordHash != existing.RemoteAccessPasswordHash {
+		t.Fatalf("password hash should be preserved")
+	}
+}
+
+func TestPrepareUserSettingsForWriteRejectsEnabledRemoteAccessWithoutCredentials(t *testing.T) {
+	enabled := true
+	if _, err := PrepareUserSettingsForWrite(Settings{}, Settings{AllowLANAccess: &enabled}); err == nil {
+		t.Fatalf("enabled remote access should require credentials")
+	}
+}
+
 func TestLoadLayeredAppliesAllLayers(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()
@@ -405,5 +472,37 @@ func TestLoadLayeredIgnoresStartupPortsFromWorkspaceLayer(t *testing.T) {
 	}
 	if layered.Effective.FrontendPort == nil || *layered.Effective.FrontendPort != 15173 {
 		t.Fatalf("user frontend_port should remain effective")
+	}
+	if !strings.HasSuffix(layered.Access.LocalURL, ":15173") || !strings.HasSuffix(layered.Access.LANURL, ":15173") {
+		t.Fatalf("access URLs should use frontend_port: %+v", layered.Access)
+	}
+}
+
+func TestLoadLayeredIgnoresRemoteAccessFromWorkspaceLayer(t *testing.T) {
+	home := t.TempDir()
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".nova"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSettingsFile(filepath.Join(home, "config.toml"), Settings{
+		AllowLANAccess:           boolPtr(true),
+		RemoteAccessUsername:     "user",
+		RemoteAccessPasswordHash: "$2a$10$user",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".nova", "config.toml"), []byte("allow_lan_access = false\nremote_access_username = \"workspace\"\nremote_access_password_hash = \"workspace-hash\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	layered, err := LoadLayered(home, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layered.Workspace.AllowLANAccess != nil || layered.Workspace.RemoteAccessUsername != "" || layered.Workspace.RemoteAccessPasswordHash != "" {
+		t.Fatalf("workspace remote access settings should be filtered: %#v", layered.Workspace)
+	}
+	if layered.Effective.AllowLANAccess == nil || !*layered.Effective.AllowLANAccess || layered.Effective.RemoteAccessUsername != "user" {
+		t.Fatalf("user remote access settings should remain effective: %#v", layered.Effective)
 	}
 }

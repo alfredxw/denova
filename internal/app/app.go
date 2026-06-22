@@ -160,3 +160,14 @@ func (a *App) clearRuntime() {
 	a.interactiveStoryRunner = nil
 	a.versionService = nil
 }
+
+// RemoteAccessConfig returns the current process-level access policy used by
+// the HTTP gateway. Settings updates may change this before a full restart.
+func (a *App) RemoteAccessConfig() config.RemoteAccessConfig {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.cfg == nil {
+		return config.RemoteAccessConfig{}
+	}
+	return a.cfg.RemoteAccessConfig()
+}

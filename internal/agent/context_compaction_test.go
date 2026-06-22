@@ -40,7 +40,7 @@ func TestBuildContextCompactionUsesExplicitSourceTranscript(t *testing.T) {
 
 	var capturedSource []*schema.Message
 	var capturedReference string
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, source []*schema.Message, referenceContext string, _ int, _ contextCompactionPolicy) (string, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, source []*schema.Message, referenceContext string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, error) {
 		capturedSource = source
 		capturedReference = referenceContext
 		return "压缩摘要：保留用户意图。", nil
@@ -87,7 +87,7 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 	defer func() { summarizeContextForCompaction = previous }()
 
 	var capturedPolicy contextCompactionPolicy
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ []*schema.Message, _ string, _ int, policy contextCompactionPolicy) (string, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ []*schema.Message, _ string, _ int, policy contextCompactionPolicy, _ func(int, string)) (string, error) {
 		capturedPolicy = policy
 		return "较完整的压缩摘要，保留用户目标、约束、事件和待办。", nil
 	}
@@ -116,16 +116,66 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 	}
 }
 
-func TestContextCompactionPolicyUsesCompactionAgentRetainedTurns(t *testing.T) {
-	ideTurns := 3
-	compactionTurns := 12
-	cfg := &config.Config{AgentContexts: config.AgentContextSettings{
-		IDE:               config.AgentContextOverride{CompactionRecentTurns: &ideTurns},
-		ContextCompaction: config.AgentContextOverride{CompactionRecentTurns: &compactionTurns},
-	}}
+func TestBuildContextCompactionEmitsStreamingSummaryDelta(t *testing.T) {
+	previous := summarizeContextForCompaction
+	defer func() { summarizeContextForCompaction = previous }()
+
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ []*schema.Message, _ string, _ int, _ contextCompactionPolicy, emitDelta func(int, string)) (string, error) {
+		emitDelta(1, "第一段")
+		emitDelta(1, "第二段")
+		return "第一段第二段", nil
+	}
+
+	var events []Event
+	_, result, err := BuildContextCompaction(context.Background(), &config.Config{}, config.AgentKindIDE, ContextCompactionInput{
+		Messages: []*schema.Message{
+			schema.UserMessage("用户提出了一个很长的需求"),
+			schema.AssistantMessage("助手完成了很多上下文相关工作", nil),
+		},
+		Force:          true,
+		KeepLatestUser: true,
+		Emit:           func(event Event) { events = append(events, event) },
+	}, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Triggered {
+		t.Fatalf("expected compaction to trigger: %#v", result)
+	}
+
+	var deltas []string
+	for _, event := range events {
+		if event.Type != "context_compaction" {
+			continue
+		}
+		data, ok := event.Data.(map[string]any)
+		if !ok || data["status"] != "delta" {
+			continue
+		}
+		if data["attempt"] != 1 {
+			t.Fatalf("delta attempt = %#v, want 1", data["attempt"])
+		}
+		deltas = append(deltas, data["delta"].(string))
+	}
+	if strings.Join(deltas, "") != "第一段第二段" {
+		t.Fatalf("delta stream = %q", strings.Join(deltas, ""))
+	}
+}
+
+func TestContextCompactionPolicyUsesConfiguredRetainedTurns(t *testing.T) {
+	cfg := &config.Config{}
 
 	policy := resolveContextCompactionPolicy(cfg, config.AgentKindIDE)
-	if policy.RetainedRecentTurns != compactionTurns {
-		t.Fatalf("retained turns = %d, want context_compaction setting %d", policy.RetainedRecentTurns, compactionTurns)
+	if policy.RetainedTurns != config.DefaultContextCompactionRetainedTurns {
+		t.Fatalf("retained turns = %d, want default %d", policy.RetainedTurns, config.DefaultContextCompactionRetainedTurns)
+	}
+
+	retainedTurns := 3
+	cfg = &config.Config{AgentContexts: config.AgentContextSettings{
+		ContextCompaction: config.AgentContextOverride{CompactionRecentTurns: &retainedTurns},
+	}}
+	policy = resolveContextCompactionPolicy(cfg, config.AgentKindIDE)
+	if policy.RetainedTurns != 3 {
+		t.Fatalf("retained turns = %d, want configured 3", policy.RetainedTurns)
 	}
 }

@@ -451,7 +451,15 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings) (
 	}
 	a.mu.RUnlock()
 	path := config.UserConfigPath(novaDir)
-	if err := config.WriteSettingsFile(path, settings); err != nil {
+	existing, err := config.ReadSettingsFile(path)
+	if err != nil {
+		return config.LayeredSettings{}, err
+	}
+	prepared, err := config.PrepareUserSettingsForWrite(existing, settings)
+	if err != nil {
+		return config.LayeredSettings{}, err
+	}
+	if err := config.WriteSettingsFile(path, prepared); err != nil {
 		return config.LayeredSettings{}, err
 	}
 	log.Printf("[settings] 用户配置已保存 path=%s", path)
@@ -529,6 +537,11 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.FrontendPort != nil {
 		cfg.FrontendPort = appSettingsInt(effective.FrontendPort, 5173)
 	}
+	if effective.AllowLANAccess != nil {
+		cfg.AllowLANAccess = *effective.AllowLANAccess
+	}
+	cfg.RemoteAccessUsername = effective.RemoteAccessUsername
+	cfg.RemoteAccessPasswordHash = effective.RemoteAccessPasswordHash
 	if cfg.IDEStoryTellerID == "" && effective.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = effective.IDEStoryTellerID
 	}
@@ -592,6 +605,15 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	cfg.AgentContexts = config.MergeAgentContextSettings(cfg.AgentContexts, settings.AgentContexts)
 	if settings.SkillsDir != "" && os.Getenv("NOVA_SKILLS_DIR") == "" {
 		cfg.SkillsDir = settings.SkillsDir
+	}
+	if settings.AllowLANAccess != nil {
+		cfg.AllowLANAccess = *settings.AllowLANAccess
+	}
+	if settings.RemoteAccessUsername != "" {
+		cfg.RemoteAccessUsername = settings.RemoteAccessUsername
+	}
+	if settings.RemoteAccessPasswordHash != "" {
+		cfg.RemoteAccessPasswordHash = settings.RemoteAccessPasswordHash
 	}
 	if settings.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = settings.IDEStoryTellerID

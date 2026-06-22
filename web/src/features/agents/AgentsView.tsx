@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, Brain, Check, ChevronDown, ChevronRight, FolderOpen, Loader2, Save, ScrollText, Wrench, X } from 'lucide-react'
+import { Bot, Brain, Check, ChevronDown, ChevronRight, FolderOpen, Loader2, PanelLeft, Save, ScrollText, Wrench, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { AgentContextOverride, AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
@@ -210,61 +211,78 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
 
       {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('agents.saveError')} />}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[18rem_minmax(0,1fr)] text-xs">
-        <aside className="min-h-0 overflow-y-auto border-r border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-          <AgentList active={activeAgent} onSelect={setActiveAgent} />
-        </aside>
-
-        <main className="min-h-0 overflow-y-auto">
-          <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
-            <AgentHeader agent={selected} />
-            <AgentModelSection
-              value={modelValue}
-              inherited={inheritedModel}
-              profiles={profileOptions}
-              onChange={setAgentModel}
-            />
-            <AgentPromptSection
-              value={promptValue}
-              inherited={inheritedPrompt}
-              builtin={builtinPrompt}
-              blocks={builtinBlocks}
-              sources={promptSources}
-              onChange={setAgentPrompt}
-            />
-            <AgentRuntimeContextSection
-              agent={activeAgent}
-              value={contextValue}
-              inherited={inheritedContext}
-              onChange={setAgentContext}
-            />
-            {selected.capabilityMode === 'tools' ? (
-              <>
-                <AgentToolSection
-                  agent={activeAgent}
-                  value={toolValue}
-                  effective={effectiveTools}
-                  onChange={setAgentTool}
-                />
-                {effectiveTools.skills && (
-                  <AgentSkillSection
+      <AdaptiveSurface
+        left={{
+          id: 'agents-list',
+          title: 'Agents',
+          side: 'left',
+          icon: <Bot className="h-4 w-4" />,
+          content: <div className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3"><AgentList active={activeAgent} onSelect={setActiveAgent} /></div>,
+          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
+          mobileClassName: 'w-[min(88vw,340px)]',
+        }}
+        className="flex-1 text-xs"
+        mainClassName="min-h-0 min-w-0"
+        desktopGridClassName="grid-cols-[18rem_minmax(0,1fr)]"
+      >
+        {({ openLeft }) => (
+          <main className="h-full min-h-0 overflow-y-auto">
+            <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 md:hidden">
+              <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: 'Agents' })} onClick={openLeft}>
+                <PanelLeft className="h-4 w-4" />
+              </button>
+              <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{t(selected.titleKey)}</span>
+            </div>
+            <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
+              <AgentHeader agent={selected} />
+              <AgentModelSection
+                value={modelValue}
+                inherited={inheritedModel}
+                profiles={profileOptions}
+                onChange={setAgentModel}
+              />
+              <AgentPromptSection
+                value={promptValue}
+                inherited={inheritedPrompt}
+                builtin={builtinPrompt}
+                blocks={builtinBlocks}
+                sources={promptSources}
+                onChange={setAgentPrompt}
+              />
+              <AgentRuntimeContextSection
+                agent={activeAgent}
+                value={contextValue}
+                inherited={inheritedContext}
+                onChange={setAgentContext}
+              />
+              {selected.capabilityMode === 'tools' ? (
+                <>
+                  <AgentToolSection
                     agent={activeAgent}
-                    skills={skills}
-                    value={skillValue}
-                    effective={effective.agent_skills}
-                    onChange={setAgentSkill}
+                    value={toolValue}
+                    effective={effectiveTools}
+                    onChange={setAgentTool}
                   />
-                )}
-              </>
-            ) : selected.capabilityMode === 'built_in' ? (
-              <AgentBuiltInCapabilitySection agent={selected.key} />
-            ) : (
-              <AgentModelOnlySection />
-            )}
-            <AgentContextSection agent={selected.key} effective={effective} />
-          </div>
-        </main>
-      </div>
+                  {effectiveTools.skills && (
+                    <AgentSkillSection
+                      agent={activeAgent}
+                      skills={skills}
+                      value={skillValue}
+                      effective={effective.agent_skills}
+                      onChange={setAgentSkill}
+                    />
+                  )}
+                </>
+              ) : selected.capabilityMode === 'built_in' ? (
+                <AgentBuiltInCapabilitySection agent={selected.key} />
+              ) : (
+                <AgentModelOnlySection />
+              )}
+              <AgentContextSection agent={selected.key} effective={effective} />
+            </div>
+          </main>
+        )}
+      </AdaptiveSurface>
     </div>
   )
 }
@@ -517,16 +535,14 @@ function AgentRuntimeContextSection({ agent, value, inherited, onChange }: {
   onChange: (patch: Partial<AgentContextOverride>) => void
 }) {
   const { t } = useTranslation()
-  const hasRecentTurns = value.recent_turns !== undefined && value.recent_turns !== null
   const hasCompactionEnabled = value.compaction_enabled !== undefined && value.compaction_enabled !== null
   const hasCompactionThreshold = value.compaction_threshold !== undefined && value.compaction_threshold !== null
   const hasCompactionRecentTurns = value.compaction_recent_turns !== undefined && value.compaction_recent_turns !== null
   const hasCompactionTargetMin = value.compaction_target_min_ratio !== undefined && value.compaction_target_min_ratio !== null
   const hasCompactionTargetMax = value.compaction_target_max_ratio !== undefined && value.compaction_target_max_ratio !== null
-  const effectiveRecentTurns = hasRecentTurns ? value.recent_turns : inherited.recent_turns ?? 30
   const effectiveCompactionEnabled = hasCompactionEnabled ? value.compaction_enabled : inherited.compaction_enabled ?? true
   const effectiveCompactionThreshold = hasCompactionThreshold ? value.compaction_threshold : inherited.compaction_threshold ?? 0.9
-  const effectiveCompactionRecentTurns = hasCompactionRecentTurns ? value.compaction_recent_turns : inherited.compaction_recent_turns ?? 8
+  const effectiveCompactionRecentTurns = hasCompactionRecentTurns ? value.compaction_recent_turns : inherited.compaction_recent_turns ?? 1
   const effectiveCompactionTargetMin = hasCompactionTargetMin ? value.compaction_target_min_ratio : inherited.compaction_target_min_ratio ?? 0.05
   const effectiveCompactionTargetMax = hasCompactionTargetMax ? value.compaction_target_max_ratio : inherited.compaction_target_max_ratio ?? 0.2
   const isCompactionAgent = agent === 'context_compaction'
@@ -536,17 +552,6 @@ function AgentRuntimeContextSection({ agent, value, inherited, onChange }: {
       <div className="grid gap-3 md:grid-cols-2">
         {!isCompactionAgent && (
           <>
-            <Field label={t('agents.field.recentTurns')} inherited={!hasRecentTurns} onReset={hasRecentTurns ? () => onChange({ recent_turns: null }) : undefined}>
-              <input
-                type="number"
-                min={1}
-                max={30}
-                step={1}
-                value={effectiveRecentTurns ?? 30}
-                onChange={(e) => onChange({ recent_turns: e.target.value === '' ? null : Number(e.target.value) })}
-                className={fieldCls}
-              />
-            </Field>
             <Field label={t('agents.field.compactionEnabled')} inherited={!hasCompactionEnabled} onReset={hasCompactionEnabled ? () => onChange({ compaction_enabled: null }) : undefined}>
               <select
                 value={String(effectiveCompactionEnabled)}
@@ -578,7 +583,7 @@ function AgentRuntimeContextSection({ agent, value, inherited, onChange }: {
                 min={1}
                 max={30}
                 step={1}
-                value={effectiveCompactionRecentTurns ?? 8}
+                value={effectiveCompactionRecentTurns ?? 1}
                 onChange={(e) => onChange({ compaction_recent_turns: e.target.value === '' ? null : Number(e.target.value) })}
                 className={fieldCls}
               />
@@ -609,7 +614,7 @@ function AgentRuntimeContextSection({ agent, value, inherited, onChange }: {
         )}
       </div>
       <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-        {isCompactionAgent ? t('agents.context.compactionTargetNote') : t('agents.context.recentTurnsNote')}
+        {isCompactionAgent ? t('agents.context.compactionTargetNote') : t('agents.context.compactionNote')}
       </div>
     </section>
   )
@@ -834,8 +839,7 @@ function buildProfileOptions(draft: Settings, effective: Settings, t: (key: stri
 function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: string, options?: Record<string, unknown>) => string) {
   const context = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[agent] ?? {})
   const compactionContext = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.context_compaction ?? {})
-  const recentTurns = context.recent_turns ?? 30
-  const compactionTurns = compactionContext.compaction_recent_turns ?? 8
+  const compactionTurns = compactionContext.compaction_recent_turns ?? 1
   const threshold = Math.round((context.compaction_threshold ?? 0.9) * 100)
   const targetMin = Math.round((compactionContext.compaction_target_min_ratio ?? 0.05) * 100)
   const targetMax = Math.round((compactionContext.compaction_target_max_ratio ?? 0.2) * 100)
@@ -843,27 +847,27 @@ function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: st
     return [
       { title: t('agents.context.currentBook'), value: 'workspace' },
       { title: t('agents.context.defaultTeller'), value: effective.ide_story_teller_id || 'classic' },
-      { title: t('agents.context.sessionContext'), value: t('agents.context.compactionValue', { threshold, count: compactionTurns, fallback: recentTurns }) },
+      { title: t('agents.context.sessionContext'), value: t('agents.context.compactionValue', { threshold }) },
     ]
   }
   if (agent === 'interactive_story') {
     return [
       { title: t('agents.context.storyState'), value: 'story jsonl' },
       { title: t('agents.context.teller'), value: t('agents.context.currentStoryTeller') },
-      { title: t('agents.context.sessionContext'), value: t('agents.context.compactionValue', { threshold, count: compactionTurns, fallback: recentTurns }) },
+      { title: t('agents.context.sessionContext'), value: t('agents.context.compactionValue', { threshold }) },
     ]
   }
   if (agent === 'context_compaction') {
     return [
       { title: t('agents.context.inputSource'), value: t('agents.context.compactionInputValue') },
       { title: t('agents.context.outputShape'), value: t('agents.context.compactionOutputValue') },
-      { title: t('agents.context.historyBoundary'), value: t('agents.context.compactionTargetValue', { min: targetMin, max: targetMax, count: compactionTurns }) },
+      { title: t('agents.context.historyBoundary'), value: t('agents.context.compactionTargetValue', { count: compactionTurns, min: targetMin, max: targetMax }) },
     ]
   }
   return [
     { title: t('agents.context.inputSource'), value: t('agents.context.inputSourceValue') },
     { title: t('agents.context.outputShape'), value: t('agents.context.outputShapeValue') },
-    { title: t('agents.context.historyBoundary'), value: t('agents.context.compactionValue', { threshold, count: compactionTurns, fallback: recentTurns }) },
+    { title: t('agents.context.historyBoundary'), value: t('agents.context.compactionValue', { threshold }) },
   ]
 }
 
@@ -898,13 +902,11 @@ function mergeAgentPromptOverride(parent: AgentPromptOverride, child: AgentPromp
 }
 
 function mergeAgentContextOverride(parent: AgentContextOverride, child: AgentContextOverride): AgentContextOverride {
-  const recentTurns = child.recent_turns ?? parent.recent_turns ?? 30
   const compactionThreshold = child.compaction_threshold ?? parent.compaction_threshold ?? 0.9
-  const compactionRecentTurns = child.compaction_recent_turns ?? parent.compaction_recent_turns ?? 8
+  const compactionRecentTurns = child.compaction_recent_turns ?? parent.compaction_recent_turns ?? 1
   const compactionTargetMin = child.compaction_target_min_ratio ?? parent.compaction_target_min_ratio ?? 0.05
   const compactionTargetMax = child.compaction_target_max_ratio ?? parent.compaction_target_max_ratio ?? 0.2
   return {
-    recent_turns: Math.max(1, Math.min(30, recentTurns)),
     compaction_enabled: child.compaction_enabled ?? parent.compaction_enabled ?? true,
     compaction_threshold: Math.max(0.5, Math.min(0.98, compactionThreshold)),
     compaction_recent_turns: Math.max(1, Math.min(30, compactionRecentTurns)),

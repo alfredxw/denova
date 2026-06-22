@@ -64,10 +64,18 @@ func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg
 		log.Printf("[tool-agent] create chapter regex model failed attempt=%s err=%v", attempt, err)
 		return "", fmt.Errorf("创建工具 Agent 模型失败: %w", err)
 	}
-	msg, err := cm.Generate(ctx, []*schema.Message{
+	messages := []*schema.Message{
 		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction())),
 		schema.UserMessage(instruction),
+	}
+	logFullModelInput(modelInputLogOptions{
+		AgentKind: config.AgentKindToolAgent,
+		Source:    "tool_agent_chapter_split_regex",
+		Mode:      "generate_" + attempt,
+		Config:    modelCfg,
+		Messages:  messages,
 	})
+	msg, err := cm.Generate(ctx, messages)
 	if err != nil {
 		log.Printf("[tool-agent] infer chapter split regex generate failed attempt=%s err=%v", attempt, err)
 		return "", fmt.Errorf("工具 Agent 推断章节正则失败: %w", err)

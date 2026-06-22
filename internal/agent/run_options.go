@@ -20,6 +20,7 @@ type RunOptions struct {
 	SessionID           string
 	Workspace           string
 	Mode                string
+	SystemPromptLog     SystemPromptCompositionLog
 	OnMutationsVerified func(context.Context, []ToolMutation, PostRunVerification)
 }
 

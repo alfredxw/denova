@@ -120,7 +120,6 @@ describe('SettingPanel', () => {
               creator: 'summary',
               lore: 'summary',
               runtime_state: 'summary',
-              recent_turns: 6,
             },
             slots: [],
             custom: false,

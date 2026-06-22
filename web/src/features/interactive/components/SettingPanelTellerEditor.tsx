@@ -90,7 +90,7 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
   const selectedTarget = targetOption(activeSlot?.target || 'turn_context')
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden">
       <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_150px_150px]">
         <Field label={t('settingPanel.field.name')}>
           <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
@@ -126,7 +126,7 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
         <InteractiveStyleRulesEditor available={availableStyles} rules={draft.style_rules ?? []} onChange={(rules) => setDraft({ ...draft, style_rules: rules })} />
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="flex min-h-0 flex-col border-r border-[var(--nova-border)] bg-[var(--nova-surface)]">
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
             <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.injectRules.title')}</div>
@@ -216,7 +216,7 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
                 </div>
               </div>
             </div>
-            <div className="min-h-0 flex-1 p-4">
+            <div className="min-h-[420px] flex-1 p-4 md:min-h-0">
               <Textarea
                 className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
                 value={activeSlot.content}

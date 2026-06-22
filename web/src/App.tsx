@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from 'next-themes'
-import { fetchSettings } from '@/features/settings/api'
+import { checkForUpdate, fetchSettings } from '@/features/settings/api'
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
+import { markAutoUpdateChecked, shouldRunAutoUpdateCheck, UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-check-cache'
+import type { UpdateCheckResult } from '@/features/settings/types'
 import { getLoreItems, importCharacterCard, previewCharacterCard, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
 import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
@@ -30,6 +32,7 @@ import {
   type CharacterCardTargetMode,
 } from '@/components/workbench/CharacterCardImportDialog'
 import { APP_VERSION } from '@/app-version'
+import { RemoteAccessLogin } from '@/components/RemoteAccessLogin'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
@@ -37,9 +40,11 @@ const INTERACTIVE_RIGHT_VISIBLE_KEY = 'nova.layout.interactiveRightVisible'
 const MAX_OPEN_TABS_FALLBACK = 5
 const AUTO_SAVE_ENABLED_FALLBACK = true
 const AUTO_SAVE_DELAY_FALLBACK_MS = 1500
+const DISMISSED_UPDATE_VERSION_KEY = 'nova.update.dismissedLatestVersion'
 type SidebarView = 'outline' | 'files' | 'search'
 type WritingRightPanel = Extract<RightPanel, 'ai'> | null
 type BooksReturnMode = 'ide' | 'interactive'
+type UpdateNotice = { latestVersion: string }
 
 function App() {
   const { t } = useTranslation()
@@ -55,6 +60,8 @@ function App() {
   const [maxOpenTabs, setMaxOpenTabs] = useState<number>(MAX_OPEN_TABS_FALLBACK)
   const [editorAutoSaveEnabled, setEditorAutoSaveEnabled] = useState(AUTO_SAVE_ENABLED_FALLBACK)
   const [editorAutoSaveDelayMs, setEditorAutoSaveDelayMs] = useState(AUTO_SAVE_DELAY_FALLBACK_MS)
+  const [updateCheckEnabled, setUpdateCheckEnabled] = useState<boolean | null>(null)
+  const [updateNotice, setUpdateNotice] = useState<UpdateNotice | null>(null)
   const [motionIntensity, setMotionIntensity] = useState('system')
   const [novaDir, setNovaDir] = useState('')
   const [sidebarView, setSidebarView] = useState<SidebarView>('outline')
@@ -74,6 +81,7 @@ function App() {
   const writingRightPanelRef = useRef<WritingRightPanel>('ai')
   const characterCardInputRef = useRef<HTMLInputElement>(null)
   const chatWorkspaceRef = useRef('')
+  const updateCheckInFlightRef = useRef(false)
   const tabActivationsRef = useRef<Map<string, number>>(new Map())
   const tabActivationCounterRef = useRef(0)
 
@@ -84,6 +92,7 @@ function App() {
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const setMode = useWorkspaceStore((state) => state.setMode)
   const setSelectedChapterId = useWorkspaceStore((state) => state.setSelectedChapterId)
+  const workspaceAutoRefreshEnabled = mode === 'ide' && !settingsOpen && (rightPanel === 'ai' || rightPanel === null)
 
   useEffect(() => {
     if (mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations') return
@@ -96,7 +105,7 @@ function App() {
     tree, loading, selectedFile, fileContent, workspace, workspaceLoaded, summary, styles, books,
     selectFile, clearSelectedFile, saveCurrentFile, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
-  } = useWorkspace()
+  } = useWorkspace({ autoRefreshEnabled: workspaceAutoRefreshEnabled })
 
   const notifyVersionChange = useCallback(() => {
     setVersionRefreshSignal(value => value + 1)
@@ -164,6 +173,22 @@ function App() {
     workspace.replace(/\/+$/, '').split('/').pop() ||
     t('workbench.noBook')
 
+  const applyUpdateCheckResult = useCallback((result: UpdateCheckResult) => {
+    if (!result.update_available || !result.latest_version) {
+      setUpdateNotice(null)
+      return
+    }
+    const dismissedVersion = readDismissedUpdateVersion()
+    setUpdateNotice(dismissedVersion === result.latest_version ? null : { latestVersion: result.latest_version })
+  }, [])
+
+  const dismissUpdateNotice = useCallback(() => {
+    setUpdateNotice((current) => {
+      if (current?.latestVersion) writeDismissedUpdateVersion(current.latestVersion)
+      return null
+    })
+  }, [])
+
   const touchTab = useCallback((key: string) => {
     tabActivationCounterRef.current += 1
     tabActivationsRef.current.set(key, tabActivationCounterRef.current)
@@ -190,6 +215,7 @@ function App() {
           if (typeof v === 'number' && v >= 1) setMaxOpenTabs(Math.floor(v))
           setEditorAutoSaveEnabled(effective?.auto_save_enabled ?? AUTO_SAVE_ENABLED_FALLBACK)
           setEditorAutoSaveDelayMs(normalizeAutoSaveDelayMs(effective?.auto_save_interval_ms))
+          setUpdateCheckEnabled(effective?.update_check_enabled !== false)
           setNovaDir(data?.paths?.nova_dir || '')
           setConfiguredLocale(effective?.language)
           setTheme(normalizeAppTheme(effective?.theme))
@@ -206,6 +232,29 @@ function App() {
       window.removeEventListener('nova:settings-updated', onUpdated)
     }
   }, [setTheme, workspace])
+
+  useEffect(() => {
+    const onUpdateCheckResult = (event: Event) => {
+      const result = (event as CustomEvent<UpdateCheckResult>).detail
+      if (result) applyUpdateCheckResult(result)
+    }
+    window.addEventListener(UPDATE_CHECK_RESULT_EVENT, onUpdateCheckResult)
+    return () => window.removeEventListener(UPDATE_CHECK_RESULT_EVENT, onUpdateCheckResult)
+  }, [applyUpdateCheckResult])
+
+  useEffect(() => {
+    if (updateCheckEnabled !== true || updateCheckInFlightRef.current || !shouldRunAutoUpdateCheck()) return
+    updateCheckInFlightRef.current = true
+    checkForUpdate()
+      .then((result) => {
+        applyUpdateCheckResult(result)
+      })
+      .catch((e) => console.warn('[updates] 自动检查更新失败', e))
+      .finally(() => {
+        markAutoUpdateChecked()
+        updateCheckInFlightRef.current = false
+      })
+  }, [applyUpdateCheckResult, updateCheckEnabled])
 
   useEffect(() => {
     if (activeTabKey) touchTab(activeTabKey)
@@ -572,6 +621,8 @@ function App() {
         onSetRightPanel={handleSetRightPanel}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
         onCloseSettings={() => setSettingsOpen(false)}
+        updateNotice={updateNotice}
+        onDismissUpdateNotice={dismissUpdateNotice}
         onToggleInteractiveRightPanel={() => setInteractiveRightVisible((value) => !value)}
         onSwitchBook={handleWorkspaceSwitch}
         onBooksChange={refreshBooks}
@@ -641,6 +692,7 @@ function App() {
         onUserCharacterNameChange={setCharacterCardUserName}
         onImport={handleCharacterCardImport}
       />
+      <RemoteAccessLogin />
     </NovaMotionProvider>
   )
 }
@@ -657,6 +709,22 @@ function normalizeAutoSaveDelayMs(value: number | null | undefined) {
     return AUTO_SAVE_DELAY_FALLBACK_MS
   }
   return Math.floor(value)
+}
+
+function readDismissedUpdateVersion() {
+  try {
+    return window.localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+function writeDismissedUpdateVersion(version: string) {
+  try {
+    window.localStorage.setItem(DISMISSED_UPDATE_VERSION_KEY, version)
+  } catch {
+    // localStorage 不可写时，当前会话内的关闭状态仍由 React state 保持。
+  }
 }
 
 function isIdeWorkspacePanel(panel: RightPanel): panel is 'lore' | 'creator' | 'teller' | 'versions' {

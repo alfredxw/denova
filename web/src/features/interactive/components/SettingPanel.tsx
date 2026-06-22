@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { BookMarked, Building2, Database, FileText, Library, Loader2, MapPin, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
+import { BookMarked, Building2, Database, FileText, Library, Loader2, MapPin, PanelLeft, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { createLoreItem, deleteLoreItem, getLoreItems, readFile, saveFile, updateLoreItem, type LoreItem } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { createInteractiveTeller, deleteInteractiveTeller, getInteractiveTellers, updateInteractiveTeller } from '../api'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, INTERACTIVE_OPENING_PRESET_ENTRY_ID, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, serializeBookOpeningPresets, type BookOpeningPreset } from '../opening'
 import type { Teller } from '../types'
@@ -491,28 +492,51 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const isOpeningPresetActive = activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID
   const isLoreConfigAgentActive = activeMode === 'lore' && activeId === LORE_CONFIG_AGENT_ENTRY_ID
   const isTellerConfigAgentActive = activeMode === 'teller' && activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
-  return (
-    <section className="flex h-full min-h-0 bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
-      <aside className={`nova-sidebar flex shrink-0 flex-col border-r ${embedded ? 'w-56' : 'w-[320px]'}`}>
-        <div className="border-b border-[var(--nova-border)] px-3 py-3">
-          <div className="flex items-center gap-2">
-            <ModeIcon mode={activeMode} />
-            <div className="text-sm font-semibold text-[var(--nova-text)]">{panelTitle(activeMode, t)}</div>
-          </div>
-          <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.directoryHint')}</div>
+  const directoryPanel = (
+    <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
+      <div className="border-b border-[var(--nova-border)] px-3 py-3">
+        <div className="flex items-center gap-2">
+          <ModeIcon mode={activeMode} />
+          <div className="text-sm font-semibold text-[var(--nova-text)]">{panelTitle(activeMode, t)}</div>
         </div>
+        <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.directoryHint')}</div>
+      </div>
 
-        {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} /> : activeMode === 'creator' ? <CreatorDirectory /> : <TellerDirectory tellers={tellers} activeTellerId={activeTellerId} saving={saving} onSelect={handleSelectTeller} onCreate={() => void handleCreateTeller()} />}
-      </aside>
-
-      <main className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
+      {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} /> : activeMode === 'creator' ? <CreatorDirectory /> : <TellerDirectory tellers={tellers} activeTellerId={activeTellerId} saving={saving} onSelect={handleSelectTeller} onCreate={() => void handleCreateTeller()} />}
+    </div>
+  )
+  return (
+    <section className="h-full min-h-0 bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
+      <AdaptiveSurface
+        left={{
+          id: 'setting-directory',
+          title: panelTitle(activeMode, t),
+          side: 'left',
+          icon: <ModeIcon mode={activeMode} />,
+          content: directoryPanel,
+          desktopClassName: `min-h-0 border-r border-[var(--nova-border)] ${embedded ? 'w-56' : 'w-[320px]'}`,
+          mobileClassName: embedded ? 'w-[min(86vw,320px)]' : 'w-[min(90vw,360px)]',
+        }}
+        className="h-full"
+        mainClassName="min-h-0 min-w-0"
+        desktopGridClassName={embedded ? 'grid-cols-[14rem_minmax(0,1fr)]' : 'grid-cols-[320px_minmax(0,1fr)]'}
+      >
+        {({ isMobile, openLeft }) => (
+      <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
         <div className="nova-topbar flex min-h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            {isMobile && (
+              <button type="button" className="nova-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: panelTitle(activeMode, t) })} onClick={openLeft}>
+                <PanelLeft className="h-4 w-4" />
+              </button>
+            )}
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
               {isCreatorActive ? <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : isOpeningPresetActive ? <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <ModeIcon mode={activeMode} />}
               <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.title') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : isCreatorActive ? CREATOR_PATH : isOpeningPresetActive ? t('settingPanel.openingPreset.title') : editorTitle(activeMode, draft, tellerDraft, t)}</h2>
             </div>
             <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : isCreatorActive ? t('settingPanel.editor.creatorSubtitle') : isOpeningPresetActive ? t('settingPanel.openingPreset.subtitle') : editorSubtitle(activeMode, draft, tellerDraft, t)}</p>
+          </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {activeMode === 'lore' && !isLoreConfigAgentActive && !isCreatorActive && !isOpeningPresetActive && (
@@ -569,6 +593,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
           <TellerEditor workspace={workspace} draft={tellerDraft} setDraft={setTellerDraft} tagDraft={tellerTagDraft} setTagDraft={setTellerTagDraft} activeSlotId={activeSlotId} setActiveSlotId={setActiveSlotId} onSave={handleSave} />
         )}
       </main>
+        )}
+      </AdaptiveSurface>
     </section>
   )
 }
@@ -663,7 +689,6 @@ function newTellerDraft(): Partial<Teller> {
       creator: 'always',
       lore: 'relevant',
       runtime_state: 'always',
-      recent_turns: 30,
     },
     slots: [
       {

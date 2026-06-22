@@ -55,21 +55,21 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		Automation:            AgentToolOverride{FileRead: &on, WebSearch: &on},
 		ContextCompaction:     AgentToolOverride{Skills: &on},
 	}
-	recentTurns := map[string]*int{}
+	thresholds := map[string]*float64{}
 	for _, definition := range definitions {
-		value := len(recentTurns) + 1
-		recentTurns[definition.Kind] = &value
+		value := 0.50 + float64(len(thresholds))*0.01
+		thresholds[definition.Kind] = &value
 	}
 	contexts := AgentContextSettings{
-		IDE:                   AgentContextOverride{RecentTurns: recentTurns[AgentKindIDE]},
-		InteractiveStory:      AgentContextOverride{RecentTurns: recentTurns[AgentKindInteractiveStory]},
-		ConfigManager:         AgentContextOverride{RecentTurns: recentTurns[AgentKindConfigManager]},
-		InteractiveState:      AgentContextOverride{RecentTurns: recentTurns[AgentKindInteractiveState]},
-		InteractiveHotChoices: AgentContextOverride{RecentTurns: recentTurns[AgentKindInteractiveHotChoices]},
-		VersionSummary:        AgentContextOverride{RecentTurns: recentTurns[AgentKindVersionSummary]},
-		ToolAgent:             AgentContextOverride{RecentTurns: recentTurns[AgentKindToolAgent]},
-		Automation:            AgentContextOverride{RecentTurns: recentTurns[AgentKindAutomation]},
-		ContextCompaction:     AgentContextOverride{RecentTurns: recentTurns[AgentKindContextCompaction]},
+		IDE:                   AgentContextOverride{CompactionThreshold: thresholds[AgentKindIDE]},
+		InteractiveStory:      AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveStory]},
+		ConfigManager:         AgentContextOverride{CompactionThreshold: thresholds[AgentKindConfigManager]},
+		InteractiveState:      AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveState]},
+		InteractiveHotChoices: AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveHotChoices]},
+		VersionSummary:        AgentContextOverride{CompactionThreshold: thresholds[AgentKindVersionSummary]},
+		ToolAgent:             AgentContextOverride{CompactionThreshold: thresholds[AgentKindToolAgent]},
+		Automation:            AgentContextOverride{CompactionThreshold: thresholds[AgentKindAutomation]},
+		ContextCompaction:     AgentContextOverride{CompactionThreshold: thresholds[AgentKindContextCompaction]},
 	}
 
 	for _, definition := range definitions {
@@ -82,7 +82,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		if got := definition.ToolOverride(tools); got == (AgentToolOverride{}) {
 			t.Fatalf("tool accessor for %s returned zero override", definition.Kind)
 		}
-		if got := definition.ContextOverride(contexts).RecentTurns; got == nil || *got != *recentTurns[definition.Kind] {
+		if got := definition.ContextOverride(contexts).CompactionThreshold; got == nil || *got != *thresholds[definition.Kind] {
 			t.Fatalf("context accessor for %s returned %#v", definition.Kind, got)
 		}
 	}

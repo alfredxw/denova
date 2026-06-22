@@ -101,6 +101,10 @@ export function AgentPanel({
   const activeSession = sessions.find((session) => session.id === activeSessionId) ||
     sessions.find((session) => session.active) ||
     sessions[0]
+  const tokenUsageMessages = useMemo(
+    () => messages.filter((message) => message.role === 'token_usage'),
+    [messages],
+  )
 
   useEffect(() => {
     const handleWritingInitRequest = (event: Event) => {
@@ -250,6 +254,7 @@ export function AgentPanel({
             onTextSelectionRemove={onTextSelectionRemove}
             skills={skillCommands}
             onContextAnalyze={openContextAnalysis}
+            tokenUsageMessages={tokenUsageMessages}
           />
           <ContextAnalysisDialog
             open={contextAnalysisOpen}

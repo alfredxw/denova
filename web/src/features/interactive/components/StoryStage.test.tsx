@@ -20,14 +20,114 @@ function streamEvents(events: InteractiveSSEEvent[]): ReadableStream<Interactive
   })
 }
 
+function setMobileViewport(matches: boolean) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: matches ? 390 : 1280 })
+  Object.defineProperty(window, 'innerHeight', { configurable: true, value: matches ? 844 : 900 })
+  vi.stubGlobal('matchMedia', vi.fn().mockImplementation(() => ({
+    matches,
+    media: '(max-width: 767px)',
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })))
+}
+
 describe('StoryStage', () => {
   beforeEach(() => {
+    setMobileViewport(false)
     vi.clearAllMocks()
     useInteractiveStore.setState({ storyStageRuns: {} })
     vi.mocked(generateInteractiveHotChoices).mockResolvedValue({
       enabled: true,
       choices: [],
     })
+  })
+
+  it('collapses story controls behind a compact mobile stage menu', async () => {
+    setMobileViewport(true)
+    const onToggleSceneMemory = vi.fn()
+
+    render(
+      <StoryStage
+        storyId="st_1"
+        branchId="main"
+        stories={[{
+          id: 'st_1',
+          title: '故事线 1',
+          origin: '',
+          story_teller_id: 'classic',
+          reply_target_chars: 900,
+          opening: { mode: 'ai' },
+          created_at: '',
+          updated_at: '',
+          branches: 1,
+          events: 1,
+        }]}
+        story={{
+          id: 'st_1',
+          title: '故事线 1',
+          origin: '',
+          story_teller_id: 'classic',
+          reply_target_chars: 900,
+          opening: { mode: 'ai' },
+          created_at: '',
+          updated_at: '',
+          branches: 1,
+          events: 1,
+        }}
+        tellers={[{
+          version: 1,
+          id: 'classic',
+          name: '经典叙事',
+          description: '',
+          random_event_rate: 0,
+          tags: [],
+          context_policy: {
+            creator: 'summary',
+            lore: 'summary',
+            runtime_state: 'full',
+          },
+          slots: [],
+          custom: false,
+          updated_at: '',
+        }]}
+        snapshot={{
+          story_id: 'st_1',
+          branch_id: 'main',
+          state: {},
+          turns: [{
+            id: 'ev_1',
+            parent_id: null,
+            branch_id: 'main',
+            ts: '',
+            user: '观察石案',
+            narrative: '石案上有一枚暗淡的银铃。',
+          }],
+        }}
+        onToggleSceneMemory={onToggleSceneMemory}
+        onDone={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '舞台操作' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '导航菜单' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '发送' })).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('你要做什么？')).toBeInTheDocument()
+    expect(screen.queryByText('故事舞台 · 当前分支 main')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '选择故事线' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '选择叙事' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '设置每轮目标字数' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '舞台操作' }))
+
+    expect(await screen.findByText('故事线')).toBeInTheDocument()
+    expect(screen.getByText('叙事')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '设置每轮目标字数' })).toHaveTextContent('每轮 900 字')
+    fireEvent.click(screen.getByRole('button', { name: '隐藏故事记忆' }))
+    expect(onToggleSceneMemory).toHaveBeenCalledTimes(1)
   })
 
   it('shows and saves the story-level reply target chars', async () => {
@@ -194,6 +294,50 @@ describe('StoryStage', () => {
     expect(screen.queryByText('先整理当前场景和风险。')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /思考过程/ }))
     expect(await screen.findByText('先整理当前场景和风险。')).toBeInTheDocument()
+  })
+
+  it('restores persisted display events in their original agent loop order', () => {
+    render(
+      <StoryStage
+        storyId="st_1"
+        branchId="main"
+        snapshot={{
+          story_id: 'st_1',
+          branch_id: 'main',
+          state: {},
+          turns: [
+            {
+              id: 'ev_1',
+              parent_id: null,
+              branch_id: 'main',
+              ts: '',
+              user: '检查档案柜',
+              narrative: '档案柜里露出一张潮湿的地图。',
+              thinking: '旧合并思考不应重复展示。',
+              display_events: [
+                { role: 'thinking', content: '先分析档案室线索。' },
+                { id: 'call-1', role: 'tool_call', name: 'list_lore_items', content: 'list_lore_items', args: '{"query":"档案室"}', status: 'success', result: '找到档案室设定' },
+                { role: 'thinking', content: '第二轮基于工具结果继续判断。' },
+                { id: 'call-2', role: 'tool_call', name: 'apply_story_memory_patches', content: 'apply_story_memory_patches', args: '{"patches":[{"table":"plot_summary"}]}', status: 'success', result: '已写入 1 条记忆' },
+              ],
+            },
+          ],
+        }}
+        onDone={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByText('旧合并思考不应重复展示。')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /2 次工具调用/ }))
+    const firstThinking = screen.getByText('先分析档案室线索。')
+    const firstTool = screen.getByText('list_lore_items')
+    const secondThinking = screen.getByText('第二轮基于工具结果继续判断。')
+    const secondTool = screen.getByText('apply_story_memory_patches')
+    expect(Boolean(firstThinking.compareDocumentPosition(firstTool) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+    expect(Boolean(firstTool.compareDocumentPosition(secondThinking) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+    expect(Boolean(secondThinking.compareDocumentPosition(secondTool) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true)
+    expect(screen.getByText('找到档案室设定')).toBeInTheDocument()
+    expect(screen.getByText('已写入 1 条记忆')).toBeInTheDocument()
   })
 
   it('shows a lightweight lore initialization guide only while lore is empty', () => {

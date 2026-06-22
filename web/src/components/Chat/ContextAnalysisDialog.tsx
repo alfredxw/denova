@@ -3,6 +3,7 @@ import { AlertCircle, ChevronDown, ChevronRight, Loader2, ScrollText, Trash2 } f
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { ContextAnalysis, ContextAnalysisCompaction, ContextAnalysisPart } from '@/lib/api'
+import { focusDialogContentOnOpen } from './dialog-focus'
 
 export const CONTEXT_ANALYSIS_SIMULATED_MESSAGE = '[Nova context analysis probe]'
 
@@ -33,7 +34,11 @@ export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenCh
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[86vh] max-w-5xl flex-col gap-0 overflow-hidden border-[var(--nova-border)] bg-[var(--nova-bg)] p-0 text-[var(--nova-text)]">
+      <DialogContent
+        tabIndex={-1}
+        onOpenAutoFocus={focusDialogContentOnOpen}
+        className="flex max-h-[86vh] max-w-5xl flex-col gap-0 overflow-hidden border-[var(--nova-border)] bg-[var(--nova-bg)] p-0 text-[var(--nova-text)]"
+      >
         <DialogHeader className="border-b border-[var(--nova-border)] px-4 py-3">
           <DialogTitle className="flex items-center gap-2 text-sm">
             <ScrollText className="h-4 w-4 text-[var(--nova-text-muted)]" />

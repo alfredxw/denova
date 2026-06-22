@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { MobilePaneHost, type MobilePane } from './mobile-pane-host'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
+
+export const MOBILE_NAVIGATION_OPEN_EVENT = 'nova:mobile-navigation-open'
 
 export interface MobileNavItem {
   id: string
@@ -31,6 +34,8 @@ interface WorkspaceMobileLayoutProps {
   agentDrawer?: MobileDrawer
   closeLabel: string
   navigationLabel: string
+  compactNavigation?: boolean
+  compactNavigationLabel?: string
 }
 
 export function WorkspaceMobileLayout({
@@ -42,96 +47,99 @@ export function WorkspaceMobileLayout({
   agentDrawer,
   closeLabel,
   navigationLabel,
+  compactNavigation = false,
+  compactNavigationLabel,
 }: WorkspaceMobileLayoutProps) {
-  const [openDrawerId, setOpenDrawerId] = useState<MobileDrawer['id'] | null>(null)
-  const drawers = useMemo(() => [projectDrawer, agentDrawer].filter(Boolean) as MobileDrawer[], [agentDrawer, projectDrawer])
-  const openDrawer = drawers.find((drawer) => drawer.id === openDrawerId)
+  const [navigationOpen, setNavigationOpen] = useState(false)
+  const drawers = [projectDrawer, agentDrawer].filter((drawer): drawer is MobileDrawer => Boolean(drawer)).map((drawer) => ({
+    ...drawer,
+    className: drawer.side === 'left' ? 'w-[min(90vw,390px)]' : 'w-[min(90vw,390px)]',
+  })) as MobilePane[]
 
   useEffect(() => {
-    if (!openDrawerId) return
-    if (!drawers.some((drawer) => drawer.id === openDrawerId)) {
-      setOpenDrawerId(null)
-    }
-  }, [drawers, openDrawerId])
+    if (!compactNavigation) return
+    const openNavigation = () => setNavigationOpen(true)
+    window.addEventListener(MOBILE_NAVIGATION_OPEN_EVENT, openNavigation)
+    return () => window.removeEventListener(MOBILE_NAVIGATION_OPEN_EVENT, openNavigation)
+  }, [compactNavigation])
 
-  const closeDrawer = () => {
-    openDrawer?.onClose?.()
-    setOpenDrawerId(null)
-  }
-
-  const runNavAction = (action: () => void) => {
-    closeDrawer()
-    action()
-  }
-
-  const runDrawerAction = (drawer: MobileDrawer) => {
-    if (openDrawerId === drawer.id) {
-      closeDrawer()
-      return
-    }
-    openDrawer?.onClose?.()
-    drawer.onOpen?.()
-    setOpenDrawerId(drawer.id)
-  }
+  useEffect(() => {
+    if (!compactNavigation) setNavigationOpen(false)
+  }, [compactNavigation])
 
   return (
-    <div data-nova-app-shell="true" data-nova-mobile-shell="true" className="flex h-dvh w-screen flex-col overflow-hidden bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      {topBar}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {main}
-      </div>
-      <nav className="nova-mobile-nav flex shrink-0 items-stretch gap-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5" aria-label={navigationLabel}>
-        {projectDrawer ? (
-          <MobileNavButton
-            item={{
-              id: projectDrawer.id,
-              label: projectDrawer.title,
-              icon: projectDrawer.icon,
-              expanded: openDrawerId === projectDrawer.id,
-              onClick: () => runDrawerAction(projectDrawer),
-            }}
-          />
-        ) : null}
-        <div className="nova-mobile-nav-scroll flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto">
-          {activityItems.map((item) => (
-            <MobileNavButton key={item.id} item={{ ...item, onClick: () => runNavAction(item.onClick) }} />
-          ))}
-        </div>
-        {agentDrawer ? (
-          <MobileNavButton
-            item={{
-              id: agentDrawer.id,
-              label: agentDrawer.title,
-              icon: agentDrawer.icon,
-              expanded: openDrawerId === agentDrawer.id,
-              onClick: () => runDrawerAction(agentDrawer),
-            }}
-          />
-        ) : null}
-        <MobileNavButton item={{ ...settingsItem, onClick: () => runNavAction(settingsItem.onClick) }} />
-      </nav>
-      {openDrawer ? (
-        <div className={`fixed inset-0 z-50 flex ${openDrawer.side === 'right' ? 'justify-end' : 'justify-start'}`}>
-          <button type="button" className="nova-mobile-drawer-backdrop absolute inset-0 bg-black/45" aria-label={closeLabel} onClick={closeDrawer} />
-          <aside
-            role="dialog"
-            aria-modal="true"
-            aria-label={openDrawer.title}
-            className={`relative z-10 flex h-full min-h-0 w-[min(90vw,390px)] flex-col border-[var(--nova-border)] bg-[var(--nova-surface-2)] shadow-[var(--nova-shadow)] ${openDrawer.side === 'right' ? 'border-l' : 'border-r'}`}
-          >
-            <div className="nova-topbar flex h-11 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
-              <span className="min-w-0 truncate text-xs font-semibold text-[var(--nova-text)]">{openDrawer.title}</span>
-              <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={closeLabel} onClick={closeDrawer}>
-                <X className="h-4 w-4" />
-              </button>
-            </div>
+    <MobilePaneHost panes={drawers} closeLabel={closeLabel} className="h-dvh w-screen overflow-hidden">
+      {({ openPaneId, closePane, togglePane }) => {
+        const runNavAction = (action: () => void) => {
+          closePane()
+          setNavigationOpen(false)
+          action()
+        }
+        const navigationItems: MobileNavItem[] = [
+          ...(projectDrawer ? [{
+            id: projectDrawer.id,
+            label: projectDrawer.title,
+            icon: projectDrawer.icon,
+            expanded: openPaneId === projectDrawer.id,
+            onClick: () => {
+              setNavigationOpen(false)
+              togglePane(projectDrawer.id)
+            },
+          }] : []),
+          ...activityItems.map((item) => ({ ...item, onClick: () => runNavAction(item.onClick) })),
+          ...(agentDrawer ? [{
+            id: agentDrawer.id,
+            label: agentDrawer.title,
+            icon: agentDrawer.icon,
+            expanded: openPaneId === agentDrawer.id,
+            onClick: () => {
+              setNavigationOpen(false)
+              togglePane(agentDrawer.id)
+            },
+          }] : []),
+          { ...settingsItem, onClick: () => runNavAction(settingsItem.onClick) },
+        ]
+        const navigationSheet = (
+          <Sheet open={navigationOpen} onOpenChange={setNavigationOpen}>
+            <SheetContent side="bottom" showCloseButton={false} aria-describedby={undefined} className="max-h-[70dvh] gap-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
+              <div className="nova-topbar flex h-11 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
+                <SheetTitle className="text-xs font-semibold text-[var(--nova-text)]">{compactNavigationLabel || navigationLabel}</SheetTitle>
+                <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={closeLabel} onClick={() => setNavigationOpen(false)}>
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid max-h-[calc(70dvh-2.75rem)] grid-cols-3 gap-2 overflow-y-auto p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                {navigationItems.map((item) => (
+                  <MobileNavButton key={item.id} item={item} />
+                ))}
+              </div>
+            </SheetContent>
+          </Sheet>
+        )
+        return (
+          <div data-nova-app-shell="true" data-nova-mobile-shell="true" className="relative flex h-dvh w-screen flex-col overflow-hidden bg-[var(--nova-bg)] text-[var(--nova-text)]">
+            {topBar}
             <div className="min-h-0 flex-1 overflow-hidden">
-              {openDrawer.content}
+              {main}
             </div>
-          </aside>
-        </div>
-      ) : null}
-    </div>
+            {compactNavigation ? (
+              navigationSheet
+            ) : (
+              <nav className="nova-mobile-nav flex shrink-0 items-stretch gap-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5" aria-label={navigationLabel}>
+                {projectDrawer ? <MobileNavButton item={navigationItems[0]} /> : null}
+                <div className="nova-mobile-nav-scroll flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto">
+                  {activityItems.map((item) => (
+                    <MobileNavButton key={item.id} item={{ ...item, onClick: () => runNavAction(item.onClick) }} />
+                  ))}
+                </div>
+                {agentDrawer ? <MobileNavButton item={navigationItems[projectDrawer ? activityItems.length + 1 : activityItems.length]} /> : null}
+                <MobileNavButton item={{ ...settingsItem, onClick: () => runNavAction(settingsItem.onClick) }} />
+              </nav>
+            )}
+          </div>
+        )
+      }}
+    </MobilePaneHost>
   )
 }
 

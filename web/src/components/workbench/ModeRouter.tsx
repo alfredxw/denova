@@ -67,6 +67,7 @@ interface ModeRouterProps {
   loreItems: LoreItem[]
   styleReferences: string[]
   textSelections: TextSelection[]
+  updateNotice?: { latestVersion: string } | null
   onSetMode: (mode: WorkspaceMode) => void
   onToggleActivityBarExpanded: () => void
   onToggleProjectVisible: () => void
@@ -104,6 +105,7 @@ interface ModeRouterProps {
   onStyleReferenceAdd: (path: string) => void
   onStyleReferenceRemove: (path: string) => void
   onTextSelectionRemove: (index: number) => void
+  onDismissUpdateNotice?: () => void
 }
 
 export function ModeRouter(props: ModeRouterProps) {
@@ -147,6 +149,7 @@ export function ModeRouter(props: ModeRouterProps) {
     loreItems,
     styleReferences,
     textSelections,
+    updateNotice,
     onSetMode,
     onToggleActivityBarExpanded,
     onToggleProjectVisible,
@@ -184,6 +187,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onStyleReferenceAdd,
     onStyleReferenceRemove,
     onTextSelectionRemove,
+    onDismissUpdateNotice,
   } = props
 
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
@@ -564,12 +568,14 @@ export function ModeRouter(props: ModeRouterProps) {
       sidebar={sidebar}
       main={main}
       rightPanelContent={rightPanelContent}
+      updateNotice={updateNotice}
       onSetMode={onSetMode}
       onToggleActivityBarExpanded={onToggleActivityBarExpanded}
       onSetInteractiveSubmode={setInteractiveSubmode}
       onSetRightPanel={onSetRightPanel}
       onToggleSettings={onToggleSettings}
       onCloseSettings={onCloseSettings}
+      onDismissUpdateNotice={onDismissUpdateNotice}
     />
   )
 }

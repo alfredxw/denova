@@ -187,6 +187,9 @@ func (s *Store) DeleteStory(storyID string) error {
 	if err := os.Remove(s.storyPath(storyID)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	if err := os.Remove(s.usagePath(storyID)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	return s.writeIndexLocked(index)
 }
 
@@ -202,6 +205,11 @@ func (s *Store) StoryContext(storyID, branchID string) (StoryContext, error) {
 	if err != nil {
 		return StoryContext{}, err
 	}
+	usageEvents, err := s.readTokenUsageEventsLocked(storyID, snapshot.BranchID)
+	if err != nil {
+		return StoryContext{}, err
+	}
+	snapshot.TokenUsageEvents = usageEvents
 	return StoryContext{Meta: meta, Snapshot: snapshot}, nil
 }
 
@@ -442,6 +450,58 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	return turn, delta, nil
 }
 
+// AppendTurnDisplayEvent appends a display-only event to an existing turn.
+// The event is kept out of future model context and does not move branch head.
+func (s *Store) AppendTurnDisplayEvent(storyID, branchID, turnID string, event DisplayEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	events := sanitizeDisplayEvents([]DisplayEvent{event})
+	if len(events) == 0 {
+		return nil
+	}
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return err
+	}
+	if branchID == "" {
+		branchID = meta.CurrentBranch
+	}
+	if _, ok := meta.Branches[branchID]; !ok {
+		return fmt.Errorf("分支不存在: %s", branchID)
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return fmt.Errorf("展示事件缺少所属回合")
+	}
+	updated := false
+	for i := range lines {
+		raw := lines[i].Raw
+		if lines[i].Envelope.ID != turnID || lines[i].Envelope.Type != StoryEventTypeTurn {
+			continue
+		}
+		if lines[i].Envelope.BranchID != branchID {
+			return fmt.Errorf("展示事件回合不属于当前分支: %s", turnID)
+		}
+		var turn TurnEvent
+		if err := mapToStruct(raw, &turn); err != nil {
+			return err
+		}
+		raw["display_events"] = appendDisplayEvent(turn.DisplayEvents, events[0])
+		updated = true
+		break
+	}
+	if !updated {
+		return fmt.Errorf("展示事件所属回合不存在: %s", turnID)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	meta.UpdatedAt = now
+	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
+		return err
+	}
+	return s.touchIndexLocked(storyID, now, 0)
+}
+
 func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -513,10 +573,12 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 	if !pathSet[turnID] {
 		return fmt.Errorf("只能切换当前剧情路径上的回合版本: %s", turnID)
 	}
+	currentIndex := -1
 	var current *StoryEventRecord
 	for i := range path {
 		if path[i].Envelope.ID == turnID && path[i].Envelope.Type == StoryEventTypeTurn {
 			current = &path[i]
+			currentIndex = i
 			break
 		}
 	}
@@ -537,7 +599,15 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 		return fmt.Errorf("只能在同一剧情位置切换版本")
 	}
 
-	branch.Head = versionTurnID
+	nextHead := versionTurnID
+	if currentIndex >= 0 && currentIndex < len(path)-1 {
+		next := path[currentIndex+1]
+		if err := reparentStoryEvent(lines, next, turnID, versionTurnID); err != nil {
+			return err
+		}
+		nextHead = branch.Head
+	}
+	branch.Head = nextHead
 	meta.Branches[branchID] = branch
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	meta.UpdatedAt = now
@@ -545,6 +615,24 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 		return err
 	}
 	return s.touchIndexLocked(storyID, now, 0)
+}
+
+func reparentStoryEvent(lines []StoryEventRecord, child StoryEventRecord, oldParentID, newParentID string) error {
+	if parentIDFromRaw(child.Raw) != oldParentID {
+		return fmt.Errorf("当前剧情路径不连续，无法切换版本: %s", child.Envelope.ID)
+	}
+	for i := range lines {
+		if lines[i].Envelope.ID != child.Envelope.ID || lines[i].Envelope.Type != child.Envelope.Type {
+			continue
+		}
+		if parentIDFromRaw(lines[i].Raw) != oldParentID {
+			continue
+		}
+		lines[i].Raw["parent_id"] = newParentID
+		lines[i].Envelope.ParentID = newParentID
+		return nil
+	}
+	return fmt.Errorf("剧情后续节点不存在，无法切换版本: %s", child.Envelope.ID)
 }
 
 func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (StateDeltaEvent, error) {
@@ -598,8 +686,6 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 	if !updated {
 		return StateDeltaEvent{}, fmt.Errorf("状态变化所属回合不存在: %s", parentID)
 	}
-	branch.Head = parentID
-	meta.Branches[branchID] = branch
 	meta.UpdatedAt = now
 	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
 		return StateDeltaEvent{}, err
@@ -797,7 +883,16 @@ func (s *Store) Snapshot(storyID, branchID string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
-	return snapshotFromLines(storyID, branchID, meta, lines)
+	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	usageEvents, err := s.readTokenUsageEventsLocked(storyID, snapshot.BranchID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	snapshot.TokenUsageEvents = usageEvents
+	return snapshot, nil
 }
 
 func findEventBranch(lines []StoryEventRecord, eventID string) (string, bool) {

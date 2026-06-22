@@ -1,6 +1,6 @@
 export interface ChatMessage {
   type?: 'message' | 'clear'
-  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'system' | 'error'
+  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'context_compaction' | 'token_usage' | 'system' | 'error'
   content?: string
   id?: string
   turn_id?: string
@@ -8,10 +8,49 @@ export interface ChatMessage {
   args?: string
   status?: 'running' | 'success' | 'error'
   result?: string
+  phase?: string
+  attempt?: number
+  tokens_before?: number
+  tokens_after?: number
+  context_window_tokens?: number
+  threshold?: number
+  target_ratio?: number
+  epoch?: number
+  source_message_count?: number
+  message_count_before?: number
+  message_count_after?: number
+  skipped_reason?: string
+  run_id?: string
+  agent_kind?: string
+  prompt_tokens?: number
+  cached_prompt_tokens?: number
+  uncached_prompt_tokens?: number
+  cache_hit_rate?: number
+  completion_tokens?: number
+  reasoning_tokens?: number
+  total_tokens?: number
+  model_calls?: number
+  generated_bytes?: number
+  usage_calls?: TokenUsageCall[]
   streaming?: boolean
   created_at?: string
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number
+}
+
+export interface TokenUsageCall {
+  index?: number
+  created_at?: string
+  finish_reason?: string
+  requested_tools?: string[]
+  after_tools?: string[]
+  prompt_tokens?: number
+  cached_prompt_tokens?: number
+  uncached_prompt_tokens?: number
+  cache_hit_rate?: number
+  completion_tokens?: number
+  reasoning_tokens?: number
+  total_tokens?: number
 }
 
 export interface SessionSummary {

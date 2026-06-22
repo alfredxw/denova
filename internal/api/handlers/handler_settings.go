@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -28,10 +29,25 @@ func (h *Handlers) HandleSettingsUserUpdate(ctx context.Context, c *app.RequestC
 	}
 	layered, err := h.app.UpdateUserSettings(body)
 	if err != nil {
+		if key := settingsErrorKey(err); key != "" {
+			writeErrorKey(c, consts.StatusBadRequest, key)
+			return
+		}
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, layered)
+}
+
+func settingsErrorKey(err error) string {
+	switch {
+	case errors.Is(err, config.ErrRemoteAccessUsernameRequired):
+		return "api.settings.lanUsernameRequired"
+	case errors.Is(err, config.ErrRemoteAccessPasswordRequired):
+		return "api.settings.lanPasswordRequired"
+	default:
+		return ""
+	}
 }
 
 // handleSettingsWorkspaceUpdate PUT /api/settings/workspace — 持久化工作区级配置。

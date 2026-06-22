@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,7 +35,7 @@ func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 	if !strings.Contains(instruction, "导演系统规则") || !strings.Contains(instruction, "经典叙事者") {
 		t.Fatalf("interactive story instruction should include teller system rules:\n%s", instruction)
 	}
-	for _, required := range []string{"每轮目标字数为最高约束", "最高篇幅约束", "777 个中文字以内"} {
+	for _, required := range []string{"每轮目标字数为最高约束", "最高篇幅约束", "777 个中文字左右"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should contain reply target priority %q:\n%s", required, instruction)
 		}
@@ -58,7 +60,7 @@ func TestBuildInteractiveStoryInstructionKeepsReplyTargetAboveCustomLengthPrompt
 		StoryTellerSystemPrompt: "每轮至少写 5000 字。",
 	})
 
-	for _, required := range []string{"每轮目标字数为最高约束", "都不得要求超过该目标", "650 个中文字以内"} {
+	for _, required := range []string{"每轮目标字数为最高约束", "都不得要求超过该目标", "650 个中文字左右"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should protect story reply target %q:\n%s", required, instruction)
 		}
@@ -67,6 +69,36 @@ func TestBuildInteractiveStoryInstructionKeepsReplyTargetAboveCustomLengthPrompt
 		if !strings.Contains(instruction, preserved) {
 			t.Fatalf("custom/user-authored prompt text should remain visible %q:\n%s", preserved, instruction)
 		}
+	}
+}
+
+func TestBuildInteractiveStoryInstructionDoesNotLogDuringPromptBuild(t *testing.T) {
+	var buf bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() {
+		log.SetOutput(previous)
+	})
+
+	state := book.NewState(t.TempDir())
+	composition := BuildInteractiveStoryInstructionComposition(&config.Config{Workspace: state.Workspace()}, state, prompts.InteractiveStorySystemInstructionInput{
+		StoryTellerID:           "classic",
+		StoryTellerSystemPrompt: "讲述规则",
+	})
+	if composition.Instruction() == "" {
+		t.Fatal("composition instruction should be populated")
+	}
+	if got := buf.String(); strings.Contains(got, "[agent-prompt]") {
+		t.Fatalf("prompt build should not emit agent-prompt logs, got:\n%s", got)
+	}
+
+	composition.logForRun(RunOptions{TaskID: "task-1", SessionID: "session-1"})
+	got := buf.String()
+	if count := strings.Count(got, "[agent-prompt] system composition"); count != 1 {
+		t.Fatalf("expected one composition log, got %d:\n%s", count, got)
+	}
+	if !strings.Contains(got, "task_id=task-1") || !strings.Contains(got, "session_id=session-1") {
+		t.Fatalf("composition log should include run identifiers:\n%s", got)
 	}
 }
 
@@ -145,7 +177,7 @@ func TestBuiltinInteractiveMemoryPromptUsesStoryMemoryPatchContract(t *testing.T
 		"互动记忆 Agent",
 		"story_memory_patches",
 		"故事记忆结构与字段协议",
-		"最近回合上下文历史",
+		"历史回合上下文",
 		"资料库相关人物与设定",
 		"本回合前的既有故事记忆",
 		"按该表的字段列表逐字段填写",

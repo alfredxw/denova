@@ -62,25 +62,34 @@ func main() {
 
 	// 启动 HTTP 服务
 	srv := api.NewServer(application, port)
+	listenHost := config.HTTPListenHost(cfg.AllowLANAccess)
 
 	// 打印启动信息
 	url := fmt.Sprintf("http://localhost:%s", port)
+	frontendURL := fmt.Sprintf("http://localhost:%s", frontendPort)
 	fmt.Printf("\n  Nova AI 小说创作工具\n")
 	fmt.Printf("  ─────────────────────\n")
-	fmt.Printf("  服务地址: %s\n", url)
-	fmt.Printf("  作品目录: %s\n", application.Workspace())
+	fmt.Printf("  后端服务: %s\n", url)
 	if dev {
-		fmt.Printf("  前端开发: http://localhost:%s\n", frontendPort)
+		fmt.Printf("  前端入口: %s\n", frontendURL)
 	}
+	if cfg.AllowLANAccess {
+		if dev {
+			fmt.Printf("  局域网入口: http://%s:%s\n", config.LANAddress(), frontendPort)
+		} else {
+			fmt.Printf("  局域网后端: http://%s:%s\n", config.LANAddress(), port)
+		}
+	}
+	fmt.Printf("  作品目录: %s\n", application.Workspace())
 	fmt.Printf("  按 Ctrl+C 停止服务\n\n")
 
 	// 开发模式：同时启动 Vite dev server
 	if dev {
-		go startViteDev(frontendPort)
+		go startViteDev(frontendPort, listenHost)
 	}
 	if !noOpen {
 		if dev {
-			go openBrowser(fmt.Sprintf("http://localhost:%s", frontendPort))
+			go openBrowser(frontendURL)
 		} else {
 			go openBrowser(url)
 		}
@@ -106,7 +115,7 @@ func openBrowser(url string) {
 }
 
 // startViteDev 启动 Vite 前端开发服务器
-func startViteDev(port string) {
+func startViteDev(port, host string) {
 	// 查找 web 目录
 	webDir := "./web"
 	if _, err := os.Stat(webDir); os.IsNotExist(err) {
@@ -118,7 +127,7 @@ func startViteDev(port string) {
 		}
 	}
 
-	cmd := exec.Command("pnpm", "dev", "--host", "0.0.0.0", "--port", port)
+	cmd := exec.Command("pnpm", "dev", "--host", host, "--port", port)
 	cmd.Dir = webDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

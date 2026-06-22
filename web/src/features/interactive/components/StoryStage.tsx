@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent } from 'react'
-import { Archive, BookOpen, ChevronDown, ChevronUp, Command as CommandIcon, Compass, List, Loader2, PanelRight, Pencil, RefreshCw, ScrollText, Send, Sparkles, Square, X } from 'lucide-react'
+import { Archive, BarChart3, BookOpen, ChevronDown, ChevronUp, Command as CommandIcon, Compass, List, Loader2, PanelRight, Pencil, Plus, RefreshCw, ScrollText, Send, SlidersHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,11 +8,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList } from '@/components/Chat/MessageList'
 import { ReferenceChips } from '@/components/Chat/ReferenceChips'
+import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
+import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
+import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobile-layout'
 import type { ChatMessage, ContextAnalysis } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
@@ -21,9 +24,10 @@ import { createInteractiveNarrativeFilter } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { Snapshot, StorySummary, Teller } from '../types'
+import type { Snapshot, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { TellerPicker } from './TellerPicker'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 interface StoryStageProps {
   workspace?: string
@@ -55,7 +59,9 @@ const stageAbortControllers = new Map<string, AbortController>()
 
 export function StoryStage({ workspace, styleSuggestions = [], stories = [], story, tellers = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const [input, setInput] = useState('')
+  const [stageControlsOpen, setStageControlsOpen] = useState(false)
   const [styleReferences, setStyleReferences] = useState<string[]>([])
   const [styleReferenceQuery, setStyleReferenceQuery] = useState<string | null>(null)
   const [showSkillCommands, setShowSkillCommands] = useState(false)
@@ -86,10 +92,13 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   const [selectedBookOpeningPresetId, setSelectedBookOpeningPresetId] = useState('')
   const [customOpeningText, setCustomOpeningText] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
+  const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
   const hotChoicesAbortRef = useRef<AbortController | null>(null)
+  const currentCompactionMessageIdRef = useRef<string | null>(null)
+  const compactionIdCounterRef = useRef(0)
   const liveStageKeyRef = useRef(stageKey)
   const previousSnapshotKeyRef = useRef(snapshotKey)
   const stagePreferences = useStagePreferences()
@@ -219,7 +228,9 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
           content: turn.user,
         },
       ]
-      if (turn.thinking?.trim()) {
+      const displayEvents = turn.display_events || []
+      const hasDisplayTimelineThinking = displayEvents.some((event) => event.role === 'thinking')
+      if (!hasDisplayTimelineThinking && turn.thinking?.trim()) {
         messages.push({
           id: `${turn.id}-thinking`,
           role: 'thinking',
@@ -227,17 +238,30 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
           streaming: false,
         })
       }
-      for (const [index, event] of (turn.display_events || []).entries()) {
-        if (event.role !== 'tool_call') continue
-        messages.push({
-          id: event.id || `${turn.id}-tool-${index}`,
-          role: 'tool_call',
-          content: event.content || event.name || 'unknown_tool',
-          name: event.name || event.content,
-          status: event.status || 'success',
-          streaming: false,
-          created_at: event.created_at,
-        })
+      for (const [index, event] of displayEvents.entries()) {
+        if (event.role === 'thinking') {
+          messages.push({
+            id: event.id || `${turn.id}-thinking-${index}`,
+            role: 'thinking',
+            content: event.content || '',
+            streaming: false,
+            created_at: event.created_at,
+          })
+          continue
+        }
+        if (event.role === 'tool_call') {
+          messages.push({
+            id: event.id || `${turn.id}-tool-${index}`,
+            role: 'tool_call',
+            content: event.content || event.name || 'unknown_tool',
+            name: event.name || event.content,
+            args: event.args || '',
+            status: event.status || 'success',
+            result: event.result || '',
+            streaming: false,
+            created_at: event.created_at,
+          })
+        }
       }
       messages.push({
         id: `${turn.id}-assistant`,
@@ -251,8 +275,20 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     })
   }, [rewindTurnId, snapshot?.turns])
 
-  const displayLiveMessages = hasPersistedLiveTurn ? [] : liveMessages
+  const displayLiveMessages = hasPersistedLiveTurn ? [] : liveMessages.filter((message) => message.role !== 'token_usage')
   const messages = useMemo(() => [...historyMessages, ...displayLiveMessages], [displayLiveMessages, historyMessages])
+  const persistedTokenUsageMessages = useMemo(
+    () => (snapshot?.token_usage_events || []).map((event, index) => buildTokenUsageMessage(event, event.id || `token-usage-${index + 1}`)),
+    [snapshot?.token_usage_events],
+  )
+  const liveTokenUsageMessages = useMemo(
+    () => liveMessages.filter((message) => message.role === 'token_usage'),
+    [liveMessages],
+  )
+  const tokenUsageMessages = useMemo(
+    () => mergeTokenUsageMessages(persistedTokenUsageMessages, liveTokenUsageMessages),
+    [liveTokenUsageMessages, persistedTokenUsageMessages],
+  )
   const scrollResetKey = `${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
   const title = pickSceneTitle(snapshot, branchId, t)
   const hotChoices = useMemo(
@@ -356,6 +392,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     setActiveSkillCommandIndex(0)
     setStageActivityContent(t('storyStage.activity.connecting'))
     setStageLiveMessages([{ role: 'user', content: message }])
+    currentCompactionMessageIdRef.current = null
     updateStageRun({ rewindTurnId: nextRewindTurnId || undefined })
     liveStageKeyRef.current = stageKey
     setStageStreaming(true)
@@ -416,13 +453,21 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
           }
           case 'context_compaction': {
             const data = JSON.parse(value.data)
+            appendContextCompactionMessage(data)
             if (data.status === 'started') {
               setStageActivityContent(t('storyStage.activity.compacting'))
             } else if (data.status === 'completed') {
               setStageActivityContent(t('storyStage.activity.compacted'))
+              currentCompactionMessageIdRef.current = null
             } else if (data.status === 'failed') {
               setStageActivityContent('')
+              currentCompactionMessageIdRef.current = null
             }
+            break
+          }
+          case 'token_usage': {
+            const data = JSON.parse(value.data)
+            setStageLiveMessages((prev) => upsertTokenUsageMessage(prev, buildTokenUsageMessage(data)))
             break
           }
           case 'error': {
@@ -470,6 +515,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     } finally {
       setStageStreaming(false)
       stageAbortControllers.delete(stageKey)
+      currentCompactionMessageIdRef.current = null
       setStageActivityContent('')
     }
   }
@@ -484,15 +530,30 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     setActiveSkillCommandIndex(0)
     setStageStreaming(true)
     setStageActivityContent(t('storyStage.activity.compacting'))
-    setStageLiveMessages([])
+    currentCompactionMessageIdRef.current = null
+    setStageLiveMessages([{
+      role: 'context_compaction',
+      id: createContextCompactionMessageId(compactionIdCounterRef),
+      status: 'running',
+      content: '',
+      phase: 'pre_run',
+      streaming: true,
+    }])
     try {
       await compactInteractiveContext(storyId, branchId)
-      setStageLiveMessages([{ role: 'system', content: t('storyStage.contextCompaction.done') }])
+      setStageLiveMessages((prev) => [
+        ...prev.map((msg) => msg.role === 'context_compaction' ? { ...msg, status: 'success' as const, streaming: false } : msg),
+        { role: 'system', content: t('storyStage.contextCompaction.done') },
+      ])
       await onDone()
     } catch (error) {
-      setStageLiveMessages([{ role: 'error', content: error instanceof Error ? error.message : t('storyStage.contextCompaction.failed') }])
+      setStageLiveMessages((prev) => [
+        ...prev.map((msg) => msg.role === 'context_compaction' ? { ...msg, status: 'error' as const, streaming: false } : msg),
+        { role: 'error', content: error instanceof Error ? error.message : t('storyStage.contextCompaction.failed') },
+      ])
     } finally {
       setStageStreaming(false)
+      currentCompactionMessageIdRef.current = null
       setStageActivityContent('')
     }
   }
@@ -655,26 +716,56 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     setStyleReferences((current) => current.filter((item) => item !== path))
   }
 
+  const stageControls = (
+    <>
+      <StoryPicker stories={stories} currentStoryId={storyId} tellers={tellers} onSelect={onStorySelect} onCreate={onStoryCreate} onDelete={onStoryDelete} />
+      <TellerPicker story={story} tellers={tellers} onChange={onTellerChange} />
+      <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} />
+      {onToggleSceneMemory && (
+        <Button type="button" variant="outline" size="sm" className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${sceneMemoryVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} onClick={onToggleSceneMemory} aria-label={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')} title={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')}>
+          <PanelRight className="h-3.5 w-3.5" />
+          {t('storyStage.sceneMemory')}
+        </Button>
+      )}
+    </>
+  )
+  const openMobileNavigation = () => {
+    window.dispatchEvent(new Event(MOBILE_NAVIGATION_OPEN_EVENT))
+  }
+
   return (
     <main className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
       <div data-testid="story-stage-card" className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
-        <div className="nova-story-stage-header nova-topbar flex min-h-14 flex-wrap items-center justify-between gap-3 border-b px-4 py-2">
-          <div className="nova-story-stage-title min-w-0">
-            <div className="text-[10px] font-medium leading-4 text-[var(--nova-text-faint)]">{t('storyStage.branchLabel', { branch: branchId || 'main' })}</div>
-            <div className="truncate text-xs font-semibold leading-5 text-[var(--nova-text)]">{title}</div>
+        {isMobile ? (
+          <div className="pointer-events-none absolute inset-x-0 top-3 z-10 px-3">
+            <div className={`pointer-events-auto ml-auto overflow-hidden rounded-[14px] border border-[var(--nova-border)] bg-[var(--nova-surface)]/85 text-[var(--nova-text)] shadow-[0_12px_36px_rgba(0,0,0,0.28)] backdrop-blur-xl transition-[max-height,width,background-color] duration-200 ease-[var(--nova-ease)] ${stageControlsOpen ? 'w-[min(calc(100vw-1.5rem),390px)] max-h-[48dvh]' : 'w-8 max-h-8'}`}>
+              <button type="button" className="flex h-8 w-full items-center gap-2 px-2 text-left text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyStage.mobile.controls')} aria-expanded={stageControlsOpen} title={t('storyStage.mobile.controls')} onClick={() => setStageControlsOpen((open) => !open)}>
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                  <SlidersHorizontal className="h-3.5 w-3.5" />
+                </span>
+                {stageControlsOpen ? <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--nova-text)]">{t('storyStage.mobile.controls')}</span> : null}
+                {stageControlsOpen ? <X className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" /> : null}
+              </button>
+              {stageControlsOpen ? (
+                <div className="border-t border-[var(--nova-border)] px-3 pb-3 pt-2">
+                  <div className="flex max-h-[calc(48dvh-3rem)] flex-col gap-2 overflow-y-auto pr-1">
+                    {stageControls}
+                  </div>
+                </div>
+              ) : null}
+            </div>
           </div>
-          <div className="nova-story-stage-controls flex min-w-0 flex-wrap items-center justify-end gap-2">
-            <StoryPicker stories={stories} currentStoryId={storyId} tellers={tellers} onSelect={onStorySelect} onCreate={onStoryCreate} onDelete={onStoryDelete} />
-            <TellerPicker story={story} tellers={tellers} onChange={onTellerChange} />
-            <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} />
-            {onToggleSceneMemory && (
-              <Button type="button" variant="outline" size="sm" className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${sceneMemoryVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} onClick={onToggleSceneMemory} aria-label={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')} title={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')}>
-                <PanelRight className="h-3.5 w-3.5" />
-                {t('storyStage.sceneMemory')}
-              </Button>
-            )}
+        ) : (
+          <div className="nova-story-stage-header nova-topbar flex min-h-14 flex-wrap items-center justify-between gap-3 border-b px-4 py-2">
+            <div className="nova-story-stage-title min-w-0 flex-1">
+              <div className="text-[10px] font-medium leading-4 text-[var(--nova-text-faint)]">{t('storyStage.branchLabel', { branch: branchId || 'main' })}</div>
+              <div className="truncate text-xs font-semibold leading-5 text-[var(--nova-text)]">{title}</div>
+            </div>
+            <div className="nova-story-stage-controls flex min-w-0 flex-wrap items-center justify-end gap-2">
+              {stageControls}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
           <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
@@ -811,7 +902,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
               ) : null}
             </div>
           ) : null}
-          <div className="nova-story-stage-composer-row flex items-center gap-3">
+          <div className="nova-story-stage-composer-row flex items-end gap-3">
             <div className="relative min-w-0 flex-1">
               <ReferenceChips files={styleReferences} onRemove={removeStyleReference} prefix="#" tone="style" />
               <FileReferencePicker open={styleReferenceQuery !== null && styleSuggestions.length > 0} query={styleReferenceQuery || ''} files={styleSuggestions} onSelect={selectStyleReference} trigger="#" placeholder={t('chat.styleReference.placeholder')} emptyText={t('chat.styleReference.empty')} heading={t('chat.styleReference.heading')} />
@@ -873,7 +964,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                       type="button"
                       variant="outline"
                       size="icon-sm"
-                      className="h-11 w-11 shrink-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                      className={`${isMobile ? 'h-10 w-8 border-transparent bg-transparent px-0 text-[var(--nova-text-faint)] hover:bg-transparent hover:text-[var(--nova-text-muted)]' : 'h-11 w-11 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'} shrink-0`}
                       disabled={!storyId || streaming}
                       aria-label={t('chat.input.actions')}
                       title={t('chat.input.actions')}
@@ -881,7 +972,16 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                       <List className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" side="top" className="min-w-44 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
+                  <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                    <DropdownMenuItem
+                      onSelect={() => setTokenUsageOpen(true)}
+                      className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                    >
+                      <BarChart3 className="h-3.5 w-3.5" />
+                      <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
+                      <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageMessages.length })}</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                     <DropdownMenuItem
                       disabled={!storyId || streaming}
                       onSelect={openContextAnalysis}
@@ -898,7 +998,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                   className="nova-field min-h-11 flex-1 resize-none px-3 py-2 text-sm placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
                   style={inputTextStyle}
                   value={input}
-                  placeholder={skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
+                  placeholder={!isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
                   onChange={handleInputChange}
                   onKeyDown={(event) => {
                     const canPickSkill = showSkillCommands && filteredSkillCommands.length > 0
@@ -928,23 +1028,35 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                 />
               </div>
             </div>
-            {stagePreferences.hotChoicesEnabled ? (
+            {!isMobile && stagePreferences.hotChoicesEnabled ? (
               <Button type="button" variant="outline" className={`h-11 min-w-[4.5rem] shrink-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
                 <Compass className={`h-3.5 w-3.5 ${hotChoicesLoading ? 'animate-pulse' : ''}`} />
                 {t('storyStage.hotChoices.button')}
               </Button>
             ) : null}
-            <Button
-              className={`h-11 w-20 border border-[var(--nova-border)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
-              disabled={streaming ? false : !storyId || !input.trim()}
-              onClick={() => {
-                streaming ? stop() : void send()
-              }}
-              aria-label={streaming ? t('chat.input.stop') : editingTurn ? t('storyStage.sendRegenerate') : t('chat.input.send')}
-            >
-              {streaming ? <Square className="h-3.5 w-3.5 fill-current" /> : editingTurn ? <RefreshCw className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
-              {streaming ? t('storyStage.stop') : editingTurn ? t('storyStage.regenerate') : t('chat.input.send')}
-            </Button>
+            {isMobile && stagePreferences.hotChoicesEnabled ? (
+              <Button type="button" variant="outline" className={`h-10 w-10 shrink-0 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-0 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
+                <Compass className={`h-4 w-4 ${hotChoicesLoading ? 'animate-pulse' : ''}`} />
+              </Button>
+            ) : null}
+            {isMobile ? (
+              <Button type="button" variant="outline" className="h-10 w-10 shrink-0 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-0 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onMouseDown={(event) => event.preventDefault()} onClick={openMobileNavigation} aria-label={t('workbench.mobile.navigationMenu')} title={t('workbench.mobile.navigationMenu')}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            ) : null}
+            {(!isMobile || streaming) ? (
+              <Button
+                className={`${isMobile ? 'h-10 w-10 rounded-full px-0' : 'h-11 w-[4.5rem] px-3 md:w-20'} border border-[var(--nova-border)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
+                disabled={streaming ? false : !storyId || !input.trim()}
+                onClick={() => {
+                  streaming ? stop() : void send()
+                }}
+                aria-label={streaming ? t('chat.input.stop') : editingTurn ? t('storyStage.sendRegenerate') : t('chat.input.send')}
+              >
+                {streaming ? <Square className="h-3.5 w-3.5 fill-current" /> : editingTurn ? <RefreshCw className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+                {!isMobile ? (streaming ? t('storyStage.stop') : editingTurn ? t('storyStage.regenerate') : t('chat.input.send')) : null}
+              </Button>
+            ) : null}
           </div>
           <ContextAnalysisDialog
             open={contextAnalysisOpen}
@@ -954,6 +1066,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
             onOpenChange={setContextAnalysisOpen}
             onRemoveCompaction={removeContextCompaction}
           />
+          <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} />
         </div>
       </div>
     </main>
@@ -1030,14 +1143,20 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     )
   }
 
+  function appendContextCompactionMessage(data: Record<string, unknown>) {
+    const compactionId = currentCompactionMessageIdRef.current || createContextCompactionMessageId(compactionIdCounterRef)
+    currentCompactionMessageIdRef.current = compactionId
+    setStageLiveMessages((prev) => upsertContextCompactionMessage(prev, buildContextCompactionMessage(data, compactionId)))
+  }
+
   function collapseNonNarrativeMessages() {
     setStageLiveMessages((prev) =>
       prev.map((msg) =>
-        msg.role === 'thinking' || msg.role === 'tool_call'
+        msg.role === 'thinking' || msg.role === 'tool_call' || msg.role === 'context_compaction'
           ? {
               ...msg,
               streaming: false,
-              status: msg.role === 'tool_call' ? (msg.status === 'running' ? 'success' : msg.status) : msg.status,
+              status: msg.role === 'tool_call' || msg.role === 'context_compaction' ? (msg.status === 'running' ? 'success' : msg.status) : msg.status,
             }
           : msg,
       ),
@@ -1047,11 +1166,11 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   function finishLiveMessages() {
     setStageLiveMessages((prev) =>
       prev.map((msg) =>
-        msg.role === 'assistant' || msg.role === 'thinking' || msg.role === 'tool_call'
+        msg.role === 'assistant' || msg.role === 'thinking' || msg.role === 'tool_call' || msg.role === 'context_compaction'
           ? {
               ...msg,
               streaming: false,
-              status: msg.role === 'tool_call' ? (msg.status === 'running' ? 'success' : msg.status) : msg.status,
+              status: msg.role === 'tool_call' || msg.role === 'context_compaction' ? (msg.status === 'running' ? 'success' : msg.status) : msg.status,
             }
           : msg,
       ),
@@ -1183,6 +1302,84 @@ function isAbortError(error: unknown) {
 
 function normalizeMessageContent(value: string) {
   return value.replace(/\r\n/g, '\n').trim()
+}
+
+function buildTokenUsageMessage(data: Record<string, unknown> | TokenUsageEvent, fallbackId?: string): ChatMessage {
+  const runId = readString(data.run_id)
+  return {
+    role: 'token_usage',
+    id: runId || fallbackId || `token-usage-${Date.now()}`,
+    content: '',
+    run_id: runId,
+    agent_kind: readString(data.agent_kind),
+    prompt_tokens: readNumber(data.prompt_tokens),
+    cached_prompt_tokens: readNumber(data.cached_prompt_tokens),
+    uncached_prompt_tokens: readNumber(data.uncached_prompt_tokens),
+    cache_hit_rate: readNumber(data.cache_hit_rate),
+    completion_tokens: readNumber(data.completion_tokens),
+    reasoning_tokens: readNumber(data.reasoning_tokens),
+    total_tokens: readNumber(data.total_tokens),
+    model_calls: readNumber(data.model_calls),
+    generated_bytes: readNumber(data.generated_bytes),
+    usage_calls: readUsageCalls(data.usage_calls),
+    created_at: readString(data.created_at) || new Date().toISOString(),
+  }
+}
+
+function readUsageCalls(value: unknown) {
+  if (!Array.isArray(value)) return undefined
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const call = item as Record<string, unknown>
+      return {
+        index: readNumber(call.index),
+        created_at: readString(call.created_at),
+        finish_reason: readString(call.finish_reason),
+        requested_tools: readStringArray(call.requested_tools),
+        after_tools: readStringArray(call.after_tools),
+        prompt_tokens: readNumber(call.prompt_tokens),
+        cached_prompt_tokens: readNumber(call.cached_prompt_tokens),
+        uncached_prompt_tokens: readNumber(call.uncached_prompt_tokens),
+        cache_hit_rate: readNumber(call.cache_hit_rate),
+        completion_tokens: readNumber(call.completion_tokens),
+        reasoning_tokens: readNumber(call.reasoning_tokens),
+        total_tokens: readNumber(call.total_tokens),
+      }
+    })
+    .filter((call): call is NonNullable<typeof call> => Boolean(call))
+}
+
+function readStringArray(value: unknown) {
+  if (!Array.isArray(value)) return undefined
+  const result = value.map((item) => readString(item)).filter(Boolean)
+  return result.length > 0 ? result : undefined
+}
+
+function upsertTokenUsageMessage(messages: ChatMessage[], next: ChatMessage) {
+  if (!next.run_id) return [...messages, next]
+  let found = false
+  const updated = messages.map((message) => {
+    if (message.role === 'token_usage' && message.run_id === next.run_id) {
+      found = true
+      return { ...message, ...next }
+    }
+    return message
+  })
+  return found ? updated : [...updated, next]
+}
+
+function mergeTokenUsageMessages(persisted: ChatMessage[], live: ChatMessage[]) {
+  return live.reduce((messages, message) => upsertTokenUsageMessage(messages, message), [...persisted])
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' ? value : ''
+}
+
+function readNumber(value: unknown) {
+  const numberValue = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(numberValue) ? numberValue : 0
 }
 
 function mergeHotChoices(current: string[], next: string[]) {
