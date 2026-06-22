@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复互动快捷选择和互动记忆 Agent 在本地 LM（如 LM Studio）下生成失败且错误信息为空的问题：这两个 Agent 此前强制使用 `response_format=json_object`，部分本地 LM 服务器不支持该参数会返回空错误；现在先尝试 JSON mode，失败后自动降级为普通文本模式重试，与小说导入工具 Agent 的降级策略一致。
+- 修复本地 LM 返回空错误时日志只显示前缀（如"生成互动快捷选择失败: "）的问题：现在会记录错误类型并补充可读描述，便于诊断本地 LM 兼容性问题。
+
 ### Added
 
 - 后端新增完整 LLM 输入 JSONL 日志：每次模型请求都会把未截断的 messages、工具 schema 和非密钥模型参数写入 `log/llm-inputs.jsonl`，最多保留最近 10 条记录，便于排查前缀缓存命中率。
