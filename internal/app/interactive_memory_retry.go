@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"nova/config"
 	"nova/internal/session"
 )
 
 const interactiveMemoryAgentMaxAttempts = 3
+const interactiveMemoryAgentAttemptTimeout = 2 * time.Minute
 
 type interactiveMemoryOutputGenerator func(context.Context, *config.Config, string) (string, error)
 
@@ -18,7 +20,9 @@ func runInteractiveMemoryAgentWithRetry(ctx context.Context, cfg *config.Config,
 	var lastErr error
 	for attempt := 1; attempt <= interactiveMemoryAgentMaxAttempts; attempt++ {
 		attemptInstruction := interactiveMemoryInstructionForAttempt(instruction, attempt, lastErr)
-		output, err := generate(ctx, cfg, attemptInstruction)
+		attemptCtx, cancel := context.WithTimeout(ctx, interactiveMemoryAgentAttemptTimeout)
+		output, err := generate(attemptCtx, cfg, attemptInstruction)
+		cancel()
 		if err != nil {
 			lastErr = err
 			log.Printf("[interactive-memory-agent] attempt failed phase=generate attempt=%d/%d err=%v", attempt, interactiveMemoryAgentMaxAttempts, err)

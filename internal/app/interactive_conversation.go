@@ -630,7 +630,7 @@ type interactiveTurnMemory struct {
 }
 
 const (
-	interactiveStateMemorySchemaBytes = 8 * 1024
+	interactiveStateMemorySchemaBytes = 24 * 1024
 	interactiveStateLoreContextBytes  = 32 * 1024
 )
 
