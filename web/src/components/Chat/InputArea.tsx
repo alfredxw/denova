@@ -6,8 +6,11 @@ import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePi
 import { ReferenceChips } from './ReferenceChips'
 import { TokenUsageDialog } from './TokenUsagePanel'
 import type { ChatMessage, TextSelection } from '@/lib/api'
+import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
+import { AgentComposerShell } from './AgentComposerShell'
+import { ModelProfileSwitcher } from './ModelProfileSwitcher'
 import {
   Command,
   CommandEmpty,
@@ -80,6 +83,9 @@ interface InputAreaProps {
   disabledPlaceholder?: string
   onContextAnalyze?: (message: string) => void | Promise<void>
   tokenUsageMessages?: ChatMessage[]
+  agentKey?: VisibleAgentKey
+  workspace?: string
+  floating?: boolean
 }
 
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
@@ -111,6 +117,9 @@ export function InputArea({
   disabledPlaceholder,
   onContextAnalyze,
   tokenUsageMessages = [],
+  agentKey,
+  workspace,
+  floating = false,
 }: InputAreaProps) {
   const { t } = useTranslation()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
@@ -331,6 +340,7 @@ export function InputArea({
     if (disabled) return
     void onContextAnalyze?.(value)
   }
+  const hasReferences = referencedFiles.length > 0 || loreReferences.length > 0 || styleReferences.length > 0 || textSelections.length > 0
 
   /** 选择命令 */
   const selectCommand = (cmd: string) => {
@@ -366,47 +376,7 @@ export function InputArea({
   }
 
   return (
-    <div className="nova-chat-input-area relative border-t border-[var(--nova-border)] p-3">
-      <ReferenceChips files={referencedFiles} onRemove={onReferenceRemove} />
-      <ReferenceChips
-        files={loreReferences.map((id) => loreReferenceLabels[id] || id)}
-        onRemove={onLoreReferenceRemove ? (label) => {
-          const target = loreReferences.find((id) => (loreReferenceLabels[id] || id) === label)
-          if (target) onLoreReferenceRemove(target)
-        } : undefined}
-        prefix="@资料:"
-        tone="lore"
-      />
-      <ReferenceChips files={styleReferences} onRemove={onStyleReferenceRemove} prefix="#" tone="style" />
-      {textSelections.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {textSelections.map((sel, idx) => (
-            <span
-              key={idx}
-              className="inline-flex max-w-full items-center gap-1 rounded-md bg-[var(--nova-success-bg)] px-2 py-0.5 text-xs text-[var(--nova-success)]"
-            >
-              <span className="truncate">
-                {sel.fileName}:L{sel.startLine}
-                {sel.endLine !== sel.startLine && `-L${sel.endLine}`}
-                {' '}
-                <span className="text-[var(--nova-success-muted)]">
-                  {sel.content.length > 30 ? sel.content.slice(0, 30) + '…' : sel.content}
-                </span>
-              </span>
-              {onTextSelectionRemove && (
-                <button
-                  type="button"
-                  className="rounded text-[var(--nova-success-muted)] hover:text-[var(--nova-text)]"
-                  onClick={() => onTextSelectionRemove(idx)}
-                >
-                  ×
-                </button>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-
+    <div className={floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3'}>
       <Popover open={showCommands && filteredCommands.length > 0}>
         <PopoverTrigger asChild>
           <span className="absolute bottom-full left-3 h-0 w-0" />
@@ -492,65 +462,117 @@ export function InputArea({
         heading={t('chat.styleReference.heading')}
       />
 
-      <div className="nova-chat-composer flex items-end gap-2 rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              size="icon-sm"
-              className="h-9 w-9 shrink-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-              disabled={!onContextAnalyze && tokenUsageMessages.length === 0}
-              aria-label={t('chat.input.actions')}
-              title={t('chat.input.actions')}
-            >
-              <List className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-            <DropdownMenuItem
-              onSelect={() => setTokenUsageOpen(true)}
-              className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-            >
-              <BarChart3 className="h-3.5 w-3.5" />
-              <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
-              <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageMessages.length })}</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
-            <DropdownMenuItem
-              disabled={disabled}
-              onSelect={handleContextAnalyze}
-              className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-            >
-              <ScrollText className="h-3.5 w-3.5" />
-              {t('chat.contextAnalysis.action')}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} />
-        <Textarea
-          ref={textareaRef}
-          autoResize
-          value={value}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
-          disabled={disabled}
-          rows={1}
-          className="min-h-[40px] flex-1 resize-none border-0 bg-transparent px-2.5 py-2 text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
-        />
-        <Button
-          type="button"
-          onClick={disabled ? onStop : handleSend}
-          disabled={disabled ? !onStop : !value.trim()}
-          size="icon-sm"
-          className={`h-9 w-9 shrink-0 rounded-md text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
-            disabled ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)] disabled:bg-[var(--nova-active)]'
-          }`}
-          aria-label={disabled ? t('chat.input.stop') : t('chat.input.send')}
-        >
-          {disabled ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="w-4 h-4" />}
-        </Button>
-      </div>
+      <AgentComposerShell
+        references={hasReferences ? (
+          <>
+            <ReferenceChips files={referencedFiles} onRemove={onReferenceRemove} />
+            <ReferenceChips
+              files={loreReferences.map((id) => loreReferenceLabels[id] || id)}
+              onRemove={onLoreReferenceRemove ? (label) => {
+                const target = loreReferences.find((id) => (loreReferenceLabels[id] || id) === label)
+                if (target) onLoreReferenceRemove(target)
+              } : undefined}
+              prefix="@资料:"
+              tone="lore"
+            />
+            <ReferenceChips files={styleReferences} onRemove={onStyleReferenceRemove} prefix="#" tone="style" />
+            {textSelections.length > 0 && (
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {textSelections.map((sel, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex max-w-full items-center gap-1 rounded-md bg-[var(--nova-success-bg)] px-2 py-0.5 text-xs text-[var(--nova-success)]"
+                  >
+                    <span className="truncate">
+                      {sel.fileName}:L{sel.startLine}
+                      {sel.endLine !== sel.startLine && `-L${sel.endLine}`}
+                      {' '}
+                      <span className="text-[var(--nova-success-muted)]">
+                        {sel.content.length > 30 ? sel.content.slice(0, 30) + '…' : sel.content}
+                      </span>
+                    </span>
+                    {onTextSelectionRemove && (
+                      <button
+                        type="button"
+                        className="rounded text-[var(--nova-success-muted)] hover:text-[var(--nova-text)]"
+                        onClick={() => onTextSelectionRemove(idx)}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
+        ) : undefined}
+        input={
+          <Textarea
+            ref={textareaRef}
+            autoResize
+            value={value}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
+            disabled={disabled}
+            rows={1}
+            className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-1 text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
+          />
+        }
+        toolbarStart={
+          <>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
+                  disabled={!onContextAnalyze && tokenUsageMessages.length === 0 && !(agentKey && workspace)}
+                  aria-label={t('chat.input.actions')}
+                  title={t('chat.input.actions')}
+                >
+                  <List className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                <ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />
+                <DropdownMenuItem
+                  onSelect={() => setTokenUsageOpen(true)}
+                  className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                >
+                  <BarChart3 className="h-3.5 w-3.5" />
+                  <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
+                  <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageMessages.length })}</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+                <DropdownMenuItem
+                  disabled={disabled}
+                  onSelect={handleContextAnalyze}
+                  className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                >
+                  <ScrollText className="h-3.5 w-3.5" />
+                  {t('chat.contextAnalysis.action')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} />
+          </>
+        }
+        submitControl={
+          <Button
+            type="button"
+            onClick={disabled ? onStop : handleSend}
+            disabled={disabled ? !onStop : !value.trim()}
+            size="icon-sm"
+            className={`nova-agent-composer-submit h-9 w-9 shrink-0 rounded-[10px] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
+              disabled ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)] disabled:bg-[var(--nova-active)]'
+            }`}
+            aria-label={disabled ? t('chat.input.stop') : t('chat.input.send')}
+          >
+            {disabled ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
+          </Button>
+        }
+      />
     </div>
   )
 }

@@ -12,6 +12,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList } from '@/components/Chat/MessageList'
+import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
+import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { ReferenceChips } from '@/components/Chat/ReferenceChips'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
@@ -823,13 +825,13 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                 </div>
               </div>
             ) : (
-              <MessageList messages={messages} isStreaming={streaming} activityContent={activityContent} highlightDialogue collapseTraceBeforeAssistant scrollResetKey={scrollResetKey} bottomPaddingClassName="pb-6" messageStyle={stageTextStyle} onEditMessage={startEditingMessage} onRegenerateMessage={regenerateMessage} onSwitchMessageVersion={switchMessageVersion} />
+              <MessageList messages={messages} isStreaming={streaming} activityContent={activityContent} highlightDialogue collapseTraceBeforeAssistant scrollResetKey={scrollResetKey} bottomPaddingClassName="pb-36" messageStyle={stageTextStyle} onEditMessage={startEditingMessage} onRegenerateMessage={regenerateMessage} onSwitchMessageVersion={switchMessageVersion} />
             )}
           </section>
         </div>
       </div>
-      <div className="shrink-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">
-        <div className="mx-auto max-w-5xl">
+      <div className="nova-story-input-float pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
+        <div className="pointer-events-auto mx-auto max-w-5xl">
           {editingTurn && !streaming ? (
             <div className="mb-3 flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
               <Pencil className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
@@ -897,9 +899,8 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
               ) : null}
             </div>
           ) : null}
-          <div className="nova-story-stage-composer-row flex items-end gap-3">
-            <div className="relative min-w-0 flex-1">
-              <ReferenceChips files={styleReferences} onRemove={removeStyleReference} prefix="#" tone="style" />
+          <div className="relative min-w-0">
+            <ReferenceChips files={styleReferences} onRemove={removeStyleReference} prefix="#" tone="style" />
               <FileReferencePicker open={styleReferenceQuery !== null && styleSuggestions.length > 0} query={styleReferenceQuery || ''} files={styleSuggestions} onSelect={selectStyleReference} trigger="#" placeholder={t('chat.styleReference.placeholder')} emptyText={t('chat.styleReference.empty')} heading={t('chat.styleReference.heading')} />
               <Popover open={showSkillCommands && filteredSkillCommands.length > 0}>
                 <PopoverTrigger asChild>
@@ -952,45 +953,13 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                   </Command>
                 </PopoverContent>
               </Popover>
-              <div className="flex items-end gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon-sm"
-                      className={`${isMobile ? 'h-10 w-8 border-transparent bg-transparent px-0 text-[var(--nova-text-faint)] hover:bg-transparent hover:text-[var(--nova-text-muted)]' : 'h-11 w-11 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'} shrink-0`}
-                      disabled={!storyId || streaming}
-                      aria-label={t('chat.input.actions')}
-                      title={t('chat.input.actions')}
-                    >
-                      <List className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-                    <DropdownMenuItem
-                      onSelect={() => setTokenUsageOpen(true)}
-                      className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                    >
-                      <BarChart3 className="h-3.5 w-3.5" />
-                      <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
-                      <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageMessages.length })}</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
-                    <DropdownMenuItem
-                      disabled={!storyId || streaming}
-                      onSelect={openContextAnalysis}
-                      className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-                    >
-                      <ScrollText className="h-3.5 w-3.5" />
-                      {t('chat.contextAnalysis.action')}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+            <AgentComposerShell
+              className="nova-story-stage-composer"
+              input={
                 <Textarea
                   ref={inputRef}
                   autoResize
-                  className="nova-field min-h-11 flex-1 resize-none px-3 py-2 text-sm placeholder:text-[var(--nova-text-faint)] focus-visible:ring-1 focus-visible:ring-[var(--nova-border)]/35"
+                  className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-1 text-sm text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0"
                   style={inputTextStyle}
                   value={input}
                   placeholder={!isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
@@ -1021,37 +990,74 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                     }
                   }}
                 />
-              </div>
-            </div>
-            {!isMobile && stagePreferences.hotChoicesEnabled ? (
-              <Button type="button" variant="outline" className={`h-11 min-w-[4.5rem] shrink-0 border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
-                <Compass className={`h-3.5 w-3.5 ${hotChoicesLoading ? 'animate-pulse' : ''}`} />
-                {t('storyStage.hotChoices.button')}
-              </Button>
-            ) : null}
-            {isMobile && stagePreferences.hotChoicesEnabled ? (
-              <Button type="button" variant="outline" className={`h-10 w-10 shrink-0 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-0 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
-                <Compass className={`h-4 w-4 ${hotChoicesLoading ? 'animate-pulse' : ''}`} />
-              </Button>
-            ) : null}
-            {isMobile ? (
-              <Button type="button" variant="outline" className="h-10 w-10 shrink-0 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-0 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onMouseDown={(event) => event.preventDefault()} onClick={openMobileNavigation} aria-label={t('workbench.mobile.navigationMenu')} title={t('workbench.mobile.navigationMenu')}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            ) : null}
-            {(!isMobile || streaming) ? (
-              <Button
-                className={`${isMobile ? 'h-10 w-10 rounded-full px-0' : 'h-11 w-[4.5rem] px-3 md:w-20'} border border-[var(--nova-border)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
-                disabled={streaming ? false : !storyId || !input.trim()}
-                onClick={() => {
-                  streaming ? stop() : void send()
-                }}
-                aria-label={streaming ? t('chat.input.stop') : editingTurn ? t('storyStage.sendRegenerate') : t('chat.input.send')}
-              >
-                {streaming ? <Square className="h-3.5 w-3.5 fill-current" /> : editingTurn ? <RefreshCw className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
-                {!isMobile ? (streaming ? t('storyStage.stop') : editingTurn ? t('storyStage.regenerate') : t('chat.input.send')) : null}
-              </Button>
-            ) : null}
+              }
+              toolbarStart={
+                <>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-sm"
+                        className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
+                        disabled={streaming || (!storyId && tokenUsageMessages.length === 0 && !workspace)}
+                        aria-label={t('chat.input.actions')}
+                        title={t('chat.input.actions')}
+                      >
+                        <List className="h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                      <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming} />
+                      <DropdownMenuItem
+                        onSelect={() => setTokenUsageOpen(true)}
+                        className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                      >
+                        <BarChart3 className="h-3.5 w-3.5" />
+                        <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
+                        <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageMessages.length })}</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+                      <DropdownMenuItem
+                        disabled={!storyId || streaming}
+                        onSelect={openContextAnalysis}
+                        className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                      >
+                        <ScrollText className="h-3.5 w-3.5" />
+                        {t('chat.contextAnalysis.action')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              }
+              toolbarEnd={
+                <>
+                  {stagePreferences.hotChoicesEnabled ? (
+                    <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
+                      <Compass className={`h-3.5 w-3.5 ${hotChoicesLoading ? 'animate-pulse' : ''}`} />
+                      {!isMobile ? t('storyStage.hotChoices.button') : null}
+                    </Button>
+                  ) : null}
+                  {isMobile ? (
+                    <Button type="button" variant="outline" className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-0 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onMouseDown={(event) => event.preventDefault()} onClick={openMobileNavigation} aria-label={t('workbench.mobile.navigationMenu')} title={t('workbench.mobile.navigationMenu')}>
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : null}
+                </>
+              }
+              submitControl={
+                <Button
+                  className={`nova-agent-composer-submit h-9 w-9 shrink-0 rounded-[10px] px-0 text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
+                  disabled={streaming ? false : !storyId || !input.trim()}
+                  onClick={() => {
+                    streaming ? stop() : void send()
+                  }}
+                  aria-label={streaming ? t('chat.input.stop') : editingTurn ? t('storyStage.sendRegenerate') : t('chat.input.send')}
+                >
+                  {streaming ? <Square className="h-3.5 w-3.5 fill-current" /> : editingTurn ? <RefreshCw className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+                </Button>
+              }
+            />
           </div>
           <ContextAnalysisDialog
             open={contextAnalysisOpen}

@@ -7,6 +7,7 @@ import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { AgentContextOverride, AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import { modelProfileID, modelProfileLabel } from '@/features/settings/model-profiles'
 import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
 import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
@@ -823,9 +824,9 @@ function InheritanceBadge({ inherited, onReset }: { inherited: boolean; onReset?
 function buildProfileOptions(draft: Settings, effective: Settings, t: (key: string, options?: Record<string, unknown>) => string): Array<{ id: string; label: string }> {
   const profiles = new Map<string, string>()
   const add = (profile?: ModelProfileSettings) => {
-    const id = profile?.id?.trim()
+    const id = modelProfileID(profile)
     if (!id) return
-    profiles.set(id, profile?.name || profile?.openai_model || id)
+    profiles.set(id, modelProfileLabel(profile))
   }
   profiles.set('default', effective.openai_model || t('agents.option.defaultModel'))
   ;(effective.model_profiles ?? []).forEach(add)

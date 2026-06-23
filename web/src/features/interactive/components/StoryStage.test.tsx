@@ -1,5 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { server } from '@/test/msw/server'
 import { StoryStage } from './StoryStage'
 import { abortInteractiveChat, generateInteractiveHotChoices, sendInteractiveMessage } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
@@ -114,7 +117,7 @@ describe('StoryStage', () => {
 
     expect(screen.getByRole('button', { name: '舞台操作' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '导航菜单' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '发送' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
     expect(screen.getByPlaceholderText('你要做什么？')).toBeInTheDocument()
     expect(screen.queryByText('故事舞台 · 当前分支 main')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '选择故事线' })).not.toBeInTheDocument()
@@ -167,6 +170,93 @@ describe('StoryStage', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => expect(onReplyTargetCharsChange).toHaveBeenCalledWith(750))
+  })
+
+  it('saves model profile changes for the interactive story agent', async () => {
+    const user = userEvent.setup()
+    const savedBodies: unknown[] = []
+    server.use(
+      http.get('/api/settings', () => HttpResponse.json({
+        default: {},
+        global: {},
+        user: {},
+        workspace: {
+          agent_models: {
+            interactive_story: {
+              reasoning_effort: 'medium',
+            },
+          },
+        },
+        effective: {
+          openai_model: 'main-model',
+          model_profiles: [
+            { id: 'story-fast', name: 'Story Fast', openai_model: 'story-fast-model' },
+          ],
+          agent_models: {
+            interactive_story: {
+              reasoning_effort: 'medium',
+            },
+          },
+        },
+        paths: { nova_dir: '', user_config: '', workspace_config: '' },
+      })),
+      http.put('/api/settings/workspace', async ({ request }) => {
+        const body = await request.json()
+        savedBodies.push(body)
+        return HttpResponse.json({
+          default: {},
+          global: {},
+          user: {},
+          workspace: body,
+          effective: {
+            openai_model: 'main-model',
+            model_profiles: [
+              { id: 'story-fast', name: 'Story Fast', openai_model: 'story-fast-model' },
+            ],
+            ...(body as Record<string, unknown>),
+          },
+          paths: { nova_dir: '', user_config: '', workspace_config: '' },
+        })
+      }),
+    )
+
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        storyId="st_1"
+        branchId="main"
+        snapshot={{
+          story_id: 'st_1',
+          branch_id: 'main',
+          state: {},
+          turns: [{
+            id: 'ev_1',
+            parent_id: null,
+            branch_id: 'main',
+            ts: '',
+            user: '观察酒馆',
+            narrative: '柜台后的影子露出一道缝。',
+          }],
+        }}
+        onDone={vi.fn()}
+      />,
+    )
+
+    const actionsButton = screen.getByRole('button', { name: '输入动作' })
+    expect(actionsButton).not.toBeDisabled()
+    await user.click(actionsButton)
+    await user.hover(await screen.findByText('模型配置'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /story-fast-model/ }))
+
+    await waitFor(() => expect(savedBodies).toHaveLength(1))
+    expect(savedBodies[0]).toMatchObject({
+      agent_models: {
+        interactive_story: {
+          profile_id: 'story-fast',
+          reasoning_effort: 'medium',
+        },
+      },
+    })
   })
 
   it('uses chat messages for interactive history and streamed agent events', async () => {
