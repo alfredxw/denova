@@ -7,7 +7,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/schema"
 
 	"nova/config"
@@ -18,6 +17,8 @@ type interactiveHotChoicesPayload struct {
 	Choices []string `json:"choices"`
 }
 
+const interactiveHotChoicesAgentLabel = "interactive-hot-choices-agent"
+
 func GenerateInteractiveHotChoices(ctx context.Context, cfg *config.Config, instruction string) ([]string, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("配置不存在")
@@ -25,38 +26,21 @@ func GenerateInteractiveHotChoices(ctx context.Context, cfg *config.Config, inst
 	maxTokens := 3000
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindInteractiveHotChoices)
 	modelCfg.MaxTokens = &maxTokens
-	modelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
-		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
-	}
-	cm, err := openai.NewChatModel(ctx, &modelCfg)
-	if err != nil {
-		return nil, fmt.Errorf("创建互动快捷选择模型失败: %w", err)
-	}
-	log.Printf("[interactive-hot-choices-agent] generate begin instruction=%s", promptPartSummary(instruction))
+	log.Printf("[%s] generate begin instruction=%s", interactiveHotChoicesAgentLabel, promptPartSummary(instruction))
 	messages := []*schema.Message{
 		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())),
 		schema.UserMessage(instruction),
 	}
-	logFullModelInput(modelInputLogOptions{
-		AgentKind: config.AgentKindInteractiveHotChoices,
-		Source:    "interactive_hot_choices",
-		Mode:      "generate",
-		Config:    modelCfg,
-		Messages:  messages,
-	})
-	msg, err := cm.Generate(ctx, messages)
+	content, err := generateWithJSONFallback(ctx, modelCfg, messages, interactiveHotChoicesAgentLabel)
 	if err != nil {
 		return nil, fmt.Errorf("生成互动快捷选择失败: %w", err)
 	}
-	if msg == nil {
-		return nil, fmt.Errorf("互动快捷选择模型返回为空")
-	}
-	choices, err := parseInteractiveHotChoices(msg.Content)
+	choices, err := parseInteractiveHotChoices(content)
 	if err != nil {
-		log.Printf("[interactive-hot-choices-agent] parse failed err=%v output=%q", err, msg.Content)
+		log.Printf("[%s] parse failed err=%v output=%q", interactiveHotChoicesAgentLabel, err, content)
 		return nil, err
 	}
-	log.Printf("[interactive-hot-choices-agent] generate done choices=%d output=%s", len(choices), promptPartSummary(msg.Content))
+	log.Printf("[%s] generate done choices=%d output=%s", interactiveHotChoicesAgentLabel, len(choices), promptPartSummary(content))
 	return choices, nil
 }
 
