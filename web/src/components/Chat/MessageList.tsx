@@ -14,6 +14,7 @@ interface MessageListProps {
   highlightDialogue?: boolean
   scrollResetKey?: string
   bottomPaddingClassName?: string
+  bottomPaddingPx?: number
   messageStyle?: CSSProperties
   collapseTraceBeforeAssistant?: boolean
   onEditMessage?: (message: ChatMessage) => void
@@ -22,7 +23,7 @@ interface MessageListProps {
 }
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -217,6 +218,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       onScroll={handleContainerScroll}
       onWheel={handleWheel}
       className={`nova-chat-canvas min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 ${bottomPaddingClassName}`}
+      style={typeof bottomPaddingPx === 'number' ? { paddingBottom: bottomPaddingPx } : undefined}
     >
       {messages.length === 0 && !isStreaming && (
         <div className="flex h-full items-center justify-center">

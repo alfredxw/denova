@@ -651,8 +651,8 @@ html[data-nova-motion="off"] *::after {
 .nova-command-menu {
   border-color: var(--nova-border);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--nova-menu-bg) 88%, var(--nova-surface-3) 12%), var(--nova-menu-bg)),
-    var(--nova-menu-bg);
+    linear-gradient(180deg, color-mix(in srgb, var(--nova-surface-3) 72%, var(--nova-bg-deep) 28%), color-mix(in srgb, var(--nova-surface) 88%, var(--nova-bg-deep) 12%)),
+    color-mix(in srgb, var(--nova-surface) 92%, var(--nova-bg-deep) 8%);
   color: var(--nova-text);
   box-shadow:
     0 20px 48px rgba(0, 0, 0, 0.46),
@@ -674,7 +674,7 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-command-menu [data-slot="command-item"][data-selected="true"] {
-  background: var(--nova-active);
+  background: color-mix(in srgb, var(--nova-active) 84%, var(--nova-bg-deep) 16%);
   color: var(--nova-text);
 }
 

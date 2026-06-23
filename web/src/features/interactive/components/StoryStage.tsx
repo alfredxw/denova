@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent } from 'react'
 import { Archive, BarChart3, BookOpen, ChevronDown, ChevronUp, Command as CommandIcon, Compass, List, Loader2, PanelRight, Pencil, Plus, RefreshCw, ScrollText, Send, SlidersHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -68,7 +68,9 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   const [styleReferenceQuery, setStyleReferenceQuery] = useState<string | null>(null)
   const [showSkillCommands, setShowSkillCommands] = useState(false)
   const [activeSkillCommandIndex, setActiveSkillCommandIndex] = useState(0)
+  const [inputFloatHeight, setInputFloatHeight] = useState(0)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const inputFloatRef = useRef<HTMLDivElement | null>(null)
   const skillCommandRefs = useRef<Array<HTMLDivElement | null>>([])
   const skillCommands = useSkillCommands({
     agentKey: 'interactive_story',
@@ -303,6 +305,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
   )
   const canUseHotChoices = !streaming && !editingTurn && stagePreferences.hotChoicesEnabled && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
+  const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + 20 : undefined
   const availableBookOpeningPresets = useMemo(() => bookOpeningPresets.filter((preset) => preset.content.trim()), [bookOpeningPresets])
   const selectedBookOpeningPreset = availableBookOpeningPresets.find((preset) => preset.id === selectedBookOpeningPresetId) || availableBookOpeningPresets[0] || null
   const turnsById = useMemo(() => {
@@ -312,6 +315,25 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     }
     return result
   }, [snapshot?.turns])
+
+  const syncInputFloatHeight = useCallback(() => {
+    const element = inputFloatRef.current
+    if (!element) return
+    const nextHeight = Math.ceil(element.getBoundingClientRect().height)
+    setInputFloatHeight((current) => (current === nextHeight ? current : nextHeight))
+  }, [])
+
+  useLayoutEffect(() => {
+    syncInputFloatHeight()
+  }, [editingTurn, hotChoices.length, hotChoicesLoading, input, showHotChoices, syncInputFloatHeight])
+
+  useEffect(() => {
+    const element = inputFloatRef.current
+    if (!element || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(syncInputFloatHeight)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [syncInputFloatHeight])
 
   const requestHotChoices = useCallback(
     (append = false) => {
@@ -825,12 +847,12 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                 </div>
               </div>
             ) : (
-              <MessageList messages={messages} isStreaming={streaming} activityContent={activityContent} highlightDialogue collapseTraceBeforeAssistant scrollResetKey={scrollResetKey} bottomPaddingClassName="pb-36" messageStyle={stageTextStyle} onEditMessage={startEditingMessage} onRegenerateMessage={regenerateMessage} onSwitchMessageVersion={switchMessageVersion} />
+              <MessageList messages={messages} isStreaming={streaming} activityContent={activityContent} highlightDialogue collapseTraceBeforeAssistant scrollResetKey={scrollResetKey} bottomPaddingClassName="pb-36" bottomPaddingPx={messageListBottomPadding} messageStyle={stageTextStyle} onEditMessage={startEditingMessage} onRegenerateMessage={regenerateMessage} onSwitchMessageVersion={switchMessageVersion} />
             )}
           </section>
         </div>
       </div>
-      <div className="nova-story-input-float pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
+      <div ref={inputFloatRef} className="nova-story-input-float pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
         <div className="pointer-events-auto mx-auto max-w-5xl">
           {editingTurn && !streaming ? (
             <div className="mb-3 flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
@@ -872,12 +894,12 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                   ) : hotChoices.length === 0 ? (
                     <div className="px-1 py-1 text-xs text-[var(--nova-text-faint)]">{t('storyStage.hotChoices.emptyLong')}</div>
                   ) : (
-                    <div className="flex max-h-24 flex-wrap gap-1.5 overflow-y-auto pr-1">
+                    <div className="flex max-h-48 flex-col gap-1.5 overflow-y-auto overscroll-contain pr-1">
                       {hotChoices.map((choice, index) => (
                         <button
                           key={`${index}-${choice}`}
                           type="button"
-                          className="max-w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 text-left text-xs leading-5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                          className="w-full max-w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 text-left text-xs leading-5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => {
                             setInput(choice)
@@ -959,7 +981,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                 <Textarea
                   ref={inputRef}
                   autoResize
-                  className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-1 text-sm text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0"
+                  className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0"
                   style={inputTextStyle}
                   value={input}
                   placeholder={!isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
@@ -978,6 +1000,11 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                       setStyleReferenceQuery(null)
                       setShowSkillCommands(false)
                       setActiveSkillCommandIndex(0)
+                      return
+                    }
+                    if (canPickSkill && event.key === 'Tab') {
+                      event.preventDefault()
+                      selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)
                       return
                     }
                     if (event.key === 'Enter' && !event.shiftKey) {
