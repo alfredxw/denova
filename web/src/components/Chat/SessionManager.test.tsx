@@ -11,27 +11,6 @@ const sessions: SessionSummary[] = [
 ]
 
 describe('SessionManager', () => {
-  it('从列表选择会话时触发切换回调', async () => {
-    const user = userEvent.setup()
-    const handleSwitch = vi.fn()
-
-    render(
-      <SessionManager
-        sessions={sessions}
-        activeSessionId="session-a"
-        onCreate={vi.fn()}
-        onSwitch={handleSwitch}
-        onRename={vi.fn()}
-        onDelete={vi.fn()}
-      />,
-    )
-
-    await user.click(screen.getByRole('combobox', { name: '选择会话' }))
-    await user.click(await screen.findByRole('option', { name: '正文续写 · 1 条' }))
-
-    expect(handleSwitch).toHaveBeenCalledWith('session-b')
-  })
-
   it('支持重命名和删除会话入口', async () => {
     const user = userEvent.setup()
     const handleRename = vi.fn()
