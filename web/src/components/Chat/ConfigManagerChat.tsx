@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { InputArea } from './InputArea'
 import { MessageList } from './MessageList'
@@ -19,28 +19,42 @@ interface ConfigManagerChatProps {
 
 export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId, branchId, context, onMutated, className = '' }: ConfigManagerChatProps) {
   const { t } = useTranslation()
-  const workspaceRef = useRef(workspace)
+  const activeKeyRef = useRef('')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const skills = useSkillCommands({ agentKey: 'config_manager', workspace, fallbackEnabled: true })
+  const scope = useMemo(() => ({
+    origin,
+    resource_id: resourceId,
+    story_id: storyId,
+    branch_id: branchId,
+  }), [branchId, origin, resourceId, storyId])
+  const chatKey = useMemo(() => [
+    'config-manager',
+    workspace,
+    origin,
+    resourceId || '',
+    storyId || '',
+    branchId || '',
+  ].join(':'), [branchId, origin, resourceId, storyId, workspace])
 
   const loadMessages = useCallback(() => {
     if (!workspace) {
       setMessages([])
       return
     }
-    getConfigManagerMessages()
+    getConfigManagerMessages(scope)
       .then(setMessages)
       .catch((err) => setError(err instanceof Error ? err.message : t('configManager.historyLoadFailed')))
-  }, [t, workspace])
+  }, [scope, t, workspace])
 
   useEffect(() => {
-    workspaceRef.current = workspace
+    activeKeyRef.current = chatKey
     setRunning(false)
     setError(null)
     loadMessages()
-  }, [loadMessages, workspace])
+  }, [chatKey, loadMessages])
 
   const appendMessage = (message: ChatMessage) => {
     setMessages((current) => [...current, { ...message, id: message.id || `${Date.now()}-${current.length}` }])
@@ -122,7 +136,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     if (instruction === '/clear') {
       setRunning(true)
       try {
-        await clearConfigManagerSession()
+        await clearConfigManagerSession(scope)
         setMessages([{ id: `clear-${Date.now()}`, type: 'clear', created_at: new Date().toISOString() }])
       } catch (err) {
         appendMessage({ role: 'error', content: err instanceof Error ? err.message : t('configManager.clearFailed') })
@@ -134,14 +148,11 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     appendMessage({ role: 'user', content: instruction })
     setRunning(true)
     setError(null)
-    const activeWorkspace = workspace
+    const activeChatKey = chatKey
     try {
       const req: ConfigManagerRunRequest = {
         instruction,
-        origin,
-        resource_id: resourceId,
-        story_id: storyId,
-        branch_id: branchId,
+        ...scope,
         context,
       }
       const stream = await runConfigManagerStream(req)
@@ -149,13 +160,13 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        if (workspaceRef.current !== activeWorkspace) break
+        if (activeKeyRef.current !== activeChatKey) break
         handleEvent(value)
       }
     } catch (err) {
-      if (workspaceRef.current === activeWorkspace) appendMessage({ role: 'error', content: err instanceof Error ? err.message : t('configManager.runFailed') })
+      if (activeKeyRef.current === activeChatKey) appendMessage({ role: 'error', content: err instanceof Error ? err.message : t('configManager.runFailed') })
     } finally {
-      if (workspaceRef.current === activeWorkspace) setRunning(false)
+      if (activeKeyRef.current === activeChatKey) setRunning(false)
     }
   }
 
@@ -166,14 +177,14 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         messages={messages}
         isStreaming={running}
         activityContent=""
-        scrollResetKey={`config-manager:${workspace}:${origin}:${resourceId || storyId || ''}`}
+        scrollResetKey={chatKey}
         bottomPaddingClassName="pb-4"
       />
       <div className="border-t border-[var(--nova-border)] p-3">
         <InputArea
           onSend={(value) => void send(value)}
           disabled={running}
-          draftKey={`config-manager:${workspace}:${origin}:${resourceId || storyId || ''}`}
+          draftKey={chatKey}
           skills={skills}
           commandScope="skills"
           placeholder={t('configManager.placeholder')}

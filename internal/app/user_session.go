@@ -54,7 +54,7 @@ func isAgentSessionID(id string) bool {
 		return false
 	}
 	for _, definition := range config.AgentKindDefinitions() {
-		if definition.SessionID == id {
+		if definition.SessionID == id || (definition.SessionID != "" && strings.HasPrefix(id, definition.SessionID+"-")) {
 			return true
 		}
 	}

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/sha1"
 	"fmt"
 	"log"
 	"strings"
@@ -49,9 +50,14 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 	} else {
 		log.Printf("[config-manager] load layered settings failed workspace=%s err=%v", workspace, err)
 	}
-	sess, err := agentSessionFromStore(sessionStore, config.AgentKindConfigManager)
+	sessionID, err := configManagerSessionID(req)
 	if err != nil {
-		log.Printf("[config-manager] load session failed err=%v", err)
+		log.Printf("[config-manager] resolve session failed origin=%s resource_id=%s story_id=%s branch_id=%s err=%v", req.Origin, req.ResourceID, req.StoryID, req.BranchID, err)
+		return nil
+	}
+	sess, err := sessionStore.GetOrCreate(sessionID)
+	if err != nil {
+		log.Printf("[config-manager] load session failed session_id=%s err=%v", sessionID, err)
 		return nil
 	}
 	resourceSkills := loadConfigManagerResourceSkills(context.Background(), &runtimeCfg, req)
@@ -62,7 +68,7 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 	}
 	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		message := buildConfigManagerMessage(req)
-		log.Printf("[config-manager] run begin id=%s origin=%s resource_id=%s story_id=%s branch_id=%s message_len=%d", task.ID(), req.Origin, req.ResourceID, req.StoryID, req.BranchID, len(message))
+		log.Printf("[config-manager] run begin id=%s session_id=%s origin=%s resource_id=%s story_id=%s branch_id=%s message_len=%d", task.ID(), sess.ID, req.Origin, req.ResourceID, req.StoryID, req.BranchID, len(message))
 		chatService.RunWithOptions(ctx, runner, agent.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindConfigManager), bookService, agent.ChatRequest{
 			Message:        message,
 			LoreReferences: req.References,
@@ -79,32 +85,44 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 	})
 }
 
-func (a *App) ConfigManagerMessages() ([]session.HistoryEntry, error) {
-	return a.configManager().Messages()
+func (a *App) ConfigManagerMessages(req ConfigManagerRequest) ([]session.HistoryEntry, error) {
+	return a.configManager().Messages(req)
 }
 
-func (s *ConfigManagerAppService) Messages() ([]session.HistoryEntry, error) {
+func (s *ConfigManagerAppService) Messages(req ConfigManagerRequest) ([]session.HistoryEntry, error) {
 	store := s.sessionStore()
 	if store == nil {
 		return nil, ErrNoWorkspace
 	}
-	sess, err := agentSessionFromStore(store, config.AgentKindConfigManager)
+	sessionID, err := configManagerSessionID(req)
+	if err != nil {
+		return nil, err
+	}
+	sess, err := store.GetOrCreate(sessionID)
 	if err != nil {
 		return nil, err
 	}
 	return sess.History(), nil
 }
 
-func (a *App) ClearConfigManagerSession() error {
-	return a.configManager().Clear()
+func (a *App) ClearConfigManagerSession(req ConfigManagerRequest) error {
+	return a.configManager().Clear(req)
 }
 
-func (s *ConfigManagerAppService) Clear() error {
+func (s *ConfigManagerAppService) Clear(req ConfigManagerRequest) error {
 	store := s.sessionStore()
 	if store == nil {
 		return ErrNoWorkspace
 	}
-	return clearAgentSessionInStore(store, config.AgentKindConfigManager)
+	sessionID, err := configManagerSessionID(req)
+	if err != nil {
+		return err
+	}
+	sess, err := store.GetOrCreate(sessionID)
+	if err != nil {
+		return err
+	}
+	return sess.Clear()
 }
 
 func (s *ConfigManagerAppService) sessionStore() *session.Store {
@@ -135,4 +153,77 @@ func buildConfigManagerMessage(req ConfigManagerRequest) string {
 	}
 	lines = append(lines, "", "【用户指令】", instruction)
 	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func configManagerSessionID(req ConfigManagerRequest) (string, error) {
+	base, ok := agentSessionID(config.AgentKindConfigManager)
+	if !ok {
+		return "", fmt.Errorf("未配置 Agent 会话: %s", config.AgentKindConfigManager)
+	}
+	scopeValues := []string{
+		strings.TrimSpace(req.Origin),
+		strings.TrimSpace(req.StoryID),
+		strings.TrimSpace(req.BranchID),
+		strings.TrimSpace(req.ResourceID),
+	}
+	hasScope := false
+	for _, value := range scopeValues {
+		if value != "" {
+			hasScope = true
+			break
+		}
+	}
+	if !hasScope {
+		return base, nil
+	}
+	segments := []string{base, configManagerSessionSegment(req.Origin)}
+	if story := configManagerSessionSegment(req.StoryID); story != "" {
+		segments = append(segments, "story", story)
+	}
+	if branch := configManagerSessionSegment(req.BranchID); branch != "" {
+		segments = append(segments, "branch", branch)
+	}
+	if resource := configManagerSessionSegment(req.ResourceID); resource != "" {
+		segments = append(segments, "resource", resource)
+	}
+	sum := sha1.Sum([]byte(strings.Join(scopeValues, "\x00")))
+	segments = append(segments, fmt.Sprintf("%x", sum)[:12])
+	return strings.Join(segments, "-"), nil
+}
+
+func configManagerSessionSegment(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return ""
+	}
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_'
+		if ok {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if r == '-' || r == ' ' || r == '/' || r == ':' || r == '.' {
+			if b.Len() > 0 && !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+			continue
+		}
+		if b.Len() > 0 && !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	segment := strings.Trim(b.String(), "-")
+	if segment == "" {
+		return "scope"
+	}
+	const maxSegmentLen = 48
+	if len(segment) > maxSegmentLen {
+		return strings.Trim(segment[:maxSegmentLen], "-")
+	}
+	return segment
 }

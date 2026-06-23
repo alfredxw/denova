@@ -37,7 +37,7 @@ func (h *Handlers) HandleConfigManagerMessages(ctx context.Context, c *app.Reque
 		writeJSON(c, consts.StatusOK, []messageDTO{})
 		return
 	}
-	entries, err := h.app.ConfigManagerMessages()
+	entries, err := h.app.ConfigManagerMessages(configManagerRequestFromQuery(c))
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -49,9 +49,18 @@ func (h *Handlers) HandleConfigManagerClear(ctx context.Context, c *app.RequestC
 	if !h.requireWorkspace(c) {
 		return
 	}
-	if err := h.app.ClearConfigManagerSession(); err != nil {
+	if err := h.app.ClearConfigManagerSession(configManagerRequestFromQuery(c)); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
+func configManagerRequestFromQuery(c *app.RequestContext) appsvc.ConfigManagerRequest {
+	return appsvc.ConfigManagerRequest{
+		Origin:     strings.TrimSpace(c.Query("origin")),
+		ResourceID: strings.TrimSpace(c.Query("resource_id")),
+		StoryID:    strings.TrimSpace(c.Query("story_id")),
+		BranchID:   strings.TrimSpace(c.Query("branch_id")),
+	}
 }

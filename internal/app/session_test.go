@@ -103,6 +103,17 @@ func TestAppUserSessionsIgnoreFixedAgentSessions(t *testing.T) {
 	if err := persistAgentCallInStore(store, config.AgentKindConfigManager, "配置输入", "配置输出"); err != nil {
 		t.Fatal(err)
 	}
+	scopedID, err := configManagerSessionID(ConfigManagerRequest{Origin: "automation", ResourceID: "daily-review"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scoped, err := store.GetOrCreate(scopedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scoped.Append(schema.UserMessage("自动化配置会话")); err != nil {
+		t.Fatal(err)
+	}
 
 	metas, err := app.Sessions()
 	if err != nil {
@@ -122,6 +133,12 @@ func TestAppUserSessionsIgnoreFixedAgentSessions(t *testing.T) {
 	}
 	if _, err := app.DeleteSession("config-manager-agent"); err == nil {
 		t.Fatal("创作会话 API 不应删除配置管理 Agent 固定会话")
+	}
+	if _, err := app.SwitchSession(scopedID); err == nil {
+		t.Fatal("创作 Agent 不应允许切换到配置管理 Agent scoped 会话")
+	}
+	if _, err := app.SessionMessages(scopedID); err == nil {
+		t.Fatal("创作会话 API 不应读取配置管理 Agent scoped 会话")
 	}
 
 	history, err := app.AgentSessionMessages(config.AgentKindConfigManager)

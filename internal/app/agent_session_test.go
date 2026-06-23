@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cloudwego/eino/schema"
+
 	"nova/config"
 	"nova/internal/session"
 )
@@ -82,6 +84,67 @@ func TestClearAgentSessionInStoreMarksEffectiveContextForEveryBuiltInAgent(t *te
 		if !hasClear {
 			t.Fatalf("agent %s history should keep clear marker: %#v", agentKind, history)
 		}
+	}
+}
+
+func TestConfigManagerScopedSessionsAreIsolated(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := &App{sessionStore: store}
+	automationReq := ConfigManagerRequest{Origin: "automation", ResourceID: "daily-review"}
+	loreReq := ConfigManagerRequest{Origin: "lore", ResourceID: "__config_manager_lore__"}
+
+	automationID, err := configManagerSessionID(automationReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loreID, err := configManagerSessionID(loreReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if automationID == loreID {
+		t.Fatalf("scoped config manager sessions should differ: %s", automationID)
+	}
+	automationSession, err := store.GetOrCreate(automationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := automationSession.Append(schema.UserMessage("自动化配置")); err != nil {
+		t.Fatal(err)
+	}
+	loreSession, err := store.GetOrCreate(loreID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := loreSession.Append(schema.UserMessage("资料库配置")); err != nil {
+		t.Fatal(err)
+	}
+
+	automationHistory, err := app.ConfigManagerMessages(automationReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(automationHistory) != 1 || automationHistory[0].Content != "自动化配置" {
+		t.Fatalf("automation history should stay scoped: %#v", automationHistory)
+	}
+	loreHistory, err := app.ConfigManagerMessages(loreReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loreHistory) != 1 || loreHistory[0].Content != "资料库配置" {
+		t.Fatalf("lore history should stay scoped: %#v", loreHistory)
+	}
+	if err := app.ClearConfigManagerSession(automationReq); err != nil {
+		t.Fatal(err)
+	}
+	loreHistory, err = app.ConfigManagerMessages(loreReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loreHistory) != 1 || loreHistory[0].Content != "资料库配置" {
+		t.Fatalf("clearing automation should not clear lore history: %#v", loreHistory)
 	}
 }
 

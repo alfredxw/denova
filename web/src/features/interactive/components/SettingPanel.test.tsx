@@ -85,13 +85,21 @@ describe('SettingPanel', () => {
     expect(await screen.findByText('已更新资料库')).toBeInTheDocument()
   })
 
-  it('loads the shared config manager history from lore and teller modules', async () => {
+  it('loads isolated config manager history from lore and teller modules', async () => {
     vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
       const rawUrl = typeof input === 'string' ? input : input instanceof Request ? input.url : input.toString()
-      const path = new URL(rawUrl, 'http://localhost').pathname
+      const url = new URL(rawUrl, 'http://localhost')
+      const path = url.pathname
+      if (path === '/api/config-manager/messages') {
+        const origin = url.searchParams.get('origin')
+        const content = origin === 'teller' ? '叙事编排配置历史' : '资料库配置历史'
+        return new Response(JSON.stringify([{ role: 'user', content }]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
       const payloads: Record<string, unknown> = {
         '/api/lore/items': { items: [] },
-        '/api/config-manager/messages': [{ role: 'user', content: '统一配置历史消息' }],
       }
       return new Response(JSON.stringify(payloads[path] ?? {}), {
         status: 200,
@@ -100,7 +108,7 @@ describe('SettingPanel', () => {
     })
 
     const { rerender } = render(<SettingPanel mode="lore" workspace="/books/scroll-check" />)
-    expect(await screen.findByText('统一配置历史消息')).toBeInTheDocument()
+    expect(await screen.findByText('资料库配置历史')).toBeInTheDocument()
     expect(document.querySelector('.nova-chat-canvas')?.parentElement).toHaveClass('flex', 'min-h-0', 'flex-col')
 
     rerender(
@@ -128,7 +136,8 @@ describe('SettingPanel', () => {
       />,
     )
     await userEvent.click(await screen.findByRole('button', { name: '配置管理 Agent' }))
-    expect(await screen.findByText('统一配置历史消息')).toBeInTheDocument()
+    expect(await screen.findByText('叙事编排配置历史')).toBeInTheDocument()
+    expect(screen.queryByText('资料库配置历史')).not.toBeInTheDocument()
     expect(document.querySelector('.nova-chat-canvas')?.parentElement).toHaveClass('flex', 'min-h-0', 'flex-col')
   })
 })
