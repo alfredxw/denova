@@ -1,6 +1,8 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { server } from '@/test/msw/server'
 import { InputArea } from './InputArea'
 
 describe('InputArea', () => {
@@ -125,5 +127,84 @@ describe('InputArea', () => {
     expect(screen.getAllByText('1,100').length).toBeGreaterThan(0)
     expect(screen.getAllByText('300').length).toBeGreaterThan(0)
     expect(screen.getAllByText('1,500').length).toBeGreaterThan(0)
+  })
+
+  it('saves the selected model profile for the current agent', async () => {
+    const user = userEvent.setup()
+    const savedBodies: unknown[] = []
+    server.use(
+      http.get('/api/settings', () => HttpResponse.json({
+        default: {},
+        global: {},
+        user: {},
+        workspace: {
+          agent_models: {
+            ide: {
+              temperature: 0.7,
+              enable_thinking: true,
+            },
+          },
+        },
+        effective: {
+          openai_model: 'main-model',
+          model_profiles: [
+            { id: 'fast', name: 'Fast', openai_model: 'fast-model' },
+            { id: 'quality', name: 'Quality', openai_model: 'quality-model' },
+          ],
+          agent_models: {
+            ide: {
+              temperature: 0.7,
+              enable_thinking: true,
+            },
+          },
+        },
+        paths: { nova_dir: '', user_config: '', workspace_config: '' },
+      })),
+      http.put('/api/settings/workspace', async ({ request }) => {
+        const body = await request.json()
+        savedBodies.push(body)
+        return HttpResponse.json({
+          default: {},
+          global: {},
+          user: {},
+          workspace: body,
+          effective: {
+            openai_model: 'main-model',
+            model_profiles: [
+              { id: 'fast', name: 'Fast', openai_model: 'fast-model' },
+              { id: 'quality', name: 'Quality', openai_model: 'quality-model' },
+            ],
+            ...(body as Record<string, unknown>),
+          },
+          paths: { nova_dir: '', user_config: '', workspace_config: '' },
+        })
+      }),
+    )
+
+    render(
+      <InputArea
+        onSend={vi.fn()}
+        disabled={false}
+        agentKey="ide"
+        workspace="/tmp/book"
+      />,
+    )
+
+    const actionsButton = screen.getByRole('button', { name: '输入动作' })
+    expect(actionsButton).not.toBeDisabled()
+    await user.click(actionsButton)
+    await user.hover(await screen.findByText('模型配置'))
+    fireEvent.click(await screen.findByRole('menuitem', { name: /fast-model/ }))
+
+    await waitFor(() => expect(savedBodies).toHaveLength(1))
+    expect(savedBodies[0]).toMatchObject({
+      agent_models: {
+        ide: {
+          profile_id: 'fast',
+          temperature: 0.7,
+          enable_thinking: true,
+        },
+      },
+    })
   })
 })

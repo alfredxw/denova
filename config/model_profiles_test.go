@@ -43,6 +43,24 @@ func TestResolveAgentModelContextWindowDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
+func TestResolveAgentModelUsesModelNameAsProfileID(t *testing.T) {
+	cfg := &Config{
+		ModelProfiles: []ModelProfileSettings{
+			{OpenAIBaseURL: "https://api.openai.com/v1", OpenAIModel: "gpt-4.1"},
+		},
+		AgentModels: AgentModelSettings{
+			IDE: AgentModelOverride{ProfileID: "gpt-4.1"},
+		},
+	}
+	resolved := ResolveAgentModel(cfg, AgentKindIDE)
+	if resolved.ProfileID != "gpt-4.1" {
+		t.Fatalf("profile id = %q, want model name", resolved.ProfileID)
+	}
+	if resolved.OpenAIBaseURL != "https://api.openai.com/v1" || resolved.OpenAIModel != "gpt-4.1" {
+		t.Fatalf("resolved model mismatch: %#v", resolved)
+	}
+}
+
 func TestSanitizeModelProfilesCapsContextWindow(t *testing.T) {
 	tooLarge := 3000000
 	invalid := -1
@@ -65,5 +83,20 @@ func TestSanitizeModelProfilesCapsContextWindow(t *testing.T) {
 	}
 	if settings.ModelProfiles[1].ContextWindowTokens != nil {
 		t.Fatalf("invalid context window should be cleared: %#v", settings.ModelProfiles[1])
+	}
+}
+
+func TestSanitizeModelProfilesDerivesIDFromModelName(t *testing.T) {
+	settings := sanitizeEditableSettings(Settings{
+		ModelProfiles: []ModelProfileSettings{
+			{OpenAIModel: " gpt-4.1 "},
+			{ID: " legacy "},
+		},
+	})
+	if settings.ModelProfiles[0].ID != "gpt-4.1" || settings.ModelProfiles[0].OpenAIModel != "gpt-4.1" {
+		t.Fatalf("model-name profile not normalized: %#v", settings.ModelProfiles[0])
+	}
+	if settings.ModelProfiles[1].ID != "legacy" || settings.ModelProfiles[1].OpenAIModel != "legacy" {
+		t.Fatalf("legacy id profile should keep working: %#v", settings.ModelProfiles[1])
 	}
 }

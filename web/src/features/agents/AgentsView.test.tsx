@@ -40,12 +40,12 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     await screen.findByText('模型与思考')
-    expect(screen.queryByText('deepseek（DeepSeek V3）')).not.toBeInTheDocument()
+    expect(screen.queryByText('deepseek（deepseek-v3）')).not.toBeInTheDocument()
 
     window.dispatchEvent(new CustomEvent('nova:settings-updated'))
 
     await waitFor(() => {
-      expect(screen.getByText('deepseek（DeepSeek V3）')).toBeInTheDocument()
+      expect(screen.getByText('deepseek（deepseek-v3）')).toBeInTheDocument()
     })
   })
 

@@ -208,7 +208,7 @@ export function WritingReviewPanel({
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
       {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('automations.error')} />}
 
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         <div className="shrink-0 border-b border-[var(--nova-border)] px-2 py-2">
           <div className="flex items-center gap-1.5">
             <div className="min-w-0 flex-1">
@@ -293,7 +293,7 @@ export function WritingReviewPanel({
               isStreaming={runStream.isStreaming}
               activityContent={runStream.activityContent}
               scrollResetKey={runStream.activeRun?.id || latestRun?.id || 'review'}
-              bottomPaddingClassName="pb-4"
+              bottomPaddingClassName="pb-36"
             />
           ) : focusedItem ? (
             <ReviewInboxDetail
@@ -313,16 +313,17 @@ export function WritingReviewPanel({
           )}
         </div>
 
-        <div className="shrink-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface)]">
-          <InputArea
-            onSend={(message) => void runStream.send(message)}
-            onStop={runStream.stop}
-            disabled={runStream.isStreaming || !runStream.activeRun}
-            commandsEnabled={false}
-            placeholder={t('writingReview.input.placeholder')}
-            disabledPlaceholder={runStream.isStreaming ? t('writingReview.input.running') : t('writingReview.input.noRun')}
-          />
-        </div>
+        <InputArea
+          onSend={(message) => void runStream.send(message)}
+          onStop={runStream.stop}
+          disabled={runStream.isStreaming || !runStream.activeRun}
+          commandsEnabled={false}
+          placeholder={t('writingReview.input.placeholder')}
+          disabledPlaceholder={runStream.isStreaming ? t('writingReview.input.running') : t('writingReview.input.noRun')}
+          agentKey="automation"
+          workspace={workspace}
+          floating
+        />
       </div>
     </div>
   )

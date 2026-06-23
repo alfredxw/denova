@@ -14,32 +14,28 @@ openai_api_key = ""
 openai_base_url = "https://api.deepseek.com"
 openai_model = "deepseek-v4-pro"
 
-# 可选：配置多个 OpenAI 协议兼容平台，并按 Agent 分配。
+# 可选：配置多个 OpenAI 协议兼容平台，并按 Agent 分配。模型名同时作为配置名。
 # 不配置 temperature 时使用平台/模型默认值。
 # 快捷选项 Agent 和版本说明 Agent 内置默认 enable_thinking=false，其他 Agent 默认不传思考参数。
 #
 # [[model_profiles]]
-# id = "deepseek"
-# name = "DeepSeek"
-# openai_api_key = ""
 # openai_base_url = "https://api.deepseek.com"
+# openai_api_key = ""
 # openai_model = "deepseek-v4-pro"
 #
 # [[model_profiles]]
-# id = "openai"
-# name = "OpenAI"
-# openai_api_key = ""
 # openai_base_url = "https://api.openai.com/v1"
+# openai_api_key = ""
 # openai_model = "gpt-4.1"
 #
 # [agent_models.ide]
-# profile_id = "deepseek"
+# profile_id = "deepseek-v4-pro"
 # temperature = 0.7
 # enable_thinking = true       # 可选：不填则不传；适用于支持 enable_thinking 的 OpenAI 兼容平台
 # reasoning_effort = "medium"  # 可选：low / medium / high；不填则不传
 #
 # [agent_models.config_manager]
-# profile_id = "openai"
+# profile_id = "gpt-4.1"
 # temperature = 0.2
 #
 # 可选：为不同 Agent 叠加自定义 system prompt。

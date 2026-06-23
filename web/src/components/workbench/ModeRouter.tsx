@@ -1,4 +1,4 @@
-import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileText, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -920,7 +920,8 @@ function ChapterOutlineItem({
       setSaving(false)
     }
   }
-  const ConfirmIcon = chapter.confirmed ? CheckCircle2 : Circle
+  const ConfirmIcon = saving ? Loader2 : chapter.confirmed ? CheckCircle2 : Circle
+  const toggleTitle = saving ? t('common.loading') : chapter.confirmed ? t('planning.markDraft') : t('planning.confirmChapter')
   return (
     <div
       className={`nova-nav-item w-full border px-3 py-2 text-left ${
@@ -943,16 +944,18 @@ function ChapterOutlineItem({
           <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{chapter.status}</span>
           <button
             type="button"
-            className="inline-flex h-5 w-5 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-40"
-            disabled={saving || chapter.words === 0}
-            title={chapter.confirmed ? t('planning.markDraft') : t('planning.confirmChapter')}
-            aria-label={chapter.confirmed ? t('planning.markDraft') : t('planning.confirmChapter')}
+            className={`inline-flex h-5 w-5 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-40 ${saving ? 'opacity-70' : ''}`}
+            disabled={chapter.words === 0}
+            title={toggleTitle}
+            aria-label={toggleTitle}
+            aria-busy={saving}
+            aria-disabled={saving || chapter.words === 0}
             onClick={(event) => {
               event.stopPropagation()
               void handleToggleConfirmed()
             }}
           >
-            <ConfirmIcon className="h-3.5 w-3.5" />
+            <ConfirmIcon className={`h-3.5 w-3.5 ${saving ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>

@@ -142,7 +142,7 @@ export function AgentPanel({
   }
 
   return (
-    <aside className="nova-sidebar flex h-full min-h-0 flex-col">
+    <aside className="nova-sidebar relative flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] px-3">
         <div className="flex min-w-0 shrink-0 items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
           <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
@@ -230,6 +230,7 @@ export function AgentPanel({
             isStreaming={isStreaming}
             activityContent={activityContent}
             scrollResetKey={`${workspace || 'none'}:${activeSessionId || 'current'}`}
+            bottomPaddingClassName="pb-36"
           />
           <InputArea
             onSend={onSend}
@@ -255,6 +256,9 @@ export function AgentPanel({
             skills={skillCommands}
             onContextAnalyze={openContextAnalysis}
             tokenUsageMessages={tokenUsageMessages}
+            agentKey="ide"
+            workspace={workspace}
+            floating
           />
           <ContextAnalysisDialog
             open={contextAnalysisOpen}

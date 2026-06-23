@@ -13,6 +13,7 @@ import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { LOCALE_OPTIONS } from '@/i18n'
 import { APP_VERSION } from '@/app-version'
 import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
+import { modelProfileID } from './model-profiles'
 
 type SettingsSectionId = 'model' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
@@ -970,11 +971,21 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
     return profileKeysRef.current
   }, [profiles.length])
   const addProfile = () => {
-    const nextIndex = profiles.length + 1
-    onChange([...profiles, { id: `model-${nextIndex}`, name: t('settings.model.profileName', { index: nextIndex }), context_window_tokens: DEFAULT_CONTEXT_WINDOW_TOKENS }])
+    onChange([...profiles, { context_window_tokens: DEFAULT_CONTEXT_WINDOW_TOKENS }])
   }
   const updateProfile = (index: number, patch: Partial<ModelProfileSettings>) => {
     onChange(profiles.map((profile, i) => (i === index ? { ...profile, ...patch } : profile)))
+  }
+  const updateProfileModel = (index: number, openaiModel: string) => {
+    const profile = profiles[index]
+    const previousID = modelProfileID(profile)
+    const previousModel = profile?.openai_model?.trim() ?? ''
+    const shouldSyncID = !previousID || previousID === previousModel
+    updateProfile(index, {
+      id: shouldSyncID ? openaiModel : profile?.id,
+      name: undefined,
+      openai_model: openaiModel,
+    })
   }
   const removeProfile = (index: number) => {
     onChange(profiles.filter((_, i) => i !== index))
@@ -990,19 +1001,7 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
           </div>
         )}
         {profiles.map((profile, index) => (
-          <div key={profileKeys[index]} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-2">
-            <input
-              value={profile.id ?? ''}
-              placeholder={t('settings.model.profileIdPlaceholder')}
-              onChange={(e) => updateProfile(index, { id: e.target.value })}
-              className={fieldCls}
-            />
-            <input
-              value={profile.name ?? ''}
-              placeholder={t('settings.model.profileNamePlaceholder')}
-              onChange={(e) => updateProfile(index, { name: e.target.value })}
-              className={fieldCls}
-            />
+          <div key={profileKeys[index]} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-3">
             <input
               value={profile.openai_base_url ?? ''}
               placeholder={t('common.baseUrl')}
@@ -1011,8 +1010,8 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
             />
             <input
               value={profile.openai_model ?? ''}
-              placeholder={t('settings.model.profileModelIdPlaceholder')}
-              onChange={(e) => updateProfile(index, { openai_model: e.target.value })}
+              placeholder={t('settings.model.profileModelPlaceholder')}
+              onChange={(e) => updateProfileModel(index, e.target.value)}
               className={fieldCls}
             />
             <input
@@ -1039,7 +1038,7 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
                 onChange={(value) => updateProfile(index, { context_window_tokens: value })}
               />
             </div>
-            <div className="flex justify-end md:col-span-2">
+            <div className="flex justify-end md:col-span-3">
               <button
                 type="button"
                 onClick={() => removeProfile(index)}

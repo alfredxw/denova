@@ -36,6 +36,7 @@ import {
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { fetchSettings } from '@/features/settings/api'
 import type { Settings, ModelProfileSettings } from '@/features/settings/types'
+import { modelProfileID, modelProfileLabel } from '@/features/settings/model-profiles'
 import { useAutomationRunStream } from './useAutomationRunStream'
 import { InboxPanel } from './AutomationInboxPanel'
 import { TriggerEditor, defaultScheduleTrigger } from './AutomationTriggerEditor'
@@ -495,7 +496,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
               }}
             />
           ) : panelView === 'run' ? (
-            <section className="flex min-h-0 flex-1 flex-col">
+            <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 <MessageList
                   messages={runStream.messages}
@@ -503,6 +504,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                   activityContent={runStream.activityContent}
                   scrollResetKey={runStream.activeRun?.id || activeId || 'automation'}
                   collapseTraceBeforeAssistant
+                  bottomPaddingClassName="pb-36"
                 />
               </div>
               {runStream.activeRun ? (
@@ -512,6 +514,9 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                   disabled={runStream.isStreaming}
                   commandScope="skills"
                   skills={skillCommands}
+                  agentKey="automation"
+                  workspace={workspace}
+                  floating
                 />
               ) : (
                 <div className="border-t border-[var(--nova-border)] px-4 py-3 text-[11px] text-[var(--nova-text-faint)]">
@@ -707,9 +712,9 @@ function modelProfileLabels(settings: Settings | null, t: (key: string, options?
   const profiles = new Map<string, string>()
   profiles.set('default', settings?.openai_model || t('automations.model.defaultModel'))
   const add = (profile?: ModelProfileSettings) => {
-    const id = profile?.id?.trim()
+    const id = modelProfileID(profile)
     if (!id) return
-    profiles.set(id, profile?.name || profile?.openai_model || id)
+    profiles.set(id, modelProfileLabel(profile))
   }
   ;(settings?.model_profiles ?? []).forEach(add)
   return profiles

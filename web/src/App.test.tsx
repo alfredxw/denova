@@ -678,6 +678,64 @@ describe('App', () => {
     expect(screen.queryByText('用自然语言批量整理、补充和修改资料库')).not.toBeInTheDocument()
   })
 
+  it('shows inline loading without changing cursor while confirming a draft chapter', async () => {
+    const user = userEvent.setup()
+    const statusResolver: { current?: (response: Response) => void } = {}
+    const payloads: Record<string, unknown> = {
+      ...defaultPayloads,
+      '/api/workspace/summary': {
+        title: 'Demo',
+        author: '',
+        chapter_count: 1,
+        total_words: 1200,
+        chapters: [{
+          path: 'chapters/ch00001.md',
+          file_name: 'ch00001.md',
+          display_title: '第一章',
+          index: 1,
+          words: 1200,
+          status: '初稿',
+          confirmed: false,
+          updated_at: '2026-06-23T00:00:00Z',
+          volume: '',
+          volume_path: '',
+        }],
+      },
+    }
+    globalThis.fetch = vi.fn((input) => {
+      const path = new URL(readFetchUrl(input), 'http://localhost').pathname
+      if (path === '/api/workspace/chapter-status') {
+        return new Promise<Response>((resolve) => {
+          statusResolver.current = resolve
+        })
+      }
+      return Promise.resolve(new Response(JSON.stringify(payloads[path] ?? {}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+    }) as typeof fetch
+
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    const confirmButton = await screen.findByRole('button', { name: '确认成章' })
+    await user.click(confirmButton)
+
+    await waitFor(() => expect(confirmButton).toHaveAttribute('aria-busy', 'true'))
+    expect(confirmButton).not.toBeDisabled()
+    expect(confirmButton).not.toHaveClass('cursor-wait')
+    expect(confirmButton.querySelector('.animate-spin')).not.toBeNull()
+
+    statusResolver.current?.(new Response(JSON.stringify({ path: 'chapters/ch00001.md', confirmed: true, message: '章节状态已更新' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }))
+    await waitFor(() => expect(confirmButton).toHaveAttribute('aria-busy', 'false'))
+  })
+
   it('keeps one active shared menu while switching shared pages from interactive mode', async () => {
     const user = userEvent.setup()
     render(

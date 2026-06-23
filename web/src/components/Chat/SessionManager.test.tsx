@@ -173,6 +173,26 @@ describe('MessageList', () => {
     expect(screen.getByText('清理后回答')).toBeInTheDocument()
   })
 
+  it('消息 hover 时间按当天和历史日期格式渲染', () => {
+    const today = new Date()
+    today.setHours(9, 5, 0, 0)
+    const oldDay = new Date(2020, 0, 1, 20, 30, 0, 0)
+
+    render(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '当天消息', created_at: today.toISOString() },
+          { type: 'message', role: 'assistant', content: '历史消息', created_at: oldDay.toISOString() },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('09:05')).toBeInTheDocument()
+    expect(screen.getByText('2020-01-01 20:30')).toBeInTheDocument()
+  })
+
   it('运行中的上下文压缩卡片存在时不再渲染第二个 activity 卡片', () => {
     render(
       <MessageList
