@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage, SSEEvent } from '@/lib/api'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
@@ -337,6 +337,13 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     onEvent,
     t,
   ])
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort()
+      abortControllerRef.current = null
+    }
+  }, [])
 
   return {
     messages,

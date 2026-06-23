@@ -204,6 +204,54 @@ func TestGoGitVersionExcludesRunLedgers(t *testing.T) {
 	}
 }
 
+func TestGoGitVersionExcludesInteractiveData(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	settings := DefaultAutoSettings()
+	writeFile(t, dir, "chapters/ch0001.md", "第一版")
+	writeFile(t, dir, ".nova/interactive/stories/story-1.json", `{"title":"测试故事"}`)
+	writeFile(t, dir, ".nova/interactive/memory/book.json", `{"structures":[]}`)
+
+	first, err := service.Create("初始版本", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create first failed: %v", err)
+	}
+	files, err := service.commitFiles(first.Version.ID)
+	if err != nil {
+		t.Fatalf("commitFiles first failed: %v", err)
+	}
+	if _, ok := files[".nova/interactive/stories/story-1.json"]; ok {
+		t.Fatalf("interactive data should not be committed: %v", sortedVersionFilePaths(files))
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nova", "interactive", "stories", "story-1.json")); err != nil {
+		t.Fatalf("interactive data should remain in workspace: %v", err)
+	}
+
+	writeFile(t, dir, "chapters/ch0001.md", "第二版")
+	if _, err := service.Create("第二版本", VersionSourceManual, settings); err != nil {
+		t.Fatalf("Create second failed: %v", err)
+	}
+
+	if _, err := service.Restore(first.Version.ID, settings); err != nil {
+		t.Fatalf("Restore failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nova", "interactive", "stories", "story-1.json")); err != nil {
+		t.Fatalf("interactive data should survive version restore: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nova", "interactive", "memory", "book.json")); err != nil {
+		t.Fatalf("interactive memory should survive version restore: %v", err)
+	}
+
+	writeFile(t, dir, ".nova/interactive/stories/story-2.json", `{"title":"新故事"}`)
+	status, err := service.Status(settings)
+	if err != nil {
+		t.Fatalf("Status failed: %v", err)
+	}
+	if !status.Clean {
+		t.Fatalf("interactive data changes should not dirty version status: %#v", status.Changes)
+	}
+}
+
 func writeFile(t *testing.T, root, rel, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(rel))

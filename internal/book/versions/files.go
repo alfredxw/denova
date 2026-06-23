@@ -97,7 +97,8 @@ func isTextBytes(data []byte) bool {
 func isVersionExcludedRelPath(relPath string) bool {
 	cleanRel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relPath)))
 	return cleanRel == ".git" || strings.HasPrefix(cleanRel, ".git/") ||
-		cleanRel == ".nova/runs" || strings.HasPrefix(cleanRel, ".nova/runs/")
+		cleanRel == ".nova/runs" || strings.HasPrefix(cleanRel, ".nova/runs/") ||
+		cleanRel == ".nova/interactive" || strings.HasPrefix(cleanRel, ".nova/interactive/")
 }
 
 func safeVisiblePath(workspace, relPath string) (string, error) {

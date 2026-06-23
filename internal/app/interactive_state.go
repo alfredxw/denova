@@ -11,7 +11,7 @@ import (
 	"nova/internal/session"
 )
 
-const interactiveStateTimeout = 2 * time.Minute
+const interactiveStateTimeout = 5 * time.Minute
 
 func startInteractiveStateTask(cfg *config.Config, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) {
 	go func() {

@@ -212,6 +212,7 @@ func BuildInteractiveStateSystemInstruction() string {
 		"必须基于注入的“故事记忆结构与字段协议”输出 patch；structure_id、key_field_id、values 字段名和值的写法要求都只能来自该协议。",
 		"每次写入某张表时，values 必须按该表的字段列表逐字段填写：优先满足 required 字段，同时尽量补齐全部字段；字段值必须遵守表级 generation_instruction 和字段级 generation_instruction。",
 		"不能只填 required 字段或本回合变化字段；有既有记录时必须沿用并整合未变化字段，不得省略字段、写空字符串或 null。",
+		"必须逐个检查全部已启用结构，判断本回合是否有需要更新的记录，不得遗漏任何结构。",
 		"字段值必须综合三类来源：历史回合上下文、资料库相关人物与设定、本回合前的既有故事记忆；新剧情负责更新变化，资料库负责校准设定，既有记忆负责保留未变化字段。",
 		"op 仅使用 upsert、append、archive、restore；singleton 用 upsert，keyed 用带 key 的 upsert，append 结构记录新发生且后续需要承接的事实；结束或不再参与后续判断的记录用 archive。",
 		"keyed 结构必须输出非空 key，且 values 必须包含 key_field_id 对应字段；key 必须等于该字段值。",
@@ -238,7 +239,7 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	writeBlock(&sb, "历史回合上下文", in.TurnHistory)
 	writeBlock(&sb, "用户本回合行动", in.UserAction)
 	writeBlock(&sb, "已生成的本回合正文", in.Narrative)
-	sb.WriteString("\n只输出 JSON，例如：{\"story_memory_patches\":[{\"op\":\"upsert\",\"structure_id\":\"current_state\",\"values\":{\"location\":\"旧宅门厅\",\"time\":\"2026-06-19 22:10\",\"previous_time\":\"2026-06-19 22:00\",\"elapsed_time\":\"约十分钟\",\"event\":\"主角发现门厅的铜铃会回应钥匙。\"}},{\"op\":\"upsert\",\"structure_id\":\"important_character\",\"key\":\"林川\",\"values\":{\"name\":\"林川\",\"brief\":\"熟悉旧宅机关的同行者\",\"relationship\":\"提醒主角谨慎使用铜钥匙\",\"status\":\"与主角同在旧宅门厅\"}},{\"op\":\"append\",\"structure_id\":\"plot_summary\",\"values\":{\"time\":\"2026-06-19 22:10\",\"place\":\"旧宅门厅\",\"event\":\"主角用铜钥匙触发门厅铜铃，确认旧宅对钥匙有反应。\"}}]}。\n")
+	sb.WriteString("\n只输出 JSON，例如：{\"story_memory_patches\":[{\"op\":\"upsert\",\"structure_id\":\"current_state\",\"values\":{\"location\":\"旧宅门厅\",\"time\":\"2026-06-19 22:10\",\"previous_time\":\"2026-06-19 22:00\",\"elapsed_time\":\"约十分钟\",\"event\":\"主角发现门厅的铜铃会回应钥匙。\"}},{\"op\":\"upsert\",\"structure_id\":\"protagonist\",\"values\":{\"name\":\"主角\",\"current_goal\":\"探索旧宅机关\",\"emotional_state\":\"警觉\",\"inventory\":\"铜钥匙、手电筒\",\"health\":\"良好\"}},{\"op\":\"upsert\",\"structure_id\":\"important_character\",\"key\":\"林川\",\"values\":{\"name\":\"林川\",\"brief\":\"熟悉旧宅机关的同行者\",\"relationship\":\"提醒主角谨慎使用铜钥匙\",\"status\":\"与主角同在旧宅门厅\"}},{\"op\":\"upsert\",\"structure_id\":\"world_context\",\"values\":{\"time_period\":\"现代\",\"weather\":\"夜雨\",\"atmosphere\":\"神秘紧张\"}},{\"op\":\"upsert\",\"structure_id\":\"open_threads\",\"key\":\"铜铃机关\",\"values\":{\"thread\":\"铜铃对钥匙的反应暗示旧宅有隐藏机关\",\"status\":\"待调查\",\"priority\":\"高\"}},{\"op\":\"append\",\"structure_id\":\"plot_summary\",\"values\":{\"time\":\"2026-06-19 22:10\",\"place\":\"旧宅门厅\",\"event\":\"主角用铜钥匙触发门厅铜铃，确认旧宅对钥匙有反应。\"}}]}。\n")
 	return sb.String()
 }
 
