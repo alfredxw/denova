@@ -10,6 +10,8 @@ const planning = {
   'planning.chapterPlansEmpty': 'setting/chapter-groups/ 下还没有细纲',
   'planning.volumeChapters': '分卷章节',
   'planning.unvolumed': '未分卷',
+  'planning.confirmChapter': '确认成章',
+  'planning.markDraft': '标回初稿',
   'planning.loreDescription': '{{type}} · {{importance}} · {{loadMode}}{{tags}}{{brief}}',
   'planning.loreBrief': ' · 简介：{{brief}}',
 } as const

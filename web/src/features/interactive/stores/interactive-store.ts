@@ -4,6 +4,7 @@ import type { BranchSummary, InteractiveSubmode, Snapshot, StorySummary, Teller 
 
 const CURRENT_STORY_STORAGE_KEY = 'nova.interactive.current_story.v1'
 const CURRENT_BRANCH_STORAGE_KEY = 'nova.interactive.current_branch.v1'
+const SUBMODE_STORAGE_KEY = 'nova.interactive.submode.v1'
 
 export interface StoryStageRunState {
   streaming: boolean
@@ -83,6 +84,21 @@ function rememberedBranchFor(storyId: string, branches?: BranchSummary[]) {
   return branchId
 }
 
+function readRememberedSubmode(): InteractiveSubmode {
+  if (typeof window === 'undefined') return 'story'
+  const value = window.localStorage.getItem(SUBMODE_STORAGE_KEY)
+  return isInteractiveSubmode(value) ? value : 'story'
+}
+
+function rememberSubmode(submode: InteractiveSubmode) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(SUBMODE_STORAGE_KEY, submode)
+}
+
+function isInteractiveSubmode(value: unknown): value is InteractiveSubmode {
+  return value === 'story' || value === 'timeline' || value === 'memory' || value === 'lore' || value === 'creator' || value === 'teller'
+}
+
 export const useInteractiveStore = create<InteractiveStore>((set) => ({
   stories: [],
   tellers: [],
@@ -91,7 +107,7 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
   storyStageRuns: {},
   currentStoryId: '',
   currentBranchId: 'main',
-  submode: 'story',
+  submode: readRememberedSubmode(),
   setStories: (stories, currentStoryId) => set((state) => {
     const storyId = rememberedStoryId(stories) || currentStoryId || state.currentStoryId || stories[0]?.id || ''
     const branchId = storyId ? rememberedBranchFor(storyId) || (storyId === state.currentStoryId ? state.currentBranchId : 'main') : 'main'
@@ -137,7 +153,10 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
     rememberCurrentBranch(state.currentStoryId, branchId)
     return { currentBranchId: branchId }
   }),
-  setSubmode: (submode) => set({ submode }),
+  setSubmode: (submode) => {
+    rememberSubmode(submode)
+    set({ submode })
+  },
   resetWorkspaceState: () => set({
     stories: [],
     tellers: [],

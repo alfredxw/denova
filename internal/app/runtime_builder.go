@@ -111,8 +111,8 @@ func buildInteractiveStoryRunner(ctx context.Context, cfg *config.Config, state 
 	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindInteractiveStory, Workspace: cfg.Workspace}), nil
 }
 
-func buildConfigManagerRunner(ctx context.Context, cfg *config.Config, state *book.State) (*adk.Runner, error) {
-	builtAgent, err := agent.BuildConfigManagerAgent(ctx, cfg, state)
+func buildConfigManagerRunner(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...agent.ConfigManagerResourceSkill) (*adk.Runner, error) {
+	builtAgent, err := agent.BuildConfigManagerAgent(ctx, cfg, state, resourceSkills...)
 	if err != nil {
 		return nil, fmt.Errorf("构建配置管理 Agent 失败: %w", err)
 	}

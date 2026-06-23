@@ -11,7 +11,8 @@ type SystemInstructionInput struct {
 	CreatorPrompt string
 	// Workspace 当前作品工作目录的绝对路径，用于在指令中提示文件位置。
 	Workspace string
-	// StateContext 已确认的小说状态摘要（outline/progress/资料库/章节组细纲等）。
+	// StateContext is no longer embedded in the system prompt; keep the field for callers
+	// that still resolve workspace state before appending it to the final user message.
 	StateContext string
 	// StoryTellerID 是写作模式默认导演 ID；为空则不注入导演规则。
 	StoryTellerID string
@@ -32,8 +33,8 @@ type SystemInstructionInput struct {
 	ChapterGroupMax int
 }
 
-// BuildSystemInstruction 拼装 Nova Agent 的系统指令：
-// 创作者指令（最高优先级）+ 基础规则 + 当前作品状态。
+// BuildSystemInstruction 拼装 Nova Agent 的稳定系统指令：
+// 创作者指令（最高优先级）+ 导演规则 + 基础规则。作品状态由运行时追加到本轮用户消息末尾。
 func BuildSystemInstruction(in SystemInstructionInput) string {
 	var sb strings.Builder
 
@@ -57,15 +58,11 @@ func BuildSystemInstruction(in SystemInstructionInput) string {
 
 	sb.WriteString(BuildIDEWritingFlowInstruction(in))
 
-	if state := strings.TrimSpace(in.StateContext); state != "" {
-		sb.WriteString("\n\n# 当前作品状态\n\n")
-		sb.WriteString(state)
-	} else {
-		sb.WriteString("\n\n# 当前作品状态\n\n")
-		sb.WriteString(emptyStateHint)
-	}
-
 	return sb.String()
+}
+
+func EmptyIDEStateHint() string {
+	return emptyStateHint
 }
 
 func BuildIDEWritingFlowInstruction(in SystemInstructionInput) string {

@@ -82,7 +82,12 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 	policy := DefaultLoopPolicy().normalized()
 	composition := composeAgentInput(req, pending, bookService, policy)
 	messages := buildIDEAnalysisMessages(cfg, effectiveMessages, totalMessages, compaction)
-	messages = append(messages, schema.UserMessage(composition.AgentMessage))
+	runtimeContext := IDEWorkspaceRuntimeContext(state)
+	messages = append(messages, schema.UserMessage(appendRuntimeContextToAgentMessage(
+		composition.AgentMessage,
+		ideWorkspaceRuntimeContextTitle,
+		runtimeContext,
+	)))
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
 	for i, msg := range messages {
 		if msg == nil {
@@ -95,7 +100,11 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 			title = "模型可见压缩摘要"
 		} else if i == len(messages)-1 {
 			source = "本轮上下文"
-			title = "本轮发送给 Agent 的用户消息"
+			if strings.TrimSpace(runtimeContext) != "" {
+				title = "本轮用户消息与动态作品状态"
+			} else {
+				title = "本轮发送给 Agent 的用户消息"
+			}
 		}
 		contextMessages = append(contextMessages, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      fmt.Sprintf("message_%d", i+1),
@@ -280,7 +289,7 @@ func parseCompactionEpoch(content string) int {
 }
 
 func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller) (string, []ContextAnalysisPart) {
-	builtIn, workspace, creator, stateContext := buildIDEBuiltinInstruction(cfg, state, teller)
+	builtIn, workspace, creator, _ := buildIDEBuiltinInstruction(cfg, state, teller)
 	systemPrompt := protectedSystemInstruction(cfg, config.AgentKindIDE, builtIn)
 	resolved := config.ResolveAgentPrompt(cfg, config.AgentKindIDE)
 	parts := []ContextAnalysisPart{
@@ -337,23 +346,6 @@ func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller 
 		Title:   "写作模式流程配置",
 		Content: ideFlowInstruction(cfg, workspace),
 	}))
-	if sections := promptStateSections(stateContext); len(sections) > 0 {
-		for i, section := range sections {
-			parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-				ID:      fmt.Sprintf("workspace_state_%d", i+1),
-				Source:  section.Source,
-				Title:   section.Title,
-				Content: section.Content,
-			}))
-		}
-	} else {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "workspace_state_empty",
-			Source:  "workspace state",
-			Title:   "当前作品状态",
-			Content: "这是一个新的作品，尚未生成大纲和资料库。请先打开作品根目录下的 ideas.md 和 CREATOR.md，基于两份模板与作者确认创作灵感、顶层定调和基本创作规则。",
-		}))
-	}
 	return systemPrompt, parts
 }
 

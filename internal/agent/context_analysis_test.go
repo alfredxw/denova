@@ -1,12 +1,15 @@
 package agent
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/cloudwego/eino/schema"
 
 	"nova/config"
+	"nova/internal/book"
 	"nova/internal/prompts"
 	"nova/internal/session"
 )
@@ -103,6 +106,66 @@ func TestIDEContextAnalysisKeepsPostCompactionMessages(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("analysis message %d = %q, want %q; all=%#v", i, got[i], want[i], got)
+		}
+	}
+}
+
+func TestIDEContextAnalysisMovesWorkspaceStateToFinalMessage(t *testing.T) {
+	dir := t.TempDir()
+	state := book.NewState(dir)
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace failed: %v", err)
+	}
+	if err := os.MkdirAll(state.SettingDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), "outline.md"), []byte("## 第一卷\n\n主角进入废城。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.NewLoreStore(dir).Create(book.LoreItemInput{
+		ID:         "hero",
+		Type:       "character",
+		Name:       "林川",
+		Importance: "major",
+		LoadMode:   book.LoreLoadModeResident,
+		Content:    "## 角色小标题\n\n林川长期设定。",
+	}); err != nil {
+		t.Fatalf("create lore item failed: %v", err)
+	}
+
+	analysis, err := BuildIDEContextAnalysis(
+		&config.Config{Workspace: dir},
+		state,
+		IDEStoryTeller{},
+		nil,
+		nil,
+		0,
+		nil,
+		nil,
+		ChatRequest{Message: "继续写"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, part := range analysis.SystemPromptParts {
+		if part.Source == ".nova/lore/items.json" {
+			t.Fatalf("workspace state should not be part of system prompt sources: %#v", part)
+		}
+		if part.Title == "角色小标题" || part.Source == "作品状态注入" {
+			t.Fatalf("context analysis should not split workspace state by markdown headings: %#v", part)
+		}
+	}
+	if len(analysis.ContextMessages) == 0 {
+		t.Fatal("context analysis should include final model messages")
+	}
+	final := analysis.ContextMessages[len(analysis.ContextMessages)-1]
+	if final.Source != "本轮上下文" || final.Title != "本轮用户消息与动态作品状态" {
+		t.Fatalf("final message should carry dynamic workspace state label: %#v", final)
+	}
+	for _, want := range []string{"# 本轮动态作品状态", "主角进入废城", "## 角色小标题", "林川长期设定"} {
+		if !strings.Contains(final.Content, want) {
+			t.Fatalf("final message missing %q:\n%s", want, final.Content)
 		}
 	}
 }

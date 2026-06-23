@@ -272,7 +272,14 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_references=%d style_rules=%d selections=%d plan_mode=%v", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleReferences), len(req.StyleRules), len(req.Selections), req.PlanMode)
-		runtime.chatService.RunWithOptions(ctx, runner, agent.NewSessionConversationForAgent(runtime.sess, &runtime.cfg, config.AgentKindIDE), runtime.bookService, req, agent.RunOptions{
+		conversation := agent.NewSessionConversationForAgentWithRuntimeContext(
+			runtime.sess,
+			&runtime.cfg,
+			config.AgentKindIDE,
+			"本轮动态作品状态",
+			agent.IDEWorkspaceRuntimeContext(runtime.state),
+		)
+		runtime.chatService.RunWithOptions(ctx, runner, conversation, runtime.bookService, req, agent.RunOptions{
 			AgentKind:           agent.AgentKindIDE,
 			TaskID:              task.ID(),
 			SessionID:           runtime.sess.ID,

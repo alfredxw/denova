@@ -1,19 +1,10 @@
 import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import type { WorkspaceSummary } from '@/lib/api'
-import { novaEase, novaSpring } from '@/features/motion/motion-tokens'
 
 const TABS_STORAGE_PREFIX = 'nova.layout.tabs:'
 const ACTIVE_TAB_STORAGE_PREFIX = 'nova.layout.activeTab:'
-const tabLayoutTransition = { duration: 0.1, ease: novaEase } as const
-const tabPresenceTransition = { duration: 0.06, ease: novaEase } as const
-const tabMotionTransition = {
-  opacity: tabPresenceTransition,
-  scale: tabPresenceTransition,
-  layout: tabLayoutTransition,
-} as const
 
 /** 编辑区 Tab：承载已打开文件。 */
 export type Tab = { kind: 'file'; path: string }
@@ -137,61 +128,46 @@ export function TabController({
   const { t } = useTranslation()
   return (
     <div className="nova-sidebar flex h-9 shrink-0 items-stretch border-b text-xs">
-      <LayoutGroup id="editor-tabs">
       <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
         {tabs.length === 0 ? (
           <div className="flex h-full items-center px-3 text-[var(--nova-text-faint)]">{t('tab.empty')}</div>
         ) : (
-          <AnimatePresence initial={false} mode="popLayout">
-            {tabs.map((tab) => {
-              const key = tabKey(tab)
-              const isActive = key === activeTabKey
-              const label = formatChapterTabLabel(tab, summary)
-              return (
-                <motion.div
-                  key={key}
-                  layout
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.99, transition: tabPresenceTransition }}
-                  transition={tabMotionTransition}
-                  style={{ originX: 0 }}
-                  className={`group relative flex h-full shrink-0 items-center gap-2 overflow-hidden border-r border-[var(--nova-border)] px-3 transition-colors ${
-                    isActive
-                      ? 'text-[var(--nova-text)]'
-                      : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
-                  }`}
+          tabs.map((tab) => {
+            const key = tabKey(tab)
+            const isActive = key === activeTabKey
+            const label = formatChapterTabLabel(tab, summary)
+            return (
+              <div
+                key={key}
+                className={`group relative flex h-full shrink-0 items-center gap-2 overflow-hidden border-r border-[var(--nova-border)] px-3 ${
+                  isActive
+                    ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
+                    : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
+                }`}
+              >
+                {isActive && <span className="absolute inset-x-0 top-0 h-0.5 bg-[var(--nova-text-faint)]" />}
+                <button
+                  type="button"
+                  onClick={() => { if (!isActive) onActivateTab(tab) }}
+                  className="relative z-10 max-w-[220px] truncate text-left"
+                  title={tab.path}
                 >
-                  {isActive && (
-                    <>
-                      <motion.span layoutId="editor-tab-active-bg" className="absolute inset-0 bg-[var(--nova-active)]" transition={novaSpring} />
-                      <motion.span layoutId="editor-tab-active-line" className="absolute inset-x-0 top-0 h-0.5 bg-[var(--nova-text-faint)]" transition={novaSpring} />
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => { if (!isActive) onActivateTab(tab) }}
-                    className="relative z-10 max-w-[220px] truncate text-left"
-                    title={tab.path}
-                  >
-                    {label}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
-                    className="nova-nav-item relative z-10 rounded p-0.5 opacity-0 group-hover:opacity-100"
-                    aria-label={t('tab.close', { label })}
-                    title={t('common.close')}
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </motion.div>
-              )
-            })}
-          </AnimatePresence>
+                  {label}
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}
+                  className="nova-nav-item relative z-10 rounded p-0.5 opacity-0 group-hover:opacity-100"
+                  aria-label={t('tab.close', { label })}
+                  title={t('common.close')}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )
+          })
         )}
       </div>
-      </LayoutGroup>
       {actions && (
         <div className="flex shrink-0 items-center gap-1 border-l border-[var(--nova-border)] px-2">
           {actions}

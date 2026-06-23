@@ -28,9 +28,11 @@ type ContextSourceReporter interface {
 }
 
 type SessionConversation struct {
-	session   *session.Session
-	cfg       *config.Config
-	agentKind string
+	session             *session.Session
+	cfg                 *config.Config
+	agentKind           string
+	runtimeContextTitle string
+	runtimeContext      string
 }
 
 func NewSessionConversation(sess *session.Session, options ...SessionConversationOption) *SessionConversation {
@@ -50,12 +52,27 @@ func NewSessionConversationForAgent(sess *session.Session, cfg *config.Config, a
 	)
 }
 
+func NewSessionConversationForAgentWithRuntimeContext(sess *session.Session, cfg *config.Config, agentKind, title, content string) *SessionConversation {
+	return NewSessionConversation(
+		sess,
+		WithSessionContextConfig(cfg, agentKind),
+		WithSessionRuntimeContext(title, content),
+	)
+}
+
 type SessionConversationOption func(*SessionConversation)
 
 func WithSessionContextConfig(cfg *config.Config, agentKind string) SessionConversationOption {
 	return func(c *SessionConversation) {
 		c.cfg = cfg
 		c.agentKind = agentKind
+	}
+}
+
+func WithSessionRuntimeContext(title, content string) SessionConversationOption {
+	return func(c *SessionConversation) {
+		c.runtimeContextTitle = title
+		c.runtimeContext = content
 	}
 }
 
@@ -66,7 +83,20 @@ func (c *SessionConversation) PrepareMessages(originalMessage, agentMessage stri
 	if err := c.session.Append(schema.UserMessage(originalMessage)); err != nil {
 		return nil, err
 	}
-	return c.modelMessages(agentMessage), nil
+	return c.modelMessages(appendRuntimeContextToAgentMessage(agentMessage, c.runtimeContextTitle, c.runtimeContext)), nil
+}
+
+func (c *SessionConversation) ContextSourceSummary() string {
+	if c == nil || strings.TrimSpace(c.runtimeContext) == "" {
+		return ""
+	}
+	title := strings.TrimSpace(c.runtimeContextTitle)
+	if title == "" {
+		title = "本轮动态上下文"
+	}
+	contextLog := newContextBuildLog()
+	contextLog.add("本轮动态上下文", title, c.runtimeContext, "appended_to_final_user_message")
+	return contextLog.String()
 }
 
 func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input ContextCompactionInput) ([]*schema.Message, ContextCompactionResult, error) {
@@ -156,6 +186,25 @@ func (c *SessionConversation) modelMessages(agentMessage string) []*schema.Messa
 		history[len(history)-1] = schema.UserMessage(agentMessage)
 	}
 	return history
+}
+
+func appendRuntimeContextToAgentMessage(agentMessage, title, content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return agentMessage
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "本轮动态上下文"
+	}
+	var sb strings.Builder
+	sb.WriteString(strings.TrimSpace(agentMessage))
+	sb.WriteString("\n\n---\n\n# ")
+	sb.WriteString(title)
+	sb.WriteString("\n\n")
+	sb.WriteString("以下内容来自当前 workspace 的有界状态快照，随作品进展变化，只用于本轮判断；用户本轮请求仍以上方正文为准。需要更完整或最新内容时，按来源路径使用工具读取确认。\n\n")
+	sb.WriteString(content)
+	return sb.String()
 }
 
 func (c *SessionConversation) compactionPolicy() contextCompactionPolicy {

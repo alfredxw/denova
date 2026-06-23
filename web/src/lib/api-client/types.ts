@@ -172,6 +172,7 @@ export interface ChapterSummary {
   index: number
   words: number
   status: string
+  confirmed: boolean
   updated_at: string
   volume: string
   volume_path: string

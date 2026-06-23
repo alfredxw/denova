@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 配置管理 Agent 新增复杂配置资源的自动 Skill 注入：自动化、故事记忆和叙事编排写入前会按模块加载对应内置配置 Skill，帮助 Agent 使用正确 JSON 结构、枚举和写入流程。
+- 新增 `CONTRIBUTING.md`，整理本地开发、代码风格、前端验证、测试、提交信息、文档和发布贡献约定。
 - 开发模式下新增完整 LLM 输入 JSONL 日志：通过 `bootstrap.sh` 启动时会向后端传入 `--dev-mode`，每次模型请求都会把未截断的 messages、工具 schema 和非密钥模型参数写入 `log/llm-inputs.jsonl`，最多保留最近 10 条记录，便于排查前缀缓存命中率；直接运行 binary 默认不写该文件。
 - 真实模型用量新增未命中缓存 Token 统计，按整次 Agent 请求和单次模型调用同时展示 `prompt - cached` 的输入 Token 数。
 - 检测到 Nova 新版本时，一级菜单会显示可关闭的小提示；关闭后同一版本不再重复提示。
@@ -25,6 +27,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 写作 Agent 的大纲、进度、角色状态、章节目录概览、资料库摘要和章节组细纲等动态作品状态不再注入 system prompt，改为追加到本轮最终用户消息底部，以减少作品状态变化对模型前缀缓存命中的影响。
+- 写作页面顶部文件 Tab 切换改为即时状态更新，移除无实际帮助的切换动画。
+- 写作模式章节状态从字数阈值自动判定改为作者手动确认：非空章节默认保持初稿，只有在章节列表中确认后才标记为成章。
 - Nova 后端默认改为只监听本机地址；开启局域网访问后才监听 `0.0.0.0`，关闭后远端请求会被拒绝。
 - 移动端互动剧情页改为阅读优先布局：故事舞台顶部操作、工作台状态提示与底部一级导航默认收起，按需展开，减少手机上对正文区域的占用。
 - 更新中英文 README 的能力介绍，补充自定义故事记忆、Memory Compact、缓存命中率优化和 token 成本说明，并同步欢迎交流、开发启动和赞助信息。
@@ -32,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复写作 Agent 上下文分析器会按作品状态 Markdown 小标题误拆来源的问题；现在作品状态按创作灵感、状态文件、章节目录、资料库和章节组细纲等真实来源展示。
 - 修复上下文压缩运行时同时出现压缩卡片和 activity 卡片的问题；现在 IDE 与互动故事只保留一个简洁压缩卡片，并用旋转 Loading 表示进行中状态。
 - 修复互动故事移除上下文压缩时写入的 `context_compaction_removed` 事件被故事 schema 误判为未知类型，导致移除压缩失败的问题。
 - 修复真实模型用量明细缺少数据来源说明、模型调用未按 Agent 请求分组、工具调用后的下一次模型请求缺少工具归属、单次调用时间不准确且窄屏必须横向滚动才能看到关键 token 信息的问题；互动模式的模型用量改为写入独立 usage 文件，不再混入 story 事件。

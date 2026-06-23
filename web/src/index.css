@@ -56,6 +56,7 @@
   --nova-code-block-bg: #1f2023;
   --nova-table-header-bg: #25262a;
   --nova-markdown-border: #303238;
+  --nova-dialogue-highlight: #ffd166;
   --nova-scrollbar-track: #0f0f0f;
   --nova-scrollbar-thumb: #3f3f3f;
   --nova-scrollbar-thumb-hover: #5a5a5a;
@@ -140,6 +141,7 @@
   --nova-code-block-bg: #e7edf4;
   --nova-table-header-bg: #e3eaf2;
   --nova-markdown-border: #ccd6e2;
+  --nova-dialogue-highlight: #A04A1A;
   --nova-scrollbar-track: #e7edf3;
   --nova-scrollbar-thumb: #b6c1cf;
   --nova-scrollbar-thumb-hover: #8f9cad;
@@ -864,8 +866,7 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-dialogue-highlight {
-  color: color-mix(in srgb, currentColor 35%, #ffd166);
-  text-shadow: 0 0 14px color-mix(in srgb, currentColor 22%, transparent);
+  color: var(--nova-dialogue-highlight);
 }
 
 [data-sonner-toast][data-styled='true'] {

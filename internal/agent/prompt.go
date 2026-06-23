@@ -21,7 +21,15 @@ type IDEStoryTeller struct {
 	Prompt      string
 }
 
-// BuildInstruction 构建系统指令，包含基础 prompt + 作品状态注入。
+// ConfigManagerResourceSkill is a bounded, already-resolved Skill body that
+// config_manager should treat as run-scoped schema/workflow guidance.
+type ConfigManagerResourceSkill struct {
+	Name        string
+	Description string
+	Content     string
+}
+
+// BuildInstruction 构建写作 Agent 的稳定系统指令；动态作品状态由会话运行时追加。
 // 实际的 Prompt 文本集中在 internal/prompts 包，这里只负责把 cfg/state 翻译成 prompts.SystemInstructionInput。
 func BuildInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) string {
 	return BuildInstructionComposition(cfg, state, teller).Instruction()
@@ -31,11 +39,16 @@ func BuildInstruction(cfg *config.Config, state *book.State, teller IDEStoryTell
 func BuildInstructionComposition(cfg *config.Config, state *book.State, teller IDEStoryTeller) SystemPromptCompositionLog {
 	builtIn, workspace, creator, stateContext := buildIDEBuiltinInstruction(cfg, state, teller)
 	instruction := protectedSystemInstruction(cfg, config.AgentKindIDE, builtIn)
+	var stateParts []book.CompactContextPart
+	if state != nil {
+		stateParts = state.CompactContextParts()
+	}
 	return SystemPromptCompositionLog{
 		mode:         "ide",
 		workspace:    workspace,
 		creator:      creator,
 		stateContext: stateContext,
+		stateParts:   stateParts,
 		instruction:  instruction,
 		extraSources: []promptSource{{
 			source:  "系统提示",
@@ -52,6 +65,7 @@ type SystemPromptCompositionLog struct {
 	workspace    string
 	creator      string
 	stateContext string
+	stateParts   []book.CompactContextPart
 	instruction  string
 	extraSources []promptSource
 }
@@ -78,7 +92,7 @@ func (l SystemPromptCompositionLog) logForRun(options RunOptions) {
 		promptPartSummary(l.stateContext),
 		promptPartSummary(l.instruction),
 	)
-	log.Printf("[agent-prompt] system sources mode=%s workspace=%s task_id=%s session_id=%s sources=%s", l.mode, l.workspace, options.TaskID, options.SessionID, systemPromptSourceSummary(l.mode, l.creator, l.stateContext, l.extraSources...))
+	log.Printf("[agent-prompt] system sources mode=%s workspace=%s task_id=%s session_id=%s sources=%s", l.mode, l.workspace, options.TaskID, options.SessionID, systemPromptSourceSummary(l.mode, l.creator, l.stateParts, l.extraSources...))
 }
 
 func newInteractiveStoryInstructionComposition(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) SystemPromptCompositionLog {
@@ -104,20 +118,33 @@ func BuildInteractiveStoryInstructionComposition(cfg *config.Config, state *book
 }
 
 // BuildConfigManagerInstructionComposition returns the config manager prompt and its source summary.
-func BuildConfigManagerInstructionComposition(cfg *config.Config, state *book.State) SystemPromptCompositionLog {
+func BuildConfigManagerInstructionComposition(cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) SystemPromptCompositionLog {
 	builtIn, workspace, creator := buildConfigManagerBuiltinInstruction(cfg, state)
-	instruction := protectedSystemInstruction(cfg, config.AgentKindConfigManager, builtIn)
+	builtInWithSkills := appendConfigManagerResourceSkills(builtIn, resourceSkills)
+	instruction := protectedSystemInstruction(cfg, config.AgentKindConfigManager, builtInWithSkills)
+	extraSources := []promptSource{{
+		source:  "系统提示",
+		title:   "配置管理 Agent 内置规则",
+		content: builtIn,
+		note:    "tool-chain",
+	}}
+	for _, skill := range resourceSkills {
+		if strings.TrimSpace(skill.Name) == "" || strings.TrimSpace(skill.Content) == "" {
+			continue
+		}
+		extraSources = append(extraSources, promptSource{
+			source:  "配置 Skill",
+			title:   "/" + strings.TrimSpace(skill.Name),
+			content: skill.Content,
+			note:    strings.TrimSpace(skill.Description),
+		})
+	}
 	return SystemPromptCompositionLog{
-		mode:        "config_manager",
-		workspace:   workspace,
-		creator:     creator,
-		instruction: instruction,
-		extraSources: []promptSource{{
-			source:  "系统提示",
-			title:   "配置管理 Agent 内置规则",
-			content: builtIn,
-			note:    "tool-chain",
-		}},
+		mode:         "config_manager",
+		workspace:    workspace,
+		creator:      creator,
+		instruction:  instruction,
+		extraSources: extraSources,
 	}
 }
 
@@ -151,6 +178,18 @@ func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller ID
 		ChapterGroupMax:        cfg.ChapterGroupMax,
 	})
 	return builtIn, workspace, creator, stateContext
+}
+
+const ideWorkspaceRuntimeContextTitle = "本轮动态作品状态"
+
+func IDEWorkspaceRuntimeContext(state *book.State) string {
+	if state == nil {
+		return ""
+	}
+	if context := strings.TrimSpace(state.CompactContext()); context != "" {
+		return context
+	}
+	return prompts.EmptyIDEStateHint()
 }
 
 func BuildInteractiveStoryInstruction(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) string {
@@ -233,7 +272,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		copy.AgentPrompts = config.AgentPromptSettings{}
 		promptCfg = &copy
 	}
-	_, ideWorkspace, ideCreator, ideStateContext := buildIDEBuiltinInstruction(promptCfg, state, ideTeller)
+	_, ideWorkspace, ideCreator, _ := buildIDEBuiltinInstruction(promptCfg, state, ideTeller)
 	_, interactiveWorkspace, interactiveCreator := buildInteractiveStoryBuiltinInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})
 	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
 	configManagerCreator := ""
@@ -244,7 +283,6 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		IDE: builtinPromptSourceList(config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace),
 			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", ideCreator),
 			readonlyPromptSource("teller", "IDE 默认导演规则", ideTeller.ID, ideTeller.Prompt),
-			readonlyPromptSource("workspace_context", "当前作品状态", "workspace state", ideStateContext),
 		),
 		InteractiveStory: builtinPromptSourceList(config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace),
 			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", interactiveCreator),
@@ -350,8 +388,37 @@ func editablePromptFlowForAgent(agentKind, flow string) string {
 	}
 }
 
-func BuildConfigManagerInstruction(cfg *config.Config, state *book.State) string {
-	return BuildConfigManagerInstructionComposition(cfg, state).Instruction()
+func BuildConfigManagerInstruction(cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) string {
+	return BuildConfigManagerInstructionComposition(cfg, state, resourceSkills...).Instruction()
+}
+
+func appendConfigManagerResourceSkills(builtIn string, resourceSkills []ConfigManagerResourceSkill) string {
+	var sb strings.Builder
+	for _, skill := range resourceSkills {
+		name := strings.TrimSpace(skill.Name)
+		content := strings.TrimSpace(skill.Content)
+		if name == "" || content == "" {
+			continue
+		}
+		if sb.Len() == 0 {
+			sb.WriteString("\n\n## 本轮自动加载的配置 Skills\n\n")
+			sb.WriteString("以下内容来自当前生效的 Nova Skills，用于在调用复杂 write_* 配置工具前确认 JSON 结构、枚举、默认值和安全流程；若与运行时契约或后端校验冲突，以运行时契约和后端校验为准。\n")
+		}
+		sb.WriteString("\n### /")
+		sb.WriteString(name)
+		sb.WriteString("\n\n")
+		if description := strings.TrimSpace(skill.Description); description != "" {
+			sb.WriteString("description: ")
+			sb.WriteString(description)
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(content)
+		sb.WriteString("\n")
+	}
+	if sb.Len() == 0 {
+		return builtIn
+	}
+	return strings.TrimSpace(builtIn) + sb.String()
 }
 
 func buildConfigManagerBuiltinInstruction(cfg *config.Config, state *book.State) (string, string, string) {
@@ -413,7 +480,7 @@ type promptSource struct {
 	note    string
 }
 
-func systemPromptSourceSummary(mode, creator, stateContext string, extraSources ...promptSource) string {
+func systemPromptSourceSummary(mode, creator string, stateParts []book.CompactContextPart, extraSources ...promptSource) string {
 	contextLog := newContextBuildLog()
 	if strings.TrimSpace(creator) != "" {
 		contextLog.add("系统提示", "CREATOR.md", creator, "创作者指令")
@@ -424,63 +491,14 @@ func systemPromptSourceSummary(mode, creator, stateContext string, extraSources 
 		}
 		contextLog.add(source.source, source.title, source.content, source.note)
 	}
-	for _, section := range promptStateSections(stateContext) {
+	for _, section := range stateParts {
+		if strings.TrimSpace(section.Content) == "" {
+			continue
+		}
 		contextLog.add("作品状态", section.Title, section.Content, section.Source)
 	}
 	contextLog.add("系统提示", "Nova "+mode+" 内置规则", "基础规则、工具边界、工作流约束", "")
 	return contextLog.String()
-}
-
-type promptStateSection struct {
-	Title   string
-	Source  string
-	Content string
-}
-
-func promptStateSections(stateContext string) []promptStateSection {
-	stateContext = strings.TrimSpace(stateContext)
-	if stateContext == "" {
-		return nil
-	}
-	blocks := strings.Split("\n"+stateContext, "\n## ")
-	sections := make([]promptStateSection, 0, len(blocks))
-	for _, block := range blocks {
-		block = strings.TrimSpace(block)
-		if block == "" {
-			continue
-		}
-		title, content, _ := strings.Cut(block, "\n")
-		title = strings.TrimSpace(title)
-		content = strings.TrimSpace(content)
-		if title == "" || content == "" {
-			continue
-		}
-		sections = append(sections, promptStateSection{
-			Title:   title,
-			Source:  promptStateSectionSource(title),
-			Content: content,
-		})
-	}
-	return sections
-}
-
-func promptStateSectionSource(title string) string {
-	switch title {
-	case "当前大纲":
-		return "setting/outline.md"
-	case "当前进度":
-		return "setting/progress.md"
-	case "角色状态":
-		return "setting/character-states.md"
-	case "章节组细纲":
-		return "setting/chapter-groups/"
-	case "章节目录概览":
-		return "chapters/"
-	case "资料库":
-		return ".nova/lore/items.json"
-	default:
-		return "作品状态注入"
-	}
 }
 
 func promptPartSummary(s string) string {

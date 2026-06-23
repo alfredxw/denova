@@ -17,6 +17,15 @@ type State struct {
 	workspace string
 }
 
+// CompactContextPart describes one bounded, model-visible workspace state source.
+type CompactContextPart struct {
+	ID          string
+	Source      string
+	Title       string
+	Content     string
+	PromptTitle string
+}
+
 // NewState 创建作品状态管理器。
 func NewState(workspace string) *State {
 	return &State{workspace: workspace}
@@ -103,24 +112,29 @@ func (s *State) IdeasPath() string {
 	return filepath.Join(s.workspace, IdeasFileName)
 }
 
-// CompactContext 读取作品状态和结构化资料库，构建分级注入的上下文字符串。
-func (s *State) CompactContext() string {
-	var sb strings.Builder
+// CompactContextParts 读取作品状态和结构化资料库，保留每个注入片段的真实来源。
+func (s *State) CompactContextParts() []CompactContextPart {
+	parts := make([]CompactContextPart, 0, 7)
 	loreContext := s.LoreContext()
 
 	if ideasContext := s.IdeasContext(); ideasContext != "" {
-		sb.WriteString(fmt.Sprintf("## 创作灵感（%s，最多 %d 字）\n\n", IdeasFileName, ideasContextMaxRunes))
-		sb.WriteString(ideasContext)
-		sb.WriteString("\n\n")
+		parts = append(parts, CompactContextPart{
+			ID:          "ideas",
+			Source:      IdeasFileName,
+			Title:       "创作灵感",
+			PromptTitle: fmt.Sprintf("创作灵感（%s，最多 %d 字）", IdeasFileName, ideasContextMaxRunes),
+			Content:     ideasContext,
+		})
 	}
 
 	sections := []struct {
 		file  string
 		title string
+		id    string
 	}{
-		{"outline.md", "当前大纲"},
-		{"progress.md", "当前进度"},
-		{CharacterStatesFileName, "角色状态"},
+		{"outline.md", "当前大纲", "outline"},
+		{"progress.md", "当前进度", "progress"},
+		{CharacterStatesFileName, "角色状态", "character_states"},
 	}
 
 	for _, sec := range sections {
@@ -128,28 +142,63 @@ func (s *State) CompactContext() string {
 		if content == "" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("## %s\n\n", sec.title))
-		sb.WriteString(strings.TrimSpace(content))
-		sb.WriteString("\n\n")
+		parts = append(parts, CompactContextPart{
+			ID:          sec.id,
+			Source:      filepath.ToSlash(filepath.Join("setting", sec.file)),
+			Title:       sec.title,
+			PromptTitle: sec.title,
+			Content:     strings.TrimSpace(content),
+		})
 	}
 
 	if chapterContext := s.ChapterPathContext(12); chapterContext != "" {
-		sb.WriteString("## 章节目录概览\n\n")
-		sb.WriteString(chapterContext)
-		sb.WriteString("\n\n")
+		parts = append(parts, CompactContextPart{
+			ID:          "chapter_paths",
+			Source:      "chapters/",
+			Title:       "章节目录概览",
+			PromptTitle: "章节目录概览",
+			Content:     chapterContext,
+		})
 	}
 
 	if loreContext != "" {
-		sb.WriteString(loreContext)
-		sb.WriteString("\n\n")
+		parts = append(parts, CompactContextPart{
+			ID:      "lore",
+			Source:  ".nova/lore/items.json",
+			Title:   "资料库",
+			Content: loreContext,
+		})
 	}
 
 	if groupContext := s.ChapterGroupContext(2); groupContext != "" {
-		sb.WriteString("## 章节组细纲\n\n")
-		sb.WriteString(groupContext)
-		sb.WriteString("\n\n")
+		parts = append(parts, CompactContextPart{
+			ID:          "chapter_groups",
+			Source:      "setting/chapter-groups/",
+			Title:       "章节组细纲",
+			PromptTitle: "章节组细纲",
+			Content:     groupContext,
+		})
 	}
 
+	return parts
+}
+
+// CompactContext 读取作品状态和结构化资料库，构建分级注入的上下文字符串。
+func (s *State) CompactContext() string {
+	var sb strings.Builder
+	for _, part := range s.CompactContextParts() {
+		content := strings.TrimSpace(part.Content)
+		if content == "" {
+			continue
+		}
+		if title := strings.TrimSpace(part.PromptTitle); title != "" {
+			sb.WriteString("## ")
+			sb.WriteString(title)
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(content)
+		sb.WriteString("\n\n")
+	}
 	return sb.String()
 }
 

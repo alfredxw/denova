@@ -29,6 +29,7 @@ type ChapterSummary struct {
 	Index        int    `json:"index"`
 	Words        int    `json:"words"`
 	Status       string `json:"status"`
+	Confirmed    bool   `json:"confirmed"`
 	UpdatedAt    string `json:"updated_at"`
 	Volume       string `json:"volume"`
 	VolumePath   string `json:"volume_path"`
@@ -82,6 +83,7 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 	} else if err != nil {
 		return summary, err
 	}
+	confirmedChapters := s.chapterConfirmedMap()
 
 	err := filepath.WalkDir(chapterRoot, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -111,13 +113,15 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 			return nil
 		}
 		words := countWritingWords(string(data))
+		confirmed := words > 0 && confirmedChapters[filepath.ToSlash(rel)]
 		chapter := ChapterSummary{
 			Path:         filepath.ToSlash(rel),
 			FileName:     name,
 			DisplayTitle: chapterDisplayTitle(name),
 			Index:        chapterIndex(name),
 			Words:        words,
-			Status:       chapterStatus(words),
+			Status:       chapterStatus(words, confirmed),
+			Confirmed:    confirmed,
 			UpdatedAt:    info.ModTime().Format("2006-01-02 15:04"),
 		}
 		chapter.Volume, chapter.VolumePath = chapterVolume(chapter.Path)
@@ -513,19 +517,6 @@ func truncateRunes(text string, limit int) string {
 		return text
 	}
 	return string(runes[:limit]) + "…"
-}
-
-func chapterStatus(words int) string {
-	switch {
-	case words == 0:
-		return "空章"
-	case words < 1500:
-		return "草稿"
-	case words < 5000:
-		return "初稿"
-	default:
-		return "成章"
-	}
 }
 
 func countWritingWords(content string) int {

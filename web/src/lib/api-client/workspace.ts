@@ -35,6 +35,14 @@ export async function getWorkspaceSummary(): Promise<WorkspaceSummary> {
   }
 }
 
+export async function setChapterConfirmed(path: string, confirmed: boolean): Promise<{ path: string; confirmed: boolean; message: string }> {
+  return requestJSON('/api/workspace/chapter-status', {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({ path, confirmed }),
+  })
+}
+
 export async function getWorkspaceTree(): Promise<unknown[]> {
   const data = await requestJSON<unknown[]>('/api/workspace/tree')
   return Array.isArray(data) ? data : []

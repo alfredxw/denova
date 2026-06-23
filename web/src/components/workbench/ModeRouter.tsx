@@ -1,6 +1,6 @@
-import { BookMarked, BookOpen, ChevronDown, ChevronRight, Database, FileText, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileText, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FileTree } from '@/components/Sidebar/FileTree'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
@@ -82,6 +82,7 @@ interface ModeRouterProps {
   onSelectSearchResult: (result: WorkspaceSearchResult, query: string) => void | Promise<void>
   onRefreshTree: () => void
   onSelectFile: (path: string) => void | Promise<void>
+  onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
   onReferenceFile: (path: string) => void
   onCreateItem: (path: string, type: 'file' | 'dir') => Promise<void>
   onDeleteItem: (path: string) => Promise<void>
@@ -164,6 +165,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onSelectSearchResult,
     onRefreshTree,
     onSelectFile,
+    onSetChapterConfirmed,
     onReferenceFile,
     onCreateItem,
     onDeleteItem,
@@ -257,7 +259,6 @@ export function ModeRouter(props: ModeRouterProps) {
   const closeBooks = () => {
     if (booksReturnMode === 'interactive') {
       onSetMode('interactive')
-      setInteractiveSubmode('story')
       return
     }
     onSetMode('ide')
@@ -354,6 +355,7 @@ export function ModeRouter(props: ModeRouterProps) {
             chapterPlans={summary?.chapter_plans || []}
             selectedFile={selectedFile}
             onSelectFile={onSelectFile}
+            onSetChapterConfirmed={onSetChapterConfirmed}
           />
         ) : sidebarView === 'search' ? (
           <SearchPanel
@@ -666,6 +668,7 @@ function ChapterOutline({
   chapterPlans,
   selectedFile,
   onSelectFile,
+  onSetChapterConfirmed,
 }: {
   chapters: ChapterSummary[]
   ideas?: DocumentPreview
@@ -673,6 +676,7 @@ function ChapterOutline({
   chapterPlans: DocumentPreview[]
   selectedFile: string | null
   onSelectFile: (path: string) => void | Promise<void>
+  onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
 }) {
   const { t } = useTranslation()
   const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set())
@@ -797,6 +801,7 @@ function ChapterOutline({
                           chapter={chapter}
                           active={selectedFile === chapter.path}
                           onSelectFile={onSelectFile}
+                          onSetChapterConfirmed={onSetChapterConfirmed}
                         />
                       ))}
                     </div>
@@ -887,31 +892,71 @@ function ChapterOutlineItem({
   chapter,
   active,
   onSelectFile,
+  onSetChapterConfirmed,
 }: {
   chapter: ChapterSummary
   active: boolean
   onSelectFile: (path: string) => void | Promise<void>
+  onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
 }) {
   const { t } = useTranslation()
+  const [saving, setSaving] = useState(false)
+  const handleSelect = () => {
+    void onSelectFile(chapter.path)
+  }
+  const handleSelectKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    handleSelect()
+  }
+  const handleToggleConfirmed = async () => {
+    if (saving || chapter.words === 0) return
+    setSaving(true)
+    try {
+      await onSetChapterConfirmed(chapter.path, !chapter.confirmed)
+    } catch (error) {
+      console.error('更新章节确认状态失败', error)
+    } finally {
+      setSaving(false)
+    }
+  }
+  const ConfirmIcon = chapter.confirmed ? CheckCircle2 : Circle
   return (
-    <button
-      type="button"
+    <div
       className={`nova-nav-item w-full border px-3 py-2 text-left ${
         active
           ? 'is-active border-[var(--nova-border)]'
           : 'border-transparent bg-[var(--nova-surface)]'
       }`}
-      onClick={() => onSelectFile(chapter.path)}
+      role="button"
+      tabIndex={0}
+      onClick={handleSelect}
+      onKeyDown={handleSelectKeyDown}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex w-full min-w-0 items-center gap-2 text-left">
         <BookOpen className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-        <span className="truncate text-xs font-medium">{chapter.display_title}</span>
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">{chapter.display_title}</span>
       </div>
       <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--nova-text-faint)]">
         <span>{t('common.words', { count: formatNumber(chapter.words) })}</span>
-        <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{chapter.status}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{chapter.status}</span>
+          <button
+            type="button"
+            className="inline-flex h-5 w-5 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={saving || chapter.words === 0}
+            title={chapter.confirmed ? t('planning.markDraft') : t('planning.confirmChapter')}
+            aria-label={chapter.confirmed ? t('planning.markDraft') : t('planning.confirmChapter')}
+            onClick={(event) => {
+              event.stopPropagation()
+              void handleToggleConfirmed()
+            }}
+          >
+            <ConfirmIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
-    </button>
+    </div>
   )
 }
 

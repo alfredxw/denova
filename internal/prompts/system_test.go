@@ -22,7 +22,6 @@ func TestSystemInstructionRequiresIdeasAndCreatorDuringIdeation(t *testing.T) {
 		"先分别 write_file 更新 ideas.md 和 CREATOR.md",
 		"ideas.md 继续作为方向指引",
 		"CREATOR.md 继续作为每轮最高优先级创作者指令生效",
-		"及时写回 `ideas.md` 方便作者统一查看",
 		"内容保持短小、可扫读、方便作者评论和后续更新",
 		"建议控制在 800-1200 个中文字内",
 		"每章安排只写 3-5 条关键点",
@@ -33,5 +32,8 @@ func TestSystemInstructionRequiresIdeasAndCreatorDuringIdeation(t *testing.T) {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("系统提示缺少 %q:\n%s", required, instruction)
 		}
+	}
+	if strings.Contains(instruction, "# 当前作品状态") {
+		t.Fatalf("系统提示不应直接注入动态作品状态:\n%s", instruction)
 	}
 }

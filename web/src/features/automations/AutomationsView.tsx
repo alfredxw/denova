@@ -8,6 +8,16 @@ import { MessageList } from '@/components/Chat/MessageList'
 import { InputArea } from '@/components/Chat/InputArea'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   createAutomation,
   deleteAutomation,
   checkAutomation,
@@ -45,6 +55,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   const [panelView, setPanelView] = useState<AutomationPanelView>('config')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; scope: AutomationTask['scope'] } | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -143,17 +154,23 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     }
   }
 
-  const remove = async () => {
+  const requestRemove = () => {
     if (!activeId) return
+    setDeleteTarget({ id: activeId, name: draft.name || activeId, scope: draft.scope })
+  }
+
+  const confirmRemove = async () => {
+    if (!deleteTarget) return
     setSaving(true)
     setError(null)
     try {
-      await deleteAutomation(activeId)
-      const next = tasks.filter((task) => task.id !== activeId)
+      await deleteAutomation(deleteTarget.id)
+      const next = tasks.filter((task) => task.id !== deleteTarget.id)
       setTasks(next)
-      const fallback = next.find((task) => task.scope === scopeFilter)
+      const fallback = next.find((task) => task.scope === deleteTarget.scope) ?? next.find((task) => task.scope === scopeFilter)
       setActiveId(fallback?.id || '')
       setDraft(fallback ? cloneTask(fallback) : newTask(scopeFilter))
+      setDeleteTarget(null)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -374,7 +391,28 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
             {panelView === 'config' ? (
               <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
+                <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--nova-border)] pb-4">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-[var(--nova-text)]">{draft.name || t('automations.newTask')}</div>
+                      <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">
+                        {draft.scope === 'workspace' ? t('automations.scope.workspace') : t('automations.scope.user')} · {draft.enabled ? t('automations.enabled') : t('automations.disabled')}
+                      </div>
+                    </div>
+                    {activeId && (
+                      <button
+                        type="button"
+                        onClick={requestRemove}
+                        disabled={saving || running}
+                        className="nova-nav-item inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[var(--nova-danger)] disabled:cursor-not-allowed disabled:opacity-45"
+                        aria-label={t('automations.deleteTask')}
+                        title={t('automations.deleteTask')}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        {t('automations.deleteTask')}
+                      </button>
+                    )}
+                  </div>
                 <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
                   <Field label={t('automations.field.name')}>
                     <input value={draft.name} onChange={(e) => setDraftField({ name: e.target.value })} className={fieldCls} />
@@ -439,10 +477,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                 </section>
 
                 <section className="space-y-3 pb-5">
-                  <div className="flex items-center justify-between">
-                    <SectionTitle title={t('automations.section.runs')} />
-                    {activeId && <button type="button" onClick={remove} disabled={saving || running} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] px-2 py-1 text-[var(--nova-text-muted)] disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />{t('common.delete')}</button>}
-                  </div>
+                  <SectionTitle title={t('automations.section.runs')} />
                   <RunList task={draft} activeRunId={runStream.activeRun?.id || ''} onOpenRun={openRun} />
                 </section>
               </div>
@@ -500,6 +535,31 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
           </main>
         )}
       </AdaptiveSurface>
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => {
+        if (!open && !saving) setDeleteTarget(null)
+      }}>
+        <AlertDialogContent className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('automations.deleteTask.title')}</AlertDialogTitle>
+            <AlertDialogDescription className="text-[var(--nova-text-muted)]">
+              {t('automations.deleteTask.confirm', { name: deleteTarget?.name || '' })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[var(--nova-danger-bg)] text-[var(--nova-danger)] hover:bg-[var(--nova-danger-bg)]"
+              disabled={saving || !deleteTarget}
+              onClick={(event) => {
+                event.preventDefault()
+                void confirmRemove()
+              }}
+            >
+              {t('automations.deleteTask')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

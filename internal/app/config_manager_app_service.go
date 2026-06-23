@@ -54,7 +54,8 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 		log.Printf("[config-manager] load session failed err=%v", err)
 		return nil
 	}
-	runner, err := buildConfigManagerRunner(context.Background(), &runtimeCfg, state)
+	resourceSkills := loadConfigManagerResourceSkills(context.Background(), &runtimeCfg, req)
+	runner, err := buildConfigManagerRunner(context.Background(), &runtimeCfg, state, resourceSkills...)
 	if err != nil {
 		log.Printf("[config-manager] build runner failed workspace=%s err=%v", workspace, err)
 		return nil
@@ -71,7 +72,7 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 			SessionID:           sess.ID,
 			Workspace:           workspace,
 			Mode:                "config_manager",
-			SystemPromptLog:     agent.BuildConfigManagerInstructionComposition(&runtimeCfg, state),
+			SystemPromptLog:     agent.BuildConfigManagerInstructionComposition(&runtimeCfg, state, resourceSkills...),
 			OnMutationsVerified: a.automationMutationCallback("config_manager_post_run"),
 		}, emit)
 		log.Printf("[config-manager] run end id=%s status=%s", task.ID(), task.Status())

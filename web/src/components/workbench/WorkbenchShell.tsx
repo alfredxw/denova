@@ -180,7 +180,6 @@ export function WorkbenchShell({
   const returnFromBooks = () => {
     if (booksReturnMode === 'interactive') {
       onSetMode('interactive')
-      onSetInteractiveSubmode('story')
       return
     }
     onSetMode('ide')

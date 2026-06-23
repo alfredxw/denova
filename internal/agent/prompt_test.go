@@ -102,9 +102,68 @@ func TestBuildInteractiveStoryInstructionDoesNotLogDuringPromptBuild(t *testing.
 	}
 }
 
-func TestPromptStateSectionSourceIncludesCharacterStates(t *testing.T) {
-	if got := promptStateSectionSource("角色状态"); got != "setting/character-states.md" {
-		t.Fatalf("角色状态来源 = %q", got)
+func TestBuildConfigManagerInstructionIncludesResourceSkills(t *testing.T) {
+	var buf bytes.Buffer
+	previous := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() {
+		log.SetOutput(previous)
+	})
+
+	state := book.NewState(t.TempDir())
+	composition := BuildConfigManagerInstructionComposition(&config.Config{Workspace: state.Workspace()}, state, ConfigManagerResourceSkill{
+		Name:        "automation-config",
+		Description: "Automation schema guide",
+		Content:     "Use write_mode values read_only, confirm_write, or auto_write.",
+	})
+	instruction := composition.Instruction()
+	for _, want := range []string{"本轮自动加载的配置 Skills", "/automation-config", "write_mode values read_only"} {
+		if !strings.Contains(instruction, want) {
+			t.Fatalf("config manager instruction missing %q:\n%s", want, instruction)
+		}
+	}
+
+	composition.logForRun(RunOptions{TaskID: "task-1", SessionID: "session-1"})
+	got := buf.String()
+	for _, want := range []string{"配置 Skill", "/automation-config", "task_id=task-1"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("composition log missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestBuildInstructionKeepsWorkspaceStateOutOfSystemPrompt(t *testing.T) {
+	state := book.NewState(t.TempDir())
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace failed: %v", err)
+	}
+	if err := os.MkdirAll(state.SettingDir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), "outline.md"), []byte("主角进入废城。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{Workspace: state.Workspace()}
+
+	instruction := BuildInstruction(cfg, state, IDEStoryTeller{})
+	if strings.Contains(instruction, "主角进入废城") || strings.Contains(instruction, "# 当前作品状态") {
+		t.Fatalf("system prompt should not include dynamic workspace state:\n%s", instruction)
+	}
+	if context := IDEWorkspaceRuntimeContext(state); !strings.Contains(context, "主角进入废城") {
+		t.Fatalf("runtime workspace context should include state: %q", context)
+	}
+}
+
+func TestSystemPromptSourceSummaryUsesStructuredStateParts(t *testing.T) {
+	got := systemPromptSourceSummary("ide", "", []book.CompactContextPart{{
+		Source:  "setting/character-states.md",
+		Title:   "角色状态",
+		Content: "林川在废城东区地下仓库。",
+	}})
+	for _, want := range []string{"作品状态", "角色状态", "setting/character-states.md"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("system prompt source summary missing %q:\n%s", want, got)
+		}
 	}
 }
 

@@ -46,6 +46,26 @@ func (h *Handlers) HandleWorkspaceSummary(ctx context.Context, c *app.RequestCon
 	writeJSON(c, consts.StatusOK, summary)
 }
 
+// HandleWorkspaceChapterStatus PATCH /api/workspace/chapter-status — 手动确认或撤销章节成章状态。
+func (h *Handlers) HandleWorkspaceChapterStatus(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	var req struct {
+		Path      string `json:"path"`
+		Confirmed bool   `json:"confirmed"`
+	}
+	if err := c.BindJSON(&req); err != nil || req.Path == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.chapterStatusPathRequired")
+		return
+	}
+	if err := h.app.BookService().SetChapterConfirmed(req.Path, req.Confirmed); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.chapterStatusFailed", "detail", err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]any{"path": req.Path, "confirmed": req.Confirmed, "message": messageKey(c, "api.workspace.chapterStatusSaved")})
+}
+
 // handleWorkspaceFile GET /api/workspace/file?path=xxx — 读取文件内容。
 func (h *Handlers) HandleWorkspaceFile(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {

@@ -73,7 +73,7 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 }
 
 // BuildConfigManagerAgent 构建统一配置管理 Agent（deep agent + 通用工具 + Skill + 模块资源工具）。
-func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State) (adk.Agent, error) {
+func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (adk.Agent, error) {
 	toolSettings := config.ResolveAgentTools(cfg, config.AgentKindConfigManager)
 	var extraTools []tool.BaseTool
 	if toolSettings.LoreRead {
@@ -93,7 +93,7 @@ func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *boo
 		Kind:         config.AgentKindConfigManager,
 		Name:         "NovaConfigManagerAgent",
 		Description:  "AI 配置与资源管理助手",
-		Instruction:  BuildConfigManagerInstruction(cfg, state),
+		Instruction:  BuildConfigManagerInstruction(cfg, state, resourceSkills...),
 		EnableSkills: true,
 		ExtraTools:   extraTools,
 	})

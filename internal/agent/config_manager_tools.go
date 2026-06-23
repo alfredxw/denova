@@ -260,29 +260,29 @@ func newWriteAutomationsTool(novaDir, workspace string) (tool.BaseTool, error) {
 		_ = ctx
 		store := automation.NewStore(novaDir, workspace)
 		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
-		for _, op := range input.Operations {
+		for i, op := range input.Operations {
 			switch strings.TrimSpace(op.Op) {
 			case "create":
 				task, err := store.Create(op.Task)
 				if err != nil {
-					return "", err
+					return "", fmt.Errorf("自动化操作 #%d create %q 配置无效: %w", i+1, op.Task.Name, err)
 				}
 				result["created"] = append(result["created"], task.ID)
 			case "update":
 				id := firstConfigNonEmpty(op.ID, op.Task.ID)
 				task, err := store.Update(id, op.Task)
 				if err != nil {
-					return "", err
+					return "", fmt.Errorf("自动化操作 #%d update %q 配置无效: %w", i+1, id, err)
 				}
 				result["updated"] = append(result["updated"], task.ID)
 			case "delete":
 				id := strings.TrimSpace(op.ID)
 				if err := store.Delete(id); err != nil {
-					return "", err
+					return "", fmt.Errorf("自动化操作 #%d delete %q 失败: %w", i+1, id, err)
 				}
 				result["deleted"] = append(result["deleted"], id)
 			default:
-				return "", fmt.Errorf("不支持的自动化操作: %s", op.Op)
+				return "", fmt.Errorf("自动化操作 #%d 不支持的 op: %s", i+1, op.Op)
 			}
 		}
 		return formatBatchResult(firstConfigNonEmpty(input.Message, "自动化任务已更新"), result), nil

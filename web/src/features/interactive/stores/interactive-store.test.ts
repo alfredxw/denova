@@ -184,4 +184,11 @@ describe('interactive-store', () => {
 
     expect(useInteractiveStore.getState().currentBranchId).toBe('br_2')
   })
+
+  it('remembers the selected top-level interactive page', () => {
+    useInteractiveStore.getState().setSubmode('memory')
+
+    expect(useInteractiveStore.getState().submode).toBe('memory')
+    expect(window.localStorage.getItem('nova.interactive.submode.v1')).toBe('memory')
+  })
 })

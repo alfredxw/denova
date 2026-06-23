@@ -43,6 +43,68 @@ func TestServiceSummaryCountsChapters(t *testing.T) {
 	}
 }
 
+func TestServiceSummaryUsesManualChapterConfirmation(t *testing.T) {
+	root := t.TempDir()
+	chapterDir := filepath.Join(root, "chapters")
+	if err := os.MkdirAll(chapterDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	longContent := make([]byte, 6000)
+	for i := range longContent {
+		longContent[i] = 'a'
+	}
+	if err := os.WriteFile(filepath.Join(chapterDir, "ch01-long.md"), longContent, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(chapterDir, "ch02-empty.md"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewService(root)
+	summary, err := service.Summary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Chapters[0].Status != "初稿" || summary.Chapters[0].Confirmed {
+		t.Fatalf("long chapter should stay unconfirmed draft before manual confirmation: %#v", summary.Chapters[0])
+	}
+	if summary.Chapters[1].Status != "空章" {
+		t.Fatalf("empty chapter status = %q", summary.Chapters[1].Status)
+	}
+
+	if err := service.SetChapterConfirmed("chapters/ch01-long.md", true); err != nil {
+		t.Fatal(err)
+	}
+	summary, err = service.Summary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Chapters[0].Status != "成章" || !summary.Chapters[0].Confirmed {
+		t.Fatalf("confirmed chapter status mismatch: %#v", summary.Chapters[0])
+	}
+
+	if err := service.SetChapterConfirmed("chapters/ch01-long.md", false); err != nil {
+		t.Fatal(err)
+	}
+	summary, err = service.Summary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Chapters[0].Status != "初稿" || summary.Chapters[0].Confirmed {
+		t.Fatalf("revoked chapter should return to draft: %#v", summary.Chapters[0])
+	}
+}
+
+func TestSetChapterConfirmedRejectsNonChapterPath(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "ideas.md"), []byte("idea"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewService(root).SetChapterConfirmed("ideas.md", true); err == nil {
+		t.Fatal("expected non-chapter path to be rejected")
+	}
+}
+
 func TestChapterDisplayTitleAndIndexSupportMultipleFilenameStyles(t *testing.T) {
 	tests := []struct {
 		name        string

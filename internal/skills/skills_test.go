@@ -158,6 +158,49 @@ func TestAgentBackendFiltersByAgentFrontmatterAndOverrides(t *testing.T) {
 	}
 }
 
+func TestAgentBackendExposesConfigManagerBuiltinSkills(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	builtin := filepath.Join(root, "builtin")
+	workspace := filepath.Join(root, "workspace")
+	writeSkillFileForAgents(t, builtin, "automation-config", "automation-config", "automation config", "config_manager")
+	writeSkillFileForAgents(t, builtin, "story-memory-config", "story-memory-config", "story memory config", "config_manager")
+	writeSkillFileForAgents(t, builtin, "ide-only", "ide-only", "ide only", "ide")
+	writeSkillFileForAgents(t, workspace, "automation-config", "automation-config", "workspace automation config", "config_manager")
+
+	backend := NewAgentBackend([]Directory{
+		{Scope: ScopeBuiltin, Path: builtin},
+		{Scope: ScopeWorkspace, Path: workspace, Writable: true},
+	}, "config_manager", nil)
+	list, err := backend.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	got := skillNames(list)
+	if len(got) != 2 || !got["automation-config"] || !got["story-memory-config"] || got["ide-only"] {
+		t.Fatalf("config_manager skills = %#v", got)
+	}
+	skill, err := backend.Get(ctx, "automation-config")
+	if err != nil {
+		t.Fatalf("Get(automation-config) error = %v", err)
+	}
+	if skill.Description != "workspace automation config" {
+		t.Fatalf("active automation-config description = %q, want workspace override", skill.Description)
+	}
+
+	overrideBackend := NewAgentBackend([]Directory{{Scope: ScopeBuiltin, Path: builtin}}, "config_manager", map[string]bool{
+		"automation-config": false,
+	})
+	overrideList, err := overrideBackend.List(ctx)
+	if err != nil {
+		t.Fatalf("override List() error = %v", err)
+	}
+	overrideGot := skillNames(overrideList)
+	if overrideGot["automation-config"] || !overrideGot["story-memory-config"] {
+		t.Fatalf("override config_manager skills = %#v", overrideGot)
+	}
+}
+
 func TestDefaultContentEscapesFrontmatterDescription(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "beats", SkillFileName)

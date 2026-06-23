@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/cloudwego/eino/schema"
@@ -46,6 +47,49 @@ func TestSessionConversationKeepsFullEffectiveHistoryBeforeCompaction(t *testing
 		if history[i].Content != want[i] {
 			t.Fatalf("history[%d] = %q, want %q; all=%#v", i, history[i].Content, want[i], history)
 		}
+	}
+}
+
+func TestSessionConversationAppendsRuntimeContextToFinalUserMessageOnly(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.UserMessage("旧用户请求")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.AssistantMessage("旧助手回复", nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	conversation := NewSessionConversationForAgentWithRuntimeContext(
+		sess,
+		&config.Config{},
+		config.AgentKindIDE,
+		"本轮动态作品状态",
+		"## 大纲\n\n主角进入废城。",
+	)
+	history, err := conversation.PrepareMessages("继续写", "继续写")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 3 {
+		t.Fatalf("history length = %d, want 3: %#v", len(history), history)
+	}
+	final := history[len(history)-1].Content
+	if !strings.HasPrefix(final, "继续写") || !strings.Contains(final, "# 本轮动态作品状态") || !strings.Contains(final, "主角进入废城") {
+		t.Fatalf("final model message should append runtime context at the bottom:\n%s", final)
+	}
+	visible := sess.History()
+	if got := visible[len(visible)-1].Content; got != "继续写" {
+		t.Fatalf("visible session history should keep original user message, got %q", got)
+	}
+	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, "本轮动态上下文") || !strings.Contains(sources, "appended_to_final_user_message") {
+		t.Fatalf("runtime context source summary missing dynamic context: %s", sources)
 	}
 }
 

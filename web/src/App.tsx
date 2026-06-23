@@ -5,7 +5,7 @@ import { checkForUpdate, fetchSettings } from '@/features/settings/api'
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
 import { markAutoUpdateChecked, shouldRunAutoUpdateCheck, UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-check-cache'
 import type { UpdateCheckResult } from '@/features/settings/types'
-import { getLoreItems, importCharacterCard, previewCharacterCard, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
+import { getLoreItems, importCharacterCard, previewCharacterCard, setChapterConfirmed, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
 import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useChat } from '@/hooks/useChat'
@@ -37,6 +37,8 @@ import { RemoteAccessLogin } from '@/components/RemoteAccessLogin'
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
 const INTERACTIVE_RIGHT_VISIBLE_KEY = 'nova.layout.interactiveRightVisible'
+const SETTINGS_OPEN_KEY = 'nova.layout.settingsOpen'
+const CONTENT_MODE_STORAGE_KEY = 'nova:content-mode'
 const MAX_OPEN_TABS_FALLBACK = 5
 const AUTO_SAVE_ENABLED_FALLBACK = true
 const AUTO_SAVE_DELAY_FALLBACK_MS = 1500
@@ -54,7 +56,7 @@ function App() {
   const [interactiveRightVisible, setInteractiveRightVisible] = useState(() => readLayoutBoolean(INTERACTIVE_RIGHT_VISIBLE_KEY, true))
   const [saveSignal, setSaveSignal] = useState(0)
   const [versionRefreshSignal, setVersionRefreshSignal] = useState(0)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(() => readLayoutBoolean(SETTINGS_OPEN_KEY, false))
   const [openTabs, setOpenTabs] = useState<Tab[]>([])
   const [activeTabKey, setActiveTabKey] = useState<string | null>(null)
   const [maxOpenTabs, setMaxOpenTabs] = useState<number>(MAX_OPEN_TABS_FALLBACK)
@@ -76,8 +78,8 @@ function App() {
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
   const [loreItems, setLoreItems] = useState<LoreItem[]>([])
-  const [booksReturnMode, setBooksReturnMode] = useState<BooksReturnMode>('ide')
-  const booksReturnModeRef = useRef<BooksReturnMode>('ide')
+  const [booksReturnMode, setBooksReturnMode] = useState<BooksReturnMode>(() => readContentMode())
+  const booksReturnModeRef = useRef<BooksReturnMode>(readContentMode())
   const writingRightPanelRef = useRef<WritingRightPanel>('ai')
   const characterCardInputRef = useRef<HTMLInputElement>(null)
   const chatWorkspaceRef = useRef('')
@@ -104,7 +106,7 @@ function App() {
   const {
     tree, loading, selectedFile, fileContent, workspace, workspaceLoaded, summary, styles, books,
     selectFile, clearSelectedFile, saveCurrentFile, createItem, deleteItem, renameItem, copyItem, moveItem,
-    refresh, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
+    refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace({ autoRefreshEnabled: workspaceAutoRefreshEnabled })
 
   const notifyVersionChange = useCallback(() => {
@@ -267,6 +269,8 @@ function App() {
   useEffect(() => { window.localStorage.setItem(PROJECT_VISIBLE_KEY, String(projectVisible)) }, [projectVisible])
   useEffect(() => { window.localStorage.setItem(ACTIVITY_BAR_EXPANDED_KEY, String(activityBarExpanded)) }, [activityBarExpanded])
   useEffect(() => { window.localStorage.setItem(INTERACTIVE_RIGHT_VISIBLE_KEY, String(interactiveRightVisible)) }, [interactiveRightVisible])
+  useEffect(() => { window.localStorage.setItem(SETTINGS_OPEN_KEY, String(settingsOpen)) }, [settingsOpen])
+  useEffect(() => { writeContentMode(booksReturnMode) }, [booksReturnMode])
 
   useEffect(() => {
     if (workspace || !workspaceLoaded) return
@@ -552,6 +556,11 @@ function App() {
     handleSetRightPanel('versions')
   }, [handleSetRightPanel, mode, setMode])
 
+  const handleSetChapterConfirmed = useCallback(async (path: string, confirmed: boolean) => {
+    await setChapterConfirmed(path, confirmed)
+    await refreshSummary({ showLoading: false, clearOnError: false })
+  }, [refreshSummary])
+
   const handleOpenGlobalSearch = useCallback(() => {
     setSettingsOpen(false)
     setMode('ide')
@@ -631,6 +640,7 @@ function App() {
         onSelectSearchResult={handleSelectSearchResult}
         onRefreshTree={refresh}
         onSelectFile={handleSelectFile}
+        onSetChapterConfirmed={handleSetChapterConfirmed}
         onReferenceFile={addReference}
         onCreateItem={handleCreateItem}
         onDeleteItem={handleDeleteItem}
@@ -702,6 +712,17 @@ function readLayoutBoolean(key: string, fallback: boolean) {
   const value = window.localStorage.getItem(key)
   if (value === null) return fallback
   return value === 'true'
+}
+
+function readContentMode(): BooksReturnMode {
+  if (typeof window === 'undefined') return 'ide'
+  const value = window.localStorage.getItem(CONTENT_MODE_STORAGE_KEY)
+  return value === 'interactive' ? 'interactive' : 'ide'
+}
+
+function writeContentMode(mode: BooksReturnMode) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(CONTENT_MODE_STORAGE_KEY, mode)
 }
 
 function normalizeAutoSaveDelayMs(value: number | null | undefined) {

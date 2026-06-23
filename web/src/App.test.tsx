@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { TooltipProvider } from './components/ui/tooltip'
+import { useInteractiveStore } from './features/interactive/stores/interactive-store'
 import { useWorkspaceStore } from './stores/workspace-store'
 
 const defaultContinueWritingPrompt = '续写下一章。请先读取 CREATOR.md、长期大纲、章节组细纲、progress.md、角色状态、资料库和最近章节，判断下一章所属分卷、章节标题和目标路径；再按现有故事节奏创作正文。'
@@ -136,6 +137,7 @@ describe('App', () => {
   beforeEach(() => {
     window.localStorage.clear()
     useWorkspaceStore.setState({ mode: 'ide', rightPanel: 'ai', commandOpen: false })
+    useInteractiveStore.setState({ submode: 'story' })
     mockApiFetch()
   })
 
@@ -575,8 +577,8 @@ describe('App', () => {
     expect(await screen.findByRole('button', { name: '关闭自动化' })).toBeInTheDocument()
     expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
     expectOnlyActivePrimaryMenu('自动化')
-    expect(screen.getByText('续写章节')).toBeInTheDocument()
-    expect(screen.getByText('自动 Review')).toBeInTheDocument()
+    expect(screen.getAllByText('续写章节').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('自动 Review').length).toBeGreaterThan(0)
     expect(screen.queryByText('模板')).not.toBeInTheDocument()
     expect(screen.queryByText('触发后行为')).not.toBeInTheDocument()
     expect(screen.getByText('触发条件')).toBeInTheDocument()
@@ -717,6 +719,29 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: '剧情' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '写作' })).not.toBeInTheDocument()
     expectOnlyActivePrimaryMenu('Agents')
+  }, 10000)
+
+  it('restores the last top-level page after refresh', async () => {
+    window.localStorage.setItem('nova:content-mode', 'interactive')
+    useWorkspaceStore.setState({ mode: 'agents', rightPanel: null, commandOpen: false })
+    useInteractiveStore.setState({ submode: 'memory' })
+
+    render(
+      <TooltipProvider>
+        <App />
+      </TooltipProvider>,
+    )
+
+    expect(await screen.findByRole('button', { name: '关闭 Agents' })).toBeInTheDocument()
+    const header = screen.getByText('Nova').closest('header')
+    expect(header).not.toBeNull()
+    expect(within(header as HTMLElement).getByRole('button', { name: '互动模式' })).toHaveClass('bg-[var(--nova-active)]')
+    expectOnlyActivePrimaryMenu('Agents')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agents' }))
+    expect(screen.queryByRole('button', { name: '关闭 Agents' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '故事记忆' })).toHaveClass('is-active')
+    expectOnlyActivePrimaryMenu('故事记忆')
   }, 10000)
 })
 

@@ -136,6 +136,44 @@ func TestCompactContextIncludesBoundedIdeasWhenEdited(t *testing.T) {
 	}
 }
 
+func TestCompactContextPartsKeepLoreMarkdownAsSingleSource(t *testing.T) {
+	dir := t.TempDir()
+	state := NewState(dir)
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace 失败: %v", err)
+	}
+	if _, err := NewLoreStore(dir).Create(LoreItemInput{
+		ID:         "hero",
+		Type:       "character",
+		Name:       "林川",
+		Importance: "major",
+		LoadMode:   LoreLoadModeResident,
+		Content:    "## 角色小标题\n\n这里是资料库正文。",
+	}); err != nil {
+		t.Fatalf("创建资料失败: %v", err)
+	}
+
+	parts := state.CompactContextParts()
+	loreParts := 0
+	for _, part := range parts {
+		if part.Source == ".nova/lore/items.json" {
+			loreParts++
+			if part.Title != "资料库" {
+				t.Fatalf("资料库来源标题 = %q, want 资料库", part.Title)
+			}
+			if !strings.Contains(part.Content, "## 角色小标题") {
+				t.Fatalf("资料库来源应保留内部 Markdown 小标题: %#v", part)
+			}
+		}
+		if part.Title == "角色小标题" {
+			t.Fatalf("不应把资料库正文的小标题拆成来源: %#v", part)
+		}
+	}
+	if loreParts != 1 {
+		t.Fatalf("资料库来源数量 = %d, want 1; parts=%#v", loreParts, parts)
+	}
+}
+
 func TestHasStateRecognizesCharacterStates(t *testing.T) {
 	dir := t.TempDir()
 	state := NewState(dir)
