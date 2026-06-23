@@ -19,9 +19,10 @@ import (
 )
 
 var (
-	modelInputLogSeq  atomic.Uint64
-	modelInputLogMu   sync.Mutex
-	modelInputLogPath = filepath.Join("log", "llm-inputs.jsonl")
+	modelInputLogEnabled atomic.Bool
+	modelInputLogSeq     atomic.Uint64
+	modelInputLogMu      sync.Mutex
+	modelInputLogPath    = filepath.Join("log", "llm-inputs.jsonl")
 )
 
 const modelInputLogMaxLines = 10
@@ -76,7 +77,17 @@ type modelInputLogTool struct {
 	ParametersError string         `json:"parameters_error,omitempty"`
 }
 
+// SetModelInputLoggingEnabled controls full model input logging.
+// Enable it only for developer starts because records include complete model-visible content.
+func SetModelInputLoggingEnabled(enabled bool) {
+	modelInputLogEnabled.Store(enabled)
+}
+
 func logFullModelInput(opts modelInputLogOptions) {
+	if !modelInputLogEnabled.Load() {
+		return
+	}
+
 	callSeq := modelInputLogSeq.Add(1)
 	record := modelInputLogRecord{
 		Type:         "llm_input",

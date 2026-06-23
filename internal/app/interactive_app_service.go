@@ -529,7 +529,7 @@ func (s *InteractiveAppService) CompactInteractiveContext(ctx context.Context, s
 	if err != nil {
 		return agent.ContextCompactionResult{}, err
 	}
-	source := interactiveTurnMessages(storyCtx.Snapshot.Turns)
+	source, existingMemory := interactiveCompactionSource(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
 	referenceContext := interactiveCompactionReferenceContext(store, storyID, storyCtx.Snapshot.BranchID)
 	epoch := 1
 	if storyCtx.Snapshot.ContextCompaction != nil {
@@ -540,6 +540,7 @@ func (s *InteractiveAppService) CompactInteractiveContext(ctx context.Context, s
 		SourceMessages:   source,
 		Phase:            "manual",
 		Force:            true,
+		ExistingMemory:   existingMemory,
 		ReferenceContext: referenceContext,
 		KeepLatestUser:   true,
 	}, epoch)

@@ -106,3 +106,56 @@ func TestSnapshotRejectsCorruptStoryEventEnvelope(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestAppendContextCompactionRemovalIsAcceptedByStorySchema(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "compaction", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "继续", Narrative: "剧情继续。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compaction, err := store.AppendContextCompaction(story.ID, "main", ContextCompactionEvent{
+		AgentKind:       "interactive",
+		Summary:         "较早剧情摘要",
+		SourceTurnCount: 1,
+		RetainedTurns:   1,
+		TokensBefore:    1200,
+		TokensAfter:     200,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.ContextCompaction == nil || snapshot.ContextCompaction.ID != compaction.ID {
+		t.Fatalf("snapshot should expose active compaction: %#v", snapshot.ContextCompaction)
+	}
+
+	removal, err := store.AppendContextCompactionRemoval(story.ID, "main", ContextCompactionRemovalEvent{
+		AgentKind:       "interactive",
+		CompactionID:    compaction.ID,
+		SourceTurnCount: len(snapshot.Turns),
+		Reason:          "user_removed",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.ContextCompaction != nil {
+		t.Fatalf("snapshot should clear active compaction after removal: %#v", snapshot.ContextCompaction)
+	}
+	if snapshot.ContextCompactionRemoval == nil || snapshot.ContextCompactionRemoval.ID != removal.ID {
+		t.Fatalf("snapshot should expose compaction removal: %#v", snapshot.ContextCompactionRemoval)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turn.ID {
+		t.Fatalf("removal should keep latest turn as current turn: %#v", snapshot.CurrentTurn)
+	}
+}

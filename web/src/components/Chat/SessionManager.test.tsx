@@ -172,4 +172,25 @@ describe('MessageList', () => {
     expect(screen.getByText(/之前消息不再参与创作Agent上下文/)).toBeInTheDocument()
     expect(screen.getByText('清理后回答')).toBeInTheDocument()
   })
+
+  it('运行中的上下文压缩卡片存在时不再渲染第二个 activity 卡片', () => {
+    render(
+      <MessageList
+        isStreaming
+        activityContent="正在压缩上下文…"
+        messages={[
+          {
+            role: 'context_compaction',
+            status: 'running',
+            content: '',
+            streaming: true,
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('上下文压缩')).toBeInTheDocument()
+    expect(screen.getByLabelText('压缩中')).toBeInTheDocument()
+    expect(screen.queryByText('正在压缩上下文…')).not.toBeInTheDocument()
+  })
 })

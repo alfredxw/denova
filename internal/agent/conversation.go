@@ -89,12 +89,14 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 		result.SkippedReason = skipped
 		return input.Messages, result, nil
 	}
-	source := compactionSourceMessages(compactionSourceBaseMessages(input), input.KeepLatestUser)
-	if len(source) == 0 {
+	source, existingMemory, sourceStart, sourceEnd := c.compactionIncrementalSource(input.KeepLatestUser)
+	if strings.TrimSpace(input.ExistingMemory) != "" {
+		existingMemory = input.ExistingMemory
+	}
+	if len(source) == 0 && strings.TrimSpace(existingMemory) == "" && strings.TrimSpace(input.ReferenceContext) == "" {
 		result.SkippedReason = "empty_source"
 		return input.Messages, result, nil
 	}
-	sourceStart, sourceEnd := c.compactionSourceRange(input.KeepLatestUser)
 	if !input.Force {
 		if removal, ok := c.session.LatestContextCompactionRemoval(c.agentKind); ok && removal.SourceStartIndex == sourceStart && removal.SourceEndIndex >= sourceEnd {
 			result.SkippedReason = "removed_same_source"
@@ -103,7 +105,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	}
 	sourceTokens := EstimateContextTokens(source, nil)
 	emitContextCompactionEvent(input.Emit, phase, "started", result)
-	summary, err := summarizeContextForCompaction(ctx, c.cfg, c.agentKind, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
+	summary, inputChars, err := summarizeContextForCompaction(ctx, c.cfg, c.agentKind, existingMemory, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
 		emitContextCompactionDeltaEvent(input.Emit, phase, result, attempt, delta)
 	})
 	if err != nil {
@@ -116,7 +118,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	result.Epoch = epoch
 	result.Summary = summary
 	result.TokensAfter = EstimateContextTokens(newMessages, input.Tools)
-	result.TargetRatio = contextCompactionRatio(estimateStringTokens(summary), sourceTokens)
+	result.TargetRatio = contextCompactionRatio(countRunes(summary), inputChars)
 	result.SourceMessageCount = len(source)
 	result.MessageCountAfter = len(newMessages)
 	record := contextCompactionRecordFromResult(result, c.agentKind, sourceStart, sourceEnd, policy.RetainedTurns, summary)
@@ -172,15 +174,35 @@ func (c *SessionConversation) nextCompactionEpoch() int {
 	return c.session.NextContextCompactionEpoch(c.agentKind)
 }
 
-func (c *SessionConversation) compactionSourceRange(keepLatestUser bool) (int, int) {
-	total := c.session.MessageCountTotal()
-	effectiveCount := c.session.MessageCountSinceClear()
-	sourceStart := total - effectiveCount
+func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) ([]*schema.Message, string, int, int) {
+	if c == nil || c.session == nil {
+		return nil, "", 0, 0
+	}
+	messages := c.session.GetMessages()
+	total := len(messages)
+	sourceStart := total - c.session.MessageCountSinceClear()
+	if sourceStart < 0 {
+		sourceStart = 0
+	}
+	existingMemory := ""
+	if compaction, ok := c.session.LatestContextCompaction(c.agentKind); ok {
+		existingMemory = compaction.Summary
+		if compaction.SourceEndIndex > sourceStart {
+			sourceStart = compaction.SourceEndIndex
+		}
+	}
+	if sourceStart > total {
+		sourceStart = total
+	}
 	sourceEnd := total
 	if !keepLatestUser && sourceEnd > sourceStart {
 		sourceEnd--
 	}
-	return sourceStart, sourceEnd
+	if sourceEnd < sourceStart {
+		sourceEnd = sourceStart
+	}
+	source := compactionSourceMessages(messages[sourceStart:sourceEnd], true)
+	return source, existingMemory, sourceStart, sourceEnd
 }
 
 func compactionSourceMessages(messages []*schema.Message, keepLatestUser bool) []*schema.Message {

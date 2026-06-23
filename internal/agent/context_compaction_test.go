@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -40,10 +41,10 @@ func TestBuildContextCompactionUsesExplicitSourceTranscript(t *testing.T) {
 
 	var capturedSource []*schema.Message
 	var capturedReference string
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, source []*schema.Message, referenceContext string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, source []*schema.Message, referenceContext string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
 		capturedSource = source
 		capturedReference = referenceContext
-		return "压缩摘要：保留用户意图。", nil
+		return "压缩摘要：保留用户意图。", 100, nil
 	}
 
 	modelMessages := []*schema.Message{
@@ -87,9 +88,9 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 	defer func() { summarizeContextForCompaction = previous }()
 
 	var capturedPolicy contextCompactionPolicy
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ []*schema.Message, _ string, _ int, policy contextCompactionPolicy, _ func(int, string)) (string, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*schema.Message, _ string, _ int, policy contextCompactionPolicy, _ func(int, string)) (string, int, error) {
 		capturedPolicy = policy
-		return "较完整的压缩摘要，保留用户目标、约束、事件和待办。", nil
+		return "较完整的压缩摘要，保留用户目标、约束、事件和待办。", 100, nil
 	}
 
 	minRatio := 0.12
@@ -120,10 +121,10 @@ func TestBuildContextCompactionEmitsStreamingSummaryDelta(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()
 
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ []*schema.Message, _ string, _ int, _ contextCompactionPolicy, emitDelta func(int, string)) (string, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*schema.Message, _ string, _ int, _ contextCompactionPolicy, emitDelta func(int, string)) (string, int, error) {
 		emitDelta(1, "第一段")
 		emitDelta(1, "第二段")
-		return "第一段第二段", nil
+		return "第一段第二段", 100, nil
 	}
 
 	var events []Event
@@ -177,5 +178,39 @@ func TestContextCompactionPolicyUsesConfiguredRetainedTurns(t *testing.T) {
 	policy = resolveContextCompactionPolicy(cfg, config.AgentKindIDE)
 	if policy.RetainedTurns != 3 {
 		t.Fatalf("retained turns = %d, want configured 3", policy.RetainedTurns)
+	}
+}
+
+func TestBuildContextCompactionTranscriptKeepsAllIncrementalMessagesAndMemory(t *testing.T) {
+	messages := make([]*schema.Message, 0, 40)
+	for i := 1; i <= 40; i++ {
+		messages = append(messages, schema.UserMessage(strings.Repeat("旧消息", 2000)+":"+string(rune('A'+i%26))))
+	}
+	policy := contextCompactionPolicy{TargetMinRatio: 0.10, TargetMaxRatio: 0.25}
+	existing := "既有压缩摘要：主角进入旧城。"
+	reference := "完整故事记忆：关系=信任；任务=寻找钥匙。"
+	inputChars := contextCompactionInputChars(existing, messages, reference)
+	transcript := buildContextCompactionTranscript(messages, existing, reference, 1234, inputChars, "", policy)
+
+	if strings.Contains(transcript, "omitted") || strings.Contains(transcript, "已截断") {
+		t.Fatalf("compaction transcript should not report omitted content:\n%s", transcript[:200])
+	}
+	if !strings.Contains(transcript, existing) || !strings.Contains(transcript, reference) {
+		t.Fatalf("transcript should include existing memory and reference context:\n%s", transcript)
+	}
+	if !strings.Contains(transcript, "--- message 1 role=user ---") || !strings.Contains(transcript, "--- message 40 role=user ---") {
+		t.Fatalf("transcript should include the full incremental message range")
+	}
+	minChars, maxChars := compactionTargetCharRange(inputChars, policy)
+	wantRange := fmt.Sprintf("Target summary length: %d-%d characters", minChars, maxChars)
+	if !strings.Contains(transcript, wantRange) {
+		t.Fatalf("transcript missing character range %q:\n%s", wantRange, transcript[:300])
+	}
+}
+
+func TestContextCompactionRetryInstructionExpandsTooShortSummary(t *testing.T) {
+	got := contextCompactionRetryInstruction(80, 300, 900)
+	if !strings.Contains(got, "too short: 80 characters") || !strings.Contains(got, "300-900 characters") || !strings.Contains(got, "Expand") {
+		t.Fatalf("unexpected retry instruction: %s", got)
 	}
 }

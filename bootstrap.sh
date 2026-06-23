@@ -125,7 +125,7 @@ case "$MODE" in
     go mod tidy
 
     echo "  按 Ctrl+C 停止服务"
-    exec go run ./cmd/nova --port "${BACKEND_PORT}" --no-open
+    exec go run ./cmd/nova --port "${BACKEND_PORT}" --dev-mode --no-open
     ;;
 
   all)
@@ -151,7 +151,7 @@ case "$MODE" in
     echo "  按 Ctrl+C 停止服务"
     echo ""
 
-    exec go run ./cmd/nova --port "${BACKEND_PORT}" --dev --no-open
+    exec go run ./cmd/nova --port "${BACKEND_PORT}" --dev --dev-mode --no-open
     ;;
 
   *)

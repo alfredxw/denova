@@ -268,13 +268,8 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             const compactionId: string = currentCompactionMessageIdRef.current || createContextCompactionMessageId(compactionIdCounterRef)
             currentCompactionMessageIdRef.current = compactionId
             setMessages(prev => upsertContextCompactionMessage(prev, buildContextCompactionMessage(data, compactionId)))
-            if (status === 'started') {
-              setActivityContent(t('chat.activity.compacting'))
-            } else if (status === 'completed') {
-              setActivityContent(t('chat.activity.compacted'))
-              currentCompactionMessageIdRef.current = null
-            } else if (status === 'failed') {
-              setActivityContent('')
+            setActivityContent('')
+            if (status === 'completed' || status === 'failed') {
               currentCompactionMessageIdRef.current = null
             }
             break

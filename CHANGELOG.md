@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- 后端新增完整 LLM 输入 JSONL 日志：每次模型请求都会把未截断的 messages、工具 schema 和非密钥模型参数写入 `log/llm-inputs.jsonl`，最多保留最近 10 条记录，便于排查前缀缓存命中率。
+- 开发模式下新增完整 LLM 输入 JSONL 日志：通过 `bootstrap.sh` 启动时会向后端传入 `--dev-mode`，每次模型请求都会把未截断的 messages、工具 schema 和非密钥模型参数写入 `log/llm-inputs.jsonl`，最多保留最近 10 条记录，便于排查前缀缓存命中率；直接运行 binary 默认不写该文件。
 - 真实模型用量新增未命中缓存 Token 统计，按整次 Agent 请求和单次模型调用同时展示 `prompt - cached` 的输入 Token 数。
 - 检测到 Nova 新版本时，一级菜单会显示可关闭的小提示；关闭后同一版本不再重复提示。
 - 上下文压缩 Agent 改为流式输出摘要增量，IDE 与互动故事的对话区会以小窗卡片展示压缩阶段、token 进度和摘要预览，用户可直接看到自动压缩进展。
@@ -27,6 +27,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复上下文压缩运行时同时出现压缩卡片和 activity 卡片的问题；现在 IDE 与互动故事只保留一个简洁压缩卡片，并用旋转 Loading 表示进行中状态。
+- 修复互动故事移除上下文压缩时写入的 `context_compaction_removed` 事件被故事 schema 误判为未知类型，导致移除压缩失败的问题。
 - 修复真实模型用量明细缺少数据来源说明、模型调用未按 Agent 请求分组、工具调用后的下一次模型请求缺少工具归属、单次调用时间不准确且窄屏必须横向滚动才能看到关键 token 信息的问题；互动模式的模型用量改为写入独立 usage 文件，不再混入 story 事件。
 - 修复真实模型用量与上下文分析弹窗打开时默认聚焦右上角关闭按钮，导致关闭按钮一开始就高亮的问题。
 - 修复应用内安装更新下载较慢时可能因请求超时失败的问题；安装现在使用 GitHub Release 直连下载地址，下载完成后解压替换本地文件，并在完成后提示重启生效。

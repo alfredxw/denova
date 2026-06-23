@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"testing"
 
 	"github.com/cloudwego/eino/schema"
@@ -45,6 +46,78 @@ func TestSessionConversationKeepsFullEffectiveHistoryBeforeCompaction(t *testing
 		if history[i].Content != want[i] {
 			t.Fatalf("history[%d] = %q, want %q; all=%#v", i, history[i].Content, want[i], history)
 		}
+	}
+}
+
+func TestSessionConversationCompactsOnlyMessagesAfterPreviousCompaction(t *testing.T) {
+	previous := summarizeContextForCompaction
+	defer func() { summarizeContextForCompaction = previous }()
+
+	var capturedExisting string
+	var capturedSource []*schema.Message
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, existingMemory string, source []*schema.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+		capturedExisting = existingMemory
+		capturedSource = source
+		return "新压缩摘要：旧目标与新增进展都已合并。", 200, nil
+	}
+
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := []*schema.Message{
+		schema.UserMessage("已压缩用户 1"),
+		schema.AssistantMessage("已压缩助手 1", nil),
+		schema.UserMessage("新增用户 2"),
+		schema.AssistantMessage("新增助手 2", nil),
+	}
+	for _, msg := range messages {
+		if err := sess.Append(msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := sess.AppendContextCompaction(session.ContextCompaction{
+		AgentKind:        config.AgentKindIDE,
+		Epoch:            1,
+		Summary:          "旧压缩摘要：用户 1 已处理。",
+		SourceStartIndex: 0,
+		SourceEndIndex:   2,
+		RetainedTurns:    1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	conversation := NewSessionConversationForAgent(sess, &config.Config{}, config.AgentKindIDE)
+	_, result, err := conversation.CompactContextIfNeeded(context.Background(), ContextCompactionInput{
+		Messages:       sess.GetEffectiveMessages(),
+		Force:          true,
+		KeepLatestUser: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Triggered {
+		t.Fatalf("expected compaction to trigger: %#v", result)
+	}
+	if capturedExisting != "旧压缩摘要：用户 1 已处理。" {
+		t.Fatalf("existing memory = %q", capturedExisting)
+	}
+	got := messageContents(capturedSource)
+	want := []string{"新增用户 2", "新增助手 2"}
+	if len(got) != len(want) {
+		t.Fatalf("source len = %d, want %d: %#v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("source[%d] = %q, want %q; all=%#v", i, got[i], want[i], got)
+		}
+	}
+	if record, ok := sess.LatestContextCompaction(config.AgentKindIDE); !ok || record.SourceStartIndex != 2 || record.SourceEndIndex != 4 {
+		t.Fatalf("new compaction should record incremental source range, got ok=%v record=%#v", ok, record)
 	}
 }
 

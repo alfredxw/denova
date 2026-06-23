@@ -33,6 +33,8 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
   const resetScrollRafRef = useRef<number[]>([])
   const resetScrollTimerRef = useRef<number | null>(null)
   const bottomThreshold = 8
+  const hasRunningContextCompaction = messages.some((message) => message.role === 'context_compaction' && message.status === 'running')
+  const visibleActivityContent = hasRunningContextCompaction ? '' : activityContent
 
   const isNearBottom = useCallback(() => {
     const el = containerRef.current
@@ -89,7 +91,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
 
   // 自动滚动到底部（仅在用户未上滑时）
   useLayoutEffect(() => {
-    const hasContent = messages.length > 0 || activityContent.length > 0 || isStreaming
+    const hasContent = messages.length > 0 || visibleActivityContent.length > 0 || isStreaming
     const shouldJumpToBottom = hasContent && !hasRenderedContentRef.current
     if (shouldJumpToBottom) {
       shouldAutoScrollRef.current = true
@@ -113,7 +115,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       })
     }
     mountedRef.current = true
-  }, [messages, activityContent, isStreaming, scheduleForceScrollToBottom])
+  }, [messages, visibleActivityContent, isStreaming, scheduleForceScrollToBottom])
 
   /** 主列表：用户上滑时暂停自动滚动，回到底部后恢复。 */
   const handleContainerScroll = useCallback(() => {
@@ -222,7 +224,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
 
       {isStreaming && (
         <>
-          {activityContent && (
+          {visibleActivityContent && (
             <motion.div
               layout="position"
               variants={listItem}
@@ -230,10 +232,10 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
               animate="animate"
               transition={{ duration: 0.18, ease: novaEase }}
             >
-              <ToolActivityBlock content={activityContent} />
+              <ToolActivityBlock content={visibleActivityContent} />
             </motion.div>
           )}
-          {messages.length === 0 && !activityContent && (
+          {messages.length === 0 && !visibleActivityContent && (
             <div className="flex justify-start">
               <div className="px-1 py-2">
                 <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--nova-text-muted)]" />

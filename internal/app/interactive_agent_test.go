@@ -69,8 +69,6 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"导演本轮上下文规则",
 		"导演随机事件率",
 		"[本轮动态上下文]",
-		"末日开端",
-		"主角醒来发现世界已末日",
 		"800 个中文字",
 		"最高篇幅约束",
 		"list_lore_items",
@@ -87,8 +85,24 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 			t.Fatalf("history[2] should not include %q: %#v", forbidden, history[2])
 		}
 	}
-	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, "导演注入规则") || !strings.Contains(sources, "本轮上下文") {
-		t.Fatalf("context sources should include teller slots: %s", sources)
+	for _, forbidden := range []string{"末日开端", "主角醒来发现世界已末日"} {
+		if strings.Contains(history[2].Content, forbidden) {
+			t.Fatalf("history[2] should keep story metadata out of the turn instruction %q: %#v", forbidden, history[2])
+		}
+	}
+	sources := conversation.ContextSourceSummary()
+	for _, want := range []string{
+		"互动故事",
+		"故事标题",
+		"末日开端",
+		"开端",
+		"主角醒来发现世界已末日",
+		"导演注入规则",
+		"本轮上下文",
+	} {
+		if !strings.Contains(sources, want) {
+			t.Fatalf("context sources should include %q: %s", want, sources)
+		}
 	}
 
 	if err := conversation.AppendAssistantWithThinking(`<NARRATIVE>
@@ -120,8 +134,16 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stateInstruction, "导演记忆沉淀规则") || !strings.Contains(stateInstruction, "帮助后续回合稳定承接") {
-		t.Fatalf("state instruction should include state_memory rules: %s", stateInstruction)
+	for _, want := range []string{
+		"故事记忆建议",
+		"values 必须按目标表的字段逐项填写",
+		"信息来源优先级",
+		"资料库用于校准人物、设定、规则、地点、物品",
+		"不要记录下一步行动建议、快捷选择或可选择入口",
+	} {
+		if !strings.Contains(stateInstruction, want) {
+			t.Fatalf("state instruction should include story memory guidance %q: %s", want, stateInstruction)
+		}
 	}
 	if !strings.Contains(stateInstruction, "黄泉酒馆完整设定") {
 		t.Fatalf("state instruction should include bounded full lore for memory calibration: %s", stateInstruction)
@@ -519,6 +541,33 @@ func TestInteractiveTurnMemoryWithCompactionRetainsSourceTailImmediatelyAfterCom
 	}
 	if len(memory.Turns) != 2 || memory.Turns[0].User != "第2次行动" || memory.Turns[1].User != "第3次行动" {
 		t.Fatalf("retained tail should remain available immediately after compaction: %#v", memory.Turns)
+	}
+}
+
+func TestInteractiveCompactionSourceUsesOnlyTurnsAfterPreviousCompaction(t *testing.T) {
+	turns := []interactive.TurnEvent{
+		{User: "已压缩行动1", Narrative: "已压缩剧情1"},
+		{User: "已压缩行动2", Narrative: "已压缩剧情2"},
+		{User: "新增行动3", Narrative: "新增剧情3"},
+	}
+	compaction := &interactive.ContextCompactionEvent{
+		Summary:         "旧压缩摘要：前两回合已整理。",
+		SourceTurnCount: 2,
+	}
+	source, existing := interactiveCompactionSource(turns, compaction)
+	if existing != compaction.Summary {
+		t.Fatalf("existing memory = %q", existing)
+	}
+	if len(source) != 2 {
+		t.Fatalf("source len = %d, want user+narrative for one new turn: %#v", len(source), source)
+	}
+	if source[0].Content != "新增行动3" || source[1].Content != "新增剧情3" {
+		t.Fatalf("source should contain only new turn messages: %#v", source)
+	}
+	for _, msg := range source {
+		if strings.Contains(msg.Content, "已压缩") {
+			t.Fatalf("source should not repeat previously compacted turns: %#v", source)
+		}
 	}
 }
 

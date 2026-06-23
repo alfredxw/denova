@@ -39,8 +39,6 @@ type interactiveConversation struct {
 	displayEvents    []interactive.DisplayEvent
 }
 
-const interactiveCompactionStoryMemoryLimit = 64 * 1024
-
 func newInteractiveConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int, cfg *config.Config) *interactiveConversation {
 	return &interactiveConversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
 }
@@ -125,12 +123,15 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= len(storyCtx.Snapshot.Turns) {
 		return input.Messages, agent.ContextCompactionResult{SkippedReason: "removed_same_source"}, nil
 	}
-	source := interactiveTurnMessages(storyCtx.Snapshot.Turns)
+	source, existingMemory := interactiveCompactionSource(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
 	epoch := 1
 	if storyCtx.Snapshot.ContextCompaction != nil {
 		epoch = storyCtx.Snapshot.ContextCompaction.Epoch + 1
 	}
 	input.SourceMessages = source
+	if strings.TrimSpace(input.ExistingMemory) == "" {
+		input.ExistingMemory = existingMemory
+	}
 	if strings.TrimSpace(input.ReferenceContext) == "" {
 		input.ReferenceContext = interactiveCompactionReferenceContext(c.store, c.storyID, storyCtx.Snapshot.BranchID)
 	}
@@ -179,11 +180,27 @@ func interactiveTurnMessages(turns []interactive.TurnEvent) []*schema.Message {
 	return messages
 }
 
+func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) ([]*schema.Message, string) {
+	sourceStart := 0
+	existingMemory := ""
+	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
+		existingMemory = compaction.Summary
+		sourceStart = compaction.SourceTurnCount
+		if sourceStart < 0 {
+			sourceStart = 0
+		}
+		if sourceStart > len(turns) {
+			sourceStart = len(turns)
+		}
+	}
+	return interactiveTurnMessages(turns[sourceStart:]), existingMemory
+}
+
 func interactiveCompactionReferenceContext(store *interactive.Store, storyID, branchID string) string {
 	if store == nil {
 		return ""
 	}
-	storyMemory, err := store.StoryMemoryContextSummary(storyID, branchID, interactiveCompactionStoryMemoryLimit)
+	storyMemory, err := store.StoryMemoryCompactionContext(storyID, branchID)
 	if err != nil {
 		log.Printf("[interactive-agent] load story memory for compaction failed story_id=%s branch_id=%s err=%v", storyID, branchID, err)
 		return ""

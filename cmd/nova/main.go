@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"nova/config"
+	"nova/internal/agent"
 	"nova/internal/api"
 	"nova/internal/app"
 	"nova/internal/observability"
@@ -22,6 +23,7 @@ func main() {
 	var (
 		workspace string
 		dev       bool
+		devMode   bool
 		noOpen    bool
 	)
 	cfg := config.Load()
@@ -31,8 +33,11 @@ func main() {
 	flag.StringVar(&port, "port", port, "HTTP 服务端口")
 	flag.StringVar(&frontendPort, "frontend-port", frontendPort, "前端开发服务端口")
 	flag.BoolVar(&dev, "dev", false, "开发模式：同时启动 Vite 前端 dev server")
+	flag.BoolVar(&devMode, "dev-mode", false, "开发启动模式：由 bootstrap.sh 传入，开启开发诊断能力")
 	flag.BoolVar(&noOpen, "no-open", false, "启动服务后不自动打开浏览器")
 	flag.Parse()
+
+	agent.SetModelInputLoggingEnabled(dev || devMode)
 
 	logPath, closeLog := setupLogging("./log")
 	defer closeLog()

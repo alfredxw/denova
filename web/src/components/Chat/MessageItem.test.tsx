@@ -179,7 +179,7 @@ describe('MessageItem', () => {
     expect(screen.getByText('第一项')).toBeInTheDocument()
   })
 
-  it('上下文压缩消息渲染为带进度和摘要预览的小窗', () => {
+  it('上下文压缩消息渲染为单个带 Loading 的简洁小窗', () => {
     render(
       <MessageItem
         message={{
@@ -199,9 +199,10 @@ describe('MessageItem', () => {
 
     expect(screen.getByText('上下文压缩')).toBeInTheDocument()
     expect(screen.getByText('压缩中')).toBeInTheDocument()
+    expect(screen.getByLabelText('压缩中')).toBeInTheDocument()
     expect(screen.getByText('第 2 次')).toBeInTheDocument()
     expect(screen.getByText('压缩摘要流式片段')).toBeInTheDocument()
-    expect(screen.getByText('90%')).toBeInTheDocument()
-    expect(screen.getByText('阈值 90%')).toBeInTheDocument()
+    expect(screen.queryByText('90%')).not.toBeInTheDocument()
+    expect(screen.queryByText('阈值 90%')).not.toBeInTheDocument()
   })
 })

@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -522,5 +523,56 @@ func TestApplyStoryMemoryPatchesNormalizesKeyedAgentPatches(t *testing.T) {
 	}
 	if len(updated) != 1 || updated[0].Key != "林川" || updated[0].Values["relationship_to_protagonist"] != "继续提醒主角远离钟楼" {
 		t.Fatalf("record_id update should preserve keyed record key: %#v", updated)
+	}
+}
+
+func TestStoryMemoryCompactionContextKeepsAllVisibleTableRecords(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "完整表格记忆"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := store.AppendTurn(story.ID, AppendTurnRequest{
+		BranchID:  "main",
+		User:      "继续整理线索",
+		Narrative: "所有线索被摊开放在桌上。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	patches := make([]StoryMemoryPatch, 0, maxMemoryListItems+6)
+	for i := 1; i <= maxMemoryListItems+6; i++ {
+		name := fmt.Sprintf("角色%02d", i)
+		patches = append(patches, StoryMemoryPatch{
+			Op:          "upsert",
+			StructureID: "important_character",
+			Key:         name,
+			Values: map[string]string{
+				"name":                        name,
+				"relationship_to_protagonist": strings.Repeat("重要关系", 80),
+			},
+		})
+	}
+	if _, err := store.ApplyStoryMemoryPatches(story.ID, "main", turn.ID, patches); err != nil {
+		t.Fatal(err)
+	}
+
+	bounded, err := store.StoryMemoryContextSummary(story.ID, "main", 256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(bounded, "后续故事记忆已截断") {
+		t.Fatalf("bounded story memory context should still truncate large tables")
+	}
+
+	full, err := store.StoryMemoryCompactionContext(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(full, "后续故事记忆已截断") {
+		t.Fatalf("compaction story memory context should not truncate:\n%s", full)
+	}
+	if !strings.Contains(full, "角色01") || !strings.Contains(full, "角色30") {
+		t.Fatalf("full compaction context should include early and late records:\n%s", full)
 	}
 }

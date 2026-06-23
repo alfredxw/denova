@@ -16,11 +16,14 @@ import (
 func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 	oldPath := modelInputLogPath
 	oldSeq := modelInputLogSeq.Load()
+	oldEnabled := modelInputLogEnabled.Load()
 	modelInputLogPath = filepath.Join(t.TempDir(), "llm-inputs.jsonl")
 	modelInputLogSeq.Store(0)
+	modelInputLogEnabled.Store(true)
 	t.Cleanup(func() {
 		modelInputLogPath = oldPath
 		modelInputLogSeq.Store(oldSeq)
+		modelInputLogEnabled.Store(oldEnabled)
 	})
 
 	longContent := strings.Repeat("完整输入", 12000)
@@ -74,6 +77,39 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 	}
 	if record.ModelConfig.Model != "test-model" || record.ModelConfig.BaseURL != "https://example.test/v1" {
 		t.Fatalf("unexpected model metadata: %#v", record.ModelConfig)
+	}
+}
+
+func TestLogFullModelInputSkipsWhenDisabled(t *testing.T) {
+	oldPath := modelInputLogPath
+	oldSeq := modelInputLogSeq.Load()
+	oldEnabled := modelInputLogEnabled.Load()
+	modelInputLogPath = filepath.Join(t.TempDir(), "llm-inputs.jsonl")
+	modelInputLogSeq.Store(0)
+	modelInputLogEnabled.Store(false)
+	t.Cleanup(func() {
+		modelInputLogPath = oldPath
+		modelInputLogSeq.Store(oldSeq)
+		modelInputLogEnabled.Store(oldEnabled)
+	})
+
+	logFullModelInput(modelInputLogOptions{
+		AgentKind: "test_agent",
+		Source:    "test",
+		Mode:      "generate",
+		Config: openai.ChatModelConfig{
+			Model: "test-model",
+		},
+		Messages: []*schema.Message{
+			schema.UserMessage("hidden unless dev mode is enabled"),
+		},
+	})
+
+	if _, err := os.Stat(modelInputLogPath); !os.IsNotExist(err) {
+		t.Fatalf("model input log should not be created when disabled: %v", err)
+	}
+	if got := modelInputLogSeq.Load(); got != 0 {
+		t.Fatalf("model input log sequence advanced while disabled: got %d", got)
 	}
 }
 

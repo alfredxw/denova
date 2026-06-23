@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
@@ -25,7 +26,6 @@ const (
 	contextCompactionReasonLimit = "context_usage_threshold"
 
 	contextCompactionSummaryPrefix = "[Nova Context Compaction]"
-	contextCompactionMaxInputBytes = 1024 * 1024
 	contextCompactionMaxAttempts   = 2
 )
 
@@ -56,7 +56,7 @@ type ContextCompactionResult struct {
 	RetainedTurns       int
 }
 
-type contextCompactionSummaryFunc func(ctx context.Context, cfg *config.Config, agentKind string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, error)
+type contextCompactionSummaryFunc func(ctx context.Context, cfg *config.Config, agentKind string, existingMemory string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error)
 
 type contextCompactionController struct {
 	conversation ContextCompactionConversation
@@ -76,6 +76,7 @@ type ContextCompactionInput struct {
 	Phase               string
 	Emit                func(Event)
 	Force               bool
+	ExistingMemory      string
 	ContextWindowTokens int
 	ReferenceContext    string
 	KeepLatestUser      bool
@@ -164,13 +165,13 @@ func BuildContextCompaction(ctx context.Context, cfg *config.Config, agentKind s
 		return input.Messages, result, nil
 	}
 	source := compactionSourceMessages(compactionSourceBaseMessages(input), input.KeepLatestUser)
-	if len(source) == 0 {
+	if len(source) == 0 && strings.TrimSpace(input.ExistingMemory) == "" && strings.TrimSpace(input.ReferenceContext) == "" {
 		result.SkippedReason = "empty_source"
 		return input.Messages, result, nil
 	}
 	sourceTokens := EstimateContextTokens(source, nil)
 	emitContextCompactionEvent(input.Emit, phase, "started", result)
-	summary, err := summarizeContextForCompaction(ctx, cfg, agentKind, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
+	summary, inputChars, err := summarizeContextForCompaction(ctx, cfg, agentKind, input.ExistingMemory, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
 		emitContextCompactionDeltaEvent(input.Emit, phase, result, attempt, delta)
 	})
 	if err != nil {
@@ -185,7 +186,7 @@ func BuildContextCompaction(ctx context.Context, cfg *config.Config, agentKind s
 	result.Epoch = epoch
 	result.Summary = summary
 	result.TokensAfter = EstimateContextTokens(newMessages, input.Tools)
-	result.TargetRatio = contextCompactionRatio(estimateStringTokens(summary), sourceTokens)
+	result.TargetRatio = contextCompactionRatio(countRunes(summary), inputChars)
 	result.SourceMessageCount = len(source)
 	result.MessageCountAfter = len(newMessages)
 	emitContextCompactionEvent(input.Emit, phase, "completed", result)
@@ -343,13 +344,14 @@ func BuildCompactedModelMessages(messages []*schema.Message, summary string, epo
 	return compactMessagesForModel(messages, summary, epoch, retainedTurns)
 }
 
-func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, agentKind string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, error) {
+func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, agentKind string, existingMemory string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error) {
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindContextCompaction)
-	maxTokens := contextCompactionSummaryMaxTokens(sourceTokens, policy.ContextWindowTokens, policy.TargetMaxRatio)
+	inputChars := contextCompactionInputChars(existingMemory, source, referenceContext)
+	maxTokens := contextCompactionSummaryMaxTokens(inputChars, policy.ContextWindowTokens, policy.TargetMaxRatio)
 	modelCfg.MaxTokens = &maxTokens
 	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
-		return "", fmt.Errorf("创建上下文压缩模型失败: %w", err)
+		return "", inputChars, fmt.Errorf("创建上下文压缩模型失败: %w", err)
 	}
 	systemPrompt := protectedSystemInstruction(cfg, config.AgentKindContextCompaction, contextCompactionSystemInstruction())
 	var summary string
@@ -357,7 +359,7 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 	for attempt := 1; attempt <= contextCompactionMaxAttempts; attempt++ {
 		input := []*schema.Message{
 			schema.SystemMessage(systemPrompt),
-			schema.UserMessage(buildContextCompactionTranscript(source, referenceContext, sourceTokens, retryReason, policy)),
+			schema.UserMessage(buildContextCompactionTranscript(source, existingMemory, referenceContext, sourceTokens, inputChars, retryReason, policy)),
 		}
 		logFullModelInput(modelInputLogOptions{
 			AgentKind: config.AgentKindContextCompaction,
@@ -368,26 +370,23 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 		})
 		msg, err := streamContextCompactionAttempt(ctx, cm, input, attempt, emitDelta)
 		if err != nil {
-			return "", fmt.Errorf("上下文压缩失败: %w", err)
+			return "", inputChars, fmt.Errorf("上下文压缩失败: %w", err)
 		}
 		summary = strings.TrimSpace(msg.Content)
 		if summary == "" {
-			return "", fmt.Errorf("上下文压缩结果为空")
+			return "", inputChars, fmt.Errorf("上下文压缩结果为空")
 		}
-		ratio := contextCompactionRatio(estimateStringTokens(summary), sourceTokens)
-		if ratio >= policy.TargetMinRatio && ratio <= policy.TargetMaxRatio {
-			return summary, nil
+		summaryChars := countRunes(summary)
+		minChars, maxChars := compactionTargetCharRange(inputChars, policy)
+		if inputChars <= 0 || (summaryChars >= minChars && summaryChars <= maxChars) {
+			return summary, inputChars, nil
 		}
 		if attempt == contextCompactionMaxAttempts {
 			break
 		}
-		if ratio > policy.TargetMaxRatio {
-			retryReason = fmt.Sprintf("The previous summary was too long: %.1f%% of source tokens. Compress it to %s while preserving required facts.", ratio*100, compactionTargetRange(policy))
-		} else {
-			retryReason = fmt.Sprintf("The previous summary was too short: %.1f%% of source tokens. Expand it to %s by restoring omitted user goals, events, relationships, tasks, and state changes.", ratio*100, compactionTargetRange(policy))
-		}
+		retryReason = contextCompactionRetryInstruction(summaryChars, minChars, maxChars)
 	}
-	return summary, nil
+	return summary, inputChars, nil
 }
 
 func streamContextCompactionAttempt(ctx context.Context, cm *openai.ChatModel, input []*schema.Message, attempt int, emitDelta func(attempt int, delta string)) (*schema.Message, error) {
@@ -416,17 +415,17 @@ func streamContextCompactionAttempt(ctx context.Context, cm *openai.ChatModel, i
 	return schema.ConcatMessages(chunks)
 }
 
-func contextCompactionSummaryMaxTokens(sourceTokens, contextWindowTokens int, targetMaxRatio float64) int {
-	if sourceTokens <= 0 {
-		sourceTokens = contextWindowTokens
+func contextCompactionSummaryMaxTokens(inputChars, contextWindowTokens int, targetMaxRatio float64) int {
+	if inputChars <= 0 {
+		inputChars = contextWindowTokens
 	}
-	if sourceTokens <= 0 {
+	if inputChars <= 0 {
 		return 6000
 	}
 	if targetMaxRatio <= 0 {
 		targetMaxRatio = 0.20
 	}
-	target := int(float64(sourceTokens) * targetMaxRatio)
+	target := int(float64(inputChars) * targetMaxRatio)
 	if target < 128 {
 		target = 128
 	}
@@ -439,11 +438,11 @@ func contextCompactionSummaryMaxTokens(sourceTokens, contextWindowTokens int, ta
 	return target
 }
 
-func contextCompactionRatio(partTokens, sourceTokens int) float64 {
-	if sourceTokens <= 0 {
+func contextCompactionRatio(partChars, inputChars int) float64 {
+	if inputChars <= 0 {
 		return 0
 	}
-	return float64(partTokens) / float64(sourceTokens)
+	return float64(partChars) / float64(inputChars)
 }
 
 func compactionTargetRange(policy contextCompactionPolicy) string {
@@ -461,6 +460,39 @@ func compactionTargetRange(policy contextCompactionPolicy) string {
 	return fmt.Sprintf("%.0f%%-%.0f%%", minRatio*100, maxRatio*100)
 }
 
+func compactionTargetCharRange(inputChars int, policy contextCompactionPolicy) (int, int) {
+	if inputChars <= 0 {
+		return 0, 0
+	}
+	minRatio := policy.TargetMinRatio
+	if minRatio <= 0 {
+		minRatio = 0.05
+	}
+	maxRatio := policy.TargetMaxRatio
+	if maxRatio <= 0 {
+		maxRatio = 0.20
+	}
+	if maxRatio < minRatio {
+		maxRatio = minRatio
+	}
+	minChars := int(float64(inputChars)*minRatio + 0.5)
+	maxChars := int(float64(inputChars)*maxRatio + 0.5)
+	if minChars < 1 {
+		minChars = 1
+	}
+	if maxChars < minChars {
+		maxChars = minChars
+	}
+	return minChars, maxChars
+}
+
+func contextCompactionRetryInstruction(summaryChars, minChars, maxChars int) string {
+	if summaryChars > maxChars {
+		return fmt.Sprintf("The previous summary was too long: %d characters. Compress it to %d-%d characters while preserving required facts.", summaryChars, minChars, maxChars)
+	}
+	return fmt.Sprintf("The previous summary was too short: %d characters. Expand it to %d-%d characters by restoring omitted user goals, events, relationships, tasks, and state changes.", summaryChars, minChars, maxChars)
+}
+
 func contextCompactionSystemInstruction() string {
 	return strings.TrimSpace(`
 你是 Nova 的独立“互动小说上下文压缩器”，用于类似酒馆/SillyTavern 的高轮次互动小说和长对话创作场景。
@@ -469,11 +501,11 @@ func contextCompactionSystemInstruction() string {
 
 输入可能包含：
 1. existing_memory：此前已经压缩过的记忆，可能为空。
-2. reference_context：有界参考上下文，例如 Story Memory。互动模式必须参考其中的故事记忆，尤其 plot_summary / 剧情纪要。
-3. new_context：需要压缩的原始有效对话链或互动回合链，包括用户行动、用户对白、LLM 剧情推进、NPC 反应、环境变化、任务状态等。
+2. reference_context：参考上下文，例如完整 Story Memory 表格。互动模式必须参考其中的故事记忆，尤其 plot_summary / 剧情纪要。
+3. new_context：上次压缩后新增的原始有效对话链或互动回合链，包括用户行动、用户对白、LLM 剧情推进、NPC 反应、环境变化、任务状态等。
 
 处理目标：
-- 将 existing_memory 与 new_context 合并，输出一份新的压缩记忆。
+- 将 existing_memory、reference_context 与 new_context 合并，输出一份新的压缩记忆。
 - 如果 existing_memory 为空，则从 new_context 初始化压缩记忆。
 - 如果 existing_memory 不为空，则合并新信息；不要重复记录同一事件，新信息补充旧事件时应更新旧事件。
 - 不要删除旧记忆中的长期影响信息，除非 new_context 明确说明该信息已经失效、解决或被推翻。
@@ -491,7 +523,7 @@ func contextCompactionSystemInstruction() string {
 - 不要写成小说文风；要写成清晰、紧凑、可供后续模型继续创作的事实账本。
 - 排除 thinking/reasoning 内容、传输噪音、展示用日志、重复工具卡片和无结果的实现过程，除非其结果会改变后续行为。
 - 禁止编造事实；不确定时明确标记“不确定”。
-- 目标长度由用户消息配置，默认是源上下文的 5%-20%。信息密度高时使用目标范围的上半区，不要为了短而丢长期影响信息。
+- 目标长度由用户消息配置控制，并按 existing_memory、reference_context 与 new_context 的合计字符数计算，默认是输入字符数的 5%-20%。信息密度高时使用目标范围的上半区，不要为了短而丢长期影响信息。
 
 长期影响信息判定：
 只要某条信息未来可能影响角色反应、剧情分支、世界状态、任务推进、关系变化或玩家可用选择，就必须保留。以下信息一律视为长期影响信息：
@@ -535,33 +567,30 @@ LLM最后反馈：
 `)
 }
 
-func buildContextCompactionTranscript(messages []*schema.Message, referenceContext string, sourceTokens int, retryInstruction string, policy contextCompactionPolicy) string {
-	remaining := contextCompactionMaxInputBytes
-	omitted := 0
+func buildContextCompactionTranscript(messages []*schema.Message, existingMemory, referenceContext string, sourceTokens, inputChars int, retryInstruction string, policy contextCompactionPolicy) string {
 	blocks := make([]string, 0, len(messages))
-	for i := len(messages) - 1; i >= 0; i-- {
-		msg := messages[i]
+	for i, msg := range messages {
 		if msg == nil {
 			continue
 		}
-		block := formatCompactionMessage(i+1, msg)
-		if len(block) > remaining {
-			omitted = i + 1
-			break
-		}
-		remaining -= len(block)
-		blocks = append(blocks, block)
+		blocks = append(blocks, formatCompactionMessage(i+1, msg))
 	}
+	minChars, maxChars := compactionTargetCharRange(inputChars, policy)
 	var sb strings.Builder
-	sb.WriteString("请按系统要求压缩以下 Nova 上下文。保留所有会影响后续剧情、任务、关系、世界状态或用户偏好的信息。\n")
-	sb.WriteString(fmt.Sprintf("Estimated source tokens: %d. Target summary length: %s of source tokens. 信息密度高时使用目标范围上半区。\n\n", sourceTokens, compactionTargetRange(policy)))
+	sb.WriteString("请按系统要求压缩以下 Nova 上下文。基于 existing_memory、reference_context 与 new_context 合并生成新的压缩记忆，保留所有会影响后续剧情、任务、关系、世界状态或用户偏好的信息。\n")
+	sb.WriteString(fmt.Sprintf("Estimated new context tokens: %d. Input characters across existing memory, reference context, and new context: %d. Target summary length: %d-%d characters (%s of input characters). 不得低于下限；信息密度高时使用目标范围上半区。\n\n", sourceTokens, inputChars, minChars, maxChars, compactionTargetRange(policy)))
 	if retryInstruction = strings.TrimSpace(retryInstruction); retryInstruction != "" {
 		sb.WriteString("Retry instruction:\n")
 		sb.WriteString(retryInstruction)
 		sb.WriteString("\n\n")
 	}
 	sb.WriteString("<existing_memory>\n")
-	sb.WriteString("（未提供；本次输入从原始有效上下文重新生成压缩记忆。）\n")
+	if existingMemory = strings.TrimSpace(existingMemory); existingMemory != "" {
+		sb.WriteString(existingMemory)
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("（未提供；本次输入从新增上下文与参考记忆初始化压缩记忆。）\n")
+	}
 	sb.WriteString("</existing_memory>\n\n")
 	if referenceContext = strings.TrimSpace(referenceContext); referenceContext != "" {
 		sb.WriteString("<reference_context>\n")
@@ -569,15 +598,31 @@ func buildContextCompactionTranscript(messages []*schema.Message, referenceConte
 		sb.WriteString("\n</reference_context>\n\n")
 	}
 	sb.WriteString("<new_context>\n")
-	for i := len(blocks) - 1; i >= 0; i-- {
-		sb.WriteString(blocks[i])
+	if len(blocks) == 0 {
+		sb.WriteString("（无新增原始消息。）\n")
+	} else {
+		for _, block := range blocks {
+			sb.WriteString(block)
+		}
 	}
 	sb.WriteString("</new_context>\n")
-	transcript := sb.String()
-	if omitted > 0 {
-		transcript = fmt.Sprintf("Older %d messages were omitted to keep compaction input bounded.\n\n%s", omitted, transcript)
+	return sb.String()
+}
+
+func contextCompactionInputChars(existingMemory string, messages []*schema.Message, referenceContext string) int {
+	total := countRunes(existingMemory)
+	total += countRunes(referenceContext)
+	for i, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		total += countRunes(formatCompactionMessage(i+1, msg))
 	}
-	return transcript
+	return total
+}
+
+func countRunes(value string) int {
+	return utf8.RuneCountInString(strings.TrimSpace(value))
 }
 
 func formatCompactionMessage(index int, msg *schema.Message) string {

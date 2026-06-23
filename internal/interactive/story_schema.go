@@ -126,7 +126,7 @@ func validateStoryEventEnvelope(envelope StoryEventEnvelope) error {
 		return fmt.Errorf("故事事件 schema 版本不支持: %d", envelope.V)
 	}
 	switch envelope.Type {
-	case StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction:
+	case StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction, StoryEventTypeCompactionRemoved:
 	default:
 		return fmt.Errorf("未知故事事件类型: %q", envelope.Type)
 	}

@@ -454,13 +454,8 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
           case 'context_compaction': {
             const data = JSON.parse(value.data)
             appendContextCompactionMessage(data)
-            if (data.status === 'started') {
-              setStageActivityContent(t('storyStage.activity.compacting'))
-            } else if (data.status === 'completed') {
-              setStageActivityContent(t('storyStage.activity.compacted'))
-              currentCompactionMessageIdRef.current = null
-            } else if (data.status === 'failed') {
-              setStageActivityContent('')
+            setStageActivityContent('')
+            if (data.status === 'completed' || data.status === 'failed') {
               currentCompactionMessageIdRef.current = null
             }
             break
@@ -529,7 +524,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
     setShowSkillCommands(false)
     setActiveSkillCommandIndex(0)
     setStageStreaming(true)
-    setStageActivityContent(t('storyStage.activity.compacting'))
+    setStageActivityContent('')
     currentCompactionMessageIdRef.current = null
     setStageLiveMessages([{
       role: 'context_compaction',

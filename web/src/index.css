@@ -181,7 +181,11 @@ html,
 body,
 #root {
   margin: 0;
+  width: 100%;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--nova-bg);
   color: var(--nova-text);
   font-family: var(--nova-ui-font-family);
@@ -238,6 +242,14 @@ html[data-nova-motion="off"] *::after {
   height: 100dvh;
 }
 
+[data-nova-app-shell="true"] :where(.overflow-y-auto, [data-slot="scroll-area-viewport"], textarea) {
+  overscroll-behavior-y: contain;
+}
+
+[data-nova-app-shell="true"] :where(.overflow-auto) {
+  overscroll-behavior: contain;
+}
+
 .nova-mobile-nav {
   padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
 }
@@ -257,13 +269,11 @@ html[data-nova-motion="off"] *::after {
 
 [data-nova-mobile-shell="true"] :where(.overflow-y-auto, [data-slot="scroll-area-viewport"]) {
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
   touch-action: pan-y;
 }
 
 [data-nova-mobile-shell="true"] :where(.overflow-auto) {
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
 }
 
 @supports not (height: 100dvh) {
@@ -298,12 +308,6 @@ html[data-nova-motion="off"] *::after {
 }
 
 @media (max-width: 767px) {
-  html,
-  body,
-  #root {
-    overflow: hidden;
-  }
-
   [data-nova-mobile-shell="true"] .nova-story-stage-header {
     min-height: auto;
     align-items: center;

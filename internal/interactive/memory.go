@@ -383,6 +383,26 @@ func (s *Store) StoryMemoryContextSummary(storyID, branchID string, limit int) (
 	return formatStoryMemoryContextSummary(book.Structures, records, limit), nil
 }
 
+func (s *Store) StoryMemoryCompactionContext(storyID, branchID string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return "", err
+	}
+	branchID, branch, err := resolveBranch(meta, branchID)
+	if err != nil {
+		return "", err
+	}
+	book, err := s.readMemoryBookLocked(storyID)
+	if err != nil {
+		return "", err
+	}
+	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), false)
+	return formatStoryMemoryCompactionContext(book.Structures, records), nil
+}
+
 func (s *Store) StoryMemorySchemaContext(storyID string, limit int) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1526,9 +1546,21 @@ func formatStoryMemoryContextSummary(structures []StoryMemoryStructure, records 
 	if limit <= 0 || limit > maxMemoryTextBytes {
 		limit = maxMemoryTextBytes
 	}
+	return formatStoryMemoryContext(structures, records, limit, maxMemoryListItems, true)
+}
+
+func formatStoryMemoryCompactionContext(structures []StoryMemoryStructure, records []StoryMemoryRecord) string {
+	return formatStoryMemoryContext(structures, records, 0, 0, false)
+}
+
+func formatStoryMemoryContext(structures []StoryMemoryStructure, records []StoryMemoryRecord, limit, itemLimit int, bounded bool) string {
 	var sb strings.Builder
 	sb.WriteString("来源: interactive/memory/story-{story_id}.json 的当前分支可见故事记忆\n")
-	sb.WriteString(fmt.Sprintf("上限: %d bytes\n", limit))
+	if bounded {
+		sb.WriteString(fmt.Sprintf("上限: %d bytes\n", limit))
+	} else {
+		sb.WriteString("上限: 不截断，用于上下文压缩 Agent\n")
+	}
 	count := 0
 	for _, structure := range structures {
 		if !storyMemoryStructureEnabled(structure) {
@@ -1547,7 +1579,7 @@ func formatStoryMemoryContextSummary(structures []StoryMemoryStructure, records 
 		sb.WriteString(structure.Name)
 		sb.WriteString("\n")
 		for _, record := range items {
-			if count >= maxMemoryListItems || sb.Len() >= limit {
+			if bounded && (count >= itemLimit || sb.Len() >= limit) {
 				sb.WriteString("\n(后续故事记忆已截断)\n")
 				return trimMemoryText(sb.String())
 			}
@@ -1577,7 +1609,10 @@ func formatStoryMemoryContextSummary(structures []StoryMemoryStructure, records 
 			count++
 		}
 	}
-	return trimMemoryText(sb.String())
+	if bounded {
+		return trimMemoryText(sb.String())
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int) string {
