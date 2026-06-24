@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -163,16 +163,6 @@ export function InputArea({
     const query = value.toLowerCase()
     return allCommands.filter((command) => command.cmd.toLowerCase().startsWith(query))
   }, [allCommands, value])
-
-  /** 自动调整高度 */
-  const adjustHeight = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = Math.min(el.scrollHeight, 240) + 'px'
-  }, [])
-
-  useEffect(() => { adjustHeight() }, [value, adjustHeight])
 
   useEffect(() => {
     if (!draftKey) return
@@ -510,6 +500,7 @@ export function InputArea({
           <Textarea
             ref={textareaRef}
             autoResize
+            multilineMode="sticky-until-empty"
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}

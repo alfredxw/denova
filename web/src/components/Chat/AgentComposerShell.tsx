@@ -26,14 +26,14 @@ export function AgentComposerShell({
   return (
     <div className={cn('nova-agent-composer', className)}>
       {references ? <div className="nova-agent-composer-references">{references}</div> : null}
-      <div className={cn('nova-agent-composer-toolbar', toolbarClassName)}>
-        <div className="nova-agent-composer-toolbar-start">
+      <div className={cn('nova-agent-composer-toolbar', toolbarClassName)} data-slot="agent-composer-layout">
+        <div className="nova-agent-composer-toolbar-start" data-slot="agent-composer-start">
           {toolbarStart}
         </div>
-        <div className={cn('nova-agent-composer-body', bodyClassName)}>
+        <div className={cn('nova-agent-composer-body', bodyClassName)} data-slot="agent-composer-input">
           {input}
         </div>
-        <div className="nova-agent-composer-toolbar-end">
+        <div className="nova-agent-composer-toolbar-end" data-slot="agent-composer-end">
           {toolbarEnd}
           {submitControl}
         </div>

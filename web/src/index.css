@@ -519,6 +519,7 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-agent-composer {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
@@ -551,7 +552,7 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-agent-composer-body {
-  flex: 1 1 auto;
+  grid-area: body;
   min-width: 0;
 }
 
@@ -560,10 +561,13 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-agent-composer-toolbar {
-  display: flex;
+  display: grid;
+  width: 100%;
   min-height: 2.5rem;
+  min-width: 0;
+  grid-template-areas: "start body end";
+  grid-template-columns: auto minmax(0, 1fr) max-content;
   align-items: center;
-  justify-content: space-between;
   gap: 0.5rem;
 }
 
@@ -576,11 +580,13 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-agent-composer-toolbar-start {
-  flex: 0 0 auto;
+  grid-area: start;
+  max-width: 100%;
 }
 
 .nova-agent-composer-toolbar-end {
-  flex: 0 1 auto;
+  grid-area: end;
+  max-width: 100%;
   justify-content: flex-end;
 }
 
@@ -592,6 +598,27 @@ html[data-nova-motion="off"] *::after {
 
 .nova-agent-composer-submit:not(:disabled):active {
   transform: scale(0.96);
+}
+
+.nova-agent-composer:has(.nova-agent-composer-textarea[data-nova-multiline="true"]) {
+  gap: 0.5rem;
+}
+
+.nova-agent-composer:has(.nova-agent-composer-textarea[data-nova-multiline="true"]) .nova-agent-composer-toolbar {
+  grid-template-areas:
+    "body body body"
+    "start spacer end";
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) max-content;
+  align-items: stretch;
+  row-gap: 0.375rem;
+}
+
+.nova-agent-composer:has(.nova-agent-composer-textarea[data-nova-multiline="true"]) .nova-agent-composer-body {
+  width: 100%;
+}
+
+.nova-agent-composer:has(.nova-agent-composer-textarea[data-nova-multiline="true"]) .nova-agent-composer-toolbar-end {
+  justify-self: end;
 }
 
 @media (max-width: 640px) {

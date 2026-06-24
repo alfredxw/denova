@@ -981,6 +981,7 @@ export function StoryStage({ workspace, styleSuggestions = [], stories = [], sto
                 <Textarea
                   ref={inputRef}
                   autoResize
+                  multilineMode="sticky-until-empty"
                   className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0"
                   style={inputTextStyle}
                   value={input}

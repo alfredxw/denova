@@ -608,6 +608,7 @@ function ActivityButton({
   return (
     <TooltipIconButton
       label={label}
+      showTooltip={!expanded}
       className={`${className || ''} relative overflow-hidden ${expanded ? 'gap-3 px-3' : ''} ${active ? 'is-active' : ''}`}
       {...props}
     >
