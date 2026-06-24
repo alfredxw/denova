@@ -1,0 +1,44 @@
+internal/prompts/templates.go
+  s_fc224b4f805d87::t_3232950ed479ac 52
+  h_beed6209b76699 53 gitai:{"mixed_line_ranges":[{"Single":53}],"operations":[]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "540c0dae1d1784a037f0e1cde3ae961c2448b70c",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_fc224b4f805d87": {
+      "agent_id": {
+        "tool": "trae-cue",
+        "id": "ai_tab-icr-8d55d73e-9659-4133-a4cf-5b13b498647e",
+        "model": "default"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {
+    "internal/prompts/templates.go": [
+      {
+        "hash": "h_beed6209b76699",
+        "line_ranges": [
+          {
+            "Single": 53
+          }
+        ],
+        "mixed_line_ranges": [
+          {
+            "Single": 53
+          }
+        ],
+        "operations": []
+      }
+    ]
+  },
+  "remote_transcripts": {}
+}
