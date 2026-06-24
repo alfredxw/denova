@@ -68,7 +68,6 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 		EnableSkills:      true,
 		DisableWriteTodos: true,
 		ExtraTools:        extraTools,
-		MaxTokens:         interactiveMaxTokens(cfg),
 	})
 }
 
@@ -129,12 +128,10 @@ type deepAgentSpec struct {
 	DisableWriteTodos bool
 	ExtraHandlers     []adk.ChatModelAgentMiddleware
 	ExtraTools        []tool.BaseTool
-	MaxTokens         *int
 }
 
 func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec) (adk.Agent, error) {
 	modelCfg := chatModelConfigForAgent(cfg, spec.Kind)
-	modelCfg.MaxTokens = spec.MaxTokens
 	toolSettings := config.ResolveAgentTools(cfg, spec.Kind)
 	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
@@ -266,14 +263,6 @@ func configModelMaxRetries(cfg *config.Config) int {
 		return 5
 	}
 	return cfg.ModelMaxRetries
-}
-
-func interactiveMaxTokens(cfg *config.Config) *int {
-	if cfg == nil || cfg.InteractiveMaxTokens <= 0 {
-		return nil
-	}
-	tokens := cfg.InteractiveMaxTokens
-	return &tokens
 }
 
 // handleUnknownTool 拦截 LLM 调用未知工具的错误，把可读提示作为工具结果回传给模型，

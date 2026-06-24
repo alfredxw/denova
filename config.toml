@@ -96,6 +96,4 @@ plan_mode_default = false
 ide_story_teller_id = "classic"
 
 # 互动模式
-# 留空或 0 表示不限制，优先避免非自然截断
-interactive_max_tokens = 0
 interactive_stage_line_height = 1.78

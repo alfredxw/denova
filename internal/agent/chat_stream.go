@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
@@ -13,8 +15,9 @@ import (
 // processStreamingEvent 处理流式助手消息，输出领域事件。
 // 工具调用在流中一检测到名称就立即 emit，让前端尽早展示 running 卡片。
 // 参数在流中逐帧 emit tool_args_delta，前端可实时展示 write_file 内容。
-func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, emit func(Event)) (*schema.Message, bool) {
+func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, emit func(Event)) (*schema.Message, error) {
 	mv.MessageStream.SetAutomaticClose()
+	defer mv.MessageStream.Close()
 	var accumulatedToolCalls []schema.ToolCall
 	emittedTools := make(map[int]bool) // 按 index 记录已 emit tool_call 的工具
 	lastArgsLen := make(map[int]int)   // 记录上次已发送的参数长度
@@ -22,14 +25,16 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *st
 	var chunks []*schema.Message
 
 	for {
-		frame, err := mv.MessageStream.Recv()
+		frame, err := recvMessageFrame(ctx, mv.MessageStream, idleTimeout)
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			log.Printf("[agent-run] interrupted reason=stream_recv_error err=%v generated_bytes=%d", err, fullContent.Len())
-			emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
-			return nil, false
+			if ctx.Err() == nil {
+				emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+			}
+			return nil, err
 		}
 		if frame == nil {
 			continue
@@ -101,14 +106,14 @@ func processStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *st
 		}
 	}
 	if len(chunks) == 0 {
-		return nil, true
+		return nil, nil
 	}
 	msg, err := schema.ConcatMessages(chunks)
 	if err != nil {
 		log.Printf("[agent-run] concat streaming message failed err=%v chunks=%d", err, len(chunks))
-		return nil, true
+		return nil, nil
 	}
-	return msg, true
+	return msg, nil
 }
 
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。
@@ -158,26 +163,27 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 }
 
 // drainContent 从 MessageVariant 中提取完整内容。
-func drainContent(mv *adk.MessageVariant) string {
+func drainContent(ctx context.Context, mv *adk.MessageVariant, idleTimeout time.Duration) (string, error) {
 	if mv.IsStreaming && mv.MessageStream != nil {
 		mv.MessageStream.SetAutomaticClose()
+		defer mv.MessageStream.Close()
 		var sb strings.Builder
 		for {
-			chunk, err := mv.MessageStream.Recv()
+			chunk, err := recvMessageFrame(ctx, mv.MessageStream, idleTimeout)
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
-				break
+				return sb.String(), err
 			}
 			if chunk != nil && chunk.Content != "" {
 				sb.WriteString(chunk.Content)
 			}
 		}
-		return sb.String()
+		return sb.String(), nil
 	}
 	if mv.Message != nil {
-		return mv.Message.Content
+		return mv.Message.Content, nil
 	}
-	return ""
+	return "", nil
 }

@@ -118,7 +118,10 @@ func TestInstallUsesBrowserDownloadURLAndIgnoresRequestCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	result, err := service.Install(ctx)
+	var progress []InstallProgress
+	result, err := service.InstallWithProgress(ctx, func(event InstallProgress) {
+		progress = append(progress, event)
+	})
 	if err != nil {
 		t.Fatalf("Install failed: %v", err)
 	}
@@ -136,6 +139,16 @@ func TestInstallUsesBrowserDownloadURLAndIgnoresRequestCancel(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(result.BackupPath, "nova")); err != nil {
 		t.Fatalf("backup executable missing: %v", err)
+	}
+	archivePath := filepath.Join(installDir, ".nova-updates", "downloads", assetName)
+	if _, err := os.Stat(archivePath); err != nil {
+		t.Fatalf("downloaded archive should be kept in install dir: %v", err)
+	}
+	if !hasProgressPhase(progress, "downloading") || !hasProgressPhase(progress, "replacing") || !hasProgressPhase(progress, "installed") {
+		t.Fatalf("missing install progress phases: %#v", progress)
+	}
+	if last := progress[len(progress)-1]; last.Phase != "installed" || last.Percent != 100 {
+		t.Fatalf("unexpected final progress event: %#v", last)
 	}
 }
 
@@ -172,4 +185,13 @@ func testReleaseArchive(t *testing.T, exeName string, files map[string]string) [
 
 func serverURL(r *http.Request, path string) string {
 	return "http://" + r.Host + path
+}
+
+func hasProgressPhase(events []InstallProgress, phase string) bool {
+	for _, event := range events {
+		if event.Phase == phase {
+			return true
+		}
+	}
+	return false
 }

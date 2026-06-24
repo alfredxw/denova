@@ -84,6 +84,16 @@ describe('AgentsView', () => {
     expect(screen.getByDisplayValue('9')).toBeInTheDocument()
     expect(screen.getByDisplayValue('31')).toBeInTheDocument()
   })
+
+  it('marks execute unsupported on Windows runtimes', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      runtime: { goos: 'windows' },
+    }))
+
+    render(<AgentsView />)
+
+    expect(await screen.findByText('Windows 暂不支持 execute')).toBeInTheDocument()
+  })
 })
 
 function settingsSnapshot(patch: Partial<LayeredSettings>): LayeredSettings {

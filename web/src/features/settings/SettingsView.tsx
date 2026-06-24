@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, PanelLeft, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateCheckResult, UpdateInstallResult } from './types'
-import { checkForUpdate, fetchSettings, installUpdate, updateUserSettings, updateWorkspaceSettings } from './api'
+import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
+import { checkForUpdate, fetchSettings, installUpdateStream, updateUserSettings, updateWorkspaceSettings } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { settingsForLayer, useAutoSaveSettings } from './use-auto-save-settings'
 import { getInteractiveTellers } from '@/features/interactive/api'
@@ -42,6 +42,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [availableTellers, setAvailableTellers] = useState<Teller[]>([])
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null)
   const [updateInstallResult, setUpdateInstallResult] = useState<UpdateInstallResult | null>(null)
+  const [updateInstallProgress, setUpdateInstallProgress] = useState<UpdateInstallProgress | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [installingUpdate, setInstallingUpdate] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
@@ -90,6 +91,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     setCheckingUpdate(true)
     setUpdateError(null)
     setUpdateInstallResult(null)
+    setUpdateInstallProgress(null)
     try {
       const result = await checkForUpdate()
       setUpdateStatus(result)
@@ -111,15 +113,30 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const runUpdateInstall = useCallback(async () => {
     setInstallingUpdate(true)
     setUpdateError(null)
+    setUpdateInstallProgress(null)
     try {
-      const result = await installUpdate()
-      setUpdateInstallResult(result)
+      const stream = await installUpdateStream()
+      const reader = stream.getReader()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const data = parseSSEData(value.data)
+        if (value.event === 'update_progress') {
+          setUpdateInstallProgress(data as unknown as UpdateInstallProgress)
+        } else if (value.event === 'update_result') {
+          const result = data as unknown as UpdateInstallResult
+          setUpdateInstallResult(result)
+          setUpdateInstallProgress((prev) => prev ? { ...prev, phase: 'installed', percent: 100 } : { phase: 'installed', percent: 100 })
+        } else if (value.event === 'error') {
+          throw new Error(readStreamError(data, t))
+        }
+      }
     } catch (e) {
       setUpdateError((e as Error).message)
     } finally {
       setInstallingUpdate(false)
     }
-  }, [])
+  }, [t])
 
   const saveDraft = useCallback(async (settings: Settings) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
@@ -223,6 +240,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <UpdatePanel
             status={updateStatus}
             installResult={updateInstallResult}
+            installProgress={updateInstallProgress}
             checking={checkingUpdate}
             installing={installingUpdate}
             error={updateError}
@@ -327,6 +345,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Num label={t('settings.agent.modelMaxRetries')} value={draft.model_max_retries ?? null}
                placeholder={placeholderFor('model_max_retries')}
                onChange={(v) => setField('model_max_retries', v)} />
+          <Num label={t('settings.agent.idleTimeoutSeconds')} value={draft.agent_idle_timeout_seconds ?? null}
+               placeholder={placeholderFor('agent_idle_timeout_seconds')}
+               min={1}
+               max={3600}
+               onChange={(v) => setField('agent_idle_timeout_seconds', v)} />
           <BoolTri label={t('settings.agent.planModeDefault')} value={draft.plan_mode_default ?? null}
                    effective={effective.plan_mode_default}
                    onChange={(v) => setField('plan_mode_default', v)} />
@@ -404,9 +427,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       title: t('settings.section.interactive'),
       children: activeLayer === 'workspace' ? (
         <>
-          <Num label={t('settings.interactive.maxTokens')} value={draft.interactive_max_tokens ?? null}
-               placeholder={t('settings.interactive.maxTokensPlaceholder')}
-               onChange={(v) => setField('interactive_max_tokens', v)} />
           <BoolTri label={t('settings.interactive.hotChoices')} value={draft.interactive_hot_choices_enabled ?? null}
                    effective={effective.interactive_hot_choices_enabled}
                    onChange={(v) => setField('interactive_hot_choices_enabled', v)} />
@@ -620,6 +640,7 @@ function Section({
 function UpdatePanel({
   status,
   installResult,
+  installProgress,
   checking,
   installing,
   error,
@@ -628,6 +649,7 @@ function UpdatePanel({
 }: {
   status: UpdateCheckResult | null
   installResult: UpdateInstallResult | null
+  installProgress: UpdateInstallProgress | null
   checking: boolean
   installing: boolean
   error: string | null
@@ -637,6 +659,8 @@ function UpdatePanel({
   const { t } = useTranslation()
   const releaseDate = status?.published_at ? new Date(status.published_at).toLocaleString() : ''
   const installDisabled = installing || checking || !status?.can_install
+  const progressPercent = clampPercent(installProgress?.percent ?? 0)
+  const progressLabel = installProgress ? updatePhaseLabel(installProgress.phase, t) : ''
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -658,6 +682,29 @@ function UpdatePanel({
           {status?.asset && (
             <div className="truncate text-[var(--nova-text-faint)]">
               {t('settings.updates.asset', { name: status.asset.name, size: formatBytes(status.asset.size) })}
+            </div>
+          )}
+          {installProgress && (
+            <div className="mt-2 space-y-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2">
+              <div className="flex items-center justify-between gap-3 text-[var(--nova-text-muted)]">
+                <span>{progressLabel}</span>
+                <span>{t('settings.updates.progressPercent', { percent: Math.round(progressPercent) })}</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--nova-surface-3)]" aria-label={t('settings.updates.progressAria')}>
+                <div
+                  className="h-full rounded-full bg-[var(--nova-text)] transition-[width] duration-200"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <div className="flex flex-col gap-1 text-[11px] text-[var(--nova-text-faint)] sm:flex-row sm:items-center sm:justify-between">
+                <span>{t('settings.updates.downloaded', {
+                  downloaded: formatBytes(installProgress.downloaded_bytes ?? 0),
+                  total: installProgress.total_bytes ? formatBytes(installProgress.total_bytes) : t('common.notSet'),
+                })}</span>
+                {installProgress.archive_path && (
+                  <span className="max-w-full truncate">{t('settings.updates.localPackage', { path: installProgress.archive_path })}</span>
+                )}
+              </div>
             </div>
           )}
           {installResult?.installed && (
@@ -694,7 +741,7 @@ function UpdatePanel({
             disabled={installDisabled}
             className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 text-[var(--nova-text)] disabled:opacity-50"
           >
-            <Download className="h-3.5 w-3.5" />
+            {installing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             {installing ? t('settings.updates.installing') : t('settings.updates.install')}
           </button>
         </div>
@@ -706,6 +753,44 @@ function UpdatePanel({
 function updateStatusLabel(status: UpdateCheckResult, t: (key: string, args?: Record<string, unknown>) => string) {
   if (status.update_available) return t('settings.updates.updateAvailableTitle')
   return t('settings.updates.upToDateTitle')
+}
+
+function updatePhaseLabel(phase: string, t: (key: string, args?: Record<string, unknown>) => string) {
+  switch (phase) {
+    case 'checking':
+      return t('settings.updates.phase.checking')
+    case 'downloading':
+      return t('settings.updates.phase.downloading')
+    case 'verifying':
+      return t('settings.updates.phase.verifying')
+    case 'extracting':
+      return t('settings.updates.phase.extracting')
+    case 'replacing':
+      return t('settings.updates.phase.replacing')
+    case 'staging':
+      return t('settings.updates.phase.staging')
+    case 'installed':
+      return t('settings.updates.phase.installed')
+    default:
+      return t('settings.updates.phase.running')
+  }
+}
+
+function parseSSEData(data: string): Record<string, unknown> {
+  try {
+    return JSON.parse(data) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+function readStreamError(data: Record<string, unknown>, t: (key: string) => string) {
+  return typeof data.message === 'string' && data.message ? data.message : t('settings.updates.error')
+}
+
+function clampPercent(value: number) {
+  if (!Number.isFinite(value)) return 0
+  return Math.min(100, Math.max(0, value))
 }
 
 function formatBytes(value: number) {

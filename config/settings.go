@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
@@ -62,13 +63,13 @@ type Settings struct {
 	UpdateCheckEnabled *bool  `toml:"update_check_enabled,omitempty" json:"update_check_enabled,omitempty"`
 
 	// Agent
-	MaxIteration     *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
-	ModelMaxRetries  *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
-	PlanModeDefault  *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
-	IDEStoryTellerID string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
+	MaxIteration            *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
+	ModelMaxRetries         *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
+	AgentIdleTimeoutSeconds *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
+	PlanModeDefault         *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
+	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
 
 	// 互动模式
-	InteractiveMaxTokens       *int     `toml:"interactive_max_tokens,omitempty" json:"interactive_max_tokens,omitempty"`
 	InteractiveHotChoices      *bool    `toml:"interactive_hot_choices_enabled,omitempty" json:"interactive_hot_choices_enabled,omitempty"`
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
@@ -111,6 +112,7 @@ func DefaultSettings() Settings {
 		UpdateCheckEnabled:          boolPtr(true),
 		MaxIteration:                intPtr(50),
 		ModelMaxRetries:             intPtr(5),
+		AgentIdleTimeoutSeconds:     intPtr(180),
 		AgentModels: AgentModelSettings{
 			InteractiveHotChoices: AgentModelOverride{EnableThinking: boolPtr(false)},
 			VersionSummary:        AgentModelOverride{EnableThinking: boolPtr(false)},
@@ -237,14 +239,14 @@ func Merge(parent, child Settings) Settings {
 	if child.ModelMaxRetries != nil {
 		out.ModelMaxRetries = child.ModelMaxRetries
 	}
+	if child.AgentIdleTimeoutSeconds != nil {
+		out.AgentIdleTimeoutSeconds = child.AgentIdleTimeoutSeconds
+	}
 	if child.PlanModeDefault != nil {
 		out.PlanModeDefault = child.PlanModeDefault
 	}
 	if child.IDEStoryTellerID != "" {
 		out.IDEStoryTellerID = child.IDEStoryTellerID
-	}
-	if child.InteractiveMaxTokens != nil {
-		out.InteractiveMaxTokens = child.InteractiveMaxTokens
 	}
 	if child.InteractiveHotChoices != nil {
 		out.InteractiveHotChoices = child.InteractiveHotChoices
@@ -276,6 +278,7 @@ type LayeredSettings struct {
 	Effective                 Settings                  `json:"effective"`
 	Paths                     SettingsPaths             `json:"paths"`
 	Access                    SettingsAccess            `json:"access"`
+	Runtime                   SettingsRuntime           `json:"runtime"`
 	BuiltinAgentPrompts       AgentPromptSettings       `json:"builtin_agent_prompts,omitempty"`
 	BuiltinAgentPromptBlocks  AgentPromptBlockSettings  `json:"builtin_agent_prompt_blocks,omitempty"`
 	BuiltinAgentPromptSources AgentPromptSourceSettings `json:"builtin_agent_prompt_sources,omitempty"`
@@ -288,10 +291,16 @@ type SettingsPaths struct {
 	WorkspaceConfig string `json:"workspace_config"`
 }
 
-// SettingsAccess exposes the frontend addresses users can open in their browsers.
+// SettingsAccess exposes the Nova entry addresses users can open in browsers.
 type SettingsAccess struct {
 	LocalURL string `json:"local_url"`
 	LANURL   string `json:"lan_url"`
+}
+
+// SettingsRuntime exposes process-level platform details used by runtime-only
+// capability gates. These fields are not persisted to config files.
+type SettingsRuntime struct {
+	GOOS string `json:"goos"`
 }
 
 // ReadSettingsFile 读取 TOML，文件不存在时返回零值且无错误。
@@ -376,7 +385,7 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		global.NovaDir = normalizePath(global.NovaDir)
 	}
 	eff := Merge(Merge(Merge(def, global), user), ws)
-	frontendPort := settingsInt(eff.FrontendPort, 5173)
+	backendPort := settingsInt(eff.BackendPort, 8080)
 	return LayeredSettings{
 		Default:   def,
 		Global:    global,
@@ -389,9 +398,10 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 			WorkspaceConfig: WorkspaceConfigPath(workspace),
 		},
 		Access: SettingsAccess{
-			LocalURL: LocalHTTPURL(frontendPort),
-			LANURL:   LANHTTPURL(frontendPort),
+			LocalURL: LocalHTTPURL(backendPort),
+			LANURL:   LANHTTPURL(backendPort),
 		},
+		Runtime: SettingsRuntime{GOOS: runtime.GOOS},
 	}, nil
 }
 
@@ -407,10 +417,24 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
 	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)
+	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
 	s.AgentContexts = sanitizeAgentContextSettings(s.AgentContexts)
 	return s
+}
+
+func normalizeAgentIdleTimeoutSeconds(seconds *int) *int {
+	if seconds == nil {
+		return nil
+	}
+	if *seconds <= 0 {
+		return nil
+	}
+	if *seconds > 3600 {
+		*seconds = 3600
+	}
+	return seconds
 }
 
 func normalizeContextWindowTokens(tokens *int) *int {

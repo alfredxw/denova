@@ -31,3 +31,13 @@ type InstallResult struct {
 	StagedPath       string `json:"staged_path,omitempty"`
 	Message          string `json:"message,omitempty"`
 }
+
+type InstallProgress struct {
+	Phase           string  `json:"phase"`
+	AssetName       string  `json:"asset_name,omitempty"`
+	ArchivePath     string  `json:"archive_path,omitempty"`
+	DownloadedBytes int64   `json:"downloaded_bytes,omitempty"`
+	TotalBytes      int64   `json:"total_bytes,omitempty"`
+	Percent         float64 `json:"percent,omitempty"`
+	Message         string  `json:"message,omitempty"`
+}

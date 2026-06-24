@@ -33,6 +33,7 @@ const agents = {
   'agents.tool.fileWrite.subtitle': 'write_file / edit_file',
   'agents.tool.shellExecute.title': '命令执行',
   'agents.tool.shellExecute.subtitle': 'execute',
+  'agents.tool.shellExecute.windowsUnsupported': 'Windows 暂不支持 execute',
   'agents.tool.skills.title': 'Skills',
   'agents.tool.skills.subtitle': '从 Skills 目录加载创作技能',
   'agents.tool.loreRead.title': '读取资料库',

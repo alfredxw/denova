@@ -81,9 +81,21 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     if (pendingIds.size === 0) return
     setMessages(prev => prev.map(message => (
       message.role === 'tool_call' && message.id && pendingIds.has(message.id)
-        ? { ...message, status: 'error' }
+        ? { ...message, status: 'error', streaming: false }
         : message
     )))
+  }, [])
+
+  const markPendingToolsAsSuccess = useCallback(() => {
+    const pendingIds = new Set(Object.keys(pendingToolCallsRef.current))
+    if (pendingIds.size === 0) return
+    setMessages(prev => prev.map(message => (
+      message.role === 'tool_call' && message.id && pendingIds.has(message.id)
+        ? { ...message, status: message.status === 'error' ? 'error' : 'success', streaming: false }
+        : message
+    )))
+    pendingToolCallsRef.current = {}
+    toolCallQueueRef.current = []
   }, [])
 
   const flushToolArgBuffer = useCallback(() => {
@@ -221,7 +233,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
           case 'tool_result': {
             flushToolArgBuffer()
             const content = readString(data.content)
-            const toolId = findToolMessageId(data, toolKeyToMessageIdRef.current, toolCallQueueRef.current)
+            const toolId = findToolMessageId(data, toolKeyToMessageIdRef.current, toolCallQueueRef.current, pendingToolCallsRef.current)
             const toolCall = toolId ? pendingToolCallsRef.current[toolId] : undefined
             const toolName = readString(data.name) || toolCall?.name || ''
             if (toolId) {
@@ -233,7 +245,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             if (toolId) {
               setMessages(prev => prev.map(message => (
                 message.role === 'tool_call' && message.id === toolId
-                  ? { ...message, status: 'success', result: content }
+                  ? { ...message, status: 'success', result: content, streaming: false }
                   : message
               )))
             } else {
@@ -249,7 +261,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
           }
           case 'tool_args_delta': {
             const delta = readString(data.delta)
-            const toolId = findToolMessageId(data, toolKeyToMessageIdRef.current, toolCallQueueRef.current)
+            const toolId = findToolMessageId(data, toolKeyToMessageIdRef.current, toolCallQueueRef.current, pendingToolCallsRef.current)
             if (toolId) {
               const pending = pendingToolCallsRef.current[toolId]
               if (pending) {
@@ -280,6 +292,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             break
           }
           case 'done': {
+            markPendingToolsAsSuccess()
             setActivityContent(t('chat.activity.done'))
             break
           }
@@ -300,6 +313,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
       flushToolArgBuffer()
       flushStreamingSegmentBuffer(true)
       finishCurrentSegment()
+      markPendingToolsAsSuccess()
       consumeOptions.clearInputsOnFinish?.()
     } catch (e) {
       markPendingToolsAsError()
@@ -333,6 +347,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     flushStreamingSegmentBuffer,
     flushToolArgBuffer,
     markPendingToolsAsError,
+    markPendingToolsAsSuccess,
     onAgentFileChange,
     onEvent,
     t,
@@ -504,9 +519,20 @@ function findToolMessageId(
   data: Record<string, unknown>,
   keyToMessageId: Record<string, string>,
   fallbackQueue: string[],
+  pendingToolCalls: Record<string, ToolCallInfo>,
 ) {
   const toolKey = getToolEventKey(data)
   if (toolKey && keyToMessageId[toolKey]) return keyToMessageId[toolKey]
+  if (toolKey) return undefined
+  const name = readString(data.name)
+  if (name) {
+    const queuedMatches = fallbackQueue.filter(id => pendingToolCalls[id]?.name === name)
+    if (queuedMatches.length === 1) return queuedMatches[0]
+    if (queuedMatches.length > 1) return undefined
+    const pendingMatches = Object.entries(pendingToolCalls).filter(([, call]) => call.name === name)
+    if (pendingMatches.length === 1) return pendingMatches[0][0]
+    if (pendingMatches.length > 1) return undefined
+  }
   return fallbackQueue[0]
 }
 

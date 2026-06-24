@@ -196,13 +196,11 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
             animate="animate"
             transition={{ duration: 0.18, ease: novaEase }}
           >
-            <MessageWithHoverTime message={traceMessages[0]}>
-              <TraceGroup
-                messages={traceMessages}
-                highlightDialogue={highlightDialogue}
-                messageStyle={messageStyle}
-              />
-            </MessageWithHoverTime>
+            <TraceGroup
+              messages={traceMessages}
+              highlightDialogue={highlightDialogue}
+              messageStyle={messageStyle}
+            />
           </motion.div>,
         )
         index = nextIndex - 1
@@ -259,8 +257,12 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
 }
 
 function MessageWithHoverTime({ message, children }: { message: ChatMessage; children: ReactNode }) {
+  if (message.role !== 'user' && message.role !== 'assistant') {
+    return <>{children}</>
+  }
+
   return (
-    <div className="nova-message-with-time">
+    <div className={`nova-message-with-time nova-message-with-time-${message.role}`}>
       {children}
       <MessageHoverTime message={message} />
     </div>
@@ -272,7 +274,7 @@ function MessageHoverTime({ message }: { message: ChatMessage }) {
   if (!formatted) return null
   const align = message.role === 'user'
     ? 'nova-message-time-user'
-    : (message.role === 'system' || message.role === 'error' ? 'nova-message-time-center' : 'nova-message-time-left')
+    : 'nova-message-time-left'
   return (
     <div className={`nova-message-time ${align}`} aria-label={formatted}>
       {formatted}

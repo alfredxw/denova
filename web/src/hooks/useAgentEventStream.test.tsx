@@ -1,0 +1,99 @@
+import { useEffect } from 'react'
+import { act, render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
+import type { SSEEvent } from '@/lib/api'
+import { useAgentEventStream } from './useAgentEventStream'
+
+describe('useAgentEventStream', () => {
+  it('工具结果缺少 id 且同名 pending 唯一时按工具名回填', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['tool_call', { id: 'call-read', name: 'read_file', args: '{"path":"chapters/ch01.md"}' }],
+        ['tool_call', { id: 'call-execute', name: 'execute', args: '{"command":"pwd"}' }],
+        ['tool_result', { name: 'execute', content: 'command done' }],
+      ]))
+    })
+
+    const messages = readMessages()
+    const readFile = messages.find((message) => message.name === 'read_file')
+    const execute = messages.find((message) => message.name === 'execute')
+    expect(readFile?.result).toBeUndefined()
+    expect(execute).toMatchObject({ status: 'success', result: 'command done', streaming: false })
+  })
+
+  it('工具结果 id 不匹配时不使用工具名误回填结果', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['tool_call', { id: 'call-execute', name: 'execute', args: '{"command":"pwd"}' }],
+        ['tool_result', { id: 'stale-id', name: 'execute', content: 'stale result' }],
+      ]))
+    })
+
+    expect(readMessages().find((message) => message.name === 'execute')?.result).toBeUndefined()
+  })
+
+  it('正常结束时将未收到 tool_result 的工具卡片收敛为成功态', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['tool_call', { id: 'call-execute', name: 'execute', args: '{"command":"pwd"}' }],
+        ['done', { status: 'ok' }],
+      ]))
+    })
+
+    expect(readMessages().find((message) => message.name === 'execute')).toMatchObject({
+      status: 'success',
+      streaming: false,
+    })
+  })
+
+  it('多个同名 pending 工具时不使用工具名误回填结果', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['tool_call', { id: 'execute-1', name: 'execute', args: '{"command":"pwd"}' }],
+        ['tool_call', { id: 'execute-2', name: 'execute', args: '{"command":"ls"}' }],
+        ['tool_result', { id: 'stale-id', name: 'execute', content: 'ambiguous result' }],
+      ]))
+    })
+
+    const executeMessages = readMessages().filter((message) => message.name === 'execute')
+    expect(executeMessages).toHaveLength(2)
+    expect(executeMessages.some((message) => message.result === 'ambiguous result')).toBe(false)
+  })
+})
+
+function AgentStreamHarness({ onChange }: { onChange: (value: ReturnType<typeof useAgentEventStream>) => void }) {
+  const agent = useAgentEventStream()
+  useEffect(() => onChange(agent), [agent, onChange])
+  return <pre data-testid="messages">{JSON.stringify(agent.messages)}</pre>
+}
+
+function sseStream(events: Array<[string, unknown]>) {
+  return new ReadableStream<SSEEvent>({
+    start(controller) {
+      for (const [event, data] of events) {
+        controller.enqueue({ event, data: JSON.stringify(data) })
+      }
+      controller.close()
+    },
+  })
+}
+
+function readMessages() {
+  return JSON.parse(screen.getByTestId('messages').textContent || '[]') as Array<{ name?: string; status?: string; result?: string; streaming?: boolean }>
+}

@@ -19,7 +19,6 @@ type chapterSplitRegexPayload struct {
 }
 
 const (
-	chapterSplitRegexMaxTokens       = 8192
 	chapterSplitRegexFailureLogBytes = 32768
 )
 
@@ -32,9 +31,7 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 	if sample == "" {
 		return "", fmt.Errorf("样本为空")
 	}
-	maxTokens := chapterSplitRegexMaxTokens
 	jsonModelCfg := chatModelConfigForAgent(cfg, config.AgentKindToolAgent)
-	jsonModelCfg.MaxTokens = &maxTokens
 	jsonModelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
 		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 	}
@@ -49,7 +46,6 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 	}
 	log.Printf("[tool-agent] json_mode failed, retry without response_format err=%v", err)
 	plainModelCfg := chatModelConfigForAgent(cfg, config.AgentKindToolAgent)
-	plainModelCfg.MaxTokens = &maxTokens
 	regex, retryErr := generateChapterSplitRegex(ctx, cfg, plainModelCfg, instruction, "plain_text_retry")
 	if retryErr != nil {
 		return "", retryErr

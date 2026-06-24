@@ -23,9 +23,7 @@ func GenerateInteractiveHotChoices(ctx context.Context, cfg *config.Config, inst
 	if cfg == nil {
 		return nil, fmt.Errorf("配置不存在")
 	}
-	maxTokens := 3000
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindInteractiveHotChoices)
-	modelCfg.MaxTokens = &maxTokens
 	log.Printf("[%s] generate begin instruction=%s", interactiveHotChoicesAgentLabel, promptPartSummary(instruction))
 	messages := []*schema.Message{
 		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())),

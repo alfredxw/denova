@@ -262,6 +262,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
                     agent={activeAgent}
                     value={toolValue}
                     effective={effectiveTools}
+                    runtimeGOOS={layered?.runtime?.goos}
                     onChange={setAgentTool}
                   />
                   {effectiveTools.skills && (
@@ -627,10 +628,11 @@ function promptSourceTitle(t: ReturnType<typeof useTranslation>['t'], source: Ag
   return translated === key ? source.title : translated
 }
 
-function AgentToolSection({ agent, value, effective, onChange }: {
+function AgentToolSection({ agent, value, effective, runtimeGOOS, onChange }: {
   agent: VisibleAgentKey
   value: AgentToolOverride
   effective: Required<AgentToolOverride>
+  runtimeGOOS?: string
   onChange: (key: ToolKey, value: boolean | null) => void
 }) {
   const { t } = useTranslation()
@@ -643,17 +645,22 @@ function AgentToolSection({ agent, value, effective, onChange }: {
           const explicit = value[tool.key]
           const inherited = explicit === undefined || explicit === null
           const current = inherited ? effective[tool.key] : explicit
+          const unsupportedReason = unsupportedToolReason(tool.key, runtimeGOOS)
+          const displayed = unsupportedReason ? false : current
           return (
             <div key={tool.key} className="flex min-h-16 min-w-0 flex-col items-stretch gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 sm:flex-row sm:items-center">
               <Icon className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{t(tool.titleKey)}</div>
-                <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{t(toolSubtitleKey(tool, agent))}</div>
+                <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">
+                  {unsupportedReason ? t(unsupportedReason) : t(toolSubtitleKey(tool, agent))}
+                </div>
               </div>
               <select
-                value={String(current)}
+                value={String(displayed)}
                 onChange={(e) => onChange(tool.key, e.target.value === '' ? null : e.target.value === 'true')}
-                className={`${fieldCls} shrink-0 sm:max-w-32`}
+                disabled={Boolean(unsupportedReason)}
+                className={`${fieldCls} shrink-0 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-32`}
               >
                 <option value="true">{t('agents.option.on')}</option>
                 <option value="false">{t('agents.option.off')}</option>
@@ -672,6 +679,13 @@ function toolSubtitleKey(tool: AgentToolDefinition, agent: VisibleAgentKey) {
     return 'agents.tool.loreRead.interactiveSubtitle'
   }
   return tool.subtitleKey
+}
+
+function unsupportedToolReason(tool: ToolKey, runtimeGOOS?: string) {
+  if (tool === 'shell_execute' && runtimeGOOS === 'windows') {
+    return 'agents.tool.shellExecute.windowsUnsupported'
+  }
+  return ''
 }
 
 function AgentSkillSection({ agent, skills, value, effective, onChange }: {

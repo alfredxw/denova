@@ -371,6 +371,7 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 		SessionID:           run.SessionID,
 		Workspace:           run.Workspace,
 		Mode:                "automation",
+		IdleTimeout:         agentIdleTimeout(runtimeCfg),
 		OnMutationsVerified: s.app.automationMutationCallback("automation_agent_post_run"),
 	}, forward)
 	if ctx.Err() != nil {
@@ -448,6 +449,7 @@ func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task a
 		SessionID:           run.SessionID,
 		Workspace:           run.Workspace,
 		Mode:                "automation",
+		IdleTimeout:         agentIdleTimeout(runtimeCfg),
 		OnMutationsVerified: s.app.automationMutationCallback("automation_agent_post_run"),
 	}, emit)
 	log.Printf("[automation] follow-up end task_id=%s run_id=%s", task.ID, run.ID)

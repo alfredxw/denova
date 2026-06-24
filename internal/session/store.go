@@ -205,17 +205,8 @@ func (s *Session) UpdateDisplayToolStatus(id, name, status string) error {
 
 	id = strings.TrimSpace(id)
 	name = strings.TrimSpace(name)
-	for i := len(s.records) - 1; i >= 0; i-- {
-		if s.records[i].kind != historyTypeDisplay || s.records[i].display == nil || s.records[i].display.Role != "tool_call" {
-			continue
-		}
-		if id != "" && s.records[i].display.ID != id {
-			continue
-		}
-		if id == "" && name != "" && s.records[i].display.Name != name {
-			continue
-		}
-		s.records[i].display.Status = status
+	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
+		s.records[index].display.Status = status
 		s.UpdatedAt = time.Now().UTC()
 		return s.persistLocked()
 	}
@@ -232,17 +223,8 @@ func (s *Session) AppendDisplayToolArgs(id, name, delta string) error {
 	if delta == "" {
 		return nil
 	}
-	for i := len(s.records) - 1; i >= 0; i-- {
-		if s.records[i].kind != historyTypeDisplay || s.records[i].display == nil || s.records[i].display.Role != "tool_call" {
-			continue
-		}
-		if id != "" && s.records[i].display.ID != id {
-			continue
-		}
-		if id == "" && name != "" && s.records[i].display.Name != name {
-			continue
-		}
-		s.records[i].display.Args += delta
+	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
+		s.records[index].display.Args += delta
 		s.UpdatedAt = time.Now().UTC()
 		return s.persistLocked()
 	}
@@ -256,22 +238,48 @@ func (s *Session) UpdateDisplayToolResult(id, name, status, result string) error
 
 	id = strings.TrimSpace(id)
 	name = strings.TrimSpace(name)
-	for i := len(s.records) - 1; i >= 0; i-- {
-		if s.records[i].kind != historyTypeDisplay || s.records[i].display == nil || s.records[i].display.Role != "tool_call" {
-			continue
-		}
-		if id != "" && s.records[i].display.ID != id {
-			continue
-		}
-		if id == "" && name != "" && s.records[i].display.Name != name {
-			continue
-		}
-		s.records[i].display.Status = status
-		s.records[i].display.Result = result
+	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
+		s.records[index].display.Status = status
+		s.records[index].display.Result = result
 		s.UpdatedAt = time.Now().UTC()
 		return s.persistLocked()
 	}
 	return nil
+}
+
+func findDisplayToolRecordIndex(records []historyRecord, id, name string) int {
+	if id != "" {
+		for i := len(records) - 1; i >= 0; i-- {
+			if isDisplayToolRecord(records[i]) && records[i].display.ID == id {
+				return i
+			}
+		}
+		return -1
+	}
+	if name != "" {
+		match := -1
+		for i := len(records) - 1; i >= 0; i-- {
+			if isDisplayToolRecord(records[i]) && records[i].display.Name == name {
+				if match >= 0 {
+					return -1
+				}
+				match = i
+			}
+		}
+		return match
+	}
+	if id == "" && name == "" {
+		for i := len(records) - 1; i >= 0; i-- {
+			if isDisplayToolRecord(records[i]) {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func isDisplayToolRecord(record historyRecord) bool {
+	return record.kind == historyTypeDisplay && record.display != nil && record.display.Role == "tool_call"
 }
 
 // AppendClearMarker 追加上下文清理标记，不删除历史消息。

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"strings"
+	"time"
 )
 
 const (
@@ -20,6 +21,7 @@ type RunOptions struct {
 	SessionID           string
 	Workspace           string
 	Mode                string
+	IdleTimeout         time.Duration
 	SystemPromptLog     SystemPromptCompositionLog
 	OnMutationsVerified func(context.Context, []ToolMutation, PostRunVerification)
 }
@@ -36,6 +38,9 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 		o.Workspace = strings.TrimSpace(defaultWorkspace)
 	}
 	o.Mode = strings.TrimSpace(o.Mode)
+	if o.IdleTimeout <= 0 {
+		o.IdleTimeout = 180 * time.Second
+	}
 	return o
 }
 

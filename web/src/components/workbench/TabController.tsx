@@ -136,24 +136,33 @@ export function TabController({
             const key = tabKey(tab)
             const isActive = key === activeTabKey
             const label = formatChapterTabLabel(tab, summary)
+            const activate = () => {
+              if (!isActive) onActivateTab(tab)
+            }
             return (
               <div
                 key={key}
+                role="tab"
+                tabIndex={0}
+                aria-selected={isActive}
+                onClick={activate}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return
+                  if (event.key !== 'Enter' && event.key !== ' ') return
+                  event.preventDefault()
+                  activate()
+                }}
                 className={`group relative flex h-full shrink-0 items-center gap-2 overflow-hidden border-r border-[var(--nova-border)] px-3 ${
                   isActive
                     ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
-                    : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
+                    : 'cursor-pointer text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
                 }`}
+                title={tab.path}
               >
                 {isActive && <span className="absolute inset-x-0 top-0 h-0.5 bg-[var(--nova-text-faint)]" />}
-                <button
-                  type="button"
-                  onClick={() => { if (!isActive) onActivateTab(tab) }}
-                  className="relative z-10 max-w-[220px] truncate text-left"
-                  title={tab.path}
-                >
+                <span className="relative z-10 max-w-[220px] truncate text-left">
                   {label}
-                </button>
+                </span>
                 <button
                   type="button"
                   onClick={(event) => { event.stopPropagation(); onCloseTab(tab) }}

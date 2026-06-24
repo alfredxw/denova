@@ -492,7 +492,6 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 
 	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
-		runtimeCfg.InteractiveMaxTokens = appSettingsInt(layered.Effective.InteractiveMaxTokens, 0)
 	} else {
 		log.Printf("[interactive-agent-analysis] load interactive settings failed workspace=%s err=%v", workspace, err)
 	}
@@ -623,8 +622,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 
 	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
-		runtimeCfg.InteractiveMaxTokens = appSettingsInt(layered.Effective.InteractiveMaxTokens, 0)
-		log.Printf("[interactive-agent-task] load interactive settings max_tokens=%d workspace=%s", runtimeCfg.InteractiveMaxTokens, workspace)
+		log.Printf("[interactive-agent-task] load interactive settings workspace=%s", workspace)
 	} else {
 		log.Printf("[interactive-agent-task] load interactive settings failed workspace=%s err=%v", workspace, err)
 	}
@@ -678,6 +676,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 			TaskID:              task.ID(),
 			Workspace:           workspace,
 			Mode:                "interactive",
+			IdleTimeout:         agentIdleTimeout(runtimeCfg),
 			SystemPromptLog:     agent.BuildInteractiveStoryInstructionComposition(&runtimeCfg, state, tellerSystemInput),
 			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
 		}, emit)
@@ -815,7 +814,6 @@ func (s *InteractiveAppService) interactiveRuntimeConfig() (*interactive.Store, 
 
 	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
-		runtimeCfg.InteractiveMaxTokens = appSettingsInt(layered.Effective.InteractiveMaxTokens, 0)
 	} else {
 		log.Printf("[interactive-agent] load layered settings failed workspace=%s err=%v", workspace, err)
 	}

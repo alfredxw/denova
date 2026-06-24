@@ -272,7 +272,8 @@ func (r *Runtime) Run(
 		}
 	}
 
-	runCtx := contextWithCompactionController(ContextWithRunObserver(ctx, observer), conversation)
+	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(ContextWithRunObserver(ctx, observer), conversation))
+	defer cancelRun()
 	runOptions := []adk.AgentRunOption{}
 	if checkpointID != "" {
 		runOptions = append(runOptions, adk.WithCheckPointID(checkpointID))
@@ -291,7 +292,22 @@ func (r *Runtime) Run(
 			emit(Event{Type: "aborted", Data: map[string]string{}})
 			return
 		}
-		event, ok := events.Next()
+		event, ok, waitErr := waitForRunnerEvent(runCtx, events, options.IdleTimeout)
+		if waitErr != nil {
+			generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+			if ctx.Err() != nil {
+				runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", ctx.Err()), slog.Int("generated_bytes", len(generated)))
+				finishRun("aborted", ctx.Err().Error(), len(generated))
+				emit(Event{Type: "aborted", Data: map[string]string{}})
+				return
+			}
+			cancelRun()
+			runLogger.Error("run_interrupted", slog.String("reason", "idle_timeout"), slog.Any("error", waitErr), slog.Int("generated_bytes", len(generated)))
+			markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, waitErr.Error())
+			finishRun("error", waitErr.Error(), len(generated))
+			emit(Event{Type: "error", Data: map[string]string{"message": waitErr.Error()}})
+			return
+		}
 		if !ok {
 			break
 		}
@@ -314,7 +330,22 @@ func (r *Runtime) Run(
 			if mv.Message == nil {
 				continue
 			}
-			content := drainContent(mv)
+			content, drainErr := drainContent(runCtx, mv, options.IdleTimeout)
+			if drainErr != nil {
+				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+				if ctx.Err() != nil {
+					runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", ctx.Err()), slog.Int("generated_bytes", len(generated)))
+					finishRun("aborted", ctx.Err().Error(), len(generated))
+					emit(Event{Type: "aborted", Data: map[string]string{}})
+					return
+				}
+				cancelRun()
+				runLogger.Error("run_interrupted", slog.String("reason", "tool_result_idle_timeout"), slog.Any("error", drainErr), slog.Int("generated_bytes", len(generated)))
+				markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, drainErr.Error())
+				finishRun("error", drainErr.Error(), len(generated))
+				emit(Event{Type: "error", Data: map[string]string{"message": drainErr.Error()}})
+				return
+			}
 			fullToolContent := content
 			if content == "" {
 				content = "(无返回内容)"
@@ -341,12 +372,19 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.IsStreaming && mv.MessageStream != nil {
-			msg, ok := processStreamingEvent(mv, &fullContent, &fullThinking, emit)
+			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, emit)
 			usageCollector.AddMessage(msg)
-			if !ok {
+			if streamErr != nil {
 				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
-				markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, "stream recv error")
-				finishRun("error", "stream recv error", len(generated))
+				if ctx.Err() != nil {
+					runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", ctx.Err()), slog.Int("generated_bytes", len(generated)))
+					finishRun("aborted", ctx.Err().Error(), len(generated))
+					emit(Event{Type: "aborted", Data: map[string]string{}})
+					return
+				}
+				cancelRun()
+				markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, streamErr.Error())
+				finishRun("error", streamErr.Error(), len(generated))
 				return
 			}
 			continue

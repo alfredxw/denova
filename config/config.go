@@ -28,9 +28,11 @@ type Config struct {
 	RemoteAccessPasswordHash    string                 `toml:"remote_access_password_hash"`
 	NovaDir                     string                 `toml:"nova_dir"`
 	Workspace                   string                 `toml:"workspace"`
+	RuntimeWebPort              int                    `toml:"-"`
 	IDEStoryTellerID            string                 `toml:"-"`
 	MaxIteration                int                    `toml:"max_iteration"`
 	ModelMaxRetries             int                    `toml:"model_max_retries"`
+	AgentIdleTimeoutSeconds     int                    `toml:"agent_idle_timeout_seconds"`
 	ChapterFilenameFormat       string                 `toml:"-"`
 	VolumeDirFormat             string                 `toml:"-"`
 	DraftFlowEnabled            bool                   `toml:"-"`
@@ -41,7 +43,6 @@ type Config struct {
 	VersionAgentEnabled         bool                   `toml:"-"`
 	VersionAgentCharThreshold   int                    `toml:"-"`
 	InteractiveReplyTargetChars int                    `toml:"-"`
-	InteractiveMaxTokens        int                    `toml:"-"`
 	InteractiveHotChoices       bool                   `toml:"-"`
 	ResumeLastWorkspace         bool                   `toml:"-"`
 	UpdateCheckEnabled          bool                   `toml:"-"`
@@ -93,6 +94,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		IDEStoryTellerID:            s.IDEStoryTellerID,
 		MaxIteration:                settingsInt(s.MaxIteration, 50),
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
+		AgentIdleTimeoutSeconds:     settingsInt(s.AgentIdleTimeoutSeconds, 180),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
 		DraftFlowEnabled:            settingsBool(s.DraftFlowEnabled, false),
@@ -103,7 +105,6 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		VersionAgentEnabled:         settingsBool(s.VersionAgentEnabled, true),
 		VersionAgentCharThreshold:   settingsInt(s.VersionAgentCharThreshold, 3000),
 		InteractiveReplyTargetChars: 2000,
-		InteractiveMaxTokens:        settingsInt(s.InteractiveMaxTokens, 0),
 		InteractiveHotChoices:       settingsBool(s.InteractiveHotChoices, true),
 		ResumeLastWorkspace:         true,
 		UpdateCheckEnabled:          settingsBool(s.UpdateCheckEnabled, true),
@@ -177,6 +178,9 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.ModelMaxRetries > 0 {
 		settings.ModelMaxRetries = &cfg.ModelMaxRetries
 	}
+	if cfg.AgentIdleTimeoutSeconds > 0 {
+		settings.AgentIdleTimeoutSeconds = &cfg.AgentIdleTimeoutSeconds
+	}
 	if cfg.OpenAIContextWindowTokens > 0 {
 		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
 	}
@@ -217,6 +221,7 @@ func Load() *Config {
 			IDEStoryTellerID:            d.IDEStoryTellerID,
 			MaxIteration:                settingsInt(d.MaxIteration, 50),
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
+			AgentIdleTimeoutSeconds:     settingsInt(d.AgentIdleTimeoutSeconds, 180),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
 			DraftFlowEnabled:            settingsBool(d.DraftFlowEnabled, false),
@@ -227,7 +232,6 @@ func Load() *Config {
 			VersionAgentEnabled:         settingsBool(d.VersionAgentEnabled, true),
 			VersionAgentCharThreshold:   settingsInt(d.VersionAgentCharThreshold, 3000),
 			InteractiveReplyTargetChars: 2000,
-			InteractiveMaxTokens:        settingsInt(d.InteractiveMaxTokens, 0),
 			InteractiveHotChoices:       settingsBool(d.InteractiveHotChoices, true),
 			ResumeLastWorkspace:         true,
 			UpdateCheckEnabled:          settingsBool(d.UpdateCheckEnabled, true),
@@ -302,6 +306,11 @@ func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("NOVA_FRONTEND_PORT"); v != "" {
 		if port, err := strconv.Atoi(v); err == nil && port >= 1 && port <= 65535 {
 			cfg.FrontendPort = port
+		}
+	}
+	if v := os.Getenv("NOVA_AGENT_IDLE_TIMEOUT_SECONDS"); v != "" {
+		if seconds, err := strconv.Atoi(v); err == nil && seconds > 0 {
+			cfg.AgentIdleTimeoutSeconds = seconds
 		}
 	}
 }

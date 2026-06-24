@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"context"
+	"log"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
+
+	"nova/internal/api/sse"
 )
 
 func (h *Handlers) HandleUpdateCheck(ctx context.Context, c *app.RequestContext) {
@@ -23,4 +26,10 @@ func (h *Handlers) HandleUpdateInstall(ctx context.Context, c *app.RequestContex
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)
+}
+
+func (h *Handlers) HandleUpdateInstallStream(ctx context.Context, c *app.RequestContext) {
+	task := h.app.StartInstallUpdateTask()
+	log.Printf("[update-sse] attach install task_id=%s", task.ID())
+	sse.StreamTask(c, task)
 }

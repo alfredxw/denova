@@ -1,5 +1,6 @@
-import { jsonHeaders, requestJSON } from '@/lib/api-client'
+import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { LayeredSettings, Settings, UpdateCheckResult, UpdateInstallResult } from './types'
+import type { SSEEvent } from '@/lib/api-client'
 
 export async function fetchSettings(): Promise<LayeredSettings> {
   return requestJSON('/api/settings')
@@ -27,4 +28,11 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
 
 export async function installUpdate(): Promise<UpdateInstallResult> {
   return requestJSON('/api/update/install', { method: 'POST' })
+}
+
+export async function installUpdateStream(signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {
+  const res = await fetchAPI('/api/update/install/stream', { method: 'POST', signal })
+  if (!res.ok) throw new Error(await readErrorMessage(res))
+  if (!res.body) throw new Error('No response body')
+  return parseSSEStream(res.body)
 }

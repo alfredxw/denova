@@ -38,9 +38,9 @@ export interface Settings {
   update_check_enabled?: boolean | null
   max_iteration?: number | null
   model_max_retries?: number | null
+  agent_idle_timeout_seconds?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
-  interactive_max_tokens?: number | null
   interactive_hot_choices_enabled?: boolean | null
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
@@ -210,6 +210,10 @@ export interface SettingsAccess {
   lan_url: string
 }
 
+export interface SettingsRuntime {
+  goos: string
+}
+
 export interface LayeredSettings {
   default: Settings
   global: Settings
@@ -218,6 +222,7 @@ export interface LayeredSettings {
   effective: Settings
   paths: SettingsPaths
   access?: SettingsAccess
+  runtime?: SettingsRuntime
   builtin_agent_prompts?: AgentPromptSettings
   builtin_agent_prompt_blocks?: AgentPromptBlockSettings
   builtin_agent_prompt_sources?: AgentPromptSourceSettings
@@ -252,5 +257,15 @@ export interface UpdateInstallResult {
   restart_required: boolean
   backup_path?: string
   staged_path?: string
+  message?: string
+}
+
+export interface UpdateInstallProgress {
+  phase: 'checking' | 'downloading' | 'verifying' | 'extracting' | 'replacing' | 'staging' | 'installed' | string
+  asset_name?: string
+  archive_path?: string
+  downloaded_bytes?: number
+  total_bytes?: number
+  percent?: number
   message?: string
 }

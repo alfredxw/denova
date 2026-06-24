@@ -347,8 +347,6 @@ func BuildCompactedModelMessages(messages []*schema.Message, summary string, epo
 func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, agentKind string, existingMemory string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error) {
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindContextCompaction)
 	inputChars := contextCompactionInputChars(existingMemory, source, referenceContext)
-	maxTokens := contextCompactionSummaryMaxTokens(inputChars, policy.ContextWindowTokens, policy.TargetMaxRatio)
-	modelCfg.MaxTokens = &maxTokens
 	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
 		return "", inputChars, fmt.Errorf("创建上下文压缩模型失败: %w", err)
@@ -413,29 +411,6 @@ func streamContextCompactionAttempt(ctx context.Context, cm *openai.ChatModel, i
 		}
 	}
 	return schema.ConcatMessages(chunks)
-}
-
-func contextCompactionSummaryMaxTokens(inputChars, contextWindowTokens int, targetMaxRatio float64) int {
-	if inputChars <= 0 {
-		inputChars = contextWindowTokens
-	}
-	if inputChars <= 0 {
-		return 6000
-	}
-	if targetMaxRatio <= 0 {
-		targetMaxRatio = 0.20
-	}
-	target := int(float64(inputChars) * targetMaxRatio)
-	if target < 128 {
-		target = 128
-	}
-	if contextWindowTokens > 0 && target > contextWindowTokens/4 {
-		target = contextWindowTokens / 4
-	}
-	if target > 24000 {
-		target = 24000
-	}
-	return target
 }
 
 func contextCompactionRatio(partChars, inputChars int) float64 {

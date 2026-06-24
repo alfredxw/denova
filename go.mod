@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
+	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/cloudwego/eino v0.9.9
 	github.com/cloudwego/eino-ext/adk/backend/local v0.2.6
 	github.com/cloudwego/eino-ext/components/model/openai v0.1.13

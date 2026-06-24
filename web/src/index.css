@@ -637,42 +637,37 @@ html[data-nova-motion="off"] *::after {
 }
 
 .nova-message-with-time {
+  position: relative;
   min-width: 0;
 }
 
 .nova-message-time {
-  max-height: 0;
-  margin-top: 0;
-  overflow: hidden;
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
   font-size: 10px;
   line-height: 1rem;
   color: var(--nova-text-faint);
   opacity: 0;
-  transition:
-    max-height var(--nova-motion-fast) var(--nova-ease),
-    margin-top var(--nova-motion-fast) var(--nova-ease),
-    opacity var(--nova-motion-fast) var(--nova-ease);
+  transition: opacity var(--nova-motion-fast) var(--nova-ease);
 }
 
-.nova-message-with-time:hover .nova-message-time,
+.nova-message-with-time:has(.nova-user-message:hover) .nova-message-time,
+.nova-message-with-time:has(.chat-agent-message:hover) .nova-message-time,
 .nova-message-with-time:focus-within .nova-message-time {
-  max-height: 1rem;
-  margin-top: 0.25rem;
   opacity: 1;
 }
 
 .nova-message-time-left {
+  bottom: -0.9rem;
+  left: 0.25rem;
   text-align: left;
-  padding-left: 0.25rem;
 }
 
 .nova-message-time-user {
+  top: -1rem;
+  right: 0.25rem;
   text-align: right;
-  padding-right: 0.25rem;
-}
-
-.nova-message-time-center {
-  text-align: center;
 }
 
 .nova-command-menu {

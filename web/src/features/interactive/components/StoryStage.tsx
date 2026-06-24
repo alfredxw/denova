@@ -1147,29 +1147,57 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     ])
   }
 
-  function appendToolArgsDelta(payload: { id?: string; args?: string; delta?: string }) {
-    if (!payload.id) return
-    setStageLiveMessages((prev) =>
-      prev.map((msg) =>
-        msg.role === 'tool_call' && msg.id === payload.id
+  function appendToolArgsDelta(payload: { id?: string; name?: string; args?: string; delta?: string }) {
+    if (!payload.id && !payload.name) return
+    setStageLiveMessages((prev) => {
+      const targetIndex = findToolMessageIndex(prev, payload.id, payload.name)
+      if (targetIndex < 0) return prev
+      return prev.map((msg, index) =>
+        index === targetIndex
           ? {
               ...msg,
               args: payload.args !== undefined ? payload.args : `${msg.args || ''}${payload.delta || ''}`,
             }
           : msg,
-      ),
-    )
+      )
+    })
   }
 
   function updateToolCallMessage(id: string | undefined, name: string | undefined, status: 'success' | 'error', result = '') {
-    setStageLiveMessages((prev) =>
-      prev.map((msg) => {
-        if (msg.role !== 'tool_call') return msg
-        const matched = id ? msg.id === id : Boolean(name && msg.name === name)
-        if (!matched) return msg
-        return { ...msg, status, result, streaming: false }
-      }),
-    )
+    setStageLiveMessages((prev) => {
+      const targetIndex = findToolMessageIndex(prev, id, name)
+      if (targetIndex < 0) return prev
+      return prev.map((msg, index) => (
+        index === targetIndex ? { ...msg, status, result, streaming: false } : msg
+      ))
+    })
+  }
+
+  function findToolMessageIndex(messages: ChatMessage[], id?: string, name?: string) {
+    if (id) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i]
+        if (message.role === 'tool_call' && message.id === id) return i
+      }
+      return -1
+    }
+    if (name) {
+      let match = -1
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i]
+        if (message.role === 'tool_call' && message.name === name) {
+          if (match >= 0) return -1
+          match = i
+        }
+      }
+      return match
+    }
+    if (!id && !name) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'tool_call') return i
+      }
+    }
+    return -1
   }
 
   function appendContextCompactionMessage(data: Record<string, unknown>) {

@@ -426,6 +426,10 @@ func (s *WorkspaceRuntimeManager) Settings() (config.LayeredSettings, error) {
 	if err != nil {
 		return config.LayeredSettings{}, err
 	}
+	if cfg.RuntimeWebPort > 0 {
+		layered.Access.LocalURL = config.LocalHTTPURL(cfg.RuntimeWebPort)
+		layered.Access.LANURL = config.LANHTTPURL(cfg.RuntimeWebPort)
+	}
 	cfg.Workspace = workspace
 	applySettingsLayerToConfig(&cfg, layered.User)
 	applySettingsLayerToConfig(&cfg, layered.Workspace)
@@ -551,6 +555,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.ModelMaxRetries != nil {
 		cfg.ModelMaxRetries = appSettingsInt(effective.ModelMaxRetries, 5)
 	}
+	if effective.AgentIdleTimeoutSeconds != nil {
+		cfg.AgentIdleTimeoutSeconds = appSettingsInt(effective.AgentIdleTimeoutSeconds, 180)
+	}
 	if effective.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = effective.ChapterFilenameFormat
 	}
@@ -565,9 +572,6 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	}
 	if effective.ChapterGroupMax != nil {
 		cfg.ChapterGroupMax = appSettingsInt(effective.ChapterGroupMax, 8)
-	}
-	if effective.InteractiveMaxTokens != nil {
-		cfg.InteractiveMaxTokens = appSettingsInt(effective.InteractiveMaxTokens, 0)
 	}
 	if effective.InteractiveHotChoices != nil {
 		cfg.InteractiveHotChoices = *effective.InteractiveHotChoices
@@ -624,6 +628,9 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.ModelMaxRetries != nil {
 		cfg.ModelMaxRetries = appSettingsInt(settings.ModelMaxRetries, 5)
 	}
+	if settings.AgentIdleTimeoutSeconds != nil {
+		cfg.AgentIdleTimeoutSeconds = appSettingsInt(settings.AgentIdleTimeoutSeconds, 180)
+	}
 	if settings.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = settings.ChapterFilenameFormat
 	}
@@ -638,9 +645,6 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.ChapterGroupMax != nil {
 		cfg.ChapterGroupMax = appSettingsInt(settings.ChapterGroupMax, 8)
-	}
-	if settings.InteractiveMaxTokens != nil {
-		cfg.InteractiveMaxTokens = appSettingsInt(settings.InteractiveMaxTokens, 0)
 	}
 	if settings.InteractiveHotChoices != nil {
 		cfg.InteractiveHotChoices = *settings.InteractiveHotChoices

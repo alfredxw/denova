@@ -45,6 +45,14 @@ func main() {
 	log.Printf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath)
 	port = selectStartupPort(port, shouldAutoPickPort())
 	frontendPort = selectFrontendPort(frontendPort)
+	if runtimeWebPort, err := strconv.Atoi(port); err == nil {
+		cfg.RuntimeWebPort = runtimeWebPort
+	}
+	if dev {
+		if runtimeWebPort, err := strconv.Atoi(frontendPort); err == nil {
+			cfg.RuntimeWebPort = runtimeWebPort
+		}
+	}
 
 	if workspace != "" {
 		cfg.Workspace = workspace

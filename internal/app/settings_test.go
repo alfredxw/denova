@@ -12,7 +12,7 @@ func TestAppSettingsReturnsLayered(t *testing.T) {
 	novaDir := t.TempDir()
 
 	a := &App{
-		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir, OpenAIModel: "x"},
+		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir, OpenAIModel: "x", RuntimeWebPort: 19091},
 		workspace: ws,
 	}
 	layered, err := a.Settings()
@@ -27,6 +27,9 @@ func TestAppSettingsReturnsLayered(t *testing.T) {
 	}
 	if layered.Access.LocalURL == "" || layered.Access.LANURL == "" {
 		t.Fatalf("settings access URLs should be exposed: %+v", layered.Access)
+	}
+	if layered.Access.LocalURL != "http://localhost:19091" {
+		t.Fatalf("settings access URL should use runtime web port: %+v", layered.Access)
 	}
 }
 
@@ -93,8 +96,8 @@ func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
 		workspace: ws,
 	}
-	maxTokens := 0
-	in := config.Settings{OpenAIModel: "ws-model", InteractiveMaxTokens: &maxTokens}
+	hotChoices := false
+	in := config.Settings{OpenAIModel: "ws-model", InteractiveHotChoices: &hotChoices}
 	if _, err := a.UpdateWorkspaceSettings(in); err != nil {
 		t.Fatal(err)
 	}
@@ -105,8 +108,8 @@ func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
 	if out.OpenAIModel != "ws-model" {
 		t.Fatalf("workspace model not persisted: %s", out.OpenAIModel)
 	}
-	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 0 {
-		t.Fatalf("interactive max tokens not persisted: %v", out.InteractiveMaxTokens)
+	if out.InteractiveHotChoices == nil || *out.InteractiveHotChoices {
+		t.Fatalf("interactive hot choices not persisted: %v", out.InteractiveHotChoices)
 	}
 }
 
@@ -120,5 +123,18 @@ func TestApplyLayeredSettingsToConfigAppliesContextWindow(t *testing.T) {
 	})
 	if cfg.OpenAIContextWindowTokens != contextWindow {
 		t.Fatalf("context window tokens = %d, want %d", cfg.OpenAIContextWindowTokens, contextWindow)
+	}
+}
+
+func TestApplyLayeredSettingsToConfigAppliesAgentIdleTimeout(t *testing.T) {
+	idleTimeout := 240
+	cfg := &config.Config{}
+	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+		Effective: config.Settings{
+			AgentIdleTimeoutSeconds: &idleTimeout,
+		},
+	})
+	if cfg.AgentIdleTimeoutSeconds != idleTimeout {
+		t.Fatalf("agent idle timeout = %d, want %d", cfg.AgentIdleTimeoutSeconds, idleTimeout)
 	}
 }

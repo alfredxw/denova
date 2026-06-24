@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"nova/config"
 	"nova/internal/agent"
@@ -288,6 +289,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 			SessionID:           runtime.sess.ID,
 			Workspace:           runtime.workspace,
 			Mode:                "ide",
+			IdleTimeout:         agentIdleTimeout(runtime.cfg),
 			SystemPromptLog:     agent.BuildInstructionComposition(&runtime.cfg, runtime.state, runtime.ideTeller),
 			OnMutationsVerified: a.automationMutationCallback("ide_agent_post_run"),
 		}, emit)
@@ -314,6 +316,13 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 	a.mu.Unlock()
 
 	return task
+}
+
+func agentIdleTimeout(cfg config.Config) time.Duration {
+	if cfg.AgentIdleTimeoutSeconds <= 0 {
+		return 180 * time.Second
+	}
+	return time.Duration(cfg.AgentIdleTimeoutSeconds) * time.Second
 }
 
 func (a *App) AnalyzeContext(req agent.ChatRequest) (agent.ContextAnalysis, error) {

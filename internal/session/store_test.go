@@ -130,6 +130,82 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	}
 }
 
+func TestUpdateDisplayToolResultFallsBackToNameWhenIDMissing(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.UpdateDisplayToolResult("", "execute", "success", "command done"); err != nil {
+		t.Fatal(err)
+	}
+
+	history := sess.History()
+	if len(history) != 1 {
+		t.Fatalf("历史应只包含工具展示事件: %#v", history)
+	}
+	if history[0].Status != "success" || history[0].Result != "command done" {
+		t.Fatalf("id 缺失时应按唯一工具名更新工具卡片: %#v", history[0])
+	}
+}
+
+func TestUpdateDisplayToolResultDoesNotFallbackWhenIDDiffers(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-execute", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.UpdateDisplayToolResult("stale-id", "execute", "success", "stale result"); err != nil {
+		t.Fatal(err)
+	}
+
+	history := sess.History()
+	if len(history) != 1 {
+		t.Fatalf("历史应只包含工具展示事件: %#v", history)
+	}
+	if history[0].Result == "stale result" || history[0].Status != "running" {
+		t.Fatalf("id 不一致时不应按工具名更新工具卡片: %#v", history[0])
+	}
+}
+
+func TestUpdateDisplayToolResultDoesNotFallbackWhenNameIsAmbiguous(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "execute-1", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "execute-2", Role: "tool_call", Name: "execute", Content: "execute", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.UpdateDisplayToolResult("stale-id", "execute", "success", "ambiguous result"); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, message := range sess.History() {
+		if message.Result == "ambiguous result" || message.Status != "running" {
+			t.Fatalf("同名工具调用存在歧义时不应按工具名误更新: %#v", message)
+		}
+	}
+}
+
 func TestTokenUsageDisplayEventPersistsOutsideEffectiveContext(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

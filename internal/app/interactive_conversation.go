@@ -316,19 +316,9 @@ func (c *interactiveConversation) AppendDisplayToolArgs(id, name, delta string) 
 	name = strings.TrimSpace(name)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for i := len(c.displayEvents) - 1; i >= 0; i-- {
-		event := c.displayEvents[i]
-		if event.Role != "tool_call" {
-			continue
-		}
-		if id != "" && event.ID != id {
-			continue
-		}
-		if id == "" && name != "" && event.Name != name {
-			continue
-		}
-		c.displayEvents[i].Args += delta
-		return c.persistLastTurnDisplayEventLocked(c.displayEvents[i])
+	if index := findInteractiveDisplayToolEventIndex(c.displayEvents, id, name); index >= 0 {
+		c.displayEvents[index].Args += delta
+		return c.persistLastTurnDisplayEventLocked(c.displayEvents[index])
 	}
 	return nil
 }
@@ -401,19 +391,9 @@ func (c *interactiveConversation) UpdateDisplayToolStatus(id, name, status strin
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for i := len(c.displayEvents) - 1; i >= 0; i-- {
-		event := c.displayEvents[i]
-		if event.Role != "tool_call" {
-			continue
-		}
-		if id != "" && event.ID != id {
-			continue
-		}
-		if id == "" && name != "" && event.Name != name {
-			continue
-		}
-		c.displayEvents[i].Status = status
-		return c.persistLastTurnDisplayEventLocked(c.displayEvents[i])
+	if index := findInteractiveDisplayToolEventIndex(c.displayEvents, id, name); index >= 0 {
+		c.displayEvents[index].Status = status
+		return c.persistLastTurnDisplayEventLocked(c.displayEvents[index])
 	}
 	return nil
 }
@@ -430,22 +410,43 @@ func (c *interactiveConversation) UpdateDisplayToolResult(id, name, status, resu
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for i := len(c.displayEvents) - 1; i >= 0; i-- {
-		event := c.displayEvents[i]
-		if event.Role != "tool_call" {
-			continue
-		}
-		if id != "" && event.ID != id {
-			continue
-		}
-		if id == "" && name != "" && event.Name != name {
-			continue
-		}
-		c.displayEvents[i].Status = status
-		c.displayEvents[i].Result = result
-		return c.persistLastTurnDisplayEventLocked(c.displayEvents[i])
+	if index := findInteractiveDisplayToolEventIndex(c.displayEvents, id, name); index >= 0 {
+		c.displayEvents[index].Status = status
+		c.displayEvents[index].Result = result
+		return c.persistLastTurnDisplayEventLocked(c.displayEvents[index])
 	}
 	return nil
+}
+
+func findInteractiveDisplayToolEventIndex(events []interactive.DisplayEvent, id, name string) int {
+	if id != "" {
+		for i := len(events) - 1; i >= 0; i-- {
+			if events[i].Role == "tool_call" && events[i].ID == id {
+				return i
+			}
+		}
+		return -1
+	}
+	if name != "" {
+		match := -1
+		for i := len(events) - 1; i >= 0; i-- {
+			if events[i].Role == "tool_call" && events[i].Name == name {
+				if match >= 0 {
+					return -1
+				}
+				match = i
+			}
+		}
+		return match
+	}
+	if id == "" && name == "" {
+		for i := len(events) - 1; i >= 0; i-- {
+			if events[i].Role == "tool_call" {
+				return i
+			}
+		}
+	}
+	return -1
 }
 
 func (c *interactiveConversation) persistLastTurnDisplayEventLocked(event interactive.DisplayEvent) error {

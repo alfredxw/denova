@@ -78,3 +78,21 @@ func TestResolveAgentToolsPerAgentOverride(t *testing.T) {
 		t.Fatalf("互动叙事 Agent 应继承 default 关闭网页搜索: %+v", story)
 	}
 }
+
+func TestResolveAgentToolsDisablesShellExecuteOnWindows(t *testing.T) {
+	on := true
+	cfg := &Config{
+		AgentTools: AgentToolSettings{
+			Default: AgentToolOverride{ShellExecute: &on},
+			IDE:     AgentToolOverride{ShellExecute: &on},
+		},
+	}
+
+	ide := resolveAgentToolsForGOOS(cfg, AgentKindIDE, "windows")
+	if ide.ShellExecute {
+		t.Fatalf("Windows 暂不支持 execute，运行态应强制关闭命令执行: %+v", ide)
+	}
+	if !ide.FileRead || !ide.FileWrite {
+		t.Fatalf("Windows 平台限制不应影响其它工具: %+v", ide)
+	}
+}

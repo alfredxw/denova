@@ -78,6 +78,7 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 			SessionID:           sess.ID,
 			Workspace:           workspace,
 			Mode:                "config_manager",
+			IdleTimeout:         agentIdleTimeout(runtimeCfg),
 			SystemPromptLog:     agent.BuildConfigManagerInstructionComposition(&runtimeCfg, state, resourceSkills...),
 			OnMutationsVerified: a.automationMutationCallback("config_manager_post_run"),
 		}, emit)

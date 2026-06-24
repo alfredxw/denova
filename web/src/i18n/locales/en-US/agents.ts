@@ -33,6 +33,7 @@ const agents = {
   'agents.tool.fileWrite.subtitle': 'write_file / edit_file',
   'agents.tool.shellExecute.title': 'Command Execution',
   'agents.tool.shellExecute.subtitle': 'execute',
+  'agents.tool.shellExecute.windowsUnsupported': 'execute is not supported on Windows yet',
   'agents.tool.skills.title': 'Skills',
   'agents.tool.skills.subtitle': 'Load writing skills from the Skills directory',
   'agents.tool.loreRead.title': 'Read Lore',

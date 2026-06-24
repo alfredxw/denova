@@ -25,6 +25,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.MaxIteration == nil || *s.MaxIteration != 50 {
 		t.Fatalf("MaxIteration default")
 	}
+	if s.AgentIdleTimeoutSeconds == nil || *s.AgentIdleTimeoutSeconds != 180 {
+		t.Fatalf("AgentIdleTimeoutSeconds default")
+	}
 	if s.InteractiveStageFontSize == nil || *s.InteractiveStageFontSize != 16 {
 		t.Fatalf("InteractiveStageFontSize default")
 	}
@@ -84,6 +87,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		OpenAIModel:                "p-model",
 		OpenAIContextWindowTokens:  intPtr(DefaultContextWindowTokens),
 		MaxIteration:               intPtr(10),
+		AgentIdleTimeoutSeconds:    intPtr(120),
 		UIFontFamily:               "apple-system",
 		UIFontSize:                 intPtr(14),
 		ReadingFontFamily:          "source-han-serif",
@@ -97,7 +101,6 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		BackendPort:                intPtr(8080),
 		FrontendPort:               intPtr(5173),
 		AllowLANAccess:             boolPtr(false),
-		InteractiveMaxTokens:       intPtr(0),
 		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
@@ -106,6 +109,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		OpenAIModel:                "c-model", // override
 		OpenAIContextWindowTokens:  intPtr(1000000),
 		MaxIteration:               nil, // 继承 parent
+		AgentIdleTimeoutSeconds:    intPtr(240),
 		UIFontFamily:               "humanist-sans",
 		UIFontSize:                 intPtr(13),
 		ReadingFontFamily:          "system-serif",
@@ -121,7 +125,6 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		AllowLANAccess:             boolPtr(true),
 		RemoteAccessUsername:       "reader",
 		RemoteAccessPasswordHash:   "$2a$10$hash",
-		InteractiveMaxTokens:       intPtr(4000),
 		InteractiveHotChoices:      boolPtr(false),
 		InteractiveStageFontSize:   intPtr(18),
 		InteractiveStageLineHeight: floatPtr(1.95),
@@ -138,6 +141,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.MaxIteration == nil || *out.MaxIteration != 10 {
 		t.Fatalf("MaxIteration should inherit parent")
+	}
+	if out.AgentIdleTimeoutSeconds == nil || *out.AgentIdleTimeoutSeconds != 240 {
+		t.Fatalf("AgentIdleTimeoutSeconds should override parent")
 	}
 	if out.UIFontFamily != "humanist-sans" {
 		t.Fatalf("UIFontFamily should override parent: %s", out.UIFontFamily)
@@ -177,9 +183,6 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.RemoteAccessUsername != "reader" || out.RemoteAccessPasswordHash == "" || !out.RemoteAccessPasswordSet {
 		t.Fatalf("remote access credentials should override parent: %#v", out)
-	}
-	if out.InteractiveMaxTokens == nil || *out.InteractiveMaxTokens != 4000 {
-		t.Fatalf("InteractiveMaxTokens should override parent")
 	}
 	if out.InteractiveHotChoices == nil || *out.InteractiveHotChoices != false {
 		t.Fatalf("InteractiveHotChoices should override parent")
@@ -332,6 +335,22 @@ func TestWriteSettingsFileFiltersInvalidFrontendPort(t *testing.T) {
 	}
 }
 
+func TestWriteSettingsFileNormalizesAgentIdleTimeout(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	in := Settings{OpenAIModel: "abc", AgentIdleTimeoutSeconds: intPtr(7200)}
+	if err := WriteSettingsFile(p, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.AgentIdleTimeoutSeconds == nil || *out.AgentIdleTimeoutSeconds != 3600 {
+		t.Fatalf("agent idle timeout should be capped at 3600, got %v", out.AgentIdleTimeoutSeconds)
+	}
+}
+
 func TestPrepareUserSettingsForWriteHashesRemoteAccessPassword(t *testing.T) {
 	enabled := true
 	prepared, err := PrepareUserSettingsForWrite(Settings{}, Settings{
@@ -473,8 +492,8 @@ func TestLoadLayeredIgnoresStartupPortsFromWorkspaceLayer(t *testing.T) {
 	if layered.Effective.FrontendPort == nil || *layered.Effective.FrontendPort != 15173 {
 		t.Fatalf("user frontend_port should remain effective")
 	}
-	if !strings.HasSuffix(layered.Access.LocalURL, ":15173") || !strings.HasSuffix(layered.Access.LANURL, ":15173") {
-		t.Fatalf("access URLs should use frontend_port: %+v", layered.Access)
+	if !strings.HasSuffix(layered.Access.LocalURL, ":18080") || !strings.HasSuffix(layered.Access.LANURL, ":18080") {
+		t.Fatalf("access URLs should use backend_port: %+v", layered.Access)
 	}
 }
 
