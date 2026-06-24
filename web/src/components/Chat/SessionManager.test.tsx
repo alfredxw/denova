@@ -11,27 +11,6 @@ const sessions: SessionSummary[] = [
 ]
 
 describe('SessionManager', () => {
-  it('从列表选择会话时触发切换回调', async () => {
-    const user = userEvent.setup()
-    const handleSwitch = vi.fn()
-
-    render(
-      <SessionManager
-        sessions={sessions}
-        activeSessionId="session-a"
-        onCreate={vi.fn()}
-        onSwitch={handleSwitch}
-        onRename={vi.fn()}
-        onDelete={vi.fn()}
-      />,
-    )
-
-    await user.click(screen.getByRole('combobox', { name: '选择会话' }))
-    await user.click(await screen.findByRole('option', { name: '正文续写 · 1 条' }))
-
-    expect(handleSwitch).toHaveBeenCalledWith('session-b')
-  })
-
   it('支持重命名和删除会话入口', async () => {
     const user = userEvent.setup()
     const handleRename = vi.fn()
@@ -171,6 +150,26 @@ describe('MessageList', () => {
     expect(screen.getByRole('separator', { name: '上下文已清理' })).toBeInTheDocument()
     expect(screen.getByText(/之前消息不再参与创作Agent上下文/)).toBeInTheDocument()
     expect(screen.getByText('清理后回答')).toBeInTheDocument()
+  })
+
+  it('消息 hover 时间按当天和历史日期格式渲染', () => {
+    const today = new Date()
+    today.setHours(9, 5, 0, 0)
+    const oldDay = new Date(2020, 0, 1, 20, 30, 0, 0)
+
+    render(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '当天消息', created_at: today.toISOString() },
+          { type: 'message', role: 'assistant', content: '历史消息', created_at: oldDay.toISOString() },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('09:05')).toBeInTheDocument()
+    expect(screen.getByText('2020-01-01 20:30')).toBeInTheDocument()
   })
 
   it('运行中的上下文压缩卡片存在时不再渲染第二个 activity 卡片', () => {

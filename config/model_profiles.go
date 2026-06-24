@@ -71,7 +71,7 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		"default": legacyModelProfile(cfg),
 	}
 	for _, profile := range cfg.ModelProfiles {
-		id := normalizeModelProfileID(profile.ID)
+		id := modelProfileID(profile)
 		if id == "" {
 			continue
 		}
@@ -130,7 +130,7 @@ func mergeModelProfiles(parent, child []ModelProfileSettings) []ModelProfileSett
 	out := make([]ModelProfileSettings, 0, len(parent)+len(child))
 	index := make(map[string]int, len(parent)+len(child))
 	for _, profile := range parent {
-		id := normalizeModelProfileID(profile.ID)
+		id := modelProfileID(profile)
 		if id == "" {
 			continue
 		}
@@ -139,7 +139,7 @@ func mergeModelProfiles(parent, child []ModelProfileSettings) []ModelProfileSett
 		out = append(out, profile)
 	}
 	for _, profile := range child {
-		id := normalizeModelProfileID(profile.ID)
+		id := modelProfileID(profile)
 		if id == "" {
 			continue
 		}
@@ -160,10 +160,15 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 	}
 	out := make([]ModelProfileSettings, 0, len(profiles))
 	for _, profile := range profiles {
-		profile.ID = normalizeModelProfileID(profile.ID)
+		profile.OpenAIModel = strings.TrimSpace(profile.OpenAIModel)
+		profile.ID = modelProfileID(profile)
 		if profile.ID == "" {
 			continue
 		}
+		if profile.OpenAIModel == "" {
+			profile.OpenAIModel = profile.ID
+		}
+		profile.Name = strings.TrimSpace(profile.Name)
 		if profile.ContextWindowTokens != nil {
 			if *profile.ContextWindowTokens <= 0 {
 				profile.ContextWindowTokens = nil
@@ -178,11 +183,11 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 
 func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings {
 	out := parent
-	if child.ID != "" {
-		out.ID = normalizeModelProfileID(child.ID)
+	if id := modelProfileID(child); id != "" {
+		out.ID = id
 	}
 	if child.Name != "" {
-		out.Name = child.Name
+		out.Name = strings.TrimSpace(child.Name)
 	}
 	if child.OpenAIAPIKey != "" {
 		out.OpenAIAPIKey = child.OpenAIAPIKey
@@ -191,7 +196,7 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 		out.OpenAIBaseURL = child.OpenAIBaseURL
 	}
 	if child.OpenAIModel != "" {
-		out.OpenAIModel = child.OpenAIModel
+		out.OpenAIModel = strings.TrimSpace(child.OpenAIModel)
 	}
 	if child.Temperature != nil {
 		out.Temperature = child.Temperature
@@ -243,6 +248,13 @@ func legacyModelProfile(cfg *Config) ModelProfileSettings {
 
 func normalizeModelProfileID(id string) string {
 	return strings.TrimSpace(id)
+}
+
+func modelProfileID(profile ModelProfileSettings) string {
+	if id := normalizeModelProfileID(profile.ID); id != "" {
+		return id
+	}
+	return strings.TrimSpace(profile.OpenAIModel)
 }
 
 func normalizeReasoningEffort(value string) string {

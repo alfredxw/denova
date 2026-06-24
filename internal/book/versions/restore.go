@@ -64,6 +64,13 @@ func (s *Service) removeEmptyVisibleDirs() error {
 	}
 	sort.SliceStable(dirs, func(i, j int) bool { return len(dirs[i]) > len(dirs[j]) })
 	for _, dir := range dirs {
+		entries, readErr := os.ReadDir(dir)
+		if readErr != nil {
+			continue
+		}
+		if len(entries) > 0 {
+			continue
+		}
 		if err := os.Remove(dir); err != nil && !errors.Is(err, os.ErrNotExist) {
 			if errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST) {
 				continue

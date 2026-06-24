@@ -95,20 +95,39 @@ func TestCompactContextIncludesCharacterStates(t *testing.T) {
 	for _, required := range []string{
 		"## 当前大纲",
 		"大纲内容",
+		"## 常驻资料库",
+		"林川的长期人设",
+		"## 章节组细纲",
+		"章节组内容",
 		"## 当前进度",
 		"进度内容",
 		"## 角色状态",
 		"林川在废城东区地下仓库",
 		"## 章节目录概览",
 		"chapters/ch0001-开局.md",
-		"## 常驻资料库",
-		"林川的长期人设",
-		"## 章节组细纲",
-		"章节组内容",
 	} {
 		if !strings.Contains(context, required) {
 			t.Fatalf("CompactContext 缺少 %q:\n%s", required, context)
 		}
+	}
+
+	lastIndex := -1
+	for _, marker := range []string{
+		"## 当前大纲",
+		"## 常驻资料库",
+		"## 章节组细纲",
+		"## 当前进度",
+		"## 角色状态",
+		"## 章节目录概览",
+	} {
+		index := strings.Index(context, marker)
+		if index < 0 {
+			t.Fatalf("CompactContext 缺少顺序标记 %q:\n%s", marker, context)
+		}
+		if index <= lastIndex {
+			t.Fatalf("CompactContext 顺序错误，%q 应按低频到高频状态排列:\n%s", marker, context)
+		}
+		lastIndex = index
 	}
 }
 

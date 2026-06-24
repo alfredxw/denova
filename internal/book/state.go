@@ -127,17 +127,45 @@ func (s *State) CompactContextParts() []CompactContextPart {
 		})
 	}
 
-	sections := []struct {
+	if content := s.readSettingFile("outline.md"); content != "" {
+		parts = append(parts, CompactContextPart{
+			ID:          "outline",
+			Source:      filepath.ToSlash(filepath.Join("setting", "outline.md")),
+			Title:       "当前大纲",
+			PromptTitle: "当前大纲",
+			Content:     strings.TrimSpace(content),
+		})
+	}
+
+	if loreContext != "" {
+		parts = append(parts, CompactContextPart{
+			ID:      "lore",
+			Source:  ".nova/lore/items.json",
+			Title:   "资料库",
+			Content: loreContext,
+		})
+	}
+
+	if groupContext := s.ChapterGroupContext(2); groupContext != "" {
+		parts = append(parts, CompactContextPart{
+			ID:          "chapter_groups",
+			Source:      "setting/chapter-groups/",
+			Title:       "章节组细纲",
+			PromptTitle: "章节组细纲",
+			Content:     groupContext,
+		})
+	}
+
+	dynamicSections := []struct {
 		file  string
 		title string
 		id    string
 	}{
-		{"outline.md", "当前大纲", "outline"},
 		{"progress.md", "当前进度", "progress"},
 		{CharacterStatesFileName, "角色状态", "character_states"},
 	}
 
-	for _, sec := range sections {
+	for _, sec := range dynamicSections {
 		content := s.readSettingFile(sec.file)
 		if content == "" {
 			continue
@@ -158,25 +186,6 @@ func (s *State) CompactContextParts() []CompactContextPart {
 			Title:       "章节目录概览",
 			PromptTitle: "章节目录概览",
 			Content:     chapterContext,
-		})
-	}
-
-	if loreContext != "" {
-		parts = append(parts, CompactContextPart{
-			ID:      "lore",
-			Source:  ".nova/lore/items.json",
-			Title:   "资料库",
-			Content: loreContext,
-		})
-	}
-
-	if groupContext := s.ChapterGroupContext(2); groupContext != "" {
-		parts = append(parts, CompactContextPart{
-			ID:          "chapter_groups",
-			Source:      "setting/chapter-groups/",
-			Title:       "章节组细纲",
-			PromptTitle: "章节组细纲",
-			Content:     groupContext,
 		})
 	}
 

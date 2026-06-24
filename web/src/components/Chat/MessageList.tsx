@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { CSSProperties, WheelEvent } from 'react'
+import type { CSSProperties, ReactNode, WheelEvent } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
@@ -14,6 +14,7 @@ interface MessageListProps {
   highlightDialogue?: boolean
   scrollResetKey?: string
   bottomPaddingClassName?: string
+  bottomPaddingPx?: number
   messageStyle?: CSSProperties
   collapseTraceBeforeAssistant?: boolean
   onEditMessage?: (message: ChatMessage) => void
@@ -22,7 +23,7 @@ interface MessageListProps {
 }
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -162,7 +163,11 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       >
         {msg.type === 'clear'
           ? <ContextClearDivider createdAt={msg.created_at} />
-          : <MessageItem message={msg} highlightDialogue={highlightDialogue} messageStyle={messageStyle} onEdit={isStreaming ? undefined : onEditMessage} onRegenerate={isStreaming ? undefined : onRegenerateMessage} onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion} />}
+          : (
+            <MessageWithHoverTime message={msg}>
+              <MessageItem message={msg} highlightDialogue={highlightDialogue} messageStyle={messageStyle} onEdit={isStreaming ? undefined : onEditMessage} onRegenerate={isStreaming ? undefined : onRegenerateMessage} onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion} />
+            </MessageWithHoverTime>
+          )}
       </motion.div>
     )
   }
@@ -191,11 +196,13 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
             animate="animate"
             transition={{ duration: 0.18, ease: novaEase }}
           >
-            <TraceGroup
-              messages={traceMessages}
-              highlightDialogue={highlightDialogue}
-              messageStyle={messageStyle}
-            />
+            <MessageWithHoverTime message={traceMessages[0]}>
+              <TraceGroup
+                messages={traceMessages}
+                highlightDialogue={highlightDialogue}
+                messageStyle={messageStyle}
+              />
+            </MessageWithHoverTime>
           </motion.div>,
         )
         index = nextIndex - 1
@@ -211,6 +218,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       onScroll={handleContainerScroll}
       onWheel={handleWheel}
       className={`nova-chat-canvas min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 ${bottomPaddingClassName}`}
+      style={typeof bottomPaddingPx === 'number' ? { paddingBottom: bottomPaddingPx } : undefined}
     >
       {messages.length === 0 && !isStreaming && (
         <div className="flex h-full items-center justify-center">
@@ -248,6 +256,45 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       <div ref={bottomRef} />
     </div>
   )
+}
+
+function MessageWithHoverTime({ message, children }: { message: ChatMessage; children: ReactNode }) {
+  return (
+    <div className="nova-message-with-time">
+      {children}
+      <MessageHoverTime message={message} />
+    </div>
+  )
+}
+
+function MessageHoverTime({ message }: { message: ChatMessage }) {
+  const formatted = formatMessageHoverTime(message.created_at)
+  if (!formatted) return null
+  const align = message.role === 'user'
+    ? 'nova-message-time-user'
+    : (message.role === 'system' || message.role === 'error' ? 'nova-message-time-center' : 'nova-message-time-left')
+  return (
+    <div className={`nova-message-time ${align}`} aria-label={formatted}>
+      {formatted}
+    </div>
+  )
+}
+
+function formatMessageHoverTime(value?: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const time = `${padTime(date.getHours())}:${padTime(date.getMinutes())}`
+  const now = new Date()
+  const sameDay = date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  if (sameDay) return time
+  return `${date.getFullYear()}-${padTime(date.getMonth() + 1)}-${padTime(date.getDate())} ${time}`
+}
+
+function padTime(value: number) {
+  return value.toString().padStart(2, '0')
 }
 
 function isTraceMessage(message: ChatMessage) {
