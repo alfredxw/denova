@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v0.1.13] - 2026-06-24
+
 ### Fixed
 
 - WebUI：修复所有 Agent 输入框长文本可能被右侧按钮遮挡的问题；输入区和按钮现在由 composer 组件分槽布局，内容换行后会保持多行输入，清空后恢复单行。

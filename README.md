@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.1.12</strong>（2026-06-20） · Beta
+  当前版本：<strong>v0.1.13</strong>（2026-06-24） · Beta
 </p>
 
 ![Nova 写作模式](./img/ide.png)
