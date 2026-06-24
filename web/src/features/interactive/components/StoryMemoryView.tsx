@@ -254,12 +254,12 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      <header className="nova-topbar flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--nova-border)] px-4 py-3">
+      <header className="nova-topbar flex shrink-0 flex-col items-stretch gap-2 border-b border-[var(--nova-border)] px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-center gap-2">
           <Brain className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold">{t('storyMemory.title')}</h2>
-            <p className="truncate text-xs text-[var(--nova-text-muted)]">
+            <p className="hidden truncate text-xs text-[var(--nova-text-muted)] sm:block">
               {t('storyMemory.branchSummary', {
                 branch: branchTitle(visibleBranch, visibleBranchId, t('branchTimeline.mainBranch')),
                 head: visibleBranch?.head ? shortId(visibleBranch.head) : t('storyMemory.noHead'),
@@ -267,11 +267,11 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="flex w-full min-w-0 flex-nowrap items-center justify-start gap-2 overflow-x-auto sm:w-auto sm:shrink-0 sm:justify-end">
           {branchOptions.length > 0 && (
-            <label className="flex min-w-0 items-center gap-2 text-xs text-[var(--nova-text-muted)]">
+            <label className="flex min-w-[11rem] flex-1 items-center gap-2 text-xs text-[var(--nova-text-muted)] sm:min-w-0 sm:flex-none">
               <span className="shrink-0">{t('storyMemory.branch')}</span>
-              <select aria-label={t('storyMemory.branch')} value={visibleBranchId} onChange={(event) => changeMemoryBranch(event.target.value)} className="h-8 max-w-[220px] rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-xs text-[var(--nova-text)] outline-none">
+              <select aria-label={t('storyMemory.branch')} value={visibleBranchId} onChange={(event) => changeMemoryBranch(event.target.value)} className="h-8 min-w-0 flex-1 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-xs text-[var(--nova-text)] outline-none sm:max-w-[220px]">
                 {branchOptions.map((branch) => (
                   <option key={branch.id} value={branch.id}>
                     {branchTitle(branch, branch.id, t('branchTimeline.mainBranch'))}
@@ -316,7 +316,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
         desktopGridClassName={agentOpen ? 'grid-cols-[240px_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[240px_minmax(0,1fr)]'}
       >
         {({ isMobile, openLeft, openRight }) => (
-          <main className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-4">
+          <main className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3 sm:p-4">
             <div className={`grid min-h-0 gap-4 ${editorVisible ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
             <div className="min-w-0">
               <div className="mb-3 flex items-center justify-between gap-2">

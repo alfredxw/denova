@@ -13,7 +13,7 @@ import type { SkillSummary } from '@/lib/api'
 import { AGENTS, FALLBACK_AGENT_TOOL_VALUES, TOOL_ROWS, resolveEffectiveTools, skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
 import type { AgentToolDefinition, AgentViewDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
 
-const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
+const fieldCls = 'nova-field min-h-7 w-full min-w-0 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 
 export function AgentsView({ onClose }: { onClose?: () => void }) {
@@ -178,10 +178,10 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      <div className="nova-topbar flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs">
+      <div className="nova-topbar flex min-h-10 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b px-3 py-1.5 text-xs sm:px-4">
         <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        <span className="font-medium">Agents</span>
-        <div className="ml-3 flex gap-1 border-l border-[var(--nova-border)] pl-3">
+        <span className="shrink-0 font-medium">Agents</span>
+        <div className="flex shrink-0 gap-1 border-l border-[var(--nova-border)] pl-2 sm:ml-3 sm:pl-3">
           {(['workspace', 'user'] as SettingsLayer[]).map((layer) => (
             <button
               key={layer}
@@ -197,7 +197,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
           type="button"
           onClick={onSave}
           disabled={saving}
-          className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50"
+          className="nova-nav-item ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           {t('common.save')}
@@ -226,14 +226,14 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
         desktopGridClassName="grid-cols-[18rem_minmax(0,1fr)]"
       >
         {({ openLeft }) => (
-          <main className="h-full min-h-0 overflow-y-auto">
+          <main className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
             <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 md:hidden">
               <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: 'Agents' })} onClick={openLeft}>
                 <PanelLeft className="h-4 w-4" />
               </button>
               <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{t(selected.titleKey)}</span>
             </div>
-            <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
+            <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
               <AgentHeader agent={selected} />
               <AgentModelSection
                 value={modelValue}
@@ -643,7 +643,7 @@ function AgentToolSection({ agent, value, effective, onChange }: {
           const inherited = explicit === undefined || explicit === null
           const current = inherited ? effective[tool.key] : explicit
           return (
-            <div key={tool.key} className="flex min-h-16 items-center gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
+            <div key={tool.key} className="flex min-h-16 min-w-0 flex-col items-stretch gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 sm:flex-row sm:items-center">
               <Icon className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{t(tool.titleKey)}</div>
@@ -652,7 +652,7 @@ function AgentToolSection({ agent, value, effective, onChange }: {
               <select
                 value={String(current)}
                 onChange={(e) => onChange(tool.key, e.target.value === '' ? null : e.target.value === 'true')}
-                className={`${fieldCls} max-w-32 shrink-0`}
+                className={`${fieldCls} shrink-0 sm:max-w-32`}
               >
                 <option value="true">{t('agents.option.on')}</option>
                 <option value="false">{t('agents.option.off')}</option>
@@ -696,11 +696,11 @@ function AgentSkillSection({ agent, skills, value, effective, onChange }: {
             const current = inherited ? skillAvailableForAgent(skill, agent, effective) : explicit
             const defaultAvailable = skillAgentFieldMatches(skill.agent, agent)
             return (
-              <div key={`${skill.scope}:${skill.name}`} className="flex min-h-16 items-center gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
+              <div key={`${skill.scope}:${skill.name}`} className="flex min-h-16 min-w-0 flex-col items-stretch gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 sm:flex-row sm:items-center">
                 <FolderOpen className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate font-mono font-medium">/{skill.name}</span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="min-w-0 truncate font-mono font-medium">/{skill.name}</span>
                     <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${current ? 'bg-[var(--nova-success-bg)] text-[var(--nova-success)]' : 'bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]'}`}>
                       {current ? t('agents.skills.available') : t('agents.skills.unavailable')}
                     </span>
@@ -714,7 +714,7 @@ function AgentSkillSection({ agent, skills, value, effective, onChange }: {
                 <select
                   value={inherited ? '' : String(explicit)}
                   onChange={(event) => onChange(skill.name, event.target.value === '' ? null : event.target.value === 'true')}
-                  className={`${fieldCls} max-w-32 shrink-0`}
+                  className={`${fieldCls} shrink-0 sm:max-w-32`}
                 >
                   <option value="">{t('agents.option.inherit')}</option>
                   <option value="true">{t('agents.option.on')}</option>
@@ -797,9 +797,9 @@ function SectionTitle({ icon: Icon, title }: { icon: ElementType; title: string 
 
 function Field({ label, inherited, onReset, children }: { label: string; inherited?: boolean; onReset?: () => void; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex min-w-0 flex-col gap-1.5">
       <span className="text-[var(--nova-text-muted)]">{label}</span>
-      <span className="flex items-center gap-2">
+      <span className="flex min-w-0 flex-wrap items-center gap-2">
         {children}
         {inherited !== undefined && <InheritanceBadge inherited={inherited} onReset={onReset} />}
       </span>
@@ -810,7 +810,7 @@ function Field({ label, inherited, onReset, children }: { label: string; inherit
 function InheritanceBadge({ inherited, onReset }: { inherited: boolean; onReset?: () => void }) {
   const { t } = useTranslation()
   return (
-    <span className={`inline-flex h-7 shrink-0 items-center rounded-[var(--nova-radius)] border px-2 text-[11px] ${inherited ? 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-faint)]' : 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text-muted)]'}`}>
+    <span className={`inline-flex h-7 max-w-full shrink-0 items-center rounded-[var(--nova-radius)] border px-2 text-[11px] ${inherited ? 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-faint)]' : 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text-muted)]'}`}>
       {inherited ? t('agents.badge.inherited') : (
         <button type="button" onClick={onReset} className="text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]">
           {t('agents.badge.overridden')}

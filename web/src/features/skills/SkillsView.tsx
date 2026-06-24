@@ -261,15 +261,15 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      <div className="nova-topbar flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs">
+      <div className="nova-topbar flex min-h-10 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b px-3 py-1.5 text-xs sm:px-4">
         <Sparkles className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        <span className="font-medium">{t('skills.title')}</span>
-        <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{t('skills.subtitle')}</span>
+        <span className="shrink-0 font-medium">{t('skills.title')}</span>
+        <span className="hidden min-w-0 truncate text-[11px] text-[var(--nova-text-faint)] sm:inline">{t('skills.subtitle')}</span>
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1 disabled:opacity-50"
+          className="nova-nav-item ml-auto inline-flex shrink-0 items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1 disabled:opacity-50"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           {t('common.refresh')}
@@ -278,7 +278,7 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
           type="button"
           onClick={() => void onSave()}
           disabled={mode !== 'editor' || !dirty || saving || !document?.editable}
-          className="nova-nav-item inline-flex items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-45"
+          className="nova-nav-item inline-flex shrink-0 items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-45"
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           {t('common.save')}
@@ -453,7 +453,7 @@ function CreateSkillPanel({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
+      <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
         <section className="border-b border-[var(--nova-border)] pb-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
@@ -588,7 +588,7 @@ function SkillConfigPanel({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
+      <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
         <section className="border-b border-[var(--nova-border)] pb-4">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">

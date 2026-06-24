@@ -35,13 +35,13 @@ export function VersionTimeline({
   }
 
   return (
-    <div className="space-y-1 border-l border-[var(--nova-border)] pl-2">
+    <div className="min-w-0 space-y-1 border-l border-[var(--nova-border)] pl-2">
       {versions.map((version) => {
         const selected = version.id === selectedVersionId
         return (
           <div
             key={version.id}
-            className={`relative rounded px-1.5 py-1 hover:bg-[var(--nova-hover)] ${selected ? 'bg-[var(--nova-active)]' : ''}`}
+            className={`relative min-w-0 rounded px-1.5 py-1 hover:bg-[var(--nova-hover)] ${selected ? 'bg-[var(--nova-active)]' : ''}`}
           >
             <span className="absolute -left-[13px] top-2 h-2 w-2 rounded-full bg-[var(--nova-active)]" />
             <button
@@ -49,12 +49,12 @@ export function VersionTimeline({
               className="w-full text-left"
               onClick={() => onSelectVersion?.(version)}
             >
-              <div className="flex items-center gap-1 truncate text-[var(--nova-text)]" title={version.title}>
+              <div className="flex min-w-0 items-center gap-1 truncate text-[var(--nova-text)]" title={version.title}>
                 <History className="h-3 w-3 shrink-0 text-[var(--nova-text-muted)]" />
                 <span className="truncate">{version.title || t('versions.emptyMessage')}</span>
               </div>
-              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
-                {version.description && <span className="font-mono text-[var(--nova-text-muted)]">{version.description}</span>}
+              <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
+                {version.description && <span className="min-w-0 truncate font-mono text-[var(--nova-text-muted)]">{version.description}</span>}
                 {version.author && <span className="min-w-0 flex-1 truncate">{version.author}</span>}
               </div>
               <div className="mt-0.5 truncate text-[10px] text-[var(--nova-text-faint)]">{version.createdAt}</div>

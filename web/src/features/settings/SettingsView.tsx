@@ -492,10 +492,10 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
 
   return (
     <div className="nova-settings-view flex h-full min-h-0 w-full flex-col text-[var(--nova-text)]">
-      <div className="nova-topbar flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs">
+      <div className="nova-topbar flex min-h-10 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b px-3 py-1.5 text-xs sm:px-4">
         <SettingsIcon className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        <span className="font-medium text-[var(--nova-text)]">{t('settings.title')}</span>
-        <div className="ml-3 flex gap-1 border-l border-[var(--nova-border)] pl-3">
+        <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('settings.title')}</span>
+        <div className="flex shrink-0 gap-1 border-l border-[var(--nova-border)] pl-2 sm:ml-3 sm:pl-3">
           {(['user', 'workspace'] as SettingsLayer[]).map((l) => (
             <button
               key={l}
@@ -513,7 +513,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           type="button"
           onClick={onSave}
           disabled={saving}
-          className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50"
+          className="nova-nav-item ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           {t('common.save')}
@@ -548,12 +548,12 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         desktopGridClassName="grid-cols-[14rem_minmax(0,1fr)]"
       >
         {({ openLeft }) => (
-          <div ref={contentRef} data-nova-settings-content="true" onScroll={onContentScroll} className="h-full min-h-0 overflow-y-auto overscroll-contain px-6 py-5">
+          <div ref={contentRef} data-nova-settings-content="true" onScroll={onContentScroll} className="h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
             <button type="button" className="nova-icon-button mb-3 flex h-8 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2 text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] md:hidden" aria-label={t('workbench.mobile.openSidePanel', { label: t('settings.title') })} onClick={openLeft}>
               <PanelLeft className="h-4 w-4" />
               <span className="text-xs">{t('settings.title')}</span>
             </button>
-            <div className="mx-auto max-w-5xl">
+            <div className="mx-auto w-full min-w-0 max-w-5xl">
               {sections.map((section) => (
                 <Section
                   key={section.id}

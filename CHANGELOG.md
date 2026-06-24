@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复手机宽度下版本管理、书籍管理、Agents、Skills、设置、自动化和故事记忆等页面的适配问题；共享滚动容器现在会按手机宽度收缩，配置卡片会换行，长 Skill 名称不再撑宽，书架手机端改为单列卡片。
 - 修复互动快捷选择和互动记忆 Agent 在本地 LM（如 LM Studio）下生成失败且错误信息为空的问题：这两个 Agent 此前强制使用 `response_format=json_object`，部分本地 LM 服务器不支持该参数会返回空错误；现在先尝试 JSON mode，失败后自动降级为普通文本模式重试，与小说导入工具 Agent 的降级策略一致。
 - 修复本地 LM 返回空错误时日志只显示前缀（如"生成互动快捷选择失败: "）的问题：现在会记录错误类型并补充可读描述，便于诊断本地 LM 兼容性问题。
 

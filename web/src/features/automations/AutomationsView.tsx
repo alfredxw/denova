@@ -40,7 +40,7 @@ import { useAutomationRunStream } from './useAutomationRunStream'
 import { InboxPanel } from './AutomationInboxPanel'
 import { TriggerEditor, defaultScheduleTrigger } from './AutomationTriggerEditor'
 
-const fieldCls = 'nova-field min-h-7 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
+const fieldCls = 'nova-field min-h-7 w-full min-w-0 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 type AutomationPanelView = 'config' | 'inbox' | 'run' | 'agent'
 
@@ -297,36 +297,36 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      <div className="nova-topbar flex min-h-10 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs">
+      <div className="nova-topbar flex h-10 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b px-3 py-1 text-xs sm:px-4">
         <Clock3 className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        <span className="font-medium">{t('automations.title')}</span>
-        <div className="ml-3 flex gap-1 border-l border-[var(--nova-border)] pl-3">
+        <span className="shrink-0 font-medium">{t('automations.title')}</span>
+        <div className="flex shrink-0 gap-1 border-l border-[var(--nova-border)] pl-2 sm:ml-3 sm:pl-3">
           {(['workspace', 'user'] as const).map((scope) => (
             <button key={scope} type="button" onClick={() => switchScope(scope)} className={`${tabCls} ${scopeFilter === scope ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}>
               {scope === 'workspace' ? t('automations.scope.workspace') : t('automations.scope.user')}
             </button>
           ))}
         </div>
-        <button type="button" onClick={checkTriggers} disabled={!activeId || running || saving} className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1 text-[var(--nova-text-muted)] disabled:opacity-50">
+        <button type="button" onClick={checkTriggers} disabled={!activeId || running || saving} className="nova-nav-item ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1 text-[var(--nova-text-muted)] disabled:opacity-50 sm:px-3">
           <RefreshCw className="h-3.5 w-3.5" />
           {t('automations.checkTriggers')}
         </button>
-        <button type="button" onClick={runNow} disabled={!activeId || running || saving} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50">
+        <button type="button" onClick={runNow} disabled={!activeId || running || saving} className="nova-nav-item inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 text-[var(--nova-text)] disabled:opacity-50 sm:px-3">
           <Play className="h-3.5 w-3.5" />
           {running ? t('automations.running') : t('automations.runNow')}
         </button>
         {running && (
-          <button type="button" onClick={runStream.stop} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1 text-[var(--nova-text-muted)]">
+          <button type="button" onClick={runStream.stop} className="nova-nav-item inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1 text-[var(--nova-text-muted)]">
             <Square className="h-3.5 w-3.5" />
             {t('automations.stopRun')}
           </button>
         )}
-        <button type="button" onClick={save} disabled={saving || running} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50">
+        <button type="button" onClick={save} disabled={saving || running} className="nova-nav-item inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50">
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           {t('common.save')}
         </button>
         {onClose && (
-          <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('automations.close')} title={t('automations.close')}>
+          <button type="button" onClick={onClose} className="nova-nav-item flex h-8 w-8 shrink-0 items-center justify-center rounded p-1" aria-label={t('automations.close')} title={t('automations.close')}>
             <X className="h-3.5 w-3.5" />
           </button>
         )}
@@ -350,7 +350,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       >
         {({ openLeft }) => (
           <main className="flex h-full min-h-0 flex-col">
-            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4">
+            <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 sm:px-4">
               <button type="button" className="nova-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] md:hidden" aria-label={t('workbench.mobile.openSidePanel', { label: t('automations.title') })} onClick={openLeft}>
                 <PanelLeft className="h-4 w-4" />
               </button>
@@ -391,7 +391,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
             {panelView === 'config' ? (
               <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="mx-auto flex max-w-5xl flex-col gap-5 px-6 py-5">
+                <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--nova-border)] pb-4">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium text-[var(--nova-text)]">{draft.name || t('automations.newTask')}</div>
@@ -565,7 +565,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="flex flex-col gap-1.5 text-xs"><span className="text-[var(--nova-text-muted)]">{label}</span>{children}</label>
+  return <label className="flex min-w-0 flex-col gap-1.5 text-xs"><span className="text-[var(--nova-text-muted)]">{label}</span>{children}</label>
 }
 
 function SectionTitle({ title }: { title: string }) {

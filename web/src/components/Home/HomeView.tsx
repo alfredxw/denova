@@ -223,7 +223,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto flex max-w-4xl flex-col gap-5 px-6 py-6">
+        <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6">
           {/* 当前书籍 */}
           <section className="border-b border-[var(--nova-border)] pb-5">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase text-[var(--nova-text-faint)]">
@@ -248,17 +248,17 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
 
           {/* 书籍列表 */}
           <section>
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-3 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-[11px] font-medium uppercase text-[var(--nova-text-faint)]">
                 <Folder className="h-3.5 w-3.5" />
                 {t('home.bookshelf')}
               </div>
-              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+              <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
                 <Button
                   type="button"
                   size="xs"
                   variant="ghost"
-                  className={ghostButtonCls}
+                  className={`${ghostButtonCls} max-w-full`}
                   onClick={() => setShowNovelImport(true)}
                 >
                   <FileText className="h-3.5 w-3.5" />
@@ -269,7 +269,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                     type="button"
                     size="xs"
                     variant="ghost"
-                    className={ghostButtonCls}
+                    className={`${ghostButtonCls} max-w-full`}
                     onClick={onOpenCharacterCardImport}
                   >
                     <Upload className="h-3.5 w-3.5" />
@@ -281,7 +281,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                     type="button"
                     size="xs"
                     variant="ghost"
-                    className={ghostButtonCls}
+                    className={`${ghostButtonCls} max-w-full`}
                     onClick={openCreateForm}
                   >
                     <Plus className="h-3.5 w-3.5" />
@@ -354,7 +354,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
             ) : (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={orderedBooks.map((book) => book.path)} strategy={rectSortingStrategy}>
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(168px,1fr))] gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(168px,1fr))]">
                     {orderedBooks.map((book) => {
                       const isCurrent = book.path === workspace
                       const isEditing = editingBookPath === book.path
@@ -363,7 +363,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                         return (
                           <SortableBookCard key={book.path} book={book} disabled>
                             {() => (
-                              <div className="min-h-[188px] space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+                              <div className="min-h-[168px] space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] sm:min-h-[188px]">
                                 {editLoading ? (
                                   <div className="py-2 text-center text-xs text-[var(--nova-text-faint)]">{t('common.loading')}</div>
                                 ) : (
@@ -423,7 +423,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                         >
                           {(dragHandleProps) => (
                             <div
-                              className={`group relative min-h-[188px] overflow-hidden rounded-[var(--nova-radius)] border text-xs transition-colors ${
+                              className={`group relative min-h-[168px] overflow-hidden rounded-[var(--nova-radius)] border text-xs transition-colors sm:min-h-[188px] ${
                                 isCurrent
                                   ? 'border-[var(--nova-accent)] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
                                   : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
@@ -435,7 +435,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)]" />
                               <button
                                 type="button"
-                                className="flex h-full min-h-[188px] w-full min-w-0 flex-col px-4 py-4 text-left"
+                                className="flex h-full min-h-[168px] w-full min-w-0 flex-col px-4 py-4 text-left sm:min-h-[188px]"
                                 onClick={() => handleSwitch(book.path)}
                               >
                                 <div className="mb-3 flex items-center justify-between gap-2">
