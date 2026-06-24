@@ -50,7 +50,7 @@ func TestSessionConversationKeepsFullEffectiveHistoryBeforeCompaction(t *testing
 	}
 }
 
-func TestSessionConversationAppendsRuntimeContextToFinalUserMessageOnly(t *testing.T) {
+func TestSessionConversationPrependsDynamicContextInsideFinalUserMessageOnly(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -81,15 +81,124 @@ func TestSessionConversationAppendsRuntimeContextToFinalUserMessageOnly(t *testi
 		t.Fatalf("history length = %d, want 3: %#v", len(history), history)
 	}
 	final := history[len(history)-1].Content
-	if !strings.HasPrefix(final, "继续写") || !strings.Contains(final, "# 本轮动态作品状态") || !strings.Contains(final, "主角进入废城") {
-		t.Fatalf("final model message should append runtime context at the bottom:\n%s", final)
+	dynamicIndex := strings.Index(final, "# 本轮动态作品状态")
+	requestIndex := strings.Index(final, "# 本轮用户请求（最高优先级）")
+	if dynamicIndex < 0 || requestIndex < 0 || dynamicIndex >= requestIndex {
+		t.Fatalf("final model message should place dynamic context before the current request:\n%s", final)
+	}
+	if !strings.Contains(final, "主角进入废城") || !strings.HasSuffix(strings.TrimSpace(final), "继续写") {
+		t.Fatalf("final model message missing dynamic state or bottom request:\n%s", final)
 	}
 	visible := sess.History()
 	if got := visible[len(visible)-1].Content; got != "继续写" {
 		t.Fatalf("visible session history should keep original user message, got %q", got)
 	}
-	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, "本轮动态上下文") || !strings.Contains(sources, "appended_to_final_user_message") {
+	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, "本轮动态上下文") || !strings.Contains(sources, "prepended_to_final_user_message") {
 		t.Fatalf("runtime context source summary missing dynamic context: %s", sources)
+	}
+}
+
+func TestSessionConversationPrependsStableContextBeforeHistory(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.UserMessage("旧用户请求")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.AssistantMessage("旧助手回复", nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	conversation := NewSessionConversationForAgentWithRuntimeContexts(
+		sess,
+		&config.Config{},
+		config.AgentKindIDE,
+		"稳定作品上下文",
+		"## 当前大纲\n\n主角进入废城。",
+		"本轮动态作品状态",
+		"## 当前进度\n\n刚抵达废城。",
+	)
+	history, err := conversation.PrepareMessages("继续写", "继续写")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 4 {
+		t.Fatalf("history length = %d, want 4: %#v", len(history), history)
+	}
+	if !strings.Contains(history[0].Content, "# 稳定作品上下文") || !strings.Contains(history[0].Content, "主角进入废城") {
+		t.Fatalf("first model message should be stable context: %s", history[0].Content)
+	}
+	if history[1].Content != "旧用户请求" || history[2].Content != "旧助手回复" {
+		t.Fatalf("stable context should precede persisted history: %#v", messageContents(history))
+	}
+	if !strings.Contains(history[3].Content, "# 本轮动态作品状态") || !strings.HasSuffix(strings.TrimSpace(history[3].Content), "继续写") {
+		t.Fatalf("final model message should contain dynamic context then request: %s", history[3].Content)
+	}
+	if visible := sess.History(); len(visible) != 3 || visible[2].Content != "继续写" {
+		t.Fatalf("visible session history should only include raw user request: %#v", visible)
+	}
+	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, "prepended_to_model_messages") || !strings.Contains(sources, "prepended_to_final_user_message") {
+		t.Fatalf("runtime context source summary missing stable/dynamic locations: %s", sources)
+	}
+}
+
+func TestSessionConversationKeepsStableContextBeforeCompactionSummary(t *testing.T) {
+	previous := summarizeContextForCompaction
+	defer func() { summarizeContextForCompaction = previous }()
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*schema.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+		return "压缩摘要：旧对话已合并。", 100, nil
+	}
+
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.UserMessage("旧用户请求")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.AssistantMessage("旧助手回复", nil)); err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewSessionConversationForAgentWithRuntimeContexts(
+		sess,
+		&config.Config{},
+		config.AgentKindIDE,
+		"稳定作品上下文",
+		"## 当前大纲\n\n主角进入废城。",
+		"本轮动态作品状态",
+		"## 当前进度\n\n刚抵达废城。",
+	)
+	history, err := conversation.PrepareMessages("继续写", "继续写")
+	if err != nil {
+		t.Fatal(err)
+	}
+	compacted, result, err := conversation.CompactContextIfNeeded(context.Background(), ContextCompactionInput{
+		Messages: history,
+		Force:    true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Triggered {
+		t.Fatalf("expected compaction to trigger: %#v", result)
+	}
+	if len(compacted) < 3 {
+		t.Fatalf("compacted messages too short: %#v", compacted)
+	}
+	if !strings.Contains(compacted[0].Content, "# 稳定作品上下文") {
+		t.Fatalf("stable context should remain first after compaction: %#v", messageContents(compacted))
+	}
+	if !isContextCompactionMessage(compacted[1]) {
+		t.Fatalf("compaction summary should follow stable context: %#v", messageContents(compacted))
 	}
 }
 

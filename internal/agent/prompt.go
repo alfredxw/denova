@@ -180,13 +180,47 @@ func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller ID
 	return builtIn, workspace, creator, stateContext
 }
 
-const ideWorkspaceRuntimeContextTitle = "本轮动态作品状态"
+const (
+	ideWorkspaceStableContextTitle  = "稳定作品上下文"
+	ideWorkspaceDynamicContextTitle = "本轮动态作品状态"
+)
+
+type IDEWorkspaceRuntimeContexts struct {
+	StableTitle  string
+	Stable       string
+	DynamicTitle string
+	Dynamic      string
+}
+
+func IDEWorkspaceRuntimeContextsForState(state *book.State) IDEWorkspaceRuntimeContexts {
+	contexts := IDEWorkspaceRuntimeContexts{
+		StableTitle:  ideWorkspaceStableContextTitle,
+		DynamicTitle: ideWorkspaceDynamicContextTitle,
+	}
+	if state == nil {
+		return contexts
+	}
+	contexts.Stable = strings.TrimSpace(state.StableContext())
+	contexts.Dynamic = strings.TrimSpace(state.DynamicContext())
+	if contexts.Stable == "" && contexts.Dynamic == "" {
+		contexts.Stable = prompts.EmptyIDEStateHint()
+	}
+	return contexts
+}
 
 func IDEWorkspaceRuntimeContext(state *book.State) string {
 	if state == nil {
 		return ""
 	}
-	if context := strings.TrimSpace(state.CompactContext()); context != "" {
+	contexts := IDEWorkspaceRuntimeContextsForState(state)
+	parts := make([]book.CompactContextPart, 0, 2)
+	if contexts.Stable != "" {
+		parts = append(parts, book.CompactContextPart{PromptTitle: contexts.StableTitle, Content: contexts.Stable})
+	}
+	if contexts.Dynamic != "" {
+		parts = append(parts, book.CompactContextPart{PromptTitle: contexts.DynamicTitle, Content: contexts.Dynamic})
+	}
+	if context := strings.TrimSpace(book.FormatCompactContextParts(parts)); context != "" {
 		return context
 	}
 	return prompts.EmptyIDEStateHint()

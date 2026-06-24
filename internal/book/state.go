@@ -112,9 +112,10 @@ func (s *State) IdeasPath() string {
 	return filepath.Join(s.workspace, IdeasFileName)
 }
 
-// CompactContextParts 读取作品状态和结构化资料库，保留每个注入片段的真实来源。
-func (s *State) CompactContextParts() []CompactContextPart {
-	parts := make([]CompactContextPart, 0, 7)
+// StableContextParts returns low-churn workspace state that should stay high
+// in model-visible context for prompt-cache reuse.
+func (s *State) StableContextParts() []CompactContextPart {
+	parts := make([]CompactContextPart, 0, 3)
 	loreContext := s.LoreContext()
 
 	if ideasContext := s.IdeasContext(); ideasContext != "" {
@@ -146,6 +147,14 @@ func (s *State) CompactContextParts() []CompactContextPart {
 		})
 	}
 
+	return parts
+}
+
+// DynamicContextParts returns high-churn workspace state that should stay close
+// to the current user request.
+func (s *State) DynamicContextParts() []CompactContextPart {
+	parts := make([]CompactContextPart, 0, 4)
+
 	if groupContext := s.ChapterGroupContext(2); groupContext != "" {
 		parts = append(parts, CompactContextPart{
 			ID:          "chapter_groups",
@@ -153,6 +162,16 @@ func (s *State) CompactContextParts() []CompactContextPart {
 			Title:       "章节组细纲",
 			PromptTitle: "章节组细纲",
 			Content:     groupContext,
+		})
+	}
+
+	if chapterContext := s.ChapterPathContext(12); chapterContext != "" {
+		parts = append(parts, CompactContextPart{
+			ID:          "chapter_paths",
+			Source:      "chapters/",
+			Title:       "章节目录概览",
+			PromptTitle: "章节目录概览",
+			Content:     chapterContext,
 		})
 	}
 
@@ -179,23 +198,38 @@ func (s *State) CompactContextParts() []CompactContextPart {
 		})
 	}
 
-	if chapterContext := s.ChapterPathContext(12); chapterContext != "" {
-		parts = append(parts, CompactContextPart{
-			ID:          "chapter_paths",
-			Source:      "chapters/",
-			Title:       "章节目录概览",
-			PromptTitle: "章节目录概览",
-			Content:     chapterContext,
-		})
-	}
-
 	return parts
+}
+
+// CompactContextParts 读取作品状态和结构化资料库，保留每个注入片段的真实来源。
+func (s *State) CompactContextParts() []CompactContextPart {
+	stable := s.StableContextParts()
+	dynamic := s.DynamicContextParts()
+	parts := make([]CompactContextPart, 0, len(stable)+len(dynamic))
+	parts = append(parts, stable...)
+	parts = append(parts, dynamic...)
+	return parts
+}
+
+// StableContext renders low-churn workspace state as model-visible Markdown.
+func (s *State) StableContext() string {
+	return FormatCompactContextParts(s.StableContextParts())
+}
+
+// DynamicContext renders high-churn workspace state as model-visible Markdown.
+func (s *State) DynamicContext() string {
+	return FormatCompactContextParts(s.DynamicContextParts())
 }
 
 // CompactContext 读取作品状态和结构化资料库，构建分级注入的上下文字符串。
 func (s *State) CompactContext() string {
+	return FormatCompactContextParts(s.CompactContextParts())
+}
+
+// FormatCompactContextParts renders compact context parts in their current order.
+func FormatCompactContextParts(parts []CompactContextPart) string {
 	var sb strings.Builder
-	for _, part := range s.CompactContextParts() {
+	for _, part := range parts {
 		content := strings.TrimSpace(part.Content)
 		if content == "" {
 			continue

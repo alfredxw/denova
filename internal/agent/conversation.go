@@ -31,8 +31,10 @@ type SessionConversation struct {
 	session             *session.Session
 	cfg                 *config.Config
 	agentKind           string
-	runtimeContextTitle string
-	runtimeContext      string
+	stableContextTitle  string
+	stableContext       string
+	dynamicContextTitle string
+	dynamicContext      string
 }
 
 func NewSessionConversation(sess *session.Session, options ...SessionConversationOption) *SessionConversation {
@@ -60,6 +62,15 @@ func NewSessionConversationForAgentWithRuntimeContext(sess *session.Session, cfg
 	)
 }
 
+func NewSessionConversationForAgentWithRuntimeContexts(sess *session.Session, cfg *config.Config, agentKind, stableTitle, stableContent, dynamicTitle, dynamicContent string) *SessionConversation {
+	return NewSessionConversation(
+		sess,
+		WithSessionContextConfig(cfg, agentKind),
+		WithSessionStableRuntimeContext(stableTitle, stableContent),
+		WithSessionRuntimeContext(dynamicTitle, dynamicContent),
+	)
+}
+
 type SessionConversationOption func(*SessionConversation)
 
 func WithSessionContextConfig(cfg *config.Config, agentKind string) SessionConversationOption {
@@ -71,8 +82,15 @@ func WithSessionContextConfig(cfg *config.Config, agentKind string) SessionConve
 
 func WithSessionRuntimeContext(title, content string) SessionConversationOption {
 	return func(c *SessionConversation) {
-		c.runtimeContextTitle = title
-		c.runtimeContext = content
+		c.dynamicContextTitle = title
+		c.dynamicContext = content
+	}
+}
+
+func WithSessionStableRuntimeContext(title, content string) SessionConversationOption {
+	return func(c *SessionConversation) {
+		c.stableContextTitle = title
+		c.stableContext = content
 	}
 }
 
@@ -83,19 +101,32 @@ func (c *SessionConversation) PrepareMessages(originalMessage, agentMessage stri
 	if err := c.session.Append(schema.UserMessage(originalMessage)); err != nil {
 		return nil, err
 	}
-	return c.modelMessages(appendRuntimeContextToAgentMessage(agentMessage, c.runtimeContextTitle, c.runtimeContext)), nil
+	messages := c.modelMessages(prependRuntimeContextToAgentMessage(agentMessage, c.dynamicContextTitle, c.dynamicContext))
+	if leading := c.leadingRuntimeMessages(); len(leading) > 0 {
+		messages = append(leading, messages...)
+	}
+	return messages, nil
 }
 
 func (c *SessionConversation) ContextSourceSummary() string {
-	if c == nil || strings.TrimSpace(c.runtimeContext) == "" {
+	if c == nil || (strings.TrimSpace(c.stableContext) == "" && strings.TrimSpace(c.dynamicContext) == "") {
 		return ""
 	}
-	title := strings.TrimSpace(c.runtimeContextTitle)
-	if title == "" {
-		title = "本轮动态上下文"
-	}
 	contextLog := newContextBuildLog()
-	contextLog.add("本轮动态上下文", title, c.runtimeContext, "appended_to_final_user_message")
+	if strings.TrimSpace(c.stableContext) != "" {
+		title := strings.TrimSpace(c.stableContextTitle)
+		if title == "" {
+			title = "稳定上下文"
+		}
+		contextLog.add("稳定上下文", title, c.stableContext, "prepended_to_model_messages")
+	}
+	if strings.TrimSpace(c.dynamicContext) != "" {
+		title := strings.TrimSpace(c.dynamicContextTitle)
+		if title == "" {
+			title = "本轮动态上下文"
+		}
+		contextLog.add("本轮动态上下文", title, c.dynamicContext, "prepended_to_final_user_message")
+	}
 	return contextLog.String()
 }
 
@@ -143,7 +174,11 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 		return input.Messages, result, err
 	}
 	epoch := c.nextCompactionEpoch()
-	newMessages := compactMessagesForModel(input.Messages, summary, epoch, policy.RetainedTurns)
+	leading, compactableMessages := c.splitLeadingRuntimeMessages(input.Messages)
+	newMessages := compactMessagesForModel(compactableMessages, summary, epoch, policy.RetainedTurns)
+	if len(leading) > 0 {
+		newMessages = append(append([]*schema.Message(nil), leading...), newMessages...)
+	}
 	result.Triggered = true
 	result.Epoch = epoch
 	result.Summary = summary
@@ -159,7 +194,10 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	}
 	if record.Epoch != epoch {
 		result.Epoch = record.Epoch
-		newMessages = compactMessagesForModel(input.Messages, summary, record.Epoch, policy.RetainedTurns)
+		newMessages = compactMessagesForModel(compactableMessages, summary, record.Epoch, policy.RetainedTurns)
+		if len(leading) > 0 {
+			newMessages = append(append([]*schema.Message(nil), leading...), newMessages...)
+		}
 		result.TokensAfter = EstimateContextTokens(newMessages, input.Tools)
 		result.MessageCountAfter = len(newMessages)
 	}
@@ -188,7 +226,7 @@ func (c *SessionConversation) modelMessages(agentMessage string) []*schema.Messa
 	return history
 }
 
-func appendRuntimeContextToAgentMessage(agentMessage, title, content string) string {
+func prependRuntimeContextToAgentMessage(agentMessage, title, content string) string {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return agentMessage
@@ -198,13 +236,61 @@ func appendRuntimeContextToAgentMessage(agentMessage, title, content string) str
 		title = "本轮动态上下文"
 	}
 	var sb strings.Builder
-	sb.WriteString(strings.TrimSpace(agentMessage))
-	sb.WriteString("\n\n---\n\n# ")
+	sb.WriteString("# ")
 	sb.WriteString(title)
 	sb.WriteString("\n\n")
-	sb.WriteString("以下内容来自当前 workspace 的有界状态快照，随作品进展变化，只用于本轮判断；用户本轮请求仍以上方正文为准。需要更完整或最新内容时，按来源路径使用工具读取确认。\n\n")
+	sb.WriteString("以下内容来自当前 workspace 的有界状态快照，随作品进展变化，只用于本轮判断。需要更完整或最新内容时，按来源路径使用工具读取确认。\n\n")
+	sb.WriteString(content)
+	sb.WriteString("\n\n---\n\n# 本轮用户请求（最高优先级）\n\n")
+	sb.WriteString(strings.TrimSpace(agentMessage))
+	return sb.String()
+}
+
+func standaloneRuntimeContextMessage(title, content, note string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = "稳定上下文"
+	}
+	note = strings.TrimSpace(note)
+	if note == "" {
+		note = "以下内容来自当前 workspace 的低变更率有界状态快照，放在模型输入前部以提升前缀缓存稳定性。需要更完整或最新内容时，按来源路径使用工具读取确认。"
+	}
+	var sb strings.Builder
+	sb.WriteString("# ")
+	sb.WriteString(title)
+	sb.WriteString("\n\n")
+	sb.WriteString(note)
+	sb.WriteString("\n\n")
 	sb.WriteString(content)
 	return sb.String()
+}
+
+func (c *SessionConversation) leadingRuntimeMessages() []*schema.Message {
+	if c == nil || strings.TrimSpace(c.stableContext) == "" {
+		return nil
+	}
+	content := standaloneRuntimeContextMessage(c.stableContextTitle, c.stableContext, "")
+	if strings.TrimSpace(content) == "" {
+		return nil
+	}
+	return []*schema.Message{schema.UserMessage(content)}
+}
+
+func (c *SessionConversation) splitLeadingRuntimeMessages(messages []*schema.Message) ([]*schema.Message, []*schema.Message) {
+	leading := c.leadingRuntimeMessages()
+	if len(leading) == 0 || len(messages) < len(leading) {
+		return nil, messages
+	}
+	for i := range leading {
+		if messages[i] == nil || leading[i] == nil || messages[i].Role != leading[i].Role || messages[i].Content != leading[i].Content {
+			return nil, messages
+		}
+	}
+	return messages[:len(leading)], messages[len(leading):]
 }
 
 func (c *SessionConversation) compactionPolicy() contextCompactionPolicy {

@@ -82,26 +82,36 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 	policy := DefaultLoopPolicy().normalized()
 	composition := composeAgentInput(req, pending, bookService, policy)
 	messages := buildIDEAnalysisMessages(cfg, effectiveMessages, totalMessages, compaction)
-	runtimeContext := IDEWorkspaceRuntimeContext(state)
-	messages = append(messages, schema.UserMessage(appendRuntimeContextToAgentMessage(
+	runtimeContexts := IDEWorkspaceRuntimeContextsForState(state)
+	if strings.TrimSpace(runtimeContexts.Stable) != "" {
+		messages = append([]*schema.Message{schema.UserMessage(standaloneRuntimeContextMessage(runtimeContexts.StableTitle, runtimeContexts.Stable, ""))}, messages...)
+	}
+	messages = append(messages, schema.UserMessage(prependRuntimeContextToAgentMessage(
 		composition.AgentMessage,
-		ideWorkspaceRuntimeContextTitle,
-		runtimeContext,
+		runtimeContexts.DynamicTitle,
+		runtimeContexts.Dynamic,
 	)))
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
+	stableMessageCount := 0
+	if strings.TrimSpace(runtimeContexts.Stable) != "" {
+		stableMessageCount = 1
+	}
 	for i, msg := range messages {
 		if msg == nil {
 			continue
 		}
 		source := "会话历史"
 		title := fmt.Sprintf("历史消息 %d", i+1)
-		if isContextCompactionMessage(msg) {
+		if i < stableMessageCount {
+			source = "稳定作品上下文"
+			title = runtimeContexts.StableTitle
+		} else if isContextCompactionMessage(msg) {
 			source = "上下文压缩"
 			title = "模型可见压缩摘要"
 		} else if i == len(messages)-1 {
 			source = "本轮上下文"
-			if strings.TrimSpace(runtimeContext) != "" {
-				title = "本轮用户消息与动态作品状态"
+			if strings.TrimSpace(runtimeContexts.Dynamic) != "" {
+				title = "动态作品状态与本轮用户请求"
 			} else {
 				title = "本轮发送给 Agent 的用户消息"
 			}

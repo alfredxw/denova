@@ -116,9 +116,9 @@ func TestCompactContextIncludesCharacterStates(t *testing.T) {
 		"## 当前大纲",
 		"## 常驻资料库",
 		"## 章节组细纲",
+		"## 章节目录概览",
 		"## 当前进度",
 		"## 角色状态",
-		"## 章节目录概览",
 	} {
 		index := strings.Index(context, marker)
 		if index < 0 {
@@ -128,6 +128,58 @@ func TestCompactContextIncludesCharacterStates(t *testing.T) {
 			t.Fatalf("CompactContext 顺序错误，%q 应按低频到高频状态排列:\n%s", marker, context)
 		}
 		lastIndex = index
+	}
+}
+
+func TestStableAndDynamicContextPartsSeparateByChurn(t *testing.T) {
+	dir := t.TempDir()
+	state := NewState(dir)
+	if err := state.InitWorkspace(); err != nil {
+		t.Fatalf("InitWorkspace 失败: %v", err)
+	}
+	if err := os.WriteFile(state.IdeasPath(), []byte("# 灵感\n\n废土公路复仇。"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), "outline.md"), []byte("大纲内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), "progress.md"), []byte("进度内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.SettingDir(), CharacterStatesFileName), []byte("角色状态内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state.ChapterGroupDir(), "group01-废城.md"), []byte("章节组内容"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "chapters", "ch0001-开局.md"), []byte("第一章正文"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewLoreStore(dir).Create(LoreItemInput{
+		ID:         "hero",
+		Type:       "character",
+		Name:       "林川",
+		Importance: "major",
+		LoadMode:   LoreLoadModeResident,
+		Content:    "林川长期设定",
+	}); err != nil {
+		t.Fatalf("创建资料失败: %v", err)
+	}
+
+	stableIDs := make([]string, 0)
+	for _, part := range state.StableContextParts() {
+		stableIDs = append(stableIDs, part.ID)
+	}
+	if got, want := strings.Join(stableIDs, ","), "ideas,outline,lore"; got != want {
+		t.Fatalf("stable context ids = %s, want %s", got, want)
+	}
+
+	dynamicIDs := make([]string, 0)
+	for _, part := range state.DynamicContextParts() {
+		dynamicIDs = append(dynamicIDs, part.ID)
+	}
+	if got, want := strings.Join(dynamicIDs, ","), "chapter_groups,chapter_paths,progress,character_states"; got != want {
+		t.Fatalf("dynamic context ids = %s, want %s", got, want)
 	}
 }
 

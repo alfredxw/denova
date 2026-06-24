@@ -149,8 +149,15 @@ func TestBuildInstructionKeepsWorkspaceStateOutOfSystemPrompt(t *testing.T) {
 	if strings.Contains(instruction, "主角进入废城") || strings.Contains(instruction, "# 当前作品状态") {
 		t.Fatalf("system prompt should not include dynamic workspace state:\n%s", instruction)
 	}
+	contexts := IDEWorkspaceRuntimeContextsForState(state)
+	if !strings.Contains(contexts.Stable, "主角进入废城") {
+		t.Fatalf("stable runtime workspace context should include outline: %#v", contexts)
+	}
+	if strings.Contains(contexts.Dynamic, "主角进入废城") {
+		t.Fatalf("dynamic runtime workspace context should not include stable outline: %#v", contexts)
+	}
 	if context := IDEWorkspaceRuntimeContext(state); !strings.Contains(context, "主角进入废城") {
-		t.Fatalf("runtime workspace context should include state: %q", context)
+		t.Fatalf("legacy runtime workspace context should include state: %q", context)
 	}
 }
 
