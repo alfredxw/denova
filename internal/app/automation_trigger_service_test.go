@@ -114,7 +114,7 @@ func TestAutomationChapterBatchTriggerCreatesInboxAtBatchBoundaries(t *testing.T
 	}
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
 	app.ensureServices()
-	app.bookService = book.NewServiceWithStyleRoot(workspace, book.UserStyleDir(app.cfg.NovaDir))
+	app.bookService = book.NewService(workspace)
 
 	task, err := app.CreateAutomation(automation.Task{
 		Scope:      automation.ScopeWorkspace,
@@ -225,7 +225,7 @@ func TestAutomationMutationCheckRunsOnlyContentTriggersForChapterWrites(t *testi
 	writeTestChapter(t, workspace, 1)
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
 	app.ensureServices()
-	app.bookService = book.NewServiceWithStyleRoot(workspace, book.UserStyleDir(app.cfg.NovaDir))
+	app.bookService = book.NewService(workspace)
 
 	now := time.Now()
 	if _, err := app.CreateAutomation(automation.Task{
@@ -300,7 +300,7 @@ func TestAutomationMutationCallbackChecksAgentChapterWrites(t *testing.T) {
 	writeTestChapter(t, workspace, 1)
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
 	app.ensureServices()
-	app.bookService = book.NewServiceWithStyleRoot(workspace, book.UserStyleDir(app.cfg.NovaDir))
+	app.bookService = book.NewService(workspace)
 
 	task, err := app.CreateAutomation(automation.Task{
 		Scope:      automation.ScopeWorkspace,
@@ -344,7 +344,7 @@ func TestAutomationSemanticTriggerChecksOnlyCompletedChapterBatches(t *testing.T
 	}
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
 	app.ensureServices()
-	app.bookService = book.NewServiceWithStyleRoot(workspace, book.UserStyleDir(app.cfg.NovaDir))
+	app.bookService = book.NewService(workspace)
 
 	var calls int
 	var lastInstruction string

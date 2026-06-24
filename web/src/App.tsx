@@ -104,7 +104,7 @@ function App() {
   }, [mode])
 
   const {
-    tree, loading, selectedFile, fileContent, workspace, workspaceLoaded, summary, styles, books,
+    tree, loading, selectedFile, fileContent, workspace, workspaceLoaded, summary, books,
     selectFile, clearSelectedFile, saveCurrentFile, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace({ autoRefreshEnabled: workspaceAutoRefreshEnabled })
@@ -125,7 +125,7 @@ function App() {
     isStreaming,
     activityContent,
     references,
-    styleReferences,
+    styleScenes,
     textSelections,
     send,
     analyzeContext,
@@ -142,8 +142,8 @@ function App() {
     loreReferences,
     addLoreReference,
     removeLoreReference,
-    addStyleReference,
-    removeStyleReference,
+    addStyleScene,
+    removeStyleScene,
     addTextSelection,
     removeTextSelection,
   } = useChat({ onAgentFileChange: handleAgentFileChange })
@@ -606,7 +606,6 @@ function App() {
         loading={loading}
         selectedFile={selectedFile}
         fileContent={fileContent}
-        styles={styles}
         openTabs={openTabs}
         activeTabKey={activeTabKey}
         sidebarView={sidebarView}
@@ -622,7 +621,7 @@ function App() {
         references={references}
         loreReferences={loreReferences}
         loreItems={loreItems}
-        styleReferences={styleReferences}
+        styleScenes={styleScenes}
         textSelections={textSelections}
         onSetMode={handleSetMode}
         onToggleActivityBarExpanded={() => setActivityBarExpanded((value) => !value)}
@@ -661,8 +660,8 @@ function App() {
         onReferenceRemove={removeReference}
         onLoreReferenceAdd={addLoreReference}
         onLoreReferenceRemove={removeLoreReference}
-        onStyleReferenceAdd={addStyleReference}
-        onStyleReferenceRemove={removeStyleReference}
+        onStyleSceneAdd={addStyleScene}
+        onStyleSceneRemove={removeStyleScene}
         onTextSelectionRemove={removeTextSelection}
       />
       <CommandPalette

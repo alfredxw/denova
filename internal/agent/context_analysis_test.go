@@ -69,6 +69,81 @@ func TestInteractiveContextAnalysisUsesConfiguredContextWindow(t *testing.T) {
 	}
 }
 
+func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
+	analysis, err := BuildIDEContextAnalysis(
+		&config.Config{},
+		nil,
+		IDEStoryTeller{
+			ID:         "classic",
+			StyleRules: []StyleRule{{Scene: "激烈打斗", StyleContents: []string{"短句留白"}}},
+		},
+		nil,
+		nil,
+		0,
+		nil,
+		nil,
+		ChatRequest{
+			Message:    "续写第三章",
+			StyleRules: []StyleRule{{Scene: "激烈打斗", StyleContents: []string{"短句留白"}}},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var foundSystemPart bool
+	for _, part := range analysis.SystemPromptParts {
+		if part.Title == "场景化风格规则：激烈打斗" && strings.Contains(part.Content, "短句留白") {
+			foundSystemPart = true
+		}
+	}
+	if !foundSystemPart {
+		t.Fatalf("style rule should be a system prompt part: %#v", analysis.SystemPromptParts)
+	}
+	if len(analysis.ContextMessages) == 0 {
+		t.Fatal("context messages should not be empty")
+	}
+	final := analysis.ContextMessages[len(analysis.ContextMessages)-1].Content
+	if strings.Contains(final, "场景化风格规则") || strings.Contains(final, "短句留白") {
+		t.Fatalf("style rule should not be appended to final user message:\n%s", final)
+	}
+}
+
+func TestInteractiveContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
+	analysis, err := BuildInteractiveStoryContextAnalysis(
+		&config.Config{},
+		nil,
+		prompts.InteractiveStorySystemInstructionInput{
+			StoryTellerID: "classic",
+			StyleRules:    []prompts.StyleRule{{Scene: "日常对话", StyleContents: []string{"克制对白"}}},
+		},
+		nil,
+		ChatRequest{
+			Message:    "我和守卫交谈",
+			StyleRules: []StyleRule{{Scene: "日常对话", StyleContents: []string{"克制对白"}}},
+		},
+		nil,
+		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
+			return []*schema.Message{schema.UserMessage(agentMessage)}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var foundSystemPart bool
+	for _, part := range analysis.SystemPromptParts {
+		if part.Title == "场景化风格规则：日常对话" && strings.Contains(part.Content, "克制对白") {
+			foundSystemPart = true
+		}
+	}
+	if !foundSystemPart {
+		t.Fatalf("style rule should be a system prompt part: %#v", analysis.SystemPromptParts)
+	}
+	final := analysis.ContextMessages[len(analysis.ContextMessages)-1].Content
+	if strings.Contains(final, "场景化风格规则") || strings.Contains(final, "克制对白") {
+		t.Fatalf("style rule should not be appended to final interactive message:\n%s", final)
+	}
+}
+
 func TestIDEContextAnalysisKeepsPostCompactionMessages(t *testing.T) {
 	messages := []*schema.Message{
 		schema.UserMessage("user 1"),

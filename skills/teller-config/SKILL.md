@@ -59,9 +59,9 @@ When modifying slots:
 
 ## Style Rules
 
-`style_rules` maps scenes to style reference IDs:
+`style_rules` maps scenes to inline style reference content:
 
 - `scene`: scenario label.
-- `styles`: list of style reference names or IDs.
+- `style_contents`: list of text snippets used as prose style references. Each item is stored as text, not a file path, and should stay within 8000 characters.
 
 Only add style rules when the user asks for scene-specific style behavior or when an existing teller already uses that pattern.

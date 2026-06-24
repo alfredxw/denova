@@ -3,6 +3,47 @@ import { describe, expect, it, vi } from 'vitest'
 import { StoryPicker } from './StoryPicker'
 
 describe('StoryPicker', () => {
+  it('shows every story option immediately when opened', () => {
+    const stories = Array.from({ length: 12 }, (_, index) => story(`st_${index + 1}`, `故事线 ${index + 1}`))
+
+    render(
+      <StoryPicker
+        stories={stories}
+        currentStoryId="st_1"
+        tellers={[]}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '选择故事线' }))
+
+    expect(screen.getAllByRole('option')).toHaveLength(12)
+    expect(screen.getByRole('option', { name: '故事线 12' })).toBeInTheDocument()
+  })
+
+  it('selects a story option and closes the panel', () => {
+    const onSelect = vi.fn()
+
+    render(
+      <StoryPicker
+        stories={[story('st_1', '主线'), story('st_2', '支线')]}
+        currentStoryId="st_1"
+        tellers={[]}
+        onSelect={onSelect}
+        onCreate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '选择故事线' }))
+    fireEvent.click(screen.getByRole('option', { name: '支线' }))
+
+    expect(onSelect).toHaveBeenCalledWith('st_2')
+    expect(screen.queryByRole('option', { name: '支线' })).not.toBeInTheDocument()
+  })
+
   it('passes reply target chars when creating a story', () => {
     const onCreate = vi.fn()
 
@@ -45,3 +86,18 @@ describe('StoryPicker', () => {
     )
   })
 })
+
+function story(id: string, title: string) {
+  return {
+    id,
+    title,
+    origin: '',
+    story_teller_id: 'classic',
+    reply_target_chars: 900,
+    opening: { mode: 'ai' as const },
+    created_at: '',
+    updated_at: '',
+    branches: 1,
+    events: 1,
+  }
+}

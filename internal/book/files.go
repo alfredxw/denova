@@ -22,25 +22,11 @@ type FileNode struct {
 // Service 提供作品工作区文件管理能力。
 type Service struct {
 	workspace string
-	styleRoot string
 }
 
 // NewService 创建作品文件服务。
 func NewService(workspace string) *Service {
-	return &Service{workspace: workspace, styleRoot: filepath.Join(workspace, "setting", "styles")}
-}
-
-// NewServiceWithStyleRoot 创建作品文件服务，并指定用户级风格参考目录。
-func NewServiceWithStyleRoot(workspace, styleRoot string) *Service {
-	if strings.TrimSpace(styleRoot) == "" {
-		styleRoot = filepath.Join(workspace, "setting", "styles")
-	}
-	return &Service{workspace: workspace, styleRoot: styleRoot}
-}
-
-// UserStyleDir 返回用户级风格参考目录。
-func UserStyleDir(novaDir string) string {
-	return filepath.Join(novaDir, "styles")
+	return &Service{workspace: workspace}
 }
 
 // Workspace 返回当前作品工作目录。
@@ -89,94 +75,6 @@ func (s *Service) FileRevision(relPath string) (string, error) {
 		return "", errors.New("路径是目录而非文件")
 	}
 	return fileRevision(info), nil
-}
-
-// StyleFiles 返回用户级 styles/ 下所有可用的风格参考文件。
-func (s *Service) StyleFiles() ([]string, error) {
-	root := s.styleRoot
-	if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
-		return []string{}, nil
-	} else if err != nil {
-		return nil, err
-	}
-
-	var files []string
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		name := entry.Name()
-		if name != "." && strings.HasPrefix(name, ".") {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.IsDir() || !isStyleReferenceFile(name) {
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return nil
-		}
-		files = append(files, filepath.ToSlash(rel))
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Strings(files)
-	return files, nil
-}
-
-// ReadStyleFile 安全读取用户级 styles/ 下指定的风格参考文件。
-func (s *Service) ReadStyleFile(stylePath string) (string, error) {
-	if strings.TrimSpace(stylePath) == "" {
-		return "", errors.New("风格参考路径不能为空")
-	}
-	if filepath.IsAbs(stylePath) {
-		return "", errors.New("不允许使用绝对路径")
-	}
-	if !isStyleReferenceFile(stylePath) {
-		return "", errors.New("风格参考只支持 Markdown 或 TXT 文件")
-	}
-	absPath, err := safeStyleReferencePath(s.styleRoot, stylePath)
-	if err != nil {
-		return "", err
-	}
-	data, err := os.ReadFile(absPath)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
-func isStyleReferenceFile(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".md" || ext == ".txt"
-}
-
-func safeStyleReferencePath(root, stylePath string) (string, error) {
-	if strings.TrimSpace(root) == "" {
-		return "", errors.New("风格参考目录未配置")
-	}
-	clean := filepath.Clean(filepath.FromSlash(stylePath))
-	if clean == "." || clean == ".." || strings.HasPrefix(filepath.ToSlash(clean), "../") {
-		return "", errors.New("风格参考路径不在用户 styles 目录范围内")
-	}
-	absRoot, err := filepath.Abs(root)
-	if err != nil {
-		return "", err
-	}
-	absPath := filepath.Join(absRoot, clean)
-	rel, err := filepath.Rel(absRoot, absPath)
-	if err != nil {
-		return "", err
-	}
-	if rel == "." || strings.HasPrefix(filepath.ToSlash(rel), "../") {
-		return "", errors.New("风格参考路径不在用户 styles 目录范围内")
-	}
-	return absPath, nil
 }
 
 // WriteFile 写入 workspace 内文件内容，必要时创建父目录。

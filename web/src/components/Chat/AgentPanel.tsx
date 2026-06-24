@@ -32,10 +32,9 @@ interface AgentPanelProps {
   loreReferences: string[]
   loreReferenceLabels: Record<string, string>
   loreSuggestions: ReferencePickerItem[]
-  styleReferences: string[]
+  styleScenes: string[]
   textSelections: TextSelection[]
   fileSuggestions: string[]
-  styleSuggestions: string[]
   onCreateSession: (title?: string) => void | Promise<void>
   onSwitchSession: (id: string) => void | Promise<void>
   onRenameSession: (id: string, title: string) => void | Promise<void>
@@ -46,8 +45,8 @@ interface AgentPanelProps {
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
   onLoreReferenceRemove: (id: string) => void
-  onStyleReferenceAdd: (path: string) => void
-  onStyleReferenceRemove: (path: string) => void
+  onStyleSceneAdd: (scene: string) => void
+  onStyleSceneRemove: (scene: string) => void
   onTextSelectionRemove: (index: number) => void
   onOpenReviewConfig: () => void
   onOpenReviewFile: (path: string) => void | Promise<void>
@@ -69,10 +68,9 @@ export function AgentPanel({
   loreReferences,
   loreReferenceLabels,
   loreSuggestions,
-  styleReferences,
+  styleScenes,
   textSelections,
   fileSuggestions,
-  styleSuggestions,
   onCreateSession,
   onSwitchSession,
   onRenameSession,
@@ -83,8 +81,8 @@ export function AgentPanel({
   onReferenceRemove,
   onLoreReferenceAdd,
   onLoreReferenceRemove,
-  onStyleReferenceAdd,
-  onStyleReferenceRemove,
+  onStyleSceneAdd,
+  onStyleSceneRemove,
   onTextSelectionRemove,
   onOpenReviewConfig,
   onOpenReviewFile,
@@ -97,6 +95,7 @@ export function AgentPanel({
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
+  const [ideTellerId, setIdeTellerId] = useState('classic')
   const skillCommands = useSkillCommands({ agentKey: 'ide', workspace, fallbackEnabled: true })
   const activeSession = sessions.find((session) => session.id === activeSessionId) ||
     sessions.find((session) => session.active) ||
@@ -105,6 +104,10 @@ export function AgentPanel({
     () => messages.filter((message) => message.role === 'token_usage'),
     [messages],
   )
+  const styleSceneSuggestions = useMemo(() => {
+    const teller = tellers.find((item) => item.id === ideTellerId) || tellers.find((item) => item.id === 'classic') || tellers[0]
+    return Array.from(new Set((teller?.style_rules || []).map((rule) => rule.scene.trim()).filter(Boolean)))
+  }, [ideTellerId, tellers])
 
   useEffect(() => {
     const handleWritingInitRequest = (event: Event) => {
@@ -200,7 +203,7 @@ export function AgentPanel({
       {view === 'chat' ? (
         <>
           <div className="flex min-h-[42px] shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3">
-            <IdeTellerSelector workspace={workspace} tellers={tellers} />
+            <IdeTellerSelector workspace={workspace} tellers={tellers} onValueChange={setIdeTellerId} />
             <div className="flex min-w-0 flex-1 items-center text-[11px] text-[var(--nova-text-faint)]" title={activeSession ? `${activeSession.title} · ${t('common.messages', { count: activeSession.message_count })}` : t('chat.noSession')}>
               <span className="shrink-0 text-[var(--nova-text-muted)]">{t('chat.current')}</span>
               <span className="min-w-0 truncate">{activeSession?.title || t('chat.noSession')}</span>
@@ -247,10 +250,10 @@ export function AgentPanel({
             onLoreReferenceAdd={onLoreReferenceAdd}
             onLoreReferenceRemove={onLoreReferenceRemove}
             loreSuggestions={loreSuggestions}
-            styleReferences={styleReferences}
-            onStyleReferenceAdd={onStyleReferenceAdd}
-            onStyleReferenceRemove={onStyleReferenceRemove}
-            styleSuggestions={styleSuggestions}
+            styleScenes={styleScenes}
+            onStyleSceneAdd={onStyleSceneAdd}
+            onStyleSceneRemove={onStyleSceneRemove}
+            styleSceneSuggestions={styleSceneSuggestions}
             textSelections={textSelections}
             onTextSelectionRemove={onTextSelectionRemove}
             skills={skillCommands}
@@ -299,7 +302,7 @@ export function AgentPanel({
   )
 }
 
-function IdeTellerSelector({ workspace, tellers }: { workspace: string; tellers: Teller[] }) {
+function IdeTellerSelector({ workspace, tellers, onValueChange }: { workspace: string; tellers: Teller[]; onValueChange?: (value: string) => void }) {
   const { t } = useTranslation()
   const [value, setValue] = useState('classic')
   const [saving, setSaving] = useState(false)
@@ -308,22 +311,31 @@ function IdeTellerSelector({ workspace, tellers }: { workspace: string; tellers:
     let cancelled = false
     if (!workspace) {
       setValue('classic')
+      onValueChange?.('classic')
       return () => { cancelled = true }
     }
     fetchSettings()
       .then((settings) => {
-        if (!cancelled) setValue(settings.effective.ide_story_teller_id || 'classic')
+        const next = settings.effective.ide_story_teller_id || 'classic'
+        if (!cancelled) {
+          setValue(next)
+          onValueChange?.(next)
+        }
       })
       .catch(() => {
-        if (!cancelled) setValue('classic')
+        if (!cancelled) {
+          setValue('classic')
+          onValueChange?.('classic')
+        }
       })
     return () => { cancelled = true }
-  }, [workspace])
+  }, [onValueChange, workspace])
 
   const handleChange = async (next: string) => {
     if (!workspace || next === value) return
     const previous = value
     setValue(next)
+    onValueChange?.(next)
     setSaving(true)
     try {
       const settings = await fetchSettings()
@@ -332,6 +344,7 @@ function IdeTellerSelector({ workspace, tellers }: { workspace: string; tellers:
     } catch (e) {
       console.warn('保存 IDE 默认导演失败', e)
       setValue(previous)
+      onValueChange?.(previous)
     } finally {
       setSaving(false)
     }

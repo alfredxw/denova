@@ -171,7 +171,6 @@ export const handlers = [
   ),
   http.get('/api/lore/items', () => HttpResponse.json({ items: [] })),
   http.get('/api/config-manager/messages', () => HttpResponse.json([])),
-  http.get('/api/styles', () => HttpResponse.json({ styles: ['古龙.md', '番茄.txt'] })),
   http.post('/api/command', async ({ request }) => {
     const body = (await request.json()) as { command?: string }
     return HttpResponse.json({ result: `executed:${body.command || ''}` })

@@ -8,7 +8,6 @@ import {
   getMessages,
   getSessions,
   getWorkspaceSummary,
-  getStyles,
   renameSession,
   sendMessage,
   switchSession,
@@ -30,11 +29,10 @@ describe('api', () => {
     await expect(getWorkspaceSummary()).resolves.toMatchObject({ chapters: [] })
   })
 
-  it('通过 MSW 获取会话、活跃任务和风格参考', async () => {
+  it('通过 MSW 获取会话和活跃任务', async () => {
     await expect(getMessages()).resolves.toEqual([])
     await expect(getSessions()).resolves.toEqual([])
     await expect(getActiveChatTask()).resolves.toEqual({ active: false })
-    await expect(getStyles()).resolves.toEqual(['古龙.md', '番茄.txt'])
   })
 
   it('覆盖会话 CRUD、切换和指定会话消息读取', async () => {
@@ -89,7 +87,7 @@ describe('api', () => {
     await expect(executeCommand('status')).resolves.toBe('executed:status')
   })
 
-  it('发送聊天请求时提交引用、风格参考、选中文本和 planMode，并解析 SSE', async () => {
+  it('发送聊天请求时提交引用、场景风格、选中文本和 planMode，并解析 SSE', async () => {
     let requestBody: unknown
     server.use(
       http.post('/api/chat', async ({ request }) => {
@@ -106,7 +104,7 @@ describe('api', () => {
       '写下一章',
       ['chapters/ch01.md'],
       [],
-      ['古龙.md'],
+      ['激烈打斗'],
       [{ fileName: 'chapters/ch02.md', startLine: 1, endLine: 2, content: '选中文本' }],
       undefined,
       true,
@@ -126,7 +124,7 @@ describe('api', () => {
       message: '写下一章',
       references: ['chapters/ch01.md'],
       lore_references: [],
-      style_references: ['古龙.md'],
+      style_scenes: ['激烈打斗'],
       selections: [{
         file_name: 'chapters/ch02.md',
         start_line: 1,

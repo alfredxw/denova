@@ -323,7 +323,7 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 		StoryID            string   `json:"story_id"`
 		Branch             string   `json:"branch"`
 		Message            string   `json:"message"`
-		StyleReferences    []string `json:"style_references"`
+		StyleScenes        []string `json:"style_scenes"`
 		RegenerateFromTurn string   `json:"regenerate_from_turn_id"`
 	}
 	if err := c.BindJSON(&body); err != nil {
@@ -345,9 +345,9 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 
 	var task *novaApp.Task
 	if strings.TrimSpace(body.RegenerateFromTurn) != "" {
-		task = h.app.StartInteractiveRegenerateTask(body.StoryID, body.Branch, body.RegenerateFromTurn, body.Message, body.StyleReferences)
+		task = h.app.StartInteractiveRegenerateTask(body.StoryID, body.Branch, body.RegenerateFromTurn, body.Message, body.StyleScenes)
 	} else {
-		task = h.app.StartInteractiveTask(body.StoryID, body.Branch, body.Message, body.StyleReferences)
+		task = h.app.StartInteractiveTask(body.StoryID, body.Branch, body.Message, body.StyleScenes)
 	}
 	if task == nil {
 		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
@@ -358,11 +358,11 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 
 func (h *Handlers) HandleInteractiveChatContextAnalysis(ctx context.Context, c *app.RequestContext) {
 	var body struct {
-		Mode            string   `json:"mode"`
-		StoryID         string   `json:"story_id"`
-		Branch          string   `json:"branch"`
-		Message         string   `json:"message"`
-		StyleReferences []string `json:"style_references"`
+		Mode        string   `json:"mode"`
+		StoryID     string   `json:"story_id"`
+		Branch      string   `json:"branch"`
+		Message     string   `json:"message"`
+		StyleScenes []string `json:"style_scenes"`
 	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
@@ -380,7 +380,7 @@ func (h *Handlers) HandleInteractiveChatContextAnalysis(ctx context.Context, c *
 		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyModeOnly")
 		return
 	}
-	analysis, err := h.app.AnalyzeInteractiveContext(body.StoryID, body.Branch, body.Message, body.StyleReferences)
+	analysis, err := h.app.AnalyzeInteractiveContext(body.StoryID, body.Branch, body.Message, body.StyleScenes)
 	if err != nil {
 		writeError(c, consts.StatusConflict, err.Error())
 		return

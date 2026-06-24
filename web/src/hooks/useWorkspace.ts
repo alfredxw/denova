@@ -5,7 +5,6 @@ import {
   deleteWorkspaceItem,
   getBooks,
   getCurrentWorkspace,
-  getStyles,
   getWorkspaceSummary,
   getWorkspaceTree,
   moveWorkspaceItem,
@@ -43,7 +42,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const [workspace, setWorkspace] = useState<string>('')
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
-  const [styles, setStyles] = useState<string[]>([])
   const [books, setBooks] = useState<BookRecord[]>([])
 
   // 用 ref 追踪最新 selectedFile，避免异步回调闭包捕获旧值
@@ -59,7 +57,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     setFileContent('')
     selectedFileRevisionRef.current = ''
     setSummary(null)
-    setStyles([])
   }, [])
 
   /** 获取当前 workspace 路径 */
@@ -109,21 +106,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     }
   }, [workspace])
 
-  /** 获取用户级 styles 下的风格参考文件 */
-  const fetchStyles = useCallback(async (options: WorkspaceRefreshOptions = {}) => {
-    const clearOnError = options.clearOnError ?? true
-    if (!workspace) {
-      setStyles([])
-      return
-    }
-    try {
-      setStyles(await getStyles())
-    } catch (e) {
-      console.error('获取风格参考失败', e)
-      if (clearOnError) setStyles([])
-    }
-  }, [workspace])
-
   /** 获取当前 Nova 数据目录下实际存在的书籍列表 */
   const fetchBooks = useCallback(async () => {
     try {
@@ -144,8 +126,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       resetWorkspaceState()
       return
     }
-    void Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
-  }, [fetchSummary, fetchStyles, fetchTree, resetWorkspaceState, workspace, workspaceLoaded])
+    void Promise.all([fetchTree(), fetchSummary()])
+  }, [fetchSummary, fetchTree, resetWorkspaceState, workspace, workspaceLoaded])
 
   // 自动刷新目录树，覆盖 AI Agent 直接写入文件后的结构变化。
   useEffect(() => {
@@ -155,7 +137,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
         const backgroundOptions = { showLoading: false, clearOnError: false }
         void Promise.all([
           fetchTree(backgroundOptions),
-          fetchStyles(backgroundOptions),
           fetchSummary(backgroundOptions),
         ])
       }
@@ -170,7 +151,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       window.removeEventListener('focus', refreshIfVisible)
       document.removeEventListener('visibilitychange', refreshIfVisible)
     }
-  }, [autoRefreshEnabled, fetchTree, fetchStyles, fetchSummary, workspace, workspaceLoaded])
+  }, [autoRefreshEnabled, fetchTree, fetchSummary, workspace, workspaceLoaded])
 
   /** 选中文件并加载内容 */
   const selectFile = useCallback(async (path: string) => {
@@ -204,7 +185,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   /** Agent 写入或创建文件后，刷新目录树并同步当前打开文件内容。 */
   const refreshAfterAgentFileChange = useCallback(async (changedPath?: string) => {
     if (!workspace) return
-    await Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
+    await Promise.all([fetchTree(), fetchSummary()])
     const currentFile = selectedFileRef.current
     if (!currentFile) return
 
@@ -225,7 +206,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     } catch (e) {
       console.error('刷新当前文件失败', e)
     }
-  }, [fetchTree, fetchStyles, fetchSummary, workspace])
+  }, [fetchTree, fetchSummary, workspace])
 
   /** 保存当前文件内容 */
   const saveCurrentFile = useCallback(async (content: string): Promise<boolean> => {
@@ -252,8 +233,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   /** 新建文件或目录 */
   const createItem = useCallback(async (path: string, type: 'file' | 'dir') => {
     await createWorkspaceItem({ path, type, content: '' })
-    await Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
-  }, [fetchTree, fetchStyles, fetchSummary])
+    await Promise.all([fetchTree(), fetchSummary()])
+  }, [fetchTree, fetchSummary])
 
   /** 删除文件或目录 */
   const deleteItem = useCallback(async (path: string) => {
@@ -263,8 +244,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       setFileContent('')
       selectedFileRevisionRef.current = ''
     }
-    await Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
-  }, [fetchTree, fetchStyles, fetchSummary, selectedFile])
+    await Promise.all([fetchTree(), fetchSummary()])
+  }, [fetchTree, fetchSummary, selectedFile])
 
   /** 重命名文件或目录 */
   const renameItem = useCallback(async (path: string, newName: string) => {
@@ -277,14 +258,14 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       setSelectedFile(nextPath)
       await selectFile(nextPath)
     }
-    await Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
-  }, [fetchTree, fetchStyles, fetchSummary, selectFile, selectedFile])
+    await Promise.all([fetchTree(), fetchSummary()])
+  }, [fetchTree, fetchSummary, selectFile, selectedFile])
 
   /** 复制文件或目录 */
   const copyItem = useCallback(async (from: string, to: string) => {
     await copyWorkspaceItem({ from, to })
-    await Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
-  }, [fetchTree, fetchStyles, fetchSummary])
+    await Promise.all([fetchTree(), fetchSummary()])
+  }, [fetchTree, fetchSummary])
 
   /** 移动文件或目录 */
   const moveItem = useCallback(async (from: string, to: string) => {
@@ -297,17 +278,17 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       setSelectedFile(nextPath)
       await selectFile(nextPath)
     }
-    await Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
-  }, [fetchTree, fetchStyles, fetchSummary, selectFile, selectedFile])
+    await Promise.all([fetchTree(), fetchSummary()])
+  }, [fetchTree, fetchSummary, selectFile, selectedFile])
 
-  /** 刷新目录树和风格参考 */
+  /** 刷新目录树和章节统计 */
   const refresh = useCallback(async () => {
     if (!workspace) {
       resetWorkspaceState()
       return
     }
-    await Promise.all([fetchTree(), fetchStyles(), fetchSummary()])
-  }, [fetchTree, fetchStyles, fetchSummary, resetWorkspaceState, workspace])
+    await Promise.all([fetchTree(), fetchSummary()])
+  }, [fetchTree, fetchSummary, resetWorkspaceState, workspace])
 
   return {
     tree,
@@ -317,7 +298,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     workspace,
     workspaceLoaded,
     summary,
-    styles,
     books,
     selectFile,
     clearSelectedFile,

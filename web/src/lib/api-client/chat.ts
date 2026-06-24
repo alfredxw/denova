@@ -5,7 +5,7 @@ export async function sendMessage(
   message: string,
   references: string[] = [],
   loreReferences: string[] = [],
-  styleReferences: string[] = [],
+  styleScenes: string[] = [],
   textSelections: TextSelection[] = [],
   signal?: AbortSignal,
   planMode?: boolean,
@@ -17,7 +17,7 @@ export async function sendMessage(
       message,
       references,
       lore_references: loreReferences,
-      style_references: styleReferences,
+      style_scenes: styleScenes,
       selections: textSelections.map(s => ({
         file_name: s.fileName,
         start_line: s.startLine,
@@ -39,7 +39,7 @@ export async function analyzeChatContext(
   message: string,
   references: string[] = [],
   loreReferences: string[] = [],
-  styleReferences: string[] = [],
+  styleScenes: string[] = [],
   textSelections: TextSelection[] = [],
   planMode?: boolean,
 ): Promise<ContextAnalysis> {
@@ -50,7 +50,7 @@ export async function analyzeChatContext(
       message,
       references,
       lore_references: loreReferences,
-      style_references: styleReferences,
+      style_scenes: styleScenes,
       selections: textSelections.map(s => ({
         file_name: s.fileName,
         start_line: s.startLine,

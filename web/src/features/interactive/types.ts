@@ -48,7 +48,7 @@ export interface Teller {
 
 export interface StyleRule {
   scene: string
-  styles: string[]
+  style_contents: string[]
 }
 
 export interface TellerContextPolicy {

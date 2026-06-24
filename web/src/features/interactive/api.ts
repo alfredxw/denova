@@ -212,7 +212,7 @@ export function generateInteractiveHotChoices(storyId: string, input: { branch?:
   })
 }
 
-export async function sendInteractiveMessage(input: { mode: 'story' | 'setting'; story_id: string; branch?: string; message: string; style_references?: string[]; regenerate_from_turn_id?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
+export async function sendInteractiveMessage(input: { mode: 'story' | 'setting'; story_id: string; branch?: string; message: string; style_scenes?: string[]; regenerate_from_turn_id?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
   const res = await fetchAPI('/api/interactive/chat', {
     method: 'POST',
     headers: jsonHeaders,
@@ -224,7 +224,7 @@ export async function sendInteractiveMessage(input: { mode: 'story' | 'setting';
   return parseSSEStream(res.body)
 }
 
-export function analyzeInteractiveContext(input: { mode: 'story'; story_id: string; branch?: string; message: string; style_references?: string[] }): Promise<ContextAnalysis> {
+export function analyzeInteractiveContext(input: { mode: 'story'; story_id: string; branch?: string; message: string; style_scenes?: string[] }): Promise<ContextAnalysis> {
   return requestJSON('/api/interactive/chat/context-analysis', {
     method: 'POST',
     headers: jsonHeaders,

@@ -3,6 +3,7 @@ package interactive
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -86,6 +87,63 @@ func TestTellerLibraryRefreshesOldBuiltinVersion(t *testing.T) {
 	}
 	if classic.Version != tellerVersion || classic.Name != builtinTellers["classic"].Name || !containsTellerSlot(classic, "turn_context") || !containsTellerSlot(classic, "state_memory") {
 		t.Fatalf("classic builtin should be refreshed to current version: %#v", classic)
+	}
+}
+
+func TestNormalizeStyleRulesStoresContentsOnly(t *testing.T) {
+	longContent := strings.Repeat("风", MaxStyleContentChars+20)
+	rules := normalizeStyleRules([]StyleRule{
+		{Scene: " 激烈打斗 ", StyleContents: []string{" 短句留白 ", "短句留白", longContent}},
+		{Scene: "", StyleContents: []string{"无效"}},
+		{Scene: "空内容", StyleContents: []string{"", " "}},
+	})
+
+	if len(rules) != 1 {
+		t.Fatalf("style rules = %#v, want one valid rule", rules)
+	}
+	rule := rules[0]
+	if rule.Scene != "激烈打斗" {
+		t.Fatalf("scene = %q", rule.Scene)
+	}
+	if len(rule.StyleContents) != 2 {
+		t.Fatalf("style contents = %#v, want deduped contents", rule.StyleContents)
+	}
+	if rule.StyleContents[0] != "短句留白" {
+		t.Fatalf("first content = %q", rule.StyleContents[0])
+	}
+	if got := len([]rune(rule.StyleContents[1])); got != MaxStyleContentChars {
+		t.Fatalf("long content chars = %d, want %d", got, MaxStyleContentChars)
+	}
+}
+
+func TestTellerLibraryIgnoresLegacyStylePathField(t *testing.T) {
+	novaDir := t.TempDir()
+	tellerDir := filepath.Join(novaDir, "story-tellers")
+	if err := os.MkdirAll(tellerDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{
+  "version": 4,
+  "id": "custom",
+  "name": "旧风格",
+  "description": "旧路径字段",
+  "random_event_rate": 0.1,
+  "style_rules": [{"scene": "战斗", "styles": ["古龙.md"]}],
+  "tags": [],
+  "context_policy": {"creator": "always", "lore": "relevant", "runtime_state": "always"},
+  "slots": [{"id": "identity", "name": "系统提示", "target": "system", "enabled": true, "content": "规则"}]
+}`
+	if err := os.WriteFile(filepath.Join(tellerDir, "custom.json"), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	library := NewTellerLibrary(novaDir)
+	teller, err := library.Get("custom")
+	if err != nil {
+		t.Fatalf("Get custom failed: %v", err)
+	}
+	if len(teller.StyleRules) != 0 {
+		t.Fatalf("legacy styles field should be ignored: %#v", teller.StyleRules)
 	}
 }
 

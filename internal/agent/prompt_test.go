@@ -161,6 +161,40 @@ func TestBuildInstructionKeepsWorkspaceStateOutOfSystemPrompt(t *testing.T) {
 	}
 }
 
+func TestBuildInstructionIncludesStyleRulesInSystemPrompt(t *testing.T) {
+	state := book.NewState(t.TempDir())
+	cfg := &config.Config{Workspace: state.Workspace()}
+
+	instruction := BuildInstruction(cfg, state, IDEStoryTeller{
+		ID:         "classic",
+		Prompt:     "导演系统规则",
+		StyleRules: []StyleRule{{Scene: "激烈打斗", StyleContents: []string{"短句留白"}}},
+	})
+
+	for _, required := range []string{"## 场景化风格规则", "场景：激烈打斗", "短句留白", "触发规则", "system prompt 注入了场景化风格规则"} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("system prompt should include style rule %q:\n%s", required, instruction)
+		}
+	}
+}
+
+func TestBuildInteractiveStoryInstructionIncludesStyleRulesInSystemPrompt(t *testing.T) {
+	state := book.NewState(t.TempDir())
+	cfg := &config.Config{Workspace: state.Workspace()}
+
+	instruction := BuildInteractiveStoryInstruction(cfg, state, prompts.InteractiveStorySystemInstructionInput{
+		StoryTellerID:           "classic",
+		StoryTellerSystemPrompt: "导演系统规则",
+		StyleRules:              []prompts.StyleRule{{Scene: "日常对话", StyleContents: []string{"克制对白"}}},
+	})
+
+	for _, required := range []string{"## 场景化风格规则", "场景：日常对话", "克制对白", "system prompt 中的场景化风格内容"} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("interactive system prompt should include style rule %q:\n%s", required, instruction)
+		}
+	}
+}
+
 func TestSystemPromptSourceSummaryUsesStructuredStateParts(t *testing.T) {
 	got := systemPromptSourceSummary("ide", "", []book.CompactContextPart{{
 		Source:  "setting/character-states.md",

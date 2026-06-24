@@ -25,7 +25,7 @@ func PlanMode(message string) string {
 // 工作区/已确认小说状态是“背景是什么”，历史对话只能用于辅助理解。
 func ContextBoundary(message string) string {
 	return `[上下文边界]
-- 当前用户请求是“这次要做什么”，请只按本轮请求、显式 @ 引用、# 风格参考和编辑器选区行动。
+- 当前用户请求是“这次要做什么”，请只按本轮请求、显式 @ 引用、# 场景风格选择和编辑器选区行动。
 - 工作区与已确认的小说状态只用于判断“背景是什么”，不能替代本轮明确请求。
 - 历史对话只能辅助理解上下文，不要把上一轮的待办、工具意图或未完成动作当成本轮指令，除非用户在本轮明确延续。
 - 如果当前请求与历史看起来无关或冲突，以当前请求为准，不要继续执行上一轮的工具调用或修改。
@@ -62,40 +62,33 @@ func ResumeFromInterruption(current string, prev InterruptedResume) string {
 	return sb.String()
 }
 
-// StyleRule 表示「场景 → 风格文件路径」映射。
+// StyleRule 表示「场景 → 风格内容」映射。
 type StyleRule struct {
-	Scene  string
-	Styles []string
+	Scene         string
+	StyleContents []string
 }
 
-// StyleRulesHint 把导演的「场景 → 风格文件路径」映射作为建议附加到上下文。
-// 不直接读取文件内容，由 Agent 基于本轮章节内容自行判断是否要 read_file 对应风格。
-func StyleRulesHint(message string, rules []StyleRule) string {
+// StyleRulesInstruction 把导演的「场景 → 风格内容」映射拼成稳定 system prompt 片段。
+func StyleRulesInstruction(rules []StyleRule) string {
 	var sb strings.Builder
-	sb.WriteString(message)
-	sb.WriteString("\n\n---\n[场景化默认风格规则] 当前配置生效了以下「场景 → 风格文件路径」映射：\n")
+	sb.WriteString("## 场景化风格规则\n\n")
+	sb.WriteString("当前叙事编排配置了以下「场景 → 风格内容」规则：\n")
 	for i, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
-		if scene == "" || len(rule.Styles) == 0 {
+		if scene == "" || len(rule.StyleContents) == 0 {
 			continue
 		}
-		fmt.Fprintf(&sb, "%d. 场景：%s\n   风格：", i+1, scene)
-		first := true
-		for _, s := range rule.Styles {
-			s = strings.TrimSpace(s)
-			if s == "" {
+		fmt.Fprintf(&sb, "%d. 场景：%s\n", i+1, scene)
+		for j, content := range rule.StyleContents {
+			content = strings.TrimSpace(content)
+			if content == "" {
 				continue
 			}
-			if !first {
-				sb.WriteString("、")
-			}
-			sb.WriteString(s)
-			first = false
+			fmt.Fprintf(&sb, "   风格内容 %d：\n```markdown\n%s\n```\n", j+1, content)
 		}
-		sb.WriteString("\n")
 	}
-	sb.WriteString("\n触发规则：仅当你判断本轮要执行『章节正文的创作 / 续写 / 重写』或『互动故事下一回合正文生成』时，先根据当前章节内容或互动场景选出最贴近的场景，再用 read_file 按上面列出的文件路径读取该场景对应的风格文件，把它们作为文风、节奏、叙述方式、句式和氛围的参考；不要照搬其中的人物、情节或设定。\n")
-	sb.WriteString("若本轮属于脑暴、大纲、设定、问答、规划等非正文生成场景，请完全忽略以上规则，不要读取任何风格文件；若没有场景明显匹配，也不必强行选择。\n")
+	sb.WriteString("\n触发规则：仅当本轮要执行『章节正文的创作 / 续写 / 重写』或『互动故事下一回合正文生成』时，先根据当前章节内容或互动场景选出最贴近的场景，把对应风格内容作为文风、节奏、叙述方式、句式和氛围参考；不要照搬其中的人物、情节或设定。\n")
+	sb.WriteString("若本轮属于脑暴、大纲、设定、问答、规划等非正文生成场景，请完全忽略以上规则；若没有场景明显匹配，也不必强行选择。\n")
 	return sb.String()
 }
 
@@ -104,12 +97,6 @@ const ReferenceHeader = "\n\n---\n以下是用户引用的文件：\n"
 
 // ReferenceOverflowHint 引用内容总量超限时，提示后续文件未读取。
 const ReferenceOverflowHint = "引用内容总量已超过限制，后续文件未读取。\n"
-
-// StyleReferenceHeader 在用户 # 指定的风格参考文件块前追加的固定标题。
-const StyleReferenceHeader = "\n\n---\n以下是用户本轮指定的风格参考。请只把它们作为文风、节奏、叙述方式、句式和氛围参考，不要照搬内容、人物、情节或设定：\n"
-
-// StyleReferenceOverflowHint 风格参考内容总量超限时，提示后续文件未读取。
-const StyleReferenceOverflowHint = "风格参考内容总量已超过限制，后续文件未读取。\n"
 
 // SelectionHeader 在编辑器选中片段块前追加的固定标题。
 const SelectionHeader = "\n\n---\n以下是用户在编辑器中选中的文本片段，请针对这些内容进行操作：\n"

@@ -9,7 +9,6 @@ const apiMock = vi.hoisted(() => ({
   deleteWorkspaceItem: vi.fn(),
   getBooks: vi.fn(),
   getCurrentWorkspace: vi.fn(),
-  getStyles: vi.fn(),
   getWorkspaceSummary: vi.fn(),
   getWorkspaceTree: vi.fn(),
   moveWorkspaceItem: vi.fn(),
@@ -27,21 +26,19 @@ describe('useWorkspace', () => {
     apiMock.getBooks.mockResolvedValue([])
     apiMock.getWorkspaceTree.mockResolvedValue([])
     apiMock.getWorkspaceSummary.mockResolvedValue({ title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] })
-    apiMock.getStyles.mockResolvedValue([])
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  it('关闭自动刷新时不注册目录、统计和风格的后台轮询', async () => {
+  it('关闭自动刷新时不注册目录和统计的后台轮询', async () => {
     const setIntervalSpy = vi.spyOn(window, 'setInterval')
 
     render(<WorkspaceHarness autoRefreshEnabled={false} onChange={() => {}} />)
 
     await waitFor(() => expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1))
     expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(1)
-    expect(apiMock.getStyles).toHaveBeenCalledTimes(1)
     expect(setIntervalSpy.mock.calls.some(([, timeout]) => timeout === TREE_AUTO_REFRESH_INTERVAL_MS_FOR_TEST)).toBe(false)
   })
 

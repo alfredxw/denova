@@ -49,7 +49,6 @@ interface ModeRouterProps {
   loading: boolean
   selectedFile: string | null
   fileContent: string
-  styles: string[]
   openTabs: Tab[]
   activeTabKey: string | null
   sidebarView: 'outline' | 'files' | 'search'
@@ -65,7 +64,7 @@ interface ModeRouterProps {
   references: string[]
   loreReferences: string[]
   loreItems: LoreItem[]
-  styleReferences: string[]
+  styleScenes: string[]
   textSelections: TextSelection[]
   updateNotice?: { latestVersion: string } | null
   onSetMode: (mode: WorkspaceMode) => void
@@ -103,8 +102,8 @@ interface ModeRouterProps {
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
   onLoreReferenceRemove: (id: string) => void
-  onStyleReferenceAdd: (path: string) => void
-  onStyleReferenceRemove: (path: string) => void
+  onStyleSceneAdd: (scene: string) => void
+  onStyleSceneRemove: (scene: string) => void
   onTextSelectionRemove: (index: number) => void
   onDismissUpdateNotice?: () => void
 }
@@ -132,7 +131,6 @@ export function ModeRouter(props: ModeRouterProps) {
     loading,
     selectedFile,
     fileContent,
-    styles,
     openTabs,
     activeTabKey,
     sidebarView,
@@ -148,7 +146,7 @@ export function ModeRouter(props: ModeRouterProps) {
     references,
     loreReferences,
     loreItems,
-    styleReferences,
+    styleScenes,
     textSelections,
     updateNotice,
     onSetMode,
@@ -186,8 +184,8 @@ export function ModeRouter(props: ModeRouterProps) {
     onReferenceRemove,
     onLoreReferenceAdd,
     onLoreReferenceRemove,
-    onStyleReferenceAdd,
-    onStyleReferenceRemove,
+    onStyleSceneAdd,
+    onStyleSceneRemove,
     onTextSelectionRemove,
     onDismissUpdateNotice,
   } = props
@@ -436,7 +434,6 @@ export function ModeRouter(props: ModeRouterProps) {
         <MainRouteLayer visible={visibleMainRoute === 'interactive'}>
           <InteractiveLayout
             workspace={workspace}
-            styleSuggestions={styles}
             loreEmpty={loreEmpty}
             onRequestLoreInit={requestLoreInit}
             rightPanelVisible={interactiveRightVisible}
@@ -529,10 +526,9 @@ export function ModeRouter(props: ModeRouterProps) {
       loreReferences={loreReferences}
       loreReferenceLabels={loreReferenceLabels}
       loreSuggestions={loreSuggestions}
-      styleReferences={styleReferences}
+      styleScenes={styleScenes}
       textSelections={textSelections}
       fileSuggestions={flattenFileTree(tree)}
-      styleSuggestions={styles}
       onCreateSession={onCreateChatSession}
       onSwitchSession={onSwitchChatSession}
       onRenameSession={onRenameChatSession}
@@ -543,8 +539,8 @@ export function ModeRouter(props: ModeRouterProps) {
       onReferenceRemove={onReferenceRemove}
       onLoreReferenceAdd={onLoreReferenceAdd}
       onLoreReferenceRemove={onLoreReferenceRemove}
-      onStyleReferenceAdd={onStyleReferenceAdd}
-      onStyleReferenceRemove={onStyleReferenceRemove}
+      onStyleSceneAdd={onStyleSceneAdd}
+      onStyleSceneRemove={onStyleSceneRemove}
       onTextSelectionRemove={onTextSelectionRemove}
       onOpenReviewConfig={() => onSetMode('automations')}
       onOpenReviewFile={onSelectFile}

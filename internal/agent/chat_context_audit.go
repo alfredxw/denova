@@ -52,14 +52,14 @@ func (l *contextBuildLog) add(source, title, content, note string) {
 func (l *contextBuildLog) addStyleRules(rules []StyleRule) {
 	for _, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
-		if scene == "" || len(rule.Styles) == 0 {
+		if scene == "" || len(rule.StyleContents) == 0 {
 			continue
 		}
-		styles := trimmedNonEmpty(rule.Styles)
-		if len(styles) == 0 {
+		contents := trimmedNonEmpty(rule.StyleContents)
+		if len(contents) == 0 {
 			continue
 		}
-		l.add("注入规则", "场景化默认风格规则："+scene, strings.Join(styles, "、"), "Agent 将按场景自行判断是否 read_file")
+		l.add("系统提示", "场景化风格规则："+scene, strings.Join(contents, "\n\n---\n\n"), "Agent 将按 system prompt 中的场景参考已保存的风格内容")
 	}
 }
 

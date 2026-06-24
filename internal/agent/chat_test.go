@@ -89,31 +89,6 @@ func TestAppendReferenceContextDedupesAndReportsReadFailure(t *testing.T) {
 	}
 }
 
-func TestAppendStyleReferenceContextOnlyReadsStyleFiles(t *testing.T) {
-	workspace := t.TempDir()
-	mustWriteTestFile(t, workspace, "setting/styles/古龙.md", "短句留白")
-	mustWriteTestFile(t, workspace, "setting/styles/番茄.txt", "强冲突快节奏")
-	mustWriteTestFile(t, workspace, "chapters/ch01.md", "非风格文件")
-	service := book.NewService(workspace)
-
-	got := appendStyleReferenceContext(service, "按这个风格写", []string{
-		"古龙.md",
-		"番茄.txt",
-		"../chapters/ch01.md",
-	})
-
-	assertContains(t, got, "以下是用户本轮指定的风格参考")
-	assertContains(t, got, "## #古龙.md")
-	assertContains(t, got, "短句留白")
-	assertContains(t, got, "## #番茄.txt")
-	assertContains(t, got, "强冲突快节奏")
-	assertContains(t, got, "## #../chapters/ch01.md")
-	assertContains(t, got, "读取失败：")
-	if strings.Contains(got, "非风格文件") {
-		t.Fatalf("风格参考不应越界读取普通章节文件\n%s", got)
-	}
-}
-
 func TestAppendSelectionContextIncludesFileAndLineRange(t *testing.T) {
 	got := appendSelectionContext("修改这段", []TextSelectionRef{
 		{
@@ -151,25 +126,27 @@ func TestAppendContextBoundaryInstructionEmphasizesCurrentRequest(t *testing.T) 
 	assertContains(t, got, "本轮请求：\n帮我写第三章")
 }
 
-func TestAppendStyleRulesHintEmitsSceneAndStyles(t *testing.T) {
-	got := appendStyleRulesHint("续写第三章", []StyleRule{
-		{Scene: "激烈打斗", Styles: []string{"古龙.md", "番茄.txt"}},
-		{Scene: "日常对话", Styles: []string{"温吞.md"}},
-		{Scene: "", Styles: []string{"无效.md"}},    // 应被跳过
-		{Scene: "空风格", Styles: []string{"", " "}}, // 空文件名应被跳过
+func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {
+	got := styleRulesSystemInstruction([]StyleRule{
+		{Scene: "激烈打斗", StyleContents: []string{"短句留白", "强冲突快节奏"}},
+		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
+		{Scene: "", StyleContents: []string{"无效内容"}},     // 应被跳过
+		{Scene: "空风格", StyleContents: []string{"", " "}}, // 空内容应被跳过
 	})
 
-	assertContains(t, got, "续写第三章")
-	assertContains(t, got, "[场景化默认风格规则]")
+	assertContains(t, got, "## 场景化风格规则")
 	assertContains(t, got, "场景：激烈打斗")
-	assertContains(t, got, "古龙.md")
-	assertContains(t, got, "番茄.txt")
+	assertContains(t, got, "短句留白")
+	assertContains(t, got, "强冲突快节奏")
 	assertContains(t, got, "场景：日常对话")
-	assertContains(t, got, "温吞.md")
+	assertContains(t, got, "温吞对白")
 	assertContains(t, got, "选出最贴近的场景")
 	assertContains(t, got, "完全忽略以上规则")
-	if strings.Contains(got, "无效.md") {
-		t.Fatalf("空 scene 的规则应被跳过，但仍包含 无效.md：\n%s", got)
+	if strings.Contains(got, "read_file") {
+		t.Fatalf("场景风格内容不应要求 read_file：\n%s", got)
+	}
+	if strings.Contains(got, "无效内容") {
+		t.Fatalf("空 scene 的规则应被跳过，但仍包含无效内容：\n%s", got)
 	}
 }
 

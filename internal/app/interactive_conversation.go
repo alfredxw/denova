@@ -573,12 +573,17 @@ func loadInteractiveTeller(novaDir, tellerID string) interactive.Teller {
 	return fallback
 }
 
-func interactiveStoryTellerSystemInput(teller interactive.Teller) prompts.InteractiveStorySystemInstructionInput {
+func interactiveStoryTellerSystemInput(teller interactive.Teller, styleRules ...[]agent.StyleRule) prompts.InteractiveStorySystemInstructionInput {
+	var rules []agent.StyleRule
+	if len(styleRules) > 0 {
+		rules = styleRules[0]
+	}
 	return prompts.InteractiveStorySystemInstructionInput{
 		StoryTellerID:           teller.ID,
 		StoryTellerName:         teller.Name,
 		StoryTellerDescription:  teller.Description,
 		StoryTellerSystemPrompt: teller.PromptForTargets("system"),
+		StyleRules:              rules,
 	}
 }
 

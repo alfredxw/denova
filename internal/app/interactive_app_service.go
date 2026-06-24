@@ -454,27 +454,27 @@ func (s *InteractiveAppService) AppendInteractiveTurn(storyID, branchID, user, n
 }
 
 // StartInteractiveTask 启动互动模式 Agent 任务，输出写回 interactive/story。
-func (a *App) StartInteractiveTask(storyID, branchID, message string, styleReferences []string) *Task {
-	return a.interactiveService().StartInteractiveTask(storyID, branchID, message, styleReferences)
+func (a *App) StartInteractiveTask(storyID, branchID, message string, styleScenes []string) *Task {
+	return a.interactiveService().StartInteractiveTask(storyID, branchID, message, styleScenes)
 }
 
-func (s *InteractiveAppService) StartInteractiveTask(storyID, branchID, message string, styleReferences []string) *Task {
-	return s.startInteractiveTask(storyID, branchID, message, styleReferences, "")
+func (s *InteractiveAppService) StartInteractiveTask(storyID, branchID, message string, styleScenes []string) *Task {
+	return s.startInteractiveTask(storyID, branchID, message, styleScenes, "")
 }
 
-func (a *App) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string, styleReferences []string) *Task {
-	return a.interactiveService().StartInteractiveRegenerateTask(storyID, branchID, turnID, message, styleReferences)
+func (a *App) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string, styleScenes []string) *Task {
+	return a.interactiveService().StartInteractiveRegenerateTask(storyID, branchID, turnID, message, styleScenes)
 }
 
-func (s *InteractiveAppService) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string, styleReferences []string) *Task {
-	return s.startInteractiveTask(storyID, branchID, message, styleReferences, turnID)
+func (s *InteractiveAppService) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string, styleScenes []string) *Task {
+	return s.startInteractiveTask(storyID, branchID, message, styleScenes, turnID)
 }
 
-func (a *App) AnalyzeInteractiveContext(storyID, branchID, message string, styleReferences []string) (agent.ContextAnalysis, error) {
-	return a.interactiveService().AnalyzeInteractiveContext(storyID, branchID, message, styleReferences)
+func (a *App) AnalyzeInteractiveContext(storyID, branchID, message string, styleScenes []string) (agent.ContextAnalysis, error) {
+	return a.interactiveService().AnalyzeInteractiveContext(storyID, branchID, message, styleScenes)
 }
 
-func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, message string, styleReferences []string) (agent.ContextAnalysis, error) {
+func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, message string, styleScenes []string) (agent.ContextAnalysis, error) {
 	a := s.app
 	a.mu.RLock()
 	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
@@ -503,17 +503,14 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	}
 	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
 	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
-	var styleRules []agent.StyleRule
-	if len(styleReferences) == 0 {
-		styleRules = convertTellerStyleRules(novaDir, teller.StyleRules)
-	}
+	styleRules := convertTellerStyleRules(teller.StyleRules, styleScenes)
 	req := agent.ChatRequest{
-		Message:         message,
-		StyleReferences: styleReferences,
-		StyleRules:      styleRules,
+		Message:     message,
+		StyleScenes: styleScenes,
+		StyleRules:  styleRules,
 	}
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
-	return agent.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveStoryTellerSystemInput(teller), bookService, req, storyCtx.Snapshot.ContextCompaction, conversation.PrepareMessages)
+	return agent.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveStoryTellerSystemInput(teller, styleRules), bookService, req, storyCtx.Snapshot.ContextCompaction, conversation.PrepareMessages)
 }
 
 func (a *App) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agent.ContextCompactionResult, error) {
@@ -601,7 +598,7 @@ func (s *InteractiveAppService) RemoveInteractiveContextCompaction(storyID, bran
 	return true, nil
 }
 
-func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message string, styleReferences []string, rewindTurnID string) *Task {
+func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message string, styleScenes []string, rewindTurnID string) *Task {
 	a := s.app
 	a.mu.Lock()
 	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
@@ -639,15 +636,12 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	}
 	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
 	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
-	var styleRules []agent.StyleRule
-	if len(styleReferences) == 0 {
-		styleRules = convertTellerStyleRules(novaDir, teller.StyleRules)
-		if len(styleRules) > 0 {
-			log.Printf("[interactive-agent-task] inject teller style rules teller_id=%s count=%d rules=%q", teller.ID, len(styleRules), appStyleRuleNames(styleRules))
-		}
+	styleRules := convertTellerStyleRules(teller.StyleRules, styleScenes)
+	if len(styleRules) > 0 {
+		log.Printf("[interactive-agent-task] inject teller style rules teller_id=%s scenes=%q count=%d rules=%q", teller.ID, styleScenes, len(styleRules), appStyleRuleNames(styleRules))
 	}
 	log.Printf("[interactive-agent-task] use story settings story_id=%s teller_id=%s target_chars=%d style_rules=%d", storyID, teller.ID, runtimeCfg.InteractiveReplyTargetChars, len(styleRules))
-	tellerSystemInput := interactiveStoryTellerSystemInput(teller)
+	tellerSystemInput := interactiveStoryTellerSystemInput(teller, styleRules)
 	runner, err := buildInteractiveStoryRunner(context.Background(), &runtimeCfg, state, tellerSystemInput, agent.InteractiveStoryToolContext{
 		Store:    store,
 		StoryID:  storyID,
@@ -672,13 +666,13 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	}
 
 	req := agent.ChatRequest{
-		Message:         message,
-		StyleReferences: styleReferences,
-		StyleRules:      styleRules,
+		Message:     message,
+		StyleScenes: styleScenes,
+		StyleRules:  styleRules,
 	}
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
-		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_references=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleReferences))
+		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleScenes))
 		chatService.RunWithOptions(ctx, runner, conversation, bookService, req, agent.RunOptions{
 			AgentKind:           agent.AgentKindInteractiveStory,
 			TaskID:              task.ID(),

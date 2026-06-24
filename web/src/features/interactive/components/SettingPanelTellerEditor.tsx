@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { Check, ChevronDown, ChevronUp, FileText, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Check, ChevronDown, FileText, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isSaveShortcut } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { getStyles } from '@/lib/api'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import type { StyleRule, Teller, TellerPromptSlot } from '../types'
 
 const TELLER_TARGET_OPTIONS = [{ value: 'system' }, { value: 'turn_context' }, { value: 'state_memory' }] as const
@@ -17,37 +17,17 @@ const actionButtonClassName = 'nova-nav-item gap-1.5 border-[var(--nova-border)]
 const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
 const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
+const STYLE_CONTENT_LIMIT = 8000
+const STYLE_FILE_ACCEPT = '.txt,.md,.markdown,text/plain,text/markdown,text/x-markdown'
 
-export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft, activeSlotId, setActiveSlotId, onSave }: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; tagDraft: string; setTagDraft: (value: string) => void; activeSlotId: string; setActiveSlotId: (id: string) => void; onSave: () => void }) {
+export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlotId, setActiveSlotId, onSave }: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; tagDraft: string; setTagDraft: (value: string) => void; activeSlotId: string; setActiveSlotId: (id: string) => void; onSave: () => void }) {
   const { t } = useTranslation()
   const activeSlot = draft?.slots?.find((slot) => slot.id === activeSlotId) || draft?.slots?.[0] || null
   const [targetPickerOpen, setTargetPickerOpen] = useState(false)
-  const [availableStyles, setAvailableStyles] = useState<string[]>([])
 
   useEffect(() => {
     setTargetPickerOpen(false)
   }, [activeSlotId])
-
-  useEffect(() => {
-    let cancelled = false
-    if (!workspace) {
-      setAvailableStyles([])
-      return () => {
-        cancelled = true
-      }
-    }
-    getStyles()
-      .then((styles) => {
-        if (!cancelled) setAvailableStyles(styles)
-      })
-      .catch((err) => {
-        console.warn('[teller-editor] 获取风格参考列表失败', err)
-        if (!cancelled) setAvailableStyles([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [workspace])
 
   const updateSlotById = (slotId: string, patch: Partial<TellerPromptSlot>) => {
     if (!draft) return
@@ -123,7 +103,7 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
           <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.styleRules.title')}</div>
           <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.styleRules.desc')}</div>
         </div>
-        <InteractiveStyleRulesEditor available={availableStyles} rules={draft.style_rules ?? []} onChange={(rules) => setDraft({ ...draft, style_rules: rules })} />
+        <InteractiveStyleRulesEditor rules={draft.style_rules ?? []} onChange={(rules) => setDraft({ ...draft, style_rules: rules })} />
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
@@ -239,9 +219,9 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
   )
 }
 
-function InteractiveStyleRulesEditor({ available, rules, onChange }: { available: string[]; rules: StyleRule[]; onChange: (rules: StyleRule[]) => void }) {
+function InteractiveStyleRulesEditor({ rules, onChange }: { rules: StyleRule[]; onChange: (rules: StyleRule[]) => void }) {
   const { t } = useTranslation()
-  const addRule = () => onChange([...rules, { scene: '', styles: [] }])
+  const addRule = () => onChange([...rules, { scene: '', style_contents: [] }])
   const removeRule = (index: number) => onChange(rules.filter((_, i) => i !== index))
   const updateRule = (index: number, patch: Partial<StyleRule>) => {
     onChange(rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)))
@@ -252,7 +232,7 @@ function InteractiveStyleRulesEditor({ available, rules, onChange }: { available
       {rules.length > 0 && (
         <div className="space-y-2">
           {rules.map((rule, index) => (
-            <InteractiveStyleRuleRow key={index} available={available} rule={rule} onChange={(patch) => updateRule(index, patch)} onRemove={() => removeRule(index)} />
+            <InteractiveStyleRuleRow key={index} rule={rule} onChange={(patch) => updateRule(index, patch)} onRemove={() => removeRule(index)} />
           ))}
         </div>
       )}
@@ -262,37 +242,68 @@ function InteractiveStyleRulesEditor({ available, rules, onChange }: { available
           <Plus className="h-3.5 w-3.5" />
           {t('settingPanel.style.addRule')}
         </Button>
-        {available.length === 0 && <span className="text-xs text-[var(--nova-text-faint)]">{t('settingPanel.style.emptyStylesHint')}</span>}
       </div>
     </div>
   )
 }
 
-function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: { available: string[]; rule: StyleRule; onChange: (patch: Partial<StyleRule>) => void; onRemove: () => void }) {
+function InteractiveStyleRuleRow({ rule, onChange, onRemove }: { rule: StyleRule; onChange: (patch: Partial<StyleRule>) => void; onRemove: () => void }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
-  const [customPath, setCustomPath] = useState('')
-  const selectedCustomStyles = rule.styles.filter((path) => !available.includes(path))
-  const summary = rule.styles.length === 0 ? t('settingPanel.style.noSelected') : rule.styles.join('、')
-  const toggleStyle = (path: string) => {
-    onChange({
-      styles: rule.styles.includes(path) ? rule.styles.filter((item) => item !== path) : [...rule.styles, path],
-    })
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [contentDraft, setContentDraft] = useState('')
+  const contents = rule.style_contents || []
+  const summary = contents.length === 0 ? t('settingPanel.style.noSelected') : t('settingPanel.style.button', { count: contents.length })
+
+  const openEditor = (index: number | null, content = '') => {
+    setEditingIndex(index)
+    setContentDraft(limitStyleContent(content))
+    setEditorOpen(true)
   }
-  const addCustomStyle = () => {
-    const path = customPath.trim()
-    if (!path || rule.styles.includes(path)) return
-    onChange({ styles: [...rule.styles, path] })
-    setCustomPath('')
+
+  const saveContent = () => {
+    const content = limitStyleContent(contentDraft).trim()
+    if (!content) return
+    const next = [...contents]
+    if (editingIndex === null) {
+      next.push(content)
+    } else {
+      next[editingIndex] = content
+    }
+    onChange({ style_contents: next })
+    setEditorOpen(false)
+    setEditingIndex(null)
+    setContentDraft('')
+  }
+
+  const removeContent = (index: number) => {
+    onChange({ style_contents: contents.filter((_, i) => i !== index) })
+  }
+
+  const handleFileSelected = async (file: File | undefined) => {
+    if (!file) return
+    try {
+      openEditor(null, limitStyleContent(await file.text()))
+    } catch (err) {
+      console.warn('[teller-editor] 读取风格内容文件失败', err)
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
+      <input ref={fileInputRef} type="file" accept={STYLE_FILE_ACCEPT} className="hidden" onChange={(event) => void handleFileSelected(event.target.files?.[0])} />
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
         <Input className={inputClassName} value={rule.scene} placeholder={t('settingPanel.placeholder.scene')} onChange={(event) => onChange({ scene: event.target.value })} />
-        <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={() => setExpanded((value) => !value)}>
-          {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          {expanded ? t('chat.tool.collapse') : t('settingPanel.style.button', { count: rule.styles.length })}
+        <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+          <Upload className="h-3.5 w-3.5" />
+          {t('settingPanel.style.upload')}
+        </Button>
+        <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={() => openEditor(null)}>
+          <Plus className="h-3.5 w-3.5" />
+          {t('settingPanel.style.addContent')}
         </Button>
         <Button className={`${actionButtonClassName} justify-center hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]`} variant="outline" size="sm" onClick={onRemove}>
           <Trash2 className="h-3.5 w-3.5" />
@@ -300,54 +311,55 @@ function InteractiveStyleRuleRow({ available, rule, onChange, onRemove }: { avai
         </Button>
       </div>
 
-      {!expanded && <div className="mt-1 truncate px-1 text-xs text-[var(--nova-text-faint)]">→ {summary}</div>}
-
-      {expanded && (
-        <div className="mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
-          <div className="max-h-52 overflow-y-auto">
-            {available.length === 0 ? (
-              <div className="px-2 py-2 text-xs text-[var(--nova-text-faint)]">{t('settingPanel.style.noAvailable')}</div>
-            ) : (
-              available.map((path) => (
-                <label key={path} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
-                  <input type="checkbox" checked={rule.styles.includes(path)} onChange={() => toggleStyle(path)} />
-                  <span className="truncate" title={path}>
-                    {path}
-                  </span>
-                </label>
-              ))
-            )}
-            {selectedCustomStyles.map((path) => (
-              <label key={path} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
-                <input type="checkbox" checked onChange={() => toggleStyle(path)} />
-                <span className="truncate" title={path}>
-                  {path}
-                </span>
-              </label>
-            ))}
-          </div>
-          <div className="flex flex-col gap-2 border-t border-[var(--nova-border)] p-2 md:flex-row">
-            <Input
-              className={inputClassName}
-              value={customPath}
-              placeholder={t('settingPanel.placeholder.stylePath')}
-              onChange={(event) => setCustomPath(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  addCustomStyle()
-                }
-              }}
-            />
-            <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={addCustomStyle}>
-              <Plus className="h-3.5 w-3.5" />
-              {t('settingPanel.style.add')}
-            </Button>
-          </div>
+      <div className="mt-1 truncate px-1 text-xs text-[var(--nova-text-faint)]">→ {summary}</div>
+      {contents.length > 0 && (
+        <div className="mt-2 grid gap-1.5">
+          {contents.map((content, index) => (
+            <div key={index} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
+              <button type="button" className="min-w-0 flex-1 truncate text-left text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" title={content} onClick={() => openEditor(index, content)}>
+                {contentPreview(content)}
+              </button>
+              <Button className={iconActionClassName} variant="outline" size="icon" onClick={() => openEditor(index, content)} aria-label={t('settingPanel.style.editContent')}>
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+              <Button className={`${iconActionClassName} hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]`} variant="outline" size="icon" onClick={() => removeContent(index)} aria-label={t('common.delete')}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))}
         </div>
       )}
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className="nova-panel flex max-h-[min(720px,calc(100vh-2rem))] w-[min(720px,calc(100vw-2rem))] max-w-[min(720px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
+          <div className="border-b border-[var(--nova-border)] px-4 py-3">
+            <DialogTitle className="text-sm font-semibold text-[var(--nova-text)]">{t('settingPanel.style.contentDialogTitle')}</DialogTitle>
+            <DialogDescription className="mt-1 text-xs text-[var(--nova-text-faint)]">{t('settingPanel.style.contentDialogDesc')}</DialogDescription>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col p-4">
+            <Textarea
+              className="nova-field h-[min(52vh,420px)] min-h-0 resize-none overflow-y-auto text-sm leading-6 shadow-none [field-sizing:fixed] focus-visible:ring-0"
+              value={contentDraft}
+              onChange={(event) => setContentDraft(limitStyleContent(event.target.value))}
+            />
+            <div className="mt-2 text-right text-[11px] text-[var(--nova-text-faint)]">{contentDraft.length}/{STYLE_CONTENT_LIMIT}</div>
+          </div>
+          <DialogFooter className="border-t border-[var(--nova-border)] px-4 py-3">
+            <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => setEditorOpen(false)}>{t('common.cancel')}</Button>
+            <Button className="nova-nav-item gap-1.5 border border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] hover:border-[var(--nova-accent)] hover:bg-[var(--nova-hover)]" size="sm" onClick={saveContent} disabled={!contentDraft.trim()}>{t('common.save')}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
+}
+
+function limitStyleContent(value: string) {
+  return Array.from(value).slice(0, STYLE_CONTENT_LIMIT).join('')
+}
+
+function contentPreview(value: string) {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  return normalized.length > 80 ? `${normalized.slice(0, 80)}...` : normalized
 }
 
 function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {

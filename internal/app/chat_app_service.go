@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"path/filepath"
 	"strings"
 
 	"nova/config"
@@ -27,6 +26,7 @@ type ideChatRuntime struct {
 	workspace      string
 	versionService *book.VersionService
 	cfg            config.Config
+	ideTeller      agent.IDEStoryTeller
 }
 
 // ClearSession 为当前会话追加上下文清理标记。
@@ -246,7 +246,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 		return nil
 	}
 
-	runner, err := buildAgentRunner(context.Background(), &runtime.cfg, runtime.state)
+	runner, err := buildAgentRunner(context.Background(), &runtime.cfg, runtime.state, runtime.ideTeller)
 	if err != nil {
 		log.Printf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err)
 		return nil
@@ -288,7 +288,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 			SessionID:           runtime.sess.ID,
 			Workspace:           runtime.workspace,
 			Mode:                "ide",
-			SystemPromptLog:     agent.BuildInstructionComposition(&runtime.cfg, runtime.state, ideStoryTellerForConfig(&runtime.cfg)),
+			SystemPromptLog:     agent.BuildInstructionComposition(&runtime.cfg, runtime.state, runtime.ideTeller),
 			OnMutationsVerified: a.automationMutationCallback("ide_agent_post_run"),
 		}, emit)
 		if runtime.versionService != nil && hasBeforeVersionState {
@@ -333,7 +333,7 @@ func (s *ChatAppService) AnalyzeContext(req agent.ChatRequest) (agent.ContextAna
 	if record, ok := runtime.sess.LatestContextCompaction(config.AgentKindIDE); ok {
 		compaction = &record
 	}
-	return agent.BuildIDEContextAnalysis(&runtime.cfg, runtime.state, ideStoryTellerForConfig(&runtime.cfg), runtime.bookService, runtime.sess.GetEffectiveMessages(), runtime.sess.MessageCountTotal(), compaction, pending, req)
+	return agent.BuildIDEContextAnalysis(&runtime.cfg, runtime.state, runtime.ideTeller, runtime.bookService, runtime.sess.GetEffectiveMessages(), runtime.sess.MessageCountTotal(), compaction, pending, req)
 }
 
 func (a *App) CompactContext(ctx context.Context) (agent.ContextCompactionResult, error) {
@@ -399,6 +399,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 		cfg:            *a.cfg,
 	}
 	runtime.cfg.Workspace = runtime.workspace
+	runtime.ideTeller = ideStoryTellerForConfig(&runtime.cfg)
 	novaDir := runtime.cfg.NovaDir
 	a.mu.Unlock()
 
@@ -410,14 +411,13 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 		}
 		log.Printf("[agent-task] load ide teller id=%s workspace=%s", runtime.cfg.IDEStoryTellerID, runtime.workspace)
 
-		if len(req.StyleReferences) == 0 {
-			teller := loadInteractiveTeller(novaDir, runtime.cfg.IDEStoryTellerID)
-			if len(teller.StyleRules) > 0 {
-				converted := convertTellerStyleRules(novaDir, teller.StyleRules)
-				req.StyleRules = converted
-				log.Printf("[agent-task] inject teller style rules teller_id=%s count=%d rules=%q", teller.ID, len(converted), appStyleRuleNames(converted))
-			}
+		teller := loadInteractiveTeller(novaDir, runtime.cfg.IDEStoryTellerID)
+		if len(teller.StyleRules) > 0 {
+			converted := convertTellerStyleRules(teller.StyleRules, req.StyleScenes)
+			req.StyleRules = converted
+			log.Printf("[agent-task] inject teller style rules teller_id=%s scenes=%q count=%d rules=%q", teller.ID, req.StyleScenes, len(converted), appStyleRuleNames(converted))
 		}
+		runtime.ideTeller = ideStoryTellerFromInteractive(teller, req.StyleRules)
 	} else {
 		log.Printf("[agent-task] load layered settings failed workspace=%s err=%v", runtime.workspace, err)
 	}
@@ -454,65 +454,39 @@ func (s *ChatAppService) AbortTask() {
 func appStyleRuleNames(rules []agent.StyleRule) []string {
 	names := make([]string, 0, len(rules))
 	for _, rule := range rules {
-		names = append(names, fmt.Sprintf("%s -> %v", rule.Scene, rule.Styles))
+		names = append(names, fmt.Sprintf("%s -> %d contents", rule.Scene, len(rule.StyleContents)))
 	}
 	return names
 }
 
-func convertTellerStyleRules(novaDir string, rules []interactive.StyleRule) []agent.StyleRule {
+func convertTellerStyleRules(rules []interactive.StyleRule, scenes []string) []agent.StyleRule {
 	converted := make([]agent.StyleRule, 0, len(rules))
+	allowed := styleSceneSet(scenes)
 	for _, r := range rules {
-		styles := resolveStyleRulePaths(novaDir, r.Styles)
-		if strings.TrimSpace(r.Scene) == "" || len(styles) == 0 {
+		scene := strings.TrimSpace(r.Scene)
+		if scene == "" || len(r.StyleContents) == 0 {
 			continue
 		}
-		converted = append(converted, agent.StyleRule{Scene: r.Scene, Styles: styles})
+		if len(allowed) > 0 && !allowed[scene] {
+			continue
+		}
+		converted = append(converted, agent.StyleRule{Scene: scene, StyleContents: r.StyleContents})
 	}
 	return converted
 }
 
-func resolveStyleRulePaths(novaDir string, styles []string) []string {
-	paths := make([]string, 0, len(styles))
-	seen := make(map[string]bool, len(styles))
-	for _, style := range styles {
-		path := resolveStyleRulePath(novaDir, style)
-		if path == "" || seen[path] {
-			continue
+func styleSceneSet(scenes []string) map[string]bool {
+	if len(scenes) == 0 {
+		return nil
+	}
+	set := make(map[string]bool, len(scenes))
+	for _, scene := range scenes {
+		scene = strings.TrimSpace(scene)
+		if scene != "" {
+			set[scene] = true
 		}
-		seen[path] = true
-		paths = append(paths, path)
 	}
-	return paths
-}
-
-func resolveStyleRulePath(novaDir string, style string) string {
-	style = strings.TrimSpace(style)
-	if style == "" {
-		return ""
-	}
-	if !isStyleRuleFile(style) {
-		return ""
-	}
-	if filepath.IsAbs(style) || novaDir == "" {
-		return filepath.Clean(style)
-	}
-	cleanStyle := filepath.Clean(filepath.FromSlash(style))
-	slashStyle := filepath.ToSlash(cleanStyle)
-	if slashStyle == "." || slashStyle == ".." || strings.HasPrefix(slashStyle, "../") {
-		return ""
-	}
-	if strings.HasPrefix(slashStyle, "styles/") {
-		cleanStyle = filepath.FromSlash(strings.TrimPrefix(slashStyle, "styles/"))
-	}
-	if strings.HasPrefix(slashStyle, "setting/styles/") {
-		cleanStyle = filepath.FromSlash(strings.TrimPrefix(slashStyle, "setting/styles/"))
-	}
-	return filepath.Join(book.UserStyleDir(novaDir), cleanStyle)
-}
-
-func isStyleRuleFile(path string) bool {
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".md" || ext == ".txt"
+	return set
 }
 
 func (s *ChatAppService) abortActiveTaskLocked() {

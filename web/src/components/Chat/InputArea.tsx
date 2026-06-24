@@ -70,10 +70,10 @@ interface InputAreaProps {
   onLoreReferenceAdd?: (id: string) => void
   onLoreReferenceRemove?: (id: string) => void
   loreSuggestions?: ReferencePickerItem[]
-  styleReferences?: string[]
-  onStyleReferenceAdd?: (path: string) => void
-  onStyleReferenceRemove?: (path: string) => void
-  styleSuggestions?: string[]
+  styleScenes?: string[]
+  onStyleSceneAdd?: (scene: string) => void
+  onStyleSceneRemove?: (scene: string) => void
+  styleSceneSuggestions?: string[]
   textSelections?: TextSelection[]
   onTextSelectionRemove?: (index: number) => void
   skills?: SkillCommand[]
@@ -104,10 +104,10 @@ export function InputArea({
   onLoreReferenceAdd,
   onLoreReferenceRemove,
   loreSuggestions = [],
-  styleReferences = [],
-  onStyleReferenceAdd,
-  onStyleReferenceRemove,
-  styleSuggestions = [],
+  styleScenes = [],
+  onStyleSceneAdd,
+  onStyleSceneRemove,
+  styleSceneSuggestions = [],
   textSelections = [],
   onTextSelectionRemove,
   skills = [],
@@ -127,7 +127,7 @@ export function InputArea({
   const [showCommands, setShowCommands] = useState(false)
   const [activeCommandIndex, setActiveCommandIndex] = useState(0)
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
-  const [styleReferenceQuery, setStyleReferenceQuery] = useState<string | null>(null)
+  const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const commandItemRefs = useRef<Array<HTMLDivElement | null>>([])
   const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
@@ -170,7 +170,7 @@ export function InputArea({
     setShowCommands(false)
     setActiveCommandIndex(0)
     setReferenceQuery(null)
-    setStyleReferenceQuery(null)
+    setStyleSceneQuery(null)
   }, [draftKey])
 
   useEffect(() => {
@@ -194,7 +194,7 @@ export function InputArea({
     setShowCommands(false)
     setActiveCommandIndex(0)
     setReferenceQuery(null)
-    setStyleReferenceQuery(null)
+    setStyleSceneQuery(null)
     window.requestAnimationFrame(() => textareaRef.current?.focus())
     onInputPrefillConsumed?.()
   }, [inputPrefill, onInputPrefillConsumed])
@@ -216,7 +216,7 @@ export function InputArea({
     const atMatch = v.match(/(?:^|\s)@([^\s@]*)$/)
     setReferenceQuery(atMatch ? atMatch[1] : null)
     const styleMatch = v.match(/(?:^|\s)#([^\s#]*)$/)
-    setStyleReferenceQuery(styleMatch ? styleMatch[1] : null)
+    setStyleSceneQuery(styleMatch ? styleMatch[1] : null)
   }
 
   /** 处理键盘事件 */
@@ -255,7 +255,7 @@ export function InputArea({
       setShowCommands(false)
       setActiveCommandIndex(0)
       setReferenceQuery(null)
-      setStyleReferenceQuery(null)
+      setStyleSceneQuery(null)
       return
     }
 
@@ -323,14 +323,14 @@ export function InputArea({
     setShowCommands(false)
     setActiveCommandIndex(0)
     setReferenceQuery(null)
-    setStyleReferenceQuery(null)
+    setStyleSceneQuery(null)
   }
 
   const handleContextAnalyze = () => {
     if (disabled) return
     void onContextAnalyze?.(value)
   }
-  const hasReferences = referencedFiles.length > 0 || loreReferences.length > 0 || styleReferences.length > 0 || textSelections.length > 0
+  const hasReferences = referencedFiles.length > 0 || loreReferences.length > 0 || styleScenes.length > 0 || textSelections.length > 0
 
   /** 选择命令 */
   const selectCommand = (cmd: string) => {
@@ -354,14 +354,14 @@ export function InputArea({
     textareaRef.current?.focus()
   }
 
-  /** 选择风格参考并插入 #path 标签 */
-  const selectStyleReference = (path: string) => {
+  /** 选择场景风格并插入 #scene 标签 */
+  const selectStyleScene = (scene: string) => {
     setValue((current) => current.replace(/(?:^|\s)#([^\s#]*)$/, (match) => {
       const prefix = match.startsWith(' ') ? ' ' : ''
-      return `${prefix}#${path} `
+      return `${prefix}#${scene} `
     }))
-    onStyleReferenceAdd?.(path)
-    setStyleReferenceQuery(null)
+    onStyleSceneAdd?.(scene)
+    setStyleSceneQuery(null)
     textareaRef.current?.focus()
   }
 
@@ -442,10 +442,10 @@ export function InputArea({
       />
 
       <FileReferencePicker
-        open={styleReferenceQuery !== null && styleSuggestions.length > 0}
-        query={styleReferenceQuery || ''}
-        files={styleSuggestions}
-        onSelect={selectStyleReference}
+        open={styleSceneQuery !== null && styleSceneSuggestions.length > 0}
+        query={styleSceneQuery || ''}
+        files={styleSceneSuggestions}
+        onSelect={selectStyleScene}
         trigger="#"
         placeholder={t('chat.styleReference.placeholder')}
         emptyText={t('chat.styleReference.empty')}
@@ -465,7 +465,7 @@ export function InputArea({
               prefix="@资料:"
               tone="lore"
             />
-            <ReferenceChips files={styleReferences} onRemove={onStyleReferenceRemove} prefix="#" tone="style" />
+            <ReferenceChips files={styleScenes} onRemove={onStyleSceneRemove} prefix="#" tone="style" />
             {textSelections.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {textSelections.map((sel, idx) => (

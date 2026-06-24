@@ -9,6 +9,8 @@ import (
 	"nova/internal/prompts"
 )
 
+const maxStyleRuleContextChars = 32000
+
 // appendReferenceContext 将用户引用的文件内容追加到本次 Agent 输入。
 func appendReferenceContext(bookService *book.Service, message string, references []string, logs ...*contextBuildLog) string {
 	var sb strings.Builder
@@ -103,55 +105,49 @@ func appendLoreReferenceContext(bookService *book.Service, message string, refer
 	return sb.String()
 }
 
-// appendStyleReferenceContext 将本轮指定的风格参考追加到 Agent 输入。
-func appendStyleReferenceContext(bookService *book.Service, message string, styleReferences []string, logs ...*contextBuildLog) string {
-	var sb strings.Builder
-	sb.WriteString(message)
-	sb.WriteString(prompts.StyleReferenceHeader)
-
-	total := 0
-	seen := make(map[string]bool)
-	for _, ref := range styleReferences {
-		ref = strings.TrimSpace(ref)
-		if ref == "" || seen[ref] {
-			continue
-		}
-		seen[ref] = true
-
-		sb.WriteString("\n## #")
-		sb.WriteString(ref)
-		sb.WriteString("\n")
-
-		if total >= maxStyleReferenceTotalBytes {
-			sb.WriteString(prompts.StyleReferenceOverflowHint)
-			addContextLog(logs, "风格参考", "#"+ref, prompts.StyleReferenceOverflowHint, "未读取：风格参考内容总量已超过限制")
-			continue
-		}
-
-		content, n, err := readStyleReferencedFile(bookService, ref, maxStyleReferenceFileBytes, maxStyleReferenceTotalBytes-total)
-		total += n
-		if err != nil {
-			sb.WriteString("读取失败：")
-			sb.WriteString(err.Error())
-			sb.WriteString("\n")
-			addContextLog(logs, "风格参考", "#"+ref, err.Error(), "读取失败")
-			continue
-		}
-		addContextLog(logs, "风格参考", "#"+ref, content, "")
-
-		sb.WriteString("```markdown\n")
-		sb.WriteString(content)
-		sb.WriteString("\n```\n")
-	}
-
-	return sb.String()
+// styleRulesSystemInstruction 把工作区配置的「场景 → 风格内容」规则集作为 system prompt 片段。
+func styleRulesSystemInstruction(rules []StyleRule) string {
+	return prompts.StyleRulesInstruction(boundedStyleRules(rules, maxStyleRuleContextChars))
 }
 
-// appendStyleRulesHint 在用户本轮未通过 # 指定风格时，
-// 把工作区配置的「场景 → 风格文件」规则集作为建议附加到上下文。
-// 不直接读取文件内容，由 Agent 基于本轮章节内容自行判断。
-func appendStyleRulesHint(message string, rules []StyleRule) string {
-	return prompts.StyleRulesHint(message, rules)
+func boundedStyleRules(rules []StyleRule, maxChars int) []StyleRule {
+	if maxChars <= 0 {
+		return nil
+	}
+	result := make([]StyleRule, 0, len(rules))
+	used := 0
+	for _, rule := range rules {
+		scene := strings.TrimSpace(rule.Scene)
+		if scene == "" || len(rule.StyleContents) == 0 {
+			continue
+		}
+		contents := make([]string, 0, len(rule.StyleContents))
+		for _, content := range rule.StyleContents {
+			content = strings.TrimSpace(content)
+			if content == "" {
+				continue
+			}
+			remain := maxChars - used
+			if remain <= 0 {
+				break
+			}
+			runes := []rune(content)
+			if len(runes) > remain {
+				content = string(runes[:remain]) + "\n\n[风格内容已截断]"
+				used = maxChars
+			} else {
+				used += len(runes)
+			}
+			contents = append(contents, content)
+		}
+		if len(contents) > 0 {
+			result = append(result, StyleRule{Scene: scene, StyleContents: contents})
+		}
+		if used >= maxChars {
+			break
+		}
+	}
+	return result
 }
 
 // appendSelectionContext 将用户在编辑器中选中的文本片段追加到消息上下文。
@@ -232,33 +228,4 @@ func formatLoreReference(item book.LoreItem) string {
 		sb.WriteString("\n```\n")
 	}
 	return strings.TrimSpace(sb.String())
-}
-
-// readStyleReferencedFile 安全读取风格参考文件，并按单文件和总大小限制截断。
-func readStyleReferencedFile(bookService *book.Service, stylePath string, fileLimit, remainLimit int) (string, int, error) {
-	limit := fileLimit
-	if remainLimit < limit {
-		limit = remainLimit
-	}
-	if limit <= 0 {
-		return "", 0, errors.New("风格参考内容总量已超过限制")
-	}
-
-	content, err := bookService.ReadStyleFile(stylePath)
-	if err != nil {
-		return "", 0, err
-	}
-
-	data := []byte(content)
-	truncated := false
-	if len(data) > limit {
-		data = data[:limit]
-		truncated = true
-	}
-
-	result := string(data)
-	if truncated {
-		result += "\n\n[内容已截断]"
-	}
-	return result, len(data), nil
 }

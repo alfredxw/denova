@@ -39,7 +39,7 @@ export function useChat(options: ChatOptions = {}) {
   const [activeSessionId, setActiveSessionId] = useState('')
   const [references, setReferences] = useState<string[]>([])
   const [loreReferences, setLoreReferences] = useState<string[]>([])
-  const [styleReferences, setStyleReferences] = useState<string[]>([])
+  const [styleScenes, setStyleScenes] = useState<string[]>([])
   const [textSelections, setTextSelections] = useState<TextSelection[]>([])
 
   /** 加载会话列表。 */
@@ -85,14 +85,14 @@ export function useChat(options: ChatOptions = {}) {
     setLoreReferences(prev => prev.filter(item => item !== id))
   }, [])
 
-  /** 添加风格参考 */
-  const addStyleReference = useCallback((path: string) => {
-    setStyleReferences(prev => Array.from(new Set([...prev, path])))
+  /** 添加场景风格选择 */
+  const addStyleScene = useCallback((scene: string) => {
+    setStyleScenes(prev => Array.from(new Set([...prev, scene])))
   }, [])
 
-  /** 移除风格参考 */
-  const removeStyleReference = useCallback((path: string) => {
-    setStyleReferences(prev => prev.filter(item => item !== path))
+  /** 移除场景风格选择 */
+  const removeStyleScene = useCallback((scene: string) => {
+    setStyleScenes(prev => prev.filter(item => item !== scene))
   }, [])
 
   /** 清空文件引用 */
@@ -105,9 +105,9 @@ export function useChat(options: ChatOptions = {}) {
     setLoreReferences([])
   }, [])
 
-  /** 清空风格参考 */
-  const clearStyleReferences = useCallback(() => {
-    setStyleReferences([])
+  /** 清空场景风格选择 */
+  const clearStyleScenes = useCallback(() => {
+    setStyleScenes([])
   }, [])
 
   /** 添加文本片段引用 */
@@ -128,9 +128,9 @@ export function useChat(options: ChatOptions = {}) {
   const clearInputState = useCallback(() => {
     clearReferences()
     clearLoreReferences()
-    clearStyleReferences()
+    clearStyleScenes()
     clearTextSelections()
-  }, [clearLoreReferences, clearReferences, clearStyleReferences, clearTextSelections])
+  }, [clearLoreReferences, clearReferences, clearStyleScenes, clearTextSelections])
 
   const prepareAgentRequest = useCallback((input: string) => {
     if (input.startsWith('/')) {
@@ -153,17 +153,17 @@ export function useChat(options: ChatOptions = {}) {
     const inlineReferences = parseInlineReferences(input)
     const mergedReferences = Array.from(new Set([...references, ...inlineReferences]))
     const mergedLoreReferences = Array.from(new Set(loreReferences))
-    const inlineStyleReferences = parseInlineStyleReferences(input)
-    const mergedStyleReferences = Array.from(new Set([...styleReferences, ...inlineStyleReferences]))
+    const inlineStyleScenes = parseInlineStyleScenes(input)
+    const mergedStyleScenes = Array.from(new Set([...styleScenes, ...inlineStyleScenes]))
     return {
       message: userMessage,
       references: mergedReferences,
       loreReferences: mergedLoreReferences,
-      styleReferences: mergedStyleReferences,
+      styleScenes: mergedStyleScenes,
       textSelections,
       planMode,
     }
-  }, [loreReferences, references, styleReferences, t, textSelections])
+  }, [loreReferences, references, styleScenes, t, textSelections])
 
   /** 发送消息 */
   const send = useCallback(async (input: string) => {
@@ -194,7 +194,7 @@ export function useChat(options: ChatOptions = {}) {
     setAbortController(abortController)
 
     try {
-      const stream = await sendMessage(prepared.message, prepared.references, prepared.loreReferences, prepared.styleReferences, prepared.textSelections, abortController.signal, prepared.planMode)
+      const stream = await sendMessage(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, abortController.signal, prepared.planMode)
       await consumeAgentStream(stream, { clearInputsOnFinish: clearInputState, showAbortMessage: true })
     } catch (e) {
       setMessages(prev => [...prev, { role: 'error', content: t('chat.activity.requestFailed', { error: String(e) }) }])
@@ -204,7 +204,7 @@ export function useChat(options: ChatOptions = {}) {
   const analyzeContext = useCallback(async (input: string): Promise<ContextAnalysis> => {
     if (isStreaming) throw new Error(t('chat.contextAnalysis.streamingUnavailable'))
     const prepared = prepareAgentRequest(input)
-    return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleReferences, prepared.textSelections, prepared.planMode)
+    return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, prepared.planMode)
   }, [isStreaming, prepareAgentRequest, t])
 
   /** 恢复订阅后台仍在运行的聊天任务。 */
@@ -273,7 +273,7 @@ export function useChat(options: ChatOptions = {}) {
     activityContent,
     references,
     loreReferences,
-    styleReferences,
+    styleScenes,
     textSelections,
     send,
     analyzeContext,
@@ -289,12 +289,12 @@ export function useChat(options: ChatOptions = {}) {
     removeReference,
     addLoreReference,
     removeLoreReference,
-    addStyleReference,
-    removeStyleReference,
+    addStyleScene,
+    removeStyleScene,
     addTextSelection,
     removeTextSelection,
     clearReferences,
-    clearStyleReferences,
+    clearStyleScenes,
   }
 }
 
@@ -316,7 +316,7 @@ function parseInlineReferences(input: string): string[] {
   return Array.from(result)
 }
 
-function parseInlineStyleReferences(input: string): string[] {
+function parseInlineStyleScenes(input: string): string[] {
   const result = new Set<string>()
   const regex = /(?:^|\s)#([^\s#]+)/g
   let match: RegExpExecArray | null

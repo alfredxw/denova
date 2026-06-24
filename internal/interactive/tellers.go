@@ -11,7 +11,10 @@ import (
 	"time"
 )
 
-const tellerVersion = 4
+const (
+	tellerVersion        = 4
+	MaxStyleContentChars = 8000
+)
 
 type TellerLibrary struct {
 	novaDir string
@@ -49,10 +52,10 @@ type TellerPromptSlot struct {
 	Content string `json:"content"`
 }
 
-// StyleRule 表示导演自己的「场景 → 风格参考」映射。
+// StyleRule 表示导演自己的「场景 → 风格内容」映射。
 type StyleRule struct {
-	Scene  string   `json:"scene"`
-	Styles []string `json:"styles"`
+	Scene         string   `json:"scene"`
+	StyleContents []string `json:"style_contents"`
 }
 
 func NewTellerLibrary(novaDir string) *TellerLibrary {
@@ -269,22 +272,33 @@ func normalizeStyleRules(rules []StyleRule) []StyleRule {
 		if scene == "" {
 			continue
 		}
-		styles := make([]string, 0, len(rule.Styles))
+		contents := make([]string, 0, len(rule.StyleContents))
 		seen := map[string]bool{}
-		for _, style := range rule.Styles {
-			style = strings.TrimSpace(style)
-			if style == "" || seen[style] {
+		for _, content := range rule.StyleContents {
+			content = truncateRunes(strings.TrimSpace(content), MaxStyleContentChars)
+			if content == "" || seen[content] {
 				continue
 			}
-			seen[style] = true
-			styles = append(styles, style)
+			seen[content] = true
+			contents = append(contents, content)
 		}
-		if len(styles) == 0 {
+		if len(contents) == 0 {
 			continue
 		}
-		result = append(result, StyleRule{Scene: scene, Styles: styles})
+		result = append(result, StyleRule{Scene: scene, StyleContents: contents})
 	}
 	return result
+}
+
+func truncateRunes(value string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= max {
+		return value
+	}
+	return string(runes[:max])
 }
 
 func normalizeContextPolicy(policy TellerContextPolicy) TellerContextPolicy {

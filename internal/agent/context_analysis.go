@@ -78,6 +78,9 @@ func NewContextAnalysisPart(in ContextAnalysisPartInput) ContextAnalysisPart {
 }
 
 func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller, bookService *book.Service, effectiveMessages []*schema.Message, totalMessages int, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest) (ContextAnalysis, error) {
+	if len(teller.StyleRules) == 0 && len(req.StyleRules) > 0 {
+		teller.StyleRules = req.StyleRules
+	}
 	systemPrompt, systemParts := buildIDESystemPromptAnalysis(cfg, state, teller)
 	policy := DefaultLoopPolicy().normalized()
 	composition := composeAgentInput(req, pending, bookService, policy)
@@ -144,6 +147,9 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 }
 
 func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, bookService *book.Service, req ChatRequest, compaction *interactive.ContextCompactionEvent, prepareMessages func(originalMessage, agentMessage string) ([]*schema.Message, error)) (ContextAnalysis, error) {
+	if len(teller.StyleRules) == 0 && len(req.StyleRules) > 0 {
+		teller.StyleRules = req.StyleRules
+	}
 	systemPrompt, systemParts := buildInteractiveStorySystemPromptAnalysis(cfg, state, teller)
 	policy := DefaultLoopPolicy().normalized()
 	composition := composeAgentInput(req, nil, bookService, policy)
@@ -350,6 +356,7 @@ func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller 
 			Content: teller.Prompt,
 		}))
 	}
+	parts = append(parts, styleRuleContextAnalysisParts(teller.StyleRules)...)
 	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 		ID:      "flow",
 		Source:  "Nova built-in",
@@ -411,6 +418,7 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 			Content: teller.StoryTellerSystemPrompt,
 		}))
 	}
+	parts = append(parts, styleRuleContextAnalysisParts(teller.StyleRules)...)
 	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 		ID:      "flow",
 		Source:  "Nova built-in",
@@ -418,6 +426,29 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 		Content: interactiveStoryFlowInstruction(cfg, workspace),
 	}))
 	return systemPrompt, parts
+}
+
+func styleRuleContextAnalysisParts(rules []StyleRule) []ContextAnalysisPart {
+	rules = boundedStyleRules(rules, maxStyleRuleContextChars)
+	parts := make([]ContextAnalysisPart, 0, len(rules))
+	for i, rule := range rules {
+		scene := strings.TrimSpace(rule.Scene)
+		if scene == "" || len(rule.StyleContents) == 0 {
+			continue
+		}
+		content := styleRulesSystemInstruction([]StyleRule{rule})
+		if strings.TrimSpace(content) == "" {
+			continue
+		}
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      fmt.Sprintf("style_rule_%d", i+1),
+			Source:  "当前叙事编排",
+			Title:   "场景化风格规则：" + scene,
+			Content: content,
+			Note:    "system prompt",
+		}))
+	}
+	return parts
 }
 
 type agentInputComposition struct {
@@ -452,12 +483,6 @@ func composeAgentInput(req ChatRequest, pending *session.Interruption, bookServi
 	}
 	if len(req.LoreReferences) > 0 {
 		agentMessage = appendLoreReferenceContext(bookService, agentMessage, req.LoreReferences, contextLog)
-	}
-	if len(req.StyleReferences) > 0 {
-		agentMessage = appendStyleReferenceContext(bookService, agentMessage, req.StyleReferences, contextLog)
-	} else if len(req.StyleRules) > 0 {
-		agentMessage = appendStyleRulesHint(agentMessage, req.StyleRules)
-		contextLog.addStyleRules(req.StyleRules)
 	}
 	if len(req.Selections) > 0 {
 		agentMessage = appendSelectionContext(agentMessage, req.Selections)

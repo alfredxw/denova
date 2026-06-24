@@ -21,18 +21,19 @@ import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVE
 
 interface InteractiveLayoutProps {
   workspace?: string
-  styleSuggestions?: string[]
   loreEmpty?: boolean
   onRequestLoreInit?: () => void
   rightPanelVisible?: boolean
   onToggleRightPanel?: () => void
 }
 
-export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
+export function InteractiveLayout({ workspace, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const { stories, tellers, branches, snapshot, currentStoryId, currentBranchId, submode, setStories, setTellers, setBranches, setSnapshot, setCurrentStoryId, setCurrentBranchId, setSubmode, resetWorkspaceState } = useInteractiveStore()
   const currentStory = stories.find((story) => story.id === currentStoryId)
+  const currentTeller = tellers.find((teller) => teller.id === currentStory?.story_teller_id)
+  const styleSceneSuggestions = Array.from(new Set((currentTeller?.style_rules || []).map((rule) => rule.scene.trim()).filter(Boolean)))
   const currentBranchSnapshot = snapshot?.story_id === currentStoryId && snapshot.branch_id === currentBranchId ? snapshot : null
   const snapshotStoryIdRef = useRef('')
   const snapshotRequestSeqRef = useRef(0)
@@ -201,7 +202,7 @@ export function InteractiveLayout({ workspace, styleSuggestions = [], loreEmpty 
   const storyStage = (
     <StoryStage
       workspace={workspace}
-      styleSuggestions={styleSuggestions}
+      styleSceneSuggestions={styleSceneSuggestions}
       stories={stories}
       story={currentStory}
       tellers={tellers}

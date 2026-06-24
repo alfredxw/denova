@@ -1,11 +1,6 @@
 import { jsonHeaders, requestJSON } from './client'
 import type { SkillDocument, SkillScope, SkillSnapshot } from './types'
 
-export async function getStyles(): Promise<string[]> {
-  const data = await requestJSON<{ styles: string[] }>('/api/styles')
-  return data.styles || []
-}
-
 export async function getSkills(): Promise<SkillSnapshot> {
   const data = await requestJSON<SkillSnapshot>('/api/skills')
   return {
