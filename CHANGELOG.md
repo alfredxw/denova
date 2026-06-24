@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 后端：修复写作 Agent 启动日志仍引用已移除的 `style_references` 请求字段导致后端编译失败的问题，日志现在记录当前场景风格选择数量。
+
 ## [v0.1.13] - 2026-06-24
 
 ### Fixed
