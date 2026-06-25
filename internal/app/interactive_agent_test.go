@@ -617,6 +617,18 @@ func TestParseInteractiveAssistantOutput(t *testing.T) {
 		t.Fatalf("expected invalid state to fall back to async state, narrative=%q ops=%#v err=%v", narrative, ops, err)
 	}
 
+	// 思考前言无 <think> 开始标签、仅以 </think> 收尾，随后才是 <NARRATIVE>。
+	narrative, _, _, err = parseInteractiveAssistantOutput("tags\n\nLet me write the opening:</think>\n\n<NARRATIVE>\n意识像被冷水浇醒。\n</NARRATIVE>")
+	if err != nil || narrative != "意识像被冷水浇醒。" {
+		t.Fatalf("expected orphan </think> prelude stripped before <NARRATIVE>, narrative=%q err=%v", narrative, err)
+	}
+
+	// 思考前言 + 裸正文（未输出 <NARRATIVE>）。
+	narrative, _, _, err = parseInteractiveAssistantOutput("思考中...</think>\n真正的正文。")
+	if err != nil || narrative != "真正的正文。" {
+		t.Fatalf("expected orphan </think> without narrative stripped, narrative=%q err=%v", narrative, err)
+	}
+
 	_, _, _, err = parseInteractiveAssistantOutput("<STATE_DELTA>{\"ops\":[]}</STATE_DELTA>")
 	if err == nil {
 		t.Fatalf("expected empty narrative error")
