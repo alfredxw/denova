@@ -6,6 +6,7 @@ import { motion } from 'motion/react'
 import { MessageItem, ToolActivityBlock } from './MessageItem'
 import type { ChatMessage } from '@/lib/api'
 import { listItem, novaEase } from '@/features/motion/motion-tokens'
+import { buildSubAgentProgressMessage, isSubAgentTimelineMessage, subAgentSessionKey } from './subagent-session'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -20,10 +21,12 @@ interface MessageListProps {
   onEditMessage?: (message: ChatMessage) => void
   onRegenerateMessage?: (message: ChatMessage) => void
   onSwitchMessageVersion?: (message: ChatMessage, direction: -1 | 1) => void
+  onOpenSubAgentSession?: (message: ChatMessage) => void
+  activeSubAgentSessionKey?: string
 }
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, activeSubAgentSessionKey }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -165,7 +168,16 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
           ? <ContextClearDivider createdAt={msg.created_at} />
           : (
             <MessageWithHoverTime message={msg}>
-              <MessageItem message={msg} highlightDialogue={highlightDialogue} messageStyle={messageStyle} onEdit={isStreaming ? undefined : onEditMessage} onRegenerate={isStreaming ? undefined : onRegenerateMessage} onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion} />
+              <MessageItem
+                message={msg}
+                highlightDialogue={highlightDialogue}
+                messageStyle={messageStyle}
+                onEdit={isStreaming ? undefined : onEditMessage}
+                onRegenerate={isStreaming ? undefined : onRegenerateMessage}
+                onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion}
+                onOpenSubAgentSession={onOpenSubAgentSession}
+                activeSubAgentSessionKey={activeSubAgentSessionKey}
+              />
             </MessageWithHoverTime>
           )}
       </motion.div>
@@ -177,6 +189,21 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     const msg = messages[index]
     if (msg.role === 'token_usage') {
       continue
+    }
+    if (onOpenSubAgentSession && isSubAgentTimelineMessage(msg)) {
+      const key = subAgentSessionKey(msg)
+      const group: ChatMessage[] = []
+      let nextIndex = index
+      while (nextIndex < messages.length && isSubAgentTimelineMessage(messages[nextIndex]) && subAgentSessionKey(messages[nextIndex]) === key) {
+        group.push(messages[nextIndex])
+        nextIndex += 1
+      }
+      const progress = buildSubAgentProgressMessage(group)
+      if (progress) {
+        renderedMessages.push(renderMessage(progress, index))
+        index = nextIndex - 1
+        continue
+      }
     }
     if (collapseTraceBeforeAssistant && isTraceMessage(msg)) {
       const traceMessages: ChatMessage[] = []

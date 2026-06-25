@@ -20,7 +20,7 @@ interface ToolCallInfo {
 }
 
 type StreamSegmentRole = 'assistant' | 'thinking'
-type EventMetadata = Pick<ChatMessage, 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_type'>
+type EventMetadata = Pick<ChatMessage, 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_session_id' | 'subagent_type'>
 
 const STREAM_CHARS_PER_FRAME = 8
 
@@ -434,10 +434,12 @@ function readNumber(value: unknown) {
 function readEventMetadata(data: Record<string, unknown>): EventMetadata {
   const runPath = readStringArray(data.run_path)
   const metadata: EventMetadata = {
+    run_id: readString(data.run_id) || undefined,
     agent_name: readString(data.agent_name) || undefined,
     root_agent_name: readString(data.root_agent_name) || undefined,
     run_path: runPath.length > 0 ? runPath : undefined,
     subagent: readBool(data.subagent),
+    subagent_session_id: readString(data.subagent_session_id) || undefined,
   }
   const subagentType = readString(data.subagent_type) || parseTaskSubagentType(readString(data.args))
   if (subagentType) metadata.subagent_type = subagentType
@@ -446,7 +448,7 @@ function readEventMetadata(data: Record<string, unknown>): EventMetadata {
 
 function segmentSourceKey(metadata: EventMetadata) {
   const path = metadata.run_path?.join('/') || ''
-  return `${metadata.subagent ? 'sub' : 'root'}:${metadata.agent_name || ''}:${path}`
+  return `${metadata.subagent ? 'sub' : 'root'}:${metadata.subagent_session_id || ''}:${metadata.agent_name || ''}:${path}`
 }
 
 function getToolEventKey(data: Record<string, unknown>): string | undefined {

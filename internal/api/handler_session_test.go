@@ -12,16 +12,24 @@ import (
 
 	"nova/config"
 	runtimeapp "nova/internal/app"
+	"nova/internal/session"
 )
 
 type testMessageDTO struct {
-	Type      string `json:"type"`
-	ID        string `json:"id,omitempty"`
-	Role      string `json:"role,omitempty"`
-	Content   string `json:"content,omitempty"`
-	Name      string `json:"name,omitempty"`
-	Status    string `json:"status,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
+	Type              string   `json:"type"`
+	ID                string   `json:"id,omitempty"`
+	Role              string   `json:"role,omitempty"`
+	Content           string   `json:"content,omitempty"`
+	Name              string   `json:"name,omitempty"`
+	Status            string   `json:"status,omitempty"`
+	CreatedAt         string   `json:"created_at,omitempty"`
+	RunID             string   `json:"run_id,omitempty"`
+	AgentName         string   `json:"agent_name,omitempty"`
+	RootAgentName     string   `json:"root_agent_name,omitempty"`
+	RunPath           []string `json:"run_path,omitempty"`
+	SubAgent          bool     `json:"subagent,omitempty"`
+	SubAgentSessionID string   `json:"subagent_session_id,omitempty"`
+	SubAgentType      string   `json:"subagent_type,omitempty"`
 }
 
 type testSessionDTO struct {
@@ -138,6 +146,42 @@ func TestAgentSessionAPIClearsBackgroundAgentContext(t *testing.T) {
 	invalidResp := performJSONRequest(t, server, http.MethodPost, "/api/agents/unknown/session/clear", nil)
 	if invalidResp.Code != http.StatusBadRequest {
 		t.Fatalf("invalid agent clear status = %d body=%s", invalidResp.Code, invalidResp.Body.String())
+	}
+}
+
+func TestSessionAPIReturnsSubAgentDisplayMetadata(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	if err := application.Session().AppendDisplayEvent(session.DisplayEvent{
+		ID:                "run-1-subagent-01-researcher",
+		Role:              "assistant",
+		Content:           "SubAgent 调研结果",
+		RunID:             "run-1",
+		AgentName:         "researcher",
+		RootAgentName:     "NovaAgent",
+		RunPath:           []string{"NovaAgent", "researcher"},
+		SubAgent:          true,
+		SubAgentSessionID: "run-1-subagent-01-researcher",
+		SubAgentType:      "researcher",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := performJSONRequest(t, server, http.MethodGet, "/api/session/messages", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("messages status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	var messages []testMessageDTO
+	decodeResponse(t, resp.Body.Bytes(), &messages)
+	if len(messages) != 1 {
+		t.Fatalf("expected one display message, got %#v", messages)
+	}
+	got := messages[0]
+	if got.Role != "assistant" || !got.SubAgent || got.SubAgentSessionID != "run-1-subagent-01-researcher" || got.SubAgentType != "researcher" {
+		t.Fatalf("SubAgent metadata missing from API response: %#v", got)
+	}
+	if got.RunID != "run-1" || got.AgentName != "researcher" || len(got.RunPath) != 2 {
+		t.Fatalf("Agent path metadata missing from API response: %#v", got)
 	}
 }
 

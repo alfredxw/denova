@@ -160,6 +160,11 @@ func (r *Runtime) Run(
 		}
 	}
 
+	runID := runLedger.ID()
+	if runID == "" {
+		runID = options.TaskID
+	}
+	subAgentSessions := newSubAgentSessionTracker(runID)
 	recorder := newDisplayEventRecorder(conversation)
 	mutations := newMutationTracker()
 	rawEmit := emit
@@ -327,7 +332,7 @@ func (r *Runtime) Run(
 			continue
 		}
 
-		eventMeta := metadataForAgentEvent(event, options.RootAgentName)
+		eventMeta := subAgentSessions.decorate(metadataForAgentEvent(event, options.RootAgentName))
 		mv := event.Output.MessageOutput
 		if mv.Role == schema.Tool {
 			if mv.Message == nil {

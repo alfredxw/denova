@@ -87,13 +87,20 @@ export interface TurnEvent {
 
 export interface TurnDisplayEvent {
   id?: string
-  role: 'thinking' | 'tool_call' | 'tool_result'
+  role: 'assistant' | 'thinking' | 'tool_call' | 'tool_result'
   content?: string
   name?: string
   args?: string
   status?: 'running' | 'success' | 'error'
   result?: string
   created_at?: string
+  run_id?: string
+  agent_name?: string
+  root_agent_name?: string
+  run_path?: string[]
+  subagent?: boolean
+  subagent_session_id?: string
+  subagent_type?: string
 }
 
 export interface TokenUsageEvent {

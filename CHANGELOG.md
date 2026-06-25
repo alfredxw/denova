@@ -17,7 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Agent：Review 自动化不再强制把 `max_iteration` 提升到 100，避免 task 委派继续被隐藏上限截断。
 - Agent：自定义 SubAgent 现在继承父 Agent 稳定 system prompt、workspace/mode/tool 边界，并要求父 Agent 委派 task 时传递目标、约束和路径/资源 ID；若旧 SubAgent prompt 试图覆盖父 Agent 工具权限或模式边界，会以父级契约为准。
 - WebUI：Agents 页面默认编辑用户配置，Skills 页面默认在用户级目录新建 Skill；需要工作区级覆盖时仍可手动切换到工作区配置。
-- WebUI：创作 Agent 面板移除独立 Review tab，Review 任务配置与运行过程统一回到自动化页；SubAgent 正文输出改为主会话中的可展开小窗，避免混入父 Agent 正文。
+- WebUI：创作 Agent 面板移除独立 Review tab，Review 任务配置与运行过程统一回到自动化页；SubAgent 正文输出改为主会话高亮进度卡，点击后可在右侧打开独立子会话详情栏，避免混入父 Agent 正文。
+- WebUI：写作模式作品目录上方的灵感、大纲和状态文件入口合并为可折叠的“书籍设定”，并新增创作规则、写作进度和角色当前状态快捷入口。
 
 ### Fixed
 

@@ -204,14 +204,16 @@ interface ToolPayload {
   args?: string
   delta?: string
   content?: string
+  run_id?: string
   agent_name?: string
   root_agent_name?: string
   run_path?: string[]
   subagent?: boolean
+  subagent_session_id?: string
   subagent_type?: string
 }
 
-type ChatEventMetadata = Pick<ChatMessage, 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_type'>
+type ChatEventMetadata = Pick<ChatMessage, 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_session_id' | 'subagent_type'>
 
 function parsePayload<T>(data: string): T | null {
   try {
@@ -224,16 +226,19 @@ function parsePayload<T>(data: string): T | null {
 function metadataFromPayload(payload?: ToolPayload | null): ChatEventMetadata {
   if (!payload) return {}
   return {
+    run_id: payload.run_id,
     agent_name: payload.agent_name,
     root_agent_name: payload.root_agent_name,
     run_path: payload.run_path,
     subagent: payload.subagent,
+    subagent_session_id: payload.subagent_session_id,
     subagent_type: payload.subagent_type,
   }
 }
 
 function sameChatEventSource(message: ChatMessage, metadata: ChatEventMetadata) {
   return Boolean(message.subagent) === Boolean(metadata.subagent) &&
+    (message.subagent_session_id || '') === (metadata.subagent_session_id || '') &&
     (message.agent_name || '') === (metadata.agent_name || '') &&
     (message.root_agent_name || '') === (metadata.root_agent_name || '') &&
     (message.run_path || []).join('/') === (metadata.run_path || []).join('/')

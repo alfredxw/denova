@@ -255,7 +255,7 @@ func (c *interactiveConversation) AppendDisplayEvent(event session.DisplayEvent)
 	if role == "token_usage" {
 		return c.appendTokenUsageEvent(event)
 	}
-	if role != "thinking" && role != "tool_call" && role != "tool_result" {
+	if role != "thinking" && role != "tool_call" && role != "tool_result" && !(role == "assistant" && event.SubAgent) {
 		return nil
 	}
 	name := strings.TrimSpace(event.Name)
@@ -280,18 +280,21 @@ func (c *interactiveConversation) AppendDisplayEvent(event session.DisplayEvent)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	next := interactive.DisplayEvent{
-		ID:            strings.TrimSpace(event.ID),
-		Role:          role,
-		Content:       content,
-		Name:          name,
-		Args:          event.Args,
-		Status:        status,
-		Result:        event.Result,
-		CreatedAt:     createdAt,
-		AgentName:     event.AgentName,
-		RootAgentName: event.RootAgentName,
-		RunPath:       append([]string(nil), event.RunPath...),
-		SubAgent:      event.SubAgent,
+		ID:                strings.TrimSpace(event.ID),
+		Role:              role,
+		Content:           content,
+		Name:              name,
+		Args:              event.Args,
+		Status:            status,
+		Result:            event.Result,
+		CreatedAt:         createdAt,
+		RunID:             event.RunID,
+		AgentName:         event.AgentName,
+		RootAgentName:     event.RootAgentName,
+		RunPath:           append([]string(nil), event.RunPath...),
+		SubAgent:          event.SubAgent,
+		SubAgentSessionID: event.SubAgentSessionID,
+		SubAgentType:      event.SubAgentType,
 	}
 	c.displayEvents = append(c.displayEvents, next)
 	turnID := ""
@@ -322,6 +325,24 @@ func (c *interactiveConversation) AppendDisplayToolArgs(id, name, delta string) 
 	defer c.mu.Unlock()
 	if index := findInteractiveDisplayToolEventIndex(c.displayEvents, id, name); index >= 0 {
 		c.displayEvents[index].Args += delta
+		return c.persistLastTurnDisplayEventLocked(c.displayEvents[index])
+	}
+	return nil
+}
+
+func (c *interactiveConversation) AppendDisplayEventContent(id, role, delta string) error {
+	if c == nil || delta == "" {
+		return nil
+	}
+	id = strings.TrimSpace(id)
+	role = strings.TrimSpace(role)
+	if id == "" || role == "" {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if index := findInteractiveDisplayEventIndex(c.displayEvents, id, role); index >= 0 {
+		c.displayEvents[index].Content += delta
 		return c.persistLastTurnDisplayEventLocked(c.displayEvents[index])
 	}
 	return nil
@@ -448,6 +469,18 @@ func findInteractiveDisplayToolEventIndex(events []interactive.DisplayEvent, id,
 			if events[i].Role == "tool_call" {
 				return i
 			}
+		}
+	}
+	return -1
+}
+
+func findInteractiveDisplayEventIndex(events []interactive.DisplayEvent, id, role string) int {
+	if id == "" || role == "" {
+		return -1
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].ID == id && events[i].Role == role {
+			return i
 		}
 	}
 	return -1

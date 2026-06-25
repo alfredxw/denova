@@ -52,6 +52,8 @@ type HistoryEntry struct {
 	RootAgentName        string           `json:"root_agent_name,omitempty"`
 	RunPath              []string         `json:"run_path,omitempty"`
 	SubAgent             bool             `json:"subagent,omitempty"`
+	SubAgentSessionID    string           `json:"subagent_session_id,omitempty"`
+	SubAgentType         string           `json:"subagent_type,omitempty"`
 	PromptTokens         int              `json:"prompt_tokens,omitempty"`
 	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
 	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`
@@ -93,6 +95,8 @@ type DisplayEvent struct {
 	RootAgentName        string           `json:"root_agent_name,omitempty"`
 	RunPath              []string         `json:"run_path,omitempty"`
 	SubAgent             bool             `json:"subagent,omitempty"`
+	SubAgentSessionID    string           `json:"subagent_session_id,omitempty"`
+	SubAgentType         string           `json:"subagent_type,omitempty"`
 	PromptTokens         int              `json:"prompt_tokens,omitempty"`
 	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
 	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`
@@ -321,6 +325,30 @@ func (s *Session) UpdateDisplayToolResult(id, name, status, result string) error
 		s.records[index].display.Result = result
 		s.UpdatedAt = time.Now().UTC()
 		return s.persistLocked()
+	}
+	return nil
+}
+
+// AppendDisplayEventContent appends streamed display-only content to a card.
+func (s *Session) AppendDisplayEventContent(id, role, delta string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	id = strings.TrimSpace(id)
+	role = strings.TrimSpace(role)
+	if id == "" || role == "" || delta == "" {
+		return nil
+	}
+	for i := len(s.records) - 1; i >= 0; i-- {
+		record := s.records[i]
+		if record.kind != historyTypeDisplay || record.display == nil {
+			continue
+		}
+		if record.display.ID == id && record.display.Role == role {
+			s.records[i].display.Content += delta
+			s.UpdatedAt = time.Now().UTC()
+			return s.persistLocked()
+		}
 	}
 	return nil
 }
@@ -633,6 +661,8 @@ func (s *Session) History() []HistoryEntry {
 				RootAgentName:        record.display.RootAgentName,
 				RunPath:              append([]string(nil), record.display.RunPath...),
 				SubAgent:             record.display.SubAgent,
+				SubAgentSessionID:    record.display.SubAgentSessionID,
+				SubAgentType:         record.display.SubAgentType,
 				PromptTokens:         record.display.PromptTokens,
 				CachedPromptTokens:   record.display.CachedPromptTokens,
 				UncachedPromptTokens: record.display.UncachedPromptTokens,

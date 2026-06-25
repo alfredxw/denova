@@ -249,6 +249,31 @@ describe('MessageItem', () => {
     expect(screen.getByText('实时片段')).toBeInTheDocument()
   })
 
+  it('SubAgent assistant 有详情回调时只打开子会话详情', async () => {
+    const user = userEvent.setup()
+    const handleOpen = vi.fn()
+
+    const longContent = `${'详情预览。'.repeat(80)}\n\n隐藏的完整结论`
+    render(
+      <MessageItem
+        message={{
+          role: 'assistant',
+          content: longContent,
+          agent_name: 'researcher',
+          subagent: true,
+          subagent_session_id: 'run-1-subagent-01-researcher',
+        }}
+        onOpenSubAgentSession={handleOpen}
+      />,
+    )
+
+    expect(screen.getByText('打开详情')).toBeInTheDocument()
+    expect(screen.queryByText('隐藏的完整结论')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /researcher 输出/ }))
+    expect(handleOpen).toHaveBeenCalledWith(expect.objectContaining({ subagent_session_id: 'run-1-subagent-01-researcher' }))
+    expect(screen.queryByText('隐藏的完整结论')).not.toBeInTheDocument()
+  })
+
   it('上下文压缩消息渲染为单个带 Loading 的简洁小窗', () => {
     render(
       <MessageItem

@@ -10,7 +10,9 @@ import { MessageList } from './MessageList'
 import { InputArea } from './InputArea'
 import { SessionManagementPanel } from './SessionManagementPanel'
 import { AgentTracePanel } from './AgentTracePanel'
+import { SubAgentSessionPanel } from './SubAgentSessionPanel'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './ContextAnalysisDialog'
+import { subAgentSessionKey } from './subagent-session'
 import type { ReferencePickerItem } from './FileReferencePicker'
 
 type AgentPanelView = 'chat' | 'sessions' | 'traces'
@@ -90,6 +92,7 @@ export function AgentPanel({
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
+  const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
   const [ideTellerId, setIdeTellerId] = useState('classic')
   const skillCommands = useSkillCommands({ agentKey: 'ide', workspace, fallbackEnabled: true })
   const activeSession = sessions.find((session) => session.id === activeSessionId) ||
@@ -132,6 +135,11 @@ export function AgentPanel({
   const openContextAnalysis = () => {
     setContextAnalysisOpen(true)
     void handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
+  }
+
+  const openSubAgentSession = (message: ChatMessage) => {
+    const key = subAgentSessionKey(message)
+    if (key) setActiveSubAgentSessionKey(key)
   }
 
   const removeContextCompaction = async () => {
@@ -205,48 +213,72 @@ export function AgentPanel({
               {t('chat.new')}
             </button>
           </div>
-          {messages.length === 0 && !isStreaming && (
-            <AgentQuickActions
-              chapter={currentChapter}
-              selectedFile={selectedFile}
-              onSend={onSend}
-            />
-          )}
-          <MessageList
-            messages={messages}
-            isStreaming={isStreaming}
-            activityContent={activityContent}
-            scrollResetKey={`${workspace || 'none'}:${activeSessionId || 'current'}`}
-            bottomPaddingClassName="pb-36"
-          />
-          <InputArea
-            onSend={onSend}
-            onStop={onStop}
-            disabled={isStreaming}
-            draftKey={`ide-agent:${workspace || 'global'}`}
-            inputPrefill={inputPrefill}
-            onInputPrefillConsumed={() => setInputPrefill(null)}
-            referencedFiles={references}
-            onReferenceRemove={onReferenceRemove}
-            fileSuggestions={fileSuggestions}
-            loreReferences={loreReferences}
-            loreReferenceLabels={loreReferenceLabels}
-            onLoreReferenceAdd={onLoreReferenceAdd}
-            onLoreReferenceRemove={onLoreReferenceRemove}
-            loreSuggestions={loreSuggestions}
-            styleScenes={styleScenes}
-            onStyleSceneAdd={onStyleSceneAdd}
-            onStyleSceneRemove={onStyleSceneRemove}
-            styleSceneSuggestions={styleSceneSuggestions}
-            textSelections={textSelections}
-            onTextSelectionRemove={onTextSelectionRemove}
-            skills={skillCommands}
-            onContextAnalyze={openContextAnalysis}
-            tokenUsageMessages={tokenUsageMessages}
-            agentKey="ide"
-            workspace={workspace}
-            floating
-          />
+          <div className="relative flex min-h-0 flex-1">
+            <div className="relative flex min-w-0 flex-1 flex-col">
+              {messages.length === 0 && !isStreaming && (
+                <AgentQuickActions
+                  chapter={currentChapter}
+                  selectedFile={selectedFile}
+                  onSend={onSend}
+                />
+              )}
+              <MessageList
+                messages={messages}
+                isStreaming={isStreaming}
+                activityContent={activityContent}
+                scrollResetKey={`${workspace || 'none'}:${activeSessionId || 'current'}`}
+                bottomPaddingClassName="pb-36"
+                onOpenSubAgentSession={openSubAgentSession}
+                activeSubAgentSessionKey={activeSubAgentSessionKey}
+              />
+              <InputArea
+                onSend={onSend}
+                onStop={onStop}
+                disabled={isStreaming}
+                draftKey={`ide-agent:${workspace || 'global'}`}
+                inputPrefill={inputPrefill}
+                onInputPrefillConsumed={() => setInputPrefill(null)}
+                referencedFiles={references}
+                onReferenceRemove={onReferenceRemove}
+                fileSuggestions={fileSuggestions}
+                loreReferences={loreReferences}
+                loreReferenceLabels={loreReferenceLabels}
+                onLoreReferenceAdd={onLoreReferenceAdd}
+                onLoreReferenceRemove={onLoreReferenceRemove}
+                loreSuggestions={loreSuggestions}
+                styleScenes={styleScenes}
+                onStyleSceneAdd={onStyleSceneAdd}
+                onStyleSceneRemove={onStyleSceneRemove}
+                styleSceneSuggestions={styleSceneSuggestions}
+                textSelections={textSelections}
+                onTextSelectionRemove={onTextSelectionRemove}
+                skills={skillCommands}
+                onContextAnalyze={openContextAnalysis}
+                tokenUsageMessages={tokenUsageMessages}
+                agentKey="ide"
+                workspace={workspace}
+                floating
+              />
+            </div>
+            {activeSubAgentSessionKey && (
+              <>
+                <div className="hidden min-w-[280px] flex-[0_0_42%] md:block">
+                  <SubAgentSessionPanel
+                    messages={messages}
+                    sessionKey={activeSubAgentSessionKey}
+                    onClose={() => setActiveSubAgentSessionKey('')}
+                  />
+                </div>
+                <div className="absolute inset-0 z-30 md:hidden">
+                  <SubAgentSessionPanel
+                    messages={messages}
+                    sessionKey={activeSubAgentSessionKey}
+                    onClose={() => setActiveSubAgentSessionKey('')}
+                  />
+                </div>
+              </>
+            )}
+          </div>
           <ContextAnalysisDialog
             open={contextAnalysisOpen}
             loading={contextAnalysisLoading}

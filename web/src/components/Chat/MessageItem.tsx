@@ -2,10 +2,11 @@ import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useS
 import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, Pencil, RefreshCw } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '@/lib/api'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { subAgentSessionKey } from './subagent-session'
 
 interface MessageItemProps {
   message: ChatMessage
@@ -14,10 +15,13 @@ interface MessageItemProps {
   onEdit?: (message: ChatMessage) => void
   onRegenerate?: (message: ChatMessage) => void
   onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void
+  onOpenSubAgentSession?: (message: ChatMessage) => void
+  activeSubAgentSessionKey?: string
+  subAgentPresentation?: 'card' | 'content'
 }
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, activeSubAgentSessionKey, subAgentPresentation = 'card' }: MessageItemProps) {
   const { t } = useTranslation()
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
@@ -52,13 +56,15 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       )
 
     case 'assistant':
-      if (message.subagent) {
+      if (message.subagent && subAgentPresentation === 'card') {
         return (
           <SubAgentOutputWindow
             message={message}
             content={content}
             highlightDialogue={highlightDialogue}
             messageStyle={messageStyle}
+            onOpen={onOpenSubAgentSession}
+            active={Boolean(activeSubAgentSessionKey && activeSubAgentSessionKey === subAgentSessionKey(message))}
           />
         )
       }
@@ -157,11 +163,15 @@ function SubAgentOutputWindow({
   content,
   highlightDialogue,
   messageStyle,
+  onOpen,
+  active,
 }: {
   message: ChatMessage
   content: string
   highlightDialogue: boolean
   messageStyle?: CSSProperties
+  onOpen?: (message: ChatMessage) => void
+  active?: boolean
 }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
@@ -169,19 +179,28 @@ function SubAgentOutputWindow({
   const preview = buildMarkdownPreview(content, 220)
   const hasContent = Boolean(content.trim())
   const statusLabel = message.streaming ? t('chat.subagent.status.streaming') : t('chat.subagent.status.done')
-  const actionLabel = expanded ? t('chat.subagent.collapse') : t('chat.subagent.expand')
+  const detailMode = Boolean(onOpen)
+  const actionLabel = detailMode ? t('chat.subagent.openSession') : (expanded ? t('chat.subagent.collapse') : t('chat.subagent.expand'))
+  const shownContent = detailMode || !expanded ? preview : content
 
   return (
     <div className="flex justify-start">
-      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
+      <div className={`w-full overflow-hidden rounded-lg border bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)] ${active ? 'border-[var(--nova-accent)] ring-1 ring-[var(--nova-accent)]/40' : 'border-[var(--nova-border)]'}`}>
         <button
           type="button"
           className="flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-2 text-left"
-          onClick={() => setExpanded(!expanded)}
+          onClick={() => {
+            if (onOpen) {
+              onOpen(message)
+              return
+            }
+            setExpanded(!expanded)
+          }}
           aria-expanded={expanded}
+          aria-label={t('chat.subagent.outputFrom', { name })}
         >
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
-            {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {detailMode ? <PanelRightOpen className="h-3.5 w-3.5" /> : expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate font-medium text-[var(--nova-text)]">{t('chat.subagent.outputFrom', { name })}</span>
@@ -191,13 +210,13 @@ function SubAgentOutputWindow({
             {actionLabel}
           </span>
         </button>
-        <div className={`${expanded ? 'max-h-96' : 'max-h-28'} overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5`}>
+        <div className={`${detailMode ? 'max-h-28' : expanded ? 'max-h-96' : 'max-h-28'} overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5`}>
           {hasContent ? (
             <div className="chat-agent-message text-sm text-[var(--nova-text)]" style={messageStyle}>
               {message.streaming ? (
-                <StreamingMarkdown content={expanded ? content : preview} highlightDialogue={highlightDialogue} />
+                <StreamingMarkdown content={shownContent} highlightDialogue={highlightDialogue} />
               ) : (
-                <MarkdownContent content={expanded ? content : preview} highlightDialogue={highlightDialogue} />
+                <MarkdownContent content={shownContent} highlightDialogue={highlightDialogue} />
               )}
             </div>
           ) : (

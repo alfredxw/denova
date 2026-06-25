@@ -130,6 +130,60 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	}
 }
 
+func TestSubAgentAssistantDisplayChunksPersistOutsideEffectiveContext(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.UserMessage("委派调研")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID:                "run-1-subagent-01-researcher",
+		Role:              "assistant",
+		Content:           "第一段",
+		RunID:             "run-1",
+		AgentName:         "researcher",
+		RootAgentName:     "NovaAgent",
+		RunPath:           []string{"NovaAgent", "researcher"},
+		SubAgent:          true,
+		SubAgentSessionID: "run-1-subagent-01-researcher",
+		SubAgentType:      "researcher",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEventContent("run-1-subagent-01-researcher", "assistant", "第二段"); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if effective := reloaded.GetEffectiveMessages(); len(effective) != 1 {
+		t.Fatalf("SubAgent 展示正文不应进入有效上下文: %#v", effective)
+	}
+	history := reloaded.History()
+	if len(history) != 2 {
+		t.Fatalf("历史应包含 user/subagent display: %#v", history)
+	}
+	if got := history[1].Content; got != "第一段第二段" {
+		t.Fatalf("SubAgent 展示正文未合并恢复: %q", got)
+	}
+	if !history[1].SubAgent || history[1].SubAgentSessionID != "run-1-subagent-01-researcher" || history[1].SubAgentType != "researcher" {
+		t.Fatalf("SubAgent metadata 未恢复: %#v", history[1])
+	}
+}
+
 func TestDisplayToolArgsDeltasArePersistedOnFinalResult(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

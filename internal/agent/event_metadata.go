@@ -8,10 +8,13 @@ import (
 )
 
 type agentEventMetadata struct {
-	AgentName     string
-	RootAgentName string
-	RunPath       []string
-	SubAgent      bool
+	RunID             string
+	AgentName         string
+	RootAgentName     string
+	RunPath           []string
+	SubAgent          bool
+	SubAgentSessionID string
+	SubAgentType      string
 }
 
 func metadataForAgentEvent(event *adk.AgentEvent, rootAgentName string) agentEventMetadata {
@@ -43,7 +46,88 @@ func metadataForAgentEvent(event *adk.AgentEvent, rootAgentName string) agentEve
 		}
 	}
 	meta.SubAgent = meta.AgentName != "" && meta.RootAgentName != "" && meta.AgentName != meta.RootAgentName
+	if meta.SubAgent {
+		meta.SubAgentType = meta.AgentName
+	}
 	return meta
+}
+
+type subAgentSessionTracker struct {
+	runID        string
+	counter      int
+	activeSource string
+	activeID     string
+}
+
+func newSubAgentSessionTracker(runID string) *subAgentSessionTracker {
+	return &subAgentSessionTracker{runID: strings.TrimSpace(runID)}
+}
+
+func (t *subAgentSessionTracker) decorate(meta agentEventMetadata) agentEventMetadata {
+	if t == nil {
+		return meta
+	}
+	meta.RunID = t.runID
+	if !meta.SubAgent {
+		t.activeSource = ""
+		t.activeID = ""
+		return meta
+	}
+	if meta.SubAgentType == "" {
+		meta.SubAgentType = meta.AgentName
+	}
+	source := subAgentSourceKey(meta)
+	if source == "" {
+		source = meta.AgentName
+	}
+	if source != t.activeSource || t.activeID == "" {
+		t.counter++
+		t.activeSource = source
+		t.activeID = buildSubAgentSessionID(t.runID, meta.AgentName, t.counter)
+	}
+	meta.SubAgentSessionID = t.activeID
+	return meta
+}
+
+func subAgentSourceKey(meta agentEventMetadata) string {
+	parts := []string{meta.RootAgentName, meta.AgentName}
+	parts = append(parts, meta.RunPath...)
+	return strings.Join(parts, "\x00")
+}
+
+func buildSubAgentSessionID(runID, agentName string, index int) string {
+	runID = sanitizeSubAgentSessionPart(runID)
+	if runID == "" {
+		runID = "run"
+	}
+	agentName = sanitizeSubAgentSessionPart(agentName)
+	if agentName == "" {
+		agentName = "subagent"
+	}
+	return fmt.Sprintf("%s-subagent-%02d-%s", runID, index, agentName)
+}
+
+func sanitizeSubAgentSessionPart(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var sb strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			sb.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			sb.WriteRune(r)
+		case r >= '0' && r <= '9':
+			sb.WriteRune(r)
+		case r == '-' || r == '_':
+			sb.WriteRune(r)
+		default:
+			sb.WriteByte('-')
+		}
+	}
+	return strings.Trim(sb.String(), "-_")
 }
 
 func (m agentEventMetadata) appendTo(data map[string]interface{}) map[string]interface{} {
@@ -53,11 +137,20 @@ func (m agentEventMetadata) appendTo(data map[string]interface{}) map[string]int
 	if m.AgentName != "" {
 		data["agent_name"] = m.AgentName
 	}
+	if m.RunID != "" {
+		data["run_id"] = m.RunID
+	}
 	if m.RootAgentName != "" {
 		data["root_agent_name"] = m.RootAgentName
 	}
 	if len(m.RunPath) > 0 {
 		data["run_path"] = append([]string(nil), m.RunPath...)
+	}
+	if m.SubAgentSessionID != "" {
+		data["subagent_session_id"] = m.SubAgentSessionID
+	}
+	if m.SubAgentType != "" {
+		data["subagent_type"] = m.SubAgentType
 	}
 	data["subagent"] = m.SubAgent
 	return data
@@ -67,24 +160,35 @@ func eventMetadataFromData(data interface{}) agentEventMetadata {
 	meta := agentEventMetadata{}
 	switch typed := data.(type) {
 	case map[string]string:
+		meta.RunID = typed["run_id"]
 		meta.AgentName = typed["agent_name"]
 		meta.RootAgentName = typed["root_agent_name"]
+		meta.SubAgentSessionID = typed["subagent_session_id"]
+		meta.SubAgentType = typed["subagent_type"]
 		meta.SubAgent = strings.EqualFold(typed["subagent"], "true")
 	case map[string]interface{}:
+		meta.RunID = eventDataString(typed, "run_id")
 		meta.AgentName = eventDataString(typed, "agent_name")
 		meta.RootAgentName = eventDataString(typed, "root_agent_name")
+		meta.SubAgentSessionID = eventDataString(typed, "subagent_session_id")
+		meta.SubAgentType = eventDataString(typed, "subagent_type")
 		meta.SubAgent = eventDataBool(typed, "subagent")
 		if raw, ok := typed["run_path"]; ok {
 			meta.RunPath = stringSliceFromAny(raw)
 		}
 	}
+	if meta.SubAgent && meta.SubAgentType == "" {
+		meta.SubAgentType = meta.AgentName
+	}
 	return meta
 }
 
 func (m agentEventMetadata) sameSource(other agentEventMetadata) bool {
-	return m.AgentName == other.AgentName &&
+	return m.RunID == other.RunID &&
+		m.AgentName == other.AgentName &&
 		m.RootAgentName == other.RootAgentName &&
 		m.SubAgent == other.SubAgent &&
+		m.SubAgentSessionID == other.SubAgentSessionID &&
 		strings.Join(m.RunPath, "\x00") == strings.Join(other.RunPath, "\x00")
 }
 

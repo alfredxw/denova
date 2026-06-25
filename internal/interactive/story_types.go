@@ -155,18 +155,21 @@ const TokenUsageEventType = "token_usage"
 // DisplayEvent 表示互动回合中只用于前端展示的事件，例如思考过程和工具调用卡片。
 // 它不进入下一轮 Agent 上下文；Args/Result 仅用于追溯当时的工具调用过程。
 type DisplayEvent struct {
-	ID            string   `json:"id,omitempty"`
-	Role          string   `json:"role"`
-	Content       string   `json:"content,omitempty"`
-	Name          string   `json:"name,omitempty"`
-	Args          string   `json:"args,omitempty"`
-	Status        string   `json:"status,omitempty"`
-	Result        string   `json:"result,omitempty"`
-	CreatedAt     string   `json:"created_at,omitempty"`
-	AgentName     string   `json:"agent_name,omitempty"`
-	RootAgentName string   `json:"root_agent_name,omitempty"`
-	RunPath       []string `json:"run_path,omitempty"`
-	SubAgent      bool     `json:"subagent,omitempty"`
+	ID                string   `json:"id,omitempty"`
+	Role              string   `json:"role"`
+	Content           string   `json:"content,omitempty"`
+	Name              string   `json:"name,omitempty"`
+	Args              string   `json:"args,omitempty"`
+	Status            string   `json:"status,omitempty"`
+	Result            string   `json:"result,omitempty"`
+	CreatedAt         string   `json:"created_at,omitempty"`
+	AgentName         string   `json:"agent_name,omitempty"`
+	RootAgentName     string   `json:"root_agent_name,omitempty"`
+	RunPath           []string `json:"run_path,omitempty"`
+	SubAgent          bool     `json:"subagent,omitempty"`
+	RunID             string   `json:"run_id,omitempty"`
+	SubAgentSessionID string   `json:"subagent_session_id,omitempty"`
+	SubAgentType      string   `json:"subagent_type,omitempty"`
 }
 
 type TokenUsageEvent struct {

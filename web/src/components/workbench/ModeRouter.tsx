@@ -27,6 +27,12 @@ import { flattenFileTree, formatNumber } from './workbench-utils'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 type MainRouteId = 'settings' | 'skills' | 'agents' | 'automations' | 'books' | 'interactive' | 'versions' | 'ide-lore' | 'ide-teller' | 'ide-writing'
+type PlanningDocumentIcon = 'ideas' | 'outline' | 'plan' | 'creator' | 'progress' | 'characterState'
+
+interface PlanningDocumentItem {
+  document: DocumentPreview
+  icon: PlanningDocumentIcon
+}
 
 interface ModeRouterProps {
   mode: WorkspaceMode
@@ -674,11 +680,25 @@ function ChapterOutline({
 }) {
   const { t } = useTranslation()
   const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set())
+  const [bookSettingsExpanded, setBookSettingsExpanded] = useState(true)
   const [chapterPlanHistoryExpanded, setChapterPlanHistoryExpanded] = useState(false)
   const volumes = useMemo(() => groupChaptersByVolume(chapters, t), [chapters, t])
-  const hasPlanning = ideas || outline || chapterPlans.length > 0
+  const bookSettings = useMemo<PlanningDocumentItem[]>(() => [
+    { document: planningDocument(ideas, 'ideas.md', t('planning.ideas')), icon: 'ideas' },
+    { document: planningDocument(outline, 'setting/outline.md', t('planning.outline')), icon: 'outline' },
+    { document: planningDocument(undefined, 'CREATOR.md', t('planning.creatorRules')), icon: 'creator' },
+    { document: planningDocument(undefined, 'setting/progress.md', t('planning.writingProgress')), icon: 'progress' },
+    { document: planningDocument(undefined, 'setting/character-states.md', t('planning.characterStates')), icon: 'characterState' },
+  ], [ideas, outline, t])
+  const hasPlanning = bookSettings.length > 0 || chapterPlans.length > 0
   const latestChapterPlan = chapterPlans[chapterPlans.length - 1]
   const historicalChapterPlans = useMemo(() => chapterPlans.slice(0, -1), [chapterPlans])
+
+  useEffect(() => {
+    if (selectedFile && bookSettings.some((item) => item.document.path === selectedFile)) {
+      setBookSettingsExpanded(true)
+    }
+  }, [bookSettings, selectedFile])
 
   useEffect(() => {
     if (selectedFile && historicalChapterPlans.some((plan) => plan.path === selectedFile)) {
@@ -706,20 +726,32 @@ function ChapterOutline({
   return (
     <div className="space-y-3">
       <section className="space-y-1.5">
-        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.ideas')}</div>
-        {ideas ? (
-          <PlanningListItem document={ideas} icon="ideas" selected={selectedFile === ideas.path} onSelectFile={onSelectFile} />
-        ) : (
-          <PlanningEmptyState text={t('planning.ideasEmpty')} />
-        )}
-      </section>
-
-      <section className="space-y-1.5">
-        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.outline')}</div>
-        {outline ? (
-          <PlanningListItem document={outline} icon="outline" selected={selectedFile === outline.path} onSelectFile={onSelectFile} />
-        ) : (
-          <PlanningEmptyState text={t('planning.outlineEmpty')} />
+        <button
+          type="button"
+          className="nova-nav-item flex w-full items-center gap-2 border border-transparent bg-[var(--nova-surface)] px-2 py-1.5 text-left"
+          onClick={() => setBookSettingsExpanded((expanded) => !expanded)}
+        >
+          {bookSettingsExpanded ? (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+          )}
+          <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+          <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{t('planning.bookSettings')}</span>
+          <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{t('planning.bookSettingCount', { count: bookSettings.length })}</span>
+        </button>
+        {bookSettingsExpanded && (
+          <div className="space-y-1 pl-4">
+            {bookSettings.map((item) => (
+              <PlanningListItem
+                key={item.document.path}
+                document={item.document}
+                icon={item.icon}
+                selected={selectedFile === item.document.path}
+                onSelectFile={onSelectFile}
+              />
+            ))}
+          </div>
         )}
       </section>
 
@@ -817,11 +849,11 @@ function PlanningListItem({
   onSelectFile,
 }: {
   document: DocumentPreview
-  icon: 'ideas' | 'outline' | 'plan'
+  icon: PlanningDocumentIcon
   selected: boolean
   onSelectFile: (path: string) => void | Promise<void>
 }) {
-  const Icon = icon === 'outline' ? BookMarked : FileText
+  const Icon = planningIcon(icon)
   return (
     <button
       type="button"
@@ -838,6 +870,31 @@ function PlanningListItem({
       </div>
     </button>
   )
+}
+
+function planningDocument(source: DocumentPreview | undefined, path: string, title: string): DocumentPreview {
+  return {
+    path: source?.path ?? path,
+    title,
+    excerpt: source?.excerpt ?? '',
+    words: source?.words ?? 0,
+    updated_at: source?.updated_at ?? '',
+  }
+}
+
+function planningIcon(icon: PlanningDocumentIcon) {
+  switch (icon) {
+    case 'outline':
+      return BookMarked
+    case 'creator':
+      return SlidersHorizontal
+    case 'progress':
+      return CheckCircle2
+    case 'ideas':
+    case 'plan':
+    case 'characterState':
+      return FileText
+  }
 }
 
 function PlanningEmptyState({ text }: { text: string }) {

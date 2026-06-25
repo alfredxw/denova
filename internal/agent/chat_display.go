@@ -50,18 +50,24 @@ type displayToolResultUpdater interface {
 	UpdateDisplayToolResult(id, name, status, result string) error
 }
 
+type displayEventContentAppender interface {
+	AppendDisplayEventContent(id, role, delta string) error
+}
+
 type displayEventRecorder struct {
-	appender       displayEventAppender
-	thinking       strings.Builder
-	thinkingMeta   agentEventMetadata
-	pendingToolIDs map[string]string
+	appender             displayEventAppender
+	thinking             strings.Builder
+	thinkingMeta         agentEventMetadata
+	pendingToolIDs       map[string]string
+	subAgentAssistantIDs map[string]bool
 }
 
 func newDisplayEventRecorder(conversation Conversation) *displayEventRecorder {
 	appender, _ := conversation.(displayEventAppender)
 	return &displayEventRecorder{
-		appender:       appender,
-		pendingToolIDs: make(map[string]string),
+		appender:             appender,
+		pendingToolIDs:       make(map[string]string),
+		subAgentAssistantIDs: make(map[string]bool),
 	}
 }
 
@@ -78,6 +84,12 @@ func (r *displayEventRecorder) Record(ev Event) {
 		r.thinkingMeta = meta
 		r.thinking.WriteString(eventDataString(ev.Data, "content"))
 	case "chunk":
+		meta := eventMetadataFromData(ev.Data)
+		if meta.SubAgent {
+			r.flushThinking()
+			r.recordSubAgentAssistantChunk(meta, eventDataString(ev.Data, "content"))
+			return
+		}
 		r.flushThinking()
 	case "tool_call":
 		r.flushThinking()
@@ -89,16 +101,19 @@ func (r *displayEventRecorder) Record(ev Event) {
 			name = "unknown_tool"
 		}
 		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
-			ID:            id,
-			Role:          "tool_call",
-			Content:       name,
-			Name:          name,
-			Args:          args,
-			Status:        "running",
-			AgentName:     meta.AgentName,
-			RootAgentName: meta.RootAgentName,
-			RunPath:       append([]string(nil), meta.RunPath...),
-			SubAgent:      meta.SubAgent,
+			ID:                id,
+			Role:              "tool_call",
+			Content:           name,
+			Name:              name,
+			Args:              args,
+			Status:            "running",
+			RunID:             meta.RunID,
+			AgentName:         meta.AgentName,
+			RootAgentName:     meta.RootAgentName,
+			RunPath:           append([]string(nil), meta.RunPath...),
+			SubAgent:          meta.SubAgent,
+			SubAgentSessionID: meta.SubAgentSessionID,
+			SubAgentType:      meta.SubAgentType,
 		}); err != nil {
 			log.Printf("[agent-run] persist display tool_call failed name=%s id=%s err=%v", name, id, err)
 			return
@@ -193,16 +208,56 @@ func (r *displayEventRecorder) flushThinking() {
 		return
 	}
 	if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
-		Role:          "thinking",
-		Content:       content,
-		AgentName:     r.thinkingMeta.AgentName,
-		RootAgentName: r.thinkingMeta.RootAgentName,
-		RunPath:       append([]string(nil), r.thinkingMeta.RunPath...),
-		SubAgent:      r.thinkingMeta.SubAgent,
+		Role:              "thinking",
+		Content:           content,
+		RunID:             r.thinkingMeta.RunID,
+		AgentName:         r.thinkingMeta.AgentName,
+		RootAgentName:     r.thinkingMeta.RootAgentName,
+		RunPath:           append([]string(nil), r.thinkingMeta.RunPath...),
+		SubAgent:          r.thinkingMeta.SubAgent,
+		SubAgentSessionID: r.thinkingMeta.SubAgentSessionID,
+		SubAgentType:      r.thinkingMeta.SubAgentType,
 	}); err != nil {
 		log.Printf("[agent-run] persist display thinking failed bytes=%d err=%v", len(content), err)
 	}
 	r.thinkingMeta = agentEventMetadata{}
+}
+
+func (r *displayEventRecorder) recordSubAgentAssistantChunk(meta agentEventMetadata, content string) {
+	if r == nil || r.appender == nil || strings.TrimSpace(content) == "" {
+		return
+	}
+	id := strings.TrimSpace(meta.SubAgentSessionID)
+	if id == "" {
+		id = buildSubAgentSessionID(meta.RunID, meta.AgentName, 0)
+	}
+	if r.subAgentAssistantIDs[id] {
+		appender, ok := r.appender.(displayEventContentAppender)
+		if !ok {
+			return
+		}
+		if err := appender.AppendDisplayEventContent(id, "assistant", content); err != nil {
+			log.Printf("[agent-run] persist subagent assistant chunk failed id=%s err=%v", id, err)
+		}
+		return
+	}
+	if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
+		ID:                id,
+		Role:              "assistant",
+		Content:           content,
+		Status:            "running",
+		RunID:             meta.RunID,
+		AgentName:         meta.AgentName,
+		RootAgentName:     meta.RootAgentName,
+		RunPath:           append([]string(nil), meta.RunPath...),
+		SubAgent:          true,
+		SubAgentSessionID: id,
+		SubAgentType:      meta.SubAgentType,
+	}); err != nil {
+		log.Printf("[agent-run] persist subagent assistant failed id=%s err=%v", id, err)
+		return
+	}
+	r.subAgentAssistantIDs[id] = true
 }
 
 func eventDataString(data interface{}, key string) string {

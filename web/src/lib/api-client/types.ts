@@ -26,6 +26,7 @@ export interface ChatMessage {
   root_agent_name?: string
   run_path?: string[]
   subagent?: boolean
+  subagent_session_id?: string
   subagent_type?: string
   prompt_tokens?: number
   cached_prompt_tokens?: number
