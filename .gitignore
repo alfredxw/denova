@@ -21,3 +21,7 @@ docs/
 .DS_Store
 .nova
 prd
+
+# 本地编译产物与缓存
+/nova
+.vite/

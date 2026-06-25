@@ -132,7 +132,19 @@ func startViteDev(port, host string) {
 		}
 	}
 
-	cmd := exec.Command("pnpm", "dev", "--host", host, "--port", port)
+	// 优先使用本地 vite 二进制，绕过 pnpm 运行前的依赖校验：
+	// pnpm 在执行 run 脚本前会强制做 deps status check，未批准的依赖构建脚本（如 msw）会让
+	// `pnpm dev` 直接以 ERR_PNPM_IGNORED_BUILDS 失败，导致前端开发服务器静默起不来。
+	var cmd *exec.Cmd
+	viteBin := filepath.Join(webDir, "node_modules", ".bin", "vite")
+	if abs, err := filepath.Abs(viteBin); err == nil {
+		viteBin = abs
+	}
+	if _, err := os.Stat(viteBin); err == nil {
+		cmd = exec.Command(viteBin, "--host", host, "--port", port)
+	} else {
+		cmd = exec.Command("pnpm", "dev", "--host", host, "--port", port)
+	}
 	cmd.Dir = webDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

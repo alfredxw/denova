@@ -64,5 +64,8 @@
     "tailwindcss": "^4.3.0",
     "zod": "^4.4.3",
     "zustand": "^5.0.13"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": ["msw"]
   }
 }

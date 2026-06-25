@@ -15,6 +15,8 @@ const (
 	narrativeEndTag    = "</NARRATIVE>"
 	stateDeltaStartTag = "<STATE_DELTA>"
 	stateDeltaEndTag   = "</STATE_DELTA>"
+	thinkOpenTag       = "<think>"
+	thinkCloseTag      = "</think>"
 )
 
 type interactiveStatePayload struct {
@@ -147,12 +149,37 @@ func parseInteractiveHotState(content string) (*interactive.HotState, error) {
 
 func extractNarrative(content string) string {
 	if narrative, ok := extractBetween(content, narrativeStartTag, narrativeEndTag); ok {
-		return narrative
+		return stripThinkPrelude(narrative)
 	}
 	if idx := firstHiddenStateTagIndex(content); idx >= 0 {
-		return content[:idx]
+		return stripThinkPrelude(content[:idx])
 	}
-	return content
+	return stripThinkPrelude(content)
+}
+
+// stripThinkPrelude 移除叙事正文里残留的思考块，兜底模型把思考混入正文的情况：
+// 配对 <think>...</think>、未闭合 <think>...，以及无开始标签、仅以 </think> 收尾的前言（如 MiniMax）。
+func stripThinkPrelude(s string) string {
+	for {
+		open := thinkIndexFold(s, thinkOpenTag)
+		if open < 0 {
+			break
+		}
+		closeIdx := thinkIndexFold(s[open:], thinkCloseTag)
+		if closeIdx < 0 {
+			s = s[:open]
+			break
+		}
+		s = s[:open] + s[open+closeIdx+len(thinkCloseTag):]
+	}
+	if closeIdx := thinkIndexFold(s, thinkCloseTag); closeIdx >= 0 {
+		s = s[closeIdx+len(thinkCloseTag):]
+	}
+	return strings.TrimSpace(s)
+}
+
+func thinkIndexFold(s, sub string) int {
+	return strings.Index(strings.ToLower(s), strings.ToLower(sub))
 }
 
 func firstHiddenStateTagIndex(content string) int {

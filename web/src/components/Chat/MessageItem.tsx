@@ -51,11 +51,16 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
         </div>
       )
 
-    case 'assistant':
+    case 'assistant': {
+      // 流式期间正文可能尚未到达，或全是被隐藏的思考内容（清洗后为空）：
+      // 此时显示"正在思考"占位，避免出现一个空白气泡、像卡死无响应。
+      const visibleContent = sanitizeThinkTags(content).trim()
       return (
         <div className="group flex justify-start">
           <div className="chat-agent-message w-full px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
-            {message.streaming ? (
+            {message.streaming && !visibleContent ? (
+              <StreamingPlaceholder />
+            ) : message.streaming ? (
               <StreamingMarkdown content={content} highlightDialogue={highlightDialogue} />
             ) : (
               <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
@@ -103,6 +108,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
           </div>
         </div>
       )
+    }
 
     case 'thinking':
       return <ThinkingBlock content={content} streaming={message.streaming === true} />
@@ -548,9 +554,41 @@ function extractStreamingContent(rawArgs: string): string {
   return text
 }
 
+/** 流式等待占位：正文尚未到达（或仅有被隐藏的思考）时显示，避免空白气泡像卡死。 */
+function StreamingPlaceholder() {
+  const { t } = useTranslation()
+  return (
+    <div className="flex items-center gap-2 py-1 text-sm text-[var(--nova-text-muted)]">
+      <span className="flex gap-1">
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--nova-text-muted)] [animation-delay:-0.3s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--nova-text-muted)] [animation-delay:-0.15s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--nova-text-muted)]" />
+      </span>
+      <span>{t('chat.activity.thinking')}</span>
+    </div>
+  )
+}
+
 /** 流式和持久化消息共用同一 Markdown 渲染器，避免刷新后段落、列表和行距重新排版。 */
 function StreamingMarkdown({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {
   return <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
+}
+
+function sanitizeThinkTags(text: string): string {
+  let result = text
+  // MiniMax 内部特殊 token 与文本形式的工具调用残留（兜底历史数据；新对话已由后端解析执行）
+  result = result.replace(/\]<\]minimax\[>\[/g, '')
+  result = result.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+  result = result.replace(/<invoke\s+name="[^"]*"[\s\S]*?<\/invoke>/gi, '')
+  // 配对或未闭合的 <think>...</think>
+  result = result.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
+  // 无 <think> 开始标签、仅以 </think> 收尾的思考前言（如 MiniMax）：删除开头直到首个 </think>
+  const close = result.search(/<\s*\/\s*think\s*>/i)
+  if (close >= 0) {
+    result = result.slice(close).replace(/<\s*\/\s*think\s*>/i, '')
+  }
+  // 清理任何残留 think 标签
+  return result.replace(/<\/?\s*think\s*>/gi, '')
 }
 
 const MarkdownContent = memo(function MarkdownContent({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {

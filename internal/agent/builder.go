@@ -19,6 +19,7 @@ import (
 	"nova/config"
 	"nova/internal/book"
 	"nova/internal/prompts"
+	"nova/internal/providercompat"
 	novaskills "nova/internal/skills"
 )
 
@@ -140,6 +141,9 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 	if err != nil {
 		return nil, fmt.Errorf("创建模型失败: %w", err)
 	}
+	// providercompat 决定是否要为这个 provider 加包装层（修复工具调用格式、剥离内联 think 等）。
+	// agent 包不感知具体 provider；新增 provider 的兼容性处理只需在 providercompat 里加。
+	chatModel := providercompat.Wrap(cm, modelCfg)
 
 	localBackend, err := localbk.NewBackend(ctx, &localbk.Config{})
 	if err != nil {
@@ -196,7 +200,7 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 	return deep.New(ctx, &deep.Config{
 		Name:              spec.Name,
 		Description:       spec.Description,
-		ChatModel:         cm,
+		ChatModel:         chatModel,
 		Instruction:       spec.Instruction,
 		WithoutWriteTodos: spec.DisableWriteTodos || !toolSettings.Todo,
 		MaxIteration:      configMaxIteration(cfg),

@@ -11,7 +11,9 @@ import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/w
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { novaSpring } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useQuery } from '@tanstack/react-query'
 import { getAutomationInbox, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
+import { fetchSettings } from '@/features/settings/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
@@ -95,6 +97,9 @@ export function WorkbenchShell({
 }: WorkbenchShellProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
+  // 状态栏展示当前配置的实际模型名（此前被硬编码为 "DeepSeek"，与实际模型无关）。
+  const { data: layeredSettings } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings, staleTime: 60_000 })
+  const modelName = layeredSettings?.effective?.openai_model?.trim() || ''
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
   const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
   const sensors = useSensors(
@@ -448,7 +453,7 @@ export function WorkbenchShell({
       {mode === 'ide' && currentChapter && (
         <span className="ml-4">{t('workbench.status.currentChapter', { title: currentChapter.display_title, words: formatNumber(currentChapter.words), status: currentChapter.status })}</span>
       )}
-      <span className="ml-auto">{isStreaming ? t('workbench.status.streaming') : t('workbench.status.idle')} · DeepSeek</span>
+      <span className="ml-auto">{isStreaming ? t('workbench.status.streaming') : t('workbench.status.idle')}{modelName ? ` · ${modelName}` : ''}</span>
     </div>
   )
 
