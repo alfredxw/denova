@@ -26,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { isComposingKeyboardEvent } from '@/lib/keyboard'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -235,6 +236,7 @@ export function InputArea({
 
     // Enter 发送
     if (e.key === 'Enter' && !e.shiftKey) {
+      if (isComposingKeyboardEvent(e)) return
       e.preventDefault()
       if (canPickCommand) {
         selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)

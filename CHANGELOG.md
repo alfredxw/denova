@@ -86,6 +86,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复豆包等输入法/语音输入仍在组合或后处理文字时，Agent 和互动输入框按 Enter 会误发送未定稿文本的问题。
 - 修复配置管理 Agent 在自动化、资料库、故事记忆、叙事编排和 Skills 等不同配置入口之间共用同一段对话历史的问题；现在会按入口和目标资源隔离历史与 `/clear`。
 - 修复写作 Agent 上下文分析器会按作品状态 Markdown 小标题误拆来源的问题；现在作品状态按创作灵感、状态文件、章节目录、资料库和章节组细纲等真实来源展示。
 - 修复上下文压缩运行时同时出现压缩卡片和 activity 卡片的问题；现在 IDE 与互动故事只保留一个简洁压缩卡片，并用旋转 Loading 表示进行中状态。
