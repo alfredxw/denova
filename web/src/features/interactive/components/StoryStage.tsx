@@ -1184,6 +1184,17 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     })
   }
 
+  // 思考前言被误当正文显示时（孤立 </think>），丢弃这条流式 assistant 消息，正文随后另起。
+  function resetAssistantMessage() {
+    setStageLiveMessages((prev) => {
+      const last = prev[prev.length - 1]
+      if (last?.role === 'assistant' && last.streaming) {
+        return prev.slice(0, -1)
+      }
+      return prev
+    })
+  }
+
   function appendThinkingMessage(content: string, metadata: Partial<ChatMessage> = {}) {
     if (!content) return
     setStageLiveMessages((prev) => {

@@ -27,7 +27,7 @@ import (
 // quirks. If the model needs no polyfill, the original is returned untouched.
 func Wrap(cm model.ToolCallingChatModel, cfg openai.ChatModelConfig) model.ToolCallingChatModel {
 	if polyfills := detect(cfg); len(polyfills) > 0 {
-		log.Printf("[providercompat] applying %d polyfill(s) model=%q", len(polyfills), cfg.Model)
+		log.Printf("[providercompat] Wrap called: applying %d polyfill(s) model=%q" , len(polyfills), cfg.Model)
 		cm = chain(cm, polyfills)
 	}
 	return cm
