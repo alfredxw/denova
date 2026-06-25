@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { toast } from 'sonner'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, PanelLeft, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -157,6 +158,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     try {
       const next = await saveDraft(draft)
       applySavedSettings(next)
+      toast.success(t('common.saved'))
     } catch (e) {
       setError((e as Error).message)
     } finally {
