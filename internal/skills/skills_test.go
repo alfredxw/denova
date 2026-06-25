@@ -124,6 +124,84 @@ Use numbered beats.
 	}
 }
 
+func TestSaveDocumentCreatesWorkspaceOverrideForBuiltinSkill(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	builtin := filepath.Join(root, "builtin")
+	workspace := filepath.Join(root, "workspace", ".nova", "skills")
+	writeSkillFile(t, builtin, "outline", "outline", "builtin outline")
+	dirs := []Directory{
+		{Scope: ScopeBuiltin, Path: builtin},
+		{Scope: ScopeWorkspace, Path: workspace, Writable: true},
+	}
+
+	content := DefaultContent("outline", "workspace outline")
+	doc, err := SaveDocument(ctx, dirs, ScopeWorkspace, "outline", content)
+	if err != nil {
+		t.Fatalf("SaveDocument(workspace override) error = %v", err)
+	}
+	if doc.Scope != ScopeWorkspace || !doc.Active || !doc.Editable {
+		t.Fatalf("workspace override doc = %#v", doc)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "outline", SkillFileName)); err != nil {
+		t.Fatalf("workspace override file missing: %v", err)
+	}
+	backend := NewBackend(dirs)
+	active, err := backend.Get(ctx, "outline")
+	if err != nil {
+		t.Fatalf("Get(outline) error = %v", err)
+	}
+	if active.Description != "workspace outline" {
+		t.Fatalf("active outline description = %q, want workspace outline", active.Description)
+	}
+}
+
+func TestSaveDocumentAsRenamesAndMovesEditableSkill(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	user := filepath.Join(root, "user")
+	workspace := filepath.Join(root, "workspace")
+	writeSkillFile(t, user, "outline", "outline", "user outline")
+	dirs := []Directory{
+		{Scope: ScopeUser, Path: user, Writable: true},
+		{Scope: ScopeWorkspace, Path: workspace, Writable: true},
+	}
+
+	doc, err := SaveDocumentAs(ctx, dirs, ScopeUser, "outline", ScopeWorkspace, "beats", DefaultContent("beats", "workspace beats"))
+	if err != nil {
+		t.Fatalf("SaveDocumentAs() error = %v", err)
+	}
+	if doc.Scope != ScopeWorkspace || doc.Name != "beats" || !doc.Active || !doc.Editable {
+		t.Fatalf("moved doc = %#v", doc)
+	}
+	if _, err := os.Stat(filepath.Join(user, "outline", SkillFileName)); !os.IsNotExist(err) {
+		t.Fatalf("old skill should be removed, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workspace, "beats", SkillFileName)); err != nil {
+		t.Fatalf("moved skill missing: %v", err)
+	}
+}
+
+func TestSaveDocumentAsRejectsExistingTarget(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	user := filepath.Join(root, "user")
+	workspace := filepath.Join(root, "workspace")
+	writeSkillFile(t, user, "outline", "outline", "user outline")
+	writeSkillFile(t, workspace, "beats", "beats", "workspace beats")
+	dirs := []Directory{
+		{Scope: ScopeUser, Path: user, Writable: true},
+		{Scope: ScopeWorkspace, Path: workspace, Writable: true},
+	}
+
+	if _, err := SaveDocumentAs(ctx, dirs, ScopeUser, "outline", ScopeWorkspace, "beats", DefaultContent("beats", "new beats")); err == nil {
+		t.Fatalf("SaveDocumentAs() expected conflict error")
+	}
+	if _, err := os.Stat(filepath.Join(user, "outline", SkillFileName)); err != nil {
+		t.Fatalf("source skill should remain after conflict: %v", err)
+	}
+}
+
 func TestAgentBackendFiltersByAgentFrontmatterAndOverrides(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

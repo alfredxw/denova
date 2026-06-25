@@ -79,6 +79,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AllowLANAccess == nil || *s.AllowLANAccess {
 		t.Fatalf("AllowLANAccess should default off")
 	}
+	if s.WritingSkillDefault != DefaultWritingSkillName {
+		t.Fatalf("WritingSkillDefault default: %s", s.WritingSkillDefault)
+	}
 }
 
 func TestMergeOverridesNonZero(t *testing.T) {
@@ -101,6 +104,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		BackendPort:                intPtr(8080),
 		FrontendPort:               intPtr(5173),
 		AllowLANAccess:             boolPtr(false),
+		WritingSkillDefault:        "novel-standard",
 		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
@@ -123,6 +127,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		BackendPort:                intPtr(18080),
 		FrontendPort:               intPtr(15173),
 		AllowLANAccess:             boolPtr(true),
+		WritingSkillDefault:        "novel-heavy",
 		RemoteAccessUsername:       "reader",
 		RemoteAccessPasswordHash:   "$2a$10$hash",
 		InteractiveHotChoices:      boolPtr(false),
@@ -180,6 +185,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.AllowLANAccess == nil || !*out.AllowLANAccess {
 		t.Fatalf("AllowLANAccess should override parent")
+	}
+	if out.WritingSkillDefault != "novel-heavy" {
+		t.Fatalf("WritingSkillDefault should override parent: %s", out.WritingSkillDefault)
 	}
 	if out.RemoteAccessUsername != "reader" || out.RemoteAccessPasswordHash == "" || !out.RemoteAccessPasswordSet {
 		t.Fatalf("remote access credentials should override parent: %#v", out)

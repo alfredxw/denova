@@ -9,6 +9,7 @@ import {
   getSessions,
   getWorkspaceSummary,
   renameSession,
+  saveSkillDocument,
   sendMessage,
   switchSession,
 } from './api'
@@ -87,6 +88,36 @@ describe('api', () => {
     await expect(executeCommand('status')).resolves.toBe('executed:status')
   })
 
+  it('保存 Skill 配置时可提交目标 scope 和名称', async () => {
+    let requestBody: unknown
+    server.use(
+      http.put('/api/skills/document', async ({ request }) => {
+        requestBody = await request.json()
+        return HttpResponse.json({
+          name: 'beat-plan',
+          description: 'Beat planning',
+          scope: 'workspace',
+          path: '/books/demo/.nova/skills/beat-plan/SKILL.md',
+          editable: true,
+          active: true,
+          content: '---\nname: beat-plan\ndescription: Beat planning\n---\n',
+        })
+      }),
+    )
+
+    await expect(saveSkillDocument('user', 'draft-plan', 'content', { scope: 'workspace', name: 'beat-plan' })).resolves.toMatchObject({
+      scope: 'workspace',
+      name: 'beat-plan',
+    })
+    expect(requestBody).toEqual({
+      scope: 'user',
+      name: 'draft-plan',
+      content: 'content',
+      target_scope: 'workspace',
+      target_name: 'beat-plan',
+    })
+  })
+
   it('发送聊天请求时提交引用、场景风格、选中文本和 planMode，并解析 SSE', async () => {
     let requestBody: unknown
     server.use(
@@ -108,6 +139,7 @@ describe('api', () => {
       [{ fileName: 'chapters/ch02.md', startLine: 1, endLine: 2, content: '选中文本' }],
       undefined,
       true,
+      'novel-heavy',
     )
     const reader = stream.getReader()
 
@@ -132,6 +164,7 @@ describe('api', () => {
         content: '选中文本',
       }],
       plan_mode: true,
+      writing_skill: 'novel-heavy',
     })
   })
 

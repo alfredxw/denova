@@ -197,6 +197,53 @@ func SaveDocument(ctx context.Context, dirs []Directory, scope Scope, name, cont
 	return writeDocument(ctx, dirs, dir, name, content, true)
 }
 
+// SaveDocumentAs writes a skill to a new editable scope/name and removes the old
+// editable document after the new copy has been validated and written.
+func SaveDocumentAs(ctx context.Context, dirs []Directory, sourceScope Scope, sourceName string, targetScope Scope, targetName, content string) (Document, error) {
+	sourceName = strings.TrimSpace(sourceName)
+	targetName = strings.TrimSpace(targetName)
+	if targetScope == "" {
+		targetScope = sourceScope
+	}
+	if targetName == "" {
+		targetName = sourceName
+	}
+	if sourceScope == targetScope && sourceName == targetName {
+		return SaveDocument(ctx, dirs, sourceScope, sourceName, content)
+	}
+	if err := ValidateName(sourceName); err != nil {
+		return Document{}, err
+	}
+	if err := ValidateName(targetName); err != nil {
+		return Document{}, err
+	}
+	sourceDir, err := writableDirectoryForScope(dirs, sourceScope)
+	if err != nil {
+		return Document{}, err
+	}
+	targetDir, err := writableDirectoryForScope(dirs, targetScope)
+	if err != nil {
+		return Document{}, err
+	}
+	sourceSkillDir := filepath.Join(sourceDir.Path, sourceName)
+	if _, err := os.Stat(filepath.Join(sourceSkillDir, SkillFileName)); err != nil {
+		return Document{}, err
+	}
+	targetPath := filepath.Join(targetDir.Path, targetName, SkillFileName)
+	if _, err := os.Stat(targetPath); err == nil {
+		return Document{}, fmt.Errorf("skill already exists in %s scope: %s", targetScope, targetName)
+	} else if !os.IsNotExist(err) {
+		return Document{}, err
+	}
+	if _, err := writeDocument(ctx, dirs, targetDir, targetName, content, false); err != nil {
+		return Document{}, err
+	}
+	if err := os.RemoveAll(sourceSkillDir); err != nil {
+		return Document{}, err
+	}
+	return ReadDocument(ctx, dirs, targetScope, targetName)
+}
+
 func DeleteDocument(ctx context.Context, dirs []Directory, scope Scope, name string) error {
 	_ = ctx
 	if err := ValidateName(name); err != nil {

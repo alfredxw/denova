@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 import { Bot, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '@/lib/api'
+import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { MessageItem } from './MessageItem'
 import { subAgentSessionKey } from './subagent-session'
 
@@ -19,6 +20,19 @@ export function SubAgentSessionPanel({ messages, sessionKey, onClose, highlightD
   const first = sessionMessages[0]
   const name = first?.agent_name || first?.subagent_type || t('chat.subagent.label')
   const running = sessionMessages.some((message) => message.streaming)
+  const scrollContentKey = sessionMessages.map((message) => [
+    message.id || '',
+    message.role || '',
+    message.status || '',
+    message.streaming ? 'streaming' : '',
+    (message.content || '').length,
+    (message.args || '').length,
+    (message.result || '').length,
+  ].join(':')).join('|')
+  const scrollLock = useBottomScrollLock<HTMLDivElement>({
+    resetKey: sessionKey,
+    contentKey: scrollContentKey,
+  })
 
   return (
     <section className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface)]">
@@ -40,7 +54,13 @@ export function SubAgentSessionPanel({ messages, sessionKey, onClose, highlightD
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+      <div
+        ref={scrollLock.ref}
+        onScroll={scrollLock.onScroll}
+        onWheel={scrollLock.onWheel}
+        onKeyDown={scrollLock.onKeyDown}
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 [overflow-anchor:none]"
+      >
         {sessionMessages.length === 0 ? (
           <div className="rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-4 text-xs text-[var(--nova-text-faint)]">
             {t('chat.subagent.empty')}

@@ -6,10 +6,35 @@ import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/fe
 import type { LayeredSettings } from '@/features/settings/types'
 import { AgentsView } from './AgentsView'
 
+const { configManagerChatProps } = vi.hoisted(() => ({
+  configManagerChatProps: [] as Array<{
+    origin?: string
+    resourceId?: string
+    context?: Record<string, string>
+    onMutated?: () => void
+  }>,
+}))
+
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: vi.fn(),
   updateUserSettings: vi.fn(),
   updateWorkspaceSettings: vi.fn(),
+}))
+
+vi.mock('@/components/Chat/ConfigManagerChat', () => ({
+  ConfigManagerChat: (props: {
+    origin?: string
+    resourceId?: string
+    context?: Record<string, string>
+    onMutated?: () => void
+  }) => {
+    configManagerChatProps.push(props)
+    return (
+      <div data-testid="config-manager-chat">
+        <button type="button" onClick={() => props.onMutated?.()}>mock mutation</button>
+      </div>
+    )
+  },
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -22,6 +47,7 @@ describe('AgentsView', () => {
     vi.mocked(updateUserSettings).mockReset()
     vi.mocked(updateWorkspaceSettings).mockReset()
     vi.mocked(getSkills).mockReset()
+    configManagerChatProps.length = 0
     vi.mocked(getSkills).mockResolvedValue({ scopes: [], skills: [] })
     vi.mocked(updateUserSettings).mockImplementation(async (settings) => settingsSnapshot({ user: settings, effective: settings }))
     vi.mocked(updateWorkspaceSettings).mockImplementation(async (settings) => settingsSnapshot({ workspace: settings, effective: settings }))
@@ -235,6 +261,38 @@ describe('AgentsView', () => {
       expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
         general_sub_agents: { ide: false },
       }))
+    })
+  })
+
+  it('opens Config Manager chat from Agents page with current Agent context', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      paths: {
+        nova_dir: '/nova',
+        user_config: '/nova/config.toml',
+        workspace_config: '/books/demo/.nova/config.toml',
+      },
+    }))
+
+    render(<AgentsView />)
+
+    await screen.findByText('模型与思考')
+    await user.click(screen.getByRole('button', { name: '用配置管理 Agent 调整' }))
+
+    expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
+    expect(configManagerChatProps.at(-1)).toMatchObject({
+      origin: 'agents',
+      resourceId: 'user:ide',
+      context: expect.objectContaining({
+        active_settings_layer: 'user',
+        active_agent: 'ide',
+        write_scope_required: 'true',
+      }),
+    })
+
+    await user.click(screen.getByRole('button', { name: 'mock mutation' }))
+    await waitFor(() => {
+      expect(vi.mocked(fetchSettings).mock.calls.length).toBeGreaterThan(1)
     })
   })
 })

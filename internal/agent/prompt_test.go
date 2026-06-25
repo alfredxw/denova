@@ -132,6 +132,19 @@ func TestBuildConfigManagerInstructionIncludesResourceSkills(t *testing.T) {
 	}
 }
 
+func TestBuildConfigManagerInstructionAllowsAgentConfigTools(t *testing.T) {
+	state := book.NewState(t.TempDir())
+	instruction := BuildConfigManagerInstruction(&config.Config{Workspace: state.Workspace()}, state)
+	for _, want := range []string{"list_agent_configs", "write_agent_configs", "不要通过文件工具直接改", "Agent 配置"} {
+		if !strings.Contains(instruction, want) {
+			t.Fatalf("config manager instruction missing %q:\n%s", want, instruction)
+		}
+	}
+	if strings.Contains(instruction, "不要修改 Nova 设置、模型、端口、主题、Agent prompt 或工具权限") {
+		t.Fatalf("config manager instruction should no longer forbid Agent page config tools:\n%s", instruction)
+	}
+}
+
 func TestBuildInstructionKeepsWorkspaceStateOutOfSystemPrompt(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	if err := state.InitWorkspace(); err != nil {

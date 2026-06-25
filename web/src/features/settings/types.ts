@@ -43,6 +43,7 @@ export interface Settings {
   agent_idle_timeout_seconds?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
+  writing_skill_default?: string
   interactive_hot_choices_enabled?: boolean | null
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
@@ -144,6 +145,8 @@ export interface AgentToolOverride {
   lore_write?: boolean | null
   todo?: boolean | null
   web_search?: boolean | null
+  agent_config_read?: boolean | null
+  agent_config_write?: boolean | null
 }
 
 export interface SubAgentConfig {

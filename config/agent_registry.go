@@ -136,6 +136,8 @@ var agentToolCapabilities = []AgentToolCapability{
 	{Source: AgentToolLoreWrite},
 	{Source: AgentToolTodo},
 	{Source: AgentToolWebSearch},
+	{Source: AgentToolAgentConfigRead},
+	{Source: AgentToolAgentConfigWrite},
 }
 
 func AgentToolCapabilities() []AgentToolCapability {
@@ -178,6 +180,10 @@ func AgentToolAllowed(settings ResolvedAgentToolSettings, source string) bool {
 		return settings.Todo
 	case AgentToolWebSearch:
 		return settings.WebSearch
+	case AgentToolAgentConfigRead:
+		return settings.AgentConfigRead
+	case AgentToolAgentConfigWrite:
+		return settings.AgentConfigWrite
 	default:
 		return false
 	}

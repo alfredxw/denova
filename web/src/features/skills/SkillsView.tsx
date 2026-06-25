@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, CheckCircle2, FileCode2, Loader2, Lock, PanelLeft, PanelRight, Plus, RefreshCw, Save, Settings2, Sparkles, Trash2, X } from 'lucide-react'
+import { Bot, CheckCircle2, Copy, FileCode2, Loader2, Lock, PanelLeft, PanelRight, Plus, RefreshCw, Save, Settings2, Sparkles, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
@@ -38,6 +38,8 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
   const [newName, setNewName] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [newAgents, setNewAgents] = useState<VisibleAgentKey[]>(['ide'])
+  const [configName, setConfigName] = useState('')
+  const [configScope, setConfigScope] = useState<SkillScope>('user')
   const [configDescription, setConfigDescription] = useState('')
   const [configAgents, setConfigAgents] = useState<VisibleAgentKey[]>([])
   const [agentOpen, setAgentOpen] = useState(false)
@@ -45,8 +47,18 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
   const selectedSkill = useMemo(() => snapshot.skills.find((skill) => keyOf(skill) === selectedKey) ?? null, [selectedKey, snapshot.skills])
   const dirty = document ? draft !== document.content : false
   const writableScopes = useMemo(() => snapshot.scopes.filter((scope) => scope.writable), [snapshot.scopes])
+  const builtinOverrideScope = useMemo(() => preferredBuiltinOverrideScope(snapshot.scopes), [snapshot.scopes])
+  const builtinOverride = useMemo(() => {
+    if (!document) return null
+    if (!builtinOverrideScope) return null
+    return snapshot.skills.find((skill) => skill.scope === builtinOverrideScope.scope && skill.name === document.name) ?? null
+  }, [builtinOverrideScope, document, snapshot.skills])
+  const builtinPeer = useMemo(() => {
+    if (!document || document.scope === 'builtin') return null
+    return snapshot.skills.find((skill) => skill.scope === 'builtin' && skill.name === document.name) ?? null
+  }, [document, snapshot.skills])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<SkillSnapshot | null> => {
     setLoading(true)
     setError(null)
     try {
@@ -60,8 +72,10 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
       const nextWritable = data.scopes.find((scope) => scope.scope === 'user' && scope.writable) ||
         data.scopes.find((scope) => scope.scope === 'workspace' && scope.writable)
       if (nextWritable) setNewScope(nextWritable.scope)
+      return data
     } catch (e) {
       setError((e as Error).message)
+      return null
     } finally {
       setLoading(false)
     }
@@ -136,8 +150,39 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
     }
   }
 
+  const onCreateBuiltinOverride = async () => {
+    if (!document) return
+    if (builtinOverride) {
+      setSelectedKey(keyOf(builtinOverride))
+      setMode('editor')
+      setError(null)
+      return
+    }
+    if (!builtinOverrideScope) {
+      setError(t('skills.override.noWritable'))
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const doc = await saveSkillDocument(builtinOverrideScope.scope, document.name, draft)
+      setDocument(doc)
+      setDraft(doc.content)
+      setSelectedKey(keyOf(doc))
+      setMode('editor')
+      window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+      await load()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const openConfig = () => {
     if (!document?.editable) return
+    setConfigName(document.name)
+    setConfigScope(document.scope)
     setConfigDescription(document.description)
     setConfigAgents(parseAgentKeys(document.agent))
     setMode('config')
@@ -146,6 +191,15 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
 
   const onSaveConfig = async () => {
     if (!document?.editable) return
+    const name = configName.trim()
+    if (!skillNamePattern.test(name)) {
+      setError(t('skills.create.invalidName'))
+      return
+    }
+    if (!writableScopes.some((scope) => scope.scope === configScope)) {
+      setError(t('skills.config.scopeRequired'))
+      return
+    }
     const description = configDescription.trim()
     if (!description) {
       setError(t('skills.config.descriptionRequired'))
@@ -154,14 +208,14 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
     setSaving(true)
     setError(null)
     try {
-      const nextContent = updateSkillConfigContent(document.content, document.name, description, configAgents)
-      const doc = await saveSkillDocument(document.scope, document.name, nextContent)
+      const nextContent = updateSkillConfigContent(draft, name, description, configAgents)
+      const doc = await saveSkillDocument(document.scope, document.name, nextContent, { scope: configScope, name })
       setDocument(doc)
       setDraft(doc.content)
-      setSelectedKey(keyOf(doc))
       setMode('editor')
       window.dispatchEvent(new CustomEvent('nova:skills-updated'))
       await load()
+      setSelectedKey(keyOf(doc))
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -189,20 +243,54 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
     }
   }
 
+  const onRestoreBuiltin = async () => {
+    if (!document?.editable || !builtinPeer) return
+    if (!window.confirm(t('skills.restoreBuiltin.confirm', { name: document.name, scope: scopeLabel(document.scope, t) }))) return
+    const name = document.name
+    setSaving(true)
+    setError(null)
+    try {
+      await deleteSkillDocument(document.scope, document.name)
+      setDocument(null)
+      setDraft('')
+      setMode('editor')
+      window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+      const data = await load()
+      const revealed = data?.skills.find((skill) => skill.name === name && skill.active) ||
+        data?.skills.find((skill) => skill.name === name && skill.scope === 'builtin')
+      setSelectedKey(revealed ? keyOf(revealed) : null)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const askAgent = () => {
     setAgentOpen((value) => !value)
   }
 
   const agentContext = useMemo(() => {
-    const targetName = mode === 'create' ? newName.trim() || 'new-skill' : document?.name || newName.trim() || 'new-skill'
-    const scope = mode === 'create' ? newScope : document?.scope || newScope
+    const targetName = mode === 'create'
+      ? newName.trim() || 'new-skill'
+      : mode === 'config'
+        ? configName.trim() || document?.name || 'new-skill'
+        : document?.name || newName.trim() || 'new-skill'
+    const scope = mode === 'create'
+      ? newScope
+      : mode === 'config'
+        ? configScope
+        : document?.scope === 'builtin' && builtinOverrideScope
+          ? builtinOverrideScope.scope
+          : document?.scope || newScope
     return {
       mode,
       skill_name: targetName,
       skill_scope: scope,
+      skill_source_scope: mode === 'create' ? scope : document?.scope || scope,
       skill_path: skillFilePath(snapshot.scopes.find((item) => item.scope === scope), targetName) || '',
     }
-  }, [document?.name, document?.scope, mode, newName, newScope, snapshot.scopes])
+  }, [builtinOverrideScope, configName, configScope, document?.name, document?.scope, mode, newName, newScope, snapshot.scopes])
   const skillListPanel = (
     <div className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] p-3">
       <div className="mb-4 grid grid-cols-2 gap-2">
@@ -350,9 +438,15 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
             ) : mode === 'config' && document ? (
               <SkillConfigPanel
                 document={document}
+                name={configName}
+                scope={configScope}
                 description={configDescription}
                 agents={configAgents}
+                scopes={writableScopes}
+                scopeInfo={snapshot.scopes.find((item) => item.scope === configScope)}
                 saving={saving}
+                onNameChange={setConfigName}
+                onScopeChange={setConfigScope}
                 onDescriptionChange={setConfigDescription}
                 onAgentsChange={setConfigAgents}
                 onSave={() => void onSaveConfig()}
@@ -384,6 +478,17 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
                       <Settings2 className="h-3.5 w-3.5" />
                       {t('skills.config.action')}
                     </button>
+                    {builtinPeer && (
+                      <button
+                        type="button"
+                        onClick={() => void onRestoreBuiltin()}
+                        disabled={saving}
+                        className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        {t('skills.restoreBuiltin.action')}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => void onDelete()}
@@ -394,6 +499,20 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
                       {t('skills.delete.action')}
                     </button>
                   </>
+                )}
+                {document.scope === 'builtin' && (
+                  <button
+                    type="button"
+                    onClick={() => void onCreateBuiltinOverride()}
+                    disabled={saving || (!builtinOverrideScope && !builtinOverride)}
+                    title={!builtinOverrideScope && !builtinOverride ? t('skills.override.noWritable') : undefined}
+                    className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : builtinOverride ? <FileCode2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    {builtinOverride
+                      ? t('skills.override.open', { scope: scopeLabel(builtinOverride.scope, t) })
+                      : t('skills.override.create', { scope: scopeLabel(builtinOverrideScope?.scope || 'user', t) })}
+                  </button>
                 )}
               </div>
               <Textarea
@@ -564,9 +683,15 @@ function CreateSkillPanel({
 
 function SkillConfigPanel({
   document,
+  name,
+  scope,
   description,
   agents,
+  scopes,
+  scopeInfo,
   saving,
+  onNameChange,
+  onScopeChange,
   onDescriptionChange,
   onAgentsChange,
   onSave,
@@ -574,9 +699,15 @@ function SkillConfigPanel({
   onDelete,
 }: {
   document: SkillDocument
+  name: string
+  scope: SkillScope
   description: string
   agents: VisibleAgentKey[]
+  scopes: SkillScopeInfo[]
+  scopeInfo?: SkillScopeInfo
   saving: boolean
+  onNameChange: (value: string) => void
+  onScopeChange: (value: SkillScope) => void
   onDescriptionChange: (value: string) => void
   onAgentsChange: (value: VisibleAgentKey[]) => void
   onSave: () => void
@@ -584,7 +715,12 @@ function SkillConfigPanel({
   onDelete: () => void
 }) {
   const { t } = useTranslation()
+  const trimmedName = name.trim()
+  const invalidName = trimmedName !== '' && !skillNamePattern.test(trimmedName)
   const trimmedDescription = description.trim()
+  const targetName = trimmedName || document.name
+  const targetPath = skillFilePath(scopeInfo, targetName)
+  const targetWritable = scopes.some((item) => item.scope === scope)
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -603,10 +739,39 @@ function SkillConfigPanel({
 
         <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
           <SectionTitle icon={FileCode2} title={t('skills.create.section.identity')} />
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <Field label={t('skills.create.scope')}>
+              <div className="flex gap-1">
+                {scopes.map((item) => (
+                  <button
+                    key={item.scope}
+                    type="button"
+                    onClick={() => onScopeChange(item.scope)}
+                    className={`nova-nav-item h-8 flex-1 rounded-[var(--nova-radius)] px-2 ${scope === item.scope ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
+                  >
+                    {scopeLabel(item.scope, t)}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <Field label={t('skills.create.name')}>
+              <input
+                value={name}
+                onChange={(event) => onNameChange(event.target.value)}
+                aria-invalid={invalidName}
+                aria-label={t('skills.create.name')}
+                placeholder={t('skills.create.namePlaceholder')}
+                className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 font-mono outline-none aria-invalid:border-[var(--nova-danger)]"
+              />
+              <div className={`mt-1 text-[11px] ${invalidName ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>
+                {invalidName ? t('skills.create.invalidName') : t('skills.create.nameHint')}
+              </div>
+            </Field>
+          </div>
           <div className="grid gap-2 md:grid-cols-2">
-            <PreviewRow label={t('skills.create.preview.command')} value={`/${document.name}`} />
-            <PreviewRow label={t('skills.create.preview.scope')} value={scopeLabel(document.scope, t)} />
-            <PreviewRow label={t('skills.create.preview.path')} value={document.path} wide />
+            <PreviewRow label={t('skills.create.preview.command')} value={`/${targetName}`} />
+            <PreviewRow label={t('skills.create.preview.scope')} value={scopeLabel(scope, t)} />
+            <PreviewRow label={t('skills.create.preview.path')} value={targetPath || t('skills.agent.pathFallback')} wide />
           </div>
           <Field label={t('skills.create.description')}>
             <input
@@ -634,7 +799,7 @@ function SkillConfigPanel({
           <button
             type="button"
             onClick={onSave}
-            disabled={saving || !trimmedDescription}
+            disabled={saving || !trimmedName || invalidName || !trimmedDescription || !targetWritable}
             className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
@@ -856,6 +1021,11 @@ function scopeLabel(scope: SkillScope, t: (key: string) => string) {
   if (scope === 'workspace') return t('skills.scope.workspace')
   if (scope === 'user') return t('skills.scope.user')
   return t('skills.scope.builtin')
+}
+
+function preferredBuiltinOverrideScope(scopes: SkillScopeInfo[]) {
+  return scopes.find((scope) => scope.scope === 'user' && scope.writable) ||
+    scopes.find((scope) => scope.scope === 'workspace' && scope.writable)
 }
 
 function groupSkillAgents(agentOptions: AgentViewDefinition[]) {

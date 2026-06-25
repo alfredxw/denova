@@ -5,6 +5,7 @@ const settings = {
   'settings.agent.modelMaxRetries': 'Model Retries',
   'settings.agent.idleTimeoutSeconds': 'Idle Timeout (s)',
   'settings.agent.planModeDefault': 'Default PlanMode',
+  'settings.agent.writingSkillDefault': 'Default Writing Skill',
   'settings.access.allowLan': 'Allow LAN Access',
   'settings.access.localUrl': 'Local Access URL',
   'settings.access.lanUrl': 'Other Devices URL',

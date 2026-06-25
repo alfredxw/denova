@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode, WheelEvent } from 'react'
+import { useState } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { MessageItem, ToolActivityBlock } from './MessageItem'
 import type { ChatMessage } from '@/lib/api'
+import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { listItem, novaEase } from '@/features/motion/motion-tokens'
 import { buildSubAgentProgressMessage, isSubAgentTimelineMessage, subAgentSessionKey } from './subagent-session'
 
@@ -28,130 +29,13 @@ interface MessageListProps {
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
 export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, activeSubAgentSessionKey }: MessageListProps) {
   const { t } = useTranslation()
-  const containerRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const shouldAutoScrollRef = useRef(true)
-  const mountedRef = useRef(false)
-  const hasRenderedContentRef = useRef(false)
-  const scrollRafRef = useRef<number | null>(null)
-  const resetScrollRafRef = useRef<number[]>([])
-  const resetScrollTimerRef = useRef<number | null>(null)
-  const bottomThreshold = 8
   const hasRunningContextCompaction = messages.some((message) => message.role === 'context_compaction' && message.status === 'running')
   const visibleActivityContent = hasRunningContextCompaction ? '' : activityContent
-
-  const isNearBottom = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return true
-    return el.scrollHeight - el.scrollTop - el.clientHeight <= bottomThreshold
-  }, [])
-
-  const forceScrollToBottom = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight
-  }, [])
-
-  const forceScrollToBottomIfAllowed = useCallback(() => {
-    if (!shouldAutoScrollRef.current) return
-    forceScrollToBottom()
-  }, [forceScrollToBottom])
-
-  const cancelResetScroll = useCallback(() => {
-    for (const id of resetScrollRafRef.current) {
-      cancelAnimationFrame(id)
-    }
-    resetScrollRafRef.current = []
-    if (resetScrollTimerRef.current !== null) {
-      window.clearTimeout(resetScrollTimerRef.current)
-      resetScrollTimerRef.current = null
-    }
-  }, [])
-
-  const scheduleForceScrollToBottom = useCallback(() => {
-    cancelResetScroll()
-    forceScrollToBottom()
-    resetScrollRafRef.current.push(requestAnimationFrame(() => {
-      forceScrollToBottomIfAllowed()
-      resetScrollRafRef.current.push(requestAnimationFrame(forceScrollToBottomIfAllowed))
-    }))
-    resetScrollTimerRef.current = window.setTimeout(forceScrollToBottomIfAllowed, 80)
-  }, [cancelResetScroll, forceScrollToBottom, forceScrollToBottomIfAllowed])
-
-  const cancelPendingAutoScroll = useCallback(() => {
-    if (scrollRafRef.current !== null) {
-      cancelAnimationFrame(scrollRafRef.current)
-      scrollRafRef.current = null
-    }
-    cancelResetScroll()
-  }, [cancelResetScroll])
-
-  useLayoutEffect(() => {
-    hasRenderedContentRef.current = false
-    shouldAutoScrollRef.current = true
-    scheduleForceScrollToBottom()
-    return cancelResetScroll
-  }, [cancelResetScroll, scheduleForceScrollToBottom, scrollResetKey])
-
-  // 自动滚动到底部（仅在用户未上滑时）
-  useLayoutEffect(() => {
-    const hasContent = messages.length > 0 || visibleActivityContent.length > 0 || isStreaming
-    const shouldJumpToBottom = hasContent && !hasRenderedContentRef.current
-    if (shouldJumpToBottom) {
-      shouldAutoScrollRef.current = true
-      scheduleForceScrollToBottom()
-      hasRenderedContentRef.current = true
-      mountedRef.current = true
-      return
-    }
-
-    if (shouldAutoScrollRef.current) {
-      if (scrollRafRef.current !== null) {
-        cancelAnimationFrame(scrollRafRef.current)
-      }
-      scrollRafRef.current = requestAnimationFrame(() => {
-        scrollRafRef.current = null
-        if (!shouldAutoScrollRef.current) return
-        bottomRef.current?.scrollIntoView({ behavior: isStreaming ? 'instant' : (mountedRef.current ? 'smooth' : 'instant') })
-        if (hasContent) {
-          hasRenderedContentRef.current = true
-        }
-      })
-    }
-    mountedRef.current = true
-  }, [messages, visibleActivityContent, isStreaming, scheduleForceScrollToBottom])
-
-  /** 主列表：用户上滑时暂停自动滚动，回到底部后恢复。 */
-  const handleContainerScroll = useCallback(() => {
-    const el = containerRef.current
-    if (!el) return
-    shouldAutoScrollRef.current = isNearBottom()
-    if (!shouldAutoScrollRef.current) cancelPendingAutoScroll()
-  }, [cancelPendingAutoScroll, isNearBottom])
-
-  const handleWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
-    if (event.deltaY < 0) {
-      shouldAutoScrollRef.current = false
-      cancelPendingAutoScroll()
-    }
-  }, [cancelPendingAutoScroll])
-
-  useEffect(() => () => {
-    if (scrollRafRef.current !== null) {
-      cancelAnimationFrame(scrollRafRef.current)
-    }
-    cancelResetScroll()
-  }, [])
-
-  // 新一轮对话开始时重置跟随状态
-  useEffect(() => {
-    if (isStreaming) {
-      // 检查当前是否在底部附近，如果是则确保跟随
-      if (isNearBottom()) {
-        shouldAutoScrollRef.current = true
-      }
-    }
-  }, [isNearBottom, isStreaming])
+  const scrollContentKey = buildMessageListScrollKey(messages, visibleActivityContent, isStreaming, bottomPaddingPx)
+  const scrollLock = useBottomScrollLock<HTMLDivElement>({
+    resetKey: scrollResetKey,
+    contentKey: scrollContentKey,
+  })
 
   const renderMessage = (msg: ChatMessage, index: number) => {
     const key = msg.id || msg.created_at || index
@@ -239,10 +123,11 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
 
   return (
     <div
-      ref={containerRef}
-      onScroll={handleContainerScroll}
-      onWheel={handleWheel}
-      className={`nova-chat-canvas min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 ${bottomPaddingClassName}`}
+      ref={scrollLock.ref}
+      onScroll={scrollLock.onScroll}
+      onWheel={scrollLock.onWheel}
+      onKeyDown={scrollLock.onKeyDown}
+      className={`nova-chat-canvas min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 [overflow-anchor:none] ${bottomPaddingClassName}`}
       style={typeof bottomPaddingPx === 'number' ? { paddingBottom: bottomPaddingPx } : undefined}
     >
       {messages.length === 0 && !isStreaming && (
@@ -277,10 +162,27 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
           )}
         </>
       )}
-
-      <div ref={bottomRef} />
     </div>
   )
+}
+
+function buildMessageListScrollKey(messages: ChatMessage[], activityContent: string, isStreaming: boolean, bottomPaddingPx?: number) {
+  const messageKey = messages.map((message) => [
+    message.id || '',
+    message.type || '',
+    message.role || '',
+    message.status || '',
+    message.streaming ? 'streaming' : '',
+    (message.content || '').length,
+    (message.args || '').length,
+    (message.result || '').length,
+  ].join(':')).join('|')
+  return [
+    isStreaming ? 'streaming' : 'idle',
+    activityContent.length,
+    typeof bottomPaddingPx === 'number' ? Math.round(bottomPaddingPx) : '',
+    messageKey,
+  ].join('|')
 }
 
 function MessageWithHoverTime({ message, children }: { message: ChatMessage; children: ReactNode }) {

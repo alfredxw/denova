@@ -39,6 +39,11 @@ func TestConfigManagerResourceSkillNames(t *testing.T) {
 			want: []string{configManagerSkillsSkill},
 		},
 		{
+			name: "agents origin",
+			req:  ConfigManagerRequest{Origin: "agents", ResourceID: "user:ide"},
+			want: []string{configManagerAgentConfigSkill},
+		},
+		{
 			name: "context signal without origin",
 			req:  ConfigManagerRequest{Context: map[string]string{"record_count": "2", "selected_structure_name": "角色"}},
 			want: []string{configManagerStoryMemorySkill},

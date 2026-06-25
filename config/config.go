@@ -33,6 +33,7 @@ type Config struct {
 	Workspace                   string                       `toml:"workspace"`
 	RuntimeWebPort              int                          `toml:"-"`
 	IDEStoryTellerID            string                       `toml:"-"`
+	WritingSkillDefault         string                       `toml:"writing_skill_default"`
 	MaxIteration                int                          `toml:"max_iteration"`
 	ModelMaxRetries             int                          `toml:"model_max_retries"`
 	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`
@@ -98,6 +99,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
+		WritingSkillDefault:         s.WritingSkillDefault,
 		MaxIteration:                settingsInt(s.MaxIteration, 0),
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
 		AgentIdleTimeoutSeconds:     settingsInt(s.AgentIdleTimeoutSeconds, 180),
@@ -173,6 +175,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		Language:                 cfg.Language,
 		ChapterFilenameFormat:    cfg.ChapterFilenameFormat,
 		VolumeDirFormat:          cfg.VolumeDirFormat,
+		WritingSkillDefault:      cfg.WritingSkillDefault,
 	}
 	if cfg.BackendPort > 0 {
 		settings.BackendPort = &cfg.BackendPort
@@ -231,6 +234,7 @@ func Load() *Config {
 			Language:                    d.Language,
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
+			WritingSkillDefault:         d.WritingSkillDefault,
 			MaxIteration:                settingsInt(d.MaxIteration, 0),
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
 			AgentIdleTimeoutSeconds:     settingsInt(d.AgentIdleTimeoutSeconds, 180),

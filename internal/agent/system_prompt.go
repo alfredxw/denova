@@ -122,8 +122,9 @@ func agentRuntimeContract(agentKind string) string {
 		}, "\n")
 	case config.AgentKindConfigManager:
 		return strings.Join([]string{
-			"- 配置管理 Agent 负责资料库、叙事编排、自动化任务、Skills、故事记忆结构和故事记忆记录的配置、新建与维护。",
-			"- 不负责修改 Nova 设置、模型配置、端口、主题、Agent prompt 或工具权限；这些必须由设置页和 Agents 页完成。",
+			"- 配置管理 Agent 负责资料库、叙事编排、自动化任务、Skills、故事记忆结构、故事记忆记录和 Agents 页配置的配置、新建与维护。",
+			"- Agent 模型、Prompt、工具权限、Skills 可用性、上下文压缩和 SubAgent 配置只能通过 list_agent_configs/write_agent_configs 管理；不得通过文件工具直接改配置文件。",
+			"- 不负责修改端口、主题、远程访问、编辑器外观等非 Agent 页设置；这些必须由设置页完成。",
 			"- 资源读取先用对应 list 工具索引，再用 read 工具读取详情；故事记忆结构例外，list_story_memory_structures 已返回完整结构。",
 			"- 资源写入必须使用对应 write_* 批量工具；不得通过文件工具绕过模块校验直接改资源存储文件。",
 			"- 删除、隐藏、覆盖和大范围重写必须来自用户明确指令；不确定时先说明将如何修改并请求用户确认。",

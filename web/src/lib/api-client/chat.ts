@@ -9,6 +9,7 @@ export async function sendMessage(
   textSelections: TextSelection[] = [],
   signal?: AbortSignal,
   planMode?: boolean,
+  writingSkill?: string,
 ): Promise<ReadableStream<SSEEvent>> {
   const res = await fetchAPI('/api/chat', {
     method: 'POST',
@@ -25,6 +26,7 @@ export async function sendMessage(
         content: s.content,
       })),
       plan_mode: planMode || false,
+      writing_skill: writingSkill || undefined,
     }),
     signal,
   })
@@ -42,6 +44,7 @@ export async function analyzeChatContext(
   styleScenes: string[] = [],
   textSelections: TextSelection[] = [],
   planMode?: boolean,
+  writingSkill?: string,
 ): Promise<ContextAnalysis> {
   return requestJSON('/api/chat/context-analysis', {
     method: 'POST',
@@ -58,6 +61,7 @@ export async function analyzeChatContext(
         content: s.content,
       })),
       plan_mode: planMode || false,
+      writing_skill: writingSkill || undefined,
     }),
   })
 }

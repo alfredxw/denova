@@ -355,6 +355,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <BoolTri label={t('settings.agent.planModeDefault')} value={draft.plan_mode_default ?? null}
                    effective={effective.plan_mode_default}
                    onChange={(v) => setField('plan_mode_default', v)} />
+          <Text label={t('settings.agent.writingSkillDefault')} value={draft.writing_skill_default}
+                placeholder={placeholderFor('writing_skill_default')}
+                onChange={(v) => setField('writing_skill_default', v)} />
         </>
       ),
     },

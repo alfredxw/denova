@@ -10,6 +10,27 @@ const sessions: SessionSummary[] = [
   { id: 'session-b', title: '正文续写', active: false, message_count: 1, created_at: '', updated_at: '' },
 ]
 
+function mockScrollMetrics(element: HTMLElement, initial = { scrollHeight: 1200, clientHeight: 320, scrollTop: 0 }) {
+  let scrollHeight = initial.scrollHeight
+  let clientHeight = initial.clientHeight
+  let scrollTop = initial.scrollTop
+  Object.defineProperty(element, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+  Object.defineProperty(element, 'clientHeight', { configurable: true, get: () => clientHeight })
+  Object.defineProperty(element, 'scrollTop', {
+    configurable: true,
+    get: () => scrollTop,
+    set: (value) => {
+      scrollTop = value
+    },
+  })
+  return {
+    setScrollHeight: (value: number) => { scrollHeight = value },
+    setClientHeight: (value: number) => { clientHeight = value },
+    setScrollTop: (value: number) => { scrollTop = value },
+    maxScrollTop: () => Math.max(0, scrollHeight - clientHeight),
+  }
+}
+
 describe('SessionManager', () => {
   it('支持重命名和删除会话入口', async () => {
     const user = userEvent.setup()
@@ -49,16 +70,7 @@ describe('MessageList', () => {
       />,
     )
     const scroller = container.firstElementChild as HTMLDivElement
-    let scrollTop = 0
-    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => 1200 })
-    Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 320 })
-    Object.defineProperty(scroller, 'scrollTop', {
-      configurable: true,
-      get: () => scrollTop,
-      set: (value) => {
-        scrollTop = value
-      },
-    })
+    const scrollMetrics = mockScrollMetrics(scroller)
 
     rerender(
       <MessageList
@@ -72,65 +84,128 @@ describe('MessageList', () => {
       />,
     )
 
-    await waitFor(() => expect(scroller.scrollTop).toBe(1200))
+    await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
   })
 
   it('用户向上浏览时消息更新不会自动拉回底部', () => {
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
-    const scrollIntoView = vi.fn()
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: scrollIntoView,
-    })
-    try {
-      const { container, rerender } = render(
-        <MessageList
-          isStreaming={false}
-          activityContent=""
-          messages={[
-            { type: 'message', role: 'user', content: '第一条消息' },
-            { type: 'message', role: 'assistant', content: '历史回复' },
-          ]}
-          scrollResetKey="session-a"
-        />,
-      )
-      const scroller = container.firstElementChild as HTMLDivElement
-      let scrollTop = 0
-      Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => 1200 })
-      Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 320 })
-      Object.defineProperty(scroller, 'scrollTop', {
-        configurable: true,
-        get: () => scrollTop,
-        set: (value) => {
-          scrollTop = value
-        },
-      })
+    const { container, rerender } = render(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '第一条消息' },
+          { type: 'message', role: 'assistant', content: '历史回复' },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+    const scroller = container.firstElementChild as HTMLDivElement
+    const scrollMetrics = mockScrollMetrics(scroller)
 
-      scroller.scrollTop = 200
-      fireEvent.scroll(scroller)
-      scrollIntoView.mockClear()
+    scroller.scrollTop = scrollMetrics.maxScrollTop()
+    fireEvent.scroll(scroller)
+    scroller.scrollTop = 200
+    fireEvent.scroll(scroller)
 
-      rerender(
-        <MessageList
-          isStreaming={false}
-          activityContent=""
-          messages={[
-            { type: 'message', role: 'user', content: '第一条消息' },
-            { type: 'message', role: 'assistant', content: '历史回复' },
-            { type: 'message', role: 'assistant', content: '新增回复' },
-          ]}
-          scrollResetKey="session-a"
-        />,
-      )
+    rerender(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '第一条消息' },
+          { type: 'message', role: 'assistant', content: '历史回复' },
+          { type: 'message', role: 'assistant', content: '新增回复' },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
 
-      expect(scroller.scrollTop).toBe(200)
-      expect(scrollIntoView).not.toHaveBeenCalled()
-    } finally {
-      Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-        configurable: true,
-        value: originalScrollIntoView,
-      })
-    }
+    expect(scroller.scrollTop).toBe(200)
+  })
+
+  it('流式内容增长时保持锁定在底部', async () => {
+    const { container, rerender } = render(
+      <MessageList
+        isStreaming
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '继续写' },
+          { type: 'message', role: 'assistant', content: '第一段', streaming: true },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+    const scroller = container.firstElementChild as HTMLDivElement
+    const scrollMetrics = mockScrollMetrics(scroller)
+    scroller.scrollTop = scrollMetrics.maxScrollTop()
+    fireEvent.scroll(scroller)
+
+    scrollMetrics.setScrollHeight(1500)
+    fireEvent.scroll(scroller)
+    rerender(
+      <MessageList
+        isStreaming
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '继续写' },
+          { type: 'message', role: 'assistant', content: '第一段\n\n第二段\n\n第三段', streaming: true },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+
+    await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
+  })
+
+  it('用户重新滚到底部后恢复流式锁定', async () => {
+    const { container, rerender } = render(
+      <MessageList
+        isStreaming
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '继续写' },
+          { type: 'message', role: 'assistant', content: '第一段', streaming: true },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+    const scroller = container.firstElementChild as HTMLDivElement
+    const scrollMetrics = mockScrollMetrics(scroller)
+
+    scroller.scrollTop = scrollMetrics.maxScrollTop()
+    fireEvent.scroll(scroller)
+    scroller.scrollTop = 120
+    fireEvent.scroll(scroller)
+    scrollMetrics.setScrollHeight(1500)
+    rerender(
+      <MessageList
+        isStreaming
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '继续写' },
+          { type: 'message', role: 'assistant', content: '第一段\n\n用户还在看历史', streaming: true },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+    expect(scroller.scrollTop).toBe(120)
+
+    scroller.scrollTop = scrollMetrics.maxScrollTop()
+    fireEvent.scroll(scroller)
+    scrollMetrics.setScrollHeight(1800)
+    rerender(
+      <MessageList
+        isStreaming
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '继续写' },
+          { type: 'message', role: 'assistant', content: '第一段\n\n用户还在看历史\n\n回到底部后继续跟随', streaming: true },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+
+    await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
   })
 
   it('展示 /clear 产生的上下文清理分界且保留前后消息', () => {

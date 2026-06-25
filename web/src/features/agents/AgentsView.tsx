@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
 import { Bot, Brain, Check, ChevronDown, ChevronRight, Edit3, FolderOpen, Loader2, PanelLeft, Plus, Save, ScrollText, Trash2, Wrench, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
@@ -27,6 +28,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const [activeAgent, setActiveAgent] = useState<VisibleAgentKey>('ide')
   const [draft, setDraft] = useState<Settings>({})
   const [skills, setSkills] = useState<SkillSummary[]>([])
+  const [agentChatOpen, setAgentChatOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [settingsEventSource] = useState(() => {
@@ -100,6 +102,14 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const generalSubAgents = draft.general_sub_agents ?? {}
   const effectiveGeneralSubAgents = effective.general_sub_agents ?? {}
   const subAgents = draft.sub_agents ?? []
+  const configManagerWorkspaceKey = layered?.paths.workspace_config || layered?.paths.user_config || 'agents'
+  const configManagerContext = useMemo(() => ({
+    active_settings_layer: activeLayer,
+    active_agent: activeAgent,
+    active_agent_title: t(selected.titleKey),
+    write_scope_required: 'true',
+    write_scope_hint: activeLayer,
+  }), [activeAgent, activeLayer, selected.titleKey, t])
 
   const saveDraft = useCallback(async (settings: Settings) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
@@ -125,6 +135,13 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
       setSaving(false)
     }
   }
+
+  const reloadAfterAgentMutation = useCallback(() => {
+    void load()
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: settingsEventSource } }))
+    }
+  }, [load, settingsEventSource])
 
   const setAgentModel = (patch: Partial<AgentModelOverride>) => {
     setDraft((current) => ({
@@ -232,6 +249,15 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           {t('common.save')}
         </button>
+        <button
+          type="button"
+          onClick={() => setAgentChatOpen((value) => !value)}
+          className={`nova-nav-item inline-flex shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-3 py-1 ${agentChatOpen ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
+          aria-pressed={agentChatOpen}
+        >
+          <Bot className="h-3.5 w-3.5" />
+          {t('agents.configAgent.button')}
+        </button>
         {onClose && (
           <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('agents.close')} title={t('agents.close')}>
             <X className="h-3.5 w-3.5" />
@@ -251,17 +277,41 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
           desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
           mobileClassName: 'w-[min(88vw,340px)]',
         }}
+        right={agentChatOpen ? {
+          id: 'agents-config-manager',
+          title: t('agents.configAgent.title'),
+          side: 'right',
+          icon: <Bot className="h-4 w-4" />,
+          content: (
+            <div className="h-full min-h-0 bg-[var(--nova-surface)]">
+              <ConfigManagerChat
+                workspace={configManagerWorkspaceKey}
+                origin="agents"
+                resourceId={`${activeLayer}:${activeAgent}`}
+                context={configManagerContext}
+                onMutated={reloadAfterAgentMutation}
+              />
+            </div>
+          ),
+          desktopClassName: 'min-h-0 border-l border-[var(--nova-border)]',
+          mobileClassName: 'w-[min(92vw,420px)]',
+        } : undefined}
         className="flex-1 text-xs"
         mainClassName="min-h-0 min-w-0"
-        desktopGridClassName="grid-cols-[18rem_minmax(0,1fr)]"
+        desktopGridClassName={agentChatOpen ? 'grid-cols-[18rem_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[18rem_minmax(0,1fr)]'}
       >
-        {({ openLeft }) => (
+        {({ openLeft, openRight }) => (
           <main className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
             <div className="sticky top-0 z-10 flex h-10 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 md:hidden">
               <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: 'Agents' })} onClick={openLeft}>
                 <PanelLeft className="h-4 w-4" />
               </button>
               <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-muted)]">{t(selected.titleKey)}</span>
+              {agentChatOpen && (
+                <button type="button" className="nova-icon-button ml-auto flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: t('agents.configAgent.title') })} onClick={openRight}>
+                  <Bot className="h-4 w-4" />
+                </button>
+              )}
             </div>
             <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
               <AgentHeader agent={selected} />
@@ -674,11 +724,12 @@ function AgentToolSection({ agent, value, effective, onChange }: {
   onChange: (key: ToolKey, value: boolean | null) => void
 }) {
   const { t } = useTranslation()
+  const rows = toolRowsForAgent(agent)
   return (
     <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
       <SectionTitle icon={Wrench} title={t('agents.section.tools')} />
       <div className="grid gap-2 lg:grid-cols-2">
-        {TOOL_ROWS.map((tool) => {
+        {rows.map((tool) => {
           const Icon = tool.icon
           const explicit = value[tool.key]
           const inherited = explicit === undefined || explicit === null
@@ -714,6 +765,11 @@ function toolSubtitleKey(tool: AgentToolDefinition, agent: VisibleAgentKey) {
     return 'agents.tool.loreRead.interactiveSubtitle'
   }
   return tool.subtitleKey
+}
+
+function toolRowsForAgent(agent: VisibleAgentKey) {
+  if (agent === 'config_manager') return TOOL_ROWS
+  return TOOL_ROWS.filter((tool) => tool.key !== 'agent_config_read' && tool.key !== 'agent_config_write')
 }
 
 function AgentSubAgentSection({ agent, generalSettings, effectiveGeneralSettings, subAgents, profiles, onGeneralChange, onChange }: {
@@ -917,6 +973,7 @@ function SubAgentEditor({ index, agent, subAgent, profiles, onChange }: {
   const parents = effectiveSubAgentParents(subAgent)
   const parentSet = new Set(parents)
   const tools = subAgent.tools ?? {}
+  const rows = toolRowsForAgent(agent)
   const model = subAgent.model ?? {}
 
   const setModel = (patch: Partial<AgentModelOverride>) => onChange(index, { model: { ...model, ...patch } })
@@ -1021,7 +1078,7 @@ function SubAgentEditor({ index, agent, subAgent, profiles, onChange }: {
       <div>
         <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('agents.subAgents.tools')}</div>
         <div className="grid gap-2 md:grid-cols-2">
-          {TOOL_ROWS.map((tool) => (
+          {rows.map((tool) => (
             <div key={tool.key} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5">
               <span className="min-w-0 flex-1 truncate text-[11px]">{t(tool.titleKey)}</span>
               <select value={tools[tool.key] === undefined || tools[tool.key] === null ? '' : String(tools[tool.key])} onChange={(e) => setTool(tool.key, e.target.value === '' ? null : e.target.value === 'true')} className={`${fieldCls} max-w-28 shrink-0`}>

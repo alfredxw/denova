@@ -90,9 +90,10 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 
 func TestResolveAgentToolManifestUsesCapabilityRegistryOrder(t *testing.T) {
 	settings := ResolvedAgentToolSettings{
-		FileRead:  true,
-		LoreRead:  true,
-		WebSearch: true,
+		FileRead:        true,
+		LoreRead:        true,
+		WebSearch:       true,
+		AgentConfigRead: true,
 	}
 	manifest := ResolveAgentToolManifest(settings)
 	capabilities := AgentToolCapabilities()
@@ -104,10 +105,18 @@ func TestResolveAgentToolManifestUsesCapabilityRegistryOrder(t *testing.T) {
 			t.Fatalf("manifest[%d].source = %q, want %q", i, manifest[i].Source, capability.Source)
 		}
 	}
-	if !manifest[0].Allowed || !manifest[4].Allowed || !manifest[7].Allowed {
-		t.Fatalf("expected file_read/lore_read/web_search to be allowed: %#v", manifest)
+	allowed := map[string]bool{}
+	for _, item := range manifest {
+		allowed[item.Source] = item.Allowed
 	}
-	if manifest[1].Allowed || manifest[2].Allowed || manifest[3].Allowed || manifest[5].Allowed || manifest[6].Allowed {
-		t.Fatalf("unexpected allowed capability: %#v", manifest)
+	for _, source := range []string{AgentToolFileRead, AgentToolLoreRead, AgentToolWebSearch, AgentToolAgentConfigRead} {
+		if !allowed[source] {
+			t.Fatalf("expected %s to be allowed: %#v", source, manifest)
+		}
+	}
+	for _, source := range []string{AgentToolFileWrite, AgentToolShellExecute, AgentToolSkills, AgentToolLoreWrite, AgentToolTodo, AgentToolAgentConfigWrite} {
+		if allowed[source] {
+			t.Fatalf("unexpected allowed capability %s: %#v", source, manifest)
+		}
 	}
 }

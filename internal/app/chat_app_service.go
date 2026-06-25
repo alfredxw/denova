@@ -243,7 +243,7 @@ func (a *App) StartTask(req agent.ChatRequest) *Task {
 func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 	runtime, req, err := s.prepareIDEChatRuntime(req, true)
 	if err != nil {
-		log.Printf("[agent-task] 未选择 workspace，无法启动任务 err=%v", err)
+		log.Printf("[agent-task] 准备 IDE Agent 运行时失败 err=%v", err)
 		return nil
 	}
 
@@ -272,7 +272,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 	}
 
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
-		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode)
+		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.WritingSkill)
 		runtimeContexts := agent.IDEWorkspaceRuntimeContextsForState(runtime.state)
 		conversation := agent.NewSessionConversationForAgentWithRuntimeContexts(
 			runtime.sess,
@@ -432,7 +432,25 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 		log.Printf("[agent-task] load layered settings failed workspace=%s err=%v", runtime.workspace, err)
 		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
 	}
+	if err := applyWritingSkillRuntimePolicy(&runtime, &req); err != nil {
+		return ideChatRuntime{}, req, err
+	}
 	return runtime, req, nil
+}
+
+func applyWritingSkillRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatRequest) error {
+	if runtime == nil || req == nil {
+		return nil
+	}
+	writingSkill, err := agent.ResolveWritingSkillContext(context.Background(), &runtime.cfg, req.WritingSkill)
+	if err != nil {
+		return err
+	}
+	req.WritingSkill = writingSkill.Name
+	req.WritingSkillContext = writingSkill
+	agent.ApplyWritingSkillRolePolicy(&runtime.cfg, writingSkill.Name)
+	log.Printf("[agent-task] selected writing skill name=%s scope=%s source=%s path=%s truncated=%v workspace=%s", writingSkill.Name, writingSkill.Scope, writingSkill.Source, writingSkill.Path, writingSkill.Truncated, runtime.workspace)
+	return nil
 }
 
 // ActiveTask 返回当前活跃任务（可能为 nil）。

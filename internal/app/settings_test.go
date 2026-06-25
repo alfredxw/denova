@@ -139,6 +139,18 @@ func TestApplyLayeredSettingsToConfigAppliesAgentIdleTimeout(t *testing.T) {
 	}
 }
 
+func TestApplyLayeredSettingsToConfigAppliesWritingSkillDefault(t *testing.T) {
+	cfg := &config.Config{}
+	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+		Effective: config.Settings{
+			WritingSkillDefault: "novel-heavy",
+		},
+	})
+	if cfg.WritingSkillDefault != "novel-heavy" {
+		t.Fatalf("writing skill default = %s, want novel-heavy", cfg.WritingSkillDefault)
+	}
+}
+
 func TestApplyLayeredSettingsToConfigClearsMaxIterationWhenUnset(t *testing.T) {
 	cfg := &config.Config{MaxIteration: 50}
 	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{

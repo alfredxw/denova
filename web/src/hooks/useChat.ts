@@ -21,6 +21,10 @@ interface ChatOptions {
   onAgentFileChange?: (path?: string) => void | Promise<void>
 }
 
+export interface ChatSendOptions {
+  writingSkill?: string
+}
+
 /** 聊天 hook，管理消息列表和流式响应 */
 export function useChat(options: ChatOptions = {}) {
   const { t } = useTranslation()
@@ -166,7 +170,7 @@ export function useChat(options: ChatOptions = {}) {
   }, [loreReferences, references, styleScenes, t, textSelections])
 
   /** 发送消息 */
-  const send = useCallback(async (input: string) => {
+  const send = useCallback(async (input: string, options: ChatSendOptions = {}) => {
     if (isStreaming) return
     const command = agentBypassCommand(input)
     if (command) {
@@ -194,17 +198,17 @@ export function useChat(options: ChatOptions = {}) {
     setAbortController(abortController)
 
     try {
-      const stream = await sendMessage(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, abortController.signal, prepared.planMode)
+      const stream = await sendMessage(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, abortController.signal, prepared.planMode, options.writingSkill)
       await consumeAgentStream(stream, { clearInputsOnFinish: clearInputState, showAbortMessage: true })
     } catch (e) {
       setMessages(prev => [...prev, { role: 'error', content: t('chat.activity.requestFailed', { error: String(e) }) }])
     }
   }, [clearInputState, consumeAgentStream, isStreaming, loadHistory, loadSessions, prepareAgentRequest, setAbortController, setMessages, t])
 
-  const analyzeContext = useCallback(async (input: string): Promise<ContextAnalysis> => {
+  const analyzeContext = useCallback(async (input: string, options: ChatSendOptions = {}): Promise<ContextAnalysis> => {
     if (isStreaming) throw new Error(t('chat.contextAnalysis.streamingUnavailable'))
     const prepared = prepareAgentRequest(input)
-    return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, prepared.planMode)
+    return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, prepared.planMode, options.writingSkill)
   }, [isStreaming, prepareAgentRequest, t])
 
   /** 恢复订阅后台仍在运行的聊天任务。 */

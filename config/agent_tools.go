@@ -1,14 +1,16 @@
 package config
 
 const (
-	AgentToolFileRead     = "file_read"
-	AgentToolFileWrite    = "file_write"
-	AgentToolShellExecute = "shell_execute"
-	AgentToolSkills       = "skills"
-	AgentToolLoreRead     = "lore_read"
-	AgentToolLoreWrite    = "lore_write"
-	AgentToolTodo         = "todo"
-	AgentToolWebSearch    = "web_search"
+	AgentToolFileRead         = "file_read"
+	AgentToolFileWrite        = "file_write"
+	AgentToolShellExecute     = "shell_execute"
+	AgentToolSkills           = "skills"
+	AgentToolLoreRead         = "lore_read"
+	AgentToolLoreWrite        = "lore_write"
+	AgentToolTodo             = "todo"
+	AgentToolWebSearch        = "web_search"
+	AgentToolAgentConfigRead  = "agent_config_read"
+	AgentToolAgentConfigWrite = "agent_config_write"
 )
 
 // AgentToolSettings 保存各类 Agent 的工具能力开关。
@@ -27,25 +29,29 @@ type AgentToolSettings struct {
 
 // AgentToolOverride 的指针字段用于区分继承与显式关闭。
 type AgentToolOverride struct {
-	FileRead     *bool `toml:"file_read,omitempty" json:"file_read,omitempty"`
-	FileWrite    *bool `toml:"file_write,omitempty" json:"file_write,omitempty"`
-	ShellExecute *bool `toml:"shell_execute,omitempty" json:"shell_execute,omitempty"`
-	Skills       *bool `toml:"skills,omitempty" json:"skills,omitempty"`
-	LoreRead     *bool `toml:"lore_read,omitempty" json:"lore_read,omitempty"`
-	LoreWrite    *bool `toml:"lore_write,omitempty" json:"lore_write,omitempty"`
-	Todo         *bool `toml:"todo,omitempty" json:"todo,omitempty"`
-	WebSearch    *bool `toml:"web_search,omitempty" json:"web_search,omitempty"`
+	FileRead         *bool `toml:"file_read,omitempty" json:"file_read,omitempty"`
+	FileWrite        *bool `toml:"file_write,omitempty" json:"file_write,omitempty"`
+	ShellExecute     *bool `toml:"shell_execute,omitempty" json:"shell_execute,omitempty"`
+	Skills           *bool `toml:"skills,omitempty" json:"skills,omitempty"`
+	LoreRead         *bool `toml:"lore_read,omitempty" json:"lore_read,omitempty"`
+	LoreWrite        *bool `toml:"lore_write,omitempty" json:"lore_write,omitempty"`
+	Todo             *bool `toml:"todo,omitempty" json:"todo,omitempty"`
+	WebSearch        *bool `toml:"web_search,omitempty" json:"web_search,omitempty"`
+	AgentConfigRead  *bool `toml:"agent_config_read,omitempty" json:"agent_config_read,omitempty"`
+	AgentConfigWrite *bool `toml:"agent_config_write,omitempty" json:"agent_config_write,omitempty"`
 }
 
 type ResolvedAgentToolSettings struct {
-	FileRead     bool `json:"file_read"`
-	FileWrite    bool `json:"file_write"`
-	ShellExecute bool `json:"shell_execute"`
-	Skills       bool `json:"skills"`
-	LoreRead     bool `json:"lore_read"`
-	LoreWrite    bool `json:"lore_write"`
-	Todo         bool `json:"todo"`
-	WebSearch    bool `json:"web_search"`
+	FileRead         bool `json:"file_read"`
+	FileWrite        bool `json:"file_write"`
+	ShellExecute     bool `json:"shell_execute"`
+	Skills           bool `json:"skills"`
+	LoreRead         bool `json:"lore_read"`
+	LoreWrite        bool `json:"lore_write"`
+	Todo             bool `json:"todo"`
+	WebSearch        bool `json:"web_search"`
+	AgentConfigRead  bool `json:"agent_config_read"`
+	AgentConfigWrite bool `json:"agent_config_write"`
 }
 
 func DefaultAgentToolSettings() AgentToolSettings {
@@ -53,14 +59,16 @@ func DefaultAgentToolSettings() AgentToolSettings {
 	off := boolPtr(false)
 	return AgentToolSettings{
 		Default: AgentToolOverride{
-			FileRead:     on,
-			FileWrite:    on,
-			ShellExecute: on,
-			Skills:       on,
-			LoreRead:     on,
-			LoreWrite:    on,
-			Todo:         on,
-			WebSearch:    on,
+			FileRead:         on,
+			FileWrite:        on,
+			ShellExecute:     on,
+			Skills:           on,
+			LoreRead:         on,
+			LoreWrite:        on,
+			Todo:             on,
+			WebSearch:        on,
+			AgentConfigRead:  off,
+			AgentConfigWrite: off,
 		},
 		InteractiveStory: AgentToolOverride{
 			LoreWrite: off,
@@ -68,7 +76,9 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			WebSearch: off,
 		},
 		ConfigManager: AgentToolOverride{
-			ShellExecute: off,
+			ShellExecute:     off,
+			AgentConfigRead:  on,
+			AgentConfigWrite: on,
 		},
 		InteractiveState:      noToolAgentOverride(),
 		InteractiveHotChoices: noToolAgentOverride(),
@@ -76,14 +86,16 @@ func DefaultAgentToolSettings() AgentToolSettings {
 		ToolAgent:             noToolAgentOverride(),
 		ContextCompaction:     noToolAgentOverride(),
 		Automation: AgentToolOverride{
-			FileRead:     on,
-			FileWrite:    on,
-			ShellExecute: off,
-			Skills:       on,
-			LoreRead:     on,
-			LoreWrite:    on,
-			Todo:         on,
-			WebSearch:    on,
+			FileRead:         on,
+			FileWrite:        on,
+			ShellExecute:     off,
+			Skills:           on,
+			LoreRead:         on,
+			LoreWrite:        on,
+			Todo:             on,
+			WebSearch:        on,
+			AgentConfigRead:  off,
+			AgentConfigWrite: off,
 		},
 	}
 }
@@ -91,14 +103,16 @@ func DefaultAgentToolSettings() AgentToolSettings {
 func noToolAgentOverride() AgentToolOverride {
 	off := boolPtr(false)
 	return AgentToolOverride{
-		FileRead:     off,
-		FileWrite:    off,
-		ShellExecute: off,
-		Skills:       off,
-		LoreRead:     off,
-		LoreWrite:    off,
-		Todo:         off,
-		WebSearch:    off,
+		FileRead:         off,
+		FileWrite:        off,
+		ShellExecute:     off,
+		Skills:           off,
+		LoreRead:         off,
+		LoreWrite:        off,
+		Todo:             off,
+		WebSearch:        off,
+		AgentConfigRead:  off,
+		AgentConfigWrite: off,
 	}
 }
 
@@ -132,14 +146,16 @@ func resolveAgentTools(cfg *Config, agentKind string) ResolvedAgentToolSettings 
 	}
 	override := mergeAgentToolOverride(settings.Default, agentToolOverrideFor(settings, agentKind))
 	resolved := ResolvedAgentToolSettings{
-		FileRead:     boolValue(override.FileRead, true),
-		FileWrite:    boolValue(override.FileWrite, true),
-		ShellExecute: boolValue(override.ShellExecute, true),
-		Skills:       boolValue(override.Skills, true),
-		LoreRead:     boolValue(override.LoreRead, true),
-		LoreWrite:    boolValue(override.LoreWrite, true),
-		Todo:         boolValue(override.Todo, true),
-		WebSearch:    boolValue(override.WebSearch, true),
+		FileRead:         boolValue(override.FileRead, true),
+		FileWrite:        boolValue(override.FileWrite, true),
+		ShellExecute:     boolValue(override.ShellExecute, true),
+		Skills:           boolValue(override.Skills, true),
+		LoreRead:         boolValue(override.LoreRead, true),
+		LoreWrite:        boolValue(override.LoreWrite, true),
+		Todo:             boolValue(override.Todo, true),
+		WebSearch:        boolValue(override.WebSearch, true),
+		AgentConfigRead:  boolValue(override.AgentConfigRead, false),
+		AgentConfigWrite: boolValue(override.AgentConfigWrite, false),
 	}
 	return resolved
 }
@@ -169,6 +185,12 @@ func mergeAgentToolOverride(parent, child AgentToolOverride) AgentToolOverride {
 	}
 	if child.WebSearch != nil {
 		out.WebSearch = child.WebSearch
+	}
+	if child.AgentConfigRead != nil {
+		out.AgentConfigRead = child.AgentConfigRead
+	}
+	if child.AgentConfigWrite != nil {
+		out.AgentConfigWrite = child.AgentConfigWrite
 	}
 	return out
 }

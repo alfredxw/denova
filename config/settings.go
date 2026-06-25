@@ -71,6 +71,7 @@ type Settings struct {
 	AgentIdleTimeoutSeconds *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
 	PlanModeDefault         *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
 	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
+	WritingSkillDefault     string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
 
 	// 互动模式
 	InteractiveHotChoices      *bool    `toml:"interactive_hot_choices_enabled,omitempty" json:"interactive_hot_choices_enabled,omitempty"`
@@ -81,6 +82,8 @@ type Settings struct {
 func boolPtr(v bool) *bool        { return &v }
 func intPtr(v int) *int           { return &v }
 func floatPtr(v float64) *float64 { return &v }
+
+const DefaultWritingSkillName = "novel-standard"
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
 func DefaultSettings() Settings {
@@ -127,6 +130,7 @@ func DefaultSettings() Settings {
 		SubAgents:                  nil,
 		PlanModeDefault:            boolPtr(false),
 		IDEStoryTellerID:           "classic",
+		WritingSkillDefault:        DefaultWritingSkillName,
 		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
@@ -253,6 +257,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.IDEStoryTellerID != "" {
 		out.IDEStoryTellerID = child.IDEStoryTellerID
+	}
+	if child.WritingSkillDefault != "" {
+		out.WritingSkillDefault = child.WritingSkillDefault
 	}
 	if child.InteractiveHotChoices != nil {
 		out.InteractiveHotChoices = child.InteractiveHotChoices
@@ -422,6 +429,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
+	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)
 	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)

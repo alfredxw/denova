@@ -19,6 +19,7 @@ const (
 	configManagerStoryMemorySkill = "story-memory-config"
 	configManagerTellerSkill      = "teller-config"
 	configManagerSkillsSkill      = "skills-creator"
+	configManagerAgentConfigSkill = "agent-config"
 )
 
 func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, req ConfigManagerRequest) []agent.ConfigManagerResourceSkill {
@@ -99,6 +100,8 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 		add(configManagerTellerSkill)
 	case "skills", "skill":
 		add(configManagerSkillsSkill)
+	case "agents", "agent":
+		add(configManagerAgentConfigSkill)
 	}
 
 	signals := []string{req.Origin, req.ResourceID, req.StoryID, req.BranchID}
@@ -124,6 +127,10 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 	switch {
 	case strings.Contains(text, "skills") || strings.Contains(text, "skill"):
 		add(configManagerSkillsSkill)
+	}
+	switch {
+	case strings.Contains(text, "agents") || strings.Contains(text, "agent_config") || strings.Contains(text, "subagent") || strings.Contains(text, "sub_agent"):
+		add(configManagerAgentConfigSkill)
 	}
 	return out
 }

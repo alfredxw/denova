@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '@/lib/api'
+import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { subAgentSessionKey } from './subagent-session'
 
@@ -188,6 +189,11 @@ function SubAgentOutputWindow({
   const detailMode = Boolean(onOpen)
   const actionLabel = detailMode ? t('chat.subagent.openSession') : (expanded ? t('chat.subagent.collapse') : t('chat.subagent.expand'))
   const shownContent = detailMode || !expanded ? preview : content
+  const contentScrollLock = useBottomScrollLock<HTMLDivElement>({
+    enabled: message.streaming === true,
+    resetKey: `${message.id || message.created_at || name}:subagent-output`,
+    contentKey: `${message.streaming ? 'streaming' : 'idle'}:${detailMode ? 'detail' : 'inline'}:${expanded ? 'expanded' : 'collapsed'}:${shownContent.length}`,
+  })
 
   return (
     <div className="flex justify-start">
@@ -216,7 +222,14 @@ function SubAgentOutputWindow({
             {actionLabel}
           </span>
         </button>
-        <div className={`${detailMode ? 'max-h-28' : expanded ? 'max-h-96' : 'max-h-28'} overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5`}>
+        <div
+          ref={contentScrollLock.ref}
+          onScroll={contentScrollLock.onScroll}
+          onWheel={contentScrollLock.onWheel}
+          onKeyDown={contentScrollLock.onKeyDown}
+          data-nova-scroll-lock="subagent-output"
+          className={`${detailMode ? 'max-h-28' : expanded ? 'max-h-96' : 'max-h-28'} overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 [overflow-anchor:none]`}
+        >
           {hasContent ? (
             <div className="chat-agent-message text-sm text-[var(--nova-text)]" style={messageStyle}>
               {message.streaming ? (
@@ -279,6 +292,11 @@ function ContextCompactionBlock({ message }: { message: ChatMessage }) {
   const status = message.status || 'running'
   const isRunning = status === 'running'
   const summary = (message.content || '').trim()
+  const summaryScrollLock = useBottomScrollLock<HTMLDivElement>({
+    enabled: isRunning || message.streaming === true,
+    resetKey: `${message.id || message.created_at || 'context-compaction'}:summary`,
+    contentKey: `${status}:${message.phase || ''}:${summary.length}`,
+  })
 
   return (
     <div className="flex justify-start">
@@ -314,7 +332,14 @@ function ContextCompactionBlock({ message }: { message: ChatMessage }) {
             </div>
           </div>
         </div>
-        <div className="max-h-40 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--nova-text-muted)] whitespace-pre-wrap">
+        <div
+          ref={summaryScrollLock.ref}
+          onScroll={summaryScrollLock.onScroll}
+          onWheel={summaryScrollLock.onWheel}
+          onKeyDown={summaryScrollLock.onKeyDown}
+          data-nova-scroll-lock="context-compaction-summary"
+          className="max-h-40 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--nova-text-muted)] whitespace-pre-wrap [overflow-anchor:none]"
+        >
           {summary || (isRunning ? t('chat.contextCompaction.waiting') : t('chat.contextCompaction.empty'))}
         </div>
       </div>
@@ -344,6 +369,11 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
     : buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
   const resultPreview = buildPreview(result, 80)
   const hasDetail = Boolean(detailArgs || result)
+  const streamPreviewScrollLock = useBottomScrollLock<HTMLDivElement>({
+    enabled: isStreamingContent,
+    resetKey: `${message.id || name}:tool-stream-preview`,
+    contentKey: `${status}:${rawArgs.length}:${streamPreview.length}`,
+  })
 
   return (
     <div className="flex justify-start">
@@ -375,7 +405,14 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
         </div>
         {/* 流式写入时展示实时内容预览 */}
         {isStreamingContent && streamPreview && (
-          <div className="max-h-32 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-accent-green)] whitespace-pre-wrap">
+          <div
+            ref={streamPreviewScrollLock.ref}
+            onScroll={streamPreviewScrollLock.onScroll}
+            onWheel={streamPreviewScrollLock.onWheel}
+            onKeyDown={streamPreviewScrollLock.onKeyDown}
+            data-nova-scroll-lock="tool-stream-preview"
+            className="max-h-32 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-accent-green)] whitespace-pre-wrap [overflow-anchor:none]"
+          >
             {streamPreview}
           </div>
         )}

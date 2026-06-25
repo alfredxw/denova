@@ -117,6 +117,8 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 		{enabled: settings.Skills, build: func() (tool.BaseTool, error) { return newListSkillsTool(cfg) }},
 		{enabled: settings.Skills, build: func() (tool.BaseTool, error) { return newReadSkillsTool(cfg) }},
 		{enabled: settings.Skills, build: func() (tool.BaseTool, error) { return newWriteSkillsTool(cfg) }},
+		{enabled: settings.AgentConfigRead, build: func() (tool.BaseTool, error) { return newListAgentConfigsTool(cfg) }},
+		{enabled: settings.AgentConfigWrite, build: func() (tool.BaseTool, error) { return newWriteAgentConfigsTool(cfg) }},
 		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListStoryMemoryStructuresTool(workspace) }},
 		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteStoryMemoryStructuresTool(workspace) }},
 		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListStoryMemoryRecordsTool(workspace) }},
@@ -331,7 +333,7 @@ func newReadSkillsTool(cfg *config.Config) (tool.BaseTool, error) {
 }
 
 func newWriteSkillsTool(cfg *config.Config) (tool.BaseTool, error) {
-	return utils.InferTool("write_skills", "批量创建、更新或删除 Skills。scope 必须是 user 或 workspace；删除必须来自用户明确指令。", func(ctx context.Context, input skillsWriteInput) (string, error) {
+	return utils.InferTool("write_skills", "批量创建、更新或删除 Skills。scope 必须是 user 或 workspace；修改内置/预制 Skill 时使用 workspace 同名覆盖，禁止写 builtin；删除必须来自用户明确指令。", func(ctx context.Context, input skillsWriteInput) (string, error) {
 		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
 		for _, op := range input.Operations {
 			scope := novaskills.Scope(strings.TrimSpace(op.Scope))

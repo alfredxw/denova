@@ -1,7 +1,26 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MessageItem } from './MessageItem'
+
+function mockScrollMetrics(element: HTMLElement, initial = { scrollHeight: 520, clientHeight: 128, scrollTop: 0 }) {
+  let scrollHeight = initial.scrollHeight
+  let clientHeight = initial.clientHeight
+  let scrollTop = initial.scrollTop
+  Object.defineProperty(element, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+  Object.defineProperty(element, 'clientHeight', { configurable: true, get: () => clientHeight })
+  Object.defineProperty(element, 'scrollTop', {
+    configurable: true,
+    get: () => scrollTop,
+    set: (value) => {
+      scrollTop = value
+    },
+  })
+  return {
+    setScrollHeight: (value: number) => { scrollHeight = value },
+    maxScrollTop: () => Math.max(0, scrollHeight - clientHeight),
+  }
+}
 
 describe('MessageItem', () => {
   it('稳定 assistant 消息使用完整 Markdown 渲染', () => {
@@ -130,6 +149,45 @@ describe('MessageItem', () => {
     expect(screen.getByText('调用工具')).toBeInTheDocument()
     expect(screen.getByText('write_file')).toBeInTheDocument()
     expect(screen.getByText('写入完成')).toBeInTheDocument()
+  })
+
+  it('工具调用流式预览默认锁定到底部', async () => {
+    const initialArgs = JSON.stringify({ path: 'chapters/ch01.md', content: '开头。'.repeat(80) })
+    const nextArgs = JSON.stringify({ path: 'chapters/ch01.md', content: '开头。'.repeat(120) })
+    const { container, rerender } = render(
+      <MessageItem
+        message={{
+          id: 'tool-write',
+          role: 'tool_call',
+          content: 'write_file',
+          name: 'write_file',
+          args: initialArgs,
+          status: 'running',
+        }}
+      />,
+    )
+    const preview = container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]') as HTMLDivElement
+    expect(preview).toBeInTheDocument()
+    const scrollMetrics = mockScrollMetrics(preview)
+    preview.scrollTop = scrollMetrics.maxScrollTop()
+    fireEvent.scroll(preview)
+
+    scrollMetrics.setScrollHeight(760)
+    fireEvent.scroll(preview)
+    rerender(
+      <MessageItem
+        message={{
+          id: 'tool-write',
+          role: 'tool_call',
+          content: 'write_file',
+          name: 'write_file',
+          args: nextArgs,
+          status: 'running',
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(preview.scrollTop).toBe(scrollMetrics.maxScrollTop()))
   })
 
   it('write_todos 工具卡片渲染为待办列表，并显示进度', () => {

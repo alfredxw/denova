@@ -48,6 +48,8 @@ export const TOOL_ROWS: AgentToolDefinition[] = [
   { key: 'lore_read', titleKey: 'agents.tool.loreRead.title', subtitleKey: 'agents.tool.loreRead.subtitle', icon: Database },
   { key: 'lore_write', titleKey: 'agents.tool.loreWrite.title', subtitleKey: 'agents.tool.loreWrite.subtitle', icon: Wrench },
   { key: 'todo', titleKey: 'agents.tool.todo.title', subtitleKey: 'agents.tool.todo.subtitle', icon: ListChecks },
+  { key: 'agent_config_read', titleKey: 'agents.tool.agentConfigRead.title', subtitleKey: 'agents.tool.agentConfigRead.subtitle', icon: Settings2 },
+  { key: 'agent_config_write', titleKey: 'agents.tool.agentConfigWrite.title', subtitleKey: 'agents.tool.agentConfigWrite.subtitle', icon: Settings2 },
 ]
 
 export const BASE_TOOL_VALUES: Required<AgentToolOverride> = {
@@ -59,17 +61,19 @@ export const BASE_TOOL_VALUES: Required<AgentToolOverride> = {
   lore_read: true,
   lore_write: true,
   todo: true,
+  agent_config_read: false,
+  agent_config_write: false,
 }
 
 export const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentToolOverride>> = {
-  ide: { file_read: true, web_search: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true },
-  interactive_story: { file_read: true, web_search: false, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: false, todo: false },
-  config_manager: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true },
+  ide: { file_read: true, web_search: true, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: true, todo: true, agent_config_read: false, agent_config_write: false },
+  interactive_story: { file_read: true, web_search: false, file_write: true, shell_execute: true, skills: true, lore_read: true, lore_write: false, todo: false, agent_config_read: false, agent_config_write: false },
+  config_manager: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true, agent_config_read: true, agent_config_write: true },
   interactive_state: disabledTools(),
   interactive_hot_choices: disabledTools(),
   version_summary: disabledTools(),
   tool_agent: disabledTools(),
-  automation: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true },
+  automation: { file_read: true, web_search: true, file_write: true, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true, agent_config_read: false, agent_config_write: false },
   context_compaction: disabledTools(),
 }
 
@@ -90,7 +94,7 @@ export function skillAgentFieldMatches(agentField: string | undefined, agentKey:
 }
 
 export function disabledTools(): Required<AgentToolOverride> {
-  return { file_read: false, web_search: false, file_write: false, shell_execute: false, skills: false, lore_read: false, lore_write: false, todo: false }
+  return { file_read: false, web_search: false, file_write: false, shell_execute: false, skills: false, lore_read: false, lore_write: false, todo: false, agent_config_read: false, agent_config_write: false }
 }
 
 export function resolveEffectiveTools(defaultTools: AgentToolOverride, tools: AgentToolOverride): Required<AgentToolOverride> {
@@ -103,5 +107,7 @@ export function resolveEffectiveTools(defaultTools: AgentToolOverride, tools: Ag
     lore_read: tools.lore_read ?? defaultTools.lore_read ?? BASE_TOOL_VALUES.lore_read,
     lore_write: tools.lore_write ?? defaultTools.lore_write ?? BASE_TOOL_VALUES.lore_write,
     todo: tools.todo ?? defaultTools.todo ?? BASE_TOOL_VALUES.todo,
+    agent_config_read: tools.agent_config_read ?? defaultTools.agent_config_read ?? BASE_TOOL_VALUES.agent_config_read,
+    agent_config_write: tools.agent_config_write ?? defaultTools.agent_config_write ?? BASE_TOOL_VALUES.agent_config_write,
   }
 }

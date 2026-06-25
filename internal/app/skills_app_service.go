@@ -28,6 +28,10 @@ func (a *App) SaveSkillDocument(ctx context.Context, scope novaskills.Scope, nam
 	return a.skills().Save(ctx, scope, name, content)
 }
 
+func (a *App) SaveSkillDocumentAs(ctx context.Context, scope novaskills.Scope, name string, targetScope novaskills.Scope, targetName, content string) (novaskills.Document, error) {
+	return a.skills().SaveAs(ctx, scope, name, targetScope, targetName, content)
+}
+
 func (a *App) DeleteSkillDocument(ctx context.Context, scope novaskills.Scope, name string) error {
 	return a.skills().Delete(ctx, scope, name)
 }
@@ -55,6 +59,15 @@ func (s *SkillsAppService) Save(ctx context.Context, scope novaskills.Scope, nam
 		return novaskills.Document{}, err
 	}
 	log.Printf("[skills] Skill saved scope=%s name=%s path=%s", scope, name, doc.Path)
+	return doc, nil
+}
+
+func (s *SkillsAppService) SaveAs(ctx context.Context, scope novaskills.Scope, name string, targetScope novaskills.Scope, targetName, content string) (novaskills.Document, error) {
+	doc, err := novaskills.SaveDocumentAs(ctx, s.directories(), scope, name, targetScope, targetName, content)
+	if err != nil {
+		return novaskills.Document{}, err
+	}
+	log.Printf("[skills] Skill saved as source_scope=%s source_name=%s target_scope=%s target_name=%s path=%s", scope, name, targetScope, targetName, doc.Path)
 	return doc, nil
 }
 

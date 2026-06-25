@@ -18,9 +18,11 @@ type skillCreateRequest struct {
 }
 
 type skillSaveRequest struct {
-	Scope   novaskills.Scope `json:"scope"`
-	Name    string           `json:"name"`
-	Content string           `json:"content"`
+	Scope       novaskills.Scope `json:"scope"`
+	Name        string           `json:"name"`
+	Content     string           `json:"content"`
+	TargetScope novaskills.Scope `json:"target_scope"`
+	TargetName  string           `json:"target_name"`
 }
 
 func (h *Handlers) HandleSkills(ctx context.Context, c *app.RequestContext) {
@@ -71,7 +73,15 @@ func (h *Handlers) HandleSkillSave(ctx context.Context, c *app.RequestContext) {
 	}
 	body.Scope = novaskills.Scope(strings.TrimSpace(string(body.Scope)))
 	body.Name = strings.TrimSpace(body.Name)
-	doc, err := h.app.SaveSkillDocument(ctx, body.Scope, body.Name, body.Content)
+	body.TargetScope = novaskills.Scope(strings.TrimSpace(string(body.TargetScope)))
+	body.TargetName = strings.TrimSpace(body.TargetName)
+	if body.TargetScope == "" {
+		body.TargetScope = body.Scope
+	}
+	if body.TargetName == "" {
+		body.TargetName = body.Name
+	}
+	doc, err := h.app.SaveSkillDocumentAs(ctx, body.Scope, body.Name, body.TargetScope, body.TargetName, body.Content)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return

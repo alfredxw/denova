@@ -58,7 +58,7 @@ Beyond writing original stories, Nova can import existing novels as a starting p
 - **Custom story memory**: maintain scenes, storylines, and custom memory fields for interactive stories so long-running play keeps durable context.
 - **Memory Compact and cache optimization**: compact long histories and reuse stable context to improve cache hits and reduce token cost during ongoing creation.
 - **Version management**: go-git powered saves, diffs, restore, timed saves, and automatic saves for large Agent outputs.
-- **Skills and Agents**: configure creative skills, prompts, tool permissions, and custom prose styles for different Agents.
+- **Writing Skills and Agents**: built-in Lite / Standard / Heavy Writing Skill presets with Standard as the default, plus custom skills, prompts, tool permissions, and prose styles for different Agents.
 - **Automation**: schedule tasks, reviews, auto-continuation, and custom Prompt workflows.
 - **Imports and presets**: import AI tavern character cards or existing novels for fan fiction, adaptation, or continuation.
 - **Product experience**: Chinese and English UI, light and dark themes, OpenAI-compatible model configuration, and Windows, macOS, and Linux support.
@@ -137,7 +137,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-You can also configure models, Agent parameters, editor options, interactive-mode behavior, version management, backend/frontend ports, and interface appearance (language, theme, fonts) from the UI settings page, which maps to `config.toml`. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. Configuration precedence:
+You can also configure models, Agent parameters, the default Writing Skill (`writing_skill_default`, default `novel-standard`), editor options, interactive-mode behavior, version management, backend/frontend ports, and interface appearance (language, theme, fonts) from the UI settings page, which maps to `config.toml`. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. To customize a built-in preset Skill, do not edit the built-in directory; Nova creates a same-name user-level override at `<nova_dir>/skills/<skill-name>/SKILL.md` by default, falling back to a workspace override only when the user-level directory is not writable. The Skills page can also rename a Skill, move it between user/workspace storage, or delete an override to restore the built-in version. The Writing Agent infers each turn's workflow from the selected Skill, while the actual writing range always comes from the user's instruction and does not use a separate `writing_scope` field. Configuration precedence:
 
 ```text
 Built-in defaults < global config.toml < user-level config < workspace-level config < environment variables

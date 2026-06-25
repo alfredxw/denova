@@ -58,7 +58,7 @@ Nova 不是“输入提示词，生成一段正文”的一次性工具，而是
 - **自定义故事记忆**：支持为互动故事维护场景、故事线和自定义记忆字段，让长期游玩持续沉淀上下文。
 - **Memory Compact 与缓存优化**：压缩长历史并稳定复用上下文，提高缓存命中率，降低持续创作的 token 成本。
 - **版本管理**：基于 go-git 保存、Diff、恢复、定时保存，并在 Agent 大量输出时自动保存。
-- **Skills 与 Agents**：给不同 Agent 配置创作技能、提示词、可用工具和自定义文风。
+- **写作 Skills 与 Agents**：内置 Lite / Standard / Heavy 写作 Skill Preset，默认 Standard；也可给不同 Agent 配置自定义技能、提示词、可用工具和文风。
 - **自动化**：支持定时任务、review、自动续写和自定义 Prompt 工作流。
 - **导入与预设**：可导入 AI 酒馆角色卡，也可导入既有小说用于同人、改编或续写。
 - **产品化体验**：中英文界面、浅色/深色主题、OpenAI 兼容模型配置和 Windows/macOS/Linux 全平台。
@@ -137,7 +137,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-也可以在UI设置页（对应 `config.toml`）中配置模型、Agent 参数、编辑器、互动模式、版本管理、前后端端口和界面外观（语言、主题、字体）。`theme` 支持 `dark`（默认）、`light` 和 `system`，可保存到用户级或工作区级配置。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。配置优先级：
+也可以在UI设置页（对应 `config.toml`）中配置模型、Agent 参数、默认写作 Skill（`writing_skill_default`，默认 `novel-standard`）、编辑器、互动模式、版本管理、前后端端口和界面外观（语言、主题、字体）。`theme` 支持 `dark`（默认）、`light` 和 `system`，可保存到用户级或工作区级配置。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。需要修改内置预制 Skill 时，不编辑内置目录，默认在 `<nova_dir>/skills/<skill-name>/SKILL.md` 创建同名用户级覆盖；只有用户级目录不可写时才退回工作区覆盖。Skills 页也可修改 Skill 名称和保存位置，或删除覆盖版本以恢复内置版本。创作 Agent 每轮会从选中的 Skill 推断写作流程，写作范围始终从用户指令判断，不使用单独的 `writing_scope` 字段。配置优先级：
 
 ```text
 内置默认值 < 全局 config.toml < 用户级配置 < 工作区级配置 < 环境变量

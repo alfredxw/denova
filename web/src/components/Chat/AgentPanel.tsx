@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Bot, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
+import { Activity, Bot, Check, FileText, Loader2, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { Teller } from '@/features/interactive/types'
 import { removeChatContextCompaction } from '@/lib/api'
 import type { ChapterSummary, ChatMessage, ContextAnalysis, SessionSummary, TextSelection } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
+import { BUILTIN_WRITING_SKILLS, DEFAULT_WRITING_SKILL, useWritingSkillOptions, type WritingSkillOption } from '@/hooks/useWritingSkillOptions'
 import { MessageList } from './MessageList'
 import { InputArea } from './InputArea'
 import { SessionManagementPanel } from './SessionManagementPanel'
@@ -14,6 +15,13 @@ import { SubAgentSessionPanel } from './SubAgentSessionPanel'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './ContextAnalysisDialog'
 import { subAgentSessionKey } from './subagent-session'
 import type { ReferencePickerItem } from './FileReferencePicker'
+import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from '@/components/ui/dropdown-menu'
 
 type AgentPanelView = 'chat' | 'sessions' | 'traces'
 
@@ -40,8 +48,8 @@ interface AgentPanelProps {
   onSwitchSession: (id: string) => void | Promise<void>
   onRenameSession: (id: string, title: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
-  onSend: (message: string) => void
-  onAnalyzeContext: (message: string) => Promise<ContextAnalysis>
+  onSend: (message: string, options?: { writingSkill?: string }) => void
+  onAnalyzeContext: (message: string, options?: { writingSkill?: string }) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
@@ -94,7 +102,9 @@ export function AgentPanel({
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
   const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
   const [ideTellerId, setIdeTellerId] = useState('classic')
+  const [writingSkill, setWritingSkill] = useState(DEFAULT_WRITING_SKILL)
   const skillCommands = useSkillCommands({ agentKey: 'ide', workspace, fallbackEnabled: true })
+  const writingSkillOptions = useWritingSkillOptions(workspace)
   const activeSession = sessions.find((session) => session.id === activeSessionId) ||
     sessions.find((session) => session.active) ||
     sessions[0]
@@ -118,12 +128,28 @@ export function AgentPanel({
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
   }, [t])
 
+  useEffect(() => {
+    let cancelled = false
+    if (!workspace) {
+      setWritingSkill(DEFAULT_WRITING_SKILL)
+      return () => { cancelled = true }
+    }
+    fetchSettings()
+      .then((settings) => {
+        if (!cancelled) setWritingSkill(settings.effective.writing_skill_default || DEFAULT_WRITING_SKILL)
+      })
+      .catch(() => {
+        if (!cancelled) setWritingSkill(DEFAULT_WRITING_SKILL)
+      })
+    return () => { cancelled = true }
+  }, [workspace])
+
   const handleAnalyzeContext = async (message: string) => {
     setContextAnalysisLoading(true)
     setContextAnalysisError(null)
     setContextAnalysis(null)
     try {
-      setContextAnalysis(await onAnalyzeContext(message))
+      setContextAnalysis(await onAnalyzeContext(message, { writingSkill }))
     } catch (e) {
       setContextAnalysis(null)
       setContextAnalysisError((e as Error).message)
@@ -145,6 +171,10 @@ export function AgentPanel({
   const removeContextCompaction = async () => {
     await removeChatContextCompaction()
     await handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
+  }
+
+  const sendWithWritingSkill = (message: string) => {
+    onSend(message, { writingSkill })
   }
 
   return (
@@ -219,7 +249,7 @@ export function AgentPanel({
                 <AgentQuickActions
                   chapter={currentChapter}
                   selectedFile={selectedFile}
-                  onSend={onSend}
+                  onSend={sendWithWritingSkill}
                 />
               )}
               <MessageList
@@ -232,7 +262,7 @@ export function AgentPanel({
                 activeSubAgentSessionKey={activeSubAgentSessionKey}
               />
               <InputArea
-                onSend={onSend}
+                onSend={sendWithWritingSkill}
                 onStop={onStop}
                 disabled={isStreaming}
                 draftKey={`ide-agent:${workspace || 'global'}`}
@@ -257,6 +287,7 @@ export function AgentPanel({
                 tokenUsageMessages={tokenUsageMessages}
                 agentKey="ide"
                 workspace={workspace}
+                writingSkillControl={<WritingSkillSelector workspace={workspace} value={writingSkill} options={writingSkillOptions} onValueChange={setWritingSkill} />}
                 floating
               />
             </div>
@@ -371,6 +402,99 @@ function IdeTellerSelector({ workspace, tellers, onValueChange }: { workspace: s
       </select>
     </label>
   )
+}
+
+function WritingSkillSelector({ workspace, value, options, onValueChange }: { workspace: string; value: string; options: WritingSkillOption[]; onValueChange: (value: string) => void }) {
+  const { t } = useTranslation()
+  const [savingSkill, setSavingSkill] = useState<string | null>(null)
+
+  const normalizedOptions = useMemo(() => {
+    if (options.some((option) => option.name === value)) return options
+    return [fallbackWritingSkillOption(value || DEFAULT_WRITING_SKILL), ...options]
+  }, [options, value])
+  const selected = normalizedOptions.find((option) => option.name === value) || normalizedOptions.find((option) => option.name === DEFAULT_WRITING_SKILL)
+  const selectedSource = selected?.scope || 'builtin'
+  const currentLabel = selected ? `${writingSkillLabel(selected, t)} · ${t(`chat.writingSkill.source.${selectedSource}`)}` : value
+
+  const handleChange = async (next: string) => {
+    if (!workspace || next === value || savingSkill) return
+    const previous = value
+    onValueChange(next)
+    setSavingSkill(next)
+    try {
+      const settings = await fetchSettings()
+      await updateWorkspaceSettings({ ...settings.workspace, writing_skill_default: next })
+      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+    } catch (e) {
+      console.warn('保存写作 Skill 失败', e)
+      onValueChange(previous)
+    } finally {
+      setSavingSkill(null)
+    }
+  }
+
+  return (
+    <>
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger
+          disabled={!workspace || normalizedOptions.length === 0}
+          className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+          title={selected?.path || t('chat.writingSkillTitle')}
+          aria-label={t('chat.writingSkill')}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span className="min-w-0 flex-1">{t('chat.writingSkill')}</span>
+          <span className="max-w-36 truncate text-[10px] text-[var(--nova-text-faint)]">{currentLabel}</span>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="w-72 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+          {normalizedOptions.map((option) => {
+            const label = writingSkillLabel(option, t)
+            const selectedOption = option.name === selected?.name
+            return (
+              <DropdownMenuItem
+                key={`${option.scope}:${option.name}`}
+                disabled={Boolean(savingSkill)}
+                onSelect={(event) => {
+                  event.preventDefault()
+                  void handleChange(option.name)
+                }}
+                onClick={() => void handleChange(option.name)}
+                className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+              >
+                {savingSkill === option.name ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className={`h-3.5 w-3.5 ${selectedOption ? 'opacity-100' : 'opacity-0'}`} />}
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                <span className="text-[10px] text-[var(--nova-text-faint)]">{t(`chat.writingSkill.source.${option.scope}`)}</span>
+              </DropdownMenuItem>
+            )
+          })}
+          {normalizedOptions.length === 0 && (
+            <DropdownMenuItem disabled className="text-xs">
+              {t('chat.writingSkill.empty')}
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+      <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+    </>
+  )
+}
+
+function fallbackWritingSkillOption(name: string): WritingSkillOption {
+  const scope = BUILTIN_WRITING_SKILLS.includes(name as typeof BUILTIN_WRITING_SKILLS[number]) ? 'builtin' : 'workspace'
+  return { name, description: '', scope, path: '', active: true, agent: 'ide' }
+}
+
+function writingSkillLabel(option: Pick<WritingSkillOption, 'name'>, t: ReturnType<typeof useTranslation>['t']) {
+  switch (option.name) {
+    case 'novel-lite':
+      return t('chat.writingSkill.preset.lite')
+    case 'novel-standard':
+      return t('chat.writingSkill.preset.standard')
+    case 'novel-heavy':
+      return t('chat.writingSkill.preset.heavy')
+    default:
+      return option.name
+  }
 }
 
 function AgentQuickActions({

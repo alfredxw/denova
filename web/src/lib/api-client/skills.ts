@@ -1,6 +1,11 @@
 import { jsonHeaders, requestJSON } from './client'
 import type { SkillDocument, SkillScope, SkillSnapshot } from './types'
 
+export interface SkillSaveTarget {
+  scope: SkillScope
+  name: string
+}
+
 export async function getSkills(): Promise<SkillSnapshot> {
   const data = await requestJSON<SkillSnapshot>('/api/skills')
   return {
@@ -22,11 +27,17 @@ export async function createSkill(scope: SkillScope, name: string, description =
   })
 }
 
-export async function saveSkillDocument(scope: SkillScope, name: string, content: string): Promise<SkillDocument> {
+export async function saveSkillDocument(scope: SkillScope, name: string, content: string, target?: SkillSaveTarget): Promise<SkillDocument> {
   return requestJSON('/api/skills/document', {
     method: 'PUT',
     headers: jsonHeaders,
-    body: JSON.stringify({ scope, name, content }),
+    body: JSON.stringify({
+      scope,
+      name,
+      content,
+      target_scope: target?.scope,
+      target_name: target?.name,
+    }),
   })
 }
 

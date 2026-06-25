@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -86,6 +86,7 @@ interface InputAreaProps {
   tokenUsageMessages?: ChatMessage[]
   agentKey?: VisibleAgentKey
   workspace?: string
+  writingSkillControl?: ReactNode
   floating?: boolean
 }
 
@@ -120,6 +121,7 @@ export function InputArea({
   tokenUsageMessages = [],
   agentKey,
   workspace,
+  writingSkillControl,
   floating = false,
 }: InputAreaProps) {
   const { t } = useTranslation()
@@ -520,7 +522,7 @@ export function InputArea({
                   type="button"
                   size="icon-sm"
                   className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                  disabled={!onContextAnalyze && tokenUsageMessages.length === 0 && !(agentKey && workspace)}
+                  disabled={!writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0 && !(agentKey && workspace)}
                   aria-label={t('chat.input.actions')}
                   title={t('chat.input.actions')}
                 >
@@ -528,6 +530,7 @@ export function InputArea({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                {writingSkillControl}
                 <ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />
                 <DropdownMenuItem
                   onSelect={() => setTokenUsageOpen(true)}

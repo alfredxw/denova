@@ -5,6 +5,7 @@ const settings = {
   'settings.agent.modelMaxRetries': '模型重试次数',
   'settings.agent.idleTimeoutSeconds': '空闲超时（秒）',
   'settings.agent.planModeDefault': '默认 PlanMode',
+  'settings.agent.writingSkillDefault': '默认写作 Skill',
   'settings.access.allowLan': '允许局域网访问',
   'settings.access.localUrl': '本机访问地址',
   'settings.access.lanUrl': '其他设备访问地址',

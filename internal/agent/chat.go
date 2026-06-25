@@ -34,11 +34,15 @@ type ChatRequest struct {
 	StyleScenes    []string           `json:"style_scenes"`
 	Selections     []TextSelectionRef `json:"selections"`
 	PlanMode       bool               `json:"plan_mode"`
+	WritingSkill   string             `json:"writing_skill"`
 	Locale         string             `json:"-"`
 
 	// StyleRules 由后端按当前导演配置注入（场景 → 风格内容）。
 	// StyleScenes 非空时只注入用户本轮通过 # 指定的场景；为空时作为场景化建议参与本轮上下文。
 	StyleRules []StyleRule `json:"-"`
+
+	// WritingSkillContext 由后端解析用户本轮选择的有效 Writing Skill 后注入。
+	WritingSkillContext *WritingSkillContext `json:"-"`
 }
 
 // StyleRule 是 prompts.StyleRule 的镜像，避免调用方直接依赖 prompts 包。
@@ -197,6 +201,7 @@ func (r *Runtime) Run(
 		"style_scenes":    len(req.StyleScenes),
 		"selections":      len(req.Selections),
 		"plan_mode":       req.PlanMode,
+		"writing_skill":   req.WritingSkill,
 		"checkpoint_id":   checkpointID,
 	}); err != nil {
 		runLogger.Warn("run_ledger_start_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
@@ -270,6 +275,7 @@ func (r *Runtime) Run(
 		slog.Int("style_rules", len(req.StyleRules)),
 		slog.String("selections", selectionListSummary(req.Selections)),
 		slog.Bool("plan_mode", req.PlanMode),
+		slog.String("writing_skill", req.WritingSkill),
 		slog.Bool("resumed", resumeInterruption != nil),
 	)
 	runLogger.Info("context_sources", slog.String("summary", contextLog.String()), slog.Any("sources", contextLog.Audit()))
@@ -288,7 +294,7 @@ func (r *Runtime) Run(
 	events := runner.Run(runCtx, history, runOptions...)
 	var fullContent strings.Builder
 	var fullThinking strings.Builder
-	runLogger.Info("run_started", slog.Int("history", len(history)), slog.Int("message_len", len(req.Message)), slog.Int("agent_message_len", len(agentMessage)), slog.Bool("plan_mode", req.PlanMode), slog.Int("style_scenes", len(req.StyleScenes)), slog.Int("style_rules", len(req.StyleRules)))
+	runLogger.Info("run_started", slog.Int("history", len(history)), slog.Int("message_len", len(req.Message)), slog.Int("agent_message_len", len(agentMessage)), slog.Bool("plan_mode", req.PlanMode), slog.String("writing_skill", req.WritingSkill), slog.Int("style_scenes", len(req.StyleScenes)), slog.Int("style_rules", len(req.StyleRules)))
 
 	for {
 		if err := ctx.Err(); err != nil {
