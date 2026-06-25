@@ -58,8 +58,8 @@ describe('createInteractiveNarrativeFilter', () => {
     expect(visible).toBe('旧格式正文')
   })
 
-  it('strips minimax reasoning prelude with orphan </think> tag', () => {
-    // MiniMax：思考前言无 <think> 开始标签，仅以 </think> 收尾，随后才是 <NARRATIVE>。
+  it('strips reasoning prelude with orphan </think> tag', () => {
+    // 部分 provider：思考前言无 <think> 开始标签，仅以 </think> 收尾，随后才是 <NARRATIVE>。
     const visible = collect([
       'tags\n\nSince this is a new story.',
       'Let me write the opening:</think>\n\n<NARRATIVE>\n意识像被冷水浇醒。',
@@ -86,7 +86,7 @@ describe('createInteractiveNarrativeFilter', () => {
 })
 
 describe('sanitizeStoredNarrative', () => {
-  it('extracts narrative body from leaked minimax storage', () => {
+  it('extracts narrative body from leaked storage with orphan </think>', () => {
     const leaked = 'tags\n\nSince this is a new story.\nLet me write:</think>\n\n<NARRATIVE>\n意识像被冷水浇醒。\n陆沉睁开眼。'
     expect(sanitizeStoredNarrative(leaked)).toBe('意识像被冷水浇醒。\n陆沉睁开眼。')
   })

@@ -22,7 +22,7 @@ export interface NarrativeChunk {
 /**
  * 互动叙事流式过滤器：只放行 <NARRATIVE> 内的正文，隐藏思考、状态、热状态。
  *
- * 兼容 MiniMax 等模型的「思考前言无 <think> 开始标签、仅以 </think> 收尾」的输出：
+ * 兼容部分 provider 模型的「思考前言无 <think> 开始标签、仅以 </think> 收尾」的输出：
  * 见到 <think> 或孤立 </think> 时，会把此前误显示的前言通过 reset 信号清除。
  */
 export function createInteractiveNarrativeFilter() {
@@ -83,7 +83,7 @@ export function createInteractiveNarrativeFilter() {
         continue
       }
       if (startsWithFold(buffer, THINK_END)) {
-        // MiniMax 模式：思考前言无 <think> 开始标签，到这里才闭合。
+        // 思考前言无 <think> 开始标签，到这里才闭合。
         buffer = trimStart(buffer.slice(THINK_END.length))
         requestReset()
         continue

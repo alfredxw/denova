@@ -1,9 +1,9 @@
 // Package providercompat provides model-output compatibility polyfills.
 //
-// Some OpenAI-compatible providers (e.g. MiniMax) don't return standard
-// tool_calls or wrap thinking in <think> tags inside content. This package
-// offers a single entry point — Wrap — that inspects the model config and
-// transparently adapts the chat model when the provider needs it. Main code
+// Some OpenAI-compatible providers don't return standard tool_calls or wrap
+// thinking in <think> tags inside content. This package offers a single
+// entry point — Wrap — that inspects the model config and transparently
+// adapts the chat model when the provider needs it. Main code
 // (e.g. internal/agent) should not branch on provider names; instead it
 // just calls Wrap(cm, cfg) and forgets about it.
 package providercompat
@@ -34,14 +34,14 @@ func Wrap(cm model.ToolCallingChatModel, cfg openai.ChatModelConfig) model.ToolC
 }
 
 // ExtraRequestFields returns provider-specific fields that should be merged
-// into the request body (e.g. reasoning_split for MiniMax). Called once when
+// into the request body (e.g. reasoning_split to ask the API to return
+// thinking via the standard reasoning_content field). Called once when
 // building the chat model config, before any request is sent.
 func ExtraRequestFields(cfg openai.ChatModelConfig) map[string]any {
 	out := map[string]any{}
-	if isMinimax(cfg) {
-		// MiniMax-M3 默认把思考写入 content 的 <think> 标签；reasoning_split=true 让其改用
-		// 标准 reasoning_content 字段返回，从根本上避免 <think> 泄漏到正文
-		// （见 MiniMax OpenAI 兼容文档）。
+	if needsRepair(cfg) {
+		// Ask the provider to return thinking via the standard
+		// reasoning_content field, instead of embedding it in content.
 		out["reasoning_split"] = true
 	}
 	return out
@@ -55,7 +55,7 @@ type polyfill interface {
 // Order matters: later polyfills see output of earlier ones.
 func detect(cfg openai.ChatModelConfig) []polyfill {
 	var out []polyfill
-	if isMinimax(cfg) {
+	if needsRepair(cfg) {
 		// Both polyfills needed: tool-call text-to-struct, then think-tag cleanup
 		// (in case reasoning_split is ignored or falls back to inline tags).
 		out = append(out, toolCallTextPolyfill{})
@@ -71,10 +71,22 @@ func chain(cm model.ToolCallingChatModel, ps []polyfill) model.ToolCallingChatMo
 	return cm
 }
 
-// isMinimax checks the base URL or model name. Cheap, called once per Wrap.
-func isMinimax(cfg openai.ChatModelConfig) bool {
+// needsRepair returns true when the provider's OpenAI-compatible endpoint
+// does not return standard tool_calls or wraps thinking in <think> tags.
+// Detection is by base URL or model name matching a known non-standard
+// marker. "minimax" is a known host keyword of an OpenAI-compatible
+// provider that exhibits these quirks; "non-standard" and
+// "incompatible" are generic markers users can opt into via their
+// base URL or model name. Cheap, called once per Wrap.
+func needsRepair(cfg openai.ChatModelConfig) bool {
 	base := strings.ToLower(cfg.BaseURL)
-	return strings.Contains(base, "minimax") || strings.Contains(strings.ToLower(cfg.Model), "minimax")
+	model := strings.ToLower(cfg.Model)
+	for _, marker := range []string{"minimax", "non-standard", "incompatible"} {
+		if strings.Contains(base, marker) || strings.Contains(model, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // -----------------------------------------------------------------------------

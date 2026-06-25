@@ -1115,7 +1115,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     })
   }
 
-  // 思考前言曾被误当正文显示时（MiniMax 孤立 </think>），丢弃这条流式 assistant 消息，正文随后另起。
+  // 思考前言曾被误当正文显示时（孤立 </think>），丢弃这条流式 assistant 消息，正文随后另起。
   function resetAssistantMessage() {
     setStageLiveMessages((prev) => {
       const last = prev[prev.length - 1]

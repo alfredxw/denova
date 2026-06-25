@@ -576,13 +576,13 @@ function StreamingMarkdown({ content, highlightDialogue }: { content: string; hi
 
 function sanitizeThinkTags(text: string): string {
   let result = text
-  // MiniMax 内部特殊 token 与文本形式的工具调用残留（兜底历史数据；新对话已由后端解析执行）
+  // 部分 provider 返回的内部特殊 token 与文本形式的工具调用残留（兜底历史数据；新对话已由后端解析执行）
   result = result.replace(/\]<\]minimax\[>\[/g, '')
   result = result.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
   result = result.replace(/<invoke\s+name="[^"]*"[\s\S]*?<\/invoke>/gi, '')
   // 配对或未闭合的 <think>...</think>
   result = result.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
-  // 无 <think> 开始标签、仅以 </think> 收尾的思考前言（如 MiniMax）：删除开头直到首个 </think>
+  // 无 <think> 开始标签、仅以 </think> 收尾的思考前言：删除开头直到首个 </think>
   const close = result.search(/<\s*\/\s*think\s*>/i)
   if (close >= 0) {
     result = result.slice(close).replace(/<\s*\/\s*think\s*>/i, '')

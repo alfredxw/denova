@@ -29,15 +29,22 @@ func (f *fakeChatModel) WithTools(_ []*schema.ToolInfo) (model.ToolCallingChatMo
 	return f, nil
 }
 
-func TestExtraRequestFields_MiniMax(t *testing.T) {
-	cfg := openai.ChatModelConfig{BaseURL: "https://minimaxi.com/v1/", Model: "MiniMax-M3"}
-	got := ExtraRequestFields(cfg)
+// nonStandardProviderCfg 模拟一个走 OpenAI 兼容协议、但输出格式不标准的
+// provider（可能是本地 LM、特定第三方、或者旧版本）。任何字段或输出
+// 与 OpenAI 官方不完全一致的 provider 都会触发 polyfill。
+var nonStandardProviderCfg = openai.ChatModelConfig{
+	BaseURL: "https://example.invalid/v1/",
+	Model:   "non-standard-model-v1",
+}
+
+func TestExtraRequestFields_NonStandardProvider(t *testing.T) {
+	got := ExtraRequestFields(nonStandardProviderCfg)
 	if v, ok := got["reasoning_split"]; !ok || v != true {
-		t.Fatalf("expected reasoning_split=true for MiniMax, got %v", got)
+		t.Fatalf("expected reasoning_split=true for non-standard provider, got %v", got)
 	}
 }
 
-func TestExtraRequestFields_OtherProvider(t *testing.T) {
+func TestExtraRequestFields_OpenAIProvider(t *testing.T) {
 	for _, cfg := range []openai.ChatModelConfig{
 		{BaseURL: "https://api.openai.com/v1", Model: "gpt-4o"},
 		{BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat"},
@@ -48,16 +55,14 @@ func TestExtraRequestFields_OtherProvider(t *testing.T) {
 	}
 }
 
-func TestWrap_MiniMax_RepairsToolCallAndThink(t *testing.T) {
-	// 复刻真实 MiniMax-M3 输出：think + 文本工具调用 + 内部特殊 token
+func TestWrap_NonStandardProvider_RepairsToolCallAndThink(t *testing.T) {
+	// 复刻一个返回非标准输出的模型：think + 文本工具调用 + 内部特殊 token
 	content := "<think>Let me load the skill.</think>\n\n" +
 		"加载 rewrite skill 的具体流程。<tool_call>\n" +
 		"<invoke name=\"skill\"><skill>rewrite</skill></invoke>\n" +
 		"</tool_call>"
 	inner := &fakeChatModel{fixedMsg: &schema.Message{Role: schema.Assistant, Content: content}}
-	cfg := openai.ChatModelConfig{BaseURL: "https://minimaxi.com/v1/", Model: "MiniMax-M3"}
-
-	wrapped := Wrap(inner, cfg)
+	wrapped := Wrap(inner, nonStandardProviderCfg)
 	out, err := wrapped.Generate(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -79,7 +84,7 @@ func TestWrap_MiniMax_RepairsToolCallAndThink(t *testing.T) {
 	}
 }
 
-func TestWrap_MiniMax_PreservesNativeToolCalls(t *testing.T) {
+func TestWrap_NonStandardProvider_PreservesNativeToolCalls(t *testing.T) {
 	idx := 0
 	inner := &fakeChatModel{fixedMsg: &schema.Message{
 		Role:    schema.Assistant,
@@ -89,8 +94,7 @@ func TestWrap_MiniMax_PreservesNativeToolCalls(t *testing.T) {
 			Function: schema.FunctionCall{Name: "read_file", Arguments: "{}"},
 		}},
 	}}
-	cfg := openai.ChatModelConfig{BaseURL: "https://minimaxi.com/v1/", Model: "MiniMax-M3"}
-	out, err := Wrap(inner, cfg).Generate(context.Background(), nil)
+	out, err := Wrap(inner, nonStandardProviderCfg).Generate(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +103,7 @@ func TestWrap_MiniMax_PreservesNativeToolCalls(t *testing.T) {
 	}
 }
 
-func TestWrap_OtherProvider_PassThrough(t *testing.T) {
+func TestWrap_OpenAIProvider_PassThrough(t *testing.T) {
 	inner := &fakeChatModel{fixedMsg: &schema.Message{Role: schema.Assistant, Content: "raw <think>oops</think> done"}}
 	cfg := openai.ChatModelConfig{BaseURL: "https://api.openai.com/v1", Model: "gpt-4o"}
 	// OpenAI 端点：原样返回，think 标签不应被剥离（信任它走 reasoning_content 字段）
