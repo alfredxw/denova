@@ -13,6 +13,7 @@ import (
 // Settings 是用户可见且可在三层配置中持久化的字段。
 // 指针类型用于区分 "未设置"（继承上层）与 "显式置零"。
 type Settings struct {
+
 	// 模型
 	OpenAIAPIKey              string                       `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
 	OpenAIBaseURL             string                       `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`

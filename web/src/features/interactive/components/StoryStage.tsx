@@ -24,7 +24,7 @@ import type { ChatMessage, ContextAnalysis } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveHotChoices, removeInteractiveContextCompaction, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
-import { createInteractiveNarrativeFilter } from '../stream-parser'
+import { createInteractiveNarrativeFilter, sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
@@ -305,7 +305,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         id: `${turn.id}-assistant`,
         turn_id: turn.id,
         role: 'assistant',
-        content: turn.narrative,
+        content: sanitizeStoredNarrative(turn.narrative),
         turn_versions: turn.versions,
         turn_version_index: turn.version_idx,
       })
@@ -483,10 +483,11 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               setStageActivityContent('')
               break
             }
-            const visible = narrativeFilter.push(data.content || '')
-            if (visible) {
+            const { text, reset } = narrativeFilter.push(data.content || '')
+            if (reset) resetAssistantMessage()
+            if (text) {
               collapseNonNarrativeMessages()
-              appendAssistantMessage(visible)
+              appendAssistantMessage(text)
             }
             setStageActivityContent('')
             break
@@ -545,17 +546,19 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             break
           }
           case 'done': {
-            const visible = narrativeFilter.flush()
+            const { text, reset } = narrativeFilter.flush()
+            if (reset) resetAssistantMessage()
             collapseNonNarrativeMessages()
-            if (visible) appendAssistantMessage(visible)
+            if (text) appendAssistantMessage(text)
             finishLiveMessages()
             setStageActivityContent(t('storyStage.activity.done'))
             break
           }
           case 'aborted': {
-            const visible = narrativeFilter.flush()
+            const { text, reset } = narrativeFilter.flush()
+            if (reset) resetAssistantMessage()
             collapseNonNarrativeMessages()
-            if (visible) appendAssistantMessage(visible)
+            if (text) appendAssistantMessage(text)
             finishLiveMessages()
             setStageActivityContent(t('storyStage.activity.aborted'))
             break
