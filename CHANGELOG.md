@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- WebUI：允许 pnpm 在安装时执行 `msw` 的构建脚本，避免高版本 pnpm 首次安装后因 `ERR_PNPM_IGNORED_BUILDS` 导致前端启动失败。
 - Agent：修复自定义 SubAgent 在互动故事父 Agent 下可能绕过写文件拦截的问题，并让配置管理 SubAgent 的专属读写工具遵守自身工具权限限制。
 - WebUI：修复浅色主题下 SubAgent 删除确认弹窗危险按钮对比度不足的问题，并将基础弹窗宽度改为随视口自适应，避免自定义 SubAgent 编辑等弹窗过窄。
 - Agent 模型：所有 Agent 请求不再主动设置 `max_tokens` 输出上限，避免长章节通过 `write_file` 写入时工具参数在正文中途被截断并报 JSON EOF。
