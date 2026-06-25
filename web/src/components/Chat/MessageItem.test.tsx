@@ -179,6 +179,101 @@ describe('MessageItem', () => {
     expect(screen.getByText('第一项')).toBeInTheDocument()
   })
 
+  it('task 工具卡片展示委派目标和结果', async () => {
+    const user = userEvent.setup()
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'task',
+          name: 'task',
+          args: '{"subagent_type":"researcher","description":"查找线索"}',
+          status: 'success',
+          result: '找到三条线索',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('委派任务')).toBeInTheDocument()
+    expect(screen.queryByText('task')).not.toBeInTheDocument()
+    expect(screen.getByText('委派给 researcher')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '详情' }))
+    expect(screen.getByText('委派结果')).toBeInTheDocument()
+    expect(screen.getAllByText('找到三条线索').length).toBeGreaterThan(0)
+  })
+
+  it('SubAgent assistant 输出默认显示紧凑小窗并可行内展开收起', async () => {
+    const user = userEvent.setup()
+    const longContent = `# 调研结果\n\n${'这是用于折叠预览的前置内容。'.repeat(20)}\n\n最终隐藏结论`
+
+    render(
+      <MessageItem
+        message={{
+          role: 'assistant',
+          content: longContent,
+          agent_name: 'researcher',
+          subagent: true,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('researcher 输出')).toBeInTheDocument()
+    expect(screen.getByText('输出完成')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /researcher 输出/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('最终隐藏结论')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /researcher 输出/ }))
+    expect(screen.getByRole('button', { name: /researcher 输出/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('最终隐藏结论')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /researcher 输出/ }))
+    expect(screen.getByRole('button', { name: /researcher 输出/ })).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('最终隐藏结论')).not.toBeInTheDocument()
+  })
+
+  it('SubAgent assistant 流式输出显示运行状态和预览', () => {
+    render(
+      <MessageItem
+        message={{
+          role: 'assistant',
+          content: '实时片段',
+          agent_name: 'researcher',
+          subagent: true,
+          streaming: true,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('researcher 输出')).toBeInTheDocument()
+    expect(screen.getByText('正在流式输出')).toBeInTheDocument()
+    expect(screen.getByText('实时片段')).toBeInTheDocument()
+  })
+
+  it('SubAgent assistant 有详情回调时只打开子会话详情', async () => {
+    const user = userEvent.setup()
+    const handleOpen = vi.fn()
+
+    const longContent = `${'详情预览。'.repeat(80)}\n\n隐藏的完整结论`
+    render(
+      <MessageItem
+        message={{
+          role: 'assistant',
+          content: longContent,
+          agent_name: 'researcher',
+          subagent: true,
+          subagent_session_id: 'run-1-subagent-01-researcher',
+        }}
+        onOpenSubAgentSession={handleOpen}
+      />,
+    )
+
+    expect(screen.getByText('打开详情')).toBeInTheDocument()
+    expect(screen.queryByText('隐藏的完整结论')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /researcher 输出/ }))
+    expect(handleOpen).toHaveBeenCalledWith(expect.objectContaining({ subagent_session_id: 'run-1-subagent-01-researcher' }))
+    expect(screen.queryByText('隐藏的完整结论')).not.toBeInTheDocument()
+  })
+
   it('上下文压缩消息渲染为单个带 Loading 的简洁小窗', () => {
     render(
       <MessageItem

@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
@@ -19,6 +21,14 @@ func writeError(c *app.RequestContext, code int, msg string) {
 
 func requestLocalizer(c *app.RequestContext) i18n.Localizer {
 	return i18n.FromHeader(string(c.Request.Header.Peek("X-Nova-Locale")))
+}
+
+func requestLocale(c *app.RequestContext) string {
+	header := strings.TrimSpace(string(c.Request.Header.Peek("X-Nova-Locale")))
+	if header == "" {
+		return ""
+	}
+	return i18n.FromHeader(header).Locale()
 }
 
 func writeErrorKey(c *app.RequestContext, code int, key string, args ...any) {

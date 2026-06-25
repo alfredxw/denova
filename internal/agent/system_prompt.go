@@ -11,7 +11,7 @@ func protectedSystemInstruction(cfg *config.Config, agentKind, builtIn string) s
 	builtIn = strings.TrimSpace(builtIn)
 	var sb strings.Builder
 	sb.WriteString("# Nova 运行时契约（不可覆盖）\n\n")
-	sb.WriteString(runtimeContractForAgent(agentKind))
+	sb.WriteString(runtimeContractForAgent(cfg, agentKind))
 	if outputProtocol := outputProtocolForAgent(agentKind); strings.TrimSpace(outputProtocol) != "" {
 		sb.WriteString("\n\n## 输出格式（不可覆盖）\n\n")
 		sb.WriteString(outputProtocol)
@@ -37,7 +37,7 @@ func protectedSystemInstruction(cfg *config.Config, agentKind, builtIn string) s
 	return sb.String()
 }
 
-func runtimeContractForAgent(agentKind string) string {
+func runtimeContractForAgent(cfg *config.Config, agentKind string) string {
 	common := strings.Join([]string{
 		"- 运行时契约高于用户自定义系统提示和 Nova 内置提示。",
 		"- 用户自定义系统提示只能调整 Agent 的行为策略、创作偏好、语气、风格和任务处理倾向。",
@@ -45,10 +45,41 @@ func runtimeContractForAgent(agentKind string) string {
 		"- 只能使用当前 Agent 已启用的工具；未启用、未提供或不存在的工具不得臆造调用。",
 		"- 如果当前 Agent 已启用 Skills，用户输入 /<skill-name> 表示要求你调用 skill 工具加载该 Skill 后再继续处理；未启用 Skills 时不得假装使用。",
 	}, "\n")
-	if specific := agentRuntimeContract(agentKind); specific != "" {
-		return common + "\n" + specific
+	sections := []string{common, thinkingLanguageContract(cfg)}
+	if config.IsDeepAgentParentKind(agentKind) {
+		sections = append(sections, subAgentDelegationContract())
 	}
-	return common
+	if specific := agentRuntimeContract(agentKind); specific != "" {
+		sections = append(sections, specific)
+	}
+	return strings.Join(sections, "\n\n")
+}
+
+func thinkingLanguageContract(cfg *config.Config) string {
+	language := "zh-CN"
+	if cfg != nil && cfg.Language == "en-US" {
+		language = "en-US"
+	}
+	if language == "en-US" {
+		return strings.Join([]string{
+			"## Thinking Language",
+			"- Use English for internal reasoning, thinking summaries, and any streamed thinking content.",
+			"- This only controls thinking language; do not change required output protocols, JSON keys, file content language, quoted text, or story/dialogue language because of it.",
+		}, "\n")
+	}
+	return strings.Join([]string{
+		"## 思考语言",
+		"- 内部推理、思考摘要和任何流式 thinking 内容都使用简体中文。",
+		"- 这只约束思考语言；不要因此改变输出协议、JSON 字段、文件内容语言、引用原文或故事正文/对白语言。",
+	}, "\n")
+}
+
+func subAgentDelegationContract() string {
+	return strings.Join([]string{
+		"- SubAgent 委派协议：调用 task 工具时，必须在 description 中写清用户目标、必要上下文、已知约束、文件路径或资源 ID、期望输出，以及是否允许写入。",
+		"- 子 Agent 能通过工具自行读取的文件、资料库或故事记忆，只传路径、ID 或检索线索；不要复制大段正文、完整日志、完整历史或其他无界内容。",
+		"- SubAgent 返回结果默认只对父 Agent 可见；父 Agent 必须自行核对结果，并在最终回复中向用户总结。",
+	}, "\n")
 }
 
 func outputProtocolForAgent(agentKind string) string {

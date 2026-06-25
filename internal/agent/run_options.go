@@ -17,6 +17,7 @@ const (
 // RunOptions identifies one Agent run across runtime, trace, and UI surfaces.
 type RunOptions struct {
 	AgentKind           string
+	RootAgentName       string
 	TaskID              string
 	SessionID           string
 	Workspace           string
@@ -31,6 +32,10 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 	if o.AgentKind == "" {
 		o.AgentKind = AgentKindUnknown
 	}
+	o.RootAgentName = strings.TrimSpace(o.RootAgentName)
+	if o.RootAgentName == "" {
+		o.RootAgentName = rootAgentNameForKind(o.AgentKind)
+	}
 	o.TaskID = strings.TrimSpace(o.TaskID)
 	o.SessionID = strings.TrimSpace(o.SessionID)
 	o.Workspace = strings.TrimSpace(o.Workspace)
@@ -42,6 +47,21 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 		o.IdleTimeout = 180 * time.Second
 	}
 	return o
+}
+
+func rootAgentNameForKind(kind string) string {
+	switch strings.TrimSpace(kind) {
+	case AgentKindIDE:
+		return "NovaAgent"
+	case AgentKindInteractiveStory:
+		return "NovaInteractiveStoryAgent"
+	case AgentKindConfigManager:
+		return "NovaConfigManagerAgent"
+	case AgentKindAutomation:
+		return "NovaAutomationAgent"
+	default:
+		return ""
+	}
 }
 
 func (o RunOptions) checkpointID(runID string) string {

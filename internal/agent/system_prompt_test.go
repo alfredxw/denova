@@ -43,6 +43,40 @@ func TestProtectedSystemInstructionOmitsEmptyCustomPrompt(t *testing.T) {
 	}
 }
 
+func TestProtectedSystemInstructionGuidesThinkingLanguageFromConfig(t *testing.T) {
+	zhInstruction := protectedSystemInstruction(&config.Config{Language: "zh-CN"}, config.AgentKindIDE, "BUILT IN PROMPT")
+	for _, required := range []string{"## 思考语言", "流式 thinking 内容都使用简体中文", "不要因此改变输出协议"} {
+		if !strings.Contains(zhInstruction, required) {
+			t.Fatalf("zh-CN thinking language contract missing %q:\n%s", required, zhInstruction)
+		}
+	}
+
+	enInstruction := protectedSystemInstruction(&config.Config{Language: "en-US"}, config.AgentKindIDE, "BUILT IN PROMPT")
+	for _, required := range []string{"## Thinking Language", "Use English for internal reasoning", "This only controls thinking language"} {
+		if !strings.Contains(enInstruction, required) {
+			t.Fatalf("en-US thinking language contract missing %q:\n%s", required, enInstruction)
+		}
+	}
+}
+
+func TestDeepAgentParentRuntimeContractsIncludeSubAgentDelegationProtocol(t *testing.T) {
+	for _, agentKind := range config.DeepAgentParentKinds() {
+		t.Run(agentKind, func(t *testing.T) {
+			instruction := protectedSystemInstruction(&config.Config{}, agentKind, "BUILT IN PROMPT")
+			for _, required := range []string{
+				"SubAgent 委派协议",
+				"用户目标、必要上下文、已知约束、文件路径或资源 ID、期望输出",
+				"不要复制大段正文、完整日志、完整历史或其他无界内容",
+				"父 Agent 必须自行核对结果",
+			} {
+				if !strings.Contains(instruction, required) {
+					t.Fatalf("deep parent %s should include subagent delegation protocol %q:\n%s", agentKind, required, instruction)
+				}
+			}
+		})
+	}
+}
+
 func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 	tests := map[string]string{
 		config.AgentKindIDE:                   "CREATOR.md",

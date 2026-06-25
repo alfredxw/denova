@@ -1,7 +1,7 @@
 const settings = {
   'settings.activeLayer.user': '用户配置',
   'settings.activeLayer.workspace': '当前工作区',
-  'settings.agent.maxIteration': '最大迭代轮数',
+  'settings.agent.maxIteration': '最大迭代轮数（留空不限制）',
   'settings.agent.modelMaxRetries': '模型重试次数',
   'settings.agent.idleTimeoutSeconds': '空闲超时（秒）',
   'settings.agent.planModeDefault': '默认 PlanMode',

@@ -296,15 +296,15 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 	_, interactiveWorkspace, _ := buildInteractiveStoryBuiltinInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})
 	configManagerFlow := configManagerFlowInstruction(promptCfg, state)
 	return config.AgentPromptBlockSettings{
-		IDE:                   builtinPromptBlocks(config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace)),
-		InteractiveStory:      builtinPromptBlocks(config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
-		ConfigManager:         builtinPromptBlocks(config.AgentKindConfigManager, configManagerFlow),
-		InteractiveState:      builtinPromptBlocks(config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
-		InteractiveHotChoices: builtinPromptBlocks(config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
-		VersionSummary:        builtinPromptBlocks(config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
-		ToolAgent:             builtinPromptBlocks(config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
-		Automation:            builtinPromptBlocks(config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
-		ContextCompaction:     builtinPromptBlocks(config.AgentKindContextCompaction, contextCompactionSystemInstruction()),
+		IDE:                   builtinPromptBlocks(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace)),
+		InteractiveStory:      builtinPromptBlocks(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
+		ConfigManager:         builtinPromptBlocks(promptCfg, config.AgentKindConfigManager, configManagerFlow),
+		InteractiveState:      builtinPromptBlocks(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
+		InteractiveHotChoices: builtinPromptBlocks(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
+		VersionSummary:        builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
+		ToolAgent:             builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
+		Automation:            builtinPromptBlocks(promptCfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
+		ContextCompaction:     builtinPromptBlocks(promptCfg, config.AgentKindContextCompaction, contextCompactionSystemInstruction()),
 	}
 }
 
@@ -323,38 +323,38 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		configManagerCreator = state.ReadCreatorPrompt()
 	}
 	return config.AgentPromptSourceSettings{
-		IDE: builtinPromptSourceList(config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace),
+		IDE: builtinPromptSourceList(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace),
 			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", ideCreator),
 			readonlyPromptSource("teller", "IDE 默认导演规则", ideTeller.ID, ideTeller.Prompt),
 		),
-		InteractiveStory: builtinPromptSourceList(config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace),
+		InteractiveStory: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace),
 			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", interactiveCreator),
 		),
-		ConfigManager:         builtinPromptSourceList(config.AgentKindConfigManager, configManagerFlow, readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", configManagerCreator)),
-		InteractiveState:      builtinPromptSourceList(config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
-		InteractiveHotChoices: builtinPromptSourceList(config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
-		VersionSummary:        builtinPromptSourceList(config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
-		ToolAgent:             builtinPromptSourceList(config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
-		Automation:            builtinPromptSourceList(config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
-		ContextCompaction:     builtinPromptSourceList(config.AgentKindContextCompaction, contextCompactionSystemInstruction()),
+		ConfigManager:         builtinPromptSourceList(promptCfg, config.AgentKindConfigManager, configManagerFlow, readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", configManagerCreator)),
+		InteractiveState:      builtinPromptSourceList(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
+		InteractiveHotChoices: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
+		VersionSummary:        builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
+		ToolAgent:             builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
+		Automation:            builtinPromptSourceList(promptCfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
+		ContextCompaction:     builtinPromptSourceList(promptCfg, config.AgentKindContextCompaction, contextCompactionSystemInstruction()),
 	}
 }
 
-func builtinPromptBlocks(agentKind, flow string) config.AgentPromptBlocks {
+func builtinPromptBlocks(cfg *config.Config, agentKind, flow string) config.AgentPromptBlocks {
 	return config.AgentPromptBlocks{
-		RuntimeContract:      runtimeContractForAgent(agentKind),
+		RuntimeContract:      runtimeContractForAgent(cfg, agentKind),
 		OutputProtocol:       outputProtocolForAgent(agentKind),
 		EditableSystemPrompt: editablePromptFlowForAgent(agentKind, flow),
 	}
 }
 
-func builtinPromptSourceList(agentKind, flow string, extraSources ...config.AgentPromptSource) config.AgentPromptSourceList {
+func builtinPromptSourceList(cfg *config.Config, agentKind, flow string, extraSources ...config.AgentPromptSource) config.AgentPromptSourceList {
 	sources := make([]config.AgentPromptSource, 0, len(extraSources)+4)
 	sources = append(sources, config.AgentPromptSource{
 		ID:      "runtime_contract",
 		Title:   "运行契约",
 		Source:  "Nova runtime",
-		Content: runtimeContractForAgent(agentKind),
+		Content: runtimeContractForAgent(cfg, agentKind),
 	})
 	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(agentKind)); outputProtocol != "" {
 		sources = append(sources, config.AgentPromptSource{

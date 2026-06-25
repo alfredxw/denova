@@ -8,6 +8,10 @@ import (
 
 func chatModelConfigForAgent(cfg *config.Config, agentKind string) openai.ChatModelConfig {
 	resolved := config.ResolveAgentModel(cfg, agentKind)
+	return chatModelConfigFromResolved(resolved)
+}
+
+func chatModelConfigFromResolved(resolved config.ResolvedModelSettings) openai.ChatModelConfig {
 	modelCfg := openai.ChatModelConfig{
 		APIKey:  resolved.OpenAIAPIKey,
 		Model:   resolved.OpenAIModel,

@@ -196,4 +196,49 @@ describe('MessageList', () => {
     expect(screen.getByLabelText('压缩中')).toBeInTheDocument()
     expect(screen.queryByText('正在压缩上下文…')).not.toBeInTheDocument()
   })
+
+  it('折叠执行过程时仍直接展示 SubAgent assistant 小窗', () => {
+    render(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        collapseTraceBeforeAssistant
+        messages={[
+          { type: 'message', role: 'thinking', content: '根 Agent 思考' },
+          { type: 'message', role: 'assistant', content: 'SubAgent 可见输出', agent_name: 'researcher', subagent: true },
+          { type: 'message', role: 'assistant', content: '根 Agent 回复' },
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /思考过程/ })).toBeInTheDocument()
+    expect(screen.getByText('researcher 输出')).toBeInTheDocument()
+    expect(screen.getByText('SubAgent 可见输出')).toBeInTheDocument()
+    expect(screen.getByText('根 Agent 回复')).toBeInTheDocument()
+  })
+
+  it('有子会话详情回调时将同一 SubAgent 时间线收敛为一个卡片', async () => {
+    const user = userEvent.setup()
+    const handleOpen = vi.fn()
+    render(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        onOpenSubAgentSession={handleOpen}
+        messages={[
+          { type: 'message', role: 'thinking', content: 'SubAgent 思考', agent_name: 'researcher', subagent: true, subagent_session_id: 'run-1-subagent-01-researcher' },
+          { type: 'message', role: 'tool_call', name: 'read_file', content: 'read_file', agent_name: 'researcher', subagent: true, subagent_session_id: 'run-1-subagent-01-researcher' },
+          { type: 'message', role: 'assistant', content: 'SubAgent 可见输出', agent_name: 'researcher', subagent: true, subagent_session_id: 'run-1-subagent-01-researcher' },
+          { type: 'message', role: 'assistant', content: '根 Agent 回复' },
+        ]}
+      />,
+    )
+
+    expect(screen.queryByText('SubAgent 思考')).not.toBeInTheDocument()
+    expect(screen.queryByText('read_file')).not.toBeInTheDocument()
+    expect(screen.getByText('researcher 输出')).toBeInTheDocument()
+    expect(screen.getByText('SubAgent 可见输出')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /researcher 输出/ }))
+    expect(handleOpen).toHaveBeenCalledWith(expect.objectContaining({ subagent_session_id: 'run-1-subagent-01-researcher' }))
+  })
 })

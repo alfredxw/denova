@@ -469,10 +469,17 @@ func TestAutomationRuntimeConfigUsesTaskModelProfile(t *testing.T) {
 		t.Fatalf("resolved inherited model = %#v, want default base model", resolved)
 	}
 
-	app.cfg.MaxIteration = 20
 	cfg = app.automation().runtimeConfigForTask(automation.Task{Template: automation.TemplateReview})
-	if cfg.MaxIteration < 100 {
-		t.Fatalf("review max iteration = %d, want at least 100", cfg.MaxIteration)
+	if cfg.MaxIteration != 0 {
+		t.Fatalf("review max iteration should stay unlimited by default, got %d", cfg.MaxIteration)
+	}
+	maxIteration := 20
+	if err := config.WriteSettingsFile(config.UserConfigPath(app.cfg.NovaDir), config.Settings{MaxIteration: &maxIteration}); err != nil {
+		t.Fatal(err)
+	}
+	cfg = app.automation().runtimeConfigForTask(automation.Task{Template: automation.TemplateReview})
+	if cfg.MaxIteration != maxIteration {
+		t.Fatalf("review max iteration = %d, want explicit configured value %d", cfg.MaxIteration, maxIteration)
 	}
 }
 

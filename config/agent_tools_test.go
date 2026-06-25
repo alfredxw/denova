@@ -79,8 +79,9 @@ func TestResolveAgentToolsPerAgentOverride(t *testing.T) {
 	}
 }
 
-func TestResolveAgentToolsDisablesShellExecuteOnWindows(t *testing.T) {
+func TestResolveAgentToolsKeepsShellExecuteConfigurableOnWindows(t *testing.T) {
 	on := true
+	off := false
 	cfg := &Config{
 		AgentTools: AgentToolSettings{
 			Default: AgentToolOverride{ShellExecute: &on},
@@ -89,10 +90,16 @@ func TestResolveAgentToolsDisablesShellExecuteOnWindows(t *testing.T) {
 	}
 
 	ide := resolveAgentToolsForGOOS(cfg, AgentKindIDE, "windows")
-	if ide.ShellExecute {
-		t.Fatalf("Windows 暂不支持 execute，运行态应强制关闭命令执行: %+v", ide)
+	if !ide.ShellExecute {
+		t.Fatalf("Windows 支持 PowerShell execute 后应保留命令执行配置: %+v", ide)
 	}
 	if !ide.FileRead || !ide.FileWrite {
-		t.Fatalf("Windows 平台限制不应影响其它工具: %+v", ide)
+		t.Fatalf("Windows 平台不应影响其它工具: %+v", ide)
+	}
+
+	cfg.AgentTools.IDE.ShellExecute = &off
+	ide = resolveAgentToolsForGOOS(cfg, AgentKindIDE, "windows")
+	if ide.ShellExecute {
+		t.Fatalf("Windows 下显式关闭命令执行仍应生效: %+v", ide)
 	}
 }

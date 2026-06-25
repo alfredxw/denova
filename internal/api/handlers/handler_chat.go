@@ -27,6 +27,7 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
 		return
 	}
+	req.Locale = requestLocale(c)
 
 	task := h.app.StartTask(req)
 	if task == nil {
@@ -51,6 +52,7 @@ func (h *Handlers) HandleChatContextAnalysis(ctx context.Context, c *app.Request
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
 		return
 	}
+	req.Locale = requestLocale(c)
 	analysis, err := h.app.AnalyzeContext(req)
 	if err != nil {
 		writeError(c, consts.StatusConflict, err.Error())

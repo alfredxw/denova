@@ -528,7 +528,10 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	cfg.AgentModels = effective.AgentModels
 	cfg.AgentTools = effective.AgentTools
 	cfg.AgentPrompts = effective.AgentPrompts
+	cfg.AgentSkills = effective.AgentSkills
 	cfg.AgentContexts = effective.AgentContexts
+	cfg.GeneralSubAgents = effective.GeneralSubAgents
+	cfg.SubAgents = effective.SubAgents
 	if cfg.SkillsDir == "" && effective.SkillsDir != "" {
 		cfg.SkillsDir = effective.SkillsDir
 	}
@@ -546,12 +549,13 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	}
 	cfg.RemoteAccessUsername = effective.RemoteAccessUsername
 	cfg.RemoteAccessPasswordHash = effective.RemoteAccessPasswordHash
+	if effective.Language != "" {
+		cfg.Language = effective.Language
+	}
 	if cfg.IDEStoryTellerID == "" && effective.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = effective.IDEStoryTellerID
 	}
-	if effective.MaxIteration != nil {
-		cfg.MaxIteration = appSettingsInt(effective.MaxIteration, 50)
-	}
+	cfg.MaxIteration = appSettingsInt(effective.MaxIteration, 0)
 	if effective.ModelMaxRetries != nil {
 		cfg.ModelMaxRetries = appSettingsInt(effective.ModelMaxRetries, 5)
 	}
@@ -606,7 +610,10 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	cfg.AgentModels = config.MergeAgentModelSettings(cfg.AgentModels, settings.AgentModels)
 	cfg.AgentTools = config.MergeAgentToolSettings(cfg.AgentTools, settings.AgentTools)
 	cfg.AgentPrompts = config.MergeAgentPromptSettings(cfg.AgentPrompts, settings.AgentPrompts)
+	cfg.AgentSkills = config.MergeAgentSkillSettings(cfg.AgentSkills, settings.AgentSkills)
 	cfg.AgentContexts = config.MergeAgentContextSettings(cfg.AgentContexts, settings.AgentContexts)
+	cfg.GeneralSubAgents = config.MergeAgentGeneralSubAgentSettings(cfg.GeneralSubAgents, settings.GeneralSubAgents)
+	cfg.SubAgents = config.MergeSubAgents(cfg.SubAgents, settings.SubAgents)
 	if settings.SkillsDir != "" && os.Getenv("NOVA_SKILLS_DIR") == "" {
 		cfg.SkillsDir = settings.SkillsDir
 	}
@@ -619,11 +626,14 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.RemoteAccessPasswordHash != "" {
 		cfg.RemoteAccessPasswordHash = settings.RemoteAccessPasswordHash
 	}
+	if settings.Language != "" {
+		cfg.Language = settings.Language
+	}
 	if settings.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = settings.IDEStoryTellerID
 	}
 	if settings.MaxIteration != nil {
-		cfg.MaxIteration = appSettingsInt(settings.MaxIteration, 50)
+		cfg.MaxIteration = appSettingsInt(settings.MaxIteration, 0)
 	}
 	if settings.ModelMaxRetries != nil {
 		cfg.ModelMaxRetries = appSettingsInt(settings.ModelMaxRetries, 5)
@@ -691,4 +701,14 @@ func appSettingsInt(v *int, fallback int) int {
 		return fallback
 	}
 	return *v
+}
+
+func applyRequestLocaleToConfig(cfg *config.Config, locale string) {
+	if cfg == nil {
+		return
+	}
+	switch locale {
+	case "zh-CN", "en-US":
+		cfg.Language = locale
+	}
 }

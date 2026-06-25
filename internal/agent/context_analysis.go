@@ -313,7 +313,7 @@ func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller 
 			ID:      "runtime_contract",
 			Source:  "Nova runtime",
 			Title:   "运行契约",
-			Content: runtimeContractForAgent(config.AgentKindIDE),
+			Content: runtimeContractForAgent(cfg, config.AgentKindIDE),
 		}),
 	}
 	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(config.AgentKindIDE)); outputProtocol != "" {
@@ -375,7 +375,7 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 			ID:      "runtime_contract",
 			Source:  "Nova runtime",
 			Title:   "运行契约",
-			Content: runtimeContractForAgent(config.AgentKindInteractiveStory),
+			Content: runtimeContractForAgent(cfg, config.AgentKindInteractiveStory),
 		}),
 	}
 	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(config.AgentKindInteractiveStory)); outputProtocol != "" {

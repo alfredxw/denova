@@ -2,10 +2,11 @@ import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useS
 import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, Pencil, RefreshCw } from 'lucide-react'
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '@/lib/api'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { subAgentSessionKey } from './subagent-session'
 
 interface MessageItemProps {
   message: ChatMessage
@@ -14,10 +15,13 @@ interface MessageItemProps {
   onEdit?: (message: ChatMessage) => void
   onRegenerate?: (message: ChatMessage) => void
   onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void
+  onOpenSubAgentSession?: (message: ChatMessage) => void
+  activeSubAgentSessionKey?: string
+  subAgentPresentation?: 'card' | 'content'
 }
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, activeSubAgentSessionKey, subAgentPresentation = 'card' }: MessageItemProps) {
   const { t } = useTranslation()
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
@@ -52,6 +56,18 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       )
 
     case 'assistant':
+      if (message.subagent && subAgentPresentation === 'card') {
+        return (
+          <SubAgentOutputWindow
+            message={message}
+            content={content}
+            highlightDialogue={highlightDialogue}
+            messageStyle={messageStyle}
+            onOpen={onOpenSubAgentSession}
+            active={Boolean(activeSubAgentSessionKey && activeSubAgentSessionKey === subAgentSessionKey(message))}
+          />
+        )
+      }
       return (
         <div className="group flex justify-start">
           <div className="chat-agent-message w-full px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
@@ -105,7 +121,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       )
 
     case 'thinking':
-      return <ThinkingBlock content={content} streaming={message.streaming === true} />
+      return <ThinkingBlock message={message} content={content} streaming={message.streaming === true} />
 
     case 'tool_call':
       if ((message.name || '') === 'write_todos') {
@@ -141,6 +157,87 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return null
   }
 })
+
+function SubAgentOutputWindow({
+  message,
+  content,
+  highlightDialogue,
+  messageStyle,
+  onOpen,
+  active,
+}: {
+  message: ChatMessage
+  content: string
+  highlightDialogue: boolean
+  messageStyle?: CSSProperties
+  onOpen?: (message: ChatMessage) => void
+  active?: boolean
+}) {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
+  const name = message.agent_name || message.subagent_type || t('chat.subagent.label')
+  const preview = buildMarkdownPreview(content, 220)
+  const hasContent = Boolean(content.trim())
+  const statusLabel = message.streaming ? t('chat.subagent.status.streaming') : t('chat.subagent.status.done')
+  const detailMode = Boolean(onOpen)
+  const actionLabel = detailMode ? t('chat.subagent.openSession') : (expanded ? t('chat.subagent.collapse') : t('chat.subagent.expand'))
+  const shownContent = detailMode || !expanded ? preview : content
+
+  return (
+    <div className="flex justify-start">
+      <div className={`w-full overflow-hidden rounded-lg border bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)] ${active ? 'border-[var(--nova-accent)] ring-1 ring-[var(--nova-accent)]/40' : 'border-[var(--nova-border)]'}`}>
+        <button
+          type="button"
+          className="flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-2 text-left"
+          onClick={() => {
+            if (onOpen) {
+              onOpen(message)
+              return
+            }
+            setExpanded(!expanded)
+          }}
+          aria-expanded={expanded}
+          aria-label={t('chat.subagent.outputFrom', { name })}
+        >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
+            {detailMode ? <PanelRightOpen className="h-3.5 w-3.5" /> : expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium text-[var(--nova-text)]">{t('chat.subagent.outputFrom', { name })}</span>
+            <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{statusLabel}</span>
+          </span>
+          <span className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
+            {actionLabel}
+          </span>
+        </button>
+        <div className={`${detailMode ? 'max-h-28' : expanded ? 'max-h-96' : 'max-h-28'} overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5`}>
+          {hasContent ? (
+            <div className="chat-agent-message text-sm text-[var(--nova-text)]" style={messageStyle}>
+              {message.streaming ? (
+                <StreamingMarkdown content={shownContent} highlightDialogue={highlightDialogue} />
+              ) : (
+                <MarkdownContent content={shownContent} highlightDialogue={highlightDialogue} />
+              )}
+            </div>
+          ) : (
+            <div className="text-[11px] text-[var(--nova-text-faint)]">{t('chat.subagent.empty')}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AgentSourceBadge({ message, compact = false }: { message: ChatMessage; compact?: boolean }) {
+  const { t } = useTranslation()
+  const name = message.agent_name || message.subagent_type || t('chat.subagent.label')
+  const label = compact ? name : t('chat.subagent.outputFrom', { name })
+  return (
+    <span className={`mb-1 inline-flex max-w-full items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)] ${compact ? 'mb-0 shrink-0' : ''}`}>
+      <span className="truncate">{label}</span>
+    </span>
+  )
+}
 
 /** 工具执行中的轻量状态卡片 */
 export function ToolActivityBlock({ content }: { content: string }) {
@@ -229,12 +326,18 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const args = formatMaybeJSON(rawArgs)
   const status = message.status || 'running'
   const result = message.result || ''
+  const isDelegationTool = name === 'task'
+  const taskSubAgent = isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
+  const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : name
+  const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : args
   const hasResult = status === 'success'
   const isStreamingContent = status === 'running' && isContentTool(name) && rawArgs.length > 50
   const streamPreview = isStreamingContent ? extractStreamingContent(rawArgs) : ''
-  const summary = buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
+  const summary = taskSubAgent
+    ? t('chat.subagent.delegating', { name: taskSubAgent })
+    : buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
   const resultPreview = buildPreview(result, 80)
-  const hasDetail = Boolean(args || result)
+  const hasDetail = Boolean(detailArgs || result)
 
   return (
     <div className="flex justify-start">
@@ -243,8 +346,14 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
           <ToolStatusIcon status={status} />
           <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('chat.tool.calling')}</span>
           <code className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]">
-            {name}
+            {displayName}
           </code>
+          {taskSubAgent && (
+            <span className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
+              {t('chat.subagent.delegating', { name: taskSubAgent })}
+            </span>
+          )}
+          {message.subagent && <AgentSourceBadge message={message} compact />}
           <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
             {hasResult ? resultPreview || t('chat.tool.done') : summary}
           </span>
@@ -266,7 +375,8 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
         )}
         {expanded && !isStreamingContent && (
           <div className="grid max-h-48 gap-2 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
-            {args && <pre className="whitespace-pre-wrap">{args}</pre>}
+            {detailArgs && <pre className="whitespace-pre-wrap">{detailArgs}</pre>}
+            {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
             {result && <pre className="whitespace-pre-wrap text-[var(--nova-accent-green)]">{result}</pre>}
           </div>
         )}
@@ -468,6 +578,28 @@ function parseToolCallContent(content: string) {
   }
 }
 
+function parseTaskSubagentType(args: string) {
+  if (!args) return ''
+  try {
+    const data = JSON.parse(args) as Record<string, unknown>
+    return typeof data.subagent_type === 'string' ? data.subagent_type : ''
+  } catch {
+    const match = args.match(/"subagent_type"\s*:\s*"([^"]+)"/)
+    return match?.[1] || ''
+  }
+}
+
+function formatTaskDelegationArgs(args: string) {
+  if (!args) return ''
+  try {
+    const data = JSON.parse(args) as Record<string, unknown>
+    delete data.subagent_type
+    return Object.keys(data).length > 0 ? formatMaybeJSON(JSON.stringify(data)) : ''
+  } catch {
+    return formatMaybeJSON(args.replace(/"subagent_type"\s*:\s*"[^"]+"\s*,?\s*/g, '').replace(/,\s*}/g, '}'))
+  }
+}
+
 function parseActivityContent(content: string, t: (key: string) => string) {
   const toolMatch = content.match(/^正在执行工具：([^\n]+)(?:\n([\s\S]*))?$/)
   if (toolMatch) {
@@ -520,6 +652,13 @@ function buildPreview(content: string, maxLength: number) {
   const normalized = content.trim().replace(/\s+/g, ' ')
   if (normalized.length <= maxLength) return normalized
   return `${normalized.slice(0, maxLength)}...`
+}
+
+function buildMarkdownPreview(content: string, maxLength: number) {
+  const trimmed = content.trim()
+  const chars = Array.from(trimmed)
+  if (chars.length <= maxLength) return trimmed
+  return `${chars.slice(0, maxLength).join('').trimEnd()}\n\n...`
 }
 
 /** 判断是否为会产生大量内容参数的工具（适合流式预览） */
@@ -611,7 +750,7 @@ function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string
 }
 
 /** 思考过程折叠块，流式思考中自动展开，结束后自动折叠。 */
-function ThinkingBlock({ content, streaming }: { content: string; streaming: boolean }) {
+function ThinkingBlock({ message, content, streaming }: { message: ChatMessage; content: string; streaming: boolean }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(streaming)
 
@@ -629,6 +768,7 @@ function ThinkingBlock({ content, streaming }: { content: string; streaming: boo
         >
           {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
           💭 {t('chat.trace.thinking')}
+          {message.subagent && <AgentSourceBadge message={message} compact />}
         </button>
         {expanded && (
           <div className="border-l border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] whitespace-pre-wrap">

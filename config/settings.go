@@ -14,16 +14,18 @@ import (
 // 指针类型用于区分 "未设置"（继承上层）与 "显式置零"。
 type Settings struct {
 	// 模型
-	OpenAIAPIKey              string                 `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
-	OpenAIBaseURL             string                 `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
-	OpenAIModel               string                 `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
-	OpenAIContextWindowTokens *int                   `toml:"openai_context_window_tokens,omitempty" json:"openai_context_window_tokens,omitempty"`
-	ModelProfiles             []ModelProfileSettings `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
-	AgentModels               AgentModelSettings     `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
-	AgentTools                AgentToolSettings      `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
-	AgentPrompts              AgentPromptSettings    `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
-	AgentSkills               AgentSkillSettings     `toml:"agent_skills,omitempty" json:"agent_skills,omitempty"`
-	AgentContexts             AgentContextSettings   `toml:"agent_context,omitempty" json:"agent_context,omitempty"`
+	OpenAIAPIKey              string                       `toml:"openai_api_key,omitempty" json:"openai_api_key,omitempty"`
+	OpenAIBaseURL             string                       `toml:"openai_base_url,omitempty" json:"openai_base_url,omitempty"`
+	OpenAIModel               string                       `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
+	OpenAIContextWindowTokens *int                         `toml:"openai_context_window_tokens,omitempty" json:"openai_context_window_tokens,omitempty"`
+	ModelProfiles             []ModelProfileSettings       `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
+	AgentModels               AgentModelSettings           `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
+	AgentTools                AgentToolSettings            `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
+	AgentPrompts              AgentPromptSettings          `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
+	AgentSkills               AgentSkillSettings           `toml:"agent_skills,omitempty" json:"agent_skills,omitempty"`
+	AgentContexts             AgentContextSettings         `toml:"agent_context,omitempty" json:"agent_context,omitempty"`
+	GeneralSubAgents          AgentGeneralSubAgentSettings `toml:"general_sub_agents,omitempty" json:"general_sub_agents,omitempty"`
+	SubAgents                 []SubAgentConfig             `toml:"sub_agents,omitempty" json:"sub_agents,omitempty"`
 
 	// 路径
 	SkillsDir    string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -110,7 +112,6 @@ func DefaultSettings() Settings {
 		Theme:                       "dark",
 		MotionIntensity:             "system",
 		UpdateCheckEnabled:          boolPtr(true),
-		MaxIteration:                intPtr(50),
 		ModelMaxRetries:             intPtr(5),
 		AgentIdleTimeoutSeconds:     intPtr(180),
 		AgentModels: AgentModelSettings{
@@ -121,6 +122,8 @@ func DefaultSettings() Settings {
 		AgentTools:                 DefaultAgentToolSettings(),
 		AgentSkills:                AgentSkillSettings{},
 		AgentContexts:              DefaultAgentContextSettings(),
+		GeneralSubAgents:           DefaultAgentGeneralSubAgentSettings(),
+		SubAgents:                  nil,
 		PlanModeDefault:            boolPtr(false),
 		IDEStoryTellerID:           "classic",
 		InteractiveHotChoices:      boolPtr(true),
@@ -151,6 +154,8 @@ func Merge(parent, child Settings) Settings {
 	out.AgentPrompts = MergeAgentPromptSettings(out.AgentPrompts, child.AgentPrompts)
 	out.AgentSkills = MergeAgentSkillSettings(out.AgentSkills, child.AgentSkills)
 	out.AgentContexts = MergeAgentContextSettings(out.AgentContexts, child.AgentContexts)
+	out.GeneralSubAgents = MergeAgentGeneralSubAgentSettings(out.GeneralSubAgents, child.GeneralSubAgents)
+	out.SubAgents = MergeSubAgents(out.SubAgents, child.SubAgents)
 	if child.SkillsDir != "" {
 		out.SkillsDir = child.SkillsDir
 	}
@@ -421,6 +426,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
 	s.AgentContexts = sanitizeAgentContextSettings(s.AgentContexts)
+	s.SubAgents = SanitizeSubAgents(s.SubAgents)
 	return s
 }
 

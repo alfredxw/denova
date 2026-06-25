@@ -700,9 +700,6 @@ func (s *AutomationAppService) runtimeConfigForTask(task automation.Task) config
 	if profileID := strings.TrimSpace(task.ModelProfileID); profileID != "" {
 		runtimeCfg.AgentModels.Automation.ProfileID = profileID
 	}
-	if task.Template == automation.TemplateReview && runtimeCfg.MaxIteration < 100 {
-		runtimeCfg.MaxIteration = 100
-	}
 	return runtimeCfg
 }
 

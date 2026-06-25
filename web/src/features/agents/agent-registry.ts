@@ -7,6 +7,7 @@ export type AgentKey = keyof AgentModelSettings
 export type VisibleAgentKey = Exclude<AgentKey, 'default'>
 export type ToolKey = keyof AgentToolOverride
 export type AgentCapabilityMode = 'tools' | 'built_in' | 'model_only'
+export type DeepAgentParentKey = Extract<VisibleAgentKey, 'ide' | 'interactive_story' | 'config_manager' | 'automation'>
 
 export interface AgentViewDefinition {
   key: VisibleAgentKey
@@ -35,6 +36,8 @@ export const AGENTS: AgentViewDefinition[] = [
   { key: 'automation', titleKey: 'agents.automation.title', subtitleKey: 'agents.automation.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'tools', icon: Clock },
   { key: 'context_compaction', titleKey: 'agents.contextCompaction.title', subtitleKey: 'agents.contextCompaction.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'model_only', icon: Archive },
 ]
+
+export const DEEP_AGENT_PARENT_KEYS: DeepAgentParentKey[] = ['ide', 'interactive_story', 'config_manager', 'automation']
 
 export const TOOL_ROWS: AgentToolDefinition[] = [
   { key: 'file_read', titleKey: 'agents.tool.fileRead.title', subtitleKey: 'agents.tool.fileRead.subtitle', icon: Search },

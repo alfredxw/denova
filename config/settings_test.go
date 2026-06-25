@@ -22,8 +22,8 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AutoSaveEnabled == nil || *s.AutoSaveEnabled != true {
 		t.Fatalf("AutoSaveEnabled default")
 	}
-	if s.MaxIteration == nil || *s.MaxIteration != 50 {
-		t.Fatalf("MaxIteration default")
+	if s.MaxIteration != nil {
+		t.Fatalf("MaxIteration should default to unset")
 	}
 	if s.AgentIdleTimeoutSeconds == nil || *s.AgentIdleTimeoutSeconds != 180 {
 		t.Fatalf("AgentIdleTimeoutSeconds default")

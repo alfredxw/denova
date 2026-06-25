@@ -454,27 +454,27 @@ func (s *InteractiveAppService) AppendInteractiveTurn(storyID, branchID, user, n
 }
 
 // StartInteractiveTask 启动互动模式 Agent 任务，输出写回 interactive/story。
-func (a *App) StartInteractiveTask(storyID, branchID, message string, styleScenes []string) *Task {
-	return a.interactiveService().StartInteractiveTask(storyID, branchID, message, styleScenes)
+func (a *App) StartInteractiveTask(storyID, branchID, message string, styleScenes []string, locale string) *Task {
+	return a.interactiveService().StartInteractiveTask(storyID, branchID, message, styleScenes, locale)
 }
 
-func (s *InteractiveAppService) StartInteractiveTask(storyID, branchID, message string, styleScenes []string) *Task {
-	return s.startInteractiveTask(storyID, branchID, message, styleScenes, "")
+func (s *InteractiveAppService) StartInteractiveTask(storyID, branchID, message string, styleScenes []string, locale string) *Task {
+	return s.startInteractiveTask(storyID, branchID, message, styleScenes, "", locale)
 }
 
-func (a *App) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string, styleScenes []string) *Task {
-	return a.interactiveService().StartInteractiveRegenerateTask(storyID, branchID, turnID, message, styleScenes)
+func (a *App) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string, styleScenes []string, locale string) *Task {
+	return a.interactiveService().StartInteractiveRegenerateTask(storyID, branchID, turnID, message, styleScenes, locale)
 }
 
-func (s *InteractiveAppService) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string, styleScenes []string) *Task {
-	return s.startInteractiveTask(storyID, branchID, message, styleScenes, turnID)
+func (s *InteractiveAppService) StartInteractiveRegenerateTask(storyID, branchID, turnID, message string, styleScenes []string, locale string) *Task {
+	return s.startInteractiveTask(storyID, branchID, message, styleScenes, turnID, locale)
 }
 
-func (a *App) AnalyzeInteractiveContext(storyID, branchID, message string, styleScenes []string) (agent.ContextAnalysis, error) {
-	return a.interactiveService().AnalyzeInteractiveContext(storyID, branchID, message, styleScenes)
+func (a *App) AnalyzeInteractiveContext(storyID, branchID, message string, styleScenes []string, locale string) (agent.ContextAnalysis, error) {
+	return a.interactiveService().AnalyzeInteractiveContext(storyID, branchID, message, styleScenes, locale)
 }
 
-func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, message string, styleScenes []string) (agent.ContextAnalysis, error) {
+func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, message string, styleScenes []string, locale string) (agent.ContextAnalysis, error) {
 	a := s.app
 	a.mu.RLock()
 	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
@@ -495,6 +495,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	} else {
 		log.Printf("[interactive-agent-analysis] load interactive settings failed workspace=%s err=%v", workspace, err)
 	}
+	applyRequestLocaleToConfig(&runtimeCfg, locale)
 
 	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
@@ -507,6 +508,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 		Message:     message,
 		StyleScenes: styleScenes,
 		StyleRules:  styleRules,
+		Locale:      locale,
 	}
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
 	return agent.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveStoryTellerSystemInput(teller, styleRules), bookService, req, storyCtx.Snapshot.ContextCompaction, conversation.PrepareMessages)
@@ -597,7 +599,7 @@ func (s *InteractiveAppService) RemoveInteractiveContextCompaction(storyID, bran
 	return true, nil
 }
 
-func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message string, styleScenes []string, rewindTurnID string) *Task {
+func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message string, styleScenes []string, rewindTurnID string, locale string) *Task {
 	a := s.app
 	a.mu.Lock()
 	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
@@ -626,6 +628,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	} else {
 		log.Printf("[interactive-agent-task] load interactive settings failed workspace=%s err=%v", workspace, err)
 	}
+	applyRequestLocaleToConfig(&runtimeCfg, locale)
 
 	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
@@ -667,6 +670,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		Message:     message,
 		StyleScenes: styleScenes,
 		StyleRules:  styleRules,
+		Locale:      locale,
 	}
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {

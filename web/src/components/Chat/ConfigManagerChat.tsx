@@ -60,14 +60,14 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     setMessages((current) => [...current, { ...message, id: message.id || `${Date.now()}-${current.length}` }])
   }
 
-  const appendStreaming = (role: ChatMessage['role'], content: string) => {
+  const appendStreaming = (role: ChatMessage['role'], content: string, metadata: ChatEventMetadata = {}) => {
     if (!content) return
     setMessages((current) => {
       const last = current[current.length - 1]
-      if (last?.role === role && last.status !== 'success') {
+      if (last?.role === role && last.status !== 'success' && sameChatEventSource(last, metadata)) {
         return [...current.slice(0, -1), { ...last, content: `${last.content || ''}${content}` }]
       }
-      return [...current, { id: `${Date.now()}-${current.length}`, role, content }]
+      return [...current, { id: `${Date.now()}-${current.length}`, role, content, ...metadata }]
     })
   }
 
@@ -76,7 +76,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     const name = payload.name || t('configManager.tool')
     setMessages((current) => {
       const existing = current.findIndex((message) => message.id === id)
-      const next: ChatMessage = { id, role: 'tool_call', content: name, name, args: payload.args || '', status: 'running' }
+      const next: ChatMessage = { id, role: 'tool_call', content: name, name, args: payload.args || '', status: 'running', ...metadataFromPayload(payload) }
       if (existing >= 0) return current.map((message, index) => index === existing ? { ...message, ...next, args: message.args || next.args } : message)
       return [...current, next]
     })
@@ -95,7 +95,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     if (!payload.id) return
     setMessages((current) => current.map((message) => (
       message.id === payload.id && message.role === 'tool_call'
-        ? { ...message, status: 'success', result: payload.content || '' }
+        ? { ...message, status: 'success', result: payload.content || '', ...metadataFromPayload(payload) }
         : message
     )))
     onMutated?.()
@@ -103,11 +103,13 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
 
   const handleEvent = (event: SSEEvent) => {
     if (event.event === 'thinking') {
-      appendStreaming('thinking', parsePayload<{ content?: string }>(event.data)?.content || '')
+      const payload = parsePayload<ToolPayload>(event.data)
+      appendStreaming('thinking', payload?.content || '', metadataFromPayload(payload))
       return
     }
     if (event.event === 'chunk') {
-      appendStreaming('assistant', parsePayload<{ content?: string }>(event.data)?.content || '')
+      const payload = parsePayload<ToolPayload>(event.data)
+      appendStreaming('assistant', payload?.content || '', metadataFromPayload(payload))
       return
     }
     if (event.event === 'tool_call') {
@@ -202,7 +204,16 @@ interface ToolPayload {
   args?: string
   delta?: string
   content?: string
+  run_id?: string
+  agent_name?: string
+  root_agent_name?: string
+  run_path?: string[]
+  subagent?: boolean
+  subagent_session_id?: string
+  subagent_type?: string
 }
+
+type ChatEventMetadata = Pick<ChatMessage, 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_session_id' | 'subagent_type'>
 
 function parsePayload<T>(data: string): T | null {
   try {
@@ -210,4 +221,25 @@ function parsePayload<T>(data: string): T | null {
   } catch {
     return null
   }
+}
+
+function metadataFromPayload(payload?: ToolPayload | null): ChatEventMetadata {
+  if (!payload) return {}
+  return {
+    run_id: payload.run_id,
+    agent_name: payload.agent_name,
+    root_agent_name: payload.root_agent_name,
+    run_path: payload.run_path,
+    subagent: payload.subagent,
+    subagent_session_id: payload.subagent_session_id,
+    subagent_type: payload.subagent_type,
+  }
+}
+
+function sameChatEventSource(message: ChatMessage, metadata: ChatEventMetadata) {
+  return Boolean(message.subagent) === Boolean(metadata.subagent) &&
+    (message.subagent_session_id || '') === (metadata.subagent_session_id || '') &&
+    (message.agent_name || '') === (metadata.agent_name || '') &&
+    (message.root_agent_name || '') === (metadata.root_agent_name || '') &&
+    (message.run_path || []).join('/') === (metadata.run_path || []).join('/')
 }

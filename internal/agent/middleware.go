@@ -16,7 +16,8 @@ import (
 // toolOrchestratorMiddleware centralizes Nova's internal tool execution policy.
 type toolOrchestratorMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
-	agentKind string
+	agentKind  string
+	policyKind string
 }
 
 type interactiveStoryToolMiddleware struct {
@@ -287,11 +288,21 @@ func (m *toolOrchestratorMiddleware) buildToolDecision(toolCtx *adk.ToolContext,
 		RequiresPostCheck: manifest.RequiresPostCheck,
 		Target:            toolPathFromArgs(args),
 	}
-	if m != nil && m.agentKind == AgentKindInteractiveStory && isInteractiveStoryWriteTool(name) {
+	if m != nil && m.effectivePolicyKind() == AgentKindInteractiveStory && isInteractiveStoryWriteTool(name) {
 		decision.Action = "blocked"
 		decision.Reason = interactiveStoryWriteToolBlockedMessage(name)
 	}
 	return decision
+}
+
+func (m *toolOrchestratorMiddleware) effectivePolicyKind() string {
+	if m == nil {
+		return ""
+	}
+	if strings.TrimSpace(m.policyKind) != "" {
+		return m.policyKind
+	}
+	return m.agentKind
 }
 
 func toolCallID(toolCtx *adk.ToolContext) string {

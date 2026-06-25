@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Bot, ClipboardCheck, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
+import { Activity, Bot, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { Teller } from '@/features/interactive/types'
@@ -10,11 +10,12 @@ import { MessageList } from './MessageList'
 import { InputArea } from './InputArea'
 import { SessionManagementPanel } from './SessionManagementPanel'
 import { AgentTracePanel } from './AgentTracePanel'
+import { SubAgentSessionPanel } from './SubAgentSessionPanel'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './ContextAnalysisDialog'
+import { subAgentSessionKey } from './subagent-session'
 import type { ReferencePickerItem } from './FileReferencePicker'
-import { WritingReviewPanel, WritingReviewTabBadge } from '@/features/automations/WritingReviewPanel'
 
-type AgentPanelView = 'chat' | 'sessions' | 'review' | 'traces'
+type AgentPanelView = 'chat' | 'sessions' | 'traces'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 
@@ -48,8 +49,6 @@ interface AgentPanelProps {
   onStyleSceneAdd: (scene: string) => void
   onStyleSceneRemove: (scene: string) => void
   onTextSelectionRemove: (index: number) => void
-  onOpenReviewConfig: () => void
-  onOpenReviewFile: (path: string) => void | Promise<void>
   onClose: () => void
 }
 
@@ -84,8 +83,6 @@ export function AgentPanel({
   onStyleSceneAdd,
   onStyleSceneRemove,
   onTextSelectionRemove,
-  onOpenReviewConfig,
-  onOpenReviewFile,
   onClose,
 }: AgentPanelProps) {
   const { t } = useTranslation()
@@ -95,6 +92,7 @@ export function AgentPanel({
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
+  const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
   const [ideTellerId, setIdeTellerId] = useState('classic')
   const skillCommands = useSkillCommands({ agentKey: 'ide', workspace, fallbackEnabled: true })
   const activeSession = sessions.find((session) => session.id === activeSessionId) ||
@@ -139,6 +137,11 @@ export function AgentPanel({
     void handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
+  const openSubAgentSession = (message: ChatMessage) => {
+    const key = subAgentSessionKey(message)
+    if (key) setActiveSubAgentSessionKey(key)
+  }
+
   const removeContextCompaction = async () => {
     await removeChatContextCompaction()
     await handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
@@ -165,17 +168,6 @@ export function AgentPanel({
             className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'sessions' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
             {t('chat.view.sessions')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('review')}
-            className={`flex items-center gap-1 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'review' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-            aria-label={t('chat.view.review')}
-            title={t('chat.view.review')}
-          >
-            <ClipboardCheck className="h-3 w-3" />
-            {t('chat.view.review')}
-            <WritingReviewTabBadge workspace={workspace} />
           </button>
           <button
             type="button"
@@ -221,48 +213,72 @@ export function AgentPanel({
               {t('chat.new')}
             </button>
           </div>
-          {messages.length === 0 && !isStreaming && (
-            <AgentQuickActions
-              chapter={currentChapter}
-              selectedFile={selectedFile}
-              onSend={onSend}
-            />
-          )}
-          <MessageList
-            messages={messages}
-            isStreaming={isStreaming}
-            activityContent={activityContent}
-            scrollResetKey={`${workspace || 'none'}:${activeSessionId || 'current'}`}
-            bottomPaddingClassName="pb-36"
-          />
-          <InputArea
-            onSend={onSend}
-            onStop={onStop}
-            disabled={isStreaming}
-            draftKey={`ide-agent:${workspace || 'global'}`}
-            inputPrefill={inputPrefill}
-            onInputPrefillConsumed={() => setInputPrefill(null)}
-            referencedFiles={references}
-            onReferenceRemove={onReferenceRemove}
-            fileSuggestions={fileSuggestions}
-            loreReferences={loreReferences}
-            loreReferenceLabels={loreReferenceLabels}
-            onLoreReferenceAdd={onLoreReferenceAdd}
-            onLoreReferenceRemove={onLoreReferenceRemove}
-            loreSuggestions={loreSuggestions}
-            styleScenes={styleScenes}
-            onStyleSceneAdd={onStyleSceneAdd}
-            onStyleSceneRemove={onStyleSceneRemove}
-            styleSceneSuggestions={styleSceneSuggestions}
-            textSelections={textSelections}
-            onTextSelectionRemove={onTextSelectionRemove}
-            skills={skillCommands}
-            onContextAnalyze={openContextAnalysis}
-            tokenUsageMessages={tokenUsageMessages}
-            agentKey="ide"
-            workspace={workspace}
-            floating
-          />
+          <div className="relative flex min-h-0 flex-1">
+            <div className="relative flex min-w-0 flex-1 flex-col">
+              {messages.length === 0 && !isStreaming && (
+                <AgentQuickActions
+                  chapter={currentChapter}
+                  selectedFile={selectedFile}
+                  onSend={onSend}
+                />
+              )}
+              <MessageList
+                messages={messages}
+                isStreaming={isStreaming}
+                activityContent={activityContent}
+                scrollResetKey={`${workspace || 'none'}:${activeSessionId || 'current'}`}
+                bottomPaddingClassName="pb-36"
+                onOpenSubAgentSession={openSubAgentSession}
+                activeSubAgentSessionKey={activeSubAgentSessionKey}
+              />
+              <InputArea
+                onSend={onSend}
+                onStop={onStop}
+                disabled={isStreaming}
+                draftKey={`ide-agent:${workspace || 'global'}`}
+                inputPrefill={inputPrefill}
+                onInputPrefillConsumed={() => setInputPrefill(null)}
+                referencedFiles={references}
+                onReferenceRemove={onReferenceRemove}
+                fileSuggestions={fileSuggestions}
+                loreReferences={loreReferences}
+                loreReferenceLabels={loreReferenceLabels}
+                onLoreReferenceAdd={onLoreReferenceAdd}
+                onLoreReferenceRemove={onLoreReferenceRemove}
+                loreSuggestions={loreSuggestions}
+                styleScenes={styleScenes}
+                onStyleSceneAdd={onStyleSceneAdd}
+                onStyleSceneRemove={onStyleSceneRemove}
+                styleSceneSuggestions={styleSceneSuggestions}
+                textSelections={textSelections}
+                onTextSelectionRemove={onTextSelectionRemove}
+                skills={skillCommands}
+                onContextAnalyze={openContextAnalysis}
+                tokenUsageMessages={tokenUsageMessages}
+                agentKey="ide"
+                workspace={workspace}
+                floating
+              />
+            </div>
+            {activeSubAgentSessionKey && (
+              <>
+                <div className="hidden min-w-[280px] flex-[0_0_42%] md:block">
+                  <SubAgentSessionPanel
+                    messages={messages}
+                    sessionKey={activeSubAgentSessionKey}
+                    onClose={() => setActiveSubAgentSessionKey('')}
+                  />
+                </div>
+                <div className="absolute inset-0 z-30 md:hidden">
+                  <SubAgentSessionPanel
+                    messages={messages}
+                    sessionKey={activeSubAgentSessionKey}
+                    onClose={() => setActiveSubAgentSessionKey('')}
+                  />
+                </div>
+              </>
+            )}
+          </div>
           <ContextAnalysisDialog
             open={contextAnalysisOpen}
             loading={contextAnalysisLoading}
@@ -282,18 +298,6 @@ export function AgentPanel({
           onRename={onRenameSession}
           onDelete={onDeleteSession}
           onEnterChat={() => setView('chat')}
-        />
-      ) : view === 'review' ? (
-        <WritingReviewPanel
-          workspace={workspace}
-          selectedFile={selectedFile}
-          fileSuggestions={fileSuggestions}
-          onOpenConfig={onOpenReviewConfig}
-          onOpenFile={onOpenReviewFile}
-          onSendToWritingAgent={(prompt) => {
-            setView('chat')
-            setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
-          }}
         />
       ) : (
         <AgentTracePanel disabled={isStreaming} />

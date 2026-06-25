@@ -16,7 +16,9 @@ import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { ReferenceChips } from '@/components/Chat/ReferenceChips'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
+import { SubAgentSessionPanel } from '@/components/Chat/SubAgentSessionPanel'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
+import { subAgentSessionKey } from '@/components/Chat/subagent-session'
 import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobile-layout'
 import type { ChatMessage, ContextAnalysis } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
@@ -100,6 +102,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
+  const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
   const hotChoicesAbortRef = useRef<AbortController | null>(null)
   const currentCompactionMessageIdRef = useRef<string | null>(null)
   const compactionIdCounterRef = useRef(0)
@@ -250,6 +253,13 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             content: event.content || '',
             streaming: false,
             created_at: event.created_at,
+            run_id: event.run_id,
+            agent_name: event.agent_name,
+            root_agent_name: event.root_agent_name,
+            run_path: event.run_path,
+            subagent: event.subagent,
+            subagent_session_id: event.subagent_session_id,
+            subagent_type: event.subagent_type,
           })
           continue
         }
@@ -264,6 +274,30 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             result: event.result || '',
             streaming: false,
             created_at: event.created_at,
+            run_id: event.run_id,
+            agent_name: event.agent_name,
+            root_agent_name: event.root_agent_name,
+            run_path: event.run_path,
+            subagent: event.subagent,
+            subagent_session_id: event.subagent_session_id,
+            subagent_type: event.subagent_type,
+          })
+          continue
+        }
+        if (event.role === 'assistant') {
+          messages.push({
+            id: event.id || `${turn.id}-subagent-${index}`,
+            role: 'assistant',
+            content: event.content || '',
+            streaming: false,
+            created_at: event.created_at,
+            run_id: event.run_id,
+            agent_name: event.agent_name,
+            root_agent_name: event.root_agent_name,
+            run_path: event.run_path,
+            subagent: event.subagent,
+            subagent_session_id: event.subagent_session_id,
+            subagent_type: event.subagent_type,
           })
         }
       }
@@ -281,6 +315,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   const displayLiveMessages = hasPersistedLiveTurn ? [] : liveMessages.filter((message) => message.role !== 'token_usage')
   const messages = useMemo(() => [...historyMessages, ...displayLiveMessages], [displayLiveMessages, historyMessages])
+  const openSubAgentSession = useCallback((message: ChatMessage) => {
+    const key = subAgentSessionKey(message)
+    if (key) setActiveSubAgentSessionKey(key)
+  }, [])
   const persistedTokenUsageMessages = useMemo(
     () => (snapshot?.token_usage_events || []).map((event, index) => buildTokenUsageMessage(event, event.id || `token-usage-${index + 1}`)),
     [snapshot?.token_usage_events],
@@ -440,6 +478,11 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         switch (value.event) {
           case 'chunk': {
             const data = JSON.parse(value.data)
+            if (data.subagent) {
+              appendAssistantMessage(data.content || '', streamMetadataFromPayload(data))
+              setStageActivityContent('')
+              break
+            }
             const visible = narrativeFilter.push(data.content || '')
             if (visible) {
               collapseNonNarrativeMessages()
@@ -450,7 +493,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           }
           case 'thinking': {
             const data = JSON.parse(value.data)
-            appendThinkingMessage(data.content || '')
+            appendThinkingMessage(data.content || '', streamMetadataFromPayload(data))
             setStageActivityContent(t('storyStage.activity.thinking'))
             break
           }
@@ -787,7 +830,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         )}
 
         <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
-          <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
+          <section className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             {snapshotLoading && messages.length === 0 && !streaming ? (
               <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="flex max-w-md flex-col items-center gap-3">
@@ -847,7 +890,33 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 </div>
               </div>
             ) : (
-              <MessageList messages={messages} isStreaming={streaming} activityContent={activityContent} highlightDialogue collapseTraceBeforeAssistant scrollResetKey={scrollResetKey} bottomPaddingClassName="pb-36" bottomPaddingPx={messageListBottomPadding} messageStyle={stageTextStyle} onEditMessage={startEditingMessage} onRegenerateMessage={regenerateMessage} onSwitchMessageVersion={switchMessageVersion} />
+              <MessageList
+                messages={messages}
+                isStreaming={streaming}
+                activityContent={activityContent}
+                highlightDialogue
+                collapseTraceBeforeAssistant
+                scrollResetKey={scrollResetKey}
+                bottomPaddingClassName="pb-36"
+                bottomPaddingPx={messageListBottomPadding}
+                messageStyle={stageTextStyle}
+                onEditMessage={startEditingMessage}
+                onRegenerateMessage={regenerateMessage}
+                onSwitchMessageVersion={switchMessageVersion}
+                onOpenSubAgentSession={openSubAgentSession}
+                activeSubAgentSessionKey={activeSubAgentSessionKey}
+              />
+            )}
+            {activeSubAgentSessionKey && (
+              <div className="absolute inset-y-0 right-0 z-30 w-[min(420px,92vw)] border-l border-[var(--nova-border)] shadow-[var(--nova-shadow)]">
+                <SubAgentSessionPanel
+                  messages={messages}
+                  sessionKey={activeSubAgentSessionKey}
+                  onClose={() => setActiveSubAgentSessionKey('')}
+                  highlightDialogue
+                  messageStyle={stageTextStyle}
+                />
+              </div>
             )}
           </section>
         </div>
@@ -1101,22 +1170,22 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     </main>
   )
 
-  function appendAssistantMessage(content: string) {
+  function appendAssistantMessage(content: string, metadata: Partial<ChatMessage> = {}) {
     if (!content) return
     setStageLiveMessages((prev) => {
       const last = prev[prev.length - 1]
-      if (last?.role === 'assistant' && last.streaming) {
+      if (last?.role === 'assistant' && last.streaming && sameLiveMessageSource(last, metadata)) {
         return [...prev.slice(0, -1), { ...last, content: `${last.content || ''}${content}` }]
       }
-      return [...prev, { role: 'assistant', content, streaming: true }]
+      return [...prev, { role: 'assistant', content, streaming: true, ...metadata }]
     })
   }
 
-  function appendThinkingMessage(content: string) {
+  function appendThinkingMessage(content: string, metadata: Partial<ChatMessage> = {}) {
     if (!content) return
     setStageLiveMessages((prev) => {
       const last = prev[prev.length - 1]
-      if (last?.role === 'thinking') {
+      if (last?.role === 'thinking' && sameLiveMessageSource(last, metadata)) {
         return [
           ...prev.slice(0, -1),
           {
@@ -1126,13 +1195,14 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           },
         ]
       }
-      return [...prev, { role: 'thinking', content, streaming: true }]
+      return [...prev, { role: 'thinking', content, streaming: true, ...metadata }]
     })
   }
 
-  function appendToolCallMessage(payload: { id?: string; name?: string; args?: string }) {
+  function appendToolCallMessage(payload: Record<string, unknown> & { id?: string; name?: string; args?: string }) {
     const id = payload.id || `tool-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const name = payload.name || 'unknown_tool'
+    const metadata = streamMetadataFromPayload(payload)
     setStageLiveMessages((prev) => [
       ...prev,
       {
@@ -1143,6 +1213,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         args: payload.args || '',
         status: 'running',
         streaming: true,
+        ...metadata,
       },
     ])
   }
@@ -1233,6 +1304,33 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       ),
     )
   }
+}
+
+function streamMetadataFromPayload(payload: Record<string, unknown>): Partial<ChatMessage> {
+  const runPath = Array.isArray(payload.run_path) ? payload.run_path.filter((item): item is string => typeof item === 'string') : undefined
+  return {
+    run_id: typeof payload.run_id === 'string' ? payload.run_id : undefined,
+    agent_name: typeof payload.agent_name === 'string' ? payload.agent_name : undefined,
+    root_agent_name: typeof payload.root_agent_name === 'string' ? payload.root_agent_name : undefined,
+    run_path: runPath,
+    subagent: readStreamBool(payload.subagent),
+    subagent_session_id: typeof payload.subagent_session_id === 'string' ? payload.subagent_session_id : undefined,
+    subagent_type: typeof payload.subagent_type === 'string' ? payload.subagent_type : undefined,
+  }
+}
+
+function sameLiveMessageSource(message: ChatMessage, metadata: Partial<ChatMessage>) {
+  if (Boolean(message.subagent) !== Boolean(metadata.subagent)) return false
+  if (message.subagent || metadata.subagent) {
+    return subAgentSessionKey(message) === subAgentSessionKey(metadata)
+  }
+  return true
+}
+
+function readStreamBool(value: unknown) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') return value === 'true'
+  return false
 }
 
 function ReplyTargetCharsControl({ story, onChange }: { story?: StorySummary; onChange?: (replyTargetChars: number) => void | Promise<void> }) {

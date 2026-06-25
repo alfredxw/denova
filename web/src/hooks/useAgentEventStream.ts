@@ -20,6 +20,7 @@ interface ToolCallInfo {
 }
 
 type StreamSegmentRole = 'assistant' | 'thinking'
+type EventMetadata = Pick<ChatMessage, 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_session_id' | 'subagent_type'>
 
 const STREAM_CHARS_PER_FRAME = 8
 
@@ -33,6 +34,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
   const abortControllerRef = useRef<AbortController | null>(null)
   const currentSegmentIdRef = useRef<string | null>(null)
   const currentSegmentRoleRef = useRef<StreamSegmentRole | null>(null)
+  const currentSegmentSourceRef = useRef<string | null>(null)
   const segmentIdCounterRef = useRef(0)
   const pendingToolCallsRef = useRef<Record<string, ToolCallInfo>>({})
   const toolCallQueueRef = useRef<string[]>([])
@@ -50,6 +52,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     abortControllerRef.current = null
     currentSegmentIdRef.current = null
     currentSegmentRoleRef.current = null
+    currentSegmentSourceRef.current = null
     pendingToolCallsRef.current = {}
     toolCallQueueRef.current = []
     toolKeyToMessageIdRef.current = {}
@@ -109,7 +112,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     setMessages(prev => prev.map(message => {
       if (message.role === 'tool_call' && message.id && buffered[message.id]) {
         const args = (message.args || '') + buffered[message.id]
-        return { ...message, args, content: buildToolContent(message.name || 'unknown_tool', args) }
+        return { ...message, args, content: buildToolContent(message.name || 'unknown_tool', args), subagent_type: message.name === 'task' ? parseTaskSubagentType(args) : message.subagent_type }
       }
       return message
     }))
@@ -145,18 +148,21 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     flushStreamingSegmentBuffer(true)
     currentSegmentIdRef.current = null
     currentSegmentRoleRef.current = null
+    currentSegmentSourceRef.current = null
     setMessages(prev => finalizeStreamingSegment(prev, segmentId))
   }, [flushStreamingSegmentBuffer])
 
-  const appendStreamingSegment = useCallback((role: StreamSegmentRole, text: string) => {
+  const appendStreamingSegment = useCallback((role: StreamSegmentRole, text: string, metadata: EventMetadata = {}) => {
     if (!text) return
-    if (currentSegmentRoleRef.current !== role || !currentSegmentIdRef.current) {
+    const sourceKey = segmentSourceKey(metadata)
+    if (currentSegmentRoleRef.current !== role || currentSegmentSourceRef.current !== sourceKey || !currentSegmentIdRef.current) {
       finishCurrentSegment()
       currentSegmentIdRef.current = createSegmentId(role, segmentIdCounterRef)
       currentSegmentRoleRef.current = role
+      currentSegmentSourceRef.current = sourceKey
       const segmentId = currentSegmentIdRef.current
       if (!segmentId) return
-      setMessages(prev => appendStreamingSegmentMessage(prev, role, segmentId, text))
+      setMessages(prev => appendStreamingSegmentMessage(prev, role, segmentId, text, metadata))
       return
     }
     const segmentId = currentSegmentIdRef.current
@@ -176,6 +182,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     toolKeyToMessageIdRef.current = {}
     currentSegmentIdRef.current = null
     currentSegmentRoleRef.current = null
+    currentSegmentSourceRef.current = null
     currentCompactionMessageIdRef.current = null
     segmentBufferRef.current = {}
     setIsStreaming(true)
@@ -190,15 +197,16 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
 
         const event = value as SSEEvent
         const data = parseEventData(event.data)
+        const metadata = readEventMetadata(data)
         onEvent?.(event, data)
         switch (event.event) {
           case 'chunk': {
-            appendStreamingSegment('assistant', readString(data.content))
+            appendStreamingSegment('assistant', readString(data.content), metadata)
             setActivityContent('')
             break
           }
           case 'thinking': {
-            appendStreamingSegment('thinking', readString(data.content))
+            appendStreamingSegment('thinking', readString(data.content), metadata)
             setActivityContent(t('chat.activity.thinking'))
             break
           }
@@ -227,6 +235,8 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
               name: toolName,
               args,
               status: 'running',
+              ...metadata,
+              subagent_type: toolName === 'task' ? parseTaskSubagentType(args) : metadata.subagent_type,
             }))
             break
           }
@@ -245,11 +255,11 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             if (toolId) {
               setMessages(prev => prev.map(message => (
                 message.role === 'tool_call' && message.id === toolId
-                  ? { ...message, status: 'success', result: content, streaming: false }
+                  ? { ...message, status: 'success', result: content, streaming: false, ...metadata }
                   : message
               )))
             } else {
-              setMessages(prev => [...prev, { role: 'tool_result', content }])
+              setMessages(prev => [...prev, { role: 'tool_result', content, ...metadata }])
             }
             if (toolCall && isFileMutationTool(toolCall.name)) {
               void onAgentFileChange?.(extractToolPath(toolCall.args))
@@ -406,6 +416,12 @@ function readString(value: unknown) {
   return typeof value === 'string' ? value : ''
 }
 
+function readBool(value: unknown) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') return value === 'true'
+  return false
+}
+
 function readNumber(value: unknown) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
@@ -415,10 +431,31 @@ function readNumber(value: unknown) {
   return undefined
 }
 
+function readEventMetadata(data: Record<string, unknown>): EventMetadata {
+  const runPath = readStringArray(data.run_path)
+  const metadata: EventMetadata = {
+    run_id: readString(data.run_id) || undefined,
+    agent_name: readString(data.agent_name) || undefined,
+    root_agent_name: readString(data.root_agent_name) || undefined,
+    run_path: runPath.length > 0 ? runPath : undefined,
+    subagent: readBool(data.subagent),
+    subagent_session_id: readString(data.subagent_session_id) || undefined,
+  }
+  const subagentType = readString(data.subagent_type) || parseTaskSubagentType(readString(data.args))
+  if (subagentType) metadata.subagent_type = subagentType
+  return metadata
+}
+
+function segmentSourceKey(metadata: EventMetadata) {
+  const path = metadata.run_path?.join('/') || ''
+  return `${metadata.subagent ? 'sub' : 'root'}:${metadata.subagent_session_id || ''}:${metadata.agent_name || ''}:${path}`
+}
+
 function getToolEventKey(data: Record<string, unknown>): string | undefined {
-  if (typeof data.id === 'string' && data.id) return `id:${data.id}`
-  if (typeof data.index === 'number') return `index:${data.index}`
-  if (typeof data.index === 'string' && data.index) return `index:${data.index}`
+  const source = segmentSourceKey(readEventMetadata(data))
+  if (typeof data.id === 'string' && data.id) return `${source}:id:${data.id}`
+  if (typeof data.index === 'number') return `${source}:index:${data.index}`
+  if (typeof data.index === 'string' && data.index) return `${source}:index:${data.index}`
   return undefined
 }
 
@@ -438,8 +475,9 @@ function appendStreamingSegmentMessage(
   role: StreamSegmentRole,
   id: string,
   text: string,
+  metadata: EventMetadata,
 ) {
-  return [...messages, { role, id, content: text, streaming: true }]
+  return [...messages, { role, id, content: text, streaming: true, ...metadata }]
 }
 
 function updateStreamingSegments(messages: ChatMessage[], buffered: Record<string, string>) {
@@ -538,6 +576,17 @@ function findToolMessageId(
 
 function buildToolContent(name: string, args: string) {
   return args ? `${name}\n${args}` : name
+}
+
+function parseTaskSubagentType(args: string) {
+  if (!args) return ''
+  try {
+    const data = JSON.parse(args) as Record<string, unknown>
+    return typeof data.subagent_type === 'string' ? data.subagent_type : ''
+  } catch {
+    const match = args.match(/"subagent_type"\s*:\s*"([^"]+)"/)
+    return match?.[1] || ''
+  }
 }
 
 function upsertToolCallMessage(messages: ChatMessage[], next: ChatMessage) {

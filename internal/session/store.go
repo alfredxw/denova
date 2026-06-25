@@ -19,6 +19,9 @@ import (
 const (
 	defaultSessionID             = "default"
 	defaultSessionTitle          = "新会话"
+	displayToolArgsPersistBytes  = 4 * 1024
+	displayToolArgsPreviewBytes  = 32 * 1024
+	displayToolArgsTruncatedHint = "\n...\n[session preview truncated / 会话预览已截断]"
 	historyTypeMessage           = "message"
 	historyTypeDisplay           = "display"
 	historyTypeClear             = "clear"
@@ -45,6 +48,12 @@ type HistoryEntry struct {
 
 	RunID                string           `json:"run_id,omitempty"`
 	AgentKind            string           `json:"agent_kind,omitempty"`
+	AgentName            string           `json:"agent_name,omitempty"`
+	RootAgentName        string           `json:"root_agent_name,omitempty"`
+	RunPath              []string         `json:"run_path,omitempty"`
+	SubAgent             bool             `json:"subagent,omitempty"`
+	SubAgentSessionID    string           `json:"subagent_session_id,omitempty"`
+	SubAgentType         string           `json:"subagent_type,omitempty"`
 	PromptTokens         int              `json:"prompt_tokens,omitempty"`
 	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
 	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`
@@ -65,6 +74,8 @@ type historyRecord struct {
 	compaction        *ContextCompaction
 	compactionRemoval *ContextCompactionRemoval
 	createdAt         time.Time
+
+	displayArgsPersistedBytes int
 }
 
 // DisplayEvent 表示只用于前端展示的非上下文事件，例如 thinking 和工具卡片。
@@ -80,6 +91,12 @@ type DisplayEvent struct {
 
 	RunID                string           `json:"run_id,omitempty"`
 	AgentKind            string           `json:"agent_kind,omitempty"`
+	AgentName            string           `json:"agent_name,omitempty"`
+	RootAgentName        string           `json:"root_agent_name,omitempty"`
+	RunPath              []string         `json:"run_path,omitempty"`
+	SubAgent             bool             `json:"subagent,omitempty"`
+	SubAgentSessionID    string           `json:"subagent_session_id,omitempty"`
+	SubAgentType         string           `json:"subagent_type,omitempty"`
 	PromptTokens         int              `json:"prompt_tokens,omitempty"`
 	CachedPromptTokens   int              `json:"cached_prompt_tokens,omitempty"`
 	UncachedPromptTokens int              `json:"uncached_prompt_tokens,omitempty"`
@@ -193,7 +210,12 @@ func (s *Session) AppendDisplayEvent(event DisplayEvent) error {
 	if event.CreatedAt.IsZero() {
 		event.CreatedAt = time.Now().UTC()
 	}
-	s.records = append(s.records, historyRecord{kind: historyTypeDisplay, display: &event, createdAt: event.CreatedAt})
+	s.records = append(s.records, historyRecord{
+		kind:                      historyTypeDisplay,
+		display:                   &event,
+		createdAt:                 event.CreatedAt,
+		displayArgsPersistedBytes: len(event.Args),
+	})
 	s.UpdatedAt = event.CreatedAt
 	return s.persistLocked()
 }
@@ -224,11 +246,71 @@ func (s *Session) AppendDisplayToolArgs(id, name, delta string) error {
 		return nil
 	}
 	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
-		s.records[index].display.Args += delta
+		record := &s.records[index]
+		args, changed := appendDisplayToolArgsPreview(record.display.Args, delta)
+		if !changed {
+			return nil
+		}
+		record.display.Args = args
 		s.UpdatedAt = time.Now().UTC()
-		return s.persistLocked()
+		if !shouldPersistDisplayToolArgs(record) {
+			return nil
+		}
+		record.displayArgsPersistedBytes = len(record.display.Args)
+		// 流式工具参数只是展示缓存；若中途落盘失败，后续 tool_result 会再落完整卡片状态。
+		_ = s.persistLocked()
+		return nil
 	}
 	return nil
+}
+
+func shouldPersistDisplayToolArgs(record *historyRecord) bool {
+	if record == nil || record.display == nil {
+		return false
+	}
+	if strings.HasSuffix(record.display.Args, displayToolArgsTruncatedHint) &&
+		record.displayArgsPersistedBytes != len(record.display.Args) {
+		return true
+	}
+	return len(record.display.Args)-record.displayArgsPersistedBytes >= displayToolArgsPersistBytes
+}
+
+func appendDisplayToolArgsPreview(current, delta string) (string, bool) {
+	if delta == "" || strings.HasSuffix(current, displayToolArgsTruncatedHint) {
+		return current, false
+	}
+	contentLimit := displayToolArgsPreviewBytes - len(displayToolArgsTruncatedHint)
+	if contentLimit < 0 {
+		contentLimit = 0
+	}
+	if len(current)+len(delta) <= contentLimit {
+		return current + delta, true
+	}
+	if len(current) >= contentLimit {
+		return truncateUTF8ByBytes(current, contentLimit) + displayToolArgsTruncatedHint, true
+	}
+	remaining := contentLimit - len(current)
+	return current + truncateUTF8ByBytes(delta, remaining) + displayToolArgsTruncatedHint, true
+}
+
+func truncateUTF8ByBytes(value string, maxBytes int) string {
+	if maxBytes <= 0 || value == "" {
+		return ""
+	}
+	if len(value) <= maxBytes {
+		return value
+	}
+	lastBoundary := 0
+	for index := range value {
+		if index > maxBytes {
+			break
+		}
+		lastBoundary = index
+	}
+	if lastBoundary <= 0 {
+		return ""
+	}
+	return value[:lastBoundary]
 }
 
 // UpdateDisplayToolResult stores the result preview for a persisted tool card.
@@ -243,6 +325,30 @@ func (s *Session) UpdateDisplayToolResult(id, name, status, result string) error
 		s.records[index].display.Result = result
 		s.UpdatedAt = time.Now().UTC()
 		return s.persistLocked()
+	}
+	return nil
+}
+
+// AppendDisplayEventContent appends streamed display-only content to a card.
+func (s *Session) AppendDisplayEventContent(id, role, delta string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	id = strings.TrimSpace(id)
+	role = strings.TrimSpace(role)
+	if id == "" || role == "" || delta == "" {
+		return nil
+	}
+	for i := len(s.records) - 1; i >= 0; i-- {
+		record := s.records[i]
+		if record.kind != historyTypeDisplay || record.display == nil {
+			continue
+		}
+		if record.display.ID == id && record.display.Role == role {
+			s.records[i].display.Content += delta
+			s.UpdatedAt = time.Now().UTC()
+			return s.persistLocked()
+		}
 	}
 	return nil
 }
@@ -551,6 +657,12 @@ func (s *Session) History() []HistoryEntry {
 				CreatedAt:            record.display.CreatedAt,
 				RunID:                record.display.RunID,
 				AgentKind:            record.display.AgentKind,
+				AgentName:            record.display.AgentName,
+				RootAgentName:        record.display.RootAgentName,
+				RunPath:              append([]string(nil), record.display.RunPath...),
+				SubAgent:             record.display.SubAgent,
+				SubAgentSessionID:    record.display.SubAgentSessionID,
+				SubAgentType:         record.display.SubAgentType,
 				PromptTokens:         record.display.PromptTokens,
 				CachedPromptTokens:   record.display.CachedPromptTokens,
 				UncachedPromptTokens: record.display.UncachedPromptTokens,
@@ -1191,7 +1303,12 @@ func appendRecordLine(sess *Session, line string) error {
 		if event.CreatedAt.IsZero() {
 			event.CreatedAt = sess.UpdatedAt
 		}
-		sess.records = append(sess.records, historyRecord{kind: historyTypeDisplay, display: &event, createdAt: event.CreatedAt})
+		sess.records = append(sess.records, historyRecord{
+			kind:                      historyTypeDisplay,
+			display:                   &event,
+			createdAt:                 event.CreatedAt,
+			displayArgsPersistedBytes: len(event.Args),
+		})
 		if event.CreatedAt.After(sess.UpdatedAt) {
 			sess.UpdatedAt = event.CreatedAt
 		}

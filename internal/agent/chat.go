@@ -34,6 +34,7 @@ type ChatRequest struct {
 	StyleScenes    []string           `json:"style_scenes"`
 	Selections     []TextSelectionRef `json:"selections"`
 	PlanMode       bool               `json:"plan_mode"`
+	Locale         string             `json:"-"`
 
 	// StyleRules 由后端按当前导演配置注入（场景 → 风格内容）。
 	// StyleScenes 非空时只注入用户本轮通过 # 指定的场景；为空时作为场景化建议参与本轮上下文。
@@ -159,6 +160,11 @@ func (r *Runtime) Run(
 		}
 	}
 
+	runID := runLedger.ID()
+	if runID == "" {
+		runID = options.TaskID
+	}
+	subAgentSessions := newSubAgentSessionTracker(runID)
 	recorder := newDisplayEventRecorder(conversation)
 	mutations := newMutationTracker()
 	rawEmit := emit
@@ -171,11 +177,12 @@ func (r *Runtime) Run(
 		rawEmit(ev)
 	}
 	emit(Event{Type: "run_state", Data: map[string]string{
-		"run_id":     runLedger.ID(),
-		"task_id":    options.TaskID,
-		"agent_kind": options.AgentKind,
-		"session_id": options.SessionID,
-		"phase":      "started",
+		"run_id":          runLedger.ID(),
+		"task_id":         options.TaskID,
+		"agent_kind":      options.AgentKind,
+		"session_id":      options.SessionID,
+		"root_agent_name": options.RootAgentName,
+		"phase":           "started",
 	}})
 	originalMessage := req.Message
 	if err := runLedger.Record("run_started", map[string]any{
@@ -325,6 +332,7 @@ func (r *Runtime) Run(
 			continue
 		}
 
+		eventMeta := subAgentSessions.decorate(metadataForAgentEvent(event, options.RootAgentName))
 		mv := event.Output.MessageOutput
 		if mv.Role == schema.Tool {
 			if mv.Message == nil {
@@ -355,11 +363,11 @@ func (r *Runtime) Run(
 			}
 			logToolResult(mv.Message.ToolName, mv.Message.ToolCallID, content)
 			usageCollector.NoteToolResult(mv.Message.ToolName)
-			data := map[string]interface{}{
+			data := eventMeta.appendTo(map[string]interface{}{
 				"id":      mv.Message.ToolCallID,
 				"name":    mv.Message.ToolName,
 				"content": content,
-			}
+			})
 			if itemIDs, deletedIDs := parseWriteLoreItemsToolResult(mv.Message.ToolName, fullToolContent); len(itemIDs) > 0 || len(deletedIDs) > 0 {
 				data["item_ids"] = itemIDs
 				data["deleted_ids"] = deletedIDs
@@ -372,7 +380,7 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.IsStreaming && mv.MessageStream != nil {
-			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, emit)
+			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, eventMeta, emit)
 			usageCollector.AddMessage(msg)
 			if streamErr != nil {
 				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
@@ -390,7 +398,7 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.Message != nil {
-			processNonStreamingEvent(mv, &fullContent, &fullThinking, emit)
+			processNonStreamingEvent(mv, &fullContent, &fullThinking, eventMeta, emit)
 			usageCollector.AddMessage(mv.Message)
 		}
 	}
@@ -417,12 +425,13 @@ func (r *Runtime) Run(
 	runLogger.Info("run_completed")
 	finishRun("success", "", generatedBytes)
 	emit(Event{Type: "run_state", Data: map[string]string{
-		"run_id":     runLedger.ID(),
-		"task_id":    options.TaskID,
-		"agent_kind": options.AgentKind,
-		"session_id": options.SessionID,
-		"phase":      "finished",
-		"status":     "success",
+		"run_id":          runLedger.ID(),
+		"task_id":         options.TaskID,
+		"agent_kind":      options.AgentKind,
+		"session_id":      options.SessionID,
+		"root_agent_name": options.RootAgentName,
+		"phase":           "finished",
+		"status":          "success",
 	}})
 	emit(Event{Type: "done", Data: map[string]string{}})
 }

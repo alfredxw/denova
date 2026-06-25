@@ -89,7 +89,6 @@ reading_font_family = "apple-system"
 reading_font_size = 18
 
 # Agent
-max_iteration = 50
 model_max_retries = 5
 plan_mode_default = false
 # 写作 Agent 默认叙事编排 ID（当前工作区级配置，字段名沿用 ide_story_teller_id）

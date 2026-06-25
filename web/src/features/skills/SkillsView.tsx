@@ -12,7 +12,7 @@ import { AGENTS } from '@/features/agents/agent-registry'
 import type { AgentViewDefinition, VisibleAgentKey } from '@/features/agents/agent-registry'
 
 const skillNamePattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
-const scopes: SkillScope[] = ['workspace', 'user', 'builtin']
+const scopes: SkillScope[] = ['user', 'workspace', 'builtin']
 const skillAgentOptions = AGENTS.filter((agent) => agent.capabilityMode === 'tools')
 
 interface SkillsViewProps {
@@ -34,7 +34,7 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<SkillsMode>('editor')
-  const [newScope, setNewScope] = useState<SkillScope>('workspace')
+  const [newScope, setNewScope] = useState<SkillScope>('user')
   const [newName, setNewName] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [newAgents, setNewAgents] = useState<VisibleAgentKey[]>(['ide'])
@@ -57,8 +57,8 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
         const firstActive = data.skills.find((skill) => skill.active)
         return firstActive ? keyOf(firstActive) : (data.skills[0] ? keyOf(data.skills[0]) : null)
       })
-      const nextWritable = data.scopes.find((scope) => scope.scope === 'workspace' && scope.writable) ||
-        data.scopes.find((scope) => scope.scope === 'user' && scope.writable)
+      const nextWritable = data.scopes.find((scope) => scope.scope === 'user' && scope.writable) ||
+        data.scopes.find((scope) => scope.scope === 'workspace' && scope.writable)
       if (nextWritable) setNewScope(nextWritable.scope)
     } catch (e) {
       setError((e as Error).message)

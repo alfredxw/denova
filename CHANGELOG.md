@@ -6,14 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Added SubAgent delegation support with configurable General SubAgent availability, custom `sub_agents`, real-time subagent stream metadata, and compact Agents page management UI.
+
+### Changed
+
+- Agent：运行时 system prompt 现在会按界面/请求语言引导模型使用对应语言输出 thinking 内容；该约束只影响思考过程，不覆盖输出协议、JSON 字段、文件内容或故事正文语言。
+- Agent：默认不再为所有 Agent 设置 `max_iteration` 轮数上限；只有用户显式配置正数时才限制迭代次数。
+- Agent：Review 自动化不再强制把 `max_iteration` 提升到 100，避免 task 委派继续被隐藏上限截断。
+- Agent：自定义 SubAgent 现在继承父 Agent 稳定 system prompt、workspace/mode/tool 边界，并要求父 Agent 委派 task 时传递目标、约束和路径/资源 ID；若旧 SubAgent prompt 试图覆盖父 Agent 工具权限或模式边界，会以父级契约为准。
+- WebUI：Agents 页面默认编辑用户配置，Skills 页面默认在用户级目录新建 Skill；需要工作区级覆盖时仍可手动切换到工作区配置。
+- WebUI：创作 Agent 面板移除独立 Review tab，Review 任务配置与运行过程统一回到自动化页；SubAgent 正文输出改为主会话高亮进度卡，点击后可在右侧打开独立子会话详情栏，避免混入父 Agent 正文。
+- WebUI：写作模式作品目录上方的灵感、大纲和状态文件入口合并为可折叠的“书籍设定”，并新增创作规则、写作进度和角色当前状态快捷入口。
+
 ### Fixed
 
 - WebUI：允许 pnpm 在安装时执行 `msw` 的构建脚本，避免高版本 pnpm 首次安装后因 `ERR_PNPM_IGNORED_BUILDS` 导致前端启动失败。
+- Agent：修复自定义 SubAgent 在互动故事父 Agent 下可能绕过写文件拦截的问题，并让配置管理 SubAgent 的专属读写工具遵守自身工具权限限制。
+- WebUI：修复浅色主题下 SubAgent 删除确认弹窗危险按钮对比度不足的问题，并将基础弹窗宽度改为随视口自适应，避免自定义 SubAgent 编辑等弹窗过窄。
 - Agent 模型：所有 Agent 请求不再主动设置 `max_tokens` 输出上限，避免长章节通过 `write_file` 写入时工具参数在正文中途被截断并报 JSON EOF。
 - WebUI：修复对话区思考过程和工具调用卡片 hover 时也显示消息时间、并导致列表高度变化的问题；现在仅用户消息和 Agent 正文消息显示悬浮时间，时间戳使用绝对定位不再撑开页面。
 - WebUI：修复 `execute` 等工具执行完成后，对话页工具调用卡片可能仍停留在 Loading 状态的问题；工具结果现在会按调用 ID 或工具名回填到原卡片，正常结束时也会收敛未完成卡片。
-- Agent 工具：标识 Windows 暂不支持 `execute` 命令执行工具；Windows 运行时会强制关闭 `shell_execute`，Agents 设置页同步禁用该开关并展示说明。
+- Agent 工具：Windows 运行时现在通过 PowerShell 支持 `execute` 命令执行工具，不再强制关闭 `shell_execute`，Agents 设置页也允许正常配置该开关。
 - Agent 运行：修复写作 Agent 连续调用多个工具后，如果模型或工具流长时间不再返回事件，后端任务会永久保持 running、前端一直显示回复中的问题；现在主循环、助手流和工具结果流都有可配置空闲超时，默认 180 秒，超时会结束任务并返回错误。
+- Agent 会话：修复 `write_file` 等工具流式参数每帧都重写 `.nova/sessions` 导致 Windows 文件写入容易出现 open 超时和重复错误日志的问题；工具参数展示改为内存实时累积、磁盘节流持久化，并对超长参数只保存有界预览。
 - WebUI 编辑区 Tab：修复点击标题文字之外的 Tab 区域不会切换文件、容易感觉需要点两次的问题；现在整个 Tab 条目都可点击，关闭按钮仍独立关闭。
 - Windows Release：修复设置页和文档将局域网访问地址误指向开发前端端口的问题；release 现在展示实际 Nova 入口端口，避免手机访问到未监听的 `5173`。
 - 修复应用内安装更新缺少下载进度且下载包只保存在临时目录的问题；安装现在使用 `grab` 下载 Release 安装包到本地 `.nova-updates/downloads/`，通过前端进度条展示下载阶段，完成后再解压并替换本地文件，同时修复 Windows 安装路径含空格时更新脚本可能无法启动的问题。
