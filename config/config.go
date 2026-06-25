@@ -10,42 +10,45 @@ import (
 
 // Config 保存 Nova 的全局配置
 type Config struct {
-	OpenAIAPIKey                string                 `toml:"openai_api_key"`
-	OpenAIBaseURL               string                 `toml:"openai_base_url"`
-	OpenAIModel                 string                 `toml:"openai_model"`
-	OpenAIContextWindowTokens   int                    `toml:"openai_context_window_tokens"`
-	ModelProfiles               []ModelProfileSettings `toml:"model_profiles"`
-	AgentModels                 AgentModelSettings     `toml:"agent_models"`
-	AgentTools                  AgentToolSettings      `toml:"agent_tools"`
-	AgentPrompts                AgentPromptSettings    `toml:"agent_prompts"`
-	AgentSkills                 AgentSkillSettings     `toml:"agent_skills"`
-	AgentContexts               AgentContextSettings   `toml:"agent_context"`
-	SkillsDir                   string                 `toml:"skills_dir"`
-	BackendPort                 int                    `toml:"backend_port"`
-	FrontendPort                int                    `toml:"frontend_port"`
-	AllowLANAccess              bool                   `toml:"allow_lan_access"`
-	RemoteAccessUsername        string                 `toml:"remote_access_username"`
-	RemoteAccessPasswordHash    string                 `toml:"remote_access_password_hash"`
-	NovaDir                     string                 `toml:"nova_dir"`
-	Workspace                   string                 `toml:"workspace"`
-	RuntimeWebPort              int                    `toml:"-"`
-	IDEStoryTellerID            string                 `toml:"-"`
-	MaxIteration                int                    `toml:"max_iteration"`
-	ModelMaxRetries             int                    `toml:"model_max_retries"`
-	AgentIdleTimeoutSeconds     int                    `toml:"agent_idle_timeout_seconds"`
-	ChapterFilenameFormat       string                 `toml:"-"`
-	VolumeDirFormat             string                 `toml:"-"`
-	DraftFlowEnabled            bool                   `toml:"-"`
-	ChapterGroupMin             int                    `toml:"-"`
-	ChapterGroupMax             int                    `toml:"-"`
-	VersionTimedEnabled         bool                   `toml:"-"`
-	VersionTimedIntervalMinutes int                    `toml:"-"`
-	VersionAgentEnabled         bool                   `toml:"-"`
-	VersionAgentCharThreshold   int                    `toml:"-"`
-	InteractiveReplyTargetChars int                    `toml:"-"`
-	InteractiveHotChoices       bool                   `toml:"-"`
-	ResumeLastWorkspace         bool                   `toml:"-"`
-	UpdateCheckEnabled          bool                   `toml:"-"`
+	OpenAIAPIKey                string                       `toml:"openai_api_key"`
+	OpenAIBaseURL               string                       `toml:"openai_base_url"`
+	OpenAIModel                 string                       `toml:"openai_model"`
+	OpenAIContextWindowTokens   int                          `toml:"openai_context_window_tokens"`
+	ModelProfiles               []ModelProfileSettings       `toml:"model_profiles"`
+	AgentModels                 AgentModelSettings           `toml:"agent_models"`
+	AgentTools                  AgentToolSettings            `toml:"agent_tools"`
+	AgentPrompts                AgentPromptSettings          `toml:"agent_prompts"`
+	AgentSkills                 AgentSkillSettings           `toml:"agent_skills"`
+	AgentContexts               AgentContextSettings         `toml:"agent_context"`
+	GeneralSubAgents            AgentGeneralSubAgentSettings `toml:"general_sub_agents"`
+	SubAgents                   []SubAgentConfig             `toml:"sub_agents"`
+	SkillsDir                   string                       `toml:"skills_dir"`
+	BackendPort                 int                          `toml:"backend_port"`
+	FrontendPort                int                          `toml:"frontend_port"`
+	AllowLANAccess              bool                         `toml:"allow_lan_access"`
+	RemoteAccessUsername        string                       `toml:"remote_access_username"`
+	RemoteAccessPasswordHash    string                       `toml:"remote_access_password_hash"`
+	Language                    string                       `toml:"language"`
+	NovaDir                     string                       `toml:"nova_dir"`
+	Workspace                   string                       `toml:"workspace"`
+	RuntimeWebPort              int                          `toml:"-"`
+	IDEStoryTellerID            string                       `toml:"-"`
+	MaxIteration                int                          `toml:"max_iteration"`
+	ModelMaxRetries             int                          `toml:"model_max_retries"`
+	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`
+	ChapterFilenameFormat       string                       `toml:"-"`
+	VolumeDirFormat             string                       `toml:"-"`
+	DraftFlowEnabled            bool                         `toml:"-"`
+	ChapterGroupMin             int                          `toml:"-"`
+	ChapterGroupMax             int                          `toml:"-"`
+	VersionTimedEnabled         bool                         `toml:"-"`
+	VersionTimedIntervalMinutes int                          `toml:"-"`
+	VersionAgentEnabled         bool                         `toml:"-"`
+	VersionAgentCharThreshold   int                          `toml:"-"`
+	InteractiveReplyTargetChars int                          `toml:"-"`
+	InteractiveHotChoices       bool                         `toml:"-"`
+	ResumeLastWorkspace         bool                         `toml:"-"`
+	UpdateCheckEnabled          bool                         `toml:"-"`
 }
 
 // LoadWithWorkspace 在已知 workspace 时读取分层配置（默认 < 用户级 < 工作区级 < 环境变量）。
@@ -83,16 +86,19 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentPrompts:                s.AgentPrompts,
 		AgentSkills:                 s.AgentSkills,
 		AgentContexts:               s.AgentContexts,
+		GeneralSubAgents:            s.GeneralSubAgents,
+		SubAgents:                   s.SubAgents,
 		SkillsDir:                   s.SkillsDir,
 		BackendPort:                 settingsInt(s.BackendPort, 8080),
 		FrontendPort:                settingsInt(s.FrontendPort, 5173),
 		AllowLANAccess:              settingsBool(s.AllowLANAccess, false),
 		RemoteAccessUsername:        s.RemoteAccessUsername,
 		RemoteAccessPasswordHash:    s.RemoteAccessPasswordHash,
+		Language:                    s.Language,
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
-		MaxIteration:                settingsInt(s.MaxIteration, 50),
+		MaxIteration:                settingsInt(s.MaxIteration, 0),
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
 		AgentIdleTimeoutSeconds:     settingsInt(s.AgentIdleTimeoutSeconds, 180),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
@@ -158,10 +164,13 @@ func settingsFromConfig(cfg *Config) Settings {
 		AgentPrompts:             cfg.AgentPrompts,
 		AgentSkills:              cfg.AgentSkills,
 		AgentContexts:            cfg.AgentContexts,
+		GeneralSubAgents:         cfg.GeneralSubAgents,
+		SubAgents:                cfg.SubAgents,
 		SkillsDir:                cfg.SkillsDir,
 		NovaDir:                  cfg.NovaDir,
 		RemoteAccessUsername:     cfg.RemoteAccessUsername,
 		RemoteAccessPasswordHash: cfg.RemoteAccessPasswordHash,
+		Language:                 cfg.Language,
 		ChapterFilenameFormat:    cfg.ChapterFilenameFormat,
 		VolumeDirFormat:          cfg.VolumeDirFormat,
 	}
@@ -211,15 +220,18 @@ func Load() *Config {
 			AgentPrompts:                d.AgentPrompts,
 			AgentSkills:                 d.AgentSkills,
 			AgentContexts:               d.AgentContexts,
+			GeneralSubAgents:            d.GeneralSubAgents,
+			SubAgents:                   d.SubAgents,
 			SkillsDir:                   d.SkillsDir,
 			BackendPort:                 settingsInt(d.BackendPort, 8080),
 			FrontendPort:                settingsInt(d.FrontendPort, 5173),
 			AllowLANAccess:              settingsBool(d.AllowLANAccess, false),
 			RemoteAccessUsername:        d.RemoteAccessUsername,
 			RemoteAccessPasswordHash:    d.RemoteAccessPasswordHash,
+			Language:                    d.Language,
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
-			MaxIteration:                settingsInt(d.MaxIteration, 50),
+			MaxIteration:                settingsInt(d.MaxIteration, 0),
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
 			AgentIdleTimeoutSeconds:     settingsInt(d.AgentIdleTimeoutSeconds, 180),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,

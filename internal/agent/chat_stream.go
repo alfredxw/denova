@@ -15,7 +15,7 @@ import (
 // processStreamingEvent 处理流式助手消息，输出领域事件。
 // 工具调用在流中一检测到名称就立即 emit，让前端尽早展示 running 卡片。
 // 参数在流中逐帧 emit tool_args_delta，前端可实时展示 write_file 内容。
-func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, emit func(Event)) (*schema.Message, error) {
+func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, meta agentEventMetadata, emit func(Event)) (*schema.Message, error) {
 	mv.MessageStream.SetAutomaticClose()
 	defer mv.MessageStream.Close()
 	var accumulatedToolCalls []schema.ToolCall
@@ -41,14 +41,16 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 		}
 		chunks = append(chunks, frame)
 		if frame.ReasoningContent != "" {
-			if fullThinking != nil {
+			if fullThinking != nil && !meta.SubAgent {
 				fullThinking.WriteString(frame.ReasoningContent)
 			}
-			emit(Event{Type: "thinking", Data: map[string]string{"content": frame.ReasoningContent}})
+			emit(Event{Type: "thinking", Data: meta.appendTo(map[string]interface{}{"content": frame.ReasoningContent})})
 		}
 		if frame.Content != "" {
-			fullContent.WriteString(frame.Content)
-			emit(Event{Type: "chunk", Data: map[string]string{"content": frame.Content}})
+			if !meta.SubAgent {
+				fullContent.WriteString(frame.Content)
+			}
+			emit(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": frame.Content})})
 		}
 		if len(frame.ToolCalls) > 0 {
 			accumulatedToolCalls = mergeToolCalls(accumulatedToolCalls, frame.ToolCalls)
@@ -62,7 +64,7 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 					lastArgsLen[i] = 0
 					logToolCall(tc.Function.Name, tc.ID, len(tc.Function.Arguments), "streaming")
 					manifest := ManifestForTool(tc.Function.Name)
-					data := map[string]interface{}{
+					data := meta.appendTo(map[string]interface{}{
 						"id":                  tc.ID,
 						"name":                tc.Function.Name,
 						"args":                "",
@@ -70,7 +72,7 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 						"mutates_workspace":   manifest.MutatesWorkspace,
 						"requires_post_check": manifest.RequiresPostCheck,
 						"max_result_bytes":    manifest.MaxResultBytes,
-					}
+					})
 					if tc.Index != nil {
 						data["index"] = *tc.Index
 					}
@@ -85,18 +87,18 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 						if path := toolPathFromArgs(tc.Function.Arguments); path != "" {
 							logToolPath(tc.Function.Name, tc.ID, path)
 							loggedToolPaths[i] = true
-							emit(Event{Type: "tool_target", Data: map[string]interface{}{
+							emit(Event{Type: "tool_target", Data: meta.appendTo(map[string]interface{}{
 								"id":     tc.ID,
 								"name":   tc.Function.Name,
 								"target": path,
-							}})
+							})})
 						}
 					}
-					data := map[string]interface{}{
+					data := meta.appendTo(map[string]interface{}{
 						"id":    tc.ID,
 						"name":  tc.Function.Name,
 						"delta": delta,
-					}
+					})
 					if tc.Index != nil {
 						data["index"] = *tc.Index
 					}
@@ -117,16 +119,18 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 }
 
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。
-func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, emit func(Event)) {
+func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, meta agentEventMetadata, emit func(Event)) {
 	if mv.Message.ReasoningContent != "" {
-		if fullThinking != nil {
+		if fullThinking != nil && !meta.SubAgent {
 			fullThinking.WriteString(mv.Message.ReasoningContent)
 		}
-		emit(Event{Type: "thinking", Data: map[string]string{"content": mv.Message.ReasoningContent}})
+		emit(Event{Type: "thinking", Data: meta.appendTo(map[string]interface{}{"content": mv.Message.ReasoningContent})})
 	}
 	if mv.Message.Content != "" {
-		fullContent.WriteString(mv.Message.Content)
-		emit(Event{Type: "chunk", Data: map[string]string{"content": mv.Message.Content}})
+		if !meta.SubAgent {
+			fullContent.WriteString(mv.Message.Content)
+		}
+		emit(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": mv.Message.Content})})
 	}
 	for _, tc := range mv.Message.ToolCalls {
 		name := tc.Function.Name
@@ -143,7 +147,7 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 		if len(args) > 200 {
 			args = args[:200] + "..."
 		}
-		data := map[string]interface{}{
+		data := meta.appendTo(map[string]interface{}{
 			"id":                  tc.ID,
 			"name":                name,
 			"args":                args,
@@ -151,7 +155,7 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 			"mutates_workspace":   manifest.MutatesWorkspace,
 			"requires_post_check": manifest.RequiresPostCheck,
 			"max_result_bytes":    manifest.MaxResultBytes,
-		}
+		})
 		if target != "" {
 			data["target"] = target
 		}

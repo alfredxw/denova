@@ -344,10 +344,11 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 	}
 
 	var task *novaApp.Task
+	locale := requestLocale(c)
 	if strings.TrimSpace(body.RegenerateFromTurn) != "" {
-		task = h.app.StartInteractiveRegenerateTask(body.StoryID, body.Branch, body.RegenerateFromTurn, body.Message, body.StyleScenes)
+		task = h.app.StartInteractiveRegenerateTask(body.StoryID, body.Branch, body.RegenerateFromTurn, body.Message, body.StyleScenes, locale)
 	} else {
-		task = h.app.StartInteractiveTask(body.StoryID, body.Branch, body.Message, body.StyleScenes)
+		task = h.app.StartInteractiveTask(body.StoryID, body.Branch, body.Message, body.StyleScenes, locale)
 	}
 	if task == nil {
 		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
@@ -380,7 +381,7 @@ func (h *Handlers) HandleInteractiveChatContextAnalysis(ctx context.Context, c *
 		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyModeOnly")
 		return
 	}
-	analysis, err := h.app.AnalyzeInteractiveContext(body.StoryID, body.Branch, body.Message, body.StyleScenes)
+	analysis, err := h.app.AnalyzeInteractiveContext(body.StoryID, body.Branch, body.Message, body.StyleScenes, requestLocale(c))
 	if err != nil {
 		writeError(c, consts.StatusConflict, err.Error())
 		return

@@ -24,6 +24,7 @@ type ConfigManagerRequest struct {
 	BranchID    string            `json:"branch_id,omitempty"`
 	References  []string          `json:"references,omitempty"`
 	Context     map[string]string `json:"context,omitempty"`
+	Locale      string            `json:"-"`
 }
 
 func (a *App) StartConfigManagerTask(req ConfigManagerRequest) *Task {
@@ -50,6 +51,7 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 	} else {
 		log.Printf("[config-manager] load layered settings failed workspace=%s err=%v", workspace, err)
 	}
+	applyRequestLocaleToConfig(&runtimeCfg, req.Locale)
 	sessionID, err := configManagerSessionID(req)
 	if err != nil {
 		log.Printf("[config-manager] resolve session failed origin=%s resource_id=%s story_id=%s branch_id=%s err=%v", req.Origin, req.ResourceID, req.StoryID, req.BranchID, err)

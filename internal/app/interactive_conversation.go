@@ -280,14 +280,18 @@ func (c *interactiveConversation) AppendDisplayEvent(event session.DisplayEvent)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	next := interactive.DisplayEvent{
-		ID:        strings.TrimSpace(event.ID),
-		Role:      role,
-		Content:   content,
-		Name:      name,
-		Args:      event.Args,
-		Status:    status,
-		Result:    event.Result,
-		CreatedAt: createdAt,
+		ID:            strings.TrimSpace(event.ID),
+		Role:          role,
+		Content:       content,
+		Name:          name,
+		Args:          event.Args,
+		Status:        status,
+		Result:        event.Result,
+		CreatedAt:     createdAt,
+		AgentName:     event.AgentName,
+		RootAgentName: event.RootAgentName,
+		RunPath:       append([]string(nil), event.RunPath...),
+		SubAgent:      event.SubAgent,
 	}
 	c.displayEvents = append(c.displayEvents, next)
 	turnID := ""

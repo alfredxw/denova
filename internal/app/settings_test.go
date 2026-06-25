@@ -138,3 +138,13 @@ func TestApplyLayeredSettingsToConfigAppliesAgentIdleTimeout(t *testing.T) {
 		t.Fatalf("agent idle timeout = %d, want %d", cfg.AgentIdleTimeoutSeconds, idleTimeout)
 	}
 }
+
+func TestApplyLayeredSettingsToConfigClearsMaxIterationWhenUnset(t *testing.T) {
+	cfg := &config.Config{MaxIteration: 50}
+	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+		Effective: config.Settings{},
+	})
+	if cfg.MaxIteration != 0 {
+		t.Fatalf("max iteration = %d, want unlimited default 0", cfg.MaxIteration)
+	}
+}

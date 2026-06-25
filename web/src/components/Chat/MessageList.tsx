@@ -308,9 +308,11 @@ function TraceGroup({ messages, highlightDialogue, messageStyle }: { messages: C
   const [expanded, setExpanded] = useState(false)
   const toolCount = messages.filter((message) => message.role === 'tool_call').length
   const thinkingCount = messages.filter((message) => message.role === 'thinking').length
+  const subAgentCount = messages.filter((message) => message.subagent).length
   const label = [
     thinkingCount > 0 ? t('chat.trace.thinking') : '',
     toolCount > 0 ? t('chat.trace.toolCalls', { count: toolCount }) : '',
+    subAgentCount > 0 ? t('chat.subagent.label') : '',
   ].filter(Boolean).join(' · ') || t('chat.trace.execution')
 
   return (

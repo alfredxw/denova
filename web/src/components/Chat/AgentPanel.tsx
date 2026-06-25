@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Bot, ClipboardCheck, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
+import { Activity, Bot, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { Teller } from '@/features/interactive/types'
@@ -12,9 +12,8 @@ import { SessionManagementPanel } from './SessionManagementPanel'
 import { AgentTracePanel } from './AgentTracePanel'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from './ContextAnalysisDialog'
 import type { ReferencePickerItem } from './FileReferencePicker'
-import { WritingReviewPanel, WritingReviewTabBadge } from '@/features/automations/WritingReviewPanel'
 
-type AgentPanelView = 'chat' | 'sessions' | 'review' | 'traces'
+type AgentPanelView = 'chat' | 'sessions' | 'traces'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 
@@ -48,8 +47,6 @@ interface AgentPanelProps {
   onStyleSceneAdd: (scene: string) => void
   onStyleSceneRemove: (scene: string) => void
   onTextSelectionRemove: (index: number) => void
-  onOpenReviewConfig: () => void
-  onOpenReviewFile: (path: string) => void | Promise<void>
   onClose: () => void
 }
 
@@ -84,8 +81,6 @@ export function AgentPanel({
   onStyleSceneAdd,
   onStyleSceneRemove,
   onTextSelectionRemove,
-  onOpenReviewConfig,
-  onOpenReviewFile,
   onClose,
 }: AgentPanelProps) {
   const { t } = useTranslation()
@@ -165,17 +160,6 @@ export function AgentPanel({
             className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'sessions' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
             {t('chat.view.sessions')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('review')}
-            className={`flex items-center gap-1 rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'review' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-            aria-label={t('chat.view.review')}
-            title={t('chat.view.review')}
-          >
-            <ClipboardCheck className="h-3 w-3" />
-            {t('chat.view.review')}
-            <WritingReviewTabBadge workspace={workspace} />
           </button>
           <button
             type="button"
@@ -282,18 +266,6 @@ export function AgentPanel({
           onRename={onRenameSession}
           onDelete={onDeleteSession}
           onEnterChat={() => setView('chat')}
-        />
-      ) : view === 'review' ? (
-        <WritingReviewPanel
-          workspace={workspace}
-          selectedFile={selectedFile}
-          fileSuggestions={fileSuggestions}
-          onOpenConfig={onOpenReviewConfig}
-          onOpenFile={onOpenReviewFile}
-          onSendToWritingAgent={(prompt) => {
-            setView('chat')
-            setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
-          }}
         />
       ) : (
         <AgentTracePanel disabled={isStreaming} />

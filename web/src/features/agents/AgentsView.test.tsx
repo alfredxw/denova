@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSkills } from '@/lib/api'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { LayeredSettings } from '@/features/settings/types'
@@ -25,6 +25,10 @@ describe('AgentsView', () => {
     vi.mocked(getSkills).mockResolvedValue({ scopes: [], skills: [] })
     vi.mocked(updateUserSettings).mockImplementation(async (settings) => settingsSnapshot({ user: settings, effective: settings }))
     vi.mocked(updateWorkspaceSettings).mockImplementation(async (settings) => settingsSnapshot({ workspace: settings, effective: settings }))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('reloads model profiles when settings are updated elsewhere', async () => {
@@ -85,14 +89,153 @@ describe('AgentsView', () => {
     expect(screen.getByDisplayValue('31')).toBeInTheDocument()
   })
 
-  it('marks execute unsupported on Windows runtimes', async () => {
+  it('keeps execute configurable on Windows runtimes', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
       runtime: { goos: 'windows' },
     }))
 
     render(<AgentsView />)
 
-    expect(await screen.findByText('Windows 暂不支持 execute')).toBeInTheDocument()
+    const title = await screen.findByText('命令执行')
+    const row = title.parentElement?.parentElement
+    const select = row?.querySelector('select')
+    expect(screen.queryByText('Windows 暂不支持 execute')).not.toBeInTheDocument()
+    expect(select).toBeTruthy()
+    expect(select).not.toBeDisabled()
+  })
+
+  it('adds and edits custom SubAgents in user settings by default', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
+
+    render(<AgentsView />)
+
+    await screen.findByText('SubAgents')
+    await user.click(screen.getByRole('button', { name: /新增 SubAgent/ }))
+    const nameInput = screen.getByDisplayValue('自定义 SubAgent')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Researcher')
+    await user.click(screen.getByRole('button', { name: '完成' }))
+    expect(screen.getByText('Researcher')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
+        sub_agents: [expect.objectContaining({
+          id: 'subagent-1',
+          name: 'Researcher',
+          parents: ['ide'],
+        })],
+      }))
+    })
+  })
+
+  it('saves Agents page edits to workspace settings after switching layers', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
+
+    render(<AgentsView />)
+
+    await screen.findByText('SubAgents')
+    await user.click(screen.getByRole('button', { name: '当前工作区' }))
+    await user.click(screen.getByRole('button', { name: /新增 SubAgent/ }))
+    const nameInput = screen.getByDisplayValue('自定义 SubAgent')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Workspace Researcher')
+    await user.click(screen.getByRole('button', { name: '完成' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(updateWorkspaceSettings)).toHaveBeenCalledWith(expect.objectContaining({
+        sub_agents: [expect.objectContaining({
+          id: 'subagent-1',
+          name: 'Workspace Researcher',
+          parents: ['ide'],
+        })],
+      }))
+    })
+  })
+
+  it('keeps the SubAgent editor open when auto-save completes', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
+    vi.mocked(updateUserSettings).mockImplementation(async (settings) => settingsSnapshot({ user: settings, effective: settings }))
+
+    render(<AgentsView />)
+
+    await screen.findByText('SubAgents')
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: /新增 SubAgent/ }))
+    const nameInput = screen.getByDisplayValue('自定义 SubAgent')
+    fireEvent.change(nameInput, { target: { value: 'Researcher' } })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1100)
+    })
+
+    expect(vi.mocked(updateUserSettings)).toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Researcher')).toBeInTheDocument()
+  })
+
+  it('deletes custom SubAgents from Agents page settings', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      user: {
+        sub_agents: [{
+          id: 'researcher',
+          name: 'Researcher',
+          description: 'Researches delegated context',
+          system_prompt: 'Return concise findings.',
+          parents: ['ide'],
+          enabled: true,
+        }],
+      },
+      effective: {
+        sub_agents: [{
+          id: 'researcher',
+          name: 'Researcher',
+          description: 'Researches delegated context',
+          system_prompt: 'Return concise findings.',
+          parents: ['ide'],
+          enabled: true,
+        }],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    await screen.findByText('Researcher')
+    await user.click(screen.getByRole('button', { name: '删除 SubAgent' }))
+    await screen.findByText('删除 SubAgent？')
+    await user.click(screen.getByRole('button', { name: '删除' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(updateUserSettings)).toHaveBeenLastCalledWith(expect.objectContaining({
+        sub_agents: [],
+      }))
+    })
+  })
+
+  it('can disable the built-in General SubAgent for the selected parent', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      effective: {
+        general_sub_agents: { ide: true },
+      },
+    }))
+
+    render(<AgentsView />)
+
+    const generalSwitch = await screen.findByLabelText('通用 SubAgent 启用状态')
+    await user.selectOptions(generalSwitch, 'false')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
+        general_sub_agents: { ide: false },
+      }))
+    })
   })
 })
 

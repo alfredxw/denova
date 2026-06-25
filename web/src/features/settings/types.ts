@@ -9,6 +9,8 @@ export interface Settings {
   agent_prompts?: AgentPromptSettings
   agent_skills?: AgentSkillSettings
   agent_context?: AgentContextSettings
+  general_sub_agents?: AgentGeneralSubAgentSettings
+  sub_agents?: SubAgentConfig[]
   skills_dir?: string
   backend_port?: number | null
   frontend_port?: number | null
@@ -125,6 +127,14 @@ export interface AgentContextOverride {
   compaction_target_max_ratio?: number | null
 }
 
+export interface AgentGeneralSubAgentSettings {
+  default?: boolean | null
+  ide?: boolean | null
+  interactive_story?: boolean | null
+  config_manager?: boolean | null
+  automation?: boolean | null
+}
+
 export interface AgentToolOverride {
   file_read?: boolean | null
   file_write?: boolean | null
@@ -134,6 +144,17 @@ export interface AgentToolOverride {
   lore_write?: boolean | null
   todo?: boolean | null
   web_search?: boolean | null
+}
+
+export interface SubAgentConfig {
+  id?: string
+  name?: string
+  description?: string
+  system_prompt?: string
+  enabled?: boolean | null
+  parents?: string[]
+  model?: AgentModelOverride
+  tools?: AgentToolOverride
 }
 
 export interface AgentPromptSettings {

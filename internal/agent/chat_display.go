@@ -53,6 +53,7 @@ type displayToolResultUpdater interface {
 type displayEventRecorder struct {
 	appender       displayEventAppender
 	thinking       strings.Builder
+	thinkingMeta   agentEventMetadata
 	pendingToolIDs map[string]string
 }
 
@@ -70,11 +71,17 @@ func (r *displayEventRecorder) Record(ev Event) {
 	}
 	switch ev.Type {
 	case "thinking":
+		meta := eventMetadataFromData(ev.Data)
+		if r.thinking.Len() > 0 && !r.thinkingMeta.sameSource(meta) {
+			r.flushThinking()
+		}
+		r.thinkingMeta = meta
 		r.thinking.WriteString(eventDataString(ev.Data, "content"))
 	case "chunk":
 		r.flushThinking()
 	case "tool_call":
 		r.flushThinking()
+		meta := eventMetadataFromData(ev.Data)
 		id := eventDataString(ev.Data, "id")
 		name := eventDataString(ev.Data, "name")
 		args := eventDataString(ev.Data, "args")
@@ -82,12 +89,16 @@ func (r *displayEventRecorder) Record(ev Event) {
 			name = "unknown_tool"
 		}
 		if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
-			ID:      id,
-			Role:    "tool_call",
-			Content: name,
-			Name:    name,
-			Args:    args,
-			Status:  "running",
+			ID:            id,
+			Role:          "tool_call",
+			Content:       name,
+			Name:          name,
+			Args:          args,
+			Status:        "running",
+			AgentName:     meta.AgentName,
+			RootAgentName: meta.RootAgentName,
+			RunPath:       append([]string(nil), meta.RunPath...),
+			SubAgent:      meta.SubAgent,
 		}); err != nil {
 			log.Printf("[agent-run] persist display tool_call failed name=%s id=%s err=%v", name, id, err)
 			return
@@ -178,14 +189,20 @@ func (r *displayEventRecorder) flushThinking() {
 	content := r.thinking.String()
 	r.thinking.Reset()
 	if strings.TrimSpace(content) == "" {
+		r.thinkingMeta = agentEventMetadata{}
 		return
 	}
 	if err := r.appender.AppendDisplayEvent(session.DisplayEvent{
-		Role:    "thinking",
-		Content: content,
+		Role:          "thinking",
+		Content:       content,
+		AgentName:     r.thinkingMeta.AgentName,
+		RootAgentName: r.thinkingMeta.RootAgentName,
+		RunPath:       append([]string(nil), r.thinkingMeta.RunPath...),
+		SubAgent:      r.thinkingMeta.SubAgent,
 	}); err != nil {
 		log.Printf("[agent-run] persist display thinking failed bytes=%d err=%v", len(content), err)
 	}
+	r.thinkingMeta = agentEventMetadata{}
 }
 
 func eventDataString(data interface{}, key string) string {
@@ -252,6 +269,25 @@ func eventDataFloat(data interface{}, key string) float64 {
 		}
 	}
 	return 0
+}
+
+func eventDataBool(data interface{}, key string) bool {
+	switch typed := data.(type) {
+	case map[string]bool:
+		return typed[key]
+	case map[string]string:
+		return strings.EqualFold(typed[key], "true")
+	case map[string]interface{}:
+		if value, ok := typed[key]; ok {
+			switch v := value.(type) {
+			case bool:
+				return v
+			case string:
+				return strings.EqualFold(v, "true")
+			}
+		}
+	}
+	return false
 }
 
 func eventDataUsageCalls(data interface{}, key string) []runTokenUsageCall {

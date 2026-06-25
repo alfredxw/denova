@@ -75,6 +75,26 @@ describe('useAgentEventStream', () => {
     expect(executeMessages).toHaveLength(2)
     expect(executeMessages.some((message) => message.result === 'ambiguous result')).toBe(false)
   })
+
+  it('subagent chunk 单独成段，不合并进 root assistant 输出', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['chunk', { content: 'root-a', agent_name: 'NovaAgent', root_agent_name: 'NovaAgent', run_path: ['NovaAgent'], subagent: false }],
+        ['chunk', { content: 'sub-draft', agent_name: 'researcher', root_agent_name: 'NovaAgent', run_path: ['NovaAgent', 'researcher'], subagent: true }],
+        ['chunk', { content: 'root-b', agent_name: 'NovaAgent', root_agent_name: 'NovaAgent', run_path: ['NovaAgent'], subagent: false }],
+      ]))
+    })
+
+    const messages = readMessages().filter((message) => message.role === 'assistant')
+    expect(messages).toHaveLength(3)
+    expect(messages[0]).toMatchObject({ content: 'root-a', subagent: false })
+    expect(messages[1]).toMatchObject({ content: 'sub-draft', subagent: true, agent_name: 'researcher' })
+    expect(messages[2]).toMatchObject({ content: 'root-b', subagent: false })
+  })
 })
 
 function AgentStreamHarness({ onChange }: { onChange: (value: ReturnType<typeof useAgentEventStream>) => void }) {
@@ -95,5 +115,5 @@ function sseStream(events: Array<[string, unknown]>) {
 }
 
 function readMessages() {
-  return JSON.parse(screen.getByTestId('messages').textContent || '[]') as Array<{ name?: string; status?: string; result?: string; streaming?: boolean }>
+  return JSON.parse(screen.getByTestId('messages').textContent || '[]') as Array<{ role?: string; content?: string; name?: string; status?: string; result?: string; streaming?: boolean; subagent?: boolean; agent_name?: string }>
 }

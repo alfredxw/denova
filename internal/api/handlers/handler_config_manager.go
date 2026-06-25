@@ -24,6 +24,7 @@ func (h *Handlers) HandleConfigManagerStream(ctx context.Context, c *app.Request
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
 		return
 	}
+	req.Locale = requestLocale(c)
 	task := h.app.StartConfigManagerTask(req)
 	if task == nil {
 		writeError(c, consts.StatusInternalServerError, "config manager agent is unavailable")

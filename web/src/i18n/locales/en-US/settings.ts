@@ -1,7 +1,7 @@
 const settings = {
   'settings.activeLayer.user': 'User Config',
   'settings.activeLayer.workspace': 'Current Workspace',
-  'settings.agent.maxIteration': 'Max Iterations',
+  'settings.agent.maxIteration': 'Max Iterations (blank = unlimited)',
   'settings.agent.modelMaxRetries': 'Model Retries',
   'settings.agent.idleTimeoutSeconds': 'Idle Timeout (s)',
   'settings.agent.planModeDefault': 'Default PlanMode',

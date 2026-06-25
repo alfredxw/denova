@@ -414,6 +414,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 
 	if layered, err := config.LoadLayered(novaDir, runtime.workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtime.cfg, layered)
+		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
 		runtime.cfg.IDEStoryTellerID = layered.Effective.IDEStoryTellerID
 		if runtime.cfg.IDEStoryTellerID == "" {
 			runtime.cfg.IDEStoryTellerID = "classic"
@@ -429,6 +430,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 		runtime.ideTeller = ideStoryTellerFromInteractive(teller, req.StyleRules)
 	} else {
 		log.Printf("[agent-task] load layered settings failed workspace=%s err=%v", runtime.workspace, err)
+		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
 	}
 	return runtime, req, nil
 }

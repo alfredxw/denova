@@ -102,6 +102,32 @@ func TestToolOrchestratorBlocksInteractiveWriteTools(t *testing.T) {
 	}
 }
 
+func TestToolOrchestratorBlocksInteractiveSubAgentWriteTools(t *testing.T) {
+	middleware := &toolOrchestratorMiddleware{agentKind: "researcher", policyKind: AgentKindInteractiveStory}
+	called := false
+	endpoint, err := middleware.WrapInvokableToolCall(
+		context.Background(),
+		func(context.Context, string, ...tool.Option) (string, error) {
+			called = true
+			return "ok", nil
+		},
+		&adk.ToolContext{Name: "write_file", CallID: "call-1"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := endpoint(context.Background(), `{"path":"chapters/ch01.md"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("interactive subagent write tool should be blocked before endpoint is called")
+	}
+	if !strings.Contains(result, "互动故事模式禁止使用写文件工具") {
+		t.Fatalf("unexpected block result: %s", result)
+	}
+}
+
 func TestToolOrchestratorAllowsIDEWriteAndFiltersResult(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
 	endpoint, err := middleware.WrapInvokableToolCall(

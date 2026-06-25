@@ -1,31 +1,39 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, Brain, Check, ChevronDown, ChevronRight, FolderOpen, Loader2, PanelLeft, Save, ScrollText, Wrench, X } from 'lucide-react'
+import { Bot, Brain, Check, ChevronDown, ChevronRight, Edit3, FolderOpen, Loader2, PanelLeft, Plus, Save, ScrollText, Trash2, Wrench, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
-import type { AgentContextOverride, AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer } from '@/features/settings/types'
+import type { AgentContextOverride, AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel } from '@/features/settings/model-profiles'
 import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
 import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
-import { AGENTS, FALLBACK_AGENT_TOOL_VALUES, TOOL_ROWS, resolveEffectiveTools, skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
-import type { AgentToolDefinition, AgentViewDefinition, ToolKey, VisibleAgentKey } from './agent-registry'
+import { AGENTS, DEEP_AGENT_PARENT_KEYS, FALLBACK_AGENT_TOOL_VALUES, TOOL_ROWS, resolveEffectiveTools, skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
+import type { AgentToolDefinition, AgentViewDefinition, DeepAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
 
 const fieldCls = 'nova-field min-h-7 w-full min-w-0 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
+let nextSettingsEventSourceID = 1
 
 export function AgentsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
   const [layered, setLayered] = useState<LayeredSettings | null>(null)
-  const [activeLayer, setActiveLayer] = useState<SettingsLayer>('workspace')
+  const [activeLayer, setActiveLayer] = useState<SettingsLayer>('user')
   const [activeAgent, setActiveAgent] = useState<VisibleAgentKey>('ide')
   const [draft, setDraft] = useState<Settings>({})
   const [skills, setSkills] = useState<SkillSummary[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [settingsEventSource] = useState(() => {
+    const source = `agents-view-${nextSettingsEventSourceID}`
+    nextSettingsEventSourceID += 1
+    return source
+  })
 
   const load = useCallback(async () => {
     try {
@@ -40,12 +48,14 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   useEffect(() => { void load() }, [load])
 
   useEffect(() => {
-    const onSettingsUpdated = () => {
+    const onSettingsUpdated = (event: Event) => {
+      const source = (event as CustomEvent<{ source?: string }>).detail?.source
+      if (source === settingsEventSource) return
       void load()
     }
     window.addEventListener('nova:settings-updated', onSettingsUpdated)
     return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
-  }, [load])
+  }, [load, settingsEventSource])
 
   useEffect(() => {
     let cancelled = false
@@ -87,6 +97,9 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const skillValue = draft.agent_skills?.[activeAgent] ?? {}
   const contextValue = draft.agent_context?.[activeAgent] ?? {}
   const inheritedContext = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[activeAgent] ?? {})
+  const generalSubAgents = draft.general_sub_agents ?? {}
+  const effectiveGeneralSubAgents = effective.general_sub_agents ?? {}
+  const subAgents = draft.sub_agents ?? []
 
   const saveDraft = useCallback(async (settings: Settings) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
@@ -96,9 +109,9 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const applySavedSettings = useCallback((next: LayeredSettings) => {
     setLayered(next)
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+      window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: settingsEventSource } }))
     }
-  }, [])
+  }, [settingsEventSource])
 
   const onSave = async () => {
     setSaving(true)
@@ -167,6 +180,22 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
     }))
   }
 
+  const setSubAgents = (updater: (current: SubAgentConfig[]) => SubAgentConfig[]) => {
+    setDraft((current) => ({
+      ...current,
+      sub_agents: updater(current.sub_agents ?? []),
+    }))
+  }
+
+  const setGeneralSubAgent = (agent: DeepAgentParentKey, value: boolean | null) => {
+    setDraft((current) => {
+      const next = { ...(current.general_sub_agents ?? {}) }
+      if (value === null) delete next[agent]
+      else next[agent] = value
+      return { ...current, general_sub_agents: next }
+    })
+  }
+
   useAutoSaveSettings({
     draft,
     saved: layered ? settingsForLayer(layered, activeLayer) : {},
@@ -183,7 +212,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
         <Bot className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
         <span className="shrink-0 font-medium">Agents</span>
         <div className="flex shrink-0 gap-1 border-l border-[var(--nova-border)] pl-2 sm:ml-3 sm:pl-3">
-          {(['workspace', 'user'] as SettingsLayer[]).map((layer) => (
+          {(['user', 'workspace'] as SettingsLayer[]).map((layer) => (
             <button
               key={layer}
               type="button"
@@ -262,9 +291,19 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
                     agent={activeAgent}
                     value={toolValue}
                     effective={effectiveTools}
-                    runtimeGOOS={layered?.runtime?.goos}
                     onChange={setAgentTool}
                   />
+                  {isDeepAgentParent(activeAgent) && (
+                    <AgentSubAgentSection
+                      agent={activeAgent}
+                      generalSettings={generalSubAgents}
+                      effectiveGeneralSettings={effectiveGeneralSubAgents}
+                      subAgents={subAgents}
+                      profiles={profileOptions}
+                      onGeneralChange={setGeneralSubAgent}
+                      onChange={setSubAgents}
+                    />
+                  )}
                   {effectiveTools.skills && (
                     <AgentSkillSection
                       agent={activeAgent}
@@ -628,11 +667,10 @@ function promptSourceTitle(t: ReturnType<typeof useTranslation>['t'], source: Ag
   return translated === key ? source.title : translated
 }
 
-function AgentToolSection({ agent, value, effective, runtimeGOOS, onChange }: {
+function AgentToolSection({ agent, value, effective, onChange }: {
   agent: VisibleAgentKey
   value: AgentToolOverride
   effective: Required<AgentToolOverride>
-  runtimeGOOS?: string
   onChange: (key: ToolKey, value: boolean | null) => void
 }) {
   const { t } = useTranslation()
@@ -645,21 +683,18 @@ function AgentToolSection({ agent, value, effective, runtimeGOOS, onChange }: {
           const explicit = value[tool.key]
           const inherited = explicit === undefined || explicit === null
           const current = inherited ? effective[tool.key] : explicit
-          const unsupportedReason = unsupportedToolReason(tool.key, runtimeGOOS)
-          const displayed = unsupportedReason ? false : current
           return (
             <div key={tool.key} className="flex min-h-16 min-w-0 flex-col items-stretch gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 sm:flex-row sm:items-center">
               <Icon className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium">{t(tool.titleKey)}</div>
                 <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">
-                  {unsupportedReason ? t(unsupportedReason) : t(toolSubtitleKey(tool, agent))}
+                  {t(toolSubtitleKey(tool, agent))}
                 </div>
               </div>
               <select
-                value={String(displayed)}
+                value={String(current)}
                 onChange={(e) => onChange(tool.key, e.target.value === '' ? null : e.target.value === 'true')}
-                disabled={Boolean(unsupportedReason)}
                 className={`${fieldCls} shrink-0 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-32`}
               >
                 <option value="true">{t('agents.option.on')}</option>
@@ -681,11 +716,325 @@ function toolSubtitleKey(tool: AgentToolDefinition, agent: VisibleAgentKey) {
   return tool.subtitleKey
 }
 
-function unsupportedToolReason(tool: ToolKey, runtimeGOOS?: string) {
-  if (tool === 'shell_execute' && runtimeGOOS === 'windows') {
-    return 'agents.tool.shellExecute.windowsUnsupported'
+function AgentSubAgentSection({ agent, generalSettings, effectiveGeneralSettings, subAgents, profiles, onGeneralChange, onChange }: {
+  agent: DeepAgentParentKey
+  generalSettings: Settings['general_sub_agents']
+  effectiveGeneralSettings: Settings['general_sub_agents']
+  subAgents: SubAgentConfig[]
+  profiles: Array<{ id: string; label: string }>
+  onGeneralChange: (agent: DeepAgentParentKey, value: boolean | null) => void
+  onChange: (updater: (current: SubAgentConfig[]) => SubAgentConfig[]) => void
+}) {
+  const { t } = useTranslation()
+  const [deleteIndex, setDeleteIndex] = useState<number | null>(null)
+  const [editIndex, setEditIndex] = useState<number | null>(null)
+  const visibleSubAgents = subAgents
+  const generalExplicit = generalSettings?.[agent]
+  const generalEnabled = resolveGeneralSubAgentEnabled(effectiveGeneralSettings, agent)
+  const addSubAgent = () => {
+    let nextEditIndex = 0
+    onChange((current) => {
+      const nextID = nextSubAgentID(current)
+      nextEditIndex = current.length
+      return [
+        ...current,
+        {
+          id: nextID,
+          name: t('agents.subAgents.newName'),
+          description: t('agents.subAgents.newDescription'),
+          system_prompt: t('agents.subAgents.newPrompt'),
+          enabled: true,
+          parents: [agent],
+          model: {},
+          tools: {},
+        },
+      ]
+    })
+    setEditIndex(nextEditIndex)
   }
-  return ''
+  const updateSubAgent = (index: number, patch: Partial<SubAgentConfig>) => {
+    onChange((current) => current.map((subAgent, currentIndex) => (
+      currentIndex === index ? normalizeSubAgentConfig({ ...subAgent, ...patch }) : subAgent
+    )))
+  }
+  const deleteSubAgent = () => {
+    if (deleteIndex === null) return
+    onChange((current) => current.filter((_, index) => index !== deleteIndex))
+    if (editIndex === deleteIndex) setEditIndex(null)
+    setDeleteIndex(null)
+  }
+  const editingSubAgent = editIndex === null ? undefined : visibleSubAgents[editIndex]
+
+  return (
+    <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <SectionTitle icon={Bot} title={t('agents.section.subAgents')} />
+        <button
+          type="button"
+          onClick={addSubAgent}
+          className="nova-nav-item ml-auto inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1 text-[11px] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t('agents.subAgents.add')}
+        </button>
+      </div>
+      <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Bot className="mt-0.5 h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <span className="font-medium">{t('agents.subAgents.general.title')}</span>
+              <span className={`rounded-[var(--nova-radius)] border px-1.5 py-0.5 text-[10px] ${generalEnabled ? 'border-[var(--nova-success)]/30 bg-[var(--nova-success-bg)] text-[var(--nova-success)]' : 'border-[var(--nova-danger)]/30 bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]'}`}>
+                {generalEnabled ? t('agents.option.on') : t('agents.option.off')}
+              </span>
+            </div>
+            <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('agents.subAgents.general.description')}</div>
+          </div>
+          <select
+            value={generalExplicit === undefined || generalExplicit === null ? '' : String(generalExplicit)}
+            onChange={(e) => onGeneralChange(agent, e.target.value === '' ? null : e.target.value === 'true')}
+            className={`${fieldCls} max-w-28 shrink-0`}
+            aria-label={t('agents.subAgents.general.enabled')}
+          >
+            <option value="">{t('agents.option.inherit')}</option>
+            <option value="true">{t('agents.option.on')}</option>
+            <option value="false">{t('agents.option.off')}</option>
+          </select>
+        </div>
+      </div>
+      {visibleSubAgents.length === 0 ? (
+        <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3 text-[11px] text-[var(--nova-text-faint)]">
+          {t('agents.subAgents.empty')}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {visibleSubAgents.map((subAgent, index) => (
+            <SubAgentRow
+              key={`${subAgent.id || 'subagent'}:${index}`}
+              agent={agent}
+              subAgent={subAgent}
+              onEdit={() => setEditIndex(index)}
+              onDelete={() => setDeleteIndex(index)}
+            />
+          ))}
+        </div>
+      )}
+      <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+        {t('agents.subAgents.note')}
+      </div>
+      <Dialog open={Boolean(editingSubAgent)} onOpenChange={(open) => { if (!open) setEditIndex(null) }}>
+        {editingSubAgent && editIndex !== null && (
+          <DialogContent
+            className="nova-panel flex max-h-[min(760px,calc(100vh-2rem))] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)]"
+          >
+            <DialogHeader className="shrink-0 gap-1 border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-4 py-3 text-left">
+              <DialogTitle className="text-sm">{editingSubAgent.name || editingSubAgent.id || t('agents.subAgents.untitled')}</DialogTitle>
+              <DialogDescription className="text-[11px] leading-5 text-[var(--nova-text-faint)]">
+                {t('agents.subAgents.dialogDescription')}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+              <SubAgentEditor
+                index={editIndex}
+                agent={agent}
+                subAgent={editingSubAgent}
+                profiles={profiles}
+                onChange={updateSubAgent}
+              />
+            </div>
+            <DialogFooter className="shrink-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-4 py-3">
+              <button type="button" onClick={() => setEditIndex(null)} className="nova-nav-item rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1.5 text-xs text-[var(--nova-text)] hover:bg-[var(--nova-hover)]">
+                {t('agents.subAgents.done')}
+              </button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+      <AlertDialog open={deleteIndex !== null} onOpenChange={(open) => { if (!open) setDeleteIndex(null) }}>
+        <AlertDialogContent size="sm" className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('agents.subAgents.deleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('agents.subAgents.deleteDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={deleteSubAgent}>{t('common.delete')}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
+  )
+}
+
+function SubAgentRow({ agent, subAgent, onEdit, onDelete }: {
+  agent: DeepAgentParentKey
+  subAgent: SubAgentConfig
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  const { t } = useTranslation()
+  const enabled = subAgent.enabled ?? true
+  const parents = effectiveSubAgentParents(subAgent)
+  const availableForCurrent = parents.includes(agent)
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
+      <Bot className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 truncate font-medium">{subAgent.name || subAgent.id || t('agents.subAgents.untitled')}</span>
+          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${enabled ? 'bg-[var(--nova-success-bg)] text-[var(--nova-success)]' : 'bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]'}`}>
+            {enabled ? t('agents.option.on') : t('agents.option.off')}
+          </span>
+          {!availableForCurrent && (
+            <span className="shrink-0 rounded bg-[var(--nova-danger-bg)] px-1.5 py-0.5 text-[10px] text-[var(--nova-danger)]">{t('agents.subAgents.unavailableShort')}</span>
+          )}
+        </div>
+        <div className="mt-1 flex min-w-0 flex-wrap gap-x-2 gap-y-1 text-[11px] text-[var(--nova-text-faint)]">
+          <span className="font-mono">{subAgent.id}</span>
+          <span>{parents.map((parent) => t(`agents.subAgents.parent.${parent}`)).join(', ')}</span>
+          <span>{subAgentToolSummary(t, subAgent.tools)}</span>
+        </div>
+      </div>
+      <button type="button" onClick={onEdit} className="nova-icon-button flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('agents.subAgents.edit')}>
+        <Edit3 className="h-3.5 w-3.5" />
+      </button>
+      <button type="button" onClick={onDelete} className="nova-icon-button flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-danger)]" aria-label={t('agents.subAgents.delete')}>
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
+function SubAgentEditor({ index, agent, subAgent, profiles, onChange }: {
+  index: number
+  agent: DeepAgentParentKey
+  subAgent: SubAgentConfig
+  profiles: Array<{ id: string; label: string }>
+  onChange: (index: number, patch: Partial<SubAgentConfig>) => void
+}) {
+  const { t } = useTranslation()
+  const enabled = subAgent.enabled ?? true
+  const parents = effectiveSubAgentParents(subAgent)
+  const parentSet = new Set(parents)
+  const tools = subAgent.tools ?? {}
+  const model = subAgent.model ?? {}
+
+  const setModel = (patch: Partial<AgentModelOverride>) => onChange(index, { model: { ...model, ...patch } })
+  const setTool = (key: ToolKey, value: boolean | null) => {
+    const nextTools = { ...tools, [key]: value }
+    if (value === null) delete nextTools[key]
+    onChange(index, { tools: nextTools })
+  }
+  const setParent = (parent: DeepAgentParentKey, checked: boolean) => {
+    const current = effectiveSubAgentParents(subAgent)
+    const next = new Set(current)
+    if (checked) next.add(parent)
+    else next.delete(parent)
+    const ordered = DEEP_AGENT_PARENT_KEYS.filter((key) => next.has(key))
+    onChange(index, { parents: ordered.length === DEEP_AGENT_PARENT_KEYS.length ? [] : ordered })
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-3">
+        <Field label={t('agents.subAgents.enabled')}>
+          <select
+            value={String(enabled)}
+            onChange={(e) => onChange(index, { enabled: e.target.value === 'true' })}
+            className={fieldCls}
+            aria-label={t('agents.subAgents.enabled')}
+          >
+            <option value="true">{t('agents.option.on')}</option>
+            <option value="false">{t('agents.option.off')}</option>
+          </select>
+        </Field>
+        <Field label={t('agents.subAgents.id')}>
+          <input value={subAgent.id ?? ''} onChange={(e) => onChange(index, { id: normalizeSubAgentID(e.target.value) })} className={fieldCls} />
+        </Field>
+        <Field label={t('agents.subAgents.name')}>
+          <input value={subAgent.name ?? ''} onChange={(e) => onChange(index, { name: e.target.value })} className={fieldCls} />
+        </Field>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        <Field label={t('agents.subAgents.description')}>
+          <input value={subAgent.description ?? ''} onChange={(e) => onChange(index, { description: e.target.value })} className={fieldCls} />
+        </Field>
+        <Field label={t('agents.field.modelProfile')}>
+          <select value={model.profile_id || ''} onChange={(e) => setModel({ profile_id: e.target.value })} className={fieldCls}>
+            <option value="">{t('agents.option.inherit')}</option>
+            {profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
+          </select>
+        </Field>
+      </div>
+      <Field label={t('agents.subAgents.prompt')}>
+        <Textarea
+          autoResize
+          value={subAgent.system_prompt ?? ''}
+          onChange={(e) => onChange(index, { system_prompt: e.target.value })}
+          placeholder={t('agents.subAgents.promptPlaceholder')}
+          className={`${fieldCls} min-h-28 resize-y leading-5 shadow-none focus-visible:ring-0`}
+        />
+      </Field>
+      <div className="grid gap-3 md:grid-cols-3">
+        <Field label="Temperature">
+          <input
+            type="number"
+            min={0}
+            max={2}
+            step={0.1}
+            value={model.temperature ?? ''}
+            placeholder={t('agents.option.inherit')}
+            onChange={(e) => setModel({ temperature: e.target.value === '' ? null : Number(e.target.value) })}
+            className={fieldCls}
+          />
+        </Field>
+        <Field label={t('agents.field.thinking')}>
+          <select value={model.enable_thinking === undefined || model.enable_thinking === null ? '' : String(model.enable_thinking)} onChange={(e) => setModel({ enable_thinking: e.target.value === '' ? null : e.target.value === 'true' })} className={fieldCls}>
+            <option value="">{t('agents.option.inherit')}</option>
+            <option value="true">{t('agents.option.on')}</option>
+            <option value="false">{t('agents.option.off')}</option>
+          </select>
+        </Field>
+        <Field label={t('agents.field.reasoningEffort')}>
+          <select value={model.reasoning_effort || ''} onChange={(e) => setModel({ reasoning_effort: e.target.value })} className={fieldCls}>
+            <option value="">{t('agents.option.inherit')}</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+          </select>
+        </Field>
+      </div>
+      <div>
+        <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('agents.subAgents.parents')}</div>
+        <div className="flex flex-wrap gap-2">
+          {DEEP_AGENT_PARENT_KEYS.map((parent) => (
+            <label key={parent} className="inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">
+              <input type="checkbox" checked={parentSet.has(parent)} onChange={(e) => setParent(parent, e.target.checked)} />
+              {t(`agents.subAgents.parent.${parent}`)}
+            </label>
+          ))}
+        </div>
+        {!parentSet.has(agent) && (
+          <div className="mt-1.5 text-[11px] text-[var(--nova-danger)]">{t('agents.subAgents.notAvailableForCurrent')}</div>
+        )}
+      </div>
+      <div>
+        <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('agents.subAgents.tools')}</div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {TOOL_ROWS.map((tool) => (
+            <div key={tool.key} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5">
+              <span className="min-w-0 flex-1 truncate text-[11px]">{t(tool.titleKey)}</span>
+              <select value={tools[tool.key] === undefined || tools[tool.key] === null ? '' : String(tools[tool.key])} onChange={(e) => setTool(tool.key, e.target.value === '' ? null : e.target.value === 'true')} className={`${fieldCls} max-w-28 shrink-0`}>
+                <option value="">{t('agents.option.inherit')}</option>
+                <option value="true">{t('agents.option.on')}</option>
+                <option value="false">{t('agents.option.off')}</option>
+              </select>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function AgentSkillSection({ agent, skills, value, effective, onChange }: {
@@ -898,6 +1247,61 @@ function hasTextOverride(value?: string) {
 
 function hasPromptOverride(value?: string) {
   return value !== undefined && value.trim() !== ''
+}
+
+function isDeepAgentParent(agent: VisibleAgentKey): agent is DeepAgentParentKey {
+  return (DEEP_AGENT_PARENT_KEYS as string[]).includes(agent)
+}
+
+function resolveGeneralSubAgentEnabled(settings: Settings['general_sub_agents'], agent: DeepAgentParentKey) {
+  const fallback = settings?.default ?? true
+  return settings?.[agent] ?? fallback
+}
+
+function subAgentToolSummary(t: (key: string, options?: Record<string, unknown>) => string, tools?: AgentToolOverride) {
+  const overrides = TOOL_ROWS.filter((tool) => tools?.[tool.key] !== undefined && tools?.[tool.key] !== null)
+  if (overrides.length === 0) return t('agents.subAgents.toolsInherited')
+  return t('agents.subAgents.toolsRestricted', { count: overrides.length })
+}
+
+function nextSubAgentID(current: SubAgentConfig[]) {
+  const used = new Set(current.map((subAgent) => subAgent.id).filter(Boolean))
+  for (let index = 1; index < 1000; index += 1) {
+    const id = `subagent-${index}`
+    if (!used.has(id)) return id
+  }
+  return `subagent-${Date.now()}`
+}
+
+function normalizeSubAgentID(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/[-_]{2,}/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '')
+}
+
+function normalizeSubAgentConfig(value: SubAgentConfig): SubAgentConfig {
+  return {
+    ...value,
+    id: normalizeSubAgentID(value.id || ''),
+    name: value.name ?? '',
+    description: value.description ?? '',
+    system_prompt: value.system_prompt ?? '',
+    parents: sanitizeSubAgentParents(value.parents),
+  }
+}
+
+function sanitizeSubAgentParents(value?: string[]) {
+  if (!value || value.length === 0) return []
+  const selected = DEEP_AGENT_PARENT_KEYS.filter((parent) => value.includes(parent))
+  return selected.length === DEEP_AGENT_PARENT_KEYS.length ? [] : selected
+}
+
+function effectiveSubAgentParents(subAgent: SubAgentConfig): DeepAgentParentKey[] {
+  const parents = sanitizeSubAgentParents(subAgent.parents)
+  return parents.length > 0 ? parents as DeepAgentParentKey[] : DEEP_AGENT_PARENT_KEYS
 }
 
 function mergeAgentModelOverride(parent: AgentModelOverride, child: AgentModelOverride): AgentModelOverride {

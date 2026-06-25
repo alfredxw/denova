@@ -17,6 +17,7 @@
   --nova-accent-blue: #7fa7d9;
   --nova-accent-green: #81b38d;
   --nova-danger: #ff6b6b;
+  --nova-danger-foreground: #1a1a1a;
   --nova-danger-bg: rgba(255, 107, 107, 0.12);
   --nova-danger-border: rgba(255, 107, 107, 0.42);
   --nova-warning: #f4d58d;
@@ -101,6 +102,7 @@
   --nova-accent-blue: #2f6fae;
   --nova-accent-green: #3f7f54;
   --nova-danger: #b42318;
+  --nova-danger-foreground: #ffffff;
   --nova-danger-bg: rgba(180, 35, 24, 0.1);
   --nova-danger-border: rgba(180, 35, 24, 0.32);
   --nova-warning: #7a5200;

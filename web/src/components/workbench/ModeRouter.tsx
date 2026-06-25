@@ -542,8 +542,6 @@ export function ModeRouter(props: ModeRouterProps) {
       onStyleSceneAdd={onStyleSceneAdd}
       onStyleSceneRemove={onStyleSceneRemove}
       onTextSelectionRemove={onTextSelectionRemove}
-      onOpenReviewConfig={() => onSetMode('automations')}
-      onOpenReviewFile={onSelectFile}
       onClose={() => onSetRightPanel(null)}
     />
   ) : null

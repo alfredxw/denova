@@ -1,7 +1,5 @@
 package config
 
-import "runtime"
-
 const (
 	AgentToolFileRead     = "file_read"
 	AgentToolFileWrite    = "file_write"
@@ -120,10 +118,14 @@ func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 }
 
 func ResolveAgentTools(cfg *Config, agentKind string) ResolvedAgentToolSettings {
-	return resolveAgentToolsForGOOS(cfg, agentKind, runtime.GOOS)
+	return resolveAgentTools(cfg, agentKind)
 }
 
-func resolveAgentToolsForGOOS(cfg *Config, agentKind, goos string) ResolvedAgentToolSettings {
+func resolveAgentToolsForGOOS(cfg *Config, agentKind, _ string) ResolvedAgentToolSettings {
+	return resolveAgentTools(cfg, agentKind)
+}
+
+func resolveAgentTools(cfg *Config, agentKind string) ResolvedAgentToolSettings {
 	settings := DefaultAgentToolSettings()
 	if cfg != nil {
 		settings = MergeAgentToolSettings(settings, cfg.AgentTools)
@@ -138,9 +140,6 @@ func resolveAgentToolsForGOOS(cfg *Config, agentKind, goos string) ResolvedAgent
 		LoreWrite:    boolValue(override.LoreWrite, true),
 		Todo:         boolValue(override.Todo, true),
 		WebSearch:    boolValue(override.WebSearch, true),
-	}
-	if goos == "windows" {
-		resolved.ShellExecute = false
 	}
 	return resolved
 }

@@ -196,4 +196,24 @@ describe('MessageList', () => {
     expect(screen.getByLabelText('压缩中')).toBeInTheDocument()
     expect(screen.queryByText('正在压缩上下文…')).not.toBeInTheDocument()
   })
+
+  it('折叠执行过程时仍直接展示 SubAgent assistant 小窗', () => {
+    render(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        collapseTraceBeforeAssistant
+        messages={[
+          { type: 'message', role: 'thinking', content: '根 Agent 思考' },
+          { type: 'message', role: 'assistant', content: 'SubAgent 可见输出', agent_name: 'researcher', subagent: true },
+          { type: 'message', role: 'assistant', content: '根 Agent 回复' },
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /思考过程/ })).toBeInTheDocument()
+    expect(screen.getByText('researcher 输出')).toBeInTheDocument()
+    expect(screen.getByText('SubAgent 可见输出')).toBeInTheDocument()
+    expect(screen.getByText('根 Agent 回复')).toBeInTheDocument()
+  })
 })
