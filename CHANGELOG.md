@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- WebUI：允许 pnpm 在安装时执行 `msw` 的构建脚本，避免高版本 pnpm 首次安装后因 `ERR_PNPM_IGNORED_BUILDS` 导致前端启动失败。
 - Agent 模型：所有 Agent 请求不再主动设置 `max_tokens` 输出上限，避免长章节通过 `write_file` 写入时工具参数在正文中途被截断并报 JSON EOF。
 - WebUI：修复对话区思考过程和工具调用卡片 hover 时也显示消息时间、并导致列表高度变化的问题；现在仅用户消息和 Agent 正文消息显示悬浮时间，时间戳使用绝对定位不再撑开页面。
 - WebUI：修复 `execute` 等工具执行完成后，对话页工具调用卡片可能仍停留在 Loading 状态的问题；工具结果现在会按调用 ID 或工具名回填到原卡片，正常结束时也会收敛未完成卡片。

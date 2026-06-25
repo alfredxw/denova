@@ -13,7 +13,6 @@ nova-test.exe
 data/
 web/node_modules/
 web/dist/
-web/pnpm-workspace.yaml
 plan.md
 docs/
 .worktrees/
