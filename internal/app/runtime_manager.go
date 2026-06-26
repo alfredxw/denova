@@ -525,6 +525,16 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if len(effective.ModelProfiles) > 0 {
 		cfg.ModelProfiles = effective.ModelProfiles
 	}
+	if cfg.ImageAPIBaseURL == "" && effective.ImageAPIBaseURL != "" {
+		cfg.ImageAPIBaseURL = effective.ImageAPIBaseURL
+	}
+	if cfg.ImageAPIModel == "" && effective.ImageAPIModel != "" {
+		cfg.ImageAPIModel = effective.ImageAPIModel
+	}
+	if effective.DefaultImageAPIProfileID != "" {
+		cfg.DefaultImageAPIProfileID = effective.DefaultImageAPIProfileID
+	}
+	cfg.ImageAPIProfiles = effective.ImageAPIProfiles
 	cfg.AgentModels = effective.AgentModels
 	cfg.AgentTools = effective.AgentTools
 	cfg.AgentPrompts = effective.AgentPrompts
@@ -604,6 +614,21 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if len(settings.ModelProfiles) > 0 {
 		cfg.ModelProfiles = config.Merge(config.Settings{ModelProfiles: cfg.ModelProfiles}, config.Settings{ModelProfiles: settings.ModelProfiles}).ModelProfiles
+	}
+	if settings.ImageAPIKey != "" && os.Getenv("OPENAI_IMAGE_API_KEY") == "" {
+		cfg.ImageAPIKey = settings.ImageAPIKey
+	}
+	if settings.ImageAPIBaseURL != "" && os.Getenv("OPENAI_IMAGE_BASE_URL") == "" {
+		cfg.ImageAPIBaseURL = settings.ImageAPIBaseURL
+	}
+	if settings.ImageAPIModel != "" && os.Getenv("OPENAI_IMAGE_MODEL") == "" {
+		cfg.ImageAPIModel = settings.ImageAPIModel
+	}
+	if settings.DefaultImageAPIProfileID != "" {
+		cfg.DefaultImageAPIProfileID = settings.DefaultImageAPIProfileID
+	}
+	if len(settings.ImageAPIProfiles) > 0 {
+		cfg.ImageAPIProfiles = config.Merge(config.Settings{ImageAPIProfiles: cfg.ImageAPIProfiles}, config.Settings{ImageAPIProfiles: settings.ImageAPIProfiles}).ImageAPIProfiles
 	}
 	cfg.AgentModels = config.MergeAgentModelSettings(cfg.AgentModels, settings.AgentModels)
 	cfg.AgentTools = config.MergeAgentToolSettings(cfg.AgentTools, settings.AgentTools)

@@ -43,6 +43,7 @@ type App struct {
 	configApp      *ConfigManagerAppService
 	automationApp  *AutomationAppService
 	skillsApp      *SkillsAppService
+	imageApp       *ImageAppService
 	servicesOnce   sync.Once
 
 	mu sync.RWMutex
@@ -98,6 +99,7 @@ func (a *App) ensureServices() {
 		a.configApp = &ConfigManagerAppService{app: a}
 		a.automationApp = &AutomationAppService{app: a}
 		a.skillsApp = &SkillsAppService{app: a}
+		a.imageApp = &ImageAppService{app: a}
 	})
 }
 
@@ -119,6 +121,11 @@ func (a *App) interactiveService() *InteractiveAppService {
 func (a *App) lore() *LoreAppService {
 	a.ensureServices()
 	return a.loreApp
+}
+
+func (a *App) images() *ImageAppService {
+	a.ensureServices()
+	return a.imageApp
 }
 
 func (a *App) configManager() *ConfigManagerAppService {

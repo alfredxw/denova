@@ -70,7 +70,8 @@ const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'timeline
 const ACTIVITY_BAR_WIDTH_STORAGE_KEY = 'nova.layout.activityBarWidth'
 const ACTIVITY_BAR_COLLAPSED_WIDTH = 64
 const ACTIVITY_BAR_MIN_WIDTH = 112
-const ACTIVITY_BAR_DEFAULT_WIDTH = 152
+const ACTIVITY_BAR_LEGACY_DEFAULT_WIDTH = 152
+const ACTIVITY_BAR_DEFAULT_WIDTH = 180
 const ACTIVITY_BAR_MAX_WIDTH = 280
 const ACTIVITY_BAR_WIDTH_KEYBOARD_STEP = 8
 
@@ -819,9 +820,12 @@ function storeActivityOrder(scope: ActivityOrderScope, order: ActivityItemId[]) 
   cleanupLegacyActivityOrderStorage()
 }
 
-function readStoredActivityBarWidth() {
+export function readStoredActivityBarWidth() {
   if (typeof window === 'undefined') return ACTIVITY_BAR_DEFAULT_WIDTH
-  const value = Number(window.localStorage.getItem(ACTIVITY_BAR_WIDTH_STORAGE_KEY))
+  const raw = window.localStorage.getItem(ACTIVITY_BAR_WIDTH_STORAGE_KEY)
+  if (raw === null) return ACTIVITY_BAR_DEFAULT_WIDTH
+  const value = Number(raw)
+  if (value === ACTIVITY_BAR_LEGACY_DEFAULT_WIDTH) return ACTIVITY_BAR_DEFAULT_WIDTH
   return Number.isFinite(value) ? clampActivityBarWidth(value) : ACTIVITY_BAR_DEFAULT_WIDTH
 }
 

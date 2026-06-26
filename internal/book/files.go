@@ -83,6 +83,19 @@ func (s *Service) WriteFile(relPath, content string) error {
 	return err
 }
 
+// WriteBinaryFile writes binary content inside the workspace using the same
+// path boundary as text file writes.
+func (s *Service) WriteBinaryFile(relPath string, data []byte) error {
+	absPath, err := SafePath(s.workspace, relPath)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(absPath, data, 0o644)
+}
+
 // WriteFileIfRevision 写入文件；expectedRevision 非空时，只有文件仍处于该版本才允许写入。
 func (s *Service) WriteFileIfRevision(relPath, content, expectedRevision string) (string, error) {
 	absPath, err := SafePath(s.workspace, relPath)

@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, PanelLeft, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
+import type { ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
 import { applyUpdate, checkForUpdate, fetchSettings, installUpdateStream, updateUserSettings, updateWorkspaceSettings } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { settingsForLayer, useAutoSaveSettings } from './use-auto-save-settings'
@@ -20,8 +20,9 @@ import { LOCALE_OPTIONS } from '@/i18n'
 import { APP_VERSION } from '@/app-version'
 import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
 import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfilesWithDefault } from './model-profiles'
+import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, DEFAULT_IMAGE_API_SIZE, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 
-type SettingsSectionId = 'model' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -38,6 +39,11 @@ const MIN_CONTEXT_WINDOW_TOKENS = 1024
 const MAX_CONTEXT_WINDOW_TOKENS = 2000000
 const CONTEXT_WINDOW_PRESETS = [200000, DEFAULT_CONTEXT_WINDOW_TOKENS, 1000000]
 const CONTEXT_WINDOW_INHERIT_VALUE = 'inherit'
+const IMAGE_API_INHERIT_VALUE = '__inherit__'
+const IMAGE_API_PROVIDER_DEFAULT_VALUE = '__provider_default__'
+const IMAGE_API_SIZE_OPTIONS = ['auto', '1024x1024', '1536x1024', '1024x1536', '1792x1024', '1024x1792', '512x512', '256x256']
+const IMAGE_API_QUALITY_OPTIONS = ['auto', 'high', 'medium', 'low', 'standard', 'hd']
+const IMAGE_API_FORMAT_OPTIONS = ['png', 'jpeg', 'webp']
 
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
@@ -58,6 +64,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('appearance')
   const [expandedSections, setExpandedSections] = useState<Record<SettingsSectionId, boolean>>({
     model: true,
+    image: true,
     paths: true,
     access: true,
     appearance: true,
@@ -203,6 +210,16 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     }))
   }
 
+  const setImageAPIProfiles = (profiles: ImageAPIProfileSettings[]) => {
+    setDraft((d) => ({
+      ...d,
+      image_api_key: '',
+      image_api_base_url: '',
+      image_api_model: '',
+      image_api_profiles: profiles,
+    }))
+  }
+
   useAutoSaveSettings({
     draft,
     saved: layered ? settingsForLayer(layered, activeLayer) : {},
@@ -295,6 +312,23 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             profiles={modelProfilesForEditor(draft, effective)}
             effectiveProfiles={modelProfilesWithDefault(effective)}
             onChange={setModelProfiles}
+          />
+        </>
+      ),
+    },
+    {
+      id: 'image',
+      group: t('settings.group.common'),
+      title: t('settings.section.imageApi'),
+      children: (
+        <>
+          <ImageAPIProfilesEditor
+            profiles={imageAPIProfilesForEditor(draft, effective)}
+            effectiveProfiles={imageAPIProfilesWithDefault(effective)}
+            defaultProfileID={draft.default_image_api_profile_id ?? ''}
+            effectiveDefaultProfileID={effective.default_image_api_profile_id || DEFAULT_IMAGE_API_PROFILE_ID}
+            onDefaultProfileChange={(v) => setField('default_image_api_profile_id', v)}
+            onChange={setImageAPIProfiles}
           />
         </>
       ),
@@ -629,6 +663,25 @@ function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProf
 }
 
 function stripInheritedModelSecret(profile: ModelProfileSettings): ModelProfileSettings {
+  return { ...profile, openai_api_key: '' }
+}
+
+function imageAPIProfilesForEditor(draft: Settings, effective: Settings): ImageAPIProfileSettings[] {
+  const localProfiles = draft.image_api_profiles ?? []
+  const hasLocalDefault = localProfiles.some((profile) => imageAPIProfileID(profile) === DEFAULT_IMAGE_API_PROFILE_ID)
+  const hasLegacyDefault = Boolean(draft.image_api_key || draft.image_api_base_url || draft.image_api_model)
+  if (hasLocalDefault || hasLegacyDefault) {
+    return imageAPIProfilesWithDefault(draft)
+  }
+  const inherited = imageAPIProfilesWithDefault(effective)
+  const localIDs = new Set(localProfiles.map(imageAPIProfileID).filter(Boolean))
+  return [
+    ...inherited.filter((profile) => !localIDs.has(imageAPIProfileID(profile))).map(stripInheritedImageAPISecret),
+    ...localProfiles,
+  ]
+}
+
+function stripInheritedImageAPISecret(profile: ImageAPIProfileSettings): ImageAPIProfileSettings {
   return { ...profile, openai_api_key: '' }
 }
 
@@ -1235,6 +1288,234 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
       </div>
     </div>
   )
+}
+
+function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID, effectiveDefaultProfileID, onDefaultProfileChange, onChange }: {
+  profiles: ImageAPIProfileSettings[]
+  effectiveProfiles: ImageAPIProfileSettings[]
+  defaultProfileID: string
+  effectiveDefaultProfileID: string
+  onDefaultProfileChange: (profileID: string) => void
+  onChange: (profiles: ImageAPIProfileSettings[]) => void
+}) {
+  const { t } = useTranslation()
+  const profileKeysRef = useRef<string[]>([])
+  const profileKeys = useMemo(() => {
+    if (profileKeysRef.current.length > profiles.length) {
+      profileKeysRef.current = profileKeysRef.current.slice(0, profiles.length)
+    }
+    while (profileKeysRef.current.length < profiles.length) {
+      profileKeysRef.current.push(`image-profile-${Date.now()}-${profileKeysRef.current.length}`)
+    }
+    return profileKeysRef.current
+  }, [profiles.length])
+  const profileOptions = imageProfileOptions(profiles, effectiveProfiles)
+  const effectiveDefaultLabel = profileOptions.find((profile) => profile.id === effectiveDefaultProfileID)?.label || effectiveDefaultProfileID || DEFAULT_IMAGE_API_PROFILE_ID
+  const addProfile = () => {
+    onChange([...profiles, {
+      provider: DEFAULT_IMAGE_API_PROVIDER,
+      openai_base_url: DEFAULT_IMAGE_API_BASE_URL,
+      openai_model: DEFAULT_IMAGE_API_MODEL,
+      default_size: DEFAULT_IMAGE_API_SIZE,
+    }])
+  }
+  const updateProfile = (index: number, patch: Partial<ImageAPIProfileSettings>) => {
+    onChange(profiles.map((profile, i) => (i === index ? { ...profile, ...patch } : profile)))
+  }
+  const updateProfileModel = (index: number, openaiModel: string) => {
+    const profile = profiles[index]
+    const previousID = imageAPIProfileID(profile)
+    const previousModel = profile?.openai_model?.trim() ?? ''
+    const shouldSyncID = !previousID || previousID === previousModel
+    updateProfile(index, {
+      id: shouldSyncID ? openaiModel : profile?.id,
+      openai_model: openaiModel,
+    })
+  }
+  const removeProfile = (index: number) => {
+    const removedID = imageAPIProfileID(profiles[index])
+    onChange(profiles.filter((_, i) => i !== index))
+    if (removedID && defaultProfileID === removedID) onDefaultProfileChange('')
+  }
+
+  return (
+    <div className="nova-settings-row rounded-md px-2 py-1.5">
+      <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('settings.imageApi.profiles')}</div>
+      <div className="flex flex-col gap-2">
+        <ModelProfileInput label={t('settings.imageApi.defaultProfile')}>
+          <Select
+            value={defaultProfileID || IMAGE_API_INHERIT_VALUE}
+            onValueChange={(value) => onDefaultProfileChange(value === IMAGE_API_INHERIT_VALUE ? '' : value)}
+          >
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="nova-panel border text-[var(--nova-text)]">
+              <SelectGroup>
+                <SelectItem value={IMAGE_API_INHERIT_VALUE}>{t('common.inherit', { value: effectiveDefaultLabel })}</SelectItem>
+                {profileOptions.map((profile) => (
+                  <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </ModelProfileInput>
+        {profiles.length === 0 && (
+          <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-2 text-[var(--nova-text-faint)]">
+            {t('settings.imageApi.profileEmpty', { count: effectiveProfiles.length || 1 })}
+          </div>
+        )}
+        {profiles.map((profile, index) => (
+          <div key={profileKeys[index]} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
+            <div className="flex items-center gap-2 px-2.5 py-2">
+              <Badge variant="outline" className="shrink-0">
+                {t('settings.imageApi.profileName', { index: index + 1 })}
+              </Badge>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-medium text-[var(--nova-text)]">
+                  {imageAPIProfileLabel(profile) || t('settings.imageApi.profileUntitled')}
+                </div>
+                <div className="truncate text-[11px] text-[var(--nova-text-faint)]">
+                  {profile.openai_model?.trim() || t('settings.imageApi.profileModelMissing')}
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                onClick={() => removeProfile(index)}
+                aria-label={t('settings.imageApi.deleteProfile')}
+                title={t('settings.imageApi.deleteProfile')}
+              >
+                <Trash2 data-icon="inline-start" />
+              </Button>
+            </div>
+            <Separator />
+            <div className="grid gap-2 p-2.5 md:grid-cols-12">
+              <ModelProfileInput label={t('settings.imageApi.provider')} className="md:col-span-3">
+                <Select
+                  value={profile.provider || DEFAULT_IMAGE_API_PROVIDER}
+                  onValueChange={(value) => updateProfile(index, { provider: value })}
+                >
+                  <SelectTrigger size="sm" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                    <SelectGroup>
+                      <SelectItem value={DEFAULT_IMAGE_API_PROVIDER}>OpenAI</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </ModelProfileInput>
+              <ModelProfileInput label={t('common.baseUrl')} className="md:col-span-5">
+                <Input
+                  value={profile.openai_base_url ?? ''}
+                  placeholder={DEFAULT_IMAGE_API_BASE_URL}
+                  onChange={(e) => updateProfile(index, { openai_base_url: e.target.value })}
+                />
+              </ModelProfileInput>
+              <ModelProfileInput label={t('settings.imageApi.profileModelLabel')} className="md:col-span-4">
+                <Input
+                  value={profile.openai_model ?? ''}
+                  placeholder={DEFAULT_IMAGE_API_MODEL}
+                  onChange={(e) => updateProfileModel(index, e.target.value)}
+                />
+              </ModelProfileInput>
+              <ModelProfileInput label={t('settings.imageApi.profileAliasLabel')} className="md:col-span-3">
+                <Input
+                  value={profile.name ?? ''}
+                  placeholder={t('settings.imageApi.profileAliasPlaceholder')}
+                  onChange={(e) => updateProfile(index, { name: e.target.value })}
+                />
+              </ModelProfileInput>
+              <ModelProfileInput label={t('settings.imageApi.profileKeyLabel')} className="md:col-span-5">
+                <Input
+                  type="password"
+                  value={profile.openai_api_key ?? ''}
+                  placeholder={t('settings.imageApi.profileKeyInheritPlaceholder')}
+                  onChange={(e) => updateProfile(index, { openai_api_key: e.target.value })}
+                />
+              </ModelProfileInput>
+              <ImageOptionSelect
+                label={t('settings.imageApi.defaultSize')}
+                value={profile.default_size ?? ''}
+                options={IMAGE_API_SIZE_OPTIONS}
+                placeholder={t('settings.imageApi.providerDefault')}
+                className="md:col-span-4"
+                onChange={(value) => updateProfile(index, { default_size: value })}
+              />
+              <ImageOptionSelect
+                label={t('settings.imageApi.defaultQuality')}
+                value={profile.default_quality ?? ''}
+                options={IMAGE_API_QUALITY_OPTIONS}
+                placeholder={t('settings.imageApi.providerDefault')}
+                className="md:col-span-4"
+                onChange={(value) => updateProfile(index, { default_quality: value })}
+              />
+              <ImageOptionSelect
+                label={t('settings.imageApi.defaultOutputFormat')}
+                value={profile.default_output_format ?? ''}
+                options={IMAGE_API_FORMAT_OPTIONS}
+                placeholder={t('settings.imageApi.providerDefault')}
+                className="md:col-span-4"
+                onChange={(value) => updateProfile(index, { default_output_format: value })}
+              />
+            </div>
+          </div>
+        ))}
+        <Button
+          type="button"
+          onClick={addProfile}
+          variant="outline"
+          size="sm"
+        >
+          <Plus data-icon="inline-start" />
+          {t('settings.imageApi.addProfile')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ImageOptionSelect({ label, value, options, placeholder, className, onChange }: {
+  label: string
+  value: string
+  options: string[]
+  placeholder: string
+  className?: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <ModelProfileInput label={label} className={className}>
+      <Select value={value || IMAGE_API_PROVIDER_DEFAULT_VALUE} onValueChange={(next) => onChange(next === IMAGE_API_PROVIDER_DEFAULT_VALUE ? '' : next)}>
+        <SelectTrigger size="sm" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="nova-panel border text-[var(--nova-text)]">
+          <SelectGroup>
+            <SelectItem value={IMAGE_API_PROVIDER_DEFAULT_VALUE}>{placeholder}</SelectItem>
+            {options.map((option) => (
+              <SelectItem key={option} value={option}>{option}</SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </ModelProfileInput>
+  )
+}
+
+function imageProfileOptions(localProfiles: ImageAPIProfileSettings[], effectiveProfiles: ImageAPIProfileSettings[]) {
+  const options: Array<{ id: string; label: string }> = []
+  const seen = new Set<string>()
+  const add = (profile?: ImageAPIProfileSettings) => {
+    const id = imageAPIProfileID(profile)
+    if (!id || seen.has(id)) return
+    seen.add(id)
+    options.push({ id, label: imageAPIProfileLabel(profile) || id })
+  }
+  effectiveProfiles.forEach(add)
+  localProfiles.forEach(add)
+  return options
 }
 
 function ModelProfileInput({ label, className, children }: { label: string; className?: string; children: ReactNode }) {

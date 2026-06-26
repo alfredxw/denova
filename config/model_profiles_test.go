@@ -89,6 +89,21 @@ func TestResolveAgentModelAllowsDefaultProfileOverride(t *testing.T) {
 	}
 }
 
+func TestResolveAgentModelClearsInheritedDefaultProfileAlias(t *testing.T) {
+	profiles := mergeModelProfiles(
+		[]ModelProfileSettings{{ID: "default", Name: "DeepSeek 写作", OpenAIModel: "deepseek-v4-pro"}},
+		[]ModelProfileSettings{{ID: "default", OpenAIModel: "deepseek-v4-pro"}},
+	)
+	if len(profiles) != 1 || profiles[0].Name != "" {
+		t.Fatalf("default profile alias should be cleared: %#v", profiles)
+	}
+
+	resolved := ResolveAgentModel(&Config{ModelProfiles: profiles}, AgentKindIDE)
+	if resolved.ProfileID != "default" || resolved.OpenAIModel != "deepseek-v4-pro" {
+		t.Fatalf("default profile should still resolve after alias is cleared: %#v", resolved)
+	}
+}
+
 func TestSanitizeModelProfilesCapsContextWindow(t *testing.T) {
 	tooLarge := 3000000
 	invalid := -1

@@ -195,9 +195,7 @@ func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings 
 	if id := modelProfileID(child); id != "" {
 		out.ID = id
 	}
-	if child.Name != "" {
-		out.Name = strings.TrimSpace(child.Name)
-	}
+	out.Name = strings.TrimSpace(child.Name)
 	if child.OpenAIAPIKey != "" {
 		out.OpenAIAPIKey = child.OpenAIAPIKey
 	}

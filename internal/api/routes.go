@@ -89,6 +89,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/chat/stream", apiHandlers.HandleChatStream)
 		api.GET("/chat/active", apiHandlers.HandleChatActive)
 		api.POST("/chat/abort", apiHandlers.HandleChatAbort)
+		api.POST("/images/generate", apiHandlers.HandleImageGenerate)
 		api.GET("/agent-runs", apiHandlers.HandleAgentRunTraces)
 		api.GET("/agent-runs/:id", apiHandlers.HandleAgentRunTrace)
 		api.GET("/agents/:agent/session/messages", apiHandlers.HandleAgentSessionMessages)
