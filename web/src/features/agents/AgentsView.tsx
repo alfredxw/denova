@@ -7,6 +7,7 @@ import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { AgentContextOverride, AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
@@ -473,11 +474,13 @@ function AgentModelSection({ value, inherited, profiles, onChange }: {
             className={fieldCls}
           />
         </Field>
-        <Field label={t('agents.field.thinking')} inherited={!hasThinking} onReset={hasThinking ? () => onChange({ enable_thinking: null }) : undefined}>
-          <ToggleSwitch
+        <Field label={t('agents.field.thinking')}>
+          <SwitchWithInheritance
             checked={Boolean(effectiveThinking)}
             onChange={(checked) => onChange({ enable_thinking: checked })}
             ariaLabel={t('agents.field.thinking')}
+            inherited={!hasThinking}
+            onReset={hasThinking ? () => onChange({ enable_thinking: null }) : undefined}
           />
         </Field>
         <Field label={t('agents.field.reasoningEffort')} inherited={!hasEffort} onReset={hasEffort ? () => onChange({ reasoning_effort: '' }) : undefined}>
@@ -640,11 +643,13 @@ function AgentRuntimeContextSection({ agent, value, inherited, onChange }: {
       <div className="grid gap-3 md:grid-cols-2">
         {!isCompactionAgent && (
           <>
-            <Field label={t('agents.field.compactionEnabled')} inherited={!hasCompactionEnabled} onReset={hasCompactionEnabled ? () => onChange({ compaction_enabled: null }) : undefined}>
-              <ToggleSwitch
+            <Field label={t('agents.field.compactionEnabled')}>
+              <SwitchWithInheritance
                 checked={Boolean(effectiveCompactionEnabled)}
                 onChange={(checked) => onChange({ compaction_enabled: checked })}
                 ariaLabel={t('agents.field.compactionEnabled')}
+                inherited={!hasCompactionEnabled}
+                onReset={hasCompactionEnabled ? () => onChange({ compaction_enabled: null }) : undefined}
               />
             </Field>
             <Field label={t('agents.field.compactionThreshold')} inherited={!hasCompactionThreshold} onReset={hasCompactionThreshold ? () => onChange({ compaction_threshold: null }) : undefined}>
@@ -737,12 +742,13 @@ function AgentToolSection({ agent, value, effective, onChange }: {
                   {t(toolSubtitleKey(tool, agent))}
                 </div>
               </div>
-              <ToggleSwitch
+              <SwitchWithInheritance
                 checked={Boolean(current)}
                 onChange={(checked) => onChange(tool.key, checked)}
                 ariaLabel={t(tool.titleKey)}
+                inherited={inherited}
+                onReset={!inherited ? () => onChange(tool.key, null) : undefined}
               />
-              <InheritanceBadge inherited={inherited} onReset={!inherited ? () => onChange(tool.key, null) : undefined} />
             </div>
           )
         })}
@@ -845,12 +851,13 @@ function AgentSubAgentSection({ agent, generalSettings, effectiveGeneralSettings
             </div>
             <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('agents.subAgents.general.description')}</div>
           </div>
-          <ToggleSwitch
+          <SwitchWithInheritance
             checked={Boolean(generalEnabled)}
             onChange={(checked) => onGeneralChange(agent, checked)}
             ariaLabel={t('agents.subAgents.general.enabled')}
+            inherited={generalExplicit === undefined || generalExplicit === null}
+            onReset={generalExplicit !== undefined && generalExplicit !== null ? () => onGeneralChange(agent, null) : undefined}
           />
-          <InheritanceBadge inherited={generalExplicit === undefined || generalExplicit === null} onReset={generalExplicit !== undefined && generalExplicit !== null ? () => onGeneralChange(agent, null) : undefined} />
         </div>
       </div>
       {visibleSubAgents.length === 0 ? (
@@ -1033,12 +1040,13 @@ function SubAgentEditor({ id, agent, subAgent, profiles, onChange }: {
           />
         </Field>
         <Field label={t('agents.field.thinking')}>
-          <ToggleSwitch
+          <SwitchWithInheritance
             checked={Boolean(model.enable_thinking)}
             onChange={(checked) => setModel({ enable_thinking: checked })}
             ariaLabel={t('agents.field.thinking')}
+            inherited={model.enable_thinking === undefined || model.enable_thinking === null}
+            onReset={model.enable_thinking !== undefined && model.enable_thinking !== null ? () => setModel({ enable_thinking: null }) : undefined}
           />
-          <InheritanceBadge inherited={model.enable_thinking === undefined || model.enable_thinking === null} onReset={model.enable_thinking !== undefined && model.enable_thinking !== null ? () => setModel({ enable_thinking: null }) : undefined} />
         </Field>
         <Field label={t('agents.field.reasoningEffort')}>
           <select value={model.reasoning_effort || ''} onChange={(e) => setModel({ reasoning_effort: e.target.value })} className={fieldCls}>
@@ -1069,12 +1077,13 @@ function SubAgentEditor({ id, agent, subAgent, profiles, onChange }: {
           {rows.map((tool) => (
             <div key={tool.key} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5">
               <span className="min-w-0 flex-1 truncate text-[11px]">{t(tool.titleKey)}</span>
-              <ToggleSwitch
+              <SwitchWithInheritance
                 checked={tools[tool.key] ?? true}
                 onChange={(checked) => setTool(tool.key, checked)}
                 ariaLabel={t(tool.titleKey)}
+                inherited={tools[tool.key] === undefined || tools[tool.key] === null}
+                onReset={tools[tool.key] !== undefined && tools[tool.key] !== null ? () => setTool(tool.key, null) : undefined}
               />
-              <InheritanceBadge inherited={tools[tool.key] === undefined || tools[tool.key] === null} onReset={tools[tool.key] !== undefined && tools[tool.key] !== null ? () => setTool(tool.key, null) : undefined} />
             </div>
           ))}
         </div>
@@ -1121,12 +1130,13 @@ function AgentSkillSection({ agent, skills, value, effective, onChange }: {
                     {skill.agent ? ` · ${skill.agent}` : ''}
                   </div>
                 </div>
-                <ToggleSwitch
+                <SwitchWithInheritance
                   checked={Boolean(current)}
                   onChange={(checked) => onChange(skill.name, checked)}
                   ariaLabel={`/${skill.name}`}
+                  inherited={inherited}
+                  onReset={!inherited ? () => onChange(skill.name, null) : undefined}
                 />
-                <InheritanceBadge inherited={inherited} onReset={!inherited ? () => onChange(skill.name, null) : undefined} />
               </div>
             )
           })}
@@ -1218,17 +1228,38 @@ function ToggleSwitch({ checked, onChange, ariaLabel }: { checked: boolean; onCh
   const { t } = useTranslation()
   const label = checked ? t('agents.option.on') : t('agents.option.off')
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
+    <Switch
+      checked={checked}
+      onCheckedChange={onChange}
       aria-label={ariaLabel}
       title={`${ariaLabel}: ${label}`}
-      onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 shrink-0 rounded-full border transition ${checked ? 'border-[var(--nova-accent-green)]/60 bg-[var(--nova-accent-green)]/25' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)]'}`}
-    >
-      <span className={`absolute top-0.5 h-[18px] w-[18px] rounded-full bg-[var(--nova-text)] shadow-sm transition ${checked ? 'left-[22px]' : 'left-0.5 opacity-60'}`} />
-      <span className="sr-only">{label}</span>
+    />
+  )
+}
+
+function SwitchWithInheritance({ checked, onChange, ariaLabel, inherited, onReset }: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  ariaLabel: string
+  inherited: boolean
+  onReset?: () => void
+}) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1.5">
+      <ToggleSwitch checked={checked} onChange={onChange} ariaLabel={ariaLabel} />
+      <InheritanceText inherited={inherited} onReset={onReset} />
+    </span>
+  )
+}
+
+function InheritanceText({ inherited, onReset }: { inherited: boolean; onReset?: () => void }) {
+  const { t } = useTranslation()
+  if (inherited) {
+    return <span className="w-7 text-center text-[10px] leading-none text-[var(--nova-text-faint)]">{t('agents.badge.inherited')}</span>
+  }
+  return (
+    <button type="button" onClick={onReset} className="w-7 text-center text-[10px] leading-none text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]">
+      {t('agents.badge.overridden')}
     </button>
   )
 }

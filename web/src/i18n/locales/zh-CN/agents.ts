@@ -128,7 +128,7 @@ const agents = {
   'agents.subAgents.deleteTitle': '删除 SubAgent？',
   'agents.subAgents.deleteDescription': '删除后当前配置层不再提供这个自定义 SubAgent。已完成的历史消息不会被删除。',
   'agents.badge.inherited': '继承',
-  'agents.badge.overridden': '已覆盖',
+  'agents.badge.overridden': '覆盖',
   'agents.builtIn.note': '这些写入能力由应用层执行：模型先生成结构化编辑方案，后端校验后保存；不是文件、命令或 Skills 工具链，所以这里不提供单项工具开关。',
   'agents.modelOnly.note': '这个 Agent 当前是纯模型调用，不修改文件、资料库或叙事编排；这里只配置模型与思考参数。',
   'agents.context.currentBook': '当前书籍',
