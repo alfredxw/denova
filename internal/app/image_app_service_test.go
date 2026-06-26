@@ -29,6 +29,7 @@ func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 			t.Fatal(err)
 		}
+		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"created":       123,
 			"output_format": "png",

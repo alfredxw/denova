@@ -31,7 +31,7 @@ type Image struct {
 	MIMEType      string
 	Extension     string
 	RevisedPrompt string
-	SourceURL      string
+	SourceURL     string
 }
 
 type Adapter interface {

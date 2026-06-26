@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.1.15</strong> (2026-06-27) · Beta
+  Current version: <strong>v0.1.16</strong> (2026-06-27) · Beta
 </p>
 
 ![Nova Writing Mode](./img/ide.png)
@@ -124,6 +124,9 @@ Nova uses an OpenAI-compatible API. You can configure it quickly with environmen
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
 export OPENAI_MODEL="deepseek-v4-pro"
+export OPENAI_IMAGE_API_KEY="your-openai-image-key"
+export OPENAI_IMAGE_BASE_URL="https://api.openai.com/v1"
+export OPENAI_IMAGE_MODEL="gpt-image-1"
 ```
 
 Common environment variables:
@@ -137,7 +140,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-You can also configure models, Agent parameters, the default Writing Skill (`writing_skill_default`, default `novel-lite`), editor options, interactive-mode behavior, version management, backend/frontend ports, and interface appearance (language, theme, fonts) from the UI settings page, which maps to `config.toml`. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. To customize a built-in preset Skill, do not edit the built-in directory; Nova creates a same-name user-level override at `<nova_dir>/skills/<skill-name>/SKILL.md` by default, falling back to a workspace override only when the user-level directory is not writable. The Skills page can also rename a Skill, move it between user/workspace storage, or delete an override to restore the built-in version. The Writing Agent no longer injects preset SKILL.md directly into model context; it only adds a dynamic turn hint naming the selected Writing Skill, and the model should call the `skill` tool to load that Skill when it decides the turn involves prose writing or continuation. The actual writing range always comes from the user's instruction and does not use a separate `writing_scope` field. Configuration precedence:
+You can also configure models, image APIs, Agent parameters, the default Writing Skill (`writing_skill_default`, default `novel-lite`), editor options, interactive-mode behavior, version management, backend/frontend ports, and interface appearance (language, theme, fonts) from the UI settings page, which maps to `config.toml`. Image generation initially uses the standard OpenAI Images API, supports multiple `image_api_profiles`, and saves generated files to the current workspace under `assets/image/generated/`. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. To customize a built-in preset Skill, do not edit the built-in directory; Nova creates a same-name user-level override at `<nova_dir>/skills/<skill-name>/SKILL.md` by default, falling back to a workspace override only when the user-level directory is not writable. The Skills page can also rename a Skill, move it between user/workspace storage, or delete an override to restore the built-in version. The Writing Agent no longer injects preset SKILL.md directly into model context; it only adds a dynamic turn hint naming the selected Writing Skill, and the model should call the `skill` tool to load that Skill when it decides the turn involves prose writing or continuation. The actual writing range always comes from the user's instruction and does not use a separate `writing_scope` field. Configuration precedence:
 
 ```text
 Built-in defaults < global config.toml < user-level config < workspace-level config < environment variables

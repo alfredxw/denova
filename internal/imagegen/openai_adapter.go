@@ -113,7 +113,7 @@ func (a *OpenAIAdapter) openAIImageToBytes(ctx context.Context, item openai.Imag
 			MIMEType:      mimeType,
 			Extension:     extensionForFormat(format),
 			RevisedPrompt: item.RevisedPrompt,
-			SourceURL:      item.URL,
+			SourceURL:     item.URL,
 		}, nil
 	}
 	return Image{}, ErrImageDataMissing
