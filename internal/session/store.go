@@ -22,6 +22,7 @@ const (
 	displayToolArgsPersistBytes  = 4 * 1024
 	displayToolArgsPreviewBytes  = 32 * 1024
 	displayToolArgsTruncatedHint = "\n...\n[session preview truncated / 会话预览已截断]"
+	maxTokenUsageDisplayEvents   = 10
 	historyTypeMessage           = "message"
 	historyTypeDisplay           = "display"
 	historyTypeClear             = "clear"
@@ -223,8 +224,45 @@ func (s *Session) AppendDisplayEvent(event DisplayEvent) error {
 		createdAt:                 event.CreatedAt,
 		displayArgsPersistedBytes: len(event.Args),
 	})
+	if event.Role == "token_usage" {
+		s.trimTokenUsageDisplayEventsLocked(event.AgentKind)
+	}
 	s.UpdatedAt = event.CreatedAt
 	return s.persistLocked()
+}
+
+func (s *Session) trimTokenUsageDisplayEventsLocked(agentKind string) {
+	s.records = trimTokenUsageDisplayEvents(s.records, agentKind)
+}
+
+func trimTokenUsageDisplayEvents(records []historyRecord, agentKind string) []historyRecord {
+	target := strings.TrimSpace(agentKind)
+	counts := make(map[string]int)
+	kept := records
+	for i := len(kept) - 1; i >= 0; i-- {
+		record := kept[i]
+		if record.kind != historyTypeDisplay || record.display == nil || record.display.Role != "token_usage" {
+			continue
+		}
+		key := tokenUsageAgentKey(record.display.AgentKind)
+		if target != "" && key != tokenUsageAgentKey(target) {
+			continue
+		}
+		counts[key]++
+		if counts[key] <= maxTokenUsageDisplayEvents {
+			continue
+		}
+		kept = append(kept[:i], kept[i+1:]...)
+	}
+	return kept
+}
+
+func tokenUsageAgentKey(agentKind string) string {
+	agentKind = strings.TrimSpace(agentKind)
+	if agentKind == "" {
+		return "__unknown__"
+	}
+	return agentKind
 }
 
 // UpdateDisplayToolStatus 更新已持久化工具卡片的执行状态，不保存工具参数或输出。
@@ -1226,6 +1264,7 @@ func loadSession(filePath string) (*Session, error) {
 	if sess.UpdatedAt.IsZero() {
 		sess.UpdatedAt = sess.CreatedAt
 	}
+	sess.trimTokenUsageDisplayEventsLocked("")
 	return sess, nil
 }
 

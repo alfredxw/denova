@@ -359,7 +359,7 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 			schema.SystemMessage(systemPrompt),
 			schema.UserMessage(buildContextCompactionTranscript(source, existingMemory, referenceContext, sourceTokens, inputChars, retryReason, policy)),
 		}
-		logFullModelInput(modelInputLogOptions{
+		callID := logFullModelInput(modelInputLogOptions{
 			AgentKind: config.AgentKindContextCompaction,
 			Source:    "context_compaction",
 			Mode:      fmt.Sprintf("stream_attempt_%d", attempt),
@@ -370,7 +370,7 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 		if err != nil {
 			return "", inputChars, fmt.Errorf("上下文压缩失败: %w", err)
 		}
-		logModelProviderRequestID(config.AgentKindContextCompaction, "context_compaction", fmt.Sprintf("stream_attempt_%d", attempt), modelCfg.Model, "", 0, msg)
+		logModelProviderRequestIDForCall(callID, config.AgentKindContextCompaction, "context_compaction", fmt.Sprintf("stream_attempt_%d", attempt), modelCfg.Model, "", 0, msg)
 		summary = strings.TrimSpace(msg.Content)
 		if summary == "" {
 			return "", inputChars, fmt.Errorf("上下文压缩结果为空")

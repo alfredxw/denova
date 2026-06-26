@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.1.14</strong> (2026-06-26) · Beta
+  Current version: <strong>v0.1.15</strong> (2026-06-27) · Beta
 </p>
 
 ![Nova Writing Mode](./img/ide.png)

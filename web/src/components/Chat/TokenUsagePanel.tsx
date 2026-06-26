@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import type { ChatMessage } from '@/lib/api'
 import { focusDialogContentOnOpen } from './dialog-focus'
 
+const MAX_TOKEN_USAGE_MESSAGES = 10
+
 interface TokenUsagePanelProps {
   messages: ChatMessage[]
 }
@@ -355,6 +357,7 @@ function normalizeTokenUsageMessages(messages: ChatMessage[]) {
     .filter((message) => message.role === 'token_usage' && numberOrZero(message.model_calls) > 0)
     .slice()
     .sort((a, b) => timestampValue(a.created_at) - timestampValue(b.created_at))
+    .slice(-MAX_TOKEN_USAGE_MESSAGES)
 }
 
 function buildTokenUsageGroups(messages: ChatMessage[]): TokenUsageGroup[] {

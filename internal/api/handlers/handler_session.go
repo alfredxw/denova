@@ -15,22 +15,33 @@ import (
 
 // messageDTO 消息 DTO，type=clear 时表示上下文清理分界。
 type messageDTO struct {
-	Type              string   `json:"type"`
-	ID                string   `json:"id,omitempty"`
-	Role              string   `json:"role,omitempty"`
-	Content           string   `json:"content,omitempty"`
-	Name              string   `json:"name,omitempty"`
-	Args              string   `json:"args,omitempty"`
-	Status            string   `json:"status,omitempty"`
-	Result            string   `json:"result,omitempty"`
-	CreatedAt         string   `json:"created_at,omitempty"`
-	RunID             string   `json:"run_id,omitempty"`
-	AgentName         string   `json:"agent_name,omitempty"`
-	RootAgentName     string   `json:"root_agent_name,omitempty"`
-	RunPath           []string `json:"run_path,omitempty"`
-	SubAgent          bool     `json:"subagent,omitempty"`
-	SubAgentSessionID string   `json:"subagent_session_id,omitempty"`
-	SubAgentType      string   `json:"subagent_type,omitempty"`
+	Type                 string                   `json:"type"`
+	ID                   string                   `json:"id,omitempty"`
+	Role                 string                   `json:"role,omitempty"`
+	Content              string                   `json:"content,omitempty"`
+	Name                 string                   `json:"name,omitempty"`
+	Args                 string                   `json:"args,omitempty"`
+	Status               string                   `json:"status,omitempty"`
+	Result               string                   `json:"result,omitempty"`
+	CreatedAt            string                   `json:"created_at,omitempty"`
+	RunID                string                   `json:"run_id,omitempty"`
+	AgentKind            string                   `json:"agent_kind,omitempty"`
+	AgentName            string                   `json:"agent_name,omitempty"`
+	RootAgentName        string                   `json:"root_agent_name,omitempty"`
+	RunPath              []string                 `json:"run_path,omitempty"`
+	SubAgent             bool                     `json:"subagent,omitempty"`
+	SubAgentSessionID    string                   `json:"subagent_session_id,omitempty"`
+	SubAgentType         string                   `json:"subagent_type,omitempty"`
+	PromptTokens         int                      `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens   int                      `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens int                      `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate         float64                  `json:"cache_hit_rate,omitempty"`
+	CompletionTokens     int                      `json:"completion_tokens,omitempty"`
+	ReasoningTokens      int                      `json:"reasoning_tokens,omitempty"`
+	TotalTokens          int                      `json:"total_tokens,omitempty"`
+	ModelCalls           int                      `json:"model_calls,omitempty"`
+	GeneratedBytes       int                      `json:"generated_bytes,omitempty"`
+	UsageCalls           []session.TokenUsageCall `json:"usage_calls,omitempty"`
 }
 
 // sessionDTO 会话摘要 DTO。
@@ -212,22 +223,33 @@ func historyEntriesToMessageDTOs(entries []session.HistoryEntry) []messageDTO {
 			continue
 		}
 		result = append(result, messageDTO{
-			Type:              entry.Type,
-			ID:                entry.ID,
-			Role:              entry.Role,
-			Content:           entry.Content,
-			Name:              entry.Name,
-			Args:              entry.Args,
-			Status:            entry.Status,
-			Result:            entry.Result,
-			CreatedAt:         formatTime(entry.CreatedAt),
-			RunID:             entry.RunID,
-			AgentName:         entry.AgentName,
-			RootAgentName:     entry.RootAgentName,
-			RunPath:           append([]string(nil), entry.RunPath...),
-			SubAgent:          entry.SubAgent,
-			SubAgentSessionID: entry.SubAgentSessionID,
-			SubAgentType:      entry.SubAgentType,
+			Type:                 entry.Type,
+			ID:                   entry.ID,
+			Role:                 entry.Role,
+			Content:              entry.Content,
+			Name:                 entry.Name,
+			Args:                 entry.Args,
+			Status:               entry.Status,
+			Result:               entry.Result,
+			CreatedAt:            formatTime(entry.CreatedAt),
+			RunID:                entry.RunID,
+			AgentKind:            entry.AgentKind,
+			AgentName:            entry.AgentName,
+			RootAgentName:        entry.RootAgentName,
+			RunPath:              append([]string(nil), entry.RunPath...),
+			SubAgent:             entry.SubAgent,
+			SubAgentSessionID:    entry.SubAgentSessionID,
+			SubAgentType:         entry.SubAgentType,
+			PromptTokens:         entry.PromptTokens,
+			CachedPromptTokens:   entry.CachedPromptTokens,
+			UncachedPromptTokens: entry.UncachedPromptTokens,
+			CacheHitRate:         entry.CacheHitRate,
+			CompletionTokens:     entry.CompletionTokens,
+			ReasoningTokens:      entry.ReasoningTokens,
+			TotalTokens:          entry.TotalTokens,
+			ModelCalls:           entry.ModelCalls,
+			GeneratedBytes:       entry.GeneratedBytes,
+			UsageCalls:           entry.UsageCalls,
 		})
 	}
 	return result

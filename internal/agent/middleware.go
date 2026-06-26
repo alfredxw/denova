@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -110,6 +111,7 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 ) (adk.InvokableToolCallEndpoint, error) {
 	return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
 		decision := m.buildToolDecision(toolCtx, args)
+		decision = applyToolArgumentValidation(decision, args)
 		observer := RunObserverFromContext(ctx)
 		observer.RecordToolDecision(decision)
 		if decision.Action == "blocked" {
@@ -163,6 +165,7 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 ) (adk.StreamableToolCallEndpoint, error) {
 	return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
 		decision := m.buildToolDecision(toolCtx, args)
+		decision = applyToolArgumentValidation(decision, args)
 		observer := RunObserverFromContext(ctx)
 		observer.RecordToolDecision(decision)
 		if decision.Action == "blocked" {
@@ -293,6 +296,48 @@ func (m *toolOrchestratorMiddleware) buildToolDecision(toolCtx *adk.ToolContext,
 		decision.Reason = interactiveStoryWriteToolBlockedMessage(name)
 	}
 	return decision
+}
+
+func applyToolArgumentValidation(decision ToolDecision, args string) ToolDecision {
+	if decision.Action == "blocked" {
+		return decision
+	}
+	if msg := invalidToolArgumentsMessage(decision.ToolName, args); msg != "" {
+		decision.Action = "blocked"
+		decision.Reason = msg
+	}
+	return decision
+}
+
+func invalidToolArgumentsMessage(toolName, args string) string {
+	if err := validateToolArgumentsJSON(args); err != nil {
+		return fmt.Sprintf("[tool error] 工具 %q 的参数不是完整 JSON 对象：%v。请重新发起同一个工具调用，并保证 arguments 是完整、合法的 JSON object；字符串里的换行、引号和反斜杠必须正确转义。 / Tool arguments must be a complete JSON object; escape newlines, quotes, and backslashes inside strings.", toolName, err)
+	}
+	return ""
+}
+
+func validateToolArgumentsJSON(args string) error {
+	args = strings.TrimSpace(args)
+	if args == "" {
+		return nil
+	}
+	decoder := json.NewDecoder(strings.NewReader(args))
+	decoder.UseNumber()
+	var payload map[string]any
+	if err := decoder.Decode(&payload); err != nil {
+		return err
+	}
+	if payload == nil {
+		return fmt.Errorf("arguments must be a JSON object")
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return fmt.Errorf("arguments contain trailing JSON data")
+		}
+		return fmt.Errorf("arguments contain trailing data: %w", err)
+	}
+	return nil
 }
 
 func (m *toolOrchestratorMiddleware) effectivePolicyKind() string {

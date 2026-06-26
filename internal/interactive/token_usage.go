@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"time"
 )
+
+const maxTokenUsageEventsPerAgent = 10
 
 // AppendTokenUsageEvent stores model usage separately from story events.
 // It does not move branch heads, rewrite story JSONL, or affect story event counts.
@@ -33,10 +36,34 @@ func (s *Store) AppendTokenUsageEvent(storyID string, event TokenUsageEvent) err
 	if event.TotalTokens == 0 && event.PromptTokens == 0 && event.CompletionTokens == 0 && len(event.UsageCalls) == 0 {
 		return nil
 	}
-	return appendJSONL(s.usagePath(storyID), event)
+	events, err := s.readAllTokenUsageEventsLocked(storyID)
+	if err != nil {
+		return err
+	}
+	events = append(events, event)
+	events = trimTokenUsageEvents(events)
+	lines := make([]any, 0, len(events))
+	for _, item := range events {
+		lines = append(lines, item)
+	}
+	return writeJSONL(s.usagePath(storyID), lines)
 }
 
 func (s *Store) readTokenUsageEventsLocked(storyID, branchID string) ([]TokenUsageEvent, error) {
+	events, err := s.readAllTokenUsageEventsLocked(storyID)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]TokenUsageEvent, 0, len(events))
+	for _, event := range events {
+		if event.BranchID == branchID {
+			result = append(result, event)
+		}
+	}
+	return result, nil
+}
+
+func (s *Store) readAllTokenUsageEventsLocked(storyID string) ([]TokenUsageEvent, error) {
 	file, err := os.Open(s.usagePath(storyID))
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -58,8 +85,8 @@ func (s *Store) readTokenUsageEventsLocked(storyID, branchID string) ([]TokenUsa
 			continue
 		}
 		event = sanitizeTokenUsageEvent(event)
-		if event.BranchID != branchID {
-			continue
+		if event.StoryID == "" {
+			event.StoryID = storyID
 		}
 		events = append(events, event)
 	}
@@ -70,4 +97,33 @@ func (s *Store) readTokenUsageEventsLocked(storyID, branchID string) ([]TokenUsa
 		return events[i].CreatedAt < events[j].CreatedAt
 	})
 	return events, nil
+}
+
+func trimTokenUsageEvents(events []TokenUsageEvent) []TokenUsageEvent {
+	sort.SliceStable(events, func(i, j int) bool {
+		return events[i].CreatedAt < events[j].CreatedAt
+	})
+	counts := make(map[string]int)
+	kept := events
+	for i := len(kept) - 1; i >= 0; i-- {
+		key := tokenUsageEventKey(kept[i])
+		counts[key]++
+		if counts[key] <= maxTokenUsageEventsPerAgent {
+			continue
+		}
+		kept = append(kept[:i], kept[i+1:]...)
+	}
+	return kept
+}
+
+func tokenUsageEventKey(event TokenUsageEvent) string {
+	branchID := strings.TrimSpace(event.BranchID)
+	if branchID == "" {
+		branchID = "__unknown_branch__"
+	}
+	agentKind := strings.TrimSpace(event.AgentKind)
+	if agentKind == "" {
+		agentKind = "__unknown_agent__"
+	}
+	return branchID + "\x00" + agentKind
 }

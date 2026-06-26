@@ -6,8 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v0.1.15] - 2026-06-27
+
 ### Added
 
+- Agent 开发模式 LLM 输入日志会在响应返回后回写 `provider_request_id`，`log/llm-inputs.jsonl` 可直接关联完整请求输入和供应商请求 ID。
 - Agent 模型响应日志新增 `provider_request_id`：当 OpenAI 兼容供应商返回请求 ID 时，后端会打印该 ID，便于向模型 API 供应商提供 debug 信息。
 - 应用内更新新增独立 `nova-updater`：Release 包会携带同平台 updater，设置页先下载暂存更新，再通过“重启并安装”退出当前 Nova、替换主程序和资源目录，并自动启动新版本。
 
@@ -27,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Agent：修复真实模型用量明细刷新后只在互动 Agent 可用的问题；创作 Agent、配置管理 Agent 和固定 Agent 会话 API 现在会保留 `agent_kind`、token 统计和 `usage_calls`，并在持久化层按每种 Agent 只保留最近 10 条用量记录，避免历史无限膨胀。
 - Agent：修复运行中配置刷新没有合入根 `config.toml` global 层的问题，避免 Agents 页和实际写作 Agent 只看到用户级/工作区级残留的部分 SubAgent。
 - WebUI：修复编辑 SubAgent 可用父 Agent 时立即写入列表导致弹窗消失的问题；弹窗内改动现在会先保存在本地未提交内容，点击完成后再写回配置。
 - WebUI：Agents 页将工具、Skills、上下文压缩、General SubAgent 和自定义 SubAgent 的启停控件统一为 Switch；自定义 SubAgent 可直接在列表启停，删除继承来的 SubAgent 不再变成关闭/恢复的循环。

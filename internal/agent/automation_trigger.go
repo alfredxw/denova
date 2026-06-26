@@ -30,7 +30,7 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindAutomation, system)),
 		schema.UserMessage(instruction),
 	}
-	logFullModelInput(modelInputLogOptions{
+	callID := logFullModelInput(modelInputLogOptions{
 		AgentKind: config.AgentKindAutomation,
 		Source:    "automation_trigger",
 		Mode:      "generate",
@@ -44,7 +44,7 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 	if msg == nil {
 		return "", fmt.Errorf("自动化触发评估模型返回为空")
 	}
-	logModelProviderRequestID(config.AgentKindAutomation, "automation_trigger", "generate", modelCfg.Model, "", 0, msg)
+	logModelProviderRequestIDForCall(callID, config.AgentKindAutomation, "automation_trigger", "generate", modelCfg.Model, "", 0, msg)
 	log.Printf("[automation-trigger-agent] evaluate done output=%s", promptPartSummary(msg.Content))
 	return msg.Content, nil
 }

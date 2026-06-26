@@ -2,12 +2,14 @@ package agent
 
 import (
 	"context"
+	"io"
 	"strings"
 	"testing"
 
 	localbk "github.com/cloudwego/eino-ext/adk/backend/local"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/schema"
 
 	"nova/config"
 )
@@ -148,6 +150,90 @@ func TestToolOrchestratorAllowsIDEWriteAndFiltersResult(t *testing.T) {
 		!strings.Contains(result, "mutates_workspace: true") ||
 		!strings.Contains(result, "target: chapters/ch01.md") {
 		t.Fatalf("result should include filtered metadata: %s", result)
+	}
+}
+
+func TestToolOrchestratorBlocksMalformedJSONArguments(t *testing.T) {
+	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
+	called := false
+	endpoint, err := middleware.WrapInvokableToolCall(
+		context.Background(),
+		func(context.Context, string, ...tool.Option) (string, error) {
+			called = true
+			return "ok", nil
+		},
+		&adk.ToolContext{Name: "write_file", CallID: "call-1"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := "{\"file_path\":\"chapters/ch01.md\",\"content\":\"过了一遍。\\\\n\\\\n韩十四。武监司。三十\n\t^\n\\"
+	result, err := endpoint(context.Background(), args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("malformed JSON arguments should be blocked before endpoint is called")
+	}
+	if !strings.Contains(result, "参数不是完整 JSON 对象") ||
+		!strings.Contains(result, "Tool arguments must be a complete JSON object") {
+		t.Fatalf("unexpected malformed-arguments result: %s", result)
+	}
+}
+
+func TestToolOrchestratorAllowsEscapedSpecialCharactersInJSONArguments(t *testing.T) {
+	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
+	called := false
+	endpoint, err := middleware.WrapInvokableToolCall(
+		context.Background(),
+		func(context.Context, string, ...tool.Option) (string, error) {
+			called = true
+			return "ok", nil
+		},
+		&adk.ToolContext{Name: "write_file", CallID: "call-1"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := endpoint(context.Background(), `{"file_path":"chapters/ch01.md","content":"过了一遍。\\n\\n韩十四。武监司。三十\n\t^\n\""}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !called || !strings.Contains(result, "ok") {
+		t.Fatalf("escaped special characters should pass through, called=%v result=%s", called, result)
+	}
+}
+
+func TestToolOrchestratorBlocksMalformedJSONArgumentsForStream(t *testing.T) {
+	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
+	called := false
+	endpoint, err := middleware.WrapStreamableToolCall(
+		context.Background(),
+		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+			called = true
+			return singleChunkReader("ok"), nil
+		},
+		&adk.ToolContext{Name: "write_file", CallID: "call-1"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := endpoint(context.Background(), "{\"file_path\":\"chapters/ch01.md\",\"content\":\"过了一遍\n\t^\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, recvErr := reader.Recv()
+	if recvErr != nil {
+		t.Fatal(recvErr)
+	}
+	if _, eofErr := reader.Recv(); eofErr != io.EOF {
+		t.Fatalf("expected stream EOF after block message, got %v", eofErr)
+	}
+	if called {
+		t.Fatal("malformed JSON stream arguments should be blocked before endpoint is called")
+	}
+	if !strings.Contains(result, "参数不是完整 JSON 对象") {
+		t.Fatalf("unexpected malformed-arguments stream result: %s", result)
 	}
 }
 

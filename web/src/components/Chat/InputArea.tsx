@@ -54,6 +54,7 @@ type CommandOption = {
 }
 
 type CommandScope = 'all' | 'skills' | 'none'
+const MAX_TOKEN_USAGE_MENU_COUNT = 10
 const inputDrafts = new Map<string, string>()
 
 interface InputAreaProps {
@@ -170,6 +171,10 @@ export function InputArea({
     return allCommands.filter((command) => command.cmd.toLowerCase().startsWith(query))
   }, [allCommands, value])
   const hasReferences = referencedFiles.length > 0 || loreReferences.length > 0 || styleScenes.length > 0 || textSelections.length > 0
+  const tokenUsageCount = useMemo(
+    () => Math.min(MAX_TOKEN_USAGE_MENU_COUNT, tokenUsageMessages.filter((message) => message.role === 'token_usage' && Number(message.model_calls || 0) > 0).length),
+    [tokenUsageMessages],
+  )
 
   useEffect(() => {
     if (!draftKey) return
@@ -561,7 +566,7 @@ export function InputArea({
                 >
                   <BarChart3 className="h-3.5 w-3.5" />
                   <span className="min-w-0 flex-1">{t('chat.tokenUsage.action')}</span>
-                  <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageMessages.length })}</span>
+                  <span className="text-[10px] text-[var(--nova-text-faint)]">{t('chat.tokenUsage.subtitle', { count: tokenUsageCount })}</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                 <DropdownMenuItem

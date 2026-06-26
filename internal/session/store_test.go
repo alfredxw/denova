@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -431,6 +432,74 @@ func TestTokenUsageDisplayEventPersistsOutsideEffectiveContext(t *testing.T) {
 	}
 	if usage.UsageCalls[1].UncachedPromptTokens != 600 {
 		t.Fatalf("usage call uncached tokens were not restored: %#v", usage.UsageCalls)
+	}
+}
+
+func TestTokenUsageDisplayEventsAreCappedPerAgent(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 12; i++ {
+		if err := sess.AppendDisplayEvent(DisplayEvent{
+			ID:           fmt.Sprintf("ide-run-%02d", i),
+			Role:         "token_usage",
+			Content:      "usage",
+			RunID:        fmt.Sprintf("ide-run-%02d", i),
+			AgentKind:    "ide",
+			PromptTokens: i,
+			TotalTokens:  i,
+			ModelCalls:   1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 1; i <= 3; i++ {
+		if err := sess.AppendDisplayEvent(DisplayEvent{
+			ID:           fmt.Sprintf("config-run-%02d", i),
+			Role:         "token_usage",
+			Content:      "usage",
+			RunID:        fmt.Sprintf("config-run-%02d", i),
+			AgentKind:    "config_manager",
+			PromptTokens: i,
+			TotalTokens:  i,
+			ModelCalls:   1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ideRuns []string
+	var configRuns []string
+	for _, entry := range reloaded.History() {
+		if entry.Role != "token_usage" {
+			continue
+		}
+		switch entry.AgentKind {
+		case "ide":
+			ideRuns = append(ideRuns, entry.RunID)
+		case "config_manager":
+			configRuns = append(configRuns, entry.RunID)
+		}
+	}
+	if len(ideRuns) != 10 || ideRuns[0] != "ide-run-03" || ideRuns[9] != "ide-run-12" {
+		t.Fatalf("ide usage should keep latest 10 runs: %#v", ideRuns)
+	}
+	if len(configRuns) != 3 {
+		t.Fatalf("config manager usage should be capped independently: %#v", configRuns)
 	}
 }
 

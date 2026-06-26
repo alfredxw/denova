@@ -16,20 +16,31 @@ import (
 )
 
 type testMessageDTO struct {
-	Type              string   `json:"type"`
-	ID                string   `json:"id,omitempty"`
-	Role              string   `json:"role,omitempty"`
-	Content           string   `json:"content,omitempty"`
-	Name              string   `json:"name,omitempty"`
-	Status            string   `json:"status,omitempty"`
-	CreatedAt         string   `json:"created_at,omitempty"`
-	RunID             string   `json:"run_id,omitempty"`
-	AgentName         string   `json:"agent_name,omitempty"`
-	RootAgentName     string   `json:"root_agent_name,omitempty"`
-	RunPath           []string `json:"run_path,omitempty"`
-	SubAgent          bool     `json:"subagent,omitempty"`
-	SubAgentSessionID string   `json:"subagent_session_id,omitempty"`
-	SubAgentType      string   `json:"subagent_type,omitempty"`
+	Type                 string                   `json:"type"`
+	ID                   string                   `json:"id,omitempty"`
+	Role                 string                   `json:"role,omitempty"`
+	Content              string                   `json:"content,omitempty"`
+	Name                 string                   `json:"name,omitempty"`
+	Status               string                   `json:"status,omitempty"`
+	CreatedAt            string                   `json:"created_at,omitempty"`
+	RunID                string                   `json:"run_id,omitempty"`
+	AgentKind            string                   `json:"agent_kind,omitempty"`
+	AgentName            string                   `json:"agent_name,omitempty"`
+	RootAgentName        string                   `json:"root_agent_name,omitempty"`
+	RunPath              []string                 `json:"run_path,omitempty"`
+	SubAgent             bool                     `json:"subagent,omitempty"`
+	SubAgentSessionID    string                   `json:"subagent_session_id,omitempty"`
+	SubAgentType         string                   `json:"subagent_type,omitempty"`
+	PromptTokens         int                      `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens   int                      `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens int                      `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate         float64                  `json:"cache_hit_rate,omitempty"`
+	CompletionTokens     int                      `json:"completion_tokens,omitempty"`
+	ReasoningTokens      int                      `json:"reasoning_tokens,omitempty"`
+	TotalTokens          int                      `json:"total_tokens,omitempty"`
+	ModelCalls           int                      `json:"model_calls,omitempty"`
+	GeneratedBytes       int                      `json:"generated_bytes,omitempty"`
+	UsageCalls           []session.TokenUsageCall `json:"usage_calls,omitempty"`
 }
 
 type testSessionDTO struct {
@@ -182,6 +193,59 @@ func TestSessionAPIReturnsSubAgentDisplayMetadata(t *testing.T) {
 	}
 	if got.RunID != "run-1" || got.AgentName != "researcher" || len(got.RunPath) != 2 {
 		t.Fatalf("Agent path metadata missing from API response: %#v", got)
+	}
+}
+
+func TestSessionAPIReturnsTokenUsageFields(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	if err := application.Session().AppendDisplayEvent(session.DisplayEvent{
+		ID:                   "run-usage-1",
+		Role:                 "token_usage",
+		Content:              "cache_hit_rate=50.0%",
+		RunID:                "run-usage-1",
+		AgentKind:            config.AgentKindIDE,
+		PromptTokens:         2000,
+		CachedPromptTokens:   1000,
+		UncachedPromptTokens: 1000,
+		CacheHitRate:         0.5,
+		CompletionTokens:     300,
+		ReasoningTokens:      20,
+		TotalTokens:          2300,
+		ModelCalls:           1,
+		GeneratedBytes:       128,
+		UsageCalls: []session.TokenUsageCall{{
+			Index:                1,
+			PromptTokens:         2000,
+			CachedPromptTokens:   1000,
+			UncachedPromptTokens: 1000,
+			CacheHitRate:         0.5,
+			CompletionTokens:     300,
+			ReasoningTokens:      20,
+			TotalTokens:          2300,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resp := performJSONRequest(t, server, http.MethodGet, "/api/session/messages", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("messages status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	var messages []testMessageDTO
+	decodeResponse(t, resp.Body.Bytes(), &messages)
+	if len(messages) != 1 {
+		t.Fatalf("expected one usage message, got %#v", messages)
+	}
+	got := messages[0]
+	if got.Role != "token_usage" || got.AgentKind != config.AgentKindIDE || got.ModelCalls != 1 {
+		t.Fatalf("token usage metadata missing from API response: %#v", got)
+	}
+	if got.PromptTokens != 2000 || got.CachedPromptTokens != 1000 || got.UncachedPromptTokens != 1000 || got.TotalTokens != 2300 {
+		t.Fatalf("token usage counts missing from API response: %#v", got)
+	}
+	if got.CacheHitRate != 0.5 || got.GeneratedBytes != 128 || len(got.UsageCalls) != 1 || got.UsageCalls[0].ReasoningTokens != 20 {
+		t.Fatalf("token usage details missing from API response: %#v", got)
 	}
 }
 
