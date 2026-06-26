@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v0.1.14] - 2026-06-26
+
 ### Added
 
 - 写作 Skill Preset：内置 `novel-lite`、`novel-standard`、`novel-heavy` 三种 IDE 写作 Skill，默认使用 `novel-standard`；创作 Agent 输入区可选择当前写作 Skill，也可选择用户/工作区自建的 IDE Skill，运行时按工作区覆盖 > 用户覆盖 > 内置预设解析并注入有效 SKILL.md。
