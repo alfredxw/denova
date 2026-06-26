@@ -9,21 +9,17 @@
 # 字段留空表示继承上层。
 # nova_dir 仅在全局启动配置或 NOVA_DIR 环境变量中生效；用户级/工作区级会忽略并过滤该字段。
 
-# 模型
-openai_api_key = ""
-openai_base_url = "https://api.deepseek.com"
-openai_model = "deepseek-v4-pro"
-
-# 可选：配置多个 OpenAI 协议兼容平台，并按 Agent 分配。模型名同时作为配置名，name 可作为显示别名。
+# 模型。默认模型也放在 model_profiles 列表里，id 固定为 default，name 可作为显示别名。
 # 不配置 temperature 时使用平台/模型默认值。
 # 快捷选项 Agent 和版本说明 Agent 内置默认 enable_thinking=false，其他 Agent 默认不传思考参数。
-#
-# [[model_profiles]]
-# openai_base_url = "https://api.deepseek.com"
-# openai_api_key = ""
-# openai_model = "deepseek-v4-pro"
-# name = "DeepSeek 写作"
-#
+[[model_profiles]]
+id = "default"
+name = "DeepSeek 写作"
+openai_base_url = "https://api.deepseek.com"
+openai_api_key = ""
+openai_model = "deepseek-v4-pro"
+
+# 可选：配置更多 OpenAI 协议兼容平台，并按 Agent 分配。模型名同时作为配置名，name 可作为显示别名。
 # [[model_profiles]]
 # openai_base_url = "https://api.openai.com/v1"
 # openai_api_key = ""
@@ -156,7 +152,6 @@ auto_save_enabled = true
 auto_save_interval_ms = 1500
 chapter_filename_format = "ch{order:05}-{chapter}-{title}.md"
 volume_dir_format = "v{order:05}-{volume}"
-draft_flow_enabled = false
 chapter_group_min = 3
 chapter_group_max = 8
 version_timed_enabled = true

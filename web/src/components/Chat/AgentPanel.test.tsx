@@ -8,7 +8,7 @@ const useWritingSkillOptionsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: vi.fn().mockResolvedValue({
-    effective: { ide_story_teller_id: 'classic', writing_skill_default: 'novel-standard' },
+    effective: { ide_story_teller_id: 'classic', writing_skill_default: 'novel-lite' },
     workspace: {},
   }),
   updateWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
@@ -19,7 +19,7 @@ vi.mock('@/hooks/useSkillCommands', () => ({
 }))
 
 vi.mock('@/hooks/useWritingSkillOptions', () => ({
-  DEFAULT_WRITING_SKILL: 'novel-standard',
+  DEFAULT_WRITING_SKILL: 'novel-lite',
   BUILTIN_WRITING_SKILLS: ['novel-lite', 'novel-standard', 'novel-heavy'],
   useWritingSkillOptions: useWritingSkillOptionsMock,
 }))
@@ -47,7 +47,7 @@ describe('AgentPanel', () => {
     expect(screen.getByText('叙事')).toBeInTheDocument()
     expect(screen.getByText('默认叙事')).toBeInTheDocument()
     expect(screen.getByText('写作 Skill')).toBeInTheDocument()
-    expect(screen.getByText(/Standard/)).toBeInTheDocument()
+    expect(screen.getByText(/Lite/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()
   })
 

@@ -37,3 +37,35 @@ func TestSystemInstructionRequiresIdeasAndCreatorDuringIdeation(t *testing.T) {
 		t.Fatalf("系统提示不应直接注入动态作品状态:\n%s", instruction)
 	}
 }
+
+func TestIDEWritingFlowUsesChapterStatusInsteadOfSeparateDraftDirectory(t *testing.T) {
+	instruction := BuildIDEWritingFlowInstruction(SystemInstructionInput{
+		Workspace: "/tmp/book",
+	})
+
+	for _, required := range []string{
+		"章节初稿 -> 确认成章",
+		"章节初稿直接写入 chapters/",
+		"非空未确认章节为初稿",
+		"作者确认后才标记为成章",
+		"write_file 到 chapters/",
+		"普通初稿不写入全书事实状态",
+	} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("写作流程提示缺少 %q:\n%s", required, instruction)
+		}
+	}
+	for _, forbidden := range []string{
+		"草稿" + "流程",
+		"draft" + "s/",
+		"Draft" + "Flow",
+		"章节草稿应先写入",
+	} {
+		if strings.Contains(instruction, forbidden) {
+			t.Fatalf("写作流程提示不应包含旧草稿目录流程 %q:\n%s", forbidden, instruction)
+		}
+	}
+	if strings.Contains(instruction, "%!(EXTRA") {
+		t.Fatalf("写作流程提示存在多余 fmt 参数:\n%s", instruction)
+	}
+}

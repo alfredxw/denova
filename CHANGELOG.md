@@ -15,17 +15,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - WebUI：一级菜单展开态支持拖拽调整宽度，默认宽度可容纳五字菜单名，最小宽度保留至少两个中文字的可读空间。
 - WebUI：模型配置新增可选别名，模型选择器优先显示别名、未填写时显示模型名；设置页 Temperature 输入框改为 0-1 的紧凑数字框，上下文长度选项改用统一组件样式。
+- WebUI：默认模型改为与其他模型一致的 `model_profiles` 列表配置，默认项使用 `id = "default"`，也支持设置别名。
 - WebUI：底部状态栏右侧不再显示空闲状态和当前模型名，仅在生成中保留运行状态提示。
 - Agent：创作 Agent 不再直接注入默认 Writing Skill 的 SKILL.md 正文，也不再用后端正则判断写作意图；本轮动态提示只说明当前选择的 Writing Skill，涉及正文写作/续写时由模型通过 `skill` 工具自行加载对应 Skill。
+- Agent：默认写作 Skill 从 `novel-standard` 改为 `novel-lite`；用户仍可在创作 Agent 输入菜单或设置页自行切换默认 Skill。
 - Agent：`config.toml` 模板预置 `writer`、`reviewer`、`fixer` 等写作 SubAgent，它们不再由 Go 默认值或内置 Writing Skill 运行时策略控制；用户可在 Agents 页像管理自定义 SubAgent 一样覆盖或关闭。
 - Agent：系统提示词明确限制 SubAgent 委派时机，除非用户主动要求或已加载 Skill 流程要求，否则父 Agent 不应主动拉起 SubAgent。
 - Agent：创作 Agent 的本轮动态上下文会注入前端 IDE 当前聚焦文件和打开文件路径；该状态只包含有界路径信息，不注入文件正文，需要正文时仍必须显式通过工具读取。
 - Agent：默认不限制空闲等待时间；设置页和 `NOVA_AGENT_IDLE_TIMEOUT_SECONDS` 仍可配置正数秒数启用空闲超时，配置为 `0` 表示不限制。
+- Agent：移除独立章节初稿目录和对应设置开关；章节初稿统一写入 `chapters/`，通过章节状态从初稿确认成章。
 
 ### Fixed
 
 - Agent：修复运行中配置刷新没有合入根 `config.toml` global 层的问题，避免 Agents 页和实际写作 Agent 只看到用户级/工作区级残留的部分 SubAgent。
-- WebUI：修复编辑 SubAgent 可用父 Agent 时立即写入列表导致弹窗消失的问题；弹窗内改动现在会先保存在本地草稿，点击完成后再写回配置。
+- WebUI：修复编辑 SubAgent 可用父 Agent 时立即写入列表导致弹窗消失的问题；弹窗内改动现在会先保存在本地未提交内容，点击完成后再写回配置。
 - WebUI：Agents 页将工具、Skills、上下文压缩、General SubAgent 和自定义 SubAgent 的启停控件统一为 Switch；自定义 SubAgent 可直接在列表启停，删除继承来的 SubAgent 不再变成关闭/恢复的循环。
 - WebUI：优化创作 Agent 面板标题栏布局，新建会话入口移到视图切换器右侧并简化为加号按钮，同时移除空闲状态和当前会话摘要文字。
 - WebUI：对话消息悬浮元信息改为截图式的消息下方操作行，只出现在用户消息气泡和根 Agent 正文下方，并新增仅图标的一键复制按钮；复制成功后按钮会短暂切换为勾号反馈，历史普通消息会补齐展示时间，SubAgent 小窗和工具卡片不再显示消息时间。
@@ -416,7 +419,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 风格参考文件移动到用户级 `<nova_dir>/styles/`，不同书籍可复用同一批 `.md` / `.txt` 文风样本。
 - IDE 模式新增章节组细纲工作流：新建书籍会准备 `setting/chapter-groups/`，Agent 可生成下一组细纲，快捷创作增加“下一组细纲 / 按细纲写下一章 / 定稿并同步状态”入口。
 - IDE 模式作品目录支持以轻量导航列表展示大纲、细纲，并按章节目录自动分卷折叠；项目文件支持多选批量移动、复制、删除和拖拽整理。
-- 设置页新增章节创作流程配置，支持配置是否启用草稿流程，以及章节组建议规模范围，默认关闭草稿流程并建议 3-8 章。
+- 设置页新增章节创作配置，支持章节组建议规模范围，默认建议 3-8 章。
 
 ### Changed
 
@@ -435,7 +438,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 更新 README，按当前书籍管理、小说 IDE、创作 Agent、互动工作台、资料库、角色卡导入和版本管理能力重写使用指南，并将新增界面截图改为可折叠展示。
 - 讲述者规则配置页优化交互：规则启用开关移到左侧规则列表，注入位置改为紧凑下拉选择，减少详情区占用并提升操作效率。
 - 创作 Agent 工具卡片统一为暗色面板风格，优化执行中、结果、详情和待办列表的边距、状态图标与展开区域质感。
-- Agent 写作工作流调整为“创作灵感 -> 大纲 -> 下一组细纲 -> 单章草稿/定稿”，细纲只规划接下来一组章节，章节定稿后才同步 progress 与角色状态。
+- Agent 写作工作流调整为“创作灵感 -> 大纲 -> 下一组细纲 -> 章节初稿/成章”，细纲只规划接下来一组章节，章节定稿后才同步 progress 与角色状态。
 - Agent 注入场景化风格规则前会把相对风格名解析为用户级 `<nova_dir>/styles/` 下的绝对路径，IDE 和互动模式都按当前讲述者选择规则。
 - IDE 模式适配结构化资料库和讲述者：写作工作台新增资料库/讲述者入口，创作 Agent 支持引用资料条目，并会按工作区默认讲述者注入写作规则。
 - IDE 模式下资料库和讲述者入口改为覆盖项目目录、编辑区和右侧面板的全工作区管理页。

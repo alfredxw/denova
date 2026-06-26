@@ -70,12 +70,12 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     await screen.findByText('模型与思考')
-    expect(screen.queryByText('deepseek（deepseek-v3）')).not.toBeInTheDocument()
+    expect(screen.queryByText('deepseek（DeepSeek V3）')).not.toBeInTheDocument()
 
     window.dispatchEvent(new CustomEvent('nova:settings-updated'))
 
     await waitFor(() => {
-      expect(screen.getByText('deepseek（deepseek-v3）')).toBeInTheDocument()
+      expect(screen.getByText('deepseek（DeepSeek V3）')).toBeInTheDocument()
     })
   })
 
@@ -332,6 +332,8 @@ describe('AgentsView', () => {
     vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: /新增 SubAgent/ }))
     const dialog = screen.getByRole('dialog')
+    const doneButton = within(dialog).getByRole('button', { name: '完成' })
+    expect(doneButton.parentElement).toHaveClass('mx-0', 'mb-0')
     const nameInput = within(dialog).getByDisplayValue('自定义 SubAgent')
     fireEvent.change(nameInput, { target: { value: 'Researcher' } })
     fireEvent.click(within(dialog).getByLabelText('写作'))
@@ -346,7 +348,7 @@ describe('AgentsView', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Researcher')).toBeInTheDocument()
 
-    fireEvent.click(within(dialog).getByRole('button', { name: '完成' }))
+    fireEvent.click(doneButton)
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1100)

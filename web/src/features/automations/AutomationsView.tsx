@@ -36,7 +36,7 @@ import {
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { fetchSettings } from '@/features/settings/api'
 import type { Settings, ModelProfileSettings } from '@/features/settings/types'
-import { modelProfileID, modelProfileLabel } from '@/features/settings/model-profiles'
+import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { useAutomationRunStream } from './useAutomationRunStream'
 import { InboxPanel } from './AutomationInboxPanel'
 import { TriggerEditor, defaultScheduleTrigger } from './AutomationTriggerEditor'
@@ -714,13 +714,13 @@ function inheritedAutomationProfileLabel(settings: Settings | null, t: (key: str
 
 function modelProfileLabels(settings: Settings | null, t: (key: string, options?: Record<string, unknown>) => string) {
   const profiles = new Map<string, string>()
-  profiles.set('default', settings?.openai_model || t('automations.model.defaultModel'))
   const add = (profile?: ModelProfileSettings) => {
     const id = modelProfileID(profile)
     if (!id) return
     profiles.set(id, modelProfileLabel(profile))
   }
-  ;(settings?.model_profiles ?? []).forEach(add)
+  modelProfilesWithDefault(settings ?? undefined).forEach(add)
+  if (!profiles.has('default')) profiles.set('default', t('automations.model.defaultModel'))
   return profiles
 }
 

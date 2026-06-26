@@ -20,7 +20,7 @@ const planning = {
   'planning.volumeChapters': 'Volume Chapters',
   'planning.unvolumed': 'Unvolumed',
   'planning.confirmChapter': 'Confirm as chapter',
-  'planning.markDraft': 'Mark as draft',
+  'planning.markDraft': 'Mark as initial draft',
   'planning.loreDescription': '{{type}} · {{importance}} · {{loadMode}}{{tags}}{{brief}}',
   'planning.loreBrief': ' · Brief: {{brief}}',
 } as const

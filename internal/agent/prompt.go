@@ -183,7 +183,6 @@ func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller ID
 		StyleRules:             boundedStyleRules(teller.StyleRules, maxStyleRuleContextChars),
 		ChapterFilenameFormat:  cfg.ChapterFilenameFormat,
 		VolumeDirFormat:        cfg.VolumeDirFormat,
-		DraftFlowEnabled:       cfg.DraftFlowEnabled,
 		ChapterGroupMin:        cfg.ChapterGroupMin,
 		ChapterGroupMax:        cfg.ChapterGroupMax,
 	})
@@ -511,7 +510,6 @@ func ideFlowInstruction(cfg *config.Config, workspace string) string {
 		Workspace:             workspace,
 		ChapterFilenameFormat: cfg.ChapterFilenameFormat,
 		VolumeDirFormat:       cfg.VolumeDirFormat,
-		DraftFlowEnabled:      cfg.DraftFlowEnabled,
 		ChapterGroupMin:       cfg.ChapterGroupMin,
 		ChapterGroupMax:       cfg.ChapterGroupMax,
 	})

@@ -47,7 +47,6 @@ type Settings struct {
 	ChapterFilenameFormat       string `toml:"chapter_filename_format,omitempty" json:"chapter_filename_format,omitempty"`
 	VolumeDirFormat             string `toml:"volume_dir_format,omitempty" json:"volume_dir_format,omitempty"`
 	MaxOpenTabs                 *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
-	DraftFlowEnabled            *bool  `toml:"draft_flow_enabled,omitempty" json:"draft_flow_enabled,omitempty"`
 	ChapterGroupMin             *int   `toml:"chapter_group_min,omitempty" json:"chapter_group_min,omitempty"`
 	ChapterGroupMax             *int   `toml:"chapter_group_max,omitempty" json:"chapter_group_max,omitempty"`
 	VersionTimedEnabled         *bool  `toml:"version_timed_enabled,omitempty" json:"version_timed_enabled,omitempty"`
@@ -84,7 +83,7 @@ func intPtr(v int) *int           { return &v }
 func floatPtr(v float64) *float64 { return &v }
 
 const (
-	DefaultWritingSkillName        = "novel-standard"
+	DefaultWritingSkillName        = "novel-lite"
 	DefaultAgentIdleTimeoutSeconds = 0
 )
 
@@ -104,7 +103,6 @@ func DefaultSettings() Settings {
 		ChapterFilenameFormat:       "ch{order:05}-{chapter}-{title}.md",
 		VolumeDirFormat:             "v{order:05}-{volume}",
 		MaxOpenTabs:                 intPtr(5),
-		DraftFlowEnabled:            boolPtr(false),
 		ChapterGroupMin:             intPtr(3),
 		ChapterGroupMax:             intPtr(8),
 		VersionTimedEnabled:         boolPtr(true),
@@ -202,9 +200,6 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.MaxOpenTabs != nil {
 		out.MaxOpenTabs = child.MaxOpenTabs
-	}
-	if child.DraftFlowEnabled != nil {
-		out.DraftFlowEnabled = child.DraftFlowEnabled
 	}
 	if child.ChapterGroupMin != nil {
 		out.ChapterGroupMin = child.ChapterGroupMin
@@ -438,6 +433,20 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
+	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
+		if defaultProfile.OpenAIAPIKey != "" {
+			s.OpenAIAPIKey = ""
+		}
+		if defaultProfile.OpenAIBaseURL != "" {
+			s.OpenAIBaseURL = ""
+		}
+		if defaultProfile.OpenAIModel != "" {
+			s.OpenAIModel = ""
+		}
+		if defaultProfile.ContextWindowTokens != nil {
+			s.OpenAIContextWindowTokens = nil
+		}
+	}
 	s.AgentPrompts = sanitizeAgentPromptSettings(s.AgentPrompts)
 	s.AgentContexts = sanitizeAgentContextSettings(s.AgentContexts)
 	s.SubAgents = SanitizeSubAgents(s.SubAgents)

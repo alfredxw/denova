@@ -15,7 +15,7 @@ import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 
 import type { TextSelection as QuoteSelection } from '@/lib/api'
-import type { ChapterSummary, WorkspaceSummary } from '@/lib/api'
+import type { ChapterSummary } from '@/lib/api'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { isEditableTarget } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
@@ -32,7 +32,6 @@ interface MarkdownEditorProps {
   autoSaveEnabled?: boolean
   autoSaveDelayMs?: number
   chapterSummary?: ChapterSummary
-  workspaceSummary?: WorkspaceSummary | null
   searchIntent?: EditorSearchIntent | null
 }
 
@@ -170,7 +169,6 @@ export function MarkdownEditor({
   autoSaveEnabled = true,
   autoSaveDelayMs,
   chapterSummary,
-  workspaceSummary,
   searchIntent,
 }: MarkdownEditorProps) {
   const { t } = useTranslation()
@@ -178,7 +176,6 @@ export function MarkdownEditor({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settings, setSettings] = useState<EditorSettings>(() => loadEditorSettings())
   const [nativeIndent, setNativeIndent] = useState(false)
-  const [totalCharacters, setTotalCharacters] = useState(0)
   const [selectedCharacters, setSelectedCharacters] = useState(0)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -329,7 +326,7 @@ export function MarkdownEditor({
     } else {
       editor.commands.setContent(content, { emitUpdate: false, contentType: 'markdown' })
     }
-    updateCharacterStats(editor, setTotalCharacters, setSelectedCharacters)
+    updateCharacterStats(editor, setSelectedCharacters)
     updateSearch(searchStateRef.current.query, 0)
 
     // 切换文件后：等待 DOM 渲染完成再恢复位置并显示
@@ -342,11 +339,11 @@ export function MarkdownEditor({
     }
   }, [content, editor, fileName, updateSearch])
 
-  // 监听 TipTap 内容和选区变化，实时更新全文/选区字数。
+  // 监听 TipTap 内容和选区变化，实时更新选区字数。
   useEffect(() => {
     if (!editor) return
 
-    const updateStats = () => updateCharacterStats(editor, setTotalCharacters, setSelectedCharacters)
+    const updateStats = () => updateCharacterStats(editor, setSelectedCharacters)
     updateStats()
     editor.on('update', updateStats)
     editor.on('selectionUpdate', updateStats)
@@ -714,8 +711,6 @@ export function MarkdownEditor({
         )}
       </div>
       <div className="nova-editor-statusbar flex h-7 shrink-0 items-center gap-4 border-t px-3 text-[11px] text-[var(--nova-text-faint)]">
-        <span>{t('editor.chapterWords', { count: formatNumber(totalCharacters) })}</span>
-        {workspaceSummary && <span>{t('editor.bookWords', { count: formatNumber(workspaceSummary.total_words) })}</span>}
         {chapterSummary && <span>{t('editor.updatedAt', { time: chapterSummary.updated_at || t('editor.unknownTime') })}</span>}
         {selectedCharacters > 0 && (
           <span className="text-[var(--nova-text-muted)]">{t('editor.selectedWords', { count: formatNumber(selectedCharacters) })}</span>
@@ -990,12 +985,8 @@ function normalizeEditorText(text: string): string {
 
 function updateCharacterStats(
   editor: NonNullable<ReturnType<typeof useEditor>>,
-  setTotal: (value: number) => void,
   setSelected: (value: number) => void,
 ) {
-  const storage = editor.storage.characterCount as { characters?: () => number } | undefined
-  setTotal(storage?.characters?.() ?? countTextCharacters(editor.state.doc.textContent))
-
   const { from, to, empty } = editor.state.selection
   if (empty) {
     setSelected(0)

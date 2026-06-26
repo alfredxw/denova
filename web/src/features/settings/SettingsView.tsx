@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { LOCALE_OPTIONS } from '@/i18n'
 import { APP_VERSION } from '@/app-version'
 import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
-import { modelProfileID, modelProfileLabel } from './model-profiles'
+import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfilesWithDefault } from './model-profiles'
 
 type SettingsSectionId = 'model' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
@@ -193,7 +193,14 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     setDraft((d) => ({ ...d, [k]: v }))
 
   const setModelProfiles = (profiles: ModelProfileSettings[]) => {
-    setField('model_profiles', profiles)
+    setDraft((d) => ({
+      ...d,
+      openai_api_key: '',
+      openai_base_url: '',
+      openai_model: '',
+      openai_context_window_tokens: null,
+      model_profiles: profiles,
+    }))
   }
 
   useAutoSaveSettings({
@@ -284,22 +291,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       title: t('settings.section.model'),
       children: (
         <>
-          <Text label="API Key" value={draft.openai_api_key} placeholder={placeholderFor('openai_api_key')}
-                onChange={(v) => setField('openai_api_key', v)} type="password" />
-          <Text label="Base URL" value={draft.openai_base_url} placeholder={placeholderFor('openai_base_url')}
-                onChange={(v) => setField('openai_base_url', v)} />
-          <Text label={t('common.model')} value={draft.openai_model} placeholder={placeholderFor('openai_model')}
-                onChange={(v) => setField('openai_model', v)} />
-          <ContextWindowField
-            label={t('settings.model.contextWindow')}
-            value={draft.openai_context_window_tokens ?? null}
-            effective={effective.openai_context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS}
-            allowInherit
-            onChange={(v) => setField('openai_context_window_tokens', v)}
-          />
           <ModelProfilesEditor
-            profiles={draft.model_profiles ?? []}
-            effectiveProfiles={effective.model_profiles ?? []}
+            profiles={modelProfilesForEditor(draft, effective)}
+            effectiveProfiles={modelProfilesWithDefault(effective)}
             onChange={setModelProfiles}
           />
         </>
@@ -407,9 +401,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Num label={t('settings.ide.maxOpenTabs')} value={draft.max_open_tabs ?? null}
                placeholder={placeholderFor('max_open_tabs')}
                onChange={(v) => setField('max_open_tabs', v)} />
-          <BoolTri label={t('settings.ide.draftFlow')} value={draft.draft_flow_enabled ?? null}
-                   effective={effective.draft_flow_enabled}
-                   onChange={(v) => setField('draft_flow_enabled', v)} />
           <Num label={t('settings.ide.chapterGroupMin')} value={draft.chapter_group_min ?? null}
                placeholder={placeholderFor('chapter_group_min')}
                onChange={(v) => setField('chapter_group_min', v)} />
@@ -620,6 +611,25 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       </AdaptiveSurface>
     </div>
   )
+}
+
+function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProfileSettings[] {
+  const localProfiles = draft.model_profiles ?? []
+  const hasLocalDefault = localProfiles.some((profile) => modelProfileID(profile) === DEFAULT_MODEL_PROFILE_ID)
+  const hasLegacyDefault = Boolean(draft.openai_api_key || draft.openai_base_url || draft.openai_model || draft.openai_context_window_tokens)
+  if (hasLocalDefault || hasLegacyDefault) {
+    return modelProfilesWithDefault(draft)
+  }
+  const inherited = modelProfilesWithDefault(effective)
+  const localIDs = new Set(localProfiles.map(modelProfileID).filter(Boolean))
+  return [
+    ...inherited.filter((profile) => !localIDs.has(modelProfileID(profile))).map(stripInheritedModelSecret),
+    ...localProfiles,
+  ]
+}
+
+function stripInheritedModelSecret(profile: ModelProfileSettings): ModelProfileSettings {
+  return { ...profile, openai_api_key: '' }
 }
 
 function Section({
@@ -1233,20 +1243,6 @@ function ModelProfileInput({ label, className, children }: { label: string; clas
       <span className="text-[11px] leading-none text-[var(--nova-text-faint)]">{label}</span>
       {children}
     </label>
-  )
-}
-
-function ContextWindowField({ label, value, effective, allowInherit, onChange }: {
-  label: string
-  value: number | null
-  effective?: number | null
-  allowInherit?: boolean
-  onChange: (value: number | null) => void
-}) {
-  return (
-    <FieldRow label={label}>
-      <ContextWindowInput value={value} effective={effective} allowInherit={allowInherit} onChange={onChange} />
-    </FieldRow>
   )
 }
 

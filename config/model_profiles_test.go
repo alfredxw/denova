@@ -61,6 +61,34 @@ func TestResolveAgentModelUsesModelNameAsProfileID(t *testing.T) {
 	}
 }
 
+func TestResolveAgentModelAllowsDefaultProfileOverride(t *testing.T) {
+	contextWindow := 1000000
+	cfg := &Config{
+		OpenAIBaseURL:             "https://legacy.example/v1",
+		OpenAIModel:               "legacy-model",
+		OpenAIContextWindowTokens: DefaultContextWindowTokens,
+		ModelProfiles: []ModelProfileSettings{
+			{
+				ID:                  "default",
+				Name:                "Writing default",
+				OpenAIBaseURL:       "https://api.openai.com/v1",
+				OpenAIModel:         "gpt-4.1",
+				ContextWindowTokens: &contextWindow,
+			},
+		},
+	}
+	resolved := ResolveAgentModel(cfg, AgentKindIDE)
+	if resolved.ProfileID != "default" {
+		t.Fatalf("profile id = %q, want default", resolved.ProfileID)
+	}
+	if resolved.OpenAIBaseURL != "https://api.openai.com/v1" || resolved.OpenAIModel != "gpt-4.1" {
+		t.Fatalf("default profile should override legacy fields: %#v", resolved)
+	}
+	if resolved.ContextWindowTokens != contextWindow {
+		t.Fatalf("context window = %d, want %d", resolved.ContextWindowTokens, contextWindow)
+	}
+}
+
 func TestSanitizeModelProfilesCapsContextWindow(t *testing.T) {
 	tooLarge := 3000000
 	invalid := -1
@@ -101,5 +129,61 @@ func TestSanitizeModelProfilesDerivesIDFromModelName(t *testing.T) {
 	}
 	if settings.ModelProfiles[1].ID != "legacy" || settings.ModelProfiles[1].OpenAIModel != "legacy" {
 		t.Fatalf("legacy id profile should keep working: %#v", settings.ModelProfiles[1])
+	}
+}
+
+func TestSanitizeDefaultModelProfileCanInheritModelFields(t *testing.T) {
+	settings := sanitizeEditableSettings(Settings{
+		ModelProfiles: []ModelProfileSettings{
+			{ID: "default", Name: "Main"},
+		},
+	})
+	if len(settings.ModelProfiles) != 1 {
+		t.Fatalf("sanitized model profiles length = %d, want 1", len(settings.ModelProfiles))
+	}
+	if settings.ModelProfiles[0].OpenAIModel != "" {
+		t.Fatalf("default profile without model should keep inheriting model fields: %#v", settings.ModelProfiles[0])
+	}
+}
+
+func TestSanitizeSettingsClearsLegacyModelFieldsWhenDefaultProfileExists(t *testing.T) {
+	contextWindow := 1000000
+	settings := sanitizeEditableSettings(Settings{
+		OpenAIAPIKey:              "legacy-key",
+		OpenAIBaseURL:             "https://legacy.example/v1",
+		OpenAIModel:               "legacy-model",
+		OpenAIContextWindowTokens: &contextWindow,
+		ModelProfiles: []ModelProfileSettings{
+			{
+				ID:                  "default",
+				Name:                "Main",
+				OpenAIAPIKey:        "profile-key",
+				OpenAIBaseURL:       "https://api.openai.com/v1",
+				OpenAIModel:         "gpt-4.1",
+				ContextWindowTokens: &contextWindow,
+			},
+		},
+	})
+	if settings.OpenAIAPIKey != "" || settings.OpenAIBaseURL != "" || settings.OpenAIModel != "" || settings.OpenAIContextWindowTokens != nil {
+		t.Fatalf("legacy model fields should be cleared when default profile exists: %#v", settings)
+	}
+	if len(settings.ModelProfiles) != 1 || settings.ModelProfiles[0].ID != "default" || settings.ModelProfiles[0].Name != "Main" {
+		t.Fatalf("default profile should be preserved: %#v", settings.ModelProfiles)
+	}
+}
+
+func TestSanitizeSettingsKeepsLegacyModelFieldsForAliasOnlyDefaultProfile(t *testing.T) {
+	contextWindow := 1000000
+	settings := sanitizeEditableSettings(Settings{
+		OpenAIAPIKey:              "legacy-key",
+		OpenAIBaseURL:             "https://legacy.example/v1",
+		OpenAIModel:               "legacy-model",
+		OpenAIContextWindowTokens: &contextWindow,
+		ModelProfiles: []ModelProfileSettings{
+			{ID: "default", Name: "Main"},
+		},
+	})
+	if settings.OpenAIAPIKey != "legacy-key" || settings.OpenAIBaseURL != "https://legacy.example/v1" || settings.OpenAIModel != "legacy-model" || settings.OpenAIContextWindowTokens == nil {
+		t.Fatalf("alias-only default profile should keep legacy model fields: %#v", settings)
 	}
 }

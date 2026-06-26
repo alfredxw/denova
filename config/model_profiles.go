@@ -165,7 +165,7 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 		if profile.ID == "" {
 			continue
 		}
-		if profile.OpenAIModel == "" {
+		if profile.OpenAIModel == "" && profile.ID != "default" {
 			profile.OpenAIModel = profile.ID
 		}
 		profile.Name = strings.TrimSpace(profile.Name)
@@ -179,6 +179,15 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 		out = append(out, profile)
 	}
 	return out
+}
+
+func defaultModelProfile(profiles []ModelProfileSettings) (ModelProfileSettings, bool) {
+	for _, profile := range profiles {
+		if modelProfileID(profile) == "default" {
+			return profile, true
+		}
+	}
+	return ModelProfileSettings{}, false
 }
 
 func mergeModelProfile(parent, child ModelProfileSettings) ModelProfileSettings {

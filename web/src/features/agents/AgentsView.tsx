@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { AgentContextOverride, AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
-import { modelProfileID, modelProfileLabel } from '@/features/settings/model-profiles'
+import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
 import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
@@ -917,7 +917,7 @@ function AgentSubAgentSection({ agent, inheritedModel, generalSettings, effectiv
                 onChange={updateEditingSubAgent}
               />
             </div>
-            <DialogFooter className="shrink-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-4 py-3">
+            <DialogFooter className="mx-0 mb-0 shrink-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-4 py-3">
               <button type="button" onClick={finishEditingSubAgent} className="nova-nav-item rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1.5 text-xs text-[var(--nova-text)] hover:bg-[var(--nova-hover)]">
                 {t('agents.subAgents.done')}
               </button>
@@ -1317,9 +1317,9 @@ function buildProfileOptions(draft: Settings, effective: Settings, t: (key: stri
     if (!id) return
     profiles.set(id, modelProfileLabel(profile))
   }
-  profiles.set('default', effective.openai_model || t('agents.option.defaultModel'))
-  ;(effective.model_profiles ?? []).forEach(add)
+  modelProfilesWithDefault(effective).forEach(add)
   ;(draft.model_profiles ?? []).forEach(add)
+  if (!profiles.has('default')) profiles.set('default', t('agents.option.defaultModel'))
   return Array.from(profiles.entries()).map(([id, label]) => ({
     id,
     label: id === 'default' ? t('agents.option.defaultProfile', { label }) : t('agents.option.profile', { id, label }),

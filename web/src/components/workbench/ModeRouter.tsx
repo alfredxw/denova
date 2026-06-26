@@ -401,7 +401,6 @@ export function ModeRouter(props: ModeRouterProps) {
               autoSaveEnabled={editorAutoSaveEnabled}
               autoSaveDelayMs={editorAutoSaveDelayMs}
               chapterSummary={currentChapter}
-              workspaceSummary={summary}
               searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
             />
           ) : (

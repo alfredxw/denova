@@ -40,7 +40,6 @@ type Config struct {
 	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`
 	ChapterFilenameFormat       string                       `toml:"-"`
 	VolumeDirFormat             string                       `toml:"-"`
-	DraftFlowEnabled            bool                         `toml:"-"`
 	ChapterGroupMin             int                          `toml:"-"`
 	ChapterGroupMax             int                          `toml:"-"`
 	VersionTimedEnabled         bool                         `toml:"-"`
@@ -91,7 +90,6 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
-		DraftFlowEnabled:            settingsBool(s.DraftFlowEnabled, false),
 		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
 		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
 		VersionTimedEnabled:         settingsBool(s.VersionTimedEnabled, true),
@@ -254,7 +252,6 @@ func Load() *Config {
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
-			DraftFlowEnabled:            settingsBool(d.DraftFlowEnabled, false),
 			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
 			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),
 			VersionTimedEnabled:         settingsBool(d.VersionTimedEnabled, true),

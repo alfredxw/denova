@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { AgentModelOverride, LayeredSettings, ModelProfileSettings, Settings } from '@/features/settings/types'
-import { modelProfileID, modelProfileLabel } from '@/features/settings/model-profiles'
+import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 
 interface ModelProfileSwitcherProps {
@@ -187,9 +187,9 @@ function buildModelProfileOptions(settings: LayeredSettings | null, t: (key: str
     if (!id) return
     profiles.set(id, modelProfileLabel(profile))
   }
-  profiles.set('default', settings.effective.openai_model || t('chat.modelProfile.defaultModel'))
-  ;(settings.effective.model_profiles ?? []).forEach(add)
+  modelProfilesWithDefault(settings.effective).forEach(add)
   ;(settings.workspace.model_profiles ?? []).forEach(add)
+  if (!profiles.has('default')) profiles.set('default', t('chat.modelProfile.defaultModel'))
   const currentDefault = settings.effective.agent_models?.default?.profile_id
   if (currentDefault && !profiles.has(currentDefault)) profiles.set(currentDefault, currentDefault)
   return Array.from(profiles.entries()).map(([id, label]) => ({

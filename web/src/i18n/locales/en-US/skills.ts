@@ -33,7 +33,7 @@ const skills = {
   'skills.create.preview.agents': 'Visible Agents',
   'skills.create.preview.allAgents': 'All Skills-enabled Agents',
   'skills.create.submit': 'Create SKILL.md',
-  'skills.create.askAgent': 'Ask Agent to Draft',
+  'skills.create.askAgent': 'Ask Agent to Create',
   'skills.config.action': 'Configure',
   'skills.config.title': 'Configure Skill',
   'skills.config.subtitle': 'Adjust the Skill name, storage location, trigger description, and visible Agents.',

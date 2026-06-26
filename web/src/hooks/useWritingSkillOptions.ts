@@ -5,7 +5,7 @@ import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
 import { skillAvailableForAgent } from '@/features/agents/agent-registry'
 
-export const DEFAULT_WRITING_SKILL = 'novel-standard'
+export const DEFAULT_WRITING_SKILL = 'novel-lite'
 export const BUILTIN_WRITING_SKILLS = ['novel-lite', 'novel-standard', 'novel-heavy'] as const
 
 const builtinWritingSkillOrder = new Map(BUILTIN_WRITING_SKILLS.map((name, index) => [name, index]))
