@@ -8,11 +8,13 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
+	openaiprotocol "github.com/cloudwego/eino-ext/libs/acl/openai"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -116,6 +118,40 @@ func logFullModelInput(opts modelInputLogOptions) {
 		return
 	}
 	log.Printf("[llm-input-log] captured agent=%s source=%s mode=%s call_id=%s path=%s bytes=%d messages=%d tools=%d", opts.AgentKind, opts.Source, opts.Mode, record.CallID, modelInputLogPath, buf.Len(), record.MessageCount, record.ToolCount)
+}
+
+func logModelProviderRequestID(agentKind, source, mode, modelName, runID string, callIndex int, msg *schema.Message) string {
+	requestID := providerRequestIDFromMessage(msg)
+	if requestID == "" {
+		return ""
+	}
+	log.Printf(
+		"[model-response] provider_request_id=%s agent=%s source=%s mode=%s model=%q run_id=%s call_index=%d",
+		requestID,
+		strings.TrimSpace(agentKind),
+		strings.TrimSpace(source),
+		strings.TrimSpace(mode),
+		strings.TrimSpace(modelName),
+		strings.TrimSpace(runID),
+		callIndex,
+	)
+	return requestID
+}
+
+func providerRequestIDFromMessage(msg *schema.Message) string {
+	if msg == nil {
+		return ""
+	}
+	if requestID := strings.TrimSpace(openaiprotocol.GetRequestID(msg)); requestID != "" {
+		return requestID
+	}
+	if msg.Extra == nil {
+		return ""
+	}
+	if requestID, ok := msg.Extra["openai-request-id"].(string); ok {
+		return strings.TrimSpace(requestID)
+	}
+	return ""
 }
 
 func appendModelInputLog(payload []byte) error {

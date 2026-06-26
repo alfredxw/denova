@@ -102,7 +102,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		WritingSkillDefault:         s.WritingSkillDefault,
 		MaxIteration:                settingsInt(s.MaxIteration, 0),
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
-		AgentIdleTimeoutSeconds:     settingsInt(s.AgentIdleTimeoutSeconds, 180),
+		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
 		DraftFlowEnabled:            settingsBool(s.DraftFlowEnabled, false),
@@ -138,7 +138,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 }
 
 func loadGlobalConfig() *Config {
-	cfg := &Config{}
+	cfg := &Config{AgentIdleTimeoutSeconds: -1}
 	for _, path := range globalConfigCandidates() {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -190,7 +190,7 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.ModelMaxRetries > 0 {
 		settings.ModelMaxRetries = &cfg.ModelMaxRetries
 	}
-	if cfg.AgentIdleTimeoutSeconds > 0 {
+	if cfg.AgentIdleTimeoutSeconds >= 0 {
 		settings.AgentIdleTimeoutSeconds = &cfg.AgentIdleTimeoutSeconds
 	}
 	if cfg.OpenAIContextWindowTokens > 0 {
@@ -237,7 +237,7 @@ func Load() *Config {
 			WritingSkillDefault:         d.WritingSkillDefault,
 			MaxIteration:                settingsInt(d.MaxIteration, 0),
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
-			AgentIdleTimeoutSeconds:     settingsInt(d.AgentIdleTimeoutSeconds, 180),
+			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
 			DraftFlowEnabled:            settingsBool(d.DraftFlowEnabled, false),
@@ -268,6 +268,13 @@ func Load() *Config {
 func settingsInt(v *int, fallback int) int {
 	if v == nil || *v <= 0 {
 		return fallback
+	}
+	return *v
+}
+
+func settingsAgentIdleTimeoutSeconds(v *int) int {
+	if v == nil || *v < 0 {
+		return DefaultAgentIdleTimeoutSeconds
 	}
 	return *v
 }
@@ -325,7 +332,7 @@ func overrideFromEnv(cfg *Config) {
 		}
 	}
 	if v := os.Getenv("NOVA_AGENT_IDLE_TIMEOUT_SECONDS"); v != "" {
-		if seconds, err := strconv.Atoi(v); err == nil && seconds > 0 {
+		if seconds, err := strconv.Atoi(v); err == nil && seconds >= 0 {
 			cfg.AgentIdleTimeoutSeconds = seconds
 		}
 	}

@@ -74,6 +74,19 @@ describe('MessageItem', () => {
     expect(highlights[2]).toHaveTextContent('"now"')
   })
 
+  it('互动模式 assistant 消息不按角色名冒号高亮，避免误判叙述句', () => {
+    const { container } = render(
+      <MessageItem
+        highlightDialogue
+        message={{ role: 'assistant', content: '林晚：我们走。\n\nJohn: wait here.\n\n他说：“走吧。”' }}
+      />,
+    )
+
+    const highlights = container.querySelectorAll('.nova-dialogue-highlight')
+    expect(highlights).toHaveLength(1)
+    expect(highlights[0]).toHaveTextContent('“走吧。”')
+  })
+
   it('普通 assistant 消息默认不高亮对白', () => {
     const { container } = render(<MessageItem message={{ role: 'assistant', content: '他说：“走吧。”' }} />)
 

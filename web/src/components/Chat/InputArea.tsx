@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -88,6 +88,7 @@ interface InputAreaProps {
   workspace?: string
   writingSkillControl?: ReactNode
   floating?: boolean
+  onHeightChange?: (height: number) => void
 }
 
 /** 输入区域组件，支持 Enter 发送和命令菜单 */
@@ -123,6 +124,7 @@ export function InputArea({
   workspace,
   writingSkillControl,
   floating = false,
+  onHeightChange,
 }: InputAreaProps) {
   const { t } = useTranslation()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
@@ -132,6 +134,7 @@ export function InputArea({
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const commandItemRefs = useRef<Array<HTMLDivElement | null>>([])
   const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
   const defaultPlaceholder = skills.length > 0 && effectiveCommandScope !== 'none'
@@ -166,6 +169,7 @@ export function InputArea({
     const query = value.toLowerCase()
     return allCommands.filter((command) => command.cmd.toLowerCase().startsWith(query))
   }, [allCommands, value])
+  const hasReferences = referencedFiles.length > 0 || loreReferences.length > 0 || styleScenes.length > 0 || textSelections.length > 0
 
   useEffect(() => {
     if (!draftKey) return
@@ -201,6 +205,28 @@ export function InputArea({
     window.requestAnimationFrame(() => textareaRef.current?.focus())
     onInputPrefillConsumed?.()
   }, [inputPrefill, onInputPrefillConsumed])
+
+  const syncHeight = useCallback(() => {
+    const element = rootRef.current
+    if (!element) return
+    onHeightChange?.(Math.ceil(element.getBoundingClientRect().height))
+  }, [onHeightChange])
+
+  useLayoutEffect(() => {
+    syncHeight()
+  }, [value, hasReferences, showCommands, referenceQuery, styleSceneQuery, syncHeight])
+
+  useEffect(() => {
+    if (!onHeightChange) return
+    const element = rootRef.current
+    if (!element || typeof ResizeObserver === 'undefined') {
+      syncHeight()
+      return
+    }
+    const observer = new ResizeObserver(syncHeight)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [onHeightChange, syncHeight])
 
   /** 处理输入变化 */
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -334,8 +360,6 @@ export function InputArea({
     if (disabled) return
     void onContextAnalyze?.(value)
   }
-  const hasReferences = referencedFiles.length > 0 || loreReferences.length > 0 || styleScenes.length > 0 || textSelections.length > 0
-
   /** 选择命令 */
   const selectCommand = (cmd: string) => {
     setValue(cmd + ' ')
@@ -370,7 +394,7 @@ export function InputArea({
   }
 
   return (
-    <div className={floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3'}>
+    <div ref={rootRef} className={floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3'}>
       <Popover open={showCommands && filteredCommands.length > 0}>
         <PopoverTrigger asChild>
           <span className="absolute bottom-full left-3 h-0 w-0" />

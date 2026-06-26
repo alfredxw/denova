@@ -35,6 +35,7 @@ interface WorkbenchShellProps {
   sidebar: ReactNode
   main: ReactNode
   rightPanelContent: ReactNode
+  rightPanelWide?: boolean
   updateNotice?: { latestVersion: string } | null
   onSetMode: (mode: WorkspaceMode) => void
   onToggleActivityBarExpanded: () => void
@@ -68,6 +69,12 @@ const ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
 }
 const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
 const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'timeline', 'memory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const ACTIVITY_BAR_WIDTH_STORAGE_KEY = 'nova.layout.activityBarWidth'
+const ACTIVITY_BAR_COLLAPSED_WIDTH = 64
+const ACTIVITY_BAR_MIN_WIDTH = 112
+const ACTIVITY_BAR_DEFAULT_WIDTH = 152
+const ACTIVITY_BAR_MAX_WIDTH = 280
+const ACTIVITY_BAR_WIDTH_KEYBOARD_STEP = 8
 
 export function WorkbenchShell({
   mode,
@@ -86,6 +93,7 @@ export function WorkbenchShell({
   sidebar,
   main,
   rightPanelContent,
+  rightPanelWide = false,
   updateNotice,
   onSetMode,
   onToggleActivityBarExpanded,
@@ -101,6 +109,7 @@ export function WorkbenchShell({
   const { data: layeredSettings } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings, staleTime: 60_000 })
   const modelName = layeredSettings?.effective?.openai_model?.trim() || ''
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
+  const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
   const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -111,6 +120,10 @@ export function WorkbenchShell({
     cleanupLegacyActivityOrderStorage()
     setActivityOrders(readStoredActivityOrders())
   }, [])
+
+  useEffect(() => {
+    storeActivityBarWidth(activityBarWidth)
+  }, [activityBarWidth])
 
   useEffect(() => {
     let cancelled = false
@@ -356,6 +369,43 @@ export function WorkbenchShell({
     storeActivityOrder(activityOrderScope, nextOrder)
   }
 
+  const resizeActivityBar = (nextWidth: number) => {
+    setActivityBarWidth(clampActivityBarWidth(nextWidth))
+  }
+
+  const handleActivityBarResizePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!activityBarExpanded) return
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = activityBarWidth
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      resizeActivityBar(startWidth + moveEvent.clientX - startX)
+    }
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+    }
+    window.addEventListener('pointermove', handlePointerMove)
+    window.addEventListener('pointerup', handlePointerUp, { once: true })
+  }
+
+  const handleActivityBarResizeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!activityBarExpanded) return
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault()
+      resizeActivityBar(activityBarWidth - ACTIVITY_BAR_WIDTH_KEYBOARD_STEP)
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault()
+      resizeActivityBar(activityBarWidth + ACTIVITY_BAR_WIDTH_KEYBOARD_STEP)
+    } else if (event.key === 'Home') {
+      event.preventDefault()
+      resizeActivityBar(ACTIVITY_BAR_MIN_WIDTH)
+    } else if (event.key === 'End') {
+      event.preventDefault()
+      resizeActivityBar(ACTIVITY_BAR_MAX_WIDTH)
+    }
+  }
+
   const topBar = (
     <header className="nova-topbar grid h-10 shrink-0 grid-cols-[auto_1fr_auto] items-center border-b px-3 text-xs">
       <div className="flex items-center gap-3">
@@ -394,7 +444,10 @@ export function WorkbenchShell({
   const activityBar = (
     <LayoutGroup id="workbench-activity-bar">
     <DndContext key={activityOrderScope} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleActivityDragEnd}>
-    <aside className={`nova-activity-bar flex shrink-0 flex-col gap-2 border-r p-3 transition-[width] duration-500 ease-[var(--nova-ease)] ${activityBarExpanded ? 'is-expanded w-48 items-stretch' : 'w-16 items-center'}`}>
+    <aside
+      className={`nova-activity-bar relative flex shrink-0 flex-col gap-2 border-r p-3 transition-[width] duration-500 ease-[var(--nova-ease)] ${activityBarExpanded ? 'is-expanded items-stretch' : 'items-center'}`}
+      style={{ width: activityBarExpanded ? activityBarWidth : ACTIVITY_BAR_COLLAPSED_WIDTH }}
+    >
       <SortableContext key={activityOrderScope} items={activityItems.map((item) => toSortableActivityId(activityOrderScope, item.id))} strategy={verticalListSortingStrategy}>
         {activityItems.map((item) => (
           <SortableActivityButton
@@ -439,6 +492,20 @@ export function WorkbenchShell({
           <Settings className="h-4 w-4" />
         </ActivityButton>
       </div>
+      {activityBarExpanded && (
+        <div
+          role="separator"
+          tabIndex={0}
+          aria-label={t('layout.resize.activityBar')}
+          aria-orientation="vertical"
+          aria-valuemin={ACTIVITY_BAR_MIN_WIDTH}
+          aria-valuemax={ACTIVITY_BAR_MAX_WIDTH}
+          aria-valuenow={Math.round(activityBarWidth)}
+          className="nova-activity-bar-resize-handle"
+          onPointerDown={handleActivityBarResizePointerDown}
+          onKeyDown={handleActivityBarResizeKeyDown}
+        />
+      )}
     </aside>
     </DndContext>
     </LayoutGroup>
@@ -559,6 +626,7 @@ export function WorkbenchShell({
       main={main}
       rightPanel={rightPanelContent}
       rightPanelVisible={mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)}
+      rightPanelWide={rightPanelWide && mode === 'ide' && rightPanel === 'ai' && !fullWorkspacePanelVisible}
       statusBar={statusBar}
     />
   )
@@ -614,7 +682,7 @@ function ActivityButton({
     <TooltipIconButton
       label={label}
       showTooltip={!expanded}
-      className={`${className || ''} relative overflow-hidden ${expanded ? 'gap-3 px-3' : ''} ${active ? 'is-active' : ''}`}
+      className={`${className || ''} relative overflow-hidden ${expanded ? 'w-full gap-3 px-3' : ''} ${active ? 'is-active' : ''}`}
       {...props}
     >
       {active && <motion.span layoutId="workbench-activity-active" className="absolute inset-0 rounded-[var(--nova-radius)] bg-[var(--nova-active)]" transition={novaSpring} />}
@@ -627,7 +695,7 @@ function ActivityButton({
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -4 }}
             transition={{ duration: 0.16 }}
-            className="relative z-10 min-w-0 truncate text-xs font-medium"
+            className="relative z-10 min-w-0 truncate text-left text-xs font-medium"
           >
             {label}
           </motion.span>
@@ -743,6 +811,21 @@ function storeActivityOrder(scope: ActivityOrderScope, order: ActivityItemId[]) 
   if (typeof window === 'undefined') return
   window.localStorage.setItem(ACTIVITY_ORDER_STORAGE_KEYS[scope], JSON.stringify(order))
   cleanupLegacyActivityOrderStorage()
+}
+
+function readStoredActivityBarWidth() {
+  if (typeof window === 'undefined') return ACTIVITY_BAR_DEFAULT_WIDTH
+  const value = Number(window.localStorage.getItem(ACTIVITY_BAR_WIDTH_STORAGE_KEY))
+  return Number.isFinite(value) ? clampActivityBarWidth(value) : ACTIVITY_BAR_DEFAULT_WIDTH
+}
+
+function storeActivityBarWidth(width: number) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(ACTIVITY_BAR_WIDTH_STORAGE_KEY, String(clampActivityBarWidth(width)))
+}
+
+function clampActivityBarWidth(width: number) {
+  return Math.min(ACTIVITY_BAR_MAX_WIDTH, Math.max(ACTIVITY_BAR_MIN_WIDTH, Math.round(width)))
 }
 
 function cleanupLegacyActivityOrderStorage() {

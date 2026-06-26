@@ -42,3 +42,17 @@ func TestRunOptionsCheckpointIDEmptyWithoutStableInputs(t *testing.T) {
 		t.Fatalf("checkpoint id = %q", got)
 	}
 }
+
+func TestRunOptionsIdleTimeoutDefaultsToNoLimit(t *testing.T) {
+	options := RunOptions{}.normalized("")
+	if options.IdleTimeout != 0 {
+		t.Fatalf("idle timeout = %s, want no limit", options.IdleTimeout)
+	}
+}
+
+func TestRunOptionsIdleTimeoutNegativeDisablesTimeout(t *testing.T) {
+	options := RunOptions{IdleTimeout: -1}.normalized("")
+	if options.IdleTimeout != 0 {
+		t.Fatalf("idle timeout = %s, want disabled zero duration", options.IdleTimeout)
+	}
+}

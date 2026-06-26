@@ -390,6 +390,34 @@ html[data-nova-motion="off"] *::after {
   transition-duration: var(--nova-motion-slow) !important;
 }
 
+.nova-activity-bar-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: -4px;
+  top: 0;
+  z-index: 10;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.nova-activity-bar-resize-handle::after {
+  position: absolute;
+  bottom: 12px;
+  right: 3px;
+  top: 12px;
+  width: 1px;
+  border-radius: 999px;
+  background: transparent;
+  content: '';
+  transition: background-color var(--nova-motion-normal) var(--nova-ease);
+}
+
+.nova-activity-bar-resize-handle:hover::after,
+.nova-activity-bar-resize-handle:focus-visible::after {
+  background: var(--nova-active);
+}
+
 .nova-sidebar {
   border-color: var(--nova-border);
   background: var(--nova-surface);
@@ -638,38 +666,49 @@ html[data-nova-motion="off"] *::after {
   }
 }
 
-.nova-message-with-time {
-  position: relative;
+.nova-message-body-with-meta {
   min-width: 0;
 }
 
-.nova-message-time {
-  position: absolute;
-  z-index: 2;
-  pointer-events: none;
-  font-size: 10px;
-  line-height: 1rem;
+.nova-message-body-with-meta-user {
+  width: fit-content;
+}
+
+.nova-message-body-with-meta-assistant {
+  width: 100%;
+}
+
+.nova-message-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 13px;
+  line-height: 1.25rem;
   color: var(--nova-text-faint);
   opacity: 0;
   transition: opacity var(--nova-motion-fast) var(--nova-ease);
 }
 
-.nova-message-with-time:has(.nova-user-message:hover) .nova-message-time,
-.nova-message-with-time:has(.chat-agent-message:hover) .nova-message-time,
-.nova-message-with-time:focus-within .nova-message-time {
+.nova-message-body-with-meta:hover .nova-message-meta,
+.nova-message-body-with-meta:focus-within .nova-message-meta {
   opacity: 1;
 }
 
-.nova-message-time-left {
-  bottom: -0.9rem;
-  left: 0.25rem;
+.nova-message-meta-left {
+  padding-left: 0.25rem;
   text-align: left;
 }
 
-.nova-message-time-user {
-  top: -1rem;
-  right: 0.25rem;
+.nova-message-meta-right {
+  justify-content: flex-end;
+  padding-right: 0.25rem;
   text-align: right;
+  width: 100%;
+}
+
+.nova-message-time {
+  white-space: nowrap;
 }
 
 .nova-command-menu {
@@ -1081,6 +1120,10 @@ html[data-nova-motion="off"] *::after {
 
 .nova-dialogue-highlight {
   color: var(--nova-dialogue-highlight);
+}
+
+.nova-editor-dialogue-highlight {
+  color: var(--nova-editor-dialogue-highlight, var(--nova-dialogue-highlight));
 }
 
 [data-sonner-toast][data-styled='true'] {

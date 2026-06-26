@@ -25,11 +25,21 @@ type CheckResult struct {
 type InstallResult struct {
 	PreviousVersion  string `json:"previous_version"`
 	InstalledVersion string `json:"installed_version"`
+	Status           string `json:"status"`
 	Installed        bool   `json:"installed"`
+	Staged           bool   `json:"staged"`
+	ApplyReady       bool   `json:"apply_ready"`
 	RestartRequired  bool   `json:"restart_required"`
 	BackupPath       string `json:"backup_path,omitempty"`
 	StagedPath       string `json:"staged_path,omitempty"`
+	ApplyLogPath     string `json:"apply_log_path,omitempty"`
 	Message          string `json:"message,omitempty"`
+}
+
+type ApplyResult struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+	LogPath string `json:"log_path,omitempty"`
 }
 
 type InstallProgress struct {

@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { LayeredSettings, Settings, UpdateCheckResult, UpdateInstallResult } from './types'
+import type { LayeredSettings, Settings, UpdateApplyResult, UpdateCheckResult, UpdateInstallResult } from './types'
 import type { SSEEvent } from '@/lib/api-client'
 
 export async function fetchSettings(): Promise<LayeredSettings> {
@@ -35,4 +35,8 @@ export async function installUpdateStream(signal?: AbortSignal): Promise<Readabl
   if (!res.ok) throw new Error(await readErrorMessage(res))
   if (!res.body) throw new Error('No response body')
   return parseSSEStream(res.body)
+}
+
+export async function applyUpdate(): Promise<UpdateApplyResult> {
+  return requestJSON('/api/update/apply', { method: 'POST' })
 }

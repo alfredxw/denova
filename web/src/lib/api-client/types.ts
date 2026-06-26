@@ -68,6 +68,11 @@ export interface SessionSummary {
   message_count: number
 }
 
+export interface IDEContext {
+  currentFile?: string
+  openFiles?: string[]
+}
+
 export interface AgentRunTraceSummary {
   id: string
   created_at: string

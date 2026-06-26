@@ -23,6 +23,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const skills = useSkillCommands({ agentKey: 'config_manager', workspace, fallbackEnabled: true })
   const scope = useMemo(() => ({
     origin,
@@ -38,6 +39,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     storyId || '',
     branchId || '',
   ].join(':'), [branchId, origin, resourceId, storyId, workspace])
+  const messageListBottomPadding = inputAreaHeight > 0 ? inputAreaHeight + 20 : undefined
 
   const loadMessages = useCallback(() => {
     if (!workspace) {
@@ -181,6 +183,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         activityContent=""
         scrollResetKey={chatKey}
         bottomPaddingClassName="pb-36"
+        bottomPaddingPx={messageListBottomPadding}
       />
       <InputArea
         onSend={(value) => void send(value)}
@@ -193,6 +196,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         agentKey="config_manager"
         workspace={workspace}
         floating
+        onHeightChange={setInputAreaHeight}
       />
     </div>
   )

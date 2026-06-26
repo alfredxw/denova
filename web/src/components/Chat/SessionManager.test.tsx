@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MessageList } from './MessageList'
@@ -249,6 +249,56 @@ describe('MessageList', () => {
     expect(screen.getByText('09:05')).toBeInTheDocument()
     expect(screen.getByText('2020-01-01 20:30')).toBeInTheDocument()
     expect(screen.queryByText('2020-01-01 21:45')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '复制消息' })).toHaveLength(2)
+  })
+
+  it('消息悬浮复制按钮只复制用户和 Agent 正文消息，并显示成功反馈后恢复', async () => {
+    vi.useFakeTimers()
+    try {
+      const writeText = vi.fn().mockResolvedValue(undefined)
+      const handleEdit = vi.fn()
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: { writeText },
+      })
+
+      render(
+        <MessageList
+          isStreaming={false}
+          activityContent=""
+          onEditMessage={handleEdit}
+          messages={[
+            { id: 'user-copy', type: 'message', role: 'user', content: '用户正文', turn_id: 'turn-user', created_at: '2026-06-26T09:00:00Z' },
+            { id: 'assistant-copy', type: 'message', role: 'assistant', content: 'Agent 正文', created_at: '2026-06-26T09:00:01Z' },
+            { id: 'subagent-copy', type: 'message', role: 'assistant', content: 'SubAgent 正文', agent_name: 'researcher', subagent: true, created_at: '2026-06-26T09:00:02Z' },
+            { id: 'tool-copy', type: 'message', role: 'tool_call', content: 'execute\n{}', name: 'execute', created_at: '2026-06-26T09:00:03Z' },
+          ]}
+        />,
+      )
+
+      const copyButtons = screen.getAllByRole('button', { name: '复制消息' })
+      expect(copyButtons).toHaveLength(2)
+
+      fireEvent.click(copyButtons[0])
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(screen.getByRole('button', { name: '已复制' })).toBeInTheDocument()
+      act(() => {
+        vi.advanceTimersByTime(1200)
+      })
+      expect(screen.getAllByRole('button', { name: '复制消息' })).toHaveLength(2)
+
+      fireEvent.click(copyButtons[1])
+
+      expect(writeText).toHaveBeenNthCalledWith(1, '用户正文')
+      expect(writeText).toHaveBeenNthCalledWith(2, 'Agent 正文')
+
+      fireEvent.click(screen.getByRole('button', { name: '编辑这轮输入' }))
+      expect(handleEdit).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-user' }))
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('运行中的上下文压缩卡片存在时不再渲染第二个 activity 卡片', () => {

@@ -76,6 +76,7 @@ func thinkingLanguageContract(cfg *config.Config) string {
 
 func subAgentDelegationContract() string {
 	return strings.Join([]string{
+		"- 默认不要主动拉起 SubAgent；只有用户明确要求委派/拉起子 Agent，或当前已加载的 Skill 流程明确要求使用 SubAgent 时，才调用 task 工具。",
 		"- SubAgent 委派协议：调用 task 工具时，必须在 description 中写清用户目标、必要上下文、已知约束、文件路径或资源 ID、期望输出，以及是否允许写入。",
 		"- 子 Agent 能通过工具自行读取的文件、资料库或故事记忆，只传路径、ID 或检索线索；不要复制大段正文、完整日志、完整历史或其他无界内容。",
 		"- SubAgent 返回结果默认只对父 Agent 可见；父 Agent 必须自行核对结果，并在最终回复中向用户总结。",

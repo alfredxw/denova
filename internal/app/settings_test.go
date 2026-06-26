@@ -3,6 +3,7 @@ package app
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
 	"nova/config"
 )
@@ -136,6 +137,28 @@ func TestApplyLayeredSettingsToConfigAppliesAgentIdleTimeout(t *testing.T) {
 	})
 	if cfg.AgentIdleTimeoutSeconds != idleTimeout {
 		t.Fatalf("agent idle timeout = %d, want %d", cfg.AgentIdleTimeoutSeconds, idleTimeout)
+	}
+}
+
+func TestApplyLayeredSettingsToConfigAllowsUnlimitedAgentIdleTimeout(t *testing.T) {
+	idleTimeout := 0
+	cfg := &config.Config{AgentIdleTimeoutSeconds: 1800}
+	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+		Effective: config.Settings{
+			AgentIdleTimeoutSeconds: &idleTimeout,
+		},
+	})
+	if cfg.AgentIdleTimeoutSeconds != 0 {
+		t.Fatalf("agent idle timeout = %d, want 0", cfg.AgentIdleTimeoutSeconds)
+	}
+}
+
+func TestAgentIdleTimeoutAllowsUnlimited(t *testing.T) {
+	if got := agentIdleTimeout(config.Config{AgentIdleTimeoutSeconds: 0}); got != 0 {
+		t.Fatalf("agent idle timeout = %s, want no limit", got)
+	}
+	if got := agentIdleTimeout(config.Config{AgentIdleTimeoutSeconds: 1800}); got != 30*time.Minute {
+		t.Fatalf("agent idle timeout = %s, want 30m", got)
 	}
 }
 

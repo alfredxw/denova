@@ -20,13 +20,15 @@ func generateWithJSONFallback(
 	ctx context.Context,
 	baseCfg openai.ChatModelConfig,
 	messages []*schema.Message,
+	agentKind string,
+	source string,
 	agentLabel string,
 ) (string, error) {
 	jsonCfg := baseCfg
 	jsonCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
 		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 	}
-	content, err := generateContentOnce(ctx, jsonCfg, messages, agentLabel, "json_mode")
+	content, err := generateContentOnce(ctx, jsonCfg, messages, agentKind, source, agentLabel, "json_mode")
 	if err == nil {
 		return content, nil
 	}
@@ -34,14 +36,14 @@ func generateWithJSONFallback(
 		return "", err
 	}
 	log.Printf("[%s] json_mode failed, retry without response_format err=%v", agentLabel, err)
-	content, retryErr := generateContentOnce(ctx, baseCfg, messages, agentLabel, "plain_text_retry")
+	content, retryErr := generateContentOnce(ctx, baseCfg, messages, agentKind, source, agentLabel, "plain_text_retry")
 	if retryErr != nil {
 		return "", retryErr
 	}
 	return content, nil
 }
 
-func generateContentOnce(ctx context.Context, modelCfg openai.ChatModelConfig, messages []*schema.Message, agentLabel, attempt string) (string, error) {
+func generateContentOnce(ctx context.Context, modelCfg openai.ChatModelConfig, messages []*schema.Message, agentKind, source, agentLabel, attempt string) (string, error) {
 	log.Printf("[%s] generate begin attempt=%s model=%q base_url=%q json_mode=%t",
 		agentLabel, attempt, modelCfg.Model, modelCfg.BaseURL, modelCfg.ResponseFormat != nil)
 	cm, err := openai.NewChatModel(ctx, &modelCfg)
@@ -57,6 +59,7 @@ func generateContentOnce(ctx context.Context, modelCfg openai.ChatModelConfig, m
 		log.Printf("[%s] nil response attempt=%s", agentLabel, attempt)
 		return "", fmt.Errorf("模型返回为空")
 	}
+	logModelProviderRequestID(agentKind, source, "generate_"+attempt, modelCfg.Model, "", 0, msg)
 	log.Printf("[%s] generate done attempt=%s content=%s", agentLabel, attempt, promptPartSummary(msg.Content))
 	return msg.Content, nil
 }
@@ -68,19 +71,23 @@ func streamWithJSONFallback(
 	baseCfg openai.ChatModelConfig,
 	messages []*schema.Message,
 	emit func(Event),
+	agentKind string,
+	source string,
 	agentLabel string,
 ) (string, error) {
 	jsonCfg := baseCfg
 	jsonCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
 		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 	}
-	stream, err := openStreamOnce(ctx, jsonCfg, messages, agentLabel, "json_mode")
+	attempt := "json_mode"
+	stream, err := openStreamOnce(ctx, jsonCfg, messages, agentLabel, attempt)
 	if err != nil {
 		if ctx.Err() != nil {
 			return "", err
 		}
 		log.Printf("[%s] json_mode stream init failed, retry without response_format err=%v", agentLabel, err)
-		stream, err = openStreamOnce(ctx, baseCfg, messages, agentLabel, "plain_text_retry")
+		attempt = "plain_text_retry"
+		stream, err = openStreamOnce(ctx, baseCfg, messages, agentLabel, attempt)
 		if err != nil {
 			return "", err
 		}
@@ -88,6 +95,7 @@ func streamWithJSONFallback(
 	defer stream.Close()
 
 	var content strings.Builder
+	var chunks []*schema.Message
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
@@ -99,6 +107,7 @@ func streamWithJSONFallback(
 		if msg == nil {
 			continue
 		}
+		chunks = append(chunks, msg)
 		if msg.ReasoningContent != "" {
 			emit(Event{Type: "thinking", Data: map[string]string{"content": msg.ReasoningContent}})
 		}
@@ -110,6 +119,13 @@ func streamWithJSONFallback(
 	output := strings.TrimSpace(content.String())
 	if output == "" {
 		return "", fmt.Errorf("模型返回为空")
+	}
+	if len(chunks) > 0 {
+		if msg, err := schema.ConcatMessages(chunks); err == nil {
+			logModelProviderRequestID(agentKind, source, "stream_"+attempt, baseCfg.Model, "", 0, msg)
+		} else {
+			log.Printf("[%s] concat stream response failed attempt=%s err=%v", agentLabel, attempt, err)
+		}
 	}
 	log.Printf("[%s] stream done output=%s", agentLabel, promptPartSummary(output))
 	return output, nil

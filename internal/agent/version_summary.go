@@ -42,6 +42,7 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 	if msg == nil {
 		return "", fmt.Errorf("版本说明模型返回为空")
 	}
+	logModelProviderRequestID(config.AgentKindVersionSummary, "version_summary", "generate", modelCfg.Model, "", 0, msg)
 	summary := sanitizeVersionSummary(msg.Content)
 	if summary == "" {
 		return "", fmt.Errorf("版本说明为空")

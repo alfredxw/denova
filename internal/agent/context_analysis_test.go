@@ -229,7 +229,13 @@ func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
 		0,
 		nil,
 		nil,
-		ChatRequest{Message: "继续写"},
+		ChatRequest{
+			Message: "继续写",
+			IDEContext: IDEContextRef{
+				CurrentFile: "chapters/ch0001-开局.md",
+				OpenFiles:   []string{"chapters/ch0001-开局.md", "setting/progress.md"},
+			},
+		},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -264,7 +270,7 @@ func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
 	if final.Source != "本轮上下文" || final.Title != "动态作品状态与本轮用户请求" {
 		t.Fatalf("final message should carry dynamic workspace state label: %#v", final)
 	}
-	for _, want := range []string{"# 本轮动态作品状态", "章节组：探索废城", "chapters/ch0001-开局.md", "当前进度：抵达废城入口", "林川：警惕", "# 本轮用户请求（最高优先级）"} {
+	for _, want := range []string{"# 本轮动态作品状态", "章节组：探索废城", "chapters/ch0001-开局.md", "当前进度：抵达废城入口", "林川：警惕", "## IDE 当前状态", "当前聚焦文件：chapters/ch0001-开局.md", "当前打开文件：chapters/ch0001-开局.md、setting/progress.md", "# 本轮用户请求（最高优先级）"} {
 		if !strings.Contains(final.Content, want) {
 			t.Fatalf("final message missing %q:\n%s", want, final.Content)
 		}

@@ -273,7 +273,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.WritingSkill)
-		runtimeContexts := agent.IDEWorkspaceRuntimeContextsForState(runtime.state)
+		runtimeContexts := agent.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
 		conversation := agent.NewSessionConversationForAgentWithRuntimeContexts(
 			runtime.sess,
 			&runtime.cfg,
@@ -320,7 +320,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 
 func agentIdleTimeout(cfg config.Config) time.Duration {
 	if cfg.AgentIdleTimeoutSeconds <= 0 {
-		return 180 * time.Second
+		return 0
 	}
 	return time.Duration(cfg.AgentIdleTimeoutSeconds) * time.Second
 }
@@ -442,14 +442,8 @@ func applyWritingSkillRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatRequ
 	if runtime == nil || req == nil {
 		return nil
 	}
-	writingSkill, err := agent.ResolveWritingSkillContext(context.Background(), &runtime.cfg, req.WritingSkill)
-	if err != nil {
-		return err
-	}
-	req.WritingSkill = writingSkill.Name
-	req.WritingSkillContext = writingSkill
-	agent.ApplyWritingSkillRolePolicy(&runtime.cfg, writingSkill.Name)
-	log.Printf("[agent-task] selected writing skill name=%s scope=%s source=%s path=%s truncated=%v workspace=%s", writingSkill.Name, writingSkill.Scope, writingSkill.Source, writingSkill.Path, writingSkill.Truncated, runtime.workspace)
+	req.WritingSkill = agent.ResolveWritingSkillName(&runtime.cfg, req.WritingSkill)
+	log.Printf("[agent-task] selected writing skill name=%s workspace=%s", req.WritingSkill, runtime.workspace)
 	return nil
 }
 

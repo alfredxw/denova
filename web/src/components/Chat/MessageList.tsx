@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
@@ -51,18 +51,16 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         {msg.type === 'clear'
           ? <ContextClearDivider createdAt={msg.created_at} />
           : (
-            <MessageWithHoverTime message={msg}>
-              <MessageItem
-                message={msg}
-                highlightDialogue={highlightDialogue}
-                messageStyle={messageStyle}
-                onEdit={isStreaming ? undefined : onEditMessage}
-                onRegenerate={isStreaming ? undefined : onRegenerateMessage}
-                onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion}
-                onOpenSubAgentSession={onOpenSubAgentSession}
-                activeSubAgentSessionKey={activeSubAgentSessionKey}
-              />
-            </MessageWithHoverTime>
+            <MessageItem
+              message={msg}
+              highlightDialogue={highlightDialogue}
+              messageStyle={messageStyle}
+              onEdit={isStreaming ? undefined : onEditMessage}
+              onRegenerate={isStreaming ? undefined : onRegenerateMessage}
+              onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion}
+              onOpenSubAgentSession={onOpenSubAgentSession}
+              activeSubAgentSessionKey={activeSubAgentSessionKey}
+            />
           )}
       </motion.div>
     )
@@ -183,49 +181,6 @@ function buildMessageListScrollKey(messages: ChatMessage[], activityContent: str
     typeof bottomPaddingPx === 'number' ? Math.round(bottomPaddingPx) : '',
     messageKey,
   ].join('|')
-}
-
-function MessageWithHoverTime({ message, children }: { message: ChatMessage; children: ReactNode }) {
-  if (message.role !== 'user' && message.role !== 'assistant') {
-    return <>{children}</>
-  }
-
-  return (
-    <div className={`nova-message-with-time nova-message-with-time-${message.role}`}>
-      {children}
-      <MessageHoverTime message={message} />
-    </div>
-  )
-}
-
-function MessageHoverTime({ message }: { message: ChatMessage }) {
-  const formatted = formatMessageHoverTime(message.created_at)
-  if (!formatted) return null
-  const align = message.role === 'user'
-    ? 'nova-message-time-user'
-    : 'nova-message-time-left'
-  return (
-    <div className={`nova-message-time ${align}`} aria-label={formatted}>
-      {formatted}
-    </div>
-  )
-}
-
-function formatMessageHoverTime(value?: string) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const time = `${padTime(date.getHours())}:${padTime(date.getMinutes())}`
-  const now = new Date()
-  const sameDay = date.getFullYear() === now.getFullYear() &&
-    date.getMonth() === now.getMonth() &&
-    date.getDate() === now.getDate()
-  if (sameDay) return time
-  return `${date.getFullYear()}-${padTime(date.getMonth() + 1)}-${padTime(date.getDate())} ${time}`
-}
-
-function padTime(value: number) {
-  return value.toString().padStart(2, '0')
 }
 
 function isTraceMessage(message: ChatMessage) {

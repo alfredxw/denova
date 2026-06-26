@@ -132,6 +132,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/update/check", apiHandlers.HandleUpdateCheck)
 		api.POST("/update/install", apiHandlers.HandleUpdateInstall)
 		api.POST("/update/install/stream", apiHandlers.HandleUpdateInstallStream)
+		api.POST("/update/apply", apiHandlers.HandleUpdateApply)
 		api.GET("/status", apiHandlers.HandleStatus)
 	}
 

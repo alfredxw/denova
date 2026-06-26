@@ -25,7 +25,7 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.MaxIteration != nil {
 		t.Fatalf("MaxIteration should default to unset")
 	}
-	if s.AgentIdleTimeoutSeconds == nil || *s.AgentIdleTimeoutSeconds != 180 {
+	if s.AgentIdleTimeoutSeconds == nil || *s.AgentIdleTimeoutSeconds != DefaultAgentIdleTimeoutSeconds {
 		t.Fatalf("AgentIdleTimeoutSeconds default")
 	}
 	if s.InteractiveStageFontSize == nil || *s.InteractiveStageFontSize != 16 {
@@ -81,6 +81,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	}
 	if s.WritingSkillDefault != DefaultWritingSkillName {
 		t.Fatalf("WritingSkillDefault default: %s", s.WritingSkillDefault)
+	}
+	if len(s.SubAgents) != 0 {
+		t.Fatalf("SubAgents should come from editable config layers, not Go defaults: %#v", s.SubAgents)
 	}
 }
 
@@ -354,8 +357,40 @@ func TestWriteSettingsFileNormalizesAgentIdleTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.AgentIdleTimeoutSeconds == nil || *out.AgentIdleTimeoutSeconds != 3600 {
-		t.Fatalf("agent idle timeout should be capped at 3600, got %v", out.AgentIdleTimeoutSeconds)
+	if out.AgentIdleTimeoutSeconds == nil || *out.AgentIdleTimeoutSeconds != 7200 {
+		t.Fatalf("agent idle timeout should preserve positive values, got %v", out.AgentIdleTimeoutSeconds)
+	}
+}
+
+func TestWriteSettingsFileAllowsUnlimitedAgentIdleTimeout(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	in := Settings{OpenAIModel: "abc", AgentIdleTimeoutSeconds: intPtr(0)}
+	if err := WriteSettingsFile(p, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.AgentIdleTimeoutSeconds == nil || *out.AgentIdleTimeoutSeconds != 0 {
+		t.Fatalf("agent idle timeout should preserve explicit 0, got %v", out.AgentIdleTimeoutSeconds)
+	}
+}
+
+func TestWriteSettingsFileFiltersNegativeAgentIdleTimeout(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	in := Settings{OpenAIModel: "abc", AgentIdleTimeoutSeconds: intPtr(-1)}
+	if err := WriteSettingsFile(p, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.AgentIdleTimeoutSeconds != nil {
+		t.Fatalf("negative agent idle timeout should be filtered, got %v", *out.AgentIdleTimeoutSeconds)
 	}
 }
 
