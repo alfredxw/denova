@@ -122,6 +122,8 @@ func DefaultSettings() Settings {
 		ModelMaxRetries:             intPtr(5),
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentModels: AgentModelSettings{
+			IDE:                   AgentModelOverride{EnableThinking: boolPtr(true)},
+			ConfigManager:         AgentModelOverride{EnableThinking: boolPtr(true)},
 			InteractiveHotChoices: AgentModelOverride{EnableThinking: boolPtr(false)},
 			VersionSummary:        AgentModelOverride{EnableThinking: boolPtr(false)},
 			ToolAgent:             AgentModelOverride{EnableThinking: boolPtr(false)},

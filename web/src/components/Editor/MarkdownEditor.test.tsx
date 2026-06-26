@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MarkdownEditor } from './MarkdownEditor'
@@ -67,6 +67,7 @@ vi.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }))
 describe('MarkdownEditor', () => {
   beforeEach(() => {
     vi.useRealTimers()
+    window.localStorage.clear()
     tiptapMock.reset()
   })
 
@@ -96,6 +97,37 @@ describe('MarkdownEditor', () => {
     expect(screen.getByRole('textbox', { name: '十六进制颜色' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '恢复默认' })).toBeInTheDocument()
     expect(screen.getByText('背景主题')).toBeInTheDocument()
+  })
+
+  it('默认对白高亮跟随编辑器背景主题变化，手动颜色优先', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="“第一句对白。”"
+        onSave={vi.fn()}
+      />,
+    )
+
+    const editorContainer = screen.getByTestId('editor-content').parentElement
+    expect(editorContainer).toHaveStyle('--nova-editor-dialogue-highlight: var(--nova-dialogue-highlight)')
+
+    await user.click(screen.getByRole('button', { name: '编辑器设置' }))
+    await user.click(screen.getByRole('button', { name: /纸张/ }))
+
+    expect(editorContainer).toHaveStyle('--nova-editor-dialogue-highlight: #8a3f13')
+    expect(screen.getByRole('textbox', { name: '十六进制颜色' })).toHaveValue('#8a3f13')
+
+    fireEvent.change(screen.getByRole('textbox', { name: '十六进制颜色' }), { target: { value: '#336699' } })
+
+    expect(editorContainer).toHaveStyle('--nova-editor-dialogue-highlight: #336699')
+    expect(screen.getByRole('textbox', { name: '十六进制颜色' })).toHaveValue('#336699')
+
+    await user.click(screen.getByRole('button', { name: '恢复默认' }))
+
+    expect(editorContainer).toHaveStyle('--nova-editor-dialogue-highlight: #8a3f13')
+    expect(screen.getByRole('textbox', { name: '十六进制颜色' })).toHaveValue('#8a3f13')
   })
 
   it('自动保存进行中继续编辑时串行保存最新内容，避免旧请求晚返回覆盖新内容', async () => {

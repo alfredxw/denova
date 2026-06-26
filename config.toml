@@ -14,7 +14,7 @@ openai_api_key = ""
 openai_base_url = "https://api.deepseek.com"
 openai_model = "deepseek-v4-pro"
 
-# 可选：配置多个 OpenAI 协议兼容平台，并按 Agent 分配。模型名同时作为配置名。
+# 可选：配置多个 OpenAI 协议兼容平台，并按 Agent 分配。模型名同时作为配置名，name 可作为显示别名。
 # 不配置 temperature 时使用平台/模型默认值。
 # 快捷选项 Agent 和版本说明 Agent 内置默认 enable_thinking=false，其他 Agent 默认不传思考参数。
 #
@@ -22,6 +22,7 @@ openai_model = "deepseek-v4-pro"
 # openai_base_url = "https://api.deepseek.com"
 # openai_api_key = ""
 # openai_model = "deepseek-v4-pro"
+# name = "DeepSeek 写作"
 #
 # [[model_profiles]]
 # openai_base_url = "https://api.openai.com/v1"

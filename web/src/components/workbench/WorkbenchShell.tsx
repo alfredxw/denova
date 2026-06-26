@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
@@ -13,7 +12,6 @@ import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { novaSpring } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { getAutomationInbox, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
-import { fetchSettings } from '@/features/settings/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
@@ -76,6 +74,17 @@ const ACTIVITY_BAR_DEFAULT_WIDTH = 152
 const ACTIVITY_BAR_MAX_WIDTH = 280
 const ACTIVITY_BAR_WIDTH_KEYBOARD_STEP = 8
 
+function NovaBrandIcon() {
+  return (
+    <img
+      src="/favicon.svg"
+      alt="Nova"
+      className="h-6 w-6 shrink-0 rounded-[7px]"
+      draggable={false}
+    />
+  )
+}
+
 export function WorkbenchShell({
   mode,
   booksReturnMode,
@@ -105,9 +114,6 @@ export function WorkbenchShell({
 }: WorkbenchShellProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
-  // 状态栏展示当前配置的实际模型名（此前被硬编码为 "DeepSeek"，与实际模型无关）
-  const { data: layeredSettings } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings, staleTime: 60_000 })
-  const modelName = layeredSettings?.effective?.openai_model?.trim() || ''
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
   const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
   const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
@@ -409,7 +415,7 @@ export function WorkbenchShell({
   const topBar = (
     <header className="nova-topbar grid h-10 shrink-0 grid-cols-[auto_1fr_auto] items-center border-b px-3 text-xs">
       <div className="flex items-center gap-3">
-        <div className="font-semibold text-[var(--nova-text)]">Nova</div>
+        <NovaBrandIcon />
         <LayoutGroup id="workbench-mode-switch">
         <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
           <button
@@ -520,7 +526,7 @@ export function WorkbenchShell({
       {mode === 'ide' && currentChapter && (
         <span className="ml-4">{t('workbench.status.currentChapter', { title: currentChapter.display_title, words: formatNumber(currentChapter.words), status: currentChapter.status })}</span>
       )}
-      <span className="ml-auto">{isStreaming ? t('workbench.status.streaming') : t('workbench.status.idle')}{modelName ? ` · ${modelName}` : ''}</span>
+      {isStreaming && <span className="ml-auto">{t('workbench.status.streaming')}</span>}
     </div>
   )
 
@@ -530,7 +536,7 @@ export function WorkbenchShell({
       <header className="nova-mobile-topbar nova-topbar shrink-0 border-b border-[var(--nova-border)] py-2 pl-3 pr-3" title={workspace || currentBookName}>
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
-            <div className="shrink-0 font-semibold text-[var(--nova-text)]">Nova</div>
+            <NovaBrandIcon />
             <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]">
               <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
               <span className="min-w-0 truncate font-medium text-[var(--nova-text-muted)]">{currentBookName}</span>

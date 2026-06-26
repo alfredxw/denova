@@ -58,7 +58,7 @@ func (s *WorkspaceRuntimeManager) versionSummaryConfig() (config.Config, string)
 	a.mu.RUnlock()
 
 	runtimeCfg.Workspace = workspace
-	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[versions] 加载分层配置用于版本说明失败 workspace=%s err=%v", workspace, err)

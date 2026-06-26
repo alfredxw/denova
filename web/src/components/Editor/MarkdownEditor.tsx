@@ -76,24 +76,27 @@ const DEFAULT_SETTINGS: EditorSettings = {
 
 const DEFAULT_AUTO_SAVE_DELAY_MS = 1500
 
-const THEME_STYLES: Record<EditorTheme, { labelKey: string; background: string; color: string; accent: string }> = {
+const THEME_STYLES: Record<EditorTheme, { labelKey: string; background: string; color: string; accent: string; dialogueHighlight: string }> = {
   ide: {
     labelKey: 'editor.theme.ide',
     background: 'var(--nova-editor-ide-bg)',
     color: 'var(--nova-editor-ide-color)',
     accent: 'var(--nova-editor-ide-accent)',
+    dialogueHighlight: 'var(--nova-dialogue-highlight)',
   },
   paper: {
     labelKey: 'editor.theme.paper',
     background: '#f5efe4',
     color: '#252525',
     accent: '#dfd3c2',
+    dialogueHighlight: '#8a3f13',
   },
   sepia: {
     labelKey: 'editor.theme.sepia',
     background: '#efe3cc',
     color: '#2f271f',
     accent: '#d8c6a6',
+    dialogueHighlight: '#75451f',
   },
 }
 
@@ -650,7 +653,7 @@ export function MarkdownEditor({
           ['--nova-editor-color' as string]: themeStyle.color,
           ['--nova-editor-accent' as string]: themeStyle.accent,
           ['--nova-editor-line-height' as string]: String(settings.lineHeight),
-          ['--nova-editor-dialogue-highlight' as string]: settings.dialogueHighlightColor || 'var(--nova-dialogue-highlight)',
+          ['--nova-editor-dialogue-highlight' as string]: settings.dialogueHighlightColor || themeStyle.dialogueHighlight,
         }}
       >
         {searchOpen && (
@@ -782,6 +785,7 @@ function EditorSettingsPanel({
           </div>
           <DialogueHighlightColorPicker
             value={settings.dialogueHighlightColor}
+            defaultColor={THEME_STYLES[settings.theme].dialogueHighlight}
             onChange={(dialogueHighlightColor) => patch({ dialogueHighlightColor })}
             onReset={() => patch({ dialogueHighlightColor: DEFAULT_DIALOGUE_HIGHLIGHT_COLOR })}
           />
@@ -850,9 +854,9 @@ function normalizeColorValue(value: unknown): string | null {
   return COLOR_VALUE_PATTERN.test(value) ? value : null
 }
 
-function DialogueHighlightColorPicker({ value, onChange, onReset }: { value: string; onChange: (value: string) => void; onReset: () => void }) {
+function DialogueHighlightColorPicker({ value, defaultColor, onChange, onReset }: { value: string; defaultColor: string; onChange: (value: string) => void; onReset: () => void }) {
   const { t } = useTranslation()
-  const color = normalizeColorValue(value) || DEFAULT_PICKER_COLOR
+  const color = normalizeColorValue(value) || normalizeColorValue(defaultColor) || DEFAULT_PICKER_COLOR
   const hsv = useMemo(() => hexToHsv(color), [color])
   const fieldRef = useRef<HTMLButtonElement>(null)
   const hueRef = useRef<HTMLButtonElement>(null)

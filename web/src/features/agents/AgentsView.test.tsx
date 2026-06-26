@@ -130,6 +130,49 @@ describe('AgentsView', () => {
     expect(toggle).not.toBeDisabled()
   })
 
+  it('shows inherited empty thinking as the default state', async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
+
+    render(<AgentsView />)
+
+    await screen.findByText('模型与思考')
+    const thinkingSwitch = screen.getByRole('switch', { name: '思考开关' })
+    expect(thinkingSwitch).toBeChecked()
+    expect(thinkingSwitch).toHaveAttribute('title', '思考开关: 默认')
+    expect(thinkingSwitch.parentElement?.querySelector('[aria-hidden="true"]')).toBeTruthy()
+  })
+
+  it('shows SubAgent thinking as inherited from the parent model', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      effective: {
+        agent_models: {
+          default: { enable_thinking: true },
+        },
+        sub_agents: [{
+          id: 'reviewer',
+          name: 'Reviewer',
+          description: 'Reviews drafts.',
+          system_prompt: 'Review only.',
+          parents: ['ide'],
+          enabled: true,
+          model: {},
+        }],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    const reviewer = await screen.findByText('Reviewer')
+    const row = reviewer.closest('div.rounded-\\[var\\(--nova-radius\\)\\]')
+    expect(row).toBeTruthy()
+    await user.click(within(row as HTMLElement).getByRole('button', { name: '编辑 SubAgent' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('switch', { name: '思考开关' })).toBeChecked()
+    expect(within(dialog).getAllByText('继承').length).toBeGreaterThan(0)
+  })
+
   it('adds and edits custom SubAgents in user settings by default', async () => {
     const user = userEvent.setup()
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
@@ -279,7 +322,7 @@ describe('AgentsView', () => {
     })
   })
 
-  it('keeps the SubAgent editor open when auto-save completes', async () => {
+  it('keeps SubAgent dialog edits local until Done', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
     vi.mocked(updateUserSettings).mockImplementation(async (settings) => settingsSnapshot({ user: settings, effective: settings }))
 
@@ -288,16 +331,36 @@ describe('AgentsView', () => {
     await screen.findByText('SubAgents')
     vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: /新增 SubAgent/ }))
-    const nameInput = screen.getByDisplayValue('自定义 SubAgent')
+    const dialog = screen.getByRole('dialog')
+    const nameInput = within(dialog).getByDisplayValue('自定义 SubAgent')
     fireEvent.change(nameInput, { target: { value: 'Researcher' } })
+    fireEvent.click(within(dialog).getByLabelText('写作'))
+
+    expect(within(dialog).getByText('当前父 Agent 未启用这个 SubAgent。')).toBeInTheDocument()
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1100)
     })
 
-    expect(vi.mocked(updateUserSettings)).toHaveBeenCalled()
+    expect(vi.mocked(updateUserSettings)).not.toHaveBeenCalled()
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Researcher')).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '完成' }))
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1100)
+    })
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByText('Researcher')).not.toBeInTheDocument()
+    expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
+      sub_agents: [expect.objectContaining({
+        id: 'subagent-1',
+        name: 'Researcher',
+        parents: ['interactive_story', 'config_manager', 'automation'],
+      })],
+    }))
   })
 
   it('deletes custom SubAgents from Agents page settings', async () => {

@@ -84,6 +84,7 @@ const agents = {
   'agents.option.platformDefault': '平台默认',
   'agents.option.defaultModel': '默认模型',
   'agents.option.defaultProfile': 'default（{{label}}）',
+  'agents.option.default': '默认',
   'agents.option.profile': '{{id}}（{{label}}）',
   'agents.option.noSend': '不传',
   'agents.option.inherit': '继承',

@@ -11,10 +11,15 @@ import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Separator } from '@/components/ui/separator'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { LOCALE_OPTIONS } from '@/i18n'
 import { APP_VERSION } from '@/app-version'
 import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
-import { modelProfileID } from './model-profiles'
+import { modelProfileID, modelProfileLabel } from './model-profiles'
 
 type SettingsSectionId = 'model' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
@@ -32,6 +37,7 @@ const DEFAULT_CONTEXT_WINDOW_TOKENS = 400000
 const MIN_CONTEXT_WINDOW_TOKENS = 1024
 const MAX_CONTEXT_WINDOW_TOKENS = 2000000
 const CONTEXT_WINDOW_PRESETS = [200000, DEFAULT_CONTEXT_WINDOW_TOKENS, 1000000]
+const CONTEXT_WINDOW_INHERIT_VALUE = 'inherit'
 
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
@@ -1114,7 +1120,6 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
     const shouldSyncID = !previousID || previousID === previousModel
     updateProfile(index, {
       id: shouldSyncID ? openaiModel : profile?.id,
-      name: undefined,
       openai_model: openaiModel,
     })
   }
@@ -1132,66 +1137,102 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
           </div>
         )}
         {profiles.map((profile, index) => (
-          <div key={profileKeys[index]} className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 md:grid-cols-3">
-            <input
-              value={profile.openai_base_url ?? ''}
-              placeholder={t('common.baseUrl')}
-              onChange={(e) => updateProfile(index, { openai_base_url: e.target.value })}
-              className={fieldCls}
-            />
-            <input
-              value={profile.openai_model ?? ''}
-              placeholder={t('settings.model.profileModelPlaceholder')}
-              onChange={(e) => updateProfileModel(index, e.target.value)}
-              className={fieldCls}
-            />
-            <input
-              type="password"
-              value={profile.openai_api_key ?? ''}
-              placeholder={t('settings.model.profileKeyInheritPlaceholder')}
-              onChange={(e) => updateProfile(index, { openai_api_key: e.target.value })}
-              className={fieldCls}
-            />
-            <input
-              type="number"
-              step={0.1}
-              min={0}
-              max={2}
-              value={profile.temperature ?? ''}
-              placeholder={t('settings.model.profileTemperatureDefaultPlaceholder')}
-              onChange={(e) => updateProfile(index, { temperature: e.target.value === '' ? null : Number(e.target.value) })}
-              className={fieldCls}
-            />
-            <div className="flex min-w-0 flex-col gap-1">
-              <span className="text-[11px] leading-none text-[var(--nova-text-faint)]">{t('settings.model.contextWindow')}</span>
-              <ContextWindowInput
-                value={profile.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS}
-                onChange={(value) => updateProfile(index, { context_window_tokens: value })}
-              />
-            </div>
-            <div className="flex justify-end md:col-span-3">
-              <button
+          <div key={profileKeys[index]} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
+            <div className="flex items-center gap-2 px-2.5 py-2">
+              <Badge variant="outline" className="shrink-0">
+                {t('settings.model.profileName', { index: index + 1 })}
+              </Badge>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-medium text-[var(--nova-text)]">
+                  {modelProfileLabel(profile) || t('settings.model.profileUntitled')}
+                </div>
+                <div className="truncate text-[11px] text-[var(--nova-text-faint)]">
+                  {profile.openai_model?.trim() || t('settings.model.profileModelMissing')}
+                </div>
+              </div>
+              <Button
                 type="button"
+                variant="outline"
+                size="icon-sm"
                 onClick={() => removeProfile(index)}
-                className={`${iconButtonCls} shrink-0 border border-[var(--nova-border)] p-1.5`}
                 aria-label={t('settings.model.deleteProfile')}
                 title={t('settings.model.deleteProfile')}
               >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+                <Trash2 data-icon="inline-start" />
+              </Button>
+            </div>
+            <Separator />
+            <div className="grid gap-2 p-2.5 md:grid-cols-12">
+              <ModelProfileInput label={t('common.baseUrl')} className="md:col-span-5">
+                <Input
+                  value={profile.openai_base_url ?? ''}
+                  placeholder={t('common.baseUrl')}
+                  onChange={(e) => updateProfile(index, { openai_base_url: e.target.value })}
+                />
+              </ModelProfileInput>
+              <ModelProfileInput label={t('settings.model.profileModelLabel')} className="md:col-span-4">
+                <Input
+                  value={profile.openai_model ?? ''}
+                  placeholder={t('settings.model.profileModelPlaceholder')}
+                  onChange={(e) => updateProfileModel(index, e.target.value)}
+                />
+              </ModelProfileInput>
+              <ModelProfileInput label={t('settings.model.profileAliasLabel')} className="md:col-span-3">
+                <Input
+                  value={profile.name ?? ''}
+                  placeholder={t('settings.model.profileAliasPlaceholder')}
+                  onChange={(e) => updateProfile(index, { name: e.target.value })}
+                />
+              </ModelProfileInput>
+              <ModelProfileInput label={t('settings.model.profileKeyLabel')} className="md:col-span-5">
+                <Input
+                  type="password"
+                  value={profile.openai_api_key ?? ''}
+                  placeholder={t('settings.model.profileKeyInheritPlaceholder')}
+                  onChange={(e) => updateProfile(index, { openai_api_key: e.target.value })}
+                />
+              </ModelProfileInput>
+              <ModelProfileInput label={t('settings.model.profileTemperatureLabel')} className="md:col-span-2">
+                <Input
+                  type="number"
+                  step={0.01}
+                  min={0}
+                  max={1}
+                  value={profile.temperature ?? ''}
+                  placeholder="0-1"
+                  onChange={(e) => updateProfile(index, { temperature: e.target.value === '' ? null : Number(e.target.value) })}
+                  className="max-w-24"
+                />
+              </ModelProfileInput>
+              <ModelProfileInput label={t('settings.model.contextWindow')} className="md:col-span-5">
+                <ContextWindowInput
+                  value={profile.context_window_tokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS}
+                  onChange={(value) => updateProfile(index, { context_window_tokens: value })}
+                />
+              </ModelProfileInput>
             </div>
           </div>
         ))}
-        <button
+        <Button
           type="button"
           onClick={addProfile}
-          className="nova-nav-item inline-flex w-fit items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2.5 py-1 text-[var(--nova-text)]"
+          variant="outline"
+          size="sm"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus data-icon="inline-start" />
           {t('settings.model.addProfile')}
-        </button>
+        </Button>
       </div>
     </div>
+  )
+}
+
+function ModelProfileInput({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <label className={`flex min-w-0 flex-col gap-1 ${className ?? ''}`}>
+      <span className="text-[11px] leading-none text-[var(--nova-text-faint)]">{label}</span>
+      {children}
+    </label>
   )
 }
 
@@ -1220,42 +1261,51 @@ function ContextWindowInput({ value, effective, allowInherit = false, onChange }
   const selectedValue = value ?? DEFAULT_CONTEXT_WINDOW_TOKENS
   const customEditing = customDraft !== null
   const preset = value === null && allowInherit && !customEditing
-    ? ''
+    ? CONTEXT_WINDOW_INHERIT_VALUE
     : (!customEditing && CONTEXT_WINDOW_PRESETS.includes(selectedValue) ? String(selectedValue) : 'custom')
   const custom = preset === 'custom'
   const inheritedValue = effective ?? DEFAULT_CONTEXT_WINDOW_TOKENS
   const customValue = customDraft ?? (value === null ? '' : String(value))
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
-      <select
+      <Select
         value={preset}
-        onChange={(e) => {
-          if (e.target.value === '') {
+        onValueChange={(nextValue) => {
+          if (nextValue === CONTEXT_WINDOW_INHERIT_VALUE) {
             setCustomDraft(null)
             onChange(null)
             return
           }
-          if (e.target.value === 'custom') {
+          if (nextValue === 'custom') {
             setCustomDraft(value === null ? '' : String(value))
             return
           }
           setCustomDraft(null)
-          onChange(Number(e.target.value))
+          onChange(Number(nextValue))
         }}
-        className={fieldCls}
-        aria-label={t('settings.model.contextWindow')}
-        title={t('settings.model.contextWindow')}
       >
-        {allowInherit && (
-          <option value="">{t('common.inherit', { value: formatContextWindow(inheritedValue) })}</option>
-        )}
-        <option value="200000">{t('settings.model.contextWindow200k')}</option>
-        <option value={String(DEFAULT_CONTEXT_WINDOW_TOKENS)}>{t('settings.model.contextWindow400k')}</option>
-        <option value="1000000">{t('settings.model.contextWindow1m')}</option>
-        <option value="custom">{t('settings.model.contextWindowCustom')}</option>
-      </select>
+        <SelectTrigger
+          size="sm"
+          className="min-w-0 flex-1"
+          aria-label={t('settings.model.contextWindow')}
+          title={t('settings.model.contextWindow')}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="nova-panel border text-[var(--nova-text)]">
+          <SelectGroup>
+            {allowInherit && (
+              <SelectItem value={CONTEXT_WINDOW_INHERIT_VALUE}>{t('common.inherit', { value: formatContextWindow(inheritedValue) })}</SelectItem>
+            )}
+            <SelectItem value="200000">{t('settings.model.contextWindow200k')}</SelectItem>
+            <SelectItem value={String(DEFAULT_CONTEXT_WINDOW_TOKENS)}>{t('settings.model.contextWindow400k')}</SelectItem>
+            <SelectItem value="1000000">{t('settings.model.contextWindow1m')}</SelectItem>
+            <SelectItem value="custom">{t('settings.model.contextWindowCustom')}</SelectItem>
+          </SelectGroup>
+        </SelectContent>
+      </Select>
       {custom && (
-        <input
+        <Input
           type="number"
           min={MIN_CONTEXT_WINDOW_TOKENS}
           max={MAX_CONTEXT_WINDOW_TOKENS}
@@ -1282,7 +1332,7 @@ function ContextWindowInput({ value, effective, allowInherit = false, onChange }
               onChange(Math.trunc(numeric))
             }
           }}
-          className={`${fieldCls} sm:max-w-40`}
+          className="sm:max-w-40"
         />
       )}
     </div>

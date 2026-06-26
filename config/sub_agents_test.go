@@ -80,6 +80,52 @@ func TestConfigTemplatePreseedsWritingSubAgentsAsEditableConfig(t *testing.T) {
 	}
 }
 
+func TestLoadLayeredWithStartupConfigKeepsGlobalSubAgents(t *testing.T) {
+	root := t.TempDir()
+	novaDir := filepath.Join(root, ".nova")
+	t.Chdir(root)
+	t.Setenv("NOVA_DIR", novaDir)
+
+	global := Settings{SubAgents: []SubAgentConfig{
+		testSubAgent("context-planner"),
+		testSubAgent("writer"),
+		testSubAgent("reviewer"),
+		testSubAgent("fixer"),
+		testSubAgent("final-gate"),
+		testSubAgent("memory-patcher"),
+	}}
+	user := Settings{SubAgents: []SubAgentConfig{
+		testSubAgent("context-planner"),
+		testSubAgent("memory-patcher"),
+		testSubAgent("subagent-1"),
+		testSubAgent("reviewer"),
+	}}
+	if err := WriteSettingsFile(filepath.Join(root, "config.toml"), global); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"), user); err != nil {
+		t.Fatal(err)
+	}
+
+	layered, err := LoadLayeredWithStartupConfig(novaDir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"context-planner", "writer", "reviewer", "fixer", "final-gate", "memory-patcher", "subagent-1"}
+	if got := subAgentIDs(layered.Effective.SubAgents); !reflect.DeepEqual(got, want) {
+		t.Fatalf("effective subagents = %#v, want %#v", got, want)
+	}
+}
+
+func testSubAgent(id string) SubAgentConfig {
+	return SubAgentConfig{
+		ID:           id,
+		Description:  "Test " + id,
+		SystemPrompt: "Handle " + id + ".",
+		Parents:      []string{AgentKindIDE},
+	}
+}
+
 func subAgentIDs(subAgents []SubAgentConfig) []string {
 	ids := make([]string, 0, len(subAgents))
 	for _, sub := range subAgents {

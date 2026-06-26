@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - WebUI：一级菜单展开态支持拖拽调整宽度，默认宽度可容纳五字菜单名，最小宽度保留至少两个中文字的可读空间。
+- WebUI：模型配置新增可选别名，模型选择器优先显示别名、未填写时显示模型名；设置页 Temperature 输入框改为 0-1 的紧凑数字框，上下文长度选项改用统一组件样式。
+- WebUI：底部状态栏右侧不再显示空闲状态和当前模型名，仅在生成中保留运行状态提示。
 - Agent：创作 Agent 不再直接注入默认 Writing Skill 的 SKILL.md 正文，也不再用后端正则判断写作意图；本轮动态提示只说明当前选择的 Writing Skill，涉及正文写作/续写时由模型通过 `skill` 工具自行加载对应 Skill。
 - Agent：`config.toml` 模板预置 `writer`、`reviewer`、`fixer` 等写作 SubAgent，它们不再由 Go 默认值或内置 Writing Skill 运行时策略控制；用户可在 Agents 页像管理自定义 SubAgent 一样覆盖或关闭。
 - Agent：系统提示词明确限制 SubAgent 委派时机，除非用户主动要求或已加载 Skill 流程要求，否则父 Agent 不应主动拉起 SubAgent。
@@ -22,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Agent：修复运行中配置刷新没有合入根 `config.toml` global 层的问题，避免 Agents 页和实际写作 Agent 只看到用户级/工作区级残留的部分 SubAgent。
+- WebUI：修复编辑 SubAgent 可用父 Agent 时立即写入列表导致弹窗消失的问题；弹窗内改动现在会先保存在本地草稿，点击完成后再写回配置。
 - WebUI：Agents 页将工具、Skills、上下文压缩、General SubAgent 和自定义 SubAgent 的启停控件统一为 Switch；自定义 SubAgent 可直接在列表启停，删除继承来的 SubAgent 不再变成关闭/恢复的循环。
 - WebUI：优化创作 Agent 面板标题栏布局，新建会话入口移到视图切换器右侧并简化为加号按钮，同时移除空闲状态和当前会话摘要文字。
 - WebUI：对话消息悬浮元信息改为截图式的消息下方操作行，只出现在用户消息气泡和根 Agent 正文下方，并新增仅图标的一键复制按钮；复制成功后按钮会短暂切换为勾号反馈，历史普通消息会补齐展示时间，SubAgent 小窗和工具卡片不再显示消息时间。

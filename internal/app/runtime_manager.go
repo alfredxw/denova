@@ -422,7 +422,7 @@ func (s *WorkspaceRuntimeManager) Settings() (config.LayeredSettings, error) {
 	}
 	state := a.bookState
 	a.mu.RUnlock()
-	layered, err := config.LoadLayered(novaDir, workspace)
+	layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace)
 	if err != nil {
 		return config.LayeredSettings{}, err
 	}

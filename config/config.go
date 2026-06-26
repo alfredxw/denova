@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -54,23 +55,8 @@ type Config struct {
 
 // LoadWithWorkspace 在已知 workspace 时读取分层配置（默认 < 用户级 < 工作区级 < 环境变量）。
 func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
-	global := loadGlobalConfig()
-	novaDir := global.NovaDir
-	if novaDir == "" {
-		novaDir = defaultNovaDir()
-	}
-	if v := os.Getenv("NOVA_DIR"); v != "" {
-		novaDir = v
-	}
-	if novaDir == "" {
-		novaDir = defaultNovaDir()
-	}
-	novaDir = normalizePath(novaDir)
-
-	globalSettings := settingsFromConfig(global)
-	globalSettings.NovaDir = novaDir
-
-	layered, err := LoadLayeredWithGlobal(novaDir, workspace, globalSettings)
+	novaDir := startupNovaDir()
+	layered, err := LoadLayeredWithStartupConfig(novaDir, workspace)
 	if err != nil {
 		return nil, LayeredSettings{}, err
 	}
@@ -135,6 +121,34 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		cfg.NovaDir = normalizePath(cfg.NovaDir)
 	}
 	return cfg, layered, nil
+}
+
+// LoadLayeredWithStartupConfig reads layered settings with the same global
+// startup config layer used by LoadWithWorkspace.
+func LoadLayeredWithStartupConfig(novaDir, workspace string) (LayeredSettings, error) {
+	if strings.TrimSpace(novaDir) == "" {
+		novaDir = startupNovaDir()
+	} else {
+		novaDir = normalizePath(novaDir)
+	}
+	globalSettings := settingsFromConfig(loadGlobalConfig())
+	globalSettings.NovaDir = novaDir
+	return LoadLayeredWithGlobal(novaDir, workspace, globalSettings)
+}
+
+func startupNovaDir() string {
+	global := loadGlobalConfig()
+	novaDir := global.NovaDir
+	if novaDir == "" {
+		novaDir = defaultNovaDir()
+	}
+	if v := os.Getenv("NOVA_DIR"); v != "" {
+		novaDir = v
+	}
+	if novaDir == "" {
+		novaDir = defaultNovaDir()
+	}
+	return normalizePath(novaDir)
 }
 
 func loadGlobalConfig() *Config {

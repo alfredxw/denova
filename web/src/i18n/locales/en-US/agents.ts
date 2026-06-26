@@ -84,6 +84,7 @@ const agents = {
   'agents.option.platformDefault': 'Platform default',
   'agents.option.defaultModel': 'Default model',
   'agents.option.defaultProfile': 'default ({{label}})',
+  'agents.option.default': 'Default',
   'agents.option.profile': '{{id}} ({{label}})',
   'agents.option.noSend': 'Do not send',
   'agents.option.inherit': 'Inherit',

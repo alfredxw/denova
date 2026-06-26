@@ -490,7 +490,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	novaDir := runtimeCfg.NovaDir
 	a.mu.RUnlock()
 
-	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[interactive-agent-analysis] load interactive settings failed workspace=%s err=%v", workspace, err)
@@ -622,7 +622,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	novaDir := runtimeCfg.NovaDir
 	a.mu.Unlock()
 
-	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 		log.Printf("[interactive-agent-task] load interactive settings workspace=%s", workspace)
 	} else {
@@ -816,7 +816,7 @@ func (s *InteractiveAppService) interactiveRuntimeConfig() (*interactive.Store, 
 	novaDir := runtimeCfg.NovaDir
 	a.mu.RUnlock()
 
-	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[interactive-agent] load layered settings failed workspace=%s err=%v", workspace, err)

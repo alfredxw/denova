@@ -5,5 +5,5 @@ export function modelProfileID(profile?: ModelProfileSettings): string {
 }
 
 export function modelProfileLabel(profile?: ModelProfileSettings): string {
-  return profile?.openai_model?.trim() || profile?.name?.trim() || modelProfileID(profile)
+  return profile?.name?.trim() || profile?.openai_model?.trim() || modelProfileID(profile)
 }

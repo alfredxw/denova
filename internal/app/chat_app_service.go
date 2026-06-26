@@ -412,7 +412,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 	novaDir := runtime.cfg.NovaDir
 	a.mu.Unlock()
 
-	if layered, err := config.LoadLayered(novaDir, runtime.workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, runtime.workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtime.cfg, layered)
 		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
 		runtime.cfg.IDEStoryTellerID = layered.Effective.IDEStoryTellerID

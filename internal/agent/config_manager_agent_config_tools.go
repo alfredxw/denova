@@ -155,7 +155,7 @@ func loadAgentConfigLayered(cfg *config.Config) (config.LayeredSettings, error) 
 		novaDir = cfg.NovaDir
 		workspace = cfg.Workspace
 	}
-	layered, err := config.LoadLayered(novaDir, workspace)
+	layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace)
 	if err != nil {
 		return config.LayeredSettings{}, fmt.Errorf("读取 Agent 配置失败: %w", err)
 	}

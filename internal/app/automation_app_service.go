@@ -687,7 +687,7 @@ func (s *AutomationAppService) runtimeConfig() config.Config {
 	novaDir := runtimeCfg.NovaDir
 	a.mu.RUnlock()
 	runtimeCfg.Workspace = workspace
-	if layered, err := config.LoadLayered(novaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[automation] load layered settings failed workspace=%s err=%v", workspace, err)

@@ -43,6 +43,12 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.InteractiveHotChoices == nil || *s.InteractiveHotChoices != true {
 		t.Fatalf("InteractiveHotChoices default")
 	}
+	if s.AgentModels.IDE.EnableThinking == nil || !*s.AgentModels.IDE.EnableThinking {
+		t.Fatalf("IDE thinking should default on")
+	}
+	if s.AgentModels.ConfigManager.EnableThinking == nil || !*s.AgentModels.ConfigManager.EnableThinking {
+		t.Fatalf("ConfigManager thinking should default on")
+	}
 	if s.AgentModels.ToolAgent.EnableThinking == nil || *s.AgentModels.ToolAgent.EnableThinking {
 		t.Fatalf("ToolAgent thinking should default off")
 	}

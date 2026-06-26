@@ -89,12 +89,15 @@ func TestSanitizeModelProfilesCapsContextWindow(t *testing.T) {
 func TestSanitizeModelProfilesDerivesIDFromModelName(t *testing.T) {
 	settings := sanitizeEditableSettings(Settings{
 		ModelProfiles: []ModelProfileSettings{
-			{OpenAIModel: " gpt-4.1 "},
+			{OpenAIModel: " gpt-4.1 ", Name: " Fast model "},
 			{ID: " legacy "},
 		},
 	})
 	if settings.ModelProfiles[0].ID != "gpt-4.1" || settings.ModelProfiles[0].OpenAIModel != "gpt-4.1" {
 		t.Fatalf("model-name profile not normalized: %#v", settings.ModelProfiles[0])
+	}
+	if settings.ModelProfiles[0].Name != "Fast model" {
+		t.Fatalf("model alias not normalized: %#v", settings.ModelProfiles[0])
 	}
 	if settings.ModelProfiles[1].ID != "legacy" || settings.ModelProfiles[1].OpenAIModel != "legacy" {
 		t.Fatalf("legacy id profile should keep working: %#v", settings.ModelProfiles[1])

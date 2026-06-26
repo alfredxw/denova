@@ -528,7 +528,6 @@ export function InputArea({
           <Textarea
             ref={textareaRef}
             autoResize
-            multilineMode="sticky-until-empty"
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
