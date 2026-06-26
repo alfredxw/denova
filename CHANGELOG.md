@@ -30,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- WebUI：修复默认模型配置未填写别名时仍继承模板里的 “DeepSeek 写作” 并在输入区出现无效模型选项的问题；默认模型现在始终使用稳定 `default` 配置 ID，未填别名时显示模型名。
+- WebUI：一级菜单默认展开并把默认宽度从 152px 调整到 180px，同时迁移旧默认宽度，让常用菜单文字默认完整展示；用户手动拖拽后的宽度仍会保留。
 - Agent：修复真实模型用量明细刷新后只在互动 Agent 可用的问题；创作 Agent、配置管理 Agent 和固定 Agent 会话 API 现在会保留 `agent_kind`、token 统计和 `usage_calls`，并在持久化层按每种 Agent 只保留最近 10 条用量记录，避免历史无限膨胀。
 - Agent：修复运行中配置刷新没有合入根 `config.toml` global 层的问题，避免 Agents 页和实际写作 Agent 只看到用户级/工作区级残留的部分 SubAgent。
 - WebUI：修复编辑 SubAgent 可用父 Agent 时立即写入列表导致弹窗消失的问题；弹窗内改动现在会先保存在本地未提交内容，点击完成后再写回配置。

@@ -16,6 +16,11 @@ type Config struct {
 	OpenAIModel                 string                       `toml:"openai_model"`
 	OpenAIContextWindowTokens   int                          `toml:"openai_context_window_tokens"`
 	ModelProfiles               []ModelProfileSettings       `toml:"model_profiles"`
+	ImageAPIKey                 string                       `toml:"image_api_key"`
+	ImageAPIBaseURL             string                       `toml:"image_api_base_url"`
+	ImageAPIModel               string                       `toml:"image_api_model"`
+	DefaultImageAPIProfileID    string                       `toml:"default_image_api_profile_id"`
+	ImageAPIProfiles            []ImageAPIProfileSettings    `toml:"image_api_profiles"`
 	AgentModels                 AgentModelSettings           `toml:"agent_models"`
 	AgentTools                  AgentToolSettings            `toml:"agent_tools"`
 	AgentPrompts                AgentPromptSettings          `toml:"agent_prompts"`
@@ -67,6 +72,11 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		OpenAIModel:                 s.OpenAIModel,
 		OpenAIContextWindowTokens:   settingsInt(s.OpenAIContextWindowTokens, DefaultContextWindowTokens),
 		ModelProfiles:               s.ModelProfiles,
+		ImageAPIKey:                 s.ImageAPIKey,
+		ImageAPIBaseURL:             s.ImageAPIBaseURL,
+		ImageAPIModel:               s.ImageAPIModel,
+		DefaultImageAPIProfileID:    s.DefaultImageAPIProfileID,
+		ImageAPIProfiles:            s.ImageAPIProfiles,
 		AgentModels:                 s.AgentModels,
 		AgentTools:                  s.AgentTools,
 		AgentPrompts:                s.AgentPrompts,
@@ -173,6 +183,11 @@ func settingsFromConfig(cfg *Config) Settings {
 		OpenAIBaseURL:            cfg.OpenAIBaseURL,
 		OpenAIModel:              cfg.OpenAIModel,
 		ModelProfiles:            cfg.ModelProfiles,
+		ImageAPIKey:              cfg.ImageAPIKey,
+		ImageAPIBaseURL:          cfg.ImageAPIBaseURL,
+		ImageAPIModel:            cfg.ImageAPIModel,
+		DefaultImageAPIProfileID: cfg.DefaultImageAPIProfileID,
+		ImageAPIProfiles:         cfg.ImageAPIProfiles,
 		AgentModels:              cfg.AgentModels,
 		AgentTools:               cfg.AgentTools,
 		AgentPrompts:             cfg.AgentPrompts,
@@ -230,6 +245,11 @@ func Load() *Config {
 			OpenAIModel:                 d.OpenAIModel,
 			OpenAIContextWindowTokens:   settingsInt(d.OpenAIContextWindowTokens, DefaultContextWindowTokens),
 			ModelProfiles:               d.ModelProfiles,
+			ImageAPIKey:                 d.ImageAPIKey,
+			ImageAPIBaseURL:             d.ImageAPIBaseURL,
+			ImageAPIModel:               d.ImageAPIModel,
+			DefaultImageAPIProfileID:    d.DefaultImageAPIProfileID,
+			ImageAPIProfiles:            d.ImageAPIProfiles,
 			AgentModels:                 d.AgentModels,
 			AgentTools:                  d.AgentTools,
 			AgentPrompts:                d.AgentPrompts,
@@ -322,6 +342,15 @@ func overrideFromEnv(cfg *Config) {
 	}
 	if v := os.Getenv("OPENAI_MODEL"); v != "" {
 		cfg.OpenAIModel = v
+	}
+	if v := os.Getenv("OPENAI_IMAGE_API_KEY"); v != "" {
+		cfg.ImageAPIKey = v
+	}
+	if v := os.Getenv("OPENAI_IMAGE_BASE_URL"); v != "" {
+		cfg.ImageAPIBaseURL = v
+	}
+	if v := os.Getenv("OPENAI_IMAGE_MODEL"); v != "" {
+		cfg.ImageAPIModel = v
 	}
 	if v := os.Getenv("NOVA_SKILLS_DIR"); v != "" {
 		cfg.SkillsDir = v

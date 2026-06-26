@@ -34,6 +34,21 @@ openai_model = "deepseek-v4-pro"
 # [agent_models.config_manager]
 # profile_id = "gpt-4.1"
 # temperature = 0.2
+
+# 图片生成 API。默认只接入 OpenAI 标准 Images API；可配置多个 profile。
+# 生成结果会保存到当前工作区 assets/image/generated/。
+default_image_api_profile_id = "default"
+
+[[image_api_profiles]]
+id = "default"
+name = "OpenAI 图片"
+provider = "openai"
+openai_base_url = "https://api.openai.com/v1"
+openai_api_key = ""
+openai_model = "gpt-image-1"
+default_size = "1024x1024"
+default_quality = "auto"
+default_output_format = "png"
 #
 # 可选：为不同 Agent 叠加自定义 system prompt。
 # 自定义提示在行为、创作偏好、策略和风格上优先于 Nova 内置提示，

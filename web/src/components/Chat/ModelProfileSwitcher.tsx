@@ -102,8 +102,8 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     [settings, t],
   )
   const currentProfile = useMemo(
-    () => agentKey ? resolveCurrentProfileID(settings?.effective ?? {}, agentKey) : 'default',
-    [agentKey, settings?.effective],
+    () => agentKey ? resolveCurrentProfileID(settings?.effective ?? {}, agentKey, options) : 'default',
+    [agentKey, options, settings?.effective],
   )
   const currentLabel = options.find((option) => option.id === currentProfile)?.label || currentProfile
 
@@ -179,7 +179,7 @@ function ModelProfileOptions({ selector }: { selector: ModelProfileSelector }) {
   )
 }
 
-function buildModelProfileOptions(settings: LayeredSettings | null, t: (key: string, options?: Record<string, unknown>) => string): ModelProfileOption[] {
+export function buildModelProfileOptions(settings: LayeredSettings | null, t: (key: string, options?: Record<string, unknown>) => string): ModelProfileOption[] {
   if (!settings) return []
   const profiles = new Map<string, string>()
   const add = (profile?: ModelProfileSettings) => {
@@ -188,10 +188,7 @@ function buildModelProfileOptions(settings: LayeredSettings | null, t: (key: str
     profiles.set(id, modelProfileLabel(profile))
   }
   modelProfilesWithDefault(settings.effective).forEach(add)
-  ;(settings.workspace.model_profiles ?? []).forEach(add)
   if (!profiles.has('default')) profiles.set('default', t('chat.modelProfile.defaultModel'))
-  const currentDefault = settings.effective.agent_models?.default?.profile_id
-  if (currentDefault && !profiles.has(currentDefault)) profiles.set(currentDefault, currentDefault)
   return Array.from(profiles.entries()).map(([id, label]) => ({
     id,
     label: id === 'default'
@@ -200,9 +197,10 @@ function buildModelProfileOptions(settings: LayeredSettings | null, t: (key: str
   }))
 }
 
-function resolveCurrentProfileID(settings: Settings, agentKey: VisibleAgentKey): string {
+export function resolveCurrentProfileID(settings: Settings, agentKey: VisibleAgentKey, options: ModelProfileOption[]): string {
   const merged = mergeAgentModelOverride(settings.agent_models?.default ?? {}, settings.agent_models?.[agentKey] ?? {})
-  return merged.profile_id || 'default'
+  const profileID = merged.profile_id || 'default'
+  return options.some((option) => option.id === profileID) ? profileID : 'default'
 }
 
 function mergeAgentModelOverride(parent: AgentModelOverride, child: AgentModelOverride): AgentModelOverride {

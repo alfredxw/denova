@@ -4,6 +4,11 @@ export interface Settings {
   openai_model?: string
   openai_context_window_tokens?: number | null
   model_profiles?: ModelProfileSettings[]
+  image_api_key?: string
+  image_api_base_url?: string
+  image_api_model?: string
+  default_image_api_profile_id?: string
+  image_api_profiles?: ImageAPIProfileSettings[]
   agent_models?: AgentModelSettings
   agent_tools?: AgentToolSettings
   agent_prompts?: AgentPromptSettings
@@ -56,6 +61,18 @@ export interface ModelProfileSettings {
   openai_model?: string
   temperature?: number | null
   context_window_tokens?: number | null
+}
+
+export interface ImageAPIProfileSettings {
+  id?: string
+  name?: string
+  provider?: string
+  openai_api_key?: string
+  openai_base_url?: string
+  openai_model?: string
+  default_size?: string
+  default_quality?: string
+  default_output_format?: string
 }
 
 export interface AgentModelSettings {

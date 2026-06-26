@@ -20,6 +20,11 @@ type Settings struct {
 	OpenAIModel               string                       `toml:"openai_model,omitempty" json:"openai_model,omitempty"`
 	OpenAIContextWindowTokens *int                         `toml:"openai_context_window_tokens,omitempty" json:"openai_context_window_tokens,omitempty"`
 	ModelProfiles             []ModelProfileSettings       `toml:"model_profiles,omitempty" json:"model_profiles,omitempty"`
+	ImageAPIKey               string                       `toml:"image_api_key,omitempty" json:"image_api_key,omitempty"`
+	ImageAPIBaseURL           string                       `toml:"image_api_base_url,omitempty" json:"image_api_base_url,omitempty"`
+	ImageAPIModel             string                       `toml:"image_api_model,omitempty" json:"image_api_model,omitempty"`
+	DefaultImageAPIProfileID  string                       `toml:"default_image_api_profile_id,omitempty" json:"default_image_api_profile_id,omitempty"`
+	ImageAPIProfiles          []ImageAPIProfileSettings    `toml:"image_api_profiles,omitempty" json:"image_api_profiles,omitempty"`
 	AgentModels               AgentModelSettings           `toml:"agent_models,omitempty" json:"agent_models,omitempty"`
 	AgentTools                AgentToolSettings            `toml:"agent_tools,omitempty" json:"agent_tools,omitempty"`
 	AgentPrompts              AgentPromptSettings          `toml:"agent_prompts,omitempty" json:"agent_prompts,omitempty"`
@@ -93,6 +98,9 @@ func DefaultSettings() Settings {
 		OpenAIBaseURL:               "https://api.deepseek.com",
 		OpenAIModel:                 "deepseek-v4-pro",
 		OpenAIContextWindowTokens:   intPtr(DefaultContextWindowTokens),
+		ImageAPIBaseURL:             DefaultImageAPIBaseURL,
+		ImageAPIModel:               DefaultImageAPIModel,
+		DefaultImageAPIProfileID:    DefaultImageAPIProfileID,
 		SkillsDir:                   "./skills",
 		NovaDir:                     "./.nova",
 		BackendPort:                 intPtr(8080),
@@ -157,6 +165,19 @@ func Merge(parent, child Settings) Settings {
 		out.OpenAIContextWindowTokens = child.OpenAIContextWindowTokens
 	}
 	out.ModelProfiles = mergeModelProfiles(out.ModelProfiles, child.ModelProfiles)
+	if child.ImageAPIKey != "" {
+		out.ImageAPIKey = child.ImageAPIKey
+	}
+	if child.ImageAPIBaseURL != "" {
+		out.ImageAPIBaseURL = child.ImageAPIBaseURL
+	}
+	if child.ImageAPIModel != "" {
+		out.ImageAPIModel = child.ImageAPIModel
+	}
+	if child.DefaultImageAPIProfileID != "" {
+		out.DefaultImageAPIProfileID = child.DefaultImageAPIProfileID
+	}
+	out.ImageAPIProfiles = mergeImageAPIProfiles(out.ImageAPIProfiles, child.ImageAPIProfiles)
 	out.AgentModels = MergeAgentModelSettings(out.AgentModels, child.AgentModels)
 	out.AgentTools = MergeAgentToolSettings(out.AgentTools, child.AgentTools)
 	out.AgentPrompts = MergeAgentPromptSettings(out.AgentPrompts, child.AgentPrompts)
@@ -431,8 +452,12 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
 	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)
 	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)
+	s.ImageAPIBaseURL = strings.TrimSpace(s.ImageAPIBaseURL)
+	s.ImageAPIModel = strings.TrimSpace(s.ImageAPIModel)
+	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
+	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
 	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
 		if defaultProfile.OpenAIAPIKey != "" {
 			s.OpenAIAPIKey = ""
