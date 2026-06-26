@@ -75,7 +75,7 @@ describe('MarkdownEditor', () => {
     vi.useRealTimers()
   })
 
-  it('打开编辑器设置 Popover 后展示行间距和背景主题', async () => {
+  it('打开编辑器设置 Popover 后展示行间距、对白高亮和背景主题', async () => {
     const user = userEvent.setup()
 
     render(
@@ -90,6 +90,11 @@ describe('MarkdownEditor', () => {
 
     expect(screen.getByText('编辑器设置')).toBeInTheDocument()
     expect(screen.getByText('行间距')).toBeInTheDocument()
+    expect(screen.getByText('对白高亮')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '选择对白高亮颜色' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '选择色相' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '十六进制颜色' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '恢复默认' })).toBeInTheDocument()
     expect(screen.getByText('背景主题')).toBeInTheDocument()
   })
 

@@ -26,6 +26,9 @@ fi
 echo "==> 编译 nova"
 go build -ldflags "-X nova/internal/buildinfo.Version=${VERSION}" -o "${OUTPUT_DIR}/nova" ./cmd/nova/
 
+echo "==> 编译 nova-updater"
+go build -ldflags "-X nova/internal/buildinfo.Version=${VERSION}" -o "${OUTPUT_DIR}/nova-updater" ./cmd/nova-updater/
+
 echo "==> 复制 skills 目录"
 cp -r skills "${OUTPUT_DIR}/skills"
 

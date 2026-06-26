@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -67,18 +65,10 @@ func (s *Service) InstallWithProgress(ctx context.Context, progress func(Install
 		return InstallResult{}, fmt.Errorf("更新包结构无效，缺少 nova 目录")
 	}
 
-	if runtime.GOOS == "windows" {
-		reportInstallProgress(progress, InstallProgress{Phase: "staging", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: "正在暂存 Windows 更新"})
-		result, err := s.stageWindowsUpdate(packageRoot, check)
-		if err == nil {
-			reportInstallProgress(progress, InstallProgress{Phase: "installed", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: result.Message})
-		}
-		return result, err
-	}
-	reportInstallProgress(progress, InstallProgress{Phase: "replacing", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: "正在替换本地文件"})
-	result, err := s.installNow(packageRoot, check)
+	reportInstallProgress(progress, InstallProgress{Phase: "staging", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: "正在暂存更新"})
+	result, err := s.stageUpdate(packageRoot, check)
 	if err == nil {
-		reportInstallProgress(progress, InstallProgress{Phase: "installed", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: result.Message})
+		reportInstallProgress(progress, InstallProgress{Phase: "staged", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: result.Message})
 	}
 	return result, err
 }
@@ -150,48 +140,16 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 	}
 }
 
-func (s *Service) installNow(packageRoot string, check CheckResult) (InstallResult, error) {
-	installDir := filepath.Dir(s.executablePath)
-	backupDir := filepath.Join(installDir, ".nova-updates", "backup-"+time.Now().Format("20060102-150405"))
-	if err := os.MkdirAll(backupDir, 0o755); err != nil {
-		return InstallResult{}, fmt.Errorf("创建更新备份目录失败: %w", err)
-	}
-
-	exeName := filepath.Base(s.executablePath)
-	newExe := filepath.Join(packageRoot, exeName)
-	if _, err := os.Stat(newExe); err != nil {
-		return InstallResult{}, fmt.Errorf("更新包缺少可执行文件 %s: %w", exeName, err)
-	}
-	backupExe := filepath.Join(backupDir, exeName)
-	if err := replaceFile(s.executablePath, newExe, backupExe); err != nil {
-		return InstallResult{}, err
-	}
-	if err := replaceDir(filepath.Join(installDir, "web"), filepath.Join(packageRoot, "web"), filepath.Join(backupDir, "web")); err != nil {
-		return InstallResult{}, err
-	}
-	if err := replaceDir(filepath.Join(installDir, "skills"), filepath.Join(packageRoot, "skills"), filepath.Join(backupDir, "skills")); err != nil {
-		return InstallResult{}, err
-	}
-	for _, name := range []string{"README.md", "CHANGELOG.md", "LICENSE"} {
-		_ = copyFile(filepath.Join(packageRoot, name), filepath.Join(installDir, name), 0o644)
-	}
-	log.Printf("[update] 更新安装完成 old=%s new=%s install_dir=%s backup=%s", check.CurrentVersion, check.LatestVersion, installDir, backupDir)
-	return InstallResult{
-		PreviousVersion:  check.CurrentVersion,
-		InstalledVersion: check.LatestVersion,
-		Installed:        true,
-		RestartRequired:  true,
-		BackupPath:       backupDir,
-		Message:          "更新已安装，重启 Nova 后生效",
-	}, nil
-}
-
-func (s *Service) stageWindowsUpdate(packageRoot string, check CheckResult) (InstallResult, error) {
+func (s *Service) stageUpdate(packageRoot string, check CheckResult) (InstallResult, error) {
 	installDir := filepath.Dir(s.executablePath)
 	updateDir := filepath.Join(installDir, ".nova-updates")
-	stagedDir := filepath.Join(updateDir, "pending-"+check.LatestVersion)
+	stagedRoot := filepath.Join(updateDir, "pending-"+safeUpdateName(check.LatestVersion))
+	stagedDir := filepath.Join(stagedRoot, "nova")
 	backupDir := filepath.Join(updateDir, "backup-"+time.Now().Format("20060102-150405"))
-	if err := os.RemoveAll(stagedDir); err != nil {
+	if err := validateReleasePackage(packageRoot, filepath.Base(s.executablePath), updaterExecutableName()); err != nil {
+		return InstallResult{}, err
+	}
+	if err := os.RemoveAll(stagedRoot); err != nil {
 		return InstallResult{}, err
 	}
 	if err := copyDir(packageRoot, stagedDir); err != nil {
@@ -200,24 +158,37 @@ func (s *Service) stageWindowsUpdate(packageRoot string, check CheckResult) (Ins
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return InstallResult{}, err
 	}
-	script := filepath.Join(updateDir, "apply-update.cmd")
-	content := windowsApplyScript(os.Getpid(), stagedDir, installDir, backupDir, filepath.Base(s.executablePath))
-	if err := os.WriteFile(script, []byte(content), 0o755); err != nil {
-		return InstallResult{}, fmt.Errorf("写入 Windows 更新脚本失败: %w", err)
+
+	manifestPath := filepath.Join(stagedRoot, manifestFileName)
+	manifest := ApplyManifest{
+		SourceDir:         stagedDir,
+		InstallDir:        installDir,
+		BackupDir:         backupDir,
+		CurrentPID:        os.Getpid(),
+		TargetExecutable:  s.executablePath,
+		UpdaterExecutable: filepath.Join(stagedDir, updaterExecutableName()),
+		RelaunchArgs:      relaunchArgs(os.Args, s.executablePath),
+		Version:           check.LatestVersion,
+		LogPath:           filepath.Join(stagedRoot, applyLogFileName),
 	}
-	cmd := exec.Command("cmd", "/C", "start", "", "/B", script)
-	if err := cmd.Start(); err != nil {
-		return InstallResult{}, fmt.Errorf("启动 Windows 更新脚本失败: %w", err)
+	if err := writeManifest(manifestPath, manifest); err != nil {
+		return InstallResult{}, err
 	}
-	log.Printf("[update] Windows 更新已暂存 version=%s staged=%s script=%s", check.LatestVersion, stagedDir, script)
+	if err := writePendingManifestRef(updateDir, manifestPath); err != nil {
+		return InstallResult{}, err
+	}
+	log.Printf("[update] 更新已暂存 old=%s new=%s staged=%s manifest=%s", check.CurrentVersion, check.LatestVersion, stagedDir, manifestPath)
 	return InstallResult{
 		PreviousVersion:  check.CurrentVersion,
 		InstalledVersion: check.LatestVersion,
-		Installed:        true,
+		Status:           "staged",
+		Staged:           true,
+		ApplyReady:       true,
 		RestartRequired:  true,
 		BackupPath:       backupDir,
 		StagedPath:       stagedDir,
-		Message:          "更新已暂存，关闭 Nova 后会自动替换文件，下次启动生效",
+		ApplyLogPath:     manifest.LogPath,
+		Message:          "更新已暂存，重启并安装后生效",
 	}, nil
 }
 
@@ -266,4 +237,25 @@ func maxInt64(a, b int64) int64 {
 		return a
 	}
 	return b
+}
+
+func validateReleasePackage(packageRoot, exeName, updaterName string) error {
+	requiredFiles := []string{exeName, updaterName}
+	for _, name := range requiredFiles {
+		path := filepath.Join(packageRoot, name)
+		if fi, err := os.Stat(path); err != nil {
+			return fmt.Errorf("更新包缺少可执行文件 %s: %w", name, err)
+		} else if fi.IsDir() {
+			return fmt.Errorf("更新包中的可执行文件是目录: %s", name)
+		}
+	}
+	for _, name := range []string{"web", "skills"} {
+		path := filepath.Join(packageRoot, name)
+		if fi, err := os.Stat(path); err != nil {
+			return fmt.Errorf("更新包缺少目录 %s: %w", name, err)
+		} else if !fi.IsDir() {
+			return fmt.Errorf("更新包中的 %s 不是目录", name)
+		}
+	}
+	return nil
 }

@@ -85,7 +85,7 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 	policy := DefaultLoopPolicy().normalized()
 	composition := composeAgentInput(req, pending, bookService, policy)
 	messages := buildIDEAnalysisMessages(cfg, effectiveMessages, totalMessages, compaction)
-	runtimeContexts := IDEWorkspaceRuntimeContextsForState(state)
+	runtimeContexts := IDEWorkspaceRuntimeContextsForRequest(state, req)
 	if strings.TrimSpace(runtimeContexts.Stable) != "" {
 		messages = append([]*schema.Message{schema.UserMessage(standaloneRuntimeContextMessage(runtimeContexts.StableTitle, runtimeContexts.Stable, ""))}, messages...)
 	}
@@ -478,8 +478,8 @@ func composeAgentInput(req ChatRequest, pending *session.Interruption, bookServi
 		agentMessage = appendPlanModeInstruction(agentMessage)
 		contextLog.add("注入规则", "规划模式", "[规划模式] 请你先制定计划，不要执行任何写操作。", "")
 	}
-	if req.WritingSkillContext != nil {
-		agentMessage = appendWritingSkillContext(agentMessage, *req.WritingSkillContext, contextLog)
+	if strings.TrimSpace(req.WritingSkill) != "" {
+		agentMessage = appendWritingSkillLoadHint(agentMessage, req.WritingSkill, contextLog)
 	}
 	if len(req.References) > 0 {
 		agentMessage = appendReferenceContext(bookService, agentMessage, req.References, contextLog)

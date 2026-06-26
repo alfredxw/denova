@@ -2,6 +2,7 @@ package config
 
 import (
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -55,6 +56,45 @@ func TestSubAgentsReadWriteMergeSanitize(t *testing.T) {
 	if len(read.SubAgents) != 1 || read.SubAgents[0].ID != "researcher" {
 		t.Fatalf("sub_agents should round-trip through TOML: %#v", read.SubAgents)
 	}
+}
+
+func TestConfigTemplatePreseedsWritingSubAgentsAsEditableConfig(t *testing.T) {
+	settings, err := ReadSettingsFile(filepath.Join("..", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"context-planner", "writer", "reviewer", "fixer", "final-gate", "memory-patcher"}
+	if got := subAgentIDs(settings.SubAgents); !reflect.DeepEqual(got, want) {
+		t.Fatalf("template writing subagents = %#v, want %#v", got, want)
+	}
+	for _, sub := range settings.SubAgents {
+		if !SubAgentEnabled(sub) {
+			t.Fatalf("template writing subagent should be enabled: %#v", sub)
+		}
+		if len(sub.Parents) != 1 || sub.Parents[0] != AgentKindIDE {
+			t.Fatalf("template writing subagent should only belong to IDE: %#v", sub)
+		}
+		if sub.SystemPrompt == "" || containsASCIIOnly(sub.SystemPrompt) {
+			t.Fatalf("template writing subagent prompt should be Chinese and non-empty: %#v", sub)
+		}
+	}
+}
+
+func subAgentIDs(subAgents []SubAgentConfig) []string {
+	ids := make([]string, 0, len(subAgents))
+	for _, sub := range subAgents {
+		ids = append(ids, sub.ID)
+	}
+	return ids
+}
+
+func containsASCIIOnly(value string) bool {
+	for _, r := range value {
+		if r > 127 {
+			return false
+		}
+	}
+	return true
 }
 
 func TestResolveSubAgentToolsCapsParentPermissions(t *testing.T) {

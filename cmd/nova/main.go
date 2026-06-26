@@ -16,6 +16,7 @@ import (
 	"nova/internal/agent"
 	"nova/internal/api"
 	"nova/internal/app"
+	"nova/internal/buildinfo"
 	"nova/internal/observability"
 )
 
@@ -26,6 +27,10 @@ func main() {
 		devMode   bool
 		noOpen    bool
 	)
+	if hasVersionArg(os.Args[1:]) {
+		fmt.Println(buildinfo.Version)
+		return
+	}
 	cfg := config.Load()
 	port := defaultPort(cfg)
 	frontendPort := defaultFrontendPort(cfg)
@@ -109,6 +114,15 @@ func main() {
 	}
 
 	srv.Run()
+}
+
+func hasVersionArg(args []string) bool {
+	for _, arg := range args {
+		if arg == "--version" || arg == "-version" {
+			return true
+		}
+	}
+	return false
 }
 
 // openBrowser 打开默认浏览器

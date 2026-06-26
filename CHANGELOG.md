@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Agent 模型响应日志新增 `provider_request_id`：当 OpenAI 兼容供应商返回请求 ID 时，后端会打印该 ID，便于向模型 API 供应商提供 debug 信息。
+- 应用内更新新增独立 `nova-updater`：Release 包会携带同平台 updater，设置页先下载暂存更新，再通过“重启并安装”退出当前 Nova、替换主程序和资源目录，并自动启动新版本。
+
+### Changed
+
+- WebUI：一级菜单展开态支持拖拽调整宽度，默认宽度可容纳五字菜单名，最小宽度保留至少两个中文字的可读空间。
+- Agent：创作 Agent 不再直接注入默认 Writing Skill 的 SKILL.md 正文，也不再用后端正则判断写作意图；本轮动态提示只说明当前选择的 Writing Skill，涉及正文写作/续写时由模型通过 `skill` 工具自行加载对应 Skill。
+- Agent：`config.toml` 模板预置 `writer`、`reviewer`、`fixer` 等写作 SubAgent，它们不再由 Go 默认值或内置 Writing Skill 运行时策略控制；用户可在 Agents 页像管理自定义 SubAgent 一样覆盖或关闭。
+- Agent：系统提示词明确限制 SubAgent 委派时机，除非用户主动要求或已加载 Skill 流程要求，否则父 Agent 不应主动拉起 SubAgent。
+- Agent：创作 Agent 的本轮动态上下文会注入前端 IDE 当前聚焦文件和打开文件路径；该状态只包含有界路径信息，不注入文件正文，需要正文时仍必须显式通过工具读取。
+- Agent：默认不限制空闲等待时间；设置页和 `NOVA_AGENT_IDLE_TIMEOUT_SECONDS` 仍可配置正数秒数启用空闲超时，配置为 `0` 表示不限制。
+
+### Fixed
+
+- WebUI：Agents 页将工具、Skills、上下文压缩、General SubAgent 和自定义 SubAgent 的启停控件统一为 Switch；自定义 SubAgent 可直接在列表启停，删除继承来的 SubAgent 不再变成关闭/恢复的循环。
+- WebUI：优化创作 Agent 面板标题栏布局，新建会话入口移到视图切换器右侧并简化为加号按钮，同时移除空闲状态和当前会话摘要文字。
+- WebUI：对话消息悬浮元信息改为截图式的消息下方操作行，只出现在用户消息气泡和根 Agent 正文下方，并新增仅图标的一键复制按钮；复制成功后按钮会短暂切换为勾号反馈，历史普通消息会补齐展示时间，SubAgent 小窗和工具卡片不再显示消息时间。
+- WebUI：创作 Agent 的 SubAgent 详情栏支持拖拽调整宽度，关闭后会恢复右侧面板原宽度。
+- WebUI：Agents 页的 SubAgent 列表按当前父 Agent 过滤，预置写作 SubAgent 只显示在写作 Agent 下。
+- WebUI：修复创作 Agent 右侧面板读取旧持久化布局时可能因面板顺序错配导致拖拽宽度方向异常的问题。
+- WebUI：创作 Agent、配置 Agent 和自动化运行对话的消息列表会随底部浮动输入区高度自动预留空间，长输入不再遮住最后一行消息。
+- WebUI：移除写作模式左侧目录顶部的作品名与字数统计摘要，并将“其他设定”折叠入口合并到“书籍设定”标题行，减少重复行占用。
+- WebUI：简化写作模式“章节组细纲”的空状态提示，不再显示内部目录路径。
+
 ## [v0.1.14] - 2026-06-26
 
 ### Added

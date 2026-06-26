@@ -33,6 +33,7 @@ type ChatRequest struct {
 	LoreReferences []string           `json:"lore_references"`
 	StyleScenes    []string           `json:"style_scenes"`
 	Selections     []TextSelectionRef `json:"selections"`
+	IDEContext     IDEContextRef      `json:"ide_context,omitempty"`
 	PlanMode       bool               `json:"plan_mode"`
 	WritingSkill   string             `json:"writing_skill"`
 	Locale         string             `json:"-"`
@@ -40,13 +41,17 @@ type ChatRequest struct {
 	// StyleRules 由后端按当前导演配置注入（场景 → 风格内容）。
 	// StyleScenes 非空时只注入用户本轮通过 # 指定的场景；为空时作为场景化建议参与本轮上下文。
 	StyleRules []StyleRule `json:"-"`
-
-	// WritingSkillContext 由后端解析用户本轮选择的有效 Writing Skill 后注入。
-	WritingSkillContext *WritingSkillContext `json:"-"`
 }
 
 // StyleRule 是 prompts.StyleRule 的镜像，避免调用方直接依赖 prompts 包。
 type StyleRule = prompts.StyleRule
+
+// IDEContextRef carries lightweight, model-visible IDE state for one turn.
+// It must describe UI focus only and must not include editor file content.
+type IDEContextRef struct {
+	CurrentFile string   `json:"current_file,omitempty"`
+	OpenFiles   []string `json:"open_files,omitempty"`
+}
 
 // TextSelectionRef 表示用户在编辑器中选中的一段文本引用。
 type TextSelectionRef struct {

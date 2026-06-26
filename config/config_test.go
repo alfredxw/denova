@@ -96,6 +96,31 @@ func TestLoadWithWorkspaceMergesLayers(t *testing.T) {
 	}
 }
 
+func TestLoadWithWorkspaceAllowsUnlimitedAgentIdleTimeout(t *testing.T) {
+	novaDir := t.TempDir()
+	ws := t.TempDir()
+	t.Setenv("NOVA_DIR", novaDir)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	t.Setenv("NOVA_AGENT_IDLE_TIMEOUT_SECONDS", "")
+
+	if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"),
+		Settings{AgentIdleTimeoutSeconds: intPtr(0)}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, layered, err := LoadWithWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentIdleTimeoutSeconds != 0 {
+		t.Fatalf("agent idle timeout should allow explicit 0, got %d", cfg.AgentIdleTimeoutSeconds)
+	}
+	if layered.Effective.AgentIdleTimeoutSeconds == nil || *layered.Effective.AgentIdleTimeoutSeconds != 0 {
+		t.Fatalf("effective agent idle timeout should preserve explicit 0")
+	}
+}
+
 func TestLoadWithWorkspaceUsesGlobalConfigNovaDir(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -149,6 +174,30 @@ func TestLoadWithWorkspaceUsesGlobalConfigAsBaseLayer(t *testing.T) {
 	}
 }
 
+func TestLoadWithWorkspaceAllowsGlobalUnlimitedAgentIdleTimeout(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	ws := t.TempDir()
+	t.Setenv("NOVA_DIR", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+
+	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("agent_idle_timeout_seconds = 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, layered, err := LoadWithWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentIdleTimeoutSeconds != 0 {
+		t.Fatalf("global agent idle timeout should allow explicit 0, got %d", cfg.AgentIdleTimeoutSeconds)
+	}
+	if layered.Global.AgentIdleTimeoutSeconds == nil || *layered.Global.AgentIdleTimeoutSeconds != 0 {
+		t.Fatalf("global layer should preserve explicit 0")
+	}
+}
+
 func TestLoadWithWorkspaceUsesConfiguredStartupPorts(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -195,5 +244,18 @@ func TestLoadStartupPortEnvOverridesConfig(t *testing.T) {
 	}
 	if cfg.FrontendPort != 16173 {
 		t.Fatalf("NOVA_FRONTEND_PORT should override config: %d", cfg.FrontendPort)
+	}
+}
+
+func TestLoadAgentIdleTimeoutEnvAllowsZero(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("NOVA_DIR", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	t.Setenv("NOVA_AGENT_IDLE_TIMEOUT_SECONDS", "0")
+
+	cfg := Load()
+	if cfg.AgentIdleTimeoutSeconds != 0 {
+		t.Fatalf("NOVA_AGENT_IDLE_TIMEOUT_SECONDS=0 should disable idle timeout, got %d", cfg.AgentIdleTimeoutSeconds)
 	}
 }

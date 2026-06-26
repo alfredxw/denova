@@ -2,9 +2,10 @@ import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useS
 import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, FileText, ListTodo, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
+import { Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, Copy, FileText, ListTodo, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ChatMessage } from '@/lib/api'
+import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { subAgentSessionKey } from './subagent-session'
@@ -20,6 +21,8 @@ interface MessageItemProps {
   activeSubAgentSessionKey?: string
   subAgentPresentation?: 'card' | 'content'
 }
+
+const copyFeedbackDurationMs = 1200
 
 /** 单条消息组件，根据 role 渲染不同样式 */
 export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, activeSubAgentSessionKey, subAgentPresentation = 'card' }: MessageItemProps) {
@@ -37,21 +40,11 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
     case 'user':
       return (
         <div className="group flex justify-end gap-2">
-          {canEdit && (
-            <div className="flex h-8 shrink-0 items-center gap-1 self-end opacity-80 transition-opacity group-hover:opacity-100">
-              {onEdit && (
-                <TooltipIconButton
-                  label={t('chat.action.editTurn')}
-                  className="h-7 w-7 border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-                  onClick={() => onEdit(message)}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </TooltipIconButton>
-              )}
+          <div className="nova-message-body-with-meta nova-message-body-with-meta-user max-w-[88%]">
+            <div className="nova-user-message rounded-lg px-3.5 py-2.5 text-sm text-[var(--nova-user-message-text)] whitespace-pre-wrap" style={messageStyle}>
+              {content}
             </div>
-          )}
-          <div className="nova-user-message max-w-[88%] rounded-lg px-3.5 py-2.5 text-sm text-[var(--nova-user-message-text)] whitespace-pre-wrap" style={messageStyle}>
-            {content}
+            <MessageInlineMeta message={message} content={content} align="right" onEdit={canEdit ? onEdit : undefined} />
           </div>
         </div>
       )
@@ -74,16 +67,21 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       const visibleContent = sanitizeThinkTags(content).trim()
       return (
         <div className="group flex justify-start">
-          <div className="chat-agent-message w-full px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
-            {message.streaming && !visibleContent ? (
-              <StreamingPlaceholder />
-            ) : message.streaming ? (
-              <StreamingMarkdown content={content} highlightDialogue={highlightDialogue} />
-            ) : (
-              <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
-            )}
+          <div className="w-full">
+            <div className="nova-message-body-with-meta nova-message-body-with-meta-assistant">
+              <div className="chat-agent-message w-full px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
+                {message.streaming && !visibleContent ? (
+                  <StreamingPlaceholder />
+                ) : message.streaming ? (
+                  <StreamingMarkdown content={content} highlightDialogue={highlightDialogue} />
+                ) : (
+                  <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
+                )}
+              </div>
+              <MessageInlineMeta message={message} content={content} align="left" />
+            </div>
             {showAssistantActions && (
-              <div className="mt-1.5 flex justify-end">
+              <div className="nova-assistant-actions mt-1.5 flex justify-end">
                 <div className="flex items-center gap-0.5 opacity-30 transition-opacity group-hover:opacity-80 focus-within:opacity-80">
                   {canSwitchVersion && onSwitchVersion && (
                     <>
@@ -164,6 +162,85 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return null
   }
 })
+
+function MessageInlineMeta({ message, content, align, onEdit }: { message: ChatMessage; content: string; align: 'left' | 'right'; onEdit?: (message: ChatMessage) => void }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+  const formatted = formatMessageHoverTime(message.created_at)
+  if (!formatted && !content && !onEdit) return null
+  return (
+    <div className={`nova-message-meta nova-message-meta-${align}`} aria-label={formatted}>
+      {formatted ? <span className="nova-message-time">{formatted}</span> : null}
+      <TooltipIconButton
+        label={copied ? t('chat.action.copyMessageDone') : t('chat.action.copyMessage')}
+        showTooltip={false}
+        className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
+        onClick={(event) => {
+          event.stopPropagation()
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), copyFeedbackDurationMs)
+          void copyText(content)
+        }}
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      </TooltipIconButton>
+      {onEdit && (
+        <TooltipIconButton
+          label={t('chat.action.editTurn')}
+          className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
+          onClick={(event) => {
+            event.stopPropagation()
+            onEdit(message)
+          }}
+        >
+          <Pencil className="h-3 w-3" />
+        </TooltipIconButton>
+      )}
+    </div>
+  )
+}
+
+function formatMessageHoverTime(value?: string) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const time = `${padTime(date.getHours())}:${padTime(date.getMinutes())}`
+  const now = new Date()
+  const sameDay = date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  if (sameDay) return time
+  return `${date.getFullYear()}-${padTime(date.getMonth() + 1)}-${padTime(date.getDate())} ${time}`
+}
+
+function padTime(value: number) {
+  return value.toString().padStart(2, '0')
+}
+
+async function copyText(content: string) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(content)
+      return true
+    } catch {
+      // Fall through to the legacy path for embedded/local browser surfaces.
+    }
+  }
+
+  const textarea = document.createElement('textarea')
+  textarea.value = content
+  textarea.setAttribute('readonly', 'true')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  try {
+    return document.execCommand('copy')
+  } finally {
+    document.body.removeChild(textarea)
+  }
+}
 
 function SubAgentOutputWindow({
   message,
@@ -803,21 +880,18 @@ function highlightDialogueNodes(children: ReactNode): ReactNode {
 function highlightDialogueText(text: string, enabled: boolean, keyPrefix: string): ReactNode {
   if (!enabled || !text) return text
   const nodes: ReactNode[] = []
-  const pattern = /("([^"\n]+)"|“([^”\n]+)”|「([^」\n]+)」)/g
+  const ranges = findDialogueHighlightRanges(text)
   let lastIndex = 0
-  let match: RegExpExecArray | null
-  let index = 0
 
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index))
+  ranges.forEach((range, index) => {
+    if (range.from > lastIndex) nodes.push(text.slice(lastIndex, range.from))
     nodes.push(
       <span key={`${keyPrefix}-dialogue-${index}`} className="nova-dialogue-highlight">
-        {match[0]}
+        {text.slice(range.from, range.to)}
       </span>,
     )
-    lastIndex = pattern.lastIndex
-    index += 1
-  }
+    lastIndex = range.to
+  })
 
   if (lastIndex < text.length) nodes.push(text.slice(lastIndex))
   if (nodes.length === 0) return text

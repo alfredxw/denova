@@ -3,8 +3,8 @@ import { toast } from 'sonner'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, PanelLeft, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
-import { checkForUpdate, fetchSettings, installUpdateStream, updateUserSettings, updateWorkspaceSettings } from './api'
+import type { LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
+import { applyUpdate, checkForUpdate, fetchSettings, installUpdateStream, updateUserSettings, updateWorkspaceSettings } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { settingsForLayer, useAutoSaveSettings } from './use-auto-save-settings'
 import { getInteractiveTellers } from '@/features/interactive/api'
@@ -43,9 +43,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [availableTellers, setAvailableTellers] = useState<Teller[]>([])
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null)
   const [updateInstallResult, setUpdateInstallResult] = useState<UpdateInstallResult | null>(null)
+  const [updateApplyResult, setUpdateApplyResult] = useState<UpdateApplyResult | null>(null)
   const [updateInstallProgress, setUpdateInstallProgress] = useState<UpdateInstallProgress | null>(null)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [installingUpdate, setInstallingUpdate] = useState(false)
+  const [applyingUpdate, setApplyingUpdate] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<SettingsSectionId>('appearance')
   const [expandedSections, setExpandedSections] = useState<Record<SettingsSectionId, boolean>>({
@@ -92,6 +94,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     setCheckingUpdate(true)
     setUpdateError(null)
     setUpdateInstallResult(null)
+    setUpdateApplyResult(null)
     setUpdateInstallProgress(null)
     try {
       const result = await checkForUpdate()
@@ -114,6 +117,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const runUpdateInstall = useCallback(async () => {
     setInstallingUpdate(true)
     setUpdateError(null)
+    setUpdateApplyResult(null)
     setUpdateInstallProgress(null)
     try {
       const stream = await installUpdateStream()
@@ -127,7 +131,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         } else if (value.event === 'update_result') {
           const result = data as unknown as UpdateInstallResult
           setUpdateInstallResult(result)
-          setUpdateInstallProgress((prev) => prev ? { ...prev, phase: 'installed', percent: 100 } : { phase: 'installed', percent: 100 })
+          setUpdateInstallProgress((prev) => prev ? { ...prev, phase: 'staged', percent: 100 } : { phase: 'staged', percent: 100 })
         } else if (value.event === 'error') {
           throw new Error(readStreamError(data, t))
         }
@@ -138,6 +142,19 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       setInstallingUpdate(false)
     }
   }, [t])
+
+  const runUpdateApply = useCallback(async () => {
+    setApplyingUpdate(true)
+    setUpdateError(null)
+    try {
+      const result = await applyUpdate()
+      setUpdateApplyResult(result)
+    } catch (e) {
+      setUpdateError((e as Error).message)
+    } finally {
+      setApplyingUpdate(false)
+    }
+  }, [])
 
   const saveDraft = useCallback(async (settings: Settings) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
@@ -239,16 +256,19 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           ) : (
             <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.updates.userOnly')}</div>
           )}
-          <UpdatePanel
-            status={updateStatus}
-            installResult={updateInstallResult}
-            installProgress={updateInstallProgress}
-            checking={checkingUpdate}
-            installing={installingUpdate}
-            error={updateError}
-            onCheck={() => void runUpdateCheck()}
-            onInstall={() => void runUpdateInstall()}
-          />
+	          <UpdatePanel
+	            status={updateStatus}
+	            installResult={updateInstallResult}
+	            applyResult={updateApplyResult}
+	            installProgress={updateInstallProgress}
+	            checking={checkingUpdate}
+	            installing={installingUpdate}
+	            applying={applyingUpdate}
+	            error={updateError}
+	            onCheck={() => void runUpdateCheck()}
+	            onInstall={() => void runUpdateInstall()}
+	            onApply={() => void runUpdateApply()}
+	          />
         </>
       ),
     },
@@ -349,8 +369,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                onChange={(v) => setField('model_max_retries', v)} />
           <Num label={t('settings.agent.idleTimeoutSeconds')} value={draft.agent_idle_timeout_seconds ?? null}
                placeholder={placeholderFor('agent_idle_timeout_seconds')}
-               min={1}
-               max={3600}
+               min={0}
                onChange={(v) => setField('agent_idle_timeout_seconds', v)} />
           <BoolTri label={t('settings.agent.planModeDefault')} value={draft.plan_mode_default ?? null}
                    effective={effective.plan_mode_default}
@@ -498,16 +517,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                 key={section.id}
                 type="button"
                 onClick={() => jumpToSection(section.id)}
-                className={`nova-nav-item flex w-full items-center justify-between rounded-[var(--nova-radius)] px-2.5 py-1.5 text-left ${
+                className={`nova-nav-item flex w-full items-center rounded-[var(--nova-radius)] px-2.5 py-1.5 text-left ${
                   activeSection === section.id ? 'is-active' : ''
                 }`}
               >
                 <span className="truncate">{section.title}</span>
-                {expandedSections[section.id] ? (
-                  <ChevronUp className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                )}
               </button>
             ))}
           </div>
@@ -642,28 +656,37 @@ function Section({
   )
 }
 
-function UpdatePanel({
+export function UpdatePanel({
   status,
   installResult,
+  applyResult,
   installProgress,
   checking,
   installing,
+  applying,
   error,
   onCheck,
   onInstall,
+  onApply,
 }: {
   status: UpdateCheckResult | null
   installResult: UpdateInstallResult | null
+  applyResult: UpdateApplyResult | null
   installProgress: UpdateInstallProgress | null
   checking: boolean
   installing: boolean
+  applying: boolean
   error: string | null
   onCheck: () => void
   onInstall: () => void
+  onApply: () => void
 }) {
   const { t } = useTranslation()
   const releaseDate = status?.published_at ? new Date(status.published_at).toLocaleString() : ''
-  const installDisabled = installing || checking || !status?.can_install
+  const applyReady = Boolean(installResult?.apply_ready)
+  const restarting = Boolean(applyResult)
+  const installDisabled = installing || checking || applying || restarting || !status?.can_install || applyReady
+  const applyDisabled = checking || installing || applying || restarting || !applyReady
   const progressPercent = clampPercent(installProgress?.percent ?? 0)
   const progressLabel = installProgress ? updatePhaseLabel(installProgress.phase, t) : ''
   return (
@@ -712,9 +735,14 @@ function UpdatePanel({
               </div>
             </div>
           )}
-          {installResult?.installed && (
+          {installResult?.apply_ready && (
             <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-1.5 text-[var(--nova-text-muted)]">
-              {installResult.staged_path ? t('settings.updates.stagedRestart') : t('settings.updates.installedRestart')}
+              {t('settings.updates.stagedRestart')}
+            </div>
+          )}
+          {applyResult && (
+            <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-1.5 text-[var(--nova-text-muted)]">
+              {t('settings.updates.applyingRestart')}
             </div>
           )}
           {error && <InlineErrorNotice className="mt-2" message={error} title={t('settings.updates.error')} />}
@@ -734,7 +762,7 @@ function UpdatePanel({
           <button
             type="button"
             onClick={onCheck}
-            disabled={checking || installing}
+            disabled={checking || installing || applying || restarting}
             className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2.5 py-1 text-[var(--nova-text)] disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${checking ? 'animate-spin' : ''}`} />
@@ -749,6 +777,17 @@ function UpdatePanel({
             {installing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             {installing ? t('settings.updates.installing') : t('settings.updates.install')}
           </button>
+          {applyReady && (
+            <button
+              type="button"
+              onClick={onApply}
+              disabled={applyDisabled}
+              className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 text-[var(--nova-text)] disabled:opacity-50"
+            >
+              {applying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              {applying ? t('settings.updates.applying') : t('settings.updates.apply')}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -774,6 +813,8 @@ function updatePhaseLabel(phase: string, t: (key: string, args?: Record<string, 
       return t('settings.updates.phase.replacing')
     case 'staging':
       return t('settings.updates.phase.staging')
+    case 'staged':
+      return t('settings.updates.phase.staged')
     case 'installed':
       return t('settings.updates.phase.installed')
     default:

@@ -29,7 +29,7 @@ func GenerateInteractiveHotChoices(ctx context.Context, cfg *config.Config, inst
 		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())),
 		schema.UserMessage(instruction),
 	}
-	content, err := generateWithJSONFallback(ctx, modelCfg, messages, interactiveHotChoicesAgentLabel)
+	content, err := generateWithJSONFallback(ctx, modelCfg, messages, config.AgentKindInteractiveHotChoices, "interactive_hot_choices", interactiveHotChoicesAgentLabel)
 	if err != nil {
 		return nil, fmt.Errorf("生成互动快捷选择失败: %w", err)
 	}

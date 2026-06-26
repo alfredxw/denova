@@ -83,7 +83,10 @@ func boolPtr(v bool) *bool        { return &v }
 func intPtr(v int) *int           { return &v }
 func floatPtr(v float64) *float64 { return &v }
 
-const DefaultWritingSkillName = "novel-standard"
+const (
+	DefaultWritingSkillName        = "novel-standard"
+	DefaultAgentIdleTimeoutSeconds = 0
+)
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
 func DefaultSettings() Settings {
@@ -117,7 +120,7 @@ func DefaultSettings() Settings {
 		MotionIntensity:             "system",
 		UpdateCheckEnabled:          boolPtr(true),
 		ModelMaxRetries:             intPtr(5),
-		AgentIdleTimeoutSeconds:     intPtr(180),
+		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentModels: AgentModelSettings{
 			InteractiveHotChoices: AgentModelOverride{EnableThinking: boolPtr(false)},
 			VersionSummary:        AgentModelOverride{EnableThinking: boolPtr(false)},
@@ -443,11 +446,8 @@ func normalizeAgentIdleTimeoutSeconds(seconds *int) *int {
 	if seconds == nil {
 		return nil
 	}
-	if *seconds <= 0 {
+	if *seconds < 0 {
 		return nil
-	}
-	if *seconds > 3600 {
-		*seconds = 3600
 	}
 	return seconds
 }

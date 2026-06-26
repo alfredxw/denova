@@ -561,7 +561,7 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 		cfg.ModelMaxRetries = appSettingsInt(effective.ModelMaxRetries, 5)
 	}
 	if effective.AgentIdleTimeoutSeconds != nil {
-		cfg.AgentIdleTimeoutSeconds = appSettingsInt(effective.AgentIdleTimeoutSeconds, 180)
+		cfg.AgentIdleTimeoutSeconds = appAgentIdleTimeoutSeconds(effective.AgentIdleTimeoutSeconds)
 	}
 	if effective.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = effective.ChapterFilenameFormat
@@ -643,7 +643,7 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 		cfg.ModelMaxRetries = appSettingsInt(settings.ModelMaxRetries, 5)
 	}
 	if settings.AgentIdleTimeoutSeconds != nil {
-		cfg.AgentIdleTimeoutSeconds = appSettingsInt(settings.AgentIdleTimeoutSeconds, 180)
+		cfg.AgentIdleTimeoutSeconds = appAgentIdleTimeoutSeconds(settings.AgentIdleTimeoutSeconds)
 	}
 	if settings.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = settings.ChapterFilenameFormat
@@ -703,6 +703,13 @@ func (s *WorkspaceRuntimeManager) versionAutoSettings() book.VersionAutoSettings
 func appSettingsInt(v *int, fallback int) int {
 	if v == nil || *v <= 0 {
 		return fallback
+	}
+	return *v
+}
+
+func appAgentIdleTimeoutSeconds(v *int) int {
+	if v == nil || *v < 0 {
+		return config.DefaultAgentIdleTimeoutSeconds
 	}
 	return *v
 }

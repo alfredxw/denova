@@ -1,4 +1,4 @@
-import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -89,7 +89,6 @@ interface ModeRouterProps {
   onOpenCharacterCardImport: () => void
   onSetSidebarView: (view: 'outline' | 'files' | 'search') => void
   onSelectSearchResult: (result: WorkspaceSearchResult, query: string) => void | Promise<void>
-  onRefreshTree: () => void
   onSelectFile: (path: string) => void | Promise<void>
   onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
   onReferenceFile: (path: string) => void
@@ -106,8 +105,8 @@ interface ModeRouterProps {
   onSwitchChatSession: (id: string) => void | Promise<void>
   onRenameChatSession: (id: string, title: string) => void | Promise<void>
   onDeleteChatSession: (id: string) => void | Promise<void>
-  onSend: (message: string, options?: { writingSkill?: string }) => void
-  onAnalyzeContext: (message: string, options?: { writingSkill?: string }) => Promise<ContextAnalysis>
+  onSend: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] } }) => void
+  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] } }) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
@@ -171,7 +170,6 @@ export function ModeRouter(props: ModeRouterProps) {
     onOpenCharacterCardImport,
     onSetSidebarView,
     onSelectSearchResult,
-    onRefreshTree,
     onSelectFile,
     onSetChapterConfirmed,
     onReferenceFile,
@@ -201,6 +199,10 @@ export function ModeRouter(props: ModeRouterProps) {
   } = props
 
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
+  const ideContext = useMemo(() => ({
+    currentFile: selectedFile || undefined,
+    openFiles: openTabs.map((tab) => tab.path),
+  }), [openTabs, selectedFile])
   const versionsVisible = rightPanel === 'versions'
   const agentsVisible = mode === 'agents'
   const automationsVisible = mode === 'automations'
@@ -209,6 +211,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const interactiveSubmode = useInteractiveStore((state) => state.submode)
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
   const [tellers, setTellers] = useState<Teller[]>([])
+  const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -225,6 +228,10 @@ export function ModeRouter(props: ModeRouterProps) {
       })
     return () => { cancelled = true }
   }, [workspace])
+
+  useEffect(() => {
+    if (mode !== 'ide' || rightPanel !== 'ai') setAgentSubAgentDetailsOpen(false)
+  }, [mode, rightPanel])
 
   const loreReferenceLabels = useMemo(() => Object.fromEntries(loreItems.map((item) => [item.id, item.name])), [loreItems])
   const loreSuggestions = useMemo(() => loreItems.map((item) => ({
@@ -302,51 +309,26 @@ export function ModeRouter(props: ModeRouterProps) {
 
   const sidebar = (
     <section className="nova-sidebar flex h-full flex-col border-r">
-      <div className="flex min-h-[92px] flex-col gap-2 border-b border-[var(--nova-border)] px-3 py-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-xs font-medium text-[var(--nova-text)]">{summary?.title || t('router.work')}</div>
-            <div className="mt-0.5 text-[11px] text-[var(--nova-text-faint)]">
-              {summary ? t('workbench.status.summary', { title: summary.title || t('workbench.untitled'), chapters: formatNumber(summary.chapter_count), words: formatNumber(summary.total_words) }) : t('router.loadingProgress')}
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={onRefreshTree}
-              className="nova-nav-item rounded p-1"
-              title={t('router.refreshTree')}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={onToggleProjectVisible}
-              className="nova-nav-item rounded px-1"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
+      <div className="border-b border-[var(--nova-border)] px-3 py-2">
+        <div className="grid grid-cols-3 gap-1">
           <button
             type="button"
             onClick={() => onSetSidebarView('outline')}
-            className={`nova-nav-item flex-1 px-2 py-1 text-xs ${sidebarView === 'outline' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
+            className={`nova-nav-item h-7 min-w-0 truncate whitespace-nowrap px-1 text-[11px] ${sidebarView === 'outline' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
           >
             {t('router.outline')}
           </button>
           <button
             type="button"
             onClick={() => onSetSidebarView('files')}
-            className={`nova-nav-item flex-1 px-2 py-1 text-xs ${sidebarView === 'files' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
+            className={`nova-nav-item h-7 min-w-0 truncate whitespace-nowrap px-1 text-[11px] ${sidebarView === 'files' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
           >
             {t('router.files')}
           </button>
           <button
             type="button"
             onClick={() => onSetSidebarView('search')}
-            className={`nova-nav-item flex-1 px-2 py-1 text-xs ${sidebarView === 'search' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
+            className={`nova-nav-item h-7 min-w-0 truncate whitespace-nowrap px-1 text-[11px] ${sidebarView === 'search' ? 'is-active' : 'bg-[var(--nova-surface-2)]'}`}
           >
             {t('router.search')}
           </button>
@@ -545,6 +527,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onDeleteSession={onDeleteChatSession}
       onSend={onSend}
       onAnalyzeContext={onAnalyzeContext}
+      ideContext={ideContext}
       onStop={onStop}
       onReferenceRemove={onReferenceRemove}
       onLoreReferenceAdd={onLoreReferenceAdd}
@@ -553,6 +536,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onStyleSceneRemove={onStyleSceneRemove}
       onTextSelectionRemove={onTextSelectionRemove}
       onClose={() => onSetRightPanel(null)}
+      onSubAgentDetailsChange={setAgentSubAgentDetailsOpen}
     />
   ) : null
 
@@ -569,6 +553,7 @@ export function ModeRouter(props: ModeRouterProps) {
       projectVisible={projectVisible}
       activityBarExpanded={activityBarExpanded}
       rightPanel={rightPanel}
+      rightPanelWide={agentSubAgentDetailsOpen}
       settingsOpen={settingsOpen}
       interactiveSubmode={interactiveSubmode}
       sidebar={sidebar}
@@ -699,11 +684,6 @@ function ChapterOutline({
   const hasPlanning = settingShortcuts.length > 0 || bookSettings.length > 0 || chapterPlans.length > 0
   const latestChapterPlan = chapterPlans[chapterPlans.length - 1]
   const historicalChapterPlans = useMemo(() => chapterPlans.slice(0, -1), [chapterPlans])
-  const selectedBookSetting = useMemo(
-    () => bookSettings.find((item) => item.document.path === selectedFile),
-    [bookSettings, selectedFile],
-  )
-
   useEffect(() => {
     if (selectedFile && historicalChapterPlans.some((plan) => plan.path === selectedFile)) {
       setChapterPlanHistoryExpanded(true)
@@ -730,7 +710,21 @@ function ChapterOutline({
   return (
     <div className="space-y-3">
       <section className="space-y-1.5">
-        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.bookSettings')}</div>
+        <div className="flex items-center justify-between gap-2 px-1">
+          <span className="text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.bookSettings')}</span>
+          <button
+            type="button"
+            className="nova-nav-item flex min-w-0 items-center gap-1 rounded-[var(--nova-radius)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]"
+            onClick={() => setBookSettingsExpanded((expanded) => !expanded)}
+          >
+            {bookSettingsExpanded ? (
+              <ChevronDown className="h-3 w-3 shrink-0" />
+            ) : (
+              <ChevronRight className="h-3 w-3 shrink-0" />
+            )}
+            <span className="truncate">{t('planning.bookSettingCount', { count: bookSettings.length })}</span>
+          </button>
+        </div>
         <div className="flex items-center gap-1">
           {settingShortcuts.map((item) => {
             const selected = selectedFile === item.document.path
@@ -749,27 +743,8 @@ function ChapterOutline({
             )
           })}
         </div>
-      </section>
-
-      <section className="space-y-1.5">
-        <button
-          type="button"
-          className="nova-nav-item flex w-full items-center gap-1.5 border border-transparent bg-[var(--nova-surface)] px-2 py-1 text-left"
-          onClick={() => setBookSettingsExpanded((expanded) => !expanded)}
-        >
-          {bookSettingsExpanded ? (
-            <ChevronDown className="h-3 w-3 shrink-0 text-[var(--nova-text-muted)]" />
-          ) : (
-            <ChevronRight className="h-3 w-3 shrink-0 text-[var(--nova-text-muted)]" />
-          )}
-          <BookMarked className="h-3 w-3 shrink-0 text-[var(--nova-text-muted)]" />
-          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[var(--nova-text)]">{t('planning.otherBookSettings')}</span>
-          <span className="max-w-[96px] shrink-0 truncate text-[10px] text-[var(--nova-text-faint)]">
-            {selectedBookSetting && !bookSettingsExpanded ? selectedBookSetting.document.title : t('planning.bookSettingCount', { count: bookSettings.length })}
-          </span>
-        </button>
         {bookSettingsExpanded && (
-          <div className="space-y-0.5 pl-3">
+          <div className="space-y-0.5 pl-1">
             {bookSettings.map((item) => (
               <PlanningListItem
                 key={item.document.path}

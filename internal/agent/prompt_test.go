@@ -174,6 +174,31 @@ func TestBuildInstructionKeepsWorkspaceStateOutOfSystemPrompt(t *testing.T) {
 	}
 }
 
+func TestIDEContextRuntimeContextIsBoundedPathOnlyState(t *testing.T) {
+	longName := strings.Repeat("长", ideContextMaxPathRunes+8) + ".md"
+	context := IDEContextRuntimeContext(IDEContextRef{
+		CurrentFile: "/chapters/ch01.md",
+		OpenFiles: []string{
+			"chapters/ch01.md",
+			"chapters/ch01.md",
+			"../outside.md",
+			longName,
+		},
+	})
+
+	for _, want := range []string{"当前聚焦文件：chapters/ch01.md", "当前打开文件：chapters/ch01.md、", "不包含文件正文", "必须按路径显式使用工具读取", "[已截断]"} {
+		if !strings.Contains(context, want) {
+			t.Fatalf("IDE context missing %q:\n%s", want, context)
+		}
+	}
+	if strings.Contains(context, "../outside.md") {
+		t.Fatalf("IDE context should drop unsafe relative paths:\n%s", context)
+	}
+	if strings.Count(context, "chapters/ch01.md") != 2 {
+		t.Fatalf("IDE context should dedupe open files while preserving current file:\n%s", context)
+	}
+}
+
 func TestBuildInstructionIncludesStyleRulesInSystemPrompt(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	cfg := &config.Config{Workspace: state.Workspace()}

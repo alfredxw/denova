@@ -15,6 +15,10 @@ func (a *App) InstallUpdate(ctx context.Context) (update.InstallResult, error) {
 	return update.NewService().Install(ctx)
 }
 
+func (a *App) ApplyUpdate(ctx context.Context) (update.ApplyResult, error) {
+	return update.NewService().Apply(ctx)
+}
+
 func (a *App) StartInstallUpdateTask() *Task {
 	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		result, err := update.NewService().InstallWithProgress(ctx, func(progress update.InstallProgress) {

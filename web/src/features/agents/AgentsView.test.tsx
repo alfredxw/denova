@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getSkills } from '@/lib/api'
@@ -124,10 +124,10 @@ describe('AgentsView', () => {
 
     const title = await screen.findByText('命令执行')
     const row = title.parentElement?.parentElement
-    const select = row?.querySelector('select')
+    const toggle = row ? within(row).getByRole('switch', { name: '命令执行' }) : null
     expect(screen.queryByText('Windows 暂不支持 execute')).not.toBeInTheDocument()
-    expect(select).toBeTruthy()
-    expect(select).not.toBeDisabled()
+    expect(toggle).toBeTruthy()
+    expect(toggle).not.toBeDisabled()
   })
 
   it('adds and edits custom SubAgents in user settings by default', async () => {
@@ -153,6 +153,103 @@ describe('AgentsView', () => {
           parents: ['ide'],
         })],
       }))
+    })
+  })
+
+  it('can disable inherited default SubAgents from the active settings layer', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      effective: {
+        sub_agents: [{
+          id: 'reviewer',
+          name: 'Reviewer',
+          description: 'Reviews drafts.',
+          system_prompt: 'Review only.',
+          parents: ['ide'],
+          enabled: true,
+        }],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    const reviewer = await screen.findByText('Reviewer')
+    const row = reviewer.closest('div.rounded-\\[var\\(--nova-radius\\)\\]')
+    expect(row).toBeTruthy()
+    await user.click(within(row as HTMLElement).getByRole('switch', { name: '启用状态' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
+        sub_agents: [expect.objectContaining({
+          id: 'reviewer',
+          enabled: false,
+        })],
+      }))
+    })
+  })
+
+  it('deletes inherited SubAgents without re-enabling them on the next render', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      effective: {
+        sub_agents: [{
+          id: 'reviewer',
+          name: 'Reviewer',
+          description: 'Reviews drafts.',
+          system_prompt: 'Review only.',
+          parents: ['ide'],
+          enabled: true,
+        }],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    await screen.findByText('Reviewer')
+    await user.click(screen.getByRole('button', { name: '删除 SubAgent' }))
+    await screen.findByText('删除 SubAgent？')
+    await user.click(screen.getByRole('button', { name: '删除' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('Reviewer')).not.toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
+        sub_agents: [expect.objectContaining({
+          id: 'reviewer',
+          enabled: false,
+          parents: ['interactive_story', 'config_manager', 'automation'],
+        })],
+      }))
+    })
+  })
+
+  it('shows inherited SubAgents only on matching parent agents', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      effective: {
+        sub_agents: [{
+          id: 'reviewer',
+          name: 'Reviewer',
+          description: 'Reviews drafts.',
+          system_prompt: 'Review only.',
+          parents: ['ide'],
+          enabled: true,
+        }],
+      },
+    }))
+
+    render(<AgentsView />)
+
+    await screen.findByText('Reviewer')
+    await user.click(screen.getByRole('button', { name: '配置管理 Agent资料库、叙事编排、Skills、自动化与故事记忆管理' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('Reviewer')).not.toBeInTheDocument()
     })
   })
 
@@ -254,7 +351,7 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     const generalSwitch = await screen.findByLabelText('通用 SubAgent 启用状态')
-    await user.selectOptions(generalSwitch, 'false')
+    await user.click(generalSwitch)
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {

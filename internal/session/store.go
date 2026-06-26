@@ -78,6 +78,12 @@ type historyRecord struct {
 	displayArgsPersistedBytes int
 }
 
+type messageRecord struct {
+	Type      string         `json:"type"`
+	CreatedAt time.Time      `json:"created_at,omitempty"`
+	Message   schema.Message `json:"message"`
+}
+
 // DisplayEvent 表示只用于前端展示的非上下文事件，例如 thinking 和工具卡片。
 type DisplayEvent struct {
 	ID        string    `json:"id,omitempty"`
@@ -189,9 +195,10 @@ func (s *Session) Append(msg *schema.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	now := time.Now().UTC()
 	s.messages = append(s.messages, msg)
-	s.records = append(s.records, historyRecord{kind: historyTypeMessage, message: msg})
-	s.touchLocked()
+	s.records = append(s.records, historyRecord{kind: historyTypeMessage, message: msg, createdAt: now})
+	s.UpdatedAt = now
 	if s.title == defaultSessionTitle && msg.Role == schema.User && strings.TrimSpace(msg.Content) != "" {
 		s.title = deriveTitle(msg.Content)
 	}
@@ -636,10 +643,11 @@ func (s *Session) History() []HistoryEntry {
 				continue
 			}
 			result = append(result, HistoryEntry{
-				Type:    historyTypeMessage,
-				Role:    string(record.message.Role),
-				Content: record.message.Content,
-				Message: record.message,
+				Type:      historyTypeMessage,
+				Role:      string(record.message.Role),
+				Content:   record.message.Content,
+				Message:   record.message,
+				CreatedAt: record.createdAt,
 			})
 		case historyTypeDisplay:
 			if record.display == nil {
@@ -787,7 +795,8 @@ func (s *Session) persistLocked() error {
 			if record.message == nil {
 				continue
 			}
-			if err := writeJSONLine(&sb, record.message); err != nil {
+			message := messageRecord{Type: historyTypeMessage, CreatedAt: record.createdAt, Message: *record.message}
+			if err := writeJSONLine(&sb, message); err != nil {
 				return err
 			}
 		}
@@ -1314,7 +1323,31 @@ func appendRecordLine(sess *Session, line string) error {
 		}
 		return nil
 	}
+	if typed.Type == historyTypeMessage {
+		return appendMessageRecordLine(sess, line)
+	}
 	return appendMessageLine(sess, line)
+}
+
+func appendMessageRecordLine(sess *Session, line string) error {
+	var record messageRecord
+	if err := json.Unmarshal([]byte(line), &record); err != nil {
+		return err
+	}
+	if record.Message.Role == "" && record.Message.Content == "" {
+		return nil
+	}
+	createdAt := record.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = nextLegacyMessageCreatedAt(sess)
+	}
+	msg := record.Message
+	sess.messages = append(sess.messages, &msg)
+	sess.records = append(sess.records, historyRecord{kind: historyTypeMessage, message: &msg, createdAt: createdAt})
+	if createdAt.After(sess.UpdatedAt) {
+		sess.UpdatedAt = createdAt
+	}
+	return nil
 }
 
 func appendMessageLine(sess *Session, line string) error {
@@ -1325,9 +1358,24 @@ func appendMessageLine(sess *Session, line string) error {
 	if msg.Role == "" && msg.Content == "" {
 		return nil
 	}
+	createdAt := nextLegacyMessageCreatedAt(sess)
 	sess.messages = append(sess.messages, &msg)
-	sess.records = append(sess.records, historyRecord{kind: historyTypeMessage, message: &msg})
+	sess.records = append(sess.records, historyRecord{kind: historyTypeMessage, message: &msg, createdAt: createdAt})
+	if createdAt.After(sess.UpdatedAt) {
+		sess.UpdatedAt = createdAt
+	}
 	return nil
+}
+
+func nextLegacyMessageCreatedAt(sess *Session) time.Time {
+	base := sess.UpdatedAt
+	if base.IsZero() {
+		base = sess.CreatedAt
+	}
+	if base.IsZero() {
+		base = time.Now().UTC()
+	}
+	return base.Add(time.Duration(len(sess.records)+1) * time.Millisecond)
 }
 
 func (s *Session) nextCompactionEpochLocked(agentKind string) int {

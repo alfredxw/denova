@@ -15,11 +15,11 @@ if [[ -z "${VERSION}" ]]; then
 fi
 
 TARGETS=(
-  "darwin-arm64:darwin:arm64:nova:tar.gz"
-  "darwin-x64:darwin:amd64:nova:tar.gz"
-  "linux-arm64:linux:arm64:nova:tar.gz"
-  "linux-x64:linux:amd64:nova:tar.gz"
-  "windows-x64:windows:amd64:nova.exe:zip"
+  "darwin-arm64:darwin:arm64:nova:nova-updater:tar.gz"
+  "darwin-x64:darwin:amd64:nova:nova-updater:tar.gz"
+  "linux-arm64:linux:arm64:nova:nova-updater:tar.gz"
+  "linux-x64:linux:amd64:nova:nova-updater:tar.gz"
+  "windows-x64:windows:amd64:nova.exe:nova-updater.exe:zip"
 )
 
 require_command() {
@@ -71,7 +71,7 @@ run_pnpm -C "${ROOT_DIR}/web" build
 
 echo "==> 交叉编译并打包"
 for target in "${TARGETS[@]}"; do
-  IFS=":" read -r key goos goarch exe archive_type <<<"${target}"
+  IFS=":" read -r key goos goarch exe updater_exe archive_type <<<"${target}"
   package_name="nova-${VERSION}-${key}"
   package_dir="${BUILD_DIR}/${package_name}/nova"
   mkdir -p "${package_dir}"
@@ -80,9 +80,12 @@ for target in "${TARGETS[@]}"; do
   binary_version="${VERSION#v}"
   CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
     go build -trimpath -ldflags "-s -w -X nova/internal/buildinfo.Version=${binary_version}" -o "${package_dir}/${exe}" ./cmd/nova
+  CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
+    go build -trimpath -ldflags "-s -w -X nova/internal/buildinfo.Version=${binary_version}" -o "${package_dir}/${updater_exe}" ./cmd/nova-updater
 
   if [[ "${goos}" != "windows" ]]; then
     chmod 0755 "${package_dir}/${exe}"
+    chmod 0755 "${package_dir}/${updater_exe}"
   fi
 
   cp -R "${ROOT_DIR}/web/dist" "${package_dir}/web"

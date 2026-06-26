@@ -3,7 +3,9 @@ package agent
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -191,6 +193,8 @@ func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller ID
 const (
 	ideWorkspaceStableContextTitle  = "稳定作品上下文"
 	ideWorkspaceDynamicContextTitle = "本轮动态作品状态"
+	ideContextMaxOpenFiles          = 20
+	ideContextMaxPathRunes          = 240
 )
 
 type IDEWorkspaceRuntimeContexts struct {
@@ -214,6 +218,88 @@ func IDEWorkspaceRuntimeContextsForState(state *book.State) IDEWorkspaceRuntimeC
 		contexts.Stable = prompts.EmptyIDEStateHint()
 	}
 	return contexts
+}
+
+func IDEWorkspaceRuntimeContextsForRequest(state *book.State, req ChatRequest) IDEWorkspaceRuntimeContexts {
+	contexts := IDEWorkspaceRuntimeContextsForState(state)
+	ideContext := IDEContextRuntimeContext(req.IDEContext)
+	if strings.TrimSpace(ideContext) == "" {
+		return contexts
+	}
+	extra := book.FormatCompactContextParts([]book.CompactContextPart{{
+		ID:          "ide_current_state",
+		Source:      "frontend:ide_context",
+		Title:       "IDE 当前状态",
+		PromptTitle: fmt.Sprintf("IDE 当前状态（前端请求提供，仅路径；最多 %d 个打开文件）", ideContextMaxOpenFiles),
+		Content:     ideContext,
+	}})
+	contexts.Dynamic = strings.TrimSpace(strings.Join(trimmedNonEmpty([]string{contexts.Dynamic, extra}), "\n\n"))
+	return contexts
+}
+
+func IDEContextRuntimeContext(ide IDEContextRef) string {
+	currentFile := boundedIDEContextPath(ide.CurrentFile)
+	openFiles := boundedIDEContextPaths(ide.OpenFiles, ideContextMaxOpenFiles)
+	if currentFile == "" && len(openFiles) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("来源：前端 IDE 请求状态；仅描述当前打开/聚焦的文件路径，不包含文件正文。\n")
+	if currentFile != "" {
+		sb.WriteString("- 当前聚焦文件：")
+		sb.WriteString(currentFile)
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString("- 当前聚焦文件：无\n")
+	}
+	if len(openFiles) > 0 {
+		sb.WriteString("- 当前打开文件：")
+		sb.WriteString(strings.Join(openFiles, "、"))
+		if len(ide.OpenFiles) > len(openFiles) {
+			sb.WriteString(fmt.Sprintf("（其余 %d 个已省略）", len(ide.OpenFiles)-len(openFiles)))
+		}
+		sb.WriteString("\n")
+	}
+	sb.WriteString("- 使用约束：如需读取正文，必须按路径显式使用工具读取；不要假设这里包含最新文件内容。")
+	return strings.TrimSpace(sb.String())
+}
+
+func boundedIDEContextPaths(paths []string, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+	result := make([]string, 0, min(len(paths), limit))
+	seen := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		path = boundedIDEContextPath(path)
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		result = append(result, path)
+		if len(result) >= limit {
+			break
+		}
+	}
+	return result
+}
+
+func boundedIDEContextPath(path string) string {
+	path = strings.TrimSpace(filepath.ToSlash(path))
+	path = strings.TrimLeft(path, "/")
+	if path == "" || strings.Contains(path, ":") {
+		return ""
+	}
+	for _, part := range strings.Split(path, "/") {
+		if part == ".." {
+			return ""
+		}
+	}
+	runes := []rune(path)
+	if len(runes) <= ideContextMaxPathRunes {
+		return path
+	}
+	return string(runes[:ideContextMaxPathRunes]) + "[已截断]"
 }
 
 func IDEWorkspaceRuntimeContext(state *book.State) string {

@@ -277,15 +277,25 @@ export interface UpdateCheckResult {
 export interface UpdateInstallResult {
   previous_version: string
   installed_version: string
+  status?: 'staged' | 'installed' | string
   installed: boolean
+  staged?: boolean
+  apply_ready?: boolean
   restart_required: boolean
   backup_path?: string
   staged_path?: string
+  apply_log_path?: string
   message?: string
 }
 
+export interface UpdateApplyResult {
+  status: 'restarting' | string
+  version: string
+  log_path?: string
+}
+
 export interface UpdateInstallProgress {
-  phase: 'checking' | 'downloading' | 'verifying' | 'extracting' | 'replacing' | 'staging' | 'installed' | string
+  phase: 'checking' | 'downloading' | 'verifying' | 'extracting' | 'replacing' | 'staging' | 'staged' | 'installed' | string
   asset_name?: string
   archive_path?: string
   downloaded_bytes?: number

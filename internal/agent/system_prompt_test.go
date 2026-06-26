@@ -65,6 +65,9 @@ func TestDeepAgentParentRuntimeContractsIncludeSubAgentDelegationProtocol(t *tes
 			instruction := protectedSystemInstruction(&config.Config{}, agentKind, "BUILT IN PROMPT")
 			for _, required := range []string{
 				"SubAgent 委派协议",
+				"默认不要主动拉起 SubAgent",
+				"用户明确要求委派/拉起子 Agent",
+				"Skill 流程明确要求使用 SubAgent",
 				"用户目标、必要上下文、已知约束、文件路径或资源 ID、期望输出",
 				"不要复制大段正文、完整日志、完整历史或其他无界内容",
 				"父 Agent 必须自行核对结果",

@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { Group, Panel, Separator } from 'react-resizable-panels'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { Group, Panel, Separator, useGroupRef } from 'react-resizable-panels'
 import type { Layout } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
@@ -16,6 +16,7 @@ interface WorkspaceLayoutProps {
   sidebarVisible?: boolean
   rightPanelVisible?: boolean
   bottomPanelVisible?: boolean
+  rightPanelWide?: boolean
 }
 
 /** 工作台布局组件，只负责可拖拽区域编排，不承载业务逻辑。 */
@@ -30,8 +31,66 @@ export function WorkspaceLayout({
   sidebarVisible = true,
   rightPanelVisible = true,
   bottomPanelVisible = true,
+  rightPanelWide = false,
 }: WorkspaceLayoutProps) {
   const { t } = useTranslation()
+  const horizontalGroupRef = useGroupRef()
+  const layoutBeforeWideRef = useRef<Layout | null>(null)
+  const wasRightPanelWideRef = useRef(false)
+
+  useEffect(() => {
+    if (!rightPanelVisible) {
+      layoutBeforeWideRef.current = null
+      wasRightPanelWideRef.current = false
+      return
+    }
+
+    const shouldRestoreFromWide = wasRightPanelWideRef.current && !rightPanelWide
+    if (!rightPanelWide && !shouldRestoreFromWide) return
+
+    const updateRightPanelWidth = () => {
+      const group = horizontalGroupRef.current
+      if (!group) return
+      const layout = group.getLayout()
+      if (typeof layout.right !== 'number' || typeof layout.center !== 'number') return
+
+      if (rightPanelWide) {
+        if (!layoutBeforeWideRef.current) layoutBeforeWideRef.current = layout
+        wasRightPanelWideRef.current = true
+      }
+
+      if (!rightPanelWide) {
+        const storedLayout = layoutBeforeWideRef.current
+        layoutBeforeWideRef.current = null
+        wasRightPanelWideRef.current = false
+        if (storedLayout && typeof storedLayout.right === 'number' && typeof storedLayout.center === 'number') {
+          if (Math.abs(storedLayout.right - layout.right) > 1 || Math.abs(storedLayout.center - layout.center) > 1) {
+            group.setLayout(storedLayout)
+          }
+          return
+        }
+      }
+
+      const sidebarSize = sidebarVisible && typeof layout.sidebar === 'number' ? layout.sidebar : 0
+      const targetRightSize = rightPanelWide ? 58 : 34
+      const minCenterSize = Math.max(100 - sidebarSize - targetRightSize, 22)
+      const nextCenterSize = Math.min(layout.center, minCenterSize)
+      const nextRightSize = 100 - sidebarSize - nextCenterSize
+      const layoutSum = Object.values(layout).reduce((sum, value) => sum + value, 0)
+
+      const rightPanelSizeChanged = rightPanelWide
+        ? nextRightSize > layout.right + 1 || layout.center > nextCenterSize + 1
+        : Math.abs(nextRightSize - layout.right) > 1 || Math.abs(nextCenterSize - layout.center) > 1
+
+      if (rightPanelSizeChanged || Math.abs(layoutSum - 100) > 1) {
+        group.setLayout({ ...layout, center: nextCenterSize, right: nextRightSize })
+      }
+    }
+    updateRightPanelWidth()
+    const frame = window.requestAnimationFrame(updateRightPanelWidth)
+    return () => window.cancelAnimationFrame(frame)
+  }, [horizontalGroupRef, rightPanelVisible, rightPanelWide, sidebarVisible])
+
   return (
     <div data-nova-app-shell="true" className="h-screen w-screen overflow-hidden">
       <div className="flex h-full flex-col">
@@ -40,7 +99,8 @@ export function WorkspaceLayout({
           {activityBar}
           <Group
             id="nova-workspace-horizontal"
-            defaultLayout={readStoredLayout('nova-workspace-horizontal')}
+            groupRef={horizontalGroupRef}
+            defaultLayout={readStoredLayoutForWorkspace('nova-workspace-horizontal', ['sidebar', 'center', 'right'])}
             onLayoutChanged={(layout) => storeLayout('nova-workspace-horizontal', layout)}
             orientation="horizontal"
             resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
@@ -62,10 +122,10 @@ export function WorkspaceLayout({
                 {sidebarVisible ? <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.sidebar')} /> : null}
               </>
             )}
-            <Panel id="center" minSize="30%" className="min-w-0">
+            <Panel id="center" minSize={rightPanelWide ? '260px' : '30%'} className="min-w-0">
               <Group
                 id="nova-workspace-main-vertical"
-                defaultLayout={readStoredLayout('nova-workspace-main-vertical')}
+                defaultLayout={readStoredLayoutForWorkspace('nova-workspace-main-vertical', ['main', 'bottom'])}
                 onLayoutChanged={(layout) => storeLayout('nova-workspace-main-vertical', layout)}
                 orientation="vertical"
                 resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
@@ -86,7 +146,17 @@ export function WorkspaceLayout({
             {rightPanel && (
               <>
                 {rightPanelVisible ? <WorkspaceResizeHandle direction="vertical" label={t('layout.resize.right')} /> : null}
-                <Panel id="right" defaultSize="34%" minSize="360px" maxSize="55%" className="min-w-[360px]" disabled={!rightPanelVisible} hidden={!rightPanelVisible} aria-hidden={!rightPanelVisible}>
+                <Panel
+                  id="right"
+                  defaultSize={rightPanelWide ? '58%' : '34%'}
+                  minSize={rightPanelWide ? '520px' : '360px'}
+                  maxSize={rightPanelWide ? '68%' : '55%'}
+                  className={rightPanelWide ? 'min-w-[520px]' : 'min-w-[360px]'}
+                  disabled={!rightPanelVisible}
+                  hidden={!rightPanelVisible}
+                  aria-hidden={!rightPanelVisible}
+                  data-nova-right-panel={rightPanelWide ? 'wide' : 'default'}
+                >
                   <motion.div
                     className="h-full min-h-0"
                     variants={subtlePresence}
@@ -115,12 +185,17 @@ function WorkspaceResizeHandle({ direction, label }: { direction: 'horizontal' |
   return <Separator aria-label={label} className={className} />
 }
 
-function readStoredLayout(key: string): Layout | undefined {
+export function readStoredLayoutForWorkspace(key: string, panelOrder?: string[]): Layout | undefined {
   if (typeof window === 'undefined') return undefined
   const value = window.localStorage.getItem(key)
   if (!value) return undefined
   try {
-    return JSON.parse(value) as Layout
+    const layout = JSON.parse(value) as Layout
+    if (!panelOrder) return layout
+    return panelOrder.reduce<Layout>((ordered, panelId) => {
+      if (typeof layout[panelId] === 'number') ordered[panelId] = layout[panelId]
+      return ordered
+    }, {})
   } catch {
     return undefined
   }

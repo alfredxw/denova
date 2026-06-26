@@ -43,8 +43,8 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 		o.Workspace = strings.TrimSpace(defaultWorkspace)
 	}
 	o.Mode = strings.TrimSpace(o.Mode)
-	if o.IdleTimeout <= 0 {
-		o.IdleTimeout = 180 * time.Second
+	if o.IdleTimeout < 0 {
+		o.IdleTimeout = 0
 	}
 	return o
 }

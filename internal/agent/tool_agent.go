@@ -80,6 +80,7 @@ func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg
 		log.Printf("[tool-agent] infer chapter split regex nil response attempt=%s", attempt)
 		return "", fmt.Errorf("工具 Agent 返回为空")
 	}
+	logModelProviderRequestID(config.AgentKindToolAgent, "tool_agent_chapter_split_regex", "generate_"+attempt, modelCfg.Model, "", 0, msg)
 	log.Printf("[tool-agent] infer chapter split regex raw output attempt=%s content=%s reasoning=%s", attempt, promptPartSummary(msg.Content), promptPartSummary(msg.ReasoningContent))
 	regex, reason, err := parseChapterSplitRegexContent(msg.Content)
 	if err != nil && strings.TrimSpace(msg.Content) == "" && strings.TrimSpace(msg.ReasoningContent) != "" {

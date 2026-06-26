@@ -41,15 +41,29 @@ func TestPlatformKeyNormalizesAMD64(t *testing.T) {
 	}
 }
 
-func TestInstallUsesBrowserDownloadURLAndIgnoresRequestCancel(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows updates are staged through a cmd script")
+func TestValidateReleasePackageRequiresUpdater(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "nova"), []byte("exe"), 0o755); err != nil {
+		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(dir, "web"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateReleasePackage(dir, "nova", updaterExecutableName()); err == nil {
+		t.Fatal("validateReleasePackage should fail when updater is missing")
+	}
+}
 
+func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
 	platform := platformKey(runtime.GOOS, runtime.GOARCH)
 	assetName := "nova-v0.2.0-" + platform + ".tar.gz"
+	updaterName := updaterExecutableName()
 	archive := testReleaseArchive(t, "nova", map[string]string{
 		"nova":                 "new executable",
+		updaterName:            "new updater",
 		"web/index.html":       "<html>new</html>",
 		"skills/demo/SKILL.md": "skill",
 		"README.md":            "readme",
@@ -101,6 +115,9 @@ func TestInstallUsesBrowserDownloadURLAndIgnoresRequestCancel(t *testing.T) {
 	if err := os.WriteFile(exePath, []byte("old executable"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(installDir, updaterName), []byte("old updater"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(installDir, "web"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -125,29 +142,46 @@ func TestInstallUsesBrowserDownloadURLAndIgnoresRequestCancel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Install failed: %v", err)
 	}
-	if !result.Installed || !result.RestartRequired || result.InstalledVersion != "0.2.0" {
+	if result.Status != "staged" || !result.Staged || !result.ApplyReady || !result.RestartRequired || result.Installed || result.InstalledVersion != "0.2.0" {
 		t.Fatalf("unexpected install result: %#v", result)
 	}
 	if assetAPIHit || checksumAPIHit {
 		t.Fatalf("install should use browser_download_url, asset_api=%v checksum_api=%v", assetAPIHit, checksumAPIHit)
 	}
-	if got, err := os.ReadFile(exePath); err != nil || string(got) != "new executable" {
-		t.Fatalf("executable not replaced: %q err=%v", got, err)
+	if got, err := os.ReadFile(exePath); err != nil || string(got) != "old executable" {
+		t.Fatalf("executable should not be replaced before apply: %q err=%v", got, err)
 	}
-	if got, err := os.ReadFile(filepath.Join(installDir, "web", "index.html")); err != nil || string(got) != "<html>new</html>" {
-		t.Fatalf("web assets not replaced: %q err=%v", got, err)
+	if got, err := os.ReadFile(filepath.Join(installDir, "web", "index.html")); err != nil || string(got) != "old web" {
+		t.Fatalf("web assets should not be replaced before apply: %q err=%v", got, err)
 	}
-	if _, err := os.Stat(filepath.Join(result.BackupPath, "nova")); err != nil {
-		t.Fatalf("backup executable missing: %v", err)
+	if got, err := os.ReadFile(filepath.Join(result.StagedPath, "nova")); err != nil || string(got) != "new executable" {
+		t.Fatalf("staged executable missing: %q err=%v", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(result.StagedPath, updaterName)); err != nil || string(got) != "new updater" {
+		t.Fatalf("staged updater missing: %q err=%v", got, err)
 	}
 	archivePath := filepath.Join(installDir, ".nova-updates", "downloads", assetName)
 	if _, err := os.Stat(archivePath); err != nil {
 		t.Fatalf("downloaded archive should be kept in install dir: %v", err)
 	}
-	if !hasProgressPhase(progress, "downloading") || !hasProgressPhase(progress, "replacing") || !hasProgressPhase(progress, "installed") {
+	manifestPath, err := readPendingManifestRef(filepath.Join(installDir, ".nova-updates"))
+	if err != nil {
+		t.Fatalf("pending manifest ref missing: %v", err)
+	}
+	manifest, err := readManifest(manifestPath)
+	if err != nil {
+		t.Fatalf("manifest unreadable: %v", err)
+	}
+	if manifest.SourceDir != result.StagedPath || manifest.TargetExecutable != exePath || manifest.UpdaterExecutable != filepath.Join(result.StagedPath, updaterName) {
+		t.Fatalf("unexpected manifest: %#v", manifest)
+	}
+	if len(manifest.RelaunchArgs) == 0 || manifest.RelaunchArgs[len(manifest.RelaunchArgs)-1] != "--no-open" {
+		t.Fatalf("manifest should force --no-open: %#v", manifest.RelaunchArgs)
+	}
+	if !hasProgressPhase(progress, "downloading") || !hasProgressPhase(progress, "staging") || !hasProgressPhase(progress, "staged") {
 		t.Fatalf("missing install progress phases: %#v", progress)
 	}
-	if last := progress[len(progress)-1]; last.Phase != "installed" || last.Percent != 100 {
+	if last := progress[len(progress)-1]; last.Phase != "staged" || last.Percent != 100 {
 		t.Fatalf("unexpected final progress event: %#v", last)
 	}
 }

@@ -72,6 +72,16 @@ func TestLoadLegacyJSONLWithoutClearMarkerUsesFullHistory(t *testing.T) {
 	if got := sess.Title(); got != "旧问题" {
 		t.Fatalf("旧文件应从首条用户消息推导标题: %s", got)
 	}
+	history := sess.History()
+	if len(history) != 2 {
+		t.Fatalf("旧文件历史消息数量错误: %#v", history)
+	}
+	if history[0].CreatedAt.IsZero() || history[1].CreatedAt.IsZero() {
+		t.Fatalf("旧文件历史消息应补齐展示时间: %#v", history)
+	}
+	if !history[1].CreatedAt.After(history[0].CreatedAt) {
+		t.Fatalf("旧文件历史消息展示时间应按文件顺序递增: %#v", history)
+	}
 }
 
 func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {

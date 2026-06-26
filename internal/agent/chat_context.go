@@ -11,32 +11,26 @@ import (
 
 const maxStyleRuleContextChars = 32000
 
-// appendWritingSkillContext 将本轮生效的写作 Skill 注入用户消息，作为 Agent 的工作流约束。
-func appendWritingSkillContext(message string, ctx WritingSkillContext, logs ...*contextBuildLog) string {
+// appendWritingSkillLoadHint 只提示本轮选中的 Writing Skill 名称；完整
+// SKILL.md 必须由模型在判断需要正文续写/创作时通过 skill 工具自行加载。
+func appendWritingSkillLoadHint(message, skillName string, logs ...*contextBuildLog) string {
+	skillName = strings.TrimSpace(skillName)
+	if skillName == "" {
+		return message
+	}
 	var sb strings.Builder
 	sb.WriteString(message)
-	sb.WriteString("\n\n# 本轮选中的 Writing Skill\n\n")
-	sb.WriteString("以下 SKILL.md 是本轮 IDE 创作 Agent 必须遵循的有效写作 Skill。它定义写作流程、角色协作和输出要求；用户本轮自然语言指令仍然决定具体写作范围，不存在单独的 writing_scope 字段。\n\n")
-	sb.WriteString("- name: ")
-	sb.WriteString(ctx.Name)
-	sb.WriteString("\n- source: ")
-	sb.WriteString(ctx.Source)
-	sb.WriteString("\n- scope: ")
-	sb.WriteString(ctx.Scope)
-	if ctx.Path != "" {
-		sb.WriteString("\n- path: ")
-		sb.WriteString(ctx.Path)
-	}
-	sb.WriteString(fmt.Sprintf("\n- size_limit_chars: %d", ctx.MaxChars))
-	if ctx.Truncated {
-		sb.WriteString("\n- truncated: true")
-	}
-	sb.WriteString("\n\n```markdown\n")
-	sb.WriteString(ctx.Content)
-	sb.WriteString("\n```\n")
+	sb.WriteString("\n\n# Writing Skill 按需加载提示\n\n")
+	sb.WriteString("当前创作 Agent 选中的 Writing Skill 是 `")
+	sb.WriteString(skillName)
+	sb.WriteString("`。\n\n")
+	sb.WriteString("- 若本轮请求涉及小说正文续写、章节正文创作、正文重写或润色，且当前 Agent 已启用 `skill` 工具，请先调用 `skill` 工具加载 `")
+	sb.WriteString(skillName)
+	sb.WriteString("`，读取完整 SKILL.md 后再执行。\n")
+	sb.WriteString("- 若本轮请求是问答、分析、整理、大纲/设定讨论、配置或规划，不要加载 Writing Skill，直接按本轮请求处理。\n")
+	sb.WriteString("- 在调用 `skill` 工具前，不要假装已经读取了该 Skill 的完整说明；写作范围仍只由用户本轮自然语言指令决定，不存在单独的 `writing_scope` 字段。\n")
 
-	note := fmt.Sprintf("source=%s scope=%s path=%s max_chars=%d", ctx.Source, ctx.Scope, ctx.Path, ctx.MaxChars)
-	addContextLog(logs, "写作 Skill", ctx.Name, sb.String()[len(message):], note)
+	addContextLog(logs, "注入规则", "Writing Skill 按需加载", sb.String()[len(message):], skillName)
 	return sb.String()
 }
 

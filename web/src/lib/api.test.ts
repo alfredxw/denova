@@ -140,6 +140,7 @@ describe('api', () => {
       undefined,
       true,
       'novel-heavy',
+      { currentFile: 'chapters/ch02.md', openFiles: ['chapters/ch01.md', 'chapters/ch02.md'] },
     )
     const reader = stream.getReader()
 
@@ -163,6 +164,10 @@ describe('api', () => {
         end_line: 2,
         content: '选中文本',
       }],
+      ide_context: {
+        current_file: 'chapters/ch02.md',
+        open_files: ['chapters/ch01.md', 'chapters/ch02.md'],
+      },
       plan_mode: true,
       writing_skill: 'novel-heavy',
     })

@@ -637,7 +637,6 @@ function App() {
         onOpenCharacterCardImport={handleOpenCharacterCardImportFromBooks}
         onSetSidebarView={setSidebarView}
         onSelectSearchResult={handleSelectSearchResult}
-        onRefreshTree={refresh}
         onSelectFile={handleSelectFile}
         onSetChapterConfirmed={handleSetChapterConfirmed}
         onReferenceFile={addReference}

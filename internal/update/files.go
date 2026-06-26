@@ -85,30 +85,3 @@ func copyDir(source, target string) error {
 		return copyFile(path, dest, info.Mode().Perm())
 	})
 }
-
-func windowsApplyScript(pid int, source, target, backup, exeName string) string {
-	return fmt.Sprintf(`@echo off
-setlocal
-set "PID=%d"
-set "SRC=%s"
-set "DST=%s"
-set "BACKUP=%s"
-:wait
-tasklist /FI "PID eq %%PID%%" | find "%%PID%%" >NUL
-if not errorlevel 1 (
-  timeout /t 1 /nobreak >NUL
-  goto wait
-)
-if not exist "%%BACKUP%%" mkdir "%%BACKUP%%"
-if exist "%%DST%%\%s" move /Y "%%DST%%\%s" "%%BACKUP%%\%s" >NUL
-if exist "%%DST%%\web" rmdir /S /Q "%%DST%%\web"
-if exist "%%DST%%\skills" rmdir /S /Q "%%DST%%\skills"
-xcopy /E /I /Y "%%SRC%%\web" "%%DST%%\web" >NUL
-xcopy /E /I /Y "%%SRC%%\skills" "%%DST%%\skills" >NUL
-copy /Y "%%SRC%%\%s" "%%DST%%\%s" >NUL
-copy /Y "%%SRC%%\README.md" "%%DST%%\README.md" >NUL 2>NUL
-copy /Y "%%SRC%%\CHANGELOG.md" "%%DST%%\CHANGELOG.md" >NUL 2>NUL
-copy /Y "%%SRC%%\LICENSE" "%%DST%%\LICENSE" >NUL 2>NUL
-endlocal
-`, pid, source, target, backup, exeName, exeName, exeName, exeName, exeName)
-}

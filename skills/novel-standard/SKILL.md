@@ -21,21 +21,13 @@ writer -> reviewer -> fixer -> final output
 
 如果这些角色 subagent 可用，请按顺序使用：
 
-1. `writer` 按用户要求的范围和约束生成初稿，通过 write_file 工具写入文件，返回给主agent文件名和决策信息，不更新进度和角色状态相关文件
-2. `reviewer` 只审稿并返回结构化问题，不直接改正文，多个维度去check，确认文章连续性，资料库匹配，节奏，文风，以及是否每条创作规则都有遵守
-3. `fixer` 根据 reviewer 意见修稿，同时保留原故事。
+1. `writer` 按用户要求的范围和约束生成初稿，通过 write_file 工具写入文件，返回给主agent文件名和决策信息，不更新进度和角色状态相关文件。
+2. `reviewer` 只审稿并返回结构化问题，不直接改正文，多个维度去check，确认文章连续性，资料库匹配，节奏，文风，以及是否每条创作规则都有遵守，需要严格要求，不要赞扬。
+3. `fixer` 根据 reviewer 意见修稿，同时保留原故事内容。
 4. 主 Agent 确认最终修订稿，如果有问题再自己进行一些修复，然后主agent自己最终更新 progress.md 和 character-state.md 等状态文件。
 
-## Reviewer 输出协议
-
-reviewer 输出必须结构化
-
-- `severity`: `blocker` / `major` / `minor`
-- `dimension`: `continuity` / `character_voice` / `pacing` / `prose` / `dialogue` / `plot_logic` / `style` / `user_requirement`
-- `problem`: 具体问题
-- `fix_instruction`: 给 fixer 的明确修复指令
-
-reviewer 只提出可执行问题，不制造无意义工作。
+## Reviewer 要求
+review提供的章节，可读取必要前文、CREATOR.md、大纲、进度、角色状态和资料库作为对照依据。重点检查新增章节是否符合任务要求/用户 Prompt、CREATOR.md、长期大纲、角色设定与状态、世界观和已有连续性；评估剧情推进、人物行为动机、设定一致性、节奏、语言质量和可读性。按严重程度输出问题、证据位置、影响和可执行改进建议；执行模式不允许写入时只输出 Review 和修订方案。
 
 ## Fixer 规则
 

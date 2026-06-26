@@ -44,6 +44,11 @@ function resizeTextarea(el: HTMLTextAreaElement, maxRows: number, multilineMode:
   const singleLineHeight = lineHeight + paddingTop + paddingBottom
   const singleLineOuterHeight = singleLineHeight + borderTop + borderBottom
   const maxHeight = lineHeight * maxRows + paddingTop + paddingBottom + borderTop + borderBottom
+  const previousScrollTop = el.scrollTop
+  const previousClientHeight = el.clientHeight
+  const previousScrollHeight = el.scrollHeight
+  const wasPinnedToBottom = previousScrollHeight > previousClientHeight
+    && previousScrollHeight - previousScrollTop - previousClientHeight <= 4
   el.style.height = 'auto'
 
   if (!el.value) {
@@ -57,6 +62,9 @@ function resizeTextarea(el: HTMLTextAreaElement, maxRows: number, multilineMode:
   const nextHeight = Math.min(Math.max(el.scrollHeight, singleLineOuterHeight), maxHeight)
   el.style.height = `${nextHeight}px`
   el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  if (el.style.overflowY === 'auto') {
+    el.scrollTop = wasPinnedToBottom ? el.scrollHeight : previousScrollTop
+  }
 
   const hasMultilineInput = textExceedsSingleVisualRow(el, computed, singleLineHeight)
   const keepMultiline = multilineMode === 'sticky-until-empty' && Boolean(el.value) && el.dataset.novaMultiline === 'true'

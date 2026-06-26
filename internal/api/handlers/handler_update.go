@@ -28,6 +28,15 @@ func (h *Handlers) HandleUpdateInstall(ctx context.Context, c *app.RequestContex
 	writeJSON(c, consts.StatusOK, result)
 }
 
+func (h *Handlers) HandleUpdateApply(ctx context.Context, c *app.RequestContext) {
+	result, err := h.app.ApplyUpdate(ctx)
+	if err != nil {
+		writeError(c, consts.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
 func (h *Handlers) HandleUpdateInstallStream(ctx context.Context, c *app.RequestContext) {
 	task := h.app.StartInstallUpdateTask()
 	log.Printf("[update-sse] attach install task_id=%s", task.ID())
