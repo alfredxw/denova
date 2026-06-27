@@ -151,6 +151,7 @@ pnpm --dir web build      # 产物输出到 web/dist
 - Basic 认证凭据不应在公网明文传输；
 - 部分浏览器 Web API（如剪贴板写入、Service Worker）仅在安全上下文（HTTPS）下可用；
 - 反向代理转发时保留原始路径即可，Nova 已对未知前端路径做 SPA 回退，刷新任意页面不会 404。
+- 注：每次手机刷新深链（触发 SPA 回退）会在日志里留下一行 Hertz `Cannot open file=...` 的 ERROR 日志，属预期行为（Web 服务正常）；若启用了按 ERROR 级别的日志告警，可按该关键字过滤。改由反向代理（如 Nginx `try_files`）做回退则不会产生此日志。
 
 Caddy 示例（自动 HTTPS）：
 

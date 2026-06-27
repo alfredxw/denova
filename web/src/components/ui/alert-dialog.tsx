@@ -8,9 +8,10 @@ const ALERT_DIALOG_WIDTH: Record<"default" | "sm", string> = {
   default: "max-w-[min(calc(100vw-2rem),36rem)]",
   sm: "max-w-[min(calc(100vw-2rem),30rem)]",
 }
-// Keep long alert dialogs inside the viewport and scrollable; consumers can
-// still override max-height / overflow via className (tailwind-merge).
-const ALERT_DIALOG_HEIGHT = "max-h-[calc(100dvh-2rem)] overflow-y-auto"
+// Keep long alert dialogs inside the viewport and scrollable on small
+// screens (max-md); desktop heights are unchanged. Consumers can still
+// override via className (tailwind-merge).
+const ALERT_DIALOG_HEIGHT = "max-md:max-h-[calc(100dvh-2rem)] max-md:overflow-y-auto"
 
 function AlertDialog({
   ...props

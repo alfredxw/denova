@@ -151,6 +151,7 @@ Plain HTTP over a LAN is fine for personal use; for public or domain access, put
 - Basic-auth credentials should not travel in cleartext over the public internet;
 - Some browser Web APIs (e.g. clipboard write, Service Workers) require a secure context (HTTPS);
 - Keep the original paths when proxying — Nova falls back to the SPA shell for unknown frontend paths, so refreshing any page never 404s.
+- Note: each phone refresh of a deep link (triggering the SPA fallback) emits one Hertz `Cannot open file=...` ERROR log line; this is expected (the web server is healthy). If you alert on ERROR-level logs, filter on that string. Doing the fallback at the reverse proxy (e.g. Nginx `try_files`) avoids the log line entirely.
 
 Caddy example (automatic HTTPS):
 

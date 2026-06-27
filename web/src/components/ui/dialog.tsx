@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
 const DIALOG_CONTENT_WIDTH = "max-w-[min(calc(100vw-2rem),42rem)]"
-// Keep long dialogs inside the viewport and scrollable. Consumers that pass
-// their own max-height / overflow (e.g. an internal scroll body) win via
-// tailwind-merge, so this only fills in for dialogs that don't.
-const DIALOG_CONTENT_HEIGHT = "max-h-[calc(100dvh-2rem)] overflow-y-auto"
+// Keep long dialogs inside the viewport and scrollable on small screens.
+// Scoped to max-md so desktop dialog heights are unchanged; consumers can
+// still override via className (tailwind-merge).
+const DIALOG_CONTENT_HEIGHT = "max-md:max-h-[calc(100dvh-2rem)] max-md:overflow-y-auto"
 
 function Dialog({
   ...props
