@@ -506,7 +506,7 @@ function FileTreeNode({
             >
               <button
                 type="button"
-                className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1 text-left"
+                className="flex min-w-0 flex-1 items-center gap-1 px-2 py-1 text-left max-md:min-h-[36px] max-md:py-1.5"
                 onClick={(event) => {
                   if (event.metaKey || event.ctrlKey || event.shiftKey) {
                     onSelectPath(path, event)
@@ -642,7 +642,7 @@ function NodeDropdown({ actions }: { actions: TreeAction[] }) {
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="mr-1 hidden rounded p-0.5 text-[var(--nova-tree-icon)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] group-hover:block"
+          className="mr-1 hidden rounded p-0.5 text-[var(--nova-tree-icon)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] group-hover:block max-md:block max-md:p-1.5"
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()

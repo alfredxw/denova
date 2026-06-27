@@ -50,6 +50,8 @@ export function InlineInput({ defaultValue, isRename, onConfirm, onCancel }: Inl
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onBlur={handleConfirm}
+      enterKeyHint="done"
+      inputMode="text"
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.preventDefault()
@@ -61,7 +63,7 @@ export function InlineInput({ defaultValue, isRename, onConfirm, onCancel }: Inl
         }
         e.stopPropagation()
       }}
-      className="h-5 w-full min-w-[80px] rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-1 text-xs text-[var(--nova-text)] outline-none"
+      className="h-5 w-full min-w-[80px] rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-1 text-xs text-[var(--nova-text)] outline-none max-md:h-8 max-md:min-w-[120px] max-md:px-2 max-md:py-1"
     />
   )
 }
