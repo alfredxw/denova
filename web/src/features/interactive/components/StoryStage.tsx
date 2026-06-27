@@ -33,6 +33,7 @@ import type { Snapshot, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { TellerPicker } from './TellerPicker'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 
 interface StoryStageProps {
   workspace?: string
@@ -65,6 +66,7 @@ const stageAbortControllers = new Map<string, AbortController>()
 export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
+  const keyboardInset = useKeyboardInset()
   const [input, setInput] = useState('')
   const [stageControlsOpen, setStageControlsOpen] = useState(false)
   const [styleScenes, setStyleScenes] = useState<string[]>([])
@@ -344,7 +346,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   )
   const canUseHotChoices = !streaming && !editingTurn && stagePreferences.hotChoicesEnabled && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
-  const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + 20 : undefined
+  const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + keyboardInset + 20 : undefined
   const availableBookOpeningPresets = useMemo(() => bookOpeningPresets.filter((preset) => preset.content.trim()), [bookOpeningPresets])
   const selectedBookOpeningPreset = availableBookOpeningPresets.find((preset) => preset.id === selectedBookOpeningPresetId) || availableBookOpeningPresets[0] || null
   const turnsById = useMemo(() => {
@@ -925,7 +927,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           </section>
         </div>
       </div>
-      <div ref={inputFloatRef} className="nova-story-input-float pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
+      <div ref={inputFloatRef} style={{ bottom: keyboardInset }} className="nova-story-input-float pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
         <div className="pointer-events-auto mx-auto max-w-5xl">
           {editingTurn && !streaming ? (
             <div className="mb-3 flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
@@ -1057,6 +1059,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                   className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0"
                   style={inputTextStyle}
                   value={input}
+                  inputMode="text"
+                  enterKeyHint="send"
+                  autoCapitalize="sentences"
                   placeholder={!isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
                   onChange={handleInputChange}
                   onKeyDown={(event) => {
