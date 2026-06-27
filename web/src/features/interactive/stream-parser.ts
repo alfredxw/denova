@@ -20,7 +20,8 @@ export interface NarrativeChunk {
 }
 
 /**
- * 互动叙事流式过滤器：只放行 <NARRATIVE> 内的正文，隐藏思考、状态、热状态。
+ * 互动叙事流式过滤器：默认放行裸正文，隐藏思考、状态、热状态。
+ * 历史或异常模型输出里的 <NARRATIVE> 包装会被兼容清洗。
  *
  * 兼容部分 provider 模型的「思考前言无 <think> 开始标签、仅以 </think> 收尾」的输出：
  * 见到 <think> 或孤立 </think> 时，会把此前误显示的前言通过 reset 信号清除。
@@ -120,7 +121,7 @@ export function createInteractiveNarrativeFilter() {
 }
 
 /**
- * 清洗已持久化的叙事正文，兜底历史脏数据（思考前言、</think>、<NARRATIVE> 等标签残留）。
+ * 清洗已持久化的叙事正文，兜底历史脏数据（思考前言、</think>、旧 <NARRATIVE> 包装等标签残留）。
  * 用于渲染存档 turn.narrative，与流式过滤器对齐。
  */
 export function sanitizeStoredNarrative(text: string): string {

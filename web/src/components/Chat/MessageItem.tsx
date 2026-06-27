@@ -11,6 +11,7 @@ import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { subAgentSessionKey } from './subagent-session'
 
 interface MessageItemProps {
@@ -29,6 +30,9 @@ interface MessageItemProps {
 }
 
 const copyFeedbackDurationMs = 1200
+const messageActionTooltipDelayMs = 500
+const messageActionTooltipSkipDelayMs = 300
+const messageActionTooltipSideOffset = 3
 
 /** 单条消息组件，根据 role 渲染不同样式 */
 export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card' }: MessageItemProps) {
@@ -156,96 +160,102 @@ function MessageInlineMeta({ message, content, align, onEdit, onGenerateInteract
   const [copied, setCopied] = useState(false)
   const formatted = formatMessageHoverTime(message.created_at)
   const canSwitchVersion = Boolean(onSwitchVersion && versionCount > 1 && versionIndex >= 0)
-  const metaTooltip = { tooltipDelayMs: 500, tooltipSide: 'top' as const }
+  const metaTooltip = {
+    tooltipSide: 'top' as const,
+    tooltipSideOffset: messageActionTooltipSideOffset,
+    useTooltipProvider: false,
+  }
   if (!formatted && !content && !onEdit && !onGenerateInteractiveImage && !onRegenerate && !canSwitchVersion) return null
   return (
-    <div className={`nova-message-meta nova-message-meta-${align}`} aria-label={formatted}>
-      {formatted ? <span className="nova-message-time">{formatted}</span> : null}
-      <TooltipIconButton
-        label={copied ? t('chat.action.copyMessageDone') : t('chat.action.copyMessage')}
-        {...metaTooltip}
-        className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
-        onClick={(event) => {
-          event.stopPropagation()
-          setCopied(true)
-          window.setTimeout(() => setCopied(false), copyFeedbackDurationMs)
-          void copyText(content)
-        }}
-      >
-        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-      </TooltipIconButton>
-      {onGenerateInteractiveImage && (
+    <TooltipProvider delayDuration={messageActionTooltipDelayMs} skipDelayDuration={messageActionTooltipSkipDelayMs} disableHoverableContent>
+      <div className={`nova-message-meta nova-message-meta-${align}`} aria-label={formatted}>
+        {formatted ? <span className="nova-message-time">{formatted}</span> : null}
         <TooltipIconButton
-          label={message.interactive_images?.length || message.interactive_image ? t('chat.interactiveImage.regenerate') : t('chat.action.generateInteractiveImage')}
-          {...metaTooltip}
-          className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-45"
-          disabled={generatingInteractiveImage}
-          onClick={(event) => {
-            event.stopPropagation()
-            onGenerateInteractiveImage(message)
-          }}
-        >
-          {generatingInteractiveImage ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}
-        </TooltipIconButton>
-      )}
-      {onRegenerate && (
-        <TooltipIconButton
-          label={t('chat.action.regenerateTurn')}
+          label={copied ? t('chat.action.copyMessageDone') : t('chat.action.copyMessage')}
           {...metaTooltip}
           className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
           onClick={(event) => {
             event.stopPropagation()
-            onRegenerate(message)
+            setCopied(true)
+            window.setTimeout(() => setCopied(false), copyFeedbackDurationMs)
+            void copyText(content)
           }}
         >
-          <RefreshCw className="h-3 w-3" />
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
         </TooltipIconButton>
-      )}
-      {canSwitchVersion && onSwitchVersion && (
-        <>
+        {onGenerateInteractiveImage && (
           <TooltipIconButton
-            label={t('chat.action.prevVersion')}
+            label={message.interactive_images?.length || message.interactive_image ? t('chat.interactiveImage.regenerate') : t('chat.action.generateInteractiveImage')}
             {...metaTooltip}
-            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
-            disabled={versionIndex <= 0}
+            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={generatingInteractiveImage}
             onClick={(event) => {
               event.stopPropagation()
-              onSwitchVersion(message, -1)
+              onGenerateInteractiveImage(message)
             }}
           >
-            <ChevronLeft className="h-3 w-3" />
+            {generatingInteractiveImage ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}
           </TooltipIconButton>
-          <span className="min-w-7 text-center font-mono text-[10px] leading-5 text-[var(--nova-text-faint)]">
-            {versionIndex + 1}/{versionCount}
-          </span>
+        )}
+        {onRegenerate && (
           <TooltipIconButton
-            label={t('chat.action.nextVersion')}
+            label={t('chat.action.regenerateTurn')}
             {...metaTooltip}
-            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
-            disabled={versionIndex >= versionCount - 1}
+            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
             onClick={(event) => {
               event.stopPropagation()
-              onSwitchVersion(message, 1)
+              onRegenerate(message)
             }}
           >
-            <ChevronRight className="h-3 w-3" />
+            <RefreshCw className="h-3 w-3" />
           </TooltipIconButton>
-        </>
-      )}
-      {onEdit && (
-        <TooltipIconButton
-          label={t('chat.action.editTurn')}
-          {...metaTooltip}
-          className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
-          onClick={(event) => {
-            event.stopPropagation()
-            onEdit(message)
-          }}
-        >
-          <Pencil className="h-3 w-3" />
-        </TooltipIconButton>
-      )}
-    </div>
+        )}
+        {canSwitchVersion && onSwitchVersion && (
+          <>
+            <TooltipIconButton
+              label={t('chat.action.prevVersion')}
+              {...metaTooltip}
+              className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
+              disabled={versionIndex <= 0}
+              onClick={(event) => {
+                event.stopPropagation()
+                onSwitchVersion(message, -1)
+              }}
+            >
+              <ChevronLeft className="h-3 w-3" />
+            </TooltipIconButton>
+            <span className="min-w-7 text-center font-mono text-[10px] leading-5 text-[var(--nova-text-faint)]">
+              {versionIndex + 1}/{versionCount}
+            </span>
+            <TooltipIconButton
+              label={t('chat.action.nextVersion')}
+              {...metaTooltip}
+              className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
+              disabled={versionIndex >= versionCount - 1}
+              onClick={(event) => {
+                event.stopPropagation()
+                onSwitchVersion(message, 1)
+              }}
+            >
+              <ChevronRight className="h-3 w-3" />
+            </TooltipIconButton>
+          </>
+        )}
+        {onEdit && (
+          <TooltipIconButton
+            label={t('chat.action.editTurn')}
+            {...metaTooltip}
+            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
+            onClick={(event) => {
+              event.stopPropagation()
+              onEdit(message)
+            }}
+          >
+            <Pencil className="h-3 w-3" />
+          </TooltipIconButton>
+        )}
+      </div>
+    </TooltipProvider>
   )
 }
 

@@ -15,11 +15,30 @@ type agentFilesystemBackend struct {
 	filesystem.Backend
 }
 
+const agentFileReadDefaultLimitLines = 2000
+
 func newAgentFilesystemBackend(inner filesystem.Backend) filesystem.Backend {
 	if inner == nil {
 		return nil
 	}
 	return &agentFilesystemBackend{Backend: inner}
+}
+
+func (b *agentFilesystemBackend) Read(ctx context.Context, req *filesystem.ReadRequest) (*filesystem.FileContent, error) {
+	if req == nil {
+		return nil, fmt.Errorf("read request is nil")
+	}
+	if b.Backend == nil {
+		return nil, fmt.Errorf("filesystem backend is nil")
+	}
+	next := *req
+	if next.Offset <= 0 {
+		next.Offset = 1
+	}
+	if next.Limit <= 0 {
+		next.Limit = agentFileReadDefaultLimitLines
+	}
+	return b.Backend.Read(ctx, &next)
 }
 
 func (b *agentFilesystemBackend) Edit(ctx context.Context, req *filesystem.EditRequest) error {

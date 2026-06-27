@@ -1008,7 +1008,7 @@ func (s *Store) List(activeID string) ([]SessionMeta, error) {
 	return result, nil
 }
 
-// ListByPrefix 返回 ID 匹配指定前缀的会话摘要，用于互动模式按子模式筛选会话。
+// ListByPrefix 返回 ID 匹配指定前缀的会话摘要，用于游戏模式按子模式筛选会话。
 func (s *Store) ListByPrefix(prefix string) ([]SessionMeta, error) {
 	if err := validateSessionID(prefix); err != nil {
 		return nil, err

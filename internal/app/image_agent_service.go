@@ -54,11 +54,12 @@ func (s *ImageAppService) GenerateWithAgent(ctx context.Context, req ImageAgentG
 	s.app.chatService.RunWithOptions(ctx, runner, conversation, bookService, agent.ChatRequest{
 		Message: conversation.message,
 	}, agent.RunOptions{
-		AgentKind:       config.AgentKindImage,
-		Workspace:       workspace,
-		Mode:            "image",
-		IdleTimeout:     agentIdleTimeout(cfg),
-		SystemPromptLog: agent.BuildImageInstructionComposition(&cfg, state, req.SystemPrompt),
+		AgentKind:          config.AgentKindImage,
+		Workspace:          workspace,
+		Mode:               "image",
+		IdleTimeout:        agentIdleTimeout(cfg),
+		ToolResultMaxBytes: agentToolResultMaxBytes(cfg),
+		SystemPromptLog:    agent.BuildImageInstructionComposition(&cfg, state, req.SystemPrompt),
 	}, func(ev agent.Event) {
 		switch ev.Type {
 		case "tool_result":

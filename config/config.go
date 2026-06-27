@@ -43,6 +43,7 @@ type Config struct {
 	MaxIteration                int                          `toml:"max_iteration"`
 	ModelMaxRetries             int                          `toml:"model_max_retries"`
 	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`
+	AgentToolResultLimitKB      int                          `toml:"agent_tool_result_limit_kb"`
 	ChapterFilenameFormat       string                       `toml:"-"`
 	VolumeDirFormat             string                       `toml:"-"`
 	ChapterGroupMin             int                          `toml:"-"`
@@ -98,6 +99,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		MaxIteration:                settingsInt(s.MaxIteration, 0),
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
+		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
 		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
@@ -160,7 +162,7 @@ func startupNovaDir() string {
 }
 
 func loadGlobalConfig() *Config {
-	cfg := &Config{AgentIdleTimeoutSeconds: -1}
+	cfg := &Config{AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1}
 	for _, path := range globalConfigCandidates() {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -220,6 +222,9 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.AgentIdleTimeoutSeconds >= 0 {
 		settings.AgentIdleTimeoutSeconds = &cfg.AgentIdleTimeoutSeconds
 	}
+	if cfg.AgentToolResultLimitKB >= 0 {
+		settings.AgentToolResultLimitKB = &cfg.AgentToolResultLimitKB
+	}
 	if cfg.OpenAIContextWindowTokens > 0 {
 		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
 	}
@@ -270,6 +275,7 @@ func Load() *Config {
 			MaxIteration:                settingsInt(d.MaxIteration, 0),
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
+			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
 			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
@@ -306,6 +312,13 @@ func settingsInt(v *int, fallback int) int {
 func settingsAgentIdleTimeoutSeconds(v *int) int {
 	if v == nil || *v < 0 {
 		return DefaultAgentIdleTimeoutSeconds
+	}
+	return *v
+}
+
+func settingsAgentToolResultLimitKB(v *int) int {
+	if v == nil || *v < 0 {
+		return DefaultAgentToolResultLimitKB
 	}
 	return *v
 }

@@ -17,8 +17,9 @@ import (
 // toolOrchestratorMiddleware centralizes Nova's internal tool execution policy.
 type toolOrchestratorMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
-	agentKind  string
-	policyKind string
+	agentKind          string
+	policyKind         string
+	toolResultMaxBytes int
 }
 
 type interactiveStoryToolMiddleware struct {
@@ -78,7 +79,7 @@ func isInteractiveStoryWriteTool(name string) bool {
 }
 
 func interactiveStoryWriteToolBlockedMessage(name string) string {
-	return fmt.Sprintf("[tool error] 互动故事模式禁止使用写文件工具 %q。请不要修改 workspace 文件，只输出本回合故事正文；状态变化由后端状态 Agent 异步写入 story jsonl。", name)
+	return fmt.Sprintf("[tool error] 游戏模式禁止使用写文件工具 %q。请不要修改 workspace 文件，只输出本回合故事正文；状态变化由后端状态 Agent 异步写入 story jsonl。", name)
 }
 
 type ToolDecision struct {
@@ -143,7 +144,7 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 			})
 			return msg, nil
 		}
-		filtered := FilterToolResultForModel(toolName(toolCtx), args, result)
+		filtered := FilterToolResultForModelWithLimit(toolName(toolCtx), args, result, m.toolResultLimitBytes())
 		observer.RecordToolExecution(ToolExecutionRecord{
 			ToolName:       filtered.Manifest.Name,
 			ToolCallID:     decision.ToolCallID,
@@ -196,7 +197,7 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 			})
 			return singleChunkReader(fmt.Sprintf("[tool error] %v", err)), nil
 		}
-		return filterToolResultReader(ctx, sr, toolCtx, args), nil
+		return filterToolResultReader(ctx, sr, toolCtx, args, m.toolResultLimitBytes()), nil
 	}, nil
 }
 
@@ -226,12 +227,13 @@ func safeWrapReader(sr *schema.StreamReader[string]) *schema.StreamReader[string
 	return r
 }
 
-func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string], toolCtx *adk.ToolContext, args string) *schema.StreamReader[string] {
+func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string], toolCtx *adk.ToolContext, args string, maxBytes int) *schema.StreamReader[string] {
 	r, w := schema.Pipe[string](1)
 	go func() {
 		defer w.Close()
 		name := toolName(toolCtx)
 		manifest := ManifestForTool(name)
+		manifest.MaxResultBytes = normalizeToolResultLimitBytes(maxBytes)
 		limit := normalizedToolResultLimit(manifest)
 		var content strings.Builder
 		originalBytes := 0
@@ -264,6 +266,10 @@ func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string]
 				return
 			}
 			originalBytes += len(chunk)
+			if limit <= 0 {
+				content.WriteString(chunk)
+				continue
+			}
 			if content.Len() >= limit {
 				continue
 			}
@@ -277,6 +283,13 @@ func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string]
 		}
 	}()
 	return r
+}
+
+func (m *toolOrchestratorMiddleware) toolResultLimitBytes() int {
+	if m == nil {
+		return 0
+	}
+	return normalizeToolResultLimitBytes(m.toolResultMaxBytes)
 }
 
 func (m *toolOrchestratorMiddleware) buildToolDecision(toolCtx *adk.ToolContext, args string) ToolDecision {

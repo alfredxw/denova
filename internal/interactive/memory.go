@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -665,8 +666,8 @@ func (s *Store) ReadVisibleInteractiveMemories(storyID, branchID string, ids []s
 	if len(wanted) == 0 {
 		return []InteractiveMemoryEntry{}, nil
 	}
-	if limit <= 0 || limit > 6 {
-		limit = 6
+	if limit <= 0 || limit > len(wanted) {
+		limit = len(wanted)
 	}
 	book, err := s.readMemoryBookLocked(storyID)
 	if err != nil {
@@ -1581,7 +1582,7 @@ func formatStoryMemoryContext(structures []StoryMemoryStructure, records []Story
 		for _, record := range items {
 			if bounded && (count >= itemLimit || sb.Len() >= limit) {
 				sb.WriteString("\n(后续故事记忆已截断)\n")
-				return trimMemoryText(sb.String())
+				return limitMemoryText(sb.String(), limit)
 			}
 			if record.Key != "" {
 				sb.WriteString("- ")
@@ -1610,7 +1611,7 @@ func formatStoryMemoryContext(structures []StoryMemoryStructure, records []Story
 		}
 	}
 	if bounded {
-		return trimMemoryText(sb.String())
+		return limitMemoryText(sb.String(), limit)
 	}
 	return strings.TrimSpace(sb.String())
 }
@@ -1630,7 +1631,7 @@ func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int
 		}
 		if sb.Len() >= limit {
 			sb.WriteString("\n(后续故事记忆结构已截断)\n")
-			return trimMemoryText(sb.String())
+			return limitMemoryText(sb.String(), limit)
 		}
 		sb.WriteString("\n## ")
 		sb.WriteString(structure.ID)
@@ -1665,7 +1666,7 @@ func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int
 			}
 			if sb.Len() >= limit {
 				sb.WriteString("(后续字段已截断)\n")
-				return trimMemoryText(sb.String())
+				return limitMemoryText(sb.String(), limit)
 			}
 			sb.WriteString("  - ")
 			sb.WriteString(field.ID)
@@ -1688,7 +1689,7 @@ func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int
 			sb.WriteString("\n")
 		}
 	}
-	return trimMemoryText(sb.String())
+	return limitMemoryText(sb.String(), limit)
 }
 
 func storyMemorySchemaContextOrder(structures []StoryMemoryStructure) []StoryMemoryStructure {
@@ -1783,11 +1784,42 @@ func latestMemorySyncStatus(lines []StoryEventRecord, branchID, headID string) (
 }
 
 func trimMemoryText(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func limitMemoryText(value string, limit int) string {
 	value = strings.TrimSpace(value)
-	if len(value) <= maxMemoryTextBytes {
+	if limit <= 0 || len(value) <= limit {
 		return value
 	}
-	return value[:maxMemoryTextBytes]
+	if suffix := memoryTruncationSuffix(value); suffix != "" && len(suffix)+1 < limit {
+		prefix := limitMemoryTextRaw(value, limit-len(suffix)-1)
+		return strings.TrimSpace(prefix) + "\n" + suffix
+	}
+	return limitMemoryTextRaw(value, limit)
+}
+
+func limitMemoryTextRaw(value string, limit int) string {
+	for limit > 0 && !utf8.RuneStart(value[limit]) {
+		limit--
+	}
+	if limit <= 0 {
+		return ""
+	}
+	return strings.TrimSpace(value[:limit])
+}
+
+func memoryTruncationSuffix(value string) string {
+	for _, suffix := range []string{
+		"(后续故事记忆已截断)",
+		"(后续故事记忆结构已截断)",
+		"(后续字段已截断)",
+	} {
+		if strings.Contains(value, suffix) {
+			return suffix
+		}
+	}
+	return ""
 }
 
 func normalizeMemoryImportance(value int) int {

@@ -42,11 +42,7 @@ type FilteredToolResult struct {
 }
 
 const (
-	defaultToolResultMaxBytes = 24 * 1024
-	readToolResultMaxBytes    = 32 * 1024
-	writeToolResultMaxBytes   = 8 * 1024
-	loreToolResultMaxBytes    = 32 * 1024
-	memoryToolResultMaxBytes  = 12 * 1024
+	defaultToolResultMaxBytes = 0
 )
 
 func ManifestForTool(name string) ToolManifest {
@@ -61,26 +57,20 @@ func ManifestForTool(name string) ToolManifest {
 		manifest.Source = ToolSourceImage
 		manifest.MutatesWorkspace = true
 		manifest.RequiresPostCheck = true
-		manifest.MaxResultBytes = writeToolResultMaxBytes
 	case normalized == "write_lore_items":
 		manifest.Source = ToolSourceLore
 		manifest.MutatesWorkspace = true
 		manifest.RequiresPostCheck = true
-		manifest.MaxResultBytes = writeToolResultMaxBytes
 	case normalized == "read_lore_items" || normalized == "list_lore_items":
 		manifest.Source = ToolSourceLore
-		manifest.MaxResultBytes = loreToolResultMaxBytes
 	case normalized == "read_interactive_memories" || normalized == "list_interactive_memories":
 		manifest.Source = ToolSourceMemory
-		manifest.MaxResultBytes = memoryToolResultMaxBytes
 	case isToolWriteLike(normalized):
 		manifest.Source = ToolSourceWrite
 		manifest.MutatesWorkspace = true
 		manifest.RequiresPostCheck = true
-		manifest.MaxResultBytes = writeToolResultMaxBytes
 	case isToolReadLike(normalized):
 		manifest.Source = ToolSourceRead
-		manifest.MaxResultBytes = readToolResultMaxBytes
 	case isToolShellLike(normalized):
 		manifest.Source = ToolSourceShell
 	case isToolWebLike(normalized):
@@ -93,7 +83,12 @@ func ManifestForTool(name string) ToolManifest {
 }
 
 func FilterToolResultForModel(toolName, args, content string) FilteredToolResult {
+	return FilterToolResultForModelWithLimit(toolName, args, content, 0)
+}
+
+func FilterToolResultForModelWithLimit(toolName, args, content string, maxBytes int) FilteredToolResult {
 	manifest := ManifestForTool(toolName)
+	manifest.MaxResultBytes = normalizeToolResultLimitBytes(maxBytes)
 	body, truncated := truncateUTF8Bytes(content, normalizedToolResultLimit(manifest))
 	return filteredToolResultFromBody(manifest, args, body, len(content), truncated)
 }
@@ -105,6 +100,13 @@ func filteredToolResultFromBody(manifest ToolManifest, args, body string, origin
 	}
 	if !truncated {
 		body, truncated = truncateUTF8Bytes(body, limit)
+	}
+	if truncated && !strings.Contains(body, "[tool result truncated]") {
+		body = strings.TrimRight(body, "\n")
+		if body != "" {
+			body += "\n"
+		}
+		body += "[tool result truncated]"
 	}
 	target := toolPathFromArgs(args)
 	idempotencyKey := toolIdempotencyKey(manifest.Name, args)
@@ -126,10 +128,14 @@ func filteredToolResultFromBody(manifest ToolManifest, args, body string, origin
 }
 
 func normalizedToolResultLimit(manifest ToolManifest) int {
-	if manifest.MaxResultBytes > 0 {
-		return manifest.MaxResultBytes
+	return normalizeToolResultLimitBytes(manifest.MaxResultBytes)
+}
+
+func normalizeToolResultLimitBytes(maxBytes int) int {
+	if maxBytes <= 0 {
+		return defaultToolResultMaxBytes
 	}
-	return defaultToolResultMaxBytes
+	return maxBytes
 }
 
 func normalizeToolName(name string) string {
@@ -203,6 +209,7 @@ func formatToolResultMetadata(manifest ToolManifest, originalBytes, returnedBody
 		"source: " + string(manifest.Source),
 		fmt.Sprintf("mutates_workspace: %t", manifest.MutatesWorkspace),
 		fmt.Sprintf("requires_post_check: %t", manifest.RequiresPostCheck),
+		fmt.Sprintf("max_result_bytes: %d", manifest.MaxResultBytes),
 		fmt.Sprintf("truncated: %t", truncated),
 		fmt.Sprintf("original_bytes: %d", originalBytes),
 		fmt.Sprintf("returned_body_bytes: %d", returnedBodyBytes),

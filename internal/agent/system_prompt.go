@@ -87,8 +87,8 @@ func outputProtocolForAgent(agentKind string) string {
 	switch agentKind {
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
-			"- 必须只输出 <NARRATIVE>...</NARRATIVE>。",
-			"- <NARRATIVE> 内只写展示在故事舞台上的正文；不要输出计划、解释、工具说明、Markdown 标题",
+			"- 必须只输出本回合可展示在故事舞台上的故事正文。",
+			"- 正文只写场景、动作、对白和后果；不要输出计划、解释、工具说明、Markdown 标题、XML 包装、<HOT_STATE>、<STATE_DELTA> 或任何 JSON。",
 		}, "\n")
 	case config.AgentKindInteractiveState:
 		return "- 必须只输出符合互动记忆 schema 的 JSON object，格式为 {\"story_memory_patches\":[...]}；每条 patch 必须按目标表的字段协议填写完整 values，所有字段都必须出现且不能为空，不得输出 Markdown、解释或代码块。"
@@ -120,7 +120,7 @@ func agentRuntimeContract(agentKind string) string {
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
 			"- 互动叙事 Agent 禁止修改 workspace 文件，禁止输出或调用写文件、删除文件、任务计划等工具。",
-			"- 互动叙事 Agent 必须遵守内置输出协议，面向故事舞台的正文只能放在 <NARRATIVE>...</NARRATIVE> 内。",
+			"- 互动叙事 Agent 必须遵守内置输出协议，面向故事舞台的正文必须直接作为最终回复输出，不得夹带状态 JSON、工具说明或 XML 包装。",
 			"- 互动叙事 Agent 的篇幅必须以当前 story 的每轮目标字数为最高约束；其它内置提示、CREATOR.md 章节篇幅、导演规则或用户自定义提示中的篇幅倾向都不得要求超过该目标。",
 		}, "\n")
 	case config.AgentKindConfigManager:

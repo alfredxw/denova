@@ -573,6 +573,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.AgentIdleTimeoutSeconds != nil {
 		cfg.AgentIdleTimeoutSeconds = appAgentIdleTimeoutSeconds(effective.AgentIdleTimeoutSeconds)
 	}
+	if effective.AgentToolResultLimitKB != nil {
+		cfg.AgentToolResultLimitKB = appAgentToolResultLimitKB(effective.AgentToolResultLimitKB)
+	}
 	if effective.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = effective.ChapterFilenameFormat
 	}
@@ -667,6 +670,9 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.AgentIdleTimeoutSeconds != nil {
 		cfg.AgentIdleTimeoutSeconds = appAgentIdleTimeoutSeconds(settings.AgentIdleTimeoutSeconds)
 	}
+	if settings.AgentToolResultLimitKB != nil {
+		cfg.AgentToolResultLimitKB = appAgentToolResultLimitKB(settings.AgentToolResultLimitKB)
+	}
 	if settings.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = settings.ChapterFilenameFormat
 	}
@@ -731,6 +737,20 @@ func appAgentIdleTimeoutSeconds(v *int) int {
 		return config.DefaultAgentIdleTimeoutSeconds
 	}
 	return *v
+}
+
+func appAgentToolResultLimitKB(v *int) int {
+	if v == nil || *v < 0 {
+		return config.DefaultAgentToolResultLimitKB
+	}
+	return *v
+}
+
+func agentToolResultMaxBytes(cfg config.Config) int {
+	if cfg.AgentToolResultLimitKB <= 0 {
+		return 0
+	}
+	return cfg.AgentToolResultLimitKB * 1024
 }
 
 func applyRequestLocaleToConfig(cfg *config.Config, locale string) {

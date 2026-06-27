@@ -153,6 +153,32 @@ func TestApplyLayeredSettingsToConfigAllowsUnlimitedAgentIdleTimeout(t *testing.
 	}
 }
 
+func TestApplyLayeredSettingsToConfigAppliesAgentToolResultLimit(t *testing.T) {
+	limitKB := 128
+	cfg := &config.Config{}
+	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+		Effective: config.Settings{
+			AgentToolResultLimitKB: &limitKB,
+		},
+	})
+	if cfg.AgentToolResultLimitKB != limitKB {
+		t.Fatalf("agent tool result limit = %d, want %d", cfg.AgentToolResultLimitKB, limitKB)
+	}
+}
+
+func TestApplyLayeredSettingsToConfigAllowsUnlimitedAgentToolResultLimit(t *testing.T) {
+	limitKB := 0
+	cfg := &config.Config{AgentToolResultLimitKB: 128}
+	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+		Effective: config.Settings{
+			AgentToolResultLimitKB: &limitKB,
+		},
+	})
+	if cfg.AgentToolResultLimitKB != 0 {
+		t.Fatalf("agent tool result limit = %d, want 0", cfg.AgentToolResultLimitKB)
+	}
+}
+
 func TestAgentIdleTimeoutAllowsUnlimited(t *testing.T) {
 	if got := agentIdleTimeout(config.Config{AgentIdleTimeoutSeconds: 0}); got != 0 {
 		t.Fatalf("agent idle timeout = %s, want no limit", got)

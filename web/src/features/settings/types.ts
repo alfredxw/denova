@@ -45,6 +45,7 @@ export interface Settings {
   max_iteration?: number | null
   model_max_retries?: number | null
   agent_idle_timeout_seconds?: number | null
+  agent_tool_result_limit_kb?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
   writing_skill_default?: string

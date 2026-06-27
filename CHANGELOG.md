@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- 互动模式：新增“互动图像”，默认手动生成；输入框左侧菜单提供侧边配置，可切换为手动或每 X 轮生成，每个剧情回合操作区提供手动生成/重新生成按钮。
+- 游戏模式：新增“互动图像”，默认手动生成；输入框左侧菜单提供侧边配置，可切换为手动或每 X 轮生成，每个剧情回合操作区提供手动生成/重新生成按钮。
 - Agent：新增通用 `image` Agent，默认仅启用 Skills 和图像生成工具；互动图像通过 `interactive-image` Skill、`purpose=interactive_image` 和专用 System Prompt 复用该通用 Agent。
 - 后端：新增 `POST /api/interactive/stories/:id/images/generate`，互动图像保存到 `assets/interactive/images/<story>/<branch>/<turn>/<timestamp>/`，结果以 `interactive_image.v1` display event 挂到对应回合，不移动分支 head、不写入叙事正文、不进入下一轮模型上下文。
 - 叙事编排：新增单一 `image_prompt` 字段，最多 4000 字符，用于约束互动图像视觉倾向。
@@ -18,8 +18,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - WebUI：中文界面中 Automation Agent 统一改称“自动化Agent”，包括 Agents 页、自动化模型继承提示和自动化 Agent 内置中文提示。
+- WebUI：顶层“互动模式 / Interactive Mode”更名为“游戏模式 / Game Mode”，强调其定位是互动文字冒险游戏工作台；内部 `interactive` API、配置键和存储目录保持不迁移。
+- 游戏模式：互动叙事 Agent 不再要求用 XML 标签包裹正文，默认直接输出故事正文；历史或异常输出里的 `<NARRATIVE>` 标签仍会兼容清洗。
 - Agent：通用 General SubAgent 的内置默认范围收窄为仅写作 Agent 和 Automation Agent 启用；互动叙事 Agent 和配置管理 Agent 默认继承关闭，仍可在 Agents 页单独开启。
 - Agent：自定义 SubAgent 的 `parents` 改为显式父 Agent 归属列表，空列表不再表示所有父 Agent 共享；Agents 页新增“仅从当前父 Agent 移除”和“全部删除”两种删除范围。
+- Agent：工具结果默认不再截断，设置页 Agent 分区新增按 KB 配置的工具结果截断上限；设置为 `0` 或留空时不截断。
+- Agent：`read_file` 默认读取窗口固化为从第 1 行开始最多 2000 行，只有显式指定更大的 `limit` 时才读取更多，并同步更新工具描述避免默认使用过小扫描窗口。
+- 游戏模式：`read_interactive_memories` 不再限制最多 6 条、每条 4KB 或总计 12KB；互动记忆入库不再按 12KB 裁剪文本，Agent 显式读取时返回所有可见请求项的完整正文。
 - WebUI：设置页将原“模型”分区改名为“语言模型”，将原“图像 API”分区改名为“图像模型”，并从设置页移除后端/前端端口输入和访问地址端口展示；端口仍可通过环境变量或配置文件在启动时设置。
 - Agent：图像生成工具改为通用 `generate_image`，章节插画 Skill 改用中文流程调用该工具；生成尺寸改为调用时在 2K/3K/4K 预设中选择，设置页不再配置默认图像尺寸，输出格式限制为 `png` 或 `jpeg`。
 

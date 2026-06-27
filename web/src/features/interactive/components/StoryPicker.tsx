@@ -65,7 +65,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
       <PopoverContent
         align="start"
         sideOffset={6}
-        className={`${sidebar ? 'w-[min(calc(100vw-2rem),24rem)]' : 'w-[216px]'} max-h-[min(70dvh,28rem)] overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 text-[var(--nova-text)] shadow-[var(--nova-shadow)]`}
+        className={`${sidebar ? 'w-[min(calc(100vw-2rem),24rem)]' : 'w-[190px]'} max-h-[min(70dvh,28rem)] overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 text-[var(--nova-text)] shadow-[var(--nova-shadow)]`}
       >
         <div role="listbox" aria-label={t('storyPicker.placeholder')} className="space-y-1">
           {stories.length === 0 ? (

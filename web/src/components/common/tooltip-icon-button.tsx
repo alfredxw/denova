@@ -14,7 +14,10 @@ type TooltipIconButtonProps = React.ComponentProps<'button'> &
     children: ReactNode
     showTooltip?: boolean
     tooltipDelayMs?: number
+    tooltipSkipDelayMs?: number
     tooltipSide?: 'top' | 'right' | 'bottom' | 'left'
+    tooltipSideOffset?: number
+    useTooltipProvider?: boolean
   }
 
 /** 带 Tooltip 的图标按钮，统一图标操作的可访问名称和提示行为。 */
@@ -26,7 +29,10 @@ export function TooltipIconButton({
   className,
   showTooltip = true,
   tooltipDelayMs = 0,
+  tooltipSkipDelayMs,
   tooltipSide = 'right',
+  tooltipSideOffset = 6,
+  useTooltipProvider = true,
   'aria-label': ariaLabel,
   ...props
 }: TooltipIconButtonProps) {
@@ -45,12 +51,18 @@ export function TooltipIconButton({
 
   if (!showTooltip) return button
 
+  const tooltip = (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side={tooltipSide} sideOffset={tooltipSideOffset}>{label}</TooltipContent>
+    </Tooltip>
+  )
+
+  if (!useTooltipProvider) return tooltip
+
   return (
-    <TooltipProvider delayDuration={tooltipDelayMs}>
-      <Tooltip delayDuration={tooltipDelayMs}>
-        <TooltipTrigger asChild>{button}</TooltipTrigger>
-        <TooltipContent side={tooltipSide} sideOffset={6}>{label}</TooltipContent>
-      </Tooltip>
+    <TooltipProvider delayDuration={tooltipDelayMs} skipDelayDuration={tooltipSkipDelayMs}>
+      {tooltip}
     </TooltipProvider>
   )
 }

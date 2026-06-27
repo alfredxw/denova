@@ -369,9 +369,6 @@ func (r *Runtime) Run(
 			if content == "" {
 				content = "(无返回内容)"
 			}
-			if len(content) > 300 {
-				content = content[:300] + "..."
-			}
 			logToolResult(mv.Message.ToolName, mv.Message.ToolCallID, content)
 			usageCollector.NoteToolResult(mv.Message.ToolName)
 			data := eventMeta.appendTo(map[string]interface{}{
@@ -404,7 +401,7 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.IsStreaming && mv.MessageStream != nil {
-			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, eventMeta, emit)
+			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, options.ToolResultMaxBytes, eventMeta, emit)
 			usageCollector.AddMessage(msg)
 			if streamErr != nil {
 				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
@@ -422,7 +419,7 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.Message != nil {
-			processNonStreamingEvent(mv, &fullContent, &fullThinking, eventMeta, emit)
+			processNonStreamingEvent(mv, &fullContent, &fullThinking, options.ToolResultMaxBytes, eventMeta, emit)
 			usageCollector.AddMessage(mv.Message)
 		}
 	}

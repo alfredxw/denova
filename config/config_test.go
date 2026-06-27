@@ -121,6 +121,30 @@ func TestLoadWithWorkspaceAllowsUnlimitedAgentIdleTimeout(t *testing.T) {
 	}
 }
 
+func TestLoadWithWorkspaceAllowsUnlimitedAgentToolResultLimit(t *testing.T) {
+	novaDir := t.TempDir()
+	ws := t.TempDir()
+	t.Setenv("NOVA_DIR", novaDir)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+
+	if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"),
+		Settings{AgentToolResultLimitKB: intPtr(0)}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, layered, err := LoadWithWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentToolResultLimitKB != 0 {
+		t.Fatalf("agent tool result limit should allow explicit 0, got %d", cfg.AgentToolResultLimitKB)
+	}
+	if layered.Effective.AgentToolResultLimitKB == nil || *layered.Effective.AgentToolResultLimitKB != 0 {
+		t.Fatalf("effective agent tool result limit should preserve explicit 0")
+	}
+}
+
 func TestLoadWithWorkspaceUsesGlobalConfigNovaDir(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
@@ -194,6 +218,30 @@ func TestLoadWithWorkspaceAllowsGlobalUnlimitedAgentIdleTimeout(t *testing.T) {
 		t.Fatalf("global agent idle timeout should allow explicit 0, got %d", cfg.AgentIdleTimeoutSeconds)
 	}
 	if layered.Global.AgentIdleTimeoutSeconds == nil || *layered.Global.AgentIdleTimeoutSeconds != 0 {
+		t.Fatalf("global layer should preserve explicit 0")
+	}
+}
+
+func TestLoadWithWorkspaceAllowsGlobalUnlimitedAgentToolResultLimit(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	ws := t.TempDir()
+	t.Setenv("NOVA_DIR", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+
+	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("agent_tool_result_limit_kb = 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, layered, err := LoadWithWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentToolResultLimitKB != 0 {
+		t.Fatalf("global agent tool result limit should allow explicit 0, got %d", cfg.AgentToolResultLimitKB)
+	}
+	if layered.Global.AgentToolResultLimitKB == nil || *layered.Global.AgentToolResultLimitKB != 0 {
 		t.Fatalf("global layer should preserve explicit 0")
 	}
 }

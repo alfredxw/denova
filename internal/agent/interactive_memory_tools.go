@@ -13,11 +13,8 @@ import (
 )
 
 const (
-	interactiveMemoryToolListLimit        = 24
-	interactiveMemoryToolReadLimit        = 6
-	interactiveMemoryToolMaxReturnedBytes = 12 * 1024
-	interactiveMemoryToolContentLimit     = 4 * 1024
-	interactiveMemoryToolSummaryLimit     = 800
+	interactiveMemoryToolListLimit    = 24
+	interactiveMemoryToolSummaryLimit = 800
 )
 
 // InteractiveStoryToolContext provides story-scoped read tools for one
@@ -38,7 +35,7 @@ type listInteractiveMemoriesInput struct {
 }
 
 type readInteractiveMemoriesInput struct {
-	IDs   []string `json:"ids" jsonschema:"description=要读取正文的互动长期记忆 ID 列表，最多 6 条"`
+	IDs   []string `json:"ids" jsonschema:"description=要读取正文的互动长期记忆 ID 列表；可按需一次读取多个相关记忆"`
 	Query string   `json:"query,omitempty" jsonschema:"description=可选，说明本次读取记忆是为了回答哪类当前行动或线索；用于记录最近召回"`
 }
 
@@ -114,13 +111,12 @@ func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool
 	if err != nil {
 		return nil, err
 	}
-	readTool, err := utils.InferTool("read_interactive_memories", "按 ID 读取当前互动故事分支的长期记忆正文。用于在 list_interactive_memories 判断相关后读取少量关键记忆；最多 6 条，归档记忆和其他分支记忆不可读取。", func(callCtx context.Context, input readInteractiveMemoriesInput) (string, error) {
+	readTool, err := utils.InferTool("read_interactive_memories", "按 ID 读取当前互动故事分支的长期记忆完整正文。用于在 list_interactive_memories 判断相关后读取关键记忆；归档记忆和其他分支记忆不可读取。", func(callCtx context.Context, input readInteractiveMemoriesInput) (string, error) {
 		_ = callCtx
-		entries, err := ctx.Store.ReadVisibleInteractiveMemories(ctx.StoryID, ctx.BranchID, input.IDs, interactiveMemoryToolReadLimit)
+		entries, err := ctx.Store.ReadVisibleInteractiveMemories(ctx.StoryID, ctx.BranchID, input.IDs, 0)
 		if err != nil {
 			return "", err
 		}
-		memories, truncated := truncateInteractiveMemoryToolEntries(entries)
 		ids := make([]string, 0, len(entries))
 		for _, entry := range entries {
 			ids = append(ids, entry.ID)
@@ -132,9 +128,9 @@ func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool
 		}
 		return marshalInteractiveMemoryToolOutput(interactiveMemoryToolOutput{
 			Source:    interactiveMemoryToolSource{Kind: "interactive_memory_entries", StoryID: ctx.StoryID, BranchID: ctx.BranchID, Path: fmt.Sprintf("interactive/memory/story-%s.json", ctx.StoryID)},
-			Limits:    map[string]int{"max_items": interactiveMemoryToolReadLimit, "max_returned_bytes": interactiveMemoryToolMaxReturnedBytes, "content_bytes_per_item": interactiveMemoryToolContentLimit},
-			Truncated: truncated,
-			Memories:  memories,
+			Limits:    map[string]int{"requested_items": len(input.IDs), "returned_items": len(entries)},
+			Truncated: false,
+			Memories:  entries,
 		})
 	})
 	if err != nil {
@@ -214,36 +210,6 @@ func interactiveMemoryEntryContains(entry interactive.InteractiveMemoryEntry, qu
 		}
 	}
 	return true
-}
-
-func truncateInteractiveMemoryToolEntries(entries []interactive.InteractiveMemoryEntry) ([]interactive.InteractiveMemoryEntry, bool) {
-	truncated := len(entries) > interactiveMemoryToolReadLimit
-	if len(entries) > interactiveMemoryToolReadLimit {
-		entries = entries[:interactiveMemoryToolReadLimit]
-	}
-	out := make([]interactive.InteractiveMemoryEntry, 0, len(entries))
-	remaining := interactiveMemoryToolMaxReturnedBytes
-	for _, entry := range entries {
-		next := entry
-		next.Summary = trimInteractiveMemoryToolText(next.Summary, interactiveMemoryToolSummaryLimit)
-		if next.Summary != entry.Summary {
-			truncated = true
-		}
-		limit := interactiveMemoryToolContentLimit
-		if remaining < limit {
-			limit = remaining
-		}
-		if limit < 0 {
-			limit = 0
-		}
-		next.Content = trimInteractiveMemoryToolText(next.Content, limit)
-		if next.Content != entry.Content {
-			truncated = true
-		}
-		remaining -= len(next.Content) + len(next.Summary) + len(next.Title)
-		out = append(out, next)
-	}
-	return out, truncated
 }
 
 func trimInteractiveMemoryToolText(value string, limit int) string {

@@ -24,6 +24,7 @@ type RunOptions struct {
 	Workspace           string
 	Mode                string
 	IdleTimeout         time.Duration
+	ToolResultMaxBytes  int
 	SystemPromptLog     SystemPromptCompositionLog
 	OnMutationsVerified func(context.Context, []ToolMutation, PostRunVerification)
 }
@@ -46,6 +47,9 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 	o.Mode = strings.TrimSpace(o.Mode)
 	if o.IdleTimeout < 0 {
 		o.IdleTimeout = 0
+	}
+	if o.ToolResultMaxBytes < 0 {
+		o.ToolResultMaxBytes = 0
 	}
 	return o
 }

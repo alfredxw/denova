@@ -83,7 +83,7 @@ func TestDeepAgentParentRuntimeContractsIncludeSubAgentDelegationProtocol(t *tes
 func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 	tests := map[string]string{
 		config.AgentKindIDE:                   "CREATOR.md",
-		config.AgentKindInteractiveStory:      "<NARRATIVE>",
+		config.AgentKindInteractiveStory:      "只输出本回合可展示在故事舞台上的故事正文",
 		config.AgentKindImage:                 "图像 Agent",
 		config.AgentKindConfigManager:         "配置管理 Agent",
 		config.AgentKindInteractiveState:      "互动记忆 Agent",

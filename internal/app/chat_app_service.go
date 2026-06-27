@@ -290,6 +290,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 			Workspace:           runtime.workspace,
 			Mode:                "ide",
 			IdleTimeout:         agentIdleTimeout(runtime.cfg),
+			ToolResultMaxBytes:  agentToolResultMaxBytes(runtime.cfg),
 			SystemPromptLog:     agent.BuildInstructionComposition(&runtime.cfg, runtime.state, runtime.ideTeller),
 			OnMutationsVerified: a.automationMutationCallback("ide_agent_post_run"),
 		}, emit)

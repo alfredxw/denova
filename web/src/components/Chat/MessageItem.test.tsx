@@ -59,7 +59,7 @@ describe('MessageItem', () => {
     expect(persistedTags).toEqual(streamedTags)
   })
 
-  it('互动模式 assistant 消息高亮常见对白引号', () => {
+  it('游戏模式 assistant 消息高亮常见对白引号', () => {
     const { container } = render(
       <MessageItem
         highlightDialogue
@@ -74,7 +74,7 @@ describe('MessageItem', () => {
     expect(highlights[2]).toHaveTextContent('"now"')
   })
 
-  it('互动模式 assistant 消息不按角色名冒号高亮，避免误判叙述句', () => {
+  it('游戏模式 assistant 消息不按角色名冒号高亮，避免误判叙述句', () => {
     const { container } = render(
       <MessageItem
         highlightDialogue

@@ -73,11 +73,12 @@ type Settings struct {
 	MaxIteration            *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
 	ModelMaxRetries         *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
 	AgentIdleTimeoutSeconds *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
+	AgentToolResultLimitKB  *int   `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
 	PlanModeDefault         *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
 	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
 	WritingSkillDefault     string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
 
-	// 互动模式
+	// 游戏模式
 	InteractiveHotChoices      *bool    `toml:"interactive_hot_choices_enabled,omitempty" json:"interactive_hot_choices_enabled,omitempty"`
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
@@ -90,6 +91,7 @@ func floatPtr(v float64) *float64 { return &v }
 const (
 	DefaultWritingSkillName        = "novel-lite"
 	DefaultAgentIdleTimeoutSeconds = 0
+	DefaultAgentToolResultLimitKB  = 0
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -127,6 +129,7 @@ func DefaultSettings() Settings {
 		UpdateCheckEnabled:          boolPtr(true),
 		ModelMaxRetries:             intPtr(5),
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
+		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
 		AgentModels: AgentModelSettings{
 			IDE:                   AgentModelOverride{EnableThinking: boolPtr(true)},
 			ConfigManager:         AgentModelOverride{EnableThinking: boolPtr(true)},
@@ -272,6 +275,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.AgentIdleTimeoutSeconds != nil {
 		out.AgentIdleTimeoutSeconds = child.AgentIdleTimeoutSeconds
+	}
+	if child.AgentToolResultLimitKB != nil {
+		out.AgentToolResultLimitKB = child.AgentToolResultLimitKB
 	}
 	if child.PlanModeDefault != nil {
 		out.PlanModeDefault = child.PlanModeDefault
@@ -456,6 +462,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.ImageAPIModel = strings.TrimSpace(s.ImageAPIModel)
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
+	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
 	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
@@ -486,6 +493,16 @@ func normalizeAgentIdleTimeoutSeconds(seconds *int) *int {
 		return nil
 	}
 	return seconds
+}
+
+func normalizeAgentToolResultLimitKB(limit *int) *int {
+	if limit == nil {
+		return nil
+	}
+	if *limit < 0 {
+		return nil
+	}
+	return limit
 }
 
 func normalizeContextWindowTokens(tokens *int) *int {

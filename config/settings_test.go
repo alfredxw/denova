@@ -28,6 +28,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AgentIdleTimeoutSeconds == nil || *s.AgentIdleTimeoutSeconds != DefaultAgentIdleTimeoutSeconds {
 		t.Fatalf("AgentIdleTimeoutSeconds default")
 	}
+	if s.AgentToolResultLimitKB == nil || *s.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
+		t.Fatalf("AgentToolResultLimitKB default")
+	}
 	if s.InteractiveStageFontSize == nil || *s.InteractiveStageFontSize != 16 {
 		t.Fatalf("InteractiveStageFontSize default")
 	}
@@ -112,6 +115,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		OpenAIContextWindowTokens:  intPtr(DefaultContextWindowTokens),
 		MaxIteration:               intPtr(10),
 		AgentIdleTimeoutSeconds:    intPtr(120),
+		AgentToolResultLimitKB:     intPtr(0),
 		UIFontFamily:               "apple-system",
 		UIFontSize:                 intPtr(14),
 		ReadingFontFamily:          "source-han-serif",
@@ -135,6 +139,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		OpenAIContextWindowTokens:  intPtr(1000000),
 		MaxIteration:               nil, // 继承 parent
 		AgentIdleTimeoutSeconds:    intPtr(240),
+		AgentToolResultLimitKB:     intPtr(64),
 		UIFontFamily:               "humanist-sans",
 		UIFontSize:                 intPtr(13),
 		ReadingFontFamily:          "system-serif",
@@ -170,6 +175,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.AgentIdleTimeoutSeconds == nil || *out.AgentIdleTimeoutSeconds != 240 {
 		t.Fatalf("AgentIdleTimeoutSeconds should override parent")
+	}
+	if out.AgentToolResultLimitKB == nil || *out.AgentToolResultLimitKB != 64 {
+		t.Fatalf("AgentToolResultLimitKB should override parent")
 	}
 	if out.UIFontFamily != "humanist-sans" {
 		t.Fatalf("UIFontFamily should override parent: %s", out.UIFontFamily)
@@ -409,6 +417,38 @@ func TestWriteSettingsFileFiltersNegativeAgentIdleTimeout(t *testing.T) {
 	}
 	if out.AgentIdleTimeoutSeconds != nil {
 		t.Fatalf("negative agent idle timeout should be filtered, got %v", *out.AgentIdleTimeoutSeconds)
+	}
+}
+
+func TestWriteSettingsFileAllowsUnlimitedAgentToolResultLimit(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	in := Settings{OpenAIModel: "abc", AgentToolResultLimitKB: intPtr(0)}
+	if err := WriteSettingsFile(p, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.AgentToolResultLimitKB == nil || *out.AgentToolResultLimitKB != 0 {
+		t.Fatalf("agent tool result limit should preserve explicit 0, got %v", out.AgentToolResultLimitKB)
+	}
+}
+
+func TestWriteSettingsFileFiltersNegativeAgentToolResultLimit(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "config.toml")
+	in := Settings{OpenAIModel: "abc", AgentToolResultLimitKB: intPtr(-1)}
+	if err := WriteSettingsFile(p, in); err != nil {
+		t.Fatal(err)
+	}
+	out, err := ReadSettingsFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.AgentToolResultLimitKB != nil {
+		t.Fatalf("negative agent tool result limit should be filtered, got %v", *out.AgentToolResultLimitKB)
 	}
 }
 

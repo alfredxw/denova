@@ -73,6 +73,21 @@ describe('TellerEditor style contents', () => {
     expect(footer).toHaveClass('!mb-0')
     expect(footer).toHaveClass('bg-[var(--nova-surface)]/95')
   })
+
+  it('keeps the teller editor scrollable when style rules grow', () => {
+    const { container } = render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
+
+    expect(container.firstElementChild).toHaveClass('overflow-y-auto')
+    expect(container.firstElementChild).not.toHaveClass('md:overflow-hidden')
+
+    const injectGrid = container.querySelector('.min-h-\\[520px\\]')
+    expect(injectGrid).toHaveClass('flex-1')
+    expect(injectGrid).toHaveClass('lg:grid-cols-[280px_minmax(0,1fr)]')
+
+    const sceneInput = screen.getByPlaceholderText('场景描述，如：激烈打斗 / 日常对话 / 压抑悬疑')
+    expect(sceneInput).toHaveClass('md:flex-1')
+    expect(sceneInput.parentElement).toHaveClass('md:flex-wrap')
+  })
 })
 
 function Harness({ initial, onChange, onSave }: { initial: Teller; onChange: (draft: Teller) => void; onSave: () => void }) {

@@ -477,7 +477,7 @@ func contextCompactionSystemInstruction() string {
 
 输入可能包含：
 1. existing_memory：此前已经压缩过的记忆，可能为空。
-2. reference_context：参考上下文，例如完整 Story Memory 表格。互动模式必须参考其中的故事记忆，尤其 plot_summary / 剧情纪要。
+2. reference_context：参考上下文，例如完整 Story Memory 表格。游戏模式必须参考其中的故事记忆，尤其 plot_summary / 剧情纪要。
 3. new_context：上次压缩后新增的原始有效对话链或互动回合链，包括用户行动、用户对白、LLM 剧情推进、NPC 反应、环境变化、任务状态等。
 
 处理目标：

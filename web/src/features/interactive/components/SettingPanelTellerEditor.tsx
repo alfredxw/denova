@@ -71,7 +71,7 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
   const selectedTarget = targetOption(activeSlot?.target || 'turn_context')
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
       <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_150px_150px]">
         <Field label={t('settingPanel.field.name')}>
           <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
@@ -131,8 +131,8 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
         <InteractiveStyleRulesEditor rules={draft.style_rules ?? []} onChange={(rules) => setDraft({ ...draft, style_rules: rules })} />
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="flex min-h-0 flex-col border-r border-[var(--nova-border)] bg-[var(--nova-surface)]">
+      <div className="grid min-h-[520px] flex-1 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="flex max-h-60 min-h-0 flex-col overflow-hidden border-b border-[var(--nova-border)] bg-[var(--nova-surface)] lg:max-h-none lg:border-b-0 lg:border-r">
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
             <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.injectRules.title')}</div>
             <Button className={iconActionClassName} variant="outline" size="icon" onClick={addSlot} aria-label={t('settingPanel.injectRules.new')}>
@@ -221,7 +221,7 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
                 </div>
               </div>
             </div>
-            <div className="min-h-[420px] flex-1 p-4 md:min-h-0">
+            <div className="min-h-[420px] flex-1 p-4 lg:min-h-0">
               <Textarea
                 className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
                 value={activeSlot.content}
@@ -320,8 +320,8 @@ function InteractiveStyleRuleRow({ rule, onChange, onRemove }: { rule: StyleRule
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
       <input ref={fileInputRef} type="file" accept={STYLE_FILE_ACCEPT} className="hidden" onChange={(event) => void handleFileSelected(event.target.files?.[0])} />
-      <div className="flex flex-col gap-2 md:flex-row md:items-center">
-        <Input className={inputClassName} value={rule.scene} placeholder={t('settingPanel.placeholder.scene')} onChange={(event) => onChange({ scene: event.target.value })} />
+      <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+        <Input className={`${inputClassName} md:min-w-44 md:flex-1`} value={rule.scene} placeholder={t('settingPanel.placeholder.scene')} onChange={(event) => onChange({ scene: event.target.value })} />
         <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
           <Upload className="h-3.5 w-3.5" />
           {t('settingPanel.style.upload')}
