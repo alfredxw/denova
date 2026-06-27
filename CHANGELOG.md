@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 移动端：移动顶栏新增「命令」按钮，没有实体键盘的手机也能打开命令面板（原先仅 ⌘K / Ctrl+K）。
 - 移动端：写作编辑器阅读区在手机上改用更紧凑的横向留白（`px-4`，桌面仍为 `px-10`），避免窄屏正文被两侧大留白挤压。
 - 移动端：聊天消息的助手操作（重新生成 / 切换版本等）与消息元信息在触摸下常显（原先仅 hover 可见，手机上无法触达）。
+- 修复：命令面板（⌘K / Ctrl+K）打开即崩溃（`Cannot read properties of undefined (reading 'subscribe')`，触发前端错误边界白屏）。根因是 `CommandDialog` 未用 cmdk 的 `<Command>` 根包裹内容，导致 `CommandInput`/`CommandList`/`CommandItem` 拿不到 cmdk store；补上 `<Command>` 包裹后面板在桌面与移动端均可正常打开。
 
 ## [v0.1.16] - 2026-06-27
 
