@@ -23,6 +23,7 @@ const branchTimeline = {
   'branchTimeline.createFailed': '创建剧情线失败',
   'branchTimeline.confirmDeleteEmpty': '删除空剧情线「{{name}}」？',
   'branchTimeline.minimap': '剧情路线图缩略导航',
+  'branchTimeline.recenter': '回到当前节点',
   'branchTimeline.unknownBranch': '未知剧情线',
   'branchTimeline.mainBranch': '主线',
 } as const

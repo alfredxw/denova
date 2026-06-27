@@ -23,6 +23,7 @@ const branchTimeline = {
   'branchTimeline.createFailed': 'Failed to create branch',
   'branchTimeline.confirmDeleteEmpty': 'Delete empty branch "{{name}}"?',
   'branchTimeline.minimap': 'Story route minimap',
+  'branchTimeline.recenter': 'Recenter to current node',
   'branchTimeline.unknownBranch': 'Unknown branch',
   'branchTimeline.mainBranch': 'Main',
 } as const
