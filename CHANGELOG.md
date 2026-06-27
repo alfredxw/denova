@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 移动端（共享原语）：`Dialog` / `AlertDialog` 内容默认限制在视口高度内并可滚动（`max-h-[calc(100dvh-2rem)] overflow-y-auto`），长内容弹窗在手机上不再溢出屏幕；自带 `max-h` / `overflow` 的弹窗不受影响（tailwind-merge 优先消费者值）。
 - 移动端（共享原语）：`Popover` 内容新增 `max-w-[calc(100vw-1rem)]`，窄屏下不再溢出到屏幕外。
 - 移动端（互动模式）：故事记忆（StoryMemory）记录列表在窄屏改用卡片渲染（原先的 `table-fixed` 列表在手机上列宽被挤压到几个字符、内容不可读，且 `overflow-x-hidden` 无法横向滚动）；桌面端仍保持表格。复用 `AdaptiveSurface` 提供的 `isMobile` 与既有字段渲染逻辑。
+- 移动端（互动模式）：剧情分支时间线（BranchTimeline）工作台视图在手机上新增「回到当前节点」按钮（桌面端用缩略导航 MiniMap 定位，移动端 MiniMap 隐藏，故补充此按钮以便手动平移后重新定位到当前剧情线）；分支切换 pills 触摸区在移动端加大。该视图的图本身已可触摸拖拽平移、切换分支自动居中、选中节点后可创建分支，本次补齐移动端导航缺口。
 
 ## [v0.1.16] - 2026-06-27
 
