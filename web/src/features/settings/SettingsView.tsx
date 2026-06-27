@@ -631,12 +631,12 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   )
 }
 
-function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProfileSettings[] {
+export function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProfileSettings[] {
   const localProfiles = draft.model_profiles ?? []
   const hasLocalDefault = localProfiles.some((profile) => modelProfileID(profile) === DEFAULT_MODEL_PROFILE_ID)
   const hasLegacyDefault = Boolean(draft.openai_api_key || draft.openai_base_url || draft.openai_model || draft.openai_context_window_tokens)
   if (hasLocalDefault || hasLegacyDefault) {
-    return modelProfilesWithDefault(draft)
+    return preserveDraftOnlyModelProfiles(modelProfilesWithDefault(draft), localProfiles)
   }
   const inherited = modelProfilesWithDefault(effective)
   const localIDs = new Set(localProfiles.map(modelProfileID).filter(Boolean))
@@ -644,6 +644,12 @@ function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProf
     ...inherited.filter((profile) => !localIDs.has(modelProfileID(profile))).map(stripInheritedModelSecret),
     ...localProfiles,
   ]
+}
+
+function preserveDraftOnlyModelProfiles(profiles: ModelProfileSettings[], draftProfiles: ModelProfileSettings[]): ModelProfileSettings[] {
+  const draftOnlyProfiles = draftProfiles.filter((profile) => !modelProfileID(profile))
+  if (draftOnlyProfiles.length === 0) return profiles
+  return [...profiles, ...draftOnlyProfiles]
 }
 
 function stripInheritedModelSecret(profile: ModelProfileSettings): ModelProfileSettings {

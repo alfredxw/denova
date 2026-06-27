@@ -1,7 +1,37 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { UpdatePanel } from './SettingsView'
+import { modelProfilesForEditor, UpdatePanel } from './SettingsView'
 import type { UpdateCheckResult, UpdateInstallResult } from './types'
+
+describe('modelProfilesForEditor', () => {
+  it('keeps a newly added blank language model profile visible before the model name is filled', () => {
+    const profiles = modelProfilesForEditor({
+      model_profiles: [
+        { id: 'default', openai_base_url: 'https://api.example.com/v1', openai_model: 'gpt-4.1', context_window_tokens: 400000 },
+        { context_window_tokens: 400000 },
+      ],
+    }, {
+      openai_base_url: 'https://api.example.com/v1',
+      openai_model: 'gpt-4.1',
+      openai_context_window_tokens: 400000,
+    })
+
+    expect(profiles).toHaveLength(2)
+    expect(profiles[1]).toEqual({ context_window_tokens: 400000 })
+  })
+
+  it('keeps an alias-only language model draft visible until it gets a model id', () => {
+    const profiles = modelProfilesForEditor({
+      model_profiles: [
+        { id: 'default', openai_model: 'gpt-4.1' },
+        { name: 'Draft model', context_window_tokens: 400000 },
+      ],
+    }, {})
+
+    expect(profiles).toHaveLength(2)
+    expect(profiles[1]).toEqual({ name: 'Draft model', context_window_tokens: 400000 })
+  })
+})
 
 describe('UpdatePanel', () => {
   it('shows restart install action after an update is staged', () => {
