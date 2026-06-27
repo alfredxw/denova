@@ -18,7 +18,7 @@ import (
 	"nova/config"
 )
 
-var ErrImageDataMissing = errors.New("图片 API 未返回图片数据")
+var ErrImageDataMissing = errors.New("图像模型未返回图片数据")
 
 type OpenAIAdapter struct {
 	httpClient *http.Client

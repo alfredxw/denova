@@ -17,9 +17,9 @@ const (
 )
 
 var (
-	ErrImageAPIProfileNotFound = errors.New("图片 API 配置不存在")
-	ErrImageAPIKeyMissing      = errors.New("图片 API Key 未配置")
-	ErrImageAPIModelMissing    = errors.New("图片模型未配置")
+	ErrImageAPIProfileNotFound = errors.New("图像模型配置不存在")
+	ErrImageAPIKeyMissing      = errors.New("图像模型 API Key 未配置")
+	ErrImageAPIModelMissing    = errors.New("图像模型未配置")
 )
 
 type ImageAPIProfileSettings struct {
@@ -211,7 +211,7 @@ func mergeImageAPIProfile(parent, child ImageAPIProfileSettings) ImageAPIProfile
 func legacyImageAPIProfile(cfg *Config) ImageAPIProfileSettings {
 	return ImageAPIProfileSettings{
 		ID:                  DefaultImageAPIProfileID,
-		Name:                "默认图片 API",
+		Name:                "默认图像模型",
 		Provider:            DefaultImageAPIProvider,
 		OpenAIAPIKey:        cfg.ImageAPIKey,
 		OpenAIBaseURL:       firstNonEmpty(cfg.ImageAPIBaseURL, DefaultImageAPIBaseURL),

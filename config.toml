@@ -9,7 +9,7 @@
 # 字段留空表示继承上层。
 # nova_dir 仅在全局启动配置或 NOVA_DIR 环境变量中生效；用户级/工作区级会忽略并过滤该字段。
 
-# 模型。默认模型也放在 model_profiles 列表里，id 固定为 default，name 可作为显示别名。
+# 语言模型。默认模型也放在 model_profiles 列表里，id 固定为 default，name 可作为显示别名。
 # 不配置 temperature 时使用平台/模型默认值。
 # 快捷选项 Agent 和版本说明 Agent 内置默认 enable_thinking=false，其他 Agent 默认不传思考参数。
 [[model_profiles]]
@@ -35,7 +35,7 @@ openai_model = "deepseek-v4-pro"
 # profile_id = "gpt-4.1"
 # temperature = 0.2
 
-# 图片生成 API。默认只接入 OpenAI 标准 Images API；可配置多个 profile。
+# 图像模型。默认只接入 OpenAI 标准 Images API；可配置多个 profile。
 # 生成结果会保存到当前工作区 assets/image/generated/。
 default_image_api_profile_id = "default"
 

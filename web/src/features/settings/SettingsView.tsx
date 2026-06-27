@@ -341,20 +341,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         <>
           <Text label={t('settings.paths.skillsDir')} value={draft.skills_dir} placeholder={placeholderFor('skills_dir')}
                 onChange={(v) => setField('skills_dir', v)} />
-          {activeLayer === 'user' && (
-            <>
-              <Num label={t('settings.paths.backendPort')} value={draft.backend_port ?? null}
-                   placeholder={placeholderFor('backend_port')}
-                   min={1}
-                   max={65535}
-                   onChange={(v) => setField('backend_port', v)} />
-              <Num label={t('settings.paths.frontendPort')} value={draft.frontend_port ?? null}
-                   placeholder={placeholderFor('frontend_port')}
-                   min={1}
-                   max={65535}
-                   onChange={(v) => setField('frontend_port', v)} />
-            </>
-          )}
           <ReadOnly label={t('settings.paths.novaDir')} value={layered?.paths?.nova_dir} />
           <ReadOnly label={t('settings.paths.userConfig')} value={layered?.paths?.user_config} />
           <ReadOnly label={t('settings.paths.workspaceConfig')} value={layered?.paths?.workspace_config} />
@@ -379,8 +365,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                   : t('settings.access.passwordPlaceholder')}
                 onChange={(v) => setField('remote_access_password', v)}
                 type="password" />
-          <ReadOnly label={t('settings.access.localUrl')} value={layered?.access?.local_url} />
-          <ReadOnly label={t('settings.access.lanUrl')} value={layered?.access?.lan_url} />
           <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
             {t('settings.access.restartHint')}
           </div>

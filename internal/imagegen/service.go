@@ -12,7 +12,7 @@ import (
 
 var (
 	ErrPromptRequired       = errors.New("图片提示词不能为空")
-	ErrUnsupportedProvider  = errors.New("不支持的图片 API provider")
+	ErrUnsupportedProvider  = errors.New("不支持的图像模型 provider")
 	ErrImageCountOutOfRange = errors.New("图片数量必须在 1 到 10 之间")
 )
 
