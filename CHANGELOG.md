@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- WebUI：新增 PWA manifest、应用图标（apple-touch-icon / 192 / 512 / maskable）与移动端 viewport meta（`viewport-fit=cover`、`theme-color`、`apple-mobile-web-app-capable` 等）。自托管后可在手机主屏“添加到桌面”以独立应用形态打开，并正确延伸到刘海安全区；图标由 `pnpm generate-icons`（sharp）从 `favicon.svg` 复现式生成。
+
+### Fixed
+
+- WebUI：桌面布局根与运行时错误边界由 `h-screen` 改为 `h-dvh`，与移动 shell 一致，避免 iOS Safari 地址栏导致的底部跳动。
+- WebUI：远程访问登录框用户名/密码输入框使用 16px 字号，避免 iOS Safari 聚焦时自动缩放页面（该登录浮层渲染在 app shell 之外，原先不享受 16px 字号覆盖规则）。
+- WebUI：章节版本对比的紧凑模式改用项目统一的 `useIsMobile()` 断点（767px），与移动 shell 及版本对比弹窗的 `max-md` 行为一致，消除 760–767px 区间的断点错位。
+
 ## [v0.1.16] - 2026-06-27
 
 ### Added
