@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 修复：命令面板（⌘K / Ctrl+K）打开即崩溃（`Cannot read properties of undefined (reading 'subscribe')`，触发前端错误边界白屏）。根因是 `CommandDialog` 未用 cmdk 的 `<Command>` 根包裹内容，导致 `CommandInput`/`CommandList`/`CommandItem` 拿不到 cmdk store；补上 `<Command>` 包裹后面板在桌面与移动端均可正常打开。
 - 移动端（共享原语）：`Dialog` / `AlertDialog` 内容默认限制在视口高度内并可滚动（`max-h-[calc(100dvh-2rem)] overflow-y-auto`），长内容弹窗在手机上不再溢出屏幕；自带 `max-h` / `overflow` 的弹窗不受影响（tailwind-merge 优先消费者值）。
 - 移动端（共享原语）：`Popover` 内容新增 `max-w-[calc(100vw-1rem)]`，窄屏下不再溢出到屏幕外。
+- 移动端（互动模式）：故事记忆（StoryMemory）记录列表在窄屏改用卡片渲染（原先的 `table-fixed` 列表在手机上列宽被挤压到几个字符、内容不可读，且 `overflow-x-hidden` 无法横向滚动）；桌面端仍保持表格。复用 `AdaptiveSurface` 提供的 `isMobile` 与既有字段渲染逻辑。
 
 ## [v0.1.16] - 2026-06-27
 
