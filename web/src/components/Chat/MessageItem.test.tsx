@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MessageItem } from './MessageItem'
@@ -162,6 +162,94 @@ describe('MessageItem', () => {
     expect(screen.getByText('调用工具')).toBeInTheDocument()
     expect(screen.getByText('write_file')).toBeInTheDocument()
     expect(screen.getByText('写入完成')).toBeInTheDocument()
+  })
+
+  it('章节插画工具卡片展示预览并触发插入', async () => {
+    const user = userEvent.setup()
+    const handleInsert = vi.fn()
+    const illustration = {
+      schema: 'chapter_illustration.v1',
+      chapter_path: 'chapters/ch01.md',
+      image_path: 'assets/illustrations/ch01/run/image.png',
+      meta_path: 'assets/illustrations/ch01/run/meta.json',
+      markdown: '![雨夜](assets/illustrations/ch01/run/image.png)',
+      alt_text: '雨夜',
+      profile_id: 'default',
+      provider: 'openai',
+      model: 'gpt-image-1',
+      size: '4096x2304',
+      quality: 'high',
+      output_format: 'png',
+    } as const
+
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'generate_image',
+          name: 'generate_image',
+          status: 'success',
+          illustration,
+        }}
+        onInsertIllustration={handleInsert}
+      />,
+    )
+
+    expect(screen.getByText('章节插画')).toBeInTheDocument()
+    expect(screen.getByText('assets/illustrations/ch01/run/image.png')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '雨夜' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fillustrations%2Fch01%2Frun%2Fimage.png')
+
+    await user.click(screen.getByRole('button', { name: '放大查看章节插画' }))
+    expect(within(screen.getByRole('dialog')).getByRole('img', { name: '雨夜' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fillustrations%2Fch01%2Frun%2Fimage.png')
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /插入正文/ }))
+    expect(handleInsert).toHaveBeenCalledWith(illustration)
+  })
+
+  it('assistant Markdown 图片支持 workspace 路径展示和点击放大', async () => {
+    const user = userEvent.setup()
+    render(<MessageItem message={{ role: 'assistant', content: '![封面](assets/image/generated/cover.png)' }} />)
+
+    expect(screen.getByRole('img', { name: '封面' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png')
+
+    await user.click(screen.getByRole('button', { name: '放大查看图片' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('img', { name: '封面' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png')
+    expect(within(dialog).queryByTitle('assets/image/generated/cover.png')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: '放大' })).toBeInTheDocument()
+  })
+
+  it('txt 章节插画卡片不允许一键插入 Markdown 图片', () => {
+    const handleInsert = vi.fn()
+
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'generate_image',
+          name: 'generate_image',
+          status: 'success',
+          illustration: {
+            schema: 'chapter_illustration.v1',
+            chapter_path: 'chapters/ch01.txt',
+            image_path: 'assets/illustrations/ch01/run/image.png',
+            meta_path: 'assets/illustrations/ch01/run/meta.json',
+            markdown: '![雨夜](assets/illustrations/ch01/run/image.png)',
+            alt_text: '雨夜',
+            profile_id: 'default',
+            provider: 'openai',
+            model: 'gpt-image-1',
+          },
+        }}
+        onInsertIllustration={handleInsert}
+      />,
+    )
+
+    expect(screen.getByText('当前章节不是 Markdown，不能一键插入')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /插入正文/ })).toBeDisabled()
   })
 
   it('工具调用流式预览默认锁定到底部', async () => {

@@ -143,6 +143,9 @@ func (t *mutationTracker) observeToolResult(data any) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	call := t.ensureCallLocked(id, name)
+	if target := eventDataString(data, "target"); target != "" {
+		call.target = target
+	}
 	call.itemIDs = append(call.itemIDs, eventDataStringSlice(data, "item_ids")...)
 	call.deleteID = append(call.deleteID, eventDataStringSlice(data, "deleted_ids")...)
 }

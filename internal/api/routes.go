@@ -20,6 +20,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/workspace/summary", apiHandlers.HandleWorkspaceSummary)
 		api.PATCH("/workspace/chapter-status", apiHandlers.HandleWorkspaceChapterStatus)
 		api.GET("/workspace/file", apiHandlers.HandleWorkspaceFile)
+		api.GET("/workspace/asset", apiHandlers.HandleWorkspaceAsset)
 		api.GET("/workspace/search", apiHandlers.HandleWorkspaceSearch)
 		api.POST("/workspace/file", apiHandlers.HandleWorkspaceFileWrite)
 		api.POST("/workspace/create", apiHandlers.HandleWorkspaceCreate)

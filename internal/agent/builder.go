@@ -35,7 +35,7 @@ func Build(ctx context.Context, cfg *config.Config, state *book.State, teller ID
 		Description:       "AI 小说创作助手",
 		Instruction:       BuildInstruction(cfg, state, teller),
 		EnableSkills:      true,
-		ExtraToolsFactory: loreToolsFactory(cfg, false),
+		ExtraToolsFactory: ideToolsFactory(cfg),
 	})
 }
 
@@ -331,6 +331,30 @@ func loreToolsFactory(cfg *config.Config, forceReadOnly bool) func(config.Resolv
 		}
 		allowWrite := settings.LoreWrite && !forceReadOnly
 		return newLoreTools(cfg.Workspace, allowWrite)
+	}
+}
+
+func ideToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+		if cfg == nil {
+			return nil, nil
+		}
+		var tools []tool.BaseTool
+		if settings.LoreRead {
+			loreTools, err := newLoreTools(cfg.Workspace, settings.LoreWrite)
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, loreTools...)
+		}
+		if settings.ImageGeneration {
+			imageTools, err := newIllustrationTools(cfg)
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, imageTools...)
+		}
+		return tools, nil
 	}
 }
 

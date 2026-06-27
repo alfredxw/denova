@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -91,5 +92,44 @@ func TestWorkspaceFileWriteRejectsStaleRevision(t *testing.T) {
 	}
 	if got != "Agent 已更新的新内容" {
 		t.Fatalf("冲突后应保留 Agent 内容，实际: %q", got)
+	}
+}
+
+func TestWorkspaceAssetServesWorkspaceImages(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	if err := application.BookService().WriteBinaryFile("assets/illustrations/ch01/image.png", []byte{0x89, 0x50, 0x4e, 0x47}); err != nil {
+		t.Fatalf("write image: %v", err)
+	}
+	if err := application.BookService().WriteFile("assets/illustrations/ch01/meta.json", "{}"); err != nil {
+		t.Fatalf("write meta: %v", err)
+	}
+	if err := application.BookService().WriteBinaryFile("chapters/not-asset.png", []byte("png")); err != nil {
+		t.Fatalf("write non asset image: %v", err)
+	}
+
+	okResp := performJSONRequest(t, server, http.MethodGet, "/api/workspace/asset?path=assets%2Fillustrations%2Fch01%2Fimage.png", nil)
+	if okResp.Code != http.StatusOK {
+		t.Fatalf("asset status = %d body=%s", okResp.Code, okResp.Body.String())
+	}
+	if got := string(okResp.Body.Bytes()); got != string([]byte{0x89, 0x50, 0x4e, 0x47}) {
+		t.Fatalf("asset body = %q", got)
+	}
+	if contentType := string(okResp.Header().Peek("Content-Type")); !strings.HasPrefix(contentType, "image/png") {
+		t.Fatalf("content type = %q", contentType)
+	}
+	nonAssetResp := performJSONRequest(t, server, http.MethodGet, "/api/workspace/asset?path=chapters%2Fnot-asset.png", nil)
+	if nonAssetResp.Code != http.StatusOK {
+		t.Fatalf("non-asset image status = %d body=%s", nonAssetResp.Code, nonAssetResp.Body.String())
+	}
+
+	for _, path := range []string{
+		"/api/workspace/asset?path=assets%2Fillustrations%2F..%2F..%2Fchapters%2Fnot-asset.png",
+		"/api/workspace/asset?path=assets%2Fillustrations%2Fch01%2Fmeta.json",
+	} {
+		resp := performJSONRequest(t, server, http.MethodGet, path, nil)
+		if resp.Code == http.StatusOK {
+			t.Fatalf("%s should be rejected", path)
+		}
 	}
 }

@@ -46,7 +46,6 @@ provider = "openai"
 openai_base_url = "https://api.openai.com/v1"
 openai_api_key = ""
 openai_model = "gpt-image-1"
-default_size = "1024x1024"
 default_quality = "auto"
 default_output_format = "png"
 #

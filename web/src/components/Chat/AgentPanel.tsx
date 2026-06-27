@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { Teller } from '@/features/interactive/types'
 import { removeChatContextCompaction } from '@/lib/api'
-import type { ChapterSummary, ChatMessage, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
+import type { ChapterIllustration, ChapterSummary, ChatMessage, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { BUILTIN_WRITING_SKILLS, DEFAULT_WRITING_SKILL, useWritingSkillOptions, type WritingSkillOption } from '@/hooks/useWritingSkillOptions'
 import { MessageList } from './MessageList'
@@ -59,6 +59,7 @@ interface AgentPanelProps {
   onStyleSceneAdd: (scene: string) => void
   onStyleSceneRemove: (scene: string) => void
   onTextSelectionRemove: (index: number) => void
+  onInsertIllustration?: (illustration: ChapterIllustration) => void
   onClose: () => void
   onSubAgentDetailsChange?: (open: boolean) => void
 }
@@ -95,6 +96,7 @@ export function AgentPanel({
   onStyleSceneAdd,
   onStyleSceneRemove,
   onTextSelectionRemove,
+  onInsertIllustration,
   onClose,
   onSubAgentDetailsChange,
 }: AgentPanelProps) {
@@ -123,14 +125,18 @@ export function AgentPanel({
 
   useEffect(() => {
     const handleWritingInitRequest = (event: Event) => {
-      const detail = (event as CustomEvent<{ prompt?: string }>).detail
+      const detail = (event as CustomEvent<{ prompt?: string; autoSend?: boolean }>).detail
       const prompt = detail?.prompt || t('writingAgent.initPrompt')
       setView('chat')
+      if (detail?.autoSend && !isStreaming) {
+        onSend(prompt, { writingSkill, ideContext })
+        return
+      }
       setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
     }
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
-  }, [t])
+  }, [ideContext, isStreaming, onSend, t, writingSkill])
 
   useEffect(() => {
     onSubAgentDetailsChange?.(Boolean(activeSubAgentSessionKey))
@@ -264,6 +270,7 @@ export function AgentPanel({
                 bottomPaddingClassName="pb-36"
                 bottomPaddingPx={messageListBottomPadding}
                 onOpenSubAgentSession={openSubAgentSession}
+                onInsertIllustration={onInsertIllustration}
                 activeSubAgentSessionKey={activeSubAgentSessionKey}
               />
               <InputArea
@@ -327,6 +334,7 @@ export function AgentPanel({
                         bottomPaddingClassName="pb-36"
                         bottomPaddingPx={messageListBottomPadding}
                         onOpenSubAgentSession={openSubAgentSession}
+                        onInsertIllustration={onInsertIllustration}
                         activeSubAgentSessionKey={activeSubAgentSessionKey}
                       />
                       <InputArea

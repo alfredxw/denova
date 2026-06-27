@@ -1,11 +1,14 @@
 import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
+import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, Copy, FileText, ListTodo, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
+import { Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, Copy, FileText, ImagePlus, ListTodo, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ChatMessage } from '@/lib/api'
+import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
+import { workspaceAssetURL, type ChapterIllustration, type ChatMessage } from '@/lib/api'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
+import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { subAgentSessionKey } from './subagent-session'
@@ -18,6 +21,7 @@ interface MessageItemProps {
   onRegenerate?: (message: ChatMessage) => void
   onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void
   onOpenSubAgentSession?: (message: ChatMessage) => void
+  onInsertIllustration?: (illustration: ChapterIllustration) => void
   activeSubAgentSessionKey?: string
   subAgentPresentation?: 'card' | 'content'
 }
@@ -25,7 +29,7 @@ interface MessageItemProps {
 const copyFeedbackDurationMs = 1200
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, activeSubAgentSessionKey, subAgentPresentation = 'card' }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, activeSubAgentSessionKey, subAgentPresentation = 'card' }: MessageItemProps) {
   const { t } = useTranslation()
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
@@ -129,12 +133,18 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return <ThinkingBlock message={message} content={content} streaming={message.streaming === true} />
 
     case 'tool_call':
+      if (['generate_image', 'generate_chapter_illustration'].includes(message.name || '') && message.illustration) {
+        return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
+      }
       if ((message.name || '') === 'write_todos') {
         return <TodoListBlock message={message} />
       }
       return <ToolExecutionBlock message={message} />
 
     case 'tool_result':
+      if (message.illustration) {
+        return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
+      }
       return <ToolResultBlock content={content} />
 
     case 'context_compaction':
@@ -505,6 +515,66 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   )
 }
 
+function ChapterIllustrationBlock({ message, onInsert }: { message: ChatMessage; onInsert?: (illustration: ChapterIllustration) => void }) {
+  const { t } = useTranslation()
+  const illustration = message.illustration
+  if (!illustration) return <ToolExecutionBlock message={message} />
+
+  const status = message.status || 'running'
+  const isMarkdownChapter = isMarkdownPath(illustration.chapter_path)
+  const canInsert = status === 'success' && isMarkdownChapter && Boolean(onInsert)
+  const imageSrc = workspaceAssetURL(illustration.image_path)
+  const imageTitle = illustration.alt_text || t('chat.illustration.previewAlt')
+
+  return (
+    <div className="flex justify-start">
+      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
+        <ImagePreviewDialog src={imageSrc} title={imageTitle} alt={imageTitle} path={illustration.image_path}>
+          <button
+            type="button"
+            className="group relative block w-full overflow-hidden bg-black/90 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]"
+            aria-label={t('chat.illustration.openPreview')}
+          >
+            <img
+              src={imageSrc}
+              alt={imageTitle}
+              className="max-h-80 w-full object-contain"
+              loading="lazy"
+            />
+            <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-black/45 px-2 py-1 text-[11px] font-medium text-white opacity-90 backdrop-blur">
+              <ToolStatusIcon status={status} />
+              {t('chat.illustration.title')}
+            </span>
+          </button>
+        </ImagePreviewDialog>
+        <div className="flex min-w-0 flex-col gap-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 sm:flex-row sm:items-center">
+          <code className="min-w-0 flex-1 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 font-mono text-[10px] text-[var(--nova-text-muted)]" title={illustration.image_path}>
+            {illustration.image_path}
+          </code>
+          <div className="flex min-w-0 items-center justify-end gap-2">
+            {!isMarkdownChapter && (
+              <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{t('chat.illustration.markdownOnly')}</span>
+            )}
+            <button
+              type="button"
+              disabled={!canInsert}
+              onClick={() => illustration && onInsert?.(illustration)}
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] font-medium text-[var(--nova-text-muted)] transition hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <ImagePlus className="h-3.5 w-3.5" />
+              {status === 'running' ? t('chat.illustration.generating') : t('chat.illustration.insert')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function isMarkdownPath(path?: string) {
+  return /\.(md|markdown)$/i.test(path || '')
+}
+
 interface TodoItem {
   content: string
   activeForm?: string
@@ -848,14 +918,19 @@ const MarkdownContent = memo(function MarkdownContent({ content, highlightDialog
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      components={highlightDialogue ? dialogueMarkdownComponents : undefined}
+      components={highlightDialogue ? dialogueMarkdownComponents : markdownComponents}
     >
       {content}
     </ReactMarkdown>
   )
 })
 
-const dialogueMarkdownComponents = {
+const markdownComponents: Components = {
+  img: ChatMarkdownImage,
+}
+
+const dialogueMarkdownComponents: Components = {
+  ...markdownComponents,
   p: ({ children }: { children?: ReactNode }) => <p>{highlightDialogueNodes(children)}</p>,
   li: ({ children }: { children?: ReactNode }) => <li>{highlightDialogueNodes(children)}</li>,
   h1: ({ children }: { children?: ReactNode }) => <h1>{highlightDialogueNodes(children)}</h1>,
@@ -865,6 +940,35 @@ const dialogueMarkdownComponents = {
   h5: ({ children }: { children?: ReactNode }) => <h5>{highlightDialogueNodes(children)}</h5>,
   h6: ({ children }: { children?: ReactNode }) => <h6>{highlightDialogueNodes(children)}</h6>,
   blockquote: ({ children }: { children?: ReactNode }) => <blockquote>{highlightDialogueNodes(children)}</blockquote>,
+}
+
+function ChatMarkdownImage({ src = '', alt = '', title = '' }: { src?: string; alt?: string; title?: string }) {
+  const { t } = useTranslation()
+  const imageSrc = normalizeChatImageSrc(src)
+  if (!imageSrc) return null
+  const imageTitle = alt || title || t('chat.image.previewTitle')
+  const imagePath = shouldShowImagePath(src) ? src : undefined
+
+  return (
+    <ImagePreviewDialog src={imageSrc} title={imageTitle} alt={alt || imageTitle} path={imagePath}>
+      <button type="button" className="nova-chat-image-button" aria-label={t('chat.image.openPreview')}>
+        <img src={imageSrc} alt={alt || imageTitle} title={title || undefined} loading="lazy" />
+      </button>
+    </ImagePreviewDialog>
+  )
+}
+
+function normalizeChatImageSrc(src: string) {
+  const trimmed = src.trim()
+  if (!trimmed) return ''
+  if (/^(https?:|data:|blob:|\/)/i.test(trimmed)) return trimmed
+  if (isWorkspaceImagePath(trimmed)) return workspaceAssetURL(trimmed)
+  return trimmed
+}
+
+function shouldShowImagePath(src: string) {
+  const trimmed = src.trim()
+  return Boolean(trimmed && !/^(data:|blob:)/i.test(trimmed))
 }
 
 function highlightDialogueNodes(children: ReactNode): ReactNode {

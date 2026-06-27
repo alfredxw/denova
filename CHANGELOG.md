@@ -6,13 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 写作模式：新增内置 `chapter-illustration` Skill 和通用 `generate_image` Agent 工具，创作 Agent 可基于当前或指定章节生成一张非剧透插画，结果保存到 `assets/illustrations/` 并在工具卡片中预览，用户可手动插入为 Markdown 图片。
+- 后端：新增受保护的 workspace asset 图片读取接口，仅允许读取 `assets/` 下的图片文件，供章节插画和 Markdown 渲染使用。
+
 ### Changed
 
+- WebUI：中文界面中 Automation Agent 统一改称“自动化Agent”，包括 Agents 页、自动化模型继承提示和自动化 Agent 内置中文提示。
+- Agent：通用 General SubAgent 的内置默认范围收窄为仅写作 Agent 和 Automation Agent 启用；互动叙事 Agent 和配置管理 Agent 默认继承关闭，仍可在 Agents 页单独开启。
+- Agent：自定义 SubAgent 的 `parents` 改为显式父 Agent 归属列表，空列表不再表示所有父 Agent 共享；Agents 页新增“仅从当前父 Agent 移除”和“全部删除”两种删除范围。
 - WebUI：设置页将原“模型”分区改名为“语言模型”，将原“图片 API”分区改名为“图像模型”，并从设置页移除后端/前端端口输入和访问地址端口展示；端口仍可通过环境变量或配置文件在启动时设置。
+- Agent：图片生成工具改为通用 `generate_image`，章节插画 Skill 改用中文流程调用该工具；生成尺寸改为调用时在 2K/3K/4K 预设中选择，设置页不再配置默认图片尺寸，输出格式限制为 `png` 或 `jpeg`。
 
 ### Fixed
 
+- WebUI：Agents 页操作 General SubAgent 开关时先按本地草稿即时刷新开关与状态标记，保存继续异步执行，避免点击后等待配置保存才反馈。
 - WebUI：修复设置页语言模型配置点击“添加语言模型”后，新建空模型配置被立即过滤掉、看起来没有反应的问题。
+- 模型配置：修复多语言模型配置中 API Key 留空时不再继承默认模型 API Key 的问题；设置页将 `default` 配置直接标记为“默认模型”。
 
 ## [v0.1.16] - 2026-06-27
 

@@ -114,7 +114,7 @@ func TestResolveAgentToolManifestUsesCapabilityRegistryOrder(t *testing.T) {
 			t.Fatalf("expected %s to be allowed: %#v", source, manifest)
 		}
 	}
-	for _, source := range []string{AgentToolFileWrite, AgentToolShellExecute, AgentToolSkills, AgentToolLoreWrite, AgentToolTodo, AgentToolAgentConfigWrite} {
+	for _, source := range []string{AgentToolFileWrite, AgentToolShellExecute, AgentToolSkills, AgentToolLoreWrite, AgentToolTodo, AgentToolImageGeneration, AgentToolAgentConfigWrite} {
 		if allowed[source] {
 			t.Fatalf("unexpected allowed capability %s: %#v", source, manifest)
 		}

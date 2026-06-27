@@ -383,6 +383,14 @@ func (r *Runtime) Run(
 				data["item_ids"] = itemIDs
 				data["deleted_ids"] = deletedIDs
 			}
+			if illustrationResult, parseErr := parseChapterIllustrationToolResult(mv.Message.ToolName, fullToolContent); parseErr != nil {
+				runLogger.Warn("parse_chapter_illustration_result_failed", slog.String("tool", mv.Message.ToolName), slog.Any("error", parseErr))
+			} else if illustrationResult != nil {
+				data["illustration"] = illustrationResult
+				data["target"] = illustrationResult.MetaPath
+			} else if target := parseGeneratedImageToolTarget(mv.Message.ToolName, fullToolContent); target != "" {
+				data["target"] = target
+			}
 			emit(Event{Type: "tool_result", Data: data})
 			continue
 		}

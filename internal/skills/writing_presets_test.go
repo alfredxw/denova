@@ -36,6 +36,20 @@ func TestBuiltinWritingPresetInstructionsCoverMultiChapterPlanning(t *testing.T)
 	}
 }
 
+func TestBuiltinChapterIllustrationSkillIsIDEOnly(t *testing.T) {
+	content := readBuiltinWritingPreset(t, "chapter-illustration")
+	for _, required := range []string{
+		"name: chapter-illustration",
+		"agent: ide",
+		"generate_image",
+		"不要自动编辑章节正文",
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("chapter-illustration missing required instruction %q", required)
+		}
+	}
+}
+
 func readBuiltinWritingPreset(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "..", "skills", name, SkillFileName))

@@ -20,7 +20,7 @@ import { LOCALE_OPTIONS } from '@/i18n'
 import { APP_VERSION } from '@/app-version'
 import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
 import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfilesWithDefault } from './model-profiles'
-import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, DEFAULT_IMAGE_API_SIZE, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
+import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
 
@@ -41,9 +41,8 @@ const CONTEXT_WINDOW_PRESETS = [200000, DEFAULT_CONTEXT_WINDOW_TOKENS, 1000000]
 const CONTEXT_WINDOW_INHERIT_VALUE = 'inherit'
 const IMAGE_API_INHERIT_VALUE = '__inherit__'
 const IMAGE_API_PROVIDER_DEFAULT_VALUE = '__provider_default__'
-const IMAGE_API_SIZE_OPTIONS = ['auto', '1024x1024', '1536x1024', '1024x1536', '1792x1024', '1024x1792', '512x512', '256x256']
 const IMAGE_API_QUALITY_OPTIONS = ['auto', 'high', 'medium', 'low', 'standard', 'hd']
-const IMAGE_API_FORMAT_OPTIONS = ['png', 'jpeg', 'webp']
+const IMAGE_API_FORMAT_OPTIONS = ['png', 'jpeg']
 
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
@@ -1189,11 +1188,13 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
             {t('settings.model.profileEmpty', { count: effectiveProfiles.length || 1 })}
           </div>
         )}
-        {profiles.map((profile, index) => (
+        {profiles.map((profile, index) => {
+          const isDefaultProfile = modelProfileID(profile) === DEFAULT_MODEL_PROFILE_ID
+          return (
           <div key={profileKeys[index]} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
             <div className="flex items-center gap-2 px-2.5 py-2">
               <Badge variant="outline" className="shrink-0">
-                {t('settings.model.profileName', { index: index + 1 })}
+                {isDefaultProfile ? t('settings.model.defaultProfileName') : t('settings.model.profileName', { index: index + 1 })}
               </Badge>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs font-medium text-[var(--nova-text)]">
@@ -1265,7 +1266,8 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
               </ModelProfileInput>
             </div>
           </div>
-        ))}
+          )
+        })}
         <Button
           type="button"
           onClick={addProfile}
@@ -1306,7 +1308,6 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
       provider: DEFAULT_IMAGE_API_PROVIDER,
       openai_base_url: DEFAULT_IMAGE_API_BASE_URL,
       openai_model: DEFAULT_IMAGE_API_MODEL,
-      default_size: DEFAULT_IMAGE_API_SIZE,
     }])
   }
   const updateProfile = (index: number, patch: Partial<ImageAPIProfileSettings>) => {
@@ -1427,19 +1428,11 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
                 />
               </ModelProfileInput>
               <ImageOptionSelect
-                label={t('settings.imageApi.defaultSize')}
-                value={profile.default_size ?? ''}
-                options={IMAGE_API_SIZE_OPTIONS}
-                placeholder={t('settings.imageApi.providerDefault')}
-                className="md:col-span-4"
-                onChange={(value) => updateProfile(index, { default_size: value })}
-              />
-              <ImageOptionSelect
                 label={t('settings.imageApi.defaultQuality')}
                 value={profile.default_quality ?? ''}
                 options={IMAGE_API_QUALITY_OPTIONS}
                 placeholder={t('settings.imageApi.providerDefault')}
-                className="md:col-span-4"
+                className="md:col-span-3"
                 onChange={(value) => updateProfile(index, { default_quality: value })}
               />
               <ImageOptionSelect
@@ -1447,7 +1440,7 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
                 value={profile.default_output_format ?? ''}
                 options={IMAGE_API_FORMAT_OPTIONS}
                 placeholder={t('settings.imageApi.providerDefault')}
-                className="md:col-span-4"
+                className="md:col-span-3"
                 onChange={(value) => updateProfile(index, { default_output_format: value })}
               />
             </div>

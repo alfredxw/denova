@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { MessageItem, ToolActivityBlock } from './MessageItem'
-import type { ChatMessage } from '@/lib/api'
+import type { ChapterIllustration, ChatMessage } from '@/lib/api'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { listItem, novaEase } from '@/features/motion/motion-tokens'
 import { buildSubAgentProgressMessage, isSubAgentTimelineMessage, subAgentSessionKey } from './subagent-session'
@@ -23,11 +23,12 @@ interface MessageListProps {
   onRegenerateMessage?: (message: ChatMessage) => void
   onSwitchMessageVersion?: (message: ChatMessage, direction: -1 | 1) => void
   onOpenSubAgentSession?: (message: ChatMessage) => void
+  onInsertIllustration?: (illustration: ChapterIllustration) => void
   activeSubAgentSessionKey?: string
 }
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, activeSubAgentSessionKey }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, activeSubAgentSessionKey }: MessageListProps) {
   const { t } = useTranslation()
   const hasRunningContextCompaction = messages.some((message) => message.role === 'context_compaction' && message.status === 'running')
   const visibleActivityContent = hasRunningContextCompaction ? '' : activityContent
@@ -59,6 +60,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
               onRegenerate={isStreaming ? undefined : onRegenerateMessage}
               onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion}
               onOpenSubAgentSession={onOpenSubAgentSession}
+              onInsertIllustration={onInsertIllustration}
               activeSubAgentSessionKey={activeSubAgentSessionKey}
             />
           )}
@@ -109,6 +111,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
               messages={traceMessages}
               highlightDialogue={highlightDialogue}
               messageStyle={messageStyle}
+              onInsertIllustration={onInsertIllustration}
             />
           </motion.div>,
         )
@@ -174,6 +177,7 @@ function buildMessageListScrollKey(messages: ChatMessage[], activityContent: str
     (message.content || '').length,
     (message.args || '').length,
     (message.result || '').length,
+    message.illustration?.image_path || '',
   ].join(':')).join('|')
   return [
     isStreaming ? 'streaming' : 'idle',
@@ -187,7 +191,7 @@ function isTraceMessage(message: ChatMessage) {
   return message.role === 'thinking' || message.role === 'tool_call' || message.role === 'tool_result'
 }
 
-function TraceGroup({ messages, highlightDialogue, messageStyle }: { messages: ChatMessage[]; highlightDialogue: boolean; messageStyle?: CSSProperties }) {
+function TraceGroup({ messages, highlightDialogue, messageStyle, onInsertIllustration }: { messages: ChatMessage[]; highlightDialogue: boolean; messageStyle?: CSSProperties; onInsertIllustration?: (illustration: ChapterIllustration) => void }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const toolCount = messages.filter((message) => message.role === 'tool_call').length
@@ -225,6 +229,7 @@ function TraceGroup({ messages, highlightDialogue, messageStyle }: { messages: C
                     message={{ ...message, streaming: false }}
                     highlightDialogue={highlightDialogue}
                     messageStyle={messageStyle}
+                    onInsertIllustration={onInsertIllustration}
                   />
                 )
             ))}

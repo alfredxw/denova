@@ -89,6 +89,38 @@ func TestResolveAgentModelAllowsDefaultProfileOverride(t *testing.T) {
 	}
 }
 
+func TestResolveAgentModelInheritsBlankFieldsFromDefaultProfile(t *testing.T) {
+	contextWindow := 1000000
+	cfg := &Config{
+		ModelProfiles: []ModelProfileSettings{
+			{
+				ID:                  "default",
+				OpenAIAPIKey:        "default-key",
+				OpenAIBaseURL:       "https://api.default.example/v1",
+				OpenAIModel:         "default-model",
+				ContextWindowTokens: &contextWindow,
+			},
+			{
+				ID:          "fast",
+				OpenAIModel: "fast-model",
+			},
+		},
+		AgentModels: AgentModelSettings{
+			IDE: AgentModelOverride{ProfileID: "fast"},
+		},
+	}
+	resolved := ResolveAgentModel(cfg, AgentKindIDE)
+	if resolved.ProfileID != "fast" {
+		t.Fatalf("profile id = %q, want fast", resolved.ProfileID)
+	}
+	if resolved.OpenAIAPIKey != "default-key" || resolved.OpenAIBaseURL != "https://api.default.example/v1" || resolved.OpenAIModel != "fast-model" {
+		t.Fatalf("blank profile fields should inherit from default profile: %#v", resolved)
+	}
+	if resolved.ContextWindowTokens != contextWindow {
+		t.Fatalf("context window = %d, want inherited %d", resolved.ContextWindowTokens, contextWindow)
+	}
+}
+
 func TestResolveAgentModelClearsInheritedDefaultProfileAlias(t *testing.T) {
 	profiles := mergeModelProfiles(
 		[]ModelProfileSettings{{ID: "default", Name: "DeepSeek 写作", OpenAIModel: "deepseek-v4-pro"}},

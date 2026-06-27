@@ -21,8 +21,8 @@ func TestResolveImageAPIProfileUsesDefaultsAndRequiresKey(t *testing.T) {
 	if resolved.OpenAIBaseURL != DefaultImageAPIBaseURL || resolved.OpenAIModel != DefaultImageAPIModel {
 		t.Fatalf("defaults not applied: %#v", resolved)
 	}
-	if resolved.Size != DefaultImageAPISize {
-		t.Fatalf("default size = %q", resolved.Size)
+	if resolved.Size != "" {
+		t.Fatalf("default size should be unset, got %q", resolved.Size)
 	}
 }
 
@@ -36,9 +36,9 @@ func TestResolveImageAPIProfileSelectsConfiguredProfile(t *testing.T) {
 			OpenAIAPIKey:        "profile-key",
 			OpenAIBaseURL:       "https://example.test/v1",
 			OpenAIModel:         "gpt-image-1-mini",
-			DefaultSize:         "1536x1024",
+			DefaultSize:         "4096x2304",
 			DefaultQuality:      "high",
-			DefaultOutputFormat: "webp",
+			DefaultOutputFormat: "jpeg",
 		}},
 	}
 	resolved, err := ResolveImageAPIProfile(cfg, "")
@@ -48,7 +48,7 @@ func TestResolveImageAPIProfileSelectsConfiguredProfile(t *testing.T) {
 	if resolved.ProfileID != "cover" || resolved.OpenAIAPIKey != "profile-key" || resolved.OpenAIModel != "gpt-image-1-mini" {
 		t.Fatalf("resolved profile mismatch: %#v", resolved)
 	}
-	if resolved.Size != "1536x1024" || resolved.Quality != "high" || resolved.OutputFormat != "webp" {
+	if resolved.Size != "" || resolved.Quality != "high" || resolved.OutputFormat != "jpeg" {
 		t.Fatalf("resolved defaults mismatch: %#v", resolved)
 	}
 }
@@ -85,7 +85,7 @@ func TestMergeImageAPIProfilesByID(t *testing.T) {
 func TestSanitizeImageAPIProfiles(t *testing.T) {
 	settings := sanitizeEditableSettings(Settings{
 		ImageAPIProfiles: []ImageAPIProfileSettings{
-			{OpenAIModel: " gpt-image-1 ", DefaultSize: "bad", DefaultQuality: "high", DefaultOutputFormat: "webp"},
+			{OpenAIModel: " gpt-image-1 ", DefaultSize: "bad", DefaultQuality: "high", DefaultOutputFormat: "jpeg"},
 			{ID: "  "},
 		},
 	})
@@ -96,7 +96,7 @@ func TestSanitizeImageAPIProfiles(t *testing.T) {
 	if profile.ID != "gpt-image-1" || profile.OpenAIModel != "gpt-image-1" {
 		t.Fatalf("profile ID/model not normalized: %#v", profile)
 	}
-	if profile.DefaultSize != "" || profile.DefaultQuality != "high" || profile.DefaultOutputFormat != "webp" {
+	if profile.DefaultSize != "" || profile.DefaultQuality != "high" || profile.DefaultOutputFormat != "jpeg" {
 		t.Fatalf("profile defaults not normalized: %#v", profile)
 	}
 }

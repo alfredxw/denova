@@ -79,6 +79,24 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		profile.ID = id
 		profiles[id] = mergeModelProfile(base, profile)
 	}
+	defaultProfile := profiles["default"]
+	if defaultProfile.OpenAIAPIKey == "" {
+		defaultProfile.OpenAIAPIKey = cfg.OpenAIAPIKey
+	}
+	if defaultProfile.OpenAIBaseURL == "" {
+		defaultProfile.OpenAIBaseURL = cfg.OpenAIBaseURL
+	}
+	if defaultProfile.OpenAIModel == "" {
+		defaultProfile.OpenAIModel = cfg.OpenAIModel
+	}
+	if defaultProfile.ContextWindowTokens == nil {
+		contextWindowTokens := cfg.OpenAIContextWindowTokens
+		if contextWindowTokens <= 0 {
+			contextWindowTokens = DefaultContextWindowTokens
+		}
+		defaultProfile.ContextWindowTokens = intPtr(contextWindowTokens)
+	}
+	profiles["default"] = defaultProfile
 
 	defaultOverride := cfg.AgentModels.Default
 	agentOverride := mergeAgentModelOverride(defaultOverride, agentModelOverrideFor(cfg.AgentModels, agentKind))
@@ -92,20 +110,16 @@ func ResolveAgentModel(cfg *Config, agentKind string) ResolvedModelSettings {
 		profile = profiles[profileID]
 	}
 	if profile.OpenAIAPIKey == "" {
-		profile.OpenAIAPIKey = cfg.OpenAIAPIKey
+		profile.OpenAIAPIKey = defaultProfile.OpenAIAPIKey
 	}
 	if profile.OpenAIBaseURL == "" {
-		profile.OpenAIBaseURL = cfg.OpenAIBaseURL
+		profile.OpenAIBaseURL = defaultProfile.OpenAIBaseURL
 	}
 	if profile.OpenAIModel == "" {
-		profile.OpenAIModel = cfg.OpenAIModel
+		profile.OpenAIModel = defaultProfile.OpenAIModel
 	}
 	if profile.ContextWindowTokens == nil {
-		contextWindowTokens := cfg.OpenAIContextWindowTokens
-		if contextWindowTokens <= 0 {
-			contextWindowTokens = DefaultContextWindowTokens
-		}
-		profile.ContextWindowTokens = intPtr(contextWindowTokens)
+		profile.ContextWindowTokens = defaultProfile.ContextWindowTokens
 	}
 	temperature := profile.Temperature
 	if agentOverride.Temperature != nil {

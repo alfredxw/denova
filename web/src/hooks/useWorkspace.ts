@@ -14,6 +14,7 @@ import {
 } from '@/lib/api'
 import type { BookRecord } from '@/lib/api'
 import type { WorkspaceSummary } from '@/lib/api'
+import { workspaceFileKind } from '@/lib/workspace-file-kind'
 
 export interface FileNode {
   name: string
@@ -157,6 +158,12 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const selectFile = useCallback(async (path: string) => {
     const requestID = selectFileRequestRef.current + 1
     selectFileRequestRef.current = requestID
+    if (workspaceFileKind(path) === 'image') {
+      setSelectedFile(path)
+      setFileContent('')
+      selectedFileRevisionRef.current = ''
+      return
+    }
     try {
       const data = await readWorkspaceFile(path)
       if (requestID !== selectFileRequestRef.current) return
@@ -188,6 +195,11 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     await Promise.all([fetchTree(), fetchSummary()])
     const currentFile = selectedFileRef.current
     if (!currentFile) return
+    if (workspaceFileKind(currentFile) === 'image') {
+      setFileContent('')
+      selectedFileRevisionRef.current = ''
+      return
+    }
 
     // changedPath 可能是绝对路径，selectedFile 是相对路径
     // 判断是否为同一文件：相对路径匹配或绝对路径以相对路径结尾

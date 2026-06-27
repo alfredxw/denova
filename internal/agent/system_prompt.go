@@ -144,9 +144,9 @@ func agentRuntimeContract(agentKind string) string {
 		}, "\n")
 	case config.AgentKindAutomation:
 		return strings.Join([]string{
-			"- Automation Agent 可以按任务目标自行使用已启用工具读取必要文件、资料库和项目状态。",
-			"- Automation Agent 的写文件和写资料库能力必须同时满足任务写入策略与 Agent 工具权限；任一关闭都不得写入。",
-			"- Automation Agent 不得无界读取完整历史、日志、大型文件或整本书；应先定位相关范围，再按需读取。",
+			"- 自动化Agent 可以按任务目标自行使用已启用工具读取必要文件、资料库和项目状态。",
+			"- 自动化Agent 的写文件和写资料库能力必须同时满足任务写入策略与 Agent 工具权限；任一关闭都不得写入。",
+			"- 自动化Agent 不得无界读取完整历史、日志、大型文件或整本书；应先定位相关范围，再按需读取。",
 		}, "\n")
 	case config.AgentKindContextCompaction:
 		return strings.Join([]string{

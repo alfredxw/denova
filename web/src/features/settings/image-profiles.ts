@@ -4,7 +4,6 @@ export const DEFAULT_IMAGE_API_PROFILE_ID = 'default'
 export const DEFAULT_IMAGE_API_PROVIDER = 'openai'
 export const DEFAULT_IMAGE_API_BASE_URL = 'https://api.openai.com/v1'
 export const DEFAULT_IMAGE_API_MODEL = 'gpt-image-1'
-export const DEFAULT_IMAGE_API_SIZE = '1024x1024'
 
 export function imageAPIProfileID(profile?: ImageAPIProfileSettings): string {
   return profile?.id?.trim() || profile?.openai_model?.trim() || ''
@@ -25,7 +24,6 @@ export function defaultImageAPIProfileFromSettings(settings?: {
     openai_api_key: settings?.image_api_key,
     openai_base_url: settings?.image_api_base_url || DEFAULT_IMAGE_API_BASE_URL,
     openai_model: settings?.image_api_model || DEFAULT_IMAGE_API_MODEL,
-    default_size: DEFAULT_IMAGE_API_SIZE,
   }
 }
 

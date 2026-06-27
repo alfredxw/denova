@@ -52,6 +52,7 @@ Nova 不是“输入提示词，生成一段正文”的一次性工具，而是
 
 - **写作模式**：围绕小说创作组织作品文件、大纲、章节组细纲、进度、Markdown 编辑、多 Tab、全局搜索和章节统计。
 - **创作 Agent**：读取选区、读取文件、引用资料库、调用工具，并在 `chapters/` 下写入章节初稿。
+- **章节插画**：创作 Agent 可通过内置 `chapter-illustration` Skill 为当前或指定章节生成一张非剧透插画，保存到 `assets/illustrations/` 后由作者手动插入 Markdown 正文。
 - **结构化资料库**：角色、世界观、地点、势力、规则、物品等长期设定可沉淀为可检索资料。
 - **渐进式上下文**：按来源、用途和大小上限组织模型上下文，避免无界注入历史、日志或完整设定。
 - **互动模式**：围绕互动娱乐推进可游玩的故事分支、角色行动、场景记忆和故事线变化。
@@ -140,7 +141,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-也可以在UI设置页（对应 `config.toml`）中配置语言模型、图像模型、Agent 参数、默认写作 Skill（`writing_skill_default`，默认 `novel-lite`）、编辑器、互动模式、版本管理和界面外观（语言、主题、字体）。图像生成首版接入 OpenAI 标准 Images API，支持多个 `image_api_profiles`，生成结果会保存到当前工作区 `assets/image/generated/`。`theme` 支持 `dark`（默认）、`light` 和 `system`，可保存到用户级或工作区级配置。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。需要修改内置预制 Skill 时，不编辑内置目录，默认在 `<nova_dir>/skills/<skill-name>/SKILL.md` 创建同名用户级覆盖；只有用户级目录不可写时才退回工作区覆盖。Skills 页也可修改 Skill 名称和保存位置，或删除覆盖版本以恢复内置版本。创作 Agent 不会把预设 SKILL.md 直接注入模型上下文，只会在本轮动态提示中说明当前选择的 Writing Skill；当模型判断本轮涉及正文写作/续写时，应通过 `skill` 工具自行加载对应 Skill。写作范围始终从用户指令判断，不使用单独的 `writing_scope` 字段。配置优先级：
+也可以在UI设置页（对应 `config.toml`）中配置语言模型、图像模型、Agent 参数、默认写作 Skill（`writing_skill_default`，默认 `novel-lite`）、编辑器、互动模式、版本管理和界面外观（语言、主题、字体）。图像生成首版接入 OpenAI 标准 Images API，支持多个 `image_api_profiles`，生成结果会保存到当前工作区 `assets/image/generated/`；图片尺寸不在设置页配置，由 Agent 在调用 `generate_image` 时从支持的 2K/3K/4K 尺寸中选择，输出格式仅支持 `png` 和 `jpeg`。章节插画复用同一套图像模型配置，创作 Agent 调用 `generate_image` 后会将图片和 `meta.json` 保存到 `assets/illustrations/`，聊天工具卡片展示预览，作者确认后再手动插入为 Markdown 图片。`theme` 支持 `dark`（默认）、`light` 和 `system`，可保存到用户级或工作区级配置。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。需要修改内置预制 Skill 时，不编辑内置目录，默认在 `<nova_dir>/skills/<skill-name>/SKILL.md` 创建同名用户级覆盖；只有用户级目录不可写时才退回工作区覆盖。Skills 页也可修改 Skill 名称和保存位置，或删除覆盖版本以恢复内置版本。创作 Agent 不会把预设 SKILL.md 直接注入模型上下文，只会在本轮动态提示中说明当前选择的 Writing Skill；当模型判断本轮涉及正文写作/续写时，应通过 `skill` 工具自行加载对应 Skill。写作范围始终从用户指令判断，不使用单独的 `writing_scope` 字段。配置优先级：
 
 ```text
 内置默认值 < 全局 config.toml < 用户级配置 < 工作区级配置 < 环境变量
@@ -154,6 +155,8 @@ export NOVA_FRONTEND_PORT="5173"
 my-novel/
 ├── CREATOR.md
 ├── ideas.md
+├── assets/
+│   └── illustrations/
 ├── chapters/
 ├── setting/
 │   ├── progress.md
@@ -166,7 +169,7 @@ my-novel/
 
 常用入口：
 
-- **写作**：编辑章节、维护大纲与章节组细纲、查看目录树、搜索项目文件，并与创作 Agent 协作；写作进度由 `setting/progress.md` 追踪，角色当前位置、伤势、心理和目标等当前状态由 `setting/character-states.md` 追踪。
+- **写作**：编辑章节、维护大纲与章节组细纲、查看目录树、搜索项目文件，并与创作 Agent 协作；Markdown 章节可一键请求生成本章插画，生成后在 Agent 工具卡片中预览并手动插入正文；写作进度由 `setting/progress.md` 追踪，角色当前位置、伤势、心理和目标等当前状态由 `setting/character-states.md` 追踪。
 - **导入现有小说**：在书籍管理上传 txt/md，先预览工具 Agent 识别出的章节分割正则和章节效果；需要时可调整样本字数或手动编辑 Go regexp，确认后再创建新书并写入 `chapters/`。
 - **互动**：推进剧情、探索选择、切换故事线，并维护场景记忆。
 - **资料库**：维护角色、世界观、地点、势力、规则和物品等长期稳定设定，供写作模式和互动模式按需复用。
@@ -197,7 +200,7 @@ my-novel/
 也可以在设置页开启“允许局域网访问”并重启 Nova。其他设备应打开设置页展示的访问地址；release 默认是 `http://<本机局域网IP>:8080`，开发前端模式通常是 `http://<本机局域网IP>:5173`。首次访问时在页面内输入远程访问用户名和密码；后端会拒绝未登录的远端请求。
 
 ## 赞助项目
-> 给作者买杯咖啡，帮助这个项目持续迭代，持续开源，你的支持真的很重要！
+> 给作者充点token，帮助这个项目持续迭代，持续开源，你的支持真的很重要！非常感谢！
 <p align="center">
   <img src="./img/donate.png" alt="捐赠" width="240">
 </p>

@@ -89,7 +89,7 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		config.AgentKindInteractiveHotChoices: "快捷选项 Agent",
 		config.AgentKindVersionSummary:        "版本说明 Agent",
 		config.AgentKindToolAgent:             "model-only",
-		config.AgentKindAutomation:            "Automation Agent",
+		config.AgentKindAutomation:            "自动化Agent",
 		config.AgentKindContextCompaction:     "上下文压缩 Agent",
 	}
 	for _, definition := range config.AgentKindDefinitions() {

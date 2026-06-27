@@ -113,6 +113,37 @@ describe('AgentPanel', () => {
       rectSpy.mockRestore()
     }
   })
+
+  it('收到章节插画 autoSend 事件时直接发送到创作 Agent', async () => {
+    const handleSend = vi.fn()
+    renderAgentPanel({
+      selectedFile: 'chapters/ch01.md',
+      currentChapter: {
+        path: 'chapters/ch01.md',
+        file_name: 'ch01.md',
+        display_title: '第一章',
+        index: 1,
+        words: 100,
+        status: 'draft',
+        confirmed: false,
+        updated_at: '',
+        volume: '',
+        volume_path: '',
+      },
+      onSend: handleSend,
+    })
+
+    window.dispatchEvent(new CustomEvent('nova:writing-agent-init', {
+      detail: { autoSend: true, prompt: '/<chapter-illustration>\n目标章节 / Target chapter: chapters/ch01.md' },
+    }))
+
+    await waitFor(() => {
+      expect(handleSend).toHaveBeenCalledWith(
+        expect.stringContaining('/<chapter-illustration>'),
+        expect.objectContaining({ writingSkill: 'novel-lite' }),
+      )
+    })
+  })
 })
 
 function renderAgentPanel(overrides: Partial<ComponentProps<typeof AgentPanel>> = {}) {

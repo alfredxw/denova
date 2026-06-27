@@ -167,8 +167,6 @@ func imageFormatFromContentType(contentType string) string {
 		return "png"
 	case "image/jpeg", "image/jpg":
 		return "jpeg"
-	case "image/webp":
-		return "webp"
 	default:
 		return ""
 	}
@@ -178,9 +176,6 @@ func imageFormatFromBytes(data []byte) string {
 	contentType := http.DetectContentType(data)
 	if format := imageFormatFromContentType(contentType); format != "" {
 		return format
-	}
-	if len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP" {
-		return "webp"
 	}
 	return ""
 }
@@ -199,8 +194,6 @@ func normalizeImageFormat(format string) string {
 		return "png"
 	case "jpg", "jpeg":
 		return "jpeg"
-	case "webp":
-		return "webp"
 	default:
 		return ""
 	}
@@ -212,8 +205,6 @@ func mimeTypeForFormat(format string) string {
 		return "image/png"
 	case "jpeg":
 		return "image/jpeg"
-	case "webp":
-		return "image/webp"
 	default:
 		return ""
 	}
@@ -224,9 +215,7 @@ func extensionForFormat(format string) string {
 	case "png":
 		return "png"
 	case "jpeg":
-		return "jpg"
-	case "webp":
-		return "webp"
+		return "jpeg"
 	default:
 		return ""
 	}

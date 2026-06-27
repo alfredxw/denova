@@ -161,6 +161,7 @@ export interface AgentToolOverride {
   lore_write?: boolean | null
   todo?: boolean | null
   web_search?: boolean | null
+  image_generation?: boolean | null
   agent_config_read?: boolean | null
   agent_config_write?: boolean | null
 }

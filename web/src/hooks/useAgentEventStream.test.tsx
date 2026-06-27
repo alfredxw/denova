@@ -76,6 +76,43 @@ describe('useAgentEventStream', () => {
     expect(executeMessages.some((message) => message.result === 'ambiguous result')).toBe(false)
   })
 
+  it('章节插画工具结果保留结构化 illustration 数据', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['tool_call', { id: 'call-image', name: 'generate_image', args: '{"purpose":"chapter_illustration","target_path":"chapters/ch01.md"}' }],
+        ['tool_result', {
+          id: 'call-image',
+          name: 'generate_image',
+          content: '{"schema":"chapter_illustration.v1"}',
+          illustration: {
+            schema: 'chapter_illustration.v1',
+            chapter_path: 'chapters/ch01.md',
+            image_path: 'assets/illustrations/ch01/run/image.png',
+            meta_path: 'assets/illustrations/ch01/run/meta.json',
+            markdown: '![图](assets/illustrations/ch01/run/image.png)',
+            alt_text: '图',
+            profile_id: 'default',
+            provider: 'openai',
+            model: 'gpt-image-1',
+          },
+        }],
+      ]))
+    })
+
+    const message = readMessages().find((item) => item.name === 'generate_image')
+    expect(message).toMatchObject({
+      status: 'success',
+      illustration: {
+        schema: 'chapter_illustration.v1',
+        image_path: 'assets/illustrations/ch01/run/image.png',
+      },
+    })
+  })
+
   it('subagent chunk 单独成段，不合并进 root assistant 输出', async () => {
     let agent: ReturnType<typeof useAgentEventStream> | undefined
     render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
@@ -133,5 +170,5 @@ function sseStream(events: Array<[string, unknown]>) {
 }
 
 function readMessages() {
-  return JSON.parse(screen.getByTestId('messages').textContent || '[]') as Array<{ role?: string; content?: string; name?: string; status?: string; result?: string; streaming?: boolean; subagent?: boolean; agent_name?: string; subagent_session_id?: string }>
+  return JSON.parse(screen.getByTestId('messages').textContent || '[]') as Array<{ role?: string; content?: string; name?: string; status?: string; result?: string; streaming?: boolean; subagent?: boolean; agent_name?: string; subagent_session_id?: string; illustration?: Record<string, unknown> }>
 }

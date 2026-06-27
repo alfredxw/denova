@@ -11,7 +11,6 @@ const (
 	DefaultImageAPIProvider  = "openai"
 	DefaultImageAPIBaseURL   = "https://api.openai.com/v1"
 	DefaultImageAPIModel     = "gpt-image-1"
-	DefaultImageAPISize      = "1024x1024"
 	DefaultImageAPIQuality   = "auto"
 	DefaultImageAPIFormat    = "png"
 )
@@ -92,9 +91,6 @@ func ResolveImageAPIProfile(cfg *Config, requestedID string) (ResolvedImageAPIPr
 	if profile.OpenAIModel == "" {
 		profile.OpenAIModel = DefaultImageAPIModel
 	}
-	if profile.DefaultSize == "" {
-		profile.DefaultSize = DefaultImageAPISize
-	}
 	if profile.DefaultQuality == "" {
 		profile.DefaultQuality = DefaultImageAPIQuality
 	}
@@ -114,7 +110,7 @@ func ResolveImageAPIProfile(cfg *Config, requestedID string) (ResolvedImageAPIPr
 		OpenAIAPIKey:  strings.TrimSpace(profile.OpenAIAPIKey),
 		OpenAIBaseURL: strings.TrimSpace(profile.OpenAIBaseURL),
 		OpenAIModel:   strings.TrimSpace(profile.OpenAIModel),
-		Size:          normalizeImageAPISize(profile.DefaultSize),
+		Size:          "",
 		Quality:       normalizeImageAPIQuality(profile.DefaultQuality),
 		OutputFormat:  normalizeImageAPIOutputFormat(profile.DefaultOutputFormat),
 	}, nil
@@ -216,7 +212,6 @@ func legacyImageAPIProfile(cfg *Config) ImageAPIProfileSettings {
 		OpenAIAPIKey:        cfg.ImageAPIKey,
 		OpenAIBaseURL:       firstNonEmpty(cfg.ImageAPIBaseURL, DefaultImageAPIBaseURL),
 		OpenAIModel:         firstNonEmpty(cfg.ImageAPIModel, DefaultImageAPIModel),
-		DefaultSize:         DefaultImageAPISize,
 		DefaultQuality:      DefaultImageAPIQuality,
 		DefaultOutputFormat: DefaultImageAPIFormat,
 	}
@@ -246,7 +241,9 @@ func normalizeImageAPISize(size string) string {
 	switch strings.TrimSpace(size) {
 	case "", "auto":
 		return ""
-	case "256x256", "512x512", "1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792":
+	case "2048x2048", "2304x1728", "1728x2304", "2848x1600", "1600x2848", "2496x1664", "1664x2496", "3136x1344",
+		"3072x3072", "3456x2592", "2592x3456", "4096x2304", "2304x4096", "2496x3744", "3744x2496", "4704x2016",
+		"4096x4096", "3520x4704", "4704x3520", "5504x3040", "3040x5504", "3328x4992", "4992x3328", "6240x2656":
 		return strings.TrimSpace(size)
 	default:
 		return ""
@@ -268,7 +265,7 @@ func normalizeImageAPIOutputFormat(format string) string {
 	switch strings.TrimSpace(format) {
 	case "", "png":
 		return ""
-	case "jpeg", "webp":
+	case "jpeg":
 		return strings.TrimSpace(format)
 	default:
 		return ""

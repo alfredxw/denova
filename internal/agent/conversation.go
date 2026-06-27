@@ -426,6 +426,13 @@ func (c *SessionConversation) UpdateDisplayToolResult(id, name, status, result s
 	return c.session.UpdateDisplayToolResult(id, name, status, result)
 }
 
+func (c *SessionConversation) UpdateDisplayToolIllustration(id, name string, illustration *session.ChapterIllustration) error {
+	if c == nil || c.session == nil {
+		return fmt.Errorf("会话不存在")
+	}
+	return c.session.UpdateDisplayToolIllustration(id, name, illustration)
+}
+
 func (c *SessionConversation) MarkInterrupted(userMessage, assistantContent, reason string) error {
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")

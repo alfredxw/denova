@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ChatMessage, SSEEvent } from '@/lib/api'
+import type { ChapterIllustration, ChatMessage, SSEEvent } from '@/lib/api'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 
 interface AgentEventStreamOptions {
@@ -243,6 +243,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
           case 'tool_result': {
             flushToolArgBuffer()
             const content = readString(data.content)
+            const illustration = readChapterIllustration(data.illustration)
             const toolId = findToolMessageId(data, toolKeyToMessageIdRef.current, toolCallQueueRef.current, pendingToolCallsRef.current)
             const toolCall = toolId ? pendingToolCallsRef.current[toolId] : undefined
             const toolName = readString(data.name) || toolCall?.name || ''
@@ -255,14 +256,17 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             if (toolId) {
               setMessages(prev => prev.map(message => (
                 message.role === 'tool_call' && message.id === toolId
-                  ? { ...message, status: 'success', result: content, streaming: false, ...metadata }
+                  ? { ...message, status: 'success', result: content, illustration, streaming: false, ...metadata }
                   : message
               )))
             } else {
-              setMessages(prev => [...prev, { role: 'tool_result', content, ...metadata }])
+              setMessages(prev => [...prev, { role: 'tool_result', content, illustration, ...metadata }])
             }
             if (toolCall && isFileMutationTool(toolCall.name)) {
               void onAgentFileChange?.(extractToolPath(toolCall.args))
+            }
+            if (illustration) {
+              void onAgentFileChange?.(illustration.meta_path || illustration.image_path)
             }
             if (isLoreMutationTool(toolName)) {
               notifyLoreUpdated(readStringArray(data.item_ids))
@@ -414,6 +418,32 @@ function parseEventData(raw: string): Record<string, unknown> {
 
 function readString(value: unknown) {
   return typeof value === 'string' ? value : ''
+}
+
+function readChapterIllustration(value: unknown): ChapterIllustration | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const data = value as Record<string, unknown>
+  const schema = readString(data.schema)
+  const imagePath = readString(data.image_path)
+  if (schema !== 'chapter_illustration.v1' || !imagePath) return undefined
+  return {
+    schema,
+    chapter_path: readString(data.chapter_path),
+    image_path: imagePath,
+    meta_path: readString(data.meta_path),
+    markdown: readString(data.markdown),
+    alt_text: readString(data.alt_text),
+    profile_id: readString(data.profile_id),
+    provider: readString(data.provider),
+    model: readString(data.model),
+    size: readString(data.size) || undefined,
+    quality: readString(data.quality) || undefined,
+    output_format: readString(data.output_format) || undefined,
+    created_at: readString(data.created_at) || undefined,
+    revised_prompt: readString(data.revised_prompt) || undefined,
+    mime_type: readString(data.mime_type) || undefined,
+    size_bytes: readNumber(data.size_bytes),
+  }
 }
 
 function readBool(value: unknown) {

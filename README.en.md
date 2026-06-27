@@ -52,6 +52,7 @@ Beyond writing original stories, Nova can import existing novels as a starting p
 
 - **Writing Mode**: organize book files, outlines, chapter-group plans, progress, Markdown editing, multiple tabs, global search, and chapter statistics for fiction creation.
 - **Creative Agents**: read selections, read files, reference lore, call tools, and write initial chapter files under `chapters/`.
+- **Chapter illustrations**: Creative Agents can use the built-in `chapter-illustration` Skill to generate one non-spoiler illustration for the current or selected chapter, save it under `assets/illustrations/`, and let the author insert it manually into Markdown prose.
 - **Structured lore**: characters, worlds, locations, factions, rules, items, and other durable settings become searchable long-term lore.
 - **Progressive context**: model context is organized by source, purpose, and hard size limits instead of unbounded history, logs, or full settings.
 - **Interactive Mode**: run playable story branches, character actions, scene memory, and storyline changes for interactive entertainment.
@@ -140,7 +141,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-You can also configure language models, image models, Agent parameters, the default Writing Skill (`writing_skill_default`, default `novel-lite`), editor options, interactive-mode behavior, version management, and interface appearance (language, theme, fonts) from the UI settings page, which maps to `config.toml`. Image generation initially uses the standard OpenAI Images API, supports multiple `image_api_profiles`, and saves generated files to the current workspace under `assets/image/generated/`. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. To customize a built-in preset Skill, do not edit the built-in directory; Nova creates a same-name user-level override at `<nova_dir>/skills/<skill-name>/SKILL.md` by default, falling back to a workspace override only when the user-level directory is not writable. The Skills page can also rename a Skill, move it between user/workspace storage, or delete an override to restore the built-in version. The Writing Agent no longer injects preset SKILL.md directly into model context; it only adds a dynamic turn hint naming the selected Writing Skill, and the model should call the `skill` tool to load that Skill when it decides the turn involves prose writing or continuation. The actual writing range always comes from the user's instruction and does not use a separate `writing_scope` field. Configuration precedence:
+You can also configure language models, image models, Agent parameters, the default Writing Skill (`writing_skill_default`, default `novel-lite`), editor options, interactive-mode behavior, version management, and interface appearance (language, theme, fonts) from the UI settings page, which maps to `config.toml`. Image generation initially uses the standard OpenAI Images API, supports multiple `image_api_profiles`, and saves generated files to the current workspace under `assets/image/generated/`; image size is not configured in Settings, because the Agent chooses a supported 2K/3K/4K size when calling `generate_image`, and output format is limited to `png` or `jpeg`. Chapter illustrations reuse the same image model profiles: after a Creative Agent calls `generate_image`, Nova saves the image and `meta.json` under `assets/illustrations/`, shows a preview in the chat tool card, and waits for the author to insert the Markdown image manually. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. To customize a built-in preset Skill, do not edit the built-in directory; Nova creates a same-name user-level override at `<nova_dir>/skills/<skill-name>/SKILL.md` by default, falling back to a workspace override only when the user-level directory is not writable. The Skills page can also rename a Skill, move it between user/workspace storage, or delete an override to restore the built-in version. The Writing Agent no longer injects preset SKILL.md directly into model context; it only adds a dynamic turn hint naming the selected Writing Skill, and the model should call the `skill` tool to load that Skill when it decides the turn involves prose writing or continuation. The actual writing range always comes from the user's instruction and does not use a separate `writing_scope` field. Configuration precedence:
 
 ```text
 Built-in defaults < global config.toml < user-level config < workspace-level config < environment variables
@@ -154,6 +155,8 @@ After startup, if no book is specified or restored, the Web UI opens Book Manage
 my-novel/
 ├── CREATOR.md
 ├── ideas.md
+├── assets/
+│   └── illustrations/
 ├── chapters/
 ├── setting/
 │   ├── progress.md
@@ -166,7 +169,7 @@ my-novel/
 
 Common entry points:
 
-- **Writing**: edit chapters, maintain outlines and chapter-group plans, browse the file tree, search project files, and collaborate with the Writing Agent. Writing progress is tracked in `setting/progress.md`, while current character location, injuries, mental state, goals, and similar state live in `setting/character-states.md`.
+- **Writing**: edit chapters, maintain outlines and chapter-group plans, browse the file tree, search project files, and collaborate with the Writing Agent. Markdown chapters can request an illustration for the current chapter, preview it in the Agent tool card, and manually insert it into the manuscript. Writing progress is tracked in `setting/progress.md`, while current character location, injuries, mental state, goals, and similar state live in `setting/character-states.md`.
 - **Import Existing Novel**: upload a txt/md file from Book Management, preview the Tool Agent's chapter-splitting regex and chapter list, adjust sample size or the Go regexp when needed, then confirm before Nova creates the new book and writes `chapters/`.
 - **Interactive**: play through story branches, explore choices, switch storylines, and maintain scene memory.
 - **Lore Library**: maintain durable settings such as characters, worlds, locations, factions, rules, and items for both Writing Mode and Interactive Mode to reuse when needed.

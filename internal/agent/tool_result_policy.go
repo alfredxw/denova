@@ -19,6 +19,7 @@ const (
 	ToolSourceLore   ToolSource = "lore"
 	ToolSourceMemory ToolSource = "memory"
 	ToolSourceWeb    ToolSource = "web"
+	ToolSourceImage  ToolSource = "image"
 )
 
 // ToolManifest describes the loop-level contract for a model-visible tool result.
@@ -56,6 +57,11 @@ func ManifestForTool(name string) ToolManifest {
 		MaxResultBytes: defaultToolResultMaxBytes,
 	}
 	switch {
+	case normalized == generateImageToolName || normalized == generateChapterIllustrationToolName:
+		manifest.Source = ToolSourceImage
+		manifest.MutatesWorkspace = true
+		manifest.RequiresPostCheck = true
+		manifest.MaxResultBytes = writeToolResultMaxBytes
 	case normalized == "write_lore_items":
 		manifest.Source = ToolSourceLore
 		manifest.MutatesWorkspace = true

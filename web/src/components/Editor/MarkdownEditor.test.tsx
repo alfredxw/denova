@@ -3,13 +3,24 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MarkdownEditor } from './MarkdownEditor'
 
+const toastMock = vi.hoisted(() => ({
+  error: vi.fn(),
+  success: vi.fn(),
+}))
+
 const tiptapMock = vi.hoisted(() => {
   const handlers = new Map<string, Set<(...args: unknown[]) => void>>()
+  const chainApi = {
+    focus: vi.fn(() => chainApi),
+    insertContentAt: vi.fn(() => chainApi),
+    run: vi.fn(() => true),
+  }
   const editor = {
     commands: {
       setContent: vi.fn(),
       focus: vi.fn(),
     },
+    chain: vi.fn(() => chainApi),
     storage: {
       characterCount: {
         characters: () => 0,
@@ -39,6 +50,7 @@ const tiptapMock = vi.hoisted(() => {
   }
   return {
     editor,
+    chainApi,
     handlers,
     markdown: '',
     text: '',
@@ -49,6 +61,7 @@ const tiptapMock = vi.hoisted(() => {
       handlers.clear()
       this.markdown = ''
       this.text = ''
+      editor.state.selection = { from: 0, to: 0, empty: true }
       vi.clearAllMocks()
     },
   }
@@ -62,7 +75,9 @@ vi.mock('@tiptap/react', () => ({
 vi.mock('@tiptap/starter-kit', () => ({ default: { configure: () => ({}) } }))
 vi.mock('@tiptap/extension-character-count', () => ({ CharacterCount: { configure: () => ({}) } }))
 vi.mock('@tiptap/extension-placeholder', () => ({ default: { configure: () => ({}) } }))
+vi.mock('@tiptap/extension-image', () => ({ default: { extend: () => ({ configure: () => ({}) }) } }))
 vi.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }))
+vi.mock('sonner', () => ({ toast: toastMock }))
 
 describe('MarkdownEditor', () => {
   beforeEach(() => {
@@ -208,6 +223,29 @@ describe('MarkdownEditor', () => {
     expect(onSave).toHaveBeenCalledTimes(1)
   })
 
+  it('手动保存成功只更新编辑器保存状态，不弹出成功 toast', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn(() => Promise.resolve(true))
+
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="初始"
+        onSave={onSave}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '修改后'
+      tiptapMock.emit('update')
+    })
+
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(onSave).toHaveBeenCalledWith('修改后\n')
+    expect(toastMock.success).not.toHaveBeenCalled()
+  })
+
   it('关闭自动保存后用户修改不会自动写入文件', () => {
     vi.useFakeTimers()
     const onSave = vi.fn(() => Promise.resolve(true))
@@ -260,6 +298,73 @@ describe('MarkdownEditor', () => {
       'Agent 写入的新内容',
       { emitUpdate: false, contentType: 'markdown' },
     )
+  })
+
+  it('点击生成本章插画按钮时提交当前章节路径', async () => {
+    const user = userEvent.setup()
+    const onGenerateIllustration = vi.fn()
+
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="第一章"
+        onSave={vi.fn()}
+        chapterSummary={{
+          path: 'chapters/ch01.md',
+          file_name: 'ch01.md',
+          display_title: '第一章',
+          index: 1,
+          words: 100,
+          status: 'draft',
+          confirmed: false,
+          updated_at: '',
+          volume: '',
+          volume_path: '',
+        }}
+        onGenerateIllustration={onGenerateIllustration}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '生成本章插画' }))
+
+    expect(onGenerateIllustration).toHaveBeenCalledWith('chapters/ch01.md')
+  })
+
+  it('插入插画 signal 时向 Markdown 文档插入 image node', async () => {
+    tiptapMock.editor.state.selection = { from: 5, to: 5, empty: true }
+
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="第一章"
+        onSave={vi.fn()}
+        illustrationInsertSignal={{
+          nonce: 1,
+          illustration: {
+            schema: 'chapter_illustration.v1',
+            chapter_path: 'chapters/ch01.md',
+            image_path: 'assets/illustrations/ch01/run/image.png',
+            meta_path: 'assets/illustrations/ch01/run/meta.json',
+            markdown: '![雨夜](assets/illustrations/ch01/run/image.png)',
+            alt_text: '雨夜',
+            profile_id: 'default',
+            provider: 'openai',
+            model: 'gpt-image-1',
+          },
+        }}
+      />,
+    )
+
+    expect(tiptapMock.chainApi.insertContentAt).toHaveBeenCalledWith(5, {
+      type: 'image',
+      attrs: {
+        src: 'assets/illustrations/ch01/run/image.png',
+        alt: '雨夜',
+        title: '雨夜',
+      },
+    })
+    expect(tiptapMock.chainApi.run).toHaveBeenCalled()
+    expect(toastMock.success).not.toHaveBeenCalled()
   })
 })
 

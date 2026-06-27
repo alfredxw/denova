@@ -9,6 +9,7 @@ const (
 	AgentToolLoreWrite        = "lore_write"
 	AgentToolTodo             = "todo"
 	AgentToolWebSearch        = "web_search"
+	AgentToolImageGeneration  = "image_generation"
 	AgentToolAgentConfigRead  = "agent_config_read"
 	AgentToolAgentConfigWrite = "agent_config_write"
 )
@@ -37,6 +38,7 @@ type AgentToolOverride struct {
 	LoreWrite        *bool `toml:"lore_write,omitempty" json:"lore_write,omitempty"`
 	Todo             *bool `toml:"todo,omitempty" json:"todo,omitempty"`
 	WebSearch        *bool `toml:"web_search,omitempty" json:"web_search,omitempty"`
+	ImageGeneration  *bool `toml:"image_generation,omitempty" json:"image_generation,omitempty"`
 	AgentConfigRead  *bool `toml:"agent_config_read,omitempty" json:"agent_config_read,omitempty"`
 	AgentConfigWrite *bool `toml:"agent_config_write,omitempty" json:"agent_config_write,omitempty"`
 }
@@ -50,6 +52,7 @@ type ResolvedAgentToolSettings struct {
 	LoreWrite        bool `json:"lore_write"`
 	Todo             bool `json:"todo"`
 	WebSearch        bool `json:"web_search"`
+	ImageGeneration  bool `json:"image_generation"`
 	AgentConfigRead  bool `json:"agent_config_read"`
 	AgentConfigWrite bool `json:"agent_config_write"`
 }
@@ -67,16 +70,22 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			LoreWrite:        on,
 			Todo:             on,
 			WebSearch:        on,
+			ImageGeneration:  off,
 			AgentConfigRead:  off,
 			AgentConfigWrite: off,
 		},
+		IDE: AgentToolOverride{
+			ImageGeneration: on,
+		},
 		InteractiveStory: AgentToolOverride{
-			LoreWrite: off,
-			Todo:      off,
-			WebSearch: off,
+			LoreWrite:       off,
+			Todo:            off,
+			WebSearch:       off,
+			ImageGeneration: off,
 		},
 		ConfigManager: AgentToolOverride{
 			ShellExecute:     off,
+			ImageGeneration:  off,
 			AgentConfigRead:  on,
 			AgentConfigWrite: on,
 		},
@@ -94,6 +103,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			LoreWrite:        on,
 			Todo:             on,
 			WebSearch:        on,
+			ImageGeneration:  off,
 			AgentConfigRead:  off,
 			AgentConfigWrite: off,
 		},
@@ -111,6 +121,7 @@ func noToolAgentOverride() AgentToolOverride {
 		LoreWrite:        off,
 		Todo:             off,
 		WebSearch:        off,
+		ImageGeneration:  off,
 		AgentConfigRead:  off,
 		AgentConfigWrite: off,
 	}
@@ -154,6 +165,7 @@ func resolveAgentTools(cfg *Config, agentKind string) ResolvedAgentToolSettings 
 		LoreWrite:        boolValue(override.LoreWrite, true),
 		Todo:             boolValue(override.Todo, true),
 		WebSearch:        boolValue(override.WebSearch, true),
+		ImageGeneration:  boolValue(override.ImageGeneration, false),
 		AgentConfigRead:  boolValue(override.AgentConfigRead, false),
 		AgentConfigWrite: boolValue(override.AgentConfigWrite, false),
 	}
@@ -185,6 +197,9 @@ func mergeAgentToolOverride(parent, child AgentToolOverride) AgentToolOverride {
 	}
 	if child.WebSearch != nil {
 		out.WebSearch = child.WebSearch
+	}
+	if child.ImageGeneration != nil {
+		out.ImageGeneration = child.ImageGeneration
 	}
 	if child.AgentConfigRead != nil {
 		out.AgentConfigRead = child.AgentConfigRead

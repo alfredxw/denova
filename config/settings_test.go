@@ -91,6 +91,18 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if len(s.SubAgents) != 0 {
 		t.Fatalf("SubAgents should come from editable config layers, not Go defaults: %#v", s.SubAgents)
 	}
+	if s.GeneralSubAgents.Default == nil || *s.GeneralSubAgents.Default {
+		t.Fatalf("GeneralSubAgents default fallback should be disabled")
+	}
+	if s.GeneralSubAgents.IDE == nil || !*s.GeneralSubAgents.IDE {
+		t.Fatalf("GeneralSubAgents should default enabled for IDE")
+	}
+	if s.GeneralSubAgents.Automation == nil || !*s.GeneralSubAgents.Automation {
+		t.Fatalf("GeneralSubAgents should default enabled for automation")
+	}
+	if s.GeneralSubAgents.InteractiveStory != nil || s.GeneralSubAgents.ConfigManager != nil {
+		t.Fatalf("GeneralSubAgents should not explicitly enable interactive story or config manager by default")
+	}
 }
 
 func TestMergeOverridesNonZero(t *testing.T) {

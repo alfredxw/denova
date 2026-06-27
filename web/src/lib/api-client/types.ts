@@ -8,6 +8,7 @@ export interface ChatMessage {
   args?: string
   status?: 'running' | 'success' | 'error'
   result?: string
+  illustration?: ChapterIllustration
   phase?: string
   attempt?: number
   tokens_before?: number
@@ -42,6 +43,25 @@ export interface ChatMessage {
   created_at?: string
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number
+}
+
+export interface ChapterIllustration {
+  schema: 'chapter_illustration.v1' | string
+  chapter_path: string
+  image_path: string
+  meta_path: string
+  markdown: string
+  alt_text: string
+  profile_id: string
+  provider: string
+  model: string
+  size?: string
+  quality?: string
+  output_format?: string
+  created_at?: string
+  revised_prompt?: string
+  mime_type?: string
+  size_bytes?: number
 }
 
 export interface TokenUsageCall {

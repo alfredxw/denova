@@ -52,6 +52,10 @@ export async function readFile(path: string): Promise<{ path: string; content: s
   return requestJSON(`/api/workspace/file?path=${encodeURIComponent(path)}`)
 }
 
+export function workspaceAssetURL(path: string): string {
+  return `/api/workspace/asset?path=${encodeURIComponent(path)}`
+}
+
 export async function searchWorkspace(query: string, limit = 100): Promise<WorkspaceSearchResult[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) })
   const data = await requestJSON<{ results: WorkspaceSearchResult[] }>(`/api/workspace/search?${params.toString()}`)
