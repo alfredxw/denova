@@ -82,7 +82,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
             </div>
             {showAssistantActions && (
               <div className="nova-assistant-actions mt-1.5 flex justify-end">
-                <div className="flex items-center gap-0.5 opacity-30 transition-opacity group-hover:opacity-80 focus-within:opacity-80">
+                <div className="flex items-center gap-0.5 opacity-30 transition-opacity group-hover:opacity-80 focus-within:opacity-80 max-md:opacity-80">
                   {canSwitchVersion && onSwitchVersion && (
                     <>
                       <TooltipIconButton
