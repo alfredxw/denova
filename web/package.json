@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "check:i18n": "node scripts/check-i18n-keys.mjs",
+    "generate-icons": "node scripts/generate-pwa-icons.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -21,6 +22,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "jsdom": "^29.1.1",
     "msw": "^2.14.6",
+    "sharp": "^0.35.2",
     "typescript": "~6.0.2",
     "vite": "^8.0.12",
     "vitest": "^4.1.6"
