@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
 import { DiffEditor } from '@monaco-editor/react'
 import { useTheme } from 'next-themes'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 export type ChapterDiffViewProps = {
   original: string
@@ -18,18 +18,9 @@ export function ChapterDiffView({
   sideBySide = true,
   className = '',
 }: ChapterDiffViewProps) {
-  const [compact, setCompact] = useState(false)
+  const compact = useIsMobile()
   const { resolvedTheme } = useTheme()
   const monacoTheme = resolvedTheme === 'light' ? 'light' : 'vs-dark'
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return
-    const query = window.matchMedia('(max-width: 760px)')
-    const update = () => setCompact(query.matches)
-    update()
-    query.addEventListener('change', update)
-    return () => query.removeEventListener('change', update)
-  }, [])
 
   return (
     <div className={`h-full min-h-[360px] w-full overflow-hidden bg-[var(--nova-bg)] ${className}`}>
