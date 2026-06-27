@@ -1,0 +1,16 @@
+internal/imagepreset/library.go
+  h_beed6209b76699 1-335
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "508ac93d07fa6af756ef1c61ea3b187caab208f2",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
