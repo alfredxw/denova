@@ -44,6 +44,25 @@ describe('StoryPicker', () => {
     expect(screen.queryByRole('option', { name: '支线' })).not.toBeInTheDocument()
   })
 
+  it('keeps delete action inside the story selector panel', () => {
+    render(
+      <StoryPicker
+        stories={[story('st_1', '主线')]}
+        currentStoryId="st_1"
+        tellers={[]}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: '删除故事线' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '选择故事线' }))
+
+    expect(screen.getByRole('button', { name: '删除故事线' })).toBeInTheDocument()
+  })
+
   it('passes reply target chars when creating a story', () => {
     const onCreate = vi.fn()
 

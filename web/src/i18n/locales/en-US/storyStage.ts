@@ -18,6 +18,7 @@ const storyStage = {
   'storyStage.opening.startAI': 'Generate with AI',
   'storyStage.opening.startBookPreset': 'Use book preset',
   'storyStage.opening.startCustom': 'Use custom opening',
+  'storyStage.opening.noBookPreset': 'No book preset',
   'storyStage.opening.bookPresetMissing': 'Book preset opening is empty. Configure it in Lore.',
   'storyStage.opening.bookPresetSelect': 'Choose book preset',
   'storyStage.opening.bookPresetUntitled': 'Untitled opening',

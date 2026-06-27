@@ -368,7 +368,7 @@ function InteractiveStyleRuleRow({ rule, onChange, onRemove }: { rule: StyleRule
             />
             <div className="mt-2 text-right text-[11px] text-[var(--nova-text-faint)]">{contentDraft.length}/{STYLE_CONTENT_LIMIT}</div>
           </div>
-          <DialogFooter className="border-t border-[var(--nova-border)] px-4 py-3">
+          <DialogFooter className="!mx-0 !mb-0 rounded-none border-t border-[var(--nova-border)] bg-[var(--nova-surface)]/95 !px-4 !py-3">
             <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => setEditorOpen(false)}>{t('common.cancel')}</Button>
             <Button className="nova-nav-item gap-1.5 border border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] hover:border-[var(--nova-accent)] hover:bg-[var(--nova-hover)]" size="sm" onClick={saveContent} disabled={!contentDraft.trim()}>{t('common.save')}</Button>
           </DialogFooter>

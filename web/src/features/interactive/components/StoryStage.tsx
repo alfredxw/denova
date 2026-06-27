@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -99,7 +98,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [hotChoicesExpanded, setHotChoicesExpanded] = useState(false)
   const [hotChoicesLoading, setHotChoicesLoading] = useState(false)
   const [generatingImageTurnId, setGeneratingImageTurnId] = useState<string | null>(null)
-  const [selectedBookOpeningPresetId, setSelectedBookOpeningPresetId] = useState('')
   const [customOpeningText, setCustomOpeningText] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
@@ -361,7 +359,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
   const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + 20 : undefined
   const availableBookOpeningPresets = useMemo(() => bookOpeningPresets.filter((preset) => preset.content.trim()), [bookOpeningPresets])
-  const selectedBookOpeningPreset = availableBookOpeningPresets.find((preset) => preset.id === selectedBookOpeningPresetId) || availableBookOpeningPresets[0] || null
+  const selectedBookOpeningPreset = availableBookOpeningPresets[0] || null
   const turnsById = useMemo(() => {
     const result = new Map<string, { user: string }>()
     for (const turn of snapshot?.turns || []) {
@@ -443,13 +441,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       setHotChoicesLoading(false)
     }
   }, [stagePreferences.hotChoicesEnabled])
-
-  useEffect(() => {
-    setSelectedBookOpeningPresetId((current) => {
-      if (current && availableBookOpeningPresets.some((preset) => preset.id === current)) return current
-      return availableBookOpeningPresets[0]?.id || ''
-    })
-  }, [availableBookOpeningPresets])
 
   const send = async (override?: { message?: string; rewindTurnId?: string }) => {
     const sourceMessage = override?.message ?? input
@@ -756,32 +747,22 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     [branchId, onDone, snapshot, storyId],
   )
 
-  const startOpening = (mode: 'ai' | 'book_preset' | 'custom') => {
+  const fillBookPresetOpening = () => {
+    if (!selectedBookOpeningPreset?.content.trim()) return
+    setCustomOpeningText(truncateStoryOpeningText(selectedBookOpeningPreset.content))
+  }
+
+  const startAIOpening = () => {
     if (!storyId || streaming) return
-    if (mode === 'book_preset' && !selectedBookOpeningPreset?.content.trim()) return
-    const customText = truncateStoryOpeningText(customOpeningText)
-    if (mode === 'custom' && !customText) return
-    if (mode === 'book_preset') {
-      void send({
-        message: buildOpeningPrompt(
-          story,
-          t,
-          {
-            mode: 'preset',
-            preset_id: selectedBookOpeningPreset.id,
-            preset_text: selectedBookOpeningPreset.content,
-          },
-          'book_preset',
-        ),
-      })
-      return
-    }
-    if (mode === 'custom') {
-      void send({ message: buildOpeningPrompt(story, t, { mode: 'custom', custom_text: customText }) })
-      setCustomOpeningText('')
-      return
-    }
     void send({ message: buildOpeningPrompt(story, t, { mode: 'ai' }) })
+  }
+
+  const startOpening = () => {
+    if (!storyId || streaming) return
+    const customText = truncateStoryOpeningText(customOpeningText)
+    if (!customText) return
+    void send({ message: buildOpeningPrompt(story, t, { mode: 'custom', custom_text: customText }) })
+    setCustomOpeningText('')
   }
 
   const switchMessageVersion = async (message: ChatMessage, direction: -1 | 1) => {
@@ -894,8 +875,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             </div>
           </div>
         ) : (
-          <div className="nova-story-stage-header nova-topbar flex min-h-12 flex-wrap items-center justify-end gap-3 border-b px-4 py-2">
-            <div className="nova-story-stage-controls flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <div className="nova-story-stage-header nova-topbar flex min-h-12 flex-wrap items-center justify-start gap-3 border-b px-4 py-2">
+            <div className="nova-story-stage-controls flex min-w-0 flex-wrap items-center justify-start gap-2">
               {stageControls}
             </div>
           </div>
@@ -927,37 +908,22 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                       </button>
                     </div>
                   ) : null}
-                  <div className="grid w-full gap-2 sm:grid-cols-2">
-                    <Button type="button" size="sm" className="gap-1.5" disabled={!storyId || streaming} onClick={() => startOpening('ai')}>
-                      <Sparkles className="h-3.5 w-3.5" />
-                      {t('storyStage.opening.startAI')}
-                    </Button>
-                    <div className="flex min-w-0 gap-2">
-                      <Select value={selectedBookOpeningPreset?.id || ''} onValueChange={setSelectedBookOpeningPresetId} disabled={availableBookOpeningPresets.length === 0}>
-                        <SelectTrigger size="sm" className="nova-field min-w-0 flex-1 px-3 py-0.5 text-xs focus:ring-0" aria-label={t('storyStage.opening.bookPresetSelect')}>
-                          <SelectValue placeholder={t('storyStage.opening.bookPresetSelect')} />
-                        </SelectTrigger>
-                        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                          {availableBookOpeningPresets.map((preset) => (
-                            <SelectItem key={preset.id} value={preset.id}>
-                              {preset.title || t('storyStage.opening.bookPresetUntitled')}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button type="button" variant="outline" size="sm" className="shrink-0 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !selectedBookOpeningPreset} onClick={() => startOpening('book_preset')}>
+                  <div className="w-full space-y-2">
+                    <Textarea autoResize className="nova-field min-h-24 resize-none text-xs" placeholder={t('storyStage.opening.customPlaceholder')} value={customOpeningText} onChange={(event) => setCustomOpeningText(event.target.value)} />
+                    <div className="flex w-full min-w-0 flex-wrap items-center justify-center gap-2">
+                      <Button type="button" size="sm" className="gap-1.5" disabled={!storyId || streaming} onClick={startAIOpening}>
+                        <Sparkles className="h-3.5 w-3.5" />
+                        {t('storyStage.opening.startAI')}
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !customOpeningText.trim()} onClick={startOpening}>
+                        <Pencil className="h-3.5 w-3.5" />
+                        {t('storyStage.opening.startCustom')}
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !selectedBookOpeningPreset} onClick={fillBookPresetOpening} title={selectedBookOpeningPreset ? selectedBookOpeningPreset.title || t('storyStage.opening.bookPresetUntitled') : t('storyStage.opening.bookPresetMissing')}>
                         <BookOpen className="h-3.5 w-3.5" />
-                        {t('storyStage.opening.startBookPreset')}
+                        {selectedBookOpeningPreset ? t('storyStage.opening.startBookPreset') : t('storyStage.opening.noBookPreset')}
                       </Button>
                     </div>
-                  </div>
-                  {availableBookOpeningPresets.length === 0 ? <div className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('storyStage.opening.bookPresetMissing')}</div> : null}
-                  <div className="w-full space-y-2">
-                    <Textarea autoResize className="nova-field min-h-20 resize-none text-xs" placeholder={t('storyStage.opening.customPlaceholder')} value={customOpeningText} onChange={(event) => setCustomOpeningText(event.target.value)} />
-                    <Button type="button" variant="outline" size="sm" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !customOpeningText.trim()} onClick={() => startOpening('custom')}>
-                      <Pencil className="h-3.5 w-3.5" />
-                      {t('storyStage.opening.startCustom')}
-                    </Button>
                   </div>
                 </div>
               </div>

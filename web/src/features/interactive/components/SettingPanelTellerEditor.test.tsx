@@ -67,6 +67,11 @@ describe('TellerEditor style contents', () => {
     const save = within(dialog).getByRole('button', { name: '保存' })
     expect(save).toHaveClass('bg-[var(--nova-active)]')
     expect(save).toHaveClass('text-[var(--nova-text)]')
+
+    const footer = save.closest('[data-slot="dialog-footer"]')
+    expect(footer).toHaveClass('!mx-0')
+    expect(footer).toHaveClass('!mb-0')
+    expect(footer).toHaveClass('bg-[var(--nova-surface)]/95')
   })
 })
 

@@ -65,7 +65,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
       <PopoverContent
         align="start"
         sideOffset={6}
-        className={`${sidebar ? 'w-[min(calc(100vw-2rem),24rem)]' : 'w-[24rem]'} max-h-[min(70dvh,28rem)] overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 text-[var(--nova-text)] shadow-[var(--nova-shadow)]`}
+        className={`${sidebar ? 'w-[min(calc(100vw-2rem),24rem)]' : 'w-[216px]'} max-h-[min(70dvh,28rem)] overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 text-[var(--nova-text)] shadow-[var(--nova-shadow)]`}
       >
         <div role="listbox" aria-label={t('storyPicker.placeholder')} className="space-y-1">
           {stories.length === 0 ? (
@@ -92,6 +92,24 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
             })
           )}
         </div>
+        {currentStoryId ? (
+          <div className="mt-1 border-t border-[var(--nova-border)] pt-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="w-full justify-start gap-1.5 px-2 text-[var(--nova-text-faint)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]"
+              onClick={() => {
+                setSelectorOpen(false)
+                onDelete(currentStoryId)
+              }}
+              aria-label={t('storyPicker.delete')}
+            >
+              <Trash2 className="h-3 w-3" />
+              {t('storyPicker.delete')}
+            </Button>
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   )
@@ -134,21 +152,12 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
     </Popover>
   )
 
-  const deleteButton = currentStoryId && (
-    <Button variant="ghost" size="icon-xs" className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]" onClick={() => onDelete(currentStoryId)} aria-label={t('storyPicker.delete')}>
-      <Trash2 className="h-3 w-3" />
-    </Button>
-  )
-
   if (sidebar) {
     return (
       <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex items-center justify-between gap-2">
           <span className="shrink-0 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('storyPicker.label')}</span>
-          <div className="flex shrink-0 items-center gap-1">
-            {createButton}
-            {deleteButton}
-          </div>
+          <div className="flex shrink-0 items-center gap-1">{createButton}</div>
         </div>
         {selector}
       </div>
@@ -160,7 +169,6 @@ export function StoryPicker({ stories, currentStoryId, tellers, onSelect, onCrea
       <span className="shrink-0 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('storyPicker.label')}</span>
       {selector}
       {createButton}
-      {deleteButton}
     </div>
   )
 }

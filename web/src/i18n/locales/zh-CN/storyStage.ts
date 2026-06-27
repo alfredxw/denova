@@ -18,6 +18,7 @@ const storyStage = {
   'storyStage.opening.startAI': 'AI 生成开场',
   'storyStage.opening.startBookPreset': '使用书籍预设',
   'storyStage.opening.startCustom': '使用自定义开局',
+  'storyStage.opening.noBookPreset': '没有书籍预设',
   'storyStage.opening.bookPresetMissing': '书籍预设开场白为空，可在资料库里配置。',
   'storyStage.opening.bookPresetSelect': '选择书籍预设',
   'storyStage.opening.bookPresetUntitled': '未命名开场',

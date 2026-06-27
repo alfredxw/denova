@@ -42,6 +42,28 @@ describe('StoryStage interactive image settings', () => {
   })
 })
 
+describe('StoryStage opening panel', () => {
+  it('fills custom opening text from the book preset button', () => {
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {} }}
+        bookOpeningPresets={[{ id: 'preset-1', title: '默认开场', content: '青石镇的雨刚刚停。' }]}
+        onDone={() => {}}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '使用书籍预设' }))
+
+    expect(screen.getByPlaceholderText('写下你想使用的开局。生成时会作为有界来源传给互动 Agent。')).toHaveValue('青石镇的雨刚刚停。')
+  })
+})
+
 function story(): StorySummary {
   return {
     id: 'story-1',
