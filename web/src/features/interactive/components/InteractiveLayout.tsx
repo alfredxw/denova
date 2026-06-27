@@ -16,7 +16,7 @@ import { StoryStage } from './StoryStage'
 import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
-import type { Snapshot } from '../types'
+import type { Snapshot, StoryImageSettings } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 
 interface InteractiveLayoutProps {
@@ -167,6 +167,14 @@ export function InteractiveLayout({ workspace, loreEmpty = false, onRequestLoreI
     await reloadStories()
   }
 
+  const handleImageSettingsChange = async (imageSettings: StoryImageSettings) => {
+    if (!currentStoryId) return
+    await updateInteractiveStory(currentStoryId, {
+      image_settings: imageSettings,
+    })
+    await reloadStories()
+  }
+
   const handleSwitchBranch = async (branchId: string) => {
     const storyId = currentStoryId || useInteractiveStore.getState().currentStoryId || snapshot?.story_id
     if (!storyId) return
@@ -218,6 +226,7 @@ export function InteractiveLayout({ workspace, loreEmpty = false, onRequestLoreI
       onStoryDelete={handleDeleteStory}
       onTellerChange={handleTellerChange}
       onReplyTargetCharsChange={handleReplyTargetCharsChange}
+      onImageSettingsChange={handleImageSettingsChange}
       onRequestLoreInit={onRequestLoreInit}
       onToggleSceneMemory={isMobile ? () => setMobileSnapshotOpen((open) => !open) : onToggleRightPanel}
       onDone={reloadSnapshot}

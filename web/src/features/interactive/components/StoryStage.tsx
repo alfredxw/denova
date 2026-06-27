@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ChangeEvent } from 'react'
-import { Archive, BarChart3, BookOpen, ChevronDown, ChevronUp, Command as CommandIcon, Compass, List, Loader2, PanelRight, Pencil, Plus, RefreshCw, ScrollText, Send, SlidersHorizontal, Sparkles, Square, X } from 'lucide-react'
+import { Archive, BarChart3, BookOpen, Check, ChevronDown, ChevronUp, Command as CommandIcon, Compass, ImagePlus, List, Loader2, PanelRight, Pencil, Plus, RefreshCw, ScrollText, Send, SlidersHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList } from '@/components/Chat/MessageList'
@@ -20,16 +20,16 @@ import { SubAgentSessionPanel } from '@/components/Chat/SubAgentSessionPanel'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 import { subAgentSessionKey } from '@/components/Chat/subagent-session'
 import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobile-layout'
-import type { ChatMessage, ContextAnalysis } from '@/lib/api'
+import type { ChatMessage, ContextAnalysis, InteractiveImage, InteractiveImageError } from '@/lib/api'
 import { isComposingKeyboardEvent } from '@/lib/keyboard'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveHotChoices, removeInteractiveContextCompaction, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
+import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveHotChoices, generateInteractiveImage, removeInteractiveContextCompaction, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
 import { createInteractiveNarrativeFilter, sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { Snapshot, StorySummary, Teller, TokenUsageEvent } from '../types'
+import type { Snapshot, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { TellerPicker } from './TellerPicker'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -52,6 +52,7 @@ interface StoryStageProps {
   onStoryDelete?: (storyId: string) => void
   onTellerChange?: (tellerId: string) => void
   onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
+  onImageSettingsChange?: (settings: StoryImageSettings) => void | Promise<void>
   onRequestLoreInit?: () => void
   onToggleSceneMemory?: () => void
   onDone: () => void | Promise<Snapshot | void>
@@ -60,9 +61,10 @@ interface StoryStageProps {
 const DEFAULT_READING_FONT_SIZE = 18
 const DEFAULT_STAGE_LINE_HEIGHT = 1.78
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
+const DEFAULT_IMAGE_INTERVAL_TURNS = 3
 const stageAbortControllers = new Map<string, AbortController>()
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
+export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const [input, setInput] = useState('')
@@ -96,6 +98,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [generatedHotChoices, setGeneratedHotChoices] = useState<string[]>([])
   const [hotChoicesExpanded, setHotChoicesExpanded] = useState(false)
   const [hotChoicesLoading, setHotChoicesLoading] = useState(false)
+  const [generatingImageTurnId, setGeneratingImageTurnId] = useState<string | null>(null)
   const [selectedBookOpeningPresetId, setSelectedBookOpeningPresetId] = useState('')
   const [customOpeningText, setCustomOpeningText] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
@@ -246,6 +249,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           streaming: false,
         })
       }
+      const deferredImageMessages: ChatMessage[] = []
       for (const [index, event] of displayEvents.entries()) {
         if (event.role === 'thinking') {
           messages.push({
@@ -265,14 +269,17 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           continue
         }
         if (event.role === 'tool_call') {
-          messages.push({
+          const toolMessage: ChatMessage = {
             id: event.id || `${turn.id}-tool-${index}`,
+            turn_id: event.name === 'generate_interactive_image' ? turn.id : undefined,
             role: 'tool_call',
             content: event.content || event.name || 'unknown_tool',
             name: event.name || event.content,
             args: event.args || '',
             status: event.status || 'success',
             result: event.result || '',
+            interactive_image: readInteractiveImage(event.result),
+            interactive_image_error: readInteractiveImageError(event.result),
             streaming: false,
             created_at: event.created_at,
             run_id: event.run_id,
@@ -282,7 +289,12 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             subagent: event.subagent,
             subagent_session_id: event.subagent_session_id,
             subagent_type: event.subagent_type,
-          })
+          }
+          if (event.name === 'generate_interactive_image') {
+            deferredImageMessages.push(toolMessage)
+          } else {
+            messages.push(toolMessage)
+          }
           continue
         }
         if (event.role === 'assistant') {
@@ -309,6 +321,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         content: sanitizeStoredNarrative(turn.narrative),
         turn_versions: turn.versions,
         turn_version_index: turn.version_idx,
+        interactive_image: latestInteractiveImage(deferredImageMessages),
+        interactive_images: interactiveImages(deferredImageMessages),
+        interactive_image_error: latestInteractiveImageError(deferredImageMessages),
+        interactive_image_status: latestInteractiveImageStatus(deferredImageMessages),
       })
       return messages
     })
@@ -333,7 +349,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     [liveTokenUsageMessages, persistedTokenUsageMessages],
   )
   const scrollResetKey = `${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
-  const title = pickSceneTitle(snapshot, branchId, t)
   const hotChoices = useMemo(
     () =>
       generatedHotChoices
@@ -462,6 +477,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     const abortController = new AbortController()
     stageAbortControllers.set(stageKey, abortController)
     const narrativeFilter = createInteractiveNarrativeFilter()
+    let finishedNormally = false
     try {
       const stream = await sendInteractiveMessage({
         mode: 'story',
@@ -552,6 +568,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             collapseNonNarrativeMessages()
             if (text) appendAssistantMessage(text)
             finishLiveMessages()
+            finishedNormally = true
             setStageActivityContent(t('storyStage.activity.done'))
             break
           }
@@ -566,7 +583,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           }
         }
       }
-      await onDone()
+      const nextSnapshot = await onDone()
+      if (finishedNormally) {
+        await maybeGenerateAutoImage(nextSnapshot)
+      }
     } catch (error) {
       if (!isAbortError(error)) {
         setStageActivityContent('')
@@ -683,6 +703,58 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     const source = turnsById.get(message.turn_id)?.user || message.content || ''
     void send({ message: source, rewindTurnId: message.turn_id })
   }
+
+  const generateImageForMessage = useCallback(
+    async (message: ChatMessage, source: 'manual' | 'auto' = 'manual', force = true) => {
+      if (!message.turn_id || !storyId || generatingImageTurnId) return null
+      setGeneratingImageTurnId(message.turn_id)
+      setStageActivityContent(t('storyStage.interactiveImage.generating'))
+      try {
+        const result = await generateInteractiveImage(storyId, {
+          branch_id: branchId || snapshot?.branch_id,
+          turn_id: message.turn_id,
+          source,
+          force,
+        })
+        await onDone()
+        return result
+      } catch (error) {
+        setStageLiveMessages((prev) => [
+          ...prev,
+          {
+            role: 'error',
+            content: error instanceof Error ? error.message : t('storyStage.interactiveImage.generateFailed'),
+          },
+        ])
+        return null
+      } finally {
+        setGeneratingImageTurnId(null)
+        setStageActivityContent('')
+      }
+    },
+    [branchId, generatingImageTurnId, onDone, setStageActivityContent, setStageLiveMessages, snapshot?.branch_id, storyId, t],
+  )
+
+  const maybeGenerateAutoImage = useCallback(
+    async (nextSnapshot: Snapshot | void) => {
+      const targetSnapshot = nextSnapshot || snapshot
+      const turn = targetSnapshot?.turns?.[targetSnapshot.turns.length - 1]
+      if (!turn || !storyId) return
+      const result = await generateInteractiveImage(storyId, {
+        branch_id: targetSnapshot.branch_id || branchId,
+        turn_id: turn.id,
+        source: 'auto',
+        force: false,
+      }).catch((error) => {
+        console.warn('[interactive-stage] 自动生成互动图像失败', error)
+        return null
+      })
+      if (result && !result.skipped) {
+        await onDone()
+      }
+    },
+    [branchId, onDone, snapshot, storyId],
+  )
 
   const startOpening = (mode: 'ai' | 'book_preset' | 'custom') => {
     if (!storyId || streaming) return
@@ -822,11 +894,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             </div>
           </div>
         ) : (
-          <div className="nova-story-stage-header nova-topbar flex min-h-14 flex-wrap items-center justify-between gap-3 border-b px-4 py-2">
-            <div className="nova-story-stage-title min-w-0 flex-1">
-              <div className="text-[10px] font-medium leading-4 text-[var(--nova-text-faint)]">{t('storyStage.branchLabel', { branch: branchId || 'main' })}</div>
-              <div className="truncate text-xs font-semibold leading-5 text-[var(--nova-text)]">{title}</div>
-            </div>
+          <div className="nova-story-stage-header nova-topbar flex min-h-12 flex-wrap items-center justify-end gap-3 border-b px-4 py-2">
             <div className="nova-story-stage-controls flex min-w-0 flex-wrap items-center justify-end gap-2">
               {stageControls}
             </div>
@@ -907,6 +975,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 onEditMessage={startEditingMessage}
                 onRegenerateMessage={regenerateMessage}
                 onSwitchMessageVersion={switchMessageVersion}
+                onGenerateInteractiveImage={(message) => void generateImageForMessage(message, 'manual', true)}
+                generatingInteractiveImageTurnId={generatingImageTurnId || undefined}
                 onOpenSubAgentSession={openSubAgentSession}
                 activeSubAgentSessionKey={activeSubAgentSessionKey}
               />
@@ -1110,6 +1180,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
                       <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming} />
+                      <InteractiveImageSettingsMenu story={story} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <DropdownMenuItem
                         onSelect={() => setTokenUsageOpen(true)}
                         className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
@@ -1426,6 +1497,133 @@ function normalizeReplyTargetChars(value?: number) {
   return value && value > 0 ? value : DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS
 }
 
+function InteractiveImageSettingsMenu({ story, disabled, onChange }: { story?: StorySummary; disabled?: boolean; onChange?: (settings: StoryImageSettings) => void | Promise<void> }) {
+  const { t } = useTranslation()
+  const current = normalizeStoryImageSettings(story?.image_settings)
+  const [intervalDraft, setIntervalDraft] = useState(String(current.interval_turns))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    setIntervalDraft(String(current.interval_turns))
+    setError('')
+  }, [current.interval_turns, current.mode])
+
+  const save = async (patch: Partial<StoryImageSettings>) => {
+    if (disabled || !onChange) return
+    const next = normalizeStoryImageSettings({ ...current, ...patch })
+    setSaving(true)
+    setError('')
+    try {
+      await onChange(next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('storyStage.interactiveImage.saveFailed'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const saveInterval = () => {
+    const intervalTurns = normalizeIntervalTurns(intervalDraft)
+    setIntervalDraft(String(intervalTurns))
+    void save({ mode: 'interval', interval_turns: intervalTurns })
+  }
+
+  return (
+    <>
+      <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger
+          disabled={disabled}
+          className="flex cursor-pointer items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+        >
+          <span className="flex h-3.5 w-3.5 items-center justify-center">
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nova-text-faint)]" /> : <ImagePlus className="h-3.5 w-3.5" />}
+          </span>
+          <span className="min-w-0 flex-1 truncate">{t('storyStage.interactiveImage.menuTitle')}</span>
+          <span className="max-w-36 shrink-0 truncate text-right text-[10px] text-[var(--nova-text-faint)]">{imageSettingsSummary(current, t)}</span>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="w-72 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+          <DropdownMenuItem
+            disabled={disabled || saving}
+            onSelect={(event) => {
+              event.preventDefault()
+              void save({ mode: 'manual', interval_turns: current.interval_turns })
+            }}
+            onClick={() => void save({ mode: 'manual', interval_turns: current.interval_turns })}
+            className="grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+          >
+            <Check className={`h-3.5 w-3.5 ${current.mode === 'manual' ? 'opacity-100' : 'opacity-0'}`} />
+            <span className="min-w-0 flex-1 truncate">{t('storyStage.interactiveImage.modeManual')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={disabled || saving}
+            onSelect={(event) => {
+              event.preventDefault()
+              saveInterval()
+            }}
+            onClick={saveInterval}
+            className="grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+          >
+            <Check className={`h-3.5 w-3.5 ${current.mode === 'interval' ? 'opacity-100' : 'opacity-0'}`} />
+            <span className="min-w-0 flex-1 truncate">{t('storyStage.interactiveImage.modeInterval', { count: normalizeIntervalTurns(intervalDraft) })}</span>
+          </DropdownMenuItem>
+          <div className="mt-1 grid grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2 px-2 py-1.5">
+            <span />
+            <div className="text-[11px] text-[var(--nova-text-faint)]">{t('storyStage.interactiveImage.intervalLabel')}</div>
+            <div className="flex items-center justify-end gap-2">
+              <Input
+                aria-label={t('storyStage.interactiveImage.intervalInputLabel')}
+                className="nova-field h-7 w-16 text-center text-xs"
+                type="number"
+                min={1}
+                max={50}
+                disabled={disabled || saving}
+                value={intervalDraft}
+                onPointerDown={(event) => event.stopPropagation()}
+                onChange={(event) => {
+                  setIntervalDraft(event.target.value)
+                  setError('')
+                }}
+                onKeyDown={(event) => {
+                  event.stopPropagation()
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    saveInterval()
+                  }
+                }}
+                onBlur={saveInterval}
+              />
+              <span className="text-[11px] text-[var(--nova-text-faint)]">{t('storyStage.interactiveImage.intervalSuffix')}</span>
+            </div>
+            {error ? <div className="col-span-3 text-[11px] leading-4 text-[var(--nova-danger)]">{error}</div> : null}
+          </div>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    </>
+  )
+}
+
+function normalizeStoryImageSettings(value?: Partial<StoryImageSettings> | null): StoryImageSettings {
+  const rawMode = typeof value?.mode === 'string' ? String(value.mode) : ''
+  const mode = rawMode === 'interval' || rawMode === 'every_turn' ? 'interval' : 'manual'
+  return {
+    mode,
+    interval_turns: rawMode === 'every_turn' ? 1 : normalizeIntervalTurns(value?.interval_turns),
+  }
+}
+
+function normalizeIntervalTurns(value: unknown) {
+  const numberValue = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numberValue) || numberValue <= 0) return DEFAULT_IMAGE_INTERVAL_TURNS
+  return Math.min(50, Math.max(1, Math.floor(numberValue)))
+}
+
+function imageSettingsSummary(settings: StoryImageSettings, t: (key: string, options?: Record<string, unknown>) => string) {
+  if (settings.mode === 'interval') return t('storyStage.interactiveImage.currentInterval', { count: settings.interval_turns })
+  return t('storyStage.interactiveImage.currentManual')
+}
+
 function noop() {}
 
 function useStagePreferences() {
@@ -1552,6 +1750,62 @@ function readNumber(value: unknown) {
   return Number.isFinite(numberValue) ? numberValue : 0
 }
 
+function readInteractiveImage(result?: string): InteractiveImage | undefined {
+  const data = parseEventResult(result)
+  if (!data || typeof data !== 'object') return undefined
+  const record = data as Record<string, unknown>
+  if (record.schema !== 'interactive_image.v1' || typeof record.image_path !== 'string' || !record.image_path) return undefined
+  return record as unknown as InteractiveImage
+}
+
+function readInteractiveImageError(result?: string): InteractiveImageError | undefined {
+  const data = parseEventResult(result)
+  if (!data || typeof data !== 'object') return undefined
+  const record = data as Record<string, unknown>
+  if (record.schema !== 'interactive_image_error.v1') return undefined
+  return record as unknown as InteractiveImageError
+}
+
+function parseEventResult(result?: string): unknown {
+  if (!result) return null
+  try {
+    return JSON.parse(result)
+  } catch {
+    return null
+  }
+}
+
+function latestInteractiveImage(messages: ChatMessage[]): InteractiveImage | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const image = messages[index].interactive_image
+    if (image?.image_path) return image
+  }
+  return undefined
+}
+
+function interactiveImages(messages: ChatMessage[]): InteractiveImage[] | undefined {
+  const images = messages
+    .map((message) => message.interactive_image)
+    .filter((image): image is InteractiveImage => Boolean(image?.image_path))
+  return images.length > 0 ? images : undefined
+}
+
+function latestInteractiveImageError(messages: ChatMessage[]): InteractiveImageError | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const error = messages[index].interactive_image_error
+    if (error) return error
+  }
+  return undefined
+}
+
+function latestInteractiveImageStatus(messages: ChatMessage[]): 'running' | 'success' | 'error' | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const status = messages[index].status
+    if (status === 'running' || status === 'success' || status === 'error') return status
+  }
+  return undefined
+}
+
 function mergeHotChoices(current: string[], next: string[]) {
   const merged: string[] = []
   const seen = new Set<string>()
@@ -1573,10 +1827,4 @@ function parseInlineStyleScenes(input: string): string[] {
     result.add(match[1])
   }
   return Array.from(result)
-}
-
-function pickSceneTitle(snapshot: Snapshot | null, branchId: string, t: (key: string) => string) {
-  const current = snapshot?.graph?.nodes?.find((node) => node.current && node.branch_id === (snapshot.branch_id || branchId)) || snapshot?.graph?.nodes?.find((node) => node.head && node.branch_id === (snapshot.branch_id || branchId))
-  if (current?.title) return current.title
-  return t('storyStage.primaryArea')
 }

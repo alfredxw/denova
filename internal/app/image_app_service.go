@@ -65,7 +65,7 @@ func (s *ImageAppService) Generate(ctx context.Context, request imagegen.Generat
 			return ImageGenerateResult{}, err
 		}
 		if err := bookService.WriteBinaryFile(relPath, image.Data); err != nil {
-			return ImageGenerateResult{}, fmt.Errorf("保存生成图片失败: %w", err)
+			return ImageGenerateResult{}, fmt.Errorf("保存生成图像失败: %w", err)
 		}
 		log.Printf("[imagegen] saved image path=%s bytes=%d mime=%s", relPath, len(image.Data), image.MIMEType)
 		saved.Images = append(saved.Images, SavedGeneratedImage{
@@ -94,7 +94,7 @@ func (s *ImageAppService) runtimeSnapshot() (config.Config, *book.Service, error
 
 func generatedImagePath(index int, extension string) (string, error) {
 	if extension == "" {
-		return "", fmt.Errorf("无法保存未知格式图片")
+		return "", fmt.Errorf("无法保存未知格式图像")
 	}
 	return filepath.ToSlash(filepath.Join("assets", "image", "generated", fmt.Sprintf("%s-%s-%02d.%s", time.Now().Format("20060102-150405"), randomImageSuffix(), index+1, extension))), nil
 }

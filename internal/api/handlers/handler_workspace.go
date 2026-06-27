@@ -96,24 +96,24 @@ func (h *Handlers) HandleWorkspaceFile(ctx context.Context, c *app.RequestContex
 	})
 }
 
-// HandleWorkspaceAsset GET /api/workspace/asset?path=... — 读取 workspace 内图片文件。
+// HandleWorkspaceAsset GET /api/workspace/asset?path=... — 读取 workspace 内图像文件。
 func (h *Handlers) HandleWorkspaceAsset(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return
 	}
 	rawPath := c.Query("path")
 	if hasParentPathSegment(rawPath) {
-		writeError(c, consts.StatusBadRequest, "图片路径不能包含上级目录")
+		writeError(c, consts.StatusBadRequest, "图像路径不能包含上级目录")
 		return
 	}
 	relPath := filepath.ToSlash(filepath.Clean(filepath.FromSlash(rawPath)))
 	if relPath == "." || relPath == "" {
-		writeError(c, consts.StatusBadRequest, "图片路径不能为空")
+		writeError(c, consts.StatusBadRequest, "图像路径不能为空")
 		return
 	}
 	contentType := workspaceAssetContentType(relPath)
 	if contentType == "" {
-		writeError(c, consts.StatusBadRequest, "仅支持读取 png、jpg、jpeg、webp 或 gif 图片")
+		writeError(c, consts.StatusBadRequest, "仅支持读取 png、jpg、jpeg、webp 或 gif 图像")
 		return
 	}
 	absPath, err := book.SafePath(h.app.BookService().Workspace(), relPath)

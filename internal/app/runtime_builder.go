@@ -138,3 +138,11 @@ func buildAutomationAgentRunner(ctx context.Context, cfg *config.Config, state *
 	}
 	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindAutomation, Workspace: cfg.Workspace}), nil
 }
+
+func buildImageAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (*adk.Runner, error) {
+	builtAgent, err := agent.BuildImageAgent(ctx, cfg, state, systemPrompt)
+	if err != nil {
+		return nil, fmt.Errorf("构建图像 Agent 失败: %w", err)
+	}
+	return agent.NewRunnerWithOptions(ctx, builtAgent, agent.RunOptions{AgentKind: agent.AgentKindImage, Workspace: cfg.Workspace}), nil
+}

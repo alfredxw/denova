@@ -84,6 +84,7 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 	tests := map[string]string{
 		config.AgentKindIDE:                   "CREATOR.md",
 		config.AgentKindInteractiveStory:      "<NARRATIVE>",
+		config.AgentKindImage:                 "图像 Agent",
 		config.AgentKindConfigManager:         "配置管理 Agent",
 		config.AgentKindInteractiveState:      "互动记忆 Agent",
 		config.AgentKindInteractiveHotChoices: "快捷选项 Agent",

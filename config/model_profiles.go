@@ -26,6 +26,7 @@ type AgentModelSettings struct {
 	InteractiveHotChoices AgentModelOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentModelOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 	ToolAgent             AgentModelOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
+	Image                 AgentModelOverride `toml:"image,omitempty" json:"image,omitempty"`
 	Automation            AgentModelOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 	ContextCompaction     AgentModelOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
@@ -58,6 +59,7 @@ func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSetting
 		InteractiveHotChoices: mergeAgentModelOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentModelOverride(parent.VersionSummary, child.VersionSummary),
 		ToolAgent:             mergeAgentModelOverride(parent.ToolAgent, child.ToolAgent),
+		Image:                 mergeAgentModelOverride(parent.Image, child.Image),
 		Automation:            mergeAgentModelOverride(parent.Automation, child.Automation),
 		ContextCompaction:     mergeAgentModelOverride(parent.ContextCompaction, child.ContextCompaction),
 	}

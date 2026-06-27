@@ -195,6 +195,23 @@ func (h *Handlers) HandleStoryMemoryGenerateStream(ctx context.Context, c *app.R
 	sse.StreamTask(c, task)
 }
 
+func (h *Handlers) HandleInteractiveImageGenerate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.InteractiveImageGenerateRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if body.BranchID == "" {
+		body.BranchID = c.Query("branch")
+	}
+	result, err := h.app.GenerateInteractiveImage(ctx, c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
 func (h *Handlers) HandleInteractiveMemoryCreate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.InteractiveMemoryCreateRequest
 	if err := c.BindJSON(&body); err != nil {

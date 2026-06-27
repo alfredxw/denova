@@ -9,6 +9,10 @@ export interface ChatMessage {
   status?: 'running' | 'success' | 'error'
   result?: string
   illustration?: ChapterIllustration
+  interactive_image?: InteractiveImage
+  interactive_images?: InteractiveImage[]
+  interactive_image_error?: InteractiveImageError
+  interactive_image_status?: 'running' | 'success' | 'error'
   phase?: string
   attempt?: number
   tokens_before?: number
@@ -62,6 +66,35 @@ export interface ChapterIllustration {
   revised_prompt?: string
   mime_type?: string
   size_bytes?: number
+}
+
+export interface InteractiveImage {
+  schema: 'interactive_image.v1' | string
+  story_id: string
+  branch_id: string
+  turn_id: string
+  image_path: string
+  meta_path: string
+  alt_text?: string
+  profile_id?: string
+  provider?: string
+  model?: string
+  size?: string
+  quality?: string
+  output_format?: string
+  created_at?: string
+  revised_prompt?: string
+  mime_type?: string
+  size_bytes?: number
+}
+
+export interface InteractiveImageError {
+  schema: 'interactive_image_error.v1' | string
+  story_id?: string
+  branch_id?: string
+  turn_id?: string
+  message?: string
+  created_at?: string
 }
 
 export interface TokenUsageCall {

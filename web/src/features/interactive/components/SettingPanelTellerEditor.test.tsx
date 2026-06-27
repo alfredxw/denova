@@ -5,6 +5,27 @@ import { TellerEditor } from './SettingPanelTellerEditor'
 import type { Teller } from '../types'
 
 describe('TellerEditor style contents', () => {
+  it('edits image prompt and caps it at 4000 chars', async () => {
+    let currentDraft = teller()
+    render(
+      <Harness
+        initial={currentDraft}
+        onChange={(draft) => {
+          currentDraft = draft
+        }}
+        onSave={() => {}}
+      />,
+    )
+
+    const editor = screen.getByPlaceholderText(/描述互动图像/)
+    fireEvent.change(editor, { target: { value: '图'.repeat(4050) } })
+
+    await waitFor(() => {
+      expect(currentDraft.image_prompt).toHaveLength(4000)
+      expect(screen.getByText('4000/4000')).toBeInTheDocument()
+    })
+  })
+
   it('uploads style content and truncates it to 8000 chars', async () => {
     let currentDraft = teller()
     const onSave = vi.fn()

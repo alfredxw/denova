@@ -79,6 +79,7 @@ export interface AgentModelSettings {
   default?: AgentModelOverride
   ide?: AgentModelOverride
   interactive_story?: AgentModelOverride
+  image?: AgentModelOverride
   config_manager?: AgentModelOverride
   interactive_state?: AgentModelOverride
   interactive_hot_choices?: AgentModelOverride
@@ -99,6 +100,7 @@ export interface AgentToolSettings {
   default?: AgentToolOverride
   ide?: AgentToolOverride
   interactive_story?: AgentToolOverride
+  image?: AgentToolOverride
   config_manager?: AgentToolOverride
   interactive_state?: AgentToolOverride
   interactive_hot_choices?: AgentToolOverride
@@ -112,6 +114,7 @@ export interface AgentSkillSettings {
   default?: AgentSkillOverride
   ide?: AgentSkillOverride
   interactive_story?: AgentSkillOverride
+  image?: AgentSkillOverride
   config_manager?: AgentSkillOverride
   interactive_state?: AgentSkillOverride
   interactive_hot_choices?: AgentSkillOverride
@@ -127,6 +130,7 @@ export interface AgentContextSettings {
   default?: AgentContextOverride
   ide?: AgentContextOverride
   interactive_story?: AgentContextOverride
+  image?: AgentContextOverride
   config_manager?: AgentContextOverride
   interactive_state?: AgentContextOverride
   interactive_hot_choices?: AgentContextOverride
@@ -181,6 +185,7 @@ export interface AgentPromptSettings {
   default?: AgentPromptOverride
   ide?: AgentPromptOverride
   interactive_story?: AgentPromptOverride
+  image?: AgentPromptOverride
   config_manager?: AgentPromptOverride
   interactive_state?: AgentPromptOverride
   interactive_hot_choices?: AgentPromptOverride
@@ -212,6 +217,7 @@ export interface AgentPromptSourceSettings {
   default?: AgentPromptSourceList
   ide?: AgentPromptSourceList
   interactive_story?: AgentPromptSourceList
+  image?: AgentPromptSourceList
   config_manager?: AgentPromptSourceList
   interactive_state?: AgentPromptSourceList
   interactive_hot_choices?: AgentPromptSourceList
@@ -231,6 +237,7 @@ export interface AgentPromptBlockSettings {
   default?: AgentPromptBlocks
   ide?: AgentPromptBlocks
   interactive_story?: AgentPromptBlocks
+  image?: AgentPromptBlocks
   config_manager?: AgentPromptBlocks
   interactive_state?: AgentPromptBlocks
   interactive_hot_choices?: AgentPromptBlocks

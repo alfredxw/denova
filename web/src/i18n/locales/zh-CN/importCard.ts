@@ -25,7 +25,7 @@ const importCard = {
   'importCard.compat.field.tags': '标签',
   'importCard.compat.field.character_book': '世界书',
   'importCard.compat.field.entry_enabled': '世界书条目启用状态',
-  'importCard.compat.field.png_cover': 'PNG 图片封面',
+  'importCard.compat.field.png_cover': 'PNG 图像封面',
   'importCard.compat.field.user_placeholder': '{{user}} 玩家角色',
   'importCard.compat.field.first_mes': '主开场白转为预设',
   'importCard.compat.field.alternate_greetings': '备用开场白转为预设',

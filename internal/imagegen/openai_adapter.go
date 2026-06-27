@@ -18,7 +18,7 @@ import (
 	"nova/config"
 )
 
-var ErrImageDataMissing = errors.New("图像模型未返回图片数据")
+var ErrImageDataMissing = errors.New("图像模型未返回图像数据")
 
 type OpenAIAdapter struct {
 	httpClient *http.Client
@@ -86,7 +86,7 @@ func (a *OpenAIAdapter) openAIImageToBytes(ctx context.Context, item openai.Imag
 	if item.B64JSON != "" {
 		data, err := base64.StdEncoding.DecodeString(item.B64JSON)
 		if err != nil {
-			return Image{}, fmt.Errorf("解析第 %d 张图片 base64 失败: %w", index+1, err)
+			return Image{}, fmt.Errorf("解析第 %d 张图像 base64 失败: %w", index+1, err)
 		}
 		format, mimeType, err := inferImageFormat(data, "", string(response.OutputFormat), request.OutputFormat)
 		if err != nil {
@@ -130,7 +130,7 @@ func (a *OpenAIAdapter) downloadImageURL(ctx context.Context, target string) ([]
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", fmt.Errorf("下载图片失败: HTTP %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("下载图像失败: HTTP %d", resp.StatusCode)
 	}
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -151,7 +151,7 @@ func inferImageFormat(data []byte, contentType string, candidates ...string) (st
 	if format := imageFormatFromBytes(data); format != "" {
 		return format, mimeTypeForFormat(format), nil
 	}
-	return "", "", errors.New("无法识别图片格式")
+	return "", "", errors.New("无法识别图像格式")
 }
 
 func imageFormatFromContentType(contentType string) string {

@@ -8,6 +8,7 @@ const (
 	AgentKindInteractiveHotChoices = "interactive_hot_choices"
 	AgentKindVersionSummary        = "version_summary"
 	AgentKindToolAgent             = "tool_agent"
+	AgentKindImage                 = "image"
 	AgentKindAutomation            = "automation"
 	AgentKindContextCompaction     = "context_compaction"
 )
@@ -86,6 +87,15 @@ var agentKindRegistry = []AgentKindDefinition{
 		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.ToolAgent },
 		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.ToolAgent },
 		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.ToolAgent },
+	},
+	{
+		Kind:            AgentKindImage,
+		SessionID:       "image-agent",
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.Image },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.Image },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.Image },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.Image },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.Image },
 	},
 	{
 		Kind:            AgentKindAutomation,

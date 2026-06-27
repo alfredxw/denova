@@ -18,6 +18,7 @@ const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(-
 const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
 const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
 const STYLE_CONTENT_LIMIT = 8000
+const IMAGE_PROMPT_LIMIT = 4000
 const STYLE_FILE_ACCEPT = '.txt,.md,.markdown,text/plain,text/markdown,text/x-markdown'
 
 export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlotId, setActiveSlotId, onSave }: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; tagDraft: string; setTagDraft: (value: string) => void; activeSlotId: string; setActiveSlotId: (id: string) => void; onSave: () => void }) {
@@ -96,6 +97,30 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
         <div className="flex items-end">
           <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{draft.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')}</span>
         </div>
+      </div>
+
+      <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
+        <div className="mb-2 flex min-w-0 items-end justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.field.imagePrompt')}</div>
+            <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.imagePrompt.desc', { count: IMAGE_PROMPT_LIMIT })}</div>
+          </div>
+          <span className="shrink-0 font-mono text-[10px] text-[var(--nova-text-faint)]">{(draft.image_prompt || '').length}/{IMAGE_PROMPT_LIMIT}</span>
+        </div>
+        <Textarea
+          className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0"
+          value={draft.image_prompt || ''}
+          maxLength={IMAGE_PROMPT_LIMIT}
+          onChange={(event) => setDraft({ ...draft, image_prompt: event.target.value.slice(0, IMAGE_PROMPT_LIMIT) })}
+          placeholder={t('settingPanel.placeholder.imagePrompt')}
+          onKeyDown={(event) => {
+            if (isSaveShortcut(event)) {
+              event.preventDefault()
+              event.stopPropagation()
+              onSave()
+            }
+          }}
+        />
       </div>
 
       <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">

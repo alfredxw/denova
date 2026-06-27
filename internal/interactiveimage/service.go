@@ -1,4 +1,4 @@
-package illustration
+package interactiveimage
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode"
 
 	"nova/config"
 	"nova/internal/book"
@@ -17,7 +16,7 @@ import (
 )
 
 const (
-	ResultSchema = "chapter_illustration.v1"
+	ResultSchema = "interactive_image.v1"
 	sourceTool   = "generate_image"
 )
 
@@ -32,7 +31,9 @@ type Service struct {
 }
 
 type GenerateRequest struct {
-	ChapterPath  string
+	StoryID      string
+	BranchID     string
+	TurnID       string
 	Prompt       string
 	AltText      string
 	ProfileID    string
@@ -43,11 +44,12 @@ type GenerateRequest struct {
 
 type Result struct {
 	Schema       string `json:"schema"`
-	ChapterPath  string `json:"chapter_path"`
+	StoryID      string `json:"story_id"`
+	BranchID     string `json:"branch_id"`
+	TurnID       string `json:"turn_id"`
 	ImagePath    string `json:"image_path"`
 	MetaPath     string `json:"meta_path"`
-	Markdown     string `json:"markdown"`
-	AltText      string `json:"alt_text"`
+	AltText      string `json:"alt_text,omitempty"`
 	ProfileID    string `json:"profile_id"`
 	Provider     string `json:"provider"`
 	Model        string `json:"model"`
@@ -64,13 +66,14 @@ type Result struct {
 type Meta struct {
 	Schema        string `json:"schema"`
 	Source        string `json:"source"`
-	ChapterPath   string `json:"chapter_path"`
+	StoryID       string `json:"story_id"`
+	BranchID      string `json:"branch_id"`
+	TurnID        string `json:"turn_id"`
 	Prompt        string `json:"prompt"`
 	RevisedPrompt string `json:"revised_prompt,omitempty"`
 	ImagePath     string `json:"image_path"`
 	MetaPath      string `json:"meta_path"`
-	Markdown      string `json:"markdown"`
-	AltText       string `json:"alt_text"`
+	AltText       string `json:"alt_text,omitempty"`
 	ProfileID     string `json:"profile_id"`
 	Provider      string `json:"provider"`
 	Model         string `json:"model"`
@@ -107,18 +110,16 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 	if bookService == nil || strings.TrimSpace(bookService.Workspace()) == "" {
 		return Result{}, fmt.Errorf("workspace 不可用")
 	}
-	chapterPath := filepath.ToSlash(strings.TrimSpace(request.ChapterPath))
-	if chapterPath == "" {
-		return Result{}, fmt.Errorf("chapter_path 不能为空")
-	}
-	if _, err := bookService.FileRevision(chapterPath); err != nil {
-		return Result{}, fmt.Errorf("读取章节路径失败: %w", err)
+	storyID := safePathSegment(request.StoryID)
+	branchID := safePathSegment(request.BranchID)
+	turnID := safePathSegment(request.TurnID)
+	if storyID == "" || branchID == "" || turnID == "" {
+		return Result{}, fmt.Errorf("互动图像缺少 story_id、branch_id 或 turn_id")
 	}
 	prompt := strings.TrimSpace(request.Prompt)
 	if prompt == "" {
 		return Result{}, imagegen.ErrPromptRequired
 	}
-
 	generated, err := s.generator.Generate(ctx, cfg, imagegen.GenerateRequest{
 		ProfileID:    strings.TrimSpace(request.ProfileID),
 		Prompt:       prompt,
@@ -145,28 +146,27 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 	createdAt := s.now().UTC()
 	dir := filepath.ToSlash(filepath.Join(
 		"assets",
-		"illustrations",
-		chapterSlug(chapterPath),
+		"interactive",
+		"images",
+		storyID,
+		branchID,
+		turnID,
 		fmt.Sprintf("%s-%s", createdAt.Format("20060102-150405"), s.suffix()),
 	))
 	imagePath := filepath.ToSlash(filepath.Join(dir, "image."+ext))
 	metaPath := filepath.ToSlash(filepath.Join(dir, "meta.json"))
-	altText := strings.TrimSpace(request.AltText)
-	if altText == "" {
-		altText = defaultAltText(chapterPath)
-	}
-	markdown := fmt.Sprintf("![%s](%s)", escapeMarkdownAlt(altText), imagePath)
-
 	if err := bookService.WriteBinaryFile(imagePath, image.Data); err != nil {
-		return Result{}, fmt.Errorf("保存章节插画失败: %w", err)
+		return Result{}, fmt.Errorf("保存互动图像失败: %w", err)
 	}
+
 	result := Result{
 		Schema:        ResultSchema,
-		ChapterPath:   chapterPath,
+		StoryID:       storyID,
+		BranchID:      branchID,
+		TurnID:        turnID,
 		ImagePath:     imagePath,
 		MetaPath:      metaPath,
-		Markdown:      markdown,
-		AltText:       altText,
+		AltText:       strings.TrimSpace(request.AltText),
 		ProfileID:     generated.ProfileID,
 		Provider:      generated.Provider,
 		Model:         generated.Model,
@@ -181,12 +181,13 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 	meta := Meta{
 		Schema:        ResultSchema,
 		Source:        sourceTool,
-		ChapterPath:   result.ChapterPath,
+		StoryID:       result.StoryID,
+		BranchID:      result.BranchID,
+		TurnID:        result.TurnID,
 		Prompt:        prompt,
 		RevisedPrompt: result.RevisedPrompt,
 		ImagePath:     result.ImagePath,
 		MetaPath:      result.MetaPath,
-		Markdown:      result.Markdown,
 		AltText:       result.AltText,
 		ProfileID:     result.ProfileID,
 		Provider:      result.Provider,
@@ -203,49 +204,9 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 		return Result{}, err
 	}
 	if err := bookService.WriteFile(metaPath, string(data)+"\n"); err != nil {
-		return Result{}, fmt.Errorf("保存章节插画元数据失败: %w", err)
+		return Result{}, fmt.Errorf("保存互动图像元数据失败: %w", err)
 	}
 	return result, nil
-}
-
-func chapterSlug(path string) string {
-	base := filepath.Base(filepath.FromSlash(path))
-	ext := filepath.Ext(base)
-	name := strings.TrimSpace(strings.TrimSuffix(base, ext))
-	var b strings.Builder
-	lastDash := false
-	for _, r := range name {
-		switch {
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteRune(unicode.ToLower(r))
-			lastDash = false
-		case r == '-' || r == '_':
-			b.WriteRune(r)
-			lastDash = false
-		default:
-			if !lastDash {
-				b.WriteByte('-')
-				lastDash = true
-			}
-		}
-	}
-	slug := strings.Trim(b.String(), "-_")
-	if slug == "" {
-		return "chapter"
-	}
-	return slug
-}
-
-func defaultAltText(chapterPath string) string {
-	base := strings.TrimSuffix(filepath.Base(filepath.FromSlash(chapterPath)), filepath.Ext(chapterPath))
-	if strings.TrimSpace(base) == "" {
-		return "章节插画"
-	}
-	return "章节插画：" + base
-}
-
-func escapeMarkdownAlt(text string) string {
-	return strings.ReplaceAll(strings.ReplaceAll(text, "\\", "\\\\"), "]", "\\]")
 }
 
 func normalizeImageExtension(values ...string) string {
@@ -261,14 +222,6 @@ func normalizeImageExtension(values ...string) string {
 	return ""
 }
 
-func randomSuffix() string {
-	var buf [4]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(buf[:])
-}
-
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
@@ -276,4 +229,36 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func safePathSegment(value string) string {
+	value = strings.TrimSpace(value)
+	var b strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			lastDash = false
+		case r == '-' || r == '_':
+			if !lastDash && b.Len() > 0 {
+				b.WriteRune(r)
+				lastDash = true
+			}
+		default:
+			if !lastDash && b.Len() > 0 {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-_")
+}
+
+func randomSuffix() string {
+	var buf [4]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf[:])
 }

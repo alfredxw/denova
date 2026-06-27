@@ -25,6 +25,14 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 		t.Fatalf("互动叙事 Agent 默认不应启用资料写入/todo/web search/image generation: %+v", story)
 	}
 
+	image := ResolveAgentTools(&Config{}, AgentKindImage)
+	if !image.Skills || !image.ImageGeneration {
+		t.Fatalf("图像 Agent 默认应启用 skills 和图像生成: %+v", image)
+	}
+	if image.FileRead || image.FileWrite || image.ShellExecute || image.LoreRead || image.LoreWrite || image.Todo || image.WebSearch || image.AgentConfigRead || image.AgentConfigWrite {
+		t.Fatalf("图像 Agent 默认不应启用文件、命令、资料库、todo、web search 或 Agent 配置工具: %+v", image)
+	}
+
 	manager := ResolveAgentTools(&Config{}, AgentKindConfigManager)
 	if !manager.FileRead || !manager.FileWrite || !manager.Skills || !manager.LoreRead || !manager.LoreWrite || !manager.Todo || !manager.WebSearch {
 		t.Fatalf("配置管理 Agent 默认应启用常用资源管理工具: %+v", manager)
