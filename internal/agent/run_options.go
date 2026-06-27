@@ -11,6 +11,7 @@ const (
 	AgentKindIDE              = "ide"
 	AgentKindInteractiveStory = "interactive_story"
 	AgentKindConfigManager    = "config_manager"
+	AgentKindImage            = "image"
 	AgentKindAutomation       = "automation"
 )
 
@@ -57,6 +58,8 @@ func rootAgentNameForKind(kind string) string {
 		return "NovaInteractiveStoryAgent"
 	case AgentKindConfigManager:
 		return "NovaConfigManagerAgent"
+	case AgentKindImage:
+		return "NovaImageAgent"
 	case AgentKindAutomation:
 		return "NovaAutomationAgent"
 	default:

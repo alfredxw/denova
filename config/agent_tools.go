@@ -24,6 +24,7 @@ type AgentToolSettings struct {
 	InteractiveHotChoices AgentToolOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentToolOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 	ToolAgent             AgentToolOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
+	Image                 AgentToolOverride `toml:"image,omitempty" json:"image,omitempty"`
 	Automation            AgentToolOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 	ContextCompaction     AgentToolOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
@@ -94,6 +95,19 @@ func DefaultAgentToolSettings() AgentToolSettings {
 		VersionSummary:        noToolAgentOverride(),
 		ToolAgent:             noToolAgentOverride(),
 		ContextCompaction:     noToolAgentOverride(),
+		Image: AgentToolOverride{
+			FileRead:         off,
+			FileWrite:        off,
+			ShellExecute:     off,
+			Skills:           on,
+			LoreRead:         off,
+			LoreWrite:        off,
+			Todo:             off,
+			WebSearch:        off,
+			ImageGeneration:  on,
+			AgentConfigRead:  off,
+			AgentConfigWrite: off,
+		},
 		Automation: AgentToolOverride{
 			FileRead:         on,
 			FileWrite:        on,
@@ -137,6 +151,7 @@ func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 		InteractiveHotChoices: mergeAgentToolOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentToolOverride(parent.VersionSummary, child.VersionSummary),
 		ToolAgent:             mergeAgentToolOverride(parent.ToolAgent, child.ToolAgent),
+		Image:                 mergeAgentToolOverride(parent.Image, child.Image),
 		Automation:            mergeAgentToolOverride(parent.Automation, child.Automation),
 		ContextCompaction:     mergeAgentToolOverride(parent.ContextCompaction, child.ContextCompaction),
 	}

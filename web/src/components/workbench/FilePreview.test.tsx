@@ -12,7 +12,7 @@ describe('FilePreview', () => {
     const image = screen.getByRole('img', { name: 'cover.png 预览' })
     expect(image).toHaveAttribute('src', '/api/workspace/asset?path=covers%2Fcover.png')
 
-    await user.click(screen.getByRole('button', { name: '放大查看图片' }))
+    await user.click(screen.getByRole('button', { name: '放大查看图像' }))
 
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByRole('img', { name: 'cover.png 预览' })).toHaveAttribute('src', '/api/workspace/asset?path=covers%2Fcover.png')

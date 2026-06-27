@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	ErrPromptRequired       = errors.New("图片提示词不能为空")
+	ErrPromptRequired       = errors.New("图像提示词不能为空")
 	ErrUnsupportedProvider  = errors.New("不支持的图像模型 provider")
-	ErrImageCountOutOfRange = errors.New("图片数量必须在 1 到 10 之间")
+	ErrImageCountOutOfRange = errors.New("图像数量必须在 1 到 10 之间")
 )
 
 var supportedImageSizes = map[string]struct{}{
@@ -84,21 +84,21 @@ func normalizeRequestOptions(request GenerateRequest) (GenerateRequest, error) {
 	if request.Size != "" {
 		size, ok := normalizeSize(request.Size)
 		if !ok {
-			return GenerateRequest{}, fmt.Errorf("不支持的图片尺寸: %s", request.Size)
+			return GenerateRequest{}, fmt.Errorf("不支持的图像尺寸: %s", request.Size)
 		}
 		request.Size = size
 	}
 	if request.Quality != "" {
 		quality := normalizeQuality(request.Quality)
 		if quality == "" {
-			return GenerateRequest{}, fmt.Errorf("不支持的图片质量: %s", request.Quality)
+			return GenerateRequest{}, fmt.Errorf("不支持的图像质量: %s", request.Quality)
 		}
 		request.Quality = quality
 	}
 	if request.OutputFormat != "" {
 		format := normalizeOutputFormat(request.OutputFormat)
 		if format == "" {
-			return GenerateRequest{}, fmt.Errorf("不支持的图片格式: %s", request.OutputFormat)
+			return GenerateRequest{}, fmt.Errorf("不支持的图像格式: %s", request.OutputFormat)
 		}
 		request.OutputFormat = format
 	}

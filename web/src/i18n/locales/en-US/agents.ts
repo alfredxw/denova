@@ -15,6 +15,8 @@ const agents = {
   'agents.configAgent.title': 'Config Manager Agent',
   'agents.interactiveStory.title': 'Interactive Story Agent',
   'agents.interactiveStory.subtitle': 'Story-stage turn generation',
+  'agents.image.title': 'Image Agent',
+  'agents.image.subtitle': 'General image generation and interactive images',
   'agents.interactiveState.title': 'Interactive Memory Agent',
   'agents.interactiveState.subtitle': 'State snapshots and long-term note generation',
   'agents.interactiveHotChoices.title': 'Quick Choices Agent',

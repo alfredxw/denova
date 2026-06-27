@@ -75,6 +75,19 @@ func BuildAutomationAgent(ctx context.Context, cfg *config.Config, state *book.S
 	})
 }
 
+// BuildImageAgent 构建通用图像 Agent。调用方通过运行时上下文和 Skill 约束具体用途。
+func BuildImageAgent(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (adk.Agent, error) {
+	return buildDeepAgent(ctx, cfg, deepAgentSpec{
+		Kind:              config.AgentKindImage,
+		Name:              "NovaImageAgent",
+		Description:       "AI 图像生成助手",
+		Instruction:       BuildImageInstruction(cfg, state, systemPrompt),
+		EnableSkills:      true,
+		DisableWriteTodos: true,
+		ExtraToolsFactory: imageToolsFactory(cfg),
+	})
+}
+
 type deepAgentSpec struct {
 	Kind              string
 	Name              string
@@ -355,6 +368,15 @@ func ideToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) 
 			tools = append(tools, imageTools...)
 		}
 		return tools, nil
+	}
+}
+
+func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+		if cfg == nil || !settings.ImageGeneration {
+			return nil, nil
+		}
+		return newIllustrationTools(cfg)
 	}
 }
 

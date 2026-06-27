@@ -157,6 +157,29 @@ func BuildConfigManagerInstructionComposition(cfg *config.Config, state *book.St
 	}
 }
 
+// BuildImageInstructionComposition returns the generic image Agent prompt and its source summary.
+func BuildImageInstructionComposition(cfg *config.Config, state *book.State, systemPrompt string) SystemPromptCompositionLog {
+	builtIn, workspace, creator := buildImageBuiltinInstruction(cfg, state, systemPrompt)
+	instruction := protectedSystemInstruction(cfg, config.AgentKindImage, builtIn)
+	extraSources := []promptSource{{
+		source:  "系统提示",
+		title:   "图像 Agent 调用点规则",
+		content: systemPrompt,
+		note:    "runtime",
+	}}
+	return SystemPromptCompositionLog{
+		mode:         "image",
+		workspace:    workspace,
+		creator:      creator,
+		instruction:  instruction,
+		extraSources: extraSources,
+	}
+}
+
+func BuildImageInstruction(cfg *config.Config, state *book.State, systemPrompt string) string {
+	return BuildImageInstructionComposition(cfg, state, systemPrompt).Instruction()
+}
+
 func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) (string, string, string, string) {
 	if cfg == nil {
 		cfg = &config.Config{}
@@ -347,6 +370,34 @@ func buildInteractiveStoryBuiltinInstruction(cfg *config.Config, state *book.Sta
 	return builtIn, workspace, creator
 }
 
+func buildImageBuiltinInstruction(cfg *config.Config, state *book.State, systemPrompt string) (string, string, string) {
+	workspace := ""
+	if cfg != nil {
+		workspace = cfg.Workspace
+	}
+	creator := ""
+	if state != nil {
+		creator = state.ReadCreatorPrompt()
+		if workspace == "" {
+			workspace = state.Workspace()
+		}
+	}
+	parts := []string{
+		"你是 Nova 的通用图像 Agent，负责把调用方提供的有界上下文转换成图像生成请求。",
+		"必须先理解本次 purpose、source_context、调用方系统提示和已加载 Skill，再调用 generate_image 工具生成图像。",
+		"只能生成图像和图像元数据，不得修改故事正文、章节正文、资料库、配置或其他 workspace 内容。",
+		"图像提示词应清晰描述主体、场景、构图、光线、视觉风格、情绪和需要避免的文字、水印、logo。",
+		"如果调用方要求加载 Skill，必须先用 skill 工具读取完整 Skill 后再调用 generate_image。",
+	}
+	if strings.TrimSpace(creator) != "" {
+		parts = append(parts, "可参考 CREATOR.md 中稳定的作品基调，但不得复制大段原文。")
+	}
+	if trimmed := strings.TrimSpace(systemPrompt); trimmed != "" {
+		parts = append(parts, "## 调用点系统提示\n\n"+trimmed)
+	}
+	return strings.Join(parts, "\n\n"), workspace, creator
+}
+
 // BuiltinAgentPrompts returns the default system prompts shown in the Agents
 // settings page. The result is read-only display data; persisted overrides
 // still live under config.Settings.AgentPrompts.
@@ -365,6 +416,7 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 		InteractiveHotChoices: config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())},
 		VersionSummary:        config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")},
 		ToolAgent:             config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction())},
+		Image:                 config.AgentPromptOverride{SystemPrompt: BuildImageInstruction(promptCfg, state, "")},
 		Automation:            config.AgentPromptOverride{SystemPrompt: BuildAutomationInstruction(promptCfg, state, AutomationTaskInstruction{})},
 		ContextCompaction:     config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindContextCompaction, contextCompactionSystemInstruction())},
 	}
@@ -388,6 +440,7 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 		InteractiveHotChoices: builtinPromptBlocks(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
 		VersionSummary:        builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
 		ToolAgent:             builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
+		Image:                 builtinPromptBlocks(promptCfg, config.AgentKindImage, ""),
 		Automation:            builtinPromptBlocks(promptCfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
 		ContextCompaction:     builtinPromptBlocks(promptCfg, config.AgentKindContextCompaction, contextCompactionSystemInstruction()),
 	}
@@ -420,6 +473,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		InteractiveHotChoices: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
 		VersionSummary:        builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
 		ToolAgent:             builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
+		Image:                 builtinPromptSourceList(promptCfg, config.AgentKindImage, ""),
 		Automation:            builtinPromptSourceList(promptCfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
 		ContextCompaction:     builtinPromptSourceList(promptCfg, config.AgentKindContextCompaction, contextCompactionSystemInstruction()),
 	}

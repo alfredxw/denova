@@ -14,6 +14,7 @@ import (
 const (
 	tellerVersion        = 4
 	MaxStyleContentChars = 8000
+	MaxImagePromptChars  = 4000
 )
 
 type TellerLibrary struct {
@@ -26,6 +27,7 @@ type Teller struct {
 	Name            string              `json:"name"`
 	Description     string              `json:"description"`
 	RandomEventRate float64             `json:"random_event_rate"`
+	ImagePrompt     string              `json:"image_prompt,omitempty"`
 	StyleRules      []StyleRule         `json:"style_rules,omitempty"`
 	Tags            []string            `json:"tags"`
 	ContextPolicy   TellerContextPolicy `json:"context_policy"`
@@ -258,6 +260,7 @@ func normalizeTeller(teller Teller) Teller {
 	teller.ID = strings.TrimSpace(teller.ID)
 	teller.Name = strings.TrimSpace(teller.Name)
 	teller.Description = strings.TrimSpace(teller.Description)
+	teller.ImagePrompt = truncateRunes(strings.TrimSpace(teller.ImagePrompt), MaxImagePromptChars)
 	teller.StyleRules = normalizeStyleRules(teller.StyleRules)
 	teller.Tags = normalizeTellerTags(teller.Tags)
 	teller.ContextPolicy = normalizeContextPolicy(teller.ContextPolicy)

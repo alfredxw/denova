@@ -3,10 +3,10 @@ import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, Copy, FileText, ImagePlus, ListTodo, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
+import { Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, Copy, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
-import { workspaceAssetURL, type ChapterIllustration, type ChatMessage } from '@/lib/api'
+import { workspaceAssetURL, type ChapterIllustration, type ChatMessage, type InteractiveImage, type InteractiveImageError } from '@/lib/api'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
@@ -22,6 +22,8 @@ interface MessageItemProps {
   onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void
   onOpenSubAgentSession?: (message: ChatMessage) => void
   onInsertIllustration?: (illustration: ChapterIllustration) => void
+  onGenerateInteractiveImage?: (message: ChatMessage) => void
+  generatingInteractiveImageTurnId?: string
   activeSubAgentSessionKey?: string
   subAgentPresentation?: 'card' | 'content'
 }
@@ -29,16 +31,15 @@ interface MessageItemProps {
 const copyFeedbackDurationMs = 1200
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, activeSubAgentSessionKey, subAgentPresentation = 'card' }: MessageItemProps) {
-  const { t } = useTranslation()
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card' }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canRegenerate = role === 'assistant' && Boolean(message.turn_id) && Boolean(onRegenerate) && !message.streaming
+  const canGenerateInteractiveImage = role === 'assistant' && Boolean(message.turn_id) && Boolean(onGenerateInteractiveImage) && !message.streaming
   const versionCount = message.turn_versions?.length || 0
   const markedVersionIndex = message.turn_versions?.findIndex((version) => version.current) ?? -1
   const versionIndex = message.turn_version_index ?? markedVersionIndex
   const canSwitchVersion = role === 'assistant' && versionCount > 1 && versionIndex >= 0 && Boolean(onSwitchVersion) && !message.streaming
-  const showAssistantActions = canRegenerate || canSwitchVersion
 
   switch (role) {
     case 'user':
@@ -82,48 +83,19 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                   <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
                 )}
               </div>
-              <MessageInlineMeta message={message} content={content} align="left" />
+              <InteractiveImageStrip message={message} />
+              <MessageInlineMeta
+                message={message}
+                content={content}
+                align="left"
+                onGenerateInteractiveImage={canGenerateInteractiveImage ? onGenerateInteractiveImage : undefined}
+                generatingInteractiveImage={Boolean(message.turn_id && generatingInteractiveImageTurnId === message.turn_id)}
+                onRegenerate={canRegenerate ? onRegenerate : undefined}
+                onSwitchVersion={canSwitchVersion ? onSwitchVersion : undefined}
+                versionIndex={versionIndex}
+                versionCount={versionCount}
+              />
             </div>
-            {showAssistantActions && (
-              <div className="nova-assistant-actions mt-1.5 flex justify-end">
-                <div className="flex items-center gap-0.5 opacity-30 transition-opacity group-hover:opacity-80 focus-within:opacity-80">
-                  {canSwitchVersion && onSwitchVersion && (
-                    <>
-                      <TooltipIconButton
-                        label={t('chat.action.prevVersion')}
-                        className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
-                        disabled={versionIndex <= 0}
-                        onClick={() => onSwitchVersion(message, -1)}
-                      >
-                        <ChevronLeft className="h-3 w-3" />
-                      </TooltipIconButton>
-                      <span className="min-w-8 text-center font-mono text-[10px] leading-6 text-[var(--nova-text-faint)]">
-                        {versionIndex + 1}/{versionCount}
-                      </span>
-                    </>
-                  )}
-                  {canRegenerate && onRegenerate && (
-                    <TooltipIconButton
-                      label={t('chat.action.regenerateTurn')}
-                      className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
-                      onClick={() => onRegenerate(message)}
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                    </TooltipIconButton>
-                  )}
-                  {canSwitchVersion && onSwitchVersion && (
-                    <TooltipIconButton
-                      label={t('chat.action.nextVersion')}
-                      className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
-                      disabled={versionIndex >= versionCount - 1}
-                      onClick={() => onSwitchVersion(message, 1)}
-                    >
-                      <ChevronRight className="h-3 w-3" />
-                    </TooltipIconButton>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )
@@ -133,6 +105,9 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return <ThinkingBlock message={message} content={content} streaming={message.streaming === true} />
 
     case 'tool_call':
+      if ((message.name || '') === 'generate_interactive_image') {
+        return <InteractiveImageBlock message={message} onRegenerate={onGenerateInteractiveImage} />
+      }
       if (['generate_image', 'generate_chapter_illustration'].includes(message.name || '') && message.illustration) {
         return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
       }
@@ -142,6 +117,9 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return <ToolExecutionBlock message={message} />
 
     case 'tool_result':
+      if ((message.name || '') === 'generate_interactive_image' || message.interactive_image) {
+        return <InteractiveImageBlock message={message} onRegenerate={onGenerateInteractiveImage} />
+      }
       if (message.illustration) {
         return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
       }
@@ -173,17 +151,19 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
   }
 })
 
-function MessageInlineMeta({ message, content, align, onEdit }: { message: ChatMessage; content: string; align: 'left' | 'right'; onEdit?: (message: ChatMessage) => void }) {
+function MessageInlineMeta({ message, content, align, onEdit, onGenerateInteractiveImage, generatingInteractiveImage = false, onRegenerate, onSwitchVersion, versionIndex = -1, versionCount = 0 }: { message: ChatMessage; content: string; align: 'left' | 'right'; onEdit?: (message: ChatMessage) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; generatingInteractiveImage?: boolean; onRegenerate?: (message: ChatMessage) => void; onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void; versionIndex?: number; versionCount?: number }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const formatted = formatMessageHoverTime(message.created_at)
-  if (!formatted && !content && !onEdit) return null
+  const canSwitchVersion = Boolean(onSwitchVersion && versionCount > 1 && versionIndex >= 0)
+  const metaTooltip = { tooltipDelayMs: 500, tooltipSide: 'top' as const }
+  if (!formatted && !content && !onEdit && !onGenerateInteractiveImage && !onRegenerate && !canSwitchVersion) return null
   return (
     <div className={`nova-message-meta nova-message-meta-${align}`} aria-label={formatted}>
       {formatted ? <span className="nova-message-time">{formatted}</span> : null}
       <TooltipIconButton
         label={copied ? t('chat.action.copyMessageDone') : t('chat.action.copyMessage')}
-        showTooltip={false}
+        {...metaTooltip}
         className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
         onClick={(event) => {
           event.stopPropagation()
@@ -194,9 +174,68 @@ function MessageInlineMeta({ message, content, align, onEdit }: { message: ChatM
       >
         {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
       </TooltipIconButton>
+      {onGenerateInteractiveImage && (
+        <TooltipIconButton
+          label={message.interactive_images?.length || message.interactive_image ? t('chat.interactiveImage.regenerate') : t('chat.action.generateInteractiveImage')}
+          {...metaTooltip}
+          className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-45"
+          disabled={generatingInteractiveImage}
+          onClick={(event) => {
+            event.stopPropagation()
+            onGenerateInteractiveImage(message)
+          }}
+        >
+          {generatingInteractiveImage ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}
+        </TooltipIconButton>
+      )}
+      {onRegenerate && (
+        <TooltipIconButton
+          label={t('chat.action.regenerateTurn')}
+          {...metaTooltip}
+          className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
+          onClick={(event) => {
+            event.stopPropagation()
+            onRegenerate(message)
+          }}
+        >
+          <RefreshCw className="h-3 w-3" />
+        </TooltipIconButton>
+      )}
+      {canSwitchVersion && onSwitchVersion && (
+        <>
+          <TooltipIconButton
+            label={t('chat.action.prevVersion')}
+            {...metaTooltip}
+            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
+            disabled={versionIndex <= 0}
+            onClick={(event) => {
+              event.stopPropagation()
+              onSwitchVersion(message, -1)
+            }}
+          >
+            <ChevronLeft className="h-3 w-3" />
+          </TooltipIconButton>
+          <span className="min-w-7 text-center font-mono text-[10px] leading-5 text-[var(--nova-text-faint)]">
+            {versionIndex + 1}/{versionCount}
+          </span>
+          <TooltipIconButton
+            label={t('chat.action.nextVersion')}
+            {...metaTooltip}
+            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
+            disabled={versionIndex >= versionCount - 1}
+            onClick={(event) => {
+              event.stopPropagation()
+              onSwitchVersion(message, 1)
+            }}
+          >
+            <ChevronRight className="h-3 w-3" />
+          </TooltipIconButton>
+        </>
+      )}
       {onEdit && (
         <TooltipIconButton
           label={t('chat.action.editTurn')}
+          {...metaTooltip}
           className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
           onClick={(event) => {
             event.stopPropagation()
@@ -569,6 +608,145 @@ function ChapterIllustrationBlock({ message, onInsert }: { message: ChatMessage;
       </div>
     </div>
   )
+}
+
+function InteractiveImageBlock({ message }: { message: ChatMessage; onRegenerate?: (message: ChatMessage) => void }) {
+  return (
+    <div className="flex justify-start">
+      <div className="w-full">
+        <InteractiveImageStrip message={message} />
+      </div>
+    </div>
+  )
+}
+
+function InteractiveImageStrip({ message }: { message: ChatMessage }) {
+  const { t } = useTranslation()
+  const images = interactiveImagesFromMessage(message)
+  const error = message.interactive_image_error || readInteractiveImageErrorFromMessage(message)
+  const status = message.interactive_image_status || message.status
+  const [index, setIndex] = useState(Math.max(0, images.length - 1))
+
+  useEffect(() => {
+    setIndex((current) => Math.min(Math.max(0, images.length - 1), Math.max(0, current)))
+  }, [images.length])
+
+  if (images.length === 0) {
+    if (status === 'running') {
+      return (
+        <div className="mt-3 flex items-center gap-2 px-1 text-xs text-[var(--nova-text-faint)]">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span>{t('chat.interactiveImage.generating')}</span>
+        </div>
+      )
+    }
+    if (error) {
+      return (
+        <div className="mt-3 rounded-md border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs text-[var(--nova-danger)]">
+          {error.message || t('chat.interactiveImage.failed')}
+        </div>
+      )
+    }
+    return null
+  }
+
+  const safeIndex = Math.min(index, images.length - 1)
+  const image = images[safeIndex]
+  const title = image.alt_text || t('chat.interactiveImage.previewAlt')
+  const src = workspaceAssetURL(image.image_path)
+  const canSwitch = images.length > 1
+
+  return (
+    <div className="mt-3 max-w-full">
+      <ImagePreviewDialog src={src} title={title} alt={title} path={image.image_path}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="group relative block w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-black/90 text-left shadow-[var(--nova-shadow)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]"
+          aria-label={t('chat.interactiveImage.openPreview')}
+        >
+          <img
+            src={src}
+            alt={title}
+            className="max-h-[440px] w-full object-contain"
+            loading="lazy"
+          />
+          {canSwitch && (
+            <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/35 px-1 py-0.5 text-[10px] text-white/70 opacity-45 backdrop-blur transition group-hover:opacity-90">
+              <button
+                type="button"
+                aria-label={t('chat.interactiveImage.prevVersion')}
+                className={`flex h-5 w-5 items-center justify-center rounded border border-transparent ${safeIndex <= 0 ? 'opacity-30' : 'hover:border-white/15 hover:bg-white/10'}`}
+                disabled={safeIndex <= 0}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setIndex((current) => Math.max(0, current - 1))
+                }}
+              >
+                <ChevronLeft className="h-3 w-3" />
+              </button>
+              <span className="min-w-7 text-center font-mono leading-5">{safeIndex + 1}/{images.length}</span>
+              <button
+                type="button"
+                aria-label={t('chat.interactiveImage.nextVersion')}
+                className={`flex h-5 w-5 items-center justify-center rounded border border-transparent ${safeIndex >= images.length - 1 ? 'opacity-30' : 'hover:border-white/15 hover:bg-white/10'}`}
+                disabled={safeIndex >= images.length - 1}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setIndex((current) => Math.min(images.length - 1, current + 1))
+                }}
+              >
+                <ChevronRight className="h-3 w-3" />
+              </button>
+            </span>
+          )}
+        </div>
+      </ImagePreviewDialog>
+    </div>
+  )
+}
+
+function interactiveImagesFromMessage(message: ChatMessage): InteractiveImage[] {
+  if (message.interactive_images?.length) return message.interactive_images.filter((image) => Boolean(image.image_path))
+  const image = message.interactive_image?.image_path ? message.interactive_image : readInteractiveImageFromMessage(message)
+  return image?.image_path ? [image] : []
+}
+
+function readInteractiveImageFromMessage(message: ChatMessage): InteractiveImage | undefined {
+  if (message.interactive_image?.image_path) return message.interactive_image
+  const data = parseMessageResult(message.result)
+  if (isInteractiveImage(data)) return data
+  return undefined
+}
+
+function readInteractiveImageErrorFromMessage(message: ChatMessage): InteractiveImageError | undefined {
+  if (message.interactive_image_error) return message.interactive_image_error
+  const data = parseMessageResult(message.result)
+  if (isInteractiveImageError(data)) return data
+  return undefined
+}
+
+function parseMessageResult(result?: string): unknown {
+  if (!result) return null
+  try {
+    return JSON.parse(result)
+  } catch {
+    return null
+  }
+}
+
+function isInteractiveImage(value: unknown): value is InteractiveImage {
+  if (!value || typeof value !== 'object') return false
+  const data = value as Record<string, unknown>
+  return data.schema === 'interactive_image.v1' && typeof data.image_path === 'string' && Boolean(data.image_path)
+}
+
+function isInteractiveImageError(value: unknown): value is InteractiveImageError {
+  if (!value || typeof value !== 'object') return false
+  const data = value as Record<string, unknown>
+  return data.schema === 'interactive_image_error.v1'
 }
 
 function isMarkdownPath(path?: string) {

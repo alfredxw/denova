@@ -98,6 +98,8 @@ func outputProtocolForAgent(agentKind string) string {
 		return "- 必须只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"
 	case config.AgentKindToolAgent:
 		return "- 必须只输出当前调用点要求的 JSON object，不得输出解释、Markdown、代码块或额外文本。"
+	case config.AgentKindImage:
+		return "- 必须调用图像生成工具完成图像生成；最终回复只简要说明生成结果，不得输出无关解释或修改正文。"
 	case config.AgentKindConfigManager:
 		return "- 没有固定 JSON 输出协议；所有资料库、叙事编排、自动化、Skills、故事记忆变更必须通过对应模块工具执行。"
 	case config.AgentKindAutomation:
@@ -141,6 +143,12 @@ func agentRuntimeContract(agentKind string) string {
 		return strings.Join([]string{
 			"- 工具 Agent 是 model-only 结构化任务 Agent，不得读取或写入 workspace，不得调用文件、命令、资料库、Skills 或 todo 工具。",
 			"- 工具 Agent 必须只输出当前调用点要求的 JSON object，不得输出解释、Markdown、代码块或额外文本。",
+		}, "\n")
+	case config.AgentKindImage:
+		return strings.Join([]string{
+			"- 图像 Agent 只能按调用方提供的 purpose、source_context、System Prompt 和 Skill 生成图像。",
+			"- 图像 Agent 只能使用图像生成相关工具写入图像文件和元数据；不得修改正文、资料库、配置、版本或故事状态。",
+			"- 图像 Agent 不得无界读取历史、日志、大型文件或完整会话；调用方未提供的事实不得臆造为已发生剧情。",
 		}, "\n")
 	case config.AgentKindAutomation:
 		return strings.Join([]string{

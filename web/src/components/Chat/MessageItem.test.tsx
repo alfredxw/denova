@@ -208,13 +208,13 @@ describe('MessageItem', () => {
     expect(handleInsert).toHaveBeenCalledWith(illustration)
   })
 
-  it('assistant Markdown 图片支持 workspace 路径展示和点击放大', async () => {
+  it('assistant Markdown 图像支持 workspace 路径展示和点击放大', async () => {
     const user = userEvent.setup()
     render(<MessageItem message={{ role: 'assistant', content: '![封面](assets/image/generated/cover.png)' }} />)
 
     expect(screen.getByRole('img', { name: '封面' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png')
 
-    await user.click(screen.getByRole('button', { name: '放大查看图片' }))
+    await user.click(screen.getByRole('button', { name: '放大查看图像' }))
 
     const dialog = screen.getByRole('dialog')
     expect(within(dialog).getByRole('img', { name: '封面' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png')
@@ -222,7 +222,64 @@ describe('MessageItem', () => {
     expect(within(dialog).getByRole('button', { name: '放大' })).toBeInTheDocument()
   })
 
-  it('txt 章节插画卡片不允许一键插入 Markdown 图片', () => {
+  it('assistant 回合正文下方内联展示互动图像版本', async () => {
+    const user = userEvent.setup()
+    render(
+      <MessageItem
+        message={{
+          id: 'assistant-turn-1',
+          role: 'assistant',
+          content: '这一轮剧情。',
+          turn_id: 'turn-1',
+          interactive_images: [
+            {
+              schema: 'interactive_image.v1',
+              story_id: 'story-1',
+              branch_id: 'main',
+              turn_id: 'turn-1',
+              image_path: 'assets/interactive/images/story-1/main/turn-1/run-a/image.png',
+              meta_path: 'assets/interactive/images/story-1/main/turn-1/run-a/meta.json',
+              alt_text: '第一张互动图像',
+            },
+            {
+              schema: 'interactive_image.v1',
+              story_id: 'story-1',
+              branch_id: 'main',
+              turn_id: 'turn-1',
+              image_path: 'assets/interactive/images/story-1/main/turn-1/run-b/image.png',
+              meta_path: 'assets/interactive/images/story-1/main/turn-1/run-b/meta.json',
+              alt_text: '第二张互动图像',
+            },
+          ],
+        }}
+      />,
+    )
+
+    expect(screen.getByText('这一轮剧情。')).toBeInTheDocument()
+    expect(screen.queryByText('互动图像')).not.toBeInTheDocument()
+    expect(screen.queryByText((text) => text.includes('assets/interactive/images'))).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重新生成' })).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '第二张互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-b%2Fimage.png')
+
+    await user.click(screen.getByRole('button', { name: '上一张互动图像' }))
+    expect(screen.getByRole('img', { name: '第一张互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png')
+  })
+
+  it('assistant 回合元信息显示手动生成互动图像按钮', async () => {
+    const user = userEvent.setup()
+    const handleGenerate = vi.fn()
+    render(
+      <MessageItem
+        message={{ role: 'assistant', content: '这一轮剧情。', turn_id: 'turn-1' }}
+        onGenerateInteractiveImage={handleGenerate}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '生成互动图像' }))
+    expect(handleGenerate).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }))
+  })
+
+  it('txt 章节插画卡片不允许一键插入 Markdown 图像', () => {
     const handleInsert = vi.fn()
 
     render(

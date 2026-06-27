@@ -12,6 +12,7 @@ type CreateStoryRequest struct {
 	StoryTellerID    string             `json:"story_teller_id"`
 	ReplyTargetChars int                `json:"reply_target_chars"`
 	Opening          StoryOpeningConfig `json:"opening,omitempty"`
+	ImageSettings    StoryImageSettings `json:"image_settings,omitempty"`
 }
 
 type AppendTurnRequest struct {
@@ -43,6 +44,13 @@ type SwitchTurnVersionRequest struct {
 	VersionTurnID string `json:"version_turn_id"`
 }
 
+type InteractiveImageGenerateRequest struct {
+	BranchID string `json:"branch_id,omitempty"`
+	TurnID   string `json:"turn_id"`
+	Source   string `json:"source,omitempty"`
+	Force    bool   `json:"force,omitempty"`
+}
+
 type AppendStateDeltaRequest struct {
 	ParentID string    `json:"parent_id"`
 	BranchID string    `json:"branch_id"`
@@ -60,6 +68,7 @@ type UpdateStoryRequest struct {
 	StoryTellerID    string              `json:"story_teller_id"`
 	ReplyTargetChars *int                `json:"reply_target_chars,omitempty"`
 	Opening          *StoryOpeningConfig `json:"opening,omitempty"`
+	ImageSettings    *StoryImageSettings `json:"image_settings,omitempty"`
 }
 
 type CreateBranchRequest struct {
@@ -79,6 +88,7 @@ type StorySummary struct {
 	StoryTellerID    string             `json:"story_teller_id"`
 	ReplyTargetChars int                `json:"reply_target_chars"`
 	Opening          StoryOpeningConfig `json:"opening"`
+	ImageSettings    StoryImageSettings `json:"image_settings"`
 	CreatedAt        string             `json:"created_at"`
 	UpdatedAt        string             `json:"updated_at"`
 	Branches         int                `json:"branches"`
@@ -90,6 +100,11 @@ type StoryOpeningConfig struct {
 	PresetID   string `json:"preset_id,omitempty"`
 	PresetText string `json:"preset_text,omitempty"`
 	CustomText string `json:"custom_text,omitempty"`
+}
+
+type StoryImageSettings struct {
+	Mode          string `json:"mode"`
+	IntervalTurns int    `json:"interval_turns,omitempty"`
 }
 
 type BranchMeta struct {
@@ -119,6 +134,7 @@ type StoryMeta struct {
 	StoryTellerID    string                `json:"story_teller_id"`
 	ReplyTargetChars int                   `json:"reply_target_chars"`
 	Opening          StoryOpeningConfig    `json:"opening"`
+	ImageSettings    StoryImageSettings    `json:"image_settings"`
 	CurrentBranch    string                `json:"current_branch"`
 	Branches         map[string]BranchMeta `json:"branches"`
 	CreatedAt        string                `json:"created_at"`

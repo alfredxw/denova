@@ -116,6 +116,35 @@ func TestNormalizeStyleRulesStoresContentsOnly(t *testing.T) {
 	}
 }
 
+func TestTellerImagePromptNormalizesAndRoundTrips(t *testing.T) {
+	novaDir := t.TempDir()
+	library := NewTellerLibrary(novaDir)
+	longPrompt := "  " + strings.Repeat("图", MaxImagePromptChars+20) + "  "
+	created, err := library.Create(Teller{
+		ID:              "visual",
+		Name:            "视觉叙事",
+		Description:     "带互动图像提示",
+		ImagePrompt:     longPrompt,
+		RandomEventRate: 0.1,
+		Tags:            []string{"自定义"},
+		ContextPolicy:   TellerContextPolicy{Creator: "always", Lore: "relevant", RuntimeState: "always"},
+		Slots:           []TellerPromptSlot{{ID: "identity", Name: "系统提示", Target: "system", Enabled: true, Content: "规则"}},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if got := len([]rune(created.ImagePrompt)); got != MaxImagePromptChars {
+		t.Fatalf("created image_prompt chars = %d, want %d", got, MaxImagePromptChars)
+	}
+	loaded, err := library.Get("visual")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if loaded.ImagePrompt != created.ImagePrompt {
+		t.Fatalf("image_prompt should round trip, got %q want %q", loaded.ImagePrompt, created.ImagePrompt)
+	}
+}
+
 func TestTellerLibraryIgnoresLegacyStylePathField(t *testing.T) {
 	novaDir := t.TempDir()
 	tellerDir := filepath.Join(novaDir, "story-tellers")

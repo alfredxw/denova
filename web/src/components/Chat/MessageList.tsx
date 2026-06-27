@@ -24,11 +24,13 @@ interface MessageListProps {
   onSwitchMessageVersion?: (message: ChatMessage, direction: -1 | 1) => void
   onOpenSubAgentSession?: (message: ChatMessage) => void
   onInsertIllustration?: (illustration: ChapterIllustration) => void
+  onGenerateInteractiveImage?: (message: ChatMessage) => void
+  generatingInteractiveImageTurnId?: string
   activeSubAgentSessionKey?: string
 }
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, activeSubAgentSessionKey }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey }: MessageListProps) {
   const { t } = useTranslation()
   const hasRunningContextCompaction = messages.some((message) => message.role === 'context_compaction' && message.status === 'running')
   const visibleActivityContent = hasRunningContextCompaction ? '' : activityContent
@@ -61,6 +63,8 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
               onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion}
               onOpenSubAgentSession={onOpenSubAgentSession}
               onInsertIllustration={onInsertIllustration}
+              onGenerateInteractiveImage={isStreaming ? undefined : onGenerateInteractiveImage}
+              generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
               activeSubAgentSessionKey={activeSubAgentSessionKey}
             />
           )}
@@ -112,6 +116,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
               highlightDialogue={highlightDialogue}
               messageStyle={messageStyle}
               onInsertIllustration={onInsertIllustration}
+              onGenerateInteractiveImage={onGenerateInteractiveImage}
             />
           </motion.div>,
         )
@@ -178,6 +183,9 @@ function buildMessageListScrollKey(messages: ChatMessage[], activityContent: str
     (message.args || '').length,
     (message.result || '').length,
     message.illustration?.image_path || '',
+    message.interactive_image?.image_path || '',
+    message.interactive_images?.map((image) => image.image_path).join(',') || '',
+    message.interactive_image_status || '',
   ].join(':')).join('|')
   return [
     isStreaming ? 'streaming' : 'idle',
@@ -188,10 +196,11 @@ function buildMessageListScrollKey(messages: ChatMessage[], activityContent: str
 }
 
 function isTraceMessage(message: ChatMessage) {
+  if (message.name === 'generate_interactive_image' || message.interactive_image) return false
   return message.role === 'thinking' || message.role === 'tool_call' || message.role === 'tool_result'
 }
 
-function TraceGroup({ messages, highlightDialogue, messageStyle, onInsertIllustration }: { messages: ChatMessage[]; highlightDialogue: boolean; messageStyle?: CSSProperties; onInsertIllustration?: (illustration: ChapterIllustration) => void }) {
+function TraceGroup({ messages, highlightDialogue, messageStyle, onInsertIllustration, onGenerateInteractiveImage }: { messages: ChatMessage[]; highlightDialogue: boolean; messageStyle?: CSSProperties; onInsertIllustration?: (illustration: ChapterIllustration) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const toolCount = messages.filter((message) => message.role === 'tool_call').length
@@ -230,6 +239,7 @@ function TraceGroup({ messages, highlightDialogue, messageStyle, onInsertIllustr
                     highlightDialogue={highlightDialogue}
                     messageStyle={messageStyle}
                     onInsertIllustration={onInsertIllustration}
+                    onGenerateInteractiveImage={onGenerateInteractiveImage}
                   />
                 )
             ))}

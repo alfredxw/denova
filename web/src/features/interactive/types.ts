@@ -8,11 +8,19 @@ export interface StorySummary {
   origin: string
   story_teller_id: string
   reply_target_chars: number
+  image_settings?: StoryImageSettings
   opening: StoryOpeningConfig
   created_at: string
   updated_at: string
   branches: number
   events: number
+}
+
+export type StoryImageMode = 'manual' | 'interval'
+
+export interface StoryImageSettings {
+  mode: StoryImageMode
+  interval_turns: number
 }
 
 export type StoryOpeningMode = 'ai' | 'preset' | 'custom'
@@ -34,6 +42,7 @@ export interface Teller {
   id: string
   name: string
   description: string
+  image_prompt?: string
   random_event_rate: number
   style_rules?: StyleRule[] | null
   tags: string[]

@@ -17,6 +17,7 @@ type AgentContextSettings struct {
 	InteractiveHotChoices AgentContextOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentContextOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 	ToolAgent             AgentContextOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
+	Image                 AgentContextOverride `toml:"image,omitempty" json:"image,omitempty"`
 	Automation            AgentContextOverride `toml:"automation,omitempty" json:"automation,omitempty"`
 	ContextCompaction     AgentContextOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
@@ -59,6 +60,7 @@ func MergeAgentContextSettings(parent, child AgentContextSettings) AgentContextS
 		InteractiveHotChoices: mergeAgentContextOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentContextOverride(parent.VersionSummary, child.VersionSummary),
 		ToolAgent:             mergeAgentContextOverride(parent.ToolAgent, child.ToolAgent),
+		Image:                 mergeAgentContextOverride(parent.Image, child.Image),
 		Automation:            mergeAgentContextOverride(parent.Automation, child.Automation),
 		ContextCompaction:     mergeAgentContextOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
@@ -146,6 +148,7 @@ func sanitizeAgentContextSettings(settings AgentContextSettings) AgentContextSet
 	settings.InteractiveHotChoices = sanitizeAgentContextOverride(settings.InteractiveHotChoices)
 	settings.VersionSummary = sanitizeAgentContextOverride(settings.VersionSummary)
 	settings.ToolAgent = sanitizeAgentContextOverride(settings.ToolAgent)
+	settings.Image = sanitizeAgentContextOverride(settings.Image)
 	settings.Automation = sanitizeAgentContextOverride(settings.Automation)
 	settings.ContextCompaction = sanitizeAgentContextOverride(settings.ContextCompaction)
 	return settings

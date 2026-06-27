@@ -388,6 +388,11 @@ func (r *Runtime) Run(
 			} else if illustrationResult != nil {
 				data["illustration"] = illustrationResult
 				data["target"] = illustrationResult.MetaPath
+			} else if interactiveImageResult, parseErr := parseInteractiveImageToolResult(mv.Message.ToolName, fullToolContent); parseErr != nil {
+				runLogger.Warn("parse_interactive_image_result_failed", slog.String("tool", mv.Message.ToolName), slog.Any("error", parseErr))
+			} else if interactiveImageResult != nil {
+				data["interactive_image"] = interactiveImageResult
+				data["target"] = interactiveImageResult.MetaPath
 			} else if target := parseGeneratedImageToolTarget(mv.Message.ToolName, fullToolContent); target != "" {
 				data["target"] = target
 			}

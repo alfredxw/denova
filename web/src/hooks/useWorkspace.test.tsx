@@ -75,7 +75,7 @@ describe('useWorkspace', () => {
     expect(screen.getByTestId('workspace-state')).toHaveTextContent('chapters/new.md|新内容')
   })
 
-  it('选择图片文件时不按文本读取，避免把二进制内容塞进编辑器状态', async () => {
+  it('选择图像文件时不按文本读取，避免把二进制内容塞进编辑器状态', async () => {
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
 

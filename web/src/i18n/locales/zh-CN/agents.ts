@@ -15,6 +15,8 @@ const agents = {
   'agents.configAgent.title': '配置管理 Agent',
   'agents.interactiveStory.title': '互动叙事 Agent',
   'agents.interactiveStory.subtitle': '故事舞台回合生成',
+  'agents.image.title': '图像 Agent',
+  'agents.image.subtitle': '通用图像生成与互动图像',
   'agents.interactiveState.title': '互动记忆 Agent',
   'agents.interactiveState.subtitle': '状态快照与长期纪要生成',
   'agents.interactiveHotChoices.title': '快捷选项 Agent',
