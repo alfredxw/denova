@@ -371,6 +371,17 @@ func overrideFromEnv(cfg *Config) {
 			cfg.FrontendPort = port
 		}
 	}
+	if v := os.Getenv("NOVA_ALLOW_LAN_ACCESS"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.AllowLANAccess = enabled
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("NOVA_REMOTE_ACCESS_USERNAME")); v != "" {
+		cfg.RemoteAccessUsername = v
+	}
+	if v := os.Getenv("NOVA_REMOTE_ACCESS_PASSWORD_HASH"); v != "" {
+		cfg.RemoteAccessPasswordHash = v
+	}
 	if v := os.Getenv("NOVA_AGENT_IDLE_TIMEOUT_SECONDS"); v != "" {
 		if seconds, err := strconv.Atoi(v); err == nil && seconds >= 0 {
 			cfg.AgentIdleTimeoutSeconds = seconds

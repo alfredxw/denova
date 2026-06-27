@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - WebUI：设置页将原“模型”分区改名为“语言模型”，将原“图片 API”分区改名为“图像模型”，并从设置页移除后端/前端端口输入和访问地址端口展示；端口仍可通过环境变量或配置文件在启动时设置。
+- 配置：新增 `NOVA_ALLOW_LAN_ACCESS`、`NOVA_REMOTE_ACCESS_USERNAME` 和 `NOVA_REMOTE_ACCESS_PASSWORD_HASH` 环境变量覆盖，便于容器化部署时注入进程级远程访问配置。
 
 ### Fixed
 

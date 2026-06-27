@@ -247,6 +247,26 @@ func TestLoadStartupPortEnvOverridesConfig(t *testing.T) {
 	}
 }
 
+func TestLoadRemoteAccessEnvOverridesConfig(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	t.Setenv("NOVA_DIR", "")
+	t.Setenv("NOVA_ALLOW_LAN_ACCESS", "true")
+	t.Setenv("NOVA_REMOTE_ACCESS_USERNAME", " deployer ")
+	t.Setenv("NOVA_REMOTE_ACCESS_PASSWORD_HASH", "$2y$10$hash")
+
+	cfg := Load()
+	if !cfg.AllowLANAccess {
+		t.Fatalf("NOVA_ALLOW_LAN_ACCESS should enable LAN access")
+	}
+	if cfg.RemoteAccessUsername != "deployer" {
+		t.Fatalf("remote access username = %q, want deployer", cfg.RemoteAccessUsername)
+	}
+	if cfg.RemoteAccessPasswordHash != "$2y$10$hash" {
+		t.Fatalf("remote access password hash not loaded from env")
+	}
+}
+
 func TestLoadAgentIdleTimeoutEnvAllowsZero(t *testing.T) {
 	t.Chdir(t.TempDir())
 	t.Setenv("NOVA_DIR", "")
