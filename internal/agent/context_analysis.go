@@ -414,7 +414,7 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      "interactive_teller",
 			Source:  teller.StoryTellerID,
-			Title:   "互动叙事编排系统规则",
+			Title:   "互动叙事方案系统规则",
 			Content: teller.StoryTellerSystemPrompt,
 		}))
 	}
@@ -442,7 +442,7 @@ func styleRuleContextAnalysisParts(rules []StyleRule) []ContextAnalysisPart {
 		}
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      fmt.Sprintf("style_rule_%d", i+1),
-			Source:  "当前叙事编排",
+			Source:  "当前叙事方案",
 			Title:   "场景化风格规则：" + scene,
 			Content: content,
 			Note:    "system prompt",
@@ -480,6 +480,9 @@ func composeAgentInput(req ChatRequest, pending *session.Interruption, bookServi
 	}
 	if strings.TrimSpace(req.WritingSkill) != "" {
 		agentMessage = appendWritingSkillLoadHint(agentMessage, req.WritingSkill, contextLog)
+	}
+	if strings.TrimSpace(req.ImagePreset.Prompt) != "" {
+		agentMessage = appendImagePresetContext(agentMessage, req.ImagePreset, contextLog)
 	}
 	if len(req.References) > 0 {
 		agentMessage = appendReferenceContext(bookService, agentMessage, req.References, contextLog)

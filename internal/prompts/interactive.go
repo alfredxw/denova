@@ -13,7 +13,7 @@ type InteractiveStorySystemInstructionInput struct {
 	StoryTellerName         string
 	StoryTellerDescription  string
 	StoryTellerSystemPrompt string
-	// StyleRules 是当前叙事编排的场景化风格规则；调用方需先按本轮 # 选择和大小上限过滤。
+	// StyleRules 是当前叙事方案的场景化风格规则；调用方需先按本轮 # 选择和大小上限过滤。
 	StyleRules []StyleRule
 }
 
@@ -84,7 +84,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 禁止使用写文件工具，包括 write_file、edit_file、delete_file 以及任何会修改 workspace 文件的工具。\n")
 	sb.WriteString("- 禁止调用 write_todos、任务计划工具或输出 <invoke> 工具调用片段；游戏模式不维护待办列表。\n")
 	sb.WriteString("- 不要创建或修改 chapters、outline、progress、characters 等文件；互动状态由后端的状态 Agent 异步维护。\n")
-	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的场景化风格内容继续剧情；# 只用于选择当前叙事编排中的场景风格，不再代表文件引用。\n\n")
+	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的场景化风格内容继续剧情；# 只用于选择当前叙事方案中的场景风格，不再代表文件引用。\n\n")
 	sb.WriteString("## 工具化召回流程\n")
 	sb.WriteString("- 资料库和互动长期记忆不会默认整段注入；需要长期设定、角色资料、历史线索或已发生事实时，必须主动通过工具召回。\n")
 	sb.WriteString("- 资料库召回使用 list_lore_items 先看轻量索引，再用 read_lore_items 读取本轮真正相关的少量条目；不要臆造未读取的资料库正文。\n")

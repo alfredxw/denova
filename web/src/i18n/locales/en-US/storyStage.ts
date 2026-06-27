@@ -52,6 +52,7 @@ const storyStage = {
   'storyStage.interactiveImage.saveFailed': 'Failed to save interactive image settings',
   'storyStage.interactiveImage.generateFailed': 'Failed to generate interactive image',
   'storyStage.interactiveImage.generating': 'Generating interactive image...',
+  'storyStage.imagePreset.menuTitle': 'Image Preset',
   'storyStage.inputPlaceholder': 'What do you do?',
   'storyStage.inputPlaceholderWithSkills': 'What do you do? Type / to choose Skills',
   'storyStage.stop': 'Stop',

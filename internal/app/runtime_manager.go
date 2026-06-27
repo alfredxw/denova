@@ -565,6 +565,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if cfg.IDEStoryTellerID == "" && effective.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = effective.IDEStoryTellerID
 	}
+	if effective.IDEImagePresetID != "" {
+		cfg.IDEImagePresetID = effective.IDEImagePresetID
+	}
 	cfg.WritingSkillDefault = effective.WritingSkillDefault
 	cfg.MaxIteration = appSettingsInt(effective.MaxIteration, 0)
 	if effective.ModelMaxRetries != nil {
@@ -657,6 +660,9 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = settings.IDEStoryTellerID
+	}
+	if settings.IDEImagePresetID != "" {
+		cfg.IDEImagePresetID = settings.IDEImagePresetID
 	}
 	if settings.WritingSkillDefault != "" {
 		cfg.WritingSkillDefault = settings.WritingSkillDefault

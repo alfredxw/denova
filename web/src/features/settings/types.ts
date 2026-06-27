@@ -48,6 +48,7 @@ export interface Settings {
   agent_tool_result_limit_kb?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
+  ide_image_preset_id?: string
   writing_skill_default?: string
   interactive_hot_choices_enabled?: boolean | null
   interactive_stage_font_size?: number | null

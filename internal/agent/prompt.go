@@ -550,7 +550,7 @@ func styleRulePromptSources(rules []StyleRule) []promptSource {
 			source:  "系统提示",
 			title:   "场景化风格规则：" + scene,
 			content: content,
-			note:    "当前叙事编排",
+			note:    "当前叙事方案",
 		})
 	}
 	return sources
@@ -645,7 +645,7 @@ func configManagerFlowInstruction(cfg *config.Config, state *book.State) string 
 
 func configManagerFlowInstructionFor(workspace, creator string) string {
 	var sb strings.Builder
-	sb.WriteString("你是 Nova 的统一配置管理 Agent，负责在模块内嵌入口中帮助用户管理资料库、叙事编排、自动化任务、Skills、故事记忆结构和故事记忆记录。\n\n")
+	sb.WriteString("你是 Nova 的统一配置管理 Agent，负责在模块内嵌入口中帮助用户管理资料库、方案预设（叙事方案和图像方案）、自动化任务、Skills、故事记忆结构和故事记忆记录。\n\n")
 	if strings.TrimSpace(workspace) != "" {
 		sb.WriteString("当前作品 workspace: ")
 		sb.WriteString(strings.TrimSpace(workspace))
@@ -663,12 +663,12 @@ func configManagerFlowInstructionFor(workspace, creator string) string {
 		"- 增删改统一使用对应 write 工具批量完成，写入后用简短中文总结实际变更。",
 		"- Agent 页配置使用 list_agent_configs 一次读取全量配置，再用 write_agent_configs 写入；写入必须显式指定 scope=user 或 scope=workspace。",
 		"- 不要修改端口、主题、远程访问、编辑器外观等非 Agent 页设置。",
-		"- 不要通过文件工具直接改资料库、导演、自动化、Skills、故事记忆或 Agent 配置的底层存储文件。",
+		"- 不要通过文件工具直接改资料库、方案预设、自动化、Skills、故事记忆或 Agent 配置的底层存储文件。",
 		"- 删除、隐藏、覆盖、大范围重写必须有用户明确指令；缺少明确指令时先询问。",
 		"",
 		"## 模块边界",
 		"- 资料库记录长期稳定设定；短期位置、伤势、心理、目标优先进入故事记忆或写作状态，不默认写资料库。",
-		"- 叙事编排只维护导演/讲述规则、槽位和互动生成偏好，不写故事正文。",
+		"- 叙事方案只维护导演/讲述规则、槽位和互动生成偏好，不写故事正文；图像方案只维护视觉风格、媒介、构图、限制和避免项。",
 		"- Skills 写入 SKILL.md 文档，必须说明适用场景、上下文获取和具体工作流；内置预制 Skill 只能通过工作区同名覆盖修改，不得写入内置 Skills 目录。",
 		"- 自动化任务必须保持触发条件、通知/执行策略和写入权限清晰。",
 		"- 故事记忆结构定义字段和生成规则；故事记忆记录保存具体故事状态，两者必须分开操作。",

@@ -28,7 +28,7 @@ import { createInteractiveNarrativeFilter, sanitizeStoredNarrative } from '../st
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { Snapshot, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
+import type { ImagePreset, Snapshot, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { TellerPicker } from './TellerPicker'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -39,6 +39,7 @@ interface StoryStageProps {
   stories?: StorySummary[]
   story?: StorySummary
   tellers?: Teller[]
+  imagePresets?: ImagePreset[]
   storyId: string
   branchId: string
   snapshot: Snapshot | null
@@ -63,7 +64,7 @@ const EMPTY_STAGE_RUN = emptyStoryStageRun()
 const DEFAULT_IMAGE_INTERVAL_TURNS = 3
 const stageAbortControllers = new Map<string, AbortController>()
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
+export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const [input, setInput] = useState('')
@@ -1147,6 +1148,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                     <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
                       <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming} />
                       <InteractiveImageSettingsMenu story={story} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
+                      <StoryImagePresetMenu story={story} presets={imagePresets} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <DropdownMenuItem
                         onSelect={() => setTokenUsageOpen(true)}
                         className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
@@ -1570,12 +1572,73 @@ function InteractiveImageSettingsMenu({ story, disabled, onChange }: { story?: S
   )
 }
 
+function StoryImagePresetMenu({ story, presets, disabled, onChange }: { story?: StorySummary; presets: ImagePreset[]; disabled?: boolean; onChange?: (settings: StoryImageSettings) => void | Promise<void> }) {
+  const { t } = useTranslation()
+  const current = normalizeStoryImageSettings(story?.image_settings)
+  const [saving, setSaving] = useState(false)
+  const normalizedPresets = useMemo(() => {
+    if (presets.some((preset) => preset.id === current.preset_id)) return presets
+    return [{ id: current.preset_id || 'game-cg', name: current.preset_id || 'game-cg', description: '', prompt: '', tags: [], custom: true, version: 1 }, ...presets]
+  }, [current.preset_id, presets])
+  const selected = normalizedPresets.find((preset) => preset.id === current.preset_id) || normalizedPresets.find((preset) => preset.id === 'game-cg') || normalizedPresets[0]
+
+  const save = async (presetId: string) => {
+    if (disabled || !onChange || saving || presetId === current.preset_id) return
+    setSaving(true)
+    try {
+      await onChange(normalizeStoryImageSettings({ ...current, preset_id: presetId }))
+    } catch (err) {
+      console.warn('[interactive-stage] 保存图像方案失败', err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (normalizedPresets.length === 0) return null
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger
+        disabled={disabled || saving}
+        className="flex cursor-pointer items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+      >
+        <span className="flex h-3.5 w-3.5 items-center justify-center">
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--nova-text-faint)]" /> : <Sparkles className="h-3.5 w-3.5" />}
+        </span>
+        <span className="min-w-0 flex-1 truncate">{t('storyStage.imagePreset.menuTitle')}</span>
+        <span className="max-w-36 shrink-0 truncate text-right text-[10px] text-[var(--nova-text-faint)]">{selected?.name || current.preset_id}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-72 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+        {normalizedPresets.map((preset) => {
+          const selectedPreset = preset.id === selected?.id
+          return (
+            <DropdownMenuItem
+              key={preset.id}
+              disabled={disabled || saving}
+              onSelect={(event) => {
+                event.preventDefault()
+                void save(preset.id)
+              }}
+              onClick={() => void save(preset.id)}
+              className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+            >
+              <Check className={`h-3.5 w-3.5 ${selectedPreset ? 'opacity-100' : 'opacity-0'}`} />
+              <span className="min-w-0 flex-1 truncate">{preset.name || preset.id}</span>
+            </DropdownMenuItem>
+          )
+        })}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+}
+
 function normalizeStoryImageSettings(value?: Partial<StoryImageSettings> | null): StoryImageSettings {
   const rawMode = typeof value?.mode === 'string' ? String(value.mode) : ''
   const mode = rawMode === 'interval' || rawMode === 'every_turn' ? 'interval' : 'manual'
   return {
     mode,
     interval_turns: rawMode === 'every_turn' ? 1 : normalizeIntervalTurns(value?.interval_turns),
+    preset_id: typeof value?.preset_id === 'string' && value.preset_id.trim() ? value.preset_id.trim() : 'game-cg',
   }
 }
 

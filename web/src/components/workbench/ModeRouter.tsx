@@ -11,13 +11,13 @@ import { VersionPanel } from '@/components/Versions/VersionPanel'
 import { HomeView } from '@/components/Home/HomeView'
 import { InteractiveLayout } from '@/features/interactive/components/InteractiveLayout'
 import { SettingPanel } from '@/features/interactive/components/SettingPanel'
-import { getInteractiveTellers } from '@/features/interactive/api'
+import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import { AgentsView } from '@/features/agents/AgentsView'
 import { AutomationsView } from '@/features/automations/AutomationsView'
 import { SkillsView } from '@/features/skills/SkillsView'
 import { SettingsView } from '@/features/settings/SettingsView'
-import type { Teller } from '@/features/interactive/types'
+import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { BookRecord, ChapterIllustration, ChapterSummary, ChatMessage, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
@@ -107,8 +107,8 @@ interface ModeRouterProps {
   onSwitchChatSession: (id: string) => void | Promise<void>
   onRenameChatSession: (id: string, title: string) => void | Promise<void>
   onDeleteChatSession: (id: string) => void | Promise<void>
-  onSend: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] } }) => void
-  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] } }) => Promise<ContextAnalysis>
+  onSend: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string }) => void
+  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
@@ -214,6 +214,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const interactiveSubmode = useInteractiveStore((state) => state.submode)
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
   const [tellers, setTellers] = useState<Teller[]>([])
+  const [imagePresets, setImagePresets] = useState<ImagePreset[]>([])
   const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
 
@@ -221,14 +222,21 @@ export function ModeRouter(props: ModeRouterProps) {
     let cancelled = false
     if (!workspace) {
       setTellers([])
+      setImagePresets([])
       return () => { cancelled = true }
     }
-    getInteractiveTellers()
-      .then((data) => {
-        if (!cancelled) setTellers(data)
+    Promise.all([getInteractiveTellers(), getImagePresets()])
+      .then(([nextTellers, nextImagePresets]) => {
+        if (!cancelled) {
+          setTellers(nextTellers)
+          setImagePresets(nextImagePresets)
+        }
       })
       .catch(() => {
-        if (!cancelled) setTellers([])
+        if (!cancelled) {
+          setTellers([])
+          setImagePresets([])
+        }
       })
     return () => { cancelled = true }
   }, [workspace])
@@ -467,6 +475,8 @@ export function ModeRouter(props: ModeRouterProps) {
         <MainRouteLayer visible={visibleMainRoute === 'interactive'}>
           <InteractiveLayout
             workspace={workspace}
+            imagePresets={imagePresets}
+            onImagePresetsChange={setImagePresets}
             loreEmpty={loreEmpty}
             onRequestLoreInit={requestLoreInit}
             rightPanelVisible={interactiveRightVisible}
@@ -503,7 +513,7 @@ export function ModeRouter(props: ModeRouterProps) {
             icon={<SlidersHorizontal className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
             onClose={() => onSetRightPanel(null)}
           >
-            <SettingPanel mode="teller" workspace={workspace} tellers={tellers} onTellersChange={setTellers} />
+            <SettingPanel mode="teller" workspace={workspace} tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} />
           </IdeWorkspacePanel>
         </MainRouteLayer>
       )}
@@ -550,6 +560,7 @@ export function ModeRouter(props: ModeRouterProps) {
       currentChapter={currentChapter}
       selectedFile={selectedFile}
       tellers={tellers}
+      imagePresets={imagePresets}
       messages={messages}
       sessions={sessions}
       activeSessionId={activeSessionId}

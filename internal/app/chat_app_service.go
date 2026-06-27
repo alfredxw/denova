@@ -10,6 +10,7 @@ import (
 	"nova/config"
 	"nova/internal/agent"
 	"nova/internal/book"
+	"nova/internal/imagepreset"
 	"nova/internal/interactive"
 	"nova/internal/session"
 )
@@ -433,10 +434,40 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 		log.Printf("[agent-task] load layered settings failed workspace=%s err=%v", runtime.workspace, err)
 		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
 	}
+	applyImagePresetRuntimePolicy(&runtime, &req)
 	if err := applyWritingSkillRuntimePolicy(&runtime, &req); err != nil {
 		return ideChatRuntime{}, req, err
 	}
 	return runtime, req, nil
+}
+
+func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatRequest) {
+	if runtime == nil || req == nil {
+		return
+	}
+	presetID := imagepreset.NormalizeID(req.ImagePresetID)
+	if presetID == "" {
+		presetID = imagepreset.NormalizeID(runtime.cfg.IDEImagePresetID)
+	}
+	if presetID == "" {
+		presetID = imagepreset.DefaultID
+	}
+	req.ImagePresetID = presetID
+	preset := imagepreset.DefaultPreset()
+	if strings.TrimSpace(runtime.cfg.NovaDir) != "" {
+		loaded, err := imagepreset.NewLibrary(runtime.cfg.NovaDir).Get(presetID)
+		if err != nil {
+			log.Printf("[agent-task] load image preset failed id=%s workspace=%s err=%v; fallback=%s", presetID, runtime.workspace, err, imagepreset.DefaultID)
+		} else {
+			preset = loaded
+		}
+	}
+	req.ImagePreset = agent.ImagePresetContext{
+		ID:     preset.ID,
+		Name:   preset.Name,
+		Prompt: preset.Prompt,
+	}
+	log.Printf("[agent-task] selected image preset id=%s name=%q workspace=%s", req.ImagePreset.ID, req.ImagePreset.Name, runtime.workspace)
 }
 
 func applyWritingSkillRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatRequest) error {

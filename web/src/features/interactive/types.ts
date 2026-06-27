@@ -21,6 +21,7 @@ export type StoryImageMode = 'manual' | 'interval'
 export interface StoryImageSettings {
   mode: StoryImageMode
   interval_turns: number
+  preset_id?: string
 }
 
 export type StoryOpeningMode = 'ai' | 'preset' | 'custom'
@@ -42,12 +43,26 @@ export interface Teller {
   id: string
   name: string
   description: string
-  image_prompt?: string
   random_event_rate: number
   style_rules?: StyleRule[] | null
   tags: string[]
   context_policy: TellerContextPolicy
   slots: TellerPromptSlot[]
+  custom: boolean
+  invalid?: boolean
+  error?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ImagePreset {
+  version: number
+  id: string
+  name: string
+  description: string
+  prompt: string
+  tags: string[]
+  path?: string
   custom: boolean
   invalid?: boolean
   error?: string

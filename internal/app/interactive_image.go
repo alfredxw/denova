@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"nova/internal/imagepreset"
 	"nova/internal/interactive"
 	"nova/internal/interactiveimage"
 )
@@ -71,10 +72,9 @@ func (s *InteractiveAppService) GenerateInteractiveImage(ctx context.Context, st
 		return InteractiveImageGenerateResult{}, err
 	}
 
-	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
-	imagePrompt := strings.TrimSpace(teller.ImagePrompt)
+	preset := loadImagePreset(novaDir, storyCtx.Meta.ImageSettings.PresetID)
 	sourceContext := interactiveImageSourceContext(storyCtx.Meta, storyCtx.Snapshot.Turns, turnIndex, store)
-	systemPrompt := interactiveImageSystemPrompt(imagePrompt)
+	systemPrompt := interactiveImageSystemPrompt(preset)
 	result, err := a.GenerateImageWithAgent(ctx, ImageAgentGenerateRequest{
 		Purpose:       "interactive_image",
 		SourceContext: sourceContext,
@@ -188,6 +188,9 @@ func normalizeStoryImageSettingsForApp(settings interactive.StoryImageSettings) 
 	if settings.IntervalTurns <= 0 {
 		settings.IntervalTurns = 3
 	}
+	if imagepreset.NormalizeID(settings.PresetID) == "" {
+		settings.PresetID = imagepreset.DefaultID
+	}
 	return settings
 }
 
@@ -224,12 +227,35 @@ func interactiveImageErrorResult(err error) string {
 	return string(data)
 }
 
-func interactiveImageSystemPrompt(imagePrompt string) string {
+func loadImagePreset(novaDir, id string) imagepreset.Preset {
+	presetID := imagepreset.NormalizeID(id)
+	if presetID == "" {
+		presetID = imagepreset.DefaultID
+	}
+	if strings.TrimSpace(novaDir) == "" {
+		return imagepreset.DefaultPreset()
+	}
+	preset, err := imagepreset.NewLibrary(novaDir).Get(presetID)
+	if err != nil {
+		log.Printf("[interactive-image] load image preset failed id=%s err=%v; fallback=%s", presetID, err, imagepreset.DefaultID)
+		return imagepreset.DefaultPreset()
+	}
+	return preset
+}
+
+func interactiveImageSystemPrompt(preset imagepreset.Preset) string {
 	var sb strings.Builder
 	sb.WriteString("当前调用点是互动图像。你必须基于已经发生的互动回合生成一张图像，不能透露未来剧情，不能改写叙事正文。")
-	if strings.TrimSpace(imagePrompt) != "" {
-		sb.WriteString("\n\n## 叙事编排 image_prompt\n\n")
-		sb.WriteString(limitInteractiveImageRunes(imagePrompt, 4000))
+	if strings.TrimSpace(preset.Prompt) != "" {
+		sb.WriteString("\n\n## 图像方案预设\n\n")
+		if strings.TrimSpace(preset.ID) != "" {
+			fmt.Fprintf(&sb, "- ID：%s\n", limitInteractiveImageRunes(preset.ID, 120))
+		}
+		if strings.TrimSpace(preset.Name) != "" {
+			fmt.Fprintf(&sb, "- 名称：%s\n", limitInteractiveImageRunes(preset.Name, 120))
+		}
+		sb.WriteString("\n")
+		sb.WriteString(limitInteractiveImageRunes(preset.Prompt, imagepreset.MaxPromptChars))
 	}
 	return sb.String()
 }
@@ -238,7 +264,7 @@ func interactiveImageSourceContext(meta interactive.StoryMeta, turns []interacti
 	var sb strings.Builder
 	writeContextLine(&sb, "故事标题", meta.Title)
 	writeContextLine(&sb, "故事来源", meta.Origin)
-	writeContextLine(&sb, "叙事编排", meta.StoryTellerID)
+	writeContextLine(&sb, "叙事方案", meta.StoryTellerID)
 	start := turnIndex - 2
 	if start < 0 {
 		start = 0

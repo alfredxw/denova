@@ -6,10 +6,10 @@ import { createLoreItem, deleteLoreItem, getLoreItems, readFile, saveFile, updat
 import { Button } from '@/components/ui/button'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
-import { createInteractiveTeller, deleteInteractiveTeller, getInteractiveTellers, updateInteractiveTeller } from '../api'
+import { createImagePreset, createInteractiveTeller, deleteImagePreset, deleteInteractiveTeller, getImagePresets, getInteractiveTellers, updateImagePreset, updateInteractiveTeller } from '../api'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, INTERACTIVE_OPENING_PRESET_ENTRY_ID, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, serializeBookOpeningPresets, type BookOpeningPreset } from '../opening'
-import type { Teller } from '../types'
-import { CreatorDirectory, CreatorEditor, LoreDirectory, LoreEditor, OpeningPresetEditor, TellerDirectory } from './SettingPanelSections'
+import type { ImagePreset, Teller } from '../types'
+import { CreatorDirectory, CreatorEditor, ImagePresetEditor, LoreDirectory, LoreEditor, OpeningPresetEditor, TellerDirectory } from './SettingPanelSections'
 import { TellerEditor } from './SettingPanelTellerEditor'
 
 const CREATOR_PATH = 'CREATOR.md'
@@ -17,6 +17,8 @@ const CREATOR_ENTRY_ID = '__creator__'
 const LORE_CONFIG_AGENT_ENTRY_ID = '__config_manager_lore__'
 const TELLER_CONFIG_AGENT_ENTRY_ID = '__config_manager_teller__'
 const EMPTY_TELLERS: Teller[] = []
+const EMPTY_IMAGE_PRESETS: ImagePreset[] = []
+type PresetResourceKind = 'teller' | 'image'
 
 export type SettingPanelMode = 'lore' | 'creator' | 'teller'
 
@@ -90,11 +92,13 @@ interface SettingPanelProps {
   mode?: SettingPanelMode
   workspace?: string
   tellers?: Teller[]
+  imagePresets?: ImagePreset[]
   onTellersChange?: (tellers: Teller[]) => void
+  onImagePresetsChange?: (presets: ImagePreset[]) => void
   embedded?: boolean
 }
 
-export function SettingPanel({ mode, workspace = '', tellers: externalTellers = EMPTY_TELLERS, onTellersChange, embedded = false }: SettingPanelProps) {
+export function SettingPanel({ mode, workspace = '', tellers: externalTellers = EMPTY_TELLERS, imagePresets: externalImagePresets = EMPTY_IMAGE_PRESETS, onTellersChange, onImagePresetsChange, embedded = false }: SettingPanelProps) {
   const { t } = useTranslation()
   const activeMode = mode || 'lore'
   const [items, setItems] = useState<LoreItem[]>([])
@@ -109,6 +113,11 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const [activeTellerId, setActiveTellerId] = useState('')
   const [tellerDraft, setTellerDraft] = useState<Teller | null>(null)
   const [tellerTagDraft, setTellerTagDraft] = useState('')
+  const [presetResourceKind, setPresetResourceKind] = useState<PresetResourceKind>('teller')
+  const [imagePresets, setImagePresets] = useState<ImagePreset[]>(externalImagePresets)
+  const [activeImagePresetId, setActiveImagePresetId] = useState('')
+  const [imagePresetDraft, setImagePresetDraft] = useState<ImagePreset | null>(null)
+  const [imagePresetTagDraft, setImagePresetTagDraft] = useState('')
   const [activeSlotId, setActiveSlotId] = useState('')
   const [saving, setSaving] = useState(false)
   const loreDraftRef = useRef<LoreItem | null>(null)
@@ -117,6 +126,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const loreSavedSignature = useRef('')
   const tellerAutoSaveTimer = useRef<number | null>(null)
   const tellerSavedSignature = useRef('')
+  const imagePresetAutoSaveTimer = useRef<number | null>(null)
+  const imagePresetSavedSignature = useRef('')
 
   useEffect(() => {
     let cancelled = false
@@ -243,6 +254,23 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }, [activeMode, externalTellers.length, onTellersChange, workspace])
 
   useEffect(() => {
+    if (activeMode !== 'teller' || onImagePresetsChange || externalImagePresets.length > 0 || !workspace) return
+    let cancelled = false
+    getImagePresets()
+      .then((data) => {
+        if (cancelled) return
+        setImagePresets(data)
+        setActiveImagePresetId((current) => current || data[0]?.id || '')
+      })
+      .catch(() => {
+        if (!cancelled) setImagePresets([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeMode, externalImagePresets.length, onImagePresetsChange, workspace])
+
+  useEffect(() => {
     setTellers(externalTellers)
     setActiveTellerId((current) => {
       if (current && externalTellers.some((teller) => teller.id === current)) return current
@@ -252,6 +280,16 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     setTellerTagDraft('')
     setActiveSlotId('')
   }, [externalTellers, workspace])
+
+  useEffect(() => {
+    setImagePresets(externalImagePresets)
+    setActiveImagePresetId((current) => {
+      if (current && externalImagePresets.some((preset) => preset.id === current)) return current
+      return externalImagePresets[0]?.id || ''
+    })
+    setImagePresetDraft(null)
+    setImagePresetTagDraft('')
+  }, [externalImagePresets, workspace])
 
   useEffect(() => {
     if (activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) {
@@ -279,6 +317,14 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     tellerSavedSignature.current = nextDraft ? tellerDraftSignature(nextDraft, (teller?.tags || []).join('，')) : ''
   }, [activeTellerId, tellers])
 
+  useEffect(() => {
+    const preset = imagePresets.find((entry) => entry.id === activeImagePresetId) || null
+    const nextDraft = preset ? { ...preset, tags: [...(preset.tags || [])] } : null
+    setImagePresetDraft(nextDraft)
+    setImagePresetTagDraft((preset?.tags || []).join('，'))
+    imagePresetSavedSignature.current = nextDraft ? imagePresetDraftSignature(nextDraft, (preset?.tags || []).join('，')) : ''
+  }, [activeImagePresetId, imagePresets])
+
   const refreshItems = async (nextActiveId?: string) => {
     const data = await getLoreItems()
     setItems(data)
@@ -305,10 +351,30 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     })
   }
 
+  const refreshImagePresets = async (nextActiveId?: string) => {
+    const data = await getImagePresets()
+    setImagePresets(data)
+    onImagePresetsChange?.(data)
+    setActiveImagePresetId((current) => {
+      if (nextActiveId) return nextActiveId
+      if (current && data.some((preset) => preset.id === current)) return current
+      return data[0]?.id || ''
+    })
+  }
+
   const mergeSavedTeller = (teller: Teller) => {
     setTellers((current) => current.map((entry) => (entry.id === teller.id ? teller : entry)))
     onTellersChange?.(tellers.map((entry) => (entry.id === teller.id ? teller : entry)))
     setActiveTellerId(teller.id)
+  }
+
+  const mergeSavedImagePreset = (preset: ImagePreset) => {
+    setImagePresets((current) => {
+      const next = current.map((entry) => (entry.id === preset.id ? preset : entry))
+      onImagePresetsChange?.(next)
+      return next
+    })
+    setActiveImagePresetId(preset.id)
   }
 
   const mergeSavedLoreItem = (item: LoreItem) => {
@@ -338,6 +404,21 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     tellerSavedSignature.current = tellerDraftSignature(teller, (teller.tags || []).join('，'))
     if (mode === 'manual') {
       mergeSavedTeller(teller)
+    }
+  }
+
+  const saveImagePresetDraft = async (mode: 'manual' | 'auto') => {
+    if (!imagePresetDraft) return
+    const payload = {
+      ...imagePresetDraft,
+      tags: splitTags(imagePresetTagDraft),
+    }
+    const signature = imagePresetDraftSignature(payload, imagePresetTagDraft)
+    if (mode === 'auto' && signature === imagePresetSavedSignature.current) return
+    const preset = await updateImagePreset(imagePresetDraft.id, payload)
+    imagePresetSavedSignature.current = imagePresetDraftSignature(preset, (preset.tags || []).join('，'))
+    if (mode === 'manual') {
+      mergeSavedImagePreset(preset)
     }
   }
 
@@ -371,8 +452,35 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     }
   }
 
+  const handleCreateImagePreset = async () => {
+    setSaving(true)
+    try {
+      const preset = await createImagePreset(newImagePresetDraft())
+      setPresetResourceKind('image')
+      await refreshImagePresets(preset.id)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleDelete = async () => {
     if (activeMode === 'teller') {
+      if (presetResourceKind === 'image') {
+        if (!imagePresetDraft?.custom) return
+        if (!window.confirm(t('settingPanel.confirmDeleteImagePreset', { name: imagePresetDraft.name }))) return
+        setSaving(true)
+        try {
+          if (imagePresetAutoSaveTimer.current) {
+            window.clearTimeout(imagePresetAutoSaveTimer.current)
+            imagePresetAutoSaveTimer.current = null
+          }
+          await deleteImagePreset(imagePresetDraft.id)
+          await refreshImagePresets()
+        } finally {
+          setSaving(false)
+        }
+        return
+      }
       if (!tellerDraft || !tellerDraft.custom) return
       if (!window.confirm(t('settingPanel.confirmDeleteTeller', { name: tellerDraft.name }))) return
       setSaving(true)
@@ -413,11 +521,19 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         return
       }
       if (activeMode === 'teller') {
-        if (tellerAutoSaveTimer.current) {
-          window.clearTimeout(tellerAutoSaveTimer.current)
-          tellerAutoSaveTimer.current = null
+        if (presetResourceKind === 'image') {
+          if (imagePresetAutoSaveTimer.current) {
+            window.clearTimeout(imagePresetAutoSaveTimer.current)
+            imagePresetAutoSaveTimer.current = null
+          }
+          await saveImagePresetDraft('manual')
+        } else {
+          if (tellerAutoSaveTimer.current) {
+            window.clearTimeout(tellerAutoSaveTimer.current)
+            tellerAutoSaveTimer.current = null
+          }
+          await saveTellerDraft('manual')
         }
-        await saveTellerDraft('manual')
         return
       }
       if (loreAutoSaveTimer.current) {
@@ -475,7 +591,54 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     }
   }, [activeMode, activeTellerId, tellerDraft, tellerTagDraft])
 
-  const handleSelectTeller = (id: string) => setActiveTellerId(id)
+  useEffect(() => {
+    if (activeMode !== 'teller' || presetResourceKind !== 'image' || !imagePresetDraft) return
+    const signature = imagePresetDraftSignature(imagePresetDraft, imagePresetTagDraft)
+    if (signature === imagePresetSavedSignature.current) return
+    if (imagePresetAutoSaveTimer.current) {
+      window.clearTimeout(imagePresetAutoSaveTimer.current)
+    }
+    imagePresetAutoSaveTimer.current = window.setTimeout(() => {
+      imagePresetAutoSaveTimer.current = null
+      void saveImagePresetDraft('auto').catch((err) => {
+        console.warn('[image-preset-editor] 自动保存图像方案失败', err)
+      })
+    }, 1200)
+    return () => {
+      if (imagePresetAutoSaveTimer.current) {
+        window.clearTimeout(imagePresetAutoSaveTimer.current)
+        imagePresetAutoSaveTimer.current = null
+      }
+    }
+  }, [activeMode, activeImagePresetId, imagePresetDraft, imagePresetTagDraft, presetResourceKind])
+
+  const flushImagePresetAutoSave = () => {
+    if (!imagePresetAutoSaveTimer.current) return
+    window.clearTimeout(imagePresetAutoSaveTimer.current)
+    imagePresetAutoSaveTimer.current = null
+    void saveImagePresetDraft('auto').catch((err) => {
+      console.warn('[image-preset-editor] 切换条目前自动保存图像方案失败', err)
+    })
+  }
+
+  const handlePresetResourceKindChange = (kind: PresetResourceKind) => {
+    if (kind !== presetResourceKind && presetResourceKind === 'image') flushImagePresetAutoSave()
+    setPresetResourceKind(kind)
+    if (kind === 'image' && !activeImagePresetId && imagePresets[0]) setActiveImagePresetId(imagePresets[0].id)
+    if (kind === 'teller' && !activeTellerId && tellers[0]) setActiveTellerId(tellers[0].id)
+  }
+
+  const handleSelectTeller = (id: string) => {
+    if (presetResourceKind === 'image') flushImagePresetAutoSave()
+    setPresetResourceKind('teller')
+    setActiveTellerId(id)
+  }
+
+  const handleSelectImagePreset = (id: string) => {
+    flushImagePresetAutoSave()
+    setPresetResourceKind('image')
+    setActiveImagePresetId(id)
+  }
 
   const handleSelectLore = (id: string) => {
     if (loreAutoSaveTimer.current) {
@@ -491,7 +654,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const isCreatorActive = activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)
   const isOpeningPresetActive = activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID
   const isLoreConfigAgentActive = activeMode === 'lore' && activeId === LORE_CONFIG_AGENT_ENTRY_ID
-  const isTellerConfigAgentActive = activeMode === 'teller' && activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
+  const isTellerConfigAgentActive = activeMode === 'teller' && presetResourceKind === 'teller' && activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
+  const isImagePresetEditorActive = activeMode === 'teller' && presetResourceKind === 'image'
   const directoryPanel = (
     <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
       <div className="border-b border-[var(--nova-border)] px-3 py-3">
@@ -502,7 +666,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.directoryHint')}</div>
       </div>
 
-      {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} /> : activeMode === 'creator' ? <CreatorDirectory /> : <TellerDirectory tellers={tellers} activeTellerId={activeTellerId} saving={saving} onSelect={handleSelectTeller} onCreate={() => void handleCreateTeller()} />}
+      {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} /> : activeMode === 'creator' ? <CreatorDirectory /> : <TellerDirectory resourceKind={presetResourceKind} tellers={tellers} imagePresets={imagePresets} activeTellerId={activeTellerId} activeImagePresetId={activeImagePresetId} saving={saving} onResourceKindChange={handlePresetResourceKindChange} onSelectTeller={handleSelectTeller} onSelectImagePreset={handleSelectImagePreset} onCreateTeller={() => void handleCreateTeller()} onCreateImagePreset={() => void handleCreateImagePreset()} />}
     </div>
   )
   return (
@@ -532,10 +696,10 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
             )}
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              {isCreatorActive ? <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : isOpeningPresetActive ? <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <ModeIcon mode={activeMode} />}
-              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.title') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : isCreatorActive ? CREATOR_PATH : isOpeningPresetActive ? t('settingPanel.openingPreset.title') : editorTitle(activeMode, draft, tellerDraft, t)}</h2>
+              {isCreatorActive ? <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : isOpeningPresetActive || isImagePresetEditorActive ? <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <ModeIcon mode={activeMode} />}
+              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.title') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : isCreatorActive ? CREATOR_PATH : isOpeningPresetActive ? t('settingPanel.openingPreset.title') : editorTitle(activeMode, draft, tellerDraft, imagePresetDraft, presetResourceKind, t)}</h2>
             </div>
-            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : isCreatorActive ? t('settingPanel.editor.creatorSubtitle') : isOpeningPresetActive ? t('settingPanel.openingPreset.subtitle') : editorSubtitle(activeMode, draft, tellerDraft, t)}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : isCreatorActive ? t('settingPanel.editor.creatorSubtitle') : isOpeningPresetActive ? t('settingPanel.openingPreset.subtitle') : editorSubtitle(activeMode, draft, tellerDraft, imagePresetDraft, presetResourceKind, t)}</p>
           </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -544,13 +708,18 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
-            {activeMode === 'teller' && !isTellerConfigAgentActive && (
+            {activeMode === 'teller' && presetResourceKind === 'teller' && !isTellerConfigAgentActive && (
               <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !tellerDraft?.custom} onClick={handleDelete} aria-label={t('settingPanel.deleteTeller')}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
+            {activeMode === 'teller' && presetResourceKind === 'image' && (
+              <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !imagePresetDraft?.custom} onClick={handleDelete} aria-label={t('settingPanel.deleteImagePreset')}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
             {!isLoreConfigAgentActive && !isTellerConfigAgentActive && (
-              <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving || (activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && !draft) || (activeMode === 'teller' && !tellerDraft)} onClick={handleSave}>
+              <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving || (activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && !draft) || (activeMode === 'teller' && presetResourceKind === 'teller' && !tellerDraft) || (activeMode === 'teller' && presetResourceKind === 'image' && !imagePresetDraft)} onClick={handleSave}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 {t('common.save')}
               </Button>
@@ -586,9 +755,14 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
             workspace={workspace}
             origin="teller"
             resourceId={TELLER_CONFIG_AGENT_ENTRY_ID}
-            context={{ teller_count: String(tellers.length) }}
-            onMutated={() => void refreshTellers()}
+            context={{ teller_count: String(tellers.length), image_preset_count: String(imagePresets.length) }}
+            onMutated={() => {
+              void refreshTellers()
+              void refreshImagePresets()
+            }}
           />
+        ) : activeMode === 'teller' && presetResourceKind === 'image' ? (
+          <ImagePresetEditor draft={imagePresetDraft} setDraft={setImagePresetDraft} tagDraft={imagePresetTagDraft} setTagDraft={setImagePresetTagDraft} onSave={handleSave} />
         ) : (
           <TellerEditor workspace={workspace} draft={tellerDraft} setDraft={setTellerDraft} tagDraft={tellerTagDraft} setTagDraft={setTellerTagDraft} activeSlotId={activeSlotId} setActiveSlotId={setActiveSlotId} onSave={handleSave} />
         )}
@@ -663,14 +837,16 @@ function panelTitle(mode: SettingPanelMode, t: (key: string) => string) {
   return t('settingPanel.mode.lore')
 }
 
-function editorTitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null, t: (key: string) => string) {
+function editorTitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null, imagePresetDraft: ImagePreset | null, presetResourceKind: PresetResourceKind, t: (key: string) => string) {
   if (mode === 'creator') return CREATOR_PATH
+  if (mode === 'teller' && presetResourceKind === 'image') return imagePresetDraft?.name || t('settingPanel.editor.defaultImagePreset')
   if (mode === 'teller') return tellerDraft?.name || t('settingPanel.editor.defaultTeller')
   return draft?.name || t('settingPanel.mode.lore')
 }
 
-function editorSubtitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null, t: (key: string) => string) {
+function editorSubtitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null, imagePresetDraft: ImagePreset | null, presetResourceKind: PresetResourceKind, t: (key: string) => string) {
   if (mode === 'creator') return t('settingPanel.editor.creatorSubtitle')
+  if (mode === 'teller' && presetResourceKind === 'image') return imagePresetDraft?.description || t('settingPanel.editor.imagePresetSubtitle')
   if (mode === 'teller') return tellerDraft?.description || t('settingPanel.editor.tellerSubtitle')
   if (!draft) return t('settingPanel.editor.loreSubtitle')
   return `${draft.enabled === false ? t('settingPanel.disabled') : t('settingPanel.enabled')} · ${loreTypeLabel(draft.type, t)} · ${loreImportanceLabel(draft.importance, t)} · ${loreLoadModeLabel(draft.load_mode, t)} · ${(draft.tags || []).join('，') || t('settingPanel.editor.noTags')}`
@@ -681,7 +857,7 @@ function newTellerDraft(): Partial<Teller> {
   return {
     id,
     name: '自定义叙事',
-    description: '新的叙事编排方案',
+    description: '新的叙事方案',
     random_event_rate: 0.15,
     style_rules: [],
     tags: ['自定义'],
@@ -696,7 +872,7 @@ function newTellerDraft(): Partial<Teller> {
         name: '系统提示',
         target: 'system',
         enabled: true,
-        content: '你是一套自定义叙事编排。你要明确影响故事的题材倾向、角色反应、剧情裁定、节奏推进和长期叙事原则。',
+        content: '你是一套自定义叙事方案。你要明确影响故事的题材倾向、角色反应、剧情裁定、节奏推进和长期叙事原则。',
       },
       {
         id: 'turn_context',
@@ -714,4 +890,23 @@ function newTellerDraft(): Partial<Teller> {
       },
     ],
   }
+}
+
+function newImagePresetDraft(): Partial<ImagePreset> {
+  return {
+    id: `custom-image-${Date.now()}`,
+    name: '自定义图像方案',
+    description: '新的图像风格方案',
+    prompt: '描述画面风格、媒介、构图、镜头语言、光影、色彩、角色与环境呈现限制，以及需要避免的内容。',
+    tags: ['自定义'],
+    version: 1,
+    custom: true,
+  }
+}
+
+function imagePresetDraftSignature(preset: Partial<ImagePreset>, tagDraft: string) {
+  return JSON.stringify({
+    ...preset,
+    tags: splitTags(tagDraft),
+  })
 }

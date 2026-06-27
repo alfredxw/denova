@@ -101,7 +101,7 @@ func outputProtocolForAgent(agentKind string) string {
 	case config.AgentKindImage:
 		return "- 必须调用图像生成工具完成图像生成；最终回复只简要说明生成结果，不得输出无关解释或修改正文。"
 	case config.AgentKindConfigManager:
-		return "- 没有固定 JSON 输出协议；所有资料库、叙事编排、自动化、Skills、故事记忆变更必须通过对应模块工具执行。"
+		return "- 没有固定 JSON 输出协议；所有资料库、方案预设、自动化、Skills、故事记忆变更必须通过对应模块工具执行。"
 	case config.AgentKindAutomation:
 		return "- 最终输出必须说明实际完成内容、写入路径和待用户确认事项；写入行为仍受任务写入策略和工具权限约束。"
 	case config.AgentKindContextCompaction:
@@ -125,7 +125,7 @@ func agentRuntimeContract(agentKind string) string {
 		}, "\n")
 	case config.AgentKindConfigManager:
 		return strings.Join([]string{
-			"- 配置管理 Agent 负责资料库、叙事编排、自动化任务、Skills、故事记忆结构、故事记忆记录和 Agents 页配置的配置、新建与维护。",
+			"- 配置管理 Agent 负责资料库、方案预设、自动化任务、Skills、故事记忆结构、故事记忆记录和 Agents 页配置的配置、新建与维护。",
 			"- Agent 模型、Prompt、工具权限、Skills 可用性、上下文压缩和 SubAgent 配置只能通过 list_agent_configs/write_agent_configs 管理；不得通过文件工具直接改配置文件。",
 			"- 不负责修改端口、主题、远程访问、编辑器外观等非 Agent 页设置；这些必须由设置页完成。",
 			"- 资源读取先用对应 list 工具索引，再用 read 工具读取详情；故事记忆结构例外，list_story_memory_structures 已返回完整结构。",

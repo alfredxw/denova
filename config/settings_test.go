@@ -91,6 +91,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.WritingSkillDefault != DefaultWritingSkillName {
 		t.Fatalf("WritingSkillDefault default: %s", s.WritingSkillDefault)
 	}
+	if s.IDEImagePresetID != "game-cg" {
+		t.Fatalf("IDEImagePresetID default: %s", s.IDEImagePresetID)
+	}
 	if len(s.SubAgents) != 0 {
 		t.Fatalf("SubAgents should come from editable config layers, not Go defaults: %#v", s.SubAgents)
 	}
@@ -130,6 +133,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		FrontendPort:               intPtr(5173),
 		AllowLANAccess:             boolPtr(false),
 		WritingSkillDefault:        "novel-standard",
+		IDEImagePresetID:           "realistic",
 		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
@@ -154,6 +158,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		FrontendPort:               intPtr(15173),
 		AllowLANAccess:             boolPtr(true),
 		WritingSkillDefault:        "novel-heavy",
+		IDEImagePresetID:           "2d-illustration",
 		RemoteAccessUsername:       "reader",
 		RemoteAccessPasswordHash:   "$2a$10$hash",
 		InteractiveHotChoices:      boolPtr(false),
@@ -217,6 +222,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.WritingSkillDefault != "novel-heavy" {
 		t.Fatalf("WritingSkillDefault should override parent: %s", out.WritingSkillDefault)
+	}
+	if out.IDEImagePresetID != "2d-illustration" {
+		t.Fatalf("IDEImagePresetID should override parent: %s", out.IDEImagePresetID)
 	}
 	if out.RemoteAccessUsername != "reader" || out.RemoteAccessPasswordHash == "" || !out.RemoteAccessPasswordSet {
 		t.Fatalf("remote access credentials should override parent: %#v", out)

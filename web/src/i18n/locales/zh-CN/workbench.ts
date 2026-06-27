@@ -8,7 +8,7 @@ const workbench = {
   'workbench.activity.settings': '设置',
   'workbench.activity.skills': 'Skills',
   'workbench.activity.story': '剧情',
-  'workbench.activity.teller': '叙事编排',
+  'workbench.activity.teller': '方案预设',
   'workbench.activity.timeline': '剧情路线图',
   'workbench.activity.toggleCollapse': '收起',
   'workbench.activity.toggleExpand': '展开',

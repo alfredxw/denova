@@ -70,11 +70,11 @@ func TestLoadWithWorkspaceMergesLayers(t *testing.T) {
 	t.Setenv("OPENAI_MODEL", "")
 
 	if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"),
-		Settings{OpenAIModel: "user-model", Language: "zh-CN", WritingSkillDefault: "novel-lite"}); err != nil {
+		Settings{OpenAIModel: "user-model", Language: "zh-CN", WritingSkillDefault: "novel-lite", IDEImagePresetID: "realistic"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := WriteSettingsFile(filepath.Join(ws, ".nova", "config.toml"),
-		Settings{OpenAIModel: "ws-model", Language: "en-US", WritingSkillDefault: "novel-heavy"}); err != nil {
+		Settings{OpenAIModel: "ws-model", Language: "en-US", WritingSkillDefault: "novel-heavy", IDEImagePresetID: "2d-illustration"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,6 +90,9 @@ func TestLoadWithWorkspaceMergesLayers(t *testing.T) {
 	}
 	if cfg.WritingSkillDefault != "novel-heavy" {
 		t.Fatalf("workspace writing skill default expected, got %s", cfg.WritingSkillDefault)
+	}
+	if cfg.IDEImagePresetID != "2d-illustration" {
+		t.Fatalf("workspace image preset default expected, got %s", cfg.IDEImagePresetID)
 	}
 	if layered.User.OpenAIModel != "user-model" {
 		t.Fatalf("user layer raw value lost")

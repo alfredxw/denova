@@ -105,6 +105,7 @@ type StoryOpeningConfig struct {
 type StoryImageSettings struct {
 	Mode          string `json:"mode"`
 	IntervalTurns int    `json:"interval_turns,omitempty"`
+	PresetID      string `json:"preset_id,omitempty"`
 }
 
 type BranchMeta struct {

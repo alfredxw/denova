@@ -18,6 +18,7 @@ const (
 	configManagerAutomationSkill  = "automation-config"
 	configManagerStoryMemorySkill = "story-memory-config"
 	configManagerTellerSkill      = "teller-config"
+	configManagerImagePresetSkill = "image-preset-config"
 	configManagerSkillsSkill      = "skills-creator"
 	configManagerAgentConfigSkill = "agent-config"
 )
@@ -98,6 +99,10 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 		add(configManagerStoryMemorySkill)
 	case "teller", "tellers", "director", "narrative":
 		add(configManagerTellerSkill)
+		add(configManagerImagePresetSkill)
+	case "image_preset", "image_preset_config", "image_presets", "image-preset", "image-presets", "preset", "presets":
+		add(configManagerTellerSkill)
+		add(configManagerImagePresetSkill)
 	case "skills", "skill":
 		add(configManagerSkillsSkill)
 	case "agents", "agent":
@@ -123,6 +128,10 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 	switch {
 	case strings.Contains(text, "teller") || strings.Contains(text, "director") || strings.Contains(text, "narrative"):
 		add(configManagerTellerSkill)
+	}
+	switch {
+	case strings.Contains(text, "image_preset") || strings.Contains(text, "image_presets") || strings.Contains(text, "图像方案") || strings.Contains(text, "方案预设") || strings.Contains(text, "preset"):
+		add(configManagerImagePresetSkill)
 	}
 	switch {
 	case strings.Contains(text, "skills") || strings.Contains(text, "skill"):

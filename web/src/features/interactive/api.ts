@@ -1,6 +1,6 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ContextAnalysis } from '@/lib/api-client'
-import type { BranchSummary, HotChoicesResponse, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller } from './types'
+import type { BranchSummary, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
@@ -164,6 +164,33 @@ export function updateInteractiveTeller(id: string, input: Partial<Teller>): Pro
 
 export function deleteInteractiveTeller(id: string): Promise<void> {
   return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getImagePresets(): Promise<ImagePreset[]> {
+  const data = await requestJSON<{ presets: ImagePreset[] }>('/api/image-presets')
+  return data.presets || []
+}
+
+export function createImagePreset(input: Partial<ImagePreset>): Promise<ImagePreset> {
+  return requestJSON('/api/image-presets', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateImagePreset(id: string, input: Partial<ImagePreset>): Promise<ImagePreset> {
+  return requestJSON(`/api/image-presets/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function deleteImagePreset(id: string): Promise<void> {
+  return requestJSON(`/api/image-presets/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
 }

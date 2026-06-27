@@ -290,7 +290,7 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     await screen.findByText('Reviewer')
-    await user.click(screen.getByRole('button', { name: '配置管理 Agent资料库、叙事编排、Skills、自动化与故事记忆管理' }))
+    await user.click(screen.getByRole('button', { name: '配置管理 Agent资料库、方案预设、Skills、自动化与故事记忆管理' }))
 
     await waitFor(() => {
       expect(screen.queryByText('Reviewer')).not.toBeInTheDocument()
@@ -414,12 +414,12 @@ describe('AgentsView', () => {
 
     expect(await screen.findByLabelText('通用 SubAgent 启用状态')).toBeChecked()
 
-    await user.click(screen.getByRole('button', { name: /互动叙事 Agent/ }))
+    await user.click(screen.getByRole('button', { name: /游戏叙事 Agent/ }))
     await waitFor(() => {
       expect(screen.getByLabelText('通用 SubAgent 启用状态')).not.toBeChecked()
     })
 
-    await user.click(screen.getByRole('button', { name: /Automation Agent/ }))
+    await user.click(screen.getByRole('button', { name: /自动化Agent/ }))
     await waitFor(() => {
       expect(screen.getByLabelText('通用 SubAgent 启用状态')).toBeChecked()
     })

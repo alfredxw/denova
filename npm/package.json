@@ -1,6 +1,6 @@
 {
   "name": "@alfredxw/nova",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "面向长篇小说创作的 AI 写作工作台",
   "type": "module",
   "bin": {

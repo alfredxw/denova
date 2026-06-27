@@ -52,6 +52,7 @@ const storyStage = {
   'storyStage.interactiveImage.saveFailed': '保存互动图像设置失败',
   'storyStage.interactiveImage.generateFailed': '互动图像生成失败',
   'storyStage.interactiveImage.generating': '正在生成互动图像…',
+  'storyStage.imagePreset.menuTitle': '图像方案',
   'storyStage.inputPlaceholder': '你要做什么？',
   'storyStage.inputPlaceholderWithSkills': '你要做什么？输入 / 可选择 Skills',
   'storyStage.stop': '中断',

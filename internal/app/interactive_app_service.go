@@ -8,6 +8,7 @@ import (
 
 	"nova/config"
 	"nova/internal/agent"
+	"nova/internal/imagepreset"
 	"nova/internal/interactive"
 	"nova/internal/session"
 )
@@ -767,6 +768,66 @@ func (s *InteractiveAppService) DeleteInteractiveTeller(id string) error {
 		return ErrNoWorkspace
 	}
 	return interactive.NewTellerLibrary(cfg.NovaDir).Delete(id)
+}
+
+func (a *App) ImagePresets() ([]imagepreset.Preset, error) {
+	return a.interactiveService().ImagePresets()
+}
+
+func (s *InteractiveAppService) ImagePresets() ([]imagepreset.Preset, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return nil, ErrNoWorkspace
+	}
+	return imagepreset.NewLibrary(cfg.NovaDir).List()
+}
+
+func (a *App) ImagePreset(id string) (imagepreset.Preset, error) {
+	return a.interactiveService().ImagePreset(id)
+}
+
+func (s *InteractiveAppService) ImagePreset(id string) (imagepreset.Preset, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return imagepreset.Preset{}, ErrNoWorkspace
+	}
+	return imagepreset.NewLibrary(cfg.NovaDir).Get(id)
+}
+
+func (a *App) CreateImagePreset(preset imagepreset.Preset) (imagepreset.Preset, error) {
+	return a.interactiveService().CreateImagePreset(preset)
+}
+
+func (s *InteractiveAppService) CreateImagePreset(preset imagepreset.Preset) (imagepreset.Preset, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return imagepreset.Preset{}, ErrNoWorkspace
+	}
+	return imagepreset.NewLibrary(cfg.NovaDir).Create(preset)
+}
+
+func (a *App) UpdateImagePreset(id string, preset imagepreset.Preset) (imagepreset.Preset, error) {
+	return a.interactiveService().UpdateImagePreset(id, preset)
+}
+
+func (s *InteractiveAppService) UpdateImagePreset(id string, preset imagepreset.Preset) (imagepreset.Preset, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return imagepreset.Preset{}, ErrNoWorkspace
+	}
+	return imagepreset.NewLibrary(cfg.NovaDir).Update(id, preset)
+}
+
+func (a *App) DeleteImagePreset(id string) error {
+	return a.interactiveService().DeleteImagePreset(id)
+}
+
+func (s *InteractiveAppService) DeleteImagePreset(id string) error {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return ErrNoWorkspace
+	}
+	return imagepreset.NewLibrary(cfg.NovaDir).Delete(id)
 }
 
 // ActiveInteractiveTask 返回当前游戏模式活跃任务（可能为 nil）。

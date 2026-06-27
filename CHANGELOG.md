@@ -6,12 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v0.1.17] - 2026-06-27
+
 ### Added
 
 - 游戏模式：新增“互动图像”，默认手动生成；输入框左侧菜单提供侧边配置，可切换为手动或每 X 轮生成，每个剧情回合操作区提供手动生成/重新生成按钮。
 - Agent：新增通用 `image` Agent，默认仅启用 Skills 和图像生成工具；互动图像通过 `interactive-image` Skill、`purpose=interactive_image` 和专用 System Prompt 复用该通用 Agent。
 - 后端：新增 `POST /api/interactive/stories/:id/images/generate`，互动图像保存到 `assets/interactive/images/<story>/<branch>/<turn>/<timestamp>/`，结果以 `interactive_image.v1` display event 挂到对应回合，不移动分支 head、不写入叙事正文、不进入下一轮模型上下文。
-- 叙事编排：新增单一 `image_prompt` 字段，最多 4000 字符，用于约束互动图像视觉倾向。
+- 方案预设：新增独立“图像方案”资源和 `GET/POST/PATCH/DELETE /api/image-presets`，内置 `游戏CG`、`写实`、`2D插画` 三种方案，写作 Agent 与游戏互动图像默认使用 `游戏CG`。
 - 写作模式：新增内置 `chapter-illustration` Skill 和通用 `generate_image` Agent 工具，创作 Agent 可基于当前或指定章节生成一张非剧透插画，结果保存到 `assets/illustrations/` 并在工具卡片中预览，用户可手动插入为 Markdown 图像。
 - 后端：新增受保护的 workspace asset 图像读取接口，仅允许读取 `assets/` 下的图像文件，供章节插画和 Markdown 渲染使用。
 
@@ -19,6 +21,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - WebUI：中文界面中 Automation Agent 统一改称“自动化Agent”，包括 Agents 页、自动化模型继承提示和自动化 Agent 内置中文提示。
 - WebUI：顶层“互动模式 / Interactive Mode”更名为“游戏模式 / Game Mode”，强调其定位是互动文字冒险游戏工作台；内部 `interactive` API、配置键和存储目录保持不迁移。
+- WebUI：顶层“叙事编排 / Narrative Direction”更名为“方案预设 / Presets”，内部 `teller` 路由、一级菜单行为和模式切换规则保持不迁移；该页现在并列管理叙事方案和图像方案。
+- Breaking：旧 `Teller.image_prompt` 已下线，不迁移、不读取、不展示、不兜底；图像生成风格改由独立图像方案预设保存到 `image-presets/*.json`。
 - 游戏模式：互动叙事 Agent 不再要求用 XML 标签包裹正文，默认直接输出故事正文；历史或异常输出里的 `<NARRATIVE>` 标签仍会兼容清洗。
 - Agent：通用 General SubAgent 的内置默认范围收窄为仅写作 Agent 和 Automation Agent 启用；互动叙事 Agent 和配置管理 Agent 默认继承关闭，仍可在 Agents 页单独开启。
 - Agent：自定义 SubAgent 的 `parents` 改为显式父 Agent 归属列表，空列表不再表示所有父 Agent 共享；Agents 页新增“仅从当前父 Agent 移除”和“全部删除”两种删除范围。

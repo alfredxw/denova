@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"nova/internal/imagepreset"
 )
 
 const schemaVersion = 1
@@ -1019,7 +1021,16 @@ func normalizeStoryImageSettings(settings StoryImageSettings) StoryImageSettings
 	return StoryImageSettings{
 		Mode:          mode,
 		IntervalTurns: interval,
+		PresetID:      normalizeStoryImagePresetID(settings.PresetID),
 	}
+}
+
+func normalizeStoryImagePresetID(id string) string {
+	id = imagepreset.NormalizeID(id)
+	if id == "" {
+		return imagepreset.DefaultID
+	}
+	return id
 }
 
 func newID(prefix string) string {

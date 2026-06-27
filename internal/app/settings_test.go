@@ -188,15 +188,19 @@ func TestAgentIdleTimeoutAllowsUnlimited(t *testing.T) {
 	}
 }
 
-func TestApplyLayeredSettingsToConfigAppliesWritingSkillDefault(t *testing.T) {
+func TestApplyLayeredSettingsToConfigAppliesWritingSkillDefaultAndImagePreset(t *testing.T) {
 	cfg := &config.Config{}
 	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
 		Effective: config.Settings{
 			WritingSkillDefault: "novel-heavy",
+			IDEImagePresetID:    "realistic",
 		},
 	})
 	if cfg.WritingSkillDefault != "novel-heavy" {
 		t.Fatalf("writing skill default = %s, want novel-heavy", cfg.WritingSkillDefault)
+	}
+	if cfg.IDEImagePresetID != "realistic" {
+		t.Fatalf("image preset default = %s, want realistic", cfg.IDEImagePresetID)
 	}
 }
 

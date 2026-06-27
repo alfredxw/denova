@@ -26,12 +26,12 @@ func TestConfigManagerToolsRespectToolSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	names := configManagerToolNameSet(t, tools)
-	for _, name := range []string{"list_tellers", "read_tellers", "list_story_memory_structures", "list_story_memory_records", "read_story_memory_records"} {
+	for _, name := range []string{"list_tellers", "read_tellers", "list_image_presets", "read_image_presets", "list_story_memory_structures", "list_story_memory_records", "read_story_memory_records"} {
 		if !names[name] {
 			t.Fatalf("lore read should expose %s, names=%v", name, names)
 		}
 	}
-	for _, name := range []string{"write_tellers", "write_story_memory_structures", "write_story_memory_records", "list_skills", "write_skills", "list_automations", "write_automations"} {
+	for _, name := range []string{"write_tellers", "write_image_presets", "write_story_memory_structures", "write_story_memory_records", "list_skills", "write_skills", "list_automations", "write_automations"} {
 		if names[name] {
 			t.Fatalf("lore read should not expose %s, names=%v", name, names)
 		}

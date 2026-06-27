@@ -1,14 +1,15 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { ImagePresetEditor } from './SettingPanelSections'
 import { TellerEditor } from './SettingPanelTellerEditor'
-import type { Teller } from '../types'
+import type { ImagePreset, Teller } from '../types'
 
 describe('TellerEditor style contents', () => {
-  it('edits image prompt and caps it at 4000 chars', async () => {
-    let currentDraft = teller()
+  it('edits image preset prompt and caps it at 4000 chars', async () => {
+    let currentDraft = imagePreset()
     render(
-      <Harness
+      <ImagePresetHarness
         initial={currentDraft}
         onChange={(draft) => {
           currentDraft = draft
@@ -17,11 +18,11 @@ describe('TellerEditor style contents', () => {
       />,
     )
 
-    const editor = screen.getByPlaceholderText(/描述互动图像/)
+    const editor = screen.getByPlaceholderText(/高质量游戏 CG/)
     fireEvent.change(editor, { target: { value: '图'.repeat(4050) } })
 
     await waitFor(() => {
-      expect(currentDraft.image_prompt).toHaveLength(4000)
+      expect(currentDraft.prompt).toHaveLength(4000)
       expect(screen.getByText('4000/4000')).toBeInTheDocument()
     })
   })
@@ -108,6 +109,35 @@ function Harness({ initial, onChange, onSave }: { initial: Teller; onChange: (dr
       onSave={onSave}
     />
   )
+}
+
+function ImagePresetHarness({ initial, onChange, onSave }: { initial: ImagePreset; onChange: (draft: ImagePreset) => void; onSave: () => void }) {
+  const [draft, setDraftState] = useState<ImagePreset | null>(initial)
+  const setDraft = (next: ImagePreset | null) => {
+    setDraftState(next)
+    if (next) onChange(next)
+  }
+  return (
+    <ImagePresetEditor
+      draft={draft}
+      setDraft={setDraft}
+      tagDraft=""
+      setTagDraft={() => {}}
+      onSave={onSave}
+    />
+  )
+}
+
+function imagePreset(): ImagePreset {
+  return {
+    version: 1,
+    id: 'custom-image',
+    name: '自定义图像方案',
+    description: '',
+    prompt: '',
+    tags: [],
+    custom: true,
+  }
 }
 
 function teller(): Teller {

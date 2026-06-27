@@ -118,7 +118,7 @@ var catalogZH = map[string]string{
 	"api.novelImport.regexFallbackWarning":    "智能识别出的章节正则不可用，已回退内置规则: {{detail}}",
 	"api.interactive.storyIDRequired":         "故事 ID 不能为空",
 	"api.interactive.storyModeOnly":           "当前仅支持 story 子模式",
-	"api.interactive.tellerInstructionEmpty":  "叙事编排编辑指令不能为空",
+	"api.interactive.tellerInstructionEmpty":  "叙事方案编辑指令不能为空",
 	"api.lore.instructionEmpty":               "资料库编辑指令不能为空",
 	"api.versions.invalidCreateRequest":       "版本保存请求格式不正确",
 	"api.versions.idRequired":                 "请提供版本 ID",

@@ -1029,15 +1029,15 @@ func TestUpdateAndDeleteStory(t *testing.T) {
 	if updated.Title != "新标题" || updated.StoryTellerID != "grimdark" || updated.ReplyTargetChars != 900 {
 		t.Fatalf("unexpected updated story: %#v", updated)
 	}
-	if updated.ImageSettings.Mode != StoryImageModeManual || updated.ImageSettings.IntervalTurns != 3 {
+	if updated.ImageSettings.Mode != StoryImageModeManual || updated.ImageSettings.IntervalTurns != 3 || updated.ImageSettings.PresetID != "game-cg" {
 		t.Fatalf("default image settings = %#v, want manual interval 3", updated.ImageSettings)
 	}
-	imageSettings := StoryImageSettings{Mode: StoryImageModeInterval, IntervalTurns: 5}
+	imageSettings := StoryImageSettings{Mode: StoryImageModeInterval, IntervalTurns: 5, PresetID: "realistic"}
 	updated, err = store.UpdateStory(story.ID, UpdateStoryRequest{ImageSettings: &imageSettings})
 	if err != nil {
 		t.Fatalf("UpdateStory image settings failed: %v", err)
 	}
-	if updated.ImageSettings.Mode != StoryImageModeInterval || updated.ImageSettings.IntervalTurns != 5 {
+	if updated.ImageSettings.Mode != StoryImageModeInterval || updated.ImageSettings.IntervalTurns != 5 || updated.ImageSettings.PresetID != "realistic" {
 		t.Fatalf("unexpected image settings: %#v", updated.ImageSettings)
 	}
 	invalidTarget := 0

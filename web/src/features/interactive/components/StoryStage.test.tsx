@@ -37,7 +37,7 @@ describe('StoryStage interactive image settings', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /每 3 轮生成/ }))
 
     await waitFor(() => {
-      expect(handleImageSettingsChange).toHaveBeenCalledWith({ mode: 'interval', interval_turns: 3 })
+      expect(handleImageSettingsChange).toHaveBeenCalledWith({ mode: 'interval', interval_turns: 3, preset_id: 'game-cg' })
     })
   })
 })
@@ -60,7 +60,7 @@ describe('StoryStage opening panel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '使用书籍预设' }))
 
-    expect(screen.getByPlaceholderText('写下你想使用的开局。生成时会作为有界来源传给互动 Agent。')).toHaveValue('青石镇的雨刚刚停。')
+    expect(screen.getByPlaceholderText('写下你想使用的开局。生成时会作为有界来源传给游戏 Agent。')).toHaveValue('青石镇的雨刚刚停。')
   })
 })
 

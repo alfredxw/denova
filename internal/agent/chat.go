@@ -36,11 +36,15 @@ type ChatRequest struct {
 	IDEContext     IDEContextRef      `json:"ide_context,omitempty"`
 	PlanMode       bool               `json:"plan_mode"`
 	WritingSkill   string             `json:"writing_skill"`
+	ImagePresetID  string             `json:"image_preset_id"`
 	Locale         string             `json:"-"`
 
 	// StyleRules 由后端按当前导演配置注入（场景 → 风格内容）。
 	// StyleScenes 非空时只注入用户本轮通过 # 指定的场景；为空时作为场景化建议参与本轮上下文。
 	StyleRules []StyleRule `json:"-"`
+
+	// ImagePreset is resolved by the app layer from ImagePresetID or workspace settings.
+	ImagePreset ImagePresetContext `json:"-"`
 }
 
 // StyleRule 是 prompts.StyleRule 的镜像，避免调用方直接依赖 prompts 包。
@@ -51,6 +55,13 @@ type StyleRule = prompts.StyleRule
 type IDEContextRef struct {
 	CurrentFile string   `json:"current_file,omitempty"`
 	OpenFiles   []string `json:"open_files,omitempty"`
+}
+
+// ImagePresetContext is a bounded visual style preset for image generation only.
+type ImagePresetContext struct {
+	ID     string
+	Name   string
+	Prompt string
 }
 
 // TextSelectionRef 表示用户在编辑器中选中的一段文本引用。

@@ -14,7 +14,6 @@ import (
 const (
 	tellerVersion        = 4
 	MaxStyleContentChars = 8000
-	MaxImagePromptChars  = 4000
 )
 
 type TellerLibrary struct {
@@ -27,7 +26,6 @@ type Teller struct {
 	Name            string              `json:"name"`
 	Description     string              `json:"description"`
 	RandomEventRate float64             `json:"random_event_rate"`
-	ImagePrompt     string              `json:"image_prompt,omitempty"`
 	StyleRules      []StyleRule         `json:"style_rules,omitempty"`
 	Tags            []string            `json:"tags"`
 	ContextPolicy   TellerContextPolicy `json:"context_policy"`
@@ -260,7 +258,6 @@ func normalizeTeller(teller Teller) Teller {
 	teller.ID = strings.TrimSpace(teller.ID)
 	teller.Name = strings.TrimSpace(teller.Name)
 	teller.Description = strings.TrimSpace(teller.Description)
-	teller.ImagePrompt = truncateRunes(strings.TrimSpace(teller.ImagePrompt), MaxImagePromptChars)
 	teller.StyleRules = normalizeStyleRules(teller.StyleRules)
 	teller.Tags = normalizeTellerTags(teller.Tags)
 	teller.ContextPolicy = normalizeContextPolicy(teller.ContextPolicy)
@@ -434,7 +431,7 @@ var builtinTellers = map[string]Teller{
 		{ID: "state_memory", Name: "记忆沉淀规则", Target: "state_memory", Enabled: true, Content: "优先记录伤势、资源损耗、危险等级、势力敌意、未解决危机、倒计时、角色心理压力、已经欠下的代价、失去的机会和敌人掌握的信息。这些状态后续必须继续施压，不能在下一回合自然消失。"},
 	}),
 	"screenwriter": builtinTeller("screenwriter", "编剧风格", "以场景目标、冲突升级和转折节拍推动剧情", 0.18, []string{"编剧", "节拍"}, []TellerPromptSlot{
-		{ID: "identity", Name: "系统提示", Target: "system", Enabled: true, Content: "你是一位编剧式叙事编排助手，负责把互动小说回合组织成清晰的场景节拍。你关注场景目标、人物欲望、冲突升级、信息揭示和转折收束；每轮都要让角色行动产生戏剧后果，但不得替用户完成关键选择。叙事应有镜头感、动作线和对白推进，避免只写内心总结。"},
+		{ID: "identity", Name: "系统提示", Target: "system", Enabled: true, Content: "你是一位编剧式叙事方案助手，负责把互动小说回合组织成清晰的场景节拍。你关注场景目标、人物欲望、冲突升级、信息揭示和转折收束；每轮都要让角色行动产生戏剧后果，但不得替用户完成关键选择。叙事应有镜头感、动作线和对白推进，避免只写内心总结。"},
 		{ID: "turn_context", Name: "本轮上下文", Target: "turn_context", Enabled: true, Content: "处理本轮时，先判断当前场景的目标和阻力，再安排一个可见的行动反馈、一个关系或信息变化，以及一个推动下一拍的开放入口。成功要带来新压力，失败要留下可继续尝试的路径；如果场景已经达到高潮，应及时给出转折、代价或短暂收束，而不是无限拖延同一冲突。"},
 		{ID: "state_memory", Name: "记忆沉淀规则", Target: "state_memory", Enabled: true, Content: "优先记录场景目标、当前冲突层级、已揭示信息、角色欲望变化、未兑现伏笔、下一场景入口和需要回收的转折。状态要服务后续节拍安排，帮助下一轮判断是继续升级、反转、缓和还是切换场景。"},
 	}),

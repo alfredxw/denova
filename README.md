@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Nova 是面向创作者的 AI-native 创作工作台：用写作模式管理小说创作，用游戏模式运行互动文字冒险，并把资料库、叙事编排、上下文、版本与自动化留在同一个可持续迭代的 workspace 里</strong>
+  <strong>Nova 是面向创作者的 AI-native 创作工作台：用写作模式管理小说创作，用游戏模式运行互动文字冒险，并把资料库、方案预设、上下文、版本与自动化留在同一个可持续迭代的 workspace 里</strong>
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.1.16</strong>（2026-06-27） · Beta
+  当前版本：<strong>v0.1.17</strong>（2026-06-27） · Beta
 </p>
 
 ![Nova 写作模式](./img/ide.png)
@@ -38,9 +38,9 @@
 
 ![Nova 资料库](./img/setting.png)
 
-### 叙事编排配置
+### 方案预设配置
 
-![Nova 叙事编排](./img/story-teller.png)
+![Nova 方案预设](./img/story-teller.png)
 
 </details>
 
@@ -68,9 +68,9 @@ Nova 不是“输入提示词，生成一段正文”的一次性工具，而是
 
 Nova 有两个并列工作台。写作模式面向小说创作，重点是大纲、章节组细纲、章节正文、创作进度和定稿后的状态同步；游戏模式面向互动文字冒险，重点是玩家输入、剧情分支、场景记忆、故事线切换和可继续推进的游玩体验。
 
-两种模式只共享适合长期复用的创作资产，例如资料库、叙事编排、模型与 Agent 配置、Skills、版本管理和基础工作区设置。写作模式里的大纲、章节组细纲、章节进展、`progress.md` 等创作生产线状态不会自动进入游戏模式；游戏模式也不会默认感知写作模式当前写到哪里。需要让互动故事参考某段正文或某个进度时，应先把稳定设定沉淀进资料库，或在游戏输入中明确引用。
+两种模式只共享适合长期复用的创作资产，例如资料库、方案预设（叙事方案和图像方案）、模型与 Agent 配置、Skills、版本管理和基础工作区设置。写作模式里的大纲、章节组细纲、章节进展、`progress.md` 等创作生产线状态不会自动进入游戏模式；游戏模式也不会默认感知写作模式当前写到哪里。需要让互动故事参考某段正文或某个进度时，应先把稳定设定沉淀进资料库，或在游戏输入中明确引用。
 
-推荐从灵感或导入开始：先整理顶层设定与创作规则，再在写作模式生成大纲和章节组细纲；进入单章写作后，用 Agent 在 `chapters/` 下生成章节初稿，作者确认成章后再同步进度与角色状态；需要进行互动文字冒险时，切到游戏模式基于共享资料库和叙事编排创建可玩的分支，最后把真正稳定的设定再沉淀回资料库并持续保存版本。
+推荐从灵感或导入开始：先整理顶层设定与创作规则，再在写作模式生成大纲和章节组细纲；进入单章写作后，用 Agent 在 `chapters/` 下生成章节初稿，作者确认成章后再同步进度与角色状态；需要进行互动文字冒险时，切到游戏模式基于共享资料库和方案预设创建可玩的分支，最后把真正稳定的设定再沉淀回资料库并持续保存版本。
 
 ## 欢迎交流
 快速迭代中，欢迎交流反馈，加下群响应更及时
@@ -141,7 +141,7 @@ export NOVA_BACKEND_PORT="8080"
 export NOVA_FRONTEND_PORT="5173"
 ```
 
-也可以在UI设置页（对应 `config.toml`）中配置语言模型、图像模型、Agent 参数、默认写作 Skill（`writing_skill_default`，默认 `novel-lite`）、编辑器、游戏模式、版本管理和界面外观（语言、主题、字体）。图像生成首版接入 OpenAI 标准 Images API，支持多个 `image_api_profiles`，生成结果会保存到当前工作区 `assets/image/generated/`；图像尺寸不在设置页配置，由 Agent 在调用 `generate_image` 时从支持的 2K/3K/4K 尺寸中选择，输出格式仅支持 `png` 和 `jpeg`。章节插画复用同一套图像模型配置，创作 Agent 调用 `generate_image` 后会将图像和 `meta.json` 保存到 `assets/illustrations/`，聊天工具卡片展示预览，作者确认后再手动插入为 Markdown 图像。游戏模式支持“互动图像”：默认手动生成，也可在输入框左侧菜单的侧边配置中切换为每 X 轮生成（默认 3 轮）；结果保存到 `assets/interactive/images/`，只作为回合 display event 展示，不写入叙事正文，也不进入下一轮模型上下文。`theme` 支持 `dark`（默认）、`light` 和 `system`，可保存到用户级或工作区级配置。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。需要修改内置预制 Skill 时，不编辑内置目录，默认在 `<nova_dir>/skills/<skill-name>/SKILL.md` 创建同名用户级覆盖；只有用户级目录不可写时才退回工作区覆盖。Skills 页也可修改 Skill 名称和保存位置，或删除覆盖版本以恢复内置版本。创作 Agent 不会把预设 SKILL.md 直接注入模型上下文，只会在本轮动态提示中说明当前选择的 Writing Skill；当模型判断本轮涉及正文写作/续写时，应通过 `skill` 工具自行加载对应 Skill。写作范围始终从用户指令判断，不使用单独的 `writing_scope` 字段。配置优先级：
+也可以在UI设置页（对应 `config.toml`）中配置语言模型、图像模型、Agent 参数、默认写作 Skill（`writing_skill_default`，默认 `novel-lite`）、编辑器、游戏模式、版本管理和界面外观（语言、主题、字体）。图像生成首版接入 OpenAI 标准 Images API，支持多个 `image_api_profiles`，生成结果会保存到当前工作区 `assets/image/generated/`；图像尺寸不在设置页配置，由 Agent 在调用 `generate_image` 时从支持的 2K/3K/4K 尺寸中选择，输出格式仅支持 `png` 和 `jpeg`。章节插画复用同一套图像模型配置，创作 Agent 调用 `generate_image` 后会将图像和 `meta.json` 保存到 `assets/illustrations/`，聊天工具卡片展示预览，作者确认后再手动插入为 Markdown 图像。方案预设页可管理图像方案，内置 `游戏CG`、`写实`、`2D插画`，写作 Agent 输入菜单和游戏输入菜单都可选择当前图像方案，默认使用 `游戏CG`；这些方案只约束图像生成工具调用，不进入普通正文。游戏模式支持“互动图像”：默认手动生成，也可在输入框左侧菜单的侧边配置中切换为每 X 轮生成（默认 3 轮）；结果保存到 `assets/interactive/images/`，只作为回合 display event 展示，不写入叙事正文，也不进入下一轮模型上下文。`theme` 支持 `dark`（默认）、`light` 和 `system`，可保存到用户级或工作区级配置。`NOVA_SKILLS_DIR` / `skills_dir` 用于内置只读 Skills；自定义 Skills 可通过界面写入 `<nova_dir>/skills` 或 `<workspace>/.nova/skills`。需要修改内置预制 Skill 时，不编辑内置目录，默认在 `<nova_dir>/skills/<skill-name>/SKILL.md` 创建同名用户级覆盖；只有用户级目录不可写时才退回工作区覆盖。Skills 页也可修改 Skill 名称和保存位置，或删除覆盖版本以恢复内置版本。创作 Agent 不会把预设 SKILL.md 直接注入模型上下文，只会在本轮动态提示中说明当前选择的 Writing Skill；当模型判断本轮涉及正文写作/续写时，应通过 `skill` 工具自行加载对应 Skill。写作范围始终从用户指令判断，不使用单独的 `writing_scope` 字段。配置优先级：
 
 ```text
 内置默认值 < 全局 config.toml < 用户级配置 < 工作区级配置 < 环境变量
@@ -163,6 +163,7 @@ my-novel/
 │   ├── character-states.md
 │   └── chapter-groups/
 └── .nova/
+    ├── image-presets/
     ├── lore/
     └── sessions/
 ```
@@ -173,7 +174,7 @@ my-novel/
 - **导入现有小说**：在书籍管理上传 txt/md，先预览工具 Agent 识别出的章节分割正则和章节效果；需要时可调整样本字数或手动编辑 Go regexp，确认后再创建新书并写入 `chapters/`。
 - **游戏**：推进剧情、探索选择、切换故事线，并维护场景记忆。
 - **资料库**：维护角色、世界观、地点、势力、规则和物品等长期稳定设定，供写作模式和游戏模式按需复用。
-- **叙事编排**：配置叙述视角、节奏、风格规则和互动生成偏好。
+- **方案预设**：并列管理叙事方案和图像方案；叙事方案配置叙述视角、节奏和风格规则，图像方案配置写作插画和互动图像的视觉风格。
 - **版本管理**：手动保存版本、查看历史和差异、恢复旧版本，并支持定时与 Agent 大量输出自动保存；`.nova/lore`、`.nova/sessions` 等本地创作状态会进入版本，历史直接来自 workspace `.git`。
 - **设置**：调整模型、编辑器、Agent、游戏模式、外观和语言。
 

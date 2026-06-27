@@ -8,7 +8,7 @@ const workbench = {
   'workbench.activity.settings': 'Settings',
   'workbench.activity.skills': 'Skills',
   'workbench.activity.story': 'Story',
-  'workbench.activity.teller': 'Narrative Direction',
+  'workbench.activity.teller': 'Presets',
   'workbench.activity.timeline': 'Story Map',
   'workbench.activity.toggleCollapse': 'Collapse',
   'workbench.activity.toggleExpand': 'Expand',

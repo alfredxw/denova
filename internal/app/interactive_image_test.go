@@ -1,8 +1,10 @@
 package app
 
 import (
+	"strings"
 	"testing"
 
+	"nova/internal/imagepreset"
 	"nova/internal/interactive"
 )
 
@@ -31,5 +33,19 @@ func TestShouldGenerateInteractiveImageModes(t *testing.T) {
 				t.Fatalf("shouldGenerateInteractiveImage = (%v, %q), want (%v, %q)", got, reason, tt.want, tt.reason)
 			}
 		})
+	}
+}
+
+func TestInteractiveImageSystemPromptUsesImagePreset(t *testing.T) {
+	prompt := interactiveImageSystemPrompt(imagepreset.Preset{
+		ID:     "realistic",
+		Name:   "写实",
+		Prompt: "真实光影和摄影感。",
+	})
+	if !strings.Contains(prompt, "图像方案预设") || !strings.Contains(prompt, "真实光影") {
+		t.Fatalf("system prompt should include image preset:\n%s", prompt)
+	}
+	if strings.Contains(prompt, "image_prompt") || strings.Contains(prompt, "叙事编排") {
+		t.Fatalf("system prompt should not mention legacy teller image_prompt:\n%s", prompt)
 	}
 }
