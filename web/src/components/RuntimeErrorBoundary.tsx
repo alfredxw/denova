@@ -33,7 +33,7 @@ export class RuntimeErrorBoundary extends Component<RuntimeErrorBoundaryProps, R
   render() {
     if (this.state.errorMessage) {
       return (
-        <div className="flex h-screen w-screen items-center justify-center bg-[var(--nova-bg)] px-6 text-[var(--nova-text)]">
+        <div className="flex h-dvh w-screen items-center justify-center bg-[var(--nova-bg)] px-6 text-[var(--nova-text)]">
           <div className="max-w-xl rounded border border-[var(--nova-danger-border)] bg-[var(--nova-surface)] p-5 shadow-2xl">
             <div className="text-base font-semibold text-[var(--nova-danger)]">{i18n.t('runtime.title')}</div>
             <div className="mt-2 text-sm leading-6 text-[var(--nova-text-muted)]">
