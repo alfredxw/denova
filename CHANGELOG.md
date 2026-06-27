@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 移动端：写作编辑器阅读区在手机上改用更紧凑的横向留白（`px-4`，桌面仍为 `px-10`），避免窄屏正文被两侧大留白挤压。
 - 移动端：聊天消息的助手操作（重新生成 / 切换版本等）与消息元信息在触摸下常显（原先仅 hover 可见，手机上无法触达）。
 - 修复：命令面板（⌘K / Ctrl+K）打开即崩溃（`Cannot read properties of undefined (reading 'subscribe')`，触发前端错误边界白屏）。根因是 `CommandDialog` 未用 cmdk 的 `<Command>` 根包裹内容，导致 `CommandInput`/`CommandList`/`CommandItem` 拿不到 cmdk store；补上 `<Command>` 包裹后面板在桌面与移动端均可正常打开。
+- 移动端（共享原语）：`Dialog` / `AlertDialog` 内容默认限制在视口高度内并可滚动（`max-h-[calc(100dvh-2rem)] overflow-y-auto`），长内容弹窗在手机上不再溢出屏幕；自带 `max-h` / `overflow` 的弹窗不受影响（tailwind-merge 优先消费者值）。
+- 移动端（共享原语）：`Popover` 内容新增 `max-w-[calc(100vw-1rem)]`，窄屏下不再溢出到屏幕外。
 
 ## [v0.1.16] - 2026-06-27
 
