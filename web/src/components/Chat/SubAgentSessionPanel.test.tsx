@@ -22,11 +22,22 @@ function mockScrollMetrics(element: HTMLElement, initial = { scrollHeight: 1200,
   let scrollTop = initial.scrollTop
   Object.defineProperty(element, 'scrollHeight', { configurable: true, get: () => scrollHeight })
   Object.defineProperty(element, 'clientHeight', { configurable: true, get: () => clientHeight })
+  Object.defineProperty(element, 'offsetHeight', { configurable: true, get: () => clientHeight })
   Object.defineProperty(element, 'scrollTop', {
     configurable: true,
     get: () => scrollTop,
     set: (value) => {
       scrollTop = value
+    },
+  })
+  Object.defineProperty(element, 'scrollTo', {
+    configurable: true,
+    value: (options?: ScrollToOptions | number, y?: number) => {
+      if (typeof options === 'number') {
+        scrollTop = y ?? scrollTop
+        return
+      }
+      if (typeof options?.top === 'number') scrollTop = options.top
     },
   })
   return {

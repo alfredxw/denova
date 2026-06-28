@@ -135,12 +135,17 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
 
   const onAtBottomStateChange = useCallback((atBottom: boolean) => {
     if (atBottom) {
+      const element = scrollerElementRef.current
+      if (element && !isNearBottom(element)) {
+        updateAwayFromBottom(element)
+        return
+      }
       lockedRef.current = true
       setIsAwayFromBottom(false)
     } else {
       updateAwayFromBottom()
     }
-  }, [updateAwayFromBottom])
+  }, [isNearBottom, updateAwayFromBottom])
 
   const followOutput = useCallback((atBottom: boolean) => {
     detectManualScrollAway()
