@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { isComposingKeyboardEvent } from '@/lib/keyboard'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -130,6 +131,7 @@ export function InputArea({
 }: InputAreaProps) {
   const { t } = useTranslation()
   const keyboardInset = useKeyboardInset()
+  const isMobile = useIsMobile()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
   const [showCommands, setShowCommands] = useState(false)
@@ -551,6 +553,7 @@ export function InputArea({
             placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
             disabled={disabled}
             rows={1}
+            maxRows={isMobile ? 5 : 10}
             inputMode="text"
             enterKeyHint="send"
             autoCapitalize="sentences"
