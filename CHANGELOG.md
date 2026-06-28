@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- WebUI：图像放大查看器改用 `react-zoom-pan-pinch` 管理缩放、拖拽/触控板滚动平移和触控板 pinch；工具栏按钮保持 25% 步进，手势缩放改为按比例变化。
+
+### Fixed
+
+- 游戏模式：互动图像重新生成完成并追加新版本后，回合内联预览会自动切到最新图片，不再停留在用户之前手动查看的旧版本。
+
 ## [v0.1.17] - 2026-06-27
 
 ### Added

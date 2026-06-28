@@ -265,6 +265,63 @@ describe('MessageItem', () => {
     expect(screen.getByRole('img', { name: '第一张互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png')
   })
 
+  it('assistant 回合互动图像新增版本后自动切到最新图像', async () => {
+    const user = userEvent.setup()
+    const baseMessage = {
+      id: 'assistant-turn-1',
+      role: 'assistant' as const,
+      content: '这一轮剧情。',
+      turn_id: 'turn-1',
+      interactive_images: [
+        {
+          schema: 'interactive_image.v1',
+          story_id: 'story-1',
+          branch_id: 'main',
+          turn_id: 'turn-1',
+          image_path: 'assets/interactive/images/story-1/main/turn-1/run-a/image.png',
+          meta_path: 'assets/interactive/images/story-1/main/turn-1/run-a/meta.json',
+          alt_text: '第一张互动图像',
+        },
+        {
+          schema: 'interactive_image.v1',
+          story_id: 'story-1',
+          branch_id: 'main',
+          turn_id: 'turn-1',
+          image_path: 'assets/interactive/images/story-1/main/turn-1/run-b/image.png',
+          meta_path: 'assets/interactive/images/story-1/main/turn-1/run-b/meta.json',
+          alt_text: '第二张互动图像',
+        },
+      ],
+    }
+
+    const { rerender } = render(<MessageItem message={baseMessage} />)
+
+    await user.click(screen.getByRole('button', { name: '上一张互动图像' }))
+    expect(screen.getByRole('img', { name: '第一张互动图像' })).toBeInTheDocument()
+
+    rerender(
+      <MessageItem
+        message={{
+          ...baseMessage,
+          interactive_images: [
+            ...baseMessage.interactive_images,
+            {
+              schema: 'interactive_image.v1',
+              story_id: 'story-1',
+              branch_id: 'main',
+              turn_id: 'turn-1',
+              image_path: 'assets/interactive/images/story-1/main/turn-1/run-c/image.png',
+              meta_path: 'assets/interactive/images/story-1/main/turn-1/run-c/meta.json',
+              alt_text: '第三张互动图像',
+            },
+          ],
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('img', { name: '第三张互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-c%2Fimage.png')
+  })
+
   it('assistant 回合元信息显示手动生成互动图像按钮', async () => {
     const user = userEvent.setup()
     const handleGenerate = vi.fn()

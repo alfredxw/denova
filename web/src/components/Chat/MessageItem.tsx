@@ -1,4 +1,4 @@
-import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useState } from 'react'
+import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
@@ -636,9 +636,15 @@ function InteractiveImageStrip({ message }: { message: ChatMessage }) {
   const error = message.interactive_image_error || readInteractiveImageErrorFromMessage(message)
   const status = message.interactive_image_status || message.status
   const [index, setIndex] = useState(Math.max(0, images.length - 1))
+  const previousImageCountRef = useRef(images.length)
 
   useEffect(() => {
-    setIndex((current) => Math.min(Math.max(0, images.length - 1), Math.max(0, current)))
+    const previousLength = previousImageCountRef.current
+    previousImageCountRef.current = images.length
+    setIndex((current) => {
+      if (images.length > previousLength) return images.length - 1
+      return Math.min(Math.max(0, images.length - 1), Math.max(0, current))
+    })
   }, [images.length])
 
   if (images.length === 0) {

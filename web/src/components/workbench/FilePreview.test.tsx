@@ -25,7 +25,7 @@ describe('FilePreview', () => {
 
     await user.click(within(dialog).getByRole('button', { name: '缩小' }))
     await user.click(within(dialog).getByRole('button', { name: '缩小' }))
-    expect(within(dialog).getByText('75%')).toBeInTheDocument()
+    expect(within(dialog).getByText('80%')).toBeInTheDocument()
 
     const viewport = within(dialog).getByTestId('image-preview-viewport')
     vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue({
@@ -41,10 +41,10 @@ describe('FilePreview', () => {
     } as DOMRect)
 
     fireEvent.wheel(viewport, { deltaY: -120 })
-    expect(within(dialog).getByText('75%')).toBeInTheDocument()
+    expect(within(dialog).getByText('80%')).toBeInTheDocument()
 
     fireEvent.wheel(viewport, { deltaY: -120, ctrlKey: true, clientX: 320, clientY: 240 })
-    expect(within(dialog).getByText('87%')).toBeInTheDocument()
+    expect(within(dialog).getByText('129%')).toBeInTheDocument()
   })
 
   it('pretty prints JSON files', () => {
