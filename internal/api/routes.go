@@ -11,6 +11,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"nova/internal/api/handlers"
+	"nova/internal/webfs"
 )
 
 // registerRoutes 注册 HTTP API 和静态文件路由。
@@ -204,6 +205,19 @@ func resolveWebRoot() string {
 				return root
 			}
 		}
+	}
+	// Last resort: assets embedded into the binary (build tag "embedweb").
+	// Lets a bare nova binary serve the frontend with no web/ directory on
+	// disk — useful for go install / single-binary distribution. Extracts to
+	// a temp dir the file-based static handler can serve from.
+	if webfs.HasEmbedded() {
+		root, err := webfs.ExtractEmbedded()
+		if err != nil {
+			log.Printf("[startup] 解压内嵌前端资源失败，仅注册 API 路由: %v", err)
+			return ""
+		}
+		log.Printf("[startup] 未找到磁盘 Web 目录，使用内嵌前端资源: %s", root)
+		return root
 	}
 	return ""
 }

@@ -13,6 +13,7 @@ nova-test.exe
 data/
 web/node_modules/
 web/dist/
+internal/webfs/dist/
 plan.md
 docs/
 .worktrees/
