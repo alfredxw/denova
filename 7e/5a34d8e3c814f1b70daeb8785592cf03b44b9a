@@ -1,0 +1,26 @@
+internal/imagegen/service.go
+  s_755c57a2b6c222::t_69929c0647d26c 73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "7e5a34d8e3c814f1b70daeb8785592cf03b44b9a",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_755c57a2b6c222": {
+      "agent_id": {
+        "tool": "trae-cue",
+        "id": "ai_tab-icr-605b169d-118e-4d74-aeb9-3f34addab08c",
+        "model": "default"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
