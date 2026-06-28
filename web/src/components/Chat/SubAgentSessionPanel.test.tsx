@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { describe, expect, it, vi } from 'vitest'
@@ -13,6 +13,24 @@ function renderPanel(messages: ChatMessage[], onClose = vi.fn()) {
         <SubAgentSessionPanel messages={messages} sessionKey="run-1-subagent-01-researcher" onClose={onClose} />
       </VirtuosoMockContext.Provider>,
     ),
+  }
+}
+
+function mockScrollMetrics(element: HTMLElement, initial = { scrollHeight: 1200, clientHeight: 320, scrollTop: 0 }) {
+  let scrollHeight = initial.scrollHeight
+  let clientHeight = initial.clientHeight
+  let scrollTop = initial.scrollTop
+  Object.defineProperty(element, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+  Object.defineProperty(element, 'clientHeight', { configurable: true, get: () => clientHeight })
+  Object.defineProperty(element, 'scrollTop', {
+    configurable: true,
+    get: () => scrollTop,
+    set: (value) => {
+      scrollTop = value
+    },
+  })
+  return {
+    maxScrollTop: () => Math.max(0, scrollHeight - clientHeight),
   }
 }
 
@@ -49,5 +67,32 @@ describe('SubAgentSessionPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '关闭 SubAgent 详情' }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it('子会话详情离底部较远时可以一键回到底部', async () => {
+    const messages: ChatMessage[] = Array.from({ length: 80 }, (_, index) => ({
+      id: `subagent-${index}`,
+      role: 'assistant',
+      content: `SubAgent 输出 ${index}`,
+      agent_name: 'researcher',
+      subagent: true,
+      subagent_session_id: 'run-1-subagent-01-researcher',
+    }))
+    const { container } = renderPanel(messages)
+    const scroller = container.querySelector('[data-testid="virtuoso-scroller"]') as HTMLElement
+    expect(scroller).toBeInstanceOf(HTMLElement)
+    const scrollMetrics = mockScrollMetrics(scroller)
+
+    scroller.scrollTop = scrollMetrics.maxScrollTop()
+    fireEvent.scroll(scroller)
+    expect(screen.queryByRole('button', { name: '回到底部' })).not.toBeInTheDocument()
+
+    scroller.scrollTop = scrollMetrics.maxScrollTop() - 220
+    fireEvent.scroll(scroller)
+    const scrollButton = await screen.findByRole('button', { name: '回到底部' })
+    expect(scrollButton).toHaveStyle({ right: '16px' })
+
+    fireEvent.click(scrollButton)
+    await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
   })
 })

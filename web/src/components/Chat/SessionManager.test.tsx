@@ -42,6 +42,12 @@ function mockScrollMetrics(element: HTMLElement, initial = { scrollHeight: 1200,
   }
 }
 
+function getMessageScroller(container: HTMLElement) {
+  const scroller = container.querySelector('.nova-chat-canvas')
+  expect(scroller).toBeInstanceOf(HTMLDivElement)
+  return scroller as HTMLDivElement
+}
+
 describe('SessionManager', () => {
   it('支持重命名和删除会话入口', async () => {
     const user = userEvent.setup()
@@ -80,7 +86,7 @@ describe('MessageList', () => {
         scrollResetKey="session-a"
       />,
     )
-    const scroller = container.firstElementChild as HTMLDivElement
+    const scroller = getMessageScroller(container)
     const scrollMetrics = mockScrollMetrics(scroller)
 
     rerender(
@@ -127,7 +133,7 @@ describe('MessageList', () => {
         scrollResetKey="session-a"
       />,
     )
-    const scroller = container.firstElementChild as HTMLDivElement
+    const scroller = getMessageScroller(container)
     const scrollMetrics = mockScrollMetrics(scroller)
 
     await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
@@ -164,7 +170,7 @@ describe('MessageList', () => {
         scrollResetKey="session-a"
       />,
     )
-    const scroller = container.firstElementChild as HTMLDivElement
+    const scroller = getMessageScroller(container)
     const scrollMetrics = mockScrollMetrics(scroller)
     scroller.scrollTop = scrollMetrics.maxScrollTop()
     fireEvent.scroll(scroller)
@@ -198,7 +204,7 @@ describe('MessageList', () => {
         scrollResetKey="session-a"
       />,
     )
-    const scroller = container.firstElementChild as HTMLDivElement
+    const scroller = getMessageScroller(container)
     const scrollMetrics = mockScrollMetrics(scroller)
 
     scroller.scrollTop = scrollMetrics.maxScrollTop()
@@ -235,6 +241,74 @@ describe('MessageList', () => {
     )
 
     await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
+  })
+
+  it('用户离底部超过阈值时显示回到底部按钮，点击后恢复流式锁定', async () => {
+    const { container, rerender } = render(
+      <MessageList
+        isStreaming
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '继续写' },
+          { type: 'message', role: 'assistant', content: '第一段', streaming: true },
+        ]}
+        scrollResetKey="session-a"
+        bottomPaddingPx={180}
+      />,
+    )
+    const scroller = getMessageScroller(container)
+    const scrollMetrics = mockScrollMetrics(scroller)
+
+    scroller.scrollTop = scrollMetrics.maxScrollTop()
+    fireEvent.scroll(scroller)
+    expect(screen.queryByRole('button', { name: '回到底部' })).not.toBeInTheDocument()
+
+    scroller.scrollTop = scrollMetrics.maxScrollTop() - 180
+    fireEvent.scroll(scroller)
+    const scrollButton = await screen.findByRole('button', { name: '回到底部' })
+    expect(scrollButton).toHaveStyle({ bottom: '192px' })
+    expect(scrollButton).toHaveStyle({ right: '24px' })
+
+    fireEvent.click(scrollButton)
+    await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
+    await waitFor(() => expect(screen.queryByRole('button', { name: '回到底部' })).not.toBeInTheDocument())
+
+    scrollMetrics.setScrollHeight(1600)
+    rerender(
+      <MessageList
+        isStreaming
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '继续写' },
+          { type: 'message', role: 'assistant', content: '第一段\n\n第二段', streaming: true },
+        ]}
+        scrollResetKey="session-a"
+        bottomPaddingPx={180}
+      />,
+    )
+
+    await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
+  })
+
+  it('短列表和接近底部时不显示回到底部按钮', () => {
+    const { container } = render(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[{ type: 'message', role: 'assistant', content: '短回复' }]}
+        scrollResetKey="short-session"
+      />,
+    )
+    const scroller = getMessageScroller(container)
+    const scrollMetrics = mockScrollMetrics(scroller, { scrollHeight: 300, clientHeight: 320, scrollTop: 0 })
+
+    fireEvent.scroll(scroller)
+    expect(screen.queryByRole('button', { name: '回到底部' })).not.toBeInTheDocument()
+
+    scrollMetrics.setScrollHeight(1200)
+    scroller.scrollTop = scrollMetrics.maxScrollTop() - 120
+    fireEvent.scroll(scroller)
+    expect(screen.queryByRole('button', { name: '回到底部' })).not.toBeInTheDocument()
   })
 
   it('展示 /clear 产生的上下文清理分界且保留前后消息', () => {

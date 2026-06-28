@@ -10,6 +10,7 @@ import type { ChapterIllustration, ChatMessage } from '@/lib/api'
 import { listItem, novaEase } from '@/features/motion/motion-tokens'
 import { buildSubAgentProgressMessage, isSubAgentTimelineMessage, subAgentSessionKey } from './subagent-session'
 import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
+import { ScrollToBottomButton } from './ScrollToBottomButton'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -79,6 +80,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     () => ({ bottomPaddingClassName, bottomPaddingPx }),
     [bottomPaddingClassName, bottomPaddingPx],
   )
+  const scrollButtonBottomOffset = typeof bottomPaddingPx === 'number' ? Math.max(24, bottomPaddingPx + 12) : 24
 
   const itemContent = useCallback((index: number, item?: ChatListItem) => {
     const resolvedItem = item || listItems[index]
@@ -102,26 +104,34 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
   }, [activeSubAgentSessionKey, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onEditMessage, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onRegenerateMessage, onSwitchMessageVersion])
 
   return (
-    <Virtuoso
-      ref={scrollLock.virtuosoRef}
-      scrollerRef={scrollLock.scrollerRef}
-      onScroll={scrollLock.onScroll}
-      onWheel={scrollLock.onWheel}
-      onKeyDown={scrollLock.onKeyDown}
-      atBottomStateChange={scrollLock.onAtBottomStateChange}
-      atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-      followOutput={scrollLock.followOutput}
-      initialItemCount={Math.min(listItems.length, 40)}
-      data={listItems}
-      context={virtuosoContext}
-      components={MESSAGE_LIST_COMPONENTS}
-      computeItemKey={(index, item) => item?.key || listItems[index]?.key || `chat-item-${index}`}
-      itemContent={itemContent}
-      overscan={MESSAGE_LIST_OVERSCAN}
-      increaseViewportBy={MESSAGE_LIST_INCREASE_VIEWPORT_BY}
-      className="nova-chat-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
-      aria-label={t('common.messages', { count: messages.length })}
-    />
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <Virtuoso
+        ref={scrollLock.virtuosoRef}
+        scrollerRef={scrollLock.scrollerRef}
+        onScroll={scrollLock.onScroll}
+        onWheel={scrollLock.onWheel}
+        onKeyDown={scrollLock.onKeyDown}
+        atBottomStateChange={scrollLock.onAtBottomStateChange}
+        atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
+        followOutput={scrollLock.followOutput}
+        initialItemCount={Math.min(listItems.length, 40)}
+        data={listItems}
+        context={virtuosoContext}
+        components={MESSAGE_LIST_COMPONENTS}
+        computeItemKey={(index, item) => item?.key || listItems[index]?.key || `chat-item-${index}`}
+        itemContent={itemContent}
+        overscan={MESSAGE_LIST_OVERSCAN}
+        increaseViewportBy={MESSAGE_LIST_INCREASE_VIEWPORT_BY}
+        className="nova-chat-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
+        aria-label={t('common.messages', { count: messages.length })}
+      />
+      <ScrollToBottomButton
+        visible={scrollLock.isAwayFromBottom}
+        onClick={scrollLock.scrollToBottom}
+        bottomOffsetPx={scrollButtonBottomOffset}
+        rightOffsetPx={24}
+      />
+    </div>
   )
 }
 

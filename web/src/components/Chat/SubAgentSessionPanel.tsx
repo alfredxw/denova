@@ -8,6 +8,7 @@ import type { ChatMessage } from '@/lib/api'
 import { MessageItem } from './MessageItem'
 import { subAgentSessionKey } from './subagent-session'
 import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
+import { ScrollToBottomButton } from './ScrollToBottomButton'
 
 interface SubAgentSessionPanelProps {
   messages: ChatMessage[]
@@ -87,25 +88,33 @@ export function SubAgentSessionPanel({ messages, sessionKey, onClose, highlightD
           </div>
         </div>
       ) : (
-        <Virtuoso
-          ref={scrollLock.virtuosoRef}
-          scrollerRef={scrollLock.scrollerRef}
-          onScroll={scrollLock.onScroll}
-          onWheel={scrollLock.onWheel}
-          onKeyDown={scrollLock.onKeyDown}
-          atBottomStateChange={scrollLock.onAtBottomStateChange}
-          atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-          followOutput={scrollLock.followOutput}
-          initialItemCount={Math.min(sessionMessages.length, 40)}
-          data={sessionMessages}
-          components={SUBAGENT_SESSION_COMPONENTS}
-          computeItemKey={(index, message) => message?.id || message?.created_at || index}
-          itemContent={itemContent}
-          overscan={{ main: 360, reverse: 180 }}
-          increaseViewportBy={{ top: 300, bottom: 560 }}
-          className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
-          aria-label={t('chat.subagent.sessionTitle', { name })}
-        />
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <Virtuoso
+            ref={scrollLock.virtuosoRef}
+            scrollerRef={scrollLock.scrollerRef}
+            onScroll={scrollLock.onScroll}
+            onWheel={scrollLock.onWheel}
+            onKeyDown={scrollLock.onKeyDown}
+            atBottomStateChange={scrollLock.onAtBottomStateChange}
+            atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
+            followOutput={scrollLock.followOutput}
+            initialItemCount={Math.min(sessionMessages.length, 40)}
+            data={sessionMessages}
+            components={SUBAGENT_SESSION_COMPONENTS}
+            computeItemKey={(index, message) => message?.id || message?.created_at || index}
+            itemContent={itemContent}
+            overscan={{ main: 360, reverse: 180 }}
+            increaseViewportBy={{ top: 300, bottom: 560 }}
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
+            aria-label={t('chat.subagent.sessionTitle', { name })}
+          />
+          <ScrollToBottomButton
+            visible={scrollLock.isAwayFromBottom}
+            onClick={scrollLock.scrollToBottom}
+            bottomOffsetPx={16}
+            rightOffsetPx={16}
+          />
+        </div>
       )}
     </section>
   )

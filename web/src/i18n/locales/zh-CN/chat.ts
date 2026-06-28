@@ -76,6 +76,7 @@ const chat = {
   'chat.action.prevVersion': '切换到上一版',
   'chat.action.nextVersion': '切换到下一版',
   'chat.action.regenerateTurn': '重新生成这一轮',
+  'chat.action.scrollToBottom': '回到底部',
   'chat.tool.calling': '调用工具',
   'chat.tool.writing': '正在写入…',
   'chat.tool.preparing': '准备执行工具请求',

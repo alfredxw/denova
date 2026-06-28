@@ -76,6 +76,7 @@ const chat = {
   'chat.action.prevVersion': 'Switch to previous version',
   'chat.action.nextVersion': 'Switch to next version',
   'chat.action.regenerateTurn': 'Regenerate this turn',
+  'chat.action.scrollToBottom': 'Back to bottom',
   'chat.tool.calling': 'Calling Tool',
   'chat.tool.writing': 'Writing...',
   'chat.tool.preparing': 'Preparing tool request',
