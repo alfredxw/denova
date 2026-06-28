@@ -1,13 +1,15 @@
-import { useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
+import { Virtuoso } from 'react-virtuoso'
+import type { Components, ContextProp } from 'react-virtuoso'
 import { MessageItem, ToolActivityBlock } from './MessageItem'
 import type { ChapterIllustration, ChatMessage } from '@/lib/api'
-import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { listItem, novaEase } from '@/features/motion/motion-tokens'
 import { buildSubAgentProgressMessage, isSubAgentTimelineMessage, subAgentSessionKey } from './subagent-session'
+import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -29,56 +31,197 @@ interface MessageListProps {
   activeSubAgentSessionKey?: string
 }
 
+type ChatListItem =
+  | { kind: 'empty'; key: string }
+  | { kind: 'typing'; key: string }
+  | { kind: 'activity'; key: string; content: string }
+  | { kind: 'clear'; key: string; createdAt?: string }
+  | { kind: 'message'; key: string; message: ChatMessage; sourceIndex: number }
+  | { kind: 'trace'; key: string; messages: ChatMessage[] }
+
+const MESSAGE_LIST_OVERSCAN = { main: 520, reverse: 260 }
+const MESSAGE_LIST_INCREASE_VIEWPORT_BY = { top: 420, bottom: 900 }
+const MESSAGE_LIST_COMPONENTS: Components<ChatListItem, MessageListVirtuosoContext> = {
+  Header: MessageListHeader,
+  Footer: MessageListFooter,
+}
+
+interface MessageListVirtuosoContext {
+  bottomPaddingClassName: string
+  bottomPaddingPx?: number
+}
+
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
 export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey }: MessageListProps) {
   const { t } = useTranslation()
   const hasRunningContextCompaction = messages.some((message) => message.role === 'context_compaction' && message.status === 'running')
   const visibleActivityContent = hasRunningContextCompaction ? '' : activityContent
-  const scrollContentKey = buildMessageListScrollKey(messages, visibleActivityContent, isStreaming, bottomPaddingPx)
-  const scrollLock = useBottomScrollLock<HTMLDivElement>({
+  const listItems = useMemo(
+    () => buildChatListItems({
+      messages,
+      isStreaming,
+      visibleActivityContent,
+      collapseTraceBeforeAssistant,
+      groupSubAgentTimeline: Boolean(onOpenSubAgentSession),
+    }),
+    [collapseTraceBeforeAssistant, isStreaming, messages, onOpenSubAgentSession, visibleActivityContent],
+  )
+  const scrollContentKey = useMemo(
+    () => buildMessageListScrollKey(listItems, isStreaming, bottomPaddingPx),
+    [bottomPaddingPx, isStreaming, listItems],
+  )
+  const scrollLock = useVirtuosoBottomLock({
     resetKey: scrollResetKey,
     contentKey: scrollContentKey,
+    itemCount: listItems.length,
   })
+  const virtuosoContext = useMemo<MessageListVirtuosoContext>(
+    () => ({ bottomPaddingClassName, bottomPaddingPx }),
+    [bottomPaddingClassName, bottomPaddingPx],
+  )
 
-  const renderMessage = (msg: ChatMessage, index: number) => {
-    const key = msg.id || msg.created_at || index
+  const itemContent = useCallback((index: number, item?: ChatListItem) => {
+    const resolvedItem = item || listItems[index]
+    if (!resolvedItem) return null
     return (
-      <motion.div
-        key={key}
-        layout="position"
-        variants={listItem}
-        initial="initial"
-        animate="animate"
-        transition={{ duration: 0.18, ease: novaEase }}
-      >
-        {msg.type === 'clear'
-          ? <ContextClearDivider createdAt={msg.created_at} />
-          : (
-            <MessageItem
-              message={msg}
-              highlightDialogue={highlightDialogue}
-              messageStyle={messageStyle}
-              onEdit={isStreaming ? undefined : onEditMessage}
-              onRegenerate={isStreaming ? undefined : onRegenerateMessage}
-              onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion}
-              onOpenSubAgentSession={onOpenSubAgentSession}
-              onInsertIllustration={onInsertIllustration}
-              onGenerateInteractiveImage={isStreaming ? undefined : onGenerateInteractiveImage}
-              generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
-              activeSubAgentSessionKey={activeSubAgentSessionKey}
-            />
-          )}
-      </motion.div>
+      <ChatListRow
+        item={resolvedItem}
+        isStreaming={isStreaming}
+        highlightDialogue={highlightDialogue}
+        messageStyle={messageStyle}
+        onEditMessage={onEditMessage}
+        onRegenerateMessage={onRegenerateMessage}
+        onSwitchMessageVersion={onSwitchMessageVersion}
+        onOpenSubAgentSession={onOpenSubAgentSession}
+        onInsertIllustration={onInsertIllustration}
+        onGenerateInteractiveImage={onGenerateInteractiveImage}
+        generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
+        activeSubAgentSessionKey={activeSubAgentSessionKey}
+      />
     )
+  }, [activeSubAgentSessionKey, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onEditMessage, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onRegenerateMessage, onSwitchMessageVersion])
+
+  return (
+    <Virtuoso
+      ref={scrollLock.virtuosoRef}
+      scrollerRef={scrollLock.scrollerRef}
+      onScroll={scrollLock.onScroll}
+      onWheel={scrollLock.onWheel}
+      onKeyDown={scrollLock.onKeyDown}
+      atBottomStateChange={scrollLock.onAtBottomStateChange}
+      atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
+      followOutput={scrollLock.followOutput}
+      initialItemCount={Math.min(listItems.length, 40)}
+      data={listItems}
+      context={virtuosoContext}
+      components={MESSAGE_LIST_COMPONENTS}
+      computeItemKey={(index, item) => item?.key || listItems[index]?.key || `chat-item-${index}`}
+      itemContent={itemContent}
+      overscan={MESSAGE_LIST_OVERSCAN}
+      increaseViewportBy={MESSAGE_LIST_INCREASE_VIEWPORT_BY}
+      className="nova-chat-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
+      aria-label={t('common.messages', { count: messages.length })}
+    />
+  )
+}
+
+function MessageListHeader() {
+  return <div aria-hidden="true" className="h-5 shrink-0" />
+}
+
+function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>) {
+  const hasMeasuredPadding = typeof context.bottomPaddingPx === 'number'
+  return (
+    <div
+      aria-hidden="true"
+      data-nova-chat-bottom-spacer
+      className={hasMeasuredPadding ? 'shrink-0' : `shrink-0 ${context.bottomPaddingClassName}`}
+      style={hasMeasuredPadding ? { height: context.bottomPaddingPx } : undefined}
+    />
+  )
+}
+
+function ChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey }: {
+  item: ChatListItem
+  isStreaming: boolean
+  highlightDialogue: boolean
+  messageStyle?: CSSProperties
+  onEditMessage?: (message: ChatMessage) => void
+  onRegenerateMessage?: (message: ChatMessage) => void
+  onSwitchMessageVersion?: (message: ChatMessage, direction: -1 | 1) => void
+  onOpenSubAgentSession?: (message: ChatMessage) => void
+  onInsertIllustration?: (illustration: ChapterIllustration) => void
+  onGenerateInteractiveImage?: (message: ChatMessage) => void
+  generatingInteractiveImageTurnId?: string
+  activeSubAgentSessionKey?: string
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <motion.div
+      data-nova-chat-item={item.kind}
+      className="min-w-0 px-6 pb-4 last:pb-0"
+      variants={listItem}
+      initial="initial"
+      animate="animate"
+      transition={{ duration: 0.18, ease: novaEase }}
+    >
+      {item.kind === 'empty' ? (
+        <div className="flex min-h-[240px] items-center justify-center">
+          <div className="rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3 text-center text-sm text-[var(--nova-text-muted)] shadow-[0_14px_34px_rgba(0,0,0,0.22)]">
+            {t('chat.empty')}
+          </div>
+        </div>
+      ) : item.kind === 'typing' ? (
+        <div className="flex justify-start">
+          <div className="px-1 py-2">
+            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--nova-text-muted)]" />
+          </div>
+        </div>
+      ) : item.kind === 'activity' ? (
+        <ToolActivityBlock content={item.content} />
+      ) : item.kind === 'clear' ? (
+        <ContextClearDivider createdAt={item.createdAt} />
+      ) : item.kind === 'trace' ? (
+        <TraceGroup
+          messages={item.messages}
+          highlightDialogue={highlightDialogue}
+          messageStyle={messageStyle}
+          onInsertIllustration={onInsertIllustration}
+          onGenerateInteractiveImage={onGenerateInteractiveImage}
+        />
+      ) : (
+        <MessageItem
+          message={item.message}
+          highlightDialogue={highlightDialogue}
+          messageStyle={messageStyle}
+          onEdit={isStreaming ? undefined : onEditMessage}
+          onRegenerate={isStreaming ? undefined : onRegenerateMessage}
+          onSwitchVersion={isStreaming ? undefined : onSwitchMessageVersion}
+          onOpenSubAgentSession={onOpenSubAgentSession}
+          onInsertIllustration={onInsertIllustration}
+          onGenerateInteractiveImage={isStreaming ? undefined : onGenerateInteractiveImage}
+          generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
+          activeSubAgentSessionKey={activeSubAgentSessionKey}
+        />
+      )}
+    </motion.div>
+  )
+}
+
+function buildChatListItems({ messages, isStreaming, visibleActivityContent, collapseTraceBeforeAssistant, groupSubAgentTimeline }: { messages: ChatMessage[]; isStreaming: boolean; visibleActivityContent: string; collapseTraceBeforeAssistant: boolean; groupSubAgentTimeline: boolean }): ChatListItem[] {
+  const items: ChatListItem[] = []
+  if (messages.length === 0 && !isStreaming) {
+    items.push({ kind: 'empty', key: 'empty' })
+    return items
   }
 
-  const renderedMessages = []
   for (let index = 0; index < messages.length; index += 1) {
     const msg = messages[index]
     if (msg.role === 'token_usage') {
       continue
     }
-    if (onOpenSubAgentSession && isSubAgentTimelineMessage(msg)) {
+    if (groupSubAgentTimeline && isSubAgentTimelineMessage(msg)) {
       const key = subAgentSessionKey(msg)
       const group: ChatMessage[] = []
       let nextIndex = index
@@ -88,7 +231,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       }
       const progress = buildSubAgentProgressMessage(group)
       if (progress) {
-        renderedMessages.push(renderMessage(progress, index))
+        items.push({ kind: 'message', key: messageItemKey(progress, index), message: progress, sourceIndex: index })
         index = nextIndex - 1
         continue
       }
@@ -102,97 +245,63 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       }
       const nextMessage = messages[nextIndex]
       if (traceMessages.length > 0 && nextMessage?.role === 'assistant' && (nextMessage.content || '').trim()) {
-        renderedMessages.push(
-          <motion.div
-            key={`trace-${traceMessages[0].id || index}`}
-            layout="position"
-            variants={listItem}
-            initial="initial"
-            animate="animate"
-            transition={{ duration: 0.18, ease: novaEase }}
-          >
-            <TraceGroup
-              messages={traceMessages}
-              highlightDialogue={highlightDialogue}
-              messageStyle={messageStyle}
-              onInsertIllustration={onInsertIllustration}
-              onGenerateInteractiveImage={onGenerateInteractiveImage}
-            />
-          </motion.div>,
-        )
+        items.push({ kind: 'trace', key: `trace-${traceMessages[0].id || index}`, messages: traceMessages })
         index = nextIndex - 1
         continue
       }
     }
-    renderedMessages.push(renderMessage(msg, index))
+    if (msg.type === 'clear') {
+      items.push({ kind: 'clear', key: messageItemKey(msg, index), createdAt: msg.created_at })
+      continue
+    }
+    items.push({ kind: 'message', key: messageItemKey(msg, index), message: msg, sourceIndex: index })
   }
 
-  return (
-    <div
-      ref={scrollLock.ref}
-      onScroll={scrollLock.onScroll}
-      onWheel={scrollLock.onWheel}
-      onKeyDown={scrollLock.onKeyDown}
-      className={`nova-chat-canvas min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5 [overflow-anchor:none] ${bottomPaddingClassName}`}
-      style={typeof bottomPaddingPx === 'number' ? { paddingBottom: bottomPaddingPx } : undefined}
-    >
-      {messages.length === 0 && !isStreaming && (
-        <div className="flex h-full items-center justify-center">
-          <div className="rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3 text-center text-sm text-[var(--nova-text-muted)] shadow-[0_14px_34px_rgba(0,0,0,0.22)]">
-            {t('chat.empty')}
-          </div>
-        </div>
-      )}
+  if (isStreaming) {
+    if (visibleActivityContent) {
+      items.push({ kind: 'activity', key: `activity-${visibleActivityContent.length}`, content: visibleActivityContent })
+    } else if (messages.length === 0) {
+      items.push({ kind: 'typing', key: 'typing' })
+    }
+  }
 
-      {renderedMessages}
-
-      {isStreaming && (
-        <>
-          {visibleActivityContent && (
-            <motion.div
-              layout="position"
-              variants={listItem}
-              initial="initial"
-              animate="animate"
-              transition={{ duration: 0.18, ease: novaEase }}
-            >
-              <ToolActivityBlock content={visibleActivityContent} />
-            </motion.div>
-          )}
-          {messages.length === 0 && !visibleActivityContent && (
-            <div className="flex justify-start">
-              <div className="px-1 py-2">
-                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-[var(--nova-text-muted)]" />
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  )
+  return items
 }
 
-function buildMessageListScrollKey(messages: ChatMessage[], activityContent: string, isStreaming: boolean, bottomPaddingPx?: number) {
-  const messageKey = messages.map((message) => [
-    message.id || '',
-    message.type || '',
-    message.role || '',
-    message.status || '',
-    message.streaming ? 'streaming' : '',
-    (message.content || '').length,
-    (message.args || '').length,
-    (message.result || '').length,
-    message.illustration?.image_path || '',
-    message.interactive_image?.image_path || '',
-    message.interactive_images?.map((image) => image.image_path).join(',') || '',
-    message.interactive_image_status || '',
-  ].join(':')).join('|')
+function buildMessageListScrollKey(items: ChatListItem[], isStreaming: boolean, bottomPaddingPx?: number) {
+  const itemKey = items.map((item) => {
+    if (item.kind === 'message') {
+      const message = item.message
+      return [
+        item.key,
+        message.type || '',
+        message.role || '',
+        message.status || '',
+        message.streaming ? 'streaming' : '',
+        (message.content || '').length,
+        (message.args || '').length,
+        (message.result || '').length,
+        message.illustration?.image_path || '',
+        message.interactive_image?.image_path || '',
+        message.interactive_images?.map((image) => image.image_path).join(',') || '',
+        message.interactive_image_status || '',
+      ].join(':')
+    }
+    if (item.kind === 'trace') {
+      return `${item.key}:${item.messages.length}:${item.messages.map((message) => `${message.id || ''}:${message.status || ''}:${(message.content || '').length}:${(message.result || '').length}`).join(',')}`
+    }
+    if (item.kind === 'activity') return `${item.key}:${item.content.length}`
+    return item.key
+  }).join('|')
   return [
     isStreaming ? 'streaming' : 'idle',
-    activityContent.length,
     typeof bottomPaddingPx === 'number' ? Math.round(bottomPaddingPx) : '',
-    messageKey,
+    itemKey,
   ].join('|')
+}
+
+function messageItemKey(message: ChatMessage, index: number) {
+  return `${message.type === 'clear' ? 'clear' : 'message'}-${message.id || message.created_at || index}`
 }
 
 function isTraceMessage(message: ChatMessage) {

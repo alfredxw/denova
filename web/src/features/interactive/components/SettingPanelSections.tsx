@@ -268,12 +268,9 @@ export function TellerDirectory({
       <div className="border-b border-[var(--nova-border)] p-2">
         <button
           type="button"
-          onClick={() => {
-            onResourceKindChange('teller')
-            onSelectTeller(TELLER_CONFIG_AGENT_ENTRY_ID)
-          }}
+          onClick={() => onSelectTeller(TELLER_CONFIG_AGENT_ENTRY_ID)}
           className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
-            resourceKind === 'teller' && activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+            activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
           }`}
         >
           <Bot className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
@@ -294,7 +291,7 @@ export function TellerDirectory({
                 type="button"
                 onClick={() => onSelectImagePreset(preset.id)}
                 className={`flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition ${
-                  activeImagePresetId === preset.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+                  activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID && activeImagePresetId === preset.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
                 }`}
               >
                 <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
@@ -309,7 +306,7 @@ export function TellerDirectory({
                 type="button"
                 onClick={() => onSelectTeller(teller.id)}
                 className={`flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition ${
-                  activeTellerId === teller.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+                  activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID && activeTellerId === teller.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
                 }`}
               >
                 <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />

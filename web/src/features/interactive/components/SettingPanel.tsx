@@ -273,6 +273,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   useEffect(() => {
     setTellers(externalTellers)
     setActiveTellerId((current) => {
+      if (current === TELLER_CONFIG_AGENT_ENTRY_ID) return current
       if (current && externalTellers.some((teller) => teller.id === current)) return current
       return externalTellers[0]?.id || ''
     })
@@ -346,6 +347,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     onTellersChange?.(data)
     setActiveTellerId((current) => {
       if (nextActiveId) return nextActiveId
+      if (current === TELLER_CONFIG_AGENT_ENTRY_ID) return current
       if (current && data.some((teller) => teller.id === current)) return current
       return data[0]?.id || ''
     })
@@ -465,6 +467,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 
   const handleDelete = async () => {
     if (activeMode === 'teller') {
+      if (activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) return
       if (presetResourceKind === 'image') {
         if (!imagePresetDraft?.custom) return
         if (!window.confirm(t('settingPanel.confirmDeleteImagePreset', { name: imagePresetDraft.name }))) return
@@ -630,13 +633,14 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 
   const handleSelectTeller = (id: string) => {
     if (presetResourceKind === 'image') flushImagePresetAutoSave()
-    setPresetResourceKind('teller')
+    if (id !== TELLER_CONFIG_AGENT_ENTRY_ID) setPresetResourceKind('teller')
     setActiveTellerId(id)
   }
 
   const handleSelectImagePreset = (id: string) => {
     flushImagePresetAutoSave()
     setPresetResourceKind('image')
+    setActiveTellerId((current) => current === TELLER_CONFIG_AGENT_ENTRY_ID ? '' : current)
     setActiveImagePresetId(id)
   }
 
@@ -654,7 +658,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const isCreatorActive = activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)
   const isOpeningPresetActive = activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID
   const isLoreConfigAgentActive = activeMode === 'lore' && activeId === LORE_CONFIG_AGENT_ENTRY_ID
-  const isTellerConfigAgentActive = activeMode === 'teller' && presetResourceKind === 'teller' && activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
+  const isTellerConfigAgentActive = activeMode === 'teller' && activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
   const isImagePresetEditorActive = activeMode === 'teller' && presetResourceKind === 'image'
   const directoryPanel = (
     <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
@@ -713,7 +717,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
-            {activeMode === 'teller' && presetResourceKind === 'image' && (
+            {activeMode === 'teller' && presetResourceKind === 'image' && !isTellerConfigAgentActive && (
               <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !imagePresetDraft?.custom} onClick={handleDelete} aria-label={t('settingPanel.deleteImagePreset')}>
                 <Trash2 className="h-4 w-4" />
               </Button>

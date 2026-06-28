@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
+import { VirtuosoMockContext } from 'react-virtuoso'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentPanel } from './AgentPanel'
 
@@ -107,7 +108,7 @@ describe('AgentPanel', () => {
       })
 
       await waitFor(() => {
-        expect(container.querySelector('.nova-chat-canvas')).toHaveStyle({ paddingBottom: '240px' })
+        expect(container.querySelector('[data-nova-chat-bottom-spacer]')).toHaveStyle({ height: '240px' })
       })
     } finally {
       rectSpy.mockRestore()
@@ -148,37 +149,39 @@ describe('AgentPanel', () => {
 
 function renderAgentPanel(overrides: Partial<ComponentProps<typeof AgentPanel>> = {}) {
   return render(
-    <AgentPanel
-      workspace="/workspace"
-      selectedFile={null}
-      tellers={[{ id: 'classic', name: '默认叙事', style_rules: [] } as any]}
-      messages={[]}
-      sessions={[{ id: 'session-1', title: '当前会话', active: true, message_count: 0, created_at: '', updated_at: '' }]}
-      activeSessionId="session-1"
-      isStreaming={false}
-      activityContent=""
-      references={[]}
-      loreReferences={[]}
-      loreReferenceLabels={{}}
-      loreSuggestions={[]}
-      styleScenes={[]}
-      textSelections={[]}
-      fileSuggestions={[]}
-      onCreateSession={vi.fn()}
-      onSwitchSession={vi.fn()}
-      onRenameSession={vi.fn()}
-      onDeleteSession={vi.fn()}
-      onSend={vi.fn()}
-      onAnalyzeContext={vi.fn().mockResolvedValue({} as any)}
-      onStop={vi.fn()}
-      onReferenceRemove={vi.fn()}
-      onLoreReferenceAdd={vi.fn()}
-      onLoreReferenceRemove={vi.fn()}
-      onStyleSceneAdd={vi.fn()}
-      onStyleSceneRemove={vi.fn()}
-      onTextSelectionRemove={vi.fn()}
-      onClose={vi.fn()}
-      {...overrides}
-    />,
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 52 }}>
+      <AgentPanel
+        workspace="/workspace"
+        selectedFile={null}
+        tellers={[{ id: 'classic', name: '默认叙事', style_rules: [] } as any]}
+        messages={[]}
+        sessions={[{ id: 'session-1', title: '当前会话', active: true, message_count: 0, created_at: '', updated_at: '' }]}
+        activeSessionId="session-1"
+        isStreaming={false}
+        activityContent=""
+        references={[]}
+        loreReferences={[]}
+        loreReferenceLabels={{}}
+        loreSuggestions={[]}
+        styleScenes={[]}
+        textSelections={[]}
+        fileSuggestions={[]}
+        onCreateSession={vi.fn()}
+        onSwitchSession={vi.fn()}
+        onRenameSession={vi.fn()}
+        onDeleteSession={vi.fn()}
+        onSend={vi.fn()}
+        onAnalyzeContext={vi.fn().mockResolvedValue({} as any)}
+        onStop={vi.fn()}
+        onReferenceRemove={vi.fn()}
+        onLoreReferenceAdd={vi.fn()}
+        onLoreReferenceRemove={vi.fn()}
+        onStyleSceneAdd={vi.fn()}
+        onStyleSceneRemove={vi.fn()}
+        onTextSelectionRemove={vi.fn()}
+        onClose={vi.fn()}
+        {...overrides}
+      />
+    </VirtuosoMockContext.Provider>,
   )
 }

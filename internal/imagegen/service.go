@@ -70,7 +70,7 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, request Gene
 	if adapter == nil {
 		return Result{}, fmt.Errorf("%w: %s", ErrUnsupportedProvider, profile.Provider)
 	}
-	log.Printf("[imagegen] generate begin provider=%s profile_id=%s model=%q size=%q quality=%q format=%q n=%d prompt_chars=%d", profile.Provider, profile.ProfileID, profile.OpenAIModel, request.Size, request.Quality, request.OutputFormat, request.N, len([]rune(request.Prompt)))
+	log.Printf("[imagegen] generate begin provider=%s profile_id=%s model=%q size=%q quality=%q format=%q n=%d prompt_chars=%d, prompt: %s", profile.Provider, profile.ProfileID, profile.OpenAIModel, request.Size, request.Quality, request.OutputFormat, request.N, len([]rune(request.Prompt)), request.Prompt)
 	result, err := adapter.Generate(ctx, profile, request)
 	if err != nil {
 		log.Printf("[imagegen] generate failed provider=%s profile_id=%s model=%q err=%v", profile.Provider, profile.ProfileID, profile.OpenAIModel, err)

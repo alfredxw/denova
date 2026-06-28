@@ -74,6 +74,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [showSkillCommands, setShowSkillCommands] = useState(false)
   const [activeSkillCommandIndex, setActiveSkillCommandIndex] = useState(0)
   const [inputFloatHeight, setInputFloatHeight] = useState(0)
+  const [optimisticInteractiveImages, setOptimisticInteractiveImages] = useState<Record<string, InteractiveImage[]>>({})
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const inputFloatRef = useRef<HTMLDivElement | null>(null)
   const skillCommandRefs = useRef<Array<HTMLDivElement | null>>([])
@@ -90,6 +91,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const activityContent = stageRun.activityContent
   const liveMessages = stageRun.liveMessages
   const rewindTurnId = stageRun.rewindTurnId
+
+  useEffect(() => {
+    setOptimisticInteractiveImages({})
+  }, [stageKey])
   const [editingTurn, setEditingTurn] = useState<{
     id: string
     content: string
@@ -313,6 +318,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           })
         }
       }
+      const mergedImages = mergeInteractiveImages(interactiveImages(deferredImageMessages), optimisticInteractiveImages[turn.id])
       messages.push({
         id: `${turn.id}-assistant`,
         turn_id: turn.id,
@@ -320,14 +326,14 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         content: sanitizeStoredNarrative(turn.narrative),
         turn_versions: turn.versions,
         turn_version_index: turn.version_idx,
-        interactive_image: latestInteractiveImage(deferredImageMessages),
-        interactive_images: interactiveImages(deferredImageMessages),
+        interactive_image: latestMergedInteractiveImage(mergedImages),
+        interactive_images: mergedImages,
         interactive_image_error: latestInteractiveImageError(deferredImageMessages),
-        interactive_image_status: latestInteractiveImageStatus(deferredImageMessages),
+        interactive_image_status: mergedImages?.length ? 'success' : latestInteractiveImageStatus(deferredImageMessages),
       })
       return messages
     })
-  }, [rewindTurnId, snapshot?.turns])
+  }, [optimisticInteractiveImages, rewindTurnId, snapshot?.turns])
 
   const displayLiveMessages = hasPersistedLiveTurn ? [] : liveMessages.filter((message) => message.role !== 'token_usage')
   const messages = useMemo(() => [...historyMessages, ...displayLiveMessages], [displayLiveMessages, historyMessages])
@@ -696,6 +702,15 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     void send({ message: source, rewindTurnId: message.turn_id })
   }
 
+  const rememberGeneratedInteractiveImage = useCallback((image?: InteractiveImage) => {
+    if (!image?.turn_id || !image.image_path) return
+    setOptimisticInteractiveImages((prev) => {
+      const images = prev[image.turn_id] || []
+      if (images.some((item) => item.image_path === image.image_path)) return prev
+      return { ...prev, [image.turn_id]: [...images, image] }
+    })
+  }, [])
+
   const generateImageForMessage = useCallback(
     async (message: ChatMessage, source: 'manual' | 'auto' = 'manual', force = true) => {
       if (!message.turn_id || !storyId || generatingImageTurnId) return null
@@ -708,6 +723,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           source,
           force,
         })
+        rememberGeneratedInteractiveImage(result.image)
         await onDone()
         return result
       } catch (error) {
@@ -724,7 +740,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         setStageActivityContent('')
       }
     },
-    [branchId, generatingImageTurnId, onDone, setStageActivityContent, setStageLiveMessages, snapshot?.branch_id, storyId, t],
+    [branchId, generatingImageTurnId, onDone, rememberGeneratedInteractiveImage, setStageActivityContent, setStageLiveMessages, snapshot?.branch_id, storyId, t],
   )
 
   const maybeGenerateAutoImage = useCallback(
@@ -742,10 +758,11 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         return null
       })
       if (result && !result.skipped) {
+        rememberGeneratedInteractiveImage(result.image)
         await onDone()
       }
     },
-    [branchId, onDone, snapshot, storyId],
+    [branchId, onDone, rememberGeneratedInteractiveImage, snapshot, storyId],
   )
 
   const fillBookPresetOpening = () => {
@@ -1804,19 +1821,24 @@ function parseEventResult(result?: string): unknown {
   }
 }
 
-function latestInteractiveImage(messages: ChatMessage[]): InteractiveImage | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const image = messages[index].interactive_image
-    if (image?.image_path) return image
-  }
-  return undefined
-}
-
 function interactiveImages(messages: ChatMessage[]): InteractiveImage[] | undefined {
   const images = messages
     .map((message) => message.interactive_image)
     .filter((image): image is InteractiveImage => Boolean(image?.image_path))
   return images.length > 0 ? images : undefined
+}
+
+function mergeInteractiveImages(persisted?: InteractiveImage[], optimistic?: InteractiveImage[]) {
+  const merged: InteractiveImage[] = []
+  for (const image of [...(persisted || []), ...(optimistic || [])]) {
+    if (!image.image_path || merged.some((item) => item.image_path === image.image_path)) continue
+    merged.push(image)
+  }
+  return merged.length > 0 ? merged : undefined
+}
+
+function latestMergedInteractiveImage(images?: InteractiveImage[]) {
+  return images?.[images.length - 1]
 }
 
 function latestInteractiveImageError(messages: ChatMessage[]): InteractiveImageError | undefined {

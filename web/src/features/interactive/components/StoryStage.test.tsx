@@ -1,8 +1,13 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { VirtuosoMockContext } from 'react-virtuoso'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoryStage } from './StoryStage'
 import type { StorySummary } from '../types'
+
+const { generateInteractiveImageMock } = vi.hoisted(() => ({
+  generateInteractiveImageMock: vi.fn(),
+}))
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: vi.fn().mockResolvedValue({ effective: {} }),
@@ -11,6 +16,21 @@ vi.mock('@/features/settings/api', () => ({
 vi.mock('@/hooks/useSkillCommands', () => ({
   useSkillCommands: () => [],
 }))
+
+vi.mock('../api', () => ({
+  abortInteractiveChat: vi.fn(),
+  analyzeInteractiveContext: vi.fn(),
+  compactInteractiveContext: vi.fn(),
+  generateInteractiveHotChoices: vi.fn(),
+  generateInteractiveImage: generateInteractiveImageMock,
+  removeInteractiveContextCompaction: vi.fn(),
+  sendInteractiveMessage: vi.fn(),
+  switchInteractiveTurnVersion: vi.fn(),
+}))
+
+beforeEach(() => {
+  generateInteractiveImageMock.mockReset()
+})
 
 describe('StoryStage interactive image settings', () => {
   it('sets interactive image mode from the input actions submenu', async () => {
@@ -39,6 +59,59 @@ describe('StoryStage interactive image settings', () => {
     await waitFor(() => {
       expect(handleImageSettingsChange).toHaveBeenCalledWith({ mode: 'interval', interval_turns: 3, preset_id: 'game-cg' })
     })
+  })
+})
+
+describe('StoryStage interactive image rendering', () => {
+  it('手动生成互动图像成功后不等刷新快照也会立即渲染到对应回合', async () => {
+    const user = userEvent.setup()
+    const handleDone = vi.fn().mockResolvedValue(undefined)
+    generateInteractiveImageMock.mockResolvedValue({
+      enabled: true,
+      image: {
+        schema: 'interactive_image.v1',
+        story_id: 'story-1',
+        branch_id: 'main',
+        turn_id: 'turn-1',
+        image_path: 'assets/interactive/images/story-1/main/turn-1/run-a/image.png',
+        meta_path: 'assets/interactive/images/story-1/main/turn-1/run-a/meta.json',
+        alt_text: '即时互动图像',
+      },
+    })
+
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+        <StoryStage
+          workspace="/tmp/book"
+          stories={[story()]}
+          story={story()}
+          tellers={[]}
+          storyId="story-1"
+          branchId="main"
+          snapshot={{
+            story_id: 'story-1',
+            branch_id: 'main',
+            state: {},
+            turns: [{
+              id: 'turn-1',
+              parent_id: null,
+              branch_id: 'main',
+              ts: '2026-06-28T00:00:00Z',
+              user: '继续前进',
+              narrative: '玄璃抬头，看见雾气里有一道微光。',
+            }],
+          }}
+          onDone={handleDone}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    await user.click(screen.getByRole('button', { name: '生成互动图像' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('img', { name: '即时互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png')
+    })
+    expect(handleDone).toHaveBeenCalled()
   })
 })
 

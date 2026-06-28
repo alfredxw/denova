@@ -1,14 +1,25 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ComponentProps } from 'react'
+import { VirtuosoMockContext } from 'react-virtuoso'
 import { describe, expect, it, vi } from 'vitest'
-import { MessageList } from './MessageList'
+import { MessageList as RawMessageList } from './MessageList'
 import { SessionManager } from './SessionManager'
+import type { ChatMessage } from '@/lib/api'
 import type { SessionSummary } from '@/lib/api'
 
 const sessions: SessionSummary[] = [
   { id: 'session-a', title: '设定讨论', active: true, message_count: 2, created_at: '', updated_at: '' },
   { id: 'session-b', title: '正文续写', active: false, message_count: 1, created_at: '', updated_at: '' },
 ]
+
+function MessageList(props: ComponentProps<typeof RawMessageList>) {
+  return (
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 52 }}>
+      <RawMessageList {...props} />
+    </VirtuosoMockContext.Provider>
+  )
+}
 
 function mockScrollMetrics(element: HTMLElement, initial = { scrollHeight: 1200, clientHeight: 320, scrollTop: 0 }) {
   let scrollHeight = initial.scrollHeight
@@ -87,7 +98,24 @@ describe('MessageList', () => {
     await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
   })
 
-  it('用户向上浏览时消息更新不会自动拉回底部', () => {
+  it('用真实列表底部 spacer 避让浮动输入区，并禁止对话容器横向滚动', () => {
+    const { container } = render(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[{ type: 'message', role: 'assistant', content: '最后一行内容' }]}
+        bottomPaddingClassName="pb-36"
+        bottomPaddingPx={240}
+      />,
+    )
+
+    const scroller = container.querySelector('.nova-chat-canvas')
+    expect(scroller).toHaveClass('overflow-x-hidden')
+    expect(scroller).not.toHaveStyle({ paddingBottom: '240px' })
+    expect(container.querySelector('[data-nova-chat-bottom-spacer]')).toHaveStyle({ height: '240px' })
+  })
+
+  it('用户向上浏览时消息更新不会自动拉回底部', async () => {
     const { container, rerender } = render(
       <MessageList
         isStreaming={false}
@@ -102,8 +130,9 @@ describe('MessageList', () => {
     const scroller = container.firstElementChild as HTMLDivElement
     const scrollMetrics = mockScrollMetrics(scroller)
 
-    scroller.scrollTop = scrollMetrics.maxScrollTop()
-    fireEvent.scroll(scroller)
+    await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
+    fireEvent.wheel(scroller, { deltaY: -120 })
+    fireEvent.keyDown(scroller, { key: 'ArrowUp' })
     scroller.scrollTop = 200
     fireEvent.scroll(scroller)
 
@@ -365,5 +394,29 @@ describe('MessageList', () => {
     expect(screen.getByText('SubAgent 可见输出')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /researcher 输出/ }))
     expect(handleOpen).toHaveBeenCalledWith(expect.objectContaining({ subagent_session_id: 'run-1-subagent-01-researcher' }))
+  })
+
+  it('长消息列表只挂载可视窗口附近的消息行', async () => {
+    const messages: ChatMessage[] = Array.from({ length: 1000 }, (_, index) => ({
+      id: `message-${index}`,
+      type: 'message',
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: `长列表消息 ${index}`,
+    }))
+
+    const { container } = render(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={messages}
+        scrollResetKey="long-session"
+      />,
+    )
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('[data-nova-chat-item]').length).toBeGreaterThan(0)
+    })
+    expect(container.querySelectorAll('[data-nova-chat-item]').length).toBeLessThan(120)
+    expect(screen.queryByText('长列表消息 500')).not.toBeInTheDocument()
   })
 })

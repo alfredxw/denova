@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { ContextAnalysis } from '@/lib/api-client'
+import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
 import type { BranchSummary, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
@@ -240,7 +240,7 @@ export function generateInteractiveHotChoices(storyId: string, input: { branch?:
   })
 }
 
-export function generateInteractiveImage(storyId: string, input: { branch_id?: string; turn_id: string; source: 'manual' | 'auto'; force?: boolean }): Promise<{ enabled?: boolean; skipped?: boolean; skipped_reason?: string; image?: unknown }> {
+export function generateInteractiveImage(storyId: string, input: { branch_id?: string; turn_id: string; source: 'manual' | 'auto'; force?: boolean }): Promise<{ enabled?: boolean; skipped?: boolean; skipped_reason?: string; image?: InteractiveImage }> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/images/generate`, {
     method: 'POST',
     headers: jsonHeaders,
