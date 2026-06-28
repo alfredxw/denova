@@ -147,6 +147,14 @@ You can also configure language models, image models, Agent parameters, the defa
 Built-in defaults < global config.toml < user-level config < workspace-level config < environment variables
 ```
 
+When Writing Mode generates chapters, you can avoid streaming large `write_file` chapter bodies into the live tool-call UI by enabling "Hide Chapter Body in Live Output" under Settings / Writing Mode / Live Output, or by adding this to `config.toml`:
+
+```toml
+hide_novel_chapter_body_in_live_output = true
+```
+
+This option is off by default. When enabled, it only changes live SSE presentation in Writing Mode: the UI shows the target path and generated character count using the same counting semantics as `wc -m`, chapter text is still written to files normally, and internal Agent events, tool execution, and session history are preserved.
+
 ## Book Workspace
 
 After startup, if no book is specified or restored, the Web UI opens Book Management. One workspace maps to one book. Recommended structure:

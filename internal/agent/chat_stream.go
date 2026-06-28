@@ -14,7 +14,7 @@ import (
 
 // processStreamingEvent 处理流式助手消息，输出领域事件。
 // 工具调用在流中一检测到名称就立即 emit，让前端尽早展示 running 卡片。
-// 参数在流中逐帧 emit tool_args_delta，前端可实时展示 write_file 内容。
+// 参数在流中逐帧 emit tool_args_delta，调用方可在对外传输前按展示策略过滤。
 func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, toolResultMaxBytes int, meta agentEventMetadata, emit func(Event)) (*schema.Message, error) {
 	mv.MessageStream.SetAutomaticClose()
 	defer mv.MessageStream.Close()

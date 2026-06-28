@@ -593,6 +593,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.VolumeDirFormat != "" {
 		cfg.VolumeDirFormat = effective.VolumeDirFormat
 	}
+	if effective.HideChapterBodyLiveOutput != nil {
+		cfg.HideChapterBodyLiveOutput = *effective.HideChapterBodyLiveOutput
+	}
 	if effective.ChapterGroupMin != nil {
 		cfg.ChapterGroupMin = appSettingsInt(effective.ChapterGroupMin, 3)
 	}
@@ -692,6 +695,9 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.VolumeDirFormat != "" {
 		cfg.VolumeDirFormat = settings.VolumeDirFormat
+	}
+	if settings.HideChapterBodyLiveOutput != nil {
+		cfg.HideChapterBodyLiveOutput = *settings.HideChapterBodyLiveOutput
 	}
 	if settings.ChapterGroupMin != nil {
 		cfg.ChapterGroupMin = appSettingsInt(settings.ChapterGroupMin, 3)

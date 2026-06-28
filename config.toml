@@ -164,6 +164,8 @@ frontend_port = 8081
 # 编辑器
 auto_save_enabled = true
 auto_save_interval_ms = 1500
+# 隐藏章节正文在 Agent 流中的输出，文件仍正常写入。
+hide_novel_chapter_body_in_live_output = false
 chapter_filename_format = "ch{order:05}-{chapter}-{title}.md"
 volume_dir_format = "v{order:05}-{volume}"
 chapter_group_min = 3

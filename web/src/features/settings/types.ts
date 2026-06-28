@@ -25,6 +25,7 @@ export interface Settings {
   remote_access_password_set?: boolean
   auto_save_enabled?: boolean | null
   auto_save_interval_ms?: number | null
+  hide_novel_chapter_body_in_live_output?: boolean | null
   chapter_filename_format?: string
   volume_dir_format?: string
   max_open_tabs?: number | null

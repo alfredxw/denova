@@ -48,6 +48,7 @@ type Config struct {
 	AgentToolResultLimitKB      int                          `toml:"agent_tool_result_limit_kb"`
 	ChapterFilenameFormat       string                       `toml:"-"`
 	VolumeDirFormat             string                       `toml:"-"`
+	HideChapterBodyLiveOutput   bool                         `toml:"-"`
 	ChapterGroupMin             int                          `toml:"-"`
 	ChapterGroupMax             int                          `toml:"-"`
 	VersionTimedEnabled         bool                         `toml:"-"`
@@ -105,6 +106,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
+		HideChapterBodyLiveOutput:   settingsBool(s.HideChapterBodyLiveOutput, false),
 		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
 		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
 		VersionTimedEnabled:         settingsBool(s.VersionTimedEnabled, true),
@@ -210,6 +212,9 @@ func settingsFromConfig(cfg *Config) Settings {
 		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
 	}
+	if cfg.HideChapterBodyLiveOutput {
+		settings.HideChapterBodyLiveOutput = &cfg.HideChapterBodyLiveOutput
+	}
 	if cfg.BackendPort > 0 {
 		settings.BackendPort = &cfg.BackendPort
 	}
@@ -283,6 +288,7 @@ func Load() *Config {
 			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
+			HideChapterBodyLiveOutput:   settingsBool(d.HideChapterBodyLiveOutput, false),
 			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
 			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),
 			VersionTimedEnabled:         settingsBool(d.VersionTimedEnabled, true),
