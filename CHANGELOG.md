@@ -14,10 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - 方案预设：图像方案升级为可配置注入位置的规则列表，支持分别注入图像 Agent system prompt 和最终图像请求 prompt；旧单段 prompt 会兼容迁移为图像请求规则。
+- WebUI：书籍管理里的“编辑信息”改为独立弹窗，扩大书名、作者、简介和封面生成区域，避免在书架卡片内编辑过于拥挤。
+- WebUI：书籍管理手机端书架改为以封面为主的紧凑自适应网格，iPhone 15 Pro 等窄屏宽度下书卡只展示封面和书名，减少纵向占用。
 - WebUI：图像放大查看器改用 `react-zoom-pan-pinch` 管理缩放、拖拽/触控板滚动平移和触控板 pinch；工具栏按钮保持 25% 步进，手势缩放改为按比例变化。
 
 ### Fixed
 
+- WebUI：书架封面即使暂时没有 `cover_updated_at` 版本号，也会尝试读取固定路径 `assets/image/cover.png`，避免本地已有封面却显示占位图。
 - WebUI：设置页、Agents 页和游戏设置页保存时带上资源版本，后端检测到 Agent 或其他页面已更新同一配置/资源时返回冲突错误，避免旧自动保存覆盖新内容。
 - 游戏模式：互动图像重新生成完成并追加新版本后，回合内联预览会自动切到最新图片，不再停留在用户之前手动查看的旧版本。
 

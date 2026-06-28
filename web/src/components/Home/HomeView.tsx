@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { BookOpen, Check, FileText, Folder, GripVertical, Image as ImageIcon, LibraryBig, Loader2, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { BookOpen, FileText, Folder, GripVertical, Image as ImageIcon, LibraryBig, Loader2, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { NovelImportDialog } from './NovelImportDialog'
 import {
   bookCoverURL,
@@ -259,6 +267,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
   }
 
   const currentBook = orderedBooks.find((book) => book.path === workspace)
+  const editingBook = editingBookPath ? orderedBooks.find((book) => book.path === editingBookPath) || null : null
   const validImagePresets = imagePresets.filter((preset) => !preset.invalid)
   const imagePresetOptions = validImagePresets.length > 0
     ? validImagePresets
@@ -285,9 +294,9 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
       </div>
 
       <ScrollArea className="min-h-0 flex-1">
-        <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6">
+        <div className="mx-auto flex w-full min-w-0 max-w-full flex-col gap-5 overflow-x-hidden px-4 py-5 sm:max-w-4xl sm:px-6 sm:py-6">
           {/* 当前书籍 */}
-          <section className="border-b border-[var(--nova-border)] pb-5">
+          <section className="min-w-0 border-b border-[var(--nova-border)] pb-5">
             <div className="mb-2 flex items-center gap-2 text-[11px] font-medium uppercase text-[var(--nova-text-faint)]">
               <BookOpen className="h-3.5 w-3.5" />
               {t('home.currentBook')}
@@ -319,7 +328,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
           </section>
 
           {/* 书籍列表 */}
-          <section>
+          <section className="min-w-0">
             <div className="mb-3 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-[11px] font-medium uppercase text-[var(--nova-text-faint)]">
                 <Folder className="h-3.5 w-3.5" />
@@ -426,109 +435,9 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
             ) : (
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={orderedBooks.map((book) => book.path)} strategy={rectSortingStrategy}>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(168px,1fr))]">
+                  <div className="grid w-full max-w-[calc(100vw-2rem)] min-w-0 grid-cols-[repeat(auto-fit,minmax(104px,1fr))] gap-2.5 min-[520px]:grid-cols-[repeat(auto-fill,minmax(132px,1fr))] sm:max-w-none sm:grid-cols-[repeat(auto-fill,minmax(168px,1fr))] sm:gap-3">
                     {orderedBooks.map((book) => {
                       const isCurrent = book.path === workspace
-                      const isEditing = editingBookPath === book.path
-
-                      if (isEditing) {
-                        return (
-                          <SortableBookCard key={book.path} book={book} disabled>
-                            {() => (
-                              <div className="min-h-[168px] space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] sm:min-h-[188px]">
-                                {editLoading ? (
-                                  <div className="py-2 text-center text-xs text-[var(--nova-text-faint)]">{t('common.loading')}</div>
-                                ) : (
-                                  <>
-                                    <Input
-                                      type="text"
-                                      value={editTitle}
-                                      onChange={(e) => setEditTitle(e.target.value)}
-                                      placeholder={t('home.bookTitlePlaceholder')}
-                                      className={inputCls}
-                                      autoFocus
-                                    />
-                                    <Input
-                                      type="text"
-                                      value={editAuthor}
-                                      onChange={(e) => setEditAuthor(e.target.value)}
-                                      placeholder={t('home.authorPlaceholder')}
-                                      className={inputCls}
-                                    />
-                                    <Textarea
-                                      autoResize
-                                      value={editDesc}
-                                      onChange={(e) => setEditDesc(e.target.value)}
-                                      placeholder={t('common.description')}
-                                      rows={1}
-                                      className={inputCls + ' min-h-0 resize-none'}
-                                    />
-                                    <div className="flex min-w-0 gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
-                                      <BookCoverThumbnail
-                                        book={book}
-                                        version={coverVersion(book)}
-                                        className="h-[92px] w-[69px] shrink-0"
-                                        iconClassName="h-4 w-4"
-                                      />
-                                      <div className="flex min-w-0 flex-1 flex-col gap-2">
-                                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
-                                          <ImageIcon className="h-3.5 w-3.5" />
-                                          {t('home.cover')}
-                                        </div>
-                                        <select
-                                          aria-label={t('home.coverPreset')}
-                                          value={coverPresetId || defaultImagePresetId || 'game-cg'}
-                                          onChange={(event) => setCoverPresetId(event.target.value)}
-                                          className={inputCls + ' h-8 py-1 text-xs'}
-                                        >
-                                          {imagePresetOptions.map((preset) => (
-                                            <option key={preset.id} value={preset.id}>{preset.name || preset.id}</option>
-                                          ))}
-                                        </select>
-                                        <Input
-                                          type="text"
-                                          value={coverInstruction}
-                                          onChange={(event) => setCoverInstruction(event.target.value)}
-                                          placeholder={t('home.coverInstructionPlaceholder')}
-                                          className={inputCls}
-                                        />
-                                        {coverError && <div className="line-clamp-2 text-[11px] text-[var(--nova-danger)]">{coverError}</div>}
-                                        <Button
-                                          type="button"
-                                          size="xs"
-                                          className={primaryButtonCls + ' w-fit max-w-full'}
-                                          disabled={coverGeneratingPath === book.path}
-                                          onClick={() => void handleGenerateCover(book)}
-                                        >
-                                          {coverGeneratingPath === book.path ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                                          {coverGeneratingPath === book.path ? t('home.coverGenerating') : t('home.generateCover')}
-                                        </Button>
-                                      </div>
-                                    </div>
-                                    <div className="flex items-center justify-end gap-2">
-                                      <TooltipIconButton
-                                        label={t('common.cancel')}
-                                        className={iconButtonCls}
-                                        onClick={() => setEditingBookPath(null)}
-                                      >
-                                        <X className="h-3.5 w-3.5" />
-                                      </TooltipIconButton>
-                                      <TooltipIconButton
-                                        label={t('common.save')}
-                                        className="nova-nav-item text-[var(--nova-accent-green)] hover:bg-[var(--nova-hover)]"
-                                        disabled={editSaving}
-                                        onClick={handleSaveEdit}
-                                      >
-                                        <Check className="h-3.5 w-3.5" />
-                                      </TooltipIconButton>
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </SortableBookCard>
-                        )
-                      }
 
                       return (
                         <SortableBookCard
@@ -537,7 +446,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                         >
                           {(dragHandleProps) => (
                             <div
-                              className={`group relative min-h-[212px] overflow-hidden rounded-[var(--nova-radius)] border text-xs transition-colors sm:min-h-[232px] ${
+                              className={`group relative overflow-hidden rounded-[var(--nova-radius)] border text-xs transition-colors sm:min-h-[232px] ${
                                 isCurrent
                                   ? 'border-[var(--nova-accent)] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
                                   : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
@@ -546,21 +455,23 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                               {isCurrent && (
                                 <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[var(--nova-accent)]" />
                               )}
-                              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)]" />
+                              <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden h-3 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] sm:block" />
                               <button
                                 type="button"
-                                className="flex h-full min-h-[212px] w-full min-w-0 flex-col px-3 py-3 text-left sm:min-h-[232px]"
+                                className="flex h-full w-full min-w-0 flex-col items-center px-2 py-2 text-center sm:min-h-[232px] sm:items-stretch sm:px-3 sm:py-3 sm:text-left"
                                 onClick={() => handleSwitch(book.path)}
                               >
                                 <BookCoverThumbnail
                                   book={book}
                                   version={coverVersion(book)}
-                                  className="mb-3 aspect-[3/4] w-full"
+                                  className="mb-2 aspect-[3/4] w-full shrink-0 sm:mb-3 sm:w-full sm:shrink"
                                   iconClassName={`h-5 w-5 ${isCurrent ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`}
                                 />
-                                <div className="line-clamp-2 text-sm font-semibold leading-5 text-[var(--nova-text)]">{book.name || t('home.unnamedBook')}</div>
-                                {book.author && <div className="mt-2 truncate text-[11px] text-[var(--nova-text-muted)]">{book.author}</div>}
-                                <div className="mt-auto truncate pt-4 text-[10px] text-[var(--nova-text-faint)]">{book.path}</div>
+                                <div className="flex min-w-0 flex-1 flex-col self-stretch">
+                                  <div className="line-clamp-2 text-xs font-semibold leading-4 text-[var(--nova-text)] sm:text-sm sm:leading-5">{book.name || t('home.unnamedBook')}</div>
+                                  {book.author && <div className="hidden truncate text-[11px] text-[var(--nova-text-muted)] sm:mt-2 sm:block">{book.author}</div>}
+                                  <div className="mt-auto hidden truncate pt-4 text-[10px] text-[var(--nova-text-faint)] sm:block">{book.path}</div>
+                                </div>
                               </button>
                               <div className="absolute right-2 top-2 z-10 flex shrink-0 items-center gap-0.5">
                                 <TooltipIconButton
@@ -585,7 +496,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </TooltipIconButton>
                                 {isCurrent && (
-                                  <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
+                                  <span className="hidden rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)] sm:inline">
                                     {t('common.current')}
                                   </span>
                                 )}
@@ -613,6 +524,116 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
           onClose?.()
         }}
       />
+      <Dialog open={Boolean(editingBook)} onOpenChange={(open) => {
+        if (!open && !editSaving) setEditingBookPath(null)
+      }}>
+        <DialogContent
+          showCloseButton={false}
+          className="nova-panel flex max-h-[min(760px,calc(100vh-2rem))] w-[min(720px,calc(100vw-2rem))] max-w-[min(720px,calc(100vw-2rem))] grid-rows-none flex-col gap-0 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)]"
+        >
+          <DialogHeader className="border-b border-[var(--nova-border)] px-4 py-3">
+            <DialogTitle className="text-sm font-semibold text-[var(--nova-text)]">{t('home.editInfo')}</DialogTitle>
+            <DialogDescription className="truncate text-xs text-[var(--nova-text-faint)]">
+              {editingBook?.path || ''}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+            {editLoading || !editingBook ? (
+              <div className="py-10 text-center text-xs text-[var(--nova-text-faint)]">{t('common.loading')}</div>
+            ) : (
+              <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
+                <div className="min-w-0 space-y-3">
+                  <Input
+                    type="text"
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    placeholder={t('home.bookTitlePlaceholder')}
+                    className={inputCls}
+                    autoFocus
+                  />
+                  <Input
+                    type="text"
+                    value={editAuthor}
+                    onChange={(e) => setEditAuthor(e.target.value)}
+                    placeholder={t('home.authorPlaceholder')}
+                    className={inputCls}
+                  />
+                  <Textarea
+                    autoResize
+                    value={editDesc}
+                    onChange={(e) => setEditDesc(e.target.value)}
+                    placeholder={t('home.descriptionPlaceholder')}
+                    rows={7}
+                    className={inputCls + ' min-h-36 resize-none'}
+                  />
+                </div>
+                <div className="min-w-0 space-y-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
+                  <BookCoverThumbnail
+                    book={editingBook}
+                    version={coverVersion(editingBook)}
+                    className="mx-auto aspect-[3/4] w-28 md:w-full"
+                    iconClassName="h-5 w-5"
+                  />
+                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
+                    <ImageIcon className="h-3.5 w-3.5" />
+                    {t('home.cover')}
+                  </div>
+                  <select
+                    aria-label={t('home.coverPreset')}
+                    value={coverPresetId || defaultImagePresetId || 'game-cg'}
+                    onChange={(event) => setCoverPresetId(event.target.value)}
+                    className={inputCls + ' h-8 py-1 text-xs'}
+                  >
+                    {imagePresetOptions.map((preset) => (
+                      <option key={preset.id} value={preset.id}>{preset.name || preset.id}</option>
+                    ))}
+                  </select>
+                  <Textarea
+                    autoResize
+                    value={coverInstruction}
+                    onChange={(event) => setCoverInstruction(event.target.value)}
+                    placeholder={t('home.coverInstructionPlaceholder')}
+                    rows={3}
+                    className={inputCls + ' min-h-20 resize-none'}
+                  />
+                  {coverError && <div className="line-clamp-3 text-[11px] text-[var(--nova-danger)]">{coverError}</div>}
+                  <Button
+                    type="button"
+                    size="xs"
+                    className={primaryButtonCls + ' w-full max-w-full justify-center'}
+                    disabled={coverGeneratingPath === editingBook.path}
+                    onClick={() => void handleGenerateCover(editingBook)}
+                  >
+                    {coverGeneratingPath === editingBook.path ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                    {coverGeneratingPath === editingBook.path ? t('home.coverGenerating') : t('home.generateCover')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="!mx-0 !mb-0 rounded-none border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)]/95 !px-4 !py-3">
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              className={ghostButtonCls}
+              disabled={editSaving}
+              onClick={() => setEditingBookPath(null)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              className={primaryButtonCls}
+              disabled={editSaving || editLoading || !editingBook}
+              onClick={handleSaveEdit}
+            >
+              {editSaving ? t('common.saving') : t('common.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => {
         if (!open && !deleting) setDeleteTarget(null)
       }}>
@@ -658,7 +679,7 @@ function BookCoverThumbnail({ book, version, className, iconClassName }: {
     setFailed(false)
   }, [book.path, version])
 
-  const showImage = Boolean(version) && !failed
+  const showImage = !failed
   return (
     <div
       className={`relative flex min-w-0 items-center justify-center overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] ${className || ''}`}

@@ -19,6 +19,7 @@ const common = {
   'common.no': 'No',
   'common.save': 'Save',
   'common.saved': 'Saved',
+  'common.saving': 'Saving...',
   'common.refresh': 'Refresh',
   'common.rename': 'Rename',
   'common.searching': 'Searching...',

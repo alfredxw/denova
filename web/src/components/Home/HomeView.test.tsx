@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeView } from './HomeView'
@@ -58,16 +58,30 @@ describe('HomeView book covers', () => {
     expect(covers.some((img) => (img as HTMLImageElement).src.includes('v=old-version'))).toBe(true)
   })
 
-  it('generates a cover from the edit form and refreshes the local version', async () => {
+  it('tries the fixed book cover endpoint even when the book list has no cover version', async () => {
+    renderHome({ books: [{
+      name: '星河边境',
+      path: '/books/star',
+      author: '',
+      last_opened_at: '',
+    }] })
+
+    const covers = await screen.findAllByRole('img', { name: '星河边境' })
+    expect(covers.some((img) => (img as HTMLImageElement).src.includes('/api/books/cover'))).toBe(true)
+    expect(covers.every((img) => !(img as HTMLImageElement).src.includes('v='))).toBe(true)
+  })
+
+  it('generates a cover from the edit dialog and refreshes the local version', async () => {
     const user = userEvent.setup()
     const onBooksChange = vi.fn()
     renderHome({ onBooksChange })
 
     await user.click(await screen.findByRole('button', { name: '编辑信息' }))
-    const presetSelect = await screen.findByLabelText('封面图像方案')
+    const dialog = await screen.findByRole('dialog', { name: '编辑信息' })
+    const presetSelect = within(dialog).getByLabelText('封面图像方案')
     await waitFor(() => expect(presetSelect).toHaveValue('realistic'))
-    await user.type(screen.getByPlaceholderText('生成要求（选填）'), '冷色调')
-    await user.click(screen.getByRole('button', { name: '生成封面' }))
+    await user.type(within(dialog).getByPlaceholderText('生成要求（选填）'), '冷色调')
+    await user.click(within(dialog).getByRole('button', { name: '生成封面' }))
 
     await waitFor(() => {
       expect(generateBookCover).toHaveBeenCalledWith({
