@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"nova/internal/book"
-	"nova/internal/imagepreset"
 	"nova/internal/prompts"
 )
 
@@ -169,46 +168,6 @@ func boundedStyleRules(rules []StyleRule, maxChars int) []StyleRule {
 		}
 		if used >= maxChars {
 			break
-		}
-	}
-	return result
-}
-
-func appendImagePresetContext(message string, preset ImagePresetContext, logs ...*contextBuildLog) string {
-	prompt := strings.TrimSpace(preset.Prompt)
-	if prompt == "" {
-		return message
-	}
-	id := strings.TrimSpace(preset.ID)
-	name := strings.TrimSpace(preset.Name)
-	if name == "" {
-		name = id
-	}
-	prompt = truncateRunes(prompt, imagepreset.MaxPromptChars)
-	var sb strings.Builder
-	sb.WriteString(message)
-	sb.WriteString("\n\n# 图像方案预设（仅用于图像生成）\n\n")
-	if id != "" {
-		sb.WriteString("- id: ")
-		sb.WriteString(id)
-		sb.WriteString("\n")
-	}
-	if name != "" {
-		sb.WriteString("- name: ")
-		sb.WriteString(name)
-		sb.WriteString("\n")
-	}
-	sb.WriteString("\n")
-	sb.WriteString("当且仅当本轮需要调用 `generate_image` 或生成章节插画/互动图像 prompt 时，必须参考下面的视觉方案；普通正文写作、资料库修改和非图像任务不要套用这些视觉约束。\n\n")
-	sb.WriteString(prompt)
-	result := sb.String()
-	for _, log := range logs {
-		if log != nil {
-			title := "图像方案"
-			if name != "" {
-				title = "图像方案：" + name
-			}
-			log.add("图像方案预设", title, prompt, fmt.Sprintf("来源：image_preset_id=%s；最多 %d 字符；仅约束图像生成工具调用", id, imagepreset.MaxPromptChars))
 		}
 	}
 	return result

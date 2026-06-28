@@ -24,10 +24,15 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
   const { t } = useTranslation()
   const activeSlot = draft?.slots?.find((slot) => slot.id === activeSlotId) || draft?.slots?.[0] || null
   const [targetPickerOpen, setTargetPickerOpen] = useState(false)
+  const [randomEventRateInput, setRandomEventRateInput] = useState(() => formatRandomEventRate(draft?.random_event_rate))
 
   useEffect(() => {
     setTargetPickerOpen(false)
   }, [activeSlotId])
+
+  useEffect(() => {
+    setRandomEventRateInput(formatRandomEventRate(draft?.random_event_rate))
+  }, [draft?.id])
 
   const updateSlotById = (slotId: string, patch: Partial<TellerPromptSlot>) => {
     if (!draft) return
@@ -63,6 +68,15 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
     setActiveSlotId(nextSlots[0]?.id || '')
   }
 
+  const updateRandomEventRate = (value: string) => {
+    setRandomEventRateInput(value)
+    if (!draft || !isDecimalInput(value)) return
+    setDraft({
+      ...draft,
+      random_event_rate: parseDecimalInput(value),
+    })
+  }
+
   if (!draft) {
     return <EmptyState title={t('settingPanel.editor.noTellerSelected')} description={t('settingPanel.editor.noTellerSelectedDesc')} />
   }
@@ -81,13 +95,10 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
         <Field label={t('settingPanel.field.randomEventRate')}>
           <Input
             className={inputClassName}
-            value={String(draft.random_event_rate ?? 0)}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                random_event_rate: Number(event.target.value) || 0,
-              })
-            }
+            aria-label={t('settingPanel.field.randomEventRate')}
+            inputMode="decimal"
+            value={randomEventRateInput}
+            onChange={(event) => updateRandomEventRate(event.target.value)}
           />
         </Field>
         <Field label={t('settingPanel.field.tags')}>
@@ -217,6 +228,21 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
       </div>
     </div>
   )
+}
+
+function formatRandomEventRate(value: number | undefined) {
+  return Number.isFinite(value) ? String(value) : '0'
+}
+
+function isDecimalInput(value: string) {
+  return /^\d*(?:\.\d*)?$/.test(value.trim())
+}
+
+function parseDecimalInput(value: string) {
+  const normalized = value.trim()
+  if (normalized === '' || normalized === '.') return 0
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function InteractiveStyleRulesEditor({ rules, onChange }: { rules: StyleRule[]; onChange: (rules: StyleRule[]) => void }) {

@@ -219,6 +219,23 @@ func TestBuildInstructionIncludesStyleRulesInSystemPrompt(t *testing.T) {
 	}
 }
 
+func TestBuildInstructionIncludesImagePresetSystemPrompt(t *testing.T) {
+	state := book.NewState(t.TempDir())
+	cfg := &config.Config{Workspace: state.Workspace()}
+
+	instruction := BuildInstruction(cfg, state, IDEStoryTeller{
+		ImagePresetID:           "realistic",
+		ImagePresetName:         "写实",
+		ImagePresetSystemPrompt: "构造图像提示词时保持真实光影。",
+	})
+
+	for _, required := range []string{"## 图像方案系统规则（仅用于图像生成）", "realistic", "写实", "构造图像提示词时保持真实光影", "普通正文写作"} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("system prompt should include image preset system rule %q:\n%s", required, instruction)
+		}
+	}
+}
+
 func TestBuildInteractiveStoryInstructionIncludesStyleRulesInSystemPrompt(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	cfg := &config.Config{Workspace: state.Workspace()}

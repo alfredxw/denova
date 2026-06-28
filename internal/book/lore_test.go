@@ -1,6 +1,7 @@
 package book
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -226,6 +227,28 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatalf("items should be empty after delete: %#v", items)
+	}
+}
+
+func TestLoreStoreUpdateRejectsStaleRevision(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	item, err := store.Create(LoreItemInput{Type: "character", Name: "林川", Importance: "major", Content: "旧内容"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := store.Update(item.ID, LoreItemInput{Type: "character", Name: "林川", Importance: "major", Content: "Agent 内容", BaseRevision: item.UpdatedAt})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Update(item.ID, LoreItemInput{Type: "character", Name: "林川", Importance: "major", Content: "前端旧内容", BaseRevision: item.UpdatedAt}); !errors.Is(err, ErrLoreRevisionConflict) {
+		t.Fatalf("expected lore revision conflict, got %v", err)
+	}
+	got, err := store.Read(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Content != agent.Content {
+		t.Fatalf("stale save should not overwrite Agent content: %#v", got)
 	}
 }
 

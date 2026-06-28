@@ -154,11 +154,11 @@ export function createInteractiveTeller(input: Partial<Teller>): Promise<Teller>
   })
 }
 
-export function updateInteractiveTeller(id: string, input: Partial<Teller>): Promise<Teller> {
+export function updateInteractiveTeller(id: string, input: Partial<Teller>, baseRevision?: string): Promise<Teller> {
   return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(input),
+    body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
   })
 }
 
@@ -181,11 +181,11 @@ export function createImagePreset(input: Partial<ImagePreset>): Promise<ImagePre
   })
 }
 
-export function updateImagePreset(id: string, input: Partial<ImagePreset>): Promise<ImagePreset> {
+export function updateImagePreset(id: string, input: Partial<ImagePreset>, baseRevision?: string): Promise<ImagePreset> {
   return requestJSON(`/api/image-presets/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(input),
+    body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
   })
 }
 

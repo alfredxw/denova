@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { BookOpen, Check, FileText, Folder, GripVertical, LibraryBig, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { BookOpen, Check, FileText, Folder, GripVertical, Image as ImageIcon, LibraryBig, Loader2, Pencil, Plus, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,9 @@ import {
 } from '@/components/ui/alert-dialog'
 import { NovelImportDialog } from './NovelImportDialog'
 import {
+  bookCoverURL,
   createBook,
+  generateBookCover,
   getBookInfo,
   removeBook,
   reorderBooks,
@@ -31,6 +33,9 @@ import {
   type BookMeta,
   type BookRecord,
 } from '@/lib/api'
+import { getImagePresets } from '@/features/interactive/api'
+import type { ImagePreset } from '@/features/interactive/types'
+import { fetchSettings } from '@/features/settings/api'
 
 interface HomeViewProps {
   /** 当前工作区路径，用于高亮当前书籍并作为父目录推断默认值 */
@@ -71,6 +76,13 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
   const [editDesc, setEditDesc] = useState('')
   const [editLoading, setEditLoading] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
+  const [imagePresets, setImagePresets] = useState<ImagePreset[]>([])
+  const [defaultImagePresetId, setDefaultImagePresetId] = useState('game-cg')
+  const [coverPresetId, setCoverPresetId] = useState('game-cg')
+  const [coverInstruction, setCoverInstruction] = useState('')
+  const [coverGeneratingPath, setCoverGeneratingPath] = useState('')
+  const [coverError, setCoverError] = useState('')
+  const [coverVersions, setCoverVersions] = useState<Record<string, string>>({})
   const [orderedBooks, setOrderedBooks] = useState<BookRecord[]>(books)
   const [deleteTarget, setDeleteTarget] = useState<BookRecord | null>(null)
   const [deleteError, setDeleteError] = useState('')
@@ -84,6 +96,27 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
   useEffect(() => {
     setOrderedBooks(books)
   }, [books])
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([getImagePresets(), fetchSettings()])
+      .then(([presets, settings]) => {
+        if (cancelled) return
+        const nextDefault = settings.effective?.ide_image_preset_id || 'game-cg'
+        setImagePresets(presets)
+        setDefaultImagePresetId(nextDefault)
+        setCoverPresetId((current) => current || nextDefault)
+      })
+      .catch((err) => {
+        console.warn('加载封面图像方案失败', err)
+        if (!cancelled) {
+          setImagePresets([])
+          setDefaultImagePresetId('game-cg')
+          setCoverPresetId((current) => current || 'game-cg')
+        }
+      })
+    return () => { cancelled = true }
+  }, [])
 
   /** 打开新建书籍表单，新书统一创建在用户 Nova 数据目录下 */
   const openCreateForm = () => {
@@ -132,6 +165,9 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
     setEditTitle(book.name)
     setEditAuthor(book.author || '')
     setEditDesc('')
+    setCoverPresetId(defaultImagePresetId || 'game-cg')
+    setCoverInstruction('')
+    setCoverError('')
     setEditLoading(true)
     try {
       const meta: BookMeta = await getBookInfo(book.path)
@@ -157,6 +193,27 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
       console.error('保存书籍信息失败', e)
     } finally {
       setEditSaving(false)
+    }
+  }
+
+  const handleGenerateCover = async (book: BookRecord) => {
+    setCoverGeneratingPath(book.path)
+    setCoverError('')
+    try {
+      const result = await generateBookCover({
+        path: book.path,
+        imagePresetId: coverPresetId || defaultImagePresetId || 'game-cg',
+        instruction: coverInstruction.trim(),
+      })
+      setCoverVersions((current) => ({
+        ...current,
+        [book.path]: result.cover_updated_at || String(Date.now()),
+      }))
+      await Promise.resolve(onBooksChange())
+    } catch (e) {
+      setCoverError(e instanceof Error ? e.message : t('home.coverGenerateError'))
+    } finally {
+      setCoverGeneratingPath('')
     }
   }
 
@@ -202,6 +259,11 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
   }
 
   const currentBook = orderedBooks.find((book) => book.path === workspace)
+  const validImagePresets = imagePresets.filter((preset) => !preset.invalid)
+  const imagePresetOptions = validImagePresets.length > 0
+    ? validImagePresets
+    : [{ id: defaultImagePresetId || 'game-cg', name: t('home.coverDefaultPreset') } as ImagePreset]
+  const coverVersion = (book: BookRecord) => coverVersions[book.path] || book.cover_updated_at || ''
 
   return (
     <div className="nova-sidebar flex h-full min-w-0 flex-col text-[var(--nova-text)]">
@@ -230,12 +292,22 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
               <BookOpen className="h-3.5 w-3.5" />
               {t('home.currentBook')}
             </div>
-            <div className="flex min-w-0 flex-col gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-[var(--nova-text)]">
-                  {currentBook?.name || (workspace ? workspace.split('/').filter(Boolean).pop() : t('home.currentWorkspaceUnset'))}
+            <div className="flex min-w-0 flex-col gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)] sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                {currentBook && (
+                  <BookCoverThumbnail
+                    book={currentBook}
+                    version={coverVersion(currentBook)}
+                    className="h-16 w-12 shrink-0"
+                    iconClassName="h-4 w-4"
+                  />
+                )}
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-[var(--nova-text)]">
+                    {currentBook?.name || (workspace ? workspace.split('/').filter(Boolean).pop() : t('home.currentWorkspaceUnset'))}
+                  </div>
+                  <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">{workspace || t('home.startHint')}</div>
                 </div>
-                <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">{workspace || t('home.startHint')}</div>
               </div>
               {currentBook && (
                 <div className="flex shrink-0 items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">
@@ -391,6 +463,48 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                                       rows={1}
                                       className={inputCls + ' min-h-0 resize-none'}
                                     />
+                                    <div className="flex min-w-0 gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
+                                      <BookCoverThumbnail
+                                        book={book}
+                                        version={coverVersion(book)}
+                                        className="h-[92px] w-[69px] shrink-0"
+                                        iconClassName="h-4 w-4"
+                                      />
+                                      <div className="flex min-w-0 flex-1 flex-col gap-2">
+                                        <div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--nova-text-muted)]">
+                                          <ImageIcon className="h-3.5 w-3.5" />
+                                          {t('home.cover')}
+                                        </div>
+                                        <select
+                                          aria-label={t('home.coverPreset')}
+                                          value={coverPresetId || defaultImagePresetId || 'game-cg'}
+                                          onChange={(event) => setCoverPresetId(event.target.value)}
+                                          className={inputCls + ' h-8 py-1 text-xs'}
+                                        >
+                                          {imagePresetOptions.map((preset) => (
+                                            <option key={preset.id} value={preset.id}>{preset.name || preset.id}</option>
+                                          ))}
+                                        </select>
+                                        <Input
+                                          type="text"
+                                          value={coverInstruction}
+                                          onChange={(event) => setCoverInstruction(event.target.value)}
+                                          placeholder={t('home.coverInstructionPlaceholder')}
+                                          className={inputCls}
+                                        />
+                                        {coverError && <div className="line-clamp-2 text-[11px] text-[var(--nova-danger)]">{coverError}</div>}
+                                        <Button
+                                          type="button"
+                                          size="xs"
+                                          className={primaryButtonCls + ' w-fit max-w-full'}
+                                          disabled={coverGeneratingPath === book.path}
+                                          onClick={() => void handleGenerateCover(book)}
+                                        >
+                                          {coverGeneratingPath === book.path ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                                          {coverGeneratingPath === book.path ? t('home.coverGenerating') : t('home.generateCover')}
+                                        </Button>
+                                      </div>
+                                    </div>
                                     <div className="flex items-center justify-end gap-2">
                                       <TooltipIconButton
                                         label={t('common.cancel')}
@@ -423,7 +537,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                         >
                           {(dragHandleProps) => (
                             <div
-                              className={`group relative min-h-[168px] overflow-hidden rounded-[var(--nova-radius)] border text-xs transition-colors sm:min-h-[188px] ${
+                              className={`group relative min-h-[212px] overflow-hidden rounded-[var(--nova-radius)] border text-xs transition-colors sm:min-h-[232px] ${
                                 isCurrent
                                   ? 'border-[var(--nova-accent)] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'
                                   : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
@@ -435,13 +549,16 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)]" />
                               <button
                                 type="button"
-                                className="flex h-full min-h-[168px] w-full min-w-0 flex-col px-4 py-4 text-left sm:min-h-[188px]"
+                                className="flex h-full min-h-[212px] w-full min-w-0 flex-col px-3 py-3 text-left sm:min-h-[232px]"
                                 onClick={() => handleSwitch(book.path)}
                               >
-                                <div className="mb-3 flex items-center justify-between gap-2">
-                                  <BookOpen className={`h-4 w-4 shrink-0 ${isCurrent ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-                                </div>
-                                <div className="line-clamp-3 text-sm font-semibold leading-5 text-[var(--nova-text)]">{book.name || t('home.unnamedBook')}</div>
+                                <BookCoverThumbnail
+                                  book={book}
+                                  version={coverVersion(book)}
+                                  className="mb-3 aspect-[3/4] w-full"
+                                  iconClassName={`h-5 w-5 ${isCurrent ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`}
+                                />
+                                <div className="line-clamp-2 text-sm font-semibold leading-5 text-[var(--nova-text)]">{book.name || t('home.unnamedBook')}</div>
                                 {book.author && <div className="mt-2 truncate text-[11px] text-[var(--nova-text-muted)]">{book.author}</div>}
                                 <div className="mt-auto truncate pt-4 text-[10px] text-[var(--nova-text-faint)]">{book.path}</div>
                               </button>
@@ -525,6 +642,38 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  )
+}
+
+function BookCoverThumbnail({ book, version, className, iconClassName }: {
+  book: BookRecord
+  version?: string
+  className?: string
+  iconClassName?: string
+}) {
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    setFailed(false)
+  }, [book.path, version])
+
+  const showImage = Boolean(version) && !failed
+  return (
+    <div
+      className={`relative flex min-w-0 items-center justify-center overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] ${className || ''}`}
+      title={book.name || book.path}
+    >
+      {showImage ? (
+        <img
+          src={bookCoverURL(book.path, version)}
+          alt={book.name || book.path}
+          className="h-full w-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <BookOpen className={iconClassName || 'h-4 w-4 text-[var(--nova-text-muted)]'} />
+      )}
     </div>
   )
 }

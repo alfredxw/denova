@@ -12,21 +12,27 @@ import (
 )
 
 const (
-	Version        = 1
-	DefaultID      = "game-cg"
-	MaxPromptChars = 4000
+	Version           = 2
+	DefaultID         = "game-cg"
+	MaxPromptChars    = 4000
+	TargetAgentSystem = "agent_system"
+	TargetToolRequest = "tool_request"
+	defaultToolSlotID = "tool_request"
 )
 
 type Library struct {
 	novaDir string
 }
 
+var ErrPresetRevisionConflict = errors.New("图像方案已被其他操作更新，请重新加载后再保存")
+
 type Preset struct {
 	Version     int      `json:"version"`
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
 	Description string   `json:"description"`
-	Prompt      string   `json:"prompt"`
+	Prompt      string   `json:"prompt,omitempty"`
+	Slots       []Slot   `json:"slots,omitempty"`
 	Tags        []string `json:"tags"`
 	Path        string   `json:"path,omitempty"`
 	Custom      bool     `json:"custom"`
@@ -34,6 +40,14 @@ type Preset struct {
 	Error       string   `json:"error,omitempty"`
 	CreatedAt   string   `json:"created_at,omitempty"`
 	UpdatedAt   string   `json:"updated_at,omitempty"`
+}
+
+type Slot struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Target  string `json:"target"`
+	Enabled bool   `json:"enabled"`
+	Content string `json:"content"`
 }
 
 func NewLibrary(novaDir string) *Library {
@@ -110,7 +124,7 @@ func (l *Library) Create(preset Preset) (Preset, error) {
 	} else if !os.IsNotExist(err) {
 		return Preset{}, err
 	}
-	now := time.Now().Format(time.RFC3339)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
 	preset.CreatedAt = now
 	preset.UpdatedAt = now
 	if err := writePresetFile(path, preset); err != nil {
@@ -121,7 +135,7 @@ func (l *Library) Create(preset Preset) (Preset, error) {
 	return preset, nil
 }
 
-func (l *Library) Update(id string, preset Preset) (Preset, error) {
+func (l *Library) Update(id string, preset Preset, baseRevision ...string) (Preset, error) {
 	if err := l.ensureBuiltins(); err != nil {
 		return Preset{}, err
 	}
@@ -133,9 +147,12 @@ func (l *Library) Update(id string, preset Preset) (Preset, error) {
 	if err != nil {
 		return Preset{}, err
 	}
+	if firstPresetRevision(baseRevision) != "" && current.UpdatedAt != firstPresetRevision(baseRevision) {
+		return Preset{}, ErrPresetRevisionConflict
+	}
 	preset.ID = id
 	preset.CreatedAt = current.CreatedAt
-	preset.UpdatedAt = time.Now().Format(time.RFC3339)
+	preset.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	preset = normalizePreset(preset)
 	if err := validatePreset(preset); err != nil {
 		return Preset{}, err
@@ -147,6 +164,13 @@ func (l *Library) Update(id string, preset Preset) (Preset, error) {
 	preset.Path = path
 	preset.Custom = !IsBuiltinID(preset.ID)
 	return preset, nil
+}
+
+func firstPresetRevision(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }
 
 func (l *Library) Delete(id string) error {
@@ -227,7 +251,12 @@ func normalizePreset(preset Preset) Preset {
 	preset.ID = NormalizeID(preset.ID)
 	preset.Name = strings.TrimSpace(preset.Name)
 	preset.Description = strings.TrimSpace(preset.Description)
-	preset.Prompt = truncateRunes(strings.TrimSpace(preset.Prompt), MaxPromptChars)
+	legacyPrompt := truncateRunes(strings.TrimSpace(preset.Prompt), MaxPromptChars)
+	preset.Slots = normalizeSlots(preset.Slots)
+	if len(preset.Slots) == 0 && legacyPrompt != "" {
+		preset.Slots = []Slot{defaultToolRequestSlot(legacyPrompt)}
+	}
+	preset.Prompt = preset.PromptForTargets(TargetToolRequest)
 	preset.Tags = normalizeTags(preset.Tags)
 	return preset
 }
@@ -239,8 +268,20 @@ func validatePreset(preset Preset) error {
 	if preset.Name == "" {
 		return errors.New("图像方案名称不能为空")
 	}
-	if strings.TrimSpace(preset.Prompt) == "" {
-		return errors.New("图像方案 prompt 不能为空")
+	if len(preset.Slots) == 0 {
+		return errors.New("图像方案至少需要一个注入规则")
+	}
+	hasEnabledContent := false
+	for _, slot := range preset.Slots {
+		if !isAllowedSlotTarget(slot.Target) {
+			return fmt.Errorf("图像方案规则 %q 使用了无效注入位置 %q，仅支持 agent_system、tool_request", slot.Name, slot.Target)
+		}
+		if slot.Enabled && strings.TrimSpace(slot.Content) != "" {
+			hasEnabledContent = true
+		}
+	}
+	if !hasEnabledContent {
+		return errors.New("图像方案至少需要一个启用且非空的注入规则")
 	}
 	return nil
 }
@@ -311,6 +352,24 @@ func DefaultPreset() Preset {
 	return builtinPresets[DefaultID]
 }
 
+func (p Preset) PromptForTargets(targets ...string) string {
+	allowed := map[string]bool{}
+	for _, target := range targets {
+		allowed[strings.TrimSpace(target)] = true
+	}
+	if len(p.Slots) == 0 && allowed[TargetToolRequest] && strings.TrimSpace(p.Prompt) != "" {
+		p.Slots = []Slot{defaultToolRequestSlot(p.Prompt)}
+	}
+	var sb strings.Builder
+	for _, slot := range p.Slots {
+		if !slot.Enabled || !allowed[slot.Target] || strings.TrimSpace(slot.Content) == "" {
+			continue
+		}
+		fmt.Fprintf(&sb, "## %s（%s）\n\n%s\n\n", slot.Name, slot.Target, strings.TrimSpace(slot.Content))
+	}
+	return strings.TrimSpace(sb.String())
+}
+
 var builtinPresets = map[string]Preset{
 	DefaultID: builtinPreset(
 		DefaultID, "游戏CG",
@@ -329,7 +388,64 @@ func builtinPreset(id, name, description string, tags []string, prompt string) P
 		ID:          id,
 		Name:        name,
 		Description: description,
-		Prompt:      prompt,
+		Slots:       []Slot{defaultToolRequestSlot(prompt)},
 		Tags:        tags,
 	})
+}
+
+func normalizeSlots(slots []Slot) []Slot {
+	result := make([]Slot, 0, len(slots))
+	seen := map[string]bool{}
+	for _, slot := range slots {
+		slot.ID = normalizeSlotID(slot.ID)
+		if slot.ID == "" {
+			slot.ID = fmt.Sprintf("slot-%d", len(result)+1)
+		}
+		if seen[slot.ID] {
+			continue
+		}
+		seen[slot.ID] = true
+		slot.Name = strings.TrimSpace(slot.Name)
+		if slot.Name == "" {
+			slot.Name = slot.ID
+		}
+		slot.Target = normalizeSlotTarget(slot.Target)
+		slot.Content = truncateRunes(strings.TrimSpace(slot.Content), MaxPromptChars)
+		result = append(result, slot)
+	}
+	return result
+}
+
+func defaultToolRequestSlot(prompt string) Slot {
+	return Slot{
+		ID:      defaultToolSlotID,
+		Name:    "图像请求 Prompt",
+		Target:  TargetToolRequest,
+		Enabled: true,
+		Content: truncateRunes(strings.TrimSpace(prompt), MaxPromptChars),
+	}
+}
+
+func normalizeSlotID(id string) string {
+	id = strings.TrimSpace(id)
+	var sb strings.Builder
+	for _, r := range id {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			sb.WriteRune(r)
+		}
+	}
+	return sb.String()
+}
+
+func normalizeSlotTarget(target string) string {
+	return strings.TrimSpace(target)
+}
+
+func isAllowedSlotTarget(target string) bool {
+	switch target {
+	case TargetAgentSystem, TargetToolRequest:
+		return true
+	default:
+		return false
+	}
 }

@@ -39,7 +39,7 @@ const common = {
   'remoteAccess.signIn': '登录',
   'remoteAccess.signingIn': '登录中...',
   'remoteAccess.loginFailed': '登录失败',
-  'configManager.placeholder': '让配置管理 Agent 调整当前模块...',
+  'configManager.placeholder': '让配置管理 Agent 调整当前模块，或输入 /clear 清除上下文...',
   'configManager.executing': '配置管理 Agent 执行中...',
   'configManager.tool': '工具调用',
   'configManager.historyLoadFailed': '加载配置管理 Agent 历史失败',

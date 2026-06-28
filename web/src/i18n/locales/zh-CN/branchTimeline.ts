@@ -1,5 +1,5 @@
 const branchTimeline = {
-  'branchTimeline.title': '剧情路线图',
+  'branchTimeline.title': '分支路线',
   'branchTimeline.backToStory': '返回剧情',
   'branchTimeline.nodeCount': '{{count}} 个剧情节点',
   'branchTimeline.emptyBranchCount': '{{count}} 条空剧情线',
@@ -22,7 +22,7 @@ const branchTimeline = {
   'branchTimeline.newFromNode': '基于「{{title}}」的新剧情线',
   'branchTimeline.createFailed': '创建剧情线失败',
   'branchTimeline.confirmDeleteEmpty': '删除空剧情线「{{name}}」？',
-  'branchTimeline.minimap': '剧情路线图缩略导航',
+  'branchTimeline.minimap': '分支路线缩略导航',
   'branchTimeline.unknownBranch': '未知剧情线',
   'branchTimeline.mainBranch': '主线',
 } as const

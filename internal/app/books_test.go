@@ -77,6 +77,32 @@ func TestBookRegistryListScansNovaDirBooks(t *testing.T) {
 	}
 }
 
+func TestBooksIncludesCoverUpdatedAt(t *testing.T) {
+	root := t.TempDir()
+	bookDir := filepath.Join(root, "alpha")
+	if err := os.MkdirAll(filepath.Join(bookDir, ".nova"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(bookDir, "assets", "image"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bookDir, "assets", "image", "cover.png"), []byte("cover"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	application := &App{
+		bookRegistry:  &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root},
+		bookMetaStore: NewBookMetaStore(root),
+	}
+
+	books := application.Books()
+	if len(books) != 1 {
+		t.Fatalf("书籍数量不符合预期: %#v", books)
+	}
+	if books[0].CoverUpdatedAt == "" {
+		t.Fatalf("应返回封面更新时间: %#v", books[0])
+	}
+}
+
 func TestBookRegistryRemove(t *testing.T) {
 	root := t.TempDir()
 	bookA := filepath.Join(root, "book-a")

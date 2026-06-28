@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from './client'
-import type { BookMeta, BookRecord, NovelImportPreview, NovelImportResult, SSEEvent } from './types'
+import type { BookCoverResult, BookMeta, BookRecord, NovelImportPreview, NovelImportResult, SSEEvent } from './types'
 
 export async function getBooks(): Promise<BookRecord[]> {
   const data = await requestJSON<{ books: BookRecord[] }>('/api/books')
@@ -93,5 +93,29 @@ export async function updateBookInfo(path: string, title: string, author: string
     method: 'PUT',
     headers: jsonHeaders,
     body: JSON.stringify({ path, title, author, description }),
+  })
+}
+
+export function bookCoverURL(path: string, version?: string): string {
+  const params = new URLSearchParams({ path })
+  if (version) params.set('v', version)
+  return `/api/books/cover?${params.toString()}`
+}
+
+export async function generateBookCover(input: {
+  path: string
+  imagePresetId?: string
+  instruction?: string
+  profileId?: string
+}): Promise<BookCoverResult> {
+  return requestJSON('/api/books/cover/generate', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      path: input.path,
+      image_preset_id: input.imagePresetId || '',
+      instruction: input.instruction || '',
+      profile_id: input.profileId || '',
+    }),
   })
 }

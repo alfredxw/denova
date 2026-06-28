@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { BookMarked, Building2, Database, FileText, Library, Loader2, MapPin, PanelLeft, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { createLoreItem, deleteLoreItem, getLoreItems, readFile, saveFile, updateLoreItem, type LoreItem } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
@@ -107,7 +108,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const [tagDraft, setTagDraft] = useState('')
   const [query, setQuery] = useState('')
   const [creatorContent, setCreatorContent] = useState('')
+  const [creatorRevision, setCreatorRevision] = useState('')
   const [openingPresets, setOpeningPresets] = useState<BookOpeningPreset[]>([])
+  const [openingPresetRevision, setOpeningPresetRevision] = useState('')
   const [activeOpeningPresetId, setActiveOpeningPresetId] = useState('')
   const [tellers, setTellers] = useState<Teller[]>(externalTellers)
   const [activeTellerId, setActiveTellerId] = useState('')
@@ -124,10 +127,13 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const loreTagDraftRef = useRef('')
   const loreAutoSaveTimer = useRef<number | null>(null)
   const loreSavedSignature = useRef('')
+  const loreBaseRevisionRef = useRef('')
   const tellerAutoSaveTimer = useRef<number | null>(null)
   const tellerSavedSignature = useRef('')
+  const tellerBaseRevisionRef = useRef('')
   const imagePresetAutoSaveTimer = useRef<number | null>(null)
   const imagePresetSavedSignature = useRef('')
+  const imagePresetBaseRevisionRef = useRef('')
 
   useEffect(() => {
     let cancelled = false
@@ -167,6 +173,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     if (!hasUnsavedCurrentDraft) {
       setDraft(nextDraft)
       setTagDraft(nextTagDraft)
+      loreBaseRevisionRef.current = nextDraft?.updated_at || ''
       loreSavedSignature.current = nextDraft ? loreDraftSignature(nextDraft, nextTagDraft) : ''
     }
   }, [activeId, items])
@@ -180,16 +187,23 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     if (activeMode !== 'creator' && !(activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)) return
     let cancelled = false
     setCreatorContent('')
+    setCreatorRevision('')
     if (!workspace)
       return () => {
         cancelled = true
       }
     readFile(CREATOR_PATH)
       .then((data) => {
-        if (!cancelled) setCreatorContent(data.content)
+        if (!cancelled) {
+          setCreatorContent(data.content)
+          setCreatorRevision(data.revision || '')
+        }
       })
       .catch(() => {
-        if (!cancelled) setCreatorContent('')
+        if (!cancelled) {
+          setCreatorContent('')
+          setCreatorRevision('')
+        }
       })
     return () => {
       cancelled = true
@@ -200,6 +214,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     if (activeMode !== 'lore' || activeId !== INTERACTIVE_OPENING_PRESET_ENTRY_ID) return
     let cancelled = false
     setOpeningPresets([])
+    setOpeningPresetRevision('')
     setActiveOpeningPresetId('')
     if (!workspace)
       return () => {
@@ -210,6 +225,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         if (cancelled) return
         const presets = parseBookOpeningPresets(data.content)
         setOpeningPresets(presets)
+        setOpeningPresetRevision(data.revision || '')
         setActiveOpeningPresetId((current) => (current && presets.some((preset) => preset.id === current) ? current : presets[0]?.id || ''))
       })
       .catch(async () => {
@@ -218,10 +234,12 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
           if (cancelled) return
           const presets = parseBookOpeningPresets(legacy.content)
           setOpeningPresets(presets)
+          setOpeningPresetRevision('')
           setActiveOpeningPresetId((current) => (current && presets.some((preset) => preset.id === current) ? current : presets[0]?.id || ''))
         } catch {
           if (!cancelled) {
             setOpeningPresets([])
+            setOpeningPresetRevision('')
             setActiveOpeningPresetId('')
           }
         }
@@ -296,6 +314,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     if (activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) {
       setTellerDraft(null)
       setTellerTagDraft('')
+      tellerBaseRevisionRef.current = ''
       setActiveSlotId('')
       return
     }
@@ -311,6 +330,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       : null
     setTellerDraft(nextDraft)
     setTellerTagDraft((teller?.tags || []).join('，'))
+    tellerBaseRevisionRef.current = nextDraft?.updated_at || ''
     setActiveSlotId((current) => {
       if (current && teller?.slots?.some((slot) => slot.id === current)) return current
       return teller?.slots?.[0]?.id || ''
@@ -323,6 +343,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     const nextDraft = preset ? { ...preset, tags: [...(preset.tags || [])] } : null
     setImagePresetDraft(nextDraft)
     setImagePresetTagDraft((preset?.tags || []).join('，'))
+    imagePresetBaseRevisionRef.current = nextDraft?.updated_at || ''
     imagePresetSavedSignature.current = nextDraft ? imagePresetDraftSignature(nextDraft, (preset?.tags || []).join('，')) : ''
   }, [activeImagePresetId, imagePresets])
 
@@ -388,7 +409,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     const payload = { ...draft, tags: splitTags(tagDraft) }
     const signature = loreDraftSignature(payload, tagDraft)
     if (mode === 'auto' && signature === loreSavedSignature.current) return null
-    const item = await updateLoreItem(draft.id, payload)
+    const item = await updateLoreItem(draft.id, payload, loreBaseRevisionRef.current)
+    loreBaseRevisionRef.current = item.updated_at || ''
     loreSavedSignature.current = loreDraftSignature(item, (item.tags || []).join('，'))
     mergeSavedLoreItem(item)
     return item
@@ -402,7 +424,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     }
     const signature = tellerDraftSignature(payload, tellerTagDraft)
     if (mode === 'auto' && signature === tellerSavedSignature.current) return
-    const teller = await updateInteractiveTeller(tellerDraft.id, payload)
+    const teller = await updateInteractiveTeller(tellerDraft.id, payload, tellerBaseRevisionRef.current)
+    tellerBaseRevisionRef.current = teller.updated_at || ''
     tellerSavedSignature.current = tellerDraftSignature(teller, (teller.tags || []).join('，'))
     if (mode === 'manual') {
       mergeSavedTeller(teller)
@@ -417,7 +440,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     }
     const signature = imagePresetDraftSignature(payload, imagePresetTagDraft)
     if (mode === 'auto' && signature === imagePresetSavedSignature.current) return
-    const preset = await updateImagePreset(imagePresetDraft.id, payload)
+    const preset = await updateImagePreset(imagePresetDraft.id, payload, imagePresetBaseRevisionRef.current)
+    imagePresetBaseRevisionRef.current = preset.updated_at || ''
     imagePresetSavedSignature.current = imagePresetDraftSignature(preset, (preset.tags || []).join('，'))
     if (mode === 'manual') {
       mergeSavedImagePreset(preset)
@@ -515,11 +539,13 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     setSaving(true)
     try {
       if (activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)) {
-        await saveFile(CREATOR_PATH, creatorContent)
+        const result = await saveFile(CREATOR_PATH, creatorContent, creatorRevision)
+        setCreatorRevision(result.revision || '')
         return
       }
       if (activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID) {
-        await saveFile(INTERACTIVE_OPENING_PRESET_PATH, serializeBookOpeningPresets(openingPresets))
+        const result = await saveFile(INTERACTIVE_OPENING_PRESET_PATH, serializeBookOpeningPresets(openingPresets), openingPresetRevision)
+        setOpeningPresetRevision(result.revision || '')
         notifyOpeningPresetUpdated()
         return
       }
@@ -547,6 +573,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       if (item) {
         notifyLoreUpdated([item.id])
       }
+    } catch (err) {
+      toast.error((err as Error).message || t('editor.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -563,6 +591,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       loreAutoSaveTimer.current = null
       void saveLoreDraft('auto').catch((err) => {
         console.warn('[lore-editor] 自动保存资料库条目失败', err)
+        toast.error((err as Error).message || t('editor.saveFailed'))
       })
     }, 1200)
     return () => {
@@ -571,7 +600,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         loreAutoSaveTimer.current = null
       }
     }
-  }, [activeMode, activeId, draft, tagDraft])
+  }, [activeMode, activeId, draft, tagDraft, t])
 
   useEffect(() => {
     if (activeMode !== 'teller' || !tellerDraft || activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) return
@@ -584,6 +613,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       tellerAutoSaveTimer.current = null
       void saveTellerDraft('auto').catch((err) => {
         console.warn('[teller-editor] 自动保存叙事方案失败', err)
+        toast.error((err as Error).message || t('editor.saveFailed'))
       })
     }, 1200)
     return () => {
@@ -592,7 +622,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         tellerAutoSaveTimer.current = null
       }
     }
-  }, [activeMode, activeTellerId, tellerDraft, tellerTagDraft])
+  }, [activeMode, activeTellerId, tellerDraft, tellerTagDraft, t])
 
   useEffect(() => {
     if (activeMode !== 'teller' || presetResourceKind !== 'image' || !imagePresetDraft) return
@@ -605,6 +635,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       imagePresetAutoSaveTimer.current = null
       void saveImagePresetDraft('auto').catch((err) => {
         console.warn('[image-preset-editor] 自动保存图像方案失败', err)
+        toast.error((err as Error).message || t('editor.saveFailed'))
       })
     }, 1200)
     return () => {
@@ -613,7 +644,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         imagePresetAutoSaveTimer.current = null
       }
     }
-  }, [activeMode, activeImagePresetId, imagePresetDraft, imagePresetTagDraft, presetResourceKind])
+  }, [activeMode, activeImagePresetId, imagePresetDraft, imagePresetTagDraft, presetResourceKind, t])
 
   const flushImagePresetAutoSave = () => {
     if (!imagePresetAutoSaveTimer.current) return

@@ -59,9 +59,10 @@ type IDEContextRef struct {
 
 // ImagePresetContext is a bounded visual style preset for image generation only.
 type ImagePresetContext struct {
-	ID     string
-	Name   string
-	Prompt string
+	ID                string
+	Name              string
+	AgentSystemPrompt string
+	ToolRequestPrompt string
 }
 
 // TextSelectionRef 表示用户在编辑器中选中的一段文本引用。

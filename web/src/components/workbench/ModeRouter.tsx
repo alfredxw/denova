@@ -297,7 +297,6 @@ export function ModeRouter(props: ModeRouterProps) {
             `目标章节 / Target chapter: ${target}`,
             '',
             '请基于这个章节生成一张非剧透插画。只生成图像和 meta.json，不要自动插入正文；生成后等待我手动点击“插入正文”。',
-            'Generate one non-spoiler illustration for this chapter. Only create the image and meta.json; do not insert it into the manuscript automatically.',
           ].join('\n'),
         },
       }))

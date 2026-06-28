@@ -264,6 +264,11 @@ export interface SettingsRuntime {
   goos: string
 }
 
+export interface SettingsRevisions {
+  user?: string
+  workspace?: string
+}
+
 export interface LayeredSettings {
   default: Settings
   global: Settings
@@ -273,6 +278,7 @@ export interface LayeredSettings {
   paths: SettingsPaths
   access?: SettingsAccess
   runtime?: SettingsRuntime
+  revisions?: SettingsRevisions
   builtin_agent_prompts?: AgentPromptSettings
   builtin_agent_prompt_blocks?: AgentPromptBlockSettings
   builtin_agent_prompt_sources?: AgentPromptSourceSettings

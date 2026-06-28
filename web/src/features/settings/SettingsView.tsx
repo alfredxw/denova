@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import type { ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
 import { applyUpdate, checkForUpdate, fetchSettings, installUpdateStream, updateUserSettings, updateWorkspaceSettings } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
-import { settingsForLayer, useAutoSaveSettings } from './use-auto-save-settings'
+import { settingsForLayer, settingsRevisionForLayer, useAutoSaveSettings } from './use-auto-save-settings'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
@@ -43,6 +43,7 @@ const IMAGE_API_INHERIT_VALUE = '__inherit__'
 const IMAGE_API_PROVIDER_DEFAULT_VALUE = '__provider_default__'
 const IMAGE_API_QUALITY_OPTIONS = ['auto', 'high', 'medium', 'low', 'standard', 'hd']
 const IMAGE_API_FORMAT_OPTIONS = ['png', 'jpeg']
+let nextSettingsEventSourceID = 1
 
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
@@ -56,6 +57,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [updateInstallResult, setUpdateInstallResult] = useState<UpdateInstallResult | null>(null)
   const [updateApplyResult, setUpdateApplyResult] = useState<UpdateApplyResult | null>(null)
   const [updateInstallProgress, setUpdateInstallProgress] = useState<UpdateInstallProgress | null>(null)
+  const [settingsEventSource] = useState(() => {
+    const source = `settings-view-${nextSettingsEventSourceID}`
+    nextSettingsEventSourceID += 1
+    return source
+  })
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [installingUpdate, setInstallingUpdate] = useState(false)
   const [applyingUpdate, setApplyingUpdate] = useState(false)
@@ -87,6 +93,16 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [activeLayer])
 
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    const onSettingsUpdated = (event: Event) => {
+      const source = (event as CustomEvent<{ source?: string }>).detail?.source
+      if (source === settingsEventSource) return
+      void load()
+    }
+    window.addEventListener('nova:settings-updated', onSettingsUpdated)
+    return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
+  }, [load, settingsEventSource])
 
   useEffect(() => {
     if (activeLayer !== 'workspace') return
@@ -168,24 +184,24 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     }
   }, [])
 
-  const saveDraft = useCallback(async (settings: Settings) => {
+  const saveDraft = useCallback(async (settings: Settings, baseRevision?: string) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
-    return updater(settings)
+    return baseRevision ? updater(settings, baseRevision) : updater(settings)
   }, [activeLayer])
 
   const applySavedSettings = useCallback((next: LayeredSettings) => {
     setLayered(next)
     // 通知应用层重新读取分层配置（如 max_open_tabs 等需要立即生效的设置）
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+      window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: settingsEventSource } }))
     }
-  }, [])
+  }, [settingsEventSource])
 
   const onSave = async () => {
     setSaving(true)
     setError(null)
     try {
-      const next = await saveDraft(draft)
+      const next = await saveDraft(draft, settingsRevisionForLayer(layered, activeLayer))
       applySavedSettings(next)
       toast.success(t('common.saved'))
     } catch (e) {
@@ -222,6 +238,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   useAutoSaveSettings({
     draft,
     saved: layered ? settingsForLayer(layered, activeLayer) : {},
+    baseRevision: settingsRevisionForLayer(layered, activeLayer),
     ready: Boolean(layered),
     save: saveDraft,
     onSavingChange: setSaving,

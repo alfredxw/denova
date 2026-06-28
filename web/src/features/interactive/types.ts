@@ -60,7 +60,8 @@ export interface ImagePreset {
   id: string
   name: string
   description: string
-  prompt: string
+  prompt?: string
+  slots?: ImagePresetSlot[]
   tags: string[]
   path?: string
   custom: boolean
@@ -68,6 +69,14 @@ export interface ImagePreset {
   error?: string
   created_at?: string
   updated_at?: string
+}
+
+export interface ImagePresetSlot {
+  id: string
+  name: string
+  target: 'agent_system' | 'tool_request'
+  enabled: boolean
+  content: string
 }
 
 export interface StyleRule {

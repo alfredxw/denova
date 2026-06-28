@@ -208,6 +208,12 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     ]
     return commands.filter((skill) => skill.name.toLowerCase().startsWith(query))
   }, [input, skillCommands, t])
+  const filteredBuiltInCommandItems = useMemo(() => filteredSkillCommands
+    .map((command, index) => ({ command, index }))
+    .filter(({ command }) => command.builtIn), [filteredSkillCommands])
+  const filteredSkillCommandItems = useMemo(() => filteredSkillCommands
+    .map((command, index) => ({ command, index }))
+    .filter(({ command }) => !command.builtIn), [filteredSkillCommands])
 
   useEffect(() => {
     if (previousSnapshotKeyRef.current === snapshotKey) return
@@ -1070,8 +1076,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                     </div>
                     <CommandList className="max-h-[312px] p-1.5">
                       <CommandEmpty className="py-5 text-center text-xs text-[var(--nova-text-faint)]">{t('chat.commands.empty')}</CommandEmpty>
+                      {filteredBuiltInCommandItems.length > 0 ? (
                       <CommandGroup heading={t('chat.commands.group')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
-                        {filteredSkillCommands.map((skill, index) => {
+                        {filteredBuiltInCommandItems.map(({ command: skill, index }) => {
                           const active = index === activeSkillCommandIndex
                           return (
                             <CommandItem
@@ -1098,6 +1105,37 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                           )
                         })}
                       </CommandGroup>
+                      ) : null}
+                      {filteredSkillCommandItems.length > 0 ? (
+                      <CommandGroup heading={t('chat.commands.skillsGroup')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
+                        {filteredSkillCommandItems.map(({ command: skill, index }) => {
+                          const active = index === activeSkillCommandIndex
+                          return (
+                            <CommandItem
+                              key={skill.name}
+                              ref={(element) => {
+                                skillCommandRefs.current[index] = element
+                              }}
+                              value={skill.name}
+                              onMouseEnter={() => setActiveSkillCommandIndex(index)}
+                              onSelect={() => selectSkillCommand(skill.name)}
+                              className={`group min-h-12 cursor-pointer rounded-md border px-2.5 py-2 text-[var(--nova-text-muted)] ${active ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-transparent hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)]'}`}
+                            >
+                              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-[var(--nova-surface-2)] ${active ? 'border-[var(--nova-border)] text-[var(--nova-text)]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'}`}>
+                                <Sparkles className="h-3.5 w-3.5" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-2">
+                                  <span className="font-mono text-xs text-[var(--nova-text)]">/{skill.name}</span>
+                                  <span className="truncate text-xs text-[var(--nova-text-muted)]">{skill.description || skill.name}</span>
+                                </span>
+                                <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{skill.hint}</span>
+                              </span>
+                            </CommandItem>
+                          )
+                        })}
+                      </CommandGroup>
+                      ) : null}
                     </CommandList>
                   </Command>
                 </PopoverContent>

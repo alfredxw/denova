@@ -226,7 +226,28 @@ export interface BookRecord {
   name: string
   path: string
   author: string
+  cover_updated_at?: string
   last_opened_at: string
+}
+
+export interface BookCoverResult {
+  schema: 'book_cover.v1' | string
+  cover_path: string
+  source_path: string
+  meta_path: string
+  backup_path?: string
+  cover_updated_at: string
+  image_preset_id?: string
+  profile_id: string
+  provider: string
+  model: string
+  size?: string
+  quality?: string
+  output_format?: string
+  created_at?: string
+  revised_prompt?: string
+  mime_type?: string
+  size_bytes?: number
 }
 
 export interface ChapterSummary {

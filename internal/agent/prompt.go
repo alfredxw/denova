@@ -17,11 +17,14 @@ import (
 
 // IDEStoryTeller 描述写作 Agent 本轮使用的默认导演规则。
 type IDEStoryTeller struct {
-	ID          string
-	Name        string
-	Description string
-	Prompt      string
-	StyleRules  []StyleRule
+	ID                      string
+	Name                    string
+	Description             string
+	Prompt                  string
+	StyleRules              []StyleRule
+	ImagePresetID           string
+	ImagePresetName         string
+	ImagePresetSystemPrompt string
 }
 
 // ConfigManagerResourceSkill is a bounded, already-resolved Skill body that
@@ -53,6 +56,18 @@ func BuildInstructionComposition(cfg *config.Config, state *book.State, teller I
 		content: teller.Prompt,
 		note:    teller.ID,
 	}}
+	if strings.TrimSpace(teller.ImagePresetSystemPrompt) != "" {
+		title := "图像方案系统规则"
+		if strings.TrimSpace(teller.ImagePresetName) != "" {
+			title = "图像方案系统规则：" + strings.TrimSpace(teller.ImagePresetName)
+		}
+		extraSources = append(extraSources, promptSource{
+			source:  "系统提示",
+			title:   title,
+			content: teller.ImagePresetSystemPrompt,
+			note:    teller.ImagePresetID,
+		})
+	}
 	extraSources = append(extraSources, styleRulePromptSources(teller.StyleRules)...)
 	return SystemPromptCompositionLog{
 		mode:         "ide",
@@ -209,7 +224,32 @@ func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller ID
 		ChapterGroupMin:        cfg.ChapterGroupMin,
 		ChapterGroupMax:        cfg.ChapterGroupMax,
 	})
+	if imagePresetSystem := imagePresetSystemInstruction(teller); imagePresetSystem != "" {
+		builtIn = strings.TrimSpace(builtIn) + "\n\n" + imagePresetSystem
+	}
 	return builtIn, workspace, creator, stateContext
+}
+
+func imagePresetSystemInstruction(teller IDEStoryTeller) string {
+	prompt := strings.TrimSpace(teller.ImagePresetSystemPrompt)
+	if prompt == "" {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("## 图像方案系统规则（仅用于图像生成）\n\n")
+	if id := strings.TrimSpace(teller.ImagePresetID); id != "" {
+		sb.WriteString("- id: ")
+		sb.WriteString(id)
+		sb.WriteString("\n")
+	}
+	if name := strings.TrimSpace(teller.ImagePresetName); name != "" {
+		sb.WriteString("- name: ")
+		sb.WriteString(name)
+		sb.WriteString("\n")
+	}
+	sb.WriteString("\n以下规则只在构造 `generate_image` 的图像提示词时生效；普通正文写作、资料库修改和非图像任务不要套用这些视觉约束。\n\n")
+	sb.WriteString(prompt)
+	return strings.TrimSpace(sb.String())
 }
 
 const (

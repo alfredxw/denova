@@ -39,7 +39,7 @@ const common = {
   'remoteAccess.signIn': 'Sign in',
   'remoteAccess.signingIn': 'Signing in...',
   'remoteAccess.loginFailed': 'Sign-in failed',
-  'configManager.placeholder': 'Ask the Config Manager Agent to update this module...',
+  'configManager.placeholder': 'Ask the Config Manager Agent to update this module, or type /clear to clear context...',
   'configManager.executing': 'Config Manager Agent is running...',
   'configManager.tool': 'Tool call',
   'configManager.historyLoadFailed': 'Failed to load Config Manager Agent history',

@@ -2,10 +2,13 @@ package handlers
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
+
+	novaApp "nova/internal/app"
 )
 
 // handleBooks GET /api/books — 返回当前 Nova 数据目录下实际存在的书籍工作目录。
@@ -52,6 +55,44 @@ func (h *Handlers) HandleCreateBook(ctx context.Context, c *app.RequestContext) 
 		"workspace": workspace,
 		"book_meta": meta,
 	})
+}
+
+// HandleBookCover GET /api/books/cover?path=... — 读取指定书籍固定封面。
+func (h *Handlers) HandleBookCover(ctx context.Context, c *app.RequestContext) {
+	path := string(c.Query("path"))
+	if path == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.pathRequired")
+		return
+	}
+	data, contentType, err := h.app.ReadBookCover(path)
+	if err != nil {
+		status := consts.StatusBadRequest
+		if os.IsNotExist(err) {
+			status = consts.StatusNotFound
+		}
+		writeError(c, status, err.Error())
+		return
+	}
+	c.Data(consts.StatusOK, contentType, data)
+}
+
+// HandleBookCoverGenerate POST /api/books/cover/generate — 为指定书籍生成并应用封面。
+func (h *Handlers) HandleBookCoverGenerate(ctx context.Context, c *app.RequestContext) {
+	var req novaApp.BookCoverGenerateRequest
+	if err := c.BindJSON(&req); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequest")
+		return
+	}
+	if req.Path == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.pathRequired")
+		return
+	}
+	result, err := h.app.GenerateBookCover(ctx, req)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
 }
 
 // handleBookRemove POST /api/books/remove — 移除书籍记录，不删除磁盘目录。

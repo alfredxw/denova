@@ -51,9 +51,11 @@ type CommandOption = {
   description: string
   hint: string
   icon: LucideIcon
+  source: 'builtin' | 'skill'
 }
 
 type CommandScope = 'all' | 'skills' | 'none'
+type BuiltinCommand = typeof COMMANDS[number]['cmd']
 const MAX_TOKEN_USAGE_MENU_COUNT = 10
 const inputDrafts = new Map<string, string>()
 
@@ -81,6 +83,7 @@ interface InputAreaProps {
   skills?: SkillCommand[]
   commandsEnabled?: boolean
   commandScope?: CommandScope
+  builtinCommands?: BuiltinCommand[]
   placeholder?: string
   disabledPlaceholder?: string
   onContextAnalyze?: (message: string) => void | Promise<void>
@@ -117,6 +120,7 @@ export function InputArea({
   skills = [],
   commandsEnabled = true,
   commandScope = 'all',
+  builtinCommands,
   placeholder,
   disabledPlaceholder,
   onContextAnalyze,
@@ -142,12 +146,18 @@ export function InputArea({
     ? t('chat.input.placeholderWithSkills')
     : t('chat.input.placeholder')
   const allCommands = useMemo<CommandOption[]>(() => {
-    const staticCommands = effectiveCommandScope === 'all' ? COMMANDS.map(({ cmd, descKey, hintKey, icon }) => ({
-      cmd,
-      description: t(descKey),
-      hint: t(hintKey),
-      icon,
-    })) : []
+    const allowedBuiltinCommands = builtinCommands ? new Set<string>(builtinCommands) : null
+    const staticCommands = effectiveCommandScope === 'all'
+      ? COMMANDS
+        .filter(({ cmd }) => !allowedBuiltinCommands || allowedBuiltinCommands.has(cmd))
+        .map(({ cmd, descKey, hintKey, icon }) => ({
+          cmd,
+          description: t(descKey),
+          hint: t(hintKey),
+          icon,
+          source: 'builtin' as const,
+        }))
+      : []
     const seen = new Set(staticCommands.map((command) => command.cmd))
     const skillCommands = skills
       .map((skill) => ({
@@ -155,6 +165,7 @@ export function InputArea({
         description: skill.description || skill.name,
         hint: t('chat.command.skill.hint'),
         icon: Sparkles,
+        source: 'skill' as const,
       }))
       .filter((command) => {
         if (seen.has(command.cmd)) return false
@@ -164,12 +175,18 @@ export function InputArea({
     if (effectiveCommandScope === 'skills') return skillCommands
     if (effectiveCommandScope === 'none') return []
     return [...staticCommands, ...skillCommands]
-  }, [effectiveCommandScope, skills, t])
+  }, [builtinCommands, effectiveCommandScope, skills, t])
   const filteredCommands = useMemo(() => {
     if (!value.startsWith('/')) return []
     const query = value.toLowerCase()
     return allCommands.filter((command) => command.cmd.toLowerCase().startsWith(query))
   }, [allCommands, value])
+  const filteredBuiltinCommands = useMemo(() => filteredCommands
+    .map((command, index) => ({ command, index }))
+    .filter(({ command }) => command.source === 'builtin'), [filteredCommands])
+  const filteredSkillCommands = useMemo(() => filteredCommands
+    .map((command, index) => ({ command, index }))
+    .filter(({ command }) => command.source === 'skill'), [filteredCommands])
   const hasReferences = referencedFiles.length > 0 || loreReferences.length > 0 || styleScenes.length > 0 || textSelections.length > 0
   const tokenUsageCount = useMemo(
     () => Math.min(MAX_TOKEN_USAGE_MENU_COUNT, tokenUsageMessages.filter((message) => message.role === 'token_usage' && Number(message.model_calls || 0) > 0).length),
@@ -419,7 +436,9 @@ export function InputArea({
                   </span>
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-[var(--nova-text)]">{t('chat.commands.title')}</div>
-                    <div className="text-[11px] text-[var(--nova-text-faint)]">{t('chat.commands.description')}</div>
+                    <div className="text-[11px] text-[var(--nova-text-faint)]">
+                      {effectiveCommandScope === 'skills' ? t('chat.commands.skillsDescription') : t('chat.commands.description')}
+                    </div>
                   </div>
                 </div>
                 <kbd className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--nova-text-faint)]">/</kbd>
@@ -427,38 +446,16 @@ export function InputArea({
             </div>
             <CommandList className="max-h-[312px] p-1.5">
               <CommandEmpty className="py-5 text-center text-xs text-[var(--nova-text-faint)]">{t('chat.commands.empty')}</CommandEmpty>
-              <CommandGroup heading={t('chat.commands.group')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
-                {filteredCommands.map(({ cmd, description, hint, icon: Icon }, index) => {
-                  const active = index === activeCommandIndex
-                  return (
-                    <CommandItem
-                      key={cmd}
-                      ref={(element) => { commandItemRefs.current[index] = element }}
-                      value={cmd}
-                      onMouseEnter={() => setActiveCommandIndex(index)}
-                      onSelect={() => selectCommand(cmd)}
-                      className={`group min-h-12 cursor-pointer rounded-md border px-2.5 py-2 text-[var(--nova-text-muted)] ${
-                        active
-                          ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
-                          : 'border-transparent hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)]'
-                      }`}
-                    >
-                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-[var(--nova-surface-2)] ${
-                      active ? 'border-[var(--nova-border)] text-[var(--nova-text)]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'
-                    }`}>
-                      <Icon className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <span className="font-mono text-xs text-[var(--nova-text)]">{cmd}</span>
-                        <span className="truncate text-xs text-[var(--nova-text-muted)]">{description}</span>
-                      </span>
-                      <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{hint}</span>
-                    </span>
-                    </CommandItem>
-                  )
-                })}
-              </CommandGroup>
+              {filteredBuiltinCommands.length > 0 ? (
+                <CommandGroup heading={t('chat.commands.group')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
+                  {filteredBuiltinCommands.map(({ command, index }) => renderCommandItem(command, index))}
+                </CommandGroup>
+              ) : null}
+              {filteredSkillCommands.length > 0 ? (
+                <CommandGroup heading={t('chat.commands.skillsGroup')} className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:text-[var(--nova-text-faint)]">
+                  {filteredSkillCommands.map(({ command, index }) => renderCommandItem(command, index))}
+                </CommandGroup>
+              ) : null}
             </CommandList>
           </Command>
         </PopoverContent>
@@ -599,4 +596,35 @@ export function InputArea({
       />
     </div>
   )
+
+  function renderCommandItem({ cmd, description, hint, icon: Icon }: CommandOption, index: number) {
+    const active = index === activeCommandIndex
+    return (
+      <CommandItem
+        key={cmd}
+        ref={(element) => { commandItemRefs.current[index] = element }}
+        value={cmd}
+        onMouseEnter={() => setActiveCommandIndex(index)}
+        onSelect={() => selectCommand(cmd)}
+        className={`group min-h-12 cursor-pointer rounded-md border px-2.5 py-2 text-[var(--nova-text-muted)] ${
+          active
+            ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
+            : 'border-transparent hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)]'
+        }`}
+      >
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-[var(--nova-surface-2)] ${
+          active ? 'border-[var(--nova-border)] text-[var(--nova-text)]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'
+        }`}>
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="font-mono text-xs text-[var(--nova-text)]">{cmd}</span>
+            <span className="truncate text-xs text-[var(--nova-text-muted)]">{description}</span>
+          </span>
+          <span className="mt-0.5 block text-[11px] text-[var(--nova-text-faint)]">{hint}</span>
+        </span>
+      </CommandItem>
+    )
+  }
 }

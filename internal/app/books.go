@@ -14,10 +14,11 @@ const maxBookRecords = 20
 
 // BookRecord 表示 Nova 数据目录中的一个书籍工作目录。
 type BookRecord struct {
-	Name         string `json:"name"`
-	Path         string `json:"path"`
-	Author       string `json:"author"`
-	LastOpenedAt string `json:"last_opened_at"`
+	Name           string `json:"name"`
+	Path           string `json:"path"`
+	Author         string `json:"author"`
+	CoverUpdatedAt string `json:"cover_updated_at,omitempty"`
+	LastOpenedAt   string `json:"last_opened_at"`
 }
 
 type bookRegistryData struct {

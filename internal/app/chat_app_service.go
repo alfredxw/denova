@@ -462,12 +462,19 @@ func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatReque
 			preset = loaded
 		}
 	}
+	agentSystemPrompt := preset.PromptForTargets(imagepreset.TargetAgentSystem)
+	toolRequestPrompt := preset.PromptForTargets(imagepreset.TargetToolRequest)
 	req.ImagePreset = agent.ImagePresetContext{
-		ID:     preset.ID,
-		Name:   preset.Name,
-		Prompt: preset.Prompt,
+		ID:                preset.ID,
+		Name:              preset.Name,
+		AgentSystemPrompt: agentSystemPrompt,
+		ToolRequestPrompt: toolRequestPrompt,
 	}
-	log.Printf("[agent-task] selected image preset id=%s name=%q workspace=%s", req.ImagePreset.ID, req.ImagePreset.Name, runtime.workspace)
+	runtime.cfg.ImagePresetToolPrompt = toolRequestPrompt
+	runtime.ideTeller.ImagePresetID = preset.ID
+	runtime.ideTeller.ImagePresetName = preset.Name
+	runtime.ideTeller.ImagePresetSystemPrompt = agentSystemPrompt
+	log.Printf("[agent-task] selected image preset id=%s name=%q workspace=%s agent_system_chars=%d tool_request_chars=%d", req.ImagePreset.ID, req.ImagePreset.Name, runtime.workspace, len([]rune(agentSystemPrompt)), len([]rune(toolRequestPrompt)))
 }
 
 func applyWritingSkillRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatRequest) error {

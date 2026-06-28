@@ -746,16 +746,16 @@ func (s *InteractiveAppService) CreateInteractiveTeller(teller interactive.Telle
 	return interactive.NewTellerLibrary(cfg.NovaDir).Create(teller)
 }
 
-func (a *App) UpdateInteractiveTeller(id string, teller interactive.Teller) (interactive.Teller, error) {
-	return a.interactiveService().UpdateInteractiveTeller(id, teller)
+func (a *App) UpdateInteractiveTeller(id string, teller interactive.Teller, baseRevision ...string) (interactive.Teller, error) {
+	return a.interactiveService().UpdateInteractiveTeller(id, teller, firstRevision(baseRevision))
 }
 
-func (s *InteractiveAppService) UpdateInteractiveTeller(id string, teller interactive.Teller) (interactive.Teller, error) {
+func (s *InteractiveAppService) UpdateInteractiveTeller(id string, teller interactive.Teller, baseRevision string) (interactive.Teller, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.NovaDir == "" {
 		return interactive.Teller{}, ErrNoWorkspace
 	}
-	return interactive.NewTellerLibrary(cfg.NovaDir).Update(id, teller)
+	return interactive.NewTellerLibrary(cfg.NovaDir).Update(id, teller, baseRevision)
 }
 
 func (a *App) DeleteInteractiveTeller(id string) error {
@@ -806,16 +806,16 @@ func (s *InteractiveAppService) CreateImagePreset(preset imagepreset.Preset) (im
 	return imagepreset.NewLibrary(cfg.NovaDir).Create(preset)
 }
 
-func (a *App) UpdateImagePreset(id string, preset imagepreset.Preset) (imagepreset.Preset, error) {
-	return a.interactiveService().UpdateImagePreset(id, preset)
+func (a *App) UpdateImagePreset(id string, preset imagepreset.Preset, baseRevision ...string) (imagepreset.Preset, error) {
+	return a.interactiveService().UpdateImagePreset(id, preset, firstRevision(baseRevision))
 }
 
-func (s *InteractiveAppService) UpdateImagePreset(id string, preset imagepreset.Preset) (imagepreset.Preset, error) {
+func (s *InteractiveAppService) UpdateImagePreset(id string, preset imagepreset.Preset, baseRevision string) (imagepreset.Preset, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.NovaDir == "" {
 		return imagepreset.Preset{}, ErrNoWorkspace
 	}
-	return imagepreset.NewLibrary(cfg.NovaDir).Update(id, preset)
+	return imagepreset.NewLibrary(cfg.NovaDir).Update(id, preset, baseRevision)
 }
 
 func (a *App) DeleteImagePreset(id string) error {

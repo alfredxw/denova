@@ -20,6 +20,8 @@ type TellerLibrary struct {
 	novaDir string
 }
 
+var ErrTellerRevisionConflict = errors.New("叙事方案已被其他操作更新，请重新加载后再保存")
+
 type Teller struct {
 	Version         int                 `json:"version"`
 	ID              string              `json:"id"`
@@ -128,7 +130,7 @@ func (l *TellerLibrary) Create(teller Teller) (Teller, error) {
 	} else if !os.IsNotExist(err) {
 		return Teller{}, err
 	}
-	now := time.Now().Format(time.RFC3339)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
 	teller.CreatedAt = now
 	teller.UpdatedAt = now
 	if err := writeTellerFile(path, teller); err != nil {
@@ -139,7 +141,7 @@ func (l *TellerLibrary) Create(teller Teller) (Teller, error) {
 	return teller, nil
 }
 
-func (l *TellerLibrary) Update(id string, teller Teller) (Teller, error) {
+func (l *TellerLibrary) Update(id string, teller Teller, baseRevision ...string) (Teller, error) {
 	if err := l.ensureBuiltins(); err != nil {
 		return Teller{}, err
 	}
@@ -150,9 +152,12 @@ func (l *TellerLibrary) Update(id string, teller Teller) (Teller, error) {
 	if err != nil {
 		return Teller{}, err
 	}
+	if firstTellerRevision(baseRevision) != "" && current.UpdatedAt != firstTellerRevision(baseRevision) {
+		return Teller{}, ErrTellerRevisionConflict
+	}
 	teller.ID = id
 	teller.CreatedAt = current.CreatedAt
-	teller.UpdatedAt = time.Now().Format(time.RFC3339)
+	teller.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	teller = normalizeTeller(teller)
 	if err := validateTeller(teller); err != nil {
 		return Teller{}, err
@@ -164,6 +169,13 @@ func (l *TellerLibrary) Update(id string, teller Teller) (Teller, error) {
 	teller.Path = path
 	teller.Custom = !isBuiltinID(teller.ID)
 	return teller, nil
+}
+
+func firstTellerRevision(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }
 
 func (l *TellerLibrary) Delete(id string) error {

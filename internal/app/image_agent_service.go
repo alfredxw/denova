@@ -20,6 +20,7 @@ type ImageAgentGenerateRequest struct {
 	Purpose       string
 	SourceContext string
 	SystemPrompt  string
+	ToolPrompt    string
 	SkillName     string
 	StoryID       string
 	BranchID      string
@@ -41,6 +42,7 @@ func (s *ImageAppService) GenerateWithAgent(ctx context.Context, req ImageAgentG
 	if err != nil {
 		return ImageAgentGenerateResult{}, err
 	}
+	cfg.ImagePresetToolPrompt = strings.TrimSpace(req.ToolPrompt)
 	runner, err := buildImageAgentRunner(ctx, &cfg, state, req.SystemPrompt)
 	if err != nil {
 		return ImageAgentGenerateResult{}, err

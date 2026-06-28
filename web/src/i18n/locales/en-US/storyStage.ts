@@ -54,7 +54,7 @@ const storyStage = {
   'storyStage.interactiveImage.generating': 'Generating interactive image...',
   'storyStage.imagePreset.menuTitle': 'Image Preset',
   'storyStage.inputPlaceholder': 'What do you do?',
-  'storyStage.inputPlaceholderWithSkills': 'What do you do? Type / to choose Skills',
+  'storyStage.inputPlaceholderWithSkills': 'What do you do? Type / for commands or Skills',
   'storyStage.stop': 'Stop',
   'storyStage.regenerate': 'Regenerate',
   'storyStage.sendRegenerate': 'Send and Regenerate',

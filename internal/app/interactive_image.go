@@ -75,10 +75,12 @@ func (s *InteractiveAppService) GenerateInteractiveImage(ctx context.Context, st
 	preset := loadImagePreset(novaDir, storyCtx.Meta.ImageSettings.PresetID)
 	sourceContext := interactiveImageSourceContext(storyCtx.Meta, storyCtx.Snapshot.Turns, turnIndex, store)
 	systemPrompt := interactiveImageSystemPrompt(preset)
+	toolPrompt := preset.PromptForTargets(imagepreset.TargetToolRequest)
 	result, err := a.GenerateImageWithAgent(ctx, ImageAgentGenerateRequest{
 		Purpose:       "interactive_image",
 		SourceContext: sourceContext,
 		SystemPrompt:  systemPrompt,
+		ToolPrompt:    toolPrompt,
 		SkillName:     interactiveImageSkill,
 		StoryID:       storyID,
 		BranchID:      storyCtx.Snapshot.BranchID,
@@ -246,7 +248,7 @@ func loadImagePreset(novaDir, id string) imagepreset.Preset {
 func interactiveImageSystemPrompt(preset imagepreset.Preset) string {
 	var sb strings.Builder
 	sb.WriteString("当前调用点是互动图像。你必须基于已经发生的互动回合生成一张图像，不能透露未来剧情，不能改写叙事正文。")
-	if strings.TrimSpace(preset.Prompt) != "" {
+	if systemPrompt := strings.TrimSpace(preset.PromptForTargets(imagepreset.TargetAgentSystem)); systemPrompt != "" {
 		sb.WriteString("\n\n## 图像方案预设\n\n")
 		if strings.TrimSpace(preset.ID) != "" {
 			fmt.Fprintf(&sb, "- ID：%s\n", limitInteractiveImageRunes(preset.ID, 120))
@@ -255,7 +257,7 @@ func interactiveImageSystemPrompt(preset imagepreset.Preset) string {
 			fmt.Fprintf(&sb, "- 名称：%s\n", limitInteractiveImageRunes(preset.Name, 120))
 		}
 		sb.WriteString("\n")
-		sb.WriteString(limitInteractiveImageRunes(preset.Prompt, imagepreset.MaxPromptChars))
+		sb.WriteString(limitInteractiveImageRunes(systemPrompt, imagepreset.MaxPromptChars))
 	}
 	return sb.String()
 }

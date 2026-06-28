@@ -133,11 +133,12 @@ function teller(id: string, name: string): Teller {
 
 function imagePreset(id: string, name: string): ImagePreset {
   return {
-    version: 1,
+    version: 2,
     id,
     name,
     description: `${name} description`,
-    prompt: 'visual prompt',
+    prompt: '## 图像请求 Prompt（tool_request）\n\nvisual prompt',
+    slots: [{ id: 'tool_request', name: '图像请求 Prompt', target: 'tool_request', enabled: true, content: 'visual prompt' }],
     tags: [],
     custom: id !== 'game-cg',
   }

@@ -38,14 +38,17 @@ func TestShouldGenerateInteractiveImageModes(t *testing.T) {
 
 func TestInteractiveImageSystemPromptUsesImagePreset(t *testing.T) {
 	prompt := interactiveImageSystemPrompt(imagepreset.Preset{
-		ID:     "realistic",
-		Name:   "写实",
-		Prompt: "真实光影和摄影感。",
+		ID:   "realistic",
+		Name: "写实",
+		Slots: []imagepreset.Slot{
+			{ID: "system", Name: "系统", Target: imagepreset.TargetAgentSystem, Enabled: true, Content: "理解真实光影。"},
+			{ID: "tool", Name: "请求", Target: imagepreset.TargetToolRequest, Enabled: true, Content: "原样请求风格。"},
+		},
 	})
-	if !strings.Contains(prompt, "图像方案预设") || !strings.Contains(prompt, "真实光影") {
+	if !strings.Contains(prompt, "图像方案预设") || !strings.Contains(prompt, "理解真实光影") {
 		t.Fatalf("system prompt should include image preset:\n%s", prompt)
 	}
-	if strings.Contains(prompt, "image_prompt") || strings.Contains(prompt, "叙事编排") {
+	if strings.Contains(prompt, "原样请求风格") || strings.Contains(prompt, "image_prompt") || strings.Contains(prompt, "叙事编排") {
 		t.Fatalf("system prompt should not mention legacy teller image_prompt:\n%s", prompt)
 	}
 }

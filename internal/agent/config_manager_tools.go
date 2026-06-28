@@ -39,7 +39,7 @@ type imagePresetWriteInput struct {
 type imagePresetWriteOperation struct {
 	Op     string             `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID     string             `json:"id" jsonschema:"description=目标图像方案 ID；update/delete 必填"`
-	Preset imagepreset.Preset `json:"preset" jsonschema:"description=create/update 使用的完整图像方案配置"`
+	Preset imagepreset.Preset `json:"preset" jsonschema:"description=create/update 使用的完整图像方案配置；slots 只支持 target=agent_system 或 tool_request"`
 }
 
 type automationWriteInput struct {
@@ -155,7 +155,7 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 }
 
 func newListImagePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_image_presets", "列出图像方案索引，返回 ID、名称、简介、标签和类型；需要完整 prompt 时再调用 read_image_presets。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_image_presets", "列出图像方案索引，返回 ID、名称、简介、标签、类型和注入规则概览；需要完整 slots 内容时再调用 read_image_presets。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -178,6 +178,15 @@ func newListImagePresetsTool(novaDir string) (tool.BaseTool, error) {
 			if len(preset.Tags) > 0 {
 				fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(preset.Tags, "、"))
 			}
+			if len(preset.Slots) > 0 {
+				enabled := 0
+				for _, slot := range preset.Slots {
+					if slot.Enabled {
+						enabled++
+					}
+				}
+				fmt.Fprintf(&sb, "  注入规则: %d/%d 启用\n", enabled, len(preset.Slots))
+			}
 			sb.WriteString("\n")
 		}
 		return strings.TrimSpace(sb.String()), nil
@@ -185,7 +194,7 @@ func newListImagePresetsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadImagePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_image_presets", "按图像方案 ID 批量读取完整图像方案配置。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_image_presets", "按图像方案 ID 批量读取完整图像方案配置。图像方案使用 slots：agent_system 注入图像提示构造 Agent 的 system prompt，tool_request 原样前置注入最终图像请求 prompt。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取图像方案")
@@ -208,7 +217,7 @@ func newReadImagePresetsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteImagePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_image_presets", "批量创建、更新或删除图像方案配置。删除内置图像方案会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input imagePresetWriteInput) (string, error) {
+	return utils.InferTool("write_image_presets", "批量创建、更新或删除图像方案配置。create/update 必须写完整 slots；target 仅支持 agent_system 和 tool_request。旧 prompt 字段只作为兼容输入，会被后端转换为 tool_request slot。删除内置图像方案会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input imagePresetWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入图像方案")

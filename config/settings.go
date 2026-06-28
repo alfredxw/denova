@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -322,6 +324,7 @@ type LayeredSettings struct {
 	Workspace                 Settings                  `json:"workspace"`
 	Effective                 Settings                  `json:"effective"`
 	Paths                     SettingsPaths             `json:"paths"`
+	Revisions                 SettingsRevisions         `json:"revisions"`
 	Access                    SettingsAccess            `json:"access"`
 	Runtime                   SettingsRuntime           `json:"runtime"`
 	BuiltinAgentPrompts       AgentPromptSettings       `json:"builtin_agent_prompts,omitempty"`
@@ -329,11 +332,19 @@ type LayeredSettings struct {
 	BuiltinAgentPromptSources AgentPromptSourceSettings `json:"builtin_agent_prompt_sources,omitempty"`
 }
 
+var ErrSettingsRevisionConflict = errors.New("配置已被其他操作更新，请重新加载后再保存")
+
 // SettingsPaths 是设置页只读展示的真实配置路径。
 type SettingsPaths struct {
 	NovaDir         string `json:"nova_dir"`
 	UserConfig      string `json:"user_config"`
 	WorkspaceConfig string `json:"workspace_config"`
+}
+
+// SettingsRevisions 是配置文件的轻量版本，用于阻止旧配置草稿覆盖外部写入。
+type SettingsRevisions struct {
+	User      string `json:"user"`
+	Workspace string `json:"workspace"`
 }
 
 // SettingsAccess exposes the Nova entry addresses users can open in browsers.
@@ -366,6 +377,20 @@ func ReadSettingsFile(path string) (Settings, error) {
 
 // WriteSettingsFile 写入 TOML，自动创建父目录。
 func WriteSettingsFile(path string, s Settings) error {
+	return WriteSettingsFileIfRevision(path, s, "")
+}
+
+// WriteSettingsFileIfRevision 写入配置；expectedRevision 非空时要求磁盘文件未被外部改动。
+func WriteSettingsFileIfRevision(path string, s Settings, expectedRevision string) error {
+	if expectedRevision != "" {
+		current, err := SettingsFileRevision(path)
+		if err != nil {
+			return err
+		}
+		if current != expectedRevision {
+			return ErrSettingsRevisionConflict
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("创建目录失败: %w", err)
 	}
@@ -377,6 +402,19 @@ func WriteSettingsFile(path string, s Settings) error {
 		return fmt.Errorf("写入 %s 失败: %w", path, err)
 	}
 	return nil
+}
+
+// SettingsFileRevision 返回配置文件内容版本；缺失文件使用 stable sentinel。
+func SettingsFileRevision(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "missing", nil
+		}
+		return "", fmt.Errorf("读取 %s 版本失败: %w", path, err)
+	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("sha256:%x", sum), nil
 }
 
 // UserConfigPath 计算用户级配置路径。novaDir 已经过 normalizePath 处理。
@@ -431,6 +469,21 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 	}
 	eff := Merge(Merge(Merge(def, global), user), ws)
 	backendPort := settingsInt(eff.BackendPort, 8080)
+	revisions := SettingsRevisions{}
+	userConfigPath := UserConfigPath(novaDir)
+	workspaceConfigPath := WorkspaceConfigPath(workspace)
+	if rev, err := SettingsFileRevision(userConfigPath); err == nil {
+		revisions.User = rev
+	} else {
+		return LayeredSettings{}, err
+	}
+	if workspace != "" {
+		if rev, err := SettingsFileRevision(workspaceConfigPath); err == nil {
+			revisions.Workspace = rev
+		} else {
+			return LayeredSettings{}, err
+		}
+	}
 	return LayeredSettings{
 		Default:   def,
 		Global:    global,
@@ -439,9 +492,10 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		Effective: eff,
 		Paths: SettingsPaths{
 			NovaDir:         novaDir,
-			UserConfig:      UserConfigPath(novaDir),
-			WorkspaceConfig: WorkspaceConfigPath(workspace),
+			UserConfig:      userConfigPath,
+			WorkspaceConfig: workspaceConfigPath,
 		},
+		Revisions: revisions,
 		Access: SettingsAccess{
 			LocalURL: LocalHTTPURL(backendPort),
 			LANURL:   LANHTTPURL(backendPort),

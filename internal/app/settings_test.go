@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -111,6 +112,39 @@ func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
 	}
 	if out.InteractiveHotChoices == nil || *out.InteractiveHotChoices {
 		t.Fatalf("interactive hot choices not persisted: %v", out.InteractiveHotChoices)
+	}
+}
+
+func TestAppUpdateWorkspaceSettingsRejectsStaleRevision(t *testing.T) {
+	ws := t.TempDir()
+	novaDir := t.TempDir()
+	a := &App{
+		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
+		workspace: ws,
+	}
+	layered, err := a.UpdateWorkspaceSettings(config.Settings{OpenAIModel: "front-base"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layered.Revisions.Workspace == "" {
+		t.Fatalf("workspace revision should be exposed")
+	}
+
+	time.Sleep(2 * time.Millisecond)
+	path := filepath.Join(ws, ".nova", "config.toml")
+	if err := config.WriteSettingsFile(path, config.Settings{OpenAIModel: "agent-model"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := a.UpdateWorkspaceSettings(config.Settings{OpenAIModel: "front-stale"}, layered.Revisions.Workspace); !errors.Is(err, config.ErrSettingsRevisionConflict) {
+		t.Fatalf("expected revision conflict, got %v", err)
+	}
+	out, err := config.ReadSettingsFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.OpenAIModel != "agent-model" {
+		t.Fatalf("stale save should not overwrite external change: %s", out.OpenAIModel)
 	}
 }
 

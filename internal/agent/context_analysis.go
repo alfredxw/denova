@@ -356,6 +356,19 @@ func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller 
 			Content: teller.Prompt,
 		}))
 	}
+	if strings.TrimSpace(teller.ImagePresetSystemPrompt) != "" {
+		title := "图像方案系统规则"
+		if strings.TrimSpace(teller.ImagePresetName) != "" {
+			title = "图像方案系统规则：" + strings.TrimSpace(teller.ImagePresetName)
+		}
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "image_preset_system",
+			Source:  teller.ImagePresetID,
+			Title:   title,
+			Content: teller.ImagePresetSystemPrompt,
+			Note:    "仅用于图像生成 system prompt",
+		}))
+	}
 	parts = append(parts, styleRuleContextAnalysisParts(teller.StyleRules)...)
 	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 		ID:      "flow",
@@ -480,9 +493,6 @@ func composeAgentInput(req ChatRequest, pending *session.Interruption, bookServi
 	}
 	if strings.TrimSpace(req.WritingSkill) != "" {
 		agentMessage = appendWritingSkillLoadHint(agentMessage, req.WritingSkill, contextLog)
-	}
-	if strings.TrimSpace(req.ImagePreset.Prompt) != "" {
-		agentMessage = appendImagePresetContext(agentMessage, req.ImagePreset, contextLog)
 	}
 	if len(req.References) > 0 {
 		agentMessage = appendReferenceContext(bookService, agentMessage, req.References, contextLog)
