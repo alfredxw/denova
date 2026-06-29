@@ -11,6 +11,7 @@ const (
 	AgentKindIDE              = "ide"
 	AgentKindInteractiveStory = "interactive_story"
 	AgentKindConfigManager    = "config_manager"
+	AgentKindImage            = "image"
 	AgentKindAutomation       = "automation"
 )
 
@@ -23,6 +24,7 @@ type RunOptions struct {
 	Workspace           string
 	Mode                string
 	IdleTimeout         time.Duration
+	ToolResultMaxBytes  int
 	SystemPromptLog     SystemPromptCompositionLog
 	OnMutationsVerified func(context.Context, []ToolMutation, PostRunVerification)
 }
@@ -46,6 +48,9 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 	if o.IdleTimeout < 0 {
 		o.IdleTimeout = 0
 	}
+	if o.ToolResultMaxBytes < 0 {
+		o.ToolResultMaxBytes = 0
+	}
 	return o
 }
 
@@ -57,6 +62,8 @@ func rootAgentNameForKind(kind string) string {
 		return "NovaInteractiveStoryAgent"
 	case AgentKindConfigManager:
 		return "NovaConfigManagerAgent"
+	case AgentKindImage:
+		return "NovaImageAgent"
 	case AgentKindAutomation:
 		return "NovaAutomationAgent"
 	default:

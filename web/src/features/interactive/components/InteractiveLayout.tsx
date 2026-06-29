@@ -16,18 +16,20 @@ import { StoryStage } from './StoryStage'
 import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
-import type { Snapshot } from '../types'
+import type { ImagePreset, Snapshot, StoryImageSettings } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 
 interface InteractiveLayoutProps {
   workspace?: string
+  imagePresets?: ImagePreset[]
+  onImagePresetsChange?: (presets: ImagePreset[]) => void
   loreEmpty?: boolean
   onRequestLoreInit?: () => void
   rightPanelVisible?: boolean
   onToggleRightPanel?: () => void
 }
 
-export function InteractiveLayout({ workspace, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
+export function InteractiveLayout({ workspace, imagePresets = [], onImagePresetsChange, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const { stories, tellers, branches, snapshot, currentStoryId, currentBranchId, submode, setStories, setTellers, setBranches, setSnapshot, setCurrentStoryId, setCurrentBranchId, setSubmode, resetWorkspaceState } = useInteractiveStore()
@@ -167,6 +169,14 @@ export function InteractiveLayout({ workspace, loreEmpty = false, onRequestLoreI
     await reloadStories()
   }
 
+  const handleImageSettingsChange = async (imageSettings: StoryImageSettings) => {
+    if (!currentStoryId) return
+    await updateInteractiveStory(currentStoryId, {
+      image_settings: imageSettings,
+    })
+    await reloadStories()
+  }
+
   const handleSwitchBranch = async (branchId: string) => {
     const storyId = currentStoryId || useInteractiveStore.getState().currentStoryId || snapshot?.story_id
     if (!storyId) return
@@ -206,6 +216,7 @@ export function InteractiveLayout({ workspace, loreEmpty = false, onRequestLoreI
       stories={stories}
       story={currentStory}
       tellers={tellers}
+      imagePresets={imagePresets}
       storyId={currentStoryId}
       branchId={currentBranchId}
       snapshot={displaySnapshot}
@@ -218,6 +229,7 @@ export function InteractiveLayout({ workspace, loreEmpty = false, onRequestLoreI
       onStoryDelete={handleDeleteStory}
       onTellerChange={handleTellerChange}
       onReplyTargetCharsChange={handleReplyTargetCharsChange}
+      onImageSettingsChange={handleImageSettingsChange}
       onRequestLoreInit={onRequestLoreInit}
       onToggleSceneMemory={isMobile ? () => setMobileSnapshotOpen((open) => !open) : onToggleRightPanel}
       onDone={reloadSnapshot}
@@ -236,7 +248,7 @@ export function InteractiveLayout({ workspace, loreEmpty = false, onRequestLoreI
               {submode === 'memory' ? (
                 <StoryMemoryView storyId={currentStoryId} branchId={currentBranchId} branches={branches} />
               ) : settingsWorkspaceVisible ? (
-                <SettingPanel mode={settingMode} workspace={workspace} tellers={tellers} onTellersChange={setTellers} />
+                <SettingPanel mode={settingMode} workspace={workspace} tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={onImagePresetsChange} />
               ) : submode === 'timeline' ? (
                 <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} tellers={tellers} onSelect={setCurrentStoryId} onCreate={handleCreateStory} onDelete={handleDeleteStory} />} />
               ) : isMobile ? (

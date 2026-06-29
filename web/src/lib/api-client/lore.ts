@@ -14,11 +14,11 @@ export async function createLoreItem(item: Partial<LoreItemInput>): Promise<Lore
   })
 }
 
-export async function updateLoreItem(id: string, item: Partial<LoreItemInput>): Promise<LoreItem> {
+export async function updateLoreItem(id: string, item: Partial<LoreItemInput>, baseRevision?: string): Promise<LoreItem> {
   return requestJSON(`/api/lore/items/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(item),
+    body: JSON.stringify(baseRevision ? { ...item, base_revision: baseRevision } : item),
   })
 }
 

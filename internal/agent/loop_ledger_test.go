@@ -34,14 +34,14 @@ func TestContextLedgerRecordsBoundedSources(t *testing.T) {
 	}
 }
 
-func TestFilterToolResultAddsManifestAndBoundsOutput(t *testing.T) {
+func TestFilterToolResultAddsManifestWithoutDefaultTruncation(t *testing.T) {
 	content := strings.Repeat("章节正文", 4096)
 	filtered := FilterToolResultForModel("write_file", `{"path":"chapters/ch00001.md"}`, content)
 	if filtered.Manifest.Source != ToolSourceWrite || !filtered.Manifest.MutatesWorkspace || !filtered.Manifest.RequiresPostCheck {
 		t.Fatalf("write_file should be classified as workspace mutation: %#v", filtered.Manifest)
 	}
-	if !filtered.Truncated {
-		t.Fatalf("expected long result to be truncated")
+	if filtered.Truncated {
+		t.Fatalf("default tool result filtering should not truncate")
 	}
 	if !strings.Contains(filtered.Content, "schema: tool_result.v1") ||
 		!strings.Contains(filtered.Content, "mutates_workspace: true") ||
@@ -49,7 +49,22 @@ func TestFilterToolResultAddsManifestAndBoundsOutput(t *testing.T) {
 		!strings.Contains(filtered.Content, "idempotency_key: write_file:") {
 		t.Fatalf("filtered result should include model-visible metadata: %s", filtered.Content)
 	}
-	if len(filtered.Content) > writeToolResultMaxBytes+1024 {
+	if !strings.Contains(filtered.Content, content) {
+		t.Fatalf("filtered result should include full content by default")
+	}
+}
+
+func TestFilterToolResultBoundsOutputWhenLimitConfigured(t *testing.T) {
+	content := strings.Repeat("章节正文", 4096)
+	filtered := FilterToolResultForModelWithLimit("write_file", `{"path":"chapters/ch00001.md"}`, content, 8*1024)
+	if !filtered.Truncated {
+		t.Fatalf("expected long result to be truncated when limit is configured")
+	}
+	if !strings.Contains(filtered.Content, "[tool result truncated]") ||
+		!strings.Contains(filtered.Content, "truncated: true") {
+		t.Fatalf("filtered result should include truncation markers: %s", filtered.Content)
+	}
+	if len(filtered.Content) > 8*1024+1024 {
 		t.Fatalf("filtered result should stay bounded, got %d bytes", len(filtered.Content))
 	}
 }

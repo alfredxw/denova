@@ -67,6 +67,25 @@ func TestParseWriteLoreItemsToolResultReturnsChangedIDs(t *testing.T) {
 	}
 }
 
+func TestComposeAgentInputDoesNotInjectImagePresetContext(t *testing.T) {
+	composition := composeAgentInput(ChatRequest{
+		Message:       "给当前章节生成插画",
+		ImagePresetID: "realistic",
+		ImagePreset: ImagePresetContext{
+			ID:                "realistic",
+			Name:              "写实",
+			AgentSystemPrompt: "系统理解规则。",
+			ToolRequestPrompt: "真实光影和摄影感。",
+		},
+	}, nil, nil, DefaultLoopPolicy())
+	if strings.Contains(composition.AgentMessage, "真实光影和摄影感") || strings.Contains(composition.AgentMessage, "图像方案预设") {
+		t.Fatalf("image preset should not be injected into turn message:\n%s", composition.AgentMessage)
+	}
+	if composition.ContextLog != nil && strings.Contains(composition.ContextLog.String(), "图像方案预设") {
+		t.Fatalf("context log should not record image preset as turn context:\n%s", composition.ContextLog.String())
+	}
+}
+
 func TestAppendReferenceContextDedupesAndReportsReadFailure(t *testing.T) {
 	workspace := t.TempDir()
 	mustWriteTestFile(t, workspace, "chapters/ch01.md", "第一章正文")

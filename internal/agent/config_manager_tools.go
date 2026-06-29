@@ -11,6 +11,7 @@ import (
 
 	"nova/config"
 	"nova/internal/automation"
+	"nova/internal/imagepreset"
 	"nova/internal/interactive"
 	novaskills "nova/internal/skills"
 )
@@ -20,14 +21,25 @@ type idListInput struct {
 }
 
 type tellerWriteInput struct {
-	Message    string                 `json:"message" jsonschema:"description=本次叙事编排变更说明"`
-	Operations []tellerWriteOperation `json:"operations" jsonschema:"description=批量叙事编排操作"`
+	Message    string                 `json:"message" jsonschema:"description=本次叙事方案变更说明"`
+	Operations []tellerWriteOperation `json:"operations" jsonschema:"description=批量叙事方案操作"`
 }
 
 type tellerWriteOperation struct {
 	Op     string             `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID     string             `json:"id" jsonschema:"description=目标导演 ID；update/delete 必填"`
 	Teller interactive.Teller `json:"teller" jsonschema:"description=create/update 使用的完整导演配置"`
+}
+
+type imagePresetWriteInput struct {
+	Message    string                      `json:"message" jsonschema:"description=本次图像方案变更说明"`
+	Operations []imagePresetWriteOperation `json:"operations" jsonschema:"description=批量图像方案操作"`
+}
+
+type imagePresetWriteOperation struct {
+	Op     string             `json:"op" jsonschema:"description=操作类型：create/update/delete"`
+	ID     string             `json:"id" jsonschema:"description=目标图像方案 ID；update/delete 必填"`
+	Preset imagepreset.Preset `json:"preset" jsonschema:"description=create/update 使用的完整图像方案配置；slots 只支持 target=agent_system 或 tool_request"`
 }
 
 type automationWriteInput struct {
@@ -111,6 +123,9 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListTellersTool(novaDir) }},
 		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newReadTellersTool(novaDir) }},
 		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteTellersTool(novaDir) }},
+		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListImagePresetsTool(novaDir) }},
+		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newReadImagePresetsTool(novaDir) }},
+		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteImagePresetsTool(novaDir) }},
 		{enabled: settings.Todo, build: func() (tool.BaseTool, error) { return newListAutomationsTool(novaDir, workspace) }},
 		{enabled: settings.Todo, build: func() (tool.BaseTool, error) { return newReadAutomationsTool(novaDir, workspace) }},
 		{enabled: settings.Todo, build: func() (tool.BaseTool, error) { return newWriteAutomationsTool(novaDir, workspace) }},
@@ -139,22 +154,121 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 	return tools, nil
 }
 
-func newListTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_tellers", "列出叙事编排/导演索引，返回 ID、名称、简介、标签和槽位概览；需要完整配置时再调用 read_tellers。", func(ctx context.Context, input struct{}) (string, error) {
+func newListImagePresetsTool(novaDir string) (tool.BaseTool, error) {
+	return utils.InferTool("list_image_presets", "列出图像方案索引，返回 ID、名称、简介、标签、类型和注入规则概览；需要完整 slots 内容时再调用 read_image_presets。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
-			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事编排")
+			return "", fmt.Errorf("nova_dir 不可用，无法读取图像方案")
+		}
+		presets, err := imagepreset.NewLibrary(novaDir).List()
+		if err != nil {
+			return "", err
+		}
+		if len(presets) == 0 {
+			return "暂无图像方案。", nil
+		}
+		var sb strings.Builder
+		sb.WriteString("# 图像方案索引\n\n")
+		for _, preset := range presets {
+			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n", preset.ID, preset.Name, boolLabel(preset.Custom, "custom", "built-in"))
+			if preset.Description != "" {
+				fmt.Fprintf(&sb, "  简介: %s\n", preset.Description)
+			}
+			if len(preset.Tags) > 0 {
+				fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(preset.Tags, "、"))
+			}
+			if len(preset.Slots) > 0 {
+				enabled := 0
+				for _, slot := range preset.Slots {
+					if slot.Enabled {
+						enabled++
+					}
+				}
+				fmt.Fprintf(&sb, "  注入规则: %d/%d 启用\n", enabled, len(preset.Slots))
+			}
+			sb.WriteString("\n")
+		}
+		return strings.TrimSpace(sb.String()), nil
+	})
+}
+
+func newReadImagePresetsTool(novaDir string) (tool.BaseTool, error) {
+	return utils.InferTool("read_image_presets", "按图像方案 ID 批量读取完整图像方案配置。图像方案使用 slots：agent_system 注入图像提示构造 Agent 的 system prompt，tool_request 原样前置注入最终图像请求 prompt。", func(ctx context.Context, input idListInput) (string, error) {
+		_ = ctx
+		if novaDir == "" {
+			return "", fmt.Errorf("nova_dir 不可用，无法读取图像方案")
+		}
+		lib := imagepreset.NewLibrary(novaDir)
+		result := []imagepreset.Preset{}
+		for _, id := range input.IDs {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			preset, err := lib.Get(id)
+			if err != nil {
+				return "", err
+			}
+			result = append(result, preset)
+		}
+		return marshalToolJSON(result)
+	})
+}
+
+func newWriteImagePresetsTool(novaDir string) (tool.BaseTool, error) {
+	return utils.InferTool("write_image_presets", "批量创建、更新或删除图像方案配置。create/update 必须写完整 slots；target 仅支持 agent_system 和 tool_request。旧 prompt 字段只作为兼容输入，会被后端转换为 tool_request slot。删除内置图像方案会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input imagePresetWriteInput) (string, error) {
+		_ = ctx
+		if novaDir == "" {
+			return "", fmt.Errorf("nova_dir 不可用，无法写入图像方案")
+		}
+		lib := imagepreset.NewLibrary(novaDir)
+		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
+		for _, op := range input.Operations {
+			switch strings.TrimSpace(op.Op) {
+			case "create":
+				preset, err := lib.Create(op.Preset)
+				if err != nil {
+					return "", err
+				}
+				result["created"] = append(result["created"], preset.ID)
+			case "update":
+				id := firstConfigNonEmpty(op.ID, op.Preset.ID)
+				preset, err := lib.Update(id, op.Preset)
+				if err != nil {
+					return "", err
+				}
+				result["updated"] = append(result["updated"], preset.ID)
+			case "delete":
+				id := strings.TrimSpace(op.ID)
+				if err := lib.Delete(id); err != nil {
+					return "", err
+				}
+				result["deleted"] = append(result["deleted"], id)
+			default:
+				return "", fmt.Errorf("未知图像方案操作: %s", op.Op)
+			}
+		}
+		return marshalToolJSON(result)
+	})
+}
+
+func newListTellersTool(novaDir string) (tool.BaseTool, error) {
+	return utils.InferTool("list_tellers", "列出叙事方案索引，返回 ID、名称、简介、标签和槽位概览；需要完整配置时再调用 read_tellers。", func(ctx context.Context, input struct{}) (string, error) {
+		_ = ctx
+		_ = input
+		if novaDir == "" {
+			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事方案")
 		}
 		tellers, err := interactive.NewTellerLibrary(novaDir).List()
 		if err != nil {
 			return "", err
 		}
 		if len(tellers) == 0 {
-			return "暂无叙事编排。", nil
+			return "暂无叙事方案。", nil
 		}
 		var sb strings.Builder
-		sb.WriteString("# 叙事编排索引\n\n")
+		sb.WriteString("# 叙事方案索引\n\n")
 		for _, teller := range tellers {
 			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  槽位: %d\n", teller.ID, teller.Name, boolLabel(teller.Custom, "custom", "built-in"), len(teller.Slots))
 			if teller.Description != "" {
@@ -170,10 +284,10 @@ func newListTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_tellers", "按导演 ID 批量读取完整叙事编排配置。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_tellers", "按叙事方案 ID 批量读取完整配置。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
-			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事编排")
+			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事方案")
 		}
 		lib := interactive.NewTellerLibrary(novaDir)
 		result := []interactive.Teller{}
@@ -193,10 +307,10 @@ func newReadTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_tellers", "批量创建、更新或删除叙事编排/导演配置。删除内置导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
+	return utils.InferTool("write_tellers", "批量创建、更新或删除叙事方案配置。删除内置方案会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
-			return "", fmt.Errorf("nova_dir 不可用，无法写入叙事编排")
+			return "", fmt.Errorf("nova_dir 不可用，无法写入叙事方案")
 		}
 		lib := interactive.NewTellerLibrary(novaDir)
 		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
@@ -222,10 +336,10 @@ func newWriteTellersTool(novaDir string) (tool.BaseTool, error) {
 				}
 				result["deleted"] = append(result["deleted"], id)
 			default:
-				return "", fmt.Errorf("不支持的叙事编排操作: %s", op.Op)
+				return "", fmt.Errorf("不支持的叙事方案操作: %s", op.Op)
 			}
 		}
-		return formatBatchResult(firstConfigNonEmpty(input.Message, "叙事编排已更新"), result), nil
+		return formatBatchResult(firstConfigNonEmpty(input.Message, "叙事方案已更新"), result), nil
 	})
 }
 

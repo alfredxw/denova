@@ -178,3 +178,11 @@ func (a *App) RemoteAccessConfig() config.RemoteAccessConfig {
 	}
 	return a.cfg.RemoteAccessConfig()
 }
+
+// HideChapterBodyLiveOutput reports whether real-time SSE output should
+// hide novel chapter body content while preserving tool execution internally.
+func (a *App) HideChapterBodyLiveOutput() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.cfg != nil && a.cfg.HideChapterBodyLiveOutput
+}

@@ -39,12 +39,16 @@ type Config struct {
 	Workspace                   string                       `toml:"workspace"`
 	RuntimeWebPort              int                          `toml:"-"`
 	IDEStoryTellerID            string                       `toml:"-"`
+	IDEImagePresetID            string                       `toml:"-"`
+	ImagePresetToolPrompt       string                       `toml:"-"`
 	WritingSkillDefault         string                       `toml:"writing_skill_default"`
 	MaxIteration                int                          `toml:"max_iteration"`
 	ModelMaxRetries             int                          `toml:"model_max_retries"`
 	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`
+	AgentToolResultLimitKB      int                          `toml:"agent_tool_result_limit_kb"`
 	ChapterFilenameFormat       string                       `toml:"-"`
 	VolumeDirFormat             string                       `toml:"-"`
+	HideChapterBodyLiveOutput   bool                         `toml:"-"`
 	ChapterGroupMin             int                          `toml:"-"`
 	ChapterGroupMax             int                          `toml:"-"`
 	VersionTimedEnabled         bool                         `toml:"-"`
@@ -94,12 +98,15 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
+		IDEImagePresetID:            s.IDEImagePresetID,
 		WritingSkillDefault:         s.WritingSkillDefault,
 		MaxIteration:                settingsInt(s.MaxIteration, 0),
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
+		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
+		HideChapterBodyLiveOutput:   settingsBool(s.HideChapterBodyLiveOutput, false),
 		ChapterGroupMin:             settingsInt(s.ChapterGroupMin, 3),
 		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
 		VersionTimedEnabled:         settingsBool(s.VersionTimedEnabled, true),
@@ -160,7 +167,7 @@ func startupNovaDir() string {
 }
 
 func loadGlobalConfig() *Config {
-	cfg := &Config{AgentIdleTimeoutSeconds: -1}
+	cfg := &Config{AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1}
 	for _, path := range globalConfigCandidates() {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -202,7 +209,11 @@ func settingsFromConfig(cfg *Config) Settings {
 		Language:                 cfg.Language,
 		ChapterFilenameFormat:    cfg.ChapterFilenameFormat,
 		VolumeDirFormat:          cfg.VolumeDirFormat,
+		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
+	}
+	if cfg.HideChapterBodyLiveOutput {
+		settings.HideChapterBodyLiveOutput = &cfg.HideChapterBodyLiveOutput
 	}
 	if cfg.BackendPort > 0 {
 		settings.BackendPort = &cfg.BackendPort
@@ -219,6 +230,9 @@ func settingsFromConfig(cfg *Config) Settings {
 	}
 	if cfg.AgentIdleTimeoutSeconds >= 0 {
 		settings.AgentIdleTimeoutSeconds = &cfg.AgentIdleTimeoutSeconds
+	}
+	if cfg.AgentToolResultLimitKB >= 0 {
+		settings.AgentToolResultLimitKB = &cfg.AgentToolResultLimitKB
 	}
 	if cfg.OpenAIContextWindowTokens > 0 {
 		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
@@ -266,12 +280,15 @@ func Load() *Config {
 			Language:                    d.Language,
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
+			IDEImagePresetID:            d.IDEImagePresetID,
 			WritingSkillDefault:         d.WritingSkillDefault,
 			MaxIteration:                settingsInt(d.MaxIteration, 0),
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
+			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
+			HideChapterBodyLiveOutput:   settingsBool(d.HideChapterBodyLiveOutput, false),
 			ChapterGroupMin:             settingsInt(d.ChapterGroupMin, 3),
 			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),
 			VersionTimedEnabled:         settingsBool(d.VersionTimedEnabled, true),
@@ -306,6 +323,13 @@ func settingsInt(v *int, fallback int) int {
 func settingsAgentIdleTimeoutSeconds(v *int) int {
 	if v == nil || *v < 0 {
 		return DefaultAgentIdleTimeoutSeconds
+	}
+	return *v
+}
+
+func settingsAgentToolResultLimitKB(v *int) int {
+	if v == nil || *v < 0 {
+		return DefaultAgentToolResultLimitKB
 	}
 	return *v
 }

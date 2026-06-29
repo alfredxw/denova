@@ -27,6 +27,20 @@ var newDeepAgent = deep.New
 
 const unlimitedAgentMaxIterations = 1_000_000
 
+var novaReadFileToolDesc = fmt.Sprintf(`Reads a file from the filesystem.
+- file_path must be an absolute path.
+- By default this tool reads up to %d lines from line 1. Do not use a smaller scan limit just to inspect normal source or writing files.
+- Use offset and limit to continue reading later sections. Set limit above %d only when the task truly needs more context.
+- Results are returned with line numbers in cat -n format.
+- Read a file before editing it.
+
+从文件系统读取文件。
+- file_path 必须是绝对路径。
+- 默认从第 1 行开始最多读取 %d 行。普通源码或正文文件不要先用更小的扫描 limit。
+- 需要继续读取后续片段时使用 offset 和 limit；只有确实需要更多上下文时才把 limit 设为超过 %d。
+- 结果以 cat -n 行号格式返回。
+- 编辑前必须先读取目标文件。`, agentFileReadDefaultLimitLines, agentFileReadDefaultLimitLines, agentFileReadDefaultLimitLines, agentFileReadDefaultLimitLines)
+
 // Build 构建小说创作 Agent（deep agent + 文件系统工具 + Skill 中间件）。
 func Build(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (adk.Agent, error) {
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{
@@ -35,7 +49,7 @@ func Build(ctx context.Context, cfg *config.Config, state *book.State, teller ID
 		Description:       "AI 小说创作助手",
 		Instruction:       BuildInstruction(cfg, state, teller),
 		EnableSkills:      true,
-		ExtraToolsFactory: loreToolsFactory(cfg, false),
+		ExtraToolsFactory: ideToolsFactory(cfg),
 	})
 }
 
@@ -72,6 +86,19 @@ func BuildAutomationAgent(ctx context.Context, cfg *config.Config, state *book.S
 		Instruction:       BuildAutomationInstruction(cfg, state, task),
 		EnableSkills:      true,
 		ExtraToolsFactory: loreToolsFactory(cfg, false),
+	})
+}
+
+// BuildImageAgent 构建通用图像 Agent。调用方通过运行时上下文和 Skill 约束具体用途。
+func BuildImageAgent(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (adk.Agent, error) {
+	return buildDeepAgent(ctx, cfg, deepAgentSpec{
+		Kind:              config.AgentKindImage,
+		Name:              "NovaImageAgent",
+		Description:       "AI 图像生成助手",
+		Instruction:       BuildImageInstruction(cfg, state, systemPrompt),
+		EnableSkills:      true,
+		DisableWriteTodos: true,
+		ExtraToolsFactory: imageToolsFactory(cfg),
 	})
 }
 
@@ -218,7 +245,11 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 			agentKind:                    spec.Kind,
 		})
 	}
-	handlers = append(handlers, &toolOrchestratorMiddleware{agentKind: spec.Kind, policyKind: firstNonEmpty(spec.ToolPolicyKind, spec.Kind)})
+	handlers = append(handlers, &toolOrchestratorMiddleware{
+		agentKind:          spec.Kind,
+		policyKind:         firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
+		toolResultMaxBytes: configToolResultMaxBytes(cfg),
+	})
 	handlers = append(handlers, &modelInputLoggingMiddleware{
 		BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
 		agentKind:                    spec.Kind,
@@ -334,6 +365,39 @@ func loreToolsFactory(cfg *config.Config, forceReadOnly bool) func(config.Resolv
 	}
 }
 
+func ideToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+		if cfg == nil {
+			return nil, nil
+		}
+		var tools []tool.BaseTool
+		if settings.LoreRead {
+			loreTools, err := newLoreTools(cfg.Workspace, settings.LoreWrite)
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, loreTools...)
+		}
+		if settings.ImageGeneration {
+			imageTools, err := newIllustrationTools(cfg)
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, imageTools...)
+		}
+		return tools, nil
+	}
+}
+
+func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+		if cfg == nil || !settings.ImageGeneration {
+			return nil, nil
+		}
+		return newIllustrationTools(cfg)
+	}
+}
+
 func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 		var tools []tool.BaseTool
@@ -391,6 +455,7 @@ func newFilesystemMiddleware(ctx context.Context, backend filesystem.Backend, st
 		},
 		ReadFileToolConfig: &filesystemmw.ToolConfig{
 			Disable: !settings.FileRead,
+			Desc:    &novaReadFileToolDesc,
 		},
 		GlobToolConfig: &filesystemmw.ToolConfig{
 			Disable: !settings.FileRead,
@@ -423,6 +488,13 @@ func configModelMaxRetries(cfg *config.Config) int {
 		return 5
 	}
 	return cfg.ModelMaxRetries
+}
+
+func configToolResultMaxBytes(cfg *config.Config) int {
+	if cfg == nil || cfg.AgentToolResultLimitKB <= 0 {
+		return 0
+	}
+	return cfg.AgentToolResultLimitKB * 1024
 }
 
 // handleUnknownTool 拦截 LLM 调用未知工具的错误，把可读提示作为工具结果回传给模型，

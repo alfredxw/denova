@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MessageItem } from './MessageItem'
@@ -59,7 +59,7 @@ describe('MessageItem', () => {
     expect(persistedTags).toEqual(streamedTags)
   })
 
-  it('互动模式 assistant 消息高亮常见对白引号', () => {
+  it('游戏模式 assistant 消息高亮常见对白引号', () => {
     const { container } = render(
       <MessageItem
         highlightDialogue
@@ -74,7 +74,7 @@ describe('MessageItem', () => {
     expect(highlights[2]).toHaveTextContent('"now"')
   })
 
-  it('互动模式 assistant 消息不按角色名冒号高亮，避免误判叙述句', () => {
+  it('游戏模式 assistant 消息不按角色名冒号高亮，避免误判叙述句', () => {
     const { container } = render(
       <MessageItem
         highlightDialogue
@@ -162,6 +162,239 @@ describe('MessageItem', () => {
     expect(screen.getByText('调用工具')).toBeInTheDocument()
     expect(screen.getByText('write_file')).toBeInTheDocument()
     expect(screen.getByText('写入完成')).toBeInTheDocument()
+  })
+
+  it('隐藏章节正文的工具卡片展示写入状态和说明详情', async () => {
+    const user = userEvent.setup()
+    const path = '/Users/me/nova/.nova/测试/chapters/ch01.md'
+
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: `write_file\n{"file_path":"${path}"}`,
+          name: 'write_file',
+          args: `{"file_path":"${path}"}`,
+          status: 'running',
+          sse_hidden_fields: ['content'],
+          sse_hidden_reason: 'novel_chapter_body',
+          sse_display_notice: 'chapter_body_hidden',
+          sse_generated_chars: 123,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('正在写入章节 · 已生成 123 字')).toBeInTheDocument()
+    expect(screen.queryByText('准备执行工具请求')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '详情' }))
+    expect(screen.getByText('路径：')).toBeInTheDocument()
+    expect(screen.getByText(path)).toBeInTheDocument()
+    expect(screen.getByText('已生成：123 字')).toBeInTheDocument()
+    expect(screen.getByText('章节正文已在实时输出中隐藏，文件仍会正常写入。')).toBeInTheDocument()
+    expect(screen.queryByText(/content/)).not.toBeInTheDocument()
+  })
+
+  it('章节插画工具卡片展示预览并触发插入', async () => {
+    const user = userEvent.setup()
+    const handleInsert = vi.fn()
+    const illustration = {
+      schema: 'chapter_illustration.v1',
+      chapter_path: 'chapters/ch01.md',
+      image_path: 'assets/illustrations/ch01/run/image.png',
+      meta_path: 'assets/illustrations/ch01/run/meta.json',
+      markdown: '![雨夜](assets/illustrations/ch01/run/image.png)',
+      alt_text: '雨夜',
+      profile_id: 'default',
+      provider: 'openai',
+      model: 'gpt-image-1',
+      size: '4096x2304',
+      quality: 'high',
+      output_format: 'png',
+    } as const
+
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'generate_image',
+          name: 'generate_image',
+          status: 'success',
+          illustration,
+        }}
+        onInsertIllustration={handleInsert}
+      />,
+    )
+
+    expect(screen.getByText('章节插画')).toBeInTheDocument()
+    expect(screen.getByText('assets/illustrations/ch01/run/image.png')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '雨夜' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fillustrations%2Fch01%2Frun%2Fimage.png')
+
+    await user.click(screen.getByRole('button', { name: '放大查看章节插画' }))
+    expect(within(screen.getByRole('dialog')).getByRole('img', { name: '雨夜' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fillustrations%2Fch01%2Frun%2Fimage.png')
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: /插入正文/ }))
+    expect(handleInsert).toHaveBeenCalledWith(illustration)
+  })
+
+  it('assistant Markdown 图像支持 workspace 路径展示和点击放大', async () => {
+    const user = userEvent.setup()
+    render(<MessageItem message={{ role: 'assistant', content: '![封面](assets/image/generated/cover.png)' }} />)
+
+    expect(screen.getByRole('img', { name: '封面' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png')
+
+    await user.click(screen.getByRole('button', { name: '放大查看图像' }))
+
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByRole('img', { name: '封面' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Fimage%2Fgenerated%2Fcover.png')
+    expect(within(dialog).queryByTitle('assets/image/generated/cover.png')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: '放大' })).toBeInTheDocument()
+  })
+
+  it('assistant 回合正文下方内联展示互动图像版本', async () => {
+    const user = userEvent.setup()
+    render(
+      <MessageItem
+        message={{
+          id: 'assistant-turn-1',
+          role: 'assistant',
+          content: '这一轮剧情。',
+          turn_id: 'turn-1',
+          interactive_images: [
+            {
+              schema: 'interactive_image.v1',
+              story_id: 'story-1',
+              branch_id: 'main',
+              turn_id: 'turn-1',
+              image_path: 'assets/interactive/images/story-1/main/turn-1/run-a/image.png',
+              meta_path: 'assets/interactive/images/story-1/main/turn-1/run-a/meta.json',
+              alt_text: '第一张互动图像',
+            },
+            {
+              schema: 'interactive_image.v1',
+              story_id: 'story-1',
+              branch_id: 'main',
+              turn_id: 'turn-1',
+              image_path: 'assets/interactive/images/story-1/main/turn-1/run-b/image.png',
+              meta_path: 'assets/interactive/images/story-1/main/turn-1/run-b/meta.json',
+              alt_text: '第二张互动图像',
+            },
+          ],
+        }}
+      />,
+    )
+
+    expect(screen.getByText('这一轮剧情。')).toBeInTheDocument()
+    expect(screen.queryByText('互动图像')).not.toBeInTheDocument()
+    expect(screen.queryByText((text) => text.includes('assets/interactive/images'))).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重新生成' })).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '第二张互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-b%2Fimage.png')
+
+    await user.click(screen.getByRole('button', { name: '上一张互动图像' }))
+    expect(screen.getByRole('img', { name: '第一张互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png')
+  })
+
+  it('assistant 回合互动图像新增版本后自动切到最新图像', async () => {
+    const user = userEvent.setup()
+    const baseMessage = {
+      id: 'assistant-turn-1',
+      role: 'assistant' as const,
+      content: '这一轮剧情。',
+      turn_id: 'turn-1',
+      interactive_images: [
+        {
+          schema: 'interactive_image.v1',
+          story_id: 'story-1',
+          branch_id: 'main',
+          turn_id: 'turn-1',
+          image_path: 'assets/interactive/images/story-1/main/turn-1/run-a/image.png',
+          meta_path: 'assets/interactive/images/story-1/main/turn-1/run-a/meta.json',
+          alt_text: '第一张互动图像',
+        },
+        {
+          schema: 'interactive_image.v1',
+          story_id: 'story-1',
+          branch_id: 'main',
+          turn_id: 'turn-1',
+          image_path: 'assets/interactive/images/story-1/main/turn-1/run-b/image.png',
+          meta_path: 'assets/interactive/images/story-1/main/turn-1/run-b/meta.json',
+          alt_text: '第二张互动图像',
+        },
+      ],
+    }
+
+    const { rerender } = render(<MessageItem message={baseMessage} />)
+
+    await user.click(screen.getByRole('button', { name: '上一张互动图像' }))
+    expect(screen.getByRole('img', { name: '第一张互动图像' })).toBeInTheDocument()
+
+    rerender(
+      <MessageItem
+        message={{
+          ...baseMessage,
+          interactive_images: [
+            ...baseMessage.interactive_images,
+            {
+              schema: 'interactive_image.v1',
+              story_id: 'story-1',
+              branch_id: 'main',
+              turn_id: 'turn-1',
+              image_path: 'assets/interactive/images/story-1/main/turn-1/run-c/image.png',
+              meta_path: 'assets/interactive/images/story-1/main/turn-1/run-c/meta.json',
+              alt_text: '第三张互动图像',
+            },
+          ],
+        }}
+      />,
+    )
+
+    expect(screen.getByRole('img', { name: '第三张互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-c%2Fimage.png')
+  })
+
+  it('assistant 回合元信息显示手动生成互动图像按钮', async () => {
+    const user = userEvent.setup()
+    const handleGenerate = vi.fn()
+    render(
+      <MessageItem
+        message={{ role: 'assistant', content: '这一轮剧情。', turn_id: 'turn-1' }}
+        onGenerateInteractiveImage={handleGenerate}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '生成互动图像' }))
+    expect(handleGenerate).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }))
+  })
+
+  it('txt 章节插画卡片不允许一键插入 Markdown 图像', () => {
+    const handleInsert = vi.fn()
+
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'generate_image',
+          name: 'generate_image',
+          status: 'success',
+          illustration: {
+            schema: 'chapter_illustration.v1',
+            chapter_path: 'chapters/ch01.txt',
+            image_path: 'assets/illustrations/ch01/run/image.png',
+            meta_path: 'assets/illustrations/ch01/run/meta.json',
+            markdown: '![雨夜](assets/illustrations/ch01/run/image.png)',
+            alt_text: '雨夜',
+            profile_id: 'default',
+            provider: 'openai',
+            model: 'gpt-image-1',
+          },
+        }}
+        onInsertIllustration={handleInsert}
+      />,
+    )
+
+    expect(screen.getByText('当前章节不是 Markdown，不能一键插入')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /插入正文/ })).toBeDisabled()
   })
 
   it('工具调用流式预览默认锁定到底部', async () => {

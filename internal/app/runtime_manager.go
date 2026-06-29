@@ -150,6 +150,7 @@ func (s *WorkspaceRuntimeManager) Books() []BookRecord {
 			records[i].Name = meta.Title
 		}
 		records[i].Author = meta.Author
+		records[i].CoverUpdatedAt = bookCoverUpdatedAt(records[i].Path)
 	}
 	return records
 }
@@ -442,11 +443,11 @@ func (s *WorkspaceRuntimeManager) Settings() (config.LayeredSettings, error) {
 }
 
 // UpdateUserSettings 持久化用户级配置并返回最新分层快照。
-func (a *App) UpdateUserSettings(settings config.Settings) (config.LayeredSettings, error) {
-	return a.runtime().UpdateUserSettings(settings)
+func (a *App) UpdateUserSettings(settings config.Settings, baseRevision ...string) (config.LayeredSettings, error) {
+	return a.runtime().UpdateUserSettings(settings, firstRevision(baseRevision))
 }
 
-func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings) (config.LayeredSettings, error) {
+func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, baseRevision string) (config.LayeredSettings, error) {
 	a := s.app
 	a.mu.RLock()
 	novaDir := ""
@@ -463,7 +464,7 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings) (
 	if err != nil {
 		return config.LayeredSettings{}, err
 	}
-	if err := config.WriteSettingsFile(path, prepared); err != nil {
+	if err := config.WriteSettingsFileIfRevision(path, prepared, baseRevision); err != nil {
 		return config.LayeredSettings{}, err
 	}
 	log.Printf("[settings] 用户配置已保存 path=%s", path)
@@ -478,11 +479,11 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings) (
 }
 
 // UpdateWorkspaceSettings 持久化当前工作区配置并返回最新分层快照。
-func (a *App) UpdateWorkspaceSettings(settings config.Settings) (config.LayeredSettings, error) {
-	return a.runtime().UpdateWorkspaceSettings(settings)
+func (a *App) UpdateWorkspaceSettings(settings config.Settings, baseRevision ...string) (config.LayeredSettings, error) {
+	return a.runtime().UpdateWorkspaceSettings(settings, firstRevision(baseRevision))
 }
 
-func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settings) (config.LayeredSettings, error) {
+func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settings, baseRevision string) (config.LayeredSettings, error) {
 	a := s.app
 	a.mu.RLock()
 	workspace := a.workspace
@@ -491,7 +492,7 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 		return config.LayeredSettings{}, fmt.Errorf("当前没有打开的工作区")
 	}
 	path := config.WorkspaceConfigPath(workspace)
-	if err := config.WriteSettingsFile(path, settings); err != nil {
+	if err := config.WriteSettingsFileIfRevision(path, settings, baseRevision); err != nil {
 		return config.LayeredSettings{}, err
 	}
 	log.Printf("[settings] 工作区配置已保存 path=%s", path)
@@ -503,6 +504,13 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 	applyLayeredSettingsToConfig(a.cfg, layered)
 	a.mu.Unlock()
 	return layered, nil
+}
+
+func firstRevision(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }
 
 func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSettings) {
@@ -565,6 +573,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if cfg.IDEStoryTellerID == "" && effective.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = effective.IDEStoryTellerID
 	}
+	if effective.IDEImagePresetID != "" {
+		cfg.IDEImagePresetID = effective.IDEImagePresetID
+	}
 	cfg.WritingSkillDefault = effective.WritingSkillDefault
 	cfg.MaxIteration = appSettingsInt(effective.MaxIteration, 0)
 	if effective.ModelMaxRetries != nil {
@@ -573,11 +584,17 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.AgentIdleTimeoutSeconds != nil {
 		cfg.AgentIdleTimeoutSeconds = appAgentIdleTimeoutSeconds(effective.AgentIdleTimeoutSeconds)
 	}
+	if effective.AgentToolResultLimitKB != nil {
+		cfg.AgentToolResultLimitKB = appAgentToolResultLimitKB(effective.AgentToolResultLimitKB)
+	}
 	if effective.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = effective.ChapterFilenameFormat
 	}
 	if effective.VolumeDirFormat != "" {
 		cfg.VolumeDirFormat = effective.VolumeDirFormat
+	}
+	if effective.HideChapterBodyLiveOutput != nil {
+		cfg.HideChapterBodyLiveOutput = *effective.HideChapterBodyLiveOutput
 	}
 	if effective.ChapterGroupMin != nil {
 		cfg.ChapterGroupMin = appSettingsInt(effective.ChapterGroupMin, 3)
@@ -655,6 +672,9 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.IDEStoryTellerID != "" {
 		cfg.IDEStoryTellerID = settings.IDEStoryTellerID
 	}
+	if settings.IDEImagePresetID != "" {
+		cfg.IDEImagePresetID = settings.IDEImagePresetID
+	}
 	if settings.WritingSkillDefault != "" {
 		cfg.WritingSkillDefault = settings.WritingSkillDefault
 	}
@@ -667,11 +687,17 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.AgentIdleTimeoutSeconds != nil {
 		cfg.AgentIdleTimeoutSeconds = appAgentIdleTimeoutSeconds(settings.AgentIdleTimeoutSeconds)
 	}
+	if settings.AgentToolResultLimitKB != nil {
+		cfg.AgentToolResultLimitKB = appAgentToolResultLimitKB(settings.AgentToolResultLimitKB)
+	}
 	if settings.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = settings.ChapterFilenameFormat
 	}
 	if settings.VolumeDirFormat != "" {
 		cfg.VolumeDirFormat = settings.VolumeDirFormat
+	}
+	if settings.HideChapterBodyLiveOutput != nil {
+		cfg.HideChapterBodyLiveOutput = *settings.HideChapterBodyLiveOutput
 	}
 	if settings.ChapterGroupMin != nil {
 		cfg.ChapterGroupMin = appSettingsInt(settings.ChapterGroupMin, 3)
@@ -731,6 +757,20 @@ func appAgentIdleTimeoutSeconds(v *int) int {
 		return config.DefaultAgentIdleTimeoutSeconds
 	}
 	return *v
+}
+
+func appAgentToolResultLimitKB(v *int) int {
+	if v == nil || *v < 0 {
+		return config.DefaultAgentToolResultLimitKB
+	}
+	return *v
+}
+
+func agentToolResultMaxBytes(cfg config.Config) int {
+	if cfg.AgentToolResultLimitKB <= 0 {
+		return 0
+	}
+	return cfg.AgentToolResultLimitKB * 1024
 }
 
 func applyRequestLocaleToConfig(cfg *config.Config, locale string) {

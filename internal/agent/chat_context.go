@@ -173,6 +173,17 @@ func boundedStyleRules(rules []StyleRule, maxChars int) []StyleRule {
 	return result
 }
 
+func truncateRunes(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}
+
 // appendSelectionContext 将用户在编辑器中选中的文本片段追加到消息上下文。
 func appendSelectionContext(message string, selections []TextSelectionRef) string {
 	var sb strings.Builder

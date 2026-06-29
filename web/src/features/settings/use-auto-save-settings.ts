@@ -3,11 +3,12 @@ import type { LayeredSettings, Settings, SettingsLayer } from './types'
 
 const AUTO_SAVE_DELAY_MS = 1000
 
-type SaveSettings = (settings: Settings) => Promise<LayeredSettings>
+type SaveSettings = (settings: Settings, baseRevision?: string) => Promise<LayeredSettings>
 
 export function useAutoSaveSettings({
   draft,
   saved,
+  baseRevision,
   ready,
   save,
   onSavingChange,
@@ -16,6 +17,7 @@ export function useAutoSaveSettings({
 }: {
   draft: Settings
   saved: Settings
+  baseRevision?: string
   ready: boolean
   save: SaveSettings
   onSavingChange: (saving: boolean) => void
@@ -31,6 +33,8 @@ export function useAutoSaveSettings({
   const timerRef = useRef<number | null>(null)
   const latestDraftRef = useRef(draft)
   const latestDraftKeyRef = useRef('')
+  const baseRevisionRef = useRef(baseRevision || '')
+  const blockedDraftKeyRef = useRef('')
   const saveRef = useRef(save)
   const onSavingChangeRef = useRef(onSavingChange)
   const onSavedRef = useRef(onSaved)
@@ -43,8 +47,12 @@ export function useAutoSaveSettings({
   useEffect(() => {
     latestDraftRef.current = draft
     latestDraftKeyRef.current = draftKey
+    if (draftKey !== blockedDraftKeyRef.current) {
+      blockedDraftKeyRef.current = ''
+    }
   }, [draft, draftKey])
 
+  useEffect(() => { baseRevisionRef.current = baseRevision || '' }, [baseRevision])
   useEffect(() => { saveRef.current = save }, [save])
   useEffect(() => { onSavingChangeRef.current = onSavingChange }, [onSavingChange])
   useEffect(() => { onSavedRef.current = onSaved }, [onSaved])
@@ -81,6 +89,7 @@ export function useAutoSaveSettings({
       const snapshot = latestDraftRef.current
       const snapshotKey = latestDraftKeyRef.current
       if (snapshotKey === baselineRef.current) return
+      if (snapshotKey === blockedDraftKeyRef.current) return
       if (saveInFlightRef.current) {
         pendingAfterSaveRef.current = true
         return
@@ -89,16 +98,19 @@ export function useAutoSaveSettings({
       saveInFlightRef.current = true
       onSavingChangeRef.current(true)
       try {
-        const next = await saveRef.current(snapshot)
+        const revision = baseRevisionRef.current
+        const next = revision ? await saveRef.current(snapshot, revision) : await saveRef.current(snapshot)
         baselineRef.current = snapshotKey
+        blockedDraftKeyRef.current = ''
         onSavedRef.current(next)
       } catch (error) {
+        blockedDraftKeyRef.current = snapshotKey
         onErrorRef.current((error as Error).message)
       } finally {
         if (!mountedRef.current) return
         saveInFlightRef.current = false
         onSavingChangeRef.current(false)
-        if (pendingAfterSaveRef.current || latestDraftKeyRef.current !== baselineRef.current) {
+        if ((pendingAfterSaveRef.current || latestDraftKeyRef.current !== baselineRef.current) && latestDraftKeyRef.current !== blockedDraftKeyRef.current) {
           pendingAfterSaveRef.current = false
           scheduleSaveRef.current()
         }
@@ -128,6 +140,7 @@ export function useAutoSaveSettings({
       return
     }
     if (draftKey === baselineRef.current) return
+    if (draftKey === blockedDraftKeyRef.current) return
     if (saveInFlightRef.current) {
       pendingAfterSaveRef.current = true
       return
@@ -138,6 +151,10 @@ export function useAutoSaveSettings({
 
 export function settingsForLayer(layered: LayeredSettings, layer: SettingsLayer): Settings {
   return layer === 'user' ? layered.user : layered.workspace
+}
+
+export function settingsRevisionForLayer(layered: LayeredSettings | null, layer: SettingsLayer): string | undefined {
+  return layer === 'user' ? layered?.revisions?.user : layered?.revisions?.workspace
 }
 
 function stableStringifySettings(settings: Settings): string {

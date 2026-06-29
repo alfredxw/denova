@@ -72,7 +72,7 @@ type StyleRule struct {
 func StyleRulesInstruction(rules []StyleRule) string {
 	var sb strings.Builder
 	sb.WriteString("## 场景化风格规则\n\n")
-	sb.WriteString("当前叙事编排配置了以下「场景 → 风格内容」规则：\n")
+	sb.WriteString("当前叙事方案配置了以下「场景 → 风格内容」规则：\n")
 	for i, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
 		if scene == "" || len(rule.StyleContents) == 0 {

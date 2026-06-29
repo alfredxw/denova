@@ -25,6 +25,27 @@
       <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
     </radialGradient>
 
+    <linearGradient id="shellFill" x1="18%" y1="8%" x2="86%" y2="94%">
+      <stop offset="0%" stop-color="#fbfdff"/>
+      <stop offset="38%" stop-color="#edf1f8"/>
+      <stop offset="72%" stop-color="#dfe4ef"/>
+      <stop offset="100%" stop-color="#c9d0df"/>
+    </linearGradient>
+
+    <linearGradient id="shellStroke" x1="12%" y1="6%" x2="88%" y2="96%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.88"/>
+      <stop offset="34%" stop-color="#9aa5bb" stop-opacity="0.35"/>
+      <stop offset="72%" stop-color="#2b3142" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.58"/>
+    </linearGradient>
+
+    <radialGradient id="shellGlass" cx="30%" cy="18%" r="86%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.74"/>
+      <stop offset="42%" stop-color="#ffffff" stop-opacity="0.2"/>
+      <stop offset="73%" stop-color="#8da2ff" stop-opacity="0.1"/>
+      <stop offset="100%" stop-color="#101522" stop-opacity="0"/>
+    </radialGradient>
+
     <linearGradient id="leftPageFill" x1="25%" y1="16%" x2="59%" y2="88%">
       <stop offset="0%" stop-color="#8fa4ff" stop-opacity="0.72"/>
       <stop offset="17%" stop-color="#57559a" stop-opacity="0.78"/>
@@ -125,16 +146,24 @@
       <feGaussianBlur stdDeviation="18"/>
     </filter>
 
+    <filter id="iconShadow" x="0" y="0" width="1024" height="1024" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="22" stdDeviation="28" flood-color="#111827" flood-opacity="0.28"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#4b5563" flood-opacity="0.18"/>
+    </filter>
+
     <clipPath id="iconClip">
       <rect x="80" y="80" width="864" height="864" rx="188"/>
     </clipPath>
   </defs>
 
+  <rect x="80" y="80" width="864" height="864" rx="188" fill="url(#shellFill)" filter="url(#iconShadow)"/>
   <g clip-path="url(#iconClip)">
-    <rect x="80" y="80" width="864" height="864" rx="188" fill="#ffffff"/>
-    <ellipse cx="512" cy="878" rx="355" ry="88" fill="#2f2558" opacity="0.08" filter="url(#softBlur)"/>
-    <rect x="82" y="82" width="860" height="860" rx="186" fill="none" stroke="#e8e7ef" stroke-width="6"/>
-    <rect x="102" y="102" width="820" height="820" rx="168" fill="none" stroke="#ffffff" stroke-opacity="0.62" stroke-width="2"/>
+    <rect x="80" y="80" width="864" height="864" rx="188" fill="url(#shellFill)"/>
+    <rect x="80" y="80" width="864" height="864" rx="188" fill="url(#shellGlass)"/>
+    <ellipse cx="512" cy="878" rx="355" ry="88" fill="#2f2558" opacity="0.12" filter="url(#softBlur)"/>
+    <path d="M154 184 C286 105 657 88 848 274" fill="none" stroke="#ffffff" stroke-width="38" stroke-linecap="round" opacity="0.32"/>
+    <rect x="84" y="84" width="856" height="856" rx="184" fill="none" stroke="#293142" stroke-opacity="0.22" stroke-width="10"/>
+    <rect x="100" y="100" width="824" height="824" rx="170" fill="none" stroke="url(#shellStroke)" stroke-width="5"/>
 
     <g transform="matrix(1.12 0 0 1.12 -61.44 -61.44)">
       <g aria-label="open book with AI sparkle" filter="url(#bookGlow)">

@@ -31,7 +31,7 @@ func TestConfigManagerResourceSkillNames(t *testing.T) {
 		{
 			name: "teller origin",
 			req:  ConfigManagerRequest{Origin: "teller", Context: map[string]string{"teller_count": "3"}},
-			want: []string{configManagerTellerSkill},
+			want: []string{configManagerTellerSkill, configManagerImagePresetSkill},
 		},
 		{
 			name: "skills origin",

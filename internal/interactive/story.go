@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"nova/internal/imagepreset"
 )
 
 const schemaVersion = 1
@@ -23,6 +25,11 @@ const (
 	StoryOpeningModeAI     = "ai"
 	StoryOpeningModePreset = "preset"
 	StoryOpeningModeCustom = "custom"
+)
+
+const (
+	StoryImageModeManual   = "manual"
+	StoryImageModeInterval = "interval"
 )
 
 // Store manages interactive story data inside a workspace.
@@ -70,6 +77,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		StoryTellerID:    strings.TrimSpace(req.StoryTellerID),
 		ReplyTargetChars: normalizeStoryReplyTargetChars(req.ReplyTargetChars),
 		Opening:          normalizeStoryOpeningConfig(req.Opening),
+		ImageSettings:    normalizeStoryImageSettings(req.ImageSettings),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 		Branches:         1,
@@ -87,6 +95,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		StoryTellerID:    story.StoryTellerID,
 		ReplyTargetChars: story.ReplyTargetChars,
 		Opening:          story.Opening,
+		ImageSettings:    story.ImageSettings,
 		CurrentBranch:    "main",
 		Branches: map[string]BranchMeta{
 			"main": {CreatedAt: now},
@@ -133,6 +142,9 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if req.Opening != nil {
 		meta.Opening = normalizeStoryOpeningConfig(*req.Opening)
 	}
+	if req.ImageSettings != nil {
+		meta.ImageSettings = normalizeStoryImageSettings(*req.ImageSettings)
+	}
 	meta.UpdatedAt = now
 	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
 		return StorySummary{}, err
@@ -147,6 +159,7 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 			index.Stories[i].StoryTellerID = meta.StoryTellerID
 			index.Stories[i].ReplyTargetChars = meta.ReplyTargetChars
 			index.Stories[i].Opening = meta.Opening
+			index.Stories[i].ImageSettings = meta.ImageSettings
 			index.Stories[i].UpdatedAt = now
 			if err := s.writeIndexLocked(index); err != nil {
 				return StorySummary{}, err
@@ -940,12 +953,14 @@ func normalizeStoryReplyTargetChars(value int) int {
 func normalizeStorySummary(story StorySummary) StorySummary {
 	story.ReplyTargetChars = normalizeStoryReplyTargetChars(story.ReplyTargetChars)
 	story.Opening = normalizeStoryOpeningConfig(story.Opening)
+	story.ImageSettings = normalizeStoryImageSettings(story.ImageSettings)
 	return story
 }
 
 func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)
 	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
+	meta.ImageSettings = normalizeStoryImageSettings(meta.ImageSettings)
 	return meta
 }
 
@@ -982,6 +997,40 @@ func truncateStoryOpeningText(text string) string {
 		return text
 	}
 	return string(runes[:maxStoryOpeningTextRunes])
+}
+
+func normalizeStoryImageSettings(settings StoryImageSettings) StoryImageSettings {
+	rawMode := strings.TrimSpace(settings.Mode)
+	mode := StoryImageModeManual
+	interval := settings.IntervalTurns
+	switch rawMode {
+	case "every_turn":
+		mode = StoryImageModeInterval
+		interval = 1
+	case StoryImageModeInterval:
+		mode = StoryImageModeInterval
+	default:
+		mode = StoryImageModeManual
+	}
+	if interval <= 0 {
+		interval = 3
+	}
+	if interval > 50 {
+		interval = 50
+	}
+	return StoryImageSettings{
+		Mode:          mode,
+		IntervalTurns: interval,
+		PresetID:      normalizeStoryImagePresetID(settings.PresetID),
+	}
+}
+
+func normalizeStoryImagePresetID(id string) string {
+	id = imagepreset.NormalizeID(id)
+	if id == "" {
+		return imagepreset.DefaultID
+	}
+	return id
 }
 
 func newID(prefix string) string {

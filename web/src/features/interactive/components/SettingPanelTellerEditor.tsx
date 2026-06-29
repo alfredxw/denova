@@ -24,10 +24,15 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
   const { t } = useTranslation()
   const activeSlot = draft?.slots?.find((slot) => slot.id === activeSlotId) || draft?.slots?.[0] || null
   const [targetPickerOpen, setTargetPickerOpen] = useState(false)
+  const [randomEventRateInput, setRandomEventRateInput] = useState(() => formatRandomEventRate(draft?.random_event_rate))
 
   useEffect(() => {
     setTargetPickerOpen(false)
   }, [activeSlotId])
+
+  useEffect(() => {
+    setRandomEventRateInput(formatRandomEventRate(draft?.random_event_rate))
+  }, [draft?.id])
 
   const updateSlotById = (slotId: string, patch: Partial<TellerPromptSlot>) => {
     if (!draft) return
@@ -63,6 +68,15 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
     setActiveSlotId(nextSlots[0]?.id || '')
   }
 
+  const updateRandomEventRate = (value: string) => {
+    setRandomEventRateInput(value)
+    if (!draft || !isDecimalInput(value)) return
+    setDraft({
+      ...draft,
+      random_event_rate: parseDecimalInput(value),
+    })
+  }
+
   if (!draft) {
     return <EmptyState title={t('settingPanel.editor.noTellerSelected')} description={t('settingPanel.editor.noTellerSelectedDesc')} />
   }
@@ -70,7 +84,7 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
   const selectedTarget = targetOption(activeSlot?.target || 'turn_context')
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
       <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_150px_150px]">
         <Field label={t('settingPanel.field.name')}>
           <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
@@ -81,13 +95,10 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
         <Field label={t('settingPanel.field.randomEventRate')}>
           <Input
             className={inputClassName}
-            value={String(draft.random_event_rate ?? 0)}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                random_event_rate: Number(event.target.value) || 0,
-              })
-            }
+            aria-label={t('settingPanel.field.randomEventRate')}
+            inputMode="decimal"
+            value={randomEventRateInput}
+            onChange={(event) => updateRandomEventRate(event.target.value)}
           />
         </Field>
         <Field label={t('settingPanel.field.tags')}>
@@ -106,8 +117,8 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
         <InteractiveStyleRulesEditor rules={draft.style_rules ?? []} onChange={(rules) => setDraft({ ...draft, style_rules: rules })} />
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="flex min-h-0 flex-col border-r border-[var(--nova-border)] bg-[var(--nova-surface)]">
+      <div className="grid min-h-[520px] flex-1 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="flex max-h-60 min-h-0 flex-col overflow-hidden border-b border-[var(--nova-border)] bg-[var(--nova-surface)] lg:max-h-none lg:border-b-0 lg:border-r">
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
             <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.injectRules.title')}</div>
             <Button className={iconActionClassName} variant="outline" size="icon" onClick={addSlot} aria-label={t('settingPanel.injectRules.new')}>
@@ -196,7 +207,7 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
                 </div>
               </div>
             </div>
-            <div className="min-h-[420px] flex-1 p-4 md:min-h-0">
+            <div className="min-h-[420px] flex-1 p-4 lg:min-h-0">
               <Textarea
                 className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
                 value={activeSlot.content}
@@ -217,6 +228,21 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
       </div>
     </div>
   )
+}
+
+function formatRandomEventRate(value: number | undefined) {
+  return Number.isFinite(value) ? String(value) : '0'
+}
+
+function isDecimalInput(value: string) {
+  return /^\d*(?:\.\d*)?$/.test(value.trim())
+}
+
+function parseDecimalInput(value: string) {
+  const normalized = value.trim()
+  if (normalized === '' || normalized === '.') return 0
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function InteractiveStyleRulesEditor({ rules, onChange }: { rules: StyleRule[]; onChange: (rules: StyleRule[]) => void }) {
@@ -295,8 +321,8 @@ function InteractiveStyleRuleRow({ rule, onChange, onRemove }: { rule: StyleRule
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
       <input ref={fileInputRef} type="file" accept={STYLE_FILE_ACCEPT} className="hidden" onChange={(event) => void handleFileSelected(event.target.files?.[0])} />
-      <div className="flex flex-col gap-2 md:flex-row md:items-center">
-        <Input className={inputClassName} value={rule.scene} placeholder={t('settingPanel.placeholder.scene')} onChange={(event) => onChange({ scene: event.target.value })} />
+      <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+        <Input className={`${inputClassName} md:min-w-44 md:flex-1`} value={rule.scene} placeholder={t('settingPanel.placeholder.scene')} onChange={(event) => onChange({ scene: event.target.value })} />
         <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
           <Upload className="h-3.5 w-3.5" />
           {t('settingPanel.style.upload')}
@@ -343,7 +369,7 @@ function InteractiveStyleRuleRow({ rule, onChange, onRemove }: { rule: StyleRule
             />
             <div className="mt-2 text-right text-[11px] text-[var(--nova-text-faint)]">{contentDraft.length}/{STYLE_CONTENT_LIMIT}</div>
           </div>
-          <DialogFooter className="border-t border-[var(--nova-border)] px-4 py-3">
+          <DialogFooter className="!mx-0 !mb-0 rounded-none border-t border-[var(--nova-border)] bg-[var(--nova-surface)]/95 !px-4 !py-3">
             <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => setEditorOpen(false)}>{t('common.cancel')}</Button>
             <Button className="nova-nav-item gap-1.5 border border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] hover:border-[var(--nova-accent)] hover:bg-[var(--nova-hover)]" size="sm" onClick={saveContent} disabled={!contentDraft.trim()}>{t('common.save')}</Button>
           </DialogFooter>

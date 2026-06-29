@@ -69,6 +69,40 @@ func TestInteractiveContextAnalysisUsesConfiguredContextWindow(t *testing.T) {
 	}
 }
 
+func TestInteractiveContextAnalysisShowsDirectNarrativeOutputProtocol(t *testing.T) {
+	analysis, err := BuildInteractiveStoryContextAnalysis(
+		&config.Config{},
+		nil,
+		prompts.InteractiveStorySystemInstructionInput{},
+		nil,
+		ChatRequest{Message: "继续"},
+		nil,
+		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
+			return []*schema.Message{schema.UserMessage(agentMessage)}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outputProtocol *ContextAnalysisPart
+	for i := range analysis.SystemPromptParts {
+		part := &analysis.SystemPromptParts[i]
+		if part.ID == "output_protocol" {
+			outputProtocol = part
+			break
+		}
+	}
+	if outputProtocol == nil {
+		t.Fatalf("output protocol part missing: %#v", analysis.SystemPromptParts)
+	}
+	if !strings.Contains(outputProtocol.Content, "只输出本回合可展示在故事舞台上的故事正文") {
+		t.Fatalf("output protocol should describe direct narrative text: %#v", outputProtocol)
+	}
+	if strings.Contains(outputProtocol.Content, "<NARRATIVE>") {
+		t.Fatalf("output protocol should not require narrative XML wrapper: %#v", outputProtocol)
+	}
+}
+
 func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
 	analysis, err := BuildIDEContextAnalysis(
 		&config.Config{},

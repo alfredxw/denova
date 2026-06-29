@@ -121,7 +121,7 @@ func newListAgentConfigsTool(cfg *config.Config) (tool.BaseTool, error) {
 			Notes: []string{
 				"write_agent_configs 必须显式指定 scope=user 或 scope=workspace。",
 				"model_profiles 已脱敏，不包含模型密钥；本工具不负责创建或编辑模型配置。",
-				"image_api_profiles 已脱敏，不包含图片 API 密钥；本工具不负责创建或编辑图片 API 配置。",
+				"image_api_profiles 已脱敏，不包含图像模型密钥；本工具不负责创建或编辑图像模型配置。",
 				"delete_sub_agent 只删除目标层配置；如需屏蔽继承来的 SubAgent，请 upsert 同 ID 且 enabled=false 的覆盖项。",
 			},
 		}
@@ -396,6 +396,8 @@ func setAgentModelOverride(settings *config.Settings, agent string, value config
 		settings.AgentModels.VersionSummary = value
 	case config.AgentKindToolAgent:
 		settings.AgentModels.ToolAgent = value
+	case config.AgentKindImage:
+		settings.AgentModels.Image = value
 	case config.AgentKindAutomation:
 		settings.AgentModels.Automation = value
 	case config.AgentKindContextCompaction:
@@ -421,6 +423,8 @@ func setAgentToolOverride(settings *config.Settings, agent string, value config.
 		settings.AgentTools.VersionSummary = value
 	case config.AgentKindToolAgent:
 		settings.AgentTools.ToolAgent = value
+	case config.AgentKindImage:
+		settings.AgentTools.Image = value
 	case config.AgentKindAutomation:
 		settings.AgentTools.Automation = value
 	case config.AgentKindContextCompaction:
@@ -446,6 +450,8 @@ func setAgentPromptOverride(settings *config.Settings, agent string, value confi
 		settings.AgentPrompts.VersionSummary = value
 	case config.AgentKindToolAgent:
 		settings.AgentPrompts.ToolAgent = value
+	case config.AgentKindImage:
+		settings.AgentPrompts.Image = value
 	case config.AgentKindAutomation:
 		settings.AgentPrompts.Automation = value
 	case config.AgentKindContextCompaction:
@@ -471,6 +477,8 @@ func setAgentSkillOverride(settings *config.Settings, agent string, value config
 		settings.AgentSkills.VersionSummary = value
 	case config.AgentKindToolAgent:
 		settings.AgentSkills.ToolAgent = value
+	case config.AgentKindImage:
+		settings.AgentSkills.Image = value
 	case config.AgentKindAutomation:
 		settings.AgentSkills.Automation = value
 	case config.AgentKindContextCompaction:
@@ -496,6 +504,8 @@ func setAgentContextOverride(settings *config.Settings, agent string, value conf
 		settings.AgentContexts.VersionSummary = value
 	case config.AgentKindToolAgent:
 		settings.AgentContexts.ToolAgent = value
+	case config.AgentKindImage:
+		settings.AgentContexts.Image = value
 	case config.AgentKindAutomation:
 		settings.AgentContexts.Automation = value
 	case config.AgentKindContextCompaction:

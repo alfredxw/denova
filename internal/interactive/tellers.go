@@ -20,6 +20,8 @@ type TellerLibrary struct {
 	novaDir string
 }
 
+var ErrTellerRevisionConflict = errors.New("叙事方案已被其他操作更新，请重新加载后再保存")
+
 type Teller struct {
 	Version         int                 `json:"version"`
 	ID              string              `json:"id"`
@@ -128,7 +130,7 @@ func (l *TellerLibrary) Create(teller Teller) (Teller, error) {
 	} else if !os.IsNotExist(err) {
 		return Teller{}, err
 	}
-	now := time.Now().Format(time.RFC3339)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
 	teller.CreatedAt = now
 	teller.UpdatedAt = now
 	if err := writeTellerFile(path, teller); err != nil {
@@ -139,7 +141,7 @@ func (l *TellerLibrary) Create(teller Teller) (Teller, error) {
 	return teller, nil
 }
 
-func (l *TellerLibrary) Update(id string, teller Teller) (Teller, error) {
+func (l *TellerLibrary) Update(id string, teller Teller, baseRevision ...string) (Teller, error) {
 	if err := l.ensureBuiltins(); err != nil {
 		return Teller{}, err
 	}
@@ -150,9 +152,12 @@ func (l *TellerLibrary) Update(id string, teller Teller) (Teller, error) {
 	if err != nil {
 		return Teller{}, err
 	}
+	if firstTellerRevision(baseRevision) != "" && current.UpdatedAt != firstTellerRevision(baseRevision) {
+		return Teller{}, ErrTellerRevisionConflict
+	}
 	teller.ID = id
 	teller.CreatedAt = current.CreatedAt
-	teller.UpdatedAt = time.Now().Format(time.RFC3339)
+	teller.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	teller = normalizeTeller(teller)
 	if err := validateTeller(teller); err != nil {
 		return Teller{}, err
@@ -164,6 +169,13 @@ func (l *TellerLibrary) Update(id string, teller Teller) (Teller, error) {
 	teller.Path = path
 	teller.Custom = !isBuiltinID(teller.ID)
 	return teller, nil
+}
+
+func firstTellerRevision(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
 }
 
 func (l *TellerLibrary) Delete(id string) error {
@@ -431,7 +443,7 @@ var builtinTellers = map[string]Teller{
 		{ID: "state_memory", Name: "记忆沉淀规则", Target: "state_memory", Enabled: true, Content: "优先记录伤势、资源损耗、危险等级、势力敌意、未解决危机、倒计时、角色心理压力、已经欠下的代价、失去的机会和敌人掌握的信息。这些状态后续必须继续施压，不能在下一回合自然消失。"},
 	}),
 	"screenwriter": builtinTeller("screenwriter", "编剧风格", "以场景目标、冲突升级和转折节拍推动剧情", 0.18, []string{"编剧", "节拍"}, []TellerPromptSlot{
-		{ID: "identity", Name: "系统提示", Target: "system", Enabled: true, Content: "你是一位编剧式叙事编排助手，负责把互动小说回合组织成清晰的场景节拍。你关注场景目标、人物欲望、冲突升级、信息揭示和转折收束；每轮都要让角色行动产生戏剧后果，但不得替用户完成关键选择。叙事应有镜头感、动作线和对白推进，避免只写内心总结。"},
+		{ID: "identity", Name: "系统提示", Target: "system", Enabled: true, Content: "你是一位编剧式叙事方案助手，负责把互动小说回合组织成清晰的场景节拍。你关注场景目标、人物欲望、冲突升级、信息揭示和转折收束；每轮都要让角色行动产生戏剧后果，但不得替用户完成关键选择。叙事应有镜头感、动作线和对白推进，避免只写内心总结。"},
 		{ID: "turn_context", Name: "本轮上下文", Target: "turn_context", Enabled: true, Content: "处理本轮时，先判断当前场景的目标和阻力，再安排一个可见的行动反馈、一个关系或信息变化，以及一个推动下一拍的开放入口。成功要带来新压力，失败要留下可继续尝试的路径；如果场景已经达到高潮，应及时给出转折、代价或短暂收束，而不是无限拖延同一冲突。"},
 		{ID: "state_memory", Name: "记忆沉淀规则", Target: "state_memory", Enabled: true, Content: "优先记录场景目标、当前冲突层级、已揭示信息、角色欲望变化、未兑现伏笔、下一场景入口和需要回收的转折。状态要服务后续节拍安排，帮助下一轮判断是继续升级、反转、缓和还是切换场景。"},
 	}),

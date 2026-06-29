@@ -175,29 +175,83 @@ describe('useAutoSaveSettings', () => {
     expect(save).toHaveBeenCalledTimes(1)
     expect(onSavingChange).toHaveBeenLastCalledWith(false)
   })
+
+  it('passes base revision and does not retry the same failed draft', async () => {
+    vi.useFakeTimers()
+    const save = vi.fn(async () => {
+      throw new Error('conflict')
+    })
+    const onError = vi.fn()
+    const view = render(
+      <HookHarness
+        draft={{ language: 'zh-CN' }}
+        saved={{ language: 'zh-CN' }}
+        baseRevision="r1"
+        save={save}
+        onSaved={() => undefined}
+        onError={onError}
+      />,
+    )
+
+    view.rerender(
+      <HookHarness
+        draft={{ language: 'en-US' }}
+        saved={{ language: 'zh-CN' }}
+        baseRevision="r1"
+        save={save}
+        onSaved={() => undefined}
+        onError={onError}
+      />,
+    )
+    await advanceAutoSaveTimer()
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenLastCalledWith({ language: 'en-US' }, 'r1')
+    expect(onError).toHaveBeenCalledWith('conflict')
+
+    await advanceAutoSaveTimer()
+    expect(save).toHaveBeenCalledTimes(1)
+
+    view.rerender(
+      <HookHarness
+        draft={{ language: 'auto' }}
+        saved={{ language: 'zh-CN' }}
+        baseRevision="r1"
+        save={save}
+        onSaved={() => undefined}
+        onError={onError}
+      />,
+    )
+    await advanceAutoSaveTimer()
+    expect(save).toHaveBeenCalledTimes(2)
+  })
 })
 
 function HookHarness({
   draft,
   saved,
+  baseRevision,
   save,
   onSaved,
   onSavingChange = () => undefined,
+  onError = () => undefined,
 }: {
   draft: Settings
   saved: Settings
-  save: (settings: Settings) => Promise<LayeredSettings>
+  baseRevision?: string
+  save: (settings: Settings, baseRevision?: string) => Promise<LayeredSettings>
   onSaved: (next: LayeredSettings) => void
   onSavingChange?: (saving: boolean) => void
+  onError?: (message: string) => void
 }) {
   useAutoSaveSettings({
     draft,
     saved,
+    baseRevision,
     ready: true,
     save,
     onSavingChange,
     onSaved,
-    onError: () => undefined,
+    onError,
   })
   return null
 }

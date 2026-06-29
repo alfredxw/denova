@@ -34,7 +34,7 @@ func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {
 			"created":       123,
 			"output_format": "png",
 			"quality":       "high",
-			"size":          "1024x1024",
+			"size":          "4096x2304",
 			"data": []map[string]any{{
 				"b64_json":       base64.StdEncoding.EncodeToString(testPNGBytes()),
 				"revised_prompt": "revised prompt",
@@ -62,6 +62,9 @@ func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {
 	}
 	if requestBody["prompt"] != "a quiet writing desk" || requestBody["model"] != "gpt-image-1" {
 		t.Fatalf("unexpected OpenAI request body: %#v", requestBody)
+	}
+	if _, ok := requestBody["size"]; ok {
+		t.Fatalf("size should be chosen by the caller, got request body: %#v", requestBody)
 	}
 	if len(result.Images) != 1 {
 		t.Fatalf("saved images = %d", len(result.Images))

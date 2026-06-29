@@ -54,7 +54,7 @@ const automations = {
   'automations.output.file': '同时写入文件',
   'automations.notify.inbox': '写入收件箱',
   'automations.notify.silent': '静默',
-  'automations.model.inherit': '继承 Automation Agent 默认（{{label}}）',
+  'automations.model.inherit': '继承自动化Agent默认（{{label}}）',
   'automations.model.defaultModel': '默认模型',
   'automations.model.defaultProfile': '默认（{{label}}）',
   'automations.model.profile': '{{label}}（{{id}}）',

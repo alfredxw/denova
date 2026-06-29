@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import type { AgentContextOverride, AgentModelOverride, AgentPromptBlocks, AgentPromptOverride, AgentPromptSource, AgentSkillOverride, AgentToolOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
-import { settingsForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
+import { settingsForLayer, settingsRevisionForLayer, useAutoSaveSettings } from '@/features/settings/use-auto-save-settings'
 import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
 import { AGENTS, DEEP_AGENT_PARENT_KEYS, FALLBACK_AGENT_TOOL_VALUES, TOOL_ROWS, resolveEffectiveTools, skillAgentFieldMatches, skillAvailableForAgent } from './agent-registry'
@@ -101,7 +101,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const contextValue = draft.agent_context?.[activeAgent] ?? {}
   const inheritedContext = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[activeAgent] ?? {})
   const generalSubAgents = draft.general_sub_agents ?? {}
-  const effectiveGeneralSubAgents = effective.general_sub_agents ?? {}
+  const previewGeneralSubAgents = useMemo(() => previewGeneralSubAgentSettings(layered, activeLayer, draft), [activeLayer, draft, layered])
   const subAgents = draft.sub_agents ?? []
   const configManagerWorkspaceKey = layered?.paths.workspace_config || layered?.paths.user_config || 'agents'
   const configManagerContext = useMemo(() => ({
@@ -112,9 +112,9 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
     write_scope_hint: activeLayer,
   }), [activeAgent, activeLayer, selected.titleKey, t])
 
-  const saveDraft = useCallback(async (settings: Settings) => {
+  const saveDraft = useCallback(async (settings: Settings, baseRevision?: string) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
-    return updater(settings)
+    return baseRevision ? updater(settings, baseRevision) : updater(settings)
   }, [activeLayer])
 
   const applySavedSettings = useCallback((next: LayeredSettings) => {
@@ -128,7 +128,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
     setSaving(true)
     setError(null)
     try {
-      const next = await saveDraft(draft)
+      const next = await saveDraft(draft, settingsRevisionForLayer(layered, activeLayer))
       applySavedSettings(next)
     } catch (e) {
       setError((e as Error).message)
@@ -217,6 +217,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   useAutoSaveSettings({
     draft,
     saved: layered ? settingsForLayer(layered, activeLayer) : {},
+    baseRevision: settingsRevisionForLayer(layered, activeLayer),
     ready: Boolean(layered),
     save: saveDraft,
     onSavingChange: setSaving,
@@ -349,7 +350,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
                       agent={activeAgent}
                       inheritedModel={inheritedModel}
                       generalSettings={generalSubAgents}
-                      effectiveGeneralSettings={effectiveGeneralSubAgents}
+                      effectiveGeneralSettings={previewGeneralSubAgents}
                       subAgents={subAgents}
                       effectiveSubAgents={effective.sub_agents ?? []}
                       profiles={profileOptions}
@@ -783,7 +784,7 @@ function AgentSubAgentSection({ agent, inheritedModel, generalSettings, effectiv
   onChange: (updater: (current: SubAgentConfig[]) => SubAgentConfig[]) => void
 }) {
   const { t } = useTranslation()
-  const [deleteID, setDeleteID] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SubAgentConfig | null>(null)
   const [editingSubAgent, setEditingSubAgent] = useState<{ id: string; value: SubAgentConfig } | null>(null)
   const visibleSubAgents = useMemo(() => mergeVisibleSubAgents(effectiveSubAgents, subAgents)
     .filter((subAgent) => effectiveSubAgentParents(subAgent).includes(agent)), [agent, effectiveSubAgents, subAgents])
@@ -810,6 +811,15 @@ function AgentSubAgentSection({ agent, inheritedModel, generalSettings, effectiv
     if (!base) return
     onChange((current) => upsertSubAgentOverride(current, normalizeSubAgentConfig({ ...base, ...patch }), id))
   }
+  const setSubAgentAvailableForCurrent = (subAgent: SubAgentConfig, available: boolean) => {
+    const id = normalizeSubAgentID(subAgent.id || '')
+    if (!id) return
+    const currentParents = effectiveSubAgentParents(subAgent)
+    const nextParents = available
+      ? DEEP_AGENT_PARENT_KEYS.filter((parent) => parent === agent || currentParents.includes(parent))
+      : currentParents.filter((parent) => parent !== agent)
+    updateSubAgent(id, { parents: nextParents, enabled: true })
+  }
   const editSubAgent = (subAgent: SubAgentConfig) => {
     const id = normalizeSubAgentID(subAgent.id || '')
     if (!id) return
@@ -827,18 +837,31 @@ function AgentSubAgentSection({ agent, inheritedModel, generalSettings, effectiv
     onChange((current) => upsertSubAgentOverride(current, next, editingSubAgent.id))
     setEditingSubAgent(null)
   }
-  const deleteSubAgent = () => {
-    if (deleteID === null) return
-    const base = visibleSubAgents.find((subAgent) => normalizeSubAgentID(subAgent.id || '') === deleteID)
+  const deleteSubAgentForCurrentParent = () => {
+    if (!deleteTarget) return
+    const deleteID = normalizeSubAgentID(deleteTarget.id || '')
+    if (!deleteID) return
+    const base = visibleSubAgents.find((subAgent) => normalizeSubAgentID(subAgent.id || '') === deleteID) ?? deleteTarget
+    onChange((current) => {
+      return upsertSubAgentOverride(current, normalizeSubAgentConfig({ ...base, enabled: true, parents: subAgentParentsWithout(base, agent) }), deleteID)
+    })
+    if (editingSubAgent?.id === deleteID) setEditingSubAgent(null)
+    setDeleteTarget(null)
+  }
+  const deleteSubAgentEverywhere = () => {
+    if (!deleteTarget) return
+    const deleteID = normalizeSubAgentID(deleteTarget.id || '')
+    if (!deleteID) return
+    const base = visibleSubAgents.find((subAgent) => normalizeSubAgentID(subAgent.id || '') === deleteID) ?? deleteTarget
     onChange((current) => {
       const currentHasID = current.some((subAgent) => normalizeSubAgentID(subAgent.id || '') === deleteID)
-      if (!currentHasID && base) {
-        return upsertSubAgentOverride(current, normalizeSubAgentConfig({ ...base, enabled: false, parents: subAgentParentsWithout(base, agent) }), deleteID)
+      if (!currentHasID) {
+        return upsertSubAgentOverride(current, normalizeSubAgentConfig({ ...base, enabled: false, parents: [] }), deleteID)
       }
       return current.filter((subAgent) => normalizeSubAgentID(subAgent.id || '') !== deleteID)
     })
     if (editingSubAgent?.id === deleteID) setEditingSubAgent(null)
-    setDeleteID(null)
+    setDeleteTarget(null)
   }
 
   return (
@@ -886,9 +909,9 @@ function AgentSubAgentSection({ agent, inheritedModel, generalSettings, effectiv
               key={`${subAgent.id || 'subagent'}:${index}`}
               agent={agent}
               subAgent={subAgent}
-              onToggle={(enabled) => updateSubAgent(normalizeSubAgentID(subAgent.id || ''), { enabled })}
+              onToggle={(enabled) => setSubAgentAvailableForCurrent(subAgent, enabled)}
               onEdit={() => editSubAgent(subAgent)}
-              onDelete={() => setDeleteID(normalizeSubAgentID(subAgent.id || ''))}
+              onDelete={() => setDeleteTarget(subAgent)}
             />
           ))}
         </div>
@@ -925,7 +948,7 @@ function AgentSubAgentSection({ agent, inheritedModel, generalSettings, effectiv
           </DialogContent>
         )}
       </Dialog>
-      <AlertDialog open={deleteID !== null} onOpenChange={(open) => { if (!open) setDeleteID(null) }}>
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
         <AlertDialogContent size="sm" className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
           <AlertDialogHeader>
             <AlertDialogTitle>{t('agents.subAgents.deleteTitle')}</AlertDialogTitle>
@@ -933,7 +956,10 @@ function AgentSubAgentSection({ agent, inheritedModel, generalSettings, effectiv
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={deleteSubAgent}>{t('common.delete')}</AlertDialogAction>
+            <button type="button" onClick={deleteSubAgentForCurrentParent} className="nova-nav-item rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1.5 text-xs text-[var(--nova-text)] hover:bg-[var(--nova-hover)]">
+              {t('agents.subAgents.deleteCurrentParent')}
+            </button>
+            <AlertDialogAction variant="destructive" onClick={deleteSubAgentEverywhere}>{t('agents.subAgents.deleteEverywhere')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -949,9 +975,9 @@ function SubAgentRow({ agent, subAgent, onToggle, onEdit, onDelete }: {
   onDelete: () => void
 }) {
   const { t } = useTranslation()
-  const enabled = subAgent.enabled ?? true
   const parents = effectiveSubAgentParents(subAgent)
   const availableForCurrent = parents.includes(agent)
+  const enabled = (subAgent.enabled ?? true) && availableForCurrent
   return (
     <div className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
       <Bot className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
@@ -1015,12 +1041,7 @@ function SubAgentEditor({ id, agent, subAgent, inheritedModel, profiles, onChang
     if (checked) next.add(parent)
     else next.delete(parent)
     const ordered = DEEP_AGENT_PARENT_KEYS.filter((key) => next.has(key))
-    const parents = ordered.length === DEEP_AGENT_PARENT_KEYS.length
-      ? []
-      : ordered.length > 0
-        ? ordered
-        : DEEP_AGENT_PARENT_KEYS.filter((key) => key !== parent)
-    onChange(id, { parents })
+    onChange(id, { parents: ordered })
   }
 
   return (
@@ -1393,8 +1414,34 @@ function isDeepAgentParent(agent: VisibleAgentKey): agent is DeepAgentParentKey 
   return (DEEP_AGENT_PARENT_KEYS as string[]).includes(agent)
 }
 
+const GENERAL_SUB_AGENT_KEYS = ['default', 'ide', 'interactive_story', 'config_manager', 'automation'] as const
+
+function defaultGeneralSubAgentSettings(): Settings['general_sub_agents'] {
+  return { default: false, ide: true, automation: true }
+}
+
+function previewGeneralSubAgentSettings(layered: LayeredSettings | null, activeLayer: SettingsLayer, draft: Settings): Settings['general_sub_agents'] {
+  let settings = defaultGeneralSubAgentSettings()
+  if (!layered) return mergeGeneralSubAgentSettings(settings, draft.general_sub_agents)
+  settings = mergeGeneralSubAgentSettings(settings, layered.default.general_sub_agents)
+  settings = mergeGeneralSubAgentSettings(settings, layered.global.general_sub_agents)
+  settings = mergeGeneralSubAgentSettings(settings, activeLayer === 'user' ? draft.general_sub_agents : layered.user.general_sub_agents)
+  settings = mergeGeneralSubAgentSettings(settings, activeLayer === 'workspace' ? draft.general_sub_agents : layered.workspace.general_sub_agents)
+  return settings
+}
+
+function mergeGeneralSubAgentSettings(parent: Settings['general_sub_agents'], child: Settings['general_sub_agents']): Settings['general_sub_agents'] {
+  const out: Settings['general_sub_agents'] = { ...(parent ?? {}) }
+  if (!child) return out
+  for (const key of GENERAL_SUB_AGENT_KEYS) {
+    const value = child[key]
+    if (value !== undefined && value !== null) out[key] = value
+  }
+  return out
+}
+
 function resolveGeneralSubAgentEnabled(settings: Settings['general_sub_agents'], agent: DeepAgentParentKey) {
-  const fallback = settings?.default ?? true
+  const fallback = settings?.default ?? false
   return settings?.[agent] ?? fallback
 }
 
@@ -1471,17 +1518,16 @@ function upsertSubAgentOverride(current: SubAgentConfig[], next: SubAgentConfig,
 function sanitizeSubAgentParents(value?: string[]) {
   if (!value || value.length === 0) return []
   const selected = DEEP_AGENT_PARENT_KEYS.filter((parent) => value.includes(parent))
-  return selected.length === DEEP_AGENT_PARENT_KEYS.length ? [] : selected
+  return selected
 }
 
 function effectiveSubAgentParents(subAgent: SubAgentConfig): DeepAgentParentKey[] {
   const parents = sanitizeSubAgentParents(subAgent.parents)
-  return parents.length > 0 ? parents as DeepAgentParentKey[] : DEEP_AGENT_PARENT_KEYS
+  return parents as DeepAgentParentKey[]
 }
 
 function subAgentParentsWithout(subAgent: SubAgentConfig, agent: DeepAgentParentKey): DeepAgentParentKey[] {
-  const remaining = effectiveSubAgentParents(subAgent).filter((parent) => parent !== agent)
-  return remaining.length > 0 ? remaining : DEEP_AGENT_PARENT_KEYS.filter((parent) => parent !== agent)
+  return effectiveSubAgentParents(subAgent).filter((parent) => parent !== agent)
 }
 
 function mergeAgentModelOverride(parent: AgentModelOverride, child: AgentModelOverride): AgentModelOverride {

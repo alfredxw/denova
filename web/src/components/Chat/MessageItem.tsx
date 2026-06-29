@@ -1,13 +1,17 @@
-import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useState } from 'react'
+import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
+import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, Copy, FileText, ListTodo, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
+import { Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, Clock3, Copy, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ChatMessage } from '@/lib/api'
+import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
+import { workspaceAssetURL, type ChapterIllustration, type ChatMessage, type InteractiveImage, type InteractiveImageError } from '@/lib/api'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
+import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { subAgentSessionKey } from './subagent-session'
 
 interface MessageItemProps {
@@ -18,23 +22,28 @@ interface MessageItemProps {
   onRegenerate?: (message: ChatMessage) => void
   onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void
   onOpenSubAgentSession?: (message: ChatMessage) => void
+  onInsertIllustration?: (illustration: ChapterIllustration) => void
+  onGenerateInteractiveImage?: (message: ChatMessage) => void
+  generatingInteractiveImageTurnId?: string
   activeSubAgentSessionKey?: string
   subAgentPresentation?: 'card' | 'content'
 }
 
 const copyFeedbackDurationMs = 1200
+const messageActionTooltipDelayMs = 500
+const messageActionTooltipSkipDelayMs = 300
+const messageActionTooltipSideOffset = 3
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, activeSubAgentSessionKey, subAgentPresentation = 'card' }: MessageItemProps) {
-  const { t } = useTranslation()
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card' }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canRegenerate = role === 'assistant' && Boolean(message.turn_id) && Boolean(onRegenerate) && !message.streaming
+  const canGenerateInteractiveImage = role === 'assistant' && Boolean(message.turn_id) && Boolean(onGenerateInteractiveImage) && !message.streaming
   const versionCount = message.turn_versions?.length || 0
   const markedVersionIndex = message.turn_versions?.findIndex((version) => version.current) ?? -1
   const versionIndex = message.turn_version_index ?? markedVersionIndex
   const canSwitchVersion = role === 'assistant' && versionCount > 1 && versionIndex >= 0 && Boolean(onSwitchVersion) && !message.streaming
-  const showAssistantActions = canRegenerate || canSwitchVersion
 
   switch (role) {
     case 'user':
@@ -78,7 +87,18 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                   <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
                 )}
               </div>
-              <MessageInlineMeta message={message} content={content} align="left" />
+              <InteractiveImageStrip message={message} />
+              <MessageInlineMeta
+                message={message}
+                content={content}
+                align="left"
+                onGenerateInteractiveImage={canGenerateInteractiveImage ? onGenerateInteractiveImage : undefined}
+                generatingInteractiveImage={Boolean(message.turn_id && generatingInteractiveImageTurnId === message.turn_id)}
+                onRegenerate={canRegenerate ? onRegenerate : undefined}
+                onSwitchVersion={canSwitchVersion ? onSwitchVersion : undefined}
+                versionIndex={versionIndex}
+                versionCount={versionCount}
+              />
             </div>
             {showAssistantActions && (
               <div className="nova-assistant-actions mt-1.5 flex justify-end">
@@ -129,12 +149,24 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return <ThinkingBlock message={message} content={content} streaming={message.streaming === true} />
 
     case 'tool_call':
+      if ((message.name || '') === 'generate_interactive_image') {
+        return <InteractiveImageBlock message={message} onRegenerate={onGenerateInteractiveImage} />
+      }
+      if (['generate_image', 'generate_chapter_illustration'].includes(message.name || '') && message.illustration) {
+        return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
+      }
       if ((message.name || '') === 'write_todos') {
         return <TodoListBlock message={message} />
       }
       return <ToolExecutionBlock message={message} />
 
     case 'tool_result':
+      if ((message.name || '') === 'generate_interactive_image' || message.interactive_image) {
+        return <InteractiveImageBlock message={message} onRegenerate={onGenerateInteractiveImage} />
+      }
+      if (message.illustration) {
+        return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
+      }
       return <ToolResultBlock content={content} />
 
     case 'context_compaction':
@@ -163,40 +195,107 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
   }
 })
 
-function MessageInlineMeta({ message, content, align, onEdit }: { message: ChatMessage; content: string; align: 'left' | 'right'; onEdit?: (message: ChatMessage) => void }) {
+function MessageInlineMeta({ message, content, align, onEdit, onGenerateInteractiveImage, generatingInteractiveImage = false, onRegenerate, onSwitchVersion, versionIndex = -1, versionCount = 0 }: { message: ChatMessage; content: string; align: 'left' | 'right'; onEdit?: (message: ChatMessage) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; generatingInteractiveImage?: boolean; onRegenerate?: (message: ChatMessage) => void; onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void; versionIndex?: number; versionCount?: number }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const formatted = formatMessageHoverTime(message.created_at)
-  if (!formatted && !content && !onEdit) return null
+  const canSwitchVersion = Boolean(onSwitchVersion && versionCount > 1 && versionIndex >= 0)
+  const metaTooltip = {
+    tooltipSide: 'top' as const,
+    tooltipSideOffset: messageActionTooltipSideOffset,
+    useTooltipProvider: false,
+  }
+  if (!formatted && !content && !onEdit && !onGenerateInteractiveImage && !onRegenerate && !canSwitchVersion) return null
   return (
-    <div className={`nova-message-meta nova-message-meta-${align}`} aria-label={formatted}>
-      {formatted ? <span className="nova-message-time">{formatted}</span> : null}
-      <TooltipIconButton
-        label={copied ? t('chat.action.copyMessageDone') : t('chat.action.copyMessage')}
-        showTooltip={false}
-        className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
-        onClick={(event) => {
-          event.stopPropagation()
-          setCopied(true)
-          window.setTimeout(() => setCopied(false), copyFeedbackDurationMs)
-          void copyText(content)
-        }}
-      >
-        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-      </TooltipIconButton>
-      {onEdit && (
+    <TooltipProvider delayDuration={messageActionTooltipDelayMs} skipDelayDuration={messageActionTooltipSkipDelayMs} disableHoverableContent>
+      <div className={`nova-message-meta nova-message-meta-${align}`} aria-label={formatted}>
+        {formatted ? <span className="nova-message-time">{formatted}</span> : null}
         <TooltipIconButton
-          label={t('chat.action.editTurn')}
+          label={copied ? t('chat.action.copyMessageDone') : t('chat.action.copyMessage')}
+          {...metaTooltip}
           className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
           onClick={(event) => {
             event.stopPropagation()
-            onEdit(message)
+            setCopied(true)
+            window.setTimeout(() => setCopied(false), copyFeedbackDurationMs)
+            void copyText(content)
           }}
         >
-          <Pencil className="h-3 w-3" />
+          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
         </TooltipIconButton>
-      )}
-    </div>
+        {onGenerateInteractiveImage && (
+          <TooltipIconButton
+            label={message.interactive_images?.length || message.interactive_image ? t('chat.interactiveImage.regenerate') : t('chat.action.generateInteractiveImage')}
+            {...metaTooltip}
+            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-45"
+            disabled={generatingInteractiveImage}
+            onClick={(event) => {
+              event.stopPropagation()
+              onGenerateInteractiveImage(message)
+            }}
+          >
+            {generatingInteractiveImage ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImagePlus className="h-3 w-3" />}
+          </TooltipIconButton>
+        )}
+        {onRegenerate && (
+          <TooltipIconButton
+            label={t('chat.action.regenerateTurn')}
+            {...metaTooltip}
+            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
+            onClick={(event) => {
+              event.stopPropagation()
+              onRegenerate(message)
+            }}
+          >
+            <RefreshCw className="h-3 w-3" />
+          </TooltipIconButton>
+        )}
+        {canSwitchVersion && onSwitchVersion && (
+          <>
+            <TooltipIconButton
+              label={t('chat.action.prevVersion')}
+              {...metaTooltip}
+              className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
+              disabled={versionIndex <= 0}
+              onClick={(event) => {
+                event.stopPropagation()
+                onSwitchVersion(message, -1)
+              }}
+            >
+              <ChevronLeft className="h-3 w-3" />
+            </TooltipIconButton>
+            <span className="min-w-7 text-center font-mono text-[10px] leading-5 text-[var(--nova-text-faint)]">
+              {versionIndex + 1}/{versionCount}
+            </span>
+            <TooltipIconButton
+              label={t('chat.action.nextVersion')}
+              {...metaTooltip}
+              className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
+              disabled={versionIndex >= versionCount - 1}
+              onClick={(event) => {
+                event.stopPropagation()
+                onSwitchVersion(message, 1)
+              }}
+            >
+              <ChevronRight className="h-3 w-3" />
+            </TooltipIconButton>
+          </>
+        )}
+        {onEdit && (
+          <TooltipIconButton
+            label={t('chat.action.editTurn')}
+            {...metaTooltip}
+            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
+            onClick={(event) => {
+              event.stopPropagation()
+              onEdit(message)
+            }}
+          >
+            <Pencil className="h-3 w-3" />
+          </TooltipIconButton>
+        )}
+      </div>
+    </TooltipProvider>
   )
 }
 
@@ -436,16 +535,24 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const result = message.result || ''
   const isDelegationTool = name === 'task'
   const taskSubAgent = isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
+  const isChapterBodyHidden = message.sse_display_notice === 'chapter_body_hidden'
+  const chapterBodyHiddenPath = isChapterBodyHidden ? extractToolArgPath(rawArgs) : ''
+  const chapterGeneratedChars = isChapterBodyHidden && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
   const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : name
-  const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : args
+  const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : (isChapterBodyHidden ? '' : args)
   const hasResult = status === 'success'
-  const isStreamingContent = status === 'running' && isContentTool(name) && rawArgs.length > 50
+  const isStreamingContent = !isChapterBodyHidden && status === 'running' && isContentTool(name) && rawArgs.length > 50
   const streamPreview = isStreamingContent ? extractStreamingContent(rawArgs) : ''
   const summary = taskSubAgent
     ? t('chat.subagent.delegating', { name: taskSubAgent })
     : buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
   const resultPreview = buildPreview(result, 80)
-  const hasDetail = Boolean(detailArgs || result)
+  const displaySummary = isChapterBodyHidden
+    ? chapterGeneratedChars !== undefined
+      ? t(hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount', { count: chapterGeneratedChars })
+      : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting'))
+    : (hasResult ? resultPreview || t('chat.tool.done') : summary)
+  const hasDetail = Boolean(detailArgs || result || isChapterBodyHidden)
   const streamPreviewScrollLock = useBottomScrollLock<HTMLDivElement>({
     enabled: isStreamingContent,
     resetKey: `${message.id || name}:tool-stream-preview`,
@@ -468,7 +575,7 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
           )}
           {message.subagent && <AgentSourceBadge message={message} compact />}
           <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
-            {hasResult ? resultPreview || t('chat.tool.done') : summary}
+            {displaySummary}
           </span>
           {hasDetail && !isStreamingContent && (
             <button
@@ -495,6 +602,22 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
         )}
         {expanded && !isStreamingContent && (
           <div className="grid max-h-48 gap-2 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
+            {isChapterBodyHidden && (
+              <div className="grid gap-1 font-sans">
+                {chapterBodyHiddenPath && (
+                  <div className="min-w-0">
+                    <span className="text-[var(--nova-text-faint)]">{t('chat.tool.chapterPath')}</span>
+                    <code className="ml-1 break-all font-mono text-[var(--nova-text-muted)]">{chapterBodyHiddenPath}</code>
+                  </div>
+                )}
+                {chapterGeneratedChars !== undefined && (
+                  <div className="text-[var(--nova-text-faint)]">
+                    {t('chat.tool.chapterGeneratedChars', { count: chapterGeneratedChars })}
+                  </div>
+                )}
+                <div className="text-[var(--nova-text-faint)]">{t('chat.tool.chapterBodyHidden')}</div>
+              </div>
+            )}
             {detailArgs && <pre className="whitespace-pre-wrap">{detailArgs}</pre>}
             {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
             {result && <pre className="whitespace-pre-wrap text-[var(--nova-accent-green)]">{result}</pre>}
@@ -503,6 +626,211 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
       </div>
     </div>
   )
+}
+
+function ChapterIllustrationBlock({ message, onInsert }: { message: ChatMessage; onInsert?: (illustration: ChapterIllustration) => void }) {
+  const { t } = useTranslation()
+  const illustration = message.illustration
+  if (!illustration) return <ToolExecutionBlock message={message} />
+
+  const status = message.status || 'running'
+  const isMarkdownChapter = isMarkdownPath(illustration.chapter_path)
+  const canInsert = status === 'success' && isMarkdownChapter && Boolean(onInsert)
+  const imageSrc = workspaceAssetURL(illustration.image_path)
+  const imageTitle = illustration.alt_text || t('chat.illustration.previewAlt')
+
+  return (
+    <div className="flex justify-start">
+      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
+        <ImagePreviewDialog src={imageSrc} title={imageTitle} alt={imageTitle} path={illustration.image_path}>
+          <button
+            type="button"
+            className="group relative block w-full overflow-hidden bg-black/90 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]"
+            aria-label={t('chat.illustration.openPreview')}
+          >
+            <img
+              src={imageSrc}
+              alt={imageTitle}
+              className="max-h-80 w-full object-contain"
+              loading="lazy"
+            />
+            <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-md border border-white/15 bg-black/45 px-2 py-1 text-[11px] font-medium text-white opacity-90 backdrop-blur">
+              <ToolStatusIcon status={status} />
+              {t('chat.illustration.title')}
+            </span>
+          </button>
+        </ImagePreviewDialog>
+        <div className="flex min-w-0 flex-col gap-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 sm:flex-row sm:items-center">
+          <code className="min-w-0 flex-1 truncate rounded border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 font-mono text-[10px] text-[var(--nova-text-muted)]" title={illustration.image_path}>
+            {illustration.image_path}
+          </code>
+          <div className="flex min-w-0 items-center justify-end gap-2">
+            {!isMarkdownChapter && (
+              <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{t('chat.illustration.markdownOnly')}</span>
+            )}
+            <button
+              type="button"
+              disabled={!canInsert}
+              onClick={() => illustration && onInsert?.(illustration)}
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] font-medium text-[var(--nova-text-muted)] transition hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <ImagePlus className="h-3.5 w-3.5" />
+              {status === 'running' ? t('chat.illustration.generating') : t('chat.illustration.insert')}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function InteractiveImageBlock({ message }: { message: ChatMessage; onRegenerate?: (message: ChatMessage) => void }) {
+  return (
+    <div className="flex justify-start">
+      <div className="w-full">
+        <InteractiveImageStrip message={message} />
+      </div>
+    </div>
+  )
+}
+
+function InteractiveImageStrip({ message }: { message: ChatMessage }) {
+  const { t } = useTranslation()
+  const images = interactiveImagesFromMessage(message)
+  const error = message.interactive_image_error || readInteractiveImageErrorFromMessage(message)
+  const status = message.interactive_image_status || message.status
+  const [index, setIndex] = useState(Math.max(0, images.length - 1))
+  const previousImageCountRef = useRef(images.length)
+
+  useEffect(() => {
+    const previousLength = previousImageCountRef.current
+    previousImageCountRef.current = images.length
+    setIndex((current) => {
+      if (images.length > previousLength) return images.length - 1
+      return Math.min(Math.max(0, images.length - 1), Math.max(0, current))
+    })
+  }, [images.length])
+
+  if (images.length === 0) {
+    if (status === 'running') {
+      return (
+        <div className="mt-3 flex items-center gap-2 px-1 text-xs text-[var(--nova-text-faint)]">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span>{t('chat.interactiveImage.generating')}</span>
+        </div>
+      )
+    }
+    if (error) {
+      return (
+        <div className="mt-3 rounded-md border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs text-[var(--nova-danger)]">
+          {error.message || t('chat.interactiveImage.failed')}
+        </div>
+      )
+    }
+    return null
+  }
+
+  const safeIndex = Math.min(index, images.length - 1)
+  const image = images[safeIndex]
+  const title = image.alt_text || t('chat.interactiveImage.previewAlt')
+  const src = workspaceAssetURL(image.image_path)
+  const canSwitch = images.length > 1
+
+  return (
+    <div className="mt-3 max-w-full">
+      <ImagePreviewDialog src={src} title={title} alt={title} path={image.image_path}>
+        <div
+          role="button"
+          tabIndex={0}
+          className="group relative block w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-black/90 text-left shadow-[var(--nova-shadow)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]"
+          aria-label={t('chat.interactiveImage.openPreview')}
+        >
+          <img
+            src={src}
+            alt={title}
+            className="max-h-[440px] w-full object-contain"
+            loading="lazy"
+          />
+          {canSwitch && (
+            <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/35 px-1 py-0.5 text-[10px] text-white/70 opacity-45 backdrop-blur transition group-hover:opacity-90">
+              <button
+                type="button"
+                aria-label={t('chat.interactiveImage.prevVersion')}
+                className={`flex h-5 w-5 items-center justify-center rounded border border-transparent ${safeIndex <= 0 ? 'opacity-30' : 'hover:border-white/15 hover:bg-white/10'}`}
+                disabled={safeIndex <= 0}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setIndex((current) => Math.max(0, current - 1))
+                }}
+              >
+                <ChevronLeft className="h-3 w-3" />
+              </button>
+              <span className="min-w-7 text-center font-mono leading-5">{safeIndex + 1}/{images.length}</span>
+              <button
+                type="button"
+                aria-label={t('chat.interactiveImage.nextVersion')}
+                className={`flex h-5 w-5 items-center justify-center rounded border border-transparent ${safeIndex >= images.length - 1 ? 'opacity-30' : 'hover:border-white/15 hover:bg-white/10'}`}
+                disabled={safeIndex >= images.length - 1}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  setIndex((current) => Math.min(images.length - 1, current + 1))
+                }}
+              >
+                <ChevronRight className="h-3 w-3" />
+              </button>
+            </span>
+          )}
+        </div>
+      </ImagePreviewDialog>
+    </div>
+  )
+}
+
+function interactiveImagesFromMessage(message: ChatMessage): InteractiveImage[] {
+  if (message.interactive_images?.length) return message.interactive_images.filter((image) => Boolean(image.image_path))
+  const image = message.interactive_image?.image_path ? message.interactive_image : readInteractiveImageFromMessage(message)
+  return image?.image_path ? [image] : []
+}
+
+function readInteractiveImageFromMessage(message: ChatMessage): InteractiveImage | undefined {
+  if (message.interactive_image?.image_path) return message.interactive_image
+  const data = parseMessageResult(message.result)
+  if (isInteractiveImage(data)) return data
+  return undefined
+}
+
+function readInteractiveImageErrorFromMessage(message: ChatMessage): InteractiveImageError | undefined {
+  if (message.interactive_image_error) return message.interactive_image_error
+  const data = parseMessageResult(message.result)
+  if (isInteractiveImageError(data)) return data
+  return undefined
+}
+
+function parseMessageResult(result?: string): unknown {
+  if (!result) return null
+  try {
+    return JSON.parse(result)
+  } catch {
+    return null
+  }
+}
+
+function isInteractiveImage(value: unknown): value is InteractiveImage {
+  if (!value || typeof value !== 'object') return false
+  const data = value as Record<string, unknown>
+  return data.schema === 'interactive_image.v1' && typeof data.image_path === 'string' && Boolean(data.image_path)
+}
+
+function isInteractiveImageError(value: unknown): value is InteractiveImageError {
+  if (!value || typeof value !== 'object') return false
+  const data = value as Record<string, unknown>
+  return data.schema === 'interactive_image_error.v1'
+}
+
+function isMarkdownPath(path?: string) {
+  return /\.(md|markdown)$/i.test(path || '')
 }
 
 interface TodoItem {
@@ -768,6 +1096,18 @@ function buildToolArgSummary(args: string) {
   return buildPreview(args, 120)
 }
 
+function extractToolArgPath(args: string) {
+  if (!args) return ''
+  try {
+    const data = JSON.parse(args) as Record<string, unknown>
+    const path = data.file_path || data.path
+    return typeof path === 'string' ? path : ''
+  } catch {
+    const match = args.match(/"(?:file_path|path)"\s*:\s*"([^"]+)"/)
+    return match?.[1] || ''
+  }
+}
+
 function buildPreview(content: string, maxLength: number) {
   const normalized = content.trim().replace(/\s+/g, ' ')
   if (normalized.length <= maxLength) return normalized
@@ -848,14 +1188,19 @@ const MarkdownContent = memo(function MarkdownContent({ content, highlightDialog
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      components={highlightDialogue ? dialogueMarkdownComponents : undefined}
+      components={highlightDialogue ? dialogueMarkdownComponents : markdownComponents}
     >
       {content}
     </ReactMarkdown>
   )
 })
 
-const dialogueMarkdownComponents = {
+const markdownComponents: Components = {
+  img: ChatMarkdownImage,
+}
+
+const dialogueMarkdownComponents: Components = {
+  ...markdownComponents,
   p: ({ children }: { children?: ReactNode }) => <p>{highlightDialogueNodes(children)}</p>,
   li: ({ children }: { children?: ReactNode }) => <li>{highlightDialogueNodes(children)}</li>,
   h1: ({ children }: { children?: ReactNode }) => <h1>{highlightDialogueNodes(children)}</h1>,
@@ -865,6 +1210,35 @@ const dialogueMarkdownComponents = {
   h5: ({ children }: { children?: ReactNode }) => <h5>{highlightDialogueNodes(children)}</h5>,
   h6: ({ children }: { children?: ReactNode }) => <h6>{highlightDialogueNodes(children)}</h6>,
   blockquote: ({ children }: { children?: ReactNode }) => <blockquote>{highlightDialogueNodes(children)}</blockquote>,
+}
+
+function ChatMarkdownImage({ src = '', alt = '', title = '' }: { src?: string; alt?: string; title?: string }) {
+  const { t } = useTranslation()
+  const imageSrc = normalizeChatImageSrc(src)
+  if (!imageSrc) return null
+  const imageTitle = alt || title || t('chat.image.previewTitle')
+  const imagePath = shouldShowImagePath(src) ? src : undefined
+
+  return (
+    <ImagePreviewDialog src={imageSrc} title={imageTitle} alt={alt || imageTitle} path={imagePath}>
+      <button type="button" className="nova-chat-image-button" aria-label={t('chat.image.openPreview')}>
+        <img src={imageSrc} alt={alt || imageTitle} title={title || undefined} loading="lazy" />
+      </button>
+    </ImagePreviewDialog>
+  )
+}
+
+function normalizeChatImageSrc(src: string) {
+  const trimmed = src.trim()
+  if (!trimmed) return ''
+  if (/^(https?:|data:|blob:|\/)/i.test(trimmed)) return trimmed
+  if (isWorkspaceImagePath(trimmed)) return workspaceAssetURL(trimmed)
+  return trimmed
+}
+
+function shouldShowImagePath(src: string) {
+  const trimmed = src.trim()
+  return Boolean(trimmed && !/^(data:|blob:)/i.test(trimmed))
 }
 
 function highlightDialogueNodes(children: ReactNode): ReactNode {

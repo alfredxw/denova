@@ -127,13 +127,16 @@ func TestBuildSubAgentInstructionInheritsInteractiveStoryBoundary(t *testing.T) 
 
 	for _, required := range []string{
 		"禁止修改 workspace 文件",
-		"<NARRATIVE>",
+		"只输出本回合可展示在故事舞台上的故事正文",
 		"互动禁写规则",
 		"Only return context findings.",
 	} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive subagent instruction missing %q:\n%s", required, instruction)
 		}
+	}
+	if strings.Contains(instruction, "<NARRATIVE>") {
+		t.Fatalf("interactive subagent instruction should not require narrative XML wrapper:\n%s", instruction)
 	}
 }
 
@@ -214,11 +217,44 @@ func TestSubAgentAssemblyUsesParentToolPolicyKind(t *testing.T) {
 	}
 }
 
+func TestBuildChatModelAgentAssemblyPassesToolResultLimit(t *testing.T) {
+	assembly, err := buildChatModelAgentAssembly(context.Background(), &config.Config{AgentToolResultLimitKB: 64}, chatModelAgentAssemblySpec{
+		Kind: config.AgentKindIDE,
+		ToolSettings: config.ResolvedAgentToolSettings{
+			FileRead:     false,
+			FileWrite:    false,
+			ShellExecute: false,
+			Skills:       false,
+			LoreRead:     false,
+			LoreWrite:    false,
+			Todo:         false,
+			WebSearch:    false,
+		},
+		IncludeCompaction: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var orchestrator *toolOrchestratorMiddleware
+	for _, handler := range assembly.Handlers {
+		if middleware, ok := handler.(*toolOrchestratorMiddleware); ok {
+			orchestrator = middleware
+			break
+		}
+	}
+	if orchestrator == nil {
+		t.Fatalf("expected tool orchestrator middleware")
+	}
+	if got := orchestrator.toolResultLimitBytes(); got != 64*1024 {
+		t.Fatalf("tool result limit bytes = %d, want %d", got, 64*1024)
+	}
+}
+
 func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
 	var fullContent, fullThinking strings.Builder
 	var events []Event
 	meta := agentEventMetadata{AgentName: "researcher", RootAgentName: "NovaAgent", RunPath: []string{"NovaAgent", "researcher"}, SubAgent: true}
-	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("sub draft", nil)}, &fullContent, &fullThinking, meta, func(ev Event) {
+	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("sub draft", nil)}, &fullContent, &fullThinking, 0, meta, func(ev Event) {
 		events = append(events, ev)
 	})
 	if fullContent.Len() != 0 || fullThinking.Len() != 0 {
@@ -229,7 +265,7 @@ func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
 	}
 
 	rootMeta := agentEventMetadata{AgentName: "NovaAgent", RootAgentName: "NovaAgent", RunPath: []string{"NovaAgent"}}
-	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("root final", nil)}, &fullContent, &fullThinking, rootMeta, func(Event) {})
+	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("root final", nil)}, &fullContent, &fullThinking, 0, rootMeta, func(Event) {})
 	if got := fullContent.String(); got != "root final" {
 		t.Fatalf("root output should append to parent builder, got %q", got)
 	}

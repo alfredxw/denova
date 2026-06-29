@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,6 +51,7 @@ type Settings struct {
 	// 编辑器
 	AutoSaveEnabled             *bool  `toml:"auto_save_enabled,omitempty" json:"auto_save_enabled,omitempty"`
 	AutoSaveIntervalMs          *int   `toml:"auto_save_interval_ms,omitempty" json:"auto_save_interval_ms,omitempty"`
+	HideChapterBodyLiveOutput   *bool  `toml:"hide_novel_chapter_body_in_live_output,omitempty" json:"hide_novel_chapter_body_in_live_output,omitempty"`
 	ChapterFilenameFormat       string `toml:"chapter_filename_format,omitempty" json:"chapter_filename_format,omitempty"`
 	VolumeDirFormat             string `toml:"volume_dir_format,omitempty" json:"volume_dir_format,omitempty"`
 	MaxOpenTabs                 *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
@@ -73,11 +76,13 @@ type Settings struct {
 	MaxIteration            *int   `toml:"max_iteration,omitempty" json:"max_iteration,omitempty"`
 	ModelMaxRetries         *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
 	AgentIdleTimeoutSeconds *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
+	AgentToolResultLimitKB  *int   `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
 	PlanModeDefault         *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
 	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
+	IDEImagePresetID        string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
 	WritingSkillDefault     string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
 
-	// 互动模式
+	// 游戏模式
 	InteractiveHotChoices      *bool    `toml:"interactive_hot_choices_enabled,omitempty" json:"interactive_hot_choices_enabled,omitempty"`
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
@@ -90,6 +95,7 @@ func floatPtr(v float64) *float64 { return &v }
 const (
 	DefaultWritingSkillName        = "novel-lite"
 	DefaultAgentIdleTimeoutSeconds = 0
+	DefaultAgentToolResultLimitKB  = 0
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -108,6 +114,7 @@ func DefaultSettings() Settings {
 		AllowLANAccess:              boolPtr(false),
 		AutoSaveEnabled:             boolPtr(true),
 		AutoSaveIntervalMs:          intPtr(1500),
+		HideChapterBodyLiveOutput:   boolPtr(false),
 		ChapterFilenameFormat:       "ch{order:05}-{chapter}-{title}.md",
 		VolumeDirFormat:             "v{order:05}-{volume}",
 		MaxOpenTabs:                 intPtr(5),
@@ -127,6 +134,7 @@ func DefaultSettings() Settings {
 		UpdateCheckEnabled:          boolPtr(true),
 		ModelMaxRetries:             intPtr(5),
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
+		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
 		AgentModels: AgentModelSettings{
 			IDE:                   AgentModelOverride{EnableThinking: boolPtr(true)},
 			ConfigManager:         AgentModelOverride{EnableThinking: boolPtr(true)},
@@ -141,6 +149,7 @@ func DefaultSettings() Settings {
 		SubAgents:                  nil,
 		PlanModeDefault:            boolPtr(false),
 		IDEStoryTellerID:           "classic",
+		IDEImagePresetID:           "game-cg",
 		WritingSkillDefault:        DefaultWritingSkillName,
 		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
@@ -213,6 +222,9 @@ func Merge(parent, child Settings) Settings {
 	if child.AutoSaveIntervalMs != nil {
 		out.AutoSaveIntervalMs = child.AutoSaveIntervalMs
 	}
+	if child.HideChapterBodyLiveOutput != nil {
+		out.HideChapterBodyLiveOutput = child.HideChapterBodyLiveOutput
+	}
 	if child.ChapterFilenameFormat != "" {
 		out.ChapterFilenameFormat = child.ChapterFilenameFormat
 	}
@@ -273,11 +285,17 @@ func Merge(parent, child Settings) Settings {
 	if child.AgentIdleTimeoutSeconds != nil {
 		out.AgentIdleTimeoutSeconds = child.AgentIdleTimeoutSeconds
 	}
+	if child.AgentToolResultLimitKB != nil {
+		out.AgentToolResultLimitKB = child.AgentToolResultLimitKB
+	}
 	if child.PlanModeDefault != nil {
 		out.PlanModeDefault = child.PlanModeDefault
 	}
 	if child.IDEStoryTellerID != "" {
 		out.IDEStoryTellerID = child.IDEStoryTellerID
+	}
+	if child.IDEImagePresetID != "" {
+		out.IDEImagePresetID = child.IDEImagePresetID
 	}
 	if child.WritingSkillDefault != "" {
 		out.WritingSkillDefault = child.WritingSkillDefault
@@ -311,6 +329,7 @@ type LayeredSettings struct {
 	Workspace                 Settings                  `json:"workspace"`
 	Effective                 Settings                  `json:"effective"`
 	Paths                     SettingsPaths             `json:"paths"`
+	Revisions                 SettingsRevisions         `json:"revisions"`
 	Access                    SettingsAccess            `json:"access"`
 	Runtime                   SettingsRuntime           `json:"runtime"`
 	BuiltinAgentPrompts       AgentPromptSettings       `json:"builtin_agent_prompts,omitempty"`
@@ -318,11 +337,19 @@ type LayeredSettings struct {
 	BuiltinAgentPromptSources AgentPromptSourceSettings `json:"builtin_agent_prompt_sources,omitempty"`
 }
 
+var ErrSettingsRevisionConflict = errors.New("配置已被其他操作更新，请重新加载后再保存")
+
 // SettingsPaths 是设置页只读展示的真实配置路径。
 type SettingsPaths struct {
 	NovaDir         string `json:"nova_dir"`
 	UserConfig      string `json:"user_config"`
 	WorkspaceConfig string `json:"workspace_config"`
+}
+
+// SettingsRevisions 是配置文件的轻量版本，用于阻止旧配置草稿覆盖外部写入。
+type SettingsRevisions struct {
+	User      string `json:"user"`
+	Workspace string `json:"workspace"`
 }
 
 // SettingsAccess exposes the Nova entry addresses users can open in browsers.
@@ -355,6 +382,20 @@ func ReadSettingsFile(path string) (Settings, error) {
 
 // WriteSettingsFile 写入 TOML，自动创建父目录。
 func WriteSettingsFile(path string, s Settings) error {
+	return WriteSettingsFileIfRevision(path, s, "")
+}
+
+// WriteSettingsFileIfRevision 写入配置；expectedRevision 非空时要求磁盘文件未被外部改动。
+func WriteSettingsFileIfRevision(path string, s Settings, expectedRevision string) error {
+	if expectedRevision != "" {
+		current, err := SettingsFileRevision(path)
+		if err != nil {
+			return err
+		}
+		if current != expectedRevision {
+			return ErrSettingsRevisionConflict
+		}
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("创建目录失败: %w", err)
 	}
@@ -366,6 +407,19 @@ func WriteSettingsFile(path string, s Settings) error {
 		return fmt.Errorf("写入 %s 失败: %w", path, err)
 	}
 	return nil
+}
+
+// SettingsFileRevision 返回配置文件内容版本；缺失文件使用 stable sentinel。
+func SettingsFileRevision(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "missing", nil
+		}
+		return "", fmt.Errorf("读取 %s 版本失败: %w", path, err)
+	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("sha256:%x", sum), nil
 }
 
 // UserConfigPath 计算用户级配置路径。novaDir 已经过 normalizePath 处理。
@@ -420,6 +474,21 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 	}
 	eff := Merge(Merge(Merge(def, global), user), ws)
 	backendPort := settingsInt(eff.BackendPort, 8080)
+	revisions := SettingsRevisions{}
+	userConfigPath := UserConfigPath(novaDir)
+	workspaceConfigPath := WorkspaceConfigPath(workspace)
+	if rev, err := SettingsFileRevision(userConfigPath); err == nil {
+		revisions.User = rev
+	} else {
+		return LayeredSettings{}, err
+	}
+	if workspace != "" {
+		if rev, err := SettingsFileRevision(workspaceConfigPath); err == nil {
+			revisions.Workspace = rev
+		} else {
+			return LayeredSettings{}, err
+		}
+	}
 	return LayeredSettings{
 		Default:   def,
 		Global:    global,
@@ -428,9 +497,10 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		Effective: eff,
 		Paths: SettingsPaths{
 			NovaDir:         novaDir,
-			UserConfig:      UserConfigPath(novaDir),
-			WorkspaceConfig: WorkspaceConfigPath(workspace),
+			UserConfig:      userConfigPath,
+			WorkspaceConfig: workspaceConfigPath,
 		},
+		Revisions: revisions,
 		Access: SettingsAccess{
 			LocalURL: LocalHTTPURL(backendPort),
 			LANURL:   LANHTTPURL(backendPort),
@@ -450,12 +520,14 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
+	s.IDEImagePresetID = strings.TrimSpace(s.IDEImagePresetID)
 	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)
 	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)
 	s.ImageAPIBaseURL = strings.TrimSpace(s.ImageAPIBaseURL)
 	s.ImageAPIModel = strings.TrimSpace(s.ImageAPIModel)
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
+	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
 	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
@@ -486,6 +558,16 @@ func normalizeAgentIdleTimeoutSeconds(seconds *int) *int {
 		return nil
 	}
 	return seconds
+}
+
+func normalizeAgentToolResultLimitKB(limit *int) *int {
+	if limit == nil {
+		return nil
+	}
+	if *limit < 0 {
+		return nil
+	}
+	return limit
 }
 
 func normalizeContextWindowTokens(tokens *int) *int {

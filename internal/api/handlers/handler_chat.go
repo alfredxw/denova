@@ -35,7 +35,7 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 	log.Printf("[agent-sse] attach new chat task_id=%s", task.ID())
-	sse.StreamTask(c, task)
+	sse.StreamTask(c, task, h.chatSSEStreamOptions()...)
 }
 
 // HandleChatContextAnalysis 模拟一次聊天请求，返回真实 SystemPrompt 和上下文组成，不启动 LLM。
@@ -93,7 +93,7 @@ func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) 
 		return
 	}
 	log.Printf("[agent-sse] attach active chat task_id=%s status=%s", task.ID(), task.Status())
-	sse.StreamTask(c, task)
+	sse.StreamTask(c, task, h.chatSSEStreamOptions()...)
 }
 
 // handleChatActive 查询当前是否有活跃任务。
@@ -119,4 +119,10 @@ func (h *Handlers) HandleChatAbort(ctx context.Context, c *app.RequestContext) {
 	}
 	h.app.AbortTask()
 	c.JSON(consts.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handlers) chatSSEStreamOptions() []sse.StreamOption {
+	return []sse.StreamOption{
+		sse.WithHideChapterBodyLiveOutput(h.app.HideChapterBodyLiveOutput()),
+	}
 }

@@ -45,7 +45,7 @@ export function TellerPicker({ story, tellers, onChange, layout = 'inline' }: Te
       <PopoverContent
         align="start"
         sideOffset={6}
-        className={`${sidebar ? 'w-[min(calc(100vw-2rem),22rem)]' : 'w-[22rem]'} max-h-[min(70dvh,28rem)] overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 text-[var(--nova-text)] shadow-[var(--nova-shadow)]`}
+        className={`${sidebar ? 'w-[min(calc(100vw-2rem),22rem)]' : 'w-[169px]'} max-h-[min(70dvh,28rem)] overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 text-[var(--nova-text)] shadow-[var(--nova-shadow)]`}
       >
         <div role="listbox" aria-label={t('tellerPicker.placeholder')} className="space-y-1">
           {tellers.length === 0 ? (

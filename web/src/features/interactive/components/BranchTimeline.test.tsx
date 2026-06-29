@@ -36,7 +36,7 @@ describe('BranchTimeline', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('剧情路线图'))
+    fireEvent.click(screen.getByText('分支路线'))
 
     const canvas = screen.getByTestId('branch-graph-canvas')
     expect(canvas.querySelector('svg path')).toBeInTheDocument()
@@ -79,7 +79,7 @@ describe('BranchTimeline', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('剧情路线图'))
+    fireEvent.click(screen.getByText('分支路线'))
 
     const canvas = screen.getByTestId('branch-graph-canvas')
     expect(canvas).toHaveAttribute('data-edge-count', '2')
@@ -142,7 +142,7 @@ describe('BranchTimeline', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('剧情路线图'))
+    fireEvent.click(screen.getByText('分支路线'))
 
     const nodeButton = screen.getByText('第一幕').closest('button')
     expect(nodeButton).not.toBeNull()
@@ -182,7 +182,7 @@ describe('BranchTimeline', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('剧情路线图'))
+    fireEvent.click(screen.getByText('分支路线'))
     fireEvent.click(screen.getByText('第一幕'))
     fireEvent.click(screen.getAllByRole('button', { name: /创建剧情线/ }).at(-1)!)
 
@@ -240,7 +240,7 @@ describe('BranchTimeline', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('剧情路线图'))
+    fireEvent.click(screen.getByText('分支路线'))
 
     const scroller = screen.getByTestId('branch-graph-scroll')
     scroller.scrollLeft = 80
@@ -274,7 +274,7 @@ describe('BranchTimeline', () => {
       />,
     )
 
-    fireEvent.click(screen.getByText('剧情路线图'))
+    fireEvent.click(screen.getByText('分支路线'))
 
     expect(screen.getByText('推开酒馆的门')).toBeInTheDocument()
     expect(screen.getByText('走向壁炉')).toBeInTheDocument()

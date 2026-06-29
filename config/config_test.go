@@ -70,11 +70,11 @@ func TestLoadWithWorkspaceMergesLayers(t *testing.T) {
 	t.Setenv("OPENAI_MODEL", "")
 
 	if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"),
-		Settings{OpenAIModel: "user-model", Language: "zh-CN", WritingSkillDefault: "novel-lite"}); err != nil {
+		Settings{OpenAIModel: "user-model", Language: "zh-CN", WritingSkillDefault: "novel-lite", IDEImagePresetID: "realistic"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := WriteSettingsFile(filepath.Join(ws, ".nova", "config.toml"),
-		Settings{OpenAIModel: "ws-model", Language: "en-US", WritingSkillDefault: "novel-heavy"}); err != nil {
+		Settings{OpenAIModel: "ws-model", Language: "en-US", WritingSkillDefault: "novel-heavy", IDEImagePresetID: "2d-illustration"}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -90,6 +90,9 @@ func TestLoadWithWorkspaceMergesLayers(t *testing.T) {
 	}
 	if cfg.WritingSkillDefault != "novel-heavy" {
 		t.Fatalf("workspace writing skill default expected, got %s", cfg.WritingSkillDefault)
+	}
+	if cfg.IDEImagePresetID != "2d-illustration" {
+		t.Fatalf("workspace image preset default expected, got %s", cfg.IDEImagePresetID)
 	}
 	if layered.User.OpenAIModel != "user-model" {
 		t.Fatalf("user layer raw value lost")
@@ -118,6 +121,30 @@ func TestLoadWithWorkspaceAllowsUnlimitedAgentIdleTimeout(t *testing.T) {
 	}
 	if layered.Effective.AgentIdleTimeoutSeconds == nil || *layered.Effective.AgentIdleTimeoutSeconds != 0 {
 		t.Fatalf("effective agent idle timeout should preserve explicit 0")
+	}
+}
+
+func TestLoadWithWorkspaceAllowsUnlimitedAgentToolResultLimit(t *testing.T) {
+	novaDir := t.TempDir()
+	ws := t.TempDir()
+	t.Setenv("NOVA_DIR", novaDir)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+
+	if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"),
+		Settings{AgentToolResultLimitKB: intPtr(0)}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, layered, err := LoadWithWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentToolResultLimitKB != 0 {
+		t.Fatalf("agent tool result limit should allow explicit 0, got %d", cfg.AgentToolResultLimitKB)
+	}
+	if layered.Effective.AgentToolResultLimitKB == nil || *layered.Effective.AgentToolResultLimitKB != 0 {
+		t.Fatalf("effective agent tool result limit should preserve explicit 0")
 	}
 }
 
@@ -194,6 +221,30 @@ func TestLoadWithWorkspaceAllowsGlobalUnlimitedAgentIdleTimeout(t *testing.T) {
 		t.Fatalf("global agent idle timeout should allow explicit 0, got %d", cfg.AgentIdleTimeoutSeconds)
 	}
 	if layered.Global.AgentIdleTimeoutSeconds == nil || *layered.Global.AgentIdleTimeoutSeconds != 0 {
+		t.Fatalf("global layer should preserve explicit 0")
+	}
+}
+
+func TestLoadWithWorkspaceAllowsGlobalUnlimitedAgentToolResultLimit(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	ws := t.TempDir()
+	t.Setenv("NOVA_DIR", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+
+	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("agent_tool_result_limit_kb = 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, layered, err := LoadWithWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AgentToolResultLimitKB != 0 {
+		t.Fatalf("global agent tool result limit should allow explicit 0, got %d", cfg.AgentToolResultLimitKB)
+	}
+	if layered.Global.AgentToolResultLimitKB == nil || *layered.Global.AgentToolResultLimitKB != 0 {
 		t.Fatalf("global layer should preserve explicit 0")
 	}
 }

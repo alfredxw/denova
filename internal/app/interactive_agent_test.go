@@ -572,7 +572,21 @@ func TestInteractiveCompactionSourceUsesOnlyTurnsAfterPreviousCompaction(t *test
 }
 
 func TestParseInteractiveAssistantOutput(t *testing.T) {
-	narrative, ops, hotState, err := parseInteractiveAssistantOutput(`<NARRATIVE>
+	narrative, ops, hotState, err := parseInteractiveAssistantOutput(`门后传来低沉的风声。
+<STATE_DELTA>
+{"ops":[{"op":"set","path":"on_stage","value":["林川"]}]}
+</STATE_DELTA>`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if narrative != "门后传来低沉的风声。" || len(ops) != 1 || ops[0].Path != "on_stage" {
+		t.Fatalf("unexpected parsed bare output narrative=%q ops=%#v", narrative, ops)
+	}
+	if hotState != nil {
+		t.Fatalf("unexpected hot state in bare output: %#v", hotState)
+	}
+
+	narrative, ops, hotState, err = parseInteractiveAssistantOutput(`<NARRATIVE>
 门后传来低沉的风声。
 </NARRATIVE>
 <HOT_STATE>
@@ -585,7 +599,7 @@ func TestParseInteractiveAssistantOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	if narrative != "门后传来低沉的风声。" || len(ops) != 1 || ops[0].Path != "on_stage" {
-		t.Fatalf("unexpected parsed output narrative=%q ops=%#v", narrative, ops)
+		t.Fatalf("unexpected parsed legacy output narrative=%q ops=%#v", narrative, ops)
 	}
 	if hotState == nil || len(hotState.Choices) != 1 || hotState.Choices[0] != "我贴近门缝听里面的动静。" {
 		t.Fatalf("unexpected hot state: %#v", hotState)

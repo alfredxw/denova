@@ -17,7 +17,17 @@ function collect(chunks: string[]): string {
 }
 
 describe('createInteractiveNarrativeFilter', () => {
-  it('removes narrative tags and hides state delta', () => {
+  it('streams bare narrative across chunks before hidden state', () => {
+    const visible = collect([
+      '火光照亮了',
+      '墙上的新线索。',
+      '\n<STATE',
+      '_DELTA>{"ops":[{"op":"set","path":"on_stage","value":["林川"]}]}',
+    ])
+    expect(visible).toBe('火光照亮了墙上的新线索。\n')
+  })
+
+  it('still removes legacy narrative tags and hides state delta', () => {
     const visible = collect([
       '<NARRATIVE>\n火光照亮了',
       '墙上的新线索。\n</NARRATIVE>\n<STATE_DELTA>',
@@ -53,9 +63,9 @@ describe('createInteractiveNarrativeFilter', () => {
     expect(visible).toBe('门后传来低沉的风声。')
   })
 
-  it('passes legacy narrative before state delta', () => {
-    const visible = collect(['旧格式正文', '<STATE_DELTA>{"ops":[]}'])
-    expect(visible).toBe('旧格式正文')
+  it('passes bare narrative before state delta', () => {
+    const visible = collect(['新格式裸正文', '<STATE_DELTA>{"ops":[]}'])
+    expect(visible).toBe('新格式裸正文')
   })
 
   it('strips reasoning prelude with orphan </think> tag', () => {

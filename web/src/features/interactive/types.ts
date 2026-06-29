@@ -8,11 +8,20 @@ export interface StorySummary {
   origin: string
   story_teller_id: string
   reply_target_chars: number
+  image_settings?: StoryImageSettings
   opening: StoryOpeningConfig
   created_at: string
   updated_at: string
   branches: number
   events: number
+}
+
+export type StoryImageMode = 'manual' | 'interval'
+
+export interface StoryImageSettings {
+  mode: StoryImageMode
+  interval_turns: number
+  preset_id?: string
 }
 
 export type StoryOpeningMode = 'ai' | 'preset' | 'custom'
@@ -44,6 +53,30 @@ export interface Teller {
   error?: string
   created_at?: string
   updated_at?: string
+}
+
+export interface ImagePreset {
+  version: number
+  id: string
+  name: string
+  description: string
+  prompt?: string
+  slots?: ImagePresetSlot[]
+  tags: string[]
+  path?: string
+  custom: boolean
+  invalid?: boolean
+  error?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ImagePresetSlot {
+  id: string
+  name: string
+  target: 'agent_system' | 'tool_request'
+  enabled: boolean
+  content: string
 }
 
 export interface StyleRule {

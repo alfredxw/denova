@@ -3,9 +3,9 @@ import { Activity, Bot, Check, FileText, Loader2, PenLine, Plus, SearchCheck, Sl
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
 import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
-import type { Teller } from '@/features/interactive/types'
+import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { removeChatContextCompaction } from '@/lib/api'
-import type { ChapterSummary, ChatMessage, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
+import type { ChapterIllustration, ChapterSummary, ChatMessage, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { BUILTIN_WRITING_SKILLS, DEFAULT_WRITING_SKILL, useWritingSkillOptions, type WritingSkillOption } from '@/hooks/useWritingSkillOptions'
 import { MessageList } from './MessageList'
@@ -33,6 +33,7 @@ interface AgentPanelProps {
   currentChapter?: ChapterSummary
   selectedFile: string | null
   tellers: Teller[]
+  imagePresets?: ImagePreset[]
   messages: ChatMessage[]
   sessions: SessionSummary[]
   activeSessionId: string
@@ -50,8 +51,8 @@ interface AgentPanelProps {
   onSwitchSession: (id: string) => void | Promise<void>
   onRenameSession: (id: string, title: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
-  onSend: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext }) => void
-  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext }) => Promise<ContextAnalysis>
+  onSend: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string }) => void
+  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
@@ -59,6 +60,7 @@ interface AgentPanelProps {
   onStyleSceneAdd: (scene: string) => void
   onStyleSceneRemove: (scene: string) => void
   onTextSelectionRemove: (index: number) => void
+  onInsertIllustration?: (illustration: ChapterIllustration) => void
   onClose: () => void
   onSubAgentDetailsChange?: (open: boolean) => void
 }
@@ -69,6 +71,7 @@ export function AgentPanel({
   currentChapter,
   selectedFile,
   tellers,
+  imagePresets = [],
   messages,
   sessions,
   activeSessionId,
@@ -95,6 +98,7 @@ export function AgentPanel({
   onStyleSceneAdd,
   onStyleSceneRemove,
   onTextSelectionRemove,
+  onInsertIllustration,
   onClose,
   onSubAgentDetailsChange,
 }: AgentPanelProps) {
@@ -108,6 +112,7 @@ export function AgentPanel({
   const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const [ideTellerId, setIdeTellerId] = useState('classic')
+  const [imagePresetId, setImagePresetId] = useState('game-cg')
   const [writingSkill, setWritingSkill] = useState(DEFAULT_WRITING_SKILL)
   const skillCommands = useSkillCommands({ agentKey: 'ide', workspace, fallbackEnabled: true })
   const writingSkillOptions = useWritingSkillOptions(workspace)
@@ -123,14 +128,18 @@ export function AgentPanel({
 
   useEffect(() => {
     const handleWritingInitRequest = (event: Event) => {
-      const detail = (event as CustomEvent<{ prompt?: string }>).detail
+      const detail = (event as CustomEvent<{ prompt?: string; autoSend?: boolean }>).detail
       const prompt = detail?.prompt || t('writingAgent.initPrompt')
       setView('chat')
+      if (detail?.autoSend && !isStreaming) {
+        onSend(prompt, { writingSkill, ideContext, imagePresetId })
+        return
+      }
       setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
     }
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
-  }, [t])
+  }, [ideContext, imagePresetId, isStreaming, onSend, t, writingSkill])
 
   useEffect(() => {
     onSubAgentDetailsChange?.(Boolean(activeSubAgentSessionKey))
@@ -158,12 +167,28 @@ export function AgentPanel({
     return () => { cancelled = true }
   }, [workspace])
 
+  useEffect(() => {
+    let cancelled = false
+    if (!workspace) {
+      setImagePresetId('game-cg')
+      return () => { cancelled = true }
+    }
+    fetchSettings()
+      .then((settings) => {
+        if (!cancelled) setImagePresetId(settings.effective.ide_image_preset_id || 'game-cg')
+      })
+      .catch(() => {
+        if (!cancelled) setImagePresetId('game-cg')
+      })
+    return () => { cancelled = true }
+  }, [workspace])
+
   const handleAnalyzeContext = async (message: string) => {
     setContextAnalysisLoading(true)
     setContextAnalysisError(null)
     setContextAnalysis(null)
     try {
-      setContextAnalysis(await onAnalyzeContext(message, { writingSkill, ideContext }))
+      setContextAnalysis(await onAnalyzeContext(message, { writingSkill, ideContext, imagePresetId }))
     } catch (e) {
       setContextAnalysis(null)
       setContextAnalysisError((e as Error).message)
@@ -188,7 +213,7 @@ export function AgentPanel({
   }
 
   const sendWithWritingSkill = (message: string) => {
-    onSend(message, { writingSkill, ideContext })
+    onSend(message, { writingSkill, ideContext, imagePresetId })
   }
 
   return (
@@ -264,6 +289,7 @@ export function AgentPanel({
                 bottomPaddingClassName="pb-36"
                 bottomPaddingPx={messageListBottomPadding}
                 onOpenSubAgentSession={openSubAgentSession}
+                onInsertIllustration={onInsertIllustration}
                 activeSubAgentSessionKey={activeSubAgentSessionKey}
               />
               <InputArea
@@ -295,6 +321,7 @@ export function AgentPanel({
                 writingSkillControl={(
                   <>
                     <IdeTellerSelector workspace={workspace} tellers={tellers} onValueChange={setIdeTellerId} />
+                    <ImagePresetSelector workspace={workspace} value={imagePresetId} presets={imagePresets} onValueChange={setImagePresetId} />
                     <WritingSkillSelector workspace={workspace} value={writingSkill} options={writingSkillOptions} onValueChange={setWritingSkill} />
                   </>
                 )}
@@ -327,6 +354,7 @@ export function AgentPanel({
                         bottomPaddingClassName="pb-36"
                         bottomPaddingPx={messageListBottomPadding}
                         onOpenSubAgentSession={openSubAgentSession}
+                        onInsertIllustration={onInsertIllustration}
                         activeSubAgentSessionKey={activeSubAgentSessionKey}
                       />
                       <InputArea
@@ -358,6 +386,7 @@ export function AgentPanel({
                         writingSkillControl={(
                           <>
                             <IdeTellerSelector workspace={workspace} tellers={tellers} onValueChange={setIdeTellerId} />
+                            <ImagePresetSelector workspace={workspace} value={imagePresetId} presets={imagePresets} onValueChange={setImagePresetId} />
                             <WritingSkillSelector workspace={workspace} value={writingSkill} options={writingSkillOptions} onValueChange={setWritingSkill} />
                           </>
                         )}
@@ -502,6 +531,74 @@ function IdeTellerSelector({ workspace, tellers, onValueChange }: { workspace: s
               >
                 {saving && selectedTeller ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className={`h-3.5 w-3.5 ${selectedTeller ? 'opacity-100' : 'opacity-0'}`} />}
                 <span className="min-w-0 flex-1 truncate">{teller.name}</span>
+              </DropdownMenuItem>
+            )
+          })}
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+      <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+    </>
+  )
+}
+
+function ImagePresetSelector({ workspace, value, presets, onValueChange }: { workspace: string; value: string; presets: ImagePreset[]; onValueChange: (value: string) => void }) {
+  const { t } = useTranslation()
+  const [saving, setSaving] = useState(false)
+
+  const normalizedPresets = useMemo(() => {
+    if (presets.some((preset) => preset.id === value)) return presets
+    return [{ id: value || 'game-cg', name: value || 'game-cg', description: '', prompt: '', tags: [], custom: true, version: 1 }, ...presets]
+  }, [presets, value])
+  const selected = normalizedPresets.find((preset) => preset.id === value) || normalizedPresets.find((preset) => preset.id === 'game-cg') || normalizedPresets[0]
+
+  const handleChange = async (next: string) => {
+    if (!workspace || next === value || saving) return
+    const previous = value
+    onValueChange(next)
+    setSaving(true)
+    try {
+      const settings = await fetchSettings()
+      await updateWorkspaceSettings({ ...settings.workspace, ide_image_preset_id: next })
+      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+    } catch (e) {
+      console.warn('保存 IDE 图像方案失败', e)
+      onValueChange(previous)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (normalizedPresets.length === 0) return null
+
+  return (
+    <>
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger
+          disabled={!workspace || saving}
+          className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+          title={t('chat.imagePresetTitle')}
+          aria-label={t('chat.imagePreset')}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span className="min-w-0 flex-1">{t('chat.imagePreset')}</span>
+          <span className="max-w-36 truncate text-[10px] text-[var(--nova-text-faint)]">{selected?.name || value}</span>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="w-72 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+          {normalizedPresets.map((preset) => {
+            const selectedPreset = preset.id === selected?.id
+            return (
+              <DropdownMenuItem
+                key={preset.id}
+                disabled={saving}
+                onSelect={(event) => {
+                  event.preventDefault()
+                  void handleChange(preset.id)
+                }}
+                onClick={() => void handleChange(preset.id)}
+                className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+              >
+                {saving && selectedPreset ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className={`h-3.5 w-3.5 ${selectedPreset ? 'opacity-100' : 'opacity-0'}`} />}
+                <span className="min-w-0 flex-1 truncate">{preset.name || preset.id}</span>
               </DropdownMenuItem>
             )
           })}

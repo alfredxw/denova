@@ -1059,6 +1059,23 @@ html[data-nova-motion="off"] *::after {
   text-underline-offset: 2px;
 }
 
+.editor-content .tiptap img {
+  display: block;
+  max-width: 100%;
+  max-height: 70vh;
+  width: auto;
+  height: auto;
+  margin: 1em auto;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--nova-editor-accent, #303238) 70%, transparent);
+  object-fit: contain;
+}
+
+.editor-content .tiptap img.ProseMirror-selectednode {
+  outline: 2px solid var(--nova-accent);
+  outline-offset: 2px;
+}
+
 .editor-content .tiptap .nova-search-match {
   border-radius: 3px;
   background: rgba(250, 204, 21, 0.32);
@@ -1169,6 +1186,32 @@ html[data-nova-motion="off"] *::after {
 .chat-agent-message pre code {
   background: transparent;
   padding: 0;
+}
+
+.chat-agent-message .nova-chat-image-button {
+  display: block;
+  max-width: 100%;
+  margin: 0.7em 0;
+  overflow: hidden;
+  border: 1px solid var(--nova-markdown-border);
+  border-radius: 8px;
+  background: var(--nova-surface-2);
+  padding: 0;
+  transition: border-color 140ms ease, filter 140ms ease;
+}
+
+.chat-agent-message .nova-chat-image-button:hover,
+.chat-agent-message .nova-chat-image-button:focus-visible {
+  border-color: var(--nova-accent);
+  filter: brightness(1.04);
+  outline: none;
+}
+
+.chat-agent-message .nova-chat-image-button img {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  object-fit: contain;
 }
 
 .chat-agent-message table {

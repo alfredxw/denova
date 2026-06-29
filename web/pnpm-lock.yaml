@@ -41,6 +41,9 @@ importers:
       '@tiptap/extension-character-count':
         specifier: ^3.23.2
         version: 3.23.2(@tiptap/extensions@3.23.2(@tiptap/core@3.23.2(@tiptap/pm@3.23.2))(@tiptap/pm@3.23.2))
+      '@tiptap/extension-image':
+        specifier: ^3.23.2
+        version: 3.23.2(@tiptap/core@3.23.2(@tiptap/pm@3.23.2))
       '@tiptap/extension-placeholder':
         specifier: ^3.23.2
         version: 3.23.2(@tiptap/extensions@3.23.2(@tiptap/core@3.23.2(@tiptap/pm@3.23.2))(@tiptap/pm@3.23.2))
@@ -107,6 +110,12 @@ importers:
       react-resizable-panels:
         specifier: ^4.11.1
         version: 4.11.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      react-virtuoso:
+        specifier: ^4.18.10
+        version: 4.18.10(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      react-zoom-pan-pinch:
+        specifier: ^4.0.3
+        version: 4.0.3(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
@@ -1755,6 +1764,11 @@ packages:
     peerDependencies:
       '@tiptap/core': 3.23.2
       '@tiptap/pm': 3.23.2
+
+  '@tiptap/extension-image@3.23.2':
+    resolution: {integrity: sha512-VASHSKmqwwOWzvD5KA7+uuF4Xux54xFD7KwSE5JV7pHM/LA4N8clhL3zo7mbqjIOTgAFIdxRgv21zpClbxJ5eg==}
+    peerDependencies:
+      '@tiptap/core': 3.23.2
 
   '@tiptap/extension-italic@3.23.2':
     resolution: {integrity: sha512-pauWOkom8riyZoIGn8I8uFE//uRgE6kL46Pd6PdSd5Wt6w/ao/le9Ju2Ln947NGjz/6whaDiFnBrkSbZEAhpmw==}
@@ -3480,6 +3494,19 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+
+  react-virtuoso@4.18.10:
+    resolution: {integrity: sha512-P6GIZ7kWAPOYB2H16yRQNgy+VF9pJOuTFw1EUc1EAtCj5WxVSAF1Sql3x3fbLwaLeBFsiPnu+3U9o6sIOyTdFw==}
+    peerDependencies:
+      react: '>=16 || >=17 || >= 18 || >= 19'
+      react-dom: '>=16 || >=17 || >= 18 || >=19'
+
+  react-zoom-pan-pinch@4.0.3:
+    resolution: {integrity: sha512-N2Hi6L78fFmhRra+ORpFSW7WST5x6kxpOPplIvtB0b7b+U2anpo1z1wLgaWRPS2kUSqcraRG+JgBCIlDJnqqAg==}
+    engines: {node: '>=8', npm: '>=5'}
+    peerDependencies:
+      react: '*'
+      react-dom: '*'
 
   react@19.2.6:
     resolution: {integrity: sha512-sfWGGfavi0xr8Pg0sVsyHMAOziVYKgPLNrS7ig+ivMNb3wbCBw3KxtflsGBAwD3gYQlE/AEZsTLgToRrSCjb0Q==}
@@ -5661,6 +5688,10 @@ snapshots:
       '@tiptap/core': 3.23.2(@tiptap/pm@3.23.2)
       '@tiptap/pm': 3.23.2
 
+  '@tiptap/extension-image@3.23.2(@tiptap/core@3.23.2(@tiptap/pm@3.23.2))':
+    dependencies:
+      '@tiptap/core': 3.23.2(@tiptap/pm@3.23.2)
+
   '@tiptap/extension-italic@3.23.2(@tiptap/core@3.23.2(@tiptap/pm@3.23.2))':
     dependencies:
       '@tiptap/core': 3.23.2(@tiptap/pm@3.23.2)
@@ -7583,6 +7614,16 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.14
+
+  react-virtuoso@4.18.10(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
+    dependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+
+  react-zoom-pan-pinch@4.0.3(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
+    dependencies:
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
 
   react@19.2.6: {}
 

@@ -24,6 +24,7 @@ interface ChatOptions {
 export interface ChatSendOptions {
   writingSkill?: string
   ideContext?: IDEContext
+  imagePresetId?: string
 }
 
 /** 聊天 hook，管理消息列表和流式响应 */
@@ -199,7 +200,7 @@ export function useChat(options: ChatOptions = {}) {
     setAbortController(abortController)
 
     try {
-      const stream = await sendMessage(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, abortController.signal, prepared.planMode, options.writingSkill, options.ideContext)
+      const stream = await sendMessage(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, abortController.signal, prepared.planMode, options.writingSkill, options.ideContext, options.imagePresetId)
       await consumeAgentStream(stream, { clearInputsOnFinish: clearInputState, showAbortMessage: true })
     } catch (e) {
       setMessages(prev => [...prev, { role: 'error', content: t('chat.activity.requestFailed', { error: String(e) }) }])
@@ -209,7 +210,7 @@ export function useChat(options: ChatOptions = {}) {
   const analyzeContext = useCallback(async (input: string, options: ChatSendOptions = {}): Promise<ContextAnalysis> => {
     if (isStreaming) throw new Error(t('chat.contextAnalysis.streamingUnavailable'))
     const prepared = prepareAgentRequest(input)
-    return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, prepared.planMode, options.writingSkill, options.ideContext)
+    return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, prepared.planMode, options.writingSkill, options.ideContext, options.imagePresetId)
   }, [isStreaming, prepareAgentRequest, t])
 
   /** 恢复订阅后台仍在运行的聊天任务。 */

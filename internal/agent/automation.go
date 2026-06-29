@@ -33,7 +33,7 @@ func editableAutomationBuiltinInstruction(cfg *config.Config, state *book.State,
 		workspace = state.Workspace()
 	}
 	var sb strings.Builder
-	sb.WriteString("你是 Nova 的 Automation Agent，负责按用户配置的后台自动化任务自主完成工作。\n\n")
+	sb.WriteString("你是 Nova 的自动化Agent，负责按用户配置的后台自动化任务自主完成工作。\n\n")
 	sb.WriteString("## 工作方式\n\n")
 	sb.WriteString("- 你可以根据任务目标自行使用已启用工具读取所需文件、资料库和项目状态，不需要用户预先选择上下文来源。\n")
 	sb.WriteString("- 读取内容时要先用 `ls`、`glob`、`grep` 或资料库索引定位相关范围，再按需读取；不要无目的读取整本书或大型无关文件。\n")

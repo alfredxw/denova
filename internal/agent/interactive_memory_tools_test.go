@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -116,5 +117,79 @@ func TestInteractiveMemoryToolsListReadAndRecordRecall(t *testing.T) {
 	}
 	if state.RecentRecall == nil || len(state.RecentRecall.MemoryIDs) != 1 || state.RecentRecall.MemoryIDs[0] != mainMemory.ID {
 		t.Fatalf("recent recall not recorded: %#v", state.RecentRecall)
+	}
+}
+
+func TestInteractiveMemoryReadToolReturnsAllRequestedContent(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "长记忆工具测试", Origin: "主角整理档案"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{User: "整理档案", Narrative: "档案柜逐层打开。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ids := make([]string, 0, 7)
+	for i := 0; i < 7; i++ {
+		tail := fmt.Sprintf("完整结尾-%02d", i)
+		memory, err := store.AppendInteractiveMemory(story.ID, "main", turn.ID, interactive.InteractiveMemoryCreateRequest{
+			Title:      fmt.Sprintf("长记忆 %02d", i),
+			Summary:    fmt.Sprintf("摘要 %02d", i),
+			Content:    strings.Repeat("长正文", 1800) + tail,
+			Importance: 5,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, memory.ID)
+	}
+
+	tools, err := newInteractiveMemoryTools(InteractiveStoryToolContext{Store: store, StoryID: story.ID, BranchID: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var readTool tool.InvokableTool
+	for _, item := range tools {
+		info, err := item.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Name == "read_interactive_memories" {
+			readTool = item.(tool.InvokableTool)
+			break
+		}
+	}
+	if readTool == nil {
+		t.Fatalf("expected read_interactive_memories tool")
+	}
+
+	idsJSON, err := json.Marshal(ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOutput, err := readTool.InvokableRun(context.Background(), `{"ids":`+string(idsJSON)+`}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Truncated bool                                 `json:"truncated"`
+		Memories  []interactive.InteractiveMemoryEntry `json:"memories"`
+	}
+	if err := json.Unmarshal([]byte(readOutput), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Truncated {
+		t.Fatalf("read output should not be truncated:\n%s", readOutput)
+	}
+	if len(parsed.Memories) != len(ids) {
+		t.Fatalf("memory count = %d, want %d", len(parsed.Memories), len(ids))
+	}
+	for i, memory := range parsed.Memories {
+		if !strings.Contains(memory.Content, fmt.Sprintf("完整结尾-%02d", i)) {
+			t.Fatalf("memory %d content was truncated", i)
+		}
 	}
 }

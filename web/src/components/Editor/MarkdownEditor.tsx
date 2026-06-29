@@ -2,20 +2,22 @@ import { useEffect, useCallback, useLayoutEffect, useMemo, useRef, useState } fr
 import type { PointerEvent } from 'react'
 import type { Editor } from '@tiptap/react'
 import { useEditor, EditorContent } from '@tiptap/react'
-import { Extension, Node } from '@tiptap/core'
+import { Extension, Node, mergeAttributes } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { CharacterCount } from '@tiptap/extension-character-count'
+import Image from '@tiptap/extension-image'
 import { Markdown } from '@tiptap/markdown'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection as PmTextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
-import { BookOpen, Check, ChevronDown, ChevronUp, MessageSquareQuote, Palette, Rows3, Save, Search, Settings, X } from 'lucide-react'
+import { BookOpen, Check, ChevronDown, ChevronUp, ImagePlus, MessageSquareQuote, Palette, Rows3, Save, Search, Settings, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 
-import type { TextSelection as QuoteSelection } from '@/lib/api'
+import type { ChapterIllustration, TextSelection as QuoteSelection } from '@/lib/api'
 import type { ChapterSummary } from '@/lib/api'
+import { workspaceAssetURL } from '@/lib/api'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { isEditableTarget } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
@@ -33,6 +35,9 @@ interface MarkdownEditorProps {
   autoSaveDelayMs?: number
   chapterSummary?: ChapterSummary
   searchIntent?: EditorSearchIntent | null
+  onGenerateIllustration?: (chapterPath: string) => void
+  generateIllustrationDisabled?: boolean
+  illustrationInsertSignal?: { illustration: ChapterIllustration; nonce: number } | null
 }
 
 export interface EditorSearchIntent {
@@ -152,6 +157,30 @@ function isTxtFile(name: string | null): boolean {
   return !!name && name.toLowerCase().endsWith('.txt')
 }
 
+function isMarkdownFile(name: string | null): boolean {
+  return !!name && /\.(md|markdown)$/i.test(name)
+}
+
+function createWorkspaceImageExtension() {
+  return Image.extend({
+    renderHTML({ HTMLAttributes }) {
+      const src = resolveWorkspaceImageSrc(HTMLAttributes.src)
+      return ['img', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { src })]
+    },
+  }).configure({
+    inline: false,
+    allowBase64: true,
+  })
+}
+
+function resolveWorkspaceImageSrc(src: unknown) {
+  if (typeof src !== 'string' || src.trim() === '') return src
+  const value = src.trim()
+  if (/^(https?:|data:|blob:|\/)/i.test(value)) return value
+  if (value.startsWith('assets/')) return workspaceAssetURL(value)
+  return value
+}
+
 function normalizeAutoSaveDelayMs(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     return DEFAULT_AUTO_SAVE_DELAY_MS
@@ -170,6 +199,9 @@ export function MarkdownEditor({
   autoSaveDelayMs,
   chapterSummary,
   searchIntent,
+  onGenerateIllustration,
+  generateIllustrationDisabled = false,
+  illustrationInsertSignal,
 }: MarkdownEditorProps) {
   const { t } = useTranslation()
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null)
@@ -193,10 +225,12 @@ export function MarkdownEditor({
   const saveEditorContentRef = useRef<(mode: 'manual' | 'auto') => Promise<void>>(async () => {})
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastSaveSignalRef = useRef(saveSignal)
+  const lastIllustrationInsertNonceRef = useRef<number | null>(null)
   const lastSearchIntentNonceRef = useRef<number | null>(null)
   const searchStateRef = useRef<SearchState>({ query: '', index: 0 })
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const dialogueHighlightExtension = useMemo(() => createDialogueHighlightExtension(), [])
+  const workspaceImageExtension = useMemo(() => createWorkspaceImageExtension(), [])
   const editorContainerRef = useRef<HTMLDivElement>(null)
   /** 每个文件的滚动位置缓存 */
   const filePositionsRef = useRef<Map<string, { scrollTop: number }>>(new Map())
@@ -237,6 +271,7 @@ export function MarkdownEditor({
       }),
       searchExtension,
       dialogueHighlightExtension,
+      workspaceImageExtension,
       Markdown.configure({
         markedOptions: {
           gfm: true,
@@ -383,6 +418,39 @@ export function MarkdownEditor({
     updateSearch(searchIntent.query, targetIndex >= 0 ? targetIndex : 0)
   }, [editor, searchIntent, updateSearch])
 
+  useEffect(() => {
+    if (!editor || !illustrationInsertSignal) return
+    if (lastIllustrationInsertNonceRef.current === illustrationInsertSignal.nonce) return
+    lastIllustrationInsertNonceRef.current = illustrationInsertSignal.nonce
+    if (!fileName || isTxtFile(fileName) || !isMarkdownFile(fileName)) {
+      toast.error(t('editor.illustrationMarkdownOnly'))
+      return
+    }
+    const { illustration } = illustrationInsertSignal
+    const imagePath = illustration.image_path
+    if (!imagePath) {
+      toast.error(t('editor.illustrationInsertFailed'))
+      return
+    }
+    const insertAt = Math.max(1, editor.state.selection.from || 1)
+    const ok = editor
+      .chain()
+      .focus()
+      .insertContentAt(insertAt, {
+        type: 'image',
+        attrs: {
+          src: imagePath,
+          alt: illustration.alt_text || t('chat.illustration.previewAlt'),
+          title: illustration.alt_text || undefined,
+        },
+      })
+      .run()
+    if (!ok) {
+      toast.error(t('editor.illustrationInsertFailed'))
+      return
+    }
+  }, [editor, fileName, illustrationInsertSignal, t])
+
   const clearSaveStatusTimer = useCallback(() => {
     if (saveStatusClearTimer.current) {
       window.clearTimeout(saveStatusClearTimer.current)
@@ -407,8 +475,7 @@ export function MarkdownEditor({
     const nextStatus: SaveStatus = ok ? (mode === 'auto' ? 'auto-saved' : 'manual-saved') : 'error'
     setSaveStatus(nextStatus)
     if (mode === 'manual') {
-      if (ok) toast.success(t('editor.saveSuccess'))
-      else toast.error(t('editor.saveFailed'))
+      if (!ok) toast.error(t('editor.saveFailed'))
     }
     scheduleSaveStatusClear(nextStatus, mode === 'auto' ? 1400 : 2000)
   }, [clearSaveStatusTimer, onSave, scheduleSaveStatusClear, t])
@@ -603,6 +670,19 @@ export function MarkdownEditor({
               ) : null}
               <span className={saveStatusMeta.subtle ? 'sr-only' : ''}>{saveStatusLabel}</span>
             </span>
+          )}
+          {onGenerateIllustration && (
+            <TooltipIconButton
+              label={generateIllustrationDisabled ? t('editor.generateIllustrationDisabled') : t('editor.generateIllustration')}
+              size="icon-xs"
+              className="text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={generateIllustrationDisabled || !chapterSummary?.path}
+              onClick={() => {
+                if (chapterSummary?.path) onGenerateIllustration(chapterSummary.path)
+              }}
+            >
+              <ImagePlus className="h-3.5 w-3.5" />
+            </TooltipIconButton>
           )}
           <Button
             type="button"

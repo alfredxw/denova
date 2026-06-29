@@ -53,6 +53,7 @@ type LoreItemInput struct {
 	Keywords         []string `json:"keywords"`
 	LoadMode         string   `json:"load_mode"`
 	Content          string   `json:"content"`
+	BaseRevision     string   `json:"base_revision,omitempty"`
 }
 
 type LoreCollection struct {
@@ -77,6 +78,8 @@ type LoreApplyResult struct {
 type LoreStore struct {
 	workspace string
 }
+
+var ErrLoreRevisionConflict = errors.New("资料已被其他操作更新，请重新加载后再保存")
 
 func (item *LoreItem) UnmarshalJSON(data []byte) error {
 	type loreItemAlias LoreItem
@@ -140,7 +143,7 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 	if err != nil {
 		return LoreItem{}, err
 	}
-	now := time.Now().Format(time.RFC3339)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
 	item := normalizeLoreItem(LoreItem{
 		ID:               input.ID,
 		Enabled:          loreInputEnabled(input.Enabled, true),
@@ -184,6 +187,9 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 		if collection.Items[i].ID != id {
 			continue
 		}
+		if input.BaseRevision != "" && collection.Items[i].UpdatedAt != input.BaseRevision {
+			return LoreItem{}, ErrLoreRevisionConflict
+		}
 		updated := normalizeLoreItem(LoreItem{
 			ID:               id,
 			Enabled:          loreInputEnabled(input.Enabled, collection.Items[i].Enabled),
@@ -196,7 +202,7 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 			LoadMode:         input.LoadMode,
 			Content:          input.Content,
 			CreatedAt:        collection.Items[i].CreatedAt,
-			UpdatedAt:        time.Now().Format(time.RFC3339),
+			UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
 		})
 		if updated.Name == "" {
 			return LoreItem{}, errors.New("资料名称不能为空")
@@ -249,6 +255,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 	for _, op := range ops {
 		switch strings.TrimSpace(op.Op) {
 		case "create":
+			now := time.Now().UTC().Format(time.RFC3339Nano)
 			item := normalizeLoreItem(LoreItem{
 				ID:               op.Item.ID,
 				Enabled:          loreInputEnabled(op.Item.Enabled, true),
@@ -260,8 +267,8 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				Keywords:         op.Item.Keywords,
 				LoadMode:         op.Item.LoadMode,
 				Content:          op.Item.Content,
-				CreatedAt:        time.Now().Format(time.RFC3339),
-				UpdatedAt:        time.Now().Format(time.RFC3339),
+				CreatedAt:        now,
+				UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
 			})
 			if item.ID == "" {
 				item.ID = newUniqueLoreID(next, item.Name, item.Type)
@@ -295,7 +302,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				LoadMode:         firstNonEmptyLoreValue(op.Item.LoadMode, next[idx].LoadMode),
 				Content:          firstNonEmptyLoreValue(op.Item.Content, next[idx].Content),
 				CreatedAt:        next[idx].CreatedAt,
-				UpdatedAt:        time.Now().Format(time.RFC3339),
+				UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
 			})
 			if op.Item.Tags == nil {
 				updated.Tags = append([]string(nil), next[idx].Tags...)

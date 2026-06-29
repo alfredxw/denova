@@ -80,6 +80,24 @@ func TestConfigTemplatePreseedsWritingSubAgentsAsEditableConfig(t *testing.T) {
 	}
 }
 
+func TestSubAgentRequiresExplicitParent(t *testing.T) {
+	sub := SubAgentConfig{
+		ID:           "reviewer",
+		Description:  "Reviews drafts.",
+		SystemPrompt: "Review only.",
+	}
+	if SubAgentAllowedForParent(sub, AgentKindIDE) {
+		t.Fatalf("subagent without explicit parents must not be shared across parent agents")
+	}
+	sub.Parents = []string{AgentKindIDE}
+	if !SubAgentAllowedForParent(sub, AgentKindIDE) {
+		t.Fatalf("subagent should be available for its explicit parent")
+	}
+	if SubAgentAllowedForParent(sub, AgentKindAutomation) {
+		t.Fatalf("subagent should not be available for unlisted parents")
+	}
+}
+
 func TestLoadLayeredWithStartupConfigKeepsGlobalSubAgents(t *testing.T) {
 	root := t.TempDir()
 	novaDir := filepath.Join(root, ".nova")
@@ -146,21 +164,23 @@ func containsASCIIOnly(value string) bool {
 func TestResolveSubAgentToolsCapsParentPermissions(t *testing.T) {
 	on := true
 	parent := ResolvedAgentToolSettings{
-		FileRead:  true,
-		FileWrite: false,
-		WebSearch: false,
-		Skills:    true,
+		FileRead:        true,
+		FileWrite:       false,
+		WebSearch:       false,
+		Skills:          true,
+		ImageGeneration: false,
 	}
 	resolved := ResolveSubAgentTools(parent, AgentToolOverride{
-		FileRead:  &on,
-		FileWrite: &on,
-		WebSearch: &on,
-		Skills:    &on,
+		FileRead:        &on,
+		FileWrite:       &on,
+		WebSearch:       &on,
+		Skills:          &on,
+		ImageGeneration: &on,
 	})
 	if !resolved.FileRead || !resolved.Skills {
 		t.Fatalf("parent-allowed tools should remain enabled: %+v", resolved)
 	}
-	if resolved.FileWrite || resolved.WebSearch {
+	if resolved.FileWrite || resolved.WebSearch || resolved.ImageGeneration {
 		t.Fatalf("subagent must not gain tools disabled on parent: %+v", resolved)
 	}
 }
@@ -176,7 +196,18 @@ func TestGeneralSubAgentSettingsMergeAndResolve(t *testing.T) {
 	if GeneralSubAgentEnabled(cfg, AgentKindIDE) {
 		t.Fatalf("explicit IDE setting should disable the general subagent")
 	}
+	if !GeneralSubAgentEnabled(cfg, AgentKindAutomation) {
+		t.Fatalf("automation should use the enabled built-in default")
+	}
+	if GeneralSubAgentEnabled(cfg, AgentKindInteractiveStory) {
+		t.Fatalf("interactive story should inherit the disabled built-in default")
+	}
+	if GeneralSubAgentEnabled(cfg, AgentKindConfigManager) {
+		t.Fatalf("config manager should inherit the disabled built-in default")
+	}
+	settings = Merge(settings, Settings{GeneralSubAgents: AgentGeneralSubAgentSettings{Default: &on}})
+	cfg = &Config{GeneralSubAgents: settings.GeneralSubAgents}
 	if !GeneralSubAgentEnabled(cfg, AgentKindInteractiveStory) {
-		t.Fatalf("unset parent should inherit enabled default")
+		t.Fatalf("explicit default should enable unset parent agents")
 	}
 }

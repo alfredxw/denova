@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -22,13 +23,17 @@ func (h *Handlers) HandleSettingsGet(ctx context.Context, c *app.RequestContext)
 
 // handleSettingsUserUpdate PUT /api/settings/user — 持久化用户级配置。
 func (h *Handlers) HandleSettingsUserUpdate(ctx context.Context, c *app.RequestContext) {
-	var body config.Settings
-	if err := c.BindJSON(&body); err != nil {
+	body, baseRevision, err := bindSettingsUpdate(c)
+	if err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	layered, err := h.app.UpdateUserSettings(body)
+	layered, err := h.app.UpdateUserSettings(body, baseRevision)
 	if err != nil {
+		if errors.Is(err, config.ErrSettingsRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.settings.revisionConflict")
+			return
+		}
 		if key := settingsErrorKey(err); key != "" {
 			writeErrorKey(c, consts.StatusBadRequest, key)
 			return
@@ -52,13 +57,17 @@ func settingsErrorKey(err error) string {
 
 // handleSettingsWorkspaceUpdate PUT /api/settings/workspace — 持久化工作区级配置。
 func (h *Handlers) HandleSettingsWorkspaceUpdate(ctx context.Context, c *app.RequestContext) {
-	var body config.Settings
-	if err := c.BindJSON(&body); err != nil {
+	body, baseRevision, err := bindSettingsUpdate(c)
+	if err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	layered, err := h.app.UpdateWorkspaceSettings(body)
+	layered, err := h.app.UpdateWorkspaceSettings(body, baseRevision)
 	if err != nil {
+		if errors.Is(err, config.ErrSettingsRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.settings.revisionConflict")
+			return
+		}
 		if err.Error() == "当前没有打开的工作区" {
 			writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
 			return
@@ -67,4 +76,20 @@ func (h *Handlers) HandleSettingsWorkspaceUpdate(ctx context.Context, c *app.Req
 		return
 	}
 	writeJSON(c, consts.StatusOK, layered)
+}
+
+func bindSettingsUpdate(c *app.RequestContext) (config.Settings, string, error) {
+	raw := c.Request.Body()
+	var envelope struct {
+		Settings     *config.Settings `json:"settings"`
+		BaseRevision string           `json:"base_revision"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err == nil && envelope.Settings != nil {
+		return *envelope.Settings, envelope.BaseRevision, nil
+	}
+	var body config.Settings
+	if err := json.Unmarshal(raw, &body); err != nil {
+		return config.Settings{}, "", err
+	}
+	return body, "", nil
 }

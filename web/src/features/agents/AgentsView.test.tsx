@@ -226,7 +226,8 @@ describe('AgentsView', () => {
       expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
         sub_agents: [expect.objectContaining({
           id: 'reviewer',
-          enabled: false,
+          enabled: true,
+          parents: [],
         })],
       }))
     })
@@ -252,7 +253,7 @@ describe('AgentsView', () => {
     await screen.findByText('Reviewer')
     await user.click(screen.getByRole('button', { name: '删除 SubAgent' }))
     await screen.findByText('删除 SubAgent？')
-    await user.click(screen.getByRole('button', { name: '删除' }))
+    await user.click(screen.getByRole('button', { name: '仅从当前父 Agent 移除' }))
 
     await waitFor(() => {
       expect(screen.queryByText('Reviewer')).not.toBeInTheDocument()
@@ -264,8 +265,8 @@ describe('AgentsView', () => {
       expect(vi.mocked(updateUserSettings)).toHaveBeenCalledWith(expect.objectContaining({
         sub_agents: [expect.objectContaining({
           id: 'reviewer',
-          enabled: false,
-          parents: ['interactive_story', 'config_manager', 'automation'],
+          enabled: true,
+          parents: [],
         })],
       }))
     })
@@ -289,7 +290,7 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     await screen.findByText('Reviewer')
-    await user.click(screen.getByRole('button', { name: '配置管理 Agent资料库、叙事编排、Skills、自动化与故事记忆管理' }))
+    await user.click(screen.getByRole('button', { name: '配置管理 Agent资料库、方案预设、Skills、自动化与故事记忆管理' }))
 
     await waitFor(() => {
       expect(screen.queryByText('Reviewer')).not.toBeInTheDocument()
@@ -360,7 +361,7 @@ describe('AgentsView', () => {
       sub_agents: [expect.objectContaining({
         id: 'subagent-1',
         name: 'Researcher',
-        parents: ['interactive_story', 'config_manager', 'automation'],
+        parents: [],
       })],
     }))
   })
@@ -395,13 +396,32 @@ describe('AgentsView', () => {
     await screen.findByText('Researcher')
     await user.click(screen.getByRole('button', { name: '删除 SubAgent' }))
     await screen.findByText('删除 SubAgent？')
-    await user.click(screen.getByRole('button', { name: '删除' }))
+    await user.click(screen.getByRole('button', { name: '全部删除' }))
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
       expect(vi.mocked(updateUserSettings)).toHaveBeenLastCalledWith(expect.objectContaining({
         sub_agents: [],
       }))
+    })
+  })
+
+  it('defaults General SubAgent to writing and automation only', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
+
+    render(<AgentsView />)
+
+    expect(await screen.findByLabelText('通用 SubAgent 启用状态')).toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: /游戏叙事 Agent/ }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('通用 SubAgent 启用状态')).not.toBeChecked()
+    })
+
+    await user.click(screen.getByRole('button', { name: /自动化Agent/ }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('通用 SubAgent 启用状态')).toBeChecked()
     })
   })
 
@@ -416,7 +436,9 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     const generalSwitch = await screen.findByLabelText('通用 SubAgent 启用状态')
+    expect(generalSwitch).toBeChecked()
     await user.click(generalSwitch)
+    expect(generalSwitch).not.toBeChecked()
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {

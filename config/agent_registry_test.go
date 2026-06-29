@@ -24,6 +24,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	models := AgentModelSettings{
 		IDE:                   AgentModelOverride{ProfileID: AgentKindIDE},
 		InteractiveStory:      AgentModelOverride{ProfileID: AgentKindInteractiveStory},
+		Image:                 AgentModelOverride{ProfileID: AgentKindImage},
 		ConfigManager:         AgentModelOverride{ProfileID: AgentKindConfigManager},
 		InteractiveState:      AgentModelOverride{ProfileID: AgentKindInteractiveState},
 		InteractiveHotChoices: AgentModelOverride{ProfileID: AgentKindInteractiveHotChoices},
@@ -35,6 +36,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	prompts := AgentPromptSettings{
 		IDE:                   AgentPromptOverride{SystemPrompt: AgentKindIDE},
 		InteractiveStory:      AgentPromptOverride{SystemPrompt: AgentKindInteractiveStory},
+		Image:                 AgentPromptOverride{SystemPrompt: AgentKindImage},
 		ConfigManager:         AgentPromptOverride{SystemPrompt: AgentKindConfigManager},
 		InteractiveState:      AgentPromptOverride{SystemPrompt: AgentKindInteractiveState},
 		InteractiveHotChoices: AgentPromptOverride{SystemPrompt: AgentKindInteractiveHotChoices},
@@ -47,6 +49,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	tools := AgentToolSettings{
 		IDE:                   AgentToolOverride{FileRead: &on},
 		InteractiveStory:      AgentToolOverride{FileWrite: &on},
+		Image:                 AgentToolOverride{ImageGeneration: &on},
 		ConfigManager:         AgentToolOverride{ShellExecute: &on},
 		InteractiveState:      AgentToolOverride{LoreRead: &on},
 		InteractiveHotChoices: AgentToolOverride{LoreWrite: &on},
@@ -63,6 +66,7 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	contexts := AgentContextSettings{
 		IDE:                   AgentContextOverride{CompactionThreshold: thresholds[AgentKindIDE]},
 		InteractiveStory:      AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveStory]},
+		Image:                 AgentContextOverride{CompactionThreshold: thresholds[AgentKindImage]},
 		ConfigManager:         AgentContextOverride{CompactionThreshold: thresholds[AgentKindConfigManager]},
 		InteractiveState:      AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveState]},
 		InteractiveHotChoices: AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveHotChoices]},
@@ -114,7 +118,7 @@ func TestResolveAgentToolManifestUsesCapabilityRegistryOrder(t *testing.T) {
 			t.Fatalf("expected %s to be allowed: %#v", source, manifest)
 		}
 	}
-	for _, source := range []string{AgentToolFileWrite, AgentToolShellExecute, AgentToolSkills, AgentToolLoreWrite, AgentToolTodo, AgentToolAgentConfigWrite} {
+	for _, source := range []string{AgentToolFileWrite, AgentToolShellExecute, AgentToolSkills, AgentToolLoreWrite, AgentToolTodo, AgentToolImageGeneration, AgentToolAgentConfigWrite} {
 		if allowed[source] {
 			t.Fatalf("unexpected allowed capability %s: %#v", source, manifest)
 		}

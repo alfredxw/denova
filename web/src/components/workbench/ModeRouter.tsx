@@ -5,21 +5,23 @@ import { useTranslation } from 'react-i18next'
 import { FileTree } from '@/components/Sidebar/FileTree'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel } from '@/components/Chat/AgentPanel'
+import { FilePreview } from '@/components/workbench/FilePreview'
 import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
 import { VersionPanel } from '@/components/Versions/VersionPanel'
 import { HomeView } from '@/components/Home/HomeView'
 import { InteractiveLayout } from '@/features/interactive/components/InteractiveLayout'
 import { SettingPanel } from '@/features/interactive/components/SettingPanel'
-import { getInteractiveTellers } from '@/features/interactive/api'
+import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import { AgentsView } from '@/features/agents/AgentsView'
 import { AutomationsView } from '@/features/automations/AutomationsView'
 import { SkillsView } from '@/features/skills/SkillsView'
 import { SettingsView } from '@/features/settings/SettingsView'
-import type { Teller } from '@/features/interactive/types'
+import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { BookRecord, ChapterSummary, ChatMessage, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
+import type { BookRecord, ChapterIllustration, ChapterSummary, ChatMessage, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
+import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
 import { WorkbenchShell } from './WorkbenchShell'
@@ -105,8 +107,8 @@ interface ModeRouterProps {
   onSwitchChatSession: (id: string) => void | Promise<void>
   onRenameChatSession: (id: string, title: string) => void | Promise<void>
   onDeleteChatSession: (id: string) => void | Promise<void>
-  onSend: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] } }) => void
-  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] } }) => Promise<ContextAnalysis>
+  onSend: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string }) => void
+  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
@@ -199,6 +201,7 @@ export function ModeRouter(props: ModeRouterProps) {
   } = props
 
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
+  const activeFileKind = selectedFile ? workspaceFileKind(selectedFile) : null
   const ideContext = useMemo(() => ({
     currentFile: selectedFile || undefined,
     openFiles: openTabs.map((tab) => tab.path),
@@ -211,20 +214,29 @@ export function ModeRouter(props: ModeRouterProps) {
   const interactiveSubmode = useInteractiveStore((state) => state.submode)
   const setInteractiveSubmode = useInteractiveStore((state) => state.setSubmode)
   const [tellers, setTellers] = useState<Teller[]>([])
+  const [imagePresets, setImagePresets] = useState<ImagePreset[]>([])
   const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
+  const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
 
   useEffect(() => {
     let cancelled = false
     if (!workspace) {
       setTellers([])
+      setImagePresets([])
       return () => { cancelled = true }
     }
-    getInteractiveTellers()
-      .then((data) => {
-        if (!cancelled) setTellers(data)
+    Promise.all([getInteractiveTellers(), getImagePresets()])
+      .then(([nextTellers, nextImagePresets]) => {
+        if (!cancelled) {
+          setTellers(nextTellers)
+          setImagePresets(nextImagePresets)
+        }
       })
       .catch(() => {
-        if (!cancelled) setTellers([])
+        if (!cancelled) {
+          setTellers([])
+          setImagePresets([])
+        }
       })
     return () => { cancelled = true }
   }, [workspace])
@@ -269,6 +281,36 @@ export function ModeRouter(props: ModeRouterProps) {
         detail: { prompt },
       }))
     }, 0)
+  }
+  const requestChapterIllustration = (chapterPath: string) => {
+    const target = currentChapter?.path || chapterPath || selectedFile || ''
+    if (!target) return
+    onSetMode('ide')
+    onSetRightPanel('ai')
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(WRITING_AGENT_INIT_EVENT, {
+        detail: {
+          autoSend: true,
+          prompt: [
+            '/<chapter-illustration>',
+            '',
+            `目标章节 / Target chapter: ${target}`,
+            '',
+            '请基于这个章节生成一张非剧透插画。只生成图像和 meta.json，不要自动插入正文；生成后等待我手动点击“插入正文”。',
+          ].join('\n'),
+        },
+      }))
+    }, 0)
+  }
+  const insertIllustrationIntoEditor = (illustration: ChapterIllustration) => {
+    const apply = () => {
+      setIllustrationInsertSignal((current) => ({ illustration, nonce: (current?.nonce || 0) + 1 }))
+    }
+    if (illustration.chapter_path && selectedFile !== illustration.chapter_path) {
+      void Promise.resolve(onSelectFile(illustration.chapter_path)).finally(() => window.setTimeout(apply, 0))
+      return
+    }
+    apply()
   }
   const aiVisible = rightPanel === 'ai'
   const closeBooks = () => {
@@ -392,17 +434,24 @@ export function ModeRouter(props: ModeRouterProps) {
         />
         <div className="flex min-h-0 flex-1 flex-col">
           {activeTab ? (
-            <MarkdownEditor
-              fileName={selectedFile}
-              content={fileContent}
-              onSave={onSaveCurrentFile}
-              onQuoteSelection={onQuoteSelection}
-              saveSignal={saveSignal}
-              autoSaveEnabled={editorAutoSaveEnabled}
-              autoSaveDelayMs={editorAutoSaveDelayMs}
-              chapterSummary={currentChapter}
-              searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
-            />
+            activeFileKind === 'image' || activeFileKind === 'json' || activeFileKind === 'jsonl' ? (
+              <FilePreview path={selectedFile || activeTab.path} content={fileContent} />
+            ) : (
+              <MarkdownEditor
+                fileName={selectedFile}
+                content={fileContent}
+                onSave={onSaveCurrentFile}
+                onQuoteSelection={onQuoteSelection}
+                saveSignal={saveSignal}
+                autoSaveEnabled={editorAutoSaveEnabled}
+                autoSaveDelayMs={editorAutoSaveDelayMs}
+                chapterSummary={currentChapter}
+                searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
+                onGenerateIllustration={requestChapterIllustration}
+                generateIllustrationDisabled={isStreaming || !currentChapter}
+                illustrationInsertSignal={illustrationInsertSignal}
+              />
+            )
           ) : (
             loreEmpty ? (
               <EmptyLoreGuide
@@ -425,6 +474,8 @@ export function ModeRouter(props: ModeRouterProps) {
         <MainRouteLayer visible={visibleMainRoute === 'interactive'}>
           <InteractiveLayout
             workspace={workspace}
+            imagePresets={imagePresets}
+            onImagePresetsChange={setImagePresets}
             loreEmpty={loreEmpty}
             onRequestLoreInit={requestLoreInit}
             rightPanelVisible={interactiveRightVisible}
@@ -461,7 +512,7 @@ export function ModeRouter(props: ModeRouterProps) {
             icon={<SlidersHorizontal className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
             onClose={() => onSetRightPanel(null)}
           >
-            <SettingPanel mode="teller" workspace={workspace} tellers={tellers} onTellersChange={setTellers} />
+            <SettingPanel mode="teller" workspace={workspace} tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} />
           </IdeWorkspacePanel>
         </MainRouteLayer>
       )}
@@ -508,6 +559,7 @@ export function ModeRouter(props: ModeRouterProps) {
       currentChapter={currentChapter}
       selectedFile={selectedFile}
       tellers={tellers}
+      imagePresets={imagePresets}
       messages={messages}
       sessions={sessions}
       activeSessionId={activeSessionId}
@@ -534,6 +586,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onStyleSceneAdd={onStyleSceneAdd}
       onStyleSceneRemove={onStyleSceneRemove}
       onTextSelectionRemove={onTextSelectionRemove}
+      onInsertIllustration={insertIllustrationIntoEditor}
       onClose={() => onSetRightPanel(null)}
       onSubAgentDetailsChange={setAgentSubAgentDetailsOpen}
     />

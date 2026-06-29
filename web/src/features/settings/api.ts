@@ -6,20 +6,24 @@ export async function fetchSettings(): Promise<LayeredSettings> {
   return requestJSON('/api/settings')
 }
 
-export async function updateUserSettings(s: Settings): Promise<LayeredSettings> {
+export async function updateUserSettings(s: Settings, baseRevision?: string): Promise<LayeredSettings> {
   return requestJSON('/api/settings/user', {
     method: 'PUT',
     headers: jsonHeaders,
-    body: JSON.stringify(s),
+    body: JSON.stringify(settingsUpdateBody(s, baseRevision)),
   })
 }
 
-export async function updateWorkspaceSettings(s: Settings): Promise<LayeredSettings> {
+export async function updateWorkspaceSettings(s: Settings, baseRevision?: string): Promise<LayeredSettings> {
   return requestJSON('/api/settings/workspace', {
     method: 'PUT',
     headers: jsonHeaders,
-    body: JSON.stringify(s),
+    body: JSON.stringify(settingsUpdateBody(s, baseRevision)),
   })
+}
+
+function settingsUpdateBody(settings: Settings, baseRevision?: string) {
+  return baseRevision ? { settings, base_revision: baseRevision } : settings
 }
 
 export async function checkForUpdate(): Promise<UpdateCheckResult> {

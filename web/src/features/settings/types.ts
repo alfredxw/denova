@@ -25,6 +25,7 @@ export interface Settings {
   remote_access_password_set?: boolean
   auto_save_enabled?: boolean | null
   auto_save_interval_ms?: number | null
+  hide_novel_chapter_body_in_live_output?: boolean | null
   chapter_filename_format?: string
   volume_dir_format?: string
   max_open_tabs?: number | null
@@ -45,8 +46,10 @@ export interface Settings {
   max_iteration?: number | null
   model_max_retries?: number | null
   agent_idle_timeout_seconds?: number | null
+  agent_tool_result_limit_kb?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
+  ide_image_preset_id?: string
   writing_skill_default?: string
   interactive_hot_choices_enabled?: boolean | null
   interactive_stage_font_size?: number | null
@@ -79,6 +82,7 @@ export interface AgentModelSettings {
   default?: AgentModelOverride
   ide?: AgentModelOverride
   interactive_story?: AgentModelOverride
+  image?: AgentModelOverride
   config_manager?: AgentModelOverride
   interactive_state?: AgentModelOverride
   interactive_hot_choices?: AgentModelOverride
@@ -99,6 +103,7 @@ export interface AgentToolSettings {
   default?: AgentToolOverride
   ide?: AgentToolOverride
   interactive_story?: AgentToolOverride
+  image?: AgentToolOverride
   config_manager?: AgentToolOverride
   interactive_state?: AgentToolOverride
   interactive_hot_choices?: AgentToolOverride
@@ -112,6 +117,7 @@ export interface AgentSkillSettings {
   default?: AgentSkillOverride
   ide?: AgentSkillOverride
   interactive_story?: AgentSkillOverride
+  image?: AgentSkillOverride
   config_manager?: AgentSkillOverride
   interactive_state?: AgentSkillOverride
   interactive_hot_choices?: AgentSkillOverride
@@ -127,6 +133,7 @@ export interface AgentContextSettings {
   default?: AgentContextOverride
   ide?: AgentContextOverride
   interactive_story?: AgentContextOverride
+  image?: AgentContextOverride
   config_manager?: AgentContextOverride
   interactive_state?: AgentContextOverride
   interactive_hot_choices?: AgentContextOverride
@@ -161,6 +168,7 @@ export interface AgentToolOverride {
   lore_write?: boolean | null
   todo?: boolean | null
   web_search?: boolean | null
+  image_generation?: boolean | null
   agent_config_read?: boolean | null
   agent_config_write?: boolean | null
 }
@@ -180,6 +188,7 @@ export interface AgentPromptSettings {
   default?: AgentPromptOverride
   ide?: AgentPromptOverride
   interactive_story?: AgentPromptOverride
+  image?: AgentPromptOverride
   config_manager?: AgentPromptOverride
   interactive_state?: AgentPromptOverride
   interactive_hot_choices?: AgentPromptOverride
@@ -211,6 +220,7 @@ export interface AgentPromptSourceSettings {
   default?: AgentPromptSourceList
   ide?: AgentPromptSourceList
   interactive_story?: AgentPromptSourceList
+  image?: AgentPromptSourceList
   config_manager?: AgentPromptSourceList
   interactive_state?: AgentPromptSourceList
   interactive_hot_choices?: AgentPromptSourceList
@@ -230,6 +240,7 @@ export interface AgentPromptBlockSettings {
   default?: AgentPromptBlocks
   ide?: AgentPromptBlocks
   interactive_story?: AgentPromptBlocks
+  image?: AgentPromptBlocks
   config_manager?: AgentPromptBlocks
   interactive_state?: AgentPromptBlocks
   interactive_hot_choices?: AgentPromptBlocks
@@ -254,6 +265,11 @@ export interface SettingsRuntime {
   goos: string
 }
 
+export interface SettingsRevisions {
+  user?: string
+  workspace?: string
+}
+
 export interface LayeredSettings {
   default: Settings
   global: Settings
@@ -263,6 +279,7 @@ export interface LayeredSettings {
   paths: SettingsPaths
   access?: SettingsAccess
   runtime?: SettingsRuntime
+  revisions?: SettingsRevisions
   builtin_agent_prompts?: AgentPromptSettings
   builtin_agent_prompt_blocks?: AgentPromptBlockSettings
   builtin_agent_prompt_sources?: AgentPromptSourceSettings

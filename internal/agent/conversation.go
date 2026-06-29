@@ -12,7 +12,7 @@ import (
 )
 
 // Conversation 抽象 Agent 对话的上下文读取与结果写入。
-// 写作模式写入普通 session，互动模式可写入 interactive/story。
+// 写作模式写入普通 session，游戏模式可写入 interactive/story。
 type Conversation interface {
 	PrepareMessages(originalMessage, agentMessage string) ([]*schema.Message, error)
 	AppendAssistant(content string) error
@@ -424,6 +424,13 @@ func (c *SessionConversation) UpdateDisplayToolResult(id, name, status, result s
 		return fmt.Errorf("会话不存在")
 	}
 	return c.session.UpdateDisplayToolResult(id, name, status, result)
+}
+
+func (c *SessionConversation) UpdateDisplayToolIllustration(id, name string, illustration *session.ChapterIllustration) error {
+	if c == nil || c.session == nil {
+		return fmt.Errorf("会话不存在")
+	}
+	return c.session.UpdateDisplayToolIllustration(id, name, illustration)
 }
 
 func (c *SessionConversation) MarkInterrupted(userMessage, assistantContent, reason string) error {

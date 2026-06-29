@@ -356,6 +356,19 @@ func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller 
 			Content: teller.Prompt,
 		}))
 	}
+	if strings.TrimSpace(teller.ImagePresetSystemPrompt) != "" {
+		title := "图像方案系统规则"
+		if strings.TrimSpace(teller.ImagePresetName) != "" {
+			title = "图像方案系统规则：" + strings.TrimSpace(teller.ImagePresetName)
+		}
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "image_preset_system",
+			Source:  teller.ImagePresetID,
+			Title:   title,
+			Content: teller.ImagePresetSystemPrompt,
+			Note:    "仅用于图像生成 system prompt",
+		}))
+	}
 	parts = append(parts, styleRuleContextAnalysisParts(teller.StyleRules)...)
 	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 		ID:      "flow",
@@ -414,7 +427,7 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      "interactive_teller",
 			Source:  teller.StoryTellerID,
-			Title:   "互动叙事编排系统规则",
+			Title:   "互动叙事方案系统规则",
 			Content: teller.StoryTellerSystemPrompt,
 		}))
 	}
@@ -442,7 +455,7 @@ func styleRuleContextAnalysisParts(rules []StyleRule) []ContextAnalysisPart {
 		}
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      fmt.Sprintf("style_rule_%d", i+1),
-			Source:  "当前叙事编排",
+			Source:  "当前叙事方案",
 			Title:   "场景化风格规则：" + scene,
 			Content: content,
 			Note:    "system prompt",

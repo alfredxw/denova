@@ -75,6 +75,19 @@ describe('useWorkspace', () => {
     expect(screen.getByTestId('workspace-state')).toHaveTextContent('chapters/new.md|新内容')
   })
 
+  it('选择图像文件时不按文本读取，避免把二进制内容塞进编辑器状态', async () => {
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
+
+    await waitFor(() => expect(apiMock.getCurrentWorkspace).toHaveBeenCalled())
+    await act(async () => {
+      await workspace?.selectFile('covers/cover.jpeg')
+    })
+
+    expect(apiMock.readFile).not.toHaveBeenCalled()
+    expect(screen.getByTestId('workspace-state')).toHaveTextContent('covers/cover.jpeg|')
+  })
+
   it('保存当前文件时携带读取到的 revision，并在保存成功后更新 revision', async () => {
     apiMock.readFile.mockResolvedValue({ path: 'chapters/ch01.md', content: '旧内容', revision: 'rev-1' })
     apiMock.saveFile.mockResolvedValueOnce({ path: 'chapters/ch01.md', message: 'ok', revision: 'rev-2' })

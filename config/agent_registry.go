@@ -8,6 +8,7 @@ const (
 	AgentKindInteractiveHotChoices = "interactive_hot_choices"
 	AgentKindVersionSummary        = "version_summary"
 	AgentKindToolAgent             = "tool_agent"
+	AgentKindImage                 = "image"
 	AgentKindAutomation            = "automation"
 	AgentKindContextCompaction     = "context_compaction"
 )
@@ -88,6 +89,15 @@ var agentKindRegistry = []AgentKindDefinition{
 		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.ToolAgent },
 	},
 	{
+		Kind:            AgentKindImage,
+		SessionID:       "image-agent",
+		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.Image },
+		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.Image },
+		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.Image },
+		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.Image },
+		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.Image },
+	},
+	{
 		Kind:            AgentKindAutomation,
 		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.Automation },
 		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.Automation },
@@ -136,6 +146,7 @@ var agentToolCapabilities = []AgentToolCapability{
 	{Source: AgentToolLoreWrite},
 	{Source: AgentToolTodo},
 	{Source: AgentToolWebSearch},
+	{Source: AgentToolImageGeneration},
 	{Source: AgentToolAgentConfigRead},
 	{Source: AgentToolAgentConfigWrite},
 }
@@ -180,6 +191,8 @@ func AgentToolAllowed(settings ResolvedAgentToolSettings, source string) bool {
 		return settings.Todo
 	case AgentToolWebSearch:
 		return settings.WebSearch
+	case AgentToolImageGeneration:
+		return settings.ImageGeneration
 	case AgentToolAgentConfigRead:
 		return settings.AgentConfigRead
 	case AgentToolAgentConfigWrite:

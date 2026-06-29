@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 
 	"nova/internal/api/sse"
 	novaApp "nova/internal/app"
+	"nova/internal/imagepreset"
 	"nova/internal/interactive"
 )
 
@@ -193,6 +195,23 @@ func (h *Handlers) HandleStoryMemoryGenerateStream(ctx context.Context, c *app.R
 		return
 	}
 	sse.StreamTask(c, task)
+}
+
+func (h *Handlers) HandleInteractiveImageGenerate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.InteractiveImageGenerateRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if body.BranchID == "" {
+		body.BranchID = c.Query("branch")
+	}
+	result, err := h.app.GenerateInteractiveImage(ctx, c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
 }
 
 func (h *Handlers) HandleInteractiveMemoryCreate(ctx context.Context, c *app.RequestContext) {
@@ -461,13 +480,20 @@ func (h *Handlers) HandleInteractiveTellerCreate(ctx context.Context, c *app.Req
 }
 
 func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.RequestContext) {
-	var body interactive.Teller
+	var body struct {
+		interactive.Teller
+		BaseRevision string `json:"base_revision"`
+	}
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	teller, err := h.app.UpdateInteractiveTeller(c.Param("id"), body)
+	teller, err := h.app.UpdateInteractiveTeller(c.Param("id"), body.Teller, body.BaseRevision)
 	if err != nil {
+		if errors.Is(err, interactive.ErrTellerRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -476,6 +502,67 @@ func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.Req
 
 func (h *Handlers) HandleInteractiveTellerDelete(ctx context.Context, c *app.RequestContext) {
 	if err := h.app.DeleteInteractiveTeller(c.Param("id")); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handlers) HandleImagePresets(ctx context.Context, c *app.RequestContext) {
+	presets, err := h.app.ImagePresets()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]any{"presets": presets})
+}
+
+func (h *Handlers) HandleImagePreset(ctx context.Context, c *app.RequestContext) {
+	preset, err := h.app.ImagePreset(c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, preset)
+}
+
+func (h *Handlers) HandleImagePresetCreate(ctx context.Context, c *app.RequestContext) {
+	var body imagepreset.Preset
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	preset, err := h.app.CreateImagePreset(body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, preset)
+}
+
+func (h *Handlers) HandleImagePresetUpdate(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		imagepreset.Preset
+		BaseRevision string `json:"base_revision"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	preset, err := h.app.UpdateImagePreset(c.Param("id"), body.Preset, body.BaseRevision)
+	if err != nil {
+		if errors.Is(err, imagepreset.ErrPresetRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, preset)
+}
+
+func (h *Handlers) HandleImagePresetDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteImagePreset(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}

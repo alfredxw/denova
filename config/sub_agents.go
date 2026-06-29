@@ -17,7 +17,8 @@ type SubAgentConfig struct {
 }
 
 // AgentGeneralSubAgentSettings stores the built-in General SubAgent switch per
-// parent agent. Nil means inherit from default; default fallback is enabled.
+// parent agent. Nil means inherit from default; built-in defaults only enable
+// the General SubAgent for writing and automation agents.
 type AgentGeneralSubAgentSettings struct {
 	Default          *bool `toml:"default,omitempty" json:"default,omitempty"`
 	IDE              *bool `toml:"ide,omitempty" json:"ide,omitempty"`
@@ -51,7 +52,11 @@ func IsDeepAgentParentKind(kind string) bool {
 }
 
 func DefaultAgentGeneralSubAgentSettings() AgentGeneralSubAgentSettings {
-	return AgentGeneralSubAgentSettings{Default: boolPtr(true)}
+	return AgentGeneralSubAgentSettings{
+		Default:    boolPtr(false),
+		IDE:        boolPtr(true),
+		Automation: boolPtr(true),
+	}
 }
 
 func MergeAgentGeneralSubAgentSettings(parent, child AgentGeneralSubAgentSettings) AgentGeneralSubAgentSettings {
@@ -69,7 +74,7 @@ func GeneralSubAgentEnabled(cfg *Config, parentKind string) bool {
 	if cfg != nil {
 		settings = MergeAgentGeneralSubAgentSettings(settings, cfg.GeneralSubAgents)
 	}
-	enabled := boolValue(settings.Default, true)
+	enabled := boolValue(settings.Default, false)
 	if override := generalSubAgentOverrideFor(settings, parentKind); override != nil {
 		enabled = *override
 	}
@@ -181,7 +186,7 @@ func SubAgentAllowedForParent(sub SubAgentConfig, parentKind string) bool {
 		return false
 	}
 	if len(sub.Parents) == 0 {
-		return true
+		return false
 	}
 	for _, parent := range sub.Parents {
 		if parent == parentKind {
@@ -218,6 +223,7 @@ func ResolveSubAgentTools(parent ResolvedAgentToolSettings, override AgentToolOv
 		LoreWrite:        parent.LoreWrite && boolValue(override.LoreWrite, parent.LoreWrite),
 		Todo:             parent.Todo && boolValue(override.Todo, parent.Todo),
 		WebSearch:        parent.WebSearch && boolValue(override.WebSearch, parent.WebSearch),
+		ImageGeneration:  parent.ImageGeneration && boolValue(override.ImageGeneration, parent.ImageGeneration),
 		AgentConfigRead:  parent.AgentConfigRead && boolValue(override.AgentConfigRead, parent.AgentConfigRead),
 		AgentConfigWrite: parent.AgentConfigWrite && boolValue(override.AgentConfigWrite, parent.AgentConfigWrite),
 	}

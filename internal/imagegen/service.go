@@ -11,10 +11,16 @@ import (
 )
 
 var (
-	ErrPromptRequired       = errors.New("图片提示词不能为空")
-	ErrUnsupportedProvider  = errors.New("不支持的图片 API provider")
-	ErrImageCountOutOfRange = errors.New("图片数量必须在 1 到 10 之间")
+	ErrPromptRequired       = errors.New("图像提示词不能为空")
+	ErrUnsupportedProvider  = errors.New("不支持的图像模型 provider")
+	ErrImageCountOutOfRange = errors.New("图像数量必须在 1 到 10 之间")
 )
+
+var supportedImageSizes = map[string]struct{}{
+	"2048x2048": {}, "2304x1728": {}, "1728x2304": {}, "2848x1600": {}, "1600x2848": {}, "2496x1664": {}, "1664x2496": {}, "3136x1344": {},
+	"3072x3072": {}, "3456x2592": {}, "2592x3456": {}, "4096x2304": {}, "2304x4096": {}, "2496x3744": {}, "3744x2496": {}, "4704x2016": {},
+	"4096x4096": {}, "3520x4704": {}, "4704x3520": {}, "5504x3040": {}, "3040x5504": {}, "3328x4992": {}, "4992x3328": {}, "6240x2656": {},
+}
 
 type Service struct {
 	adapters map[string]Adapter
@@ -49,9 +55,6 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, request Gene
 	if request.N < 1 || request.N > 10 {
 		return Result{}, ErrImageCountOutOfRange
 	}
-	if request.Size == "" {
-		request.Size = profile.Size
-	}
 	if request.Quality == "" {
 		request.Quality = profile.Quality
 	}
@@ -67,7 +70,7 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, request Gene
 	if adapter == nil {
 		return Result{}, fmt.Errorf("%w: %s", ErrUnsupportedProvider, profile.Provider)
 	}
-	log.Printf("[imagegen] generate begin provider=%s profile_id=%s model=%q size=%q quality=%q format=%q n=%d prompt_chars=%d", profile.Provider, profile.ProfileID, profile.OpenAIModel, request.Size, request.Quality, request.OutputFormat, request.N, len([]rune(request.Prompt)))
+	log.Printf("[imagegen] generate begin provider=%s profile_id=%s model=%q size=%q quality=%q format=%q n=%d prompt_chars=%d, prompt: %s", profile.Provider, profile.ProfileID, profile.OpenAIModel, request.Size, request.Quality, request.OutputFormat, request.N, len([]rune(request.Prompt)), request.Prompt)
 	result, err := adapter.Generate(ctx, profile, request)
 	if err != nil {
 		log.Printf("[imagegen] generate failed provider=%s profile_id=%s model=%q err=%v", profile.Provider, profile.ProfileID, profile.OpenAIModel, err)
@@ -79,36 +82,38 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, request Gene
 
 func normalizeRequestOptions(request GenerateRequest) (GenerateRequest, error) {
 	if request.Size != "" {
-		size := normalizeSize(request.Size)
-		if size == "" {
-			return GenerateRequest{}, fmt.Errorf("不支持的图片尺寸: %s", request.Size)
+		size, ok := normalizeSize(request.Size)
+		if !ok {
+			return GenerateRequest{}, fmt.Errorf("不支持的图像尺寸: %s", request.Size)
 		}
 		request.Size = size
 	}
 	if request.Quality != "" {
 		quality := normalizeQuality(request.Quality)
 		if quality == "" {
-			return GenerateRequest{}, fmt.Errorf("不支持的图片质量: %s", request.Quality)
+			return GenerateRequest{}, fmt.Errorf("不支持的图像质量: %s", request.Quality)
 		}
 		request.Quality = quality
 	}
 	if request.OutputFormat != "" {
 		format := normalizeOutputFormat(request.OutputFormat)
 		if format == "" {
-			return GenerateRequest{}, fmt.Errorf("不支持的图片格式: %s", request.OutputFormat)
+			return GenerateRequest{}, fmt.Errorf("不支持的图像格式: %s", request.OutputFormat)
 		}
 		request.OutputFormat = format
 	}
 	return request, nil
 }
 
-func normalizeSize(size string) string {
-	switch strings.TrimSpace(size) {
-	case "auto", "256x256", "512x512", "1024x1024", "1536x1024", "1024x1536", "1792x1024", "1024x1792":
-		return strings.TrimSpace(size)
-	default:
-		return ""
+func normalizeSize(size string) (string, bool) {
+	trimmed := strings.TrimSpace(size)
+	if trimmed == "" || trimmed == "auto" {
+		return "", true
 	}
+	if _, ok := supportedImageSizes[trimmed]; ok {
+		return trimmed, true
+	}
+	return "", false
 }
 
 func normalizeQuality(quality string) string {
@@ -122,7 +127,7 @@ func normalizeQuality(quality string) string {
 
 func normalizeOutputFormat(format string) string {
 	switch strings.TrimSpace(format) {
-	case "png", "jpeg", "webp":
+	case "png", "jpeg":
 		return strings.TrimSpace(format)
 	default:
 		return ""

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import type { ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
 import { applyUpdate, checkForUpdate, fetchSettings, installUpdateStream, updateUserSettings, updateWorkspaceSettings } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
-import { settingsForLayer, useAutoSaveSettings } from './use-auto-save-settings'
+import { settingsForLayer, settingsRevisionForLayer, useAutoSaveSettings } from './use-auto-save-settings'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
@@ -20,9 +20,9 @@ import { LOCALE_OPTIONS } from '@/i18n'
 import { APP_VERSION } from '@/app-version'
 import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
 import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfilesWithDefault } from './model-profiles'
-import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, DEFAULT_IMAGE_API_SIZE, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
+import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 
-type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -41,9 +41,9 @@ const CONTEXT_WINDOW_PRESETS = [200000, DEFAULT_CONTEXT_WINDOW_TOKENS, 1000000]
 const CONTEXT_WINDOW_INHERIT_VALUE = 'inherit'
 const IMAGE_API_INHERIT_VALUE = '__inherit__'
 const IMAGE_API_PROVIDER_DEFAULT_VALUE = '__provider_default__'
-const IMAGE_API_SIZE_OPTIONS = ['auto', '1024x1024', '1536x1024', '1024x1536', '1792x1024', '1024x1792', '512x512', '256x256']
 const IMAGE_API_QUALITY_OPTIONS = ['auto', 'high', 'medium', 'low', 'standard', 'hd']
-const IMAGE_API_FORMAT_OPTIONS = ['png', 'jpeg', 'webp']
+const IMAGE_API_FORMAT_OPTIONS = ['png', 'jpeg']
+let nextSettingsEventSourceID = 1
 
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
@@ -57,6 +57,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const [updateInstallResult, setUpdateInstallResult] = useState<UpdateInstallResult | null>(null)
   const [updateApplyResult, setUpdateApplyResult] = useState<UpdateApplyResult | null>(null)
   const [updateInstallProgress, setUpdateInstallProgress] = useState<UpdateInstallProgress | null>(null)
+  const [settingsEventSource] = useState(() => {
+    const source = `settings-view-${nextSettingsEventSourceID}`
+    nextSettingsEventSourceID += 1
+    return source
+  })
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [installingUpdate, setInstallingUpdate] = useState(false)
   const [applyingUpdate, setApplyingUpdate] = useState(false)
@@ -71,6 +76,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     updates: true,
     agent: true,
     'ide-editor': true,
+    'ide-output': true,
     versions: true,
     interactive: true,
   })
@@ -88,6 +94,16 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [activeLayer])
 
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    const onSettingsUpdated = (event: Event) => {
+      const source = (event as CustomEvent<{ source?: string }>).detail?.source
+      if (source === settingsEventSource) return
+      void load()
+    }
+    window.addEventListener('nova:settings-updated', onSettingsUpdated)
+    return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
+  }, [load, settingsEventSource])
 
   useEffect(() => {
     if (activeLayer !== 'workspace') return
@@ -169,24 +185,24 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     }
   }, [])
 
-  const saveDraft = useCallback(async (settings: Settings) => {
+  const saveDraft = useCallback(async (settings: Settings, baseRevision?: string) => {
     const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
-    return updater(settings)
+    return baseRevision ? updater(settings, baseRevision) : updater(settings)
   }, [activeLayer])
 
   const applySavedSettings = useCallback((next: LayeredSettings) => {
     setLayered(next)
     // 通知应用层重新读取分层配置（如 max_open_tabs 等需要立即生效的设置）
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('nova:settings-updated'))
+      window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: settingsEventSource } }))
     }
-  }, [])
+  }, [settingsEventSource])
 
   const onSave = async () => {
     setSaving(true)
     setError(null)
     try {
-      const next = await saveDraft(draft)
+      const next = await saveDraft(draft, settingsRevisionForLayer(layered, activeLayer))
       applySavedSettings(next)
       toast.success(t('common.saved'))
     } catch (e) {
@@ -223,6 +239,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   useAutoSaveSettings({
     draft,
     saved: layered ? settingsForLayer(layered, activeLayer) : {},
+    baseRevision: settingsRevisionForLayer(layered, activeLayer),
     ready: Boolean(layered),
     save: saveDraft,
     onSavingChange: setSaving,
@@ -341,20 +358,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         <>
           <Text label={t('settings.paths.skillsDir')} value={draft.skills_dir} placeholder={placeholderFor('skills_dir')}
                 onChange={(v) => setField('skills_dir', v)} />
-          {activeLayer === 'user' && (
-            <>
-              <Num label={t('settings.paths.backendPort')} value={draft.backend_port ?? null}
-                   placeholder={placeholderFor('backend_port')}
-                   min={1}
-                   max={65535}
-                   onChange={(v) => setField('backend_port', v)} />
-              <Num label={t('settings.paths.frontendPort')} value={draft.frontend_port ?? null}
-                   placeholder={placeholderFor('frontend_port')}
-                   min={1}
-                   max={65535}
-                   onChange={(v) => setField('frontend_port', v)} />
-            </>
-          )}
           <ReadOnly label={t('settings.paths.novaDir')} value={layered?.paths?.nova_dir} />
           <ReadOnly label={t('settings.paths.userConfig')} value={layered?.paths?.user_config} />
           <ReadOnly label={t('settings.paths.workspaceConfig')} value={layered?.paths?.workspace_config} />
@@ -379,8 +382,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                   : t('settings.access.passwordPlaceholder')}
                 onChange={(v) => setField('remote_access_password', v)}
                 type="password" />
-          <ReadOnly label={t('settings.access.localUrl')} value={layered?.access?.local_url} />
-          <ReadOnly label={t('settings.access.lanUrl')} value={layered?.access?.lan_url} />
           <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
             {t('settings.access.restartHint')}
           </div>
@@ -405,6 +406,10 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                placeholder={placeholderFor('agent_idle_timeout_seconds')}
                min={0}
                onChange={(v) => setField('agent_idle_timeout_seconds', v)} />
+          <Num label={t('settings.agent.toolResultLimitKB')} value={draft.agent_tool_result_limit_kb ?? null}
+               placeholder={placeholderFor('agent_tool_result_limit_kb')}
+               min={0}
+               onChange={(v) => setField('agent_tool_result_limit_kb', v)} />
           <BoolTri label={t('settings.agent.planModeDefault')} value={draft.plan_mode_default ?? null}
                    effective={effective.plan_mode_default}
                    onChange={(v) => setField('plan_mode_default', v)} />
@@ -450,6 +455,21 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
               onChange={(v) => setField('ide_story_teller_id', v)}
             />
           )}
+        </>
+      ),
+    },
+    {
+      id: 'ide-output',
+      group: t('settings.group.ide'),
+      title: t('settings.section.liveOutput'),
+      children: (
+        <>
+          <BoolTri label={t('settings.ide.hideNovelChapterBodyInLiveOutput')} value={draft.hide_novel_chapter_body_in_live_output ?? null}
+                   effective={effective.hide_novel_chapter_body_in_live_output}
+                   onChange={(v) => setField('hide_novel_chapter_body_in_live_output', v)} />
+          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+            {t('settings.ide.hideNovelChapterBodyInLiveOutputHelp')}
+          </div>
         </>
       ),
     },
@@ -647,12 +667,12 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   )
 }
 
-function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProfileSettings[] {
+export function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProfileSettings[] {
   const localProfiles = draft.model_profiles ?? []
   const hasLocalDefault = localProfiles.some((profile) => modelProfileID(profile) === DEFAULT_MODEL_PROFILE_ID)
   const hasLegacyDefault = Boolean(draft.openai_api_key || draft.openai_base_url || draft.openai_model || draft.openai_context_window_tokens)
   if (hasLocalDefault || hasLegacyDefault) {
-    return modelProfilesWithDefault(draft)
+    return preserveDraftOnlyModelProfiles(modelProfilesWithDefault(draft), localProfiles)
   }
   const inherited = modelProfilesWithDefault(effective)
   const localIDs = new Set(localProfiles.map(modelProfileID).filter(Boolean))
@@ -660,6 +680,12 @@ function modelProfilesForEditor(draft: Settings, effective: Settings): ModelProf
     ...inherited.filter((profile) => !localIDs.has(modelProfileID(profile))).map(stripInheritedModelSecret),
     ...localProfiles,
   ]
+}
+
+function preserveDraftOnlyModelProfiles(profiles: ModelProfileSettings[], draftProfiles: ModelProfileSettings[]): ModelProfileSettings[] {
+  const draftOnlyProfiles = draftProfiles.filter((profile) => !modelProfileID(profile))
+  if (draftOnlyProfiles.length === 0) return profiles
+  return [...profiles, ...draftOnlyProfiles]
 }
 
 function stripInheritedModelSecret(profile: ModelProfileSettings): ModelProfileSettings {
@@ -1199,11 +1225,13 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
             {t('settings.model.profileEmpty', { count: effectiveProfiles.length || 1 })}
           </div>
         )}
-        {profiles.map((profile, index) => (
+        {profiles.map((profile, index) => {
+          const isDefaultProfile = modelProfileID(profile) === DEFAULT_MODEL_PROFILE_ID
+          return (
           <div key={profileKeys[index]} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
             <div className="flex items-center gap-2 px-2.5 py-2">
               <Badge variant="outline" className="shrink-0">
-                {t('settings.model.profileName', { index: index + 1 })}
+                {isDefaultProfile ? t('settings.model.defaultProfileName') : t('settings.model.profileName', { index: index + 1 })}
               </Badge>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs font-medium text-[var(--nova-text)]">
@@ -1275,7 +1303,8 @@ function ModelProfilesEditor({ profiles, effectiveProfiles, onChange }: {
               </ModelProfileInput>
             </div>
           </div>
-        ))}
+          )
+        })}
         <Button
           type="button"
           onClick={addProfile}
@@ -1316,7 +1345,6 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
       provider: DEFAULT_IMAGE_API_PROVIDER,
       openai_base_url: DEFAULT_IMAGE_API_BASE_URL,
       openai_model: DEFAULT_IMAGE_API_MODEL,
-      default_size: DEFAULT_IMAGE_API_SIZE,
     }])
   }
   const updateProfile = (index: number, patch: Partial<ImageAPIProfileSettings>) => {
@@ -1437,19 +1465,11 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
                 />
               </ModelProfileInput>
               <ImageOptionSelect
-                label={t('settings.imageApi.defaultSize')}
-                value={profile.default_size ?? ''}
-                options={IMAGE_API_SIZE_OPTIONS}
-                placeholder={t('settings.imageApi.providerDefault')}
-                className="md:col-span-4"
-                onChange={(value) => updateProfile(index, { default_size: value })}
-              />
-              <ImageOptionSelect
                 label={t('settings.imageApi.defaultQuality')}
                 value={profile.default_quality ?? ''}
                 options={IMAGE_API_QUALITY_OPTIONS}
                 placeholder={t('settings.imageApi.providerDefault')}
-                className="md:col-span-4"
+                className="md:col-span-3"
                 onChange={(value) => updateProfile(index, { default_quality: value })}
               />
               <ImageOptionSelect
@@ -1457,7 +1477,7 @@ function ImageAPIProfilesEditor({ profiles, effectiveProfiles, defaultProfileID,
                 value={profile.default_output_format ?? ''}
                 options={IMAGE_API_FORMAT_OPTIONS}
                 placeholder={t('settings.imageApi.providerDefault')}
-                className="md:col-span-4"
+                className="md:col-span-3"
                 onChange={(value) => updateProfile(index, { default_output_format: value })}
               />
             </div>

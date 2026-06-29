@@ -44,3 +44,28 @@ func TestInteractivePromptsSkipLegacyCharacterAndWorldFallback(t *testing.T) {
 		}
 	}
 }
+
+func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
+	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{
+		ReplyTargetChars: 600,
+	})
+	turn := InteractiveStoryTurnInstruction("我推开门", "", 0, "")
+	for name, output := range map[string]string{
+		"system": system,
+		"turn":   turn,
+	} {
+		for _, required := range []string{"只输出", "故事正文", "不要输出计划", "状态 JSON", "Markdown 标题", "工具说明"} {
+			if !strings.Contains(output, required) {
+				t.Fatalf("%s prompt should contain direct narrative contract %q:\n%s", name, required, output)
+			}
+		}
+		if strings.Contains(output, "<NARRATIVE>") {
+			t.Fatalf("%s prompt should not require narrative XML wrapper:\n%s", name, output)
+		}
+	}
+	for _, hidden := range []string{"<HOT_STATE>", "<STATE_DELTA>"} {
+		if !strings.Contains(system, hidden) {
+			t.Fatalf("system prompt should still forbid hidden state output %q:\n%s", hidden, system)
+		}
+	}
+}

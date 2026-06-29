@@ -50,6 +50,10 @@ type displayToolResultUpdater interface {
 	UpdateDisplayToolResult(id, name, status, result string) error
 }
 
+type displayToolIllustrationUpdater interface {
+	UpdateDisplayToolIllustration(id, name string, illustration *session.ChapterIllustration) error
+}
+
 type displayEventContentAppender interface {
 	AppendDisplayEventContent(id, role, delta string) error
 }
@@ -143,6 +147,13 @@ func (r *displayEventRecorder) Record(ev Event) {
 			}
 		} else if err := r.appender.UpdateDisplayToolStatus(id, name, "success"); err != nil {
 			log.Printf("[agent-run] persist display tool_result status failed name=%s id=%s err=%v", name, id, err)
+		}
+		if illustration := eventDataChapterIllustration(ev.Data, "illustration"); illustration != nil {
+			if updater, ok := r.appender.(displayToolIllustrationUpdater); ok {
+				if err := updater.UpdateDisplayToolIllustration(id, name, illustration); err != nil {
+					log.Printf("[agent-run] persist display illustration failed name=%s id=%s err=%v", name, id, err)
+				}
+			}
 		}
 		if id != "" {
 			delete(r.pendingToolIDs, id)
@@ -383,6 +394,29 @@ func eventDataUsageCalls(data interface{}, key string) []runTokenUsageCall {
 	default:
 		return nil
 	}
+}
+
+func eventDataChapterIllustration(data interface{}, key string) *session.ChapterIllustration {
+	typed, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	value, ok := typed[key]
+	if !ok || value == nil {
+		return nil
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var result session.ChapterIllustration
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil
+	}
+	if strings.TrimSpace(result.Schema) == "" || strings.TrimSpace(result.ImagePath) == "" {
+		return nil
+	}
+	return &result
 }
 
 func usageCallsForSession(calls []runTokenUsageCall) []session.TokenUsageCall {

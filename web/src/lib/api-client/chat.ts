@@ -11,6 +11,7 @@ export async function sendMessage(
   planMode?: boolean,
   writingSkill?: string,
   ideContext?: IDEContext,
+  imagePresetId?: string,
 ): Promise<ReadableStream<SSEEvent>> {
   const res = await fetchAPI('/api/chat', {
     method: 'POST',
@@ -29,6 +30,7 @@ export async function sendMessage(
       ide_context: normalizeIDEContext(ideContext),
       plan_mode: planMode || false,
       writing_skill: writingSkill || undefined,
+      image_preset_id: imagePresetId || undefined,
     }),
     signal,
   })
@@ -48,6 +50,7 @@ export async function analyzeChatContext(
   planMode?: boolean,
   writingSkill?: string,
   ideContext?: IDEContext,
+  imagePresetId?: string,
 ): Promise<ContextAnalysis> {
   return requestJSON('/api/chat/context-analysis', {
     method: 'POST',
@@ -66,6 +69,7 @@ export async function analyzeChatContext(
       ide_context: normalizeIDEContext(ideContext),
       plan_mode: planMode || false,
       writing_skill: writingSkill || undefined,
+      image_preset_id: imagePresetId || undefined,
     }),
   })
 }

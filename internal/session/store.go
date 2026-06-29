@@ -36,16 +36,17 @@ const (
 
 // HistoryEntry 表示用于前端展示的会话历史记录。
 type HistoryEntry struct {
-	Type      string          `json:"type"`
-	ID        string          `json:"id,omitempty"`
-	Role      string          `json:"role,omitempty"`
-	Content   string          `json:"content,omitempty"`
-	Name      string          `json:"name,omitempty"`
-	Args      string          `json:"args,omitempty"`
-	Status    string          `json:"status,omitempty"`
-	Result    string          `json:"result,omitempty"`
-	Message   *schema.Message `json:"-"`
-	CreatedAt time.Time       `json:"created_at,omitempty"`
+	Type         string               `json:"type"`
+	ID           string               `json:"id,omitempty"`
+	Role         string               `json:"role,omitempty"`
+	Content      string               `json:"content,omitempty"`
+	Name         string               `json:"name,omitempty"`
+	Args         string               `json:"args,omitempty"`
+	Status       string               `json:"status,omitempty"`
+	Result       string               `json:"result,omitempty"`
+	Illustration *ChapterIllustration `json:"illustration,omitempty"`
+	Message      *schema.Message      `json:"-"`
+	CreatedAt    time.Time            `json:"created_at,omitempty"`
 
 	RunID                string           `json:"run_id,omitempty"`
 	AgentKind            string           `json:"agent_kind,omitempty"`
@@ -87,14 +88,15 @@ type messageRecord struct {
 
 // DisplayEvent 表示只用于前端展示的非上下文事件，例如 thinking 和工具卡片。
 type DisplayEvent struct {
-	ID        string    `json:"id,omitempty"`
-	Role      string    `json:"role"`
-	Content   string    `json:"content,omitempty"`
-	Name      string    `json:"name,omitempty"`
-	Args      string    `json:"args,omitempty"`
-	Status    string    `json:"status,omitempty"`
-	Result    string    `json:"result,omitempty"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
+	ID           string               `json:"id,omitempty"`
+	Role         string               `json:"role"`
+	Content      string               `json:"content,omitempty"`
+	Name         string               `json:"name,omitempty"`
+	Args         string               `json:"args,omitempty"`
+	Status       string               `json:"status,omitempty"`
+	Result       string               `json:"result,omitempty"`
+	Illustration *ChapterIllustration `json:"illustration,omitempty"`
+	CreatedAt    time.Time            `json:"created_at,omitempty"`
 
 	RunID                string           `json:"run_id,omitempty"`
 	AgentKind            string           `json:"agent_kind,omitempty"`
@@ -114,6 +116,25 @@ type DisplayEvent struct {
 	ModelCalls           int              `json:"model_calls,omitempty"`
 	GeneratedBytes       int              `json:"generated_bytes,omitempty"`
 	UsageCalls           []TokenUsageCall `json:"usage_calls,omitempty"`
+}
+
+type ChapterIllustration struct {
+	Schema        string `json:"schema"`
+	ChapterPath   string `json:"chapter_path"`
+	ImagePath     string `json:"image_path"`
+	MetaPath      string `json:"meta_path"`
+	Markdown      string `json:"markdown"`
+	AltText       string `json:"alt_text"`
+	ProfileID     string `json:"profile_id"`
+	Provider      string `json:"provider"`
+	Model         string `json:"model"`
+	Size          string `json:"size,omitempty"`
+	Quality       string `json:"quality,omitempty"`
+	OutputFormat  string `json:"output_format,omitempty"`
+	CreatedAt     string `json:"created_at,omitempty"`
+	RevisedPrompt string `json:"revised_prompt,omitempty"`
+	MIMEType      string `json:"mime_type,omitempty"`
+	SizeBytes     int    `json:"size_bytes,omitempty"`
 }
 
 type TokenUsageCall struct {
@@ -368,6 +389,23 @@ func (s *Session) UpdateDisplayToolResult(id, name, status, result string) error
 	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
 		s.records[index].display.Status = status
 		s.records[index].display.Result = result
+		s.UpdatedAt = time.Now().UTC()
+		return s.persistLocked()
+	}
+	return nil
+}
+
+func (s *Session) UpdateDisplayToolIllustration(id, name string, illustration *ChapterIllustration) error {
+	if illustration == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	id = strings.TrimSpace(id)
+	name = strings.TrimSpace(name)
+	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
+		s.records[index].display.Illustration = cloneChapterIllustration(illustration)
 		s.UpdatedAt = time.Now().UTC()
 		return s.persistLocked()
 	}
@@ -700,6 +738,7 @@ func (s *Session) History() []HistoryEntry {
 				Args:                 record.display.Args,
 				Status:               record.display.Status,
 				Result:               record.display.Result,
+				Illustration:         cloneChapterIllustration(record.display.Illustration),
 				CreatedAt:            record.display.CreatedAt,
 				RunID:                record.display.RunID,
 				AgentKind:            record.display.AgentKind,
@@ -736,6 +775,14 @@ func cloneTokenUsageCalls(calls []TokenUsageCall) []TokenUsageCall {
 		result[i].AfterTools = append([]string(nil), result[i].AfterTools...)
 	}
 	return result
+}
+
+func cloneChapterIllustration(value *ChapterIllustration) *ChapterIllustration {
+	if value == nil {
+		return nil
+	}
+	clone := *value
+	return &clone
 }
 
 // Clear 兼容旧调用语义：追加 clear 标记，不物理删除消息。
@@ -961,7 +1008,7 @@ func (s *Store) List(activeID string) ([]SessionMeta, error) {
 	return result, nil
 }
 
-// ListByPrefix 返回 ID 匹配指定前缀的会话摘要，用于互动模式按子模式筛选会话。
+// ListByPrefix 返回 ID 匹配指定前缀的会话摘要，用于游戏模式按子模式筛选会话。
 func (s *Store) ListByPrefix(prefix string) ([]SessionMeta, error) {
 	if err := validateSessionID(prefix); err != nil {
 		return nil, err

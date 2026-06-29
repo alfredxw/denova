@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { ChatMessage, SSEEvent } from '@/lib/api'
+import type { ChapterIllustration, ChatMessage, SSEEvent } from '@/lib/api'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 
 interface AgentEventStreamOptions {
@@ -21,6 +21,7 @@ interface ToolCallInfo {
 
 type StreamSegmentRole = 'assistant' | 'thinking'
 type EventMetadata = Pick<ChatMessage, 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_session_id' | 'subagent_type'>
+type EventDisplayMetadata = Pick<ChatMessage, 'sse_hidden_fields' | 'sse_hidden_reason' | 'sse_display_notice' | 'sse_generated_chars'>
 
 const STREAM_CHARS_PER_FRAME = 8
 
@@ -236,6 +237,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
               args,
               status: 'running',
               ...metadata,
+              ...readEventDisplayMetadata(data),
               subagent_type: toolName === 'task' ? parseTaskSubagentType(args) : metadata.subagent_type,
             }))
             break
@@ -243,6 +245,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
           case 'tool_result': {
             flushToolArgBuffer()
             const content = readString(data.content)
+            const illustration = readChapterIllustration(data.illustration)
             const toolId = findToolMessageId(data, toolKeyToMessageIdRef.current, toolCallQueueRef.current, pendingToolCallsRef.current)
             const toolCall = toolId ? pendingToolCallsRef.current[toolId] : undefined
             const toolName = readString(data.name) || toolCall?.name || ''
@@ -255,14 +258,17 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             if (toolId) {
               setMessages(prev => prev.map(message => (
                 message.role === 'tool_call' && message.id === toolId
-                  ? { ...message, status: 'success', result: content, streaming: false, ...metadata }
+                  ? { ...message, status: 'success', result: content, illustration, streaming: false, ...metadata }
                   : message
               )))
             } else {
-              setMessages(prev => [...prev, { role: 'tool_result', content, ...metadata }])
+              setMessages(prev => [...prev, { role: 'tool_result', content, illustration, ...metadata }])
             }
             if (toolCall && isFileMutationTool(toolCall.name)) {
               void onAgentFileChange?.(extractToolPath(toolCall.args))
+            }
+            if (illustration) {
+              void onAgentFileChange?.(illustration.meta_path || illustration.image_path)
             }
             if (isLoreMutationTool(toolName)) {
               notifyLoreUpdated(readStringArray(data.item_ids))
@@ -271,15 +277,25 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
           }
           case 'tool_args_delta': {
             const delta = readString(data.delta)
+            const displayMetadata = readEventDisplayMetadata(data)
             const toolId = findToolMessageId(data, toolKeyToMessageIdRef.current, toolCallQueueRef.current, pendingToolCallsRef.current)
             if (toolId) {
               const pending = pendingToolCallsRef.current[toolId]
-              if (pending) {
-                pending.args = (pending.args || '') + delta
+              if (delta) {
+                if (pending) {
+                  pending.args = (pending.args || '') + delta
+                }
+                deltaBufferRef.current[toolId] = (deltaBufferRef.current[toolId] || '') + delta
+                if (deltaRafRef.current === null) {
+                  deltaRafRef.current = requestAnimationFrame(flushToolArgBuffer)
+                }
               }
-              deltaBufferRef.current[toolId] = (deltaBufferRef.current[toolId] || '') + delta
-              if (deltaRafRef.current === null) {
-                deltaRafRef.current = requestAnimationFrame(flushToolArgBuffer)
+              if (Object.keys(displayMetadata).length > 0) {
+                setMessages(prev => prev.map(message => (
+                  message.role === 'tool_call' && message.id === toolId
+                    ? { ...message, ...displayMetadata }
+                    : message
+                )))
               }
             }
             break
@@ -416,6 +432,32 @@ function readString(value: unknown) {
   return typeof value === 'string' ? value : ''
 }
 
+function readChapterIllustration(value: unknown): ChapterIllustration | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const data = value as Record<string, unknown>
+  const schema = readString(data.schema)
+  const imagePath = readString(data.image_path)
+  if (schema !== 'chapter_illustration.v1' || !imagePath) return undefined
+  return {
+    schema,
+    chapter_path: readString(data.chapter_path),
+    image_path: imagePath,
+    meta_path: readString(data.meta_path),
+    markdown: readString(data.markdown),
+    alt_text: readString(data.alt_text),
+    profile_id: readString(data.profile_id),
+    provider: readString(data.provider),
+    model: readString(data.model),
+    size: readString(data.size) || undefined,
+    quality: readString(data.quality) || undefined,
+    output_format: readString(data.output_format) || undefined,
+    created_at: readString(data.created_at) || undefined,
+    revised_prompt: readString(data.revised_prompt) || undefined,
+    mime_type: readString(data.mime_type) || undefined,
+    size_bytes: readNumber(data.size_bytes),
+  }
+}
+
 function readBool(value: unknown) {
   if (typeof value === 'boolean') return value
   if (typeof value === 'string') return value === 'true'
@@ -443,6 +485,19 @@ function readEventMetadata(data: Record<string, unknown>): EventMetadata {
   }
   const subagentType = readString(data.subagent_type) || parseTaskSubagentType(readString(data.args))
   if (subagentType) metadata.subagent_type = subagentType
+  return metadata
+}
+
+function readEventDisplayMetadata(data: Record<string, unknown>): EventDisplayMetadata {
+  const hiddenFields = readStringArray(data.sse_hidden_fields)
+  const metadata: EventDisplayMetadata = {}
+  if (hiddenFields.length > 0) metadata.sse_hidden_fields = hiddenFields
+  const hiddenReason = readString(data.sse_hidden_reason)
+  if (hiddenReason) metadata.sse_hidden_reason = hiddenReason
+  const displayNotice = readString(data.sse_display_notice)
+  if (displayNotice) metadata.sse_display_notice = displayNotice
+  const generatedChars = readNumber(data.sse_generated_chars)
+  if (generatedChars !== undefined) metadata.sse_generated_chars = generatedChars
   return metadata
 }
 

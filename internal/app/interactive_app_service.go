@@ -8,6 +8,7 @@ import (
 
 	"nova/config"
 	"nova/internal/agent"
+	"nova/internal/imagepreset"
 	"nova/internal/interactive"
 	"nova/internal/session"
 )
@@ -453,7 +454,7 @@ func (s *InteractiveAppService) AppendInteractiveTurn(storyID, branchID, user, n
 	})
 }
 
-// StartInteractiveTask 启动互动模式 Agent 任务，输出写回 interactive/story。
+// StartInteractiveTask 启动游戏模式 Agent 任务，输出写回 interactive/story。
 func (a *App) StartInteractiveTask(storyID, branchID, message string, styleScenes []string, locale string) *Task {
 	return a.interactiveService().StartInteractiveTask(storyID, branchID, message, styleScenes, locale)
 }
@@ -681,6 +682,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 			Workspace:           workspace,
 			Mode:                "interactive",
 			IdleTimeout:         agentIdleTimeout(runtimeCfg),
+			ToolResultMaxBytes:  agentToolResultMaxBytes(runtimeCfg),
 			SystemPromptLog:     agent.BuildInteractiveStoryInstructionComposition(&runtimeCfg, state, tellerSystemInput),
 			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
 		}, emit)
@@ -744,16 +746,16 @@ func (s *InteractiveAppService) CreateInteractiveTeller(teller interactive.Telle
 	return interactive.NewTellerLibrary(cfg.NovaDir).Create(teller)
 }
 
-func (a *App) UpdateInteractiveTeller(id string, teller interactive.Teller) (interactive.Teller, error) {
-	return a.interactiveService().UpdateInteractiveTeller(id, teller)
+func (a *App) UpdateInteractiveTeller(id string, teller interactive.Teller, baseRevision ...string) (interactive.Teller, error) {
+	return a.interactiveService().UpdateInteractiveTeller(id, teller, firstRevision(baseRevision))
 }
 
-func (s *InteractiveAppService) UpdateInteractiveTeller(id string, teller interactive.Teller) (interactive.Teller, error) {
+func (s *InteractiveAppService) UpdateInteractiveTeller(id string, teller interactive.Teller, baseRevision string) (interactive.Teller, error) {
 	cfg := s.cfg()
 	if cfg == nil || cfg.NovaDir == "" {
 		return interactive.Teller{}, ErrNoWorkspace
 	}
-	return interactive.NewTellerLibrary(cfg.NovaDir).Update(id, teller)
+	return interactive.NewTellerLibrary(cfg.NovaDir).Update(id, teller, baseRevision)
 }
 
 func (a *App) DeleteInteractiveTeller(id string) error {
@@ -768,7 +770,67 @@ func (s *InteractiveAppService) DeleteInteractiveTeller(id string) error {
 	return interactive.NewTellerLibrary(cfg.NovaDir).Delete(id)
 }
 
-// ActiveInteractiveTask 返回当前互动模式活跃任务（可能为 nil）。
+func (a *App) ImagePresets() ([]imagepreset.Preset, error) {
+	return a.interactiveService().ImagePresets()
+}
+
+func (s *InteractiveAppService) ImagePresets() ([]imagepreset.Preset, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return nil, ErrNoWorkspace
+	}
+	return imagepreset.NewLibrary(cfg.NovaDir).List()
+}
+
+func (a *App) ImagePreset(id string) (imagepreset.Preset, error) {
+	return a.interactiveService().ImagePreset(id)
+}
+
+func (s *InteractiveAppService) ImagePreset(id string) (imagepreset.Preset, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return imagepreset.Preset{}, ErrNoWorkspace
+	}
+	return imagepreset.NewLibrary(cfg.NovaDir).Get(id)
+}
+
+func (a *App) CreateImagePreset(preset imagepreset.Preset) (imagepreset.Preset, error) {
+	return a.interactiveService().CreateImagePreset(preset)
+}
+
+func (s *InteractiveAppService) CreateImagePreset(preset imagepreset.Preset) (imagepreset.Preset, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return imagepreset.Preset{}, ErrNoWorkspace
+	}
+	return imagepreset.NewLibrary(cfg.NovaDir).Create(preset)
+}
+
+func (a *App) UpdateImagePreset(id string, preset imagepreset.Preset, baseRevision ...string) (imagepreset.Preset, error) {
+	return a.interactiveService().UpdateImagePreset(id, preset, firstRevision(baseRevision))
+}
+
+func (s *InteractiveAppService) UpdateImagePreset(id string, preset imagepreset.Preset, baseRevision string) (imagepreset.Preset, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return imagepreset.Preset{}, ErrNoWorkspace
+	}
+	return imagepreset.NewLibrary(cfg.NovaDir).Update(id, preset, baseRevision)
+}
+
+func (a *App) DeleteImagePreset(id string) error {
+	return a.interactiveService().DeleteImagePreset(id)
+}
+
+func (s *InteractiveAppService) DeleteImagePreset(id string) error {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return ErrNoWorkspace
+	}
+	return imagepreset.NewLibrary(cfg.NovaDir).Delete(id)
+}
+
+// ActiveInteractiveTask 返回当前游戏模式活跃任务（可能为 nil）。
 func (a *App) ActiveInteractiveTask() *Task {
 	return a.interactiveService().ActiveInteractiveTask()
 }
@@ -780,7 +842,7 @@ func (s *InteractiveAppService) ActiveInteractiveTask() *Task {
 	return a.activeInteractiveTask
 }
 
-// AbortInteractiveTask 终止当前互动模式活跃任务。
+// AbortInteractiveTask 终止当前游戏模式活跃任务。
 func (a *App) AbortInteractiveTask() {
 	a.interactiveService().AbortInteractiveTask()
 }

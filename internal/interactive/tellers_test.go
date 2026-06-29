@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,6 +88,56 @@ func TestTellerLibraryRefreshesOldBuiltinVersion(t *testing.T) {
 	}
 	if classic.Version != tellerVersion || classic.Name != builtinTellers["classic"].Name || !containsTellerSlot(classic, "turn_context") || !containsTellerSlot(classic, "state_memory") {
 		t.Fatalf("classic builtin should be refreshed to current version: %#v", classic)
+	}
+}
+
+func TestTellerLibraryUpdateRejectsStaleRevision(t *testing.T) {
+	library := NewTellerLibrary(t.TempDir())
+	created, err := library.Create(Teller{
+		ID:   "custom",
+		Name: "旧叙事",
+		Slots: []TellerPromptSlot{{
+			ID:      "identity",
+			Name:    "系统提示",
+			Target:  "system",
+			Enabled: true,
+			Content: "旧规则",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, err := library.Update(created.ID, Teller{
+		Name: "Agent 叙事",
+		Slots: []TellerPromptSlot{{
+			ID:      "identity",
+			Name:    "系统提示",
+			Target:  "system",
+			Enabled: true,
+			Content: "Agent 规则",
+		}},
+	}, created.UpdatedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := library.Update(created.ID, Teller{
+		Name: "前端旧叙事",
+		Slots: []TellerPromptSlot{{
+			ID:      "identity",
+			Name:    "系统提示",
+			Target:  "system",
+			Enabled: true,
+			Content: "前端旧规则",
+		}},
+	}, created.UpdatedAt); !errors.Is(err, ErrTellerRevisionConflict) {
+		t.Fatalf("expected teller revision conflict, got %v", err)
+	}
+	got, err := library.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Name != agent.Name {
+		t.Fatalf("stale save should not overwrite Agent teller: %#v", got)
 	}
 }
 

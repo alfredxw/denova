@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
@@ -92,6 +94,72 @@ func (h *Handlers) HandleWorkspaceFile(ctx context.Context, c *app.RequestContex
 		"path":     relPath,
 		"revision": revision,
 	})
+}
+
+// HandleWorkspaceAsset GET /api/workspace/asset?path=... — 读取 workspace 内图像文件。
+func (h *Handlers) HandleWorkspaceAsset(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	rawPath := c.Query("path")
+	if hasParentPathSegment(rawPath) {
+		writeError(c, consts.StatusBadRequest, "图像路径不能包含上级目录")
+		return
+	}
+	relPath := filepath.ToSlash(filepath.Clean(filepath.FromSlash(rawPath)))
+	if relPath == "." || relPath == "" {
+		writeError(c, consts.StatusBadRequest, "图像路径不能为空")
+		return
+	}
+	contentType := workspaceAssetContentType(relPath)
+	if contentType == "" {
+		writeError(c, consts.StatusBadRequest, "仅支持读取 png、jpg、jpeg、webp 或 gif 图像")
+		return
+	}
+	absPath, err := book.SafePath(h.app.BookService().Workspace(), relPath)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	info, err := os.Stat(absPath)
+	if err != nil {
+		writeError(c, fileReadStatus(err), err.Error())
+		return
+	}
+	if info.IsDir() {
+		writeError(c, consts.StatusBadRequest, "资产路径是目录")
+		return
+	}
+	data, err := os.ReadFile(absPath)
+	if err != nil {
+		writeError(c, fileReadStatus(err), err.Error())
+		return
+	}
+	c.Data(consts.StatusOK, contentType, data)
+}
+
+func hasParentPathSegment(path string) bool {
+	for _, part := range strings.Split(filepath.FromSlash(path), string(filepath.Separator)) {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func workspaceAssetContentType(path string) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	case ".gif":
+		return "image/gif"
+	default:
+		return ""
+	}
 }
 
 // handleWorkspaceSearch GET /api/workspace/search?q=xxx — 搜索当前书籍 workspace 文本内容和文件路径。

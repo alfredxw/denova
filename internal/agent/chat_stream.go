@@ -14,8 +14,8 @@ import (
 
 // processStreamingEvent 处理流式助手消息，输出领域事件。
 // 工具调用在流中一检测到名称就立即 emit，让前端尽早展示 running 卡片。
-// 参数在流中逐帧 emit tool_args_delta，前端可实时展示 write_file 内容。
-func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, meta agentEventMetadata, emit func(Event)) (*schema.Message, error) {
+// 参数在流中逐帧 emit tool_args_delta，调用方可在对外传输前按展示策略过滤。
+func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, toolResultMaxBytes int, meta agentEventMetadata, emit func(Event)) (*schema.Message, error) {
 	mv.MessageStream.SetAutomaticClose()
 	defer mv.MessageStream.Close()
 	var accumulatedToolCalls []schema.ToolCall
@@ -63,7 +63,7 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 					emittedTools[i] = true
 					lastArgsLen[i] = 0
 					logToolCall(tc.Function.Name, tc.ID, len(tc.Function.Arguments), "streaming")
-					manifest := ManifestForTool(tc.Function.Name)
+					manifest := manifestForToolEvent(tc.Function.Name, toolResultMaxBytes)
 					data := meta.appendTo(map[string]interface{}{
 						"id":                  tc.ID,
 						"name":                tc.Function.Name,
@@ -119,7 +119,7 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 }
 
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。
-func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, meta agentEventMetadata, emit func(Event)) {
+func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, toolResultMaxBytes int, meta agentEventMetadata, emit func(Event)) {
 	if mv.Message.ReasoningContent != "" {
 		if fullThinking != nil && !meta.SubAgent {
 			fullThinking.WriteString(mv.Message.ReasoningContent)
@@ -143,7 +143,7 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 		if path := toolPathFromArgs(args); path != "" {
 			logToolPath(name, tc.ID, path)
 		}
-		manifest := ManifestForTool(name)
+		manifest := manifestForToolEvent(name, toolResultMaxBytes)
 		if len(args) > 200 {
 			args = args[:200] + "..."
 		}
@@ -164,6 +164,12 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 		}
 		emit(Event{Type: "tool_call", Data: data})
 	}
+}
+
+func manifestForToolEvent(name string, toolResultMaxBytes int) ToolManifest {
+	manifest := ManifestForTool(name)
+	manifest.MaxResultBytes = normalizeToolResultLimitBytes(toolResultMaxBytes)
+	return manifest
 }
 
 // drainContent 从 MessageVariant 中提取完整内容。

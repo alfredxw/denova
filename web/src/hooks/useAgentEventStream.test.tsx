@@ -58,6 +58,35 @@ describe('useAgentEventStream', () => {
     })
   })
 
+  it('保留 SSE 隐藏正文展示元信息并追加路径参数', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['tool_call', { id: 'call-write', name: 'write_file', args: '' }],
+        ['tool_args_delta', {
+          id: 'call-write',
+          name: 'write_file',
+          delta: '{"file_path":"chapters/ch01.md"}',
+          sse_hidden_fields: ['content'],
+          sse_hidden_reason: 'novel_chapter_body',
+          sse_display_notice: 'chapter_body_hidden',
+          sse_generated_chars: 3,
+        }],
+      ]))
+    })
+
+    await waitFor(() => expect(readMessages().find((message) => message.name === 'write_file')?.args).toContain('chapters/ch01.md'))
+    expect(readMessages().find((message) => message.name === 'write_file')).toMatchObject({
+      sse_hidden_fields: ['content'],
+      sse_hidden_reason: 'novel_chapter_body',
+      sse_display_notice: 'chapter_body_hidden',
+      sse_generated_chars: 3,
+    })
+  })
+
   it('多个同名 pending 工具时不使用工具名误回填结果', async () => {
     let agent: ReturnType<typeof useAgentEventStream> | undefined
     render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
@@ -74,6 +103,43 @@ describe('useAgentEventStream', () => {
     const executeMessages = readMessages().filter((message) => message.name === 'execute')
     expect(executeMessages).toHaveLength(2)
     expect(executeMessages.some((message) => message.result === 'ambiguous result')).toBe(false)
+  })
+
+  it('章节插画工具结果保留结构化 illustration 数据', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['tool_call', { id: 'call-image', name: 'generate_image', args: '{"purpose":"chapter_illustration","target_path":"chapters/ch01.md"}' }],
+        ['tool_result', {
+          id: 'call-image',
+          name: 'generate_image',
+          content: '{"schema":"chapter_illustration.v1"}',
+          illustration: {
+            schema: 'chapter_illustration.v1',
+            chapter_path: 'chapters/ch01.md',
+            image_path: 'assets/illustrations/ch01/run/image.png',
+            meta_path: 'assets/illustrations/ch01/run/meta.json',
+            markdown: '![图](assets/illustrations/ch01/run/image.png)',
+            alt_text: '图',
+            profile_id: 'default',
+            provider: 'openai',
+            model: 'gpt-image-1',
+          },
+        }],
+      ]))
+    })
+
+    const message = readMessages().find((item) => item.name === 'generate_image')
+    expect(message).toMatchObject({
+      status: 'success',
+      illustration: {
+        schema: 'chapter_illustration.v1',
+        image_path: 'assets/illustrations/ch01/run/image.png',
+      },
+    })
   })
 
   it('subagent chunk 单独成段，不合并进 root assistant 输出', async () => {
@@ -133,5 +199,20 @@ function sseStream(events: Array<[string, unknown]>) {
 }
 
 function readMessages() {
-  return JSON.parse(screen.getByTestId('messages').textContent || '[]') as Array<{ role?: string; content?: string; name?: string; status?: string; result?: string; streaming?: boolean; subagent?: boolean; agent_name?: string; subagent_session_id?: string }>
+  return JSON.parse(screen.getByTestId('messages').textContent || '[]') as Array<{
+    role?: string
+    content?: string
+    name?: string
+    args?: string
+    status?: string
+    result?: string
+    streaming?: boolean
+    subagent?: boolean
+    agent_name?: string
+    subagent_session_id?: string
+    sse_hidden_fields?: string[]
+    sse_hidden_reason?: string
+    sse_display_notice?: string
+    illustration?: Record<string, unknown>
+  }>
 }

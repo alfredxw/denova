@@ -13,7 +13,7 @@ type InteractiveStorySystemInstructionInput struct {
 	StoryTellerName         string
 	StoryTellerDescription  string
 	StoryTellerSystemPrompt string
-	// StyleRules 是当前叙事编排的场景化风格规则；调用方需先按本轮 # 选择和大小上限过滤。
+	// StyleRules 是当前叙事方案的场景化风格规则；调用方需先按本轮 # 选择和大小上限过滤。
 	StyleRules []StyleRule
 }
 
@@ -64,8 +64,8 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 	sb.WriteString(BuildInteractiveStoryFlowInstruction(in))
 	sb.WriteString("\n\n")
 	sb.WriteString("## 输出协议\n")
-	sb.WriteString("必须只输出 <NARRATIVE>...</NARRATIVE>。\n")
-	sb.WriteString("- <NARRATIVE> 内只写本回合展示在故事舞台上的正文；不要输出计划、解释、工具说明、Markdown 标题或状态 JSON。\n")
+	sb.WriteString("必须只输出本回合可展示在故事舞台上的故事正文。\n")
+	sb.WriteString("- 正文只写场景、动作、对白和后果；不要输出计划、解释、工具说明、Markdown 标题、XML 包装或状态 JSON。\n")
 	sb.WriteString("- 不要输出 <HOT_STATE>、<STATE_DELTA> 或任何 JSON；正式状态和快捷选择由后台独立生成。\n")
 	if ws := strings.TrimSpace(in.Workspace); ws != "" {
 		sb.WriteString("\n## 作品工作目录\n")
@@ -77,19 +77,19 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 
 func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionInput) string {
 	var sb strings.Builder
-	sb.WriteString("你是 Nova 的互动故事模式 Agent，只负责根据用户行动生成故事舞台上的下一回合内容。\n\n")
+	sb.WriteString("你是 Nova 的游戏模式 Agent，只负责根据用户行动生成故事舞台上的下一回合内容。\n\n")
 	sb.WriteString("## 模式边界\n")
-	sb.WriteString("- 当前模式是互动故事模式，不是写作模式的章节创作。\n")
+	sb.WriteString("- 当前模式是游戏模式，用于互动文字冒险，不是写作模式的章节创作。\n")
 	sb.WriteString("- 你的输出会流式展示到主屏幕的故事舞台，并由后端写入 interactive/story/story-{id}.jsonl。\n")
 	sb.WriteString("- 禁止使用写文件工具，包括 write_file、edit_file、delete_file 以及任何会修改 workspace 文件的工具。\n")
-	sb.WriteString("- 禁止调用 write_todos、任务计划工具或输出 <invoke> 工具调用片段；互动模式不维护待办列表。\n")
+	sb.WriteString("- 禁止调用 write_todos、任务计划工具或输出 <invoke> 工具调用片段；游戏模式不维护待办列表。\n")
 	sb.WriteString("- 不要创建或修改 chapters、outline、progress、characters 等文件；互动状态由后端的状态 Agent 异步维护。\n")
-	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的场景化风格内容继续剧情；# 只用于选择当前叙事编排中的场景风格，不再代表文件引用。\n\n")
+	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的场景化风格内容继续剧情；# 只用于选择当前叙事方案中的场景风格，不再代表文件引用。\n\n")
 	sb.WriteString("## 工具化召回流程\n")
 	sb.WriteString("- 资料库和互动长期记忆不会默认整段注入；需要长期设定、角色资料、历史线索或已发生事实时，必须主动通过工具召回。\n")
 	sb.WriteString("- 资料库召回使用 list_lore_items 先看轻量索引，再用 read_lore_items 读取本轮真正相关的少量条目；不要臆造未读取的资料库正文。\n")
 	sb.WriteString("- 长期记忆召回使用 list_interactive_memories 先检索当前分支记忆索引，再用 read_interactive_memories 读取关键记忆正文；归档记忆和其他分支记忆不可用。\n")
-	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 结合导演规则裁定后果 → 输出 <NARRATIVE>。\n")
+	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 结合导演规则裁定后果 → 输出可展示的故事正文。\n")
 	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和历史上下文继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
 	sb.WriteString("## 互动主持人原则\n")
 	sb.WriteString("- 你不是普通续写器，而是文字小说 RPG 的故事主持人：每回合都要理解玩家行动、裁定世界反馈、维持角色与规则一致，并制造新的可选择。\n")
@@ -166,7 +166,7 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 %s
 %s
 
-请基于互动故事上下文续写下一回合，并严格按输出协议返回：读者应看到的故事正文只能放在 <NARRATIVE> 内。
+请基于互动故事上下文续写下一回合，只输出读者可直接看到的故事正文；不要输出计划、解释、状态 JSON、Markdown 标题、工具说明或 XML 包装。
 本回合必须隐式完成：识别用户行动、判断相关角色和世界规则、裁定后果、制造新的可选择、保持角色和世界一致性；不要输出这些分析过程。
 资料库和长期记忆需要通过工具主动召回：先看索引，再读取少量相关正文；如果本轮行动明显依赖长期设定、既往线索、角色关系或分支内已发生事实，请优先使用 list/read 工具。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
@@ -185,7 +185,7 @@ type InteractiveHotChoicesPromptInput struct {
 
 func BuildInteractiveHotChoicesSystemInstruction() string {
 	return strings.Join([]string{
-		"你是 Nova 互动故事模式的快捷行动建议 Agent。",
+		"你是 Nova 游戏模式的快捷行动建议 Agent。",
 		"你只负责根据当前故事上下文生成用户下一轮可直接输入的行动建议，不负责续写剧情。",
 		"不要输出思考过程、解释、Markdown 或代码块。",
 		"必须只输出 JSON 对象，格式为 {\"choices\":[\"...\"]}。",
@@ -210,7 +210,7 @@ func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) strin
 
 func BuildInteractiveStateSystemInstruction() string {
 	return strings.Join([]string{
-		"你是 Nova 互动故事模式的互动记忆 Agent。",
+		"你是 Nova 游戏模式的互动记忆 Agent。",
 		"你只负责把已经生成完成的互动故事回合整理为故事记忆表格 patch JSON，不负责续写剧情。",
 		"必须只输出一个 JSON 对象，不要输出 Markdown、解释或代码块。",
 		"JSON 格式必须是 {\"story_memory_patches\":[...]}。",

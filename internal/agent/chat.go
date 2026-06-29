@@ -36,11 +36,15 @@ type ChatRequest struct {
 	IDEContext     IDEContextRef      `json:"ide_context,omitempty"`
 	PlanMode       bool               `json:"plan_mode"`
 	WritingSkill   string             `json:"writing_skill"`
+	ImagePresetID  string             `json:"image_preset_id"`
 	Locale         string             `json:"-"`
 
 	// StyleRules 由后端按当前导演配置注入（场景 → 风格内容）。
 	// StyleScenes 非空时只注入用户本轮通过 # 指定的场景；为空时作为场景化建议参与本轮上下文。
 	StyleRules []StyleRule `json:"-"`
+
+	// ImagePreset is resolved by the app layer from ImagePresetID or workspace settings.
+	ImagePreset ImagePresetContext `json:"-"`
 }
 
 // StyleRule 是 prompts.StyleRule 的镜像，避免调用方直接依赖 prompts 包。
@@ -51,6 +55,14 @@ type StyleRule = prompts.StyleRule
 type IDEContextRef struct {
 	CurrentFile string   `json:"current_file,omitempty"`
 	OpenFiles   []string `json:"open_files,omitempty"`
+}
+
+// ImagePresetContext is a bounded visual style preset for image generation only.
+type ImagePresetContext struct {
+	ID                string
+	Name              string
+	AgentSystemPrompt string
+	ToolRequestPrompt string
 }
 
 // TextSelectionRef 表示用户在编辑器中选中的一段文本引用。
@@ -344,6 +356,7 @@ func (r *Runtime) Run(
 		}
 
 		eventMeta := subAgentSessions.decorate(metadataForAgentEvent(event, options.RootAgentName))
+		eventMeta.AgentKind = options.AgentKind
 		mv := event.Output.MessageOutput
 		if mv.Role == schema.Tool {
 			if mv.Message == nil {
@@ -369,9 +382,6 @@ func (r *Runtime) Run(
 			if content == "" {
 				content = "(无返回内容)"
 			}
-			if len(content) > 300 {
-				content = content[:300] + "..."
-			}
 			logToolResult(mv.Message.ToolName, mv.Message.ToolCallID, content)
 			usageCollector.NoteToolResult(mv.Message.ToolName)
 			data := eventMeta.appendTo(map[string]interface{}{
@@ -383,6 +393,19 @@ func (r *Runtime) Run(
 				data["item_ids"] = itemIDs
 				data["deleted_ids"] = deletedIDs
 			}
+			if illustrationResult, parseErr := parseChapterIllustrationToolResult(mv.Message.ToolName, fullToolContent); parseErr != nil {
+				runLogger.Warn("parse_chapter_illustration_result_failed", slog.String("tool", mv.Message.ToolName), slog.Any("error", parseErr))
+			} else if illustrationResult != nil {
+				data["illustration"] = illustrationResult
+				data["target"] = illustrationResult.MetaPath
+			} else if interactiveImageResult, parseErr := parseInteractiveImageToolResult(mv.Message.ToolName, fullToolContent); parseErr != nil {
+				runLogger.Warn("parse_interactive_image_result_failed", slog.String("tool", mv.Message.ToolName), slog.Any("error", parseErr))
+			} else if interactiveImageResult != nil {
+				data["interactive_image"] = interactiveImageResult
+				data["target"] = interactiveImageResult.MetaPath
+			} else if target := parseGeneratedImageToolTarget(mv.Message.ToolName, fullToolContent); target != "" {
+				data["target"] = target
+			}
 			emit(Event{Type: "tool_result", Data: data})
 			continue
 		}
@@ -391,7 +414,7 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.IsStreaming && mv.MessageStream != nil {
-			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, eventMeta, emit)
+			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, options.ToolResultMaxBytes, eventMeta, emit)
 			usageCollector.AddMessage(msg)
 			if streamErr != nil {
 				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
@@ -409,7 +432,7 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.Message != nil {
-			processNonStreamingEvent(mv, &fullContent, &fullThinking, eventMeta, emit)
+			processNonStreamingEvent(mv, &fullContent, &fullThinking, options.ToolResultMaxBytes, eventMeta, emit)
 			usageCollector.AddMessage(mv.Message)
 		}
 	}

@@ -1,12 +1,12 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
-import type { ContextAnalysis } from '@/lib/api-client'
-import type { BranchSummary, HotChoicesResponse, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller } from './types'
+import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
+import type { BranchSummary, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
 }
 
-export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; reply_target_chars?: number; opening?: StoryOpeningConfig }): Promise<StorySummary> {
+export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; reply_target_chars?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig }): Promise<StorySummary> {
   return requestJSON('/api/interactive/stories', {
     method: 'POST',
     headers: jsonHeaders,
@@ -20,6 +20,7 @@ export function updateInteractiveStory(
     title?: string
     story_teller_id?: string
     reply_target_chars?: number
+    image_settings?: StoryImageSettings
     opening?: StoryOpeningConfig
   },
 ): Promise<StorySummary> {
@@ -153,16 +154,43 @@ export function createInteractiveTeller(input: Partial<Teller>): Promise<Teller>
   })
 }
 
-export function updateInteractiveTeller(id: string, input: Partial<Teller>): Promise<Teller> {
+export function updateInteractiveTeller(id: string, input: Partial<Teller>, baseRevision?: string): Promise<Teller> {
   return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
-    body: JSON.stringify(input),
+    body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
   })
 }
 
 export function deleteInteractiveTeller(id: string): Promise<void> {
   return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getImagePresets(): Promise<ImagePreset[]> {
+  const data = await requestJSON<{ presets: ImagePreset[] }>('/api/image-presets')
+  return data.presets || []
+}
+
+export function createImagePreset(input: Partial<ImagePreset>): Promise<ImagePreset> {
+  return requestJSON('/api/image-presets', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateImagePreset(id: string, input: Partial<ImagePreset>, baseRevision?: string): Promise<ImagePreset> {
+  return requestJSON(`/api/image-presets/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
+  })
+}
+
+export function deleteImagePreset(id: string): Promise<void> {
+  return requestJSON(`/api/image-presets/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
 }
@@ -209,6 +237,14 @@ export function generateInteractiveHotChoices(storyId: string, input: { branch?:
       exclude_choices: input.exclude_choices,
     }),
     signal: input.signal,
+  })
+}
+
+export function generateInteractiveImage(storyId: string, input: { branch_id?: string; turn_id: string; source: 'manual' | 'auto'; force?: boolean }): Promise<{ enabled?: boolean; skipped?: boolean; skipped_reason?: string; image?: InteractiveImage }> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/images/generate`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
   })
 }
 

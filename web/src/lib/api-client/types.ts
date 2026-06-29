@@ -8,6 +8,11 @@ export interface ChatMessage {
   args?: string
   status?: 'running' | 'success' | 'error'
   result?: string
+  illustration?: ChapterIllustration
+  interactive_image?: InteractiveImage
+  interactive_images?: InteractiveImage[]
+  interactive_image_error?: InteractiveImageError
+  interactive_image_status?: 'running' | 'success' | 'error'
   phase?: string
   attempt?: number
   tokens_before?: number
@@ -28,6 +33,10 @@ export interface ChatMessage {
   subagent?: boolean
   subagent_session_id?: string
   subagent_type?: string
+  sse_hidden_fields?: string[]
+  sse_hidden_reason?: string
+  sse_display_notice?: string
+  sse_generated_chars?: number
   prompt_tokens?: number
   cached_prompt_tokens?: number
   uncached_prompt_tokens?: number
@@ -42,6 +51,54 @@ export interface ChatMessage {
   created_at?: string
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number
+}
+
+export interface ChapterIllustration {
+  schema: 'chapter_illustration.v1' | string
+  chapter_path: string
+  image_path: string
+  meta_path: string
+  markdown: string
+  alt_text: string
+  profile_id: string
+  provider: string
+  model: string
+  size?: string
+  quality?: string
+  output_format?: string
+  created_at?: string
+  revised_prompt?: string
+  mime_type?: string
+  size_bytes?: number
+}
+
+export interface InteractiveImage {
+  schema: 'interactive_image.v1' | string
+  story_id: string
+  branch_id: string
+  turn_id: string
+  image_path: string
+  meta_path: string
+  alt_text?: string
+  profile_id?: string
+  provider?: string
+  model?: string
+  size?: string
+  quality?: string
+  output_format?: string
+  created_at?: string
+  revised_prompt?: string
+  mime_type?: string
+  size_bytes?: number
+}
+
+export interface InteractiveImageError {
+  schema: 'interactive_image_error.v1' | string
+  story_id?: string
+  branch_id?: string
+  turn_id?: string
+  message?: string
+  created_at?: string
 }
 
 export interface TokenUsageCall {
@@ -173,7 +230,28 @@ export interface BookRecord {
   name: string
   path: string
   author: string
+  cover_updated_at?: string
   last_opened_at: string
+}
+
+export interface BookCoverResult {
+  schema: 'book_cover.v1' | string
+  cover_path: string
+  source_path: string
+  meta_path: string
+  backup_path?: string
+  cover_updated_at: string
+  image_preset_id?: string
+  profile_id: string
+  provider: string
+  model: string
+  size?: string
+  quality?: string
+  output_format?: string
+  created_at?: string
+  revised_prompt?: string
+  mime_type?: string
+  size_bytes?: number
 }
 
 export interface ChapterSummary {
