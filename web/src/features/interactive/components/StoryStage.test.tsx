@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoryStage } from './StoryStage'
-import type { Snapshot, StorySummary } from '../types'
+import { mergeInteractiveTurnPersistedSnapshot } from '../stores/interactive-store'
+import type { InteractiveTurnPersistedEvent, Snapshot, StorySummary } from '../types'
 
 const { generateInteractiveHotChoicesMock, generateInteractiveImageMock, sendInteractiveMessageMock } = vi.hoisted(() => ({
   generateInteractiveHotChoicesMock: vi.fn(),
@@ -143,7 +144,7 @@ describe('StoryStage streaming rendering', () => {
 
     try {
       sendInteractiveMessageMock.mockResolvedValue(stream.readable)
-      render(<StoryStageHarness />)
+      const { container } = render(<StoryStageHarness />)
 
       await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
       await user.click(screen.getByRole('button', { name: '发送' }))
@@ -157,6 +158,11 @@ describe('StoryStage streaming rendering', () => {
 
       act(() => runAnimationFrames(frames))
 
+      expect(container.querySelector('.nova-streaming-markdown-reserve')).toHaveTextContent('青石镇外风声忽然停了。')
+      expect(container.querySelector('.nova-streaming-markdown-overlay')).not.toHaveTextContent('青石镇外风声忽然停了。')
+
+      act(() => runAnimationFrames(frames))
+
       expect(await screen.findByText('青石镇外风声忽然停了。')).toBeInTheDocument()
       stream.enqueue({ event: 'done', data: '{}' })
       stream.close()
@@ -164,6 +170,50 @@ describe('StoryStage streaming rendering', () => {
       stream.close()
       window.requestAnimationFrame = originalRequestAnimationFrame
       window.cancelAnimationFrame = originalCancelAnimationFrame
+    }
+  })
+
+  it('merges the persisted turn before silent snapshot reconciliation without duplicating the live narrative', async () => {
+    const user = userEvent.setup()
+    const handleDone = vi.fn().mockResolvedValue(undefined)
+    sendInteractiveMessageMock.mockResolvedValue(interactiveStream([
+      { event: 'chunk', data: JSON.stringify({ content: '门外有灯。' }) },
+      { event: 'interactive_turn_persisted', data: JSON.stringify(persistedTurnEvent()) },
+      { event: 'done', data: '{}' },
+    ]))
+
+    render(<PersistedTurnHarness onDone={handleDone} />)
+
+    await user.type(screen.getByPlaceholderText('你要做什么？'), '推门')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => expect(screen.getAllByText('门外有灯。')).toHaveLength(1))
+    await waitFor(() => expect(handleDone).toHaveBeenCalledWith({ silent: true }))
+    expect(screen.queryByText('正在加载')).not.toBeInTheDocument()
+  })
+
+  it('does not insert a transient done activity row after the persisted turn arrives', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+    const handleDone = vi.fn().mockResolvedValue(undefined)
+
+    try {
+      sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+      render(<PersistedTurnHarness onDone={handleDone} />)
+
+      await user.type(screen.getByPlaceholderText('你要做什么？'), '推门')
+      await user.click(screen.getByRole('button', { name: '发送' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+
+      stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '门外有灯。' }) })
+      stream.enqueue({ event: 'interactive_turn_persisted', data: JSON.stringify(persistedTurnEvent()) })
+      stream.enqueue({ event: 'done', data: '{}' })
+
+      await waitFor(() => expect(screen.getAllByText('门外有灯。')).toHaveLength(1))
+      expect(screen.queryByText('完成')).not.toBeInTheDocument()
+      expect(screen.queryByText('Done')).not.toBeInTheDocument()
+    } finally {
+      stream.close()
     }
   })
 })
@@ -248,6 +298,7 @@ describe('StoryStage interactive image rendering', () => {
       expect(screen.getByRole('img', { name: '即时互动图像' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Finteractive%2Fimages%2Fstory-1%2Fmain%2Fturn-1%2Frun-a%2Fimage.png')
     })
     expect(handleDone).toHaveBeenCalled()
+    expect(handleDone).toHaveBeenCalledWith({ silent: true })
   })
 })
 
@@ -306,6 +357,59 @@ function StoryStageHarness() {
       />
     </VirtuosoMockContext.Provider>
   )
+}
+
+function PersistedTurnHarness({ onDone }: { onDone: (options?: { silent?: boolean }) => Promise<void> }) {
+  const [snapshot, setSnapshot] = useState<Snapshot>({ story_id: 'story-1', branch_id: 'main', turns: [], state: {} })
+
+  return (
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={snapshot}
+        onTurnPersisted={(event) => {
+          const nextSnapshot = mergeInteractiveTurnPersistedSnapshot(snapshot, event)
+          setSnapshot(nextSnapshot)
+          return nextSnapshot
+        }}
+        onDone={onDone}
+      />
+    </VirtuosoMockContext.Provider>
+  )
+}
+
+function persistedTurnEvent(): InteractiveTurnPersistedEvent {
+  return {
+    story_id: 'story-1',
+    branch_id: 'main',
+    turn: {
+      id: 'turn-1',
+      parent_id: null,
+      branch_id: 'main',
+      ts: '2026-06-28T00:00:00Z',
+      user: '推门',
+      narrative: '门外有灯。',
+    },
+    state: { scene: { location: '门外' } },
+    graph: {
+      nodes: [{
+        id: 'turn-1',
+        branch_id: 'main',
+        title: '推门',
+        summary: '门外有灯。',
+        ts: '2026-06-28T00:00:00Z',
+        current: true,
+        head: true,
+      }],
+      branches: [{ id: 'main', head: 'turn-1', created_at: '2026-06-28T00:00:00Z', current: true }],
+    },
+    branches: [{ id: 'main', head: 'turn-1', created_at: '2026-06-28T00:00:00Z', current: true }],
+  }
 }
 
 function interactiveStream(events: Array<{ event: string; data: string }>) {

@@ -203,6 +203,75 @@ describe('MessageList', () => {
     await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
   })
 
+  it('使用 render_key 保持流式消息落盘后的列表行身份稳定', () => {
+    const { container, rerender } = render(
+      <MessageList
+        isStreaming
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '推门', render_key: 'turn-live-user' },
+          { type: 'message', role: 'assistant', content: '门外有灯。', streaming: true, render_key: 'turn-live-assistant' },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+
+    expect(container.querySelector('[data-nova-chat-row-key="message-turn-live-user"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-nova-chat-row-key="message-turn-live-assistant"]')).toBeInTheDocument()
+
+    rerender(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '推门', id: 'turn-1-user', render_key: 'turn-live-user' },
+          { type: 'message', role: 'assistant', content: '门外有灯。', id: 'turn-1-assistant', render_key: 'turn-live-assistant' },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+
+    expect(container.querySelector('[data-nova-chat-row-key="message-turn-live-user"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-nova-chat-row-key="message-turn-live-assistant"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-nova-chat-row-key="message-turn-1-assistant"]')).not.toBeInTheDocument()
+  })
+
+  it('仅切换流式完成状态时不触发额外吸底滚动', async () => {
+    const { container, rerender } = render(
+      <MessageList
+        isStreaming
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '推门', render_key: 'turn-live-user' },
+          { type: 'message', role: 'assistant', content: '门外有灯。', streaming: true, render_key: 'turn-live-assistant' },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+    const scroller = getMessageScroller(container)
+    const scrollMetrics = mockScrollMetrics(scroller)
+    await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 120))
+    })
+    const scrollTopBeforePersist = scroller.scrollTop
+
+    scrollMetrics.setScrollHeight(1500)
+    rerender(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'user', content: '推门', id: 'turn-1-user', render_key: 'turn-live-user' },
+          { type: 'message', role: 'assistant', content: '门外有灯。', id: 'turn-1-assistant', render_key: 'turn-live-assistant' },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+
+    expect(scroller.scrollTop).toBe(scrollTopBeforePersist)
+  })
+
   it('用户重新滚到底部后恢复流式锁定', async () => {
     const { container, rerender } = render(
       <MessageList

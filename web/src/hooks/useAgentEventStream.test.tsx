@@ -58,6 +58,44 @@ describe('useAgentEventStream', () => {
     })
   })
 
+  it('done 事件到达但连接未关闭时不插入完成活动提示', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    let controller: ReadableStreamDefaultController<SSEEvent> | undefined
+    const stream = new ReadableStream<SSEEvent>({
+      start(nextController) {
+        controller = nextController
+      },
+    })
+    let consumePromise: Promise<void> | undefined
+    let streamClosed = false
+
+    try {
+      await act(async () => {
+        consumePromise = agent?.consumeAgentStream(stream)
+        await Promise.resolve()
+      })
+
+      await act(async () => {
+        controller?.enqueue(sseEvent('done', { status: 'ok' }))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(screen.getByTestId('activity').textContent).toBe('')
+    } finally {
+      if (!streamClosed) {
+        await act(async () => {
+          controller?.close()
+          streamClosed = true
+          await consumePromise
+        })
+      }
+    }
+  })
+
   it('保留 SSE 隐藏正文展示元信息并追加路径参数', async () => {
     let agent: ReturnType<typeof useAgentEventStream> | undefined
     render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
@@ -210,13 +248,26 @@ describe('useAgentEventStream', () => {
         await Promise.resolve()
       })
 
-      expect(readMessages().find((message) => message.role === 'assistant')?.content).toBe(firstChunk)
+      expect(readMessages().find((message) => message.role === 'assistant')).toMatchObject({
+        content: '',
+        streaming_target_content: firstChunk,
+      })
 
       await act(async () => {
         raf.flush()
       })
 
-      expect(readMessages().find((message) => message.role === 'assistant')?.content).toBe(firstChunk + fastChunk)
+      const stagedAssistant = readMessages().find((message) => message.role === 'assistant')
+      expect(stagedAssistant?.content).toBe(firstChunk)
+      expect(stagedAssistant?.streaming_target_content).toBe(firstChunk + fastChunk)
+
+      await act(async () => {
+        raf.flush()
+      })
+
+      const assistant = readMessages().find((message) => message.role === 'assistant')
+      expect(assistant?.content).toBe(firstChunk + fastChunk)
+      expect(assistant?.streaming_target_content).toBeUndefined()
 
       await act(async () => {
         controller?.close()
@@ -238,7 +289,12 @@ describe('useAgentEventStream', () => {
 function AgentStreamHarness({ onChange }: { onChange: (value: ReturnType<typeof useAgentEventStream>) => void }) {
   const agent = useAgentEventStream()
   useEffect(() => onChange(agent), [agent, onChange])
-  return <pre data-testid="messages">{JSON.stringify(agent.messages)}</pre>
+  return (
+    <>
+      <pre data-testid="messages">{JSON.stringify(agent.messages)}</pre>
+      <span data-testid="activity">{agent.activityContent}</span>
+    </>
+  )
 }
 
 function sseStream(events: Array<[string, unknown]>) {
@@ -287,6 +343,7 @@ function readMessages() {
   return JSON.parse(screen.getByTestId('messages').textContent || '[]') as Array<{
     role?: string
     content?: string
+    streaming_target_content?: string
     name?: string
     args?: string
     status?: string

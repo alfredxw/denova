@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, UIEvent, WheelEvent } from 'react'
 import type { VirtuosoHandle } from 'react-virtuoso'
 
@@ -183,13 +183,13 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
     scheduleScrollRef.current = scheduleScrollToBottom
   }, [scheduleScrollToBottom])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     lockedRef.current = true
     scheduleScrollRef.current()
     return cancelScheduledScroll
   }, [cancelScheduledScroll, resetKey])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     scheduleScrollToBottom()
   }, [contentKey, scheduleScrollToBottom])
 

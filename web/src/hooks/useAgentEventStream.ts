@@ -43,6 +43,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
   const compactionIdCounterRef = useRef(0)
   const segmentBufferRef = useRef<Record<string, string>>({})
   const segmentRafRef = useRef<number | null>(null)
+  const segmentPromoteRafRef = useRef<number | null>(null)
   const deltaBufferRef = useRef<Record<string, string>>({})
   const deltaRafRef = useRef<number | null>(null)
 
@@ -61,6 +62,10 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     if (segmentRafRef.current !== null) {
       cancelAnimationFrame(segmentRafRef.current)
       segmentRafRef.current = null
+    }
+    if (segmentPromoteRafRef.current !== null) {
+      cancelAnimationFrame(segmentPromoteRafRef.current)
+      segmentPromoteRafRef.current = null
     }
     if (deltaRafRef.current !== null) {
       cancelAnimationFrame(deltaRafRef.current)
@@ -117,6 +122,14 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     }))
   }, [])
 
+  const scheduleStreamingSegmentPromotion = useCallback(() => {
+    if (segmentPromoteRafRef.current !== null) return
+    segmentPromoteRafRef.current = requestAnimationFrame(() => {
+      segmentPromoteRafRef.current = null
+      setMessages(prev => promoteStreamingTargets(prev))
+    })
+  }, [])
+
   const flushStreamingSegmentBuffer = useCallback(() => {
     const buffered = { ...segmentBufferRef.current }
     segmentBufferRef.current = {}
@@ -126,7 +139,8 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     }
     if (Object.keys(buffered).length === 0) return
     setMessages(prev => updateStreamingSegments(prev, buffered))
-  }, [])
+    scheduleStreamingSegmentPromotion()
+  }, [scheduleStreamingSegmentPromotion])
 
   const finishCurrentSegment = useCallback(() => {
     const segmentId = currentSegmentIdRef.current
@@ -149,6 +163,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
       const segmentId = currentSegmentIdRef.current
       if (!segmentId) return
       setMessages(prev => appendStreamingSegmentMessage(prev, role, segmentId, text, metadata))
+      scheduleStreamingSegmentPromotion()
       return
     }
     const segmentId = currentSegmentIdRef.current
@@ -304,7 +319,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
           }
           case 'done': {
             markPendingToolsAsSuccess()
-            setActivityContent(t('chat.activity.done'))
+            setActivityContent('')
             break
           }
           case 'aborted': {
@@ -517,13 +532,13 @@ function appendStreamingSegmentMessage(
   text: string,
   metadata: EventMetadata,
 ) {
-  return [...messages, { role, id, content: text, streaming: true, ...metadata }]
+  return [...messages, { role, id, content: '', streaming_target_content: text, streaming: true, ...metadata }]
 }
 
 function updateStreamingSegments(messages: ChatMessage[], buffered: Record<string, string>) {
   return messages.map(message => (
     message.id && buffered[message.id]
-      ? { ...message, content: (message.content || '') + buffered[message.id], streaming: true }
+      ? { ...message, streaming_target_content: (message.streaming_target_content || message.content || '') + buffered[message.id], streaming: true }
       : message
   ))
 }
@@ -589,8 +604,24 @@ function upsertTokenUsageMessage(messages: ChatMessage[], next: ChatMessage) {
 
 function finalizeStreamingSegment(messages: ChatMessage[], id: string) {
   return messages.map(message => (
-    message.id === id ? { ...message, streaming: false } : message
+    message.id === id ? { ...promoteStreamingTarget(message), streaming: false } : message
   ))
+}
+
+function promoteStreamingTargets(messages: ChatMessage[]) {
+  let changed = false
+  const nextMessages = messages.map((message) => {
+    if (message.streaming_target_content === undefined) return message
+    changed = true
+    return promoteStreamingTarget(message)
+  })
+  return changed ? nextMessages : messages
+}
+
+function promoteStreamingTarget(message: ChatMessage): ChatMessage {
+  if (message.streaming_target_content === undefined) return message
+  const { streaming_target_content, ...rest } = message
+  return { ...rest, content: streaming_target_content }
 }
 
 function findToolMessageId(

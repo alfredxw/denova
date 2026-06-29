@@ -47,6 +47,25 @@ describe('MessageItem', () => {
     expect(screen.getByText('cmd')).toBeInTheDocument()
   })
 
+  it('流式 assistant 新增正文先预留目标高度，提升为 content 后才显示新文字', () => {
+    const { container, rerender } = render(<MessageItem message={{ role: 'assistant', content: '第一行内容', streaming: true }} />)
+
+    expect(container.querySelector('.nova-streaming-markdown-stage')).toBeNull()
+
+    rerender(<MessageItem message={{ role: 'assistant', content: '第一行内容', streaming_target_content: '第一行内容\n第二行内容', streaming: true }} />)
+
+    const stage = container.querySelector('.nova-streaming-markdown-stage')
+    expect(stage).toBeInTheDocument()
+    expect(stage?.querySelector('.nova-streaming-markdown-reserve')).toHaveTextContent('第二行内容')
+    expect(stage?.querySelector('.nova-streaming-markdown-overlay')).toHaveTextContent('第一行内容')
+    expect(stage?.querySelector('.nova-streaming-markdown-overlay')).not.toHaveTextContent('第二行内容')
+
+    rerender(<MessageItem message={{ role: 'assistant', content: '第一行内容\n第二行内容', streaming: true }} />)
+
+    expect(container.querySelector('.nova-streaming-markdown-stage')).toBeNull()
+    expect(container.querySelector('.chat-agent-message')).toHaveTextContent('第二行内容')
+  })
+
   it('流式和持久化 assistant 消息使用一致的 Markdown DOM 结构', () => {
     const content = '# 标题\n\n第一段。\n\n- 条目 A\n- 条目 B\n\n> 引用'
     const { container, rerender } = render(<MessageItem message={{ role: 'assistant', content, streaming: true }} />)

@@ -28,7 +28,7 @@ import { createInteractiveNarrativeFilter, sanitizeStoredNarrative } from '../st
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { ImagePreset, Snapshot, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
+import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { TellerPicker } from './TellerPicker'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -56,7 +56,8 @@ interface StoryStageProps {
   onImageSettingsChange?: (settings: StoryImageSettings) => void | Promise<void>
   onRequestLoreInit?: () => void
   onToggleSceneMemory?: () => void
-  onDone: () => void | Promise<Snapshot | void>
+  onTurnPersisted?: (event: InteractiveTurnPersistedEvent) => Snapshot | void
+  onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
 }
 
 const DEFAULT_READING_FONT_SIZE = 18
@@ -78,7 +79,12 @@ type BufferedLiveMessage = {
   metadata: Partial<ChatMessage>
 }
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
+type LiveTurnRenderKeys = {
+  user: string
+  assistant: string
+}
+
+export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onToggleSceneMemory, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const keyboardInset = useKeyboardInset()
@@ -133,8 +139,11 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const compactionIdCounterRef = useRef(0)
   const liveMessageBufferRef = useRef<BufferedLiveMessage[]>([])
   const liveMessageRafRef = useRef<number | null>(null)
+  const liveMessagePromoteRafRef = useRef<number | null>(null)
   const nonNarrativeLiveMessageStreamingRef = useRef(false)
   const liveStageKeyRef = useRef(stageKey)
+  const currentLiveTurnRenderKeysRef = useRef<LiveTurnRenderKeys | null>(null)
+  const turnRenderKeysRef = useRef<Record<string, LiveTurnRenderKeys>>({})
   const previousSnapshotKeyRef = useRef(snapshotKey)
   const stagePreferences = useStagePreferences()
   const stageTextStyle = useMemo<CSSProperties>(
@@ -190,7 +199,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     const user = liveMessages.find((msg) => msg.role === 'user')?.content || ''
     const narrative = liveMessages
       .filter((msg) => msg.role === 'assistant')
-      .map((msg) => msg.content || '')
+      .map((msg) => msg.streaming_target_content || msg.content || '')
       .join('')
     if (!user && !narrative) return null
     return { user, narrative }
@@ -251,6 +260,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         window.cancelAnimationFrame(liveMessageRafRef.current)
         liveMessageRafRef.current = null
       }
+      if (liveMessagePromoteRafRef.current !== null) {
+        window.cancelAnimationFrame(liveMessagePromoteRafRef.current)
+        liveMessagePromoteRafRef.current = null
+      }
       liveMessageBufferRef.current = []
     }
   }, [])
@@ -278,6 +291,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       const messages: ChatMessage[] = [
         {
           id: `${turn.id}-user`,
+          render_key: turnRenderKeysRef.current[turn.id]?.user,
           turn_id: turn.id,
           role: 'user',
           content: turn.user,
@@ -361,6 +375,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       const mergedImages = mergeInteractiveImages(interactiveImages(deferredImageMessages), optimisticInteractiveImages[turn.id])
       messages.push({
         id: `${turn.id}-assistant`,
+        render_key: turnRenderKeysRef.current[turn.id]?.assistant,
         turn_id: turn.id,
         role: 'assistant',
         content: sanitizeStoredNarrative(turn.narrative),
@@ -517,7 +532,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setStageActivityContent(t('storyStage.activity.connecting'))
     flushLiveMessageBuffer()
     nonNarrativeLiveMessageStreamingRef.current = false
-    setStageLiveMessages([{ role: 'user', content: message }])
+    const liveTurnRenderKeys = createLiveTurnRenderKeys()
+    currentLiveTurnRenderKeysRef.current = liveTurnRenderKeys
+    setStageLiveMessages([{ role: 'user', content: message, render_key: liveTurnRenderKeys.user }])
     currentCompactionMessageIdRef.current = null
     updateStageRun({ rewindTurnId: nextRewindTurnId || undefined })
     liveStageKeyRef.current = stageKey
@@ -526,6 +543,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     stageAbortControllers.set(stageKey, abortController)
     const narrativeFilter = createInteractiveNarrativeFilter()
     let finishedNormally = false
+    let receivedPersistedTurn = false
+    let persistedSnapshot: Snapshot | undefined = undefined
     try {
       const stream = await sendInteractiveMessage({
         mode: 'story',
@@ -603,6 +622,17 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             setStageLiveMessages((prev) => upsertTokenUsageMessage(prev, buildTokenUsageMessage(data)))
             break
           }
+          case 'interactive_turn_persisted': {
+            const data = JSON.parse(value.data) as InteractiveTurnPersistedEvent
+            flushLiveMessageBuffer()
+            receivedPersistedTurn = true
+            if (data.turn?.id && currentLiveTurnRenderKeysRef.current) {
+              turnRenderKeysRef.current[data.turn.id] = currentLiveTurnRenderKeysRef.current
+            }
+            persistedSnapshot = onTurnPersisted(data) || persistedSnapshot
+            setStageActivityContent('')
+            break
+          }
           case 'error': {
             const data = JSON.parse(value.data)
             flushLiveMessageBuffer()
@@ -623,7 +653,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             if (text) appendAssistantMessage(text)
             finishLiveMessages()
             finishedNormally = true
-            setStageActivityContent(t('storyStage.activity.done'))
+            setStageActivityContent('')
             break
           }
           case 'aborted': {
@@ -637,7 +667,14 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           }
         }
       }
-      const nextSnapshot = await onDone()
+      let nextSnapshot: Snapshot | void = persistedSnapshot
+      if (persistedSnapshot) {
+        void Promise.resolve(onDone({ silent: true })).catch((error) => {
+          console.warn('[interactive-stage] 静默刷新互动快照失败', error)
+        })
+      } else {
+        nextSnapshot = await onDone(receivedPersistedTurn ? { silent: true } : undefined)
+      }
       if (finishedNormally) {
         if (hotChoicesMode === 'auto' && stagePreferences.hotChoicesEnabled) {
           pendingAutoHotChoicesKeyRef.current = autoHotChoicesSnapshotKey(storyId, branchId, nextSnapshot || snapshot)
@@ -660,6 +697,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       setStageStreaming(false)
       stageAbortControllers.delete(stageKey)
       currentCompactionMessageIdRef.current = null
+      currentLiveTurnRenderKeysRef.current = null
       setStageActivityContent('')
     }
   }
@@ -784,7 +822,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           force,
         })
         rememberGeneratedInteractiveImage(result.image)
-        await onDone()
+        await onDone({ silent: true })
         return result
       } catch (error) {
         setStageLiveMessages((prev) => [
@@ -819,7 +857,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       })
       if (result && !result.skipped) {
         rememberGeneratedInteractiveImage(result.image)
-        await onDone()
+        await onDone({ silent: true })
       }
     },
     [branchId, onDone, rememberGeneratedInteractiveImage, snapshot, storyId],
@@ -1329,7 +1367,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   function appendAssistantMessage(content: string, metadata: Partial<ChatMessage> = {}) {
     if (!content) return
-    queueLiveMessage({ role: 'assistant', content, metadata })
+    const renderKey = metadata.render_key || (metadata.subagent ? undefined : currentLiveTurnRenderKeysRef.current?.assistant)
+    queueLiveMessage({ role: 'assistant', content, metadata: renderKey ? { ...metadata, render_key: renderKey } : metadata })
   }
 
   // 思考前言被误当正文显示时（孤立 </think>），丢弃这条流式 assistant 消息，正文随后另起。
@@ -1368,6 +1407,21 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     if (buffered.length === 0) return
     liveMessageBufferRef.current = []
     setStageLiveMessages((prev) => buffered.reduce(appendBufferedLiveMessage, prev))
+    if (buffered.some((message) => message.role === 'assistant')) {
+      scheduleLiveMessagePromotion()
+    }
+  }
+
+  function scheduleLiveMessagePromotion() {
+    if (liveMessagePromoteRafRef.current !== null) return
+    liveMessagePromoteRafRef.current = window.requestAnimationFrame(() => {
+      liveMessagePromoteRafRef.current = null
+      promoteLiveMessageTargets()
+    })
+  }
+
+  function promoteLiveMessageTargets() {
+    setStageLiveMessages((prev) => promoteMessageTargets(prev))
   }
 
   function appendToolCallMessage(payload: Record<string, unknown> & { id?: string; name?: string; args?: string }) {
@@ -1469,12 +1523,16 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   function finishLiveMessages() {
     flushLiveMessageBuffer()
+    if (liveMessagePromoteRafRef.current !== null) {
+      window.cancelAnimationFrame(liveMessagePromoteRafRef.current)
+      liveMessagePromoteRafRef.current = null
+    }
     nonNarrativeLiveMessageStreamingRef.current = false
     setStageLiveMessages((prev) =>
       prev.map((msg) =>
         msg.role === 'assistant' || msg.role === 'thinking' || msg.role === 'tool_call' || msg.role === 'context_compaction'
           ? {
-              ...msg,
+              ...promoteMessageTarget(msg),
               streaming: false,
               status: msg.role === 'tool_call' || msg.role === 'context_compaction' ? (msg.status === 'running' ? 'success' : msg.status) : msg.status,
             }
@@ -1488,7 +1546,7 @@ function appendBufferedLiveMessage(messages: ChatMessage[], { role, content, met
   if (!content) return messages
   const last = messages[messages.length - 1]
   if (role === 'assistant' && last?.role === 'assistant' && last.streaming && sameLiveMessageSource(last, metadata)) {
-    return [...messages.slice(0, -1), { ...last, content: `${last.content || ''}${content}` }]
+    return [...messages.slice(0, -1), { ...last, streaming_target_content: `${last.streaming_target_content || last.content || ''}${content}` }]
   }
   if (role === 'thinking' && last?.role === 'thinking' && sameLiveMessageSource(last, metadata)) {
     return [
@@ -1500,7 +1558,26 @@ function appendBufferedLiveMessage(messages: ChatMessage[], { role, content, met
       },
     ]
   }
+  if (role === 'assistant') {
+    return [...messages, { role, content: '', streaming_target_content: content, streaming: true, ...metadata }]
+  }
   return [...messages, { role, content, streaming: true, ...metadata }]
+}
+
+function promoteMessageTargets(messages: ChatMessage[]) {
+  let changed = false
+  const nextMessages = messages.map((message) => {
+    if (message.streaming_target_content === undefined) return message
+    changed = true
+    return promoteMessageTarget(message)
+  })
+  return changed ? nextMessages : messages
+}
+
+function promoteMessageTarget(message: ChatMessage): ChatMessage {
+  if (message.streaming_target_content === undefined) return message
+  const { streaming_target_content, ...rest } = message
+  return { ...rest, content: streaming_target_content }
 }
 
 function streamMetadataFromPayload(payload: Record<string, unknown>): Partial<ChatMessage> {
@@ -1797,6 +1874,18 @@ function imageSettingsSummary(settings: StoryImageSettings, t: (key: string, opt
 }
 
 function noop() {}
+
+function noopTurnPersisted() {
+  return undefined
+}
+
+function createLiveTurnRenderKeys(): LiveTurnRenderKeys {
+  const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`
+  return {
+    user: `interactive-live-user-${id}`,
+    assistant: `interactive-live-assistant-${id}`,
+  }
+}
 
 function storyStageSnapshotKey(storyId: string, branchId: string, snapshot?: Snapshot | null) {
   const turns = snapshot?.turns || []

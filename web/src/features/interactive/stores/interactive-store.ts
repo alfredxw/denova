@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { ChatMessage } from '@/lib/api'
-import type { BranchSummary, InteractiveSubmode, Snapshot, StorySummary, Teller } from '../types'
+import type { BranchSummary, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StorySummary, Teller, TurnEvent } from '../types'
 
 const CURRENT_STORY_STORAGE_KEY = 'nova.interactive.current_story.v1'
 const CURRENT_BRANCH_STORAGE_KEY = 'nova.interactive.current_branch.v1'
@@ -26,6 +26,7 @@ interface InteractiveStore {
   setTellers: (tellers: Teller[]) => void
   setBranches: (branches: BranchSummary[]) => void
   setSnapshot: (snapshot: Snapshot | null) => void
+  applyTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | null
   setStoryStageRun: (stageKey: string, updater: Partial<StoryStageRunState> | ((current: StoryStageRunState) => StoryStageRunState)) => void
   clearStoryStageRun: (stageKey: string) => void
   setCurrentStoryId: (storyId: string) => void
@@ -134,6 +135,25 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
       currentBranchId: snapshot?.branch_id || state.currentBranchId,
     }
   }),
+  applyTurnPersisted: (event) => {
+    let appliedSnapshot: Snapshot | null = null
+    set((state) => {
+      if (!event?.story_id || !event.branch_id || !event.turn) return state
+      if (state.currentStoryId && state.currentStoryId !== event.story_id) return state
+      if (state.currentBranchId && state.currentBranchId !== event.branch_id) return state
+      const snapshot = mergeInteractiveTurnPersistedSnapshot(state.snapshot, event)
+      appliedSnapshot = snapshot
+      rememberCurrentStory(event.story_id)
+      rememberCurrentBranch(event.story_id, event.branch_id)
+      return {
+        snapshot,
+        branches: event.branches?.length ? event.branches : state.branches,
+        currentStoryId: event.story_id,
+        currentBranchId: event.branch_id,
+      }
+    })
+    return appliedSnapshot
+  },
   setStoryStageRun: (stageKey, updater) => set((state) => {
     const current = state.storyStageRuns[stageKey] || emptyStoryStageRun()
     const next = typeof updater === 'function' ? updater(current) : { ...current, ...updater }
@@ -167,3 +187,44 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
     currentBranchId: 'main',
   }),
 }))
+
+export function mergeInteractiveTurnPersistedSnapshot(current: Snapshot | null, event: InteractiveTurnPersistedEvent): Snapshot {
+  const base: Snapshot = current && current.story_id === event.story_id && current.branch_id === event.branch_id
+    ? current
+    : { story_id: event.story_id, branch_id: event.branch_id, turns: [], state: {} }
+  const turn = event.turn
+  const turns = mergePersistedTurn(base.turns || [], turn)
+  return {
+    ...base,
+    story_id: event.story_id,
+    branch_id: event.branch_id,
+    turns,
+    current_turn: turn,
+    state: event.state || base.state || {},
+    graph: event.graph || base.graph,
+    context_compaction: event.context_compaction === undefined ? base.context_compaction : event.context_compaction,
+    context_compaction_removal: event.context_compaction_removal === undefined ? base.context_compaction_removal : event.context_compaction_removal,
+  }
+}
+
+function mergePersistedTurn(currentTurns: TurnEvent[], turn: TurnEvent): TurnEvent[] {
+  const existingIndex = currentTurns.findIndex((item) => item.id === turn.id)
+  if (existingIndex >= 0) {
+    return currentTurns.map((item, index) => (index === existingIndex ? turn : item))
+  }
+  const parentID = normalizeParentID(turn.parent_id)
+  if (parentID) {
+    const parentIndex = currentTurns.findIndex((item) => item.id === parentID)
+    if (parentIndex >= 0) {
+      return [...currentTurns.slice(0, parentIndex + 1), turn]
+    }
+  } else {
+    return [turn]
+  }
+  return [...currentTurns, turn]
+}
+
+function normalizeParentID(parentID: TurnEvent['parent_id']) {
+  if (typeof parentID !== 'string') return ''
+  return parentID.trim()
+}

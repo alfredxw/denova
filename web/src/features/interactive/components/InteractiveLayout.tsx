@@ -16,7 +16,7 @@ import { StoryStage } from './StoryStage'
 import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
-import type { ImagePreset, Snapshot, StoryImageSettings } from '../types'
+import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryImageSettings } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 
 interface InteractiveLayoutProps {
@@ -32,7 +32,7 @@ interface InteractiveLayoutProps {
 export function InteractiveLayout({ workspace, imagePresets = [], onImagePresetsChange, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
-  const { stories, tellers, branches, snapshot, currentStoryId, currentBranchId, submode, setStories, setTellers, setBranches, setSnapshot, setCurrentStoryId, setCurrentBranchId, setSubmode, resetWorkspaceState } = useInteractiveStore()
+  const { stories, tellers, branches, snapshot, currentStoryId, currentBranchId, submode, setStories, setTellers, setBranches, setSnapshot, applyTurnPersisted, setCurrentStoryId, setCurrentBranchId, setSubmode, resetWorkspaceState } = useInteractiveStore()
   const currentStory = stories.find((story) => story.id === currentStoryId)
   const currentTeller = tellers.find((teller) => teller.id === currentStory?.story_teller_id)
   const styleSceneSuggestions = Array.from(new Set((currentTeller?.style_rules || []).map((rule) => rule.scene.trim()).filter(Boolean)))
@@ -80,17 +80,22 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
   }, [workspace])
 
   const reloadSnapshot = useCallback(
-    async (branchOverride?: string, storyOverride?: string) => {
+    async (branchOverride?: string, storyOverride?: string, options?: { silent?: boolean }) => {
+      const silent = options?.silent === true
       const requestSeq = snapshotRequestSeqRef.current + 1
       snapshotRequestSeqRef.current = requestSeq
       const storyId = storyOverride || currentStoryId
       if (!storyId) {
-        setSnapshotLoading(false)
-        setSnapshot(null)
+        if (!silent) {
+          setSnapshotLoading(false)
+          setSnapshot(null)
+        }
         return
       }
-      setSnapshotLoading(true)
-      setSnapshotLoadFailed(false)
+      if (!silent) {
+        setSnapshotLoading(true)
+        setSnapshotLoadFailed(false)
+      }
       const branchId = branchOverride ?? (snapshotStoryIdRef.current === storyId || currentBranchId !== 'main' ? currentBranchId : '')
       try {
         const [nextSnapshot, nextBranches] = await Promise.all([getInteractiveSnapshot(storyId, branchId), getInteractiveBranches(storyId)])
@@ -101,11 +106,12 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
       } catch (error) {
         if (requestSeq === snapshotRequestSeqRef.current) {
           console.error('[interactive-layout] 刷新互动快照失败', error)
-          setSnapshotLoadFailed(true)
+          if (!silent) setSnapshotLoadFailed(true)
         }
+        if (silent) return
         throw error
       } finally {
-        if (requestSeq === snapshotRequestSeqRef.current) setSnapshotLoading(false)
+        if (!silent && requestSeq === snapshotRequestSeqRef.current) setSnapshotLoading(false)
       }
     },
     [currentBranchId, currentStoryId, setBranches, setSnapshot],
@@ -177,6 +183,14 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
     await reloadStories()
   }
 
+  const handleTurnPersisted = useCallback((event: InteractiveTurnPersistedEvent) => {
+    return applyTurnPersisted(event) || undefined
+  }, [applyTurnPersisted])
+
+  const handleStoryStageDone = useCallback((options?: { silent?: boolean }) => {
+    return reloadSnapshot(undefined, undefined, options)
+  }, [reloadSnapshot])
+
   const handleSwitchBranch = async (branchId: string) => {
     const storyId = currentStoryId || useInteractiveStore.getState().currentStoryId || snapshot?.story_id
     if (!storyId) return
@@ -232,7 +246,8 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
       onImageSettingsChange={handleImageSettingsChange}
       onRequestLoreInit={onRequestLoreInit}
       onToggleSceneMemory={isMobile ? () => setMobileSnapshotOpen((open) => !open) : onToggleRightPanel}
-      onDone={reloadSnapshot}
+      onTurnPersisted={handleTurnPersisted}
+      onDone={handleStoryStageDone}
     />
   )
   const openMemoryManager = () => {

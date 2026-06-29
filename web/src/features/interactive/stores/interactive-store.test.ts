@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useInteractiveStore } from './interactive-store'
-import type { StorySummary } from '../types'
+import { mergeInteractiveTurnPersistedSnapshot, useInteractiveStore } from './interactive-store'
+import type { InteractiveTurnPersistedEvent, Snapshot, StorySummary, TurnEvent } from '../types'
 
 describe('interactive-store', () => {
   beforeEach(() => {
@@ -191,4 +191,123 @@ describe('interactive-store', () => {
     expect(useInteractiveStore.getState().submode).toBe('memory')
     expect(window.localStorage.getItem('nova.interactive.submode.v1')).toBe('memory')
   })
+
+  it('merges a persisted turn by appending it to the active branch snapshot', () => {
+    const current = snapshot([turn('turn-1', null, '醒来', '雾气很重。')])
+    const event = persistedEvent(turn('turn-2', 'turn-1', '推门', '门外有灯。'))
+
+    const next = mergeInteractiveTurnPersistedSnapshot(current, event)
+
+    expect(next.turns.map((item) => item.id)).toEqual(['turn-1', 'turn-2'])
+    expect(next.current_turn?.id).toBe('turn-2')
+    expect(next.state).toEqual({ scene: { location: '门外' } })
+    expect(next.graph?.branches[0].head).toBe('turn-2')
+  })
+
+  it('merges a persisted turn by replacing the same turn without duplicating it', () => {
+    const current = snapshot([
+      turn('turn-1', null, '醒来', '雾气很重。'),
+      turn('turn-2', 'turn-1', '推门', '旧正文。'),
+    ])
+    const event = persistedEvent(turn('turn-2', 'turn-1', '推门', '新正文。'))
+
+    const next = mergeInteractiveTurnPersistedSnapshot(current, event)
+
+    expect(next.turns.map((item) => item.id)).toEqual(['turn-1', 'turn-2'])
+    expect(next.turns[1].narrative).toBe('新正文。')
+  })
+
+  it('merges a regenerated turn by truncating turns after its parent', () => {
+    const current = snapshot([
+      turn('turn-1', null, '醒来', '雾气很重。'),
+      turn('turn-old', 'turn-1', '推门', '旧分支。'),
+      turn('turn-tail', 'turn-old', '继续', '旧后续。'),
+    ])
+    const event = persistedEvent(turn('turn-new', 'turn-1', '重新推门', '新分支。'))
+
+    const next = mergeInteractiveTurnPersistedSnapshot(current, event)
+
+    expect(next.turns.map((item) => item.id)).toEqual(['turn-1', 'turn-new'])
+    expect(next.current_turn?.id).toBe('turn-new')
+  })
+
+  it('applies a persisted turn through the store only for the active story and branch', () => {
+    useInteractiveStore.setState({
+      currentStoryId: 'story-1',
+      currentBranchId: 'main',
+      snapshot: snapshot([turn('turn-1', null, '醒来', '雾气很重。')]),
+      branches: [{ id: 'main', head: 'turn-1', created_at: '', current: true }],
+    })
+
+    const applied = useInteractiveStore.getState().applyTurnPersisted(persistedEvent(turn('turn-2', 'turn-1', '推门', '门外有灯。')))
+
+    expect(applied?.turns.map((item) => item.id)).toEqual(['turn-1', 'turn-2'])
+    expect(useInteractiveStore.getState().snapshot?.current_turn?.id).toBe('turn-2')
+    expect(useInteractiveStore.getState().branches[0].head).toBe('turn-2')
+
+    const ignored = useInteractiveStore.getState().applyTurnPersisted({
+      ...persistedEvent(turn('other-turn', null, '别处', '不应合并。')),
+      branch_id: 'other-branch',
+    })
+    expect(ignored).toBeNull()
+    expect(useInteractiveStore.getState().snapshot?.current_turn?.id).toBe('turn-2')
+  })
 })
+
+function snapshot(turns: TurnEvent[]): Snapshot {
+  const last = turns[turns.length - 1]
+  return {
+    story_id: 'story-1',
+    branch_id: 'main',
+    turns,
+    current_turn: last,
+    state: { scene: { location: '室内' } },
+    graph: {
+      nodes: turns.map((item) => ({
+        id: item.id,
+        parent_id: typeof item.parent_id === 'string' ? item.parent_id : undefined,
+        branch_id: item.branch_id,
+        title: item.user,
+        summary: item.narrative,
+        ts: item.ts,
+        current: true,
+        head: item.id === last?.id,
+      })),
+      branches: [{ id: 'main', head: last?.id || '', created_at: '', current: true }],
+    },
+  }
+}
+
+function persistedEvent(turnEvent: TurnEvent): InteractiveTurnPersistedEvent {
+  return {
+    story_id: 'story-1',
+    branch_id: 'main',
+    turn: turnEvent,
+    state: { scene: { location: '门外' } },
+    graph: {
+      nodes: [{
+        id: turnEvent.id,
+        parent_id: typeof turnEvent.parent_id === 'string' ? turnEvent.parent_id : undefined,
+        branch_id: turnEvent.branch_id,
+        title: turnEvent.user,
+        summary: turnEvent.narrative,
+        ts: turnEvent.ts,
+        current: true,
+        head: true,
+      }],
+      branches: [{ id: 'main', head: turnEvent.id, created_at: '', current: true }],
+    },
+    branches: [{ id: 'main', head: turnEvent.id, created_at: '', current: true }],
+  }
+}
+
+function turn(id: string, parentID: string | null, user: string, narrative: string): TurnEvent {
+  return {
+    id,
+    parent_id: parentID,
+    branch_id: 'main',
+    ts: `2026-06-28T00:00:0${id.length % 10}Z`,
+    user,
+    narrative,
+  }
+}

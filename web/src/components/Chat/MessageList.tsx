@@ -68,8 +68,8 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     [collapseTraceBeforeAssistant, isStreaming, messages, onOpenSubAgentSession, visibleActivityContent],
   )
   const scrollContentKey = useMemo(
-    () => buildMessageListScrollKey(listItems, isStreaming, bottomPaddingPx),
-    [bottomPaddingPx, isStreaming, listItems],
+    () => buildMessageListScrollKey(listItems, bottomPaddingPx),
+    [bottomPaddingPx, listItems],
   )
   const scrollLock = useVirtuosoBottomLock({
     resetKey: scrollResetKey,
@@ -170,6 +170,7 @@ function ChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onEdi
   return (
     <motion.div
       data-nova-chat-item={item.kind}
+      data-nova-chat-row-key={item.key}
       className="min-w-0 px-6 pb-4 last:pb-0"
       variants={listItem}
       initial="initial"
@@ -278,7 +279,7 @@ function buildChatListItems({ messages, isStreaming, visibleActivityContent, col
   return items
 }
 
-function buildMessageListScrollKey(items: ChatListItem[], isStreaming: boolean, bottomPaddingPx?: number) {
+function buildMessageListScrollKey(items: ChatListItem[], bottomPaddingPx?: number) {
   const itemKey = items.map((item) => {
     if (item.kind === 'message') {
       const message = item.message
@@ -287,8 +288,7 @@ function buildMessageListScrollKey(items: ChatListItem[], isStreaming: boolean, 
         message.type || '',
         message.role || '',
         message.status || '',
-        message.streaming ? 'streaming' : '',
-        (message.content || '').length,
+        (message.streaming_target_content || message.content || '').length,
         (message.args || '').length,
         (message.result || '').length,
         message.illustration?.image_path || '',
@@ -298,20 +298,19 @@ function buildMessageListScrollKey(items: ChatListItem[], isStreaming: boolean, 
       ].join(':')
     }
     if (item.kind === 'trace') {
-      return `${item.key}:${item.messages.length}:${item.messages.map((message) => `${message.id || ''}:${message.status || ''}:${(message.content || '').length}:${(message.result || '').length}`).join(',')}`
+      return `${item.key}:${item.messages.length}:${item.messages.map((message) => `${message.id || ''}:${message.status || ''}:${(message.streaming_target_content || message.content || '').length}:${(message.result || '').length}`).join(',')}`
     }
     if (item.kind === 'activity') return `${item.key}:${item.content.length}`
     return item.key
   }).join('|')
   return [
-    isStreaming ? 'streaming' : 'idle',
     typeof bottomPaddingPx === 'number' ? Math.round(bottomPaddingPx) : '',
     itemKey,
   ].join('|')
 }
 
 function messageItemKey(message: ChatMessage, index: number) {
-  return `${message.type === 'clear' ? 'clear' : 'message'}-${message.id || message.created_at || index}`
+  return `${message.type === 'clear' ? 'clear' : 'message'}-${message.render_key || message.id || message.created_at || index}`
 }
 
 function isTraceMessage(message: ChatMessage) {

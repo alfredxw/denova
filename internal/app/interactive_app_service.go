@@ -25,6 +25,20 @@ const (
 
 var generateInteractiveStateForStoryMemory = agent.GenerateInteractiveState
 
+// InteractiveTurnPersistedEvent is emitted after a game-mode turn is durably
+// appended, allowing the UI to merge the new turn without a blocking snapshot
+// reload.
+type InteractiveTurnPersistedEvent struct {
+	StoryID                  string                                     `json:"story_id"`
+	BranchID                 string                                     `json:"branch_id"`
+	Turn                     interactive.TurnEvent                      `json:"turn"`
+	State                    map[string]any                             `json:"state"`
+	Graph                    interactive.StoryGraph                     `json:"graph"`
+	Branches                 []interactive.BranchSummary                `json:"branches"`
+	ContextCompaction        *interactive.ContextCompactionEvent        `json:"context_compaction,omitempty"`
+	ContextCompactionRemoval *interactive.ContextCompactionRemovalEvent `json:"context_compaction_removal,omitempty"`
+}
+
 func (a *App) InteractiveStories() (interactive.Index, error) {
 	return a.interactiveService().InteractiveStories()
 }
@@ -676,6 +690,14 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleScenes))
+		persistedEmitted := false
+		interactiveEmit := func(event agent.Event) {
+			if event.Type == "done" && !persistedEmitted && ctx.Err() == nil {
+				persistedEmitted = true
+				emitInteractiveTurnPersisted(store, storyID, conversation, emit)
+			}
+			emit(event)
+		}
 		chatService.RunWithOptions(ctx, runner, conversation, bookService, req, agent.RunOptions{
 			AgentKind:           agent.AgentKindInteractiveStory,
 			TaskID:              task.ID(),
@@ -685,7 +707,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 			ToolResultMaxBytes:  agentToolResultMaxBytes(runtimeCfg),
 			SystemPromptLog:     agent.BuildInteractiveStoryInstructionComposition(&runtimeCfg, state, tellerSystemInput),
 			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
-		}, emit)
+		}, interactiveEmit)
 		if turn, stateReady, ok := conversation.LastTurnForState(); ok && !stateReady && ctx.Err() == nil {
 			shouldGenerate, nextAuto, err := store.ShouldGenerateStoryMemory(storyID, turn.BranchID)
 			if err != nil {
@@ -708,6 +730,40 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	a.mu.Unlock()
 
 	return task
+}
+
+func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conversation *interactiveConversation, emit func(agent.Event)) {
+	if store == nil || conversation == nil || emit == nil {
+		return
+	}
+	turn, _, ok := conversation.LastTurnForState()
+	if !ok || strings.TrimSpace(turn.ID) == "" {
+		return
+	}
+	snapshot, err := store.Snapshot(storyID, turn.BranchID)
+	if err != nil {
+		log.Printf("[interactive-agent-task] load persisted turn snapshot failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
+		return
+	}
+	persistedTurn := turn
+	for _, snapshotTurn := range snapshot.Turns {
+		if snapshotTurn.ID == turn.ID {
+			persistedTurn = snapshotTurn
+			break
+		}
+	}
+	event := InteractiveTurnPersistedEvent{
+		StoryID:                  storyID,
+		BranchID:                 snapshot.BranchID,
+		Turn:                     persistedTurn,
+		State:                    snapshot.State,
+		Graph:                    snapshot.Graph,
+		Branches:                 snapshot.Graph.Branches,
+		ContextCompaction:        snapshot.ContextCompaction,
+		ContextCompactionRemoval: snapshot.ContextCompactionRemoval,
+	}
+	emit(agent.Event{Type: "interactive_turn_persisted", Data: event})
+	log.Printf("[interactive-agent-task] emitted persisted turn story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, persistedTurn.ID)
 }
 
 func (a *App) InteractiveTellers() ([]interactive.Teller, error) {

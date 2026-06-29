@@ -1,0 +1,80 @@
+package app
+
+import (
+	"testing"
+
+	"nova/internal/agent"
+	"nova/internal/interactive"
+)
+
+func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:         "收尾事件",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
+	if err := conversation.AppendAssistantWithThinking(`<NARRATIVE>
+雾气在门外散开。
+</NARRATIVE>
+<STATE_DELTA>
+{"ops":[{"op":"merge","path":"scene","value":{"location":"旧门外"}}]}
+</STATE_DELTA>`, "先确认场景。"); err != nil {
+		t.Fatal(err)
+	}
+
+	var events []agent.Event
+	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agent.Event) {
+		events = append(events, event)
+	})
+
+	if len(events) != 1 {
+		t.Fatalf("event count = %d, want 1", len(events))
+	}
+	if events[0].Type != "interactive_turn_persisted" {
+		t.Fatalf("event type = %q, want interactive_turn_persisted", events[0].Type)
+	}
+	payload, ok := events[0].Data.(InteractiveTurnPersistedEvent)
+	if !ok {
+		t.Fatalf("event payload type = %T, want InteractiveTurnPersistedEvent", events[0].Data)
+	}
+	if payload.StoryID != story.ID || payload.BranchID != "main" {
+		t.Fatalf("payload story/branch mismatch: %#v", payload)
+	}
+	if payload.Turn.User != "继续前进" || payload.Turn.Narrative != "雾气在门外散开。" || payload.Turn.Thinking != "先确认场景。" {
+		t.Fatalf("payload turn mismatch: %#v", payload.Turn)
+	}
+	scene := payload.State["scene"].(map[string]any)
+	if scene["location"] != "旧门外" {
+		t.Fatalf("payload state should come from current snapshot: %#v", payload.State)
+	}
+	if len(payload.Branches) != 1 || payload.Branches[0].ID != "main" || payload.Branches[0].Head != payload.Turn.ID {
+		t.Fatalf("payload branches should come from current graph: %#v", payload.Branches)
+	}
+}
+
+func TestEmitInteractiveTurnPersistedSkipsWhenNoTurnWasPersisted(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:         "无回合",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
+
+	var events []agent.Event
+	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agent.Event) {
+		events = append(events, event)
+	})
+
+	if len(events) != 0 {
+		t.Fatalf("event count = %d, want 0", len(events))
+	}
+}

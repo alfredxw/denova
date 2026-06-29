@@ -3,6 +3,8 @@ export interface ChatMessage {
   role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'context_compaction' | 'token_usage' | 'system' | 'error'
   content?: string
   id?: string
+  render_key?: string
+  streaming_target_content?: string
   turn_id?: string
   name?: string
   args?: string

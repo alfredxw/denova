@@ -202,8 +202,34 @@ export interface Snapshot {
   turns: TurnEvent[]
   current_turn?: TurnEvent
   token_usage_events?: TokenUsageEvent[]
+  context_compaction?: ContextCompactionEvent | null
+  context_compaction_removal?: ContextCompactionRemovalEvent | null
   state: Record<string, unknown>
   graph?: StoryGraph
+}
+
+export interface ContextCompactionEvent {
+  id?: string
+  agent_kind?: string
+  epoch: number
+  summary: string
+  source_turn_count?: number
+  retained_turns?: number
+  tokens_before?: number
+  tokens_after?: number
+  target_ratio?: number
+  context_window_tokens?: number
+  threshold?: number
+  reason?: string
+  phase?: string
+}
+
+export interface ContextCompactionRemovalEvent {
+  id?: string
+  agent_kind?: string
+  compaction_id?: string
+  source_turn_count?: number
+  reason?: string
 }
 
 export interface InteractiveMemoryEntry {
@@ -322,6 +348,17 @@ export interface PlotNode {
 export interface StoryGraph {
   nodes: PlotNode[]
   branches: BranchSummary[]
+}
+
+export interface InteractiveTurnPersistedEvent {
+  story_id: string
+  branch_id: string
+  turn: TurnEvent
+  state?: Record<string, unknown>
+  graph?: StoryGraph
+  branches?: BranchSummary[]
+  context_compaction?: ContextCompactionEvent | null
+  context_compaction_removal?: ContextCompactionRemovalEvent | null
 }
 
 export type InteractiveSSEEvent = SSEEvent

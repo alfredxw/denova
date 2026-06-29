@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 对话渲染：游戏模式改为用后端落盘增量事件原地合并新回合，并把完整快照刷新降级为静默校准；同时移除通用对话和游戏剧情页在 `done` 事件上的临时“完成 / Done”活动行，并把流式正文改为 `streaming_target_content` 隐藏占位、下一帧再提升为可见 `content` 的两阶段提交，避免输出完成或换行瞬间因消息列表高度变化、live 消息切换到持久化快照而抖动或重新入场。本次为内部渲染行为优化，无用户数据迁移。
 - WebUI：桌面布局根与运行时错误边界由 `h-screen` 改为 `h-dvh`，与移动 shell 一致，避免 iOS Safari 地址栏导致的底部跳动。
 - WebUI：远程访问登录框用户名/密码输入框使用 16px 字号，避免 iOS Safari 聚焦时自动缩放页面（该登录浮层渲染在 app shell 之外，原先不享受 16px 字号覆盖规则）。
 - WebUI：章节版本对比的紧凑模式改用项目统一的 `useIsMobile()` 断点（767px），与移动 shell 及版本对比弹窗的 `max-md` 行为一致，消除 760–767px 区间的断点错位。

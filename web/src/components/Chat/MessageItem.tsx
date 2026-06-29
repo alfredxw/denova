@@ -73,7 +73,10 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       }
       // 流式期间正文可能尚未到达，或全是被隐藏的思考内容（清洗后为空）：
       // 此时显示"正在思考"占位，避免出现一个空白气泡、像卡死无响应。
-      const visibleContent = sanitizeThinkTags(content).trim()
+      const streamingTargetContent = message.streaming === true && message.streaming_target_content && message.streaming_target_content !== content
+        ? message.streaming_target_content
+        : undefined
+      const visibleContent = sanitizeThinkTags(streamingTargetContent || content).trim()
       return (
         <div className="group flex justify-start">
           <div className="w-full">
@@ -82,7 +85,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                 {message.streaming && !visibleContent ? (
                   <StreamingPlaceholder />
                 ) : message.streaming ? (
-                  <StreamingMarkdown content={content} highlightDialogue={highlightDialogue} />
+                  <StreamingMarkdown content={content} targetContent={streamingTargetContent} highlightDialogue={highlightDialogue} />
                 ) : (
                   <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
                 )}
@@ -325,6 +328,7 @@ function SubAgentOutputWindow({
   const detailMode = Boolean(onOpen)
   const actionLabel = detailMode ? t('chat.subagent.openSession') : (expanded ? t('chat.subagent.collapse') : t('chat.subagent.expand'))
   const shownContent = detailMode || !expanded ? preview : content
+  const shownTargetContent = message.streaming_target_content && shownContent === content ? message.streaming_target_content : undefined
   const contentScrollLock = useBottomScrollLock<HTMLDivElement>({
     enabled: message.streaming === true,
     resetKey: `${message.id || message.created_at || name}:subagent-output`,
@@ -369,7 +373,7 @@ function SubAgentOutputWindow({
           {hasContent ? (
             <div className="chat-agent-message text-sm text-[var(--nova-text)]" style={messageStyle}>
               {message.streaming ? (
-                <StreamingMarkdown content={shownContent} highlightDialogue={highlightDialogue} />
+                <StreamingMarkdown content={shownContent} targetContent={shownTargetContent} highlightDialogue={highlightDialogue} />
               ) : (
                 <MarkdownContent content={shownContent} highlightDialogue={highlightDialogue} />
               )}
@@ -1122,9 +1126,22 @@ function StreamingPlaceholder() {
   )
 }
 
-/** 流式和持久化消息共用同一 Markdown 渲染器，避免刷新后段落、列表和行距重新排版。 */
-function StreamingMarkdown({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {
-  return <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
+/** 流式 Markdown 由上层先提交 target 高度，随后再把 target 提升为可见 content。 */
+function StreamingMarkdown({ content, targetContent, highlightDialogue }: { content: string; targetContent?: string; highlightDialogue: boolean }) {
+  if (!targetContent || targetContent === content) {
+    return <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
+  }
+
+  return (
+    <div className="nova-streaming-markdown-stage">
+      <div className="nova-streaming-markdown-reserve" aria-hidden="true">
+        <MarkdownContent content={targetContent} highlightDialogue={highlightDialogue} />
+      </div>
+      <div className="nova-streaming-markdown-overlay">
+        <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
+      </div>
+    </div>
+  )
 }
 
 function sanitizeThinkTags(text: string): string {
