@@ -31,6 +31,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 移动端（互动模式）：剧情分支时间线（BranchTimeline）工作台视图在手机上新增「回到当前节点」按钮（桌面端用缩略导航 MiniMap 定位，移动端 MiniMap 隐藏，故补充此按钮以便手动平移后重新定位到当前剧情线）；分支切换 pills 触摸区在移动端加大。该视图的图本身已可触摸拖拽平移、切换分支自动居中、选中节点后可创建分支，本次补齐移动端导航缺口。
 - 移动端：修复创作 Agent / 互动故事输入框在预填长 prompt（如「和创作 Agent 聊灵感」自动注入的启动 prompt）时 textarea 无限增高、composer 撑满大半屏挤压对话区的问题；移动端将 composer textarea 的最大行数限制为 5（桌面仍为 10），长内容在框内滚动而非顶高整个输入区。
 
+### Changed
+
+- 移动端：Agent 面板从右侧抽屉改为**底部常驻面板**（与编辑器竖向分割），恢复桌面端「编辑器 + Agent 同屏可见」的核心操作逻辑。使用 `react-resizable-panels` 做竖向分割，可拖拽分隔条调节编辑器/Agent 比例。Agent 不再需要点导航打开；快捷创作按钮始终可达。桌面端不受影响。
+
 ## [v0.1.16] - 2026-06-27
 
 ### Added
