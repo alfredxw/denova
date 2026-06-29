@@ -115,6 +115,27 @@ func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
 	}
 }
 
+func TestAppUpdateWorkspaceSettingsFiltersLLMInputLogSetting(t *testing.T) {
+	ws := t.TempDir()
+	novaDir := t.TempDir()
+
+	a := &App{
+		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
+		workspace: ws,
+	}
+	enabled := true
+	if _, err := a.UpdateWorkspaceSettings(config.Settings{LLMInputLogEnabled: &enabled}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := config.ReadSettingsFile(filepath.Join(ws, ".nova", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.LLMInputLogEnabled != nil {
+		t.Fatalf("workspace llm input log setting should not be persisted: %#v", out.LLMInputLogEnabled)
+	}
+}
+
 func TestAppUpdateWorkspaceSettingsRejectsStaleRevision(t *testing.T) {
 	ws := t.TempDir()
 	novaDir := t.TempDir()

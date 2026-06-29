@@ -70,7 +70,12 @@ type HotChoicesMode = 'auto' | 'manual'
 
 interface HotChoicesRequestOptions {
   append?: boolean
-  expandOnResult?: boolean
+}
+
+type BufferedLiveMessage = {
+  role: 'assistant' | 'thinking'
+  content: string
+  metadata: Partial<ChatMessage>
 }
 
 export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
@@ -126,6 +131,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const pendingAutoHotChoicesKeyRef = useRef('')
   const currentCompactionMessageIdRef = useRef<string | null>(null)
   const compactionIdCounterRef = useRef(0)
+  const liveMessageBufferRef = useRef<BufferedLiveMessage[]>([])
+  const liveMessageRafRef = useRef<number | null>(null)
+  const nonNarrativeLiveMessageStreamingRef = useRef(false)
   const liveStageKeyRef = useRef(stageKey)
   const previousSnapshotKeyRef = useRef(snapshotKey)
   const stagePreferences = useStagePreferences()
@@ -236,6 +244,16 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       clearStoryStageRun(stageKey)
     }
   }, [clearStoryStageRun, liveMessages.length, setStageActivityContent, snapshotKey, stageKey, streaming])
+
+  useEffect(() => {
+    return () => {
+      if (liveMessageRafRef.current !== null) {
+        window.cancelAnimationFrame(liveMessageRafRef.current)
+        liveMessageRafRef.current = null
+      }
+      liveMessageBufferRef.current = []
+    }
+  }, [])
 
   useEffect(() => {
     if (activeSkillCommandIndex >= filteredSkillCommands.length) setActiveSkillCommandIndex(0)
@@ -419,7 +437,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const requestHotChoices = useCallback(
     async (options: boolean | HotChoicesRequestOptions = false) => {
       const append = typeof options === 'boolean' ? options : options.append === true
-      const expandOnResult = typeof options === 'object' && options.expandOnResult === true
       if (!stagePreferences.hotChoicesEnabled || streaming || editingTurn || !storyId || hotChoicesLoading) return false
       const abortController = new AbortController()
       hotChoicesAbortRef.current?.abort()
@@ -434,7 +451,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         if (abortController.signal.aborted) return false
         const nextChoices = result.enabled ? result.choices || [] : []
         setGeneratedHotChoices((current) => (append ? mergeHotChoices(current, nextChoices) : nextChoices))
-        if (expandOnResult && nextChoices.length > 0) setHotChoicesExpanded(true)
         return nextChoices.length > 0
       } catch (error) {
         if (!isAbortError(error)) {
@@ -478,7 +494,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     if (streaming || hotChoicesMode !== 'auto') return
     if (pendingAutoHotChoicesKeyRef.current !== snapshotKey) return
     pendingAutoHotChoicesKeyRef.current = ''
-    void requestHotChoices({ expandOnResult: true })
+    void requestHotChoices()
   }, [hotChoicesMode, requestHotChoices, snapshotKey, streaming])
 
   const send = async (override?: { message?: string; rewindTurnId?: string }) => {
@@ -499,6 +515,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setShowSkillCommands(false)
     setActiveSkillCommandIndex(0)
     setStageActivityContent(t('storyStage.activity.connecting'))
+    flushLiveMessageBuffer()
+    nonNarrativeLiveMessageStreamingRef.current = false
     setStageLiveMessages([{ role: 'user', content: message }])
     currentCompactionMessageIdRef.current = null
     updateStageRun({ rewindTurnId: nextRewindTurnId || undefined })
@@ -547,6 +565,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           }
           case 'tool_call': {
             const data = JSON.parse(value.data)
+            flushLiveMessageBuffer()
             appendToolCallMessage(data)
             setStageActivityContent(
               t('storyStage.activity.processingTool', {
@@ -557,17 +576,20 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           }
           case 'tool_args_delta': {
             const data = JSON.parse(value.data)
+            flushLiveMessageBuffer()
             appendToolArgsDelta(data)
             break
           }
           case 'tool_result': {
             const data = JSON.parse(value.data)
+            flushLiveMessageBuffer()
             updateToolCallMessage(data.id, data.name, 'success', data.content || '')
             setStageActivityContent('')
             break
           }
           case 'context_compaction': {
             const data = JSON.parse(value.data)
+            flushLiveMessageBuffer()
             appendContextCompactionMessage(data)
             setStageActivityContent('')
             if (data.status === 'completed' || data.status === 'failed') {
@@ -577,11 +599,13 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           }
           case 'token_usage': {
             const data = JSON.parse(value.data)
+            flushLiveMessageBuffer()
             setStageLiveMessages((prev) => upsertTokenUsageMessage(prev, buildTokenUsageMessage(data)))
             break
           }
           case 'error': {
             const data = JSON.parse(value.data)
+            flushLiveMessageBuffer()
             setStageActivityContent('')
             setStageLiveMessages((prev) => [
               ...prev,
@@ -622,6 +646,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       }
     } catch (error) {
       if (!isAbortError(error)) {
+        flushLiveMessageBuffer()
         setStageActivityContent('')
         setStageLiveMessages((prev) => [
           ...prev,
@@ -1056,12 +1081,12 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                   ) : hotChoices.length === 0 ? (
                     <div className="px-1 py-1 text-xs text-[var(--nova-text-faint)]">{t('storyStage.hotChoices.emptyLong')}</div>
                   ) : (
-                    <div className="flex max-h-48 flex-col gap-1.5 overflow-y-auto overscroll-contain pr-1">
+                    <div data-testid="story-stage-hot-choices-list" className="flex max-h-48 flex-wrap content-start gap-1.5 overflow-y-auto overscroll-contain pr-1">
                       {hotChoices.map((choice, index) => (
                         <button
                           key={`${index}-${choice}`}
                           type="button"
-                          className="w-full max-w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 text-left text-xs leading-5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                          className="min-w-0 max-w-full flex-none rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-1.5 text-left text-xs leading-5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => {
                             setInput(choice)
@@ -1074,7 +1099,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                             })
                           }}
                         >
-                          {choice}
+                          <span className="block max-w-full break-words">{choice}</span>
                         </button>
                       ))}
                     </div>
@@ -1304,17 +1329,12 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   function appendAssistantMessage(content: string, metadata: Partial<ChatMessage> = {}) {
     if (!content) return
-    setStageLiveMessages((prev) => {
-      const last = prev[prev.length - 1]
-      if (last?.role === 'assistant' && last.streaming && sameLiveMessageSource(last, metadata)) {
-        return [...prev.slice(0, -1), { ...last, content: `${last.content || ''}${content}` }]
-      }
-      return [...prev, { role: 'assistant', content, streaming: true, ...metadata }]
-    })
+    queueLiveMessage({ role: 'assistant', content, metadata })
   }
 
   // 思考前言被误当正文显示时（孤立 </think>），丢弃这条流式 assistant 消息，正文随后另起。
   function resetAssistantMessage() {
+    flushLiveMessageBuffer()
     setStageLiveMessages((prev) => {
       const last = prev[prev.length - 1]
       if (last?.role === 'assistant' && last.streaming) {
@@ -1326,26 +1346,35 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   function appendThinkingMessage(content: string, metadata: Partial<ChatMessage> = {}) {
     if (!content) return
-    setStageLiveMessages((prev) => {
-      const last = prev[prev.length - 1]
-      if (last?.role === 'thinking' && sameLiveMessageSource(last, metadata)) {
-        return [
-          ...prev.slice(0, -1),
-          {
-            ...last,
-            content: `${last.content || ''}${content}`,
-            streaming: true,
-          },
-        ]
-      }
-      return [...prev, { role: 'thinking', content, streaming: true, ...metadata }]
+    nonNarrativeLiveMessageStreamingRef.current = true
+    queueLiveMessage({ role: 'thinking', content, metadata })
+  }
+
+  function queueLiveMessage(message: BufferedLiveMessage) {
+    liveMessageBufferRef.current.push(message)
+    if (liveMessageRafRef.current !== null) return
+    liveMessageRafRef.current = window.requestAnimationFrame(() => {
+      liveMessageRafRef.current = null
+      flushLiveMessageBuffer()
     })
+  }
+
+  function flushLiveMessageBuffer() {
+    if (liveMessageRafRef.current !== null) {
+      window.cancelAnimationFrame(liveMessageRafRef.current)
+      liveMessageRafRef.current = null
+    }
+    const buffered = liveMessageBufferRef.current
+    if (buffered.length === 0) return
+    liveMessageBufferRef.current = []
+    setStageLiveMessages((prev) => buffered.reduce(appendBufferedLiveMessage, prev))
   }
 
   function appendToolCallMessage(payload: Record<string, unknown> & { id?: string; name?: string; args?: string }) {
     const id = payload.id || `tool-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const name = payload.name || 'unknown_tool'
     const metadata = streamMetadataFromPayload(payload)
+    nonNarrativeLiveMessageStreamingRef.current = true
     setStageLiveMessages((prev) => [
       ...prev,
       {
@@ -1417,10 +1446,14 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   function appendContextCompactionMessage(data: Record<string, unknown>) {
     const compactionId = currentCompactionMessageIdRef.current || createContextCompactionMessageId(compactionIdCounterRef)
     currentCompactionMessageIdRef.current = compactionId
+    nonNarrativeLiveMessageStreamingRef.current = true
     setStageLiveMessages((prev) => upsertContextCompactionMessage(prev, buildContextCompactionMessage(data, compactionId)))
   }
 
   function collapseNonNarrativeMessages() {
+    if (!nonNarrativeLiveMessageStreamingRef.current) return
+    flushLiveMessageBuffer()
+    nonNarrativeLiveMessageStreamingRef.current = false
     setStageLiveMessages((prev) =>
       prev.map((msg) =>
         msg.role === 'thinking' || msg.role === 'tool_call' || msg.role === 'context_compaction'
@@ -1435,6 +1468,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   }
 
   function finishLiveMessages() {
+    flushLiveMessageBuffer()
+    nonNarrativeLiveMessageStreamingRef.current = false
     setStageLiveMessages((prev) =>
       prev.map((msg) =>
         msg.role === 'assistant' || msg.role === 'thinking' || msg.role === 'tool_call' || msg.role === 'context_compaction'
@@ -1447,6 +1482,25 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       ),
     )
   }
+}
+
+function appendBufferedLiveMessage(messages: ChatMessage[], { role, content, metadata }: BufferedLiveMessage) {
+  if (!content) return messages
+  const last = messages[messages.length - 1]
+  if (role === 'assistant' && last?.role === 'assistant' && last.streaming && sameLiveMessageSource(last, metadata)) {
+    return [...messages.slice(0, -1), { ...last, content: `${last.content || ''}${content}` }]
+  }
+  if (role === 'thinking' && last?.role === 'thinking' && sameLiveMessageSource(last, metadata)) {
+    return [
+      ...messages.slice(0, -1),
+      {
+        ...last,
+        content: `${last.content || ''}${content}`,
+        streaming: true,
+      },
+    ]
+  }
+  return [...messages, { role, content, streaming: true, ...metadata }]
 }
 
 function streamMetadataFromPayload(payload: Record<string, unknown>): Partial<ChatMessage> {

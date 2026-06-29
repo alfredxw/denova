@@ -23,6 +23,7 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 	modelInputLogEnabled.Store(true)
 	modelInputLogPending = map[modelInputLogPendingKey][]string{}
 	t.Cleanup(func() {
+		modelInputLogWG.Wait()
 		modelInputLogPath = oldPath
 		modelInputLogSeq.Store(oldSeq)
 		modelInputLogEnabled.Store(oldEnabled)
@@ -53,6 +54,7 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 			},
 		},
 	})
+	modelInputLogWG.Wait()
 
 	payload, err := os.ReadFile(modelInputLogPath)
 	if err != nil {
@@ -93,6 +95,7 @@ func TestLogModelProviderRequestIDUpdatesModelInputRecord(t *testing.T) {
 	modelInputLogEnabled.Store(true)
 	modelInputLogPending = map[modelInputLogPendingKey][]string{}
 	t.Cleanup(func() {
+		modelInputLogWG.Wait()
 		modelInputLogPath = oldPath
 		modelInputLogSeq.Store(oldSeq)
 		modelInputLogEnabled.Store(oldEnabled)
@@ -120,17 +123,22 @@ func TestLogModelProviderRequestIDUpdatesModelInputRecord(t *testing.T) {
 	if got != "req-provider-123" {
 		t.Fatalf("provider request id = %q, want req-provider-123", got)
 	}
+	modelInputLogWG.Wait()
 
-	var record modelInputLogRecord
 	payload, err := os.ReadFile(modelInputLogPath)
 	if err != nil {
 		t.Fatalf("read model input log: %v", err)
 	}
-	if err := json.Unmarshal(payload, &record); err != nil {
-		t.Fatalf("unmarshal model input log: %v", err)
+	lines := bytes.Split(bytes.TrimSpace(payload), []byte{'\n'})
+	if len(lines) != 2 {
+		t.Fatalf("line count = %d, want 2\n%s", len(lines), string(payload))
 	}
-	if record.ProviderID != "req-provider-123" {
-		t.Fatalf("provider request id was not persisted: %#v", record)
+	var provider modelInputLogProviderRequestIDRecord
+	if err := json.Unmarshal(lines[1], &provider); err != nil {
+		t.Fatalf("unmarshal provider request id log: %v", err)
+	}
+	if provider.Type != "llm_provider_request_id" || provider.CallID != callID || provider.ProviderID != "req-provider-123" {
+		t.Fatalf("provider request id event was not persisted: %#v", provider)
 	}
 }
 
@@ -144,6 +152,7 @@ func TestLogModelProviderRequestIDUsesPendingModelInputRecord(t *testing.T) {
 	modelInputLogEnabled.Store(true)
 	modelInputLogPending = map[modelInputLogPendingKey][]string{}
 	t.Cleanup(func() {
+		modelInputLogWG.Wait()
 		modelInputLogPath = oldPath
 		modelInputLogSeq.Store(oldSeq)
 		modelInputLogEnabled.Store(oldEnabled)
@@ -165,17 +174,26 @@ func TestLogModelProviderRequestIDUsesPendingModelInputRecord(t *testing.T) {
 	msg.Extra = map[string]any{"openai-request-id": "req-adk-456"}
 
 	logModelProviderRequestID("main_agent", "adk", "response", "", "run-1", 1, msg)
+	modelInputLogWG.Wait()
 
-	var record modelInputLogRecord
 	payload, err := os.ReadFile(modelInputLogPath)
 	if err != nil {
 		t.Fatalf("read model input log: %v", err)
 	}
-	if err := json.Unmarshal(payload, &record); err != nil {
+	lines := bytes.Split(bytes.TrimSpace(payload), []byte{'\n'})
+	if len(lines) != 2 {
+		t.Fatalf("line count = %d, want 2\n%s", len(lines), string(payload))
+	}
+	var input modelInputLogRecord
+	if err := json.Unmarshal(lines[0], &input); err != nil {
 		t.Fatalf("unmarshal model input log: %v", err)
 	}
-	if record.ProviderID != "req-adk-456" {
-		t.Fatalf("provider request id was not persisted from pending call: %#v", record)
+	var provider modelInputLogProviderRequestIDRecord
+	if err := json.Unmarshal(lines[1], &provider); err != nil {
+		t.Fatalf("unmarshal provider request id log: %v", err)
+	}
+	if provider.Type != "llm_provider_request_id" || provider.CallID != input.CallID || provider.ProviderID != "req-adk-456" {
+		t.Fatalf("provider request id was not persisted from pending call: input=%#v provider=%#v", input, provider)
 	}
 }
 
@@ -189,6 +207,7 @@ func TestLogModelProviderRequestIDWithoutIDConsumesPendingModelInputRecord(t *te
 	modelInputLogEnabled.Store(true)
 	modelInputLogPending = map[modelInputLogPendingKey][]string{}
 	t.Cleanup(func() {
+		modelInputLogWG.Wait()
 		modelInputLogPath = oldPath
 		modelInputLogSeq.Store(oldSeq)
 		modelInputLogEnabled.Store(oldEnabled)
@@ -222,14 +241,15 @@ func TestLogModelProviderRequestIDWithoutIDConsumesPendingModelInputRecord(t *te
 	msg := schema.AssistantMessage("second response", nil)
 	msg.Extra = map[string]any{"openai-request-id": "req-second"}
 	logModelProviderRequestID("main_agent", "adk", "response", "", "run-1", 2, msg)
+	modelInputLogWG.Wait()
 
 	payload, err := os.ReadFile(modelInputLogPath)
 	if err != nil {
 		t.Fatalf("read model input log: %v", err)
 	}
 	lines := bytes.Split(bytes.TrimSpace(payload), []byte{'\n'})
-	if len(lines) != 2 {
-		t.Fatalf("line count = %d, want 2", len(lines))
+	if len(lines) != 3 {
+		t.Fatalf("line count = %d, want 3\n%s", len(lines), string(payload))
 	}
 	var first modelInputLogRecord
 	if err := json.Unmarshal(lines[0], &first); err != nil {
@@ -239,11 +259,12 @@ func TestLogModelProviderRequestIDWithoutIDConsumesPendingModelInputRecord(t *te
 	if err := json.Unmarshal(lines[1], &second); err != nil {
 		t.Fatalf("unmarshal second model input log: %v", err)
 	}
-	if first.ProviderID != "" {
-		t.Fatalf("first provider request id = %q, want empty", first.ProviderID)
+	var provider modelInputLogProviderRequestIDRecord
+	if err := json.Unmarshal(lines[2], &provider); err != nil {
+		t.Fatalf("unmarshal provider request id log: %v", err)
 	}
-	if second.ProviderID != "req-second" {
-		t.Fatalf("second provider request id = %q, want req-second", second.ProviderID)
+	if provider.CallID != second.CallID || provider.ProviderID != "req-second" {
+		t.Fatalf("provider request id event = %#v, want second call id %q", provider, second.CallID)
 	}
 }
 
@@ -257,6 +278,7 @@ func TestLogFullModelInputSkipsWhenDisabled(t *testing.T) {
 	modelInputLogEnabled.Store(false)
 	modelInputLogPending = map[modelInputLogPendingKey][]string{}
 	t.Cleanup(func() {
+		modelInputLogWG.Wait()
 		modelInputLogPath = oldPath
 		modelInputLogSeq.Store(oldSeq)
 		modelInputLogEnabled.Store(oldEnabled)

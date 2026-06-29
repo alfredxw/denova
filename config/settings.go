@@ -77,6 +77,7 @@ type Settings struct {
 	ModelMaxRetries         *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
 	AgentIdleTimeoutSeconds *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
 	AgentToolResultLimitKB  *int   `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
+	LLMInputLogEnabled      *bool  `toml:"llm_input_log_enabled,omitempty" json:"llm_input_log_enabled,omitempty"`
 	PlanModeDefault         *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
 	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
 	IDEImagePresetID        string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
@@ -135,6 +136,7 @@ func DefaultSettings() Settings {
 		ModelMaxRetries:             intPtr(5),
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
+		LLMInputLogEnabled:          boolPtr(false),
 		AgentModels: AgentModelSettings{
 			IDE:                   AgentModelOverride{EnableThinking: boolPtr(true)},
 			ConfigManager:         AgentModelOverride{EnableThinking: boolPtr(true)},
@@ -288,6 +290,9 @@ func Merge(parent, child Settings) Settings {
 	if child.AgentToolResultLimitKB != nil {
 		out.AgentToolResultLimitKB = child.AgentToolResultLimitKB
 	}
+	if child.LLMInputLogEnabled != nil {
+		out.LLMInputLogEnabled = child.LLMInputLogEnabled
+	}
 	if child.PlanModeDefault != nil {
 		out.PlanModeDefault = child.PlanModeDefault
 	}
@@ -361,7 +366,8 @@ type SettingsAccess struct {
 // SettingsRuntime exposes process-level platform details used by runtime-only
 // capability gates. These fields are not persisted to config files.
 type SettingsRuntime struct {
-	GOOS string `json:"goos"`
+	GOOS    string `json:"goos"`
+	DevMode bool   `json:"dev_mode"`
 }
 
 // ReadSettingsFile 读取 TOML，文件不存在时返回零值且无错误。
@@ -464,6 +470,7 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		ws.RemoteAccessPasswordHash = ""
 		ws.RemoteAccessPassword = ""
 		ws.RemoteAccessPasswordSet = false
+		ws.LLMInputLogEnabled = nil
 	}
 	def := DefaultSettings()
 	def.NovaDir = novaDir

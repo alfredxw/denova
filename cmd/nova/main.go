@@ -42,7 +42,8 @@ func main() {
 	flag.BoolVar(&noOpen, "no-open", false, "启动服务后不自动打开浏览器")
 	flag.Parse()
 
-	agent.SetModelInputLoggingEnabled(dev || devMode)
+	cfg.DevMode = dev || devMode
+	agent.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
 
 	logPath, closeLog := setupLogging("./log")
 	defer closeLog()

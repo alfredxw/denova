@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
@@ -40,7 +40,7 @@ beforeEach(() => {
 })
 
 describe('StoryStage hot choices mode', () => {
-  it('defaults to auto and generates choices after a completed story turn', async () => {
+  it('defaults to auto and keeps generated choices hidden until the user opens them', async () => {
     const user = userEvent.setup()
     sendInteractiveMessageMock.mockResolvedValue(interactiveStream([
       { event: 'chunk', data: JSON.stringify({ content: '故事继续。' }) },
@@ -62,7 +62,36 @@ describe('StoryStage hot choices mode', () => {
         exclude_choices: [],
       }))
     })
+    expect(screen.queryByText('查看门后')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '获取行动选择' }))
+
     expect(await screen.findByText('查看门后')).toBeInTheDocument()
+    expect(screen.getByTestId('story-stage-hot-choices-list')).toHaveClass('flex-wrap')
+  })
+
+  it('opens the choices panel with a loading state while background generation is pending', async () => {
+    const user = userEvent.setup()
+    const pendingChoices = deferred<{ enabled: boolean; choices: string[] }>()
+    sendInteractiveMessageMock.mockResolvedValue(interactiveStream([
+      { event: 'chunk', data: JSON.stringify({ content: '故事继续。' }) },
+      { event: 'done', data: '{}' },
+    ]))
+    generateInteractiveHotChoicesMock.mockReturnValue(pendingChoices.promise)
+
+    render(<StoryStageHarness />)
+
+    await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => expect(generateInteractiveHotChoicesMock).toHaveBeenCalled())
+    await user.click(screen.getByRole('button', { name: '获取行动选择' }))
+
+    expect(screen.getByText('正在生成可选择行动…')).toBeInTheDocument()
+
+    pendingChoices.resolve({ enabled: true, choices: ['贴近门缝听动静'] })
+
+    expect(await screen.findByText('贴近门缝听动静')).toBeInTheDocument()
   })
 
   it('does not auto-generate choices after switching to manual mode', async () => {
@@ -91,6 +120,51 @@ describe('StoryStage hot choices mode', () => {
 
     await waitFor(() => expect(screen.getByText('故事继续。')).toBeInTheDocument())
     expect(generateInteractiveHotChoicesMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('StoryStage streaming rendering', () => {
+  it('batches fast interactive chunks into one animation frame without slicing text', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+    const originalRequestAnimationFrame = window.requestAnimationFrame
+    const originalCancelAnimationFrame = window.cancelAnimationFrame
+    const frames = new Map<number, FrameRequestCallback>()
+    let nextFrameId = 1
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      const id = nextFrameId
+      nextFrameId += 1
+      frames.set(id, callback)
+      return id
+    })
+    window.cancelAnimationFrame = vi.fn((id: number) => {
+      frames.delete(id)
+    })
+
+    try {
+      sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+      render(<StoryStageHarness />)
+
+      await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
+      await user.click(screen.getByRole('button', { name: '发送' }))
+
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+      act(() => runAnimationFrames(frames))
+      stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '青石镇外' }) })
+      stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '风声忽然停了。' }) })
+      await waitFor(() => expect(frames.size).toBeGreaterThan(0))
+      expect(screen.queryByText('青石镇外风声忽然停了。')).not.toBeInTheDocument()
+
+      act(() => runAnimationFrames(frames))
+
+      expect(await screen.findByText('青石镇外风声忽然停了。')).toBeInTheDocument()
+      stream.enqueue({ event: 'done', data: '{}' })
+      stream.close()
+    } finally {
+      stream.close()
+      window.requestAnimationFrame = originalRequestAnimationFrame
+      window.cancelAnimationFrame = originalCancelAnimationFrame
+    }
   })
 })
 
@@ -243,6 +317,46 @@ function interactiveStream(events: Array<{ event: string; data: string }>) {
       controller.close()
     },
   })
+}
+
+function controllableInteractiveStream() {
+  let controller: ReadableStreamDefaultController<{ event: string; data: string }> | null = null
+  let closed = false
+  const readable = new ReadableStream<{ event: string; data: string }>({
+    start(nextController) {
+      controller = nextController
+    },
+  })
+  return {
+    readable,
+    enqueue(event: { event: string; data: string }) {
+      if (closed) return
+      controller?.enqueue(event)
+    },
+    close() {
+      if (closed) return
+      closed = true
+      controller?.close()
+    },
+  }
+}
+
+function runAnimationFrames(frames: Map<number, FrameRequestCallback>) {
+  const callbacks = [...frames.entries()]
+  frames.clear()
+  for (const [, callback] of callbacks) {
+    callback(performance.now())
+  }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
 }
 
 function story(): StorySummary {

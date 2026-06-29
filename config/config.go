@@ -38,6 +38,8 @@ type Config struct {
 	NovaDir                     string                       `toml:"nova_dir"`
 	Workspace                   string                       `toml:"workspace"`
 	RuntimeWebPort              int                          `toml:"-"`
+	DevMode                     bool                         `toml:"-"`
+	LLMInputLogEnabled          bool                         `toml:"llm_input_log_enabled"`
 	IDEStoryTellerID            string                       `toml:"-"`
 	IDEImagePresetID            string                       `toml:"-"`
 	ImagePresetToolPrompt       string                       `toml:"-"`
@@ -104,6 +106,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
+		LLMInputLogEnabled:          settingsBool(s.LLMInputLogEnabled, false),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
 		HideChapterBodyLiveOutput:   settingsBool(s.HideChapterBodyLiveOutput, false),
@@ -234,6 +237,9 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.AgentToolResultLimitKB >= 0 {
 		settings.AgentToolResultLimitKB = &cfg.AgentToolResultLimitKB
 	}
+	if cfg.LLMInputLogEnabled {
+		settings.LLMInputLogEnabled = &cfg.LLMInputLogEnabled
+	}
 	if cfg.OpenAIContextWindowTokens > 0 {
 		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
 	}
@@ -286,6 +292,7 @@ func Load() *Config {
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
 			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
+			LLMInputLogEnabled:          settingsBool(d.LLMInputLogEnabled, false),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
 			HideChapterBodyLiveOutput:   settingsBool(d.HideChapterBodyLiveOutput, false),

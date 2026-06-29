@@ -642,3 +642,25 @@ func TestLoadLayeredIgnoresRemoteAccessFromWorkspaceLayer(t *testing.T) {
 		t.Fatalf("user remote access settings should remain effective: %#v", layered.Effective)
 	}
 }
+
+func TestLoadLayeredIgnoresLLMInputLogFromWorkspaceLayer(t *testing.T) {
+	home := t.TempDir()
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".nova"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".nova", "config.toml"), []byte("llm_input_log_enabled = true\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	layered, err := LoadLayered(home, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layered.Workspace.LLMInputLogEnabled != nil {
+		t.Fatalf("workspace llm input log setting should be filtered")
+	}
+	if layered.Effective.LLMInputLogEnabled == nil || *layered.Effective.LLMInputLogEnabled {
+		t.Fatalf("workspace llm input log should not become effective: %#v", layered.Effective.LLMInputLogEnabled)
+	}
+}

@@ -431,6 +431,7 @@ func (s *WorkspaceRuntimeManager) Settings() (config.LayeredSettings, error) {
 		layered.Access.LocalURL = config.LocalHTTPURL(cfg.RuntimeWebPort)
 		layered.Access.LANURL = config.LANHTTPURL(cfg.RuntimeWebPort)
 	}
+	layered.Runtime.DevMode = cfg.DevMode
 	cfg.Workspace = workspace
 	applySettingsLayerToConfig(&cfg, layered.User)
 	applySettingsLayerToConfig(&cfg, layered.Workspace)
@@ -474,6 +475,7 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, b
 	}
 	a.mu.Lock()
 	applyLayeredSettingsToConfig(a.cfg, layered)
+	syncRuntimeDiagnostics(a.cfg)
 	a.mu.Unlock()
 	return layered, nil
 }
@@ -491,6 +493,7 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 	if workspace == "" {
 		return config.LayeredSettings{}, fmt.Errorf("当前没有打开的工作区")
 	}
+	settings.LLMInputLogEnabled = nil
 	path := config.WorkspaceConfigPath(workspace)
 	if err := config.WriteSettingsFileIfRevision(path, settings, baseRevision); err != nil {
 		return config.LayeredSettings{}, err
@@ -502,6 +505,7 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 	}
 	a.mu.Lock()
 	applyLayeredSettingsToConfig(a.cfg, layered)
+	syncRuntimeDiagnostics(a.cfg)
 	a.mu.Unlock()
 	return layered, nil
 }
@@ -586,6 +590,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	}
 	if effective.AgentToolResultLimitKB != nil {
 		cfg.AgentToolResultLimitKB = appAgentToolResultLimitKB(effective.AgentToolResultLimitKB)
+	}
+	if effective.LLMInputLogEnabled != nil {
+		cfg.LLMInputLogEnabled = *effective.LLMInputLogEnabled
 	}
 	if effective.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = effective.ChapterFilenameFormat
@@ -690,6 +697,9 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.AgentToolResultLimitKB != nil {
 		cfg.AgentToolResultLimitKB = appAgentToolResultLimitKB(settings.AgentToolResultLimitKB)
 	}
+	if settings.LLMInputLogEnabled != nil {
+		cfg.LLMInputLogEnabled = *settings.LLMInputLogEnabled
+	}
 	if settings.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = settings.ChapterFilenameFormat
 	}
@@ -720,6 +730,14 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.VersionAgentCharThreshold != nil {
 		cfg.VersionAgentCharThreshold = appSettingsInt(settings.VersionAgentCharThreshold, 3000)
 	}
+}
+
+func syncRuntimeDiagnostics(cfg *config.Config) {
+	if cfg == nil {
+		agent.SetModelInputLoggingEnabled(false)
+		return
+	}
+	agent.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
 }
 
 func (s *WorkspaceRuntimeManager) versionService() *book.VersionService {

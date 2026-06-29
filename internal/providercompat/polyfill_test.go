@@ -2,8 +2,10 @@ package providercompat
 
 import (
 	"context"
+	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
@@ -14,12 +16,16 @@ import (
 // message. We use it to assert that Wrap repairs the inner model's output.
 type fakeChatModel struct {
 	fixedMsg *schema.Message
+	stream   *schema.StreamReader[*schema.Message]
 }
 
 func (f *fakeChatModel) Generate(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
 	return f.fixedMsg, nil
 }
 func (f *fakeChatModel) Stream(_ context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	if f.stream != nil {
+		return f.stream, nil
+	}
 	if f.fixedMsg == nil {
 		return schema.StreamReaderFromArray([]*schema.Message{}), nil
 	}
@@ -116,5 +122,124 @@ func TestWrap_OpenAIProvider_PassThrough(t *testing.T) {
 	}
 	if out.ReasoningContent != "" {
 		t.Fatalf("OpenAI reasoning unexpectedly populated: %q", out.ReasoningContent)
+	}
+}
+
+func TestWrap_NonStandardProvider_StreamReturnsBeforeUpstreamEOF(t *testing.T) {
+	upstream, writer := schema.Pipe[*schema.Message](1)
+	inner := &fakeChatModel{stream: upstream}
+	wrapped := Wrap(inner, nonStandardProviderCfg)
+
+	writer.Send(&schema.Message{Role: schema.Assistant, Content: "第一段"}, nil)
+
+	result := make(chan *schema.StreamReader[*schema.Message], 1)
+	errs := make(chan error, 1)
+	go func() {
+		stream, err := wrapped.Stream(context.Background(), nil)
+		if err != nil {
+			errs <- err
+			return
+		}
+		result <- stream
+	}()
+
+	var stream *schema.StreamReader[*schema.Message]
+	select {
+	case err := <-errs:
+		t.Fatalf("stream returned error before first frame: %v", err)
+	case stream = <-result:
+	case <-time.After(100 * time.Millisecond):
+		writer.Close()
+		t.Fatal("wrapped stream blocked until upstream EOF instead of returning first frame")
+	}
+	defer stream.Close()
+
+	got, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("recv first frame: %v", err)
+	}
+	if got.Content != "第一段" {
+		t.Fatalf("first frame content = %q", got.Content)
+	}
+
+	writer.Send(&schema.Message{Role: schema.Assistant, Content: "第二段"}, nil)
+	writer.Close()
+	got, err = stream.Recv()
+	if err != nil {
+		t.Fatalf("recv second frame: %v", err)
+	}
+	if got.Content != "第二段" {
+		t.Fatalf("second frame content = %q", got.Content)
+	}
+	if _, err := stream.Recv(); err != io.EOF {
+		t.Fatalf("final recv error = %v, want EOF", err)
+	}
+}
+
+func TestWrap_NonStandardProvider_StreamParsesTextToolCallAfterStreamingPrelude(t *testing.T) {
+	upstream := schema.StreamReaderFromArray([]*schema.Message{
+		{Role: schema.Assistant, Content: "先说明"},
+		{Role: schema.Assistant, Content: "<tool_"},
+		{Role: schema.Assistant, Content: "call><invoke name=\"read_file\"><path>chapters/ch01.md</path></invoke></tool_call>"},
+	})
+	wrapped := Wrap(&fakeChatModel{stream: upstream}, nonStandardProviderCfg)
+	stream, err := wrapped.Stream(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+
+	first, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("recv prelude: %v", err)
+	}
+	if first.Content != "先说明" {
+		t.Fatalf("prelude content = %q", first.Content)
+	}
+	toolFrame, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("recv tool frame: %v", err)
+	}
+	if len(toolFrame.ToolCalls) != 1 || toolFrame.ToolCalls[0].Function.Name != "read_file" {
+		t.Fatalf("tool frame not parsed: %#v", toolFrame.ToolCalls)
+	}
+	if toolFrame.ToolCalls[0].Function.Arguments != `{"path":"chapters/ch01.md"}` {
+		t.Fatalf("tool args = %q", toolFrame.ToolCalls[0].Function.Arguments)
+	}
+	if _, err := stream.Recv(); err != io.EOF {
+		t.Fatalf("final recv error = %v, want EOF", err)
+	}
+}
+
+func TestWrap_NonStandardProvider_StreamStripsInlineThinkWithoutWaitingForEOF(t *testing.T) {
+	upstream, writer := schema.Pipe[*schema.Message](1)
+	wrapped := Wrap(&fakeChatModel{stream: upstream}, nonStandardProviderCfg)
+	writer.Send(&schema.Message{Role: schema.Assistant, Content: "<think>先想"}, nil)
+
+	stream, err := wrapped.Stream(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+
+	got, err := stream.Recv()
+	if err != nil {
+		t.Fatalf("recv thinking frame: %v", err)
+	}
+	if got.ReasoningContent != "先想" || got.Content != "" {
+		t.Fatalf("thinking frame = %#v", got)
+	}
+	writer.Send(&schema.Message{Role: schema.Assistant, Content: "</think>\n正文"}, nil)
+	writer.Close()
+
+	got, err = stream.Recv()
+	if err != nil {
+		t.Fatalf("recv content frame: %v", err)
+	}
+	if got.Content != "正文" || got.ReasoningContent != "" {
+		t.Fatalf("content frame = %#v", got)
+	}
+	if _, err := stream.Recv(); err != io.EOF {
+		t.Fatalf("final recv error = %v, want EOF", err)
 	}
 }

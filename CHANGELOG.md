@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- 游戏模式：行动选项默认会在故事输出结束后自动生成并展开，输入框左侧菜单新增“自动生成 / 手动生成”切换。
+- 游戏模式：行动选项默认会在故事输出结束后后台自动生成，用户点击输入框右侧“选择”后再展开；输入框左侧菜单保留“自动生成 / 手动生成”切换。
 - WebUI：新增 PWA manifest、应用图标（apple-touch-icon / 192 / 512 / maskable）与移动端 viewport meta（`viewport-fit=cover`、`theme-color`、`apple-mobile-web-app-capable` 等）。自托管后可在手机主屏“添加到桌面”以独立应用形态打开，并正确延伸到刘海安全区；图标由 `pnpm generate-icons`（sharp）从 `favicon.svg` 复现式生成。
 - 后端：静态资源服务对未知前端路径做 SPA 回退（返回 `index.html`）。手机刷新任意页面或深链打开不再返回 Hertz 默认 404；`/api/*` 路由不受影响。
 - 后端：Nova 二进制现在可内嵌前端（构建标签 `embedweb`），裸二进制无需磁盘 `web/` 目录即可提供前端服务，适合 `go install` / 单文件分发 / 最小化自托管。默认构建行为不变；release 仍附带 `web/` 作为磁盘快速路径与 updater 兼容，内嵌为独立运行的兜底。
@@ -36,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - 移动端：Agent 面板从右侧抽屉改为**底部常驻面板**（与编辑器竖向分割），恢复桌面端「编辑器 + Agent 同屏可见」的核心操作逻辑。使用 `react-resizable-panels` 做竖向分割，可拖拽分隔条调节编辑器/Agent 比例。Agent 不再需要点导航打开；快捷创作按钮始终可达。桌面端不受影响。
 - 设置：新增 `hide_novel_chapter_body_in_live_output` 配置，开启后隐藏章节正文在 Agent 流中的输出，并保留目标路径和已生成字符数；默认关闭以保持原有实时输出行为。
+- Agent 调试：完整 LLM 输入日志默认关闭，即使 `--dev-mode` 启动也需要在开发模式设置页的「调试」分区手动开启；日志写入改为后台异步队列，`provider_request_id` 以独立关联事件追加到 `log/llm-inputs.jsonl`，避免模型请求热路径同步重写大文件。
 
 ### Changed
 

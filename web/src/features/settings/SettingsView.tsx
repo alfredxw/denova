@@ -22,7 +22,7 @@ import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateChec
 import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfilesWithDefault } from './model-profiles'
 import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 
-type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -75,6 +75,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     appearance: true,
     updates: true,
     agent: true,
+    debug: true,
     'ide-editor': true,
     'ide-output': true,
     versions: true,
@@ -118,6 +119,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [activeLayer])
 
   const effective = layered?.effective ?? {}
+  const showDebugSettings = layered?.runtime?.dev_mode === true
 
   const runUpdateCheck = useCallback(async (source: 'auto' | 'manual' = 'manual') => {
     setCheckingUpdate(true)
@@ -419,6 +421,23 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         </>
       ),
     },
+    ...(showDebugSettings ? [{
+      id: 'debug' as const,
+      group: t('settings.group.common'),
+      title: t('settings.section.debug'),
+      children: activeLayer === 'user' ? (
+        <>
+          <BoolTri label={t('settings.debug.llmInputLog')} value={draft.llm_input_log_enabled ?? null}
+                   effective={effective.llm_input_log_enabled}
+                   onChange={(v) => setField('llm_input_log_enabled', v)} />
+          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+            {t('settings.debug.llmInputLogHelp')}
+          </div>
+        </>
+      ) : (
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.debug.userOnly')}</div>
+      ),
+    }] : []),
     {
       id: 'ide-editor',
       group: t('settings.group.ide'),

@@ -23,8 +23,6 @@ type StreamSegmentRole = 'assistant' | 'thinking'
 type EventMetadata = Pick<ChatMessage, 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_session_id' | 'subagent_type'>
 type EventDisplayMetadata = Pick<ChatMessage, 'sse_hidden_fields' | 'sse_hidden_reason' | 'sse_display_notice' | 'sse_generated_chars'>
 
-const STREAM_CHARS_PER_FRAME = 8
-
 /** Shared SSE consumer for Agent-like streams. It keeps text/thinking/tool events on one timeline. */
 export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
   const { t } = useTranslation()
@@ -119,34 +117,21 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     }))
   }, [])
 
-  const flushStreamingSegmentBuffer = useCallback((flushAll = false) => {
+  const flushStreamingSegmentBuffer = useCallback(() => {
     const buffered = { ...segmentBufferRef.current }
+    segmentBufferRef.current = {}
     if (segmentRafRef.current !== null) {
       cancelAnimationFrame(segmentRafRef.current)
       segmentRafRef.current = null
     }
     if (Object.keys(buffered).length === 0) return
-    const visible: Record<string, string> = {}
-    const remaining: Record<string, string> = {}
-    for (const [id, text] of Object.entries(buffered)) {
-      if (flushAll || text.length <= STREAM_CHARS_PER_FRAME) {
-        visible[id] = text
-        continue
-      }
-      visible[id] = text.slice(0, STREAM_CHARS_PER_FRAME)
-      remaining[id] = text.slice(STREAM_CHARS_PER_FRAME)
-    }
-    segmentBufferRef.current = remaining
-    setMessages(prev => updateStreamingSegments(prev, visible))
-    if (!flushAll && Object.keys(remaining).length > 0) {
-      segmentRafRef.current = requestAnimationFrame(() => flushStreamingSegmentBuffer(false))
-    }
+    setMessages(prev => updateStreamingSegments(prev, buffered))
   }, [])
 
   const finishCurrentSegment = useCallback(() => {
     const segmentId = currentSegmentIdRef.current
     if (!segmentId) return
-    flushStreamingSegmentBuffer(true)
+    flushStreamingSegmentBuffer()
     currentSegmentIdRef.current = null
     currentSegmentRoleRef.current = null
     currentSegmentSourceRef.current = null
@@ -170,7 +155,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     if (!segmentId) return
     segmentBufferRef.current[segmentId] = (segmentBufferRef.current[segmentId] || '') + text
     if (segmentRafRef.current === null) {
-      segmentRafRef.current = requestAnimationFrame(() => flushStreamingSegmentBuffer(false))
+      segmentRafRef.current = requestAnimationFrame(() => flushStreamingSegmentBuffer())
     }
   }, [finishCurrentSegment, flushStreamingSegmentBuffer])
 
@@ -337,14 +322,14 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
       }
 
       flushToolArgBuffer()
-      flushStreamingSegmentBuffer(true)
+      flushStreamingSegmentBuffer()
       finishCurrentSegment()
       markPendingToolsAsSuccess()
       consumeOptions.clearInputsOnFinish?.()
     } catch (e) {
       markPendingToolsAsError()
       flushToolArgBuffer()
-      flushStreamingSegmentBuffer(true)
+      flushStreamingSegmentBuffer()
       finishCurrentSegment()
       if (isAbortError(e)) {
         setActivityContent(t('chat.activity.aborted'))
@@ -362,7 +347,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
       toolKeyToMessageIdRef.current = {}
       currentCompactionMessageIdRef.current = null
       flushToolArgBuffer()
-      flushStreamingSegmentBuffer(true)
+      flushStreamingSegmentBuffer()
       finishCurrentSegment()
       setIsStreaming(false)
       setActivityContent('')

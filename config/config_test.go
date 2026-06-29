@@ -148,6 +148,46 @@ func TestLoadWithWorkspaceAllowsUnlimitedAgentToolResultLimit(t *testing.T) {
 	}
 }
 
+func TestLoadWithWorkspaceDefaultsLLMInputLogDisabled(t *testing.T) {
+	novaDir := t.TempDir()
+	ws := t.TempDir()
+	t.Setenv("NOVA_DIR", novaDir)
+
+	cfg, layered, err := LoadWithWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.LLMInputLogEnabled {
+		t.Fatalf("llm input log should default to disabled")
+	}
+	if layered.Effective.LLMInputLogEnabled == nil || *layered.Effective.LLMInputLogEnabled {
+		t.Fatalf("effective llm input log should default to false: %#v", layered.Effective.LLMInputLogEnabled)
+	}
+}
+
+func TestLoadWithWorkspaceReadsUserLLMInputLogSetting(t *testing.T) {
+	novaDir := t.TempDir()
+	ws := t.TempDir()
+	t.Setenv("NOVA_DIR", novaDir)
+	enabled := true
+
+	if err := WriteSettingsFile(filepath.Join(novaDir, "config.toml"),
+		Settings{LLMInputLogEnabled: &enabled}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, layered, err := LoadWithWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.LLMInputLogEnabled {
+		t.Fatalf("llm input log should read user setting")
+	}
+	if layered.Effective.LLMInputLogEnabled == nil || !*layered.Effective.LLMInputLogEnabled {
+		t.Fatalf("effective llm input log should be true")
+	}
+}
+
 func TestLoadWithWorkspaceUsesGlobalConfigNovaDir(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)

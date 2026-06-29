@@ -179,6 +179,60 @@ describe('useAgentEventStream', () => {
     expect(messages[0]).toMatchObject({ content: 'first', subagent_session_id: 'run-1-subagent-01-researcher' })
     expect(messages[1]).toMatchObject({ content: 'second', subagent_session_id: 'run-1-subagent-02-researcher' })
   })
+
+  it('每帧刷新全部已收到的 assistant 增量，不按固定字符数限速播放', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    const raf = installManualAnimationFrame()
+    let controller: ReadableStreamDefaultController<SSEEvent> | undefined
+    const stream = new ReadableStream<SSEEvent>({
+      start(nextController) {
+        controller = nextController
+      },
+    })
+    let consumePromise: Promise<void> | undefined
+    let streamClosed = false
+
+    try {
+      await act(async () => {
+        consumePromise = agent?.consumeAgentStream(stream)
+        await Promise.resolve()
+      })
+
+      const firstChunk = '首段'
+      const fastChunk = '后续内容一次性到达，应在下一帧完整显示。'
+      await act(async () => {
+        controller?.enqueue(sseEvent('chunk', { content: firstChunk }))
+        controller?.enqueue(sseEvent('chunk', { content: fastChunk }))
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(readMessages().find((message) => message.role === 'assistant')?.content).toBe(firstChunk)
+
+      await act(async () => {
+        raf.flush()
+      })
+
+      expect(readMessages().find((message) => message.role === 'assistant')?.content).toBe(firstChunk + fastChunk)
+
+      await act(async () => {
+        controller?.close()
+        streamClosed = true
+        await consumePromise
+      })
+    } finally {
+      if (!streamClosed) {
+        await act(async () => {
+          controller?.close()
+          await consumePromise
+        })
+      }
+      raf.restore()
+    }
+  })
 })
 
 function AgentStreamHarness({ onChange }: { onChange: (value: ReturnType<typeof useAgentEventStream>) => void }) {
@@ -191,11 +245,42 @@ function sseStream(events: Array<[string, unknown]>) {
   return new ReadableStream<SSEEvent>({
     start(controller) {
       for (const [event, data] of events) {
-        controller.enqueue({ event, data: JSON.stringify(data) })
+        controller.enqueue(sseEvent(event, data))
       }
       controller.close()
     },
   })
+}
+
+function sseEvent(event: string, data: unknown): SSEEvent {
+  return { event, data: JSON.stringify(data) }
+}
+
+function installManualAnimationFrame() {
+  const originalRequestAnimationFrame = window.requestAnimationFrame
+  const originalCancelAnimationFrame = window.cancelAnimationFrame
+  let nextHandle = 1
+  let callbacks: Array<{ handle: number; callback: FrameRequestCallback }> = []
+  window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    const handle = nextHandle++
+    callbacks.push({ handle, callback })
+    return handle
+  }) as typeof window.requestAnimationFrame
+  window.cancelAnimationFrame = ((handle: number) => {
+    callbacks = callbacks.filter((item) => item.handle !== handle)
+  }) as typeof window.cancelAnimationFrame
+  return {
+    flush() {
+      const pending = callbacks
+      callbacks = []
+      for (const item of pending) item.callback(performance.now())
+    },
+    restore() {
+      callbacks = []
+      window.requestAnimationFrame = originalRequestAnimationFrame
+      window.cancelAnimationFrame = originalCancelAnimationFrame
+    },
+  }
 }
 
 function readMessages() {
