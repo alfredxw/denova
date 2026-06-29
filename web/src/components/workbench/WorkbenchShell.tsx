@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { Group, Panel, Separator } from 'react-resizable-panels'
 import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, NotebookText, PanelLeft, PenLine, Search, Settings, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
@@ -602,25 +603,32 @@ export function WorkbenchShell({
       side: 'left' as const,
       content: sidebar,
     } : undefined
-    const mobileAgentDrawer = mode === 'ide' && !fullWorkspacePanelVisible ? {
-      id: 'agent' as const,
-      title: t('workbench.mobile.agent'),
-      icon: <Bot className="h-4 w-4" />,
-      side: 'right' as const,
-      content: rightPanelContent,
-      onOpen: () => onSetRightPanel('ai'),
-      onClose: () => {
-        if (rightPanel === 'ai') onSetRightPanel(null)
-      },
-    } : undefined
+    // Direction B: editor + Agent in a vertical split (Agent docked at bottom,
+    // always visible) instead of Agent hidden in a right drawer. Only when the
+    // Agent panel is active and no full-workspace panel covers the screen.
+    const mobileAgentDocked = mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)
+    const mobileMain = mobileAgentDocked ? (
+      <Group
+        orientation="vertical"
+        resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <Panel id="nova-mobile-editor" minSize="30%" className="min-h-0">
+          {main}
+        </Panel>
+        <Separator aria-label={t('layout.resize.bottom')} className="nova-resize-handle -my-1 h-2 cursor-row-resize bg-transparent transition-colors" />
+        <Panel id="nova-mobile-agent" defaultSize="38%" minSize="20%" className="min-h-0">
+          {rightPanelContent}
+        </Panel>
+      </Group>
+    ) : main
 
     return (
       <WorkspaceMobileLayout
         topBar={mobileTopBar}
-        main={main}
+        main={mobileMain}
         activityItems={mobileActivityItems}
         projectDrawer={mobileProjectDrawer}
-        agentDrawer={mobileAgentDrawer}
         settingsItem={{
           id: 'settings',
           label: t('workbench.activity.settings'),
