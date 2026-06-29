@@ -1,0 +1,33 @@
+AGENTS.md
+  h_beed6209b76699 16 gitai:{"mixed_line_ranges":[{"Single":16}],"operations":[]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "4146c31173eb03a47cfb7ba831a547116c4fe225",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {
+    "AGENTS.md": [
+      {
+        "hash": "h_beed6209b76699",
+        "line_ranges": [
+          {
+            "Single": 16
+          }
+        ],
+        "mixed_line_ranges": [
+          {
+            "Single": 16
+          }
+        ],
+        "operations": []
+      }
+    ]
+  },
+  "remote_transcripts": {}
+}
