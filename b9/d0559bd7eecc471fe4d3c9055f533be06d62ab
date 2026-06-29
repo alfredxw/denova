@@ -1,0 +1,20 @@
+internal/agent/illustration_tools_test.go
+  h_beed6209b76699 94
+internal/agent/illustration_tools.go
+  h_beed6209b76699 133
+internal/bookcover/service.go
+  h_beed6209b76699 229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b9d0559bd7eecc471fe4d3c9055f533be06d62ab",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
