@@ -226,7 +226,7 @@ func BuildPrompt(request GenerateRequest) string {
 	preset := strings.TrimSpace(request.ImagePresetPrompt)
 	var sb strings.Builder
 	if preset != "" {
-		sb.WriteString("# 图像方案（原样注入）\n\n")
+		sb.WriteString("# 图像风格要求\n\n")
 		sb.WriteString(preset)
 		sb.WriteString("\n\n")
 	}

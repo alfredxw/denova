@@ -91,7 +91,7 @@ func TestParseGeneratedImageToolTarget(t *testing.T) {
 
 func TestMergeImagePresetToolPromptPrependsPreset(t *testing.T) {
 	got := mergeImagePresetToolPrompt(&config.Config{ImagePresetToolPrompt: "## 请求（tool_request）\n\n真实光影"}, "雨夜小巷，少女回头")
-	for _, required := range []string{"# 图像方案（原样注入）", "真实光影", "# 本次图像请求", "雨夜小巷"} {
+	for _, required := range []string{"# 图像风格要求", "真实光影", "# 本次图像请求", "雨夜小巷"} {
 		if !strings.Contains(got, required) {
 			t.Fatalf("merged prompt missing %q:\n%s", required, got)
 		}

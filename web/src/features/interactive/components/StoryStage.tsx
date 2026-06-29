@@ -62,7 +62,15 @@ const DEFAULT_READING_FONT_SIZE = 18
 const DEFAULT_STAGE_LINE_HEIGHT = 1.78
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 const DEFAULT_IMAGE_INTERVAL_TURNS = 3
+const HOT_CHOICES_MODE_STORAGE_KEY = 'nova.interactive.hotChoicesMode.v1'
 const stageAbortControllers = new Map<string, AbortController>()
+
+type HotChoicesMode = 'auto' | 'manual'
+
+interface HotChoicesRequestOptions {
+  append?: boolean
+  expandOnResult?: boolean
+}
 
 export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onToggleSceneMemory, onDone }: StoryStageProps) {
   const { t } = useTranslation()
@@ -83,7 +91,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     workspace,
     fallbackEnabled: true,
   })
-  const snapshotKey = `${storyId || 'none'}:${snapshot?.branch_id || branchId || 'main'}:${snapshot?.turns?.[snapshot.turns.length - 1]?.id || 'empty'}`
+  const snapshotKey = storyStageSnapshotKey(storyId, branchId, snapshot)
   const stageKey = `${workspace || 'current'}:${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
   const { storyStageRuns, setStoryStageRun, clearStoryStageRun } = useInteractiveStore()
   const stageRun = storyStageRuns[stageKey] || EMPTY_STAGE_RUN
@@ -103,6 +111,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [generatedHotChoices, setGeneratedHotChoices] = useState<string[]>([])
   const [hotChoicesExpanded, setHotChoicesExpanded] = useState(false)
   const [hotChoicesLoading, setHotChoicesLoading] = useState(false)
+  const [hotChoicesMode, setHotChoicesMode] = useState<HotChoicesMode>(readStoredHotChoicesMode)
   const [generatingImageTurnId, setGeneratingImageTurnId] = useState<string | null>(null)
   const [customOpeningText, setCustomOpeningText] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
@@ -112,6 +121,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
   const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
   const hotChoicesAbortRef = useRef<AbortController | null>(null)
+  const pendingAutoHotChoicesKeyRef = useRef('')
   const currentCompactionMessageIdRef = useRef<string | null>(null)
   const compactionIdCounterRef = useRef(0)
   const liveStageKeyRef = useRef(stageKey)
@@ -228,6 +238,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   useEffect(() => {
     if (activeSkillCommandIndex >= filteredSkillCommands.length) setActiveSkillCommandIndex(0)
   }, [activeSkillCommandIndex, filteredSkillCommands.length])
+
+  useEffect(() => {
+    writeStoredHotChoicesMode(hotChoicesMode)
+  }, [hotChoicesMode])
 
   useEffect(() => {
     if (!showSkillCommands || filteredSkillCommands.length === 0) return
@@ -401,31 +415,34 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   }, [syncInputFloatHeight])
 
   const requestHotChoices = useCallback(
-    (append = false) => {
-      if (!stagePreferences.hotChoicesEnabled || streaming || editingTurn || !storyId || hotChoicesLoading) return
+    async (options: boolean | HotChoicesRequestOptions = false) => {
+      const append = typeof options === 'boolean' ? options : options.append === true
+      const expandOnResult = typeof options === 'object' && options.expandOnResult === true
+      if (!stagePreferences.hotChoicesEnabled || streaming || editingTurn || !storyId || hotChoicesLoading) return false
       const abortController = new AbortController()
       hotChoicesAbortRef.current?.abort()
       hotChoicesAbortRef.current = abortController
       setHotChoicesLoading(true)
-      generateInteractiveHotChoices(storyId, {
-        branch: branchId || snapshot?.branch_id,
-        exclude_choices: append ? hotChoices : [],
-        signal: abortController.signal,
-      })
-        .then((result) => {
-          if (abortController.signal.aborted) return
-          const nextChoices = result.enabled ? result.choices || [] : []
-          setGeneratedHotChoices((current) => (append ? mergeHotChoices(current, nextChoices) : nextChoices))
+      try {
+        const result = await generateInteractiveHotChoices(storyId, {
+          branch: branchId || snapshot?.branch_id,
+          exclude_choices: append ? hotChoices : [],
+          signal: abortController.signal,
         })
-        .catch((error) => {
-          if (!isAbortError(error)) {
-            console.warn('[interactive-stage] 生成快捷选择失败', error)
-          }
-          if (!abortController.signal.aborted && !append) setGeneratedHotChoices([])
-        })
-        .finally(() => {
-          if (!abortController.signal.aborted) setHotChoicesLoading(false)
-        })
+        if (abortController.signal.aborted) return false
+        const nextChoices = result.enabled ? result.choices || [] : []
+        setGeneratedHotChoices((current) => (append ? mergeHotChoices(current, nextChoices) : nextChoices))
+        if (expandOnResult && nextChoices.length > 0) setHotChoicesExpanded(true)
+        return nextChoices.length > 0
+      } catch (error) {
+        if (!isAbortError(error)) {
+          console.warn('[interactive-stage] 生成快捷选择失败', error)
+        }
+        if (!abortController.signal.aborted && !append) setGeneratedHotChoices([])
+        return false
+      } finally {
+        if (!abortController.signal.aborted) setHotChoicesLoading(false)
+      }
     },
     [branchId, editingTurn, hotChoices, hotChoicesLoading, snapshot?.branch_id, stagePreferences.hotChoicesEnabled, storyId, streaming],
   )
@@ -435,7 +452,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     const nextExpanded = !hotChoicesExpanded
     setHotChoicesExpanded(nextExpanded)
     if (nextExpanded && hotChoices.length === 0 && !hotChoicesLoading) {
-      requestHotChoices(false)
+      void requestHotChoices(false)
     }
   }
 
@@ -454,6 +471,13 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       setHotChoicesLoading(false)
     }
   }, [stagePreferences.hotChoicesEnabled])
+
+  useEffect(() => {
+    if (streaming || hotChoicesMode !== 'auto') return
+    if (pendingAutoHotChoicesKeyRef.current !== snapshotKey) return
+    pendingAutoHotChoicesKeyRef.current = ''
+    void requestHotChoices({ expandOnResult: true })
+  }, [hotChoicesMode, requestHotChoices, snapshotKey, streaming])
 
   const send = async (override?: { message?: string; rewindTurnId?: string }) => {
     const sourceMessage = override?.message ?? input
@@ -589,6 +613,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       }
       const nextSnapshot = await onDone()
       if (finishedNormally) {
+        if (hotChoicesMode === 'auto' && stagePreferences.hotChoicesEnabled) {
+          pendingAutoHotChoicesKeyRef.current = autoHotChoicesSnapshotKey(storyId, branchId, nextSnapshot || snapshot)
+        }
         await maybeGenerateAutoImage(nextSnapshot)
       }
     } catch (error) {
@@ -1202,6 +1229,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
                       <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming} />
+                      <HotChoicesModeMenu value={hotChoicesMode} disabled={!stagePreferences.hotChoicesEnabled || streaming} onChange={setHotChoicesMode} />
                       <InteractiveImageSettingsMenu story={story} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <StoryImagePresetMenu story={story} presets={imagePresets} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <DropdownMenuItem
@@ -1709,6 +1737,88 @@ function imageSettingsSummary(settings: StoryImageSettings, t: (key: string, opt
 }
 
 function noop() {}
+
+function storyStageSnapshotKey(storyId: string, branchId: string, snapshot?: Snapshot | null) {
+  const turns = snapshot?.turns || []
+  return `${storyId || snapshot?.story_id || 'none'}:${snapshot?.branch_id || branchId || 'main'}:${turns[turns.length - 1]?.id || 'empty'}`
+}
+
+function autoHotChoicesSnapshotKey(storyId: string, branchId: string, snapshot?: Snapshot | null) {
+  if (!snapshot?.turns?.length) return ''
+  return storyStageSnapshotKey(storyId, branchId, snapshot)
+}
+
+function readStoredHotChoicesMode(): HotChoicesMode {
+  if (typeof window === 'undefined') return 'auto'
+  try {
+    return window.localStorage.getItem(HOT_CHOICES_MODE_STORAGE_KEY) === 'manual' ? 'manual' : 'auto'
+  } catch {
+    return 'auto'
+  }
+}
+
+function writeStoredHotChoicesMode(value: HotChoicesMode) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(HOT_CHOICES_MODE_STORAGE_KEY, value)
+  } catch {
+    // Ignore storage failures; the default auto mode still works for this session.
+  }
+}
+
+function hotChoicesModeSummary(value: HotChoicesMode, t: (key: string, options?: Record<string, unknown>) => string) {
+  return value === 'manual' ? t('storyStage.hotChoices.currentManual') : t('storyStage.hotChoices.currentAuto')
+}
+
+function HotChoicesModeMenu({ value, disabled, onChange }: { value: HotChoicesMode; disabled?: boolean; onChange: (value: HotChoicesMode) => void }) {
+  const { t } = useTranslation()
+  const save = (nextValue: HotChoicesMode) => {
+    if (disabled) return
+    onChange(nextValue)
+  }
+
+  return (
+    <>
+      <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger
+          disabled={disabled}
+          className="flex cursor-pointer items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+        >
+          <Compass className="h-3.5 w-3.5" />
+          <span className="min-w-0 flex-1 truncate">{t('storyStage.hotChoices.menuTitle')}</span>
+          <span className="max-w-36 shrink-0 truncate text-right text-[10px] text-[var(--nova-text-faint)]">{hotChoicesModeSummary(value, t)}</span>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className="w-64 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+          <DropdownMenuItem
+            disabled={disabled}
+            onSelect={(event) => {
+              event.preventDefault()
+              save('auto')
+            }}
+            onClick={() => save('auto')}
+            className="grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+          >
+            <Check className={`h-3.5 w-3.5 ${value === 'auto' ? 'opacity-100' : 'opacity-0'}`} />
+            <span className="min-w-0 flex-1 truncate">{t('storyStage.hotChoices.modeAuto')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={disabled}
+            onSelect={(event) => {
+              event.preventDefault()
+              save('manual')
+            }}
+            onClick={() => save('manual')}
+            className="grid cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-center gap-2 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+          >
+            <Check className={`h-3.5 w-3.5 ${value === 'manual' ? 'opacity-100' : 'opacity-0'}`} />
+            <span className="min-w-0 flex-1 truncate">{t('storyStage.hotChoices.modeManual')}</span>
+          </DropdownMenuItem>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
+    </>
+  )
+}
 
 function useStagePreferences() {
   const [preferences, setPreferences] = useState({

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式：行动选项默认会在故事输出结束后自动生成并展开，输入框左侧菜单新增“自动生成 / 手动生成”切换。
 - 书籍管理：编辑书籍信息时可直接选择图像方案并生成书籍封面，生成结果立即写入固定展示路径 `assets/image/cover.png`，旧封面会自动备份到 `assets/image/covers/backups/`。
 - WebUI：书架卡片和当前书籍区域会展示同一固定封面；没有封面时保持简洁书本占位，酒馆角色卡导入的 `assets/image/cover.png` 也会正常展示。
 

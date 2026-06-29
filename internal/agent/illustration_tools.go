@@ -130,7 +130,7 @@ func mergeImagePresetToolPrompt(cfg *config.Config, prompt string) string {
 	if prompt == "" || cfg == nil || strings.TrimSpace(cfg.ImagePresetToolPrompt) == "" {
 		return prompt
 	}
-	return strings.TrimSpace(fmt.Sprintf("# 图像方案（原样注入）\n\n%s\n\n# 本次图像请求\n\n%s", strings.TrimSpace(cfg.ImagePresetToolPrompt), prompt))
+	return strings.TrimSpace(fmt.Sprintf("# 图像风格要求\n\n%s\n\n# 本次图像请求\n\n%s", strings.TrimSpace(cfg.ImagePresetToolPrompt), prompt))
 }
 
 func generateGeneralImageForTool(ctx context.Context, cfg *config.Config, bookService *book.Service, input generateImageInput) (generatedImageToolResult, error) {
