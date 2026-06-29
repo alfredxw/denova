@@ -429,6 +429,12 @@ html[data-nova-motion="off"] *::after {
   [data-nova-mobile-shell="true"] .nova-command-menu {
     width: min(calc(100vw - 1.5rem), 384px) !important;
   }
+
+  /* Touch has no hover: reveal message meta + assistant actions that are
+     otherwise opacity-gated behind :hover/:focus-within. */
+  [data-nova-mobile-shell="true"] .nova-message-meta {
+    opacity: 1;
+  }
 }
 
 :where([data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="command"], .nova-command-menu, .nova-panel) .text-sm {

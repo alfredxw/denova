@@ -8,6 +8,10 @@ import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
 const DIALOG_CONTENT_WIDTH = "max-w-[min(calc(100vw-2rem),42rem)]"
+// Keep long dialogs inside the viewport and scrollable on small screens.
+// Scoped to max-md so desktop dialog heights are unchanged; consumers can
+// still override via className (tailwind-merge).
+const DIALOG_CONTENT_HEIGHT = "max-md:max-h-[calc(100dvh-2rem)] max-md:overflow-y-auto"
 
 function Dialog({
   ...props
@@ -65,6 +69,7 @@ function DialogContent({
         className={cn(
           "fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           DIALOG_CONTENT_WIDTH,
+          DIALOG_CONTENT_HEIGHT,
           className
         )}
         {...props}

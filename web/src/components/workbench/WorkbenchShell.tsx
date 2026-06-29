@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, NotebookText, PanelLeft, PenLine, Settings, SlidersHorizontal, Sparkles, X } from 'lucide-react'
+import { Group, Panel, Separator } from 'react-resizable-panels'
+import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, NotebookText, PanelLeft, PenLine, Search, Settings, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
@@ -12,7 +13,7 @@ import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { novaSpring } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { getAutomationInbox, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
-import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
+import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
 
@@ -115,6 +116,7 @@ export function WorkbenchShell({
 }: WorkbenchShellProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
+  const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
   const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
   const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
@@ -543,7 +545,17 @@ export function WorkbenchShell({
               <span className="min-w-0 truncate font-medium text-[var(--nova-text-muted)]">{currentBookName}</span>
             </div>
           </div>
-          <LayoutGroup id="workbench-mobile-mode-switch">
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setCommandOpen(true)}
+              className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+              aria-label={t('command.openButton')}
+              title={t('command.openButton')}
+            >
+              <Search className="h-4 w-4" />
+            </button>
+            <LayoutGroup id="workbench-mobile-mode-switch">
             <div className="flex h-8 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
               <button
                 type="button"
@@ -563,6 +575,7 @@ export function WorkbenchShell({
               </button>
             </div>
           </LayoutGroup>
+          </div>
         </div>
         {updateNotice && (
           <div className="mt-2 flex justify-end">
@@ -590,25 +603,32 @@ export function WorkbenchShell({
       side: 'left' as const,
       content: sidebar,
     } : undefined
-    const mobileAgentDrawer = mode === 'ide' && !fullWorkspacePanelVisible ? {
-      id: 'agent' as const,
-      title: t('workbench.mobile.agent'),
-      icon: <Bot className="h-4 w-4" />,
-      side: 'right' as const,
-      content: rightPanelContent,
-      onOpen: () => onSetRightPanel('ai'),
-      onClose: () => {
-        if (rightPanel === 'ai') onSetRightPanel(null)
-      },
-    } : undefined
+    // Direction B: editor + Agent in a vertical split (Agent docked at bottom,
+    // always visible) instead of Agent hidden in a right drawer. Only when the
+    // Agent panel is active and no full-workspace panel covers the screen.
+    const mobileAgentDocked = mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)
+    const mobileMain = mobileAgentDocked ? (
+      <Group
+        orientation="vertical"
+        resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <Panel id="nova-mobile-editor" minSize="30%" className="min-h-0">
+          {main}
+        </Panel>
+        <Separator aria-label={t('layout.resize.bottom')} className="nova-resize-handle -my-1 h-2 cursor-row-resize bg-transparent transition-colors" />
+        <Panel id="nova-mobile-agent" defaultSize="38%" minSize="20%" className="min-h-0">
+          {rightPanelContent}
+        </Panel>
+      </Group>
+    ) : main
 
     return (
       <WorkspaceMobileLayout
         topBar={mobileTopBar}
-        main={main}
+        main={mobileMain}
         activityItems={mobileActivityItems}
         projectDrawer={mobileProjectDrawer}
-        agentDrawer={mobileAgentDrawer}
         settingsItem={{
           id: 'settings',
           label: t('workbench.activity.settings'),

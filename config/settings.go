@@ -51,6 +51,7 @@ type Settings struct {
 	// 编辑器
 	AutoSaveEnabled             *bool  `toml:"auto_save_enabled,omitempty" json:"auto_save_enabled,omitempty"`
 	AutoSaveIntervalMs          *int   `toml:"auto_save_interval_ms,omitempty" json:"auto_save_interval_ms,omitempty"`
+	HideChapterBodyLiveOutput   *bool  `toml:"hide_novel_chapter_body_in_live_output,omitempty" json:"hide_novel_chapter_body_in_live_output,omitempty"`
 	ChapterFilenameFormat       string `toml:"chapter_filename_format,omitempty" json:"chapter_filename_format,omitempty"`
 	VolumeDirFormat             string `toml:"volume_dir_format,omitempty" json:"volume_dir_format,omitempty"`
 	MaxOpenTabs                 *int   `toml:"max_open_tabs,omitempty" json:"max_open_tabs,omitempty"`
@@ -113,6 +114,7 @@ func DefaultSettings() Settings {
 		AllowLANAccess:              boolPtr(false),
 		AutoSaveEnabled:             boolPtr(true),
 		AutoSaveIntervalMs:          intPtr(1500),
+		HideChapterBodyLiveOutput:   boolPtr(false),
 		ChapterFilenameFormat:       "ch{order:05}-{chapter}-{title}.md",
 		VolumeDirFormat:             "v{order:05}-{volume}",
 		MaxOpenTabs:                 intPtr(5),
@@ -219,6 +221,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.AutoSaveIntervalMs != nil {
 		out.AutoSaveIntervalMs = child.AutoSaveIntervalMs
+	}
+	if child.HideChapterBodyLiveOutput != nil {
+		out.HideChapterBodyLiveOutput = child.HideChapterBodyLiveOutput
 	}
 	if child.ChapterFilenameFormat != "" {
 		out.ChapterFilenameFormat = child.ChapterFilenameFormat

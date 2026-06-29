@@ -22,7 +22,7 @@ import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateChec
 import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfilesWithDefault } from './model-profiles'
 import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 
-type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -76,6 +76,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     updates: true,
     agent: true,
     'ide-editor': true,
+    'ide-output': true,
     versions: true,
     interactive: true,
   })
@@ -454,6 +455,21 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
               onChange={(v) => setField('ide_story_teller_id', v)}
             />
           )}
+        </>
+      ),
+    },
+    {
+      id: 'ide-output',
+      group: t('settings.group.ide'),
+      title: t('settings.section.liveOutput'),
+      children: (
+        <>
+          <BoolTri label={t('settings.ide.hideNovelChapterBodyInLiveOutput')} value={draft.hide_novel_chapter_body_in_live_output ?? null}
+                   effective={effective.hide_novel_chapter_body_in_live_output}
+                   onChange={(v) => setField('hide_novel_chapter_body_in_live_output', v)} />
+          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+            {t('settings.ide.hideNovelChapterBodyInLiveOutputHelp')}
+          </div>
         </>
       ),
     },

@@ -8,6 +8,7 @@ echo "==> 清理 output 目录"
 rm -rf "${OUTPUT_DIR}"
 mkdir -p "${OUTPUT_DIR}"
 
+EMBED_TAG=""
 echo "==> 构建前端"
 if [ -d "web" ]; then
     cd web
@@ -19,12 +20,16 @@ if [ -d "web" ]; then
     cd ..
     echo "  复制前端产物到 ${OUTPUT_DIR}/web/"
     cp -r web/dist "${OUTPUT_DIR}/web"
+    echo "  准备内嵌前端资源（go:embed，构建标签 embedweb）"
+    rm -rf internal/webfs/dist
+    cp -r web/dist internal/webfs/dist
+    EMBED_TAG="-tags embedweb"
 else
-    echo "警告: web/ 目录不存在，跳过前端构建"
+    echo "警告: web/ 目录不存在，跳过前端构建（nova 将不含内嵌前端）"
 fi
 
 echo "==> 编译 nova"
-go build -ldflags "-X nova/internal/buildinfo.Version=${VERSION}" -o "${OUTPUT_DIR}/nova" ./cmd/nova/
+go build ${EMBED_TAG} -ldflags "-X nova/internal/buildinfo.Version=${VERSION}" -o "${OUTPUT_DIR}/nova" ./cmd/nova/
 
 echo "==> 编译 nova-updater"
 go build -ldflags "-X nova/internal/buildinfo.Version=${VERSION}" -o "${OUTPUT_DIR}/nova-updater" ./cmd/nova-updater/

@@ -10,6 +10,7 @@ const command = {
   'command.saveChapter': '保存当前章节',
   'command.description': '搜索并执行工作台命令',
   'command.title': '命令面板',
+  'command.openButton': '命令',
 } as const
 
 export default command

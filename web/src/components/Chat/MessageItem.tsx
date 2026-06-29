@@ -495,16 +495,24 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const result = message.result || ''
   const isDelegationTool = name === 'task'
   const taskSubAgent = isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
+  const isChapterBodyHidden = message.sse_display_notice === 'chapter_body_hidden'
+  const chapterBodyHiddenPath = isChapterBodyHidden ? extractToolArgPath(rawArgs) : ''
+  const chapterGeneratedChars = isChapterBodyHidden && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
   const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : name
-  const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : args
+  const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : (isChapterBodyHidden ? '' : args)
   const hasResult = status === 'success'
-  const isStreamingContent = status === 'running' && isContentTool(name) && rawArgs.length > 50
+  const isStreamingContent = !isChapterBodyHidden && status === 'running' && isContentTool(name) && rawArgs.length > 50
   const streamPreview = isStreamingContent ? extractStreamingContent(rawArgs) : ''
   const summary = taskSubAgent
     ? t('chat.subagent.delegating', { name: taskSubAgent })
     : buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
   const resultPreview = buildPreview(result, 80)
-  const hasDetail = Boolean(detailArgs || result)
+  const displaySummary = isChapterBodyHidden
+    ? chapterGeneratedChars !== undefined
+      ? t(hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount', { count: chapterGeneratedChars })
+      : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting'))
+    : (hasResult ? resultPreview || t('chat.tool.done') : summary)
+  const hasDetail = Boolean(detailArgs || result || isChapterBodyHidden)
   const streamPreviewScrollLock = useBottomScrollLock<HTMLDivElement>({
     enabled: isStreamingContent,
     resetKey: `${message.id || name}:tool-stream-preview`,
@@ -527,7 +535,7 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
           )}
           {message.subagent && <AgentSourceBadge message={message} compact />}
           <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
-            {hasResult ? resultPreview || t('chat.tool.done') : summary}
+            {displaySummary}
           </span>
           {hasDetail && !isStreamingContent && (
             <button
@@ -554,6 +562,22 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
         )}
         {expanded && !isStreamingContent && (
           <div className="grid max-h-48 gap-2 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
+            {isChapterBodyHidden && (
+              <div className="grid gap-1 font-sans">
+                {chapterBodyHiddenPath && (
+                  <div className="min-w-0">
+                    <span className="text-[var(--nova-text-faint)]">{t('chat.tool.chapterPath')}</span>
+                    <code className="ml-1 break-all font-mono text-[var(--nova-text-muted)]">{chapterBodyHiddenPath}</code>
+                  </div>
+                )}
+                {chapterGeneratedChars !== undefined && (
+                  <div className="text-[var(--nova-text-faint)]">
+                    {t('chat.tool.chapterGeneratedChars', { count: chapterGeneratedChars })}
+                  </div>
+                )}
+                <div className="text-[var(--nova-text-faint)]">{t('chat.tool.chapterBodyHidden')}</div>
+              </div>
+            )}
             {detailArgs && <pre className="whitespace-pre-wrap">{detailArgs}</pre>}
             {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
             {result && <pre className="whitespace-pre-wrap text-[var(--nova-accent-green)]">{result}</pre>}
@@ -1030,6 +1054,18 @@ function buildToolArgSummary(args: string) {
     // 非 JSON 参数使用通用预览。
   }
   return buildPreview(args, 120)
+}
+
+function extractToolArgPath(args: string) {
+  if (!args) return ''
+  try {
+    const data = JSON.parse(args) as Record<string, unknown>
+    const path = data.file_path || data.path
+    return typeof path === 'string' ? path : ''
+  } catch {
+    const match = args.match(/"(?:file_path|path)"\s*:\s*"([^"]+)"/)
+    return match?.[1] || ''
+  }
 }
 
 function buildPreview(content: string, maxLength: number) {

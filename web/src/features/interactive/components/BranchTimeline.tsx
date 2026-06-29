@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
-import { ArrowLeft, ChevronDown, ChevronUp, GitBranch, Move, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronUp, Crosshair, GitBranch, Move, Plus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -165,6 +165,15 @@ export function BranchTimeline({
     if (node.branch_id !== currentBranchId) onSwitchBranch(node.branch_id)
   }, [currentBranchId, onSwitchBranch])
 
+  // Pan back to the current/selected node. On desktop the MiniMap gives an
+  // overview, but it is hidden below the sm breakpoint, so on a phone this is
+  // the only way back after the user pans around the graph.
+  const recenter = useCallback(() => {
+    const scroller = scrollRef.current
+    if (!scroller || !currentPositionedNode) return
+    scrollElementTo(scroller, Math.max(0, currentPositionedNode.x - scroller.clientWidth * 0.35), Math.max(0, currentPositionedNode.y - scroller.clientHeight * 0.45), 'smooth')
+  }, [currentPositionedNode])
+
   const openCreateDialog = () => {
     if (!selectedNode) return
     setBranchSourceNode(selectedNode)
@@ -249,7 +258,7 @@ export function BranchTimeline({
                 <button
                   key={row.branchId}
                   type="button"
-                  className={`nova-nav-item flex h-7 shrink-0 items-center gap-2 rounded-[var(--nova-radius)] border px-2 text-xs transition ${row.branchId === currentBranchId ? 'is-active text-[var(--nova-text)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]'}`}
+                  className={`nova-nav-item flex h-7 max-md:min-h-9 shrink-0 items-center gap-2 rounded-[var(--nova-radius)] border px-2 text-xs transition ${row.branchId === currentBranchId ? 'is-active text-[var(--nova-text)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]'}`}
                   style={row.branchId === currentBranchId ? { borderColor: row.color, background: row.colorSoft } : undefined}
                   onClick={() => onSwitchBranch(row.branchId)}
                   title={formatBranchName(row.branch, t)}
@@ -359,6 +368,9 @@ export function BranchTimeline({
             ) : (
               <span>{t('branchTimeline.selectHint')}</span>
             )}
+            <Button size="xs" variant="outline" className="nova-nav-item shrink-0 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] sm:hidden" onClick={recenter} disabled={!currentPositionedNode} aria-label={t('branchTimeline.recenter')} title={t('branchTimeline.recenter')}>
+              <Crosshair className="h-3.5 w-3.5" />
+            </Button>
             <MiniMap layout={layout} scrollRef={scrollRef} ariaLabel={t('branchTimeline.minimap')} />
             {selectedNode && (
               <Button size="xs" className="shrink-0 gap-1.5 border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]" onClick={openCreateDialog}>

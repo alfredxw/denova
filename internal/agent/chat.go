@@ -356,6 +356,7 @@ func (r *Runtime) Run(
 		}
 
 		eventMeta := subAgentSessions.decorate(metadataForAgentEvent(event, options.RootAgentName))
+		eventMeta.AgentKind = options.AgentKind
 		mv := event.Output.MessageOutput
 		if mv.Role == schema.Tool {
 			if mv.Message == nil {

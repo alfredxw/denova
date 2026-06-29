@@ -8,6 +8,7 @@ import (
 )
 
 type agentEventMetadata struct {
+	AgentKind         string
 	RunID             string
 	AgentName         string
 	RootAgentName     string
@@ -137,6 +138,9 @@ func (m agentEventMetadata) appendTo(data map[string]interface{}) map[string]int
 	if m.AgentName != "" {
 		data["agent_name"] = m.AgentName
 	}
+	if m.AgentKind != "" {
+		data["agent_kind"] = m.AgentKind
+	}
 	if m.RunID != "" {
 		data["run_id"] = m.RunID
 	}
@@ -160,6 +164,7 @@ func eventMetadataFromData(data interface{}) agentEventMetadata {
 	meta := agentEventMetadata{}
 	switch typed := data.(type) {
 	case map[string]string:
+		meta.AgentKind = typed["agent_kind"]
 		meta.RunID = typed["run_id"]
 		meta.AgentName = typed["agent_name"]
 		meta.RootAgentName = typed["root_agent_name"]
@@ -167,6 +172,7 @@ func eventMetadataFromData(data interface{}) agentEventMetadata {
 		meta.SubAgentType = typed["subagent_type"]
 		meta.SubAgent = strings.EqualFold(typed["subagent"], "true")
 	case map[string]interface{}:
+		meta.AgentKind = eventDataString(typed, "agent_kind")
 		meta.RunID = eventDataString(typed, "run_id")
 		meta.AgentName = eventDataString(typed, "agent_name")
 		meta.RootAgentName = eventDataString(typed, "root_agent_name")

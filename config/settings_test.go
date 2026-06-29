@@ -22,6 +22,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AutoSaveEnabled == nil || *s.AutoSaveEnabled != true {
 		t.Fatalf("AutoSaveEnabled default")
 	}
+	if s.HideChapterBodyLiveOutput == nil || *s.HideChapterBodyLiveOutput {
+		t.Fatalf("HideChapterBodyLiveOutput should default off")
+	}
 	if s.MaxIteration != nil {
 		t.Fatalf("MaxIteration should default to unset")
 	}
@@ -127,6 +130,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		Theme:                      "dark",
 		MotionIntensity:            "system",
 		UpdateCheckEnabled:         boolPtr(true),
+		HideChapterBodyLiveOutput:  boolPtr(false),
 		ChapterFilenameFormat:      "old-chapter",
 		VolumeDirFormat:            "old-volume",
 		BackendPort:                intPtr(8080),
@@ -152,6 +156,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		Theme:                      "light",
 		MotionIntensity:            "reduced",
 		UpdateCheckEnabled:         boolPtr(false),
+		HideChapterBodyLiveOutput:  boolPtr(true),
 		ChapterFilenameFormat:      "new-chapter",
 		VolumeDirFormat:            "new-volume",
 		BackendPort:                intPtr(18080),
@@ -207,6 +212,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.UpdateCheckEnabled == nil || *out.UpdateCheckEnabled != false {
 		t.Fatalf("UpdateCheckEnabled should override parent")
+	}
+	if out.HideChapterBodyLiveOutput == nil || *out.HideChapterBodyLiveOutput != true {
+		t.Fatalf("HideChapterBodyLiveOutput should override parent")
 	}
 	if out.ChapterFilenameFormat != "new-chapter" || out.VolumeDirFormat != "new-volume" {
 		t.Fatalf("filename formats should override parent: %#v", out)
