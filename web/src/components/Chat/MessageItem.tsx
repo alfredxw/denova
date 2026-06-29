@@ -100,6 +100,46 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                 versionCount={versionCount}
               />
             </div>
+            {showAssistantActions && (
+              <div className="nova-assistant-actions mt-1.5 flex justify-end">
+                <div className="flex items-center gap-0.5 opacity-30 transition-opacity group-hover:opacity-80 focus-within:opacity-80 max-md:opacity-80">
+                  {canSwitchVersion && onSwitchVersion && (
+                    <>
+                      <TooltipIconButton
+                        label={t('chat.action.prevVersion')}
+                        className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
+                        disabled={versionIndex <= 0}
+                        onClick={() => onSwitchVersion(message, -1)}
+                      >
+                        <ChevronLeft className="h-3 w-3" />
+                      </TooltipIconButton>
+                      <span className="min-w-8 text-center font-mono text-[10px] leading-6 text-[var(--nova-text-faint)]">
+                        {versionIndex + 1}/{versionCount}
+                      </span>
+                    </>
+                  )}
+                  {canRegenerate && onRegenerate && (
+                    <TooltipIconButton
+                      label={t('chat.action.regenerateTurn')}
+                      className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
+                      onClick={() => onRegenerate(message)}
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </TooltipIconButton>
+                  )}
+                  {canSwitchVersion && onSwitchVersion && (
+                    <TooltipIconButton
+                      label={t('chat.action.nextVersion')}
+                      className="h-6 w-6 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:cursor-not-allowed disabled:opacity-30"
+                      disabled={versionIndex >= versionCount - 1}
+                      onClick={() => onSwitchVersion(message, 1)}
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                    </TooltipIconButton>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )

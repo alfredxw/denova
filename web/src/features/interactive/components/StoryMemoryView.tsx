@@ -357,6 +357,52 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
               </div>
               {records.length === 0 ? (
                 <div className="flex min-h-[220px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] text-center text-xs text-[var(--nova-text-muted)]">{loading ? t('storyMemory.loading') : t('storyMemory.empty')}</div>
+              ) : isMobile ? (
+                <div data-testid="story-memory-cards" className="flex flex-col gap-2">
+                  {records.map((record) => (
+                    <div
+                      key={record.id}
+                      className={`rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3 ${record.archived ? 'opacity-55' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate font-medium text-[var(--nova-text)]">{record.key || selectedStructure?.name || t('storyMemory.untitled')}</div>
+                          {(record.manual || record.inherited_from || record.archived) && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {record.manual && <span className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('storyMemory.manual')}</span>}
+                              {record.inherited_from && <span className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('storyMemory.inherited')}</span>}
+                              {record.archived && <span className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('storyMemory.archived')}</span>}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 gap-1">
+                          <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.editRecord')} onClick={() => startEditRecord(record)}>
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={record.archived ? t('storyMemory.restore') : t('storyMemory.archive')} onClick={() => void toggleRecordArchived(record)}>
+                            {record.archived ? <RotateCcw className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-col gap-2">
+                        {tableFields.map((field) => (
+                          <div key={field.id} className="min-w-0">
+                            <div className="flex items-center gap-1 text-[11px] font-medium text-[var(--nova-text-muted)]">
+                              <span className="truncate">{field.name || field.id}</span>
+                              {!storyMemoryEnabled(field.enabled) && <span className="shrink-0 rounded-full border border-[var(--nova-border)] px-1 py-0.5 text-[10px] font-normal">{t('storyMemory.disabled')}</span>}
+                              {field.required && <span className="shrink-0 text-[var(--nova-danger)]">*</span>}
+                            </div>
+                            <p className="whitespace-pre-wrap break-words text-xs leading-5 text-[var(--nova-text)] [overflow-wrap:anywhere]">{recordFieldValue(record, field) || t('storyMemory.noValue')}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--nova-text-faint)]">
+                        <span>{formatDate(record.updated_at || record.created_at)}</span>
+                        <span className="truncate">{record.branch_id === branchId ? t('storyMemory.currentBranch') : shortId(record.branch_id)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <div data-testid="story-memory-table-shell" className="max-w-full overflow-x-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
                   <table data-testid="story-memory-table" className="w-full table-fixed border-collapse text-left text-xs">

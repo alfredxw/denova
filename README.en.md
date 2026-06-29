@@ -117,6 +117,51 @@ Default addresses:
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8080`
 
+## Self-Hosting & Remote Access (Mobile)
+
+You can deploy Nova on your own server and reach the frontend from a phone browser.
+
+### 1. Prepare the web assets
+
+Release archives already ship a built `web/` directory — place it next to the `nova` binary and it just works. When self-hosting from source, build the frontend first:
+
+```bash
+pnpm --dir web build      # output goes to web/dist
+```
+
+On startup the binary looks for the web root in order: the `NOVA_WEB_DIR` env var → a `web/` directory next to the executable → a `web/` directory in the current working directory. You can point at it explicitly with `NOVA_WEB_DIR=/path/to/web/dist`.
+
+### 2. Enable remote access
+
+In Nova's **Settings → Remote Access**, turn on "Allow LAN access" and set a username and password (the password is stored as a bcrypt hash). Once enabled:
+
+- The listen address switches from `127.0.0.1` to `0.0.0.0`, so LAN/internet devices can connect;
+- Every non-loopback request requires Basic auth (username + password); local requests are unaffected;
+- A phone browser shows a login overlay on first open; enter the credentials to continue.
+
+The backend port is `backend_port` in `config.toml` (default 8080). The startup console prints the LAN address, e.g. `http://192.168.x.x:8080`.
+
+### 3. Use it on a phone
+
+Open that address in a phone browser, sign in, and "Add to Home Screen" to launch Nova as a standalone app (no address bar, notch safe-area aware). Nova now ships a PWA manifest and app icons.
+
+### 4. HTTPS / public access (recommended)
+
+Plain HTTP over a LAN is fine for personal use; for public or domain access, put a reverse proxy (Caddy / Nginx) in front for HTTPS:
+
+- Basic-auth credentials should not travel in cleartext over the public internet;
+- Some browser Web APIs (e.g. clipboard write, Service Workers) require a secure context (HTTPS);
+- Keep the original paths when proxying — Nova falls back to the SPA shell for unknown frontend paths, so refreshing any page never 404s.
+- Note: each phone refresh of a deep link (triggering the SPA fallback) emits one Hertz `Cannot open file=...` ERROR log line; this is expected (the web server is healthy). If you alert on ERROR-level logs, filter on that string. Doing the fallback at the reverse proxy (e.g. Nginx `try_files`) avoids the log line entirely.
+
+Caddy example (automatic HTTPS):
+
+```
+nova.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
 ## Models and Configuration
 
 Nova uses an OpenAI-compatible API. You can configure it quickly with environment variables:

@@ -10,6 +10,7 @@ const command = {
   'command.saveChapter': 'Save Current Chapter',
   'command.description': 'Search and run workbench commands',
   'command.title': 'Command Palette',
+  'command.openButton': 'Commands',
 } as const
 
 export default command

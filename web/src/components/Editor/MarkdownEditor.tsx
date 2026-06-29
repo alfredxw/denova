@@ -724,7 +724,7 @@ export function MarkdownEditor({
       {/* 编辑器内容区 */}
       <div
         ref={editorContainerRef}
-        className="relative flex-1 overflow-y-auto px-10 py-8"
+        className="relative flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8"
         style={{
           background: themeStyle.background,
           ['--nova-editor-color' as string]: themeStyle.color,

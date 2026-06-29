@@ -1,14 +1,17 @@
 package api
 
 import (
+	"context"
 	"log"
 	"os"
 	"path/filepath"
 
 	hertzapp "github.com/cloudwego/hertz/pkg/app"
 	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"nova/internal/api/handlers"
+	"nova/internal/webfs"
 )
 
 // registerRoutes 注册 HTTP API 和静态文件路由。
@@ -148,9 +151,42 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 
 	if webRoot := resolveWebRoot(); webRoot != "" {
 		log.Printf("[startup] Web 静态资源目录: %s", webRoot)
-		h.StaticFS("/", &hertzapp.FS{Root: webRoot, IndexNames: []string{"index.html"}})
+		staticFS := &hertzapp.FS{Root: webRoot, IndexNames: []string{"index.html"}}
+		if spaFallback := spaFallbackHandler(webRoot); spaFallback != nil {
+			staticFS.PathNotFound = spaFallback
+		}
+		h.StaticFS("/", staticFS)
 	} else {
 		log.Printf("[startup] 未找到 Web 静态资源目录，仅注册 API 路由")
+	}
+}
+
+// spaFallbackHandler serves index.html for unknown GET/HEAD paths so that
+// client-side deep links and full-page reloads resolve to the SPA shell
+// instead of Hertz's default "Cannot open requested path" 404. This matters
+// most on phones, where refresh and "add to home screen" deep links land on
+// arbitrary in-app paths. Real API requests are matched under the /api group
+// before the static catch-all, so they are unaffected; a genuinely missing
+// static asset simply gets the shell, matching standard SPA behaviour.
+//
+// Returns nil (keeping the default 404) if index.html cannot be read, which
+// should not happen given resolveWebRoot already verified its presence.
+func spaFallbackHandler(webRoot string) hertzapp.HandlerFunc {
+	indexPath := filepath.Join(webRoot, "index.html")
+	indexHTML, err := os.ReadFile(indexPath)
+	if err != nil {
+		log.Printf("[startup] 读取 index.html 失败，禁用 SPA 回退: %v", err)
+		return nil
+	}
+	return func(ctx context.Context, c *hertzapp.RequestContext) {
+		method := string(c.Request.Method())
+		if method != "GET" && method != "HEAD" {
+			c.SetStatusCode(consts.StatusNotFound)
+			return
+		}
+		c.SetContentType("text/html; charset=utf-8")
+		c.SetStatusCode(consts.StatusOK)
+		c.SetBodyString(string(indexHTML))
 	}
 }
 
@@ -178,6 +214,19 @@ func resolveWebRoot() string {
 				return root
 			}
 		}
+	}
+	// Last resort: assets embedded into the binary (build tag "embedweb").
+	// Lets a bare nova binary serve the frontend with no web/ directory on
+	// disk — useful for go install / single-binary distribution. Extracts to
+	// a temp dir the file-based static handler can serve from.
+	if webfs.HasEmbedded() {
+		root, err := webfs.ExtractEmbedded()
+		if err != nil {
+			log.Printf("[startup] 解压内嵌前端资源失败，仅注册 API 路由: %v", err)
+			return ""
+		}
+		log.Printf("[startup] 未找到磁盘 Web 目录，使用内嵌前端资源: %s", root)
+		return root
 	}
 	return ""
 }

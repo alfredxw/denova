@@ -92,7 +92,7 @@ export function WorkspaceLayout({
   }, [horizontalGroupRef, rightPanelVisible, rightPanelWide, sidebarVisible])
 
   return (
-    <div data-nova-app-shell="true" className="h-screen w-screen overflow-hidden">
+    <div data-nova-app-shell="true" className="h-dvh w-screen overflow-hidden">
       <div className="flex h-full flex-col">
         {topBar}
         <div className="flex min-h-0 flex-1">

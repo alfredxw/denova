@@ -27,6 +27,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { isComposingKeyboardEvent } from '@/lib/keyboard'
+import { useKeyboardInset } from '@/hooks/useKeyboardInset'
+import { useIsMobile } from '@/hooks/useIsMobile'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -132,6 +134,8 @@ export function InputArea({
   onHeightChange,
 }: InputAreaProps) {
   const { t } = useTranslation()
+  const keyboardInset = useKeyboardInset()
+  const isMobile = useIsMobile()
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
   const [showCommands, setShowCommands] = useState(false)
@@ -231,8 +235,14 @@ export function InputArea({
   const syncHeight = useCallback(() => {
     const element = rootRef.current
     if (!element) return
-    onHeightChange?.(Math.ceil(element.getBoundingClientRect().height))
-  }, [onHeightChange])
+    const height = Math.ceil(element.getBoundingClientRect().height)
+    // Floating composers pin to the layout-viewport bottom, so on iOS the
+    // on-screen keyboard covers them. They lift by `keyboardInset` (see the
+    // root style below), and the clearance a message list must reserve is the
+    // composer height plus that inset. Non-floating composers are in normal
+    // flow and ignore the inset.
+    onHeightChange?.(floating ? height + keyboardInset : height)
+  }, [onHeightChange, floating, keyboardInset])
 
   useLayoutEffect(() => {
     syncHeight()
@@ -416,7 +426,11 @@ export function InputArea({
   }
 
   return (
-    <div ref={rootRef} className={floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3'}>
+    <div
+      ref={rootRef}
+      style={floating ? { bottom: keyboardInset } : undefined}
+      className={floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3'}
+    >
       <Popover open={showCommands && filteredCommands.length > 0}>
         <PopoverTrigger asChild>
           <span className="absolute bottom-full left-3 h-0 w-0" />
@@ -536,6 +550,10 @@ export function InputArea({
             placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
             disabled={disabled}
             rows={1}
+            maxRows={isMobile ? 5 : 10}
+            inputMode="text"
+            enterKeyHint="send"
+            autoCapitalize="sentences"
             className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
           />
         }

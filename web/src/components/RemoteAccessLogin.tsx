@@ -61,7 +61,7 @@ export function RemoteAccessLogin() {
           <span className="mb-1.5 block">{t('remoteAccess.username')}</span>
           <input
             autoFocus
-            className="nova-field min-h-9 w-full rounded-[var(--nova-radius)] border px-3 py-2 text-sm outline-none"
+            className="nova-field min-h-9 w-full rounded-[var(--nova-radius)] border px-3 py-2 text-sm outline-none max-md:text-[16px]"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
             autoComplete="username"
@@ -70,7 +70,7 @@ export function RemoteAccessLogin() {
         <label className="block text-xs text-[var(--nova-text-muted)]">
           <span className="mb-1.5 block">{t('remoteAccess.password')}</span>
           <input
-            className="nova-field min-h-9 w-full rounded-[var(--nova-radius)] border px-3 py-2 text-sm outline-none"
+            className="nova-field min-h-9 w-full rounded-[var(--nova-radius)] border px-3 py-2 text-sm outline-none max-md:text-[16px]"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             type="password"

@@ -8,6 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- WebUI：新增 PWA manifest、应用图标（apple-touch-icon / 192 / 512 / maskable）与移动端 viewport meta（`viewport-fit=cover`、`theme-color`、`apple-mobile-web-app-capable` 等）。自托管后可在手机主屏“添加到桌面”以独立应用形态打开，并正确延伸到刘海安全区；图标由 `pnpm generate-icons`（sharp）从 `favicon.svg` 复现式生成。
+- 后端：静态资源服务对未知前端路径做 SPA 回退（返回 `index.html`）。手机刷新任意页面或深链打开不再返回 Hertz 默认 404；`/api/*` 路由不受影响。
+- 后端：Nova 二进制现在可内嵌前端（构建标签 `embedweb`），裸二进制无需磁盘 `web/` 目录即可提供前端服务，适合 `go install` / 单文件分发 / 最小化自托管。默认构建行为不变；release 仍附带 `web/` 作为磁盘快速路径与 updater 兼容，内嵌为独立运行的兜底。
+- 文档：README（中/英）新增「自托管与远程访问（手机访问）」章节，覆盖构建前端、开启远程访问、手机使用与 HTTPS 反向代理。
+
+### Fixed
+
+- WebUI：桌面布局根与运行时错误边界由 `h-screen` 改为 `h-dvh`，与移动 shell 一致，避免 iOS Safari 地址栏导致的底部跳动。
+- WebUI：远程访问登录框用户名/密码输入框使用 16px 字号，避免 iOS Safari 聚焦时自动缩放页面（该登录浮层渲染在 app shell 之外，原先不享受 16px 字号覆盖规则）。
+- WebUI：章节版本对比的紧凑模式改用项目统一的 `useIsMobile()` 断点（767px），与移动 shell 及版本对比弹窗的 `max-md` 行为一致，消除 760–767px 区间的断点错位。
+- 移动端：聊天 Agent 与互动故事的浮动输入框现在会随软键盘上移，不再被键盘遮挡（此前在 iOS 上输入框会被键盘盖住）。新增 `useKeyboardInset` hook 基于 `visualViewport` 计算键盘高度，仅在输入聚焦时生效；桌面端与 Android（`dvh` 已自动收缩）不受影响。顺带为输入框加上 `enterKeyHint="send"` 等移动键盘提示。
+- 移动端：文件树每行的操作菜单（新建 / 重命名 / 复制 / 移动 / 删除 / 引用）按钮在触摸下常显（原先仅 hover 可见，手机上无法触达文件操作），并加大行与内联输入框的触摸区、补上 `enterKeyHint`。
+- 移动端：标签页关闭按钮在触摸下常显、当前标签常显（原先仅 hover 可见，手机上无法关闭标签）。
+- 移动端：移动顶栏新增「命令」按钮，没有实体键盘的手机也能打开命令面板（原先仅 ⌘K / Ctrl+K）。
+- 移动端：写作编辑器阅读区在手机上改用更紧凑的横向留白（`px-4`，桌面仍为 `px-10`），避免窄屏正文被两侧大留白挤压。
+- 移动端：聊天消息的助手操作（重新生成 / 切换版本等）与消息元信息在触摸下常显（原先仅 hover 可见，手机上无法触达）。
+- 修复：命令面板（⌘K / Ctrl+K）打开即崩溃（`Cannot read properties of undefined (reading 'subscribe')`，触发前端错误边界白屏）。根因是 `CommandDialog` 未用 cmdk 的 `<Command>` 根包裹内容，导致 `CommandInput`/`CommandList`/`CommandItem` 拿不到 cmdk store；补上 `<Command>` 包裹后面板在桌面与移动端均可正常打开。
+- 移动端（共享原语）：`Dialog` / `AlertDialog` 内容默认限制在视口高度内并可滚动（`max-h-[calc(100dvh-2rem)] overflow-y-auto`），长内容弹窗在手机上不再溢出屏幕；自带 `max-h` / `overflow` 的弹窗不受影响（tailwind-merge 优先消费者值）。
+- 移动端（共享原语）：`Popover` 内容新增 `max-w-[calc(100vw-1rem)]`，窄屏下不再溢出到屏幕外。
+- 移动端（互动模式）：故事记忆（StoryMemory）记录列表在窄屏改用卡片渲染（原先的 `table-fixed` 列表在手机上列宽被挤压到几个字符、内容不可读，且 `overflow-x-hidden` 无法横向滚动）；桌面端仍保持表格。复用 `AdaptiveSurface` 提供的 `isMobile` 与既有字段渲染逻辑。
+- 移动端（互动模式）：剧情分支时间线（BranchTimeline）工作台视图在手机上新增「回到当前节点」按钮（桌面端用缩略导航 MiniMap 定位，移动端 MiniMap 隐藏，故补充此按钮以便手动平移后重新定位到当前剧情线）；分支切换 pills 触摸区在移动端加大。该视图的图本身已可触摸拖拽平移、切换分支自动居中、选中节点后可创建分支，本次补齐移动端导航缺口。
+- 移动端：修复创作 Agent / 互动故事输入框在预填长 prompt（如「和创作 Agent 聊灵感」自动注入的启动 prompt）时 textarea 无限增高、composer 撑满大半屏挤压对话区的问题；移动端将 composer textarea 的最大行数限制为 5（桌面仍为 10），长内容在框内滚动而非顶高整个输入区。
+
+### Changed
+
+- 移动端：Agent 面板从右侧抽屉改为**底部常驻面板**（与编辑器竖向分割），恢复桌面端「编辑器 + Agent 同屏可见」的核心操作逻辑。使用 `react-resizable-panels` 做竖向分割，可拖拽分隔条调节编辑器/Agent 比例。Agent 不再需要点导航打开；快捷创作按钮始终可达。桌面端不受影响。
 - 设置：新增 `hide_novel_chapter_body_in_live_output` 配置，开启后隐藏章节正文在 Agent 流中的输出，并保留目标路径和已生成字符数；默认关闭以保持原有实时输出行为。
 
 ### Changed
