@@ -89,6 +89,14 @@ export function MobilePaneHost({
     if (openPaneId && !paneIds.has(openPaneId)) setOpenPaneId(null)
   }, [openPaneId, paneIds])
 
+  // Allow external code (e.g. file selection in the project drawer) to close
+  // all open panes by dispatching this event. Used for file-tree auto-close.
+  useEffect(() => {
+    const close = () => setOpenPaneId(null)
+    window.addEventListener('nova:mobile-close-panes', close)
+    return () => window.removeEventListener('nova:mobile-close-panes', close)
+  }, [])
+
   const hostRef = useEdgeSwipe({
     leftEnabled: panes.some((pane) => pane.side === 'left'),
     rightEnabled: panes.some((pane) => pane.side === 'right'),
