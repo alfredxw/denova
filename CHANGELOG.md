@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 文档/更新：修正 README 徽章、Release 下载、源码克隆、Star History 与应用内更新检查使用的 GitHub 仓库标识，改为 `alfredxw/denova`，避免用户跳转或检查到旧 Release 页。
 - 游戏模式：互动图像生成完成后允许把展示事件写回当前分支父链上的继承回合，避免从旧分支接出的剧情线在生成祖先回合图像时误报“展示事件回合不属于当前分支”；图像生成上下文也改用当前快照分支读取故事记忆。
 - Agent：内置 `novel-lite` / `novel-standard` / `novel-heavy` 写作 Skill 明确要求按场景使用 `read_file`、`write_file`、`edit_file`、`task` 等工具，并在写入后检查工具结果与读回关键片段，避免工具失败时误向用户宣称文件已修改。
 - 对话渲染：游戏模式改为用后端落盘增量事件原地合并新回合，并把完整快照刷新降级为静默校准；同时移除通用对话和游戏剧情页在 `done` 事件上的临时“完成 / Done”活动行，并把流式正文改为 `streaming_target_content` 隐藏占位、下一帧再提升为可见 `content` 的两阶段提交，避免输出完成或换行瞬间因消息列表高度变化、live 消息切换到持久化快照而抖动或重新入场。本次为内部渲染行为优化，无用户数据迁移。

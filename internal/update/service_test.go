@@ -41,6 +41,14 @@ func TestPlatformKeyNormalizesAMD64(t *testing.T) {
 	}
 }
 
+func TestDefaultServiceUsesDenovaReleaseRepository(t *testing.T) {
+	service := NewService()
+	service.githubAPIBase = "https://api.example.test/repos"
+	if got, want := service.githubLatestReleaseURL(), "https://api.example.test/repos/alfredxw/denova/releases/latest"; got != want {
+		t.Fatalf("githubLatestReleaseURL = %s, want %s", got, want)
+	}
+}
+
 func TestValidateReleasePackageRequiresUpdater(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "nova"), []byte("exe"), 0o755); err != nil {

@@ -4,4 +4,4 @@ package buildinfo
 // treating themselves as installable release binaries.
 var Version = "dev"
 
-const Repository = "alfredxw/nova"
+const Repository = "alfredxw/denova"

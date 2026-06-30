@@ -11,8 +11,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/alfredxw/nova/releases"><img alt="Release" src="https://img.shields.io/github/v/release/alfredxw/nova?style=flat-square"></a>
-  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/alfredxw/nova?style=flat-square"></a>
+  <a href="https://github.com/alfredxw/denova/releases"><img alt="Release" src="https://img.shields.io/github/v/release/alfredxw/denova?style=flat-square"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/alfredxw/denova?style=flat-square"></a>
   <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go&logoColor=white">
   <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-5FA04E?style=flat-square&logo=nodedotjs&logoColor=white">
 </p>
@@ -83,7 +83,7 @@ Nova 有两个并列工作台。写作模式面向小说创作，重点是大纲
 
 ### 方式一：下载 Release
 
-从 [GitHub Releases](https://github.com/alfredxw/nova/releases) 下载对应平台压缩包，解压后运行：
+从 [GitHub Releases](https://github.com/alfredxw/denova/releases) 下载对应平台压缩包，解压后运行：
 
 ```bash
 ./nova
@@ -106,8 +106,8 @@ xattr -dr com.apple.quarantine nova
 需要 Go 1.26+、Node.js 20+ 和 pnpm。
 
 ```bash
-git clone https://github.com/alfredxw/nova.git
-cd nova
+git clone https://github.com/alfredxw/denova.git
+cd denova
 corepack enable
 ./bootstrap.sh
 ```
@@ -261,11 +261,11 @@ my-novel/
 
 ## Star History
 
-<a href="https://www.star-history.com/#alfredxw/nova&type=date&legend=top-left">
+<a href="https://www.star-history.com/#alfredxw/denova&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=alfredxw/nova&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=alfredxw/nova&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=alfredxw/nova&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=alfredxw/denova&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=alfredxw/denova&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=alfredxw/denova&type=date&legend=top-left" />
  </picture>
 </a>
 
