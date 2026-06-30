@@ -125,13 +125,11 @@ export function WorkspaceMobileLayout({
             {compactNavigation ? (
               navigationSheet
             ) : (
-              <nav className="nova-mobile-nav flex shrink-0 items-stretch gap-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5" aria-label={navigationLabel}>
+              <nav className="nova-mobile-nav flex shrink-0 items-stretch gap-0 border-t border-[var(--nova-border)] bg-[var(--nova-surface)] px-0.5 py-1.5" aria-label={navigationLabel}>
                 {projectDrawer ? <MobileNavButton item={navigationItems[0]} /> : null}
-                <div className="nova-mobile-nav-scroll flex min-w-0 flex-1 items-stretch gap-1 overflow-x-auto">
-                  {activityItems.map((item) => (
-                    <MobileNavButton key={item.id} item={{ ...item, onClick: () => runNavAction(item.onClick) }} />
-                  ))}
-                </div>
+                {activityItems.map((item) => (
+                  <MobileNavButton key={item.id} item={{ ...item, onClick: () => runNavAction(item.onClick) }} />
+                ))}
                 {agentDrawer ? <MobileNavButton item={navigationItems[projectDrawer ? activityItems.length + 1 : activityItems.length]} /> : null}
                 <MobileNavButton item={{ ...settingsItem, onClick: () => runNavAction(settingsItem.onClick) }} />
               </nav>
@@ -147,15 +145,16 @@ function MobileNavButton({ item }: { item: MobileNavItem }) {
   return (
     <button
       type="button"
-      className={`nova-mobile-nav-item flex min-h-[52px] min-w-[58px] max-w-[82px] flex-col items-center justify-center gap-0.5 rounded-[var(--nova-radius)] px-1.5 text-[11px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:opacity-45 ${item.active ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : ''} ${item.expanded && !item.active ? 'is-expanded border border-[var(--nova-border)] text-[var(--nova-text-muted)]' : ''}`}
+      className={`nova-mobile-nav-item flex min-h-[48px] flex-1 flex-col items-center justify-center gap-0.5 rounded-[var(--nova-radius)] px-1 text-[10px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)] disabled:opacity-45 ${item.active ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : ''} ${item.expanded && !item.active ? 'is-expanded border border-[var(--nova-border)] text-[var(--nova-text-muted)]' : ''}`}
       disabled={item.disabled}
       aria-label={item.label}
+      title={item.label}
       aria-current={item.active ? 'page' : undefined}
       aria-expanded={item.expanded || undefined}
       onClick={item.onClick}
     >
       <span className="flex h-5 w-5 items-center justify-center">{item.icon}</span>
-      <span className="max-w-full truncate">{item.label}</span>
+      <span className="max-w-full truncate max-md:hidden">{item.label}</span>
     </button>
   )
 }
