@@ -23,6 +23,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu'
+import { formatPlanDiscussionMessage } from '@/lib/plan-mode'
 
 type AgentPanelView = 'chat' | 'sessions' | 'traces'
 
@@ -46,6 +47,7 @@ interface AgentPanelProps {
   styleScenes: string[]
   textSelections: TextSelection[]
   ideContext?: IDEContext
+  planMode: boolean
   fileSuggestions: string[]
   onCreateSession: (title?: string) => void | Promise<void>
   onSwitchSession: (id: string) => void | Promise<void>
@@ -61,6 +63,11 @@ interface AgentPanelProps {
   onStyleSceneRemove: (scene: string) => void
   onTextSelectionRemove: (index: number) => void
   onInsertIllustration?: (illustration: ChapterIllustration) => void
+  onPlanModeChange: (value: boolean) => void
+  onPlanModeToggle: () => void
+  onSubmitPlanQuestion: (message: ChatMessage, content: string, preview: string) => void
+  onApproveProposedPlan: (message: ChatMessage) => void
+  onExitPlanMode: () => void
   onClose: () => void
   onSubAgentDetailsChange?: (open: boolean) => void
 }
@@ -84,6 +91,7 @@ export function AgentPanel({
   styleScenes,
   textSelections,
   ideContext,
+  planMode,
   fileSuggestions,
   onCreateSession,
   onSwitchSession,
@@ -99,6 +107,11 @@ export function AgentPanel({
   onStyleSceneRemove,
   onTextSelectionRemove,
   onInsertIllustration,
+  onPlanModeChange,
+  onPlanModeToggle,
+  onSubmitPlanQuestion,
+  onApproveProposedPlan,
+  onExitPlanMode,
   onClose,
   onSubAgentDetailsChange,
 }: AgentPanelProps) {
@@ -207,6 +220,15 @@ export function AgentPanel({
     if (key) setActiveSubAgentSessionKey(key)
   }
 
+  const continuePlanDiscussion = (message: ChatMessage) => {
+    setView('chat')
+    onPlanModeChange(true)
+    setInputPrefill((current) => ({
+      prompt: formatPlanDiscussionMessage(message.content || ''),
+      nonce: (current?.nonce || 0) + 1,
+    }))
+  }
+
   const removeContextCompaction = async () => {
     await removeChatContextCompaction()
     await handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
@@ -291,11 +313,17 @@ export function AgentPanel({
                 onOpenSubAgentSession={openSubAgentSession}
                 onInsertIllustration={onInsertIllustration}
                 activeSubAgentSessionKey={activeSubAgentSessionKey}
+                onSubmitPlanQuestion={onSubmitPlanQuestion}
+                onApprovePlan={onApproveProposedPlan}
+                onContinuePlan={continuePlanDiscussion}
+                onExitPlanMode={onExitPlanMode}
               />
               <InputArea
                 onSend={sendWithWritingSkill}
                 onStop={onStop}
                 disabled={isStreaming}
+                planMode={planMode}
+                onTogglePlanMode={onPlanModeToggle}
                 draftKey={`ide-agent:${workspace || 'global'}`}
                 inputPrefill={inputPrefill}
                 onInputPrefillConsumed={() => setInputPrefill(null)}
@@ -356,11 +384,17 @@ export function AgentPanel({
                         onOpenSubAgentSession={openSubAgentSession}
                         onInsertIllustration={onInsertIllustration}
                         activeSubAgentSessionKey={activeSubAgentSessionKey}
+                        onSubmitPlanQuestion={onSubmitPlanQuestion}
+                        onApprovePlan={onApproveProposedPlan}
+                        onContinuePlan={continuePlanDiscussion}
+                        onExitPlanMode={onExitPlanMode}
                       />
                       <InputArea
                         onSend={sendWithWritingSkill}
                         onStop={onStop}
                         disabled={isStreaming}
+                        planMode={planMode}
+                        onTogglePlanMode={onPlanModeToggle}
                         draftKey={`ide-agent:${workspace || 'global'}`}
                         inputPrefill={inputPrefill}
                         onInputPrefillConsumed={() => setInputPrefill(null)}

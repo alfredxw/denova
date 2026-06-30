@@ -284,6 +284,179 @@ describe('useAgentEventStream', () => {
       raf.restore()
     }
   })
+
+  it('Plan 卡片 running 事件先占位，success 事件原地更新内容', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['plan_question', { id: 'plan_question-1', status: 'running' }],
+        ['plan_question', { id: 'plan_question-1', status: 'success', content: '{"questions":[{"id":"scope","type":"single","question":"确认范围？","options":[{"id":"a","label":"A"},{"id":"b","label":"B"}]}]}' }],
+      ]))
+    })
+
+    const messages = readMessages().filter((message) => message.role === 'plan_question')
+    expect(messages).toHaveLength(1)
+    expect(messages[0]).toMatchObject({
+      status: 'success',
+      streaming: false,
+      content: expect.stringContaining('"questions"'),
+    })
+  })
+
+  it('Plan running 卡片不展示卡片出现前的 stale thinking', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['thinking', { content: '我先检查上下文\n准备输出问题卡', subagent: false }],
+        ['plan_question', { id: 'plan_question-1', status: 'running' }],
+      ]))
+    })
+
+    const message = readMessages().find((item) => item.role === 'plan_question')
+    expect(message).toMatchObject({
+      status: 'running',
+      streaming: true,
+    })
+    expect(message?.thinking_preview).toBeUndefined()
+  })
+
+  it('Plan running 卡片展示 running 后变化的 root thinking 预览', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['plan_question', { id: 'plan_question-1', status: 'running' }],
+        ['thinking', { content: '正在整理\n新的计划摘要', subagent: false }],
+      ]))
+    })
+
+    const message = readMessages().find((item) => item.role === 'plan_question')
+    expect(message).toMatchObject({
+      status: 'running',
+      streaming: true,
+      thinking_preview: '新的计划摘要',
+    })
+  })
+
+  it('SubAgent thinking 不会进入 Plan running 卡片预览', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['plan_question', { id: 'plan_question-1', status: 'running', subagent: false }],
+        ['thinking', { content: '子任务内部分析', subagent: true, agent_name: 'researcher' }],
+      ]))
+    })
+
+    const message = readMessages().find((item) => item.role === 'plan_question')
+    expect(message?.thinking_preview).toBeUndefined()
+  })
+
+  it('不同 run 的同 raw id Plan 卡片不会互相覆盖', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['plan_question', { id: 'plan_question-1', status: 'success', run_id: 'run-1', content: '{"questions":[{"id":"first","type":"single","question":"第一轮？","options":[{"id":"a","label":"A"}]}]}' }],
+        ['plan_question', { id: 'plan_question-1', status: 'running', run_id: 'run-2' }],
+        ['plan_question', { id: 'plan_question-1', status: 'success', run_id: 'run-2', content: '{"questions":[{"id":"second","type":"single","question":"第二轮？","options":[{"id":"b","label":"B"}]}]}' }],
+      ]))
+    })
+
+    const messages = readMessages().filter((message) => message.role === 'plan_question')
+    expect(messages).toHaveLength(2)
+    expect(messages[0]).toMatchObject({
+      run_id: 'run-1',
+      status: 'success',
+      content: expect.stringContaining('"first"'),
+    })
+    expect(messages[1]).toMatchObject({
+      run_id: 'run-2',
+      status: 'success',
+      content: expect.stringContaining('"second"'),
+    })
+    expect(messages[0].id).not.toBe(messages[1].id)
+  })
+
+  it('Plan 卡片到达时丢弃紧邻的 assistant 前言', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['chunk', { content: '在输出最终方案前，还有几个关键问题需要确认。' }],
+        ['plan_question', { id: 'plan_question-1', status: 'success', content: '{"questions":[{"id":"scope","type":"single","question":"确认范围？","options":[{"id":"a","label":"A"},{"id":"b","label":"B"}]}]}' }],
+      ]))
+    })
+
+    const messages = readMessages()
+    expect(messages.some((message) => message.role === 'assistant')).toBe(false)
+    expect(messages.filter((message) => message.role === 'plan_question')).toHaveLength(1)
+  })
+
+  it('Plan 卡片到达后丢弃紧邻的 assistant 说明总结', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['proposed_plan', { id: 'proposed_plan-1', status: 'success', content: '# Summary\n\n- A' }],
+        ['chunk', { content: '计划已经生成，请确认后执行。' }],
+      ]))
+    })
+
+    const messages = readMessages()
+    expect(messages.some((message) => message.role === 'assistant')).toBe(false)
+    expect(messages.filter((message) => message.role === 'proposed_plan')).toHaveLength(1)
+  })
+
+  it('plan_questions 工具形态不会展示为工具卡，并在同一 run 内合并成一张问题卡', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['tool_call', {
+          id: 'call-plan-1',
+          name: 'plan_questions',
+          args: '{"questions":[{"id":"first","question":"第一题？"}]}',
+          run_id: 'run-plan-tool',
+        }],
+        ['tool_call', {
+          id: 'call-plan-2',
+          name: 'plan_questions',
+          args: '{"questions":[{"id":"second","question":"第二题？"}]}',
+          run_id: 'run-plan-tool',
+        }],
+        ['tool_result', { id: 'call-plan-2', name: 'plan_questions', content: 'ignored' }],
+      ]))
+    })
+
+    const messages = readMessages()
+    expect(messages.some((message) => message.role === 'tool_call' || message.role === 'tool_result')).toBe(false)
+    const planQuestions = messages.filter((message) => message.role === 'plan_question')
+    expect(planQuestions).toHaveLength(1)
+    expect(planQuestions[0]).toMatchObject({
+      run_id: 'run-plan-tool',
+      status: 'success',
+      content: expect.stringContaining('"second"'),
+    })
+  })
 })
 
 function AgentStreamHarness({ onChange }: { onChange: (value: ReturnType<typeof useAgentEventStream>) => void }) {
@@ -341,6 +514,7 @@ function installManualAnimationFrame() {
 
 function readMessages() {
   return JSON.parse(screen.getByTestId('messages').textContent || '[]') as Array<{
+    id?: string
     role?: string
     content?: string
     streaming_target_content?: string
@@ -349,12 +523,14 @@ function readMessages() {
     status?: string
     result?: string
     streaming?: boolean
+    run_id?: string
     subagent?: boolean
     agent_name?: string
     subagent_session_id?: string
     sse_hidden_fields?: string[]
     sse_hidden_reason?: string
     sse_display_notice?: string
+    thinking_preview?: string
     illustration?: Record<string, unknown>
   }>
 }

@@ -11,7 +11,7 @@ import (
 	"nova/internal/prompts"
 )
 
-// appendPlanModeInstruction 在用户消息前追加规划模式指令，允许读取文件但禁止写操作，只输出结构化计划。
+// appendPlanModeInstruction 在用户消息前追加规划模式指令，让模型先提问和形成可审阅计划。
 func appendPlanModeInstruction(message string) string {
 	return prompts.PlanMode(message)
 }

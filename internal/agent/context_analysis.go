@@ -489,7 +489,7 @@ func composeAgentInput(req ChatRequest, pending *session.Interruption, bookServi
 	}
 	if req.PlanMode {
 		agentMessage = appendPlanModeInstruction(agentMessage)
-		contextLog.add("注入规则", "规划模式", "[规划模式] 请你先制定计划，不要执行任何写操作。", "")
+		contextLog.add("注入规则", "规划模式", "[规划模式] 请先提问或制定可审阅计划，不要直接进入执行。", "")
 	}
 	if strings.TrimSpace(req.WritingSkill) != "" {
 		agentMessage = appendWritingSkillLoadHint(agentMessage, req.WritingSkill, contextLog)

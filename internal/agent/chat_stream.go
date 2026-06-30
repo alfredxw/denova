@@ -15,7 +15,7 @@ import (
 // processStreamingEvent 处理流式助手消息，输出领域事件。
 // 工具调用在流中一检测到名称就立即 emit，让前端尽早展示 running 卡片。
 // 参数在流中逐帧 emit tool_args_delta，调用方可在对外传输前按展示策略过滤。
-func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, toolResultMaxBytes int, meta agentEventMetadata, emit func(Event)) (*schema.Message, error) {
+func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, toolResultMaxBytes int, meta agentEventMetadata, planParser *planProtocolParser, emit func(Event)) (*schema.Message, error) {
 	mv.MessageStream.SetAutomaticClose()
 	defer mv.MessageStream.Close()
 	var accumulatedToolCalls []schema.ToolCall
@@ -47,10 +47,16 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 			emit(Event{Type: "thinking", Data: meta.appendTo(map[string]interface{}{"content": frame.ReasoningContent})})
 		}
 		if frame.Content != "" {
-			if !meta.SubAgent {
-				fullContent.WriteString(frame.Content)
+			content := frame.Content
+			if planParser != nil && !meta.SubAgent {
+				content = planParser.Push(frame.Content)
 			}
-			emit(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": frame.Content})})
+			if content != "" {
+				if !meta.SubAgent {
+					fullContent.WriteString(content)
+				}
+				emit(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": content})})
+			}
 		}
 		if len(frame.ToolCalls) > 0 {
 			accumulatedToolCalls = mergeToolCalls(accumulatedToolCalls, frame.ToolCalls)
@@ -62,6 +68,11 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 				if !emittedTools[i] {
 					emittedTools[i] = true
 					lastArgsLen[i] = 0
+					if isPlanProtocolToolName(tc.Function.Name) {
+						lastArgsLen[i] = len(tc.Function.Arguments)
+						emitPlanProtocolToolRunning(tc.Function.Name, meta, emit)
+						continue
+					}
 					logToolCall(tc.Function.Name, tc.ID, len(tc.Function.Arguments), "streaming")
 					manifest := manifestForToolEvent(tc.Function.Name, toolResultMaxBytes)
 					data := meta.appendTo(map[string]interface{}{
@@ -77,6 +88,10 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 						data["index"] = *tc.Index
 					}
 					emit(Event{Type: "tool_call", Data: data})
+				}
+				if isPlanProtocolToolName(tc.Function.Name) {
+					lastArgsLen[i] = len(tc.Function.Arguments)
+					continue
 				}
 				// 参数有增量时 emit tool_args_delta
 				currentLen := len(tc.Function.Arguments)
@@ -110,16 +125,22 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 	if len(chunks) == 0 {
 		return nil, nil
 	}
+	for _, tc := range accumulatedToolCalls {
+		if handled, successful := emitPlanProtocolToolCall(tc.Function.Name, tc.Function.Arguments, meta, emit); handled && successful && planParser != nil {
+			planParser.NoteSuccessfulBlock()
+		}
+	}
 	msg, err := schema.ConcatMessages(chunks)
 	if err != nil {
 		log.Printf("[agent-run] concat streaming message failed err=%v chunks=%d", err, len(chunks))
 		return nil, nil
 	}
+	msg.ToolCalls = filterPlanProtocolToolCalls(msg.ToolCalls)
 	return msg, nil
 }
 
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。
-func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, toolResultMaxBytes int, meta agentEventMetadata, emit func(Event)) {
+func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, toolResultMaxBytes int, meta agentEventMetadata, planParser *planProtocolParser, emit func(Event)) {
 	if mv.Message.ReasoningContent != "" {
 		if fullThinking != nil && !meta.SubAgent {
 			fullThinking.WriteString(mv.Message.ReasoningContent)
@@ -127,10 +148,16 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 		emit(Event{Type: "thinking", Data: meta.appendTo(map[string]interface{}{"content": mv.Message.ReasoningContent})})
 	}
 	if mv.Message.Content != "" {
-		if !meta.SubAgent {
-			fullContent.WriteString(mv.Message.Content)
+		content := mv.Message.Content
+		if planParser != nil && !meta.SubAgent {
+			content = planParser.Push(mv.Message.Content)
 		}
-		emit(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": mv.Message.Content})})
+		if content != "" {
+			if !meta.SubAgent {
+				fullContent.WriteString(content)
+			}
+			emit(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": content})})
+		}
 	}
 	for _, tc := range mv.Message.ToolCalls {
 		name := tc.Function.Name
@@ -138,6 +165,12 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 			continue
 		}
 		args := tc.Function.Arguments
+		if handled, successful := emitPlanProtocolToolCall(name, args, meta, emit); handled {
+			if successful && planParser != nil {
+				planParser.NoteSuccessfulBlock()
+			}
+			continue
+		}
 		logToolCall(name, tc.ID, len(args), "non_streaming")
 		target := toolPathFromArgs(args)
 		if path := toolPathFromArgs(args); path != "" {
@@ -166,10 +199,40 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 	}
 }
 
+func filterPlanProtocolToolCalls(calls []schema.ToolCall) []schema.ToolCall {
+	if len(calls) == 0 {
+		return calls
+	}
+	filtered := calls[:0]
+	for _, call := range calls {
+		if isPlanProtocolToolName(call.Function.Name) {
+			continue
+		}
+		filtered = append(filtered, call)
+	}
+	return filtered
+}
+
 func manifestForToolEvent(name string, toolResultMaxBytes int) ToolManifest {
 	manifest := ManifestForTool(name)
 	manifest.MaxResultBytes = normalizeToolResultLimitBytes(toolResultMaxBytes)
 	return manifest
+}
+
+func flushPlanProtocolParser(planParser *planProtocolParser, fullContent *strings.Builder, emit func(Event)) {
+	if planParser == nil {
+		return
+	}
+	content := planParser.Flush()
+	if content == "" {
+		return
+	}
+	if fullContent != nil {
+		fullContent.WriteString(content)
+	}
+	if emit != nil {
+		emit(Event{Type: "chunk", Data: map[string]string{"content": content}})
+	}
 }
 
 // drainContent 从 MessageVariant 中提取完整内容。

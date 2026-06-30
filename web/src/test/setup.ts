@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { afterAll, afterEach, beforeAll } from 'vitest'
+import { afterAll, afterEach, beforeAll, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import { server } from './msw/server'
 import { setConfiguredLocale } from '@/i18n'
@@ -67,6 +67,7 @@ beforeAll(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   cleanup()
   server.resetHandlers()
 })

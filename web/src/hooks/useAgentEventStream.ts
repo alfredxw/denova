@@ -23,6 +23,11 @@ type StreamSegmentRole = 'assistant' | 'thinking'
 type EventMetadata = Pick<ChatMessage, 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_session_id' | 'subagent_type'>
 type EventDisplayMetadata = Pick<ChatMessage, 'sse_hidden_fields' | 'sse_hidden_reason' | 'sse_display_notice' | 'sse_generated_chars'>
 
+const PLAN_PREAMBLE_MAX_CHARS = 1200
+const PLAN_THINKING_BUFFER_MAX_CHARS = 2000
+const PLAN_THINKING_PREVIEW_MAX_CHARS = 160
+const PLAN_PROTOCOL_TOOL_EVENT_ID = 'plan_protocol_tool'
+
 /** Shared SSE consumer for Agent-like streams. It keeps text/thinking/tool events on one timeline. */
 export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
   const { t } = useTranslation()
@@ -46,6 +51,10 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
   const segmentPromoteRafRef = useRef<number | null>(null)
   const deltaBufferRef = useRef<Record<string, string>>({})
   const deltaRafRef = useRef<number | null>(null)
+  const planThinkingBufferRef = useRef('')
+  const planThinkingPreviewRef = useRef('')
+  const discardNextAssistantAfterPlanRef = useRef(false)
+  const discardAssistantSegmentIdsRef = useRef<Set<string>>(new Set())
 
   const resetStreamingState = useCallback(() => {
     abortControllerRef.current?.abort()
@@ -59,6 +68,10 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     currentCompactionMessageIdRef.current = null
     segmentBufferRef.current = {}
     deltaBufferRef.current = {}
+    planThinkingBufferRef.current = ''
+    planThinkingPreviewRef.current = ''
+    discardNextAssistantAfterPlanRef.current = false
+    discardAssistantSegmentIdsRef.current = new Set()
     if (segmentRafRef.current !== null) {
       cancelAnimationFrame(segmentRafRef.current)
       segmentRafRef.current = null
@@ -142,14 +155,22 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     scheduleStreamingSegmentPromotion()
   }, [scheduleStreamingSegmentPromotion])
 
-  const finishCurrentSegment = useCallback(() => {
+  const finishCurrentSegment = useCallback((options: { discardPlanPreamble?: boolean } = {}) => {
     const segmentId = currentSegmentIdRef.current
     if (!segmentId) return
+    const role = currentSegmentRoleRef.current
+    const shouldDiscardPlanFollowup = role === 'assistant' && discardAssistantSegmentIdsRef.current.has(segmentId)
     flushStreamingSegmentBuffer()
     currentSegmentIdRef.current = null
     currentSegmentRoleRef.current = null
     currentSegmentSourceRef.current = null
-    setMessages(prev => finalizeStreamingSegment(prev, segmentId))
+    discardAssistantSegmentIdsRef.current.delete(segmentId)
+    setMessages(prev => {
+      const finalized = finalizeStreamingSegment(prev, segmentId)
+      return (options.discardPlanPreamble || shouldDiscardPlanFollowup) && role === 'assistant'
+        ? discardPlanPreambleSegment(finalized, segmentId)
+        : finalized
+    })
   }, [flushStreamingSegmentBuffer])
 
   const appendStreamingSegment = useCallback((role: StreamSegmentRole, text: string, metadata: EventMetadata = {}) => {
@@ -162,6 +183,10 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
       currentSegmentSourceRef.current = sourceKey
       const segmentId = currentSegmentIdRef.current
       if (!segmentId) return
+      if (role === 'assistant' && discardNextAssistantAfterPlanRef.current) {
+        discardAssistantSegmentIdsRef.current.add(segmentId)
+        discardNextAssistantAfterPlanRef.current = false
+      }
       setMessages(prev => appendStreamingSegmentMessage(prev, role, segmentId, text, metadata))
       scheduleStreamingSegmentPromotion()
       return
@@ -173,6 +198,26 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
       segmentRafRef.current = requestAnimationFrame(() => flushStreamingSegmentBuffer())
     }
   }, [finishCurrentSegment, flushStreamingSegmentBuffer])
+
+  const upsertPlanProtocolToolCard = useCallback((
+    role: 'plan_question' | 'proposed_plan',
+    rawContent: string,
+    data: Record<string, unknown>,
+    metadata: EventMetadata,
+  ) => {
+    const content = extractPlanProtocolToolContent(role, rawContent)
+    if (!content) return
+    const id = createPlanCardMessageId(role, { ...data, id: PLAN_PROTOCOL_TOOL_EVENT_ID }, metadata)
+    discardNextAssistantAfterPlanRef.current = true
+    setMessages(prev => upsertPlanCardMessage(prev, {
+      content,
+      id,
+      role,
+      status: 'success',
+      streaming: false,
+      ...metadata,
+    }))
+  }, [])
 
   const consumeAgentStream = useCallback(async (
     stream: ReadableStream<SSEEvent>,
@@ -186,6 +231,10 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     currentSegmentSourceRef.current = null
     currentCompactionMessageIdRef.current = null
     segmentBufferRef.current = {}
+    planThinkingBufferRef.current = ''
+    planThinkingPreviewRef.current = ''
+    discardNextAssistantAfterPlanRef.current = false
+    discardAssistantSegmentIdsRef.current = new Set()
     setIsStreaming(true)
     setActivityContent(t('chat.activity.connecting'))
 
@@ -207,7 +256,16 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             break
           }
           case 'thinking': {
-            appendStreamingSegment('thinking', readString(data.content), metadata)
+            const content = readString(data.content)
+            appendStreamingSegment('thinking', content, metadata)
+            if (!metadata.subagent) {
+              const nextPreview = updatePlanThinkingPreview(planThinkingBufferRef.current, content)
+              planThinkingBufferRef.current = nextPreview.buffer
+              if (nextPreview.preview && nextPreview.preview !== planThinkingPreviewRef.current) {
+                planThinkingPreviewRef.current = nextPreview.preview
+                setMessages(prev => updateLatestRunningPlanThinkingPreview(prev, nextPreview.preview))
+              }
+            }
             setActivityContent(t('chat.activity.thinking'))
             break
           }
@@ -215,6 +273,12 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             finishCurrentSegment()
             const toolName = readString(data.name) || 'unknown_tool'
             const args = readString(data.args)
+            const planRole = planRoleForProtocolTool(toolName)
+            if (planRole) {
+              upsertPlanProtocolToolCard(planRole, args, data, metadata)
+              setActivityContent('')
+              break
+            }
             const toolKey = getToolEventKey(data)
             const existingToolId = toolKey ? toolKeyToMessageIdRef.current[toolKey] : undefined
             const toolId = existingToolId || createToolMessageId(toolKey, toolIdCounterRef)
@@ -243,6 +307,11 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             break
           }
           case 'tool_result': {
+            const resultToolName = readString(data.name)
+            if (isPlanProtocolToolName(resultToolName)) {
+              setActivityContent('')
+              break
+            }
             flushToolArgBuffer()
             const content = readString(data.content)
             const illustration = readChapterIllustration(data.illustration)
@@ -276,6 +345,9 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             break
           }
           case 'tool_args_delta': {
+            if (isPlanProtocolToolName(readString(data.name))) {
+              break
+            }
             const delta = readString(data.delta)
             const displayMetadata = readEventDisplayMetadata(data)
             const toolId = findToolMessageId(data, toolKeyToMessageIdRef.current, toolCallQueueRef.current, pendingToolCallsRef.current)
@@ -310,6 +382,30 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             if (status === 'completed' || status === 'failed') {
               currentCompactionMessageIdRef.current = null
             }
+            break
+          }
+          case 'plan_question':
+          case 'proposed_plan': {
+            finishCurrentSegment({ discardPlanPreamble: true })
+            const content = readString(data.content)
+            const role = event.event === 'plan_question' ? 'plan_question' : 'proposed_plan'
+            const status = normalizePlanCardStatus(readString(data.status), content)
+            const id = createPlanCardMessageId(role, data, metadata)
+            discardNextAssistantAfterPlanRef.current = true
+            if (status === 'running') {
+              planThinkingBufferRef.current = ''
+              planThinkingPreviewRef.current = ''
+            }
+            setMessages(prev => upsertPlanCardMessage(prev, {
+              content,
+              id,
+              role,
+              status,
+              streaming: status === 'running',
+              thinking_preview: undefined,
+              ...metadata,
+            }))
+            setActivityContent('')
             break
           }
           case 'token_usage': {
@@ -361,6 +457,10 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
       toolCallQueueRef.current = []
       toolKeyToMessageIdRef.current = {}
       currentCompactionMessageIdRef.current = null
+      planThinkingBufferRef.current = ''
+      planThinkingPreviewRef.current = ''
+      discardNextAssistantAfterPlanRef.current = false
+      discardAssistantSegmentIdsRef.current = new Set()
       flushToolArgBuffer()
       flushStreamingSegmentBuffer()
       finishCurrentSegment()
@@ -377,6 +477,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
     onAgentFileChange,
     onEvent,
     t,
+    upsertPlanProtocolToolCard,
   ])
 
   useEffect(() => {
@@ -525,6 +626,16 @@ function createSegmentId(role: StreamSegmentRole, counterRef: { current: number 
   return `segment:${role}:${Date.now()}:${counterRef.current}`
 }
 
+function createPlanCardMessageId(role: 'plan_question' | 'proposed_plan', data: Record<string, unknown>, metadata: EventMetadata) {
+  const rawID = readString(data.id)
+  if (!rawID) return `${role}-${Date.now()}`
+  const runID = (metadata.run_id || '').replace(/[^a-zA-Z0-9:_-]/g, '_')
+  const sourcePrefix = runID ? `run:${runID}:` : ''
+  const source = `${sourcePrefix}${segmentSourceKey(metadata)}`.replace(/[^a-zA-Z0-9:_-]/g, '_')
+  const safeID = rawID.replace(/[^a-zA-Z0-9:_-]/g, '_')
+  return `plan:${source}:${role}:${safeID}`
+}
+
 function appendStreamingSegmentMessage(
   messages: ChatMessage[],
   role: StreamSegmentRole,
@@ -600,6 +711,103 @@ function upsertTokenUsageMessage(messages: ChatMessage[], next: ChatMessage) {
     return message
   })
   return found ? updated : [...updated, next]
+}
+
+function normalizePlanCardStatus(raw: string, content: string): ChatMessage['status'] {
+  if (raw === 'running' || raw === 'success' || raw === 'error') return raw
+  return content ? 'success' : 'running'
+}
+
+function planRoleForProtocolTool(name: string): 'plan_question' | 'proposed_plan' | undefined {
+  if (name === 'plan_questions' || name === 'plan_question') return 'plan_question'
+  if (name === 'proposed_plan') return 'proposed_plan'
+  return undefined
+}
+
+export function isPlanProtocolToolName(name: string) {
+  return Boolean(planRoleForProtocolTool(name))
+}
+
+function extractPlanProtocolToolContent(role: 'plan_question' | 'proposed_plan', rawContent: string) {
+  const content = rawContent.trim()
+  if (!content || role === 'plan_question') return content
+  try {
+    const data = JSON.parse(content) as Record<string, unknown>
+    for (const key of ['content', 'plan', 'markdown', 'proposal', 'summary']) {
+      const value = data[key]
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+  } catch {
+    // Keep the original string; this is only a display fallback for malformed protocol tool calls.
+  }
+  return content
+}
+
+function updatePlanThinkingPreview(buffer: string, delta: string) {
+  const nextBuffer = truncateLeadingChars(`${buffer}${delta}`, PLAN_THINKING_BUFFER_MAX_CHARS)
+  const lines = nextBuffer
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+  const preview = truncateTrailingChars(lines[lines.length - 1] || '', PLAN_THINKING_PREVIEW_MAX_CHARS)
+  return { buffer: nextBuffer, preview }
+}
+
+function updateLatestRunningPlanThinkingPreview(messages: ChatMessage[], preview: string) {
+  if (!preview) return messages
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if ((message.role === 'plan_question' || message.role === 'proposed_plan') && (message.status === 'running' || message.streaming)) {
+      if (message.thinking_preview === preview) return messages
+      const updated = [...messages]
+      updated[index] = { ...message, thinking_preview: preview }
+      return updated
+    }
+  }
+  return messages
+}
+
+function truncateLeadingChars(value: string, maxChars: number) {
+  return value.length > maxChars ? value.slice(value.length - maxChars) : value
+}
+
+function truncateTrailingChars(value: string, maxChars: number) {
+  return value.length > maxChars ? `${value.slice(0, maxChars - 1)}…` : value
+}
+
+function upsertPlanCardMessage(messages: ChatMessage[], next: ChatMessage) {
+  if (next.status === 'error' && !next.content) {
+    return next.id ? messages.filter(message => message.id !== next.id) : messages
+  }
+  if (!next.content && next.status !== 'running') {
+    return next.id ? messages.filter(message => message.id !== next.id) : messages
+  }
+  if (!next.id) return [...messages, next]
+  let found = false
+  const updated = messages.map((message) => {
+    if (message.id !== next.id) return message
+    found = true
+    return {
+      ...message,
+      ...next,
+      content: next.content || message.content || '',
+    }
+  })
+  return found ? updated : [...updated, next]
+}
+
+function discardPlanPreambleSegment(messages: ChatMessage[], segmentId: string) {
+  return messages.filter(message => {
+    if (message.id !== segmentId || message.role !== 'assistant') return true
+    return !isLikelyPlanPreamble(message.content || '')
+  })
+}
+
+function isLikelyPlanPreamble(content: string) {
+  const text = content.trim()
+  if (!text || text.length > PLAN_PREAMBLE_MAX_CHARS) return false
+  if (text.includes('```')) return false
+  return /计划|规划|方案|确认|问题|补充|不确定|提问|基于你的回答|before (the )?plan|need (to )?(confirm|clarify|ask)|question|proposal|proposed plan/i.test(text)
 }
 
 function finalizeStreamingSegment(messages: ChatMessage[], id: string) {

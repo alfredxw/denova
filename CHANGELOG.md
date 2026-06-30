@@ -55,6 +55,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - WebUI：书架封面即使暂时没有 `cover_updated_at` 版本号，也会尝试读取固定路径 `assets/image/cover.png`，避免本地已有封面却显示占位图。
 - WebUI：设置页、Agents 页和游戏设置页保存时带上资源版本，后端检测到 Agent 或其他页面已更新同一配置/资源时返回冲突错误，避免旧自动保存覆盖新内容。
 - 游戏模式：互动图像重新生成完成并追加新版本后，回合内联预览会自动切到最新图片，不再停留在用户之前手动查看的旧版本。
+- WebUI：将 `react-virtuoso` 锁定到满足 pnpm minimum-release-age 策略的版本，避免 `pnpm --dir web test` 在执行测试前被供应链校验拦截。
+- WebUI：滚动消息列表时同步记录实际 Virtuoso 滚动容器，避免“回到底部”按钮在测试或 ref 变化后无法恢复底部锁定。
+- 写作 Agent：优化 Plan Mode 卡片交互与输出展示。问题卡限制高度并固定操作区，卡片生成、内容增长、题目切换和布局变化会将卡片底部对齐到对话输入框顶部，且不打断后续工具数据的自动跟随；连续多轮 Plan 按当前 run 原地更新；生成中只展示 running 后新变化的 root thinking 预览，停滞后自动隐藏；提交问题答案或选择最终计划操作后隐藏按钮并显示完成态，内部回答/批准协议、卡片前后说明和误触发的 `plan_questions`/`proposed_plan` 协议工具卡不再重复展示；最终计划改用轻量 Markdown 模板并复用聊天 Markdown 样式。
 
 ## [v0.1.17] - 2026-06-27
 
@@ -144,6 +147,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 写作 Skill Preset：内置 `novel-lite`、`novel-standard`、`novel-heavy` 三种 IDE 写作 Skill，默认使用 `novel-standard`；创作 Agent 输入区可选择当前写作 Skill，也可选择用户/工作区自建的 IDE Skill，运行时按工作区覆盖 > 用户覆盖 > 内置预设解析并注入有效 SKILL.md。
 - 配置管理 Agent：新增 `list_agent_configs` / `write_agent_configs` 专用工具，可在 Agents 页通过对话管理 Agent 模型覆盖、Prompt、工具权限、Skills 可用性、上下文压缩、General SubAgent 和自定义 `sub_agents`；新增 `agent_config_read` / `agent_config_write` 工具权限，默认仅配置管理 Agent 启用。
 - Added SubAgent delegation support with configurable General SubAgent availability, custom `sub_agents`, real-time subagent stream metadata, and compact Agents page management UI.
+- WebUI / Agent：新增会话级 Plan Mode，写作 Agent / IDE Chat 支持 Chat / Plan 状态展示和 `Shift+Tab` 切换；Plan Mode 可一次接收结构化问题集、逐题向用户确认并在全部确认后统一提交答案，也可渲染拟定计划卡；计划卡展示和确认执行上下文都有长度上限，确认计划后再带有界批准计划切回执行模式。
 
 ### Changed
 

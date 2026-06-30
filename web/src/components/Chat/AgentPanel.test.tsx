@@ -165,6 +165,7 @@ function renderAgentPanel(overrides: Partial<ComponentProps<typeof AgentPanel>> 
         loreSuggestions={[]}
         styleScenes={[]}
         textSelections={[]}
+        planMode={false}
         fileSuggestions={[]}
         onCreateSession={vi.fn()}
         onSwitchSession={vi.fn()}
@@ -179,6 +180,11 @@ function renderAgentPanel(overrides: Partial<ComponentProps<typeof AgentPanel>> 
         onStyleSceneAdd={vi.fn()}
         onStyleSceneRemove={vi.fn()}
         onTextSelectionRemove={vi.fn()}
+        onPlanModeChange={vi.fn()}
+        onPlanModeToggle={vi.fn()}
+        onSubmitPlanQuestion={vi.fn()}
+        onApproveProposedPlan={vi.fn()}
+        onExitPlanMode={vi.fn()}
         onClose={vi.fn()}
         {...overrides}
       />

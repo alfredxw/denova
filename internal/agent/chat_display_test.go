@@ -114,6 +114,35 @@ func TestDisplayRecorderKeepsIDEEditFileChapterArgs(t *testing.T) {
 	}
 }
 
+func TestDisplayRecorderConvertsPlanProtocolToolCall(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{
+		appender:       appender,
+		pendingToolIDs: map[string]string{},
+	}
+
+	recorder.Record(Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": AgentKindIDE,
+		"id":         "call-plan",
+		"name":       "plan_questions",
+		"args":       `{"questions":[{"id":"scope","question":"确认范围？"}]}`,
+		"run_id":     "run-plan-tool",
+	}})
+
+	if len(appender.events) != 1 {
+		t.Fatalf("events = %d, want 1", len(appender.events))
+	}
+	if appender.events[0].Role != "plan_question" {
+		t.Fatalf("role = %q, want plan_question", appender.events[0].Role)
+	}
+	if appender.events[0].Name != "" {
+		t.Fatalf("plan protocol tool should not persist tool name, got %q", appender.events[0].Name)
+	}
+	if appender.events[0].Content == "" || !strings.Contains(appender.events[0].Content, `"questions"`) {
+		t.Fatalf("plan event should keep question content: %#v", appender.events[0])
+	}
+}
+
 type displayRecorderTestAppender struct {
 	events []session.DisplayEvent
 }

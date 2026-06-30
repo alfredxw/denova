@@ -124,13 +124,20 @@ func TestAppendSelectionContextIncludesFileAndLineRange(t *testing.T) {
 	assertContains(t, got, "```\n选中的正文\n```")
 }
 
-func TestAppendPlanModeInstructionForbidsWriteTools(t *testing.T) {
+func TestAppendPlanModeInstructionUsesStructuredPlanningProtocol(t *testing.T) {
 	got := appendPlanModeInstruction("重构章节")
 
-	assertContains(t, got, "[规划模式]")
-	assertContains(t, got, "可以使用 read_file 工具")
-	assertContains(t, got, "禁止使用 write_file、edit_file、delete_file")
+	assertContains(t, got, "[Plan Mode / 规划模式]")
+	assertContains(t, got, "不要直接执行")
+	assertContains(t, got, "<plan_questions>")
+	assertContains(t, got, "<proposed_plan>")
+	assertContains(t, got, "# 计划标题")
+	assertContains(t, got, "## Summary")
+	assertContains(t, got, "## Key Changes")
 	assertContains(t, got, "用户需求：\n重构章节")
+	if strings.Contains(got, "Tests、Assumptions") || strings.Contains(got, "Test Plan") {
+		t.Fatalf("Plan Mode 最终方案模板不应强制输出测试或假设小节:\n%s", got)
+	}
 }
 
 func TestAppendContextBoundaryInstructionEmphasizesCurrentRequest(t *testing.T) {

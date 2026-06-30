@@ -65,6 +65,8 @@ interface InputAreaProps {
   onSend: (message: string) => void
   onStop?: () => void
   disabled: boolean
+  planMode?: boolean
+  onTogglePlanMode?: () => void
   draftKey?: string
   inputPrefill?: { prompt: string; nonce: number } | null
   onInputPrefillConsumed?: () => void
@@ -102,6 +104,8 @@ export function InputArea({
   onSend,
   onStop,
   disabled,
+  planMode = false,
+  onTogglePlanMode,
   draftKey,
   inputPrefill,
   onInputPrefillConsumed,
@@ -284,6 +288,12 @@ export function InputArea({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const isMod = e.metaKey || e.ctrlKey
     const canPickCommand = effectiveCommandScope !== 'none' && showCommands && filteredCommands.length > 0
+
+    if (e.key === 'Tab' && e.shiftKey && onTogglePlanMode && !disabled) {
+      e.preventDefault()
+      onTogglePlanMode()
+      return
+    }
 
     if (canPickCommand && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault()
@@ -559,6 +569,17 @@ export function InputArea({
         }
         toolbarStart={
           <>
+            <Button
+              type="button"
+              size="sm"
+              className={`h-8 gap-1.5 rounded-[10px] border px-2 text-[11px] ${planMode ? 'border-[var(--nova-accent)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}
+              disabled={disabled || !onTogglePlanMode}
+              onClick={onTogglePlanMode}
+              title={t('chat.plan.shiftTabHint')}
+            >
+              <ClipboardList className="h-3.5 w-3.5" />
+              {planMode ? t('chat.plan.short') : t('chat.plan.chatShort')}
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button

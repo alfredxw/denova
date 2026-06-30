@@ -78,6 +78,7 @@ interface ModeRouterProps {
   loreItems: LoreItem[]
   styleScenes: string[]
   textSelections: TextSelection[]
+  chatPlanMode: boolean
   updateNotice?: { latestVersion: string } | null
   onSetMode: (mode: WorkspaceMode) => void
   onToggleActivityBarExpanded: () => void
@@ -116,6 +117,11 @@ interface ModeRouterProps {
   onStyleSceneAdd: (scene: string) => void
   onStyleSceneRemove: (scene: string) => void
   onTextSelectionRemove: (index: number) => void
+  onChatPlanModeChange: (value: boolean) => void
+  onChatPlanModeToggle: () => void
+  onSubmitPlanQuestion: (message: ChatMessage, content: string, preview: string) => void
+  onApproveProposedPlan: (message: ChatMessage) => void
+  onExitChatPlanMode: () => void
   onDismissUpdateNotice?: () => void
 }
 
@@ -159,6 +165,7 @@ export function ModeRouter(props: ModeRouterProps) {
     loreItems,
     styleScenes,
     textSelections,
+    chatPlanMode,
     updateNotice,
     onSetMode,
     onToggleActivityBarExpanded,
@@ -197,6 +204,11 @@ export function ModeRouter(props: ModeRouterProps) {
     onStyleSceneAdd,
     onStyleSceneRemove,
     onTextSelectionRemove,
+    onChatPlanModeChange,
+    onChatPlanModeToggle,
+    onSubmitPlanQuestion,
+    onApproveProposedPlan,
+    onExitChatPlanMode,
     onDismissUpdateNotice,
   } = props
 
@@ -571,6 +583,7 @@ export function ModeRouter(props: ModeRouterProps) {
       loreSuggestions={loreSuggestions}
       styleScenes={styleScenes}
       textSelections={textSelections}
+      planMode={chatPlanMode}
       fileSuggestions={flattenFileTree(tree)}
       onCreateSession={onCreateChatSession}
       onSwitchSession={onSwitchChatSession}
@@ -587,6 +600,11 @@ export function ModeRouter(props: ModeRouterProps) {
       onStyleSceneRemove={onStyleSceneRemove}
       onTextSelectionRemove={onTextSelectionRemove}
       onInsertIllustration={insertIllustrationIntoEditor}
+      onPlanModeChange={onChatPlanModeChange}
+      onPlanModeToggle={onChatPlanModeToggle}
+      onSubmitPlanQuestion={onSubmitPlanQuestion}
+      onApproveProposedPlan={onApproveProposedPlan}
+      onExitPlanMode={onExitChatPlanMode}
       onClose={() => onSetRightPanel(null)}
       onSubAgentDetailsChange={setAgentSubAgentDetailsOpen}
     />

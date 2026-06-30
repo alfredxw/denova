@@ -127,8 +127,14 @@ function App() {
     references,
     styleScenes,
     textSelections,
+    planMode,
+    setPlanMode,
+    togglePlanMode,
     send,
     analyzeContext,
+    submitPlanQuestion,
+    approveProposedPlan,
+    exitPlanMode,
     stop,
     loadSessions,
     loadHistory,
@@ -623,6 +629,7 @@ function App() {
         loreItems={loreItems}
         styleScenes={styleScenes}
         textSelections={textSelections}
+        chatPlanMode={planMode}
         onSetMode={handleSetMode}
         onToggleActivityBarExpanded={() => setActivityBarExpanded((value) => !value)}
         onToggleProjectVisible={() => setProjectVisible((value) => !value)}
@@ -662,6 +669,11 @@ function App() {
         onStyleSceneAdd={addStyleScene}
         onStyleSceneRemove={removeStyleScene}
         onTextSelectionRemove={removeTextSelection}
+        onChatPlanModeChange={setPlanMode}
+        onChatPlanModeToggle={togglePlanMode}
+        onSubmitPlanQuestion={submitPlanQuestion}
+        onApproveProposedPlan={approveProposedPlan}
+        onExitChatPlanMode={exitPlanMode}
       />
       <CommandPalette
         open={commandOpen}

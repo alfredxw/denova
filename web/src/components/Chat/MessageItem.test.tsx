@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { MessageItem } from './MessageItem'
@@ -622,5 +622,133 @@ describe('MessageItem', () => {
     expect(screen.getByText('压缩摘要流式片段')).toBeInTheDocument()
     expect(screen.queryByText('90%')).not.toBeInTheDocument()
     expect(screen.queryByText('阈值 90%')).not.toBeInTheDocument()
+  })
+
+  it('Plan 问题卡选择选项时只更新卡片内部状态', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MessageItem
+        message={{
+          role: 'plan_question',
+          content: JSON.stringify({
+            questions: [{
+              id: 'scope',
+              type: 'single',
+              question: '这次要先确认什么？',
+              options: [
+                { id: 'recommended', label: '采用推荐方案', recommended: true },
+                { id: 'manual', label: '手动确认' },
+              ],
+            }],
+          }),
+        }}
+      />,
+    )
+
+    const manualOption = screen.getByRole('button', { name: /手动确认/ })
+    expect(manualOption).not.toHaveClass('border-[var(--nova-accent)]')
+
+    await user.click(manualOption)
+
+    expect(manualOption).toHaveClass('border-[var(--nova-accent)]')
+  })
+
+  it('Plan 问题卡生成中时展示占位状态', () => {
+    render(<MessageItem message={{ role: 'plan_question', status: 'running', streaming: true, content: '', thinking_preview: '准备输出问题卡' }} />)
+
+    expect(screen.getByText('规划问题')).toBeInTheDocument()
+    expect(screen.getByText('生成中')).toBeInTheDocument()
+    expect(screen.getByText('正在生成规划问题卡…')).toBeInTheDocument()
+    expect(screen.getByText('正在规划：')).toBeInTheDocument()
+    expect(screen.getByText('准备输出问题卡')).toBeInTheDocument()
+  })
+
+  it('Plan 生成中预览长时间不变化时自动隐藏', () => {
+    vi.useFakeTimers()
+    try {
+      render(<MessageItem message={{ role: 'proposed_plan', status: 'running', streaming: true, content: '', thinking_preview: '正在整理最终计划' }} />)
+
+      expect(screen.getByText('正在规划：')).toBeInTheDocument()
+      expect(screen.getByText('正在整理最终计划')).toBeInTheDocument()
+
+      act(() => {
+        vi.advanceTimersByTime(3600)
+      })
+
+      expect(screen.queryByText('正在规划：')).not.toBeInTheDocument()
+      expect(screen.queryByText('正在整理最终计划')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('Plan 问题卡提交后隐藏按钮并展示完成态', async () => {
+    const user = userEvent.setup()
+    const handleSubmit = vi.fn()
+
+    render(
+      <MessageItem
+        message={{
+          role: 'plan_question',
+          content: JSON.stringify({
+            questions: [{
+              id: 'scope',
+              type: 'single',
+              question: '这次要先确认什么？',
+              options: [
+                { id: 'recommended', label: '采用推荐方案', recommended: true },
+                { id: 'manual', label: '手动确认' },
+              ],
+            }],
+          }),
+        }}
+        onSubmitPlanQuestion={handleSubmit}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /提交全部回答/ }))
+
+    expect(handleSubmit).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: /提交全部回答/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /采用推荐项/ })).not.toBeInTheDocument()
+    expect(screen.getByText('已提交回答，正在继续规划。')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['确认并执行', '已确认并开始执行。', 'approve'],
+    ['继续讨论', '已选择继续讨论。', 'continue'],
+    ['退出 Plan Mode', '已退出 Plan Mode。', 'exit'],
+  ])('最终计划卡点击“%s”后隐藏按钮并展示完成态', async (buttonName, statusText, action) => {
+    const user = userEvent.setup()
+    const handleApprove = vi.fn()
+    const handleContinue = vi.fn()
+    const handleExit = vi.fn()
+
+    render(
+      <MessageItem
+        message={{
+          role: 'proposed_plan',
+          content: '# 计划标题\n\n## Summary\n\n- 先确认方向\n\n## Key Changes\n\n- 输出结构化方案',
+        }}
+        onApprovePlan={action === 'approve' ? handleApprove : undefined}
+        onContinuePlan={action === 'continue' ? handleContinue : undefined}
+        onExitPlanMode={action === 'exit' ? handleExit : undefined}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Summary' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Key Changes' })).toBeInTheDocument()
+    expect(document.querySelector('.chat-agent-message h1')).toHaveTextContent('计划标题')
+    expect(document.querySelector('.chat-agent-message ul')).toHaveTextContent('先确认方向')
+    await user.click(screen.getByRole('button', { name: buttonName }))
+
+    expect(screen.getByText(statusText)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '确认并执行' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '继续讨论' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '退出 Plan Mode' })).not.toBeInTheDocument()
+    if (action === 'approve') expect(handleApprove).toHaveBeenCalledTimes(1)
+    if (action === 'continue') expect(handleContinue).toHaveBeenCalledTimes(1)
+    if (action === 'exit') expect(handleExit).toHaveBeenCalledTimes(1)
   })
 })

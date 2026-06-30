@@ -1,6 +1,6 @@
 export interface ChatMessage {
   type?: 'message' | 'clear'
-  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'context_compaction' | 'token_usage' | 'system' | 'error'
+  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'
   content?: string
   id?: string
   render_key?: string
@@ -50,6 +50,8 @@ export interface ChatMessage {
   generated_bytes?: number
   usage_calls?: TokenUsageCall[]
   streaming?: boolean
+  thinking_preview?: string
+  plan_action?: 'answered' | 'approved' | 'continue' | 'exited'
   created_at?: string
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number

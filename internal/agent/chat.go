@@ -311,11 +311,26 @@ func (r *Runtime) Run(
 	events := runner.Run(runCtx, history, runOptions...)
 	var fullContent strings.Builder
 	var fullThinking strings.Builder
+	var planParser *planProtocolParser
+	if req.PlanMode {
+		planMeta := agentEventMetadata{
+			AgentKind:     options.AgentKind,
+			RunID:         runID,
+			AgentName:     options.RootAgentName,
+			RootAgentName: options.RootAgentName,
+		}
+		if options.RootAgentName != "" {
+			planMeta.RunPath = []string{options.RootAgentName}
+		}
+		planParser = newPlanProtocolParser(planMeta, emit)
+	}
 	runLogger.Info("run_started", slog.Int("history", len(history)), slog.Int("message_len", len(req.Message)), slog.Int("agent_message_len", len(agentMessage)), slog.Bool("plan_mode", req.PlanMode), slog.String("writing_skill", req.WritingSkill), slog.Int("style_scenes", len(req.StyleScenes)), slog.Int("style_rules", len(req.StyleRules)))
 
 	for {
 		if err := ctx.Err(); err != nil {
 			runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", err), slog.Int("generated_bytes", fullContent.Len()))
+			flushPlanProtocolParser(planParser, &fullContent, emit)
+			discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
 			generatedBytes := fullContent.Len()
 			appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 			finishRun("aborted", err.Error(), generatedBytes)
@@ -324,6 +339,8 @@ func (r *Runtime) Run(
 		}
 		event, ok, waitErr := waitForRunnerEvent(runCtx, events, options.IdleTimeout)
 		if waitErr != nil {
+			flushPlanProtocolParser(planParser, &fullContent, emit)
+			discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
 			generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 			if ctx.Err() != nil {
 				runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", ctx.Err()), slog.Int("generated_bytes", len(generated)))
@@ -343,6 +360,8 @@ func (r *Runtime) Run(
 		}
 		if event.Err != nil {
 			runLogger.Error("run_interrupted", slog.String("reason", "runner_error"), slog.Any("error", event.Err), slog.Int("generated_bytes", fullContent.Len()))
+			flushPlanProtocolParser(planParser, &fullContent, emit)
+			discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
 			generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 			markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, event.Err.Error())
 			finishRun("error", event.Err.Error(), len(generated))
@@ -364,6 +383,7 @@ func (r *Runtime) Run(
 			}
 			content, drainErr := drainContent(runCtx, mv, options.IdleTimeout)
 			if drainErr != nil {
+				discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
 				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 				if ctx.Err() != nil {
 					runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", ctx.Err()), slog.Int("generated_bytes", len(generated)))
@@ -414,9 +434,11 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.IsStreaming && mv.MessageStream != nil {
-			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, options.ToolResultMaxBytes, eventMeta, emit)
+			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, options.ToolResultMaxBytes, eventMeta, planParser, emit)
 			usageCollector.AddMessage(msg)
 			if streamErr != nil {
+				flushPlanProtocolParser(planParser, &fullContent, emit)
+				discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
 				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 				if ctx.Err() != nil {
 					runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", ctx.Err()), slog.Int("generated_bytes", len(generated)))
@@ -429,14 +451,24 @@ func (r *Runtime) Run(
 				finishRun("error", streamErr.Error(), len(generated))
 				return
 			}
+			if req.PlanMode && planParser != nil && planParser.HasSuccessfulBlock() {
+				cancelRun()
+				break
+			}
 			continue
 		}
 		if mv.Message != nil {
-			processNonStreamingEvent(mv, &fullContent, &fullThinking, options.ToolResultMaxBytes, eventMeta, emit)
+			processNonStreamingEvent(mv, &fullContent, &fullThinking, options.ToolResultMaxBytes, eventMeta, planParser, emit)
 			usageCollector.AddMessage(mv.Message)
+			if req.PlanMode && planParser != nil && planParser.HasSuccessfulBlock() {
+				cancelRun()
+				break
+			}
 		}
 	}
 
+	flushPlanProtocolParser(planParser, &fullContent, emit)
+	discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
 	generatedBytes := fullContent.Len()
 	appendAssistantIfAny(conversation, &fullContent, &fullThinking)
 	if resumeInterruption != nil {

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   abortChat,
@@ -15,7 +15,10 @@ import {
   switchSession,
 } from '@/lib/api'
 import type { ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
-import { isAbortError, normalizeRepeatedMessages, useAgentEventStream } from './useAgentEventStream'
+import { isAbortError, isPlanProtocolToolName, normalizeRepeatedMessages, useAgentEventStream } from './useAgentEventStream'
+import { fetchSettings } from '@/features/settings/api'
+import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
+import type { ChatMessage } from '@/lib/api'
 
 interface ChatOptions {
   onAgentFileChange?: (path?: string) => void | Promise<void>
@@ -25,6 +28,9 @@ export interface ChatSendOptions {
   writingSkill?: string
   ideContext?: IDEContext
   imagePresetId?: string
+  planMode?: boolean
+  displayMessage?: string
+  hideUserMessage?: boolean
 }
 
 /** 聊天 hook，管理消息列表和流式响应 */
@@ -47,6 +53,36 @@ export function useChat(options: ChatOptions = {}) {
   const [loreReferences, setLoreReferences] = useState<string[]>([])
   const [styleScenes, setStyleScenes] = useState<string[]>([])
   const [textSelections, setTextSelections] = useState<TextSelection[]>([])
+  const [defaultPlanMode, setDefaultPlanMode] = useState(false)
+  const [planModes, setPlanModes] = useState<Record<string, boolean>>(() => readChatPlanModes())
+  const activePlanMode = planModeForSession(planModes, activeSessionId, defaultPlanMode)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchSettings()
+      .then((data) => {
+        if (!cancelled) setDefaultPlanMode(data.effective?.plan_mode_default === true)
+      })
+      .catch((e) => console.warn('加载 Plan Mode 默认配置失败', e))
+    return () => { cancelled = true }
+  }, [])
+
+  const setSessionPlanMode = useCallback((sessionId: string, value: boolean) => {
+    const id = sessionId || 'default'
+    setPlanModes((current) => {
+      const next = { ...current, [id]: value }
+      writeChatPlanModes(next)
+      return next
+    })
+  }, [])
+
+  const setActivePlanMode = useCallback((value: boolean) => {
+    setSessionPlanMode(activeSessionId || 'default', value)
+  }, [activeSessionId, setSessionPlanMode])
+
+  const togglePlanMode = useCallback(() => {
+    setActivePlanMode(!activePlanMode)
+  }, [activePlanMode, setActivePlanMode])
 
   /** 加载会话列表。 */
   const loadSessions = useCallback(async () => {
@@ -65,7 +101,7 @@ export function useChat(options: ChatOptions = {}) {
   const loadHistory = useCallback(async (sessionId?: string) => {
     try {
       const msgs = await getMessages(sessionId)
-      setMessages(normalizeRepeatedMessages(msgs))
+      setMessages(normalizeRepeatedMessages(filterInternalPlanMessages(msgs)))
     } catch (e) {
       console.error('加载历史失败', e)
     }
@@ -138,7 +174,7 @@ export function useChat(options: ChatOptions = {}) {
     clearTextSelections()
   }, [clearLoreReferences, clearReferences, clearStyleScenes, clearTextSelections])
 
-  const prepareAgentRequest = useCallback((input: string) => {
+  const prepareAgentRequest = useCallback((input: string, forcedPlanMode?: boolean) => {
     if (input.startsWith('/')) {
       const cmd = input.slice(1).split(' ')[0]
       if (['clear', 'compact', 'status', 'help'].includes(cmd)) {
@@ -146,7 +182,7 @@ export function useChat(options: ChatOptions = {}) {
       }
     }
 
-    let planMode = false
+    let planMode = forcedPlanMode ?? activePlanMode
     let userMessage = input
     if (input.startsWith('/plan')) {
       planMode = true
@@ -156,10 +192,10 @@ export function useChat(options: ChatOptions = {}) {
       }
     }
 
-    const inlineReferences = parseInlineReferences(input)
+    const inlineReferences = parseInlineReferences(userMessage)
     const mergedReferences = Array.from(new Set([...references, ...inlineReferences]))
     const mergedLoreReferences = Array.from(new Set(loreReferences))
-    const inlineStyleScenes = parseInlineStyleScenes(input)
+    const inlineStyleScenes = parseInlineStyleScenes(userMessage)
     const mergedStyleScenes = Array.from(new Set([...styleScenes, ...inlineStyleScenes]))
     return {
       message: userMessage,
@@ -169,7 +205,7 @@ export function useChat(options: ChatOptions = {}) {
       textSelections,
       planMode,
     }
-  }, [loreReferences, references, styleScenes, t, textSelections])
+  }, [activePlanMode, loreReferences, references, styleScenes, t, textSelections])
 
   /** 发送消息 */
   const send = useCallback(async (input: string, options: ChatSendOptions = {}) => {
@@ -188,14 +224,18 @@ export function useChat(options: ChatOptions = {}) {
 
     let prepared: ReturnType<typeof prepareAgentRequest>
     try {
-      prepared = prepareAgentRequest(input)
+      prepared = prepareAgentRequest(input, options.planMode)
     } catch (e) {
       setMessages(prev => [...prev, { role: 'system', content: (e as Error).message }])
       return
     }
+    if (prepared.planMode !== activePlanMode || options.planMode !== undefined) {
+      setActivePlanMode(prepared.planMode)
+    }
 
-    // 添加用户消息
-    setMessages(prev => [...prev, { role: 'user', content: input }])
+    if (!options.hideUserMessage) {
+      setMessages(prev => [...prev, { role: 'user', content: options.displayMessage || input }])
+    }
     const abortController = new AbortController()
     setAbortController(abortController)
 
@@ -205,13 +245,34 @@ export function useChat(options: ChatOptions = {}) {
     } catch (e) {
       setMessages(prev => [...prev, { role: 'error', content: t('chat.activity.requestFailed', { error: String(e) }) }])
     }
-  }, [clearInputState, consumeAgentStream, isStreaming, loadHistory, loadSessions, prepareAgentRequest, setAbortController, setMessages, t])
+  }, [activePlanMode, clearInputState, consumeAgentStream, isStreaming, loadHistory, loadSessions, prepareAgentRequest, setAbortController, setActivePlanMode, setMessages, t])
 
   const analyzeContext = useCallback(async (input: string, options: ChatSendOptions = {}): Promise<ContextAnalysis> => {
     if (isStreaming) throw new Error(t('chat.contextAnalysis.streamingUnavailable'))
     const prepared = prepareAgentRequest(input)
     return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, prepared.planMode, options.writingSkill, options.ideContext, options.imagePresetId)
   }, [isStreaming, prepareAgentRequest, t])
+
+  const submitPlanQuestion = useCallback((message: ChatMessage, content: string, _preview: string) => {
+    setMessages(prev => markPlanMessageAction(prev, message, 'answered'))
+    void send(content, { planMode: true, hideUserMessage: true })
+  }, [send, setMessages])
+
+  const approveProposedPlan = useCallback((message: ChatMessage) => {
+    const plan = message.content || ''
+    if (!plan.trim()) return
+    const planIndex = findMessageIndex(messages, message)
+    const userContext = collectPlanUserContext(messages, planIndex)
+    setMessages(prev => markPlanMessageAction(prev, message, 'approved'))
+    void send(formatApprovedPlanExecutionMessage(plan, userContext), {
+      planMode: false,
+      hideUserMessage: true,
+    })
+  }, [messages, send, setMessages])
+
+  const exitPlanMode = useCallback(() => {
+    setActivePlanMode(false)
+  }, [setActivePlanMode])
 
   /** 恢复订阅后台仍在运行的聊天任务。 */
   const resumeActiveChat = useCallback(async () => {
@@ -281,8 +342,14 @@ export function useChat(options: ChatOptions = {}) {
     loreReferences,
     styleScenes,
     textSelections,
+    planMode: activePlanMode,
+    setPlanMode: setActivePlanMode,
+    togglePlanMode,
     send,
     analyzeContext,
+    submitPlanQuestion,
+    approveProposedPlan,
+    exitPlanMode,
     stop,
     loadSessions,
     loadHistory,
@@ -330,4 +397,99 @@ function parseInlineStyleScenes(input: string): string[] {
     result.add(match[1])
   }
   return Array.from(result)
+}
+
+const CHAT_PLAN_MODES_STORAGE_KEY = 'nova.chat.plan_modes.v1'
+
+function readChatPlanModes(): Record<string, boolean> {
+  if (typeof window === 'undefined') return {}
+  const raw = window.localStorage.getItem(CHAT_PLAN_MODES_STORAGE_KEY)
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const result: Record<string, boolean> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof key === 'string' && typeof value === 'boolean') result[key] = value
+    }
+    return result
+  } catch {
+    return {}
+  }
+}
+
+function writeChatPlanModes(value: Record<string, boolean>) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(CHAT_PLAN_MODES_STORAGE_KEY, JSON.stringify(value))
+}
+
+function planModeForSession(planModes: Record<string, boolean>, sessionId: string, defaultValue: boolean) {
+  const id = sessionId || 'default'
+  return planModes[id] ?? defaultValue
+}
+
+function findMessageIndex(messages: ChatMessage[], target: ChatMessage) {
+  if (target.id) {
+    const byID = messages.findIndex((message) => message.id === target.id)
+    if (byID >= 0) return byID
+  }
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (message.role === 'proposed_plan' && message.content === target.content) return i
+  }
+  return -1
+}
+
+function collectPlanUserContext(messages: ChatMessage[], planIndex: number) {
+  const end = planIndex >= 0 ? planIndex : messages.length
+  let start = 0
+  for (let i = end - 1; i >= 0; i -= 1) {
+    if (messages[i].role === 'proposed_plan') {
+      start = i + 1
+      break
+    }
+  }
+  const userMessages = messages
+    .slice(start, end)
+    .filter((message) => message.role === 'user')
+    .map((message) => (message.content || '').trim())
+    .filter(Boolean)
+  if (userMessages.length <= 1) return userMessages[0] || ''
+  return [
+    `原始请求：\n${userMessages[0]}`,
+    `用户补充：\n${userMessages.slice(1).join('\n\n')}`,
+  ].join('\n\n')
+}
+
+function filterInternalPlanMessages(messages: ChatMessage[]) {
+  return messages.filter((message) => (
+    !(message.role === 'user' && isPlanQuestionAnswerProtocol(message.content || '')) &&
+    !isPlanProtocolToolMessage(message)
+  ))
+}
+
+function isPlanQuestionAnswerProtocol(content: string) {
+  return content.includes('<plan_question_answers>') || content.includes('</plan_question_answers>')
+}
+
+function isPlanProtocolToolMessage(message: ChatMessage) {
+  if (message.role !== 'tool_call' && message.role !== 'tool_result') return false
+  const name = message.name || (message.content || '').split(/\s+/)[0] || ''
+  return isPlanProtocolToolName(name)
+}
+
+function markPlanMessageAction(
+  messages: ChatMessage[],
+  target: ChatMessage,
+  action: NonNullable<ChatMessage['plan_action']>,
+) {
+  return messages.map((message) => {
+    if (!isSamePlanMessage(message, target)) return message
+    return { ...message, plan_action: action, streaming: false }
+  })
+}
+
+function isSamePlanMessage(message: ChatMessage, target: ChatMessage) {
+  if (target.id) return message.id === target.id
+  return message.role === target.role && message.content === target.content
 }
