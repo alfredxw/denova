@@ -33,6 +33,8 @@ import {
 } from '@/components/workbench/CharacterCardImportDialog'
 import { APP_VERSION } from '@/app-version'
 import { RemoteAccessLogin } from '@/components/RemoteAccessLogin'
+import { OnboardingGuide, type OnboardingNavigationTarget } from '@/features/onboarding/OnboardingGuide'
+import { SETTINGS_SECTION_EVENT, WRITING_AGENT_INIT_EVENT } from '@/features/onboarding/events'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
@@ -574,6 +576,77 @@ function App() {
     setSidebarView('search')
   }, [setMode])
 
+  const handleOnboardingNavigate = useCallback((target: OnboardingNavigationTarget, prompt?: string) => {
+    if (target === 'settings-model') {
+      setSettingsOpen(true)
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent(SETTINGS_SECTION_EVENT, {
+          detail: { section: 'model', layer: 'user' },
+        }))
+      }, 0)
+      return
+    }
+    if (target === 'books') {
+      handleSetMode('books')
+      return
+    }
+    if (target === 'writing') {
+      handleSetMode('ide')
+      if (rightPanel === 'lore' || rightPanel === 'teller' || rightPanel === 'versions') handleSetRightPanel(null)
+      return
+    }
+    if (target === 'writing-agent') {
+      handleSetMode('ide')
+      handleSetRightPanel('ai')
+      if (prompt) {
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent(WRITING_AGENT_INIT_EVENT, { detail: { prompt } }))
+        }, 0)
+      }
+      return
+    }
+    if (target === 'interactive') {
+      handleSetMode('interactive')
+      if (rightPanel === 'versions') handleSetRightPanel(null)
+      return
+    }
+    if (target === 'lore') {
+      setSettingsOpen(false)
+      if (mode === 'interactive') {
+        useInteractiveStore.getState().setSubmode('lore')
+      } else {
+        handleSetMode('ide')
+        handleSetRightPanel('lore')
+      }
+      return
+    }
+    if (target === 'teller') {
+      setSettingsOpen(false)
+      if (mode === 'interactive') {
+        useInteractiveStore.getState().setSubmode('teller')
+      } else {
+        handleSetMode('ide')
+        handleSetRightPanel('teller')
+      }
+      return
+    }
+    if (target === 'versions') {
+      handleOpenVersions()
+      return
+    }
+    if (target === 'skills') {
+      handleSetMode('skills')
+      return
+    }
+    if (target === 'agents') {
+      handleSetMode('agents')
+      return
+    }
+    if (target === 'automations') {
+      handleSetMode('automations')
+    }
+  }, [handleOpenVersions, handleSetMode, handleSetRightPanel, mode, rightPanel])
+
   useWorkspaceHotkeys({
     onSave: triggerSave,
     onOpenCommand: () => setCommandOpen(true),
@@ -713,6 +786,17 @@ function App() {
         onImport={handleCharacterCardImport}
       />
       <RemoteAccessLogin />
+      <OnboardingGuide
+        mode={mode}
+        rightPanel={rightPanel}
+        settingsOpen={settingsOpen}
+        workspace={workspace}
+        booksCount={books.length}
+        currentBookName={currentBookName}
+        messages={messages}
+        isStreaming={isStreaming}
+        onNavigate={handleOnboardingNavigate}
+      />
     </NovaMotionProvider>
   )
 }

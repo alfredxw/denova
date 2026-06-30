@@ -160,6 +160,18 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
     updateAwayFromBottom(scroller)
   }, [cancelScheduledScroll, currentScrollerElement, updateAwayFromBottom])
 
+  const scrollToIndex = useCallback((index: number, options?: { align?: 'start' | 'center' | 'end'; behavior?: 'auto' | 'smooth' }) => {
+    if (itemCount <= 0) return
+    lockedRef.current = false
+    cancelScheduledScroll()
+    virtuosoRef.current?.scrollToIndex({
+      index: Math.max(0, Math.min(itemCount - 1, index)),
+      align: options?.align || 'start',
+      behavior: options?.behavior || 'smooth',
+    })
+    updateAwayFromBottom()
+  }, [cancelScheduledScroll, itemCount, updateAwayFromBottom])
+
   const handleScrollElement = useCallback((element: HTMLElement) => {
     const currentTop = element.scrollTop
     const previousTop = lastScrollTopRef.current
@@ -267,5 +279,6 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
     scrollToBottom,
     scrollElementIntoView,
     scrollElementBottomIntoView,
+    scrollToIndex,
   }
 }

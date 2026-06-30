@@ -31,6 +31,8 @@ import workbench from './en-US/workbench'
 import interactiveLayout from './en-US/interactiveLayout'
 import skills from './en-US/skills'
 import automations from './en-US/automations'
+import messages from './en-US/messages'
+import onboarding from './en-US/onboarding'
 
 const enUS = {
   ...common,
@@ -66,6 +68,8 @@ const enUS = {
   ...interactiveLayout,
   ...skills,
   ...automations,
+  ...messages,
+  ...onboarding,
 } as const
 
 export default enUS

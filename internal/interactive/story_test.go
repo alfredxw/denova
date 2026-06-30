@@ -874,6 +874,63 @@ func TestBranchSnapshotFollowsParentChain(t *testing.T) {
 	}
 }
 
+func TestAppendTurnDisplayEventAllowsAncestorTurnOnCurrentBranchPath(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "祖先回合展示事件", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "进入密林", Narrative: "树影吞没了来路。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "继续深入", Narrative: "前方出现断桥。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch, err := store.CreateBranch(story.ID, CreateBranchRequest{ParentEventID: first.ID, Title: "折返路线"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	branchTurn, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: branch.ID, User: "折返回营地", Narrative: "你在旧营地发现脚印。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := store.AppendTurnDisplayEvent(story.ID, branch.ID, first.ID, DisplayEvent{
+		ID:     "interactive-image-ancestor",
+		Role:   "tool_call",
+		Name:   "generate_interactive_image",
+		Status: "success",
+		Result: `{"schema":"interactive_image.v1","image_path":"assets/interactive/images/ancestor.png"}`,
+	}); err != nil {
+		t.Fatalf("display event should append to current branch ancestor turn: %v", err)
+	}
+	if err := store.AppendTurnDisplayEvent(story.ID, branch.ID, second.ID, DisplayEvent{
+		ID:     "interactive-image-sibling",
+		Role:   "tool_call",
+		Name:   "generate_interactive_image",
+		Status: "success",
+	}); err == nil || !strings.Contains(err.Error(), "不属于当前分支路径") {
+		t.Fatalf("display event should reject sibling branch turn, got err=%v", err)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, branch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != branchTurn.ID {
+		t.Fatalf("unexpected branch path after display event append: %#v", snapshot.Turns)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != branchTurn.ID {
+		t.Fatalf("display event append should not move branch head: %#v", snapshot.CurrentTurn)
+	}
+	events := snapshot.Turns[0].DisplayEvents
+	if len(events) != 1 || events[0].ID != "interactive-image-ancestor" || events[0].Status != "success" {
+		t.Fatalf("ancestor display event was not persisted: %#v", events)
+	}
+}
+
 func TestSwitchTurnVersionKeepsLaterCanonicalPath(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "回合版本", StoryTellerID: "classic"})

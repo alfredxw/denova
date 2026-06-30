@@ -21,8 +21,11 @@ import { APP_VERSION } from '@/app-version'
 import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
 import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfilesWithDefault } from './model-profiles'
 import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
+import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
 
 type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
+
+const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'image', 'paths', 'access', 'appearance', 'updates', 'agent', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -289,6 +292,21 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                min={14}
                max={28}
                onChange={(v) => setField('reading_font_size', v)} />
+          <div data-onboarding-anchor="settings-onboarding" className="flex items-center justify-between gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2">
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-[var(--nova-text)]">{t('settings.onboarding.title')}</div>
+              <div className="mt-0.5 text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('settings.onboarding.description')}</div>
+            </div>
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              className="shrink-0 text-[var(--nova-text-muted)]"
+              onClick={() => window.dispatchEvent(new CustomEvent(ONBOARDING_OPEN_EVENT))}
+            >
+              {t('settings.onboarding.reopen')}
+            </Button>
+          </div>
         </>
       ),
     },
@@ -543,17 +561,31 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     },
   ]
 
-  const jumpToSection = (id: SettingsSectionId) => {
+  const jumpToSection = useCallback((id: SettingsSectionId) => {
     setActiveSection(id)
     setExpandedSections((prev) => ({ ...prev, [id]: true }))
     requestAnimationFrame(() => {
       sectionRefs.current[id]?.scrollIntoView({ block: 'start', behavior: 'smooth' })
     })
-  }
+  }, [])
 
   const toggleSection = (id: SettingsSectionId) => {
     setExpandedSections((prev) => ({ ...prev, [id]: !prev[id] }))
   }
+
+  useEffect(() => {
+    const openSection = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsSectionRequest>).detail
+      if (detail?.layer === 'user' || detail?.layer === 'workspace') setActiveLayer(detail.layer)
+      const section = detail?.section
+      if (!isSettingsSectionId(section)) return
+      requestAnimationFrame(() => {
+        jumpToSection(section)
+      })
+    }
+    window.addEventListener(SETTINGS_SECTION_EVENT, openSection)
+    return () => window.removeEventListener(SETTINGS_SECTION_EVENT, openSection)
+  }, [jumpToSection])
 
   const onContentScroll = () => {
     const container = contentRef.current
@@ -667,6 +699,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
               {sections.map((section) => (
                 <Section
                   key={section.id}
+                  id={section.id}
                   ref={(node) => {
                     sectionRefs.current[section.id] = node
                   }}
@@ -701,6 +734,10 @@ export function modelProfilesForEditor(draft: Settings, effective: Settings): Mo
   ]
 }
 
+function isSettingsSectionId(value: unknown): value is SettingsSectionId {
+  return typeof value === 'string' && SETTINGS_SECTION_IDS.includes(value as SettingsSectionId)
+}
+
 function preserveDraftOnlyModelProfiles(profiles: ModelProfileSettings[], draftProfiles: ModelProfileSettings[]): ModelProfileSettings[] {
   const draftOnlyProfiles = draftProfiles.filter((profile) => !modelProfileID(profile))
   if (draftOnlyProfiles.length === 0) return profiles
@@ -732,6 +769,7 @@ function stripInheritedImageAPISecret(profile: ImageAPIProfileSettings): ImageAP
 
 function Section({
   ref,
+  id,
   group,
   title,
   expanded,
@@ -739,6 +777,7 @@ function Section({
   children,
 }: {
   ref?: (node: HTMLElement | null) => void
+  id: SettingsSectionId
   group: string
   title: string
   expanded: boolean
@@ -746,7 +785,7 @@ function Section({
   children: ReactNode
 }) {
   return (
-    <section ref={ref} className="scroll-mt-4 border-b border-[var(--nova-border)] py-4 first:pt-0 last:border-b-0">
+    <section ref={ref} data-onboarding-anchor={id === 'model' ? 'settings-model' : undefined} className="scroll-mt-4 border-b border-[var(--nova-border)] py-4 first:pt-0 last:border-b-0">
       <button
         type="button"
         onClick={onToggle}

@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式：剧情页新增宽屏轮次导航，左侧横杠可快速定位每个对话轮次，悬停/聚焦时展示用户输入与 Agent 剧情正文预览；窄屏或舞台空间不足时自动隐藏。
+- WebUI：新增新用户引导，按“配置语言模型 API Key → 新建书籍 → 创作 Agent 预填第一章开头 → 一级模块导览”串联主流程；支持一键跳过、设置页重新打开，状态仅保存在浏览器本地，不写入用户或工作区配置。
+- WebUI：新增全局消息中心，顶部栏铃铛入口可查看 Nova 更新日志；打开某条消息会自动标记为已读，也可一键全部已读。已读状态保存到用户级 Nova 数据目录，不写入作品 workspace。
 - 游戏模式：行动选项默认会在故事输出结束后后台自动生成，用户点击输入框右侧“选择”后再展开；输入框左侧菜单保留“自动生成 / 手动生成”切换。
 - WebUI：新增 PWA manifest、应用图标（apple-touch-icon / 192 / 512 / maskable）与移动端 viewport meta（`viewport-fit=cover`、`theme-color`、`apple-mobile-web-app-capable` 等）。自托管后可在手机主屏“添加到桌面”以独立应用形态打开，并正确延伸到刘海安全区；图标由 `pnpm generate-icons`（sharp）从 `favicon.svg` 复现式生成。
 - 后端：静态资源服务对未知前端路径做 SPA 回退（返回 `index.html`）。手机刷新任意页面或深链打开不再返回 Hertz 默认 404；`/api/*` 路由不受影响。
@@ -16,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 游戏模式：互动图像生成完成后允许把展示事件写回当前分支父链上的继承回合，避免从旧分支接出的剧情线在生成祖先回合图像时误报“展示事件回合不属于当前分支”；图像生成上下文也改用当前快照分支读取故事记忆。
 - Agent：内置 `novel-lite` / `novel-standard` / `novel-heavy` 写作 Skill 明确要求按场景使用 `read_file`、`write_file`、`edit_file`、`task` 等工具，并在写入后检查工具结果与读回关键片段，避免工具失败时误向用户宣称文件已修改。
 - 对话渲染：游戏模式改为用后端落盘增量事件原地合并新回合，并把完整快照刷新降级为静默校准；同时移除通用对话和游戏剧情页在 `done` 事件上的临时“完成 / Done”活动行，并把流式正文改为 `streaming_target_content` 隐藏占位、下一帧再提升为可见 `content` 的两阶段提交，避免输出完成或换行瞬间因消息列表高度变化、live 消息切换到持久化快照而抖动或重新入场。本次为内部渲染行为优化，无用户数据迁移。
 - WebUI：桌面布局根与运行时错误边界由 `h-screen` 改为 `h-dvh`，与移动 shell 一致，避免 iOS Safari 地址栏导致的底部跳动。

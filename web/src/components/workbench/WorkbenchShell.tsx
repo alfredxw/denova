@@ -11,6 +11,7 @@ import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { novaSpring } from '@/features/motion/motion-tokens'
+import { MessageCenterButton } from '@/features/messages/MessageCenter'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { getAutomationInbox, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
 import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
@@ -424,6 +425,7 @@ export function WorkbenchShell({
           <button
             type="button"
             onClick={() => switchNavigationMode('ide')}
+            data-onboarding-anchor="mode-ide"
             className={`relative overflow-hidden rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
             {navigationMode === 'ide' && <motion.span layoutId="workbench-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
@@ -432,6 +434,7 @@ export function WorkbenchShell({
           <button
             type="button"
             onClick={() => switchNavigationMode('interactive')}
+            data-onboarding-anchor="mode-interactive"
             className={`relative overflow-hidden rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
           >
             {navigationMode === 'interactive' && <motion.span layoutId="workbench-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
@@ -445,6 +448,7 @@ export function WorkbenchShell({
         <span className="truncate font-medium text-[var(--nova-text)]">{currentBookName}</span>
       </div>
       <div className="nova-ui-compact flex items-center justify-end gap-2 text-[var(--nova-text-faint)]">
+        <MessageCenterButton className="h-7 w-7" />
         <span>{modeLabel}</span>
       </div>
     </header>
@@ -496,6 +500,7 @@ export function WorkbenchShell({
           label={t('workbench.activity.settings')}
           onClick={onToggleSettings}
           active={settingsOpen}
+          data-onboarding-anchor="activity-settings"
           className="nova-icon-button"
         >
           <Settings className="h-4 w-4" />
@@ -546,6 +551,7 @@ export function WorkbenchShell({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
+            <MessageCenterButton className="h-8 w-8" />
             <button
               type="button"
               onClick={() => setCommandOpen(true)}
@@ -560,6 +566,7 @@ export function WorkbenchShell({
               <button
                 type="button"
                 onClick={() => switchNavigationMode('ide')}
+                data-onboarding-anchor="mode-ide"
                 className={`relative min-w-0 overflow-hidden rounded-[6px] px-2 py-1 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
               >
                 {navigationMode === 'ide' && <motion.span layoutId="workbench-mobile-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
@@ -568,6 +575,7 @@ export function WorkbenchShell({
               <button
                 type="button"
                 onClick={() => switchNavigationMode('interactive')}
+                data-onboarding-anchor="mode-interactive"
                 className={`relative min-w-0 overflow-hidden rounded-[6px] px-2 py-1 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
               >
                 {navigationMode === 'interactive' && <motion.span layoutId="workbench-mobile-mode-active" className="absolute inset-0 rounded-[6px] bg-[var(--nova-active)]" transition={novaSpring} />}
@@ -703,6 +711,7 @@ function SortableActivityButton({
     <div ref={setNodeRef} style={style} className={isDragging ? 'relative z-20 opacity-80' : undefined}>
       <ActivityButton
         data-activity-id={activityId}
+        data-onboarding-anchor={`activity-${activityId}`}
         {...(dragDisabled ? {} : attributes)}
         {...(dragDisabled ? {} : listeners)}
         {...props}

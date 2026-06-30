@@ -6,6 +6,7 @@ export interface ChatMessage {
   render_key?: string
   streaming_target_content?: string
   turn_id?: string
+  navigation_turn_id?: string
   name?: string
   args?: string
   status?: 'running' | 'success' | 'error'

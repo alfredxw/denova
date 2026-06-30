@@ -364,6 +364,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                     variant="ghost"
                     className={`${ghostButtonCls} max-w-full`}
                     onClick={openCreateForm}
+                    data-onboarding-anchor="books-create"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     {t('home.createBook')}
@@ -373,7 +374,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
             </div>
 
             {showCreateForm && (
-              <div className="mb-4 space-y-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+              <div data-onboarding-anchor="books-create" className="mb-4 space-y-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
                 <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
                   <Plus className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
                   {t('home.createBook')}
@@ -426,6 +427,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                     size="xs"
                     className={primaryButtonCls}
                     onClick={openCreateForm}
+                    data-onboarding-anchor="books-create"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     {t('home.createBook')}

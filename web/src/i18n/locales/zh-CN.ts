@@ -31,6 +31,8 @@ import workbench from './zh-CN/workbench'
 import interactiveLayout from './zh-CN/interactiveLayout'
 import skills from './zh-CN/skills'
 import automations from './zh-CN/automations'
+import messages from './zh-CN/messages'
+import onboarding from './zh-CN/onboarding'
 
 const zhCN = {
   ...common,
@@ -66,6 +68,8 @@ const zhCN = {
   ...interactiveLayout,
   ...skills,
   ...automations,
+  ...messages,
+  ...onboarding,
 } as const
 
 export default zhCN

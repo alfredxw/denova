@@ -480,21 +480,23 @@ func (s *Store) AppendTurnDisplayEvent(storyID, branchID, turnID string, event D
 	if branchID == "" {
 		branchID = meta.CurrentBranch
 	}
-	if _, ok := meta.Branches[branchID]; !ok {
+	branch, ok := meta.Branches[branchID]
+	if !ok {
 		return fmt.Errorf("分支不存在: %s", branchID)
 	}
 	turnID = strings.TrimSpace(turnID)
 	if turnID == "" {
 		return fmt.Errorf("展示事件缺少所属回合")
 	}
+	_, pathSet := eventPath(branch.Head, eventsByID(lines))
+	if !pathSet[turnID] {
+		return fmt.Errorf("展示事件回合不属于当前分支路径: %s", turnID)
+	}
 	updated := false
 	for i := range lines {
 		raw := lines[i].Raw
 		if lines[i].Envelope.ID != turnID || lines[i].Envelope.Type != StoryEventTypeTurn {
 			continue
-		}
-		if lines[i].Envelope.BranchID != branchID {
-			return fmt.Errorf("展示事件回合不属于当前分支: %s", turnID)
 		}
 		var turn TurnEvent
 		if err := mapToStruct(raw, &turn); err != nil {

@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
-import { MessageList } from '@/components/Chat/MessageList'
+import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { ReferenceChips } from '@/components/Chat/ReferenceChips'
@@ -31,6 +31,7 @@ import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateSto
 import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { TellerPicker } from './TellerPicker'
+import { TurnNavigator, type TurnNavigationItem } from './TurnNavigator'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 
@@ -133,6 +134,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
   const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
+  const [activeTurnAnchorId, setActiveTurnAnchorId] = useState('')
+  const [turnScrollRequest, setTurnScrollRequest] = useState<TurnScrollRequest>()
   const hotChoicesAbortRef = useRef<AbortController | null>(null)
   const pendingAutoHotChoicesKeyRef = useRef('')
   const currentCompactionMessageIdRef = useRef<string | null>(null)
@@ -145,6 +148,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const currentLiveTurnRenderKeysRef = useRef<LiveTurnRenderKeys | null>(null)
   const turnRenderKeysRef = useRef<Record<string, LiveTurnRenderKeys>>({})
   const previousSnapshotKeyRef = useRef(snapshotKey)
+  const liveTurnNavigationAnchorId = useMemo(() => `live:${stageKey}`, [stageKey])
   const stagePreferences = useStagePreferences()
   const stageTextStyle = useMemo<CSSProperties>(
     () => ({
@@ -198,7 +202,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     if (liveMessages.length === 0) return null
     const user = liveMessages.find((msg) => msg.role === 'user')?.content || ''
     const narrative = liveMessages
-      .filter((msg) => msg.role === 'assistant')
+      .filter((msg) => msg.role === 'assistant' && !msg.subagent)
       .map((msg) => msg.streaming_target_content || msg.content || '')
       .join('')
     if (!user && !narrative) return null
@@ -283,16 +287,20 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     })
   }, [activeSkillCommandIndex, filteredSkillCommands.length, showSkillCommands])
 
-  const historyMessages = useMemo<ChatMessage[]>(() => {
+  const storyPathTurns = useMemo(() => {
     const turns = snapshot?.turns || []
     const rewindIndex = rewindTurnId ? turns.findIndex((turn) => turn.id === rewindTurnId) : -1
-    const pathTurns = rewindIndex >= 0 ? turns.slice(0, rewindIndex) : turns
-    return pathTurns.flatMap((turn) => {
+    return rewindIndex >= 0 ? turns.slice(0, rewindIndex) : turns
+  }, [rewindTurnId, snapshot?.turns])
+
+  const historyMessages = useMemo<ChatMessage[]>(() => {
+    return storyPathTurns.flatMap((turn) => {
       const messages: ChatMessage[] = [
         {
           id: `${turn.id}-user`,
           render_key: turnRenderKeysRef.current[turn.id]?.user,
           turn_id: turn.id,
+          navigation_turn_id: turn.id,
           role: 'user',
           content: turn.user,
         },
@@ -377,6 +385,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         id: `${turn.id}-assistant`,
         render_key: turnRenderKeysRef.current[turn.id]?.assistant,
         turn_id: turn.id,
+        navigation_turn_id: turn.id,
         role: 'assistant',
         content: sanitizeStoredNarrative(turn.narrative),
         turn_versions: turn.versions,
@@ -388,10 +397,43 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       })
       return messages
     })
-  }, [optimisticInteractiveImages, rewindTurnId, snapshot?.turns])
+  }, [optimisticInteractiveImages, storyPathTurns])
 
   const displayLiveMessages = hasPersistedLiveTurn ? [] : liveMessages.filter((message) => message.role !== 'token_usage')
   const messages = useMemo(() => [...historyMessages, ...displayLiveMessages], [displayLiveMessages, historyMessages])
+  const turnNavigationItems = useMemo<TurnNavigationItem[]>(() => {
+    const items: TurnNavigationItem[] = storyPathTurns.map((turn) => ({
+      anchorId: turn.id,
+      user: turn.user,
+      narrative: sanitizeStoredNarrative(turn.narrative),
+    }))
+    if (!hasPersistedLiveTurn && latestLiveTurn) {
+      items.push({
+        anchorId: liveTurnNavigationAnchorId,
+        user: latestLiveTurn.user,
+        narrative: latestLiveTurn.narrative,
+        pending: streaming || !latestLiveTurn.narrative.trim(),
+      })
+    }
+    return items
+  }, [hasPersistedLiveTurn, latestLiveTurn, liveTurnNavigationAnchorId, storyPathTurns, streaming])
+  const handleTurnNavigationSelect = useCallback((anchorId: string) => {
+    setActiveTurnAnchorId(anchorId)
+    setTurnScrollRequest((current) => ({
+      anchorId,
+      requestId: (current?.requestId || 0) + 1,
+    }))
+  }, [])
+  const handleVisibleTurnAnchorChange = useCallback((anchorId: string) => {
+    setActiveTurnAnchorId(anchorId)
+  }, [])
+  useEffect(() => {
+    const fallbackAnchorId = turnNavigationItems[turnNavigationItems.length - 1]?.anchorId || ''
+    setActiveTurnAnchorId((current) => {
+      if (!current) return fallbackAnchorId
+      return turnNavigationItems.some((item) => item.anchorId === current) ? current : fallbackAnchorId
+    })
+  }, [turnNavigationItems])
   const openSubAgentSession = useCallback((message: ChatMessage) => {
     const key = subAgentSessionKey(message)
     if (key) setActiveSubAgentSessionKey(key)
@@ -534,7 +576,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     nonNarrativeLiveMessageStreamingRef.current = false
     const liveTurnRenderKeys = createLiveTurnRenderKeys()
     currentLiveTurnRenderKeysRef.current = liveTurnRenderKeys
-    setStageLiveMessages([{ role: 'user', content: message, render_key: liveTurnRenderKeys.user }])
+    setStageLiveMessages([{ role: 'user', content: message, render_key: liveTurnRenderKeys.user, navigation_turn_id: liveTurnNavigationAnchorId }])
     currentCompactionMessageIdRef.current = null
     updateStageRun({ rewindTurnId: nextRewindTurnId || undefined })
     liveStageKeyRef.current = stageKey
@@ -998,7 +1040,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           </div>
         )}
 
-        <div className="flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
+        <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
+          <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} />
           <section className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             {snapshotLoading && messages.length === 0 && !streaming ? (
               <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
@@ -1054,6 +1097,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 bottomPaddingClassName="pb-36"
                 bottomPaddingPx={messageListBottomPadding}
                 messageStyle={stageTextStyle}
+                turnScrollRequest={turnScrollRequest}
+                onVisibleTurnAnchorChange={handleVisibleTurnAnchorChange}
                 onEditMessage={startEditingMessage}
                 onRegenerateMessage={regenerateMessage}
                 onSwitchMessageVersion={switchMessageVersion}
@@ -1368,7 +1413,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   function appendAssistantMessage(content: string, metadata: Partial<ChatMessage> = {}) {
     if (!content) return
     const renderKey = metadata.render_key || (metadata.subagent ? undefined : currentLiveTurnRenderKeysRef.current?.assistant)
-    queueLiveMessage({ role: 'assistant', content, metadata: renderKey ? { ...metadata, render_key: renderKey } : metadata })
+    const navigationMetadata = metadata.subagent ? metadata : { ...metadata, navigation_turn_id: liveTurnNavigationAnchorId }
+    queueLiveMessage({ role: 'assistant', content, metadata: renderKey ? { ...navigationMetadata, render_key: renderKey } : navigationMetadata })
   }
 
   // 思考前言被误当正文显示时（孤立 </think>），丢弃这条流式 assistant 消息，正文随后另起。

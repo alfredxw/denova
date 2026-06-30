@@ -216,6 +216,34 @@ describe('StoryStage streaming rendering', () => {
       stream.close()
     }
   })
+
+  it('shows a live turn in the navigator and replaces it with the persisted turn without duplication', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+    const handleDone = vi.fn().mockResolvedValue(undefined)
+
+    try {
+      sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+      render(<PersistedTurnHarness onDone={handleDone} />)
+
+      await user.type(screen.getByPlaceholderText('你要做什么？'), '推门')
+      await user.click(screen.getByRole('button', { name: '发送' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+
+      expect(screen.getByRole('button', { name: '跳转到第 1 轮' })).toBeInTheDocument()
+      expect(screen.getAllByText('推门').length).toBeGreaterThan(0)
+
+      stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '门外有灯。' }) })
+      await waitFor(() => expect(screen.getAllByText('门外有灯。').length).toBeGreaterThan(0))
+
+      stream.enqueue({ event: 'interactive_turn_persisted', data: JSON.stringify(persistedTurnEvent()) })
+      stream.enqueue({ event: 'done', data: '{}' })
+
+      await waitFor(() => expect(screen.getAllByRole('button', { name: '跳转到第 1 轮' })).toHaveLength(1))
+    } finally {
+      stream.close()
+    }
+  })
 })
 
 describe('StoryStage interactive image settings', () => {

@@ -1,6 +1,28 @@
 import { http, HttpResponse } from 'msw'
 
 export const handlers = [
+  http.get('/api/messages', () =>
+    HttpResponse.json({
+      items: [],
+      unread_count: 0,
+    }),
+  ),
+  http.post('/api/messages/:id/read', ({ params }) =>
+    HttpResponse.json({
+      id: String(params.id),
+      type: 'changelog',
+      title: 'Unreleased',
+      summary: '',
+      body: '',
+      read_at: new Date().toISOString(),
+    }),
+  ),
+  http.post('/api/messages/read-all', () =>
+    HttpResponse.json({
+      items: [],
+      unread_count: 0,
+    }),
+  ),
   http.get('/api/session/messages', () => HttpResponse.json([])),
   http.get('/api/sessions', () => HttpResponse.json({ sessions: [] })),
   http.post('/api/sessions', async ({ request }) => {

@@ -52,3 +52,45 @@ func TestInteractiveImageSystemPromptUsesImagePreset(t *testing.T) {
 		t.Fatalf("system prompt should not mention legacy teller image_prompt:\n%s", prompt)
 	}
 }
+
+func TestInteractiveImageSourceContextUsesSnapshotBranchMemory(t *testing.T) {
+	store := interactive.NewStore(t.TempDir())
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "分支图像记忆", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
+		BranchID:  "main",
+		User:      "进入密林",
+		Narrative: "树影吞没了来路。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch, err := store.CreateBranch(story.ID, interactive.CreateBranchRequest{ParentEventID: first.ID, Title: "折返路线"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SaveStoryMemoryRecord(story.ID, interactive.StoryMemoryRecordRequest{
+		BranchID:    branch.ID,
+		StructureID: "plot_summary",
+		Values: map[string]string{
+			"code_index":  "BR0001",
+			"time_span":   "夜晚",
+			"place":       "旧营地",
+			"event":       "分支路径摘要：主角折返回旧营地并发现脚印。",
+			"current_day": "第 1 天",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	storyCtx, err := store.StoryContext(story.ID, branch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	context := interactiveImageSourceContext(storyCtx.Meta, storyCtx.Snapshot.BranchID, storyCtx.Snapshot.Turns, 0, store)
+	if !strings.Contains(context, "分支路径摘要") {
+		t.Fatalf("source context should use current snapshot branch memory:\n%s", context)
+	}
+}

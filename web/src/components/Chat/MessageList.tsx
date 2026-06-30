@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Virtuoso } from 'react-virtuoso'
-import type { Components, ContextProp } from 'react-virtuoso'
+import type { Components, ContextProp, ListItem, ListRange } from 'react-virtuoso'
 import { MessageItem, ToolActivityBlock } from './MessageItem'
 import type { ChapterIllustration, ChatMessage } from '@/lib/api'
 import { listItem, novaEase } from '@/features/motion/motion-tokens'
@@ -34,6 +34,13 @@ interface MessageListProps {
   onApprovePlan?: (message: ChatMessage) => void
   onContinuePlan?: (message: ChatMessage) => void
   onExitPlanMode?: () => void
+  turnScrollRequest?: TurnScrollRequest
+  onVisibleTurnAnchorChange?: (anchorId: string) => void
+}
+
+export interface TurnScrollRequest {
+  anchorId: string
+  requestId: number
 }
 
 type ChatListItem =
@@ -57,9 +64,11 @@ interface MessageListVirtuosoContext {
 }
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const lastVisibleTurnAnchorRef = useRef('')
+  const lastTurnScrollRequestIdRef = useRef<number | null>(null)
   const hasRunningContextCompaction = messages.some((message) => message.role === 'context_compaction' && message.status === 'running')
   const visibleActivityContent = hasRunningContextCompaction ? '' : activityContent
   const listItems = useMemo(
@@ -121,6 +130,38 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     return undefined
   }, [bottomPaddingPx, isStreaming, latestPlanCardAnchor, scrollLock.scrollElementBottomIntoView])
 
+  useEffect(() => {
+    if (!turnScrollRequest?.anchorId) return
+    if (lastTurnScrollRequestIdRef.current === turnScrollRequest.requestId) return
+    lastTurnScrollRequestIdRef.current = turnScrollRequest.requestId
+    const targetIndex = listItems.findIndex((item) => chatListItemNavigationAnchor(item) === turnScrollRequest.anchorId)
+    if (targetIndex < 0) return
+    scrollLock.scrollToIndex(targetIndex, { align: 'start', behavior: 'smooth' })
+  }, [listItems, scrollLock, turnScrollRequest])
+
+  const notifyVisibleTurnAnchor = useCallback((startIndex: number, endIndex: number) => {
+    if (!onVisibleTurnAnchorChange) return
+    for (let index = Math.max(0, startIndex); index <= Math.min(listItems.length - 1, endIndex); index += 1) {
+      const anchorId = chatListItemNavigationAnchor(listItems[index])
+      if (!anchorId) continue
+      if (lastVisibleTurnAnchorRef.current === anchorId) return
+      lastVisibleTurnAnchorRef.current = anchorId
+      onVisibleTurnAnchorChange(anchorId)
+      return
+    }
+  }, [listItems, onVisibleTurnAnchorChange])
+
+  const handleRangeChanged = useCallback((range: ListRange) => {
+    notifyVisibleTurnAnchor(range.startIndex, range.endIndex)
+  }, [notifyVisibleTurnAnchor])
+
+  const handleItemsRendered = useCallback((items: ListItem<ChatListItem>[]) => {
+    const firstIndex = items[0]?.index
+    const lastIndex = items[items.length - 1]?.index
+    if (firstIndex === undefined || lastIndex === undefined) return
+    notifyVisibleTurnAnchor(firstIndex, lastIndex)
+  }, [notifyVisibleTurnAnchor])
+
   const itemContent = useCallback((index: number, item?: ChatListItem) => {
     const resolvedItem = item || listItems[index]
     if (!resolvedItem) return null
@@ -164,6 +205,8 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         components={MESSAGE_LIST_COMPONENTS}
         computeItemKey={(index, item) => item?.key || listItems[index]?.key || `chat-item-${index}`}
         itemContent={itemContent}
+        rangeChanged={handleRangeChanged}
+        itemsRendered={handleItemsRendered}
         overscan={MESSAGE_LIST_OVERSCAN}
         increaseViewportBy={MESSAGE_LIST_INCREASE_VIEWPORT_BY}
         className="nova-chat-canvas min-h-0 flex-1 overflow-y-auto overflow-x-hidden [overflow-anchor:none]"
@@ -215,11 +258,13 @@ function ChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onEdi
   onPlanCardLayoutChange?: () => void
 }) {
   const { t } = useTranslation()
+  const turnAnchor = chatListItemNavigationAnchor(item)
 
   return (
     <motion.div
       data-nova-chat-item={item.kind}
       data-nova-chat-row-key={item.key}
+      data-nova-chat-turn-anchor={turnAnchor}
       className="min-w-0 px-6 pb-4 last:pb-0"
       variants={listItem}
       initial="initial"
@@ -351,6 +396,7 @@ function buildMessageListScrollKey(items: ChatListItem[], bottomPaddingPx?: numb
         message.interactive_image?.image_path || '',
         message.interactive_images?.map((image) => image.image_path).join(',') || '',
         message.interactive_image_status || '',
+        message.navigation_turn_id || '',
       ].join(':')
     }
     if (item.kind === 'trace') {
@@ -500,6 +546,15 @@ function findChatComposerTop(container: HTMLElement | null, scrollerRect: DOMRec
     visibleTop = visibleTop === null ? rect.top : Math.max(visibleTop, rect.top)
   }
   return visibleTop
+}
+
+function chatListItemNavigationAnchor(item?: ChatListItem) {
+  if (!item || item.kind !== 'message') return ''
+  return messageNavigationAnchor(item.message)
+}
+
+function messageNavigationAnchor(message: ChatMessage) {
+  return message.navigation_turn_id || message.turn_id || ''
 }
 
 function isTraceMessage(message: ChatMessage) {

@@ -44,6 +44,13 @@ else
     echo "警告: config.toml 不存在，跳过复制"
 fi
 
+echo "==> 复制 CHANGELOG.md"
+if [ -f CHANGELOG.md ]; then
+    cp CHANGELOG.md "${OUTPUT_DIR}/CHANGELOG.md"
+else
+    echo "警告: CHANGELOG.md 不存在，跳过复制"
+fi
+
 echo "==> 构建完成"
 echo "  输出目录: ${OUTPUT_DIR}/"
 ls -la "${OUTPUT_DIR}/"

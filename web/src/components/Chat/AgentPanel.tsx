@@ -353,6 +353,7 @@ export function AgentPanel({
                     <WritingSkillSelector workspace={workspace} value={writingSkill} options={writingSkillOptions} onValueChange={setWritingSkill} />
                   </>
                 )}
+                onboardingAnchor="agent-input"
                 floating
                 onHeightChange={setInputAreaHeight}
               />
@@ -424,6 +425,7 @@ export function AgentPanel({
                             <WritingSkillSelector workspace={workspace} value={writingSkill} options={writingSkillOptions} onValueChange={setWritingSkill} />
                           </>
                         )}
+                        onboardingAnchor="agent-input"
                         floating
                         onHeightChange={setInputAreaHeight}
                       />

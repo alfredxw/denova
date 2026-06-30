@@ -95,6 +95,7 @@ interface InputAreaProps {
   agentKey?: VisibleAgentKey
   workspace?: string
   writingSkillControl?: ReactNode
+  onboardingAnchor?: string
   floating?: boolean
   onHeightChange?: (height: number) => void
 }
@@ -134,6 +135,7 @@ export function InputArea({
   agentKey,
   workspace,
   writingSkillControl,
+  onboardingAnchor,
   floating = false,
   onHeightChange,
 }: InputAreaProps) {
@@ -438,6 +440,7 @@ export function InputArea({
   return (
     <div
       ref={rootRef}
+      data-onboarding-anchor={onboardingAnchor}
       style={floating ? { bottom: keyboardInset } : undefined}
       className={floating ? 'nova-chat-input-area nova-chat-input-area-floating' : 'nova-chat-input-area relative border-t border-[var(--nova-border)] p-3'}
     >
