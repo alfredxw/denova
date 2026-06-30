@@ -430,6 +430,16 @@ html[data-nova-motion="off"] *::after {
     width: min(calc(100vw - 1.5rem), 384px) !important;
   }
 
+  /* Constrain radix ScrollArea viewport child. Radix sets inline
+     display:table + min-width:100% which makes the child ignore max-width
+     and grow to content width. Override to display:block so max-width
+     constrains it, preventing horizontal overflow on narrow screens. */
+  [data-nova-mobile-shell="true"] [data-slot="scroll-area-viewport"] > div {
+    display: block !important;
+    max-width: 100% !important;
+    overflow-x: hidden;
+  }
+
   /* Touch has no hover: reveal message meta + assistant actions that are
      otherwise opacity-gated behind :hover/:focus-within. */
   [data-nova-mobile-shell="true"] .nova-message-meta {

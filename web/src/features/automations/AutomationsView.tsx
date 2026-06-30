@@ -300,7 +300,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      <div className="nova-topbar flex h-10 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b px-3 py-1 text-xs sm:px-4">
+      <div className="nova-topbar flex h-10 shrink-0 flex-nowrap max-md:flex-wrap items-center gap-2 overflow-x-auto max-md:overflow-x-hidden border-b px-3 py-1 text-xs sm:px-4">
         <Clock3 className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
         <span className="shrink-0 font-medium">{t('automations.title')}</span>
         <div className="flex shrink-0 gap-1 border-l border-[var(--nova-border)] pl-2 sm:ml-3 sm:pl-3">

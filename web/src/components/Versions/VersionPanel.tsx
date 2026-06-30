@@ -150,8 +150,8 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
         </TooltipIconButton>
       </div>
 
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="w-full min-w-0 px-3 py-2">
+      <ScrollArea className="min-h-0 flex-1 overflow-x-hidden">
+        <div className="w-full max-w-full min-w-0 overflow-hidden px-3 py-2">
           <VersionHeader workspace={workspace} status={status} changesCount={changes.length} />
           <AutoSummary status={status} />
 
