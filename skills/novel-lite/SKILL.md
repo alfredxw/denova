@@ -19,6 +19,14 @@ agent: ide
 
 main agent -> final output
 
+## 工具使用要求
+
+- 如果本轮需要依赖作品连续性，先使用 `read_file` 读取相关工作区文件，例如 `CREATOR.md`、`setting/outline.md`、`setting/progress.md`、`setting/character-states.md`、当前章节组细纲和最近章节；涉及资料库条目时先用 `list_lore_items` 判断，再用 `read_lore_items` 读取相关完整资料。
+- 如果用户只要求在对话里生成片段、灵感稿或示例，直接输出正文，不要写入工作区文件。
+- 如果用户要求创建或更新工作区正文文件，使用 `write_file` 写入新文件或全量重写文件；如果只是局部替换已有内容，使用 `edit_file`，并确保 `old_string` 来自最近一次 `read_file` 的实际内容且不包含行号前缀。
+- 每次调用 `write_file` 或 `edit_file` 后都要检查工具结果。若结果包含 `[tool error]`、参数 JSON 错误、`string not found`、路径错误或截断提示，不得宣称已完成；应重新读取目标文件、修正参数后重试，或明确告诉用户未写入成功。
+- 对用户可见的最终文件改动，完成后使用 `read_file` 读回目标文件的关键片段，确认内容已经落盘；无法验证时，在最终回复中说明未完成验证。
+
 ## 规则
 
 - 只由主 Agent 直接写出最终结果。

@@ -36,6 +36,38 @@ func TestBuiltinWritingPresetInstructionsCoverMultiChapterPlanning(t *testing.T)
 	}
 }
 
+func TestBuiltinWritingPresetInstructionsCoverRequiredTools(t *testing.T) {
+	for _, name := range []string{"novel-lite", "novel-standard", "novel-heavy"} {
+		content := readBuiltinWritingPreset(t, name)
+		for _, required := range []string{
+			"read_file",
+			"write_file",
+			"edit_file",
+			"[tool error]",
+			"不得宣称已完成",
+		} {
+			if !strings.Contains(content, required) {
+				t.Fatalf("%s missing required tool instruction %q", name, required)
+			}
+		}
+	}
+}
+
+func TestBuiltinWritingPresetInstructionsCoverTaskDelegation(t *testing.T) {
+	for _, name := range []string{"novel-standard", "novel-heavy"} {
+		content := readBuiltinWritingPreset(t, name)
+		for _, required := range []string{
+			"task",
+			"description",
+			"reviewer",
+		} {
+			if !strings.Contains(content, required) {
+				t.Fatalf("%s missing task delegation instruction %q", name, required)
+			}
+		}
+	}
+}
+
 func TestBuiltinChapterIllustrationSkillIsIDEOnly(t *testing.T) {
 	content := readBuiltinWritingPreset(t, "chapter-illustration")
 	for _, required := range []string{
