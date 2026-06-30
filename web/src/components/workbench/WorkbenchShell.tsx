@@ -589,14 +589,19 @@ export function WorkbenchShell({
         )}
       </header>
     )
-    const mobileActivityItems: MobileNavItem[] = activityItems.map((item) => ({
-      id: item.id,
-      label: item.label,
-      icon: item.icon,
-      active: item.active,
-      onClick: item.onClick,
-    }))
-    const mobileProjectDrawer = mode === 'ide' && !fullWorkspacePanelVisible && sidebar ? {
+    const mobileActivityItems: MobileNavItem[] = [
+      ...(navigationMode === 'interactive' ? interactiveActivityItems : ideActivityItems),
+      ...sharedActivityItems,
+    ]
+      .filter((item) => item.id !== 'writing')
+      .map((item) => ({
+        id: item.id,
+        label: item.label,
+        icon: item.icon,
+        active: item.active,
+        onClick: item.onClick,
+      }))
+    const mobileProjectDrawer = sidebar ? {
       id: 'project' as const,
       title: t('workbench.mobile.project'),
       icon: <PanelLeft className="h-4 w-4" />,
@@ -607,21 +612,36 @@ export function WorkbenchShell({
     // always visible) instead of Agent hidden in a right drawer. Only when the
     // Agent panel is active and no full-workspace panel covers the screen.
     const mobileAgentDocked = mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)
-    const mobileMain = mobileAgentDocked ? (
-      <Group
-        orientation="vertical"
-        resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <Panel id="nova-mobile-editor" minSize="30%" className="min-h-0">
-          {main}
-        </Panel>
-        <Separator aria-label={t('layout.resize.bottom')} className="nova-resize-handle -my-1 h-2 cursor-row-resize bg-transparent transition-colors" />
-        <Panel id="nova-mobile-agent" defaultSize="38%" minSize="20%" className="min-h-0">
-          {rightPanelContent}
-        </Panel>
-      </Group>
-    ) : main
+    const mobileMain = (
+      <div className="relative flex h-full min-h-0 flex-col">
+        {mobileAgentDocked ? (
+          <Group
+            orientation="vertical"
+            resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <Panel id="nova-mobile-editor" minSize="30%" className="min-h-0">
+              {main}
+            </Panel>
+            <Separator aria-label={t('layout.resize.bottom')} className="nova-resize-handle h-2.5 shrink-0 cursor-row-resize border-y border-[var(--nova-border)] bg-[var(--nova-surface-2)] transition-colors" />
+            <Panel id="nova-mobile-agent" defaultSize="38%" minSize="20%" className="min-h-0">
+              {rightPanelContent}
+            </Panel>
+          </Group>
+        ) : main}
+        {/* Floating button to reopen the Agent dock when it's hidden */}
+        {mode === 'ide' && !fullWorkspacePanelVisible && !mobileAgentDocked && (
+          <button
+            type="button"
+            className="absolute bottom-3 right-3 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] shadow-lg hover:bg-[var(--nova-hover)]"
+            onClick={() => onSetRightPanel('ai')}
+            aria-label={t('chat.agent')}
+          >
+            <Bot className="h-5 w-5" />
+          </button>
+        )}
+      </div>
+    )
 
     return (
       <WorkspaceMobileLayout
