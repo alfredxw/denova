@@ -2,16 +2,16 @@ package app
 
 import "denova/internal/messages"
 
-func (a *App) Messages() (messages.ListResult, error) {
-	return messages.NewService(a.novaDir()).List()
+func (a *App) Messages(locale string) (messages.ListResult, error) {
+	return messages.NewService(a.novaDir()).ListForLocale(locale)
 }
 
-func (a *App) MarkMessageRead(id string) (messages.Message, error) {
-	return messages.NewService(a.novaDir()).MarkRead(id)
+func (a *App) MarkMessageRead(id, locale string) (messages.Message, error) {
+	return messages.NewService(a.novaDir()).MarkReadForLocale(id, locale)
 }
 
-func (a *App) MarkAllMessagesRead() (messages.ListResult, error) {
-	return messages.NewService(a.novaDir()).MarkAllRead()
+func (a *App) MarkAllMessagesRead(locale string) (messages.ListResult, error) {
+	return messages.NewService(a.novaDir()).MarkAllReadForLocale(locale)
 }
 
 func (a *App) novaDir() string {

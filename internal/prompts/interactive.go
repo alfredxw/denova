@@ -87,7 +87,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的场景化风格内容继续剧情；# 只用于选择当前叙事方案中的场景风格，不再代表文件引用。\n\n")
 	sb.WriteString("## 工具化召回流程\n")
 	sb.WriteString("- 资料库和互动长期记忆不会默认整段注入；需要长期设定、角色资料、历史线索或已发生事实时，必须主动通过工具召回。\n")
-	sb.WriteString("- 资料库召回使用 list_lore_items 先看轻量索引，再用 read_lore_items 读取本轮真正相关的少量条目；不要臆造未读取的资料库正文。\n")
+	sb.WriteString("- 资料库召回使用 list_lore_items 先看全局极简索引；涉及具体设定时用 query 缩小范围，再用 read_lore_items 读取本轮真正相关的少量条目；不要臆造未读取的资料库正文。\n")
 	sb.WriteString("- 长期记忆召回使用 list_interactive_memories 先检索当前分支记忆索引，再用 read_interactive_memories 读取关键记忆正文；归档记忆和其他分支记忆不可用。\n")
 	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 结合导演规则裁定后果 → 输出可展示的故事正文。\n")
 	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和历史上下文继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
@@ -110,7 +110,7 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	sb.WriteString("[本轮动态上下文]\n")
 	writeInteractiveReplyTargetInstruction(&sb, in.ReplyTargetChars, false)
 	sb.WriteString("\n## 召回说明\n")
-	sb.WriteString("资料库正文不在本段上下文中预注入；需要时请通过 list_lore_items/read_lore_items 主动召回。\n")
+	sb.WriteString("资料库正文不在本段上下文中预注入；需要时请通过 list_lore_items（可带 query）/read_lore_items 主动召回。\n")
 	sb.WriteString("故事记忆仅提供当前分支的有界摘要；若本轮需要更细的长期事实，请通过 list_interactive_memories/read_interactive_memories 主动召回。\n\n")
 	if strings.TrimSpace(in.LongTermMemory) != "" {
 		writeBlock(&sb, "当前分支故事记忆", in.LongTermMemory)

@@ -9,7 +9,7 @@ import (
 )
 
 func (h *Handlers) HandleMessages(ctx context.Context, c *app.RequestContext) {
-	result, err := h.app.Messages()
+	result, err := h.app.Messages(requestLocale(c))
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
@@ -23,7 +23,7 @@ func (h *Handlers) HandleMessageRead(ctx context.Context, c *app.RequestContext)
 		writeError(c, consts.StatusBadRequest, unescapeErr.Error())
 		return
 	}
-	item, err := h.app.MarkMessageRead(id)
+	item, err := h.app.MarkMessageRead(id, requestLocale(c))
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -32,7 +32,7 @@ func (h *Handlers) HandleMessageRead(ctx context.Context, c *app.RequestContext)
 }
 
 func (h *Handlers) HandleMessagesReadAll(ctx context.Context, c *app.RequestContext) {
-	result, err := h.app.MarkAllMessagesRead()
+	result, err := h.app.MarkAllMessagesRead(requestLocale(c))
 	if err != nil {
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return

@@ -8,15 +8,20 @@ const BACKEND_UNAVAILABLE_STATUS = new Set([502, 503, 504])
 const REMOTE_ACCESS_CREDENTIALS_KEY = 'nova.remoteAccess.credentials'
 const REMOTE_ACCESS_REQUIRED_EVENT = 'nova:remote-access-required'
 
-export async function fetchAPI(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const requestInit = withRemoteAccessAuth(input, init)
+type APIRequestInit = RequestInit & {
+  suppressBackendUnavailableToast?: boolean
+}
+
+export async function fetchAPI(input: RequestInfo | URL, init?: APIRequestInit): Promise<Response> {
+  const { suppressBackendUnavailableToast = false, ...baseInit } = init ?? {}
+  const requestInit = withRemoteAccessAuth(input, baseInit)
   try {
     const res = await fetch(input, requestInit)
-    notifyBackendUnavailableIfNeeded(input, res.status)
+    if (!suppressBackendUnavailableToast) notifyBackendUnavailableIfNeeded(input, res.status)
     notifyRemoteAccessRequiredIfNeeded(input, res)
     return res
   } catch (error) {
-    if (shouldNotifyBackendUnavailable(input, error)) notifyBackendUnavailable()
+    if (!suppressBackendUnavailableToast && shouldNotifyBackendUnavailable(input, error)) notifyBackendUnavailable()
     throw error
   }
 }

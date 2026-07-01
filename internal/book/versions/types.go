@@ -15,6 +15,11 @@ const (
 	VersionSourceRollbackBackup = "rollback_backup"
 )
 
+const (
+	VersionRestoreScopeWorkspace = "workspace"
+	VersionRestoreScopePaths     = "paths"
+)
+
 var (
 	ErrVersionNotFound = errors.New("版本不存在")
 	ErrVersionClean    = errors.New("当前工作区没有可保存的变更")
@@ -57,6 +62,36 @@ type VersionCommandResult struct {
 	Message string         `json:"message"`
 	Version *VersionEntry  `json:"version,omitempty"`
 	Status  *VersionStatus `json:"status,omitempty"`
+}
+
+type VersionRestorePlan struct {
+	Target           VersionEntry           `json:"target"`
+	Scope            string                 `json:"scope"`
+	Paths            []string               `json:"paths"`
+	Changes          []VersionRestoreChange `json:"changes"`
+	WillCreateBackup bool                   `json:"will_create_backup"`
+	CurrentDirty     bool                   `json:"current_dirty"`
+	BackupMessage    string                 `json:"backup_message,omitempty"`
+	Warnings         []string               `json:"warnings,omitempty"`
+}
+
+type VersionRestoreResult struct {
+	Message       string         `json:"message"`
+	Target        VersionEntry   `json:"target"`
+	Version       *VersionEntry  `json:"version,omitempty"`
+	BackupVersion *VersionEntry  `json:"backup_version,omitempty"`
+	RestoredPaths []string       `json:"restored_paths"`
+	Scope         string         `json:"scope"`
+	Status        *VersionStatus `json:"status,omitempty"`
+}
+
+type VersionRestoreChange struct {
+	Path               string `json:"path"`
+	Status             string `json:"status"`
+	Text               bool   `json:"text"`
+	Binary             bool   `json:"binary"`
+	MissingInVersion   bool   `json:"missing_in_version,omitempty"`
+	MissingInWorkspace bool   `json:"missing_in_workspace,omitempty"`
 }
 
 type VersionDiff struct {

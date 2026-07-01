@@ -16,6 +16,12 @@ type readLoreItemsInput struct {
 	IDs []string `json:"ids" jsonschema:"description=资料库条目 ID 列表"`
 }
 
+type listLoreItemsInput struct {
+	Query string `json:"query,omitempty" jsonschema:"description=可选关键词；会搜索 ID、名称、类型、标签、关键词、简介和正文，但只返回索引，不返回正文"`
+	Type  string `json:"type,omitempty" jsonschema:"description=可选资料类型过滤：character/world/location/faction/rule/item/other"`
+	Limit int    `json:"limit,omitempty" jsonschema:"description=可选返回上限；仅 query 或 type 过滤时生效，默认 20，最大 50"`
+}
+
 type writeLoreItemsInput struct {
 	Message   string               `json:"message" jsonschema:"description=本次资料库变更说明，用中文简要概括"`
 	Items     []writeLoreItemInput `json:"items" jsonschema:"description=要创建或更新的完整资料条目列表；已有 ID 的条目会更新，没有 ID 或 ID 不存在的条目会创建"`
@@ -61,32 +67,23 @@ func newLoreTools(workspace string, allowWrite bool) ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	listTool, err := utils.InferTool("list_lore_items", "列出资料库轻量索引，返回所有条目的 ID、名称、类型、标签、简介、重要度和加载策略；根据索引判断需要正文时再调用 read_lore_items。", func(ctx context.Context, input struct{}) (string, error) {
+	listTool, err := utils.InferTool("list_lore_items", "列出资料库轻量索引。空参数返回全量极简索引（ID、名称、简介）；可传 query/type/limit 检索相关条目，搜索 ID、名称、类型、标签、关键词、简介和正文，但只返回索引和匹配来源；根据索引判断需要正文时再调用 read_lore_items。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
 		_ = ctx
-		_ = input
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法列出资料库")
 		}
-		items, err := book.NewLoreStore(workspace).List()
+		index, err := book.NewLoreStore(workspace).LoreIndexMarkdown(book.LoreIndexOptions{
+			Query: input.Query,
+			Type:  input.Type,
+			Limit: input.Limit,
+		})
 		if err != nil {
 			return "", err
 		}
-		if len(items) == 0 {
+		if strings.TrimSpace(index) == "" {
 			return "资料库暂无条目。", nil
 		}
-		var sb strings.Builder
-		sb.WriteString("# 资料库索引\n\n")
-		for _, item := range items {
-			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  重要度: %s\n  加载策略: %s\n", item.ID, item.Name, item.Type, item.Importance, item.LoadMode)
-			if len(item.Tags) > 0 {
-				fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(item.Tags, "、"))
-			}
-			if item.BriefDescription != "" {
-				fmt.Fprintf(&sb, "  简介: %s\n", item.BriefDescription)
-			}
-			sb.WriteString("\n")
-		}
-		return strings.TrimSpace(sb.String()), nil
+		return strings.TrimSpace(index), nil
 	})
 	if err != nil {
 		return nil, err

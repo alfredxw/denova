@@ -25,7 +25,7 @@ const settings = {
   'settings.updates.error': 'Update failed',
   'settings.updates.apply': 'Restart and install',
   'settings.updates.applying': 'Restarting',
-  'settings.updates.applyingRestart': 'Denova is restarting and applying the update.',
+  'settings.updates.applyingRestart': 'Denova is restarting and applying the update. This page will refresh when the new version is ready.',
   'settings.updates.install': 'Install Update',
   'settings.updates.installedRestart': 'Update installed. Restart Denova to use the new version.',
   'settings.updates.installing': 'Installing',

@@ -91,7 +91,7 @@ describe('UpdatePanel', () => {
       />,
     )
 
-    expect(screen.getByText('Denova 正在重启并应用更新。')).toBeInTheDocument()
+    expect(screen.getByText('Denova 正在重启并应用更新。新版本可用后页面会自动刷新。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '检查更新' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '重启并安装' })).toBeDisabled()
   })

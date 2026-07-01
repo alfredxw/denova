@@ -32,7 +32,11 @@ func NewServiceWithChangelog(novaDir, changelogPath string) *Service {
 }
 
 func (s *Service) List() (ListResult, error) {
-	items, err := s.changelogMessages()
+	return s.ListForLocale("")
+}
+
+func (s *Service) ListForLocale(locale string) (ListResult, error) {
+	items, err := s.changelogMessages(locale)
 	if err != nil {
 		return ListResult{}, err
 	}
@@ -47,11 +51,15 @@ func (s *Service) List() (ListResult, error) {
 }
 
 func (s *Service) MarkRead(id string) (Message, error) {
+	return s.MarkReadForLocale(id, "")
+}
+
+func (s *Service) MarkReadForLocale(id, locale string) (Message, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return Message{}, fmt.Errorf("message id is required")
 	}
-	items, err := s.changelogMessages()
+	items, err := s.changelogMessages(locale)
 	if err != nil {
 		return Message{}, err
 	}
@@ -85,7 +93,11 @@ func (s *Service) MarkRead(id string) (Message, error) {
 }
 
 func (s *Service) MarkAllRead() (ListResult, error) {
-	items, err := s.changelogMessages()
+	return s.MarkAllReadForLocale("")
+}
+
+func (s *Service) MarkAllReadForLocale(locale string) (ListResult, error) {
+	items, err := s.changelogMessages(locale)
 	if err != nil {
 		return ListResult{}, err
 	}
@@ -124,7 +136,7 @@ func applyReadState(items []Message, state map[string]time.Time) int {
 	return unread
 }
 
-func (s *Service) changelogMessages() ([]Message, error) {
+func (s *Service) changelogMessages(locale string) ([]Message, error) {
 	path := s.resolveChangelogPath()
 	if path == "" {
 		return []Message{}, nil
@@ -136,7 +148,7 @@ func (s *Service) changelogMessages() ([]Message, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read changelog failed: %w", err)
 	}
-	return parseChangelogMessages(string(data)), nil
+	return parseChangelogMessagesForLocale(string(data), locale), nil
 }
 
 func (s *Service) resolveChangelogPath() string {

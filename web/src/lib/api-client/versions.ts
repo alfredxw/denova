@@ -1,5 +1,5 @@
 import { jsonHeaders, requestJSON } from './client'
-import type { VersionCommandResult, VersionDiff, VersionEntry, VersionStatus } from './types'
+import type { VersionCommandResult, VersionDiff, VersionEntry, VersionRestorePlan, VersionRestoreResult, VersionStatus } from './types'
 
 export async function getVersionStatus(): Promise<VersionStatus> {
   const status = await requestJSON<VersionStatus>('/api/versions/status')
@@ -27,6 +27,23 @@ export async function getVersionDiff(id: string, path?: string): Promise<Version
   return requestJSON(`/api/versions/${encodeURIComponent(id)}/diff${query}`)
 }
 
-export async function restoreVersion(id: string): Promise<VersionCommandResult> {
-  return requestJSON(`/api/versions/${encodeURIComponent(id)}/restore`, { method: 'POST' })
+function restoreBody(paths?: string[]) {
+  if (!paths || paths.length === 0) return undefined
+  return JSON.stringify({ paths })
+}
+
+export async function getVersionRestorePlan(id: string, paths?: string[]): Promise<VersionRestorePlan> {
+  return requestJSON(`/api/versions/${encodeURIComponent(id)}/restore-plan`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: restoreBody(paths),
+  })
+}
+
+export async function restoreVersion(id: string, paths?: string[]): Promise<VersionRestoreResult> {
+  return requestJSON(`/api/versions/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: restoreBody(paths),
+  })
 }

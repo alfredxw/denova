@@ -252,6 +252,118 @@ func TestGoGitVersionExcludesInteractiveData(t *testing.T) {
 	}
 }
 
+func TestGoGitVersionRestorePathsKeepsCurrentHead(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	settings := DefaultAutoSettings()
+	writeFile(t, dir, "chapters/ch0001.md", "第一版")
+	writeFile(t, dir, "setting/progress.md", "进度一")
+
+	first, err := service.Create("初始版本", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create first failed: %v", err)
+	}
+	writeFile(t, dir, "chapters/ch0001.md", "第二版")
+	writeFile(t, dir, "chapters/ch0002.md", "新增章节")
+	if err := os.Remove(filepath.Join(dir, "setting", "progress.md")); err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.Create("第二版本", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create second failed: %v", err)
+	}
+
+	plan, err := service.RestorePlan(first.Version.ID, []string{"chapters/ch0001.md", "setting/progress.md", "chapters/ch0002.md"}, settings)
+	if err != nil {
+		t.Fatalf("RestorePlan paths failed: %v", err)
+	}
+	if plan.Scope != VersionRestoreScopePaths || plan.WillCreateBackup || len(plan.Changes) != 3 {
+		t.Fatalf("unexpected restore plan: %#v", plan)
+	}
+
+	result, err := service.RestoreWithPaths(first.Version.ID, []string{"chapters/ch0001.md", "setting/progress.md", "chapters/ch0002.md"}, settings)
+	if err != nil {
+		t.Fatalf("RestoreWithPaths failed: %v", err)
+	}
+	if result.Scope != VersionRestoreScopePaths || result.BackupVersion != nil || len(result.RestoredPaths) != 3 {
+		t.Fatalf("unexpected restore result: %#v", result)
+	}
+	if got := readFile(t, dir, "chapters/ch0001.md"); got != "第一版" {
+		t.Fatalf("restored modified file = %q", got)
+	}
+	if got := readFile(t, dir, "setting/progress.md"); got != "进度一" {
+		t.Fatalf("restored deleted file = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "chapters", "ch0002.md")); !os.IsNotExist(err) {
+		t.Fatalf("file missing in target should be removed, err=%v", err)
+	}
+
+	status, err := service.Status(settings)
+	if err != nil {
+		t.Fatalf("Status after path restore failed: %v", err)
+	}
+	if status.Latest == nil || status.Latest.ID != second.Version.ID {
+		t.Fatalf("path restore should not move current version: %#v", status.Latest)
+	}
+	assertChange(t, status.Changes, "chapters/ch0001.md", "modified")
+	assertChange(t, status.Changes, "setting/progress.md", "added")
+	assertChange(t, status.Changes, "chapters/ch0002.md", "deleted")
+
+	history, err := service.History(10)
+	if err != nil {
+		t.Fatalf("History failed: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("path restore should not create a version, history=%#v", history)
+	}
+}
+
+func TestGoGitVersionRestoreRejectsExcludedPath(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	settings := DefaultAutoSettings()
+	writeFile(t, dir, "chapters/ch0001.md", "第一版")
+	first, err := service.Create("初始版本", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create first failed: %v", err)
+	}
+	if _, err := service.RestorePlan(first.Version.ID, []string{".denova/interactive/stories/story.json"}, settings); err == nil {
+		t.Fatalf("RestorePlan should reject excluded paths")
+	}
+}
+
+func TestGoGitVersionRestoreIgnoredLorePath(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	settings := DefaultAutoSettings()
+	writeFile(t, dir, ".gitignore", ".nova\n")
+	writeFile(t, dir, ".nova/lore/items.json", `["old"]`)
+	first, err := service.Create("初始资料库", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create first failed: %v", err)
+	}
+	writeFile(t, dir, ".nova/lore/items.json", `["new"]`)
+	second, err := service.Create("更新资料库", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create second failed: %v", err)
+	}
+
+	if _, err := service.RestoreWithPaths(first.Version.ID, []string{".nova/lore/items.json"}, settings); err != nil {
+		t.Fatalf("RestoreWithPaths lore failed: %v", err)
+	}
+	if got := readFile(t, dir, ".nova/lore/items.json"); got != `["old"]` {
+		t.Fatalf("restored lore = %q", got)
+	}
+	status, err := service.Status(settings)
+	if err != nil {
+		t.Fatalf("Status failed: %v", err)
+	}
+	if status.Latest == nil || status.Latest.ID != second.Version.ID {
+		t.Fatalf("lore path restore should not move current version: %#v", status.Latest)
+	}
+	assertChange(t, status.Changes, ".nova/lore/items.json", "modified")
+}
+
 func writeFile(t *testing.T, root, rel, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(rel))

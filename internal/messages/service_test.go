@@ -37,6 +37,61 @@ func TestParseChangelogMessages(t *testing.T) {
 	}
 }
 
+func TestParseChangelogMessagesForLocaleFiltersBilingualContent(t *testing.T) {
+	content := `# Changelog
+
+## [v0.2.0] - 2026-07-01
+
+### Brief / 简要说明
+
+#### 中文
+
+- 中文简要第一条。
+- 中文简要第二条。
+
+#### English
+
+- English brief first item.
+- English brief second item.
+
+### Added
+
+- 消息中心只展示中文更新。
+- Message center only shows English updates.
+
+### Fixed
+
+- 中文：修复中文摘要。
+- English: Fixed the English summary.
+`
+	zhItems := parseChangelogMessagesForLocale(content, "zh-CN")
+	enItems := parseChangelogMessagesForLocale(content, "en-US")
+	if len(zhItems) != 1 || len(enItems) != 1 {
+		t.Fatalf("localized message lengths = zh %d, en %d", len(zhItems), len(enItems))
+	}
+	if zhItems[0].ID != enItems[0].ID {
+		t.Fatalf("localized ids differ: zh %q, en %q", zhItems[0].ID, enItems[0].ID)
+	}
+	if zhItems[0].Summary != "中文简要第一条。" {
+		t.Fatalf("zh summary = %q", zhItems[0].Summary)
+	}
+	if enItems[0].Summary != "English brief first item." {
+		t.Fatalf("en summary = %q", enItems[0].Summary)
+	}
+	if strings.Contains(zhItems[0].Body, "English") || strings.Contains(zhItems[0].Body, "Message center") || strings.Contains(zhItems[0].Body, "Brief") {
+		t.Fatalf("zh body leaked English content:\n%s", zhItems[0].Body)
+	}
+	if strings.Contains(enItems[0].Body, "中文") || strings.Contains(enItems[0].Body, "消息中心") || strings.Contains(enItems[0].Body, "简要说明") {
+		t.Fatalf("en body leaked Chinese content:\n%s", enItems[0].Body)
+	}
+	if !strings.Contains(zhItems[0].Body, "### 简要说明") || !strings.Contains(zhItems[0].Body, "### 新增") || !strings.Contains(zhItems[0].Body, "### 修复") {
+		t.Fatalf("zh body did not localize headings:\n%s", zhItems[0].Body)
+	}
+	if !strings.Contains(enItems[0].Body, "### Brief") || !strings.Contains(enItems[0].Body, "### Added") || !strings.Contains(enItems[0].Body, "### Fixed") {
+		t.Fatalf("en body did not localize headings:\n%s", enItems[0].Body)
+	}
+}
+
 func TestServiceMarksReadPersistently(t *testing.T) {
 	dir := t.TempDir()
 	changelog := filepath.Join(dir, "CHANGELOG.md")
@@ -79,6 +134,47 @@ func TestServiceMarksReadPersistently(t *testing.T) {
 	}
 	if _, err := service.MarkRead("changelog:missing"); err == nil {
 		t.Fatalf("missing message should fail")
+	}
+}
+
+func TestServiceReadStateIsSharedAcrossLocales(t *testing.T) {
+	dir := t.TempDir()
+	changelog := filepath.Join(dir, "CHANGELOG.md")
+	if err := os.WriteFile(changelog, []byte(`## [v0.2.0] - 2026-07-01
+
+### Brief / 简要说明
+
+#### 中文
+
+- 中文简要。
+
+#### English
+
+- English brief.
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service := NewServiceWithChangelog(filepath.Join(dir, "nova"), changelog)
+	zhList, err := service.ListForLocale("zh-CN")
+	if err != nil {
+		t.Fatal(err)
+	}
+	enList, err := service.ListForLocale("en-US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(zhList.Items) != 1 || len(enList.Items) != 1 || zhList.Items[0].ID != enList.Items[0].ID {
+		t.Fatalf("localized lists = zh %#v, en %#v", zhList, enList)
+	}
+	if _, err := service.MarkReadForLocale(zhList.Items[0].ID, "zh-CN"); err != nil {
+		t.Fatal(err)
+	}
+	next, err := service.ListForLocale("en-US")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.UnreadCount != 0 || len(next.Items) != 1 || next.Items[0].ReadAt == nil {
+		t.Fatalf("read state should be shared across locales: %#v", next)
 	}
 }
 

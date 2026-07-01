@@ -417,6 +417,38 @@ export interface VersionCommandResult {
   status?: VersionStatus
 }
 
+export type VersionRestoreScope = 'workspace' | 'paths'
+
+export interface VersionRestoreChange {
+  path: string
+  status: 'added' | 'modified' | 'deleted'
+  text: boolean
+  binary: boolean
+  missing_in_version?: boolean
+  missing_in_workspace?: boolean
+}
+
+export interface VersionRestorePlan {
+  target: VersionEntry
+  scope: VersionRestoreScope
+  paths: string[]
+  changes: VersionRestoreChange[]
+  will_create_backup: boolean
+  current_dirty: boolean
+  backup_message?: string
+  warnings?: string[]
+}
+
+export interface VersionRestoreResult {
+  message: string
+  target: VersionEntry
+  version?: VersionEntry
+  backup_version?: VersionEntry
+  restored_paths: string[]
+  scope: VersionRestoreScope
+  status?: VersionStatus
+}
+
 export interface VersionDiff {
   version: VersionEntry
   changes: VersionChange[]
@@ -442,6 +474,45 @@ export interface LoreItem {
   content: string
   created_at: string
   updated_at: string
+  image?: LoreItemImage
+}
+
+export interface LoreItemImage {
+  schema: 'lore_item_image.v1' | string
+  image_path: string
+  meta_path: string
+  alt_text?: string
+  image_preset_id?: string
+  profile_id?: string
+  provider?: string
+  model?: string
+  size?: string
+  quality?: string
+  output_format?: string
+  created_at?: string
+  revised_prompt?: string
+  mime_type?: string
+  size_bytes?: number
+}
+
+export interface LoreItemImageGenerateRequest {
+  instruction?: string
+  image_preset_id?: string
+  profile_id?: string
+}
+
+export interface LoreImagesGenerateRequest extends LoreItemImageGenerateRequest {
+  item_ids: string[]
+  overwrite_existing?: boolean
+}
+
+export interface LoreImageProgressEvent {
+  item_id: string
+  index: number
+  total: number
+  status: 'running' | 'skipped' | 'success' | 'error'
+  message?: string
+  item?: LoreItem
 }
 
 export type SkillScope = 'builtin' | 'user' | 'workspace'

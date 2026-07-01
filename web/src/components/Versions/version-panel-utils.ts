@@ -10,6 +10,7 @@ export function versionToTimelineItem(version: VersionEntry, t: TFunction): Vers
     description: sourceText(version.source, t),
     createdAt: formatTime(version.created_at),
     author: t('versions.filesBytes', { files: version.file_count, bytes: formatBytes(version.total_bytes) }),
+    changedPaths: version.changed_paths ?? [],
   }
 }
 

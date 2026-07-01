@@ -342,27 +342,51 @@ func (s *WorkspaceRuntimeManager) VersionDiff(ctx context.Context, id, path stri
 	return versionService.Diff(id, path)
 }
 
-// RestoreVersion 将整本书恢复到指定版本。
-func (a *App) RestoreVersion(ctx context.Context, id string) (book.VersionCommandResult, error) {
-	return a.runtime().RestoreVersion(ctx, id)
+// VersionRestorePlan 返回恢复版本前的影响预览。
+func (a *App) VersionRestorePlan(ctx context.Context, id string, paths []string) (book.VersionRestorePlan, error) {
+	return a.runtime().VersionRestorePlan(ctx, id, paths)
 }
 
-func (s *WorkspaceRuntimeManager) RestoreVersion(ctx context.Context, id string) (book.VersionCommandResult, error) {
+func (s *WorkspaceRuntimeManager) VersionRestorePlan(ctx context.Context, id string, paths []string) (book.VersionRestorePlan, error) {
+	_ = ctx
 	versionService := s.versionService()
 	if versionService == nil {
-		return book.VersionCommandResult{}, ErrNoWorkspace
+		return book.VersionRestorePlan{}, ErrNoWorkspace
 	}
-	result, err := versionService.Restore(id, s.versionAutoSettings())
+	return versionService.RestorePlan(id, paths, s.versionAutoSettings())
+}
+
+// RestoreVersion 将整本书或指定文件恢复到目标版本。
+func (a *App) RestoreVersion(ctx context.Context, id string, paths ...[]string) (book.VersionRestoreResult, error) {
+	return a.runtime().RestoreVersion(ctx, id, paths...)
+}
+
+func (s *WorkspaceRuntimeManager) RestoreVersion(ctx context.Context, id string, paths ...[]string) (book.VersionRestoreResult, error) {
+	versionService := s.versionService()
+	if versionService == nil {
+		return book.VersionRestoreResult{}, ErrNoWorkspace
+	}
+	selectedPaths := restoreRequestPaths(paths)
+	result, err := versionService.RestoreWithPaths(id, selectedPaths, s.versionAutoSettings())
 	if err != nil {
-		return book.VersionCommandResult{}, err
+		return book.VersionRestoreResult{}, err
 	}
-	if timed, timedErr := versionService.MaybeCreateTimed(s.versionAutoSettings()); timedErr != nil {
-		log.Printf("[versions] 恢复版本后定时保存检查失败 err=%v", timedErr)
-	} else if !timed.Skipped && timed.Version != nil {
-		log.Printf("[versions] 恢复版本后创建定时版本 id=%s", timed.Version.ID)
+	if result.Scope == book.VersionRestoreScopeWorkspace {
+		if timed, timedErr := versionService.MaybeCreateTimed(s.versionAutoSettings()); timedErr != nil {
+			log.Printf("[versions] 恢复版本后定时保存检查失败 err=%v", timedErr)
+		} else if !timed.Skipped && timed.Version != nil {
+			log.Printf("[versions] 恢复版本后创建定时版本 id=%s", timed.Version.ID)
+		}
 	}
 	_ = ctx
 	return result, nil
+}
+
+func restoreRequestPaths(paths [][]string) []string {
+	if len(paths) == 0 {
+		return nil
+	}
+	return paths[0]
 }
 
 // MaybeCreateTimedVersion 在写操作后按定时策略创建自动版本。

@@ -7,6 +7,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"denova/internal/api/sse"
+	novaApp "denova/internal/app"
 	"denova/internal/book"
 )
 
@@ -69,4 +71,63 @@ func (h *Handlers) HandleLoreItemDelete(ctx context.Context, c *app.RequestConte
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handlers) HandleLoreItemImageGenerate(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	var body novaApp.LoreItemImageGenerateRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.GenerateLoreItemImage(ctx, c.Param("id"), body)
+	if err != nil {
+		if err == novaApp.ErrNoWorkspace {
+			writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleLoreImagesGenerateStream(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	var body novaApp.LoreImagesGenerateRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	task, err := h.app.StartLoreImagesGenerateTask(body)
+	if err != nil {
+		if errors.Is(err, novaApp.ErrLoreImageTaskRunning) {
+			writeError(c, consts.StatusConflict, err.Error())
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	sse.StreamTask(c, task)
+}
+
+func (h *Handlers) HandleLoreImagesGenerateAbort(ctx context.Context, c *app.RequestContext) {
+	h.app.AbortLoreImagesGenerateTask()
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handlers) HandleLoreItemImageDelete(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	item, err := h.app.ClearLoreItemImage(c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
 }

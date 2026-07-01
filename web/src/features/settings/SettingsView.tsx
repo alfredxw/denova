@@ -19,6 +19,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { LOCALE_OPTIONS } from '@/i18n'
 import { APP_VERSION } from '@/app-version'
 import { markAutoUpdateChecked, notifyUpdateCheckResult, shouldRunAutoUpdateCheck } from './update-check-cache'
+import { scheduleFrontendReloadAfterUpdate } from './update-reload'
 import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfilesWithDefault } from './model-profiles'
 import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
@@ -183,6 +184,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     try {
       const result = await applyUpdate()
       setUpdateApplyResult(result)
+      scheduleFrontendReloadAfterUpdate(result.version)
     } catch (e) {
       setUpdateError((e as Error).message)
     } finally {

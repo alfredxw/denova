@@ -25,7 +25,7 @@ const settings = {
   'settings.updates.error': '更新失败',
   'settings.updates.apply': '重启并安装',
   'settings.updates.applying': '正在重启',
-  'settings.updates.applyingRestart': 'Denova 正在重启并应用更新。',
+  'settings.updates.applyingRestart': 'Denova 正在重启并应用更新。新版本可用后页面会自动刷新。',
   'settings.updates.install': '安装更新',
   'settings.updates.installedRestart': '更新已安装，重启 Denova 后生效。',
   'settings.updates.installing': '安装中',

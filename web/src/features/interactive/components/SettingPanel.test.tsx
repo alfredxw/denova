@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
 import { getImagePresets, getInteractiveTellers } from '../api'
 import type { ImagePreset, Teller } from '../types'
 import { SettingPanel } from './SettingPanel'
@@ -30,12 +31,17 @@ vi.mock('@/components/Chat/ConfigManagerChat', () => ({
 }))
 
 vi.mock('@/lib/api', () => ({
+  abortLoreImagesGenerate: vi.fn(),
+  clearLoreItemImage: vi.fn(),
   createLoreItem: vi.fn(),
   deleteLoreItem: vi.fn(),
+  generateLoreItemImage: vi.fn(),
   getLoreItems: vi.fn().mockResolvedValue([]),
   readFile: vi.fn().mockResolvedValue({ content: '' }),
   saveFile: vi.fn(),
+  streamLoreImagesGenerate: vi.fn(),
   updateLoreItem: vi.fn(),
+  workspaceAssetURL: (path: string) => `/api/workspace/asset?path=${encodeURIComponent(path)}`,
 }))
 
 vi.mock('../api', () => ({
@@ -52,8 +58,14 @@ vi.mock('../api', () => ({
 describe('SettingPanel', () => {
   beforeEach(() => {
     configManagerChatProps.length = 0
+    vi.mocked(getLoreItems).mockReset()
+    vi.mocked(updateLoreItem).mockReset()
+    vi.mocked(deleteLoreItem).mockReset()
+    vi.mocked(generateLoreItemImage).mockReset()
+    vi.mocked(streamLoreImagesGenerate).mockReset()
     vi.mocked(getInteractiveTellers).mockReset()
     vi.mocked(getImagePresets).mockReset()
+    vi.mocked(getLoreItems).mockResolvedValue([])
     vi.mocked(getInteractiveTellers).mockResolvedValue([teller('classic', '经典叙事'), teller('slow-burn', '慢热叙事')])
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
   })
@@ -98,6 +110,100 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
     expect(imageTab).toHaveClass('bg-[var(--nova-active)]')
   })
+
+  it('generates a current image for one lore item from the editor', async () => {
+    const user = userEvent.setup()
+    const item = loreItem('lin-chuan', '林川')
+    const withImage = {
+      ...item,
+      updated_at: '2026-01-01T00:00:01Z',
+      image: loreImage('assets/lore/images/lin-chuan/20260101000000/image.png'),
+    }
+    vi.mocked(getLoreItems).mockResolvedValue([item])
+    vi.mocked(updateLoreItem).mockResolvedValue(item)
+    vi.mocked(generateLoreItemImage).mockResolvedValue(withImage)
+
+    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+
+    await user.click(await screen.findByRole('button', { name: /林川/ }))
+    expect(screen.getByText('暂无图片')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '打开图片生成' }))
+
+    const generateDialog = await screen.findByRole('dialog', { name: '生成图片' })
+    await user.click(within(generateDialog).getByRole('button', { name: '生成图片' }))
+
+    await waitFor(() => {
+      expect(generateLoreItemImage).toHaveBeenCalledWith('lin-chuan', expect.objectContaining({ image_preset_id: 'game-cg' }))
+    })
+    await user.click(within(generateDialog).getByRole('button', { name: '关闭' }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    expect(await screen.findByRole('img', { name: '林川' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Flore%2Fimages%2Flin-chuan%2F20260101000000%2Fimage.png')
+    expect(screen.queryByText('已有图片')).not.toBeInTheDocument()
+    expect(screen.queryByText('assets/lore/images/lin-chuan/20260101000000/image.png')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '放大查看资料图片' }))
+
+    const previewDialog = screen.getByRole('dialog', { name: '林川' })
+    expect(within(previewDialog).getByTestId('image-preview-viewport')).toBeInTheDocument()
+  })
+
+  it('confirms lore deletion with an in-app dialog', async () => {
+    const user = userEvent.setup()
+    const item = loreItem('lin-chuan', '林川')
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(getLoreItems).mockResolvedValueOnce([item]).mockResolvedValue([])
+    vi.mocked(deleteLoreItem).mockResolvedValue(undefined)
+
+    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+
+    await user.click(await screen.findByRole('button', { name: /林川/ }))
+    await user.click(screen.getByRole('button', { name: '删除资料' }))
+
+    const dialog = await screen.findByRole('alertdialog', { name: '删除资料' })
+    expect(within(dialog).getByText('删除资料「林川」？')).toBeInTheDocument()
+    expect(confirmSpy).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: '删除' }))
+
+    await waitFor(() => {
+      expect(deleteLoreItem).toHaveBeenCalledWith('lin-chuan')
+    })
+    confirmSpy.mockRestore()
+  })
+
+  it('requires explicit multi-select before starting lore image batch generation', async () => {
+    const user = userEvent.setup()
+    const lin = loreItem('lin-chuan', '林川')
+    const harbor = loreItem('moon-harbor', '月港', 'location')
+    vi.mocked(getLoreItems).mockResolvedValue([lin, harbor])
+    vi.mocked(streamLoreImagesGenerate).mockResolvedValue(new ReadableStream({
+      start(controller) {
+        controller.enqueue({ event: 'done', data: JSON.stringify({ generated: 1, skipped: 0, failed: 0 }) })
+        controller.close()
+      },
+    }))
+
+    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG'), imagePreset('ink-wash', '水墨风格')]} />)
+
+    await user.click(await screen.findByRole('button', { name: '批量生成资料图片' }))
+    const batchDialog = await screen.findByRole('dialog', { name: '批量生成资料图片' })
+    const presetField = within(batchDialog).getByText('图像方案').closest('label') as HTMLElement
+    await user.click(within(presetField).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: '水墨风格' }))
+    await user.type(screen.getByPlaceholderText('搜索资料项'), '林川')
+    await user.click(screen.getByRole('button', { name: '全选当前结果' }))
+    await user.click(screen.getByRole('button', { name: '开始生成' }))
+
+    await waitFor(() => {
+      expect(streamLoreImagesGenerate).toHaveBeenCalledWith(expect.objectContaining({
+        item_ids: ['lin-chuan'],
+        overwrite_existing: false,
+        image_preset_id: 'ink-wash',
+      }), expect.any(AbortSignal))
+    })
+  })
 })
 
 function PresetPanelHarness() {
@@ -141,5 +247,38 @@ function imagePreset(id: string, name: string): ImagePreset {
     slots: [{ id: 'tool_request', name: '图像请求 Prompt', target: 'tool_request', enabled: true, content: 'visual prompt' }],
     tags: [],
     custom: id !== 'game-cg',
+  }
+}
+
+function loreItem(id: string, name: string, type: LoreItem['type'] = 'character'): LoreItem {
+  return {
+    id,
+    enabled: true,
+    type,
+    name,
+    importance: 'important',
+    load_mode: 'auto',
+    tags: [],
+    brief_description: `${name} brief`,
+    keywords: [],
+    content: `## ${name}`,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  }
+}
+
+function loreImage(path: string): NonNullable<LoreItem['image']> {
+  return {
+    schema: 'lore_item_image.v1',
+    image_path: path,
+    meta_path: path.replace('/image.png', '/meta.json'),
+    alt_text: '林川',
+    profile_id: 'default',
+    provider: 'openai',
+    model: 'gpt-image-1',
+    size: '2048x2048',
+    output_format: 'png',
+    created_at: '2026-01-01T00:00:01Z',
+    size_bytes: 12,
   }
 }

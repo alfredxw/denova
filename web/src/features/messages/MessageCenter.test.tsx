@@ -41,8 +41,37 @@ describe('MessageCenterButton', () => {
 
     expect(await screen.findAllByText('Denova 未发布更新')).toHaveLength(2)
     expect(await screen.findAllByText('消息中心。')).toHaveLength(2)
+    expect(await screen.findByText('给 Denova 充点 token')).toBeInTheDocument()
+    expect(screen.getByText('如果 Denova 项目有帮到你，可以给它也充点 token，帮助 Denova 持续开源、持续迭代。非常感谢！')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Denova 赞助二维码' })).toHaveAttribute('src', '/donate.png')
     await waitFor(() => expect(markRead).toHaveBeenCalledWith('changelog:unreleased'))
     await waitFor(() => expect(screen.queryByText('1')).not.toBeInTheDocument())
+  })
+
+  it('does not show the donation prompt for non-changelog messages', async () => {
+    server.use(
+      http.get('/api/messages', () =>
+        HttpResponse.json({
+          unread_count: 0,
+          items: [{
+            id: 'notice:1',
+            type: 'notice',
+            title: '系统通知',
+            summary: '普通消息。',
+            body: '普通正文。',
+            read_at: '2026-06-30T00:00:00Z',
+          }],
+        }),
+      ),
+    )
+
+    render(<MessageCenterButton className="h-8 w-8" />)
+
+    await userEvent.click(screen.getByRole('button', { name: '打开消息中心' }))
+
+    expect(await screen.findAllByText('系统通知')).toHaveLength(2)
+    expect(screen.queryByText('给 Denova 充点 token')).not.toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: 'Denova 赞助二维码' })).not.toBeInTheDocument()
   })
 
   it('marks all messages as read from the center header', async () => {

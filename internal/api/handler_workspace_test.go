@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"denova/internal/book"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -92,6 +93,73 @@ func TestWorkspaceFileWriteRejectsStaleRevision(t *testing.T) {
 	}
 	if got != "Agent 已更新的新内容" {
 		t.Fatalf("冲突后应保留 Agent 内容，实际: %q", got)
+	}
+}
+
+func TestVersionRestorePlanAndPathRestoreAPI(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	ctx := context.Background()
+	if err := application.BookService().Create("chapters/ch01.md", "file", "第一版"); err != nil {
+		t.Fatalf("创建章节失败: %v", err)
+	}
+	if err := application.BookService().Create("setting/progress.md", "file", "进度一"); err != nil {
+		t.Fatalf("创建进度失败: %v", err)
+	}
+	first, err := application.CreateVersion(ctx, "初始版本")
+	if err != nil || first.Version == nil {
+		t.Fatalf("创建初始版本失败: %#v err=%v", first, err)
+	}
+	if err := application.BookService().WriteFile("chapters/ch01.md", "第二版"); err != nil {
+		t.Fatalf("更新章节失败: %v", err)
+	}
+	if err := application.BookService().Create("chapters/ch02.md", "file", "新增章节"); err != nil {
+		t.Fatalf("创建新增章节失败: %v", err)
+	}
+	if err := os.Remove(filepath.Join(application.BookService().Workspace(), "setting", "progress.md")); err != nil {
+		t.Fatalf("删除进度失败: %v", err)
+	}
+	second, err := application.CreateVersion(ctx, "第二版本")
+	if err != nil || second.Version == nil {
+		t.Fatalf("创建第二版本失败: %#v err=%v", second, err)
+	}
+
+	body := map[string]any{"paths": []string{"chapters/ch01.md", "setting/progress.md", "chapters/ch02.md"}}
+	planResp := performJSONRequest(t, server, http.MethodPost, "/api/versions/"+first.Version.ID+"/restore-plan", body)
+	if planResp.Code != http.StatusOK {
+		t.Fatalf("restore-plan status = %d body=%s", planResp.Code, planResp.Body.String())
+	}
+	var plan book.VersionRestorePlan
+	decodeResponse(t, planResp.Body.Bytes(), &plan)
+	if plan.Scope != book.VersionRestoreScopePaths || plan.WillCreateBackup || len(plan.Changes) != 3 {
+		t.Fatalf("unexpected restore plan: %#v", plan)
+	}
+
+	restoreResp := performJSONRequest(t, server, http.MethodPost, "/api/versions/"+first.Version.ID+"/restore", body)
+	if restoreResp.Code != http.StatusOK {
+		t.Fatalf("restore status = %d body=%s", restoreResp.Code, restoreResp.Body.String())
+	}
+	var result book.VersionRestoreResult
+	decodeResponse(t, restoreResp.Body.Bytes(), &result)
+	if result.Scope != book.VersionRestoreScopePaths || result.BackupVersion != nil || len(result.RestoredPaths) != 3 {
+		t.Fatalf("unexpected restore result: %#v", result)
+	}
+	status, err := application.VersionStatus(ctx)
+	if err != nil {
+		t.Fatalf("读取版本状态失败: %v", err)
+	}
+	if status.Latest == nil || status.Latest.ID != second.Version.ID {
+		t.Fatalf("路径恢复不应移动当前版本: %#v", status.Latest)
+	}
+
+	workspacePlanResp := performJSONRequest(t, server, http.MethodPost, "/api/versions/"+first.Version.ID+"/restore-plan", nil)
+	if workspacePlanResp.Code != http.StatusOK {
+		t.Fatalf("workspace restore-plan status = %d body=%s", workspacePlanResp.Code, workspacePlanResp.Body.String())
+	}
+	var workspacePlan book.VersionRestorePlan
+	decodeResponse(t, workspacePlanResp.Body.Bytes(), &workspacePlan)
+	if workspacePlan.Scope != book.VersionRestoreScopeWorkspace || !workspacePlan.WillCreateBackup || workspacePlan.BackupMessage == "" {
+		t.Fatalf("dirty workspace rollback should announce backup: %#v", workspacePlan)
 	}
 }
 

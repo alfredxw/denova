@@ -178,6 +178,7 @@ export function MessageCenterButton({ className = '' }: { className?: string }) 
                     <h2 className="m-0 text-base font-semibold text-[var(--nova-text)]">{messageTitle(activeItem, t)}</h2>
                     <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{messageMeta(activeItem, t)}</div>
                   </div>
+                  {activeItem.type === 'changelog' && <DonationPrompt />}
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{activeItem.body}</ReactMarkdown>
                 </article>
               ) : (
@@ -190,6 +191,27 @@ export function MessageCenterButton({ className = '' }: { className?: string }) 
         </SheetContent>
       </Sheet>
     </>
+  )
+}
+
+function DonationPrompt() {
+  const { t } = useTranslation()
+  return (
+    <section
+      className="mb-4 flex flex-col gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[color-mix(in_srgb,var(--nova-surface-2)_88%,transparent)] p-3 text-xs leading-5 text-[var(--nova-text-muted)] shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between"
+      aria-label={t('messages.donation.title')}
+    >
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-[var(--nova-text)]">{t('messages.donation.title')}</div>
+        <p className="m-0 mt-1">{t('messages.donation.description')}</p>
+      </div>
+      <img
+        src="/donate.png"
+        alt={t('messages.donation.alt')}
+        loading="lazy"
+        className="h-auto max-h-24 w-auto max-w-[120px] shrink-0 self-center rounded-md border border-[var(--nova-border-soft)] bg-white p-1 sm:max-h-32"
+      />
+    </section>
   )
 }
 

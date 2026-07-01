@@ -11,6 +11,10 @@ import (
 	"denova/internal/book"
 )
 
+type versionRestoreRequest struct {
+	Paths []string `json:"paths"`
+}
+
 // handleVersionStatus GET /api/versions/status — 返回当前书籍本地版本状态。
 func (h *Handlers) HandleVersionStatus(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
@@ -83,7 +87,29 @@ func (h *Handlers) HandleVersionDiff(ctx context.Context, c *app.RequestContext)
 	writeJSON(c, consts.StatusOK, diff)
 }
 
-// handleVersionRestore POST /api/versions/:id/restore — 恢复整本书到指定版本。
+// HandleVersionRestorePlan POST /api/versions/:id/restore-plan — 返回版本恢复影响预览。
+func (h *Handlers) HandleVersionRestorePlan(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	id := c.Param("id")
+	if id == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.versions.idRequired")
+		return
+	}
+	req, ok := bindVersionRestoreRequest(c)
+	if !ok {
+		return
+	}
+	plan, err := h.app.VersionRestorePlan(ctx, id, req.Paths)
+	if err != nil {
+		writeVersionError(c, err)
+		return
+	}
+	writeJSON(c, consts.StatusOK, plan)
+}
+
+// handleVersionRestore POST /api/versions/:id/restore — 恢复整本书或指定文件到目标版本。
 func (h *Handlers) HandleVersionRestore(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return
@@ -93,12 +119,28 @@ func (h *Handlers) HandleVersionRestore(ctx context.Context, c *app.RequestConte
 		writeErrorKey(c, consts.StatusBadRequest, "api.versions.idRequired")
 		return
 	}
-	result, err := h.app.RestoreVersion(ctx, id)
+	req, ok := bindVersionRestoreRequest(c)
+	if !ok {
+		return
+	}
+	result, err := h.app.RestoreVersion(ctx, id, req.Paths)
 	if err != nil {
 		writeVersionError(c, err)
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)
+}
+
+func bindVersionRestoreRequest(c *app.RequestContext) (versionRestoreRequest, bool) {
+	var req versionRestoreRequest
+	if len(c.Request.Body()) == 0 {
+		return req, true
+	}
+	if err := c.BindJSON(&req); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.versions.invalidRestoreRequest")
+		return versionRestoreRequest{}, false
+	}
+	return req, true
 }
 
 func writeVersionError(c *app.RequestContext, err error) {

@@ -56,6 +56,16 @@ describe('api client backend availability toast', () => {
     expect(toast.error).not.toHaveBeenCalled()
   })
 
+  it('can suppress backend-unavailable toast for expected API probes', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new TypeError('Failed to fetch')
+    }))
+
+    await expect(fetchAPI('/api/status', { suppressBackendUnavailableToast: true })).rejects.toThrow('Failed to fetch')
+
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
   it('adds remote access credentials to local API requests', async () => {
     setRemoteAccessCredentials('reader', 'secret')
     const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }))

@@ -3,8 +3,6 @@ package versions
 import (
 	"errors"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,8 +11,17 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-func (s *Service) openExistingVersionRepo() (*git.Repository, error) {
-	repo, err := git.PlainOpen(s.workspace)
+// GitStore owns the go-git repository operations used by Denova versions.
+type GitStore struct {
+	workspace string
+}
+
+func (s *Service) gitStore() GitStore {
+	return GitStore{workspace: s.workspace}
+}
+
+func (g GitStore) OpenExisting() (*git.Repository, error) {
+	repo, err := git.PlainOpen(g.workspace)
 	if errors.Is(err, git.ErrRepositoryNotExists) {
 		return nil, nil
 	}
@@ -24,19 +31,38 @@ func (s *Service) openExistingVersionRepo() (*git.Repository, error) {
 	return repo, nil
 }
 
-func (s *Service) openVersionRepo() (*git.Repository, error) {
-	repo, err := git.PlainOpen(s.workspace)
+func (g GitStore) Open() (*git.Repository, error) {
+	repo, err := git.PlainOpen(g.workspace)
 	if err == nil {
 		return repo, nil
 	}
 	if !errors.Is(err, git.ErrRepositoryNotExists) {
 		return nil, err
 	}
-	repo, err = git.PlainInit(s.workspace, false)
+	repo, err = git.PlainInit(g.workspace, false)
 	if err != nil {
 		return nil, err
 	}
 	return repo, nil
+}
+
+func (g GitStore) CheckoutWhole(repo *git.Repository, id string) error {
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+	return worktree.Checkout(&git.CheckoutOptions{
+		Hash:  plumbing.NewHash(strings.TrimSpace(id)),
+		Force: true,
+	})
+}
+
+func (s *Service) openExistingVersionRepo() (*git.Repository, error) {
+	return s.gitStore().OpenExisting()
+}
+
+func (s *Service) openVersionRepo() (*git.Repository, error) {
+	return s.gitStore().Open()
 }
 
 func (s *Service) commitWorkspaceSnapshot(repo *git.Repository, files []versionFileData, message, source string, now time.Time) (plumbing.Hash, error) {
@@ -156,65 +182,17 @@ func (s *Service) readCommitFile(id, path string) ([]byte, error) {
 }
 
 func (s *Service) restoreCommitToWorkspace(id string) error {
-	files, err := s.collectVisibleFiles()
-	if err != nil {
-		return err
-	}
-	for _, file := range files {
-		if err := os.Remove(file.Abs); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
-	if err := s.removeEmptyVisibleDirs(); err != nil {
-		return err
-	}
-
 	repo, err := s.openVersionRepo()
 	if err != nil {
 		return err
 	}
-	commit, err := repo.CommitObject(plumbing.NewHash(strings.TrimSpace(id)))
-	if err != nil {
+	if err := s.withProtectedExcludedWorkspaceDirs(func() error {
+		return s.gitStore().CheckoutWhole(repo, id)
+	}); err != nil {
 		return err
 	}
-	iter, err := commit.Files()
-	if err != nil {
+	if err := removeVersionExcludedIndexEntries(repo); err != nil {
 		return err
 	}
-	err = iter.ForEach(func(file *object.File) error {
-		reader, err := file.Reader()
-		if err != nil {
-			return err
-		}
-		defer reader.Close()
-		dst := filepath.Join(s.workspace, filepath.FromSlash(file.Name))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-			return err
-		}
-		out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(out, reader); err != nil {
-			_ = out.Close()
-			return err
-		}
-		return out.Close()
-	})
-	if err != nil {
-		return err
-	}
-	return s.setRepoHeadAndIndex(repo, id)
-}
-
-func (s *Service) setRepoHeadAndIndex(repo *git.Repository, id string) error {
-	hash := plumbing.NewHash(strings.TrimSpace(id))
-	if err := repo.Storer.SetReference(plumbing.NewHashReference(plumbing.HEAD, hash)); err != nil {
-		return err
-	}
-	files, err := s.collectVisibleFiles()
-	if err != nil {
-		return err
-	}
-	return s.stageWorkspaceFiles(repo, files)
+	return s.removeVisibleFilesAbsentFromCommit(id)
 }

@@ -1,4 +1,4 @@
-import { History, RotateCcw } from 'lucide-react'
+import { FileText, History, RotateCcw, Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 export type VersionItem = {
@@ -7,6 +7,7 @@ export type VersionItem = {
   description?: string
   createdAt: string
   author?: string
+  changedPaths: string[]
 }
 
 interface VersionTimelineProps {
@@ -16,7 +17,9 @@ interface VersionTimelineProps {
   canRollback?: boolean
   onSelectVersion?: (version: VersionItem) => void
   onOpenDiff?: (version: VersionItem) => void
+  onOpenDiffPath?: (version: VersionItem, path: string) => void
   onRollback?: (version: VersionItem) => void
+  onRestorePath?: (version: VersionItem, path: string) => void
 }
 
 /** 版本时间线，只负责展示版本列表并通过 props 抛出用户操作。 */
@@ -27,7 +30,9 @@ export function VersionTimeline({
   canRollback = true,
   onSelectVersion,
   onOpenDiff,
+  onOpenDiffPath,
   onRollback,
+  onRestorePath,
 }: VersionTimelineProps) {
   const { t } = useTranslation()
   if (versions.length === 0) {
@@ -59,6 +64,45 @@ export function VersionTimeline({
               </div>
               <div className="mt-0.5 truncate text-[10px] text-[var(--nova-text-faint)]">{version.createdAt}</div>
             </button>
+            {version.changedPaths.length > 0 && (
+              <div className="mt-1 space-y-0.5">
+                {version.changedPaths.slice(0, 5).map((path) => (
+                  <div key={path} className="group flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-[10px] text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)]">
+                    <FileText className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />
+                    <span className="min-w-0 flex-1 truncate" title={path}>{pathFileName(path)}</span>
+                    <span className="hidden max-w-[34%] truncate text-[var(--nova-text-faint)] sm:inline">{pathDirName(path)}</span>
+                    {onOpenDiffPath && (
+                      <button
+                        type="button"
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--nova-text-muted)] opacity-80 hover:bg-[var(--nova-active)] hover:text-[var(--nova-text)]"
+                        onClick={() => onOpenDiffPath(version, path)}
+                        title={t('versions.diffFile')}
+                        aria-label={t('versions.diffFile')}
+                      >
+                        <FileText className="h-3 w-3" />
+                      </button>
+                    )}
+                    {onRestorePath && (
+                      <button
+                        type="button"
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--nova-text-muted)] opacity-80 hover:bg-[var(--nova-active)] hover:text-[var(--nova-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+                        onClick={() => onRestorePath(version, path)}
+                        disabled={loading}
+                        title={t('versions.restoreFile')}
+                        aria-label={t('versions.restoreFile')}
+                      >
+                        <Undo2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {version.changedPaths.length > 5 && (
+                  <div className="truncate px-1 text-[10px] text-[var(--nova-text-faint)]">
+                    {t('versions.moreChangedFiles', { count: version.changedPaths.length - 5 })}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="mt-1 flex items-center gap-1">
               {onOpenDiff && (
                 <button
@@ -87,4 +131,14 @@ export function VersionTimeline({
       })}
     </div>
   )
+}
+
+function pathFileName(path: string) {
+  return path.split('/').pop() || path
+}
+
+function pathDirName(path: string) {
+  const parts = path.split('/')
+  parts.pop()
+  return parts.join('/')
 }

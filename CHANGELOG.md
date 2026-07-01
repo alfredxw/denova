@@ -6,12 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 版本管理：新增恢复预演接口与确认弹窗，整本回滚前会展示受影响文件、是否创建回滚前备份，以及备份说明。
+- Version management: Added restore preview support so full-workspace rollback shows affected files, rollback-backup behavior, and backup guidance before execution.
+- 资料库：资料项支持保存当前图片引用与生成元数据；编辑器内可单项生成、重新生成或清除当前图片，历史图片文件会保留。
+- Lore: Lore items now keep a current image reference with generation metadata; the editor supports per-item generate, regenerate, and clear while preserving historical image files.
+- 资料库：新增批量生成资料图片弹窗，由用户手动多选条目后串行生成；默认跳过已有图片，可切换为覆盖当前图片引用。
+- Lore: Added a manual multi-select batch dialog for serial lore image generation. Existing images are skipped by default, with an overwrite option for replacing the current image reference.
+
+### Changed
+
+- 版本管理：支持从历史版本恢复单个文件；单文件恢复只作为当前工作区的未保存变更应用，不切换当前版本，也不会自动创建新版本。
+- Version management: Individual files can now be restored from historical versions. File restore is applied as unsaved workspace changes, without switching the current version or creating a new version automatically.
+- 消息中心：changelog 消息会按当前页面语言隔离中英内容，中文界面不再显示英文更新日志，英文界面不再显示中文更新日志；同一条 changelog 的已读状态继续跨语言共享。
+- Message center: Changelog messages are filtered by the current page language, so Chinese UI no longer shows English changelog text and English UI no longer shows Chinese changelog text; read state stays shared for the same changelog entry.
+- 资料库：`list_lore_items` 默认返回全量极简索引（ID、名称、简介），并支持 `query`/`type`/`limit` 检索；这是模型工具返回格式的行为变更。
+- Lore: `list_lore_items` now returns a compact all-item index by default (ID, name, brief) and supports `query`/`type`/`limit` lookup; this changes the model tool result format.
+- 发布流程：release brief 约定改为中英分组列表，避免用长段落混排双语说明。
+- Release workflow: Release briefs now use grouped bilingual bullet lists instead of long mixed-language paragraphs.
+
+### Fixed
+
+- WebUI：应用内更新执行“重启并安装”后，前端会等待新后端可用并带缓存刷新标记自动重载页面，避免用户手动强刷才看到新版前端。
+- WebUI: After in-app "Restart and install", the frontend now waits for the restarted backend and reloads with a cache-busting marker so users do not need to hard-refresh manually.
+- WebUI：补充历史 `/sw.js` 清理脚本，旧浏览器 Service Worker 注册会自动注销，避免 Windows 上反复出现 Hertz 找不到 `web/sw.js` 的错误日志。
+- WebUI: Added a cleanup script for historical `/sw.js` service-worker registrations, so stale browser state unregisters itself and no longer triggers repeated Hertz missing-file logs on Windows.
+
 ## [v0.1.18] - 2026-07-01
 
 ### Brief / 简要说明
 
-- 中文：本版本完成 Denova 品牌与分发命名切换，新增新用户引导、消息中心、PWA/移动端主屏体验、可内嵌前端的单文件自托管能力，并大幅补齐移动端写作与游戏模式的输入、弹窗、文件操作、故事记忆和分支导航体验。图像方案、书籍封面生成、互动图像回写、Plan Mode 展示、章节正文隐藏输出和资源保存冲突保护也更稳定。兼容性提示：Release 包不再提供 `nova` / `nova.exe` / `nova-updater` 别名，新安装请直接运行 `denova` / `denova.exe`。
-- English: This release completes the Denova branding and distribution rename, adds onboarding, a message center, PWA/mobile home-screen support, and a self-hosting path where the backend can embed the web app. It also improves mobile Writing and Game Mode input, dialogs, file actions, story memory, and branch navigation. Image presets, cover generation, interactive image writes, Plan Mode rendering, hidden chapter-body streaming, and resource conflict protection are more reliable. Compatibility note: release packages no longer include `nova`, `nova.exe`, or `nova-updater` aliases; new installs should run `denova` / `denova.exe` directly.
+#### 中文
+
+- 完成 Denova 品牌与分发命名切换；兼容性提示：Release 包不再提供 `nova` / `nova.exe` / `nova-updater` 别名，新安装请直接运行 `denova` / `denova.exe`。
+- 新增新用户引导、消息中心、PWA/移动端主屏体验，以及可内嵌前端的单文件自托管能力。
+- 大幅补齐移动端写作与游戏模式的输入、弹窗、文件操作、故事记忆和分支导航体验。
+- 图像方案、书籍封面生成、互动图像回写、Plan Mode 展示、章节正文隐藏输出和资源保存冲突保护更稳定。
+
+#### English
+
+- Completed the Denova branding and distribution rename; compatibility note: release packages no longer include `nova`, `nova.exe`, or `nova-updater` aliases, and new installs should run `denova` / `denova.exe` directly.
+- Added onboarding, a message center, PWA/mobile home-screen support, and a self-hosting path where the backend can embed the web app.
+- Filled in more mobile Writing and Game Mode input, dialog, file action, story memory, and branch navigation workflows.
+- Made image presets, cover generation, interactive image writes, Plan Mode rendering, hidden chapter-body streaming, and resource conflict protection more reliable.
 
 ### Added
 

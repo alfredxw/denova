@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { FileClock, MoreHorizontal, RefreshCw, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
-import { createVersion, getVersionDiff, getVersions, getVersionStatus, restoreVersion } from '@/lib/api'
+import { createVersion, getVersionDiff, getVersionRestorePlan, getVersions, getVersionStatus, restoreVersion } from '@/lib/api'
+import type { VersionRestorePlan } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
@@ -38,9 +39,13 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
   const [changesExpanded, setChangesExpanded] = useState(true)
   const [historyExpanded, setHistoryExpanded] = useState(true)
   const [rollbackVersion, setRollbackVersion] = useState<VersionItem | null>(null)
+  const [restorePaths, setRestorePaths] = useState<string[] | undefined>()
+  const [restorePlan, setRestorePlan] = useState<VersionRestorePlan | null>(null)
+  const [restorePlanLoading, setRestorePlanLoading] = useState(false)
   const [diffVersion, setDiffVersion] = useState<VersionItem | null>(null)
   const [diffPath, setDiffPath] = useState('')
   const [diffText, setDiffText] = useState<{ original: string; modified: string } | null>(null)
+  const restorePlanRequestRef = useRef(0)
 
   const statusQuery = useQuery({
     queryKey: versionKeys.status(workspace),
@@ -91,9 +96,11 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
   })
 
   const restoreMutation = useMutation({
-    mutationFn: restoreVersion,
+    mutationFn: ({ id, paths }: { id: string; paths?: string[] }) => restoreVersion(id, paths),
     onSuccess: async () => {
       setRollbackVersion(null)
+      setRestorePaths(undefined)
+      setRestorePlan(null)
       setError('')
       toast.success(t('versions.restoreSuccess'))
       await invalidateVersionQueries()
@@ -101,7 +108,7 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
     onError: (e) => showOperationError(e, t('versions.restoreFailed'), setError),
   })
 
-  const loading = statusQuery.isFetching || historyQuery.isFetching || createMutation.isPending || restoreMutation.isPending
+  const loading = statusQuery.isFetching || historyQuery.isFetching || createMutation.isPending || restoreMutation.isPending || restorePlanLoading
   const changes = status?.changes ?? []
   const canCreate = !loading && Boolean(workspace)
   const timelineItems = useMemo(() => versions.map((version) => versionToTimelineItem(version, t)), [t, versions])
@@ -135,6 +142,30 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
       }
     } catch (e) {
       showOperationError(e, t('versions.diffReadFailed'), setError)
+    }
+  }
+
+  const openRestoreDialog = async (version: VersionItem, paths?: string[]) => {
+    const requestID = restorePlanRequestRef.current + 1
+    restorePlanRequestRef.current = requestID
+    setRollbackVersion(version)
+    setRestorePaths(paths)
+    setRestorePlan(null)
+    setRestorePlanLoading(true)
+    try {
+      const plan = await getVersionRestorePlan(version.id, paths)
+      if (restorePlanRequestRef.current !== requestID) return
+      setRestorePlan(plan)
+      setError('')
+    } catch (e) {
+      if (restorePlanRequestRef.current !== requestID) return
+      setRollbackVersion(null)
+      setRestorePaths(undefined)
+      showOperationError(e, t('versions.restorePlanFailed'), setError)
+    } finally {
+      if (restorePlanRequestRef.current === requestID) {
+        setRestorePlanLoading(false)
+      }
     }
   }
 
@@ -177,7 +208,9 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
               loading={loading}
               canRollback={timelineItems.length > 0}
               onOpenDiff={(version) => void openDiff(version)}
-              onRollback={setRollbackVersion}
+              onOpenDiffPath={(version, path) => void openDiff(version, path)}
+              onRollback={(version) => void openRestoreDialog(version)}
+              onRestorePath={(version, path) => void openRestoreDialog(version, [path])}
             />
           )}
 
@@ -190,9 +223,19 @@ export function VersionPanel({ workspace, refreshSignal, visible, onClose }: Ver
       <RollbackDialog
         open={Boolean(rollbackVersion)}
         version={rollbackVersion}
+        plan={restorePlan}
         loading={restoreMutation.isPending}
-        onOpenChange={(open) => { if (!open) setRollbackVersion(null) }}
-        onRollback={(version) => restoreMutation.mutate(version.id)}
+        planLoading={restorePlanLoading}
+        onOpenChange={(open) => {
+          if (!open) {
+            restorePlanRequestRef.current += 1
+            setRollbackVersion(null)
+            setRestorePaths(undefined)
+            setRestorePlan(null)
+            setRestorePlanLoading(false)
+          }
+        }}
+        onRollback={(version) => restoreMutation.mutate({ id: version.id, paths: restorePaths })}
       />
 
       <VersionDiffDialog

@@ -2,6 +2,7 @@ package book
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -114,6 +115,89 @@ func TestLoreStoreProgressiveContextSplitsResidentAndIndex(t *testing.T) {
 	}
 	if strings.Contains(context, "据点完整正文") || strings.Contains(context, "隐藏完整正文") {
 		t.Fatalf("non-resident full content should not be in progressive context: %s", context)
+	}
+}
+
+func TestLoreStoreCompactIndexOmitsHeavyFieldsAndDisabledItems(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	disabled := false
+	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, Tags: []string{"据点"}, Keywords: []string{"黄泉"}, BriefDescription: "地点 黄泉酒馆。索引简介。上下文出现相关内容时，一定要参考本项详情。", Content: "据点完整正文"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Create(LoreItemInput{ID: "hidden", Enabled: &disabled, Type: "rule", Name: "禁用规则", Importance: "important", LoadMode: LoreLoadModeAuto, BriefDescription: "禁用规则简介", Content: "禁用正文"}); err != nil {
+		t.Fatal(err)
+	}
+
+	index, err := store.LoreIndexMarkdown(LoreIndexOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"# 资料库索引", "id: base", "名称: 黄泉酒馆", "简介: 地点 黄泉酒馆。索引简介。"} {
+		if !strings.Contains(index, want) {
+			t.Fatalf("compact index missing %q:\n%s", want, index)
+		}
+	}
+	for _, unexpected := range []string{"据点完整正文", "禁用规则", "类型:", "标签:", "重要度:", "加载策略:"} {
+		if strings.Contains(index, unexpected) {
+			t.Fatalf("compact index should not contain %q:\n%s", unexpected, index)
+		}
+	}
+}
+
+func TestLoreStoreCompactIndexQueryMatchesMetadataAndContentWithoutLeakingContent(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	if _, err := store.Create(LoreItemInput{ID: "archive", Type: "location", Name: "旧档案室", Importance: "important", LoadMode: LoreLoadModeAuto, Keywords: []string{"档案柜"}, BriefDescription: "地点 旧档案室。只有尘封档案。上下文出现相关内容时，一定要参考本项详情。", Content: "暗门后藏着完整原文线索。"}); err != nil {
+		t.Fatal(err)
+	}
+
+	keywordIndex, err := store.LoreIndexMarkdown(LoreIndexOptions{Query: "档案柜"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(keywordIndex, "id: archive") || !strings.Contains(keywordIndex, "匹配: 关键词") {
+		t.Fatalf("keyword query should return match source:\n%s", keywordIndex)
+	}
+
+	contentIndex, err := store.LoreIndexMarkdown(LoreIndexOptions{Query: "完整原文"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(contentIndex, "id: archive") || !strings.Contains(contentIndex, "匹配: 正文") {
+		t.Fatalf("content query should return content match source:\n%s", contentIndex)
+	}
+	if strings.Contains(contentIndex, "暗门后藏着完整原文线索") {
+		t.Fatalf("query index should not leak full content:\n%s", contentIndex)
+	}
+}
+
+func TestLoreStoreCompactIndexBudgetFallsBackToNameRoster(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	longBrief := strings.Repeat("很长简介", 90)
+	for i := 0; i < 8; i++ {
+		id := fmt.Sprintf("item_%02d", i)
+		if _, err := store.Create(LoreItemInput{ID: id, Type: "other", Name: "资料" + id, Importance: "important", LoadMode: LoreLoadModeAuto, BriefDescription: longBrief, Content: "正文"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	index, err := store.LoreIndexMarkdown(LoreIndexOptions{MaxBytes: 1000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len([]byte(index)) > 1000 {
+		t.Fatalf("budgeted index bytes = %d, want <= 1000\n%s", len([]byte(index)), index)
+	}
+	if !strings.Contains(index, "已降级为仅 ID 和名称") {
+		t.Fatalf("budgeted index should explain name-only fallback:\n%s", index)
+	}
+	if strings.Contains(index, "简介:") {
+		t.Fatalf("name-only fallback should omit briefs:\n%s", index)
+	}
+	for i := 0; i < 8; i++ {
+		id := fmt.Sprintf("item_%02d", i)
+		if !strings.Contains(index, "id: "+id) || !strings.Contains(index, "名称: 资料"+id) {
+			t.Fatalf("name-only fallback should retain full roster entry %s:\n%s", id, index)
+		}
 	}
 }
 
@@ -249,6 +333,42 @@ func TestLoreStoreUpdateRejectsStaleRevision(t *testing.T) {
 	}
 	if got.Content != agent.Content {
 		t.Fatalf("stale save should not overwrite Agent content: %#v", got)
+	}
+}
+
+func TestLoreStoreImageSurvivesTextUpdateAndCanBeCleared(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	item, err := store.Create(LoreItemInput{Type: "character", Name: "林川", Importance: "major", Content: "旧内容"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	withImage, err := store.SetImage(item.ID, &LoreItemImage{
+		Schema:    "lore_item_image.v1",
+		ImagePath: "assets/lore/images/hero/run/image.png",
+		MetaPath:  "assets/lore/images/hero/run/meta.json",
+		ProfileID: "default",
+		Provider:  "openai",
+		Model:     "gpt-image-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withImage.Image == nil || withImage.Image.ImagePath == "" {
+		t.Fatalf("image should be attached: %#v", withImage)
+	}
+	updated, err := store.Update(item.ID, LoreItemInput{Type: "character", Name: "林川", Importance: "major", Content: "新内容"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Image == nil || updated.Image.ImagePath != withImage.Image.ImagePath {
+		t.Fatalf("text update should preserve current image: %#v", updated)
+	}
+	cleared, err := store.SetImage(item.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.Image != nil {
+		t.Fatalf("image should be cleared: %#v", cleared.Image)
 	}
 }
 

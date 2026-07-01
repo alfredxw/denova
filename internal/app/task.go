@@ -31,6 +31,7 @@ type Task struct {
 	startedAt time.Time
 	mu        sync.Mutex
 	status    TaskStatus
+	finished  bool
 	events    []agent.Event
 	subs      []chan agent.Event
 	cancel    context.CancelFunc
@@ -93,6 +94,7 @@ func (t *Task) finish() {
 	if t.status == TaskRunning {
 		t.status = TaskDone
 	}
+	t.finished = true
 	for _, ch := range t.subs {
 		close(ch)
 	}
@@ -149,6 +151,13 @@ func (t *Task) Status() TaskStatus {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.status
+}
+
+// Finished reports whether the task goroutine has fully exited.
+func (t *Task) Finished() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.finished
 }
 
 // ID 返回任务编号，用于关联后端日志。

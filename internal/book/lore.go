@@ -26,36 +26,62 @@ const (
 
 	LoreResidentItemWarningChars  = 8000
 	LoreResidentTotalWarningChars = 40000
+
+	LoreIndexDefaultMaxBytes   = 64 * 1024
+	LoreIndexDefaultQueryLimit = 20
+	LoreIndexMaxQueryLimit     = 50
 )
 
 // LoreItem 是用户可编辑的作品资料条目。固定字段只负责索引和展示，正文继续使用 Markdown。
 type LoreItem struct {
-	ID               string   `json:"id"`
-	Enabled          bool     `json:"enabled"`
-	Type             string   `json:"type"`
-	Name             string   `json:"name"`
-	Importance       string   `json:"importance"`
-	Tags             []string `json:"tags"`
-	BriefDescription string   `json:"brief_description"`
-	Keywords         []string `json:"keywords"`
-	LoadMode         string   `json:"load_mode"`
-	Content          string   `json:"content"`
-	CreatedAt        string   `json:"created_at"`
-	UpdatedAt        string   `json:"updated_at"`
+	ID               string         `json:"id"`
+	Enabled          bool           `json:"enabled"`
+	Type             string         `json:"type"`
+	Name             string         `json:"name"`
+	Importance       string         `json:"importance"`
+	Tags             []string       `json:"tags"`
+	BriefDescription string         `json:"brief_description"`
+	Keywords         []string       `json:"keywords"`
+	LoadMode         string         `json:"load_mode"`
+	Content          string         `json:"content"`
+	CreatedAt        string         `json:"created_at"`
+	UpdatedAt        string         `json:"updated_at"`
+	Image            *LoreItemImage `json:"image,omitempty"`
 }
 
 type LoreItemInput struct {
-	ID               string   `json:"id"`
-	Enabled          *bool    `json:"enabled,omitempty"`
-	Type             string   `json:"type"`
-	Name             string   `json:"name"`
-	Importance       string   `json:"importance"`
-	Tags             []string `json:"tags"`
-	BriefDescription string   `json:"brief_description"`
-	Keywords         []string `json:"keywords"`
-	LoadMode         string   `json:"load_mode"`
-	Content          string   `json:"content"`
-	BaseRevision     string   `json:"base_revision,omitempty"`
+	ID               string         `json:"id"`
+	Enabled          *bool          `json:"enabled,omitempty"`
+	Type             string         `json:"type"`
+	Name             string         `json:"name"`
+	Importance       string         `json:"importance"`
+	Tags             []string       `json:"tags"`
+	BriefDescription string         `json:"brief_description"`
+	Keywords         []string       `json:"keywords"`
+	LoadMode         string         `json:"load_mode"`
+	Content          string         `json:"content"`
+	Image            *LoreItemImage `json:"image,omitempty"`
+	BaseRevision     string         `json:"base_revision,omitempty"`
+}
+
+// LoreItemImage is the current visual asset attached to a lore item.
+type LoreItemImage struct {
+	Schema        string `json:"schema"`
+	ImagePath     string `json:"image_path"`
+	MetaPath      string `json:"meta_path"`
+	AltText       string `json:"alt_text,omitempty"`
+	ImagePresetID string `json:"image_preset_id,omitempty"`
+	ProfileID     string `json:"profile_id"`
+	Provider      string `json:"provider"`
+	Model         string `json:"model"`
+	Size          string `json:"size,omitempty"`
+	Quality       string `json:"quality,omitempty"`
+	OutputFormat  string `json:"output_format,omitempty"`
+	CreatedAt     string `json:"created_at,omitempty"`
+
+	RevisedPrompt string `json:"revised_prompt,omitempty"`
+	MIMEType      string `json:"mime_type,omitempty"`
+	SizeBytes     int    `json:"size_bytes,omitempty"`
 }
 
 type LoreCollection struct {
@@ -79,6 +105,18 @@ type LoreApplyResult struct {
 
 type LoreStore struct {
 	workspace string
+}
+
+// LoreIndexOptions controls model-visible lore index rendering.
+// Empty options render a compact all-item index; query/type options render a
+// narrower searchable view without including full lore content.
+type LoreIndexOptions struct {
+	Query           string
+	Type            string
+	Limit           int
+	MaxBytes        int
+	ExcludeResident bool
+	OmitTitle       bool
 }
 
 var ErrLoreRevisionConflict = errors.New("资料已被其他操作更新，请重新加载后再保存")
@@ -159,6 +197,7 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 		Content:          input.Content,
 		CreatedAt:        now,
 		UpdatedAt:        now,
+		Image:            input.Image,
 	})
 	if item.ID == "" {
 		item.ID = newUniqueLoreID(collection.Items, item.Name, item.Type)
@@ -205,6 +244,7 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 			Content:          input.Content,
 			CreatedAt:        collection.Items[i].CreatedAt,
 			UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
+			Image:            firstLoreImage(input.Image, collection.Items[i].Image),
 		})
 		if updated.Name == "" {
 			return LoreItem{}, errors.New("资料名称不能为空")
@@ -271,6 +311,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				Content:          op.Item.Content,
 				CreatedAt:        now,
 				UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
+				Image:            op.Item.Image,
 			})
 			if item.ID == "" {
 				item.ID = newUniqueLoreID(next, item.Name, item.Type)
@@ -305,6 +346,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				Content:          firstNonEmptyLoreValue(op.Item.Content, next[idx].Content),
 				CreatedAt:        next[idx].CreatedAt,
 				UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
+				Image:            firstLoreImage(op.Item.Image, next[idx].Image),
 			})
 			if op.Item.Tags == nil {
 				updated.Tags = append([]string(nil), next[idx].Tags...)
@@ -356,6 +398,47 @@ func (s *LoreStore) Read(id string) (LoreItem, error) {
 		if item.ID == id {
 			return item, nil
 		}
+	}
+	return LoreItem{}, fmt.Errorf("资料不存在: %s", id)
+}
+
+func (s *LoreStore) ReadAny(id string) (LoreItem, error) {
+	id = normalizeLoreID(id)
+	if id == "" {
+		return LoreItem{}, errors.New("资料 ID 不能为空")
+	}
+	items, err := s.ListAll()
+	if err != nil {
+		return LoreItem{}, err
+	}
+	for _, item := range items {
+		if item.ID == id {
+			return item, nil
+		}
+	}
+	return LoreItem{}, fmt.Errorf("资料不存在: %s", id)
+}
+
+func (s *LoreStore) SetImage(id string, image *LoreItemImage) (LoreItem, error) {
+	id = normalizeLoreID(id)
+	if id == "" {
+		return LoreItem{}, errors.New("资料 ID 不能为空")
+	}
+	collection, err := s.loadOrCreate()
+	if err != nil {
+		return LoreItem{}, err
+	}
+	for i := range collection.Items {
+		if collection.Items[i].ID != id {
+			continue
+		}
+		collection.Items[i].Image = normalizeLoreItemImage(image)
+		collection.Items[i].UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+		collection.Items[i] = normalizeLoreItem(collection.Items[i])
+		if err := s.save(collection); err != nil {
+			return LoreItem{}, err
+		}
+		return collection.Items[i], nil
 	}
 	return LoreItem{}, fmt.Errorf("资料不存在: %s", id)
 }
@@ -425,6 +508,18 @@ func (s *LoreStore) Search(query, itemType string, limit int) ([]LoreItem, error
 	return result, nil
 }
 
+func (s *LoreStore) LoreIndexMarkdown(options LoreIndexOptions) (string, error) {
+	items, err := s.List()
+	if err != nil {
+		return "", err
+	}
+	entries, total := filterLoreIndexEntries(items, options)
+	if len(entries) == 0 && options.OmitTitle {
+		return "", nil
+	}
+	return renderLoreIndexMarkdown(entries, total, options), nil
+}
+
 func (s *LoreStore) ResidentContextMarkdown() (string, error) {
 	items, err := s.List()
 	if err != nil {
@@ -455,18 +550,7 @@ func (s *LoreStore) ResidentContextMarkdown() (string, error) {
 }
 
 func (s *LoreStore) IndexMarkdown() (string, error) {
-	items, err := s.List()
-	if err != nil {
-		return "", err
-	}
-	var sb strings.Builder
-	for _, item := range items {
-		if item.LoadMode == LoreLoadModeResident {
-			continue
-		}
-		sb.WriteString(formatLoreItemIndexMarkdown(item))
-	}
-	return strings.TrimSpace(sb.String()), nil
+	return s.LoreIndexMarkdown(LoreIndexOptions{ExcludeResident: true, OmitTitle: true})
 }
 
 func (s *LoreStore) ProgressiveContextMarkdown() (string, error) {
@@ -650,7 +734,40 @@ func normalizeLoreItem(item LoreItem) LoreItem {
 	if item.BriefDescription == "" {
 		item.BriefDescription = defaultLoreBriefDescription(item)
 	}
+	item.Image = normalizeLoreItemImage(item.Image)
 	return item
+}
+
+func firstLoreImage(value, fallback *LoreItemImage) *LoreItemImage {
+	if value != nil {
+		return value
+	}
+	return fallback
+}
+
+func normalizeLoreItemImage(image *LoreItemImage) *LoreItemImage {
+	if image == nil {
+		return nil
+	}
+	normalized := *image
+	normalized.Schema = strings.TrimSpace(normalized.Schema)
+	normalized.ImagePath = filepath.ToSlash(strings.TrimSpace(normalized.ImagePath))
+	normalized.MetaPath = filepath.ToSlash(strings.TrimSpace(normalized.MetaPath))
+	normalized.AltText = strings.TrimSpace(normalized.AltText)
+	normalized.ImagePresetID = strings.TrimSpace(normalized.ImagePresetID)
+	normalized.ProfileID = strings.TrimSpace(normalized.ProfileID)
+	normalized.Provider = strings.TrimSpace(normalized.Provider)
+	normalized.Model = strings.TrimSpace(normalized.Model)
+	normalized.Size = strings.TrimSpace(normalized.Size)
+	normalized.Quality = strings.TrimSpace(normalized.Quality)
+	normalized.OutputFormat = strings.TrimSpace(normalized.OutputFormat)
+	normalized.CreatedAt = strings.TrimSpace(normalized.CreatedAt)
+	normalized.RevisedPrompt = strings.TrimSpace(normalized.RevisedPrompt)
+	normalized.MIMEType = strings.TrimSpace(normalized.MIMEType)
+	if normalized.ImagePath == "" {
+		return nil
+	}
+	return &normalized
 }
 
 func loreInputEnabled(enabled *bool, fallback bool) bool {
@@ -961,6 +1078,178 @@ func formatLoreItemMarkdown(item LoreItem, includeContent bool) string {
 	return strings.TrimSpace(sb.String())
 }
 
+type loreIndexEntry struct {
+	Item         LoreItem
+	MatchSources []string
+}
+
+func filterLoreIndexEntries(items []LoreItem, options LoreIndexOptions) ([]loreIndexEntry, int) {
+	query := strings.TrimSpace(options.Query)
+	itemType := normalizeOptionalLoreType(options.Type)
+	shouldLimit := query != "" || itemType != ""
+	limit := normalizeLoreIndexLimit(options.Limit)
+	entries := make([]loreIndexEntry, 0, len(items))
+	total := 0
+	for _, item := range items {
+		if options.ExcludeResident && item.LoadMode == LoreLoadModeResident {
+			continue
+		}
+		if itemType != "" && item.Type != itemType {
+			continue
+		}
+		matchSources := loreItemMatchSources(item, query)
+		if query != "" && len(matchSources) == 0 {
+			continue
+		}
+		total++
+		if shouldLimit && len(entries) >= limit {
+			continue
+		}
+		entries = append(entries, loreIndexEntry{Item: item, MatchSources: matchSources})
+	}
+	if !shouldLimit {
+		total = len(entries)
+	}
+	return entries, total
+}
+
+func normalizeLoreIndexLimit(limit int) int {
+	if limit <= 0 {
+		return LoreIndexDefaultQueryLimit
+	}
+	if limit > LoreIndexMaxQueryLimit {
+		return LoreIndexMaxQueryLimit
+	}
+	return limit
+}
+
+func renderLoreIndexMarkdown(entries []loreIndexEntry, total int, options LoreIndexOptions) string {
+	maxBytes := options.MaxBytes
+	if maxBytes <= 0 {
+		maxBytes = LoreIndexDefaultMaxBytes
+	}
+	if maxBytes <= 0 {
+		return ""
+	}
+
+	candidates := []struct {
+		briefRunes int
+		nameOnly   bool
+		hint       string
+	}{
+		{briefRunes: 180},
+		{briefRunes: 72, hint: "（索引已压缩：简介已截断；需要具体设定时请用 query 缩小范围，再调用 read_lore_items 读取正文。）"},
+		{nameOnly: true, hint: "（索引过大，已降级为仅 ID 和名称；需要具体设定时请用 query 细查，再调用 read_lore_items 读取正文。）"},
+	}
+	for _, candidate := range candidates {
+		out := renderLoreIndexCandidate(entries, total, options, candidate.briefRunes, candidate.nameOnly, candidate.hint)
+		if len([]byte(out)) <= maxBytes {
+			return strings.TrimSpace(out)
+		}
+	}
+	return renderBoundedLoreNameIndex(entries, total, options, maxBytes)
+}
+
+func renderLoreIndexCandidate(entries []loreIndexEntry, total int, options LoreIndexOptions, briefRunes int, nameOnly bool, hint string) string {
+	var sb strings.Builder
+	writeLoreIndexHeader(&sb, total, len(entries), options)
+	if hint != "" {
+		sb.WriteString(hint)
+		sb.WriteString("\n\n")
+	}
+	for _, entry := range entries {
+		sb.WriteString(formatCompactLoreIndexEntry(entry, briefRunes, nameOnly))
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func writeLoreIndexHeader(sb *strings.Builder, total, returned int, options LoreIndexOptions) {
+	if !options.OmitTitle {
+		sb.WriteString("# 资料库索引\n\n")
+	}
+	query := strings.TrimSpace(options.Query)
+	itemType := normalizeOptionalLoreType(options.Type)
+	if total == 0 {
+		if query != "" || itemType != "" {
+			sb.WriteString("未找到匹配资料库条目。\n")
+			return
+		}
+		sb.WriteString("资料库暂无条目。\n")
+		return
+	}
+	if query != "" || itemType != "" {
+		fmt.Fprintf(sb, "匹配 %d 条资料，返回 %d 条。", total, returned)
+		if total > returned {
+			fmt.Fprintf(sb, " 还有 %d 条未返回；请缩小 query 或提高 limit（最大 %d）。", total-returned, LoreIndexMaxQueryLimit)
+		}
+		sb.WriteString("\n\n")
+		return
+	}
+	scope := "启用资料"
+	if options.ExcludeResident {
+		scope = "非驻留资料"
+	}
+	fmt.Fprintf(sb, "共 %d 条%s。默认索引只含 ID、名称和简介；需要正文时调用 read_lore_items。\n\n", total, scope)
+}
+
+func formatCompactLoreIndexEntry(entry loreIndexEntry, briefRunes int, nameOnly bool) string {
+	item := entry.Item
+	if nameOnly {
+		return fmt.Sprintf("- id: %s | 名称: %s\n", item.ID, item.Name)
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n", item.ID, item.Name)
+	brief := compactLoreBrief(item.BriefDescription, briefRunes)
+	if brief != "" {
+		fmt.Fprintf(&sb, "  简介: %s\n", brief)
+	}
+	if len(entry.MatchSources) > 0 {
+		fmt.Fprintf(&sb, "  匹配: %s\n", strings.Join(entry.MatchSources, "、"))
+	}
+	return sb.String()
+}
+
+func compactLoreBrief(brief string, limit int) string {
+	brief = strings.Join(strings.Fields(strings.TrimSpace(brief)), " ")
+	if brief == "" {
+		return ""
+	}
+	if limit <= 0 || utf8.RuneCountInString(brief) <= limit {
+		return brief
+	}
+	if limit <= 3 {
+		return truncateRunes(brief, limit)
+	}
+	return truncateRunes(brief, limit-3) + "..."
+}
+
+func renderBoundedLoreNameIndex(entries []loreIndexEntry, total int, options LoreIndexOptions, maxBytes int) string {
+	var sb strings.Builder
+	writeLoreIndexHeader(&sb, total, len(entries), options)
+	hint := fmt.Sprintf("（索引预算不足，以下仅展示能放入预算的 ID 和名称；未显示条目请用 list_lore_items 带 query 细查，limit 最大 %d。）\n\n", LoreIndexMaxQueryLimit)
+	appendLoreContextPart(&sb, hint, maxBytes)
+	omitted := 0
+	for idx, entry := range entries {
+		line := formatCompactLoreIndexEntry(entry, 0, true)
+		if sb.Len()+len([]byte(line)) > maxBytes {
+			omitted = len(entries) - idx
+			break
+		}
+		sb.WriteString(line)
+	}
+	if omitted > 0 {
+		notice := fmt.Sprintf("\n（还有 %d 条资料因索引预算未显示；请使用 query 细查。）\n", omitted)
+		if sb.Len()+len([]byte(notice)) <= maxBytes {
+			sb.WriteString(notice)
+		}
+	}
+	out := strings.TrimSpace(sb.String())
+	if len([]byte(out)) <= maxBytes {
+		return out
+	}
+	return strings.TrimSpace(truncateStringBytes(out, maxBytes))
+}
+
 func formatLoreItemIndexMarkdown(item LoreItem) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  重要度: %s\n  加载策略: %s\n", item.ID, item.Name, loreTypeLabel(item.Type), loreImportanceLabel(item.Importance), loreLoadModeLabel(item.LoadMode))
@@ -1017,14 +1306,31 @@ func truncateStringBytes(text string, maxBytes int) string {
 }
 
 func loreItemMatchesQuery(item LoreItem, query string) bool {
-	parts := []string{item.ID, item.Name, item.Type, loreTypeLabel(item.Type), item.Importance, loreImportanceLabel(item.Importance), item.LoadMode, loreLoadModeLabel(item.LoadMode), item.BriefDescription}
-	parts = append(parts, item.Tags...)
-	for _, part := range parts {
-		if strings.Contains(strings.ToLower(part), query) {
-			return true
+	return len(loreItemMatchSources(item, query)) > 0
+}
+
+func loreItemMatchSources(item LoreItem, query string) []string {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return nil
+	}
+	sources := []string{}
+	addSource := func(label string, values ...string) {
+		for _, value := range values {
+			if strings.Contains(strings.ToLower(value), query) {
+				sources = append(sources, label)
+				return
+			}
 		}
 	}
-	return false
+	addSource("ID", item.ID)
+	addSource("名称", item.Name)
+	addSource("类型", item.Type, loreTypeLabel(item.Type))
+	addSource("标签", item.Tags...)
+	addSource("关键词", item.Keywords...)
+	addSource("简介", item.BriefDescription)
+	addSource("正文", item.Content)
+	return sources
 }
 
 func loreImportanceLabel(v string) string {
