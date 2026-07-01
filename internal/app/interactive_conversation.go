@@ -17,6 +17,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
+	agentcontext "denova/internal/agent/context"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/prompts"
@@ -833,28 +834,18 @@ func interactiveTellerSlotSummary(teller interactive.Teller, targets ...string) 
 }
 
 func interactiveContextSourceListSummary(parts []interactiveContextSource) string {
-	if len(parts) == 0 {
-		return "count=0"
+	sources := make([]agentcontext.Source, 0, len(parts))
+	for _, part := range parts {
+		sources = append(sources, agentcontext.Source{
+			Source:    part.Source,
+			Title:     part.Title,
+			Content:   part.Content,
+			Placement: agentcontext.PlacementAuditOnly,
+			Included:  true,
+			Note:      part.Note,
+		})
 	}
-	items := make([]string, 0, len(parts))
-	for i, part := range parts {
-		content := strings.TrimSpace(part.Content)
-		if content == "" {
-			continue
-		}
-		fields := []string{
-			fmt.Sprintf("%d:source=%q", i, part.Source),
-			fmt.Sprintf("title=%q", part.Title),
-			fmt.Sprintf("bytes=%d", len(content)),
-			fmt.Sprintf("chars=%d", utf8.RuneCountInString(content)),
-			"preview=" + strconv.Quote(interactiveSafePreview(content, 100)),
-		}
-		if part.Note != "" {
-			fields = append(fields, "note="+strconv.Quote(part.Note))
-		}
-		items = append(items, strings.Join(fields, ","))
-	}
-	return fmt.Sprintf("count=%d parts=[%s]", len(items), strings.Join(items, "; "))
+	return agentcontext.SourceSummary(sources, agentcontext.DefaultPreviewChars)
 }
 
 func interactiveMessageListSummary(messages []*schema.Message) string {

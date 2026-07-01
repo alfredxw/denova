@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Agent 架构：拆分 skills/session 大文件，新增 agent context 与 tool registry 模块，收敛模型上下文和工具装配的内部边界；不改变前端接口、配置字段或 workspace 数据格式。
+- Agent architecture: Split large skills/session files and added agent context plus tool registry modules to tighten internal model-context and tool-assembly seams, without changing frontend APIs, config fields, or workspace data formats.
 - 版本管理：支持从历史版本恢复单个文件；单文件恢复只作为当前工作区的未保存变更应用，不切换当前版本，也不会自动创建新版本。
 - Version management: Individual files can now be restored from historical versions. File restore is applied as unsaved workspace changes, without switching the current version or creating a new version automatically.
 - 消息中心：changelog 消息会按当前页面语言隔离中英内容，中文界面不再显示英文更新日志，英文界面不再显示中文更新日志；同一条 changelog 的已读状态继续跨语言共享。

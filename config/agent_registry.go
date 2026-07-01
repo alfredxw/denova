@@ -163,8 +163,9 @@ type ResolvedAgentToolCapability struct {
 }
 
 func ResolveAgentToolManifest(settings ResolvedAgentToolSettings) []ResolvedAgentToolCapability {
-	result := make([]ResolvedAgentToolCapability, 0, len(agentToolCapabilities))
-	for _, capability := range agentToolCapabilities {
+	capabilities := AgentToolCapabilities()
+	result := make([]ResolvedAgentToolCapability, 0, len(capabilities))
+	for _, capability := range capabilities {
 		result = append(result, ResolvedAgentToolCapability{
 			Source:  capability.Source,
 			Allowed: AgentToolAllowed(settings, capability.Source),

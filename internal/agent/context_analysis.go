@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -8,6 +9,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"denova/config"
+	agentcontext "denova/internal/agent/context"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/prompts"
@@ -86,14 +88,15 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 	composition := composeAgentInput(req, pending, bookService, policy)
 	messages := buildIDEAnalysisMessages(cfg, effectiveMessages, totalMessages, compaction)
 	runtimeContexts := IDEWorkspaceRuntimeContextsForRequest(state, req)
-	if strings.TrimSpace(runtimeContexts.Stable) != "" {
-		messages = append([]*schema.Message{schema.UserMessage(standaloneRuntimeContextMessage(runtimeContexts.StableTitle, runtimeContexts.Stable, ""))}, messages...)
+	messages = append(messages, schema.UserMessage(composition.AgentMessage))
+	contextResult, err := agentcontext.Build(context.Background(), agentcontext.Request{
+		Messages: messages,
+		Sources:  ideRuntimeContextSources(runtimeContexts),
+	})
+	if err != nil {
+		return ContextAnalysis{}, err
 	}
-	messages = append(messages, schema.UserMessage(prependRuntimeContextToAgentMessage(
-		composition.AgentMessage,
-		runtimeContexts.DynamicTitle,
-		runtimeContexts.Dynamic,
-	)))
+	messages = contextResult.Messages
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
 	stableMessageCount := 0
 	if strings.TrimSpace(runtimeContexts.Stable) != "" {
@@ -144,6 +147,31 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 		WouldCompact:        usage.wouldCompact,
 		Compaction:          contextAnalysisCompactionFromSession(compaction),
 	}, nil
+}
+
+func ideRuntimeContextSources(contexts IDEWorkspaceRuntimeContexts) []agentcontext.Source {
+	var sources []agentcontext.Source
+	if strings.TrimSpace(contexts.Stable) != "" {
+		sources = append(sources, agentcontext.Source{
+			Source:    "稳定作品上下文",
+			Title:     contexts.StableTitle,
+			Content:   contexts.Stable,
+			Placement: agentcontext.PlacementLeadingMessage,
+			Included:  true,
+			Note:      "prepended_to_model_messages",
+		})
+	}
+	if strings.TrimSpace(contexts.Dynamic) != "" {
+		sources = append(sources, agentcontext.Source{
+			Source:    "本轮上下文",
+			Title:     contexts.DynamicTitle,
+			Content:   contexts.Dynamic,
+			Placement: agentcontext.PlacementFinalUserPrefix,
+			Included:  true,
+			Note:      "prepended_to_final_user_message",
+		})
+	}
+	return sources
 }
 
 func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, bookService *book.Service, req ChatRequest, compaction *interactive.ContextCompactionEvent, prepareMessages func(originalMessage, agentMessage string) ([]*schema.Message, error)) (ContextAnalysis, error) {

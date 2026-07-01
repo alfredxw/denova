@@ -17,6 +17,7 @@ import (
 	"github.com/cloudwego/eino/compose"
 
 	"denova/config"
+	agenttools "denova/internal/agent/tools"
 	"denova/internal/book"
 	"denova/internal/prompts"
 	"denova/internal/providercompat"
@@ -196,66 +197,123 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 		return chatModelAgentAssembly{}, fmt.Errorf("创建 backend 失败: %w", err)
 	}
 	backend := newAgentFilesystemBackend(localBackend)
-
-	var handlers []adk.ChatModelAgentMiddleware
-	filesystemHandler, err := newFilesystemMiddleware(ctx, backend, newAgentStreamingShell(), spec.ToolSettings)
+	settings := spec.ToolSettings
+	middlewares := []agenttools.MiddlewareRegistration{
+		{
+			Name:    "filesystem",
+			Enabled: agenttools.FilesystemAllowed,
+			Build: func(ctx context.Context, _ agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+				return newFilesystemMiddleware(ctx, backend, newAgentStreamingShell(), spec.ToolSettings)
+			},
+		},
+		{
+			Name:    "skills",
+			Enabled: agenttools.CapabilityAllowed(config.AgentToolSkills),
+			Build: func(ctx context.Context, settings agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+				return newSkillMiddleware(ctx, cfg, spec.Kind, spec.EnableSkills, settings)
+			},
+		},
+	}
+	middlewares = append(middlewares, staticMiddlewareRegistrations("extra_handler", spec.ExtraHandlers)...)
+	middlewares = append(middlewares,
+		agenttools.MiddlewareRegistration{
+			Name: "context_compaction",
+			Enabled: func(agenttools.Settings) bool {
+				return spec.IncludeCompaction
+			},
+			Build: func(context.Context, agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+				return &contextCompactionMiddleware{
+					BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
+					agentKind:                    spec.Kind,
+				}, nil
+			},
+		},
+		agenttools.MiddlewareRegistration{
+			Name: "tool_orchestrator",
+			Build: func(context.Context, agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+				return &toolOrchestratorMiddleware{
+					agentKind:          spec.Kind,
+					policyKind:         firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
+					toolResultMaxBytes: configToolResultMaxBytes(cfg),
+				}, nil
+			},
+		},
+		agenttools.MiddlewareRegistration{
+			Name: "model_input_logging",
+			Build: func(context.Context, agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+				return &modelInputLoggingMiddleware{
+					BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
+					agentKind:                    spec.Kind,
+					config:                       spec.ModelCfg,
+				}, nil
+			},
+		},
+	)
+	toolRegistrations := []agenttools.ToolRegistration{
+		agenttools.StaticTools("extra_tools", spec.ExtraTools...),
+	}
+	if spec.ExtraToolsFactory != nil {
+		toolRegistrations = append(toolRegistrations, agenttools.ToolRegistration{
+			Name:  "extra_tools_factory",
+			Build: spec.ExtraToolsFactory,
+		})
+	}
+	toolRegistrations = append(toolRegistrations, agenttools.ToolRegistration{
+		Name:    "web_search",
+		Enabled: agenttools.CapabilityAllowed(config.AgentToolWebSearch),
+		Build: func(agenttools.Settings) ([]tool.BaseTool, error) {
+			return newWebSearchTools()
+		},
+	})
+	assembly, err := agenttools.Build(ctx, agenttools.BuildRequest{
+		Settings:    settings,
+		Middlewares: middlewares,
+		Tools:       toolRegistrations,
+	})
 	if err != nil {
 		return chatModelAgentAssembly{}, err
 	}
-	if filesystemHandler != nil {
-		handlers = append(handlers, filesystemHandler)
-	}
-	if spec.EnableSkills && spec.ToolSettings.Skills && cfg != nil {
-		skillBackend := novaskills.NewAgentBackend(
-			novaskills.NewDirectories(cfg.SkillsDir, cfg.NovaDir, cfg.Workspace),
-			spec.Kind,
-			config.ResolveAgentSkillOverrides(cfg, spec.Kind),
-		)
-		availableSkills, listErr := skillBackend.List(ctx)
-		if listErr != nil {
-			log.Printf("[agent] 加载 Skills 列表失败 agent=%s err=%v", spec.Kind, listErr)
-		} else if len(availableSkills) > 0 {
-			skillMw, smErr := skill.NewMiddleware(ctx, &skill.Config{Backend: skillBackend})
-			if smErr != nil {
-				log.Printf("[agent] 创建 Skill middleware 失败 agent=%s err=%v", spec.Kind, smErr)
-			} else {
-				handlers = append(handlers, skillMw)
-			}
-		}
-	}
-	tools := append([]tool.BaseTool{}, spec.ExtraTools...)
-	if spec.ExtraToolsFactory != nil {
-		extraTools, extraErr := spec.ExtraToolsFactory(spec.ToolSettings)
-		if extraErr != nil {
-			return chatModelAgentAssembly{}, extraErr
-		}
-		tools = append(tools, extraTools...)
-	}
-	if spec.ToolSettings.WebSearch {
-		webSearchTools, wsErr := newWebSearchTools()
-		if wsErr != nil {
-			return chatModelAgentAssembly{}, wsErr
-		}
-		tools = append(tools, webSearchTools...)
-	}
-	handlers = append(handlers, spec.ExtraHandlers...)
-	if spec.IncludeCompaction {
-		handlers = append(handlers, &contextCompactionMiddleware{
-			BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
-			agentKind:                    spec.Kind,
+	return chatModelAgentAssembly{Tools: assembly.Tools, Handlers: assembly.Handlers}, nil
+}
+
+func staticMiddlewareRegistrations(prefix string, handlers []adk.ChatModelAgentMiddleware) []agenttools.MiddlewareRegistration {
+	registrations := make([]agenttools.MiddlewareRegistration, 0, len(handlers))
+	for i, handler := range handlers {
+		handler := handler
+		name := fmt.Sprintf("%s_%d", prefix, i+1)
+		registrations = append(registrations, agenttools.MiddlewareRegistration{
+			Name: name,
+			Build: func(context.Context, agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+				return handler, nil
+			},
 		})
 	}
-	handlers = append(handlers, &toolOrchestratorMiddleware{
-		agentKind:          spec.Kind,
-		policyKind:         firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
-		toolResultMaxBytes: configToolResultMaxBytes(cfg),
-	})
-	handlers = append(handlers, &modelInputLoggingMiddleware{
-		BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
-		agentKind:                    spec.Kind,
-		config:                       spec.ModelCfg,
-	})
-	return chatModelAgentAssembly{Tools: tools, Handlers: handlers}, nil
+	return registrations
+}
+
+func newSkillMiddleware(ctx context.Context, cfg *config.Config, agentKind string, enabled bool, settings agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+	if !enabled || !settings.Skills || cfg == nil {
+		return nil, nil
+	}
+	skillBackend := novaskills.NewAgentBackend(
+		novaskills.NewDirectories(cfg.SkillsDir, cfg.NovaDir, cfg.Workspace),
+		agentKind,
+		config.ResolveAgentSkillOverrides(cfg, agentKind),
+	)
+	availableSkills, listErr := skillBackend.List(ctx)
+	if listErr != nil {
+		log.Printf("[agent] 加载 Skills 列表失败 agent=%s err=%v", agentKind, listErr)
+		return nil, nil
+	}
+	if len(availableSkills) == 0 {
+		return nil, nil
+	}
+	skillMw, err := skill.NewMiddleware(ctx, &skill.Config{Backend: skillBackend})
+	if err != nil {
+		log.Printf("[agent] 创建 Skill middleware 失败 agent=%s err=%v", agentKind, err)
+		return nil, nil
+	}
+	return skillMw, nil
 }
 
 func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent deepAgentSpec, parentTools config.ResolvedAgentToolSettings) ([]adk.Agent, error) {

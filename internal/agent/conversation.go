@@ -8,6 +8,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"denova/config"
+	agentcontext "denova/internal/agent/context"
 	"denova/internal/session"
 )
 
@@ -101,33 +102,21 @@ func (c *SessionConversation) PrepareMessages(originalMessage, agentMessage stri
 	if err := c.session.Append(schema.UserMessage(originalMessage)); err != nil {
 		return nil, err
 	}
-	messages := c.modelMessages(prependRuntimeContextToAgentMessage(agentMessage, c.dynamicContextTitle, c.dynamicContext))
-	if leading := c.leadingRuntimeMessages(); len(leading) > 0 {
-		messages = append(leading, messages...)
+	result, err := agentcontext.Build(context.Background(), agentcontext.Request{
+		Messages: c.modelMessages(agentMessage),
+		Sources:  c.runtimeContextSources(),
+	})
+	if err != nil {
+		return nil, err
 	}
-	return messages, nil
+	return result.Messages, nil
 }
 
 func (c *SessionConversation) ContextSourceSummary() string {
 	if c == nil || (strings.TrimSpace(c.stableContext) == "" && strings.TrimSpace(c.dynamicContext) == "") {
 		return ""
 	}
-	contextLog := newContextBuildLog()
-	if strings.TrimSpace(c.stableContext) != "" {
-		title := strings.TrimSpace(c.stableContextTitle)
-		if title == "" {
-			title = "稳定上下文"
-		}
-		contextLog.add("稳定上下文", title, c.stableContext, "prepended_to_model_messages")
-	}
-	if strings.TrimSpace(c.dynamicContext) != "" {
-		title := strings.TrimSpace(c.dynamicContextTitle)
-		if title == "" {
-			title = "本轮动态上下文"
-		}
-		contextLog.add("本轮动态上下文", title, c.dynamicContext, "prepended_to_final_user_message")
-	}
-	return contextLog.String()
+	return agentcontext.SourceSummary(c.runtimeContextSources(), defaultContextLedgerPreviewChars)
 }
 
 func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input ContextCompactionInput) ([]*schema.Message, ContextCompactionResult, error) {
@@ -227,46 +216,11 @@ func (c *SessionConversation) modelMessages(agentMessage string) []*schema.Messa
 }
 
 func prependRuntimeContextToAgentMessage(agentMessage, title, content string) string {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return agentMessage
-	}
-	title = strings.TrimSpace(title)
-	if title == "" {
-		title = "本轮动态上下文"
-	}
-	var sb strings.Builder
-	sb.WriteString("# ")
-	sb.WriteString(title)
-	sb.WriteString("\n\n")
-	sb.WriteString("以下内容来自当前 workspace 的有界状态快照，随作品进展变化，只用于本轮判断。需要更完整或最新内容时，按来源路径使用工具读取确认。\n\n")
-	sb.WriteString(content)
-	sb.WriteString("\n\n---\n\n# 本轮用户请求（最高优先级）\n\n")
-	sb.WriteString(strings.TrimSpace(agentMessage))
-	return sb.String()
+	return agentcontext.PrependFinalUserSource(agentMessage, title, content)
 }
 
 func standaloneRuntimeContextMessage(title, content, note string) string {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return ""
-	}
-	title = strings.TrimSpace(title)
-	if title == "" {
-		title = "稳定上下文"
-	}
-	note = strings.TrimSpace(note)
-	if note == "" {
-		note = "以下内容来自当前 workspace 的低变更率有界状态快照，放在模型输入前部以提升前缀缓存稳定性。需要更完整或最新内容时，按来源路径使用工具读取确认。"
-	}
-	var sb strings.Builder
-	sb.WriteString("# ")
-	sb.WriteString(title)
-	sb.WriteString("\n\n")
-	sb.WriteString(note)
-	sb.WriteString("\n\n")
-	sb.WriteString(content)
-	return sb.String()
+	return agentcontext.StandaloneMessage(title, content, note)
 }
 
 func (c *SessionConversation) leadingRuntimeMessages() []*schema.Message {
@@ -278,6 +232,42 @@ func (c *SessionConversation) leadingRuntimeMessages() []*schema.Message {
 		return nil
 	}
 	return []*schema.Message{schema.UserMessage(content)}
+}
+
+func (c *SessionConversation) runtimeContextSources() []agentcontext.Source {
+	if c == nil {
+		return nil
+	}
+	var sources []agentcontext.Source
+	if strings.TrimSpace(c.stableContext) != "" {
+		title := strings.TrimSpace(c.stableContextTitle)
+		if title == "" {
+			title = "稳定上下文"
+		}
+		sources = append(sources, agentcontext.Source{
+			Source:    "稳定上下文",
+			Title:     title,
+			Content:   c.stableContext,
+			Placement: agentcontext.PlacementLeadingMessage,
+			Included:  true,
+			Note:      "prepended_to_model_messages",
+		})
+	}
+	if strings.TrimSpace(c.dynamicContext) != "" {
+		title := strings.TrimSpace(c.dynamicContextTitle)
+		if title == "" {
+			title = "本轮动态上下文"
+		}
+		sources = append(sources, agentcontext.Source{
+			Source:    "本轮动态上下文",
+			Title:     title,
+			Content:   c.dynamicContext,
+			Placement: agentcontext.PlacementFinalUserPrefix,
+			Included:  true,
+			Note:      "prepended_to_final_user_message",
+		})
+	}
+	return sources
 }
 
 func (c *SessionConversation) splitLeadingRuntimeMessages(messages []*schema.Message) ([]*schema.Message, []*schema.Message) {

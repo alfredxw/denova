@@ -1,12 +1,8 @@
 package app
 
 import (
-	"fmt"
 	"log"
 
-	"github.com/cloudwego/eino/schema"
-
-	"denova/config"
 	"denova/internal/session"
 )
 
@@ -22,7 +18,7 @@ func persistAgentCallWithStore(store *session.Store, agentKind, instruction, res
 		log.Printf("[agent-session] skip persist agent=%s reason=no_session_store", agentKind)
 		return
 	}
-	if err := persistAgentCallInStore(store, agentKind, instruction, response); err != nil {
+	if err := session.PersistAgentCall(store, agentKind, instruction, response); err != nil {
 		log.Printf("[agent-session] persist failed agent=%s err=%v", agentKind, err)
 	}
 }
@@ -42,52 +38,27 @@ func (a *App) ClearAgentSession(agentKind string) error {
 	a.mu.RLock()
 	store := a.sessionStore
 	a.mu.RUnlock()
-	return clearAgentSessionInStore(store, agentKind)
+	if store == nil {
+		return ErrNoWorkspace
+	}
+	return session.ClearAgentSession(store, agentKind)
 }
 
 func persistAgentCallInStore(store *session.Store, agentKind, instruction, response string) error {
-	sess, err := agentSessionFromStore(store, agentKind)
-	if err != nil {
-		return err
-	}
-	if instruction == "" {
-		instruction = "（空输入）"
-	}
-	if err := sess.Append(schema.UserMessage(instruction)); err != nil {
-		return fmt.Errorf("写入 Agent 输入失败: %w", err)
-	}
-	if response == "" {
-		response = "（空输出）"
-	}
-	if err := sess.Append(schema.AssistantMessage(response, nil)); err != nil {
-		return fmt.Errorf("写入 Agent 输出失败: %w", err)
-	}
-	return nil
+	return session.PersistAgentCall(store, agentKind, instruction, response)
 }
 
 func clearAgentSessionInStore(store *session.Store, agentKind string) error {
-	sess, err := agentSessionFromStore(store, agentKind)
-	if err != nil {
-		return err
-	}
-	return sess.Clear()
+	return session.ClearAgentSession(store, agentKind)
 }
 
 func agentSessionFromStore(store *session.Store, agentKind string) (*session.Session, error) {
 	if store == nil {
 		return nil, ErrNoWorkspace
 	}
-	id, ok := agentSessionID(agentKind)
-	if !ok {
-		return nil, fmt.Errorf("未配置 Agent 会话: %s", agentKind)
-	}
-	return store.GetOrCreate(id)
+	return session.AgentSession(store, agentKind)
 }
 
 func agentSessionID(agentKind string) (string, bool) {
-	definition, ok := config.LookupAgentKind(agentKind)
-	if !ok || definition.SessionID == "" {
-		return "", false
-	}
-	return definition.SessionID, true
+	return session.AgentSessionID(agentKind)
 }
