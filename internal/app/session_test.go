@@ -5,8 +5,8 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/session"
 )
 
 func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {

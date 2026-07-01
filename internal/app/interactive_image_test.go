@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"nova/internal/imagepreset"
-	"nova/internal/interactive"
+	"denova/internal/imagepreset"
+	"denova/internal/interactive"
 )
 
 func TestShouldGenerateInteractiveImageModes(t *testing.T) {

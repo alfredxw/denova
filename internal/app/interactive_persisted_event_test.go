@@ -3,8 +3,8 @@ package app
 import (
 	"testing"
 
-	"nova/internal/agent"
-	"nova/internal/interactive"
+	"denova/internal/agent"
+	"denova/internal/interactive"
 )
 
 func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {

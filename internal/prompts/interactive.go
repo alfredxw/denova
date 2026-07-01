@@ -77,7 +77,7 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 
 func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionInput) string {
 	var sb strings.Builder
-	sb.WriteString("你是 Nova 的游戏模式 Agent，只负责根据用户行动生成故事舞台上的下一回合内容。\n\n")
+	sb.WriteString("你是 Denova 的游戏模式 Agent，只负责根据用户行动生成故事舞台上的下一回合内容。\n\n")
 	sb.WriteString("## 模式边界\n")
 	sb.WriteString("- 当前模式是游戏模式，用于互动文字冒险，不是写作模式的章节创作。\n")
 	sb.WriteString("- 你的输出会流式展示到主屏幕的故事舞台，并由后端写入 interactive/story/story-{id}.jsonl。\n")
@@ -129,10 +129,10 @@ func writeInteractiveReplyTargetInstruction(sb *strings.Builder, value int, bull
 		suffix = ""
 	}
 	if value > 0 {
-		fmt.Fprintf(sb, "%s【最高篇幅约束】当前互动故事的每轮目标字数为 %d 个中文字左右；这是互动剧情正文唯一的内置字数目标，高于 CREATOR.md 的章节篇幅、导演规则和其他 Nova 内置提示中的篇幅倾向。你需要主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。%s", prefix, value, suffix)
+		fmt.Fprintf(sb, "%s【最高篇幅约束】当前互动故事的每轮目标字数为 %d 个中文字左右；这是互动剧情正文唯一的内置字数目标，高于 CREATOR.md 的章节篇幅、导演规则和其他 Denova 内置提示中的篇幅倾向。你需要主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。%s", prefix, value, suffix)
 		return
 	}
-	fmt.Fprintf(sb, "%s【最高篇幅约束】当前互动故事的每轮目标字数由 story 级运行参数决定；这是互动剧情正文唯一的内置字数目标，高于 CREATOR.md 的章节篇幅、导演规则和其他 Nova 内置提示中的篇幅倾向。运行时拿到具体目标后必须主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。%s", prefix, suffix)
+	fmt.Fprintf(sb, "%s【最高篇幅约束】当前互动故事的每轮目标字数由 story 级运行参数决定；这是互动剧情正文唯一的内置字数目标，高于 CREATOR.md 的章节篇幅、导演规则和其他 Denova 内置提示中的篇幅倾向。运行时拿到具体目标后必须主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。%s", prefix, suffix)
 }
 
 func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRate float64, runtimeContext string) string {
@@ -185,7 +185,7 @@ type InteractiveHotChoicesPromptInput struct {
 
 func BuildInteractiveHotChoicesSystemInstruction() string {
 	return strings.Join([]string{
-		"你是 Nova 游戏模式的快捷行动建议 Agent。",
+		"你是 Denova 游戏模式的快捷行动建议 Agent。",
 		"你只负责根据当前故事上下文生成用户下一轮可直接输入的行动建议，不负责续写剧情。",
 		"不要输出思考过程、解释、Markdown 或代码块。",
 		"必须只输出 JSON 对象，格式为 {\"choices\":[\"...\"]}。",
@@ -210,7 +210,7 @@ func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) strin
 
 func BuildInteractiveStateSystemInstruction() string {
 	return strings.Join([]string{
-		"你是 Nova 游戏模式的互动记忆 Agent。",
+		"你是 Denova 游戏模式的互动记忆 Agent。",
 		"你只负责把已经生成完成的互动故事回合整理为故事记忆表格 patch JSON，不负责续写剧情。",
 		"必须只输出一个 JSON 对象，不要输出 Markdown、解释或代码块。",
 		"JSON 格式必须是 {\"story_memory_patches\":[...]}。",

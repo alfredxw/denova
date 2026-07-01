@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"denova/internal/workspacepath"
 )
 
 // RunLedger is a durable JSONL trace for one Agent loop run.
@@ -53,6 +55,9 @@ func newRunLedgerWithOptions(workspace string, policy RunLedgerPolicy, options R
 	}
 	id := newRunLedgerID()
 	dir := filepath.Join(workspace, filepath.FromSlash(policy.Directory))
+	if policy.Directory == defaultRunLedgerDirectory {
+		dir = workspacepath.Path(workspace, "runs")
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("create run ledger dir: %w", err)
 	}

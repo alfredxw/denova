@@ -10,8 +10,8 @@ import (
 	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"nova/internal/api/handlers"
-	"nova/internal/webfs"
+	"denova/internal/api/handlers"
+	"denova/internal/webfs"
 )
 
 // registerRoutes 注册 HTTP API 和静态文件路由。
@@ -195,7 +195,9 @@ func spaFallbackHandler(webRoot string) hertzapp.HandlerFunc {
 
 func resolveWebRoot() string {
 	candidates := []string{}
-	if v := os.Getenv("NOVA_WEB_DIR"); v != "" {
+	if v := os.Getenv("DENOVA_WEB_DIR"); v != "" {
+		candidates = append(candidates, v)
+	} else if v := os.Getenv("NOVA_WEB_DIR"); v != "" {
 		candidates = append(candidates, v)
 	}
 	candidates = append(candidates, "web")

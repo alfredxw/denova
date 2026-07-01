@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"nova/config"
-	"nova/internal/interactive"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/interactive"
+	"denova/internal/session"
 )
 
 const interactiveStateTimeout = 5 * time.Minute

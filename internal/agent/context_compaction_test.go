@@ -8,7 +8,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
+	"denova/config"
 )
 
 func TestCompactionSourceExcludesReasoningCurrentUserAndOldSummary(t *testing.T) {

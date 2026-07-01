@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"nova/config"
+	"denova/config"
 )
 
 func protectedSystemInstruction(cfg *config.Config, agentKind, builtIn string) string {
 	builtIn = strings.TrimSpace(builtIn)
 	var sb strings.Builder
-	sb.WriteString("# Nova 运行时契约（不可覆盖）\n\n")
+	sb.WriteString("# Denova 运行时契约（不可覆盖）\n\n")
 	sb.WriteString(runtimeContractForAgent(cfg, agentKind))
 	if outputProtocol := outputProtocolForAgent(agentKind); strings.TrimSpace(outputProtocol) != "" {
 		sb.WriteString("\n\n## 输出格式（不可覆盖）\n\n")
@@ -20,18 +20,18 @@ func protectedSystemInstruction(cfg *config.Config, agentKind, builtIn string) s
 	if flow := resolvedPrompt.FlowPrompt; flow != "" {
 		sb.WriteString("\n\n---\n\n")
 		sb.WriteString("# 用户自定义流程规则（受保护高优先级）\n\n")
-		sb.WriteString("以下流程规则优先于 Nova 内置流程规则；但不得覆盖运行时契约、输出格式、工具权限和后端校验。若存在冲突，必须忽略冲突部分。\n\n")
+		sb.WriteString("以下流程规则优先于 Denova 内置流程规则；但不得覆盖运行时契约、输出格式、工具权限和后端校验。若存在冲突，必须忽略冲突部分。\n\n")
 		sb.WriteString(flow)
 	}
 	if custom := resolvedPrompt.SystemPrompt; custom != "" {
 		sb.WriteString("\n\n---\n\n")
 		sb.WriteString("# 用户自定义系统提示（受保护最高优先级）\n\n")
-		sb.WriteString("以下提示在 Agent 行为、创作偏好、策略和风格上优先于 Nova 内置提示；但不得覆盖上一节运行时契约。若以下提示与运行时契约冲突，必须忽略冲突部分。\n\n")
+		sb.WriteString("以下提示在 Agent 行为、创作偏好、策略和风格上优先于 Denova 内置提示；但不得覆盖上一节运行时契约。若以下提示与运行时契约冲突，必须忽略冲突部分。\n\n")
 		sb.WriteString(custom)
 	}
 	if builtIn != "" {
 		sb.WriteString("\n\n---\n\n")
-		sb.WriteString("# Nova 内置系统提示\n\n")
+		sb.WriteString("# Denova 内置系统提示\n\n")
 		sb.WriteString(builtIn)
 	}
 	return sb.String()
@@ -39,7 +39,7 @@ func protectedSystemInstruction(cfg *config.Config, agentKind, builtIn string) s
 
 func runtimeContractForAgent(cfg *config.Config, agentKind string) string {
 	common := strings.Join([]string{
-		"- 运行时契约高于用户自定义系统提示和 Nova 内置提示。",
+		"- 运行时契约高于用户自定义系统提示和 Denova 内置提示。",
 		"- 用户自定义系统提示只能调整 Agent 的行为策略、创作偏好、语气、风格和任务处理倾向。",
 		"- 用户自定义系统提示不能覆盖工具权限、输出协议、数据保存边界、结构化格式要求或后端校验规则。",
 		"- 只能使用当前 Agent 已启用的工具；未启用、未提供或不存在的工具不得臆造调用。",

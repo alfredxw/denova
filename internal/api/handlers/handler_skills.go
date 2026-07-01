@@ -7,7 +7,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	novaskills "nova/internal/skills"
+	novaskills "denova/internal/skills"
 )
 
 type skillCreateRequest struct {

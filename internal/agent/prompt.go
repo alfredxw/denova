@@ -10,9 +10,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"nova/config"
-	"nova/internal/book"
-	"nova/internal/prompts"
+	"denova/config"
+	"denova/internal/book"
+	"denova/internal/prompts"
 )
 
 // IDEStoryTeller 描述写作 Agent 本轮使用的默认导演规则。
@@ -423,7 +423,7 @@ func buildImageBuiltinInstruction(cfg *config.Config, state *book.State, systemP
 		}
 	}
 	parts := []string{
-		"你是 Nova 的通用图像 Agent，负责把调用方提供的有界上下文转换成图像生成请求。",
+		"你是 Denova 的通用图像 Agent，负责把调用方提供的有界上下文转换成图像生成请求。",
 		"必须先理解本次 purpose、source_context、调用方系统提示和已加载 Skill，再调用 generate_image 工具生成图像。",
 		"只能生成图像和图像元数据，不得修改故事正文、章节正文、资料库、配置或其他 workspace 内容。",
 		"图像提示词应清晰描述主体、场景、构图、光线、视觉风格、情绪和需要避免的文字、水印、logo。",
@@ -454,7 +454,7 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 		ConfigManager:         config.AgentPromptOverride{SystemPrompt: BuildConfigManagerInstruction(promptCfg, state)},
 		InteractiveState:      config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction())},
 		InteractiveHotChoices: config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())},
-		VersionSummary:        config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")},
+		VersionSummary:        config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")},
 		ToolAgent:             config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction())},
 		Image:                 config.AgentPromptOverride{SystemPrompt: BuildImageInstruction(promptCfg, state, "")},
 		Automation:            config.AgentPromptOverride{SystemPrompt: BuildAutomationInstruction(promptCfg, state, AutomationTaskInstruction{})},
@@ -478,7 +478,7 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 		ConfigManager:         builtinPromptBlocks(promptCfg, config.AgentKindConfigManager, configManagerFlow),
 		InteractiveState:      builtinPromptBlocks(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
 		InteractiveHotChoices: builtinPromptBlocks(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
-		VersionSummary:        builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
+		VersionSummary:        builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
 		ToolAgent:             builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
 		Image:                 builtinPromptBlocks(promptCfg, config.AgentKindImage, ""),
 		Automation:            builtinPromptBlocks(promptCfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
@@ -511,7 +511,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		ConfigManager:         builtinPromptSourceList(promptCfg, config.AgentKindConfigManager, configManagerFlow, readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", configManagerCreator)),
 		InteractiveState:      builtinPromptSourceList(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
 		InteractiveHotChoices: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
-		VersionSummary:        builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, "你是 Nova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
+		VersionSummary:        builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
 		ToolAgent:             builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
 		Image:                 builtinPromptSourceList(promptCfg, config.AgentKindImage, ""),
 		Automation:            builtinPromptSourceList(promptCfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(promptCfg, state, AutomationTaskInstruction{})),
@@ -532,14 +532,14 @@ func builtinPromptSourceList(cfg *config.Config, agentKind, flow string, extraSo
 	sources = append(sources, config.AgentPromptSource{
 		ID:      "runtime_contract",
 		Title:   "运行契约",
-		Source:  "Nova runtime",
+		Source:  "Denova runtime",
 		Content: runtimeContractForAgent(cfg, agentKind),
 	})
 	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(agentKind)); outputProtocol != "" {
 		sources = append(sources, config.AgentPromptSource{
 			ID:      "output_protocol",
 			Title:   "输出格式",
-			Source:  "Nova runtime",
+			Source:  "Denova runtime",
 			Content: outputProtocol,
 		})
 	}
@@ -551,7 +551,7 @@ func builtinPromptSourceList(cfg *config.Config, agentKind, flow string, extraSo
 	sources = append(sources, config.AgentPromptSource{
 		ID:       "flow",
 		Title:    "流程规则",
-		Source:   "Nova built-in",
+		Source:   "Denova built-in",
 		Content:  editablePromptFlowForAgent(agentKind, flow),
 		Editable: true,
 		Field:    "flow_prompt",
@@ -644,7 +644,7 @@ func appendConfigManagerResourceSkills(builtIn string, resourceSkills []ConfigMa
 		}
 		if sb.Len() == 0 {
 			sb.WriteString("\n\n## 本轮自动加载的配置 Skills\n\n")
-			sb.WriteString("以下内容来自当前生效的 Nova Skills，用于在调用复杂 write_* 配置工具前确认 JSON 结构、枚举、默认值和安全流程；若与运行时契约或后端校验冲突，以运行时契约和后端校验为准。\n")
+			sb.WriteString("以下内容来自当前生效的 Denova Skills，用于在调用复杂 write_* 配置工具前确认 JSON 结构、枚举、默认值和安全流程；若与运行时契约或后端校验冲突，以运行时契约和后端校验为准。\n")
 		}
 		sb.WriteString("\n### /")
 		sb.WriteString(name)
@@ -685,7 +685,7 @@ func configManagerFlowInstruction(cfg *config.Config, state *book.State) string 
 
 func configManagerFlowInstructionFor(workspace, creator string) string {
 	var sb strings.Builder
-	sb.WriteString("你是 Nova 的统一配置管理 Agent，负责在模块内嵌入口中帮助用户管理资料库、方案预设（叙事方案和图像方案）、自动化任务、Skills、故事记忆结构和故事记忆记录。\n\n")
+	sb.WriteString("你是 Denova 的统一配置管理 Agent，负责在模块内嵌入口中帮助用户管理资料库、方案预设（叙事方案和图像方案）、自动化任务、Skills、故事记忆结构和故事记忆记录。\n\n")
 	if strings.TrimSpace(workspace) != "" {
 		sb.WriteString("当前作品 workspace: ")
 		sb.WriteString(strings.TrimSpace(workspace))
@@ -740,7 +740,7 @@ func systemPromptSourceSummary(mode, creator string, stateParts []book.CompactCo
 		}
 		contextLog.add("作品状态", section.Title, section.Content, section.Source)
 	}
-	contextLog.add("系统提示", "Nova "+mode+" 内置规则", "基础规则、工具边界、工作流约束", "")
+	contextLog.add("系统提示", "Denova "+mode+" 内置规则", "基础规则、工具边界、工作流约束", "")
 	return contextLog.String()
 }
 

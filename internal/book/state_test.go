@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"denova/internal/workspacepath"
 )
 
 func TestInitWorkspaceDoesNotCreateCharacterStates(t *testing.T) {
@@ -227,7 +229,7 @@ func TestCompactContextPartsKeepLoreMarkdownAsSingleSource(t *testing.T) {
 	parts := state.CompactContextParts()
 	loreParts := 0
 	for _, part := range parts {
-		if part.Source == ".nova/lore/items.json" {
+		if part.Source == workspacepath.Rel(dir, "lore", "items.json") {
 			loreParts++
 			if part.Title != "资料库" {
 				t.Fatalf("资料库来源标题 = %q, want 资料库", part.Title)

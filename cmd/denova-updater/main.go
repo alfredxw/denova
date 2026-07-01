@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	"nova/internal/buildinfo"
-	"nova/internal/update"
+	"denova/internal/buildinfo"
+	"denova/internal/update"
 )
 
 func main() {

@@ -7,8 +7,8 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/prompts"
+	"denova/config"
+	"denova/internal/prompts"
 )
 
 const interactiveStateAgentLabel = "interactive-state-agent"

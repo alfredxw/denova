@@ -7,8 +7,8 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/session"
 )
 
 // Conversation 抽象 Agent 对话的上下文读取与结果写入。

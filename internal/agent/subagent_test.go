@@ -9,8 +9,8 @@ import (
 	"github.com/cloudwego/eino/adk/prebuilt/deep"
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/session"
 )
 
 func TestConfigMaxIterationDefaultsToUnlimited(t *testing.T) {
@@ -57,7 +57,7 @@ func TestBuildDeepAgentPassesGeneralAndConfiguredSubAgents(t *testing.T) {
 		}},
 	}, deepAgentSpec{
 		Kind:        config.AgentKindIDE,
-		Name:        "NovaAgent",
+		Name:        "DenovaAgent",
 		Description: "test",
 		Instruction: "test",
 	})
@@ -82,7 +82,7 @@ func TestBuildDeepAgentPassesGeneralAndConfiguredSubAgents(t *testing.T) {
 }
 
 func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
-	parentInstruction := "# Nova 运行时契约（不可覆盖）\n\n作品根目录：/tmp/book\n父级工具权限边界。"
+	parentInstruction := "# Denova 运行时契约（不可覆盖）\n\n作品根目录：/tmp/book\n父级工具权限边界。"
 	instruction := buildSubAgentInstruction(deepAgentSpec{
 		Kind:        config.AgentKindIDE,
 		Instruction: parentInstruction,
@@ -94,7 +94,7 @@ func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
 	})
 
 	for _, required := range []string{
-		"Nova 运行时契约",
+		"Denova 运行时契约",
 		"/tmp/book",
 		"父级工具权限边界",
 		"SubAgent 专属说明",
@@ -171,7 +171,7 @@ func TestBuildDeepAgentCanDisableGeneralSubAgent(t *testing.T) {
 		},
 	}, deepAgentSpec{
 		Kind:        config.AgentKindIDE,
-		Name:        "NovaAgent",
+		Name:        "DenovaAgent",
 		Description: "test",
 		Instruction: "test",
 	})
@@ -253,7 +253,7 @@ func TestBuildChatModelAgentAssemblyPassesToolResultLimit(t *testing.T) {
 func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
 	var fullContent, fullThinking strings.Builder
 	var events []Event
-	meta := agentEventMetadata{AgentName: "researcher", RootAgentName: "NovaAgent", RunPath: []string{"NovaAgent", "researcher"}, SubAgent: true}
+	meta := agentEventMetadata{AgentName: "researcher", RootAgentName: "DenovaAgent", RunPath: []string{"DenovaAgent", "researcher"}, SubAgent: true}
 	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("sub draft", nil)}, &fullContent, &fullThinking, 0, meta, nil, func(ev Event) {
 		events = append(events, ev)
 	})
@@ -264,7 +264,7 @@ func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
 		t.Fatalf("subagent chunk should still be emitted with metadata: %#v", events)
 	}
 
-	rootMeta := agentEventMetadata{AgentName: "NovaAgent", RootAgentName: "NovaAgent", RunPath: []string{"NovaAgent"}}
+	rootMeta := agentEventMetadata{AgentName: "DenovaAgent", RootAgentName: "DenovaAgent", RunPath: []string{"DenovaAgent"}}
 	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("root final", nil)}, &fullContent, &fullThinking, 0, rootMeta, nil, func(Event) {})
 	if got := fullContent.String(); got != "root final" {
 		t.Fatalf("root output should append to parent builder, got %q", got)
@@ -277,8 +277,8 @@ func TestDisplayRecorderPersistsSubAgentAssistantChunks(t *testing.T) {
 	meta := agentEventMetadata{
 		RunID:             "run-1",
 		AgentName:         "researcher",
-		RootAgentName:     "NovaAgent",
-		RunPath:           []string{"NovaAgent", "researcher"},
+		RootAgentName:     "DenovaAgent",
+		RunPath:           []string{"DenovaAgent", "researcher"},
 		SubAgent:          true,
 		SubAgentSessionID: "run-1-subagent-01-researcher",
 		SubAgentType:      "researcher",

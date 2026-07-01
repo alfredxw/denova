@@ -10,7 +10,10 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-const versionSourceTrailer = "Nova-Source:"
+const (
+	versionSourceTrailer       = "Denova-Source:"
+	legacyVersionSourceTrailer = "Nova-Source:"
+)
 
 func (s *Service) loadVersions() ([]VersionEntry, error) {
 	repo, err := s.openExistingVersionRepo()
@@ -181,6 +184,9 @@ func parseCommitMessage(raw string) (string, string) {
 		}
 		if strings.HasPrefix(line, versionSourceTrailer) {
 			source = normalizeVersionSource(strings.TrimSpace(strings.TrimPrefix(line, versionSourceTrailer)))
+			lines = lines[:len(lines)-1]
+		} else if strings.HasPrefix(line, legacyVersionSourceTrailer) {
+			source = normalizeVersionSource(strings.TrimSpace(strings.TrimPrefix(line, legacyVersionSourceTrailer)))
 			lines = lines[:len(lines)-1]
 		}
 		break

@@ -8,7 +8,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"nova/internal/book"
+	"denova/internal/book"
 )
 
 // handleVersionStatus GET /api/versions/status — 返回当前书籍本地版本状态。

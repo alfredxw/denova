@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"nova/internal/imagepreset"
+	"denova/internal/imagepreset"
 )
 
 const schemaVersion = 1

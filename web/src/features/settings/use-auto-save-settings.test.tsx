@@ -280,6 +280,7 @@ function layered(settings: Settings): LayeredSettings {
     workspace: {},
     effective: settings,
     paths: {
+      denova_dir: '',
       nova_dir: '',
       user_config: '',
       workspace_config: '',

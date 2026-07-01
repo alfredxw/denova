@@ -57,15 +57,15 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 func rootAgentNameForKind(kind string) string {
 	switch strings.TrimSpace(kind) {
 	case AgentKindIDE:
-		return "NovaAgent"
+		return "DenovaAgent"
 	case AgentKindInteractiveStory:
-		return "NovaInteractiveStoryAgent"
+		return "DenovaInteractiveStoryAgent"
 	case AgentKindConfigManager:
-		return "NovaConfigManagerAgent"
+		return "DenovaConfigManagerAgent"
 	case AgentKindImage:
-		return "NovaImageAgent"
+		return "DenovaImageAgent"
 	case AgentKindAutomation:
-		return "NovaAutomationAgent"
+		return "DenovaAutomationAgent"
 	default:
 		return ""
 	}

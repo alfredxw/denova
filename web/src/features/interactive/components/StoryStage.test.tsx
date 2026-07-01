@@ -124,6 +124,21 @@ describe('StoryStage hot choices mode', () => {
   })
 })
 
+describe('StoryStage composer', () => {
+  it('keeps the game input single-line and does not expose Plan Mode controls', async () => {
+    render(<StoryStageHarness />)
+
+    const input = screen.getByPlaceholderText('你要做什么？')
+    expect(input).toHaveAttribute('rows', '1')
+    expect(screen.queryByLabelText('Plan Mode 已开启')).not.toBeInTheDocument()
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: '输入动作' }))
+    await waitFor(() => expect(screen.getByRole('menuitem', { name: /行动选项/ })).toBeInTheDocument())
+
+    expect(screen.queryByRole('menuitemcheckbox', { name: /Plan/ })).not.toBeInTheDocument()
+  })
+})
+
 describe('StoryStage streaming rendering', () => {
   it('batches fast interactive chunks into one animation frame without slicing text', async () => {
     const user = userEvent.setup()

@@ -1,10 +1,10 @@
 {
-  "name": "@alfredxw/nova",
-  "version": "0.1.17",
+  "name": "@alfredxw/denova",
+  "version": "0.1.18",
   "description": "面向长篇小说创作的 AI 写作工作台",
   "type": "module",
   "bin": {
-    "nova": "./bin/nova.js"
+    "denova": "./bin/denova.js"
   },
   "scripts": {
     "build": "node ../scripts/build-npm-package.mjs",

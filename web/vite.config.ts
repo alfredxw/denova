@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
-const backendPort = process.env.NOVA_BACKEND_PORT || '8080'
+const backendPort = process.env.DENOVA_BACKEND_PORT || process.env.NOVA_BACKEND_PORT || '8080'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],

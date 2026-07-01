@@ -9,11 +9,11 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
 
-	"nova/config"
-	"nova/internal/automation"
-	"nova/internal/imagepreset"
-	"nova/internal/interactive"
-	novaskills "nova/internal/skills"
+	"denova/config"
+	"denova/internal/automation"
+	"denova/internal/imagepreset"
+	"denova/internal/interactive"
+	novaskills "denova/internal/skills"
 )
 
 type idListInput struct {

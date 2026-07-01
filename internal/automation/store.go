@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"denova/internal/workspacepath"
 )
 
 type Store struct {
@@ -329,7 +331,7 @@ func (s *Store) pathForScope(scope string) (string, error) {
 		if strings.TrimSpace(s.workspace) == "" {
 			return "", fmt.Errorf("workspace is required")
 		}
-		return filepath.Join(s.workspace, ".nova", "automations", "tasks.json"), nil
+		return workspacepath.Path(s.workspace, "automations", "tasks.json"), nil
 	default:
 		return "", fmt.Errorf("unknown automation scope %q", scope)
 	}

@@ -13,8 +13,8 @@ const (
 	applyLogFileName       = "apply.log"
 )
 
-// ApplyManifest is the updater contract written by Nova and consumed by
-// nova-updater. Paths are absolute so the updater can run after Nova exits.
+// ApplyManifest is the updater contract written by Denova and consumed by
+// denova-updater. Paths are absolute so the updater can run after Denova exits.
 type ApplyManifest struct {
 	SourceDir         string   `json:"source_dir"`
 	InstallDir        string   `json:"install_dir"`

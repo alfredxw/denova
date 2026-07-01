@@ -16,7 +16,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
 
-	"nova/config"
+	"denova/config"
 )
 
 const webSearchToolDescription = "Search the public web for current or external information. Return result titles, URLs, and short summaries; cite useful URLs in the final answer."

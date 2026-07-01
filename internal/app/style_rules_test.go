@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"nova/internal/interactive"
+	"denova/internal/interactive"
 )
 
 func TestConvertTellerStyleRulesFiltersSelectedScenes(t *testing.T) {

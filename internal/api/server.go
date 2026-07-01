@@ -5,9 +5,9 @@ import (
 
 	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
 
-	"nova/config"
-	"nova/internal/api/handlers"
-	"nova/internal/app"
+	"denova/config"
+	"denova/internal/api/handlers"
+	"denova/internal/app"
 )
 
 // Server 包含 Hertz 引擎和应用运行时。
@@ -41,6 +41,6 @@ func NewServer(application *app.App, port string) *Server {
 
 // Run 启动 HTTP 服务。
 func (s *Server) Run() {
-	fmt.Printf("Nova HTTP 服务启动: http://%s:%s\n", s.host, s.port)
+	fmt.Printf("Denova HTTP 服务启动: http://%s:%s\n", s.host, s.port)
 	s.engine.Spin()
 }

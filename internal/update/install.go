@@ -37,7 +37,7 @@ func (s *Service) InstallWithProgress(ctx context.Context, progress func(Install
 	}
 
 	installDir := filepath.Dir(s.executablePath)
-	updateDir := filepath.Join(installDir, ".nova-updates")
+	updateDir := updateDataDir(installDir)
 	downloadDir := filepath.Join(updateDir, "downloads")
 	extractDir := filepath.Join(updateDir, "extract-"+safeUpdateName(check.LatestVersion))
 	if err := os.MkdirAll(downloadDir, 0o755); err != nil {
@@ -60,9 +60,9 @@ func (s *Service) InstallWithProgress(ctx context.Context, progress func(Install
 	if err := extractArchive(archivePath, extractDir); err != nil {
 		return InstallResult{}, err
 	}
-	packageRoot := filepath.Join(extractDir, "nova")
+	packageRoot := filepath.Join(extractDir, releasePackageRootName)
 	if fi, err := os.Stat(packageRoot); err != nil || !fi.IsDir() {
-		return InstallResult{}, fmt.Errorf("更新包结构无效，缺少 nova 目录")
+		return InstallResult{}, fmt.Errorf("更新包结构无效，缺少 %s 目录", releasePackageRootName)
 	}
 
 	reportInstallProgress(progress, InstallProgress{Phase: "staging", AssetName: check.Asset.Name, ArchivePath: archivePath, Percent: 100, Message: "正在暂存更新"})
@@ -97,11 +97,11 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 		req.Size = expectedSize
 	}
 	req.HTTPRequest.Header.Set("Accept", "application/octet-stream")
-	req.HTTPRequest.Header.Set("User-Agent", "nova-updater")
+	req.HTTPRequest.Header.Set("User-Agent", "denova-updater")
 
 	client := grab.NewClient()
 	client.HTTPClient = s.downloadHTTPClient()
-	client.UserAgent = "nova-updater"
+	client.UserAgent = "denova-updater"
 	resp := client.Do(req)
 	assetName := filepath.Base(target)
 	reportInstallProgress(progress, downloadProgress(assetName, target, resp, expectedSize, "正在下载更新包"))
@@ -142,9 +142,9 @@ func (s *Service) downloadAsset(ctx context.Context, url, target string, expecte
 
 func (s *Service) stageUpdate(packageRoot string, check CheckResult) (InstallResult, error) {
 	installDir := filepath.Dir(s.executablePath)
-	updateDir := filepath.Join(installDir, ".nova-updates")
+	updateDir := updateDataDir(installDir)
 	stagedRoot := filepath.Join(updateDir, "pending-"+safeUpdateName(check.LatestVersion))
-	stagedDir := filepath.Join(stagedRoot, "nova")
+	stagedDir := filepath.Join(stagedRoot, releasePackageRootName)
 	backupDir := filepath.Join(updateDir, "backup-"+time.Now().Format("20060102-150405"))
 	if err := validateReleasePackage(packageRoot, filepath.Base(s.executablePath), updaterExecutableName()); err != nil {
 		return InstallResult{}, err

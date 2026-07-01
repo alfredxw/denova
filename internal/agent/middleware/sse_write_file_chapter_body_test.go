@@ -5,7 +5,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"nova/internal/agent"
+	"denova/internal/agent"
 )
 
 func TestSSEWriteFileChapterBodyMiddlewareShowsOnlyPathForToolCall(t *testing.T) {

@@ -6,11 +6,17 @@ import (
 	"strings"
 )
 
+const (
+	updateDataDirName       = ".denova-updates"
+	legacyUpdateDataDirName = ".nova-updates"
+	releasePackageRootName  = "denova"
+)
+
 func updaterExecutableName() string {
 	if runtime.GOOS == "windows" {
-		return "nova-updater.exe"
+		return "denova-updater.exe"
 	}
-	return "nova-updater"
+	return "denova-updater"
 }
 
 func relaunchArgs(args []string, executable string) []string {
@@ -33,4 +39,12 @@ func isNoOpenArg(arg string) bool {
 
 func installUpdaterTarget(installDir, stagedUpdater string) string {
 	return filepath.Join(installDir, filepath.Base(stagedUpdater))
+}
+
+func updateDataDir(installDir string) string {
+	return filepath.Join(installDir, updateDataDirName)
+}
+
+func legacyUpdateDataDir(installDir string) string {
+	return filepath.Join(installDir, legacyUpdateDataDirName)
 }

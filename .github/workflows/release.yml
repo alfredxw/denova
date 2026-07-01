@@ -55,7 +55,7 @@ jobs:
         run: |
           if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
             gh release edit "${RELEASE_TAG}" --title "${RELEASE_TAG}" --notes-file dist/github-release/RELEASE_NOTES.md
-            gh release upload "${RELEASE_TAG}" dist/github-release/nova-* dist/github-release/checksums.txt --clobber
+            gh release upload "${RELEASE_TAG}" dist/github-release/denova-* dist/github-release/checksums.txt --clobber
           else
-            gh release create "${RELEASE_TAG}" dist/github-release/nova-* dist/github-release/checksums.txt --title "${RELEASE_TAG}" --notes-file dist/github-release/RELEASE_NOTES.md
+            gh release create "${RELEASE_TAG}" dist/github-release/denova-* dist/github-release/checksums.txt --title "${RELEASE_TAG}" --notes-file dist/github-release/RELEASE_NOTES.md
           fi

@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"nova/internal/book"
+	"denova/internal/book"
 )
 
 func TestVerifyPostRunMutationsAcceptsIllustrationMetaWrite(t *testing.T) {

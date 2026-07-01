@@ -11,9 +11,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"denova/internal/workspacepath"
 )
 
-const defaultCheckpointDirectory = ".nova/checkpoints"
+const defaultCheckpointDirectory = workspacepath.DataDirName + "/checkpoints"
 
 type checkpointRecord struct {
 	Key       string    `json:"key"`
@@ -41,7 +43,7 @@ func newCheckpointStore(workspace, agentKind string) interface {
 		agentKind = AgentKindUnknown
 	}
 	return &fileCheckpointStore{
-		dir: filepath.Join(workspace, filepath.FromSlash(defaultCheckpointDirectory), agentKind),
+		dir: workspacepath.Path(workspace, "checkpoints", agentKind),
 	}
 }
 

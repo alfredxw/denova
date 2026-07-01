@@ -81,7 +81,7 @@ function NovaBrandIcon() {
   return (
     <img
       src="/favicon.svg"
-      alt="Nova"
+      alt="Denova"
       className="h-6 w-6 shrink-0 rounded-[7px]"
       draggable={false}
     />
@@ -527,7 +527,7 @@ export function WorkbenchShell({
 
   const statusBar = (
     <div className="nova-statusbar nova-topbar flex h-6 shrink-0 items-center border-t px-3">
-      <span>Nova v{appVersion}</span>
+      <span>Denova v{appVersion}</span>
       {mode === 'ide' && summary && (
         <span className="ml-4">{t('workbench.status.summary', { title: summary.title || t('workbench.untitled'), chapters: formatNumber(summary.chapter_count), words: formatNumber(summary.total_words) })}</span>
       )}

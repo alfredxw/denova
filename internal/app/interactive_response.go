@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"nova/internal/interactive"
+	"denova/internal/interactive"
 )
 
 const (

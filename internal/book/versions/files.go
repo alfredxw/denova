@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"unicode/utf8"
+
+	"denova/internal/workspacepath"
 )
 
 func (s *Service) collectVisibleFiles() ([]versionFileData, error) {
@@ -97,8 +99,10 @@ func isTextBytes(data []byte) bool {
 func isVersionExcludedRelPath(relPath string) bool {
 	cleanRel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(relPath)))
 	return cleanRel == ".git" || strings.HasPrefix(cleanRel, ".git/") ||
-		cleanRel == ".nova/runs" || strings.HasPrefix(cleanRel, ".nova/runs/") ||
-		cleanRel == ".nova/interactive" || strings.HasPrefix(cleanRel, ".nova/interactive/")
+		cleanRel == workspacepath.CurrentRel("runs") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("runs")+"/") ||
+		cleanRel == workspacepath.LegacyRel("runs") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("runs")+"/") ||
+		cleanRel == workspacepath.CurrentRel("interactive") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("interactive")+"/") ||
+		cleanRel == workspacepath.LegacyRel("interactive") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("interactive")+"/")
 }
 
 func safeVisiblePath(workspace, relPath string) (string, error) {

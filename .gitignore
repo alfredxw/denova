@@ -8,6 +8,8 @@ log/
 .gocache-pr/
 .gomodcache/
 .npm-cache/
+denova-windows-test/
+denova-test.exe
 nova-windows-test/
 nova-test.exe
 data/
@@ -19,5 +21,6 @@ docs/
 .worktrees/
 .pnpm-store/
 .DS_Store
+.denova
 .nova
 prd

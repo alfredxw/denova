@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"nova/config"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/session"
 )
 
 const interactiveMemoryAgentMaxAttempts = 3

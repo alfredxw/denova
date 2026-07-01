@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"nova/config"
-	"nova/internal/book"
-	"nova/internal/prompts"
+	"denova/config"
+	"denova/internal/book"
+	"denova/internal/prompts"
 )
 
 func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {

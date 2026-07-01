@@ -9,7 +9,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 
-	"nova/internal/interactive"
+	"denova/internal/interactive"
 )
 
 func TestInteractiveMemoryToolsListReadAndRecordRecall(t *testing.T) {

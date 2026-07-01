@@ -8,9 +8,9 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"nova/internal/agent"
-	agentmiddleware "nova/internal/agent/middleware"
-	novaApp "nova/internal/app"
+	"denova/internal/agent"
+	agentmiddleware "denova/internal/agent/middleware"
+	novaApp "denova/internal/app"
 )
 
 type StreamOptions struct {

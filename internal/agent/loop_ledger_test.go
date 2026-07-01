@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"nova/internal/book"
+	"denova/internal/book"
 )
 
 func TestContextLedgerRecordsBoundedSources(t *testing.T) {
@@ -103,7 +103,7 @@ func TestPostRunVerifierChecksLoreWriteResult(t *testing.T) {
 
 func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	workspace := t.TempDir()
-	ledger, err := newRunLedgerWithOptions(workspace, RunLedgerPolicy{Enabled: true, Directory: ".nova/runs", PreviewChars: 8}, RunOptions{
+	ledger, err := newRunLedgerWithOptions(workspace, RunLedgerPolicy{Enabled: true, Directory: ".denova/runs", PreviewChars: 8}, RunOptions{
 		AgentKind: AgentKindIDE,
 		TaskID:    "task-1",
 		SessionID: "session-1",
@@ -168,7 +168,7 @@ func TestRunLedgerWritesBoundedJSONLTrace(t *testing.T) {
 	workspace := t.TempDir()
 	ledger, err := newRunLedger(workspace, RunLedgerPolicy{
 		Enabled:      true,
-		Directory:    ".nova/runs",
+		Directory:    ".denova/runs",
 		PreviewChars: 8,
 	})
 	if err != nil {
@@ -194,8 +194,8 @@ func TestRunLedgerWritesBoundedJSONLTrace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.HasPrefix(filepath.ToSlash(ledger.Path()), filepath.ToSlash(filepath.Join(workspace, ".nova/runs"))) {
-		t.Fatalf("ledger path should be under workspace .nova/runs: %s", ledger.Path())
+	if !strings.HasPrefix(filepath.ToSlash(ledger.Path()), filepath.ToSlash(filepath.Join(workspace, ".denova/runs"))) {
+		t.Fatalf("ledger path should be under workspace .denova/runs: %s", ledger.Path())
 	}
 	records := readRunLedgerRecords(t, ledger.Path())
 	if len(records) != 4 {
@@ -219,7 +219,7 @@ func TestRunLedgerSkipsTransportStreamEvents(t *testing.T) {
 	workspace := t.TempDir()
 	ledger, err := newRunLedger(workspace, RunLedgerPolicy{
 		Enabled:      true,
-		Directory:    ".nova/runs",
+		Directory:    ".denova/runs",
 		PreviewChars: 8,
 	})
 	if err != nil {

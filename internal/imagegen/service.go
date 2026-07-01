@@ -7,7 +7,7 @@ import (
 	"log"
 	"strings"
 
-	"nova/config"
+	"denova/config"
 )
 
 var (

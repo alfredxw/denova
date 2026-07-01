@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"nova/internal/session"
+	"denova/internal/session"
 )
 
 func TestInteractiveConversationToolResultFallsBackToNameWhenIDMissing(t *testing.T) {

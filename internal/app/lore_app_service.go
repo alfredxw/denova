@@ -1,6 +1,6 @@
 package app
 
-import "nova/internal/book"
+import "denova/internal/book"
 
 // LoreAppService 负责资料库 CRUD。
 type LoreAppService struct {

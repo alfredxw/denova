@@ -8,10 +8,10 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/book"
-	"nova/internal/prompts"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/book"
+	"denova/internal/prompts"
+	"denova/internal/session"
 )
 
 func TestInteractiveContextAnalysisLabelsDynamicContextAtFinalMessage(t *testing.T) {

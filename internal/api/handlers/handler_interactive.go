@@ -9,10 +9,10 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"nova/internal/api/sse"
-	novaApp "nova/internal/app"
-	"nova/internal/imagepreset"
-	"nova/internal/interactive"
+	"denova/internal/api/sse"
+	novaApp "denova/internal/app"
+	"denova/internal/imagepreset"
+	"denova/internal/interactive"
 )
 
 func (h *Handlers) HandleInteractiveStories(ctx context.Context, c *app.RequestContext) {

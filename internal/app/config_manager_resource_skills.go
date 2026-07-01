@@ -6,9 +6,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"nova/config"
-	"nova/internal/agent"
-	novaskills "nova/internal/skills"
+	"denova/config"
+	"denova/internal/agent"
+	novaskills "denova/internal/skills"
 )
 
 const (

@@ -84,6 +84,23 @@ describe('Textarea', () => {
     expect(textarea).not.toHaveAttribute('data-nova-multiline')
   })
 
+  it('can start at two rows and force multiline composer layout', () => {
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue({
+      lineHeight: '20px',
+      paddingTop: '8px',
+      paddingBottom: '8px',
+      borderTopWidth: '1px',
+      borderBottomWidth: '1px',
+      minHeight: '38px',
+    } as CSSStyleDeclaration)
+    render(<Textarea autoResize minRows={2} multilineMode="always" aria-label="prompt" />)
+    const textarea = screen.getByLabelText('prompt') as HTMLTextAreaElement
+
+    expect(textarea.style.height).toBe('58px')
+    expect(textarea.style.overflowY).toBe('hidden')
+    expect(textarea).toHaveAttribute('data-nova-multiline', 'true')
+  })
+
   it('enters multiline when text reaches the compact composer input width', () => {
     vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
       if (element instanceof HTMLElement && element.dataset.slot === 'agent-composer-layout') {

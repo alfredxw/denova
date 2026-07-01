@@ -187,7 +187,7 @@ const chat = {
   'chat.tokenUsage.calls.title': '多次调用',
   'chat.tokenUsage.calls.body': '一次模型调用基本对应 agentic loop 中一次 LLM 推理；这次调用可能请求多个工具，工具执行后通常触发下一次模型调用。',
   'chat.tokenUsage.timing.title': '时间含义',
-  'chat.tokenUsage.timing.body': '调用完成时间是 Nova 收到该次模型 usage 的时间；旧记录会回退到整轮记录时间。',
+  'chat.tokenUsage.timing.body': '调用完成时间是 Denova 收到该次模型 usage 的时间；旧记录会回退到整轮记录时间。',
   'chat.tokenUsage.cacheHit': '缓存命中',
   'chat.tokenUsage.totalTokens': '总 Token',
   'chat.tokenUsage.modelCalls': '模型调用',

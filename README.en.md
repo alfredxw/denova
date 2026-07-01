@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="./web/public/favicon.svg" alt="Nova icon" width="76" height="76">
+  <img src="./web/public/favicon.svg" alt="Denova icon" width="76" height="76">
 </p>
 
 <p align="center">
-  <strong>Nova is an AI-native creative workspace for storytellers: use Writing Mode for fiction creation, use Game Mode for interactive text adventures, and keep lore, presets, bounded context, versions, and automation in one durable workspace.</strong>
+  <strong>Denova is an AI creative platform for novel writing and story-driven games, powered by AI Agents, Skills, Subagent Workflows, Automations, image generation, and versioned project workspaces.</strong>
 </p>
 
 <p align="center">
@@ -18,90 +18,81 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.1.17</strong> (2026-06-27) · Beta
+  Current version: <strong>v0.1.18</strong> (2026-07-01) · Beta
 </p>
 
-![Nova Writing Mode](./img/ide.png)
+![Denova Writing Mode](./img/ide.png)
 
 <details>
 <summary>View more screenshots</summary>
 
-### Game Mode Workspace
+### Game Mode
 
-![Nova Game Mode Workspace](./img/interactive.png)
+![Denova Game Mode](./img/interactive.png)
 
-### Branch
+### Branches
 
-![Branch](./img/branch.png)
+![Branches](./img/branch.png)
 
 ### Lore Library
 
-![Nova Lore Library](./img/setting.png)
+![Denova Lore Library](./img/setting.png)
 
-### Presets Configuration
+### Presets
 
-![Nova Presets](./img/story-teller.png)
+![Denova Presets](./img/story-teller.png)
 
 </details>
 
-## Why Nova
+## Why Denova
 
-Nova is not a one-off "prompt in, passage out" generator. It is a full workspace for long-running fiction projects and interactive entertainment. Book files, Markdown editing, multiple tabs, global search, chapter statistics, structured lore, interactive stories, Agent tool calls, and local version management live in the same workspace, so fiction creation and interactive play can keep iterating on the same durable assets.
+Denova is built for long-running creative projects and interactive entertainment. It brings together a writing IDE, interactive stories, structured lore, Agent tool calls, image generation, automation, and local version management in one project workspace so the creative process can iterate, recover, and accumulate durable context.
 
-Beyond writing original stories, Nova can import existing novels as a starting point for fan fiction, adaptation, or continuation, and it can import AI tavern character cards to quickly create interactive presets. Model-visible context is built progressively with explicit sources and limits, keeping lore, file excerpts, tool results, and display history separate instead of blindly injecting the entire project into every turn.
+You can start from an original idea, import an existing novel for fan fiction, adaptation, or continuation, or import AI tavern character cards to quickly set up an interactive text adventure. Model-visible context is built with explicit sources, purposes, and size limits instead of blindly injecting the whole history, logs, or all settings into every turn.
 
-- **Writing Mode**: organize book files, outlines, chapter-group plans, progress, Markdown editing, multiple tabs, global search, and chapter statistics for fiction creation.
-- **Creative Agents**: read selections, read files, reference lore, call tools, and write initial chapter files under `chapters/`.
-- **Chapter illustrations**: Creative Agents can use the built-in `chapter-illustration` Skill to generate one non-spoiler illustration for the current or selected chapter, save it under `assets/illustrations/`, and let the author insert it manually into Markdown prose.
-- **Structured lore**: characters, worlds, locations, factions, rules, items, and other durable settings become searchable long-term lore.
-- **Progressive context**: model context is organized by source, purpose, and hard size limits instead of unbounded history, logs, or full settings.
-- **Game Mode**: run playable story branches, character actions, scene memory, and storyline changes for interactive text adventures.
-- **Custom story memory**: maintain scenes, storylines, and custom memory fields for interactive stories so long-running play keeps durable context.
-- **Memory Compact and cache optimization**: compact long histories and reuse stable context to improve cache hits and reduce token cost during ongoing creation.
-- **Version management**: go-git powered saves, diffs, restore, timed saves, and automatic saves for large Agent outputs.
-- **Writing Skills and Agents**: built-in Lite / Standard / Heavy Writing Skill presets with Lite as the default, plus custom skills, prompts, tool permissions, and prose styles for different Agents.
+## Core Features
+
+- **Writing Mode**: fiction-focused Markdown editing, multiple tabs, global search, chapter statistics, outlines, chapter-group plans, progress tracking, and existing novel import.
+- **Creative Agents**: read selections, files, and lore; call tools to generate or edit chapters; and use Skills / SubAgents for different writing tasks, prose styles, and workflows.
+- **Game Mode**: run interactive text adventures with player input, story branches, storyline switching, action suggestions, scene memory, and long-term story memory.
+- **Lore and presets**: maintain durable settings such as characters, worlds, locations, factions, rules, and items; reuse narrative presets and image presets across Writing Mode and Game Mode.
+- **Image creation**: generate chapter illustrations, interactive images, and book covers through OpenAI-compatible image model profiles, with previews and result management in the UI.
+- **Context management**: progressively assemble model context, compact long memories, improve cache reuse, and keep tool results bounded to reduce noise and token cost.
+- **Versions and restore**: save local versions, inspect diffs, restore history, and enable timed saves or automatic saves after large Agent outputs.
 - **Automation**: schedule tasks, reviews, auto-continuation, and custom Prompt workflows.
-- **Imports and presets**: import AI tavern character cards or existing novels for fan fiction, adaptation, or continuation.
-- **Product experience**: Chinese and English UI, light and dark themes, OpenAI-compatible model configuration, and Windows, macOS, and Linux support.
+- **Product experience**: Chinese and English UI, light and dark themes, OpenAI-compatible model setup, remote access, PWA phone usage, and Windows / macOS / Linux support.
 
-### Writing Mode and Game Mode
+## Writing Mode and Game Mode
 
-Nova has two parallel workspaces. Writing Mode is for fiction creation: outlines, chapter-group plans, chapter prose, writing progress, and state sync after finalizing chapters. Game Mode is for interactive text adventures: player input, story branches, scene memory, storyline switching, and a playable experience that can keep moving forward.
+Denova has two parallel workspaces. Writing Mode focuses on the fiction production line: ideas, settings, outlines, chapter plans, prose, and progress. Game Mode focuses on playable interactive narrative: player actions, story branches, scene memory, storylines, and choice-driven progression.
 
-The two modes only share durable creative assets such as lore, presets (narrative plans and image presets), model and Agent configuration, Skills, version management, and base workspace settings. Writing Mode state such as outlines, chapter-group plans, chapter progress, and `progress.md` does not automatically enter Game Mode; Game Mode also does not implicitly know where the novel is currently written to. If an interactive story should reference a passage or a writing milestone, first move stable setting into lore or explicitly reference it in the game input.
-
-The recommended path is to start from an idea or an import: settle top-level settings and creative rules, then build the outline and chapter-group plan in Writing Mode. During chapter work, use Agents to create initial chapter files under `chapters/`, then sync progress plus character state after the author confirms the chapter. For interactive text-adventure play, switch to Game Mode and create playable branches from shared lore and presets, then fold only truly stable setting back into lore and keep saving local versions.
+The two modes share durable creative assets such as lore, presets, model and Agent configuration, Skills, version management, and base settings. Writing progress and chapter plans do not automatically enter Game Mode. If an interactive story should reference a passage or current writing milestone, move stable information into lore first or reference it explicitly in the input.
 
 ## Community
 
-Nova is iterating quickly. Feedback and discussion are welcome; joining the group usually gets a faster response.
+Denova is iterating quickly. Feedback, bug reports, usage notes, and workflow discussions are welcome.
+
 <p align="center">
   <img src="./img/wechat.png" alt="WeChat group" width="240">
 </p>
 
 ## Quick Start
 
-### Option 1: Download a Release
+### Download a Release
 
 Download the archive for your platform from [GitHub Releases](https://github.com/alfredxw/denova/releases), extract it, and run:
 
 ```bash
-./nova
+./denova
 ```
 
-Start with a specific book workspace:
+Windows users should run `denova.exe`. On macOS, if the system blocks the app for security reasons, run:
 
 ```bash
-./nova --workspace /path/to/your-novel
+xattr -dr com.apple.quarantine denova
 ```
 
-Windows users should run `nova.exe`. On macOS, if the system blocks the app for security reasons, run:
-
-```bash
-xattr -dr com.apple.quarantine nova
-```
-
-### Option 2: Run from Source
+### Run from Source
 
 Requires Go 1.26+, Node.js 20+, and pnpm.
 
@@ -117,54 +108,11 @@ Default addresses:
 - Frontend: `http://localhost:5173`
 - Backend: `http://localhost:8080`
 
-## Self-Hosting & Remote Access (Mobile)
-
-You can deploy Nova on your own server and reach the frontend from a phone browser.
-
-### 1. Prepare the web assets
-
-Release archives already ship a built `web/` directory — place it next to the `nova` binary and it just works. When self-hosting from source, build the frontend first:
-
-```bash
-pnpm --dir web build      # output goes to web/dist
-```
-
-On startup the binary looks for the web root in order: the `NOVA_WEB_DIR` env var → a `web/` directory next to the executable → a `web/` directory in the current working directory. You can point at it explicitly with `NOVA_WEB_DIR=/path/to/web/dist`.
-
-### 2. Enable remote access
-
-In Nova's **Settings → Remote Access**, turn on "Allow LAN access" and set a username and password (the password is stored as a bcrypt hash). Once enabled:
-
-- The listen address switches from `127.0.0.1` to `0.0.0.0`, so LAN/internet devices can connect;
-- Every non-loopback request requires Basic auth (username + password); local requests are unaffected;
-- A phone browser shows a login overlay on first open; enter the credentials to continue.
-
-The backend port is `backend_port` in `config.toml` (default 8080). The startup console prints the LAN address, e.g. `http://192.168.x.x:8080`.
-
-### 3. Use it on a phone
-
-Open that address in a phone browser, sign in, and "Add to Home Screen" to launch Nova as a standalone app (no address bar, notch safe-area aware). Nova now ships a PWA manifest and app icons.
-
-### 4. HTTPS / public access (recommended)
-
-Plain HTTP over a LAN is fine for personal use; for public or domain access, put a reverse proxy (Caddy / Nginx) in front for HTTPS:
-
-- Basic-auth credentials should not travel in cleartext over the public internet;
-- Some browser Web APIs (e.g. clipboard write, Service Workers) require a secure context (HTTPS);
-- Keep the original paths when proxying — Nova falls back to the SPA shell for unknown frontend paths, so refreshing any page never 404s.
-- Note: each phone refresh of a deep link (triggering the SPA fallback) emits one Hertz `Cannot open file=...` ERROR log line; this is expected (the web server is healthy). If you alert on ERROR-level logs, filter on that string. Doing the fallback at the reverse proxy (e.g. Nginx `try_files`) avoids the log line entirely.
-
-Caddy example (automatic HTTPS):
-
-```
-nova.example.com {
-    reverse_proxy 127.0.0.1:8080
-}
-```
-
 ## Models and Configuration
 
-Nova uses an OpenAI-compatible API. You can configure it quickly with environment variables:
+Denova uses an OpenAI-compatible API. The recommended path is to configure language models, image models, Agent parameters, the default Writing Skill, editor options, Game Mode behavior, version management, language, theme, and fonts from Settings.
+
+For scripted startup or deployment, you can also override model configuration with environment variables:
 
 ```bash
 export OPENAI_API_KEY="your-api-key"
@@ -175,61 +123,44 @@ export OPENAI_IMAGE_BASE_URL="https://api.openai.com/v1"
 export OPENAI_IMAGE_MODEL="gpt-image-1"
 ```
 
-Common environment variables:
+Optional Denova startup environment variables:
 
 ```bash
-export NOVA_WORKSPACE="/path/to/your-novel"
-export NOVA_DIR="./.nova"
-export NOVA_SKILLS_DIR="./skills"
-export NOVA_WEB_DIR="./web"
-export NOVA_BACKEND_PORT="8080"
-export NOVA_FRONTEND_PORT="5173"
+export DENOVA_WORKSPACE="/path/to/your-workspace"
+export DENOVA_DIR="./.denova"
+export DENOVA_SKILLS_DIR="./skills"
+export DENOVA_WEB_DIR="./web"
+export DENOVA_BACKEND_PORT="8080"
+export DENOVA_FRONTEND_PORT="5173"
 ```
 
-You can also configure language models, image models, Agent parameters, the default Writing Skill (`writing_skill_default`, default `novel-lite`), editor options, Game Mode behavior, version management, and interface appearance (language, theme, fonts) from the UI settings page, which maps to `config.toml`. Image generation initially uses the standard OpenAI Images API, supports multiple `image_api_profiles`, and saves generated files to the current workspace under `assets/image/generated/`; image size is not configured in Settings, because the Agent chooses a supported 2K/3K/4K size when calling `generate_image`, and output format is limited to `png` or `jpeg`. Chapter illustrations reuse the same image model profiles: after a Creative Agent calls `generate_image`, Nova saves the image and `meta.json` under `assets/illustrations/`, shows a preview in the chat tool card, and waits for the author to insert the Markdown image manually. The Presets page manages image presets with three built-ins: `Game CG`, `Realistic`, and `2D Illustration`; both the Writing Agent input menu and the Game input menu can choose the active image preset, defaulting to `Game CG`. Image presets constrain image generation tool calls only and are not included in normal prose. Game Mode supports interactive images: manual by default, with an every-X-turn option in the side configuration opened from the input actions menu (default interval: 3 turns). Results are saved under `assets/interactive/images/` and shown as turn display events only; they are not written into story prose and are not included in the next model context. `theme` supports `dark` (default), `light`, and `system`, and can be saved at the user or workspace level. `NOVA_SKILLS_DIR` / `skills_dir` is the built-in read-only Skills root; custom Skills can be written from the UI to `<nova_dir>/skills` or `<workspace>/.nova/skills`. To customize a built-in preset Skill, do not edit the built-in directory; Nova creates a same-name user-level override at `<nova_dir>/skills/<skill-name>/SKILL.md` by default, falling back to a workspace override only when the user-level directory is not writable. The Skills page can also rename a Skill, move it between user/workspace storage, or delete an override to restore the built-in version. The Writing Agent no longer injects preset SKILL.md directly into model context; it only adds a dynamic turn hint naming the selected Writing Skill, and the model should call the `skill` tool to load that Skill when it decides the turn involves prose writing or continuation. The actual writing range always comes from the user's instruction and does not use a separate `writing_scope` field. Configuration precedence:
+Configuration precedence:
 
 ```text
 Built-in defaults < global config.toml < user-level config < workspace-level config < environment variables
 ```
 
-When Writing Mode generates chapters, you can avoid streaming large `write_file` chapter bodies into the live tool-call UI by enabling "Hide Chapter Body in Live Output" under Settings / Writing Mode / Live Output, or by adding this to `config.toml`:
+Legacy workspaces and environment variables are still read for compatibility; new configuration should use `.denova` / `DENOVA_*`.
 
-```toml
-hide_novel_chapter_body_in_live_output = true
+## Remote Access and Phone Usage
+
+Denova can run locally, on your LAN, or on a self-hosted server. Release archives already include frontend assets; when deploying from source, build the frontend first:
+
+```bash
+pnpm --dir web build
 ```
 
-This option is off by default. When enabled, it only changes live SSE presentation in Writing Mode: the UI shows the target path and generated character count using the same counting semantics as `wc -m`, chapter text is still written to files normally, and internal Agent events, tool execution, and session history are preserved.
+Enable **Settings → Remote Access → Allow LAN access**, then set a username and password. Other devices can open the access URL shown in Settings. After signing in from a phone browser, you can add Denova to the home screen and use it like a standalone app.
 
-## Book Workspace
+For public or domain access, use a reverse proxy such as Caddy / Nginx to provide HTTPS. This avoids sending credentials in cleartext and keeps browser features such as clipboard access and PWA behavior working reliably.
 
-After startup, if no book is specified or restored, the Web UI opens Book Management. One workspace maps to one book. Recommended structure:
+Caddy example:
 
 ```text
-my-novel/
-├── CREATOR.md
-├── ideas.md
-├── assets/
-│   └── illustrations/
-├── chapters/
-├── setting/
-│   ├── progress.md
-│   ├── character-states.md
-│   └── chapter-groups/
-└── .nova/
-    ├── image-presets/
-    ├── lore/
-    └── sessions/
+denova.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
 ```
-
-Common entry points:
-
-- **Writing**: edit chapters, maintain outlines and chapter-group plans, browse the file tree, search project files, and collaborate with the Writing Agent. Markdown chapters can request an illustration for the current chapter, preview it in the Agent tool card, and manually insert it into the manuscript. Writing progress is tracked in `setting/progress.md`, while current character location, injuries, mental state, goals, and similar state live in `setting/character-states.md`.
-- **Import Existing Novel**: upload a txt/md file from Book Management, preview the Tool Agent's chapter-splitting regex and chapter list, adjust sample size or the Go regexp when needed, then confirm before Nova creates the new book and writes `chapters/`.
-- **Game**: play through story branches, explore choices, switch storylines, and maintain scene memory.
-- **Lore Library**: maintain durable settings such as characters, worlds, locations, factions, rules, and items for both Writing Mode and Game Mode to reuse when needed.
-- **Presets**: manage narrative plans and image presets side by side. Narrative plans configure point of view, pacing, and style rules; image presets configure visual style for writing illustrations and interactive images.
-- **Version Management**: manually save versions, view history and diffs, restore previous versions, and enable timed or large-Agent-output automatic versions. Local creative state such as `.nova/lore` and `.nova/sessions` is versioned, and history comes directly from the workspace `.git`.
-- **Settings**: adjust models, editor behavior, Agent behavior, Game Mode parameters, appearance, and language.
 
 ## Development
 
@@ -239,10 +170,11 @@ Start both frontend and backend:
 ./bootstrap.sh
 ```
 
-Start frontend/backend separately:
+Start frontend or backend separately:
 
 ```bash
-./bootstrap.sh fe/be
+./bootstrap.sh fe
+./bootstrap.sh be
 ```
 
 Allow LAN devices to access the frontend dev server:
@@ -251,11 +183,10 @@ Allow LAN devices to access the frontend dev server:
 ./bootstrap.sh fe --lan
 ```
 
-You can also enable "Allow LAN Access" in Settings and restart Nova. Other devices should open the access URL shown in Settings; release builds default to `http://<LAN-IP>:8080`, while frontend dev mode usually uses `http://<LAN-IP>:5173`. Sign in on the page with the remote access username and password; the backend rejects unauthenticated remote requests.
-
-## Donate QR Codes
+## Donate QR Code
 
 > Buy the author a coffee and help cover the monthly AI iteration cost.
+
 <p align="center">
   <img src="./img/donate.png" alt="Donate" width="240">
 </p>

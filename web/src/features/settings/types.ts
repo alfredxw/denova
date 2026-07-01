@@ -252,6 +252,7 @@ export interface AgentPromptBlockSettings {
 }
 
 export interface SettingsPaths {
+  denova_dir: string
   nova_dir: string
   user_config: string
   workspace_config: string

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"nova/internal/imagepreset"
-	"nova/internal/interactive"
-	"nova/internal/interactiveimage"
+	"denova/internal/imagepreset"
+	"denova/internal/interactive"
+	"denova/internal/interactiveimage"
 )
 
 const (

@@ -187,7 +187,7 @@ const chat = {
   'chat.tokenUsage.calls.title': 'Multiple Calls',
   'chat.tokenUsage.calls.body': 'One model call roughly maps to one LLM inference in the agentic loop; it may request multiple tools, and tool results usually trigger the next model call.',
   'chat.tokenUsage.timing.title': 'Timing',
-  'chat.tokenUsage.timing.body': 'Call completion time is when Nova receives usage for that model call; older records fall back to the run record time.',
+  'chat.tokenUsage.timing.body': 'Call completion time is when Denova receives usage for that model call; older records fall back to the run record time.',
   'chat.tokenUsage.cacheHit': 'Cache Hit',
   'chat.tokenUsage.totalTokens': 'Total Tokens',
   'chat.tokenUsage.modelCalls': 'Model Calls',

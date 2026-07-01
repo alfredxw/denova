@@ -4,8 +4,9 @@ import { cn } from "@/lib/utils"
 
 type TextareaProps = React.ComponentProps<"textarea"> & {
   autoResize?: boolean
+  minRows?: number
   maxRows?: number
-  multilineMode?: "auto" | "sticky-until-empty"
+  multilineMode?: "auto" | "sticky-until-empty" | "always"
 }
 
 const DEFAULT_MAX_ROWS = 10
@@ -14,6 +15,7 @@ let textMeasureCanvas: HTMLCanvasElement | null = null
 function Textarea({
   className,
   autoResize = false,
+  minRows = 1,
   maxRows = DEFAULT_MAX_ROWS,
   multilineMode = "auto",
   onInput,
@@ -37,8 +39,11 @@ function Textarea({
     const borderBottom = parseCssPixels(computed.borderBottomWidth)
     const minHeight = parseCssPixels(computed.minHeight)
     const verticalChrome = paddingTop + paddingBottom + borderTop + borderBottom
+    const minRowCount = Math.max(1, minRows)
+    const maxRowCount = Math.max(minRowCount, maxRows)
     const oneRowHeight = Math.ceil(Math.max(lineHeight + verticalChrome, minHeight))
-    const cappedHeight = Math.ceil(maxRows * lineHeight + verticalChrome)
+    const minRowsHeight = Math.ceil(Math.max(minRowCount * lineHeight + verticalChrome, minHeight))
+    const cappedHeight = Math.ceil(maxRowCount * lineHeight + verticalChrome)
     const previousScrollTop = textarea.scrollTop
     const compactTextWidth = resolveCompactTextWidth(textarea, computed)
     if (!multilineRef.current || compactTextWidthRef.current <= 0) {
@@ -49,8 +54,8 @@ function Textarea({
     textarea.style.height = "auto"
 
     const hasValue = textarea.value.length > 0
-    const measuredHeight = hasValue ? textarea.scrollHeight : oneRowHeight
-    const nextHeight = Math.max(oneRowHeight, Math.min(measuredHeight, cappedHeight))
+    const measuredHeight = hasValue ? textarea.scrollHeight : minRowsHeight
+    const nextHeight = Math.max(minRowsHeight, Math.min(measuredHeight, cappedHeight))
     const overflows = hasValue && measuredHeight > cappedHeight
     const wrappedByHeight = measuredHeight > oneRowHeight
     const wrappedByWidth = textWidthLimit > 0 && measureLongestLineWidth(textarea.value, computed) > textWidthLimit
@@ -61,11 +66,13 @@ function Textarea({
     if (overflows) textarea.scrollTop = previousScrollTop
 
     setMultiline((current) => {
-      const next = hasValue && (multilineMode === "sticky-until-empty" && current ? true : wrapped)
+      const next = multilineMode === "always"
+        ? true
+        : hasValue && (multilineMode === "sticky-until-empty" && current ? true : wrapped)
       multilineRef.current = next
       return next
     })
-  }, [autoResize, maxRows, multilineMode])
+  }, [autoResize, minRows, maxRows, multilineMode])
 
   React.useLayoutEffect(() => {
     syncHeight()

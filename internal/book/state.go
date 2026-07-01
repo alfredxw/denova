@@ -9,7 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"nova/internal/prompts"
+	"denova/internal/prompts"
+	"denova/internal/workspacepath"
 )
 
 // State 管理作品状态文件和内部目录。
@@ -36,22 +37,22 @@ func (s *State) Workspace() string {
 	return s.workspace
 }
 
-// NovaDir 返回 .nova/ 目录路径（内部数据，用户不需要关注）。
+// NovaDir 返回工作区内部数据目录路径（用户不需要关注）。
 func (s *State) NovaDir() string {
-	return filepath.Join(s.workspace, ".nova")
+	return workspacepath.Dir(s.workspace)
 }
 
-// SessionDir 返回 .nova/sessions/ 目录路径（会话存储）。
+// SessionDir 返回内部 sessions/ 目录路径（会话存储）。
 func (s *State) SessionDir() string {
 	return filepath.Join(s.NovaDir(), "sessions")
 }
 
-// BackupDir 返回 .nova/backups/ 目录路径。
+// BackupDir 返回内部 backups/ 目录路径。
 func (s *State) BackupDir() string {
 	return filepath.Join(s.NovaDir(), "backups")
 }
 
-// LoreDir 返回 .nova/lore/ 目录路径（结构化资料库）。
+// LoreDir 返回内部 lore/ 目录路径（结构化资料库）。
 func (s *State) LoreDir() string {
 	return filepath.Join(s.NovaDir(), "lore")
 }
@@ -141,7 +142,7 @@ func (s *State) StableContextParts() []CompactContextPart {
 	if loreContext != "" {
 		parts = append(parts, CompactContextPart{
 			ID:      "lore",
-			Source:  ".nova/lore/items.json",
+			Source:  workspacepath.Rel(s.workspace, "lore", "items.json"),
 			Title:   "资料库",
 			Content: loreContext,
 		})

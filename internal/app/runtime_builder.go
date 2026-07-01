@@ -7,12 +7,12 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/book"
-	"nova/internal/interactive"
-	"nova/internal/prompts"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/book"
+	"denova/internal/interactive"
+	"denova/internal/prompts"
+	"denova/internal/session"
 )
 
 type runtimeState struct {

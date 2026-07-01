@@ -1,6 +1,6 @@
 ---
 name: teller-config
-description: Use when config_manager creates or updates Nova interactive teller/director configurations.
+description: Use when config_manager creates or updates Denova interactive teller/director configurations.
 agent: config_manager
 ---
 

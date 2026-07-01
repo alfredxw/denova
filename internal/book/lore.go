@@ -13,6 +13,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"denova/internal/workspacepath"
 )
 
 const loreItemsVersion = 1
@@ -614,7 +616,7 @@ func (s *LoreStore) save(collection LoreCollection) error {
 }
 
 func (s *LoreStore) itemsPath() string {
-	return filepath.Join(s.workspace, ".nova", "lore", "items.json")
+	return workspacepath.Path(s.workspace, "lore", "items.json")
 }
 
 func (s *LoreStore) hasItem(items []LoreItem, id string) bool {

@@ -1,10 +1,10 @@
-# Contributing to Nova
+# Contributing to Denova
 
-Thanks for helping improve Nova. This project is in beta, so contribution work should favor clear product improvements, simple implementation, and readable code over broad backwards compatibility.
+Thanks for helping improve Denova. This project is in beta, so contribution work should favor clear product improvements, simple implementation, and readable code over broad backwards compatibility.
 
 ## Setup
 
-Nova requires Go 1.26+, Node.js 20+, and pnpm.
+Denova requires Go 1.26+, Node.js 20+, and pnpm.
 
 ```bash
 corepack enable

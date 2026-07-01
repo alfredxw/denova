@@ -4,8 +4,8 @@ import (
 	"context"
 	"log"
 
-	"nova/config"
-	"nova/internal/agent"
+	"denova/config"
+	"denova/internal/agent"
 )
 
 // InferNovelSplitRegex runs the model-only Tool Agent for novel import chapter splitting.

@@ -33,8 +33,8 @@ type replaceEntry struct {
 	Optional bool
 }
 
-// RunUpdater applies a staged update and relaunches Nova. It is the entrypoint
-// used by cmd/nova-updater.
+// RunUpdater applies a staged update and relaunches Denova. It is the entrypoint
+// used by cmd/denova-updater.
 func RunUpdater(ctx context.Context, manifestPath string, options UpdaterOptions) error {
 	manifest, err := readManifest(manifestPath)
 	if err != nil {
@@ -61,7 +61,7 @@ func RunUpdater(ctx context.Context, manifestPath string, options UpdaterOptions
 		}
 		return err
 	}
-	logger.Printf("apply done, relaunching nova")
+	logger.Printf("apply done, relaunching denova")
 	return startRelaunch(manifest, options, logger)
 }
 
@@ -87,7 +87,7 @@ func updaterLogger(logPath string, extra io.Writer) (*log.Logger, func(), error)
 	if len(writers) == 0 {
 		writers = append(writers, os.Stdout)
 	}
-	return log.New(io.MultiWriter(writers...), "[nova-updater] ", log.LstdFlags), closeLog, nil
+	return log.New(io.MultiWriter(writers...), "[denova-updater] ", log.LstdFlags), closeLog, nil
 }
 
 func waitForProcessExit(ctx context.Context, pid int, options UpdaterOptions, logger *log.Logger) error {
@@ -110,9 +110,9 @@ func waitForProcessExit(ctx context.Context, pid int, options UpdaterOptions, lo
 	deadline := time.Now().Add(timeout)
 	for alive(pid) {
 		if time.Now().After(deadline) {
-			return fmt.Errorf("等待 Nova 退出超时 pid=%d", pid)
+			return fmt.Errorf("等待 Denova 退出超时 pid=%d", pid)
 		}
-		logger.Printf("waiting for nova exit pid=%d", pid)
+		logger.Printf("waiting for denova exit pid=%d", pid)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -266,7 +266,7 @@ func startRelaunch(manifest ApplyManifest, options UpdaterOptions, logger *log.L
 	if len(args) == 0 {
 		args = []string{manifest.TargetExecutable, "--no-open"}
 	}
-	logger.Printf("start nova executable=%s args=%d", manifest.TargetExecutable, len(args))
+	logger.Printf("start denova executable=%s args=%d", manifest.TargetExecutable, len(args))
 	return start(manifest.TargetExecutable, args, os.Environ())
 }
 

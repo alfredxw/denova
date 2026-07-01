@@ -6,11 +6,11 @@ import (
 	"log"
 	"strings"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/imagepreset"
-	"nova/internal/interactive"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/imagepreset"
+	"denova/internal/interactive"
+	"denova/internal/session"
 )
 
 // InteractiveAppService 负责互动故事、剧情分支、导演和互动 Agent 任务。

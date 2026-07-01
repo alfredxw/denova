@@ -12,6 +12,8 @@ import (
 
 	einoskill "github.com/cloudwego/eino/adk/middlewares/skill"
 	"gopkg.in/yaml.v3"
+
+	"denova/internal/workspacepath"
 )
 
 const (
@@ -78,7 +80,7 @@ type frontMatterFile struct {
 	Agent       string `yaml:"agent,omitempty"`
 }
 
-// NewDirectories returns the canonical skill search path for Nova.
+// NewDirectories returns the canonical skill search path for Denova.
 func NewDirectories(builtinDir, novaDir, workspace string) []Directory {
 	dirs := make([]Directory, 0, 3)
 	if path := normalizePath(builtinDir); path != "" {
@@ -87,7 +89,7 @@ func NewDirectories(builtinDir, novaDir, workspace string) []Directory {
 	if path := normalizePath(filepath.Join(novaDir, "skills")); novaDir != "" && path != "" {
 		dirs = append(dirs, Directory{Scope: ScopeUser, Path: path, Writable: true})
 	}
-	if path := normalizePath(filepath.Join(workspace, ".nova", "skills")); workspace != "" && path != "" {
+	if path := normalizePath(workspacepath.Path(workspace, "skills")); workspace != "" && path != "" {
 		dirs = append(dirs, Directory{Scope: ScopeWorkspace, Path: path, Writable: true})
 	}
 	return dirs

@@ -21,6 +21,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
@@ -562,8 +563,10 @@ export function InputArea({
             onKeyDown={handleKeyDown}
             placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
             disabled={disabled}
-            rows={1}
+            rows={2}
+            minRows={2}
             maxRows={isMobile ? 5 : 10}
+            multilineMode="always"
             inputMode="text"
             enterKeyHint="send"
             autoCapitalize="sentences"
@@ -572,24 +575,13 @@ export function InputArea({
         }
         toolbarStart={
           <>
-            <Button
-              type="button"
-              size="sm"
-              className={`h-8 gap-1.5 rounded-[10px] border px-2 text-[11px] ${planMode ? 'border-[var(--nova-accent)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}
-              disabled={disabled || !onTogglePlanMode}
-              onClick={onTogglePlanMode}
-              title={t('chat.plan.shiftTabHint')}
-            >
-              <ClipboardList className="h-3.5 w-3.5" />
-              {planMode ? t('chat.plan.short') : t('chat.plan.chatShort')}
-            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   type="button"
                   size="icon-sm"
                   className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                  disabled={!writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0 && !(agentKey && workspace)}
+                  disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0 && !(agentKey && workspace)}
                   aria-label={t('chat.input.actions')}
                   title={t('chat.input.actions')}
                 >
@@ -597,6 +589,22 @@ export function InputArea({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
+                {onTogglePlanMode ? (
+                  <>
+                    <DropdownMenuCheckboxItem
+                      checked={planMode}
+                      disabled={disabled}
+                      onCheckedChange={() => onTogglePlanMode()}
+                      className="cursor-pointer pr-16 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                      title={t('chat.plan.shiftTabHint')}
+                    >
+                      <ClipboardList className="h-3.5 w-3.5" />
+                      <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
+                      <span className="text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
+                    </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
+                  </>
+                ) : null}
                 {writingSkillControl}
                 <ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />
                 <DropdownMenuItem
@@ -618,6 +626,16 @@ export function InputArea({
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {planMode ? (
+              <span
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 border-l border-[var(--nova-border-soft)] pl-2 text-sm text-[var(--nova-text-muted)]"
+                aria-label={t('chat.plan.modeOn')}
+                title={t('chat.plan.shiftTabHint')}
+              >
+                <ClipboardList className="h-3.5 w-3.5" />
+                {t('chat.plan.short')}
+              </span>
+            ) : null}
             <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} />
           </>
         }

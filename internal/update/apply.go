@@ -18,8 +18,8 @@ type ApplyInvocation struct {
 	Env        []string
 }
 
-// ApplyScheduler starts nova-updater after the HTTP response has had time to
-// flush, then exits the current Nova process.
+// ApplyScheduler starts denova-updater after the HTTP response has had time to
+// flush, then exits the current Denova process.
 type ApplyScheduler struct {
 	Delay        time.Duration
 	ManifestPath string
@@ -91,8 +91,14 @@ func (s *Service) Apply(ctx context.Context) (ApplyResult, error) {
 	if s.executablePath == "" {
 		return ApplyResult{}, fmt.Errorf("无法定位当前可执行文件")
 	}
-	updateDir := filepath.Join(filepath.Dir(s.executablePath), ".nova-updates")
-	manifestPath, err := readPendingManifestRef(updateDir)
+	installDir := filepath.Dir(s.executablePath)
+	manifestPath, err := readPendingManifestRef(updateDataDir(installDir))
+	if err != nil {
+		if legacyPath, legacyErr := readPendingManifestRef(legacyUpdateDataDir(installDir)); legacyErr == nil {
+			manifestPath = legacyPath
+			err = nil
+		}
+	}
 	if err != nil {
 		return ApplyResult{}, err
 	}

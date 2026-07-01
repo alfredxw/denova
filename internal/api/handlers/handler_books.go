@@ -8,7 +8,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	novaApp "nova/internal/app"
+	novaApp "denova/internal/app"
 )
 
 // handleBooks GET /api/books — 返回当前 Nova 数据目录下实际存在的书籍工作目录。

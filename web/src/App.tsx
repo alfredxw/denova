@@ -156,6 +156,22 @@ function App() {
     removeTextSelection,
   } = useChat({ onAgentFileChange: handleAgentFileChange })
 
+  const notifyPlanModeEnabled = useCallback(() => {
+    toast.info(t('chat.plan.modeOn'), {
+      description: t('chat.plan.shiftTabHint'),
+    })
+  }, [t])
+
+  const handleChatPlanModeChange = useCallback((value: boolean) => {
+    if (value && !planMode) notifyPlanModeEnabled()
+    setPlanMode(value)
+  }, [notifyPlanModeEnabled, planMode, setPlanMode])
+
+  const handleChatPlanModeToggle = useCallback(() => {
+    if (!planMode) notifyPlanModeEnabled()
+    togglePlanMode()
+  }, [notifyPlanModeEnabled, planMode, togglePlanMode])
+
   const refreshLoreItems = useCallback(async () => {
     if (!workspace) {
       setLoreItems([])
@@ -226,7 +242,7 @@ function App() {
           setEditorAutoSaveEnabled(effective?.auto_save_enabled ?? AUTO_SAVE_ENABLED_FALLBACK)
           setEditorAutoSaveDelayMs(normalizeAutoSaveDelayMs(effective?.auto_save_interval_ms))
           setUpdateCheckEnabled(effective?.update_check_enabled !== false)
-          setNovaDir(data?.paths?.nova_dir || '')
+          setNovaDir(data?.paths?.denova_dir || data?.paths?.nova_dir || '')
           setConfiguredLocale(effective?.language)
           setTheme(normalizeAppTheme(effective?.theme))
           setMotionIntensity(normalizeMotionIntensity(effective?.motion_intensity))
@@ -742,8 +758,8 @@ function App() {
         onStyleSceneAdd={addStyleScene}
         onStyleSceneRemove={removeStyleScene}
         onTextSelectionRemove={removeTextSelection}
-        onChatPlanModeChange={setPlanMode}
-        onChatPlanModeToggle={togglePlanMode}
+        onChatPlanModeChange={handleChatPlanModeChange}
+        onChatPlanModeToggle={handleChatPlanModeToggle}
         onSubmitPlanQuestion={submitPlanQuestion}
         onApproveProposedPlan={approveProposedPlan}
         onExitChatPlanMode={exitPlanMode}

@@ -8,7 +8,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"nova/config"
+	"denova/config"
 )
 
 // handleSettingsGet GET /api/settings — 返回三层配置快照。

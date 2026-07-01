@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/automation"
-	"nova/internal/book"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/automation"
+	"denova/internal/book"
 )
 
 func TestAutomationCheckCreatesRetryableInboxWhenAutoRunCannotStart(t *testing.T) {

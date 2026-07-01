@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"nova/config"
+	"denova/config"
 )
 
 func TestAppSettingsReturnsLayered(t *testing.T) {
@@ -103,7 +103,7 @@ func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
 	if _, err := a.UpdateWorkspaceSettings(in); err != nil {
 		t.Fatal(err)
 	}
-	out, err := config.ReadSettingsFile(filepath.Join(ws, ".nova", "config.toml"))
+	out, err := config.ReadSettingsFile(config.WorkspaceConfigPath(ws))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestAppUpdateWorkspaceSettingsFiltersLLMInputLogSetting(t *testing.T) {
 	if _, err := a.UpdateWorkspaceSettings(config.Settings{LLMInputLogEnabled: &enabled}); err != nil {
 		t.Fatal(err)
 	}
-	out, err := config.ReadSettingsFile(filepath.Join(ws, ".nova", "config.toml"))
+	out, err := config.ReadSettingsFile(config.WorkspaceConfigPath(ws))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestAppUpdateWorkspaceSettingsRejectsStaleRevision(t *testing.T) {
 	}
 
 	time.Sleep(2 * time.Millisecond)
-	path := filepath.Join(ws, ".nova", "config.toml")
+	path := config.WorkspaceConfigPath(ws)
 	if err := config.WriteSettingsFile(path, config.Settings{OpenAIModel: "agent-model"}); err != nil {
 		t.Fatal(err)
 	}

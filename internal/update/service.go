@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"nova/internal/buildinfo"
+	"denova/internal/buildinfo"
 )
 
 const (
@@ -85,7 +85,7 @@ func (s *Service) latestRelease(ctx context.Context) (githubRelease, error) {
 		return githubRelease{}, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "nova-update-checker")
+	req.Header.Set("User-Agent", "denova-update-checker")
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
 		return githubRelease{}, fmt.Errorf("检查 GitHub Release 失败: %w", err)
@@ -128,7 +128,7 @@ func platformKey(goos, goarch string) string {
 func selectAsset(assets []githubAsset, platform string) *githubAsset {
 	for i := range assets {
 		name := strings.ToLower(assets[i].Name)
-		if strings.Contains(name, strings.ToLower(platform)) && strings.HasPrefix(name, "nova-") &&
+		if strings.Contains(name, strings.ToLower(platform)) && strings.HasPrefix(name, "denova-") &&
 			(strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".zip")) {
 			return &assets[i]
 		}

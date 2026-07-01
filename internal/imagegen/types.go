@@ -3,7 +3,7 @@ package imagegen
 import (
 	"context"
 
-	"nova/config"
+	"denova/config"
 )
 
 type GenerateRequest struct {

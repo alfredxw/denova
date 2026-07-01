@@ -8,8 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"nova/internal/agent"
-	"nova/internal/observability"
+	"denova/internal/agent"
+	"denova/internal/observability"
 )
 
 // TaskStatus 表示后台任务的执行状态。

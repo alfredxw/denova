@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"nova/config"
-	runtimeapp "nova/internal/app"
+	"denova/config"
+	runtimeapp "denova/internal/app"
 )
 
 func TestNewServerUsesLocalHostByDefault(t *testing.T) {

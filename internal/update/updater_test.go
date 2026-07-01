@@ -12,7 +12,7 @@ import (
 func TestRunUpdaterAppliesStagedPackageAndRelaunches(t *testing.T) {
 	installDir := t.TempDir()
 	sourceDir := filepath.Join(t.TempDir(), "nova")
-	backupDir := filepath.Join(installDir, ".nova-updates", "backup-test")
+	backupDir := filepath.Join(installDir, ".denova-updates", "backup-test")
 	targetExe := filepath.Join(installDir, "nova")
 	updaterName := updaterExecutableName()
 	stagedUpdater := filepath.Join(sourceDir, updaterName)
@@ -27,7 +27,7 @@ func TestRunUpdaterAppliesStagedPackageAndRelaunches(t *testing.T) {
 		UpdaterExecutable: stagedUpdater,
 		RelaunchArgs:      []string{targetExe, "--port", "8080", "--no-open"},
 		Version:           "0.2.0",
-		LogPath:           filepath.Join(installDir, ".nova-updates", "apply.log"),
+		LogPath:           filepath.Join(installDir, ".denova-updates", "apply.log"),
 	}
 	manifestPath := filepath.Join(t.TempDir(), manifestFileName)
 	if err := writeManifest(manifestPath, manifest); err != nil {
@@ -64,7 +64,7 @@ func TestRunUpdaterAppliesStagedPackageAndRelaunches(t *testing.T) {
 func TestRollbackUpdateRestoresBackups(t *testing.T) {
 	installDir := t.TempDir()
 	sourceDir := filepath.Join(t.TempDir(), "nova")
-	backupDir := filepath.Join(installDir, ".nova-updates", "backup-test")
+	backupDir := filepath.Join(installDir, ".denova-updates", "backup-test")
 	targetExe := filepath.Join(installDir, "nova")
 	updaterName := updaterExecutableName()
 	writeUpdateTestPackage(t, installDir, "new executable", "new updater", "new web", "new skill")

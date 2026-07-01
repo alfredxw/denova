@@ -10,7 +10,7 @@ import (
 	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
-	"nova/internal/restart"
+	"denova/internal/restart"
 )
 
 func TestHandleRestartSchedulesProcessReplacement(t *testing.T) {

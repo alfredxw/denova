@@ -14,9 +14,10 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"denova/internal/workspacepath"
 )
 
-const loreItemsFilePath = ".nova/lore/items.json"
 const tavernCardCoverPath = "assets/image/cover.png"
 const interactiveOpeningPresetPath = "setting/interactive-openings.json"
 
@@ -180,7 +181,7 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte, opts .
 	}
 	result := CharacterCardImportResult{
 		Name:                 card.Name,
-		TargetPath:           loreItemsFilePath,
+		TargetPath:           loreItemsRelPath(s.workspace),
 		EntryCount:           characterBookEntryCount(card.CharacterBook),
 		ItemCount:            len(itemIDs),
 		ItemIDs:              itemIDs,
@@ -715,4 +716,8 @@ func tavernBookEntryEnabled(entry tavernBookEntry) *bool {
 
 func loreEnabledPtr(enabled bool) *bool {
 	return &enabled
+}
+
+func loreItemsRelPath(workspace string) string {
+	return workspacepath.Rel(workspace, "lore", "items.json")
 }

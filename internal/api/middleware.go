@@ -10,9 +10,9 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"nova/config"
-	novaApp "nova/internal/app"
-	"nova/internal/i18n"
+	"denova/config"
+	novaApp "denova/internal/app"
+	"denova/internal/i18n"
 )
 
 // corsMiddleware 处理 CORS 跨域请求。
@@ -36,7 +36,7 @@ func corsMiddleware(ctx context.Context, c *app.RequestContext) {
 		c.Response.Header.Set("Access-Control-Allow-Origin", origin)
 	}
 	c.Response.Header.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, PUT, OPTIONS")
-	c.Response.Header.Set("Access-Control-Allow-Headers", "Content-Type, X-Nova-Locale, Authorization")
+	c.Response.Header.Set("Access-Control-Allow-Headers", "Content-Type, X-Denova-Locale, X-Nova-Locale, Authorization")
 
 	if string(c.Request.Method()) == "OPTIONS" {
 		c.AbortWithStatus(consts.StatusNoContent)
@@ -64,14 +64,21 @@ func remoteAccessMiddleware(application *novaApp.App) app.HandlerFunc {
 			return
 		}
 
-		c.Response.Header.Set("WWW-Authenticate", `Basic realm="Nova"`)
+		c.Response.Header.Set("WWW-Authenticate", `Basic realm="Denova"`)
 		abortWithLocalizedError(c, consts.StatusUnauthorized, "api.access.authRequired")
 	}
 }
 
 func abortWithLocalizedError(c *app.RequestContext, status int, key string) {
-	message := i18n.FromHeader(string(c.Request.Header.Peek("X-Nova-Locale"))).T(key)
+	message := i18n.FromHeader(localeHeader(c)).T(key)
 	c.AbortWithStatusJSON(status, map[string]string{"error": message})
+}
+
+func localeHeader(c *app.RequestContext) string {
+	if header := strings.TrimSpace(string(c.Request.Header.Peek("X-Denova-Locale"))); header != "" {
+		return header
+	}
+	return strings.TrimSpace(string(c.Request.Header.Peek("X-Nova-Locale")))
 }
 
 func remoteAccessAuthorized(access config.RemoteAccessConfig, header string) bool {

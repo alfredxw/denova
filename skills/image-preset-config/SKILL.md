@@ -1,6 +1,6 @@
 ---
 name: image-preset-config
-description: Use when config_manager creates or updates Nova image preset configurations.
+description: Use when config_manager creates or updates Denova image preset configurations.
 agent: config_manager
 ---
 

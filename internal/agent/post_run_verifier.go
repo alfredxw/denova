@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"nova/internal/book"
+	"denova/internal/book"
 )
 
 type PostRunVerification struct {

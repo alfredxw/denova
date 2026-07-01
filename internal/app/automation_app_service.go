@@ -10,11 +10,11 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/automation"
-	"nova/internal/book"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/automation"
+	"denova/internal/book"
+	"denova/internal/session"
 )
 
 type AutomationAppService struct {
@@ -854,7 +854,7 @@ func eventMessage(data interface{}) string {
 
 func (s *AutomationAppService) buildAutomationUserMessage(task automation.Task, run automation.RunRecord, writeMode, writeScope string) string {
 	var sb strings.Builder
-	sb.WriteString("执行 Nova 自动化任务。\n\n")
+	sb.WriteString("执行 Denova 自动化任务。\n\n")
 	sb.WriteString(fmt.Sprintf("任务名称：%s\n", task.Name))
 	sb.WriteString(fmt.Sprintf("触发来源：%s\n", run.Trigger))
 	sb.WriteString(fmt.Sprintf("执行模式：%s\n", writeMode))

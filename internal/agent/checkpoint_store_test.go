@@ -25,7 +25,7 @@ func TestFileCheckpointStorePersistsValuesByHashedKey(t *testing.T) {
 		t.Fatalf("checkpoint got ok=%v value=%q", ok, got)
 	}
 
-	files, err := os.ReadDir(filepath.Join(workspace, ".nova/checkpoints/ide"))
+	files, err := os.ReadDir(filepath.Join(workspace, ".denova/checkpoints/ide"))
 	if err != nil {
 		t.Fatal(err)
 	}

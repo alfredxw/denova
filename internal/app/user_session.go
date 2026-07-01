@@ -3,8 +3,8 @@ package app
 import (
 	"strings"
 
-	"nova/config"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/session"
 )
 
 const defaultUserSessionID = "default"

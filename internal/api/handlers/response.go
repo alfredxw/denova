@@ -6,7 +6,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"nova/internal/i18n"
+	"denova/internal/i18n"
 )
 
 // writeJSON 写入 JSON 响应。
@@ -20,15 +20,22 @@ func writeError(c *app.RequestContext, code int, msg string) {
 }
 
 func requestLocalizer(c *app.RequestContext) i18n.Localizer {
-	return i18n.FromHeader(string(c.Request.Header.Peek("X-Nova-Locale")))
+	return i18n.FromHeader(requestLocaleHeader(c))
 }
 
 func requestLocale(c *app.RequestContext) string {
-	header := strings.TrimSpace(string(c.Request.Header.Peek("X-Nova-Locale")))
+	header := requestLocaleHeader(c)
 	if header == "" {
 		return ""
 	}
 	return i18n.FromHeader(header).Locale()
+}
+
+func requestLocaleHeader(c *app.RequestContext) string {
+	if header := strings.TrimSpace(string(c.Request.Header.Peek("X-Denova-Locale"))); header != "" {
+		return header
+	}
+	return strings.TrimSpace(string(c.Request.Header.Peek("X-Nova-Locale")))
 }
 
 func writeErrorKey(c *app.RequestContext, code int, key string, args ...any) {

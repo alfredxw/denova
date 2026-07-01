@@ -11,7 +11,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
+	"denova/config"
 )
 
 // TestHandleUnknownTool 验证 LLM 幻觉调用不存在工具时，处理器返回引导性

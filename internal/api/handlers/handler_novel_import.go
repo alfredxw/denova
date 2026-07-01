@@ -13,8 +13,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"nova/config"
-	"nova/internal/book"
+	"denova/config"
+	"denova/internal/book"
 )
 
 // MaxNovelImportUploadBytes limits txt/md novel imports.

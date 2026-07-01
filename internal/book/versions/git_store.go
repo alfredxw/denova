@@ -50,8 +50,8 @@ func (s *Service) commitWorkspaceSnapshot(repo *git.Repository, files []versionF
 	return worktree.Commit(formatCommitMessage(message, source), &git.CommitOptions{
 		AllowEmptyCommits: true,
 		Author: &object.Signature{
-			Name:  "Nova",
-			Email: "nova@local",
+			Name:  "Denova",
+			Email: "denova@local",
 			When:  now,
 		},
 	})

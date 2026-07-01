@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"nova/config"
-	"nova/internal/book"
-	"nova/internal/bookcover"
-	"nova/internal/imagepreset"
+	"denova/config"
+	"denova/internal/book"
+	"denova/internal/bookcover"
+	"denova/internal/imagepreset"
 )
 
 type BookCoverGenerateRequest struct {

@@ -24,10 +24,10 @@ type RunLedgerPolicy struct {
 const (
 	defaultContextLedgerPreviewChars = 100
 	defaultRunLedgerPreviewChars     = 200
-	defaultRunLedgerDirectory        = ".nova/runs"
+	defaultRunLedgerDirectory        = ".denova/runs"
 )
 
-// DefaultLoopPolicy returns Nova's default loop observability policy.
+// DefaultLoopPolicy returns Denova's default loop observability policy.
 func DefaultLoopPolicy() LoopPolicy {
 	return LoopPolicy{
 		ContextLedger: ContextLedgerPolicy{

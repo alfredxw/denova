@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"nova/internal/session"
+	"denova/internal/session"
 )
 
 func TestDisplayRecorderKeepsWriteFileContentArgs(t *testing.T) {

@@ -1,10 +1,10 @@
-// Package webfs optionally embeds the built frontend so the Nova binary can
+// Package webfs optionally embeds the built frontend so the Denova binary can
 // serve it without a web/ directory on disk.
 //
 // Build with the "embedweb" tag (after the frontend has been built and copied
 // to ./dist, which build.sh does) to embed the assets:
 //
-//	pnpm --dir web build && cp -r web/dist internal/webfs/dist && go build -tags embedweb ./cmd/nova
+//	pnpm --dir web build && cp -r web/dist internal/webfs/dist && go build -tags embedweb ./cmd/denova
 //
 // Without the tag (the default, e.g. for development), no assets are embedded
 // and the app serves the frontend from an on-disk web directory as before.
@@ -26,7 +26,7 @@ func ExtractEmbedded() (string, error) {
 	if !hasEmbedded {
 		return "", nil
 	}
-	root, err := os.MkdirTemp("", "nova-web-*")
+	root, err := os.MkdirTemp("", "denova-web-*")
 	if err != nil {
 		return "", err
 	}

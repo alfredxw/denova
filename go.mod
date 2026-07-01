@@ -1,4 +1,4 @@
-module nova
+module denova
 
 go 1.26.1
 

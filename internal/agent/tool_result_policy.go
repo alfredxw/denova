@@ -204,7 +204,7 @@ func toolIdempotencyKey(toolName, args string) string {
 
 func formatToolResultMetadata(manifest ToolManifest, originalBytes, returnedBodyBytes int, truncated bool, target, idempotencyKey string) string {
 	fields := []string{
-		"[Nova tool result metadata]",
+		"[Denova tool result metadata]",
 		"schema: tool_result.v1",
 		"source: " + string(manifest.Source),
 		fmt.Sprintf("mutates_workspace: %t", manifest.MutatesWorkspace),

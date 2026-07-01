@@ -1,6 +1,6 @@
 ---
 name: agent-config
-description: Use when config_manager creates or updates Nova Agent page settings through agent config tools.
+description: Use when config_manager creates or updates Denova Agent page settings through agent config tools.
 agent: config_manager
 ---
 
@@ -35,7 +35,7 @@ Use this skill before calling `write_agent_configs`.
 - `agent_config_read` and `agent_config_write` are only meaningful for the Config Manager Agent and its configured SubAgents.
 - A SubAgent cannot gain tools disabled on its parent Agent. Tool settings are upper bounds, not grants beyond the parent.
 - `model.profile_id` must reference an existing model profile or be empty to inherit. This skill does not create model profiles.
-- `prompt.flow_prompt` changes Nova flow rules for an Agent. `prompt.system_prompt` adds user custom rules. Neither can override runtime contracts, output protocols, tool permissions, or backend validation.
+- `prompt.flow_prompt` changes Denova flow rules for an Agent. `prompt.system_prompt` adds user custom rules. Neither can override runtime contracts, output protocols, tool permissions, or backend validation.
 - Context compaction fields are ratios, not percentages: use `0.9` for 90%.
 
 ## Safe Defaults

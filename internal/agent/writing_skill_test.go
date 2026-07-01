@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"nova/config"
+	"denova/config"
 )
 
 func TestResolveWritingSkillNameDefaultsAndSelection(t *testing.T) {

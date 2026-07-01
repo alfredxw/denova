@@ -1,13 +1,14 @@
-# Nova 配置文件模板
+# Denova 配置文件模板
 # 三层加载优先级（低 → 高）：
 #   1. 内置默认值
-#   2. 全局启动配置：项目根或可执行文件旁 config.toml（用于 nova_dir 等启动级参数）
-#   3. 用户级：<nova_dir>/config.toml
-#   4. 工作区级：<workspace>/.nova/config.toml
+#   2. 全局启动配置：项目根或可执行文件旁 config.toml（用于 denova_dir 等启动级参数）
+#   3. 用户级：<denova_dir>/config.toml
+#   4. 工作区级：<workspace>/.denova/config.toml；旧 <workspace>/.nova/config.toml 会兼容读取
 # 环境变量（OPENAI_API_KEY、OPENAI_MODEL 等）始终最高优先级，仅运行时覆盖，不写盘。
 #
 # 字段留空表示继承上层。
-# nova_dir 仅在全局启动配置或 NOVA_DIR 环境变量中生效；用户级/工作区级会忽略并过滤该字段。
+# denova_dir 仅在全局启动配置或 DENOVA_DIR 环境变量中生效；用户级/工作区级会忽略并过滤该字段。
+# nova_dir / NOVA_DIR 为旧字段兼容，新配置请使用 denova_dir / DENOVA_DIR。
 
 # 语言模型。默认模型也放在 model_profiles 列表里，id 固定为 default，name 可作为显示别名。
 # 不配置 temperature 时使用平台/模型默认值。
@@ -50,7 +51,7 @@ default_quality = "auto"
 default_output_format = "png"
 #
 # 可选：为不同 Agent 叠加自定义 system prompt。
-# 自定义提示在行为、创作偏好、策略和风格上优先于 Nova 内置提示，
+# 自定义提示在行为、创作偏好、策略和风格上优先于 Denova 内置提示，
 # 但不会覆盖工具权限、输出协议、互动禁写文件、结构化 JSON 要求和后端校验边界。
 #
 # [agent_prompts.ide]
@@ -153,9 +154,10 @@ system_prompt = '''
 
 # 路径
 # skills_dir 是启动时加载的内置/只读 Skills 根目录。
-# 用户自定义 Skills 由界面写入 <nova_dir>/skills 或 <workspace>/.nova/skills。
+# 用户自定义 Skills 由界面写入 <denova_dir>/skills 或 <workspace>/.denova/skills；旧工作区已有 .nova 时会沿用旧目录。
 skills_dir = "./skills"
-nova_dir = "./.nova"
+denova_dir = "./.denova"
+# nova_dir = "./.nova"
 
 # 修改端口号
 backend_port = 8080

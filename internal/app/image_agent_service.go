@@ -9,11 +9,11 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/book"
-	"nova/internal/interactiveimage"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/book"
+	"denova/internal/interactiveimage"
+	"denova/internal/session"
 )
 
 type ImageAgentGenerateRequest struct {

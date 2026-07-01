@@ -3,8 +3,8 @@ package app
 import (
 	"testing"
 
-	"nova/config"
-	"nova/internal/agent"
+	"denova/config"
+	"denova/internal/agent"
 )
 
 func TestApplyWritingSkillRuntimePolicyResolvesDefaultNameOnly(t *testing.T) {

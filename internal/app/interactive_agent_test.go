@@ -9,10 +9,10 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/book"
-	"nova/internal/interactive"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/book"
+	"denova/internal/interactive"
+	"denova/internal/session"
 )
 
 func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *testing.T) {
@@ -441,7 +441,7 @@ func TestInteractiveStateInstructionUsesModelVisibleCompactedHistory(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(instruction, "[Nova Context Compaction]") || !strings.Contains(instruction, "压缩摘要：主角已进入旧城。") {
+	if !strings.Contains(instruction, "[Denova Context Compaction]") || !strings.Contains(instruction, "压缩摘要：主角已进入旧城。") {
 		t.Fatalf("state instruction should include active compaction summary: %s", instruction)
 	}
 	if strings.Contains(instruction, "第1次行动") || strings.Contains(instruction, "第9次行动") {
@@ -467,7 +467,7 @@ func TestHotChoicesTurnHistoryUsesModelVisibleCompactedHistory(t *testing.T) {
 	}
 	turnMemory := buildInteractiveModelVisibleTurnMemory(turns, compaction)
 	history := formatHotChoicesTurnHistory(turnMemory, compaction)
-	if !strings.Contains(history, "[Nova Context Compaction] epoch=2") || !strings.Contains(history, "压缩摘要：主角已进入旧城。") {
+	if !strings.Contains(history, "[Denova Context Compaction] epoch=2") || !strings.Contains(history, "压缩摘要：主角已进入旧城。") {
 		t.Fatalf("hot choices history should include active compaction summary: %s", history)
 	}
 	if strings.Contains(history, "第1次行动") || strings.Contains(history, "第9次行动") {

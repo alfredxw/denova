@@ -452,6 +452,7 @@ describe('AgentsView', () => {
     const user = userEvent.setup()
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
       paths: {
+        denova_dir: '/denova',
         nova_dir: '/nova',
         user_config: '/nova/config.toml',
         workspace_config: '/books/demo/.nova/config.toml',
@@ -489,6 +490,7 @@ function settingsSnapshot(patch: Partial<LayeredSettings>): LayeredSettings {
     workspace: {},
     effective: {},
     paths: {
+      denova_dir: '/denova',
       nova_dir: '/nova',
       user_config: '/nova/config.toml',
       workspace_config: '/books/demo/.nova/config.toml',

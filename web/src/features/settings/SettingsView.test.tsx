@@ -66,7 +66,7 @@ describe('UpdatePanel', () => {
       />,
     )
 
-    expect(screen.getByText('更新已暂存。点击“重启并安装”后，Nova 会退出、替换文件并自动启动新版本。')).toBeInTheDocument()
+    expect(screen.getByText('更新已暂存。点击“重启并安装”后，Denova 会退出、替换文件并自动启动新版本。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '安装更新' })).toBeDisabled()
     const applyButton = screen.getByRole('button', { name: '重启并安装' })
     expect(applyButton).toBeEnabled()
@@ -74,7 +74,7 @@ describe('UpdatePanel', () => {
     expect(onApply).toHaveBeenCalledTimes(1)
   })
 
-  it('locks update actions while Nova is restarting to apply the update', () => {
+  it('locks update actions while Denova is restarting to apply the update', () => {
     render(
       <UpdatePanel
         status={updateStatus()}
@@ -91,7 +91,7 @@ describe('UpdatePanel', () => {
       />,
     )
 
-    expect(screen.getByText('Nova 正在重启并应用更新。')).toBeInTheDocument()
+    expect(screen.getByText('Denova 正在重启并应用更新。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '检查更新' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '重启并安装' })).toBeDisabled()
   })
@@ -161,6 +161,7 @@ function layeredSettings({ devMode }: { devMode: boolean }): LayeredSettings {
     workspace: {},
     effective: settings,
     paths: {
+      denova_dir: '/tmp/denova',
       nova_dir: '/tmp/nova',
       user_config: '/tmp/nova/config.toml',
       workspace_config: '/tmp/book/.nova/config.toml',

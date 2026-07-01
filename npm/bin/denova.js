@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const binaryName = process.platform === "win32" ? "nova.exe" : "nova";
+const binaryName = process.platform === "win32" ? "denova.exe" : "denova";
 const binaryPath = join(packageRoot, "vendor", platformKey(), binaryName);
 
 try {
@@ -18,17 +18,18 @@ try {
 }
 
 const args = process.argv.slice(2);
-if (process.env.NOVA_BACKEND_PORT && !hasFlag(args, "port")) {
-  args.push("--port", process.env.NOVA_BACKEND_PORT);
+const backendPort = process.env.DENOVA_BACKEND_PORT || process.env.NOVA_BACKEND_PORT;
+if (backendPort && !hasFlag(args, "port")) {
+  args.push("--port", backendPort);
 }
 
 const child = spawn(binaryPath, args, {
   stdio: "inherit",
   env: {
     ...process.env,
-    NOVA_DIR: process.env.NOVA_DIR || resolve(process.cwd(), ".nova"),
-    NOVA_WEB_DIR: process.env.NOVA_WEB_DIR || join(packageRoot, "web"),
-    NOVA_SKILLS_DIR: process.env.NOVA_SKILLS_DIR || join(packageRoot, "skills"),
+    DENOVA_DIR: process.env.DENOVA_DIR || process.env.NOVA_DIR || resolve(process.cwd(), ".denova"),
+    DENOVA_WEB_DIR: process.env.DENOVA_WEB_DIR || process.env.NOVA_WEB_DIR || join(packageRoot, "web"),
+    DENOVA_SKILLS_DIR: process.env.DENOVA_SKILLS_DIR || process.env.NOVA_SKILLS_DIR || join(packageRoot, "skills"),
   },
 });
 
@@ -41,7 +42,7 @@ child.on("exit", (code, signal) => {
 });
 
 child.on("error", (err) => {
-  console.error(`启动 Nova 失败: ${err.message}`);
+  console.error(`启动 Denova 失败: ${err.message}`);
   process.exit(1);
 });
 

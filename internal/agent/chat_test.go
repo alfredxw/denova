@@ -8,8 +8,8 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/internal/book"
-	"nova/internal/session"
+	"denova/internal/book"
+	"denova/internal/session"
 )
 
 func TestMergeToolCalls(t *testing.T) {

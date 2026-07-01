@@ -9,11 +9,11 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/book"
-	"nova/internal/interactive"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/book"
+	"denova/internal/interactive"
+	"denova/internal/session"
 )
 
 // WorkspaceRuntimeManager 负责工作区运行时、书籍元信息、本地版本服务与设置等跨领域基础能力。
@@ -661,7 +661,7 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	cfg.AgentContexts = config.MergeAgentContextSettings(cfg.AgentContexts, settings.AgentContexts)
 	cfg.GeneralSubAgents = config.MergeAgentGeneralSubAgentSettings(cfg.GeneralSubAgents, settings.GeneralSubAgents)
 	cfg.SubAgents = config.MergeSubAgents(cfg.SubAgents, settings.SubAgents)
-	if settings.SkillsDir != "" && os.Getenv("NOVA_SKILLS_DIR") == "" {
+	if settings.SkillsDir != "" && os.Getenv("DENOVA_SKILLS_DIR") == "" && os.Getenv("NOVA_SKILLS_DIR") == "" {
 		cfg.SkillsDir = settings.SkillsDir
 	}
 	if settings.AllowLANAccess != nil {

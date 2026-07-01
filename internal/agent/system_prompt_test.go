@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"nova/config"
+	"denova/config"
 )
 
 func TestProtectedSystemInstructionOrdersContractUserAndBuiltIn(t *testing.T) {
@@ -15,7 +15,7 @@ func TestProtectedSystemInstructionOrdersContractUserAndBuiltIn(t *testing.T) {
 	}
 	instruction := protectedSystemInstruction(cfg, config.AgentKindIDE, "BUILT IN PROMPT")
 
-	contractIndex := strings.Index(instruction, "Nova 运行时契约")
+	contractIndex := strings.Index(instruction, "Denova 运行时契约")
 	flowIndex := strings.Index(instruction, "USER FLOW PROMPT")
 	userIndex := strings.Index(instruction, "USER CUSTOM PROMPT")
 	builtInIndex := strings.Index(instruction, "BUILT IN PROMPT")

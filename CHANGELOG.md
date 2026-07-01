@@ -6,15 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v0.1.18] - 2026-07-01
+
+### Brief / 简要说明
+
+- 中文：本版本完成 Denova 品牌与分发命名切换，新增新用户引导、消息中心、PWA/移动端主屏体验、可内嵌前端的单文件自托管能力，并大幅补齐移动端写作与游戏模式的输入、弹窗、文件操作、故事记忆和分支导航体验。图像方案、书籍封面生成、互动图像回写、Plan Mode 展示、章节正文隐藏输出和资源保存冲突保护也更稳定。兼容性提示：Release 包不再提供 `nova` / `nova.exe` / `nova-updater` 别名，新安装请直接运行 `denova` / `denova.exe`。
+- English: This release completes the Denova branding and distribution rename, adds onboarding, a message center, PWA/mobile home-screen support, and a self-hosting path where the backend can embed the web app. It also improves mobile Writing and Game Mode input, dialogs, file actions, story memory, and branch navigation. Image presets, cover generation, interactive image writes, Plan Mode rendering, hidden chapter-body streaming, and resource conflict protection are more reliable. Compatibility note: release packages no longer include `nova`, `nova.exe`, or `nova-updater` aliases; new installs should run `denova` / `denova.exe` directly.
+
 ### Added
 
 - 游戏模式：剧情页新增宽屏轮次导航，左侧横杠可快速定位每个对话轮次，悬停/聚焦时展示用户输入与 Agent 剧情正文预览；窄屏或舞台空间不足时自动隐藏。
 - WebUI：新增新用户引导，按“配置语言模型 API Key → 新建书籍 → 创作 Agent 预填第一章开头 → 一级模块导览”串联主流程；支持一键跳过、设置页重新打开，状态仅保存在浏览器本地，不写入用户或工作区配置。
-- WebUI：新增全局消息中心，顶部栏铃铛入口可查看 Nova 更新日志；打开某条消息会自动标记为已读，也可一键全部已读。已读状态保存到用户级 Nova 数据目录，不写入作品 workspace。
+- WebUI：新增全局消息中心，顶部栏铃铛入口可查看 Denova 更新日志；打开某条消息会自动标记为已读，也可一键全部已读。已读状态保存到用户级 Denova 数据目录，不写入作品 workspace。
 - 游戏模式：行动选项默认会在故事输出结束后后台自动生成，用户点击输入框右侧“选择”后再展开；输入框左侧菜单保留“自动生成 / 手动生成”切换。
 - WebUI：新增 PWA manifest、应用图标（apple-touch-icon / 192 / 512 / maskable）与移动端 viewport meta（`viewport-fit=cover`、`theme-color`、`apple-mobile-web-app-capable` 等）。自托管后可在手机主屏“添加到桌面”以独立应用形态打开，并正确延伸到刘海安全区；图标由 `pnpm generate-icons`（sharp）从 `favicon.svg` 复现式生成。
 - 后端：静态资源服务对未知前端路径做 SPA 回退（返回 `index.html`）。手机刷新任意页面或深链打开不再返回 Hertz 默认 404；`/api/*` 路由不受影响。
-- 后端：Nova 二进制现在可内嵌前端（构建标签 `embedweb`），裸二进制无需磁盘 `web/` 目录即可提供前端服务，适合 `go install` / 单文件分发 / 最小化自托管。默认构建行为不变；release 仍附带 `web/` 作为磁盘快速路径与 updater 兼容，内嵌为独立运行的兜底。
+- 后端：Denova 二进制现在可内嵌前端（构建标签 `embedweb`），裸二进制无需磁盘 `web/` 目录即可提供前端服务，适合 `go install` / 单文件分发 / 最小化自托管。默认构建行为不变；release 仍附带 `web/` 作为磁盘快速路径与 updater 兼容，内嵌为独立运行的兜底。
 - 文档：README（中/英）新增「自托管与远程访问（手机访问）」章节，覆盖构建前端、开启远程访问、手机使用与 HTTPS 反向代理。
 
 ### Fixed
@@ -41,6 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 项目改名：应用名、Go module、命令目录、前端标题、PWA manifest、README、配置模板、内置 Agent 提示、npm 包名和 GitHub Release 产物统一从 Nova/nova 切换为 Denova/denova。新工作区与新配置默认使用 `.denova` / `DENOVA_*`；已有 `.nova` 工作区与 `NOVA_*` 环境变量继续兼容读取。GitHub Release 包不再附带 `nova`、`nova.exe` 或 `nova-updater` 别名，用户新下载后直接运行 `denova` / `denova.exe`。
+- WebUI：Chat 输入框默认以双行展开显示，Plan Mode 不再占用独立按钮，改为放入输入动作菜单；开启 Plan Mode 时在输入区底部工具行显示轻量 `Plan` 状态提示，并保留 `Shift+Tab` 快捷切换。游戏模式输入框保持单行。
 - 移动端：Agent 面板从右侧抽屉改为**底部常驻面板**（与编辑器竖向分割），恢复桌面端「编辑器 + Agent 同屏可见」的核心操作逻辑。使用 `react-resizable-panels` 做竖向分割，可拖拽分隔条调节编辑器/Agent 比例。Agent 不再需要点导航打开；快捷创作按钮始终可达。桌面端不受影响。
 - 设置：新增 `hide_novel_chapter_body_in_live_output` 配置，开启后隐藏章节正文在 Agent 流中的输出，并保留目标路径和已生成字符数；默认关闭以保持原有实时输出行为。
 - Agent 调试：完整 LLM 输入日志默认关闭，即使 `--dev-mode` 启动也需要在开发模式设置页的「调试」分区手动开启；日志写入改为后台异步队列，`provider_request_id` 以独立关联事件追加到 `log/llm-inputs.jsonl`，避免模型请求热路径同步重写大文件。

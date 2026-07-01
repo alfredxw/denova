@@ -18,12 +18,12 @@ const home = {
   'home.dragToSort': '拖拽排序',
   'home.descriptionPlaceholder': '简介（选填）',
   'home.editInfo': '编辑信息',
-  'home.empty': '当前 Nova 数据目录下还没有书籍',
+  'home.empty': '当前 Denova 数据目录下还没有书籍',
   'home.emptyDescription': '请先新建一本书，或导入现有小说/角色卡创建书籍。创建后再进入写作、互动、Agent 和自动化工作流。',
   'home.importCard': '导入酒馆角色卡',
   'home.importNovel': '导入现有小说',
   'home.generateCover': '生成封面',
-  'home.novaDirLoading': 'Nova 数据目录加载中...',
+  'home.novaDirLoading': 'Denova 数据目录加载中...',
   'home.softDeleteBook': '从书架移除',
   'home.bookshelf': '书架',
   'home.bookCount': '{{count}} 本书籍',
@@ -31,7 +31,7 @@ const home = {
   'home.title': '书籍管理',
   'home.titleRequired': '书名不能为空',
   'home.unnamedBook': '未命名书籍',
-  'home.waitNovaDir': 'Nova 数据目录未就绪，请稍后重试',
+  'home.waitNovaDir': 'Denova 数据目录未就绪，请稍后重试',
 } as const
 
 export default home

@@ -70,7 +70,7 @@ func TestServiceImportTavernCharacterCardCreatesLoreItems(t *testing.T) {
 	if err != nil {
 		t.Fatalf("导入角色卡失败: %v", err)
 	}
-	if result.TargetPath != loreItemsFilePath || result.EntryCount != 1 || result.ItemCount != 2 {
+	if result.TargetPath != loreItemsRelPath(workspace) || result.EntryCount != 1 || result.ItemCount != 2 {
 		t.Fatalf("导入结果不符合预期: %#v", result)
 	}
 

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"nova/internal/agent"
+	"denova/internal/agent"
 )
 
 const (

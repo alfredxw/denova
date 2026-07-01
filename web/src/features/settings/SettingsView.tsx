@@ -378,7 +378,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
         <>
           <Text label={t('settings.paths.skillsDir')} value={draft.skills_dir} placeholder={placeholderFor('skills_dir')}
                 onChange={(v) => setField('skills_dir', v)} />
-          <ReadOnly label={t('settings.paths.novaDir')} value={layered?.paths?.nova_dir} />
+          <ReadOnly label={t('settings.paths.novaDir')} value={layered?.paths?.denova_dir || layered?.paths?.nova_dir} />
           <ReadOnly label={t('settings.paths.userConfig')} value={layered?.paths?.user_config} />
           <ReadOnly label={t('settings.paths.workspaceConfig')} value={layered?.paths?.workspace_config} />
         </>

@@ -11,7 +11,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"nova/internal/book"
+	"denova/internal/book"
 )
 
 // handleWorkspaceTree GET /api/workspace/tree — 递归扫描 workspace 目录返回文件树。

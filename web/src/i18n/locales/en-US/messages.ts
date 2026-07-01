@@ -1,6 +1,6 @@
 const messages = {
   'messages.title': 'Message Center',
-  'messages.description': 'Read Nova update summaries and product notices.',
+  'messages.description': 'Read Denova update summaries and product notices.',
   'messages.open': 'Open message center',
   'messages.loading': 'Loading messages',
   'messages.empty': 'No messages',
@@ -10,7 +10,7 @@ const messages = {
   'messages.markAllRead': 'Mark all read',
   'messages.noSummary': 'No summary',
   'messages.unreleased': 'Unreleased',
-  'messages.changelogTitle': 'Nova {{version}}',
+  'messages.changelogTitle': 'Denova {{version}}',
   'messages.type.changelog': 'Update',
 } as const
 

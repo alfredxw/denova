@@ -1,6 +1,6 @@
 package app
 
-import "nova/internal/messages"
+import "denova/internal/messages"
 
 func (a *App) Messages() (messages.ListResult, error) {
 	return messages.NewService(a.novaDir()).List()

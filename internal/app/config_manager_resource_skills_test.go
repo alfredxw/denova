@@ -9,7 +9,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"nova/config"
+	"denova/config"
 )
 
 func TestConfigManagerResourceSkillNames(t *testing.T) {

@@ -8,9 +8,9 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"nova/internal/agent"
-	"nova/internal/api/sse"
-	novaApp "nova/internal/app"
+	"denova/internal/agent"
+	"denova/internal/api/sse"
+	novaApp "denova/internal/app"
 )
 
 // handleChat 处理聊天请求：启动后台 Task，然后以 SSE 流订阅事件。

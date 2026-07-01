@@ -71,8 +71,8 @@ export function installLocaleFetchHeaders() {
     }
     const nextInit: RequestInit = { ...init }
     const headers = new Headers(init?.headers)
-    if (!headers.has('X-Nova-Locale')) {
-      headers.set('X-Nova-Locale', localeRequestHeader())
+    if (!headers.has('X-Denova-Locale') && !headers.has('X-Nova-Locale')) {
+      headers.set('X-Denova-Locale', localeRequestHeader())
     }
     nextInit.headers = headers
     return nativeFetch(input, nextInit)

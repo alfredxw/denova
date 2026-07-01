@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"nova/config"
-	"nova/internal/book"
-	"nova/internal/imagegen"
+	"denova/config"
+	"denova/internal/book"
+	"denova/internal/imagegen"
 )
 
 type ImageAppService struct {

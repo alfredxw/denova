@@ -6,11 +6,11 @@ import (
 	"log"
 	"strings"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/book"
-	"nova/internal/interactive"
-	"nova/internal/prompts"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/book"
+	"denova/internal/interactive"
+	"denova/internal/prompts"
 )
 
 type InteractiveHotChoicesResult struct {

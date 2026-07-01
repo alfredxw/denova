@@ -9,7 +9,7 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
 
-	"nova/internal/interactive"
+	"denova/internal/interactive"
 )
 
 const (

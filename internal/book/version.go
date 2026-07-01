@@ -1,6 +1,6 @@
 package book
 
-import "nova/internal/book/versions"
+import "denova/internal/book/versions"
 
 const (
 	DefaultTimedVersionIntervalMinutes = versions.DefaultTimedVersionIntervalMinutes

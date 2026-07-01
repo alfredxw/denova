@@ -7,11 +7,11 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/book"
-	"nova/internal/interactive"
-	"nova/internal/prompts"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/book"
+	"denova/internal/interactive"
+	"denova/internal/prompts"
+	"denova/internal/session"
 )
 
 type ContextAnalysis struct {
@@ -311,7 +311,7 @@ func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller 
 	parts := []ContextAnalysisPart{
 		NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      "runtime_contract",
-			Source:  "Nova runtime",
+			Source:  "Denova runtime",
 			Title:   "运行契约",
 			Content: runtimeContractForAgent(cfg, config.AgentKindIDE),
 		}),
@@ -319,7 +319,7 @@ func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller 
 	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(config.AgentKindIDE)); outputProtocol != "" {
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      "output_protocol",
-			Source:  "Nova runtime",
+			Source:  "Denova runtime",
 			Title:   "输出格式",
 			Content: outputProtocol,
 		}))
@@ -372,7 +372,7 @@ func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller 
 	parts = append(parts, styleRuleContextAnalysisParts(teller.StyleRules)...)
 	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 		ID:      "flow",
-		Source:  "Nova built-in",
+		Source:  "Denova built-in",
 		Title:   "写作模式流程配置",
 		Content: ideFlowInstruction(cfg, workspace),
 	}))
@@ -386,7 +386,7 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 	parts := []ContextAnalysisPart{
 		NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      "runtime_contract",
-			Source:  "Nova runtime",
+			Source:  "Denova runtime",
 			Title:   "运行契约",
 			Content: runtimeContractForAgent(cfg, config.AgentKindInteractiveStory),
 		}),
@@ -394,7 +394,7 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(config.AgentKindInteractiveStory)); outputProtocol != "" {
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      "output_protocol",
-			Source:  "Nova runtime",
+			Source:  "Denova runtime",
 			Title:   "输出格式",
 			Content: outputProtocol,
 		}))
@@ -434,7 +434,7 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 	parts = append(parts, styleRuleContextAnalysisParts(teller.StyleRules)...)
 	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 		ID:      "flow",
-		Source:  "Nova built-in",
+		Source:  "Denova built-in",
 		Title:   "互动故事流程规则",
 		Content: interactiveStoryFlowInstruction(cfg, workspace),
 	}))

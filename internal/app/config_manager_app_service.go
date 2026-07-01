@@ -7,9 +7,9 @@ import (
 	"log"
 	"strings"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/session"
 )
 
 type ConfigManagerAppService struct {

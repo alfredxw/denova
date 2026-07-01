@@ -11,11 +11,11 @@ const packageDir = join(rootDir, "npm");
 const packageVersion = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf-8")).version || "dev";
 
 const platforms = [
-  { key: "darwin-arm64", goos: "darwin", goarch: "arm64", exe: "nova" },
-  { key: "darwin-x64", goos: "darwin", goarch: "amd64", exe: "nova" },
-  { key: "linux-arm64", goos: "linux", goarch: "arm64", exe: "nova" },
-  { key: "linux-x64", goos: "linux", goarch: "amd64", exe: "nova" },
-  { key: "win32-x64", goos: "windows", goarch: "amd64", exe: "nova.exe" },
+  { key: "darwin-arm64", goos: "darwin", goarch: "arm64", exe: "denova" },
+  { key: "darwin-x64", goos: "darwin", goarch: "amd64", exe: "denova" },
+  { key: "linux-arm64", goos: "linux", goarch: "arm64", exe: "denova" },
+  { key: "linux-x64", goos: "linux", goarch: "amd64", exe: "denova" },
+  { key: "win32-x64", goos: "windows", goarch: "amd64", exe: "denova.exe" },
 ];
 
 main();
@@ -41,12 +41,12 @@ function main() {
   cpFileIfExists("CHANGELOG.md");
   cpFileIfExists("LICENSE");
 
-  console.log("==> 交叉编译 Nova");
+  console.log("==> 交叉编译 Denova");
   for (const target of platforms) {
     const outDir = join(packageDir, "vendor", target.key);
     mkdirSync(outDir, { recursive: true });
     const out = join(outDir, target.exe);
-    run("go", ["build", "-trimpath", "-ldflags", `-s -w -X nova/internal/buildinfo.Version=${packageVersion}`, "-o", out, "./cmd/nova"], {
+    run("go", ["build", "-trimpath", "-ldflags", `-s -w -X denova/internal/buildinfo.Version=${packageVersion}`, "-o", out, "./cmd/denova"], {
       ...process.env,
       CGO_ENABLED: "0",
       GOOS: target.goos,
@@ -57,7 +57,7 @@ function main() {
     }
   }
 
-  chmodSync(join(packageDir, "bin", "nova.js"), 0o755);
+  chmodSync(join(packageDir, "bin", "denova.js"), 0o755);
   console.log("==> npm 发布目录已准备好: npm/");
   console.log("    预览: cd npm && npm pack --dry-run");
   console.log("    发布: cd npm && npm publish --access public");

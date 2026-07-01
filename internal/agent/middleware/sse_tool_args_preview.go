@@ -114,7 +114,7 @@ func isNovelChapterBodyPath(path string) bool {
 	}
 	parts := strings.Split(normalized, "/")
 	for index, part := range parts {
-		if part != ".nova" || index+2 >= len(parts) {
+		if (part != ".denova" && part != ".nova") || index+2 >= len(parts) {
 			continue
 		}
 		if parts[index+2] == "chapters" || parts[index+2] == "drafts" {

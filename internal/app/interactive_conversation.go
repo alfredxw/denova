@@ -15,12 +15,13 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/book"
-	"nova/internal/interactive"
-	"nova/internal/prompts"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/book"
+	"denova/internal/interactive"
+	"denova/internal/prompts"
+	"denova/internal/session"
+	"denova/internal/workspacepath"
 )
 
 type interactiveConversation struct {
@@ -584,7 +585,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		turn.ID,
 		storyCtx.Meta.StoryTellerID,
 		interactiveTellerSlotSummary(teller, "state_memory"),
-		interactiveStateSourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreContext, storyMemorySchema, storyMemory, turnHistory, turn.User, turn.Narrative),
+		interactiveStateSourceSummary(c.workspace, storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreContext, storyMemorySchema, storyMemory, turnHistory, turn.User, turn.Narrative),
 		interactivePartSummary(instruction),
 	)
 	return instruction, nil
@@ -780,14 +781,14 @@ func interactiveStorySourceSummary(title, origin string, teller interactive.Tell
 	return interactiveContextSourceListSummary(parts)
 }
 
-func interactiveStateSourceSummary(title, origin string, teller interactive.Teller, loreItems, storyMemorySchema, storyMemory, turnHistory, userAction, narrative string) string {
+func interactiveStateSourceSummary(workspace, title, origin string, teller interactive.Teller, loreItems, storyMemorySchema, storyMemory, turnHistory, userAction, narrative string) string {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title},
 		{Source: "互动故事", Title: "开端", Content: origin},
 	}
 	parts = append(parts, interactiveTellerSlotSources(teller, "state_memory")...)
 	if strings.TrimSpace(loreItems) != "" {
-		parts = append(parts, interactiveContextSource{Source: "资料库", Title: ".nova/lore/items.json", Content: loreItems})
+		parts = append(parts, interactiveContextSource{Source: "资料库", Title: workspacepath.Rel(workspace, "lore", "items.json"), Content: loreItems})
 	}
 	parts = append(parts,
 		interactiveContextSource{Source: "故事记忆结构", Title: "story memory schema", Content: storyMemorySchema},

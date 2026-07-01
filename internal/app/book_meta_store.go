@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"nova/internal/book"
+	"denova/internal/book"
 )
 
 // StoredBookMeta 表示保存在用户数据目录中的书籍元信息。

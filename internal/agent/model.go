@@ -3,8 +3,8 @@ package agent
 import (
 	"github.com/cloudwego/eino-ext/components/model/openai"
 
-	"nova/config"
-	"nova/internal/providercompat"
+	"denova/config"
+	"denova/internal/providercompat"
 )
 
 func chatModelConfigForAgent(cfg *config.Config, agentKind string) openai.ChatModelConfig {

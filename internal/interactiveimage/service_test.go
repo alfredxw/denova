@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"nova/config"
-	"nova/internal/book"
-	"nova/internal/imagegen"
+	"denova/config"
+	"denova/internal/book"
+	"denova/internal/imagegen"
 )
 
 func TestServiceGenerateSavesInteractiveImageAndMeta(t *testing.T) {

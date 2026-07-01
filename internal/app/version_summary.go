@@ -9,9 +9,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/book"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/book"
 )
 
 const (
@@ -74,7 +74,7 @@ func (s *WorkspaceRuntimeManager) buildVersionSummaryInstruction(status book.Ver
 	sort.SliceStable(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
 
 	var sb strings.Builder
-	sb.WriteString("请根据以下 Nova 小说工程变更，推理这次版本保存说明。\n")
+	sb.WriteString("请根据以下 Denova 小说工程变更，推理这次版本保存说明。\n")
 	sb.WriteString("要求：只概括对创作内容或工程文件最关键的变化；不要逐文件罗列；不要提到 Git、diff、快照。\n")
 	sb.WriteString(fmt.Sprintf("保存来源：%s\n", versionSourceLabel(source)))
 	sb.WriteString(fmt.Sprintf("变更数量：%d\n", len(changes)))

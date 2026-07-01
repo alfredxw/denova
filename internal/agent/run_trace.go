@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"denova/internal/workspacepath"
 )
 
 const (
@@ -217,5 +219,5 @@ func runTraceDir(workspace string) string {
 	if workspace == "" {
 		return ""
 	}
-	return filepath.Join(workspace, filepath.FromSlash(defaultRunLedgerDirectory))
+	return workspacepath.Path(workspace, "runs")
 }

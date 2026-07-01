@@ -87,9 +87,9 @@ func TestPlanProtocolParserCarriesRunMetadata(t *testing.T) {
 	parser := newPlanProtocolParser(agentEventMetadata{
 		AgentKind:     AgentKindIDE,
 		RunID:         "run-plan-1",
-		AgentName:     "NovaAgent",
-		RootAgentName: "NovaAgent",
-		RunPath:       []string{"NovaAgent"},
+		AgentName:     "DenovaAgent",
+		RootAgentName: "DenovaAgent",
+		RunPath:       []string{"DenovaAgent"},
 	}, func(ev Event) {
 		events = append(events, ev)
 	})
@@ -105,8 +105,8 @@ func TestPlanProtocolParserCarriesRunMetadata(t *testing.T) {
 		if eventDataString(ev.Data, "agent_kind") != AgentKindIDE {
 			t.Fatalf("agent_kind = %q, want %q in event %#v", eventDataString(ev.Data, "agent_kind"), AgentKindIDE, ev)
 		}
-		if eventDataString(ev.Data, "agent_name") != "NovaAgent" {
-			t.Fatalf("agent_name = %q, want NovaAgent in event %#v", eventDataString(ev.Data, "agent_name"), ev)
+		if eventDataString(ev.Data, "agent_name") != "DenovaAgent" {
+			t.Fatalf("agent_name = %q, want DenovaAgent in event %#v", eventDataString(ev.Data, "agent_name"), ev)
 		}
 	}
 }

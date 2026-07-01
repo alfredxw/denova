@@ -8,7 +8,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"nova/internal/prompts"
+	"denova/internal/prompts"
 )
 
 // appendPlanModeInstruction 在用户消息前追加规划模式指令，让模型先提问和形成可审阅计划。

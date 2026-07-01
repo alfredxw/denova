@@ -9,10 +9,10 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 
-	"nova/internal/book"
-	"nova/internal/observability"
-	"nova/internal/prompts"
-	"nova/internal/session"
+	"denova/internal/book"
+	"denova/internal/observability"
+	"denova/internal/prompts"
+	"denova/internal/session"
 )
 
 const (

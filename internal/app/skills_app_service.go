@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	novaskills "nova/internal/skills"
+	novaskills "denova/internal/skills"
 )
 
 // SkillsAppService exposes user and workspace skill management.

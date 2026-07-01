@@ -1,6 +1,6 @@
 ---
 name: automation-config
-description: Use when config_manager creates or updates Nova automation task JSON through automation tools.
+description: Use when config_manager creates or updates Denova automation task JSON through automation tools.
 agent: config_manager
 ---
 

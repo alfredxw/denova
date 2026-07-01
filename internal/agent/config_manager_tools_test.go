@@ -9,7 +9,7 @@ import (
 
 	"github.com/cloudwego/eino/components/tool"
 
-	"nova/config"
+	"denova/config"
 )
 
 func TestConfigManagerToolsRespectToolSettings(t *testing.T) {

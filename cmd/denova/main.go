@@ -12,12 +12,12 @@ import (
 	"runtime"
 	"strconv"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/api"
-	"nova/internal/app"
-	"nova/internal/buildinfo"
-	"nova/internal/observability"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/api"
+	"denova/internal/app"
+	"denova/internal/buildinfo"
+	"denova/internal/observability"
 )
 
 func main() {
@@ -63,8 +63,8 @@ func main() {
 	if workspace != "" {
 		cfg.Workspace = workspace
 		cfg.ResumeLastWorkspace = false
-	} else if os.Getenv("NOVA_WORKSPACE") != "" {
-		cfg.Workspace = os.Getenv("NOVA_WORKSPACE")
+	} else if workspaceEnv := envCompat("DENOVA_WORKSPACE", "NOVA_WORKSPACE"); workspaceEnv != "" {
+		cfg.Workspace = workspaceEnv
 		cfg.ResumeLastWorkspace = false
 	}
 
@@ -86,7 +86,7 @@ func main() {
 	// 打印启动信息
 	url := fmt.Sprintf("http://localhost:%s", port)
 	frontendURL := fmt.Sprintf("http://localhost:%s", frontendPort)
-	fmt.Printf("\n  Nova AI 小说创作工具\n")
+	fmt.Printf("\n  Denova AI 小说创作工具\n")
 	fmt.Printf("  ─────────────────────\n")
 	fmt.Printf("  后端服务: %s\n", url)
 	if dev {
@@ -179,7 +179,7 @@ func defaultFrontendPort(cfg *config.Config) string {
 }
 
 func shouldAutoPickPort() bool {
-	if os.Getenv("NOVA_BACKEND_PORT") != "" {
+	if envCompat("DENOVA_BACKEND_PORT", "NOVA_BACKEND_PORT") != "" {
 		return false
 	}
 	explicit := false
@@ -271,7 +271,7 @@ func resolveSkillsDir(configured string) string {
 	if dir := existingDir(configured); dir != "" {
 		return dir
 	}
-	if configured != "" && os.Getenv("NOVA_SKILLS_DIR") != "" {
+	if configured != "" && envCompat("DENOVA_SKILLS_DIR", "NOVA_SKILLS_DIR") != "" {
 		return configured
 	}
 	candidates := []string{
@@ -285,6 +285,13 @@ func resolveSkillsDir(configured string) string {
 		}
 	}
 	return configured
+}
+
+func envCompat(current, legacy string) string {
+	if v := os.Getenv(current); v != "" {
+		return v
+	}
+	return os.Getenv(legacy)
 }
 
 func existingDir(path string) string {

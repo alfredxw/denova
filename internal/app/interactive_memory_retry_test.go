@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"nova/config"
-	"nova/internal/interactive"
+	"denova/config"
+	"denova/internal/interactive"
 )
 
 func TestRunInteractiveMemoryAgentWithRetryUsesPreviousError(t *testing.T) {

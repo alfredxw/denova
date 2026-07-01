@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"nova/config"
-	"nova/internal/agent"
-	"nova/internal/book"
-	"nova/internal/imagepreset"
-	"nova/internal/interactive"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/book"
+	"denova/internal/imagepreset"
+	"denova/internal/interactive"
+	"denova/internal/session"
 )
 
 // ChatAppService 负责普通创作 Agent 任务与会话管理。

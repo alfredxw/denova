@@ -43,7 +43,7 @@ const importCard = {
   'importCard.currentBook': '当前书籍：',
   'importCard.newBookTitle': '新书书名',
   'importCard.createIn': '新书将创建在 {{dir}}',
-  'importCard.novaDir': 'Nova 数据目录',
+  'importCard.novaDir': 'Denova 数据目录',
   'importCard.import': '导入',
   'importCard.importing': '导入中...',
   'importCard.previewFailed': '解析酒馆角色卡失败',

@@ -6,20 +6,26 @@ import (
 	"testing"
 )
 
-func TestLoadDefaultsNovaDirToHomeNova(t *testing.T) {
+func TestLoadDefaultsDenovaDir(t *testing.T) {
 	t.Chdir(t.TempDir())
+	t.Setenv("DENOVA_DIR", "")
 	t.Setenv("NOVA_DIR", "")
 
 	cfg := Load()
-	want := normalizePath("./.nova")
+	want := normalizePath("./.denova")
 	if cfg.NovaDir != want {
 		t.Fatalf("默认 NovaDir 不符合预期: want=%s got=%s", want, cfg.NovaDir)
+	}
+	if cfg.DenovaDir != want {
+		t.Fatalf("默认 DenovaDir 不符合预期: want=%s got=%s", want, cfg.DenovaDir)
 	}
 }
 
 func TestLoadDoesNotDefaultWorkspaceToCurrentDir(t *testing.T) {
 	t.Chdir(t.TempDir())
+	t.Setenv("DENOVA_DIR", "")
 	t.Setenv("NOVA_DIR", "")
+	t.Setenv("DENOVA_WORKSPACE", "")
 	t.Setenv("NOVA_WORKSPACE", "")
 
 	cfg := Load()
@@ -34,11 +40,31 @@ func TestLoadDoesNotDefaultWorkspaceToCurrentDir(t *testing.T) {
 func TestLoadNovaDirFromEnv(t *testing.T) {
 	t.Chdir(t.TempDir())
 	dir := filepath.Join(t.TempDir(), "nova-data")
+	t.Setenv("DENOVA_DIR", "")
 	t.Setenv("NOVA_DIR", dir)
 
 	cfg := Load()
 	if cfg.NovaDir != dir {
 		t.Fatalf("环境变量 NovaDir 不符合预期: want=%s got=%s", dir, cfg.NovaDir)
+	}
+	if cfg.DenovaDir != dir {
+		t.Fatalf("环境变量 DenovaDir 不符合预期: want=%s got=%s", dir, cfg.DenovaDir)
+	}
+}
+
+func TestLoadDenovaDirEnvOverridesLegacyNovaDir(t *testing.T) {
+	t.Chdir(t.TempDir())
+	denovaDir := filepath.Join(t.TempDir(), "denova-data")
+	legacyDir := filepath.Join(t.TempDir(), "nova-data")
+	t.Setenv("DENOVA_DIR", denovaDir)
+	t.Setenv("NOVA_DIR", legacyDir)
+
+	cfg := Load()
+	if cfg.DenovaDir != denovaDir {
+		t.Fatalf("DENOVA_DIR should override NOVA_DIR: want=%s got=%s", denovaDir, cfg.DenovaDir)
+	}
+	if cfg.NovaDir != denovaDir {
+		t.Fatalf("legacy NovaDir should mirror DENOVA_DIR: want=%s got=%s", denovaDir, cfg.NovaDir)
 	}
 }
 
@@ -335,6 +361,24 @@ func TestLoadStartupPortEnvOverridesConfig(t *testing.T) {
 	}
 	if cfg.FrontendPort != 16173 {
 		t.Fatalf("NOVA_FRONTEND_PORT should override config: %d", cfg.FrontendPort)
+	}
+}
+
+func TestLoadStartupDenovaPortEnvOverridesLegacy(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	t.Setenv("NOVA_DIR", "")
+	t.Setenv("DENOVA_BACKEND_PORT", "19090")
+	t.Setenv("NOVA_BACKEND_PORT", "18080")
+	t.Setenv("DENOVA_FRONTEND_PORT", "16173")
+	t.Setenv("NOVA_FRONTEND_PORT", "15173")
+
+	cfg := Load()
+	if cfg.BackendPort != 19090 {
+		t.Fatalf("DENOVA_BACKEND_PORT should override NOVA_BACKEND_PORT: %d", cfg.BackendPort)
+	}
+	if cfg.FrontendPort != 16173 {
+		t.Fatalf("DENOVA_FRONTEND_PORT should override NOVA_FRONTEND_PORT: %d", cfg.FrontendPort)
 	}
 }
 

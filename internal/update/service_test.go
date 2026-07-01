@@ -20,11 +20,11 @@ import (
 func TestSelectAssetForPlatform(t *testing.T) {
 	assets := []githubAsset{
 		{Name: "checksums.txt"},
-		{Name: "nova-v0.1.11-darwin-arm64.tar.gz", DownloadURL: "asset-api-url"},
-		{Name: "nova-v0.1.11-linux-x64.tar.gz"},
+		{Name: "denova-v0.1.11-darwin-arm64.tar.gz", DownloadURL: "asset-api-url"},
+		{Name: "denova-v0.1.11-linux-x64.tar.gz"},
 	}
 	asset := selectAsset(assets, "darwin-arm64")
-	if asset == nil || asset.Name != "nova-v0.1.11-darwin-arm64.tar.gz" {
+	if asset == nil || asset.Name != "denova-v0.1.11-darwin-arm64.tar.gz" {
 		t.Fatalf("unexpected asset: %#v", asset)
 	}
 	if got := selectAsset(assets, "windows-x64"); got != nil {
@@ -51,7 +51,7 @@ func TestDefaultServiceUsesDenovaReleaseRepository(t *testing.T) {
 
 func TestValidateReleasePackageRequiresUpdater(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "nova"), []byte("exe"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "denova"), []byte("exe"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "web"), 0o755); err != nil {
@@ -60,17 +60,17 @@ func TestValidateReleasePackageRequiresUpdater(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "skills"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateReleasePackage(dir, "nova", updaterExecutableName()); err == nil {
+	if err := validateReleasePackage(dir, "denova", updaterExecutableName()); err == nil {
 		t.Fatal("validateReleasePackage should fail when updater is missing")
 	}
 }
 
 func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
 	platform := platformKey(runtime.GOOS, runtime.GOARCH)
-	assetName := "nova-v0.2.0-" + platform + ".tar.gz"
+	assetName := "denova-v0.2.0-" + platform + ".tar.gz"
 	updaterName := updaterExecutableName()
-	archive := testReleaseArchive(t, "nova", map[string]string{
-		"nova":                 "new executable",
+	archive := testReleaseArchive(t, "denova", map[string]string{
+		"denova":               "new executable",
 		updaterName:            "new updater",
 		"web/index.html":       "<html>new</html>",
 		"skills/demo/SKILL.md": "skill",
@@ -119,7 +119,7 @@ func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
 	defer server.Close()
 
 	installDir := t.TempDir()
-	exePath := filepath.Join(installDir, "nova")
+	exePath := filepath.Join(installDir, "denova")
 	if err := os.WriteFile(exePath, []byte("old executable"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -162,17 +162,17 @@ func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(installDir, "web", "index.html")); err != nil || string(got) != "old web" {
 		t.Fatalf("web assets should not be replaced before apply: %q err=%v", got, err)
 	}
-	if got, err := os.ReadFile(filepath.Join(result.StagedPath, "nova")); err != nil || string(got) != "new executable" {
+	if got, err := os.ReadFile(filepath.Join(result.StagedPath, "denova")); err != nil || string(got) != "new executable" {
 		t.Fatalf("staged executable missing: %q err=%v", got, err)
 	}
 	if got, err := os.ReadFile(filepath.Join(result.StagedPath, updaterName)); err != nil || string(got) != "new updater" {
 		t.Fatalf("staged updater missing: %q err=%v", got, err)
 	}
-	archivePath := filepath.Join(installDir, ".nova-updates", "downloads", assetName)
+	archivePath := filepath.Join(installDir, ".denova-updates", "downloads", assetName)
 	if _, err := os.Stat(archivePath); err != nil {
 		t.Fatalf("downloaded archive should be kept in install dir: %v", err)
 	}
-	manifestPath, err := readPendingManifestRef(filepath.Join(installDir, ".nova-updates"))
+	manifestPath, err := readPendingManifestRef(filepath.Join(installDir, ".denova-updates"))
 	if err != nil {
 		t.Fatalf("pending manifest ref missing: %v", err)
 	}
@@ -204,7 +204,7 @@ func testReleaseArchive(t *testing.T, exeName string, files map[string]string) [
 		if name == exeName {
 			mode = 0o755
 		}
-		path := filepath.ToSlash(filepath.Join("nova", name))
+		path := filepath.ToSlash(filepath.Join("denova", name))
 		if err := tw.WriteHeader(&tar.Header{
 			Name: path,
 			Mode: mode,

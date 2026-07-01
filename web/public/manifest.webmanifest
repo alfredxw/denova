@@ -1,7 +1,7 @@
 {
-  "name": "Nova",
-  "short_name": "Nova",
-  "description": "Nova — AI-native creative workbench · 面向创作者的 AI-native 创作工作台",
+  "name": "Denova",
+  "short_name": "Denova",
+  "description": "Denova — AI-native creative workbench · 面向创作者的 AI-native 创作工作台",
   "id": "/",
   "start_url": "/",
   "scope": "/",

@@ -1,6 +1,6 @@
 package middleware
 
-import "nova/internal/agent"
+import "denova/internal/agent"
 
 // SSEEventMiddlewareChain applies outbound SSE middleware in registration order.
 type SSEEventMiddlewareChain struct {

@@ -18,12 +18,12 @@ const home = {
   'home.dragToSort': 'Drag to sort',
   'home.descriptionPlaceholder': 'Description (optional)',
   'home.editInfo': 'Edit Info',
-  'home.empty': 'No books found in the current Nova data directory',
+  'home.empty': 'No books found in the current Denova data directory',
   'home.emptyDescription': 'Create a book first, or import an existing novel or character card. Writing, Interactive, Agent, and Automation workflows become available after a book is open.',
   'home.importCard': 'Import Tavern Card',
   'home.importNovel': 'Import Existing Novel',
   'home.generateCover': 'Generate Cover',
-  'home.novaDirLoading': 'Nova data directory loading...',
+  'home.novaDirLoading': 'Denova data directory loading...',
   'home.softDeleteBook': 'Remove from Bookshelf',
   'home.bookshelf': 'Bookshelf',
   'home.bookCount': '{{count}} books',
@@ -31,7 +31,7 @@ const home = {
   'home.title': 'Book Management',
   'home.titleRequired': 'Book title is required',
   'home.unnamedBook': 'Untitled Book',
-  'home.waitNovaDir': 'Nova data directory is not ready. Try again later.',
+  'home.waitNovaDir': 'Denova data directory is not ready. Try again later.',
 } as const
 
 export default home

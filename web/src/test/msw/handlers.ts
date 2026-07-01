@@ -172,18 +172,18 @@ export const handlers = [
       builtin_agent_prompt_sources: {
         ide: {
           sources: [
-            { id: 'runtime_contract', title: '运行契约', source: 'Nova runtime', content: '运行契约测试' },
-            { id: 'output_protocol', title: '输出格式', source: 'Nova runtime', content: '输出格式测试' },
+            { id: 'runtime_contract', title: '运行契约', source: 'Denova runtime', content: '运行契约测试' },
+            { id: 'output_protocol', title: '输出格式', source: 'Denova runtime', content: '输出格式测试' },
             { id: 'creator', title: 'CREATOR.md', source: 'CREATOR.md', content: '创作者指令测试' },
-            { id: 'flow', title: '流程规则', source: 'Nova built-in', content: '默认流程测试', editable: true, field: 'flow_prompt' },
+            { id: 'flow', title: '流程规则', source: 'Denova built-in', content: '默认流程测试', editable: true, field: 'flow_prompt' },
             { id: 'custom', title: '用户自定义', source: 'user/workspace config', content: '', editable: true, field: 'system_prompt' },
           ],
         },
         interactive_story: {
           sources: [
-            { id: 'runtime_contract', title: '互动运行契约', source: 'Nova runtime', content: '互动运行契约测试' },
-            { id: 'output_protocol', title: '互动输出格式', source: 'Nova runtime', content: '互动输出格式测试' },
-            { id: 'flow', title: '流程规则', source: 'Nova built-in', content: 'list_interactive_memories read_interactive_memories', editable: true, field: 'flow_prompt' },
+            { id: 'runtime_contract', title: '互动运行契约', source: 'Denova runtime', content: '互动运行契约测试' },
+            { id: 'output_protocol', title: '互动输出格式', source: 'Denova runtime', content: '互动输出格式测试' },
+            { id: 'flow', title: '流程规则', source: 'Denova built-in', content: 'list_interactive_memories read_interactive_memories', editable: true, field: 'flow_prompt' },
             { id: 'custom', title: '用户自定义', source: 'user/workspace config', content: '', editable: true, field: 'system_prompt' },
           ],
         },

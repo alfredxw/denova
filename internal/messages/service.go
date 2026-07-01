@@ -144,7 +144,9 @@ func (s *Service) resolveChangelogPath() string {
 	if strings.TrimSpace(s.changelogPath) != "" {
 		candidates = append(candidates, s.changelogPath)
 	}
-	if env := strings.TrimSpace(os.Getenv("NOVA_CHANGELOG_PATH")); env != "" {
+	if env := strings.TrimSpace(os.Getenv("DENOVA_CHANGELOG_PATH")); env != "" {
+		candidates = append(candidates, env)
+	} else if env := strings.TrimSpace(os.Getenv("NOVA_CHANGELOG_PATH")); env != "" {
 		candidates = append(candidates, env)
 	}
 	candidates = append(candidates, "CHANGELOG.md")

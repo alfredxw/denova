@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"nova/config"
-	"nova/internal/book"
-	"nova/internal/imagegen"
+	"denova/config"
+	"denova/internal/book"
+	"denova/internal/imagegen"
 )
 
 func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {

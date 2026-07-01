@@ -27,7 +27,7 @@ describe('api client backend availability toast', () => {
 
     expect(toast.error).toHaveBeenCalledWith('后端未启动', {
       id: 'nova-backend-unavailable',
-      description: '请先启动或重启 Nova 后端服务，然后再继续操作。',
+      description: '请先启动或重启 Denova 后端服务，然后再继续操作。',
     })
   })
 
@@ -40,7 +40,7 @@ describe('api client backend availability toast', () => {
 
     expect(toast.error).toHaveBeenCalledWith('后端未启动', {
       id: 'nova-backend-unavailable',
-      description: '请先启动或重启 Nova 后端服务，然后再继续操作。',
+      description: '请先启动或重启 Denova 后端服务，然后再继续操作。',
     })
   })
 

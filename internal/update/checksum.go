@@ -21,7 +21,7 @@ func (s *Service) verifyChecksum(ctx context.Context, assetName, archivePath str
 		log.Printf("[update] Release 未提供 checksums.txt，跳过校验 asset=%s", assetName)
 		return nil
 	}
-	temp, err := os.CreateTemp("", "nova-checksums-*")
+	temp, err := os.CreateTemp("", "denova-checksums-*")
 	if err != nil {
 		return err
 	}

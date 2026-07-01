@@ -39,7 +39,7 @@ describe('MessageCenterButton', () => {
     expect(await screen.findByText('1')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: '打开消息中心' }))
 
-    expect(await screen.findAllByText('Nova 未发布更新')).toHaveLength(2)
+    expect(await screen.findAllByText('Denova 未发布更新')).toHaveLength(2)
     expect(await screen.findAllByText('消息中心。')).toHaveLength(2)
     await waitFor(() => expect(markRead).toHaveBeenCalledWith('changelog:unreleased'))
     await waitFor(() => expect(screen.queryByText('1')).not.toBeInTheDocument())

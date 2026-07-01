@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import type { ContextAnalysis, ContextAnalysisCompaction, ContextAnalysisPart } from '@/lib/api'
 import { focusDialogContentOnOpen } from './dialog-focus'
 
-export const CONTEXT_ANALYSIS_SIMULATED_MESSAGE = '[Nova context analysis probe]'
+export const CONTEXT_ANALYSIS_SIMULATED_MESSAGE = '[Denova context analysis probe]'
 
 export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenChange, onRemoveCompaction }: {
   open: boolean
@@ -212,7 +212,7 @@ function ContextAnalysisPartBlock({ part, showRole, compaction, removingCompacti
 }
 
 function isCompactionPart(part: ContextAnalysisPart) {
-  return part.source === '上下文压缩' || part.content.includes('[Nova Context Compaction]')
+  return part.source === '上下文压缩' || part.content.includes('[Denova Context Compaction]') || part.content.includes('[Nova Context Compaction]')
 }
 
 function buildCompactionMeta(t: ReturnType<typeof useTranslation>['t'], compaction: ContextAnalysisCompaction) {

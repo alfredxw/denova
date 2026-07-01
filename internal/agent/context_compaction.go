@@ -15,9 +15,9 @@ import (
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 
-	"nova/config"
-	"nova/internal/observability"
-	"nova/internal/session"
+	"denova/config"
+	"denova/internal/observability"
+	"denova/internal/session"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 	contextCompactionPhaseMidRun = "mid_run"
 	contextCompactionReasonLimit = "context_usage_threshold"
 
-	contextCompactionSummaryPrefix = "[Nova Context Compaction]"
+	contextCompactionSummaryPrefix = "[Denova Context Compaction]"
 	contextCompactionMaxAttempts   = 2
 )
 
@@ -471,7 +471,7 @@ func contextCompactionRetryInstruction(summaryChars, minChars, maxChars int) str
 
 func contextCompactionSystemInstruction() string {
 	return strings.TrimSpace(`
-你是 Nova 的独立“互动小说上下文压缩器”，用于类似酒馆/SillyTavern 的高轮次互动小说和长对话创作场景。
+你是 Denova 的独立“互动小说上下文压缩器”，用于类似酒馆/SillyTavern 的高轮次互动小说和长对话创作场景。
 
 你的任务是把输入上下文压缩成更精简的“事件时间线记忆”，同时保留所有会对后续剧情、写作任务或用户意图产生长期影响的信息。
 
@@ -553,7 +553,7 @@ func buildContextCompactionTranscript(messages []*schema.Message, existingMemory
 	}
 	minChars, maxChars := compactionTargetCharRange(inputChars, policy)
 	var sb strings.Builder
-	sb.WriteString("请按系统要求压缩以下 Nova 上下文。基于 existing_memory、reference_context 与 new_context 合并生成新的压缩记忆，保留所有会影响后续剧情、任务、关系、世界状态或用户偏好的信息。\n")
+	sb.WriteString("请按系统要求压缩以下 Denova 上下文。基于 existing_memory、reference_context 与 new_context 合并生成新的压缩记忆，保留所有会影响后续剧情、任务、关系、世界状态或用户偏好的信息。\n")
 	sb.WriteString(fmt.Sprintf("Estimated new context tokens: %d. Input characters across existing memory, reference context, and new context: %d. Target summary length: %d-%d characters (%s of input characters). 不得低于下限；信息密度高时使用目标范围上半区。\n\n", sourceTokens, inputChars, minChars, maxChars, compactionTargetRange(policy)))
 	if retryInstruction = strings.TrimSpace(retryInstruction); retryInstruction != "" {
 		sb.WriteString("Retry instruction:\n")

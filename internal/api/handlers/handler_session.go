@@ -9,8 +9,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"nova/internal/restart"
-	"nova/internal/session"
+	"denova/internal/restart"
+	"denova/internal/session"
 )
 
 // messageDTO 消息 DTO，type=clear 时表示上下文清理分界。

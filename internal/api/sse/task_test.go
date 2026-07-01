@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"nova/internal/agent"
+	"denova/internal/agent"
 )
 
 func TestSSEWriteHandlerKeepsChapterBodyByDefault(t *testing.T) {

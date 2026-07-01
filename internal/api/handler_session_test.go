@@ -10,9 +10,9 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
-	"nova/config"
-	runtimeapp "nova/internal/app"
-	"nova/internal/session"
+	"denova/config"
+	runtimeapp "denova/internal/app"
+	"denova/internal/session"
 )
 
 type testMessageDTO struct {
@@ -169,8 +169,8 @@ func TestSessionAPIReturnsSubAgentDisplayMetadata(t *testing.T) {
 		Content:           "SubAgent 调研结果",
 		RunID:             "run-1",
 		AgentName:         "researcher",
-		RootAgentName:     "NovaAgent",
-		RunPath:           []string{"NovaAgent", "researcher"},
+		RootAgentName:     "DenovaAgent",
+		RunPath:           []string{"DenovaAgent", "researcher"},
 		SubAgent:          true,
 		SubAgentSessionID: "run-1-subagent-01-researcher",
 		SubAgentType:      "researcher",

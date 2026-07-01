@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"nova/internal/agent"
-	"nova/internal/automation"
-	"nova/internal/book"
+	"denova/internal/agent"
+	"denova/internal/automation"
+	"denova/internal/book"
 )
 
 const semanticTriggerConfidenceThreshold = 0.55
