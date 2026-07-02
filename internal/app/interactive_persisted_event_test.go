@@ -48,6 +48,9 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if payload.Turn.User != "继续前进" || payload.Turn.Narrative != "雾气在门外散开。" || payload.Turn.Thinking != "先确认场景。" {
 		t.Fatalf("payload turn mismatch: %#v", payload.Turn)
 	}
+	if !payload.DirectorState.Enabled || payload.DirectorState.SpoilerMode != "layered" {
+		t.Fatalf("payload director state should come from current snapshot: %#v", payload.DirectorState)
+	}
 	scene := payload.State["scene"].(map[string]any)
 	if scene["location"] != "旧门外" {
 		t.Fatalf("payload state should come from current snapshot: %#v", payload.State)

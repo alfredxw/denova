@@ -137,6 +137,38 @@ describe('StoryStage composer', () => {
 
     expect(screen.queryByRole('menuitemcheckbox', { name: /Plan/ })).not.toBeInTheDocument()
   })
+
+  it('disables normal input on terminal branches', () => {
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={{
+          story_id: 'story-1',
+          branch_id: 'main',
+          state: {},
+          turns: [],
+          current_turn: {
+            id: 'turn-1',
+            parent_id: null,
+            branch_id: 'main',
+            ts: '2026-06-28T00:00:00Z',
+            user: '强闯禁制',
+            narrative: '入口坍塌。',
+            terminal_outcome: { terminal: true, type: 'mainline_failed', reason: '主线入口崩塌。' },
+          },
+        }}
+        onDone={() => {}}
+      />,
+    )
+
+    expect(screen.getByPlaceholderText('当前分支已终局，请从历史回合创建新分支')).toBeDisabled()
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+  })
 })
 
 describe('StoryStage streaming rendering', () => {
@@ -512,6 +544,7 @@ function story(): StorySummary {
     title: '故事',
     origin: '',
     story_teller_id: 'classic',
+    story_director_id: 'default',
     reply_target_chars: 2000,
     image_settings: { mode: 'manual', interval_turns: 3 },
     opening: { mode: 'ai' },

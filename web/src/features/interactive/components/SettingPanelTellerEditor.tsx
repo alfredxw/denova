@@ -5,6 +5,7 @@ import { isSaveShortcut } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
@@ -140,7 +141,7 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
                       </span>
                     </span>
                   </button>
-                  <ToggleSwitch checked={slot.enabled} compact onChange={(enabled) => updateSlotById(slot.id, { enabled })} />
+                  <ToggleSwitch checked={slot.enabled} onChange={(enabled) => updateSlotById(slot.id, { enabled })} />
                 </div>
               ))}
             </div>
@@ -408,14 +409,11 @@ function EmptyState({ title, description }: { title: string; description: string
   )
 }
 
-function ToggleSwitch({ checked, onChange, compact = false }: { checked: boolean; onChange: (checked: boolean) => void; compact?: boolean }) {
+function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {
   const { t } = useTranslation()
   const label = checked ? t('settingPanel.switch.disableRule') : t('settingPanel.switch.enableRule')
   return (
-    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} title={label} className={`relative shrink-0 rounded-full border transition ${checked ? 'border-[var(--nova-accent-green)]/60 bg-[var(--nova-accent-green)]/25' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)]'} ${compact ? 'h-5 w-9' : 'h-6 w-11'}`}>
-      <span className={`absolute rounded-full bg-[var(--nova-text)] shadow transition ${compact ? `top-0.5 h-4 w-4 ${checked ? 'left-[18px]' : 'left-0.5'}` : `top-0.5 h-5 w-5 ${checked ? 'left-[22px]' : 'left-0.5'}`}`} />
-      <span className="sr-only">{label}</span>
-    </button>
+    <Switch checked={checked} onCheckedChange={onChange} aria-label={label} title={label} />
   )
 }
 

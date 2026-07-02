@@ -65,6 +65,7 @@ const storyStage = {
   'storyStage.imagePreset.menuTitle': '图像方案',
   'storyStage.inputPlaceholder': '你要做什么？',
   'storyStage.inputPlaceholderWithSkills': '你要做什么？输入 / 可选择命令或 Skills',
+  'storyStage.inputPlaceholderTerminal': '当前分支已终局，请从历史回合创建新分支',
   'storyStage.stop': '中断',
   'storyStage.regenerate': '重生成',
   'storyStage.sendRegenerate': '发送并重新生成',

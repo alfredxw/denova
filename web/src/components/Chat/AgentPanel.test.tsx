@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import { AgentPanel } from './AgentPanel'
 
 const useWritingSkillOptionsMock = vi.hoisted(() => vi.fn())
@@ -27,6 +28,8 @@ vi.mock('@/hooks/useWritingSkillOptions', () => ({
 
 describe('AgentPanel', () => {
   beforeEach(() => {
+    vi.mocked(fetchSettings).mockClear()
+    vi.mocked(updateWorkspaceSettings).mockClear()
     useWritingSkillOptionsMock.mockReset()
     useWritingSkillOptionsMock.mockReturnValue([
       { name: 'novel-lite', description: 'Lite', scope: 'builtin', path: '/skills/novel-lite/SKILL.md', active: true, agent: 'ide' },
@@ -141,7 +144,39 @@ describe('AgentPanel', () => {
     await waitFor(() => {
       expect(handleSend).toHaveBeenCalledWith(
         expect.stringContaining('/<chapter-illustration>'),
-        expect.objectContaining({ writingSkill: 'novel-lite' }),
+        expect.objectContaining({ writingSkill: 'novel-lite', tellerId: 'classic' }),
+      )
+    })
+  })
+
+  it('在输入选项中切换叙事风格后用于下一轮创作 Agent 请求', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+    renderAgentPanel({
+      tellers: [
+        { id: 'classic', name: '默认叙事', style_rules: [] } as any,
+        { id: 'slow-burn', name: '慢热叙事', style_rules: [] } as any,
+      ],
+      onSend: handleSend,
+    })
+
+    await user.click(screen.getByRole('button', { name: '输入动作' }))
+    await user.hover(screen.getByText('叙事'))
+    const slowBurnItem = await screen.findByText('慢热叙事')
+    fireEvent.click(slowBurnItem.closest('[role="menuitem"]') || slowBurnItem)
+
+    await waitFor(() => {
+      expect(updateWorkspaceSettings).toHaveBeenCalledWith(expect.objectContaining({ ide_story_teller_id: 'slow-burn' }))
+    })
+
+    window.dispatchEvent(new CustomEvent('nova:writing-agent-init', {
+      detail: { autoSend: true, prompt: '继续写下一段' },
+    }))
+
+    await waitFor(() => {
+      expect(handleSend).toHaveBeenCalledWith(
+        '继续写下一段',
+        expect.objectContaining({ tellerId: 'slow-burn', writingSkill: 'novel-lite' }),
       )
     })
   })

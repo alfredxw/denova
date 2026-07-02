@@ -273,7 +273,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 	}
 
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
-		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.WritingSkill)
+		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill)
 		runtimeContexts := agent.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
 		conversation := agent.NewSessionConversationForAgentWithRuntimeContexts(
 			runtime.sess,
@@ -418,9 +418,13 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 		applyLayeredSettingsToConfig(&runtime.cfg, layered)
 		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
 		runtime.cfg.IDEStoryTellerID = layered.Effective.IDEStoryTellerID
+		if requestTellerID := strings.TrimSpace(req.TellerID); requestTellerID != "" {
+			runtime.cfg.IDEStoryTellerID = requestTellerID
+		}
 		if runtime.cfg.IDEStoryTellerID == "" {
 			runtime.cfg.IDEStoryTellerID = "classic"
 		}
+		req.TellerID = runtime.cfg.IDEStoryTellerID
 		log.Printf("[agent-task] load ide teller id=%s workspace=%s", runtime.cfg.IDEStoryTellerID, runtime.workspace)
 
 		teller := loadInteractiveTeller(novaDir, runtime.cfg.IDEStoryTellerID)

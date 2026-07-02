@@ -75,6 +75,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Title:            title,
 		Origin:           strings.TrimSpace(req.Origin),
 		StoryTellerID:    strings.TrimSpace(req.StoryTellerID),
+		StoryDirectorID:  NormalizeStoryDirectorID(req.StoryDirectorID),
 		ReplyTargetChars: normalizeStoryReplyTargetChars(req.ReplyTargetChars),
 		Opening:          normalizeStoryOpeningConfig(req.Opening),
 		ImageSettings:    normalizeStoryImageSettings(req.ImageSettings),
@@ -85,7 +86,14 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	if story.StoryTellerID == "" {
 		story.StoryTellerID = "classic"
 	}
+	if story.StoryDirectorID == "" {
+		story.StoryDirectorID = DefaultStoryDirectorID
+	}
 
+	directorState := DefaultDirectorState()
+	if req.DirectorState != nil {
+		directorState = NormalizeDirectorState(*req.DirectorState)
+	}
 	meta := StoryMeta{
 		V:                schemaVersion,
 		Type:             StoryEventTypeMeta,
@@ -93,9 +101,11 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Title:            story.Title,
 		Origin:           story.Origin,
 		StoryTellerID:    story.StoryTellerID,
+		StoryDirectorID:  story.StoryDirectorID,
 		ReplyTargetChars: story.ReplyTargetChars,
 		Opening:          story.Opening,
 		ImageSettings:    story.ImageSettings,
+		DirectorState:    directorState,
 		CurrentBranch:    "main",
 		Branches: map[string]BranchMeta{
 			"main": {CreatedAt: now},
@@ -103,10 +113,25 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	initialStateOps := normalizeStateOps(req.InitialStateOps)
+	if len(initialStateOps) > 0 {
+		for _, op := range initialStateOps {
+			if err := validateStateOp(op); err != nil {
+				return StorySummary{}, err
+			}
+		}
+		initialDeltaID := newID("sd")
+		meta.Branches["main"] = BranchMeta{Head: initialDeltaID, CreatedAt: now}
+		story.Events = 1
+	}
 	if err := validateStoryMeta(meta); err != nil {
 		return StorySummary{}, err
 	}
-	if err := writeJSONL(s.storyPath(story.ID), []any{meta}); err != nil {
+	events := []any{meta}
+	if len(initialStateOps) > 0 {
+		events = append(events, newStateDeltaEvent(meta.Branches["main"].Head, "", "main", now, initialStateOps))
+	}
+	if err := writeJSONL(s.storyPath(story.ID), events); err != nil {
 		return StorySummary{}, err
 	}
 
@@ -133,6 +158,9 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if tellerID := strings.TrimSpace(req.StoryTellerID); tellerID != "" {
 		meta.StoryTellerID = tellerID
 	}
+	if directorID := NormalizeStoryDirectorID(req.StoryDirectorID); directorID != "" {
+		meta.StoryDirectorID = directorID
+	}
 	if req.ReplyTargetChars != nil {
 		if *req.ReplyTargetChars <= 0 {
 			return StorySummary{}, fmt.Errorf("互动故事单轮目标字数必须大于 0")
@@ -157,6 +185,7 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 		if index.Stories[i].ID == storyID {
 			index.Stories[i].Title = meta.Title
 			index.Stories[i].StoryTellerID = meta.StoryTellerID
+			index.Stories[i].StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
 			index.Stories[i].ReplyTargetChars = meta.ReplyTargetChars
 			index.Stories[i].Opening = meta.Opening
 			index.Stories[i].ImageSettings = meta.ImageSettings
@@ -373,6 +402,9 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 	if !ok {
 		return TurnEvent{}, fmt.Errorf("分支不存在: %s", branchID)
 	}
+	if branchIsTerminal(lines, branch.Head) {
+		return TurnEvent{}, fmt.Errorf("当前分支已终局，请从历史回合创建新分支后继续")
+	}
 	parentID := any(nil)
 	if branch.Head != "" {
 		parentID = branch.Head
@@ -419,25 +451,31 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	if !ok {
 		return TurnEvent{}, nil, fmt.Errorf("分支不存在: %s", branchID)
 	}
+	if branchIsTerminal(lines, branch.Head) {
+		return TurnEvent{}, nil, fmt.Errorf("当前分支已终局，请从历史回合创建新分支后继续")
+	}
 	parentID := any(nil)
 	if branch.Head != "" {
 		parentID = branch.Head
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	turn := TurnEvent{
-		V:             schemaVersion,
-		Type:          StoryEventTypeTurn,
-		ID:            newID("ev"),
-		ParentID:      parentID,
-		BranchID:      branchID,
-		Ts:            now,
-		User:          req.User,
-		Narrative:     req.Narrative,
-		Thinking:      strings.TrimSpace(req.Thinking),
-		DisplayEvents: sanitizeDisplayEvents(req.DisplayEvents),
-		HotState:      normalizeHotState(req.HotState),
-		MemoryStatus:  "pending",
-		Flags:         map[string]bool{"pinned": false, "locked": false},
+		V:               schemaVersion,
+		Type:            StoryEventTypeTurn,
+		ID:              newID("ev"),
+		ParentID:        parentID,
+		BranchID:        branchID,
+		Ts:              now,
+		User:            req.User,
+		Narrative:       req.Narrative,
+		Thinking:        strings.TrimSpace(req.Thinking),
+		DisplayEvents:   sanitizeDisplayEvents(req.DisplayEvents),
+		HotState:        normalizeHotState(req.HotState),
+		TurnBrief:       normalizeTurnBriefPointer(req.TurnBrief),
+		RuleResolution:  normalizeRuleResolutionPointer(req.RuleResolution),
+		TerminalOutcome: normalizeTerminalOutcomePointer(req.TerminalOutcome),
+		MemoryStatus:    "pending",
+		Flags:           map[string]bool{"pinned": false, "locked": false},
 	}
 	branch.Head = turn.ID
 
@@ -454,10 +492,17 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 
 	meta.Branches[branchID] = branch
 	meta.UpdatedAt = now
-	if err := s.rewriteStoryLocked(storyID, meta, lines, turn); err != nil {
+	newEvents := []any{turn}
+	eventDelta := 1
+	if directorPatch, directorState, ok := directorPatchAfterTurn(meta, branchID, turn, now); ok {
+		meta.DirectorState = directorState
+		newEvents = append(newEvents, directorPatch)
+		eventDelta++
+	}
+	if err := s.rewriteStoryLocked(storyID, meta, lines, newEvents...); err != nil {
 		return TurnEvent{}, nil, err
 	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+	if err := s.touchIndexLocked(storyID, now, eventDelta); err != nil {
 		return TurnEvent{}, nil, err
 	}
 	return turn, delta, nil
@@ -758,6 +803,105 @@ func (s *Store) MarkStateFailed(storyID string, req MarkStateFailedRequest) erro
 	return s.touchIndexLocked(storyID, now, 0)
 }
 
+func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResolutionRerollRequest) (RuleResolution, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	resolutionID = strings.TrimSpace(resolutionID)
+	if resolutionID == "" {
+		return RuleResolution{}, fmt.Errorf("规则结算 ID 不能为空")
+	}
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return RuleResolution{}, err
+	}
+	branchID, branch, err := resolveBranch(meta, req.BranchID)
+	if err != nil {
+		return RuleResolution{}, err
+	}
+	path, pathSet := eventPath(branch.Head, eventsByID(lines))
+	var target TurnEvent
+	for _, record := range path {
+		if record.Envelope.Type != StoryEventTypeTurn {
+			continue
+		}
+		var turn TurnEvent
+		if err := mapToStruct(record.Raw, &turn); err != nil {
+			continue
+		}
+		if strings.TrimSpace(req.TurnID) != "" && turn.ID != strings.TrimSpace(req.TurnID) {
+			continue
+		}
+		if turn.RuleResolution != nil && turn.RuleResolution.ID == resolutionID {
+			target = turn
+			break
+		}
+	}
+	if target.ID == "" {
+		return RuleResolution{}, fmt.Errorf("当前分支路径中未找到规则结算: %s", resolutionID)
+	}
+	brief := NormalizeTurnBrief(target.RuleResolution.AcceptedBrief)
+	if strings.TrimSpace(brief.UserAction) == "" && target.TurnBrief != nil {
+		brief = NormalizeTurnBrief(*target.TurnBrief)
+	}
+	for i := range brief.RuleChecks {
+		brief.RuleChecks[i].Seed = newRuleSeed(storyID, branchID, resolutionID, target.ID, fmt.Sprint(i), time.Now().UTC().Format(time.RFC3339Nano))
+	}
+	state := stateBeforeTurn(path, target.ID)
+	next, err := ResolveTurnRules(storyID, branchID, state, brief)
+	if err != nil {
+		return RuleResolution{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	next.CreatedAt = now
+	next.ID = newID("rr")
+	terminalOutcome := terminalOutcomeFromRuleResolution(next, target.ID, target.Narrative)
+	updated := false
+	for i := range lines {
+		if lines[i].Envelope.ID != target.ID || !pathSet[target.ID] {
+			continue
+		}
+		lines[i].Raw["rule_resolution"] = next
+		lines[i].Raw["turn_brief"] = next.AcceptedBrief
+		if terminalOutcome != nil {
+			lines[i].Raw["terminal_outcome"] = terminalOutcome
+		} else {
+			delete(lines[i].Raw, "terminal_outcome")
+		}
+		updated = true
+		break
+	}
+	if !updated {
+		return RuleResolution{}, fmt.Errorf("规则结算所属回合不存在: %s", target.ID)
+	}
+	meta.UpdatedAt = now
+	if directorPatch, directorState, ok := directorPatchAfterTurn(meta, branchID, TurnEvent{
+		ID:              target.ID,
+		BranchID:        branchID,
+		User:            target.User,
+		Narrative:       target.Narrative,
+		TurnBrief:       &next.AcceptedBrief,
+		RuleResolution:  &next,
+		TerminalOutcome: terminalOutcome,
+	}, now); ok {
+		meta.DirectorState = directorState
+		if err := s.rewriteStoryLocked(storyID, meta, lines, directorPatch); err != nil {
+			return RuleResolution{}, err
+		}
+		if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+			return RuleResolution{}, err
+		}
+		return next, nil
+	}
+	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
+		return RuleResolution{}, err
+	}
+	if err := s.touchIndexLocked(storyID, now, 0); err != nil {
+		return RuleResolution{}, err
+	}
+	return next, nil
+}
+
 func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSummary, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -788,6 +932,8 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 		FromEvent: parentID,
 		Title:     title,
 	}
+	meta.DirectorState = NormalizeDirectorState(meta.DirectorState)
+	meta.DirectorState.BranchPatches[branchID] = fmt.Sprintf("从分支 %s 的事件 %s 创建分支“%s”，继承祖先导演计划并允许后续局部调整。", fromBranch, parentID, title)
 	meta.UpdatedAt = now
 	event := BranchEvent{
 		V:        schemaVersion,
@@ -864,6 +1010,8 @@ func (s *Store) DeleteBranch(storyID, branchID string) error {
 		return fmt.Errorf("分支记录不存在: %s", branchID)
 	}
 	delete(meta.Branches, branchID)
+	meta.DirectorState = NormalizeDirectorState(meta.DirectorState)
+	delete(meta.DirectorState.BranchPatches, branchID)
 	if meta.CurrentBranch == branchID {
 		if branch.From != "" {
 			meta.CurrentBranch = branch.From
@@ -920,6 +1068,52 @@ func findEventBranch(lines []StoryEventRecord, eventID string) (string, bool) {
 	return "", false
 }
 
+func branchIsTerminal(lines []StoryEventRecord, head string) bool {
+	turn := latestTurnForBranchHead(lines, head)
+	return turn != nil && turn.TerminalOutcome != nil && turn.TerminalOutcome.Terminal
+}
+
+func stateBeforeTurn(path []StoryEventRecord, turnID string) map[string]any {
+	state := initialStoryState()
+	for _, record := range path {
+		if record.Envelope.ID == turnID {
+			break
+		}
+		switch record.Envelope.Type {
+		case StoryEventTypeStateDelta:
+			var delta StateDeltaEvent
+			if err := mapToStruct(record.Raw, &delta); err == nil {
+				for _, op := range delta.Ops {
+					applyStateOp(state, op)
+				}
+			}
+		case StoryEventTypeTurn:
+			var turn TurnEvent
+			if err := mapToStruct(record.Raw, &turn); err == nil && turn.StateDelta != nil {
+				for _, op := range turn.StateDelta.Ops {
+					applyStateOp(state, op)
+				}
+			}
+		}
+	}
+	return state
+}
+
+func terminalOutcomeFromRuleResolution(resolution RuleResolution, turnID, narrative string) *TerminalOutcome {
+	if resolution.TerminalCandidate == nil {
+		return nil
+	}
+	candidate := resolution.TerminalCandidate
+	return normalizeTerminalOutcomePointer(&TerminalOutcome{
+		Terminal:              true,
+		Type:                  firstNonEmptyString(candidate.Type, "bad_end"),
+		Reason:                candidate.Reason,
+		FinalNarrativeSummary: trimBytes(narrative, maxTurnBriefTextBytes),
+		CausedByTurnID:        turnID,
+		RuleResolutionID:      resolution.ID,
+	})
+}
+
 func defaultStoryTitle(stories []StorySummary) string {
 	if len(stories) == 0 {
 		return defaultFirstStoryTitle
@@ -953,6 +1147,7 @@ func normalizeStoryReplyTargetChars(value int) int {
 }
 
 func normalizeStorySummary(story StorySummary) StorySummary {
+	story.StoryDirectorID = normalizedStoryDirectorID(story.StoryDirectorID)
 	story.ReplyTargetChars = normalizeStoryReplyTargetChars(story.ReplyTargetChars)
 	story.Opening = normalizeStoryOpeningConfig(story.Opening)
 	story.ImageSettings = normalizeStoryImageSettings(story.ImageSettings)
@@ -960,10 +1155,19 @@ func normalizeStorySummary(story StorySummary) StorySummary {
 }
 
 func normalizeStoryMeta(meta StoryMeta) StoryMeta {
+	meta.StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
 	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)
 	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
 	meta.ImageSettings = normalizeStoryImageSettings(meta.ImageSettings)
+	meta.DirectorState = NormalizeDirectorState(meta.DirectorState)
 	return meta
+}
+
+func normalizedStoryDirectorID(id string) string {
+	if id = NormalizeStoryDirectorID(id); id != "" {
+		return id
+	}
+	return DefaultStoryDirectorID
 }
 
 func normalizeStoryOpeningConfig(config StoryOpeningConfig) StoryOpeningConfig {

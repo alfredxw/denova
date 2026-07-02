@@ -65,6 +65,7 @@ const storyStage = {
   'storyStage.imagePreset.menuTitle': 'Image Preset',
   'storyStage.inputPlaceholder': 'What do you do?',
   'storyStage.inputPlaceholderWithSkills': 'What do you do? Type / for commands or Skills',
+  'storyStage.inputPlaceholderTerminal': 'This branch has ended. Create a new branch from history to continue.',
   'storyStage.stop': 'Stop',
   'storyStage.regenerate': 'Regenerate',
   'storyStage.sendRegenerate': 'Send and Regenerate',

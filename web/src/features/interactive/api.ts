@@ -1,13 +1,21 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
-import type { BranchSummary, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, Snapshot, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller } from './types'
+import type { BranchSummary, DirectorEventActionInput, DirectorState, EventSystemModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorStateInput } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
 }
 
-export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; reply_target_chars?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig }): Promise<StorySummary> {
+export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; reply_target_chars?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig; director_state?: DirectorState; initial_state_ops?: StateOp[] }): Promise<StorySummary> {
   return requestJSON('/api/interactive/stories', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function rollInteractiveOpening(input: OpeningRollRequest): Promise<OpeningRollResult> {
+  return requestJSON('/api/interactive/opening/roll', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(input),
@@ -19,6 +27,7 @@ export function updateInteractiveStory(
   input: {
     title?: string
     story_teller_id?: string
+    story_director_id?: string
     reply_target_chars?: number
     image_settings?: StoryImageSettings
     opening?: StoryOpeningConfig
@@ -40,6 +49,51 @@ export function deleteInteractiveStory(id: string): Promise<void> {
 export function getInteractiveSnapshot(storyId: string, branchId?: string): Promise<Snapshot> {
   const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/snapshot${query}`)
+}
+
+export function rerollInteractiveRuleResolution(storyId: string, resolutionId: string, input: RuleResolutionRerollInput = {}): Promise<RuleResolution> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/rules/resolutions/${encodeURIComponent(resolutionId)}/reroll`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function getInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorState> {
+  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director${query}`)
+}
+
+export function updateInteractiveDirector(storyId: string, input: UpdateDirectorStateInput): Promise<DirectorState> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function rebuildInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorState> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/rebuild`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ branch_id: branchId }),
+  })
+}
+
+export function forceInteractiveDirectorEvent(storyId: string, eventId: string, input: DirectorEventActionInput = {}): Promise<DirectorState> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/events/${encodeURIComponent(eventId)}/force`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function disableInteractiveDirectorEvent(storyId: string, eventId: string, input: DirectorEventActionInput = {}): Promise<DirectorState> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/events/${encodeURIComponent(eventId)}/disable`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
 }
 
 export function getInteractiveMemory(storyId: string, branchId?: string, includeArchived = false): Promise<InteractiveMemoryState> {
@@ -164,6 +218,114 @@ export function updateInteractiveTeller(id: string, input: Partial<Teller>, base
 
 export function deleteInteractiveTeller(id: string): Promise<void> {
   return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getStoryDirectors(): Promise<StoryDirector[]> {
+  const data = await requestJSON<{ directors: StoryDirector[] }>('/api/story-directors')
+  return data.directors || []
+}
+
+export function createStoryDirector(input: Partial<StoryDirector>): Promise<StoryDirector> {
+  return requestJSON('/api/story-directors', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateStoryDirector(id: string, input: Partial<StoryDirector>, baseRevision?: string): Promise<StoryDirector> {
+  return requestJSON(`/api/story-directors/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
+  })
+}
+
+export function deleteStoryDirector(id: string): Promise<void> {
+  return requestJSON(`/api/story-directors/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getEventSystems(): Promise<EventSystemModule[]> {
+  const data = await requestJSON<{ event_systems: EventSystemModule[] }>('/api/event-systems')
+  return data.event_systems || []
+}
+
+export function createEventSystem(input: Partial<EventSystemModule>): Promise<EventSystemModule> {
+  return requestJSON('/api/event-systems', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateEventSystem(id: string, input: Partial<EventSystemModule>, baseRevision?: string): Promise<EventSystemModule> {
+  return requestJSON(`/api/event-systems/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
+  })
+}
+
+export function deleteEventSystem(id: string): Promise<void> {
+  return requestJSON(`/api/event-systems/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getRuleSystems(): Promise<RuleSystemModule[]> {
+  const data = await requestJSON<{ rule_systems: RuleSystemModule[] }>('/api/rule-systems')
+  return data.rule_systems || []
+}
+
+export function createRuleSystem(input: Partial<RuleSystemModule>): Promise<RuleSystemModule> {
+  return requestJSON('/api/rule-systems', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateRuleSystem(id: string, input: Partial<RuleSystemModule>, baseRevision?: string): Promise<RuleSystemModule> {
+  return requestJSON(`/api/rule-systems/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
+  })
+}
+
+export function deleteRuleSystem(id: string): Promise<void> {
+  return requestJSON(`/api/rule-systems/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getOpeningSelectors(): Promise<OpeningSelectorModule[]> {
+  const data = await requestJSON<{ opening_selectors: OpeningSelectorModule[] }>('/api/opening-selectors')
+  return data.opening_selectors || []
+}
+
+export function createOpeningSelector(input: Partial<OpeningSelectorModule>): Promise<OpeningSelectorModule> {
+  return requestJSON('/api/opening-selectors', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateOpeningSelector(id: string, input: Partial<OpeningSelectorModule>, baseRevision?: string): Promise<OpeningSelectorModule> {
+  return requestJSON(`/api/opening-selectors/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
+  })
+}
+
+export function deleteOpeningSelector(id: string): Promise<void> {
+  return requestJSON(`/api/opening-selectors/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
 }

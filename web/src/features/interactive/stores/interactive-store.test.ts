@@ -25,6 +25,7 @@ describe('interactive-store', () => {
           title: '开端',
           origin: '',
           story_teller_id: 'classic',
+          story_director_id: 'default',
           reply_target_chars: 2000,
           opening: { mode: 'ai' },
           created_at: '',
@@ -51,6 +52,7 @@ describe('interactive-store', () => {
           title: '开端',
           origin: '',
           story_teller_id: 'classic',
+          story_director_id: 'default',
           reply_target_chars: 2000,
           opening: { mode: 'ai' },
           created_at: '',
@@ -78,6 +80,7 @@ describe('interactive-store', () => {
           title: '开端',
           origin: '',
           story_teller_id: 'classic',
+          story_director_id: 'default',
           reply_target_chars: 2000,
           opening: { mode: 'ai' },
           created_at: '',
@@ -98,8 +101,9 @@ describe('interactive-store', () => {
         id: 'st_1',
         title: '故事线 1',
         origin: '',
-        story_teller_id: 'classic',
-        reply_target_chars: 2000,
+          story_teller_id: 'classic',
+          story_director_id: 'default',
+          reply_target_chars: 2000,
         opening: { mode: 'ai' },
         created_at: '',
         updated_at: '',
@@ -110,8 +114,9 @@ describe('interactive-store', () => {
         id: 'st_2',
         title: '故事线 2',
         origin: '',
-        story_teller_id: 'classic',
-        reply_target_chars: 2000,
+          story_teller_id: 'classic',
+          story_director_id: 'default',
+          reply_target_chars: 2000,
         opening: { mode: 'ai' },
         created_at: '',
         updated_at: '',
@@ -142,6 +147,7 @@ describe('interactive-store', () => {
           title: '开端',
           origin: '',
           story_teller_id: 'classic',
+          story_director_id: 'default',
           reply_target_chars: 2000,
           opening: { mode: 'ai' },
           created_at: '',
@@ -171,6 +177,7 @@ describe('interactive-store', () => {
           title: '开端',
           origin: '',
           story_teller_id: 'classic',
+          story_director_id: 'default',
           reply_target_chars: 2000,
           opening: { mode: 'ai' },
           created_at: '',
@@ -201,6 +208,7 @@ describe('interactive-store', () => {
     expect(next.turns.map((item) => item.id)).toEqual(['turn-1', 'turn-2'])
     expect(next.current_turn?.id).toBe('turn-2')
     expect(next.state).toEqual({ scene: { location: '门外' } })
+    expect(next.director_state?.main_arc).toBe('外门逆袭')
     expect(next.graph?.branches[0].head).toBe('turn-2')
   })
 
@@ -283,6 +291,7 @@ function persistedEvent(turnEvent: TurnEvent): InteractiveTurnPersistedEvent {
     story_id: 'story-1',
     branch_id: 'main',
     turn: turnEvent,
+    director_state: { enabled: true, spoiler_mode: 'layered', main_arc: '外门逆袭' },
     state: { scene: { location: '门外' } },
     graph: {
       nodes: [{

@@ -66,6 +66,18 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 	})
 }
 
+func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (adk.Agent, error) {
+	return buildDeepAgent(ctx, cfg, deepAgentSpec{
+		Kind:              config.AgentKindInteractiveDirector,
+		Name:              "DenovaInteractiveDirectorAgent",
+		Description:       "AI 互动故事后台导演",
+		Instruction:       protectedSystemInstruction(cfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction()),
+		EnableSkills:      false,
+		DisableWriteTodos: true,
+		ExtraToolsFactory: interactiveDirectorToolsFactory(cfg, toolContexts...),
+	})
+}
+
 // BuildConfigManagerAgent 构建统一配置管理 Agent（deep agent + 通用工具 + Skill + 模块资源工具）。
 func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (adk.Agent, error) {
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{
@@ -457,6 +469,32 @@ func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings
 }
 
 func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+		var tools []tool.BaseTool
+		if cfg != nil && settings.LoreRead {
+			loreTools, err := newLoreTools(cfg.Workspace, false)
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, loreTools...)
+		}
+		if len(toolContexts) > 0 {
+			memoryTools, err := newInteractiveMemoryTools(toolContexts[0])
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, memoryTools...)
+			turnTools, err := newInteractiveTurnTools(toolContexts[0])
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, turnTools...)
+		}
+		return tools, nil
+	}
+}
+
+func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 		var tools []tool.BaseTool
 		if cfg != nil && settings.LoreRead {

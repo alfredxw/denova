@@ -7,6 +7,7 @@ export interface StorySummary {
   title: string
   origin: string
   story_teller_id: string
+  story_director_id: string
   reply_target_chars: number
   image_settings?: StoryImageSettings
   opening: StoryOpeningConfig
@@ -45,6 +46,7 @@ export interface Teller {
   description: string
   random_event_rate: number
   style_rules?: StyleRule[] | null
+  orchestration?: TellerOrchestrationConfig | null
   tags: string[]
   context_policy: TellerContextPolicy
   slots: TellerPromptSlot[]
@@ -71,6 +73,140 @@ export interface ImagePreset {
   updated_at?: string
 }
 
+export interface StoryDirector {
+  version: number
+  id: string
+  name: string
+  description: string
+  module_refs?: StoryDirectorModuleRefs
+  strategy: StoryDirectorStrategy
+  event_system: StoryDirectorEventSystem
+  stat_system: StoryDirectorStatSystem
+  trpg_system: StoryDirectorTRPGSystem
+  opening_selector: StoryDirectorOpeningSelector
+  resolved_snapshot?: StoryDirectorResolvedSnapshot
+  tags: string[]
+  path?: string
+  custom: boolean
+  invalid?: boolean
+  error?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface StoryDirectorModuleRefs {
+  narrative_style_id?: string
+  event_system_id?: string
+  rule_system_id?: string
+  opening_selector_id?: string
+  image_preset_id?: string
+}
+
+export interface StoryDirectorModuleWarning {
+  module: string
+  id?: string
+  message: string
+}
+
+export interface StoryDirectorResolvedSnapshot {
+  version: number
+  resolved_at?: string
+  status?: string
+  warnings?: StoryDirectorModuleWarning[]
+  module_refs?: StoryDirectorModuleRefs
+  narrative_style_id?: string
+  image_preset_id?: string
+  event_system?: StoryDirectorEventSystem
+  stat_system?: StoryDirectorStatSystem
+  trpg_system?: StoryDirectorTRPGSystem
+  opening_selector?: StoryDirectorOpeningSelector
+}
+
+export interface EventSystemModule {
+  version: number
+  id: string
+  name: string
+  description: string
+  event_system: StoryDirectorEventSystem
+  tags: string[]
+  path?: string
+  custom: boolean
+  invalid?: boolean
+  error?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface RuleSystemModule {
+  version: number
+  id: string
+  name: string
+  description: string
+  stat_system: StoryDirectorStatSystem
+  trpg_system: StoryDirectorTRPGSystem
+  tags: string[]
+  path?: string
+  custom: boolean
+  invalid?: boolean
+  error?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface OpeningSelectorModule {
+  version: number
+  id: string
+  name: string
+  description: string
+  opening_selector: StoryDirectorOpeningSelector
+  tags: string[]
+  path?: string
+  custom: boolean
+  invalid?: boolean
+  error?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface StoryDirectorStrategy {
+  enabled: boolean
+  mainline_strength?: string
+  failure_policy?: string
+  pacing_curve?: string
+  random_event_rate?: number
+}
+
+export interface StoryDirectorEventSystem {
+  event_packages?: TellerEventPackage[]
+  custom_events?: DirectorEvent[]
+}
+
+export interface StoryDirectorStatSystem {
+  attributes?: StoryDirectorAttribute[]
+}
+
+export interface StoryDirectorAttribute {
+  id?: string
+  path: string
+  name: string
+  type?: string
+  default?: number
+  min?: number
+  max?: number
+  visibility?: 'visible' | 'hidden' | 'spoiler'
+  description?: string
+}
+
+export interface StoryDirectorTRPGSystem {
+  rule_templates?: RuleCheck[]
+}
+
+export interface StoryDirectorOpeningSelector {
+  enabled: boolean
+  trait_pools?: OpeningTraitPool[]
+  initial_state_ops?: StateOp[]
+}
+
 export interface ImagePresetSlot {
   id: string
   name: string
@@ -82,6 +218,57 @@ export interface ImagePresetSlot {
 export interface StyleRule {
   scene: string
   style_contents: string[]
+}
+
+export interface TellerOrchestrationConfig {
+  enabled: boolean
+  mainline_strength?: string
+  failure_policy?: string
+  pacing_curve?: string
+  event_packages?: TellerEventPackage[]
+  custom_events?: DirectorEvent[]
+  rule_templates?: RuleCheck[]
+  opening?: TellerOpeningConfig
+}
+
+export interface TellerEventPackage {
+  id?: string
+  name?: string
+  enabled: boolean
+  events?: TellerEventCard[]
+}
+
+export interface TellerEventCard {
+  id?: string
+  type_name?: string
+  description_markdown?: string
+  enabled: boolean
+  category?: string
+  tags?: string[]
+  weight?: number
+  cooldown_turns?: number
+  intensity?: string
+}
+
+export interface TellerOpeningConfig {
+  enabled: boolean
+  trait_pools?: OpeningTraitPool[]
+  initial_state_ops?: StateOp[]
+}
+
+export interface OpeningTraitPool {
+  id?: string
+  name?: string
+  draw_count?: number
+  traits?: OpeningTrait[]
+}
+
+export interface OpeningTrait {
+  id?: string
+  name?: string
+  summary?: string
+  weight?: number
+  ops?: StateOp[]
 }
 
 export interface TellerContextPolicy {
@@ -109,6 +296,9 @@ export interface TurnEvent {
   display_events?: TurnDisplayEvent[]
   state_delta?: StateDelta
   hot_state?: HotState
+  turn_brief?: TurnBrief
+  rule_resolution?: RuleResolution
+  terminal_outcome?: TerminalOutcome
   state_status?: 'pending' | 'ready' | 'failed'
   state_error?: string
   memory_entry_id?: string
@@ -191,9 +381,206 @@ export interface HotState {
   choices: string[]
 }
 
+export interface DirectorState {
+  enabled: boolean
+  spoiler_mode?: string
+  main_arc?: string
+  stage_plan?: string
+  beat_queue?: DirectorBeat[]
+  event_queue?: DirectorEvent[]
+  foreshadowing?: DirectorThread[]
+  potential_characters?: DirectorThread[]
+  branch_patches?: Record<string, string>
+  forced_events?: string[]
+  disabled_events?: string[]
+  last_director_run?: DirectorRunStatus
+}
+
+export interface DirectorBeat {
+  id?: string
+  summary?: string
+  pressure?: string
+  payoff?: string
+  status?: string
+}
+
+export interface DirectorEvent {
+  id?: string
+  name?: string
+  category?: string
+  status?: string
+  enabled?: boolean
+  summary?: string
+  public_summary?: string
+  hidden_truth?: string
+  template?: string
+  normalized_trigger?: string
+  weight?: number
+  cooldown_turns?: number
+  intensity?: string
+  required_foreshadowing?: string[]
+  payoff_target?: string
+  reward?: string
+  cost?: string
+  failure_level?: string
+  compatible_genres?: string[]
+  incompatible_state_flags?: string[]
+  user_configured?: boolean
+  last_triggered_turn_id?: string
+  next_eligible_after_turns?: number
+  director_instruction_note?: string
+}
+
+export interface UpdateDirectorStateInput {
+  branch_id?: string
+  enabled?: boolean
+  spoiler_mode?: string
+  main_arc?: string
+  stage_plan?: string
+  beat_queue?: DirectorBeat[]
+  event_queue?: DirectorEvent[]
+  foreshadowing?: DirectorThread[]
+  potential_characters?: DirectorThread[]
+  branch_patches?: Record<string, string>
+  forced_events?: string[]
+  disabled_events?: string[]
+  last_director_run?: DirectorRunStatus
+  source?: string
+  summary?: string
+}
+
+export interface DirectorEventActionInput {
+  branch_id?: string
+  event?: DirectorEvent
+  reason?: string
+  source?: string
+}
+
+export interface DirectorThread {
+  id?: string
+  title?: string
+  status?: string
+  summary?: string
+}
+
+export interface DirectorRunStatus {
+  status?: string
+  summary?: string
+  error?: string
+  updated_at?: string
+}
+
+export interface TurnBrief {
+  user_action?: string
+  intent?: string
+  turn_goal?: string
+  pressure?: string
+  event_intents?: string[]
+  cost_policy?: string
+  rule_checks?: RuleCheck[]
+  state_expectation?: string
+  continuity_notes?: string
+}
+
+export interface RuleCheck {
+  id?: string
+  label?: string
+  kind?: string
+  mode?: 'default' | 'd20_dc' | 'd100_under'
+  attribute_path?: string
+  expression?: string
+  dice?: string
+  modifier?: number
+  difficulty?: number
+  resource_cost_path?: string
+  resource_cost?: number
+  success_state_ops?: StateOp[]
+  failure_state_ops?: StateOp[]
+  terminal_on_failure?: boolean
+  terminal_type?: string
+  terminal_reason?: string
+  seed?: number
+}
+
+export interface RuleResolution {
+  id?: string
+  accepted_brief: TurnBrief
+  rule_results?: RuleResult[]
+  state_ops_preview?: StateOp[]
+  terminal_candidate?: TerminalCandidate
+  rule_constraints?: string[]
+  created_at?: string
+}
+
+export interface RuleResult {
+  id?: string
+  label?: string
+  kind?: string
+  mode?: string
+  attribute_path?: string
+  attribute_value?: number
+  expression?: string
+  expression_value?: number
+  dice?: string
+  rolls?: number[]
+  roll_total?: number
+  modifier?: number
+  difficulty?: number
+  total?: number
+  outcome: string
+  seed?: number
+  constraints?: string[]
+  error?: string
+}
+
+export interface TerminalCandidate {
+  type?: string
+  reason?: string
+  check_id?: string
+}
+
+export interface TerminalOutcome {
+  terminal: boolean
+  type?: string
+  reason?: string
+  final_narrative_summary?: string
+  caused_by_turn_id?: string
+  rule_resolution_id?: string
+  restart_suggestions?: string[]
+}
+
 export interface HotChoicesResponse {
   enabled: boolean
   choices: string[]
+}
+
+export interface OpeningRollRequest {
+  teller_id?: string
+  story_director_id?: string
+  selected_trait_ids?: string[]
+  locked_trait_ids?: string[]
+  seed?: number
+}
+
+export interface OpeningRollResult {
+  teller_id?: string
+  story_director_id?: string
+  seed: number
+  traits: OpeningRolledTrait[]
+  state_ops: StateOp[]
+  director_state: DirectorState
+}
+
+export interface OpeningRolledTrait {
+  pool_id: string
+  id: string
+  name: string
+  summary?: string
+}
+
+export interface RuleResolutionRerollInput {
+  branch_id?: string
+  turn_id?: string
 }
 
 export interface Snapshot {
@@ -204,6 +591,7 @@ export interface Snapshot {
   token_usage_events?: TokenUsageEvent[]
   context_compaction?: ContextCompactionEvent | null
   context_compaction_removal?: ContextCompactionRemovalEvent | null
+  director_state?: DirectorState
   state: Record<string, unknown>
   graph?: StoryGraph
 }
@@ -343,6 +731,8 @@ export interface PlotNode {
   ts: string
   current: boolean
   head: boolean
+  terminal?: boolean
+  terminal_type?: string
 }
 
 export interface StoryGraph {
@@ -354,6 +744,7 @@ export interface InteractiveTurnPersistedEvent {
   story_id: string
   branch_id: string
   turn: TurnEvent
+  director_state?: DirectorState
   state?: Record<string, unknown>
   graph?: StoryGraph
   branches?: BranchSummary[]

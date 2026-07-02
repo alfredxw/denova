@@ -266,7 +266,7 @@ func interactiveImageSourceContext(meta interactive.StoryMeta, branchID string, 
 	var sb strings.Builder
 	writeContextLine(&sb, "故事标题", meta.Title)
 	writeContextLine(&sb, "故事来源", meta.Origin)
-	writeContextLine(&sb, "叙事方案", meta.StoryTellerID)
+	writeContextLine(&sb, "叙事风格", meta.StoryTellerID)
 	start := turnIndex - 2
 	if start < 0 {
 		start = 0

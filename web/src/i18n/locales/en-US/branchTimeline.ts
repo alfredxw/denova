@@ -26,6 +26,8 @@ const branchTimeline = {
   'branchTimeline.recenter': 'Recenter to current node',
   'branchTimeline.unknownBranch': 'Unknown branch',
   'branchTimeline.mainBranch': 'Main',
+  'branchTimeline.terminalBadge': 'END',
+  'branchTimeline.terminalNode': 'Terminal node',
 } as const
 
 export default branchTimeline

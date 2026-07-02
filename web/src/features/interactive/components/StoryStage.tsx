@@ -28,7 +28,7 @@ import { createInteractiveNarrativeFilter, sanitizeStoredNarrative } from '../st
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
+import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { TellerPicker } from './TellerPicker'
 import { TurnNavigator, type TurnNavigationItem } from './TurnNavigator'
@@ -41,6 +41,7 @@ interface StoryStageProps {
   stories?: StorySummary[]
   story?: StorySummary
   tellers?: Teller[]
+  storyDirectors?: StoryDirector[]
   imagePresets?: ImagePreset[]
   storyId: string
   branchId: string
@@ -85,7 +86,7 @@ type LiveTurnRenderKeys = {
   assistant: string
 }
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onToggleSceneMemory, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onToggleSceneMemory, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const keyboardInset = useKeyboardInset()
@@ -113,6 +114,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const activityContent = stageRun.activityContent
   const liveMessages = stageRun.liveMessages
   const rewindTurnId = stageRun.rewindTurnId
+  const branchTerminal = snapshot?.current_turn?.terminal_outcome?.terminal === true
 
   useEffect(() => {
     setOptimisticInteractiveImages({})
@@ -459,7 +461,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         .slice(0, 10),
     [generatedHotChoices],
   )
-  const canUseHotChoices = !streaming && !editingTurn && stagePreferences.hotChoicesEnabled && Boolean(storyId)
+  const canUseHotChoices = !branchTerminal && !streaming && !editingTurn && stagePreferences.hotChoicesEnabled && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
   const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + keyboardInset + 20 : undefined
   const availableBookOpeningPresets = useMemo(() => bookOpeningPresets.filter((preset) => preset.content.trim()), [bookOpeningPresets])
@@ -494,7 +496,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const requestHotChoices = useCallback(
     async (options: boolean | HotChoicesRequestOptions = false) => {
       const append = typeof options === 'boolean' ? options : options.append === true
-      if (!stagePreferences.hotChoicesEnabled || streaming || editingTurn || !storyId || hotChoicesLoading) return false
+      if (branchTerminal || !stagePreferences.hotChoicesEnabled || streaming || editingTurn || !storyId || hotChoicesLoading) return false
       const abortController = new AbortController()
       hotChoicesAbortRef.current?.abort()
       hotChoicesAbortRef.current = abortController
@@ -519,7 +521,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         if (!abortController.signal.aborted) setHotChoicesLoading(false)
       }
     },
-    [branchId, editingTurn, hotChoices, hotChoicesLoading, snapshot?.branch_id, stagePreferences.hotChoicesEnabled, storyId, streaming],
+    [branchId, branchTerminal, editingTurn, hotChoices, hotChoicesLoading, snapshot?.branch_id, stagePreferences.hotChoicesEnabled, storyId, streaming],
   )
 
   const toggleHotChoices = () => {
@@ -557,7 +559,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const send = async (override?: { message?: string; rewindTurnId?: string }) => {
     const sourceMessage = override?.message ?? input
     const message = sourceMessage.trim()
-    if (!message || !storyId || streaming) return
+    if (!message || !storyId || streaming || branchTerminal) return
     if (message === '/compact') {
       await compactCurrentContext()
       return
@@ -995,7 +997,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   const stageControls = (
     <>
-      <StoryPicker stories={stories} currentStoryId={storyId} tellers={tellers} onSelect={onStorySelect} onCreate={onStoryCreate} onDelete={onStoryDelete} />
+      <StoryPicker stories={stories} currentStoryId={storyId} tellers={tellers} storyDirectors={storyDirectors} onSelect={onStorySelect} onCreate={onStoryCreate} onDelete={onStoryDelete} />
       <TellerPicker story={story} tellers={tellers} onChange={onTellerChange} />
       <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} />
       {onToggleSceneMemory && (
@@ -1289,10 +1291,11 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                   className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0"
                   style={inputTextStyle}
                   value={input}
+                  disabled={branchTerminal}
                   inputMode="text"
                   enterKeyHint="send"
                   autoCapitalize="sentences"
-                  placeholder={!isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
+                  placeholder={branchTerminal ? t('storyStage.inputPlaceholderTerminal') : !isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
                   onChange={handleInputChange}
                   onKeyDown={(event) => {
                     const canPickSkill = showSkillCommands && filteredSkillCommands.length > 0
@@ -1336,7 +1339,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                         variant="outline"
                         size="icon-sm"
                         className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                        disabled={streaming || (!storyId && tokenUsageMessages.length === 0 && !workspace)}
+                        disabled={streaming || branchTerminal || (!storyId && tokenUsageMessages.length === 0 && !workspace)}
                         aria-label={t('chat.input.actions')}
                         title={t('chat.input.actions')}
                       >
@@ -1345,7 +1348,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
                       <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming} />
-                      <HotChoicesModeMenu value={hotChoicesMode} disabled={!stagePreferences.hotChoicesEnabled || streaming} onChange={setHotChoicesMode} />
+	                      <HotChoicesModeMenu value={hotChoicesMode} disabled={!stagePreferences.hotChoicesEnabled || streaming || branchTerminal} onChange={setHotChoicesMode} />
                       <InteractiveImageSettingsMenu story={story} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <StoryImagePresetMenu story={story} presets={imagePresets} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <DropdownMenuItem
@@ -1358,7 +1361,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                       </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                       <DropdownMenuItem
-                        disabled={!storyId || streaming}
+	                        disabled={!storyId || streaming || branchTerminal}
                         onSelect={openContextAnalysis}
                         className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
                       >
@@ -1372,7 +1375,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               toolbarEnd={
                 <>
                   {stagePreferences.hotChoicesEnabled ? (
-                    <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
+	                    <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || branchTerminal || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
                       <Compass className={`h-3.5 w-3.5 ${hotChoicesLoading ? 'animate-pulse' : ''}`} />
                       {!isMobile ? t('storyStage.hotChoices.button') : null}
                     </Button>
@@ -1387,7 +1390,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               submitControl={
                 <Button
                   className={`nova-agent-composer-submit h-9 w-9 shrink-0 rounded-[10px] px-0 text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
-                  disabled={streaming ? false : !storyId || !input.trim()}
+                  disabled={streaming ? false : !storyId || branchTerminal || !input.trim()}
                   onClick={() => {
                     streaming ? stop() : void send()
                   }}

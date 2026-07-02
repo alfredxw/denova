@@ -118,6 +118,35 @@ describe('BranchTimeline', () => {
     expect(onBackToStory).toHaveBeenCalled()
   })
 
+  it('marks terminal nodes in the route graph', () => {
+    render(
+      <BranchTimeline
+        currentBranchId="main"
+        branches={[{ id: 'main', head: 'ev_2', created_at: '', current: true }]}
+        snapshot={{
+          story_id: 'st_1',
+          branch_id: 'main',
+          turns: [],
+          state: {},
+          graph: {
+            branches: [{ id: 'main', head: 'ev_2', created_at: '', current: true }],
+            nodes: [
+              { id: 'ev_1', branch_id: 'main', title: '第一幕', summary: '', ts: '', current: true, head: false },
+              { id: 'ev_2', parent_id: 'ev_1', branch_id: 'main', title: '主线失败', summary: '入口崩塌', ts: '', current: true, head: true, terminal: true, terminal_type: 'mainline_failed' },
+            ],
+          },
+        }}
+        onSwitchBranch={vi.fn()}
+        onCreateBranch={vi.fn()}
+        onDeleteBranch={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByText('分支路线'))
+
+    expect(screen.getByText('终局')).toBeInTheDocument()
+  })
+
   it('does not let canvas drag handling suppress node clicks', () => {
     render(
       <BranchTimeline

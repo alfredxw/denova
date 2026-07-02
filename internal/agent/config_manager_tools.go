@@ -21,14 +21,25 @@ type idListInput struct {
 }
 
 type tellerWriteInput struct {
-	Message    string                 `json:"message" jsonschema:"description=本次叙事方案变更说明"`
-	Operations []tellerWriteOperation `json:"operations" jsonschema:"description=批量叙事方案操作"`
+	Message    string                 `json:"message" jsonschema:"description=本次叙事风格变更说明"`
+	Operations []tellerWriteOperation `json:"operations" jsonschema:"description=批量叙事风格操作"`
 }
 
 type tellerWriteOperation struct {
 	Op     string             `json:"op" jsonschema:"description=操作类型：create/update/delete"`
-	ID     string             `json:"id" jsonschema:"description=目标导演 ID；update/delete 必填"`
-	Teller interactive.Teller `json:"teller" jsonschema:"description=create/update 使用的完整导演配置"`
+	ID     string             `json:"id" jsonschema:"description=目标叙事风格 ID；update/delete 必填"`
+	Teller interactive.Teller `json:"teller" jsonschema:"description=create/update 使用的完整叙事风格配置；不要新增 orchestration，故事编排请使用 story_directors"`
+}
+
+type storyDirectorWriteInput struct {
+	Message    string                        `json:"message" jsonschema:"description=本次故事导演变更说明"`
+	Operations []storyDirectorWriteOperation `json:"operations" jsonschema:"description=批量故事导演操作"`
+}
+
+type storyDirectorWriteOperation struct {
+	Op       string                    `json:"op" jsonschema:"description=操作类型：create/update/delete"`
+	ID       string                    `json:"id" jsonschema:"description=目标故事导演 ID；update/delete 必填"`
+	Director interactive.StoryDirector `json:"director" jsonschema:"description=create/update 使用的完整故事导演配置，包含 strategy、event_system、stat_system、trpg_system、opening_selector"`
 }
 
 type imagePresetWriteInput struct {
@@ -123,6 +134,9 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListTellersTool(novaDir) }},
 		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newReadTellersTool(novaDir) }},
 		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteTellersTool(novaDir) }},
+		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListStoryDirectorsTool(novaDir) }},
+		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newReadStoryDirectorsTool(novaDir) }},
+		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteStoryDirectorsTool(novaDir) }},
 		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListImagePresetsTool(novaDir) }},
 		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newReadImagePresetsTool(novaDir) }},
 		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteImagePresetsTool(novaDir) }},
@@ -140,7 +154,7 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newReadStoryMemoryRecordsTool(workspace) }},
 		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteStoryMemoryRecordsTool(workspace) }},
 	}
-	tools := make([]tool.BaseTool, 0, len(builders))
+	tools := make([]tool.BaseTool, 0, len(builders)+2)
 	for _, builder := range builders {
 		if !builder.enabled {
 			continue
@@ -151,11 +165,18 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 		}
 		tools = append(tools, t)
 	}
+	if settings.LoreRead {
+		loreTools, err := newLoreTools(workspace, false)
+		if err != nil {
+			return nil, err
+		}
+		tools = append(tools, loreTools...)
+	}
 	return tools, nil
 }
 
 func newListImagePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_image_presets", "列出图像方案索引，返回 ID、名称、简介、标签、类型和注入规则概览；需要完整 slots 内容时再调用 read_image_presets。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_image_presets", "列出图像方案索引，返回 ID、名称、简介、标签、类型和注入规则概览；图像方案是共享模块，可用于写作模式和游戏模式；需要完整 slots 内容时再调用 read_image_presets。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -171,7 +192,7 @@ func newListImagePresetsTool(novaDir string) (tool.BaseTool, error) {
 		var sb strings.Builder
 		sb.WriteString("# 图像方案索引\n\n")
 		for _, preset := range presets {
-			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n", preset.ID, preset.Name, boolLabel(preset.Custom, "custom", "built-in"))
+			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 共享模块（写作模式 / 游戏模式）\n", preset.ID, preset.Name, boolLabel(preset.Custom, "custom", "built-in"))
 			if preset.Description != "" {
 				fmt.Fprintf(&sb, "  简介: %s\n", preset.Description)
 			}
@@ -194,7 +215,7 @@ func newListImagePresetsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadImagePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_image_presets", "按图像方案 ID 批量读取完整图像方案配置。图像方案使用 slots：agent_system 注入图像提示构造 Agent 的 system prompt，tool_request 原样前置注入最终图像请求 prompt。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_image_presets", "按图像方案 ID 批量读取完整图像方案配置。图像方案是共享模块，使用 slots：agent_system 注入图像提示构造 Agent 的 system prompt，tool_request 原样前置注入最终图像请求 prompt。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取图像方案")
@@ -217,7 +238,7 @@ func newReadImagePresetsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteImagePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_image_presets", "批量创建、更新或删除图像方案配置。create/update 必须写完整 slots；target 仅支持 agent_system 和 tool_request。旧 prompt 字段只作为兼容输入，会被后端转换为 tool_request slot。删除内置图像方案会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input imagePresetWriteInput) (string, error) {
+	return utils.InferTool("write_image_presets", "批量创建、更新或删除图像方案配置。图像方案是共享模块，不存在每个方案可配置的模式字段。create/update 必须写完整 slots；target 仅支持 agent_system 和 tool_request。旧 prompt 字段只作为兼容输入，会被后端转换为 tool_request slot。删除内置图像方案会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input imagePresetWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入图像方案")
@@ -254,23 +275,23 @@ func newWriteImagePresetsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newListTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_tellers", "列出叙事方案索引，返回 ID、名称、简介、标签和槽位概览；需要完整配置时再调用 read_tellers。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_tellers", "列出叙事风格索引，返回 ID、名称、简介、标签和槽位概览；叙事风格是共享模块，可用于写作模式和游戏模式；需要完整配置时再调用 read_tellers。叙事风格只负责文风、提示词槽位、场景风格和上下文策略。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
-			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事方案")
+			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事风格")
 		}
 		tellers, err := interactive.NewTellerLibrary(novaDir).List()
 		if err != nil {
 			return "", err
 		}
 		if len(tellers) == 0 {
-			return "暂无叙事方案。", nil
+			return "暂无叙事风格。", nil
 		}
 		var sb strings.Builder
-		sb.WriteString("# 叙事方案索引\n\n")
+		sb.WriteString("# 叙事风格索引\n\n")
 		for _, teller := range tellers {
-			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  槽位: %d\n", teller.ID, teller.Name, boolLabel(teller.Custom, "custom", "built-in"), len(teller.Slots))
+			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 共享模块（写作模式 / 游戏模式）\n  槽位: %d\n", teller.ID, teller.Name, boolLabel(teller.Custom, "custom", "built-in"), len(teller.Slots))
 			if teller.Description != "" {
 				fmt.Fprintf(&sb, "  简介: %s\n", teller.Description)
 			}
@@ -284,10 +305,10 @@ func newListTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_tellers", "按叙事方案 ID 批量读取完整配置。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_tellers", "按叙事风格 ID 批量读取完整配置。叙事风格是共享模块；旧配置里可能带 orchestration；新配置不要继续写该字段，事件/数值/TRPG/开局选择器应写入故事导演。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
-			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事方案")
+			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事风格")
 		}
 		lib := interactive.NewTellerLibrary(novaDir)
 		result := []interactive.Teller{}
@@ -307,10 +328,10 @@ func newReadTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_tellers", "批量创建、更新或删除叙事方案配置。删除内置方案会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
+	return utils.InferTool("write_tellers", "批量创建、更新或删除叙事风格配置。叙事风格是共享模块，不存在每个风格可配置的模式字段；只维护文风、提示词槽位、场景风格和上下文策略；不要新增 orchestration，故事编排请使用 write_story_directors。删除内置风格会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
-			return "", fmt.Errorf("nova_dir 不可用，无法写入叙事方案")
+			return "", fmt.Errorf("nova_dir 不可用，无法写入叙事风格")
 		}
 		lib := interactive.NewTellerLibrary(novaDir)
 		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
@@ -336,10 +357,120 @@ func newWriteTellersTool(novaDir string) (tool.BaseTool, error) {
 				}
 				result["deleted"] = append(result["deleted"], id)
 			default:
-				return "", fmt.Errorf("不支持的叙事方案操作: %s", op.Op)
+				return "", fmt.Errorf("不支持的叙事风格操作: %s", op.Op)
 			}
 		}
-		return formatBatchResult(firstConfigNonEmpty(input.Message, "叙事方案已更新"), result), nil
+		return formatBatchResult(firstConfigNonEmpty(input.Message, "叙事风格已更新"), result), nil
+	})
+}
+
+func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
+	return utils.InferTool("list_story_directors", "列出故事导演索引，返回 ID、名称、简介、标签、策略和系统配置概览；故事导演是游戏模式独占模块；需要完整配置时再调用 read_story_directors。故事导演负责事件系统、数值系统、TRPG 检定和开局选择器。", func(ctx context.Context, input struct{}) (string, error) {
+		_ = ctx
+		_ = input
+		if novaDir == "" {
+			return "", fmt.Errorf("nova_dir 不可用，无法读取故事导演")
+		}
+		directors, err := interactive.NewStoryDirectorLibrary(novaDir).List()
+		if err != nil {
+			return "", err
+		}
+		if len(directors) == 0 {
+			return "暂无故事导演。", nil
+		}
+		var sb strings.Builder
+		sb.WriteString("# 故事导演索引\n\n")
+		for _, director := range directors {
+			eventPackages := len(director.EventSystem.EventPackages)
+			eventCards := 0
+			for _, pkg := range director.EventSystem.EventPackages {
+				eventCards += len(pkg.Events)
+			}
+			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 游戏模式\n  策略: enabled=%t mainline=%s failure=%s pacing=%s random=%.2f\n  事件: %d 包 / %d 卡 / %d 自定义\n  数值: %d 属性\n  TRPG: %d 规则\n  开局: %d 词条池\n",
+				director.ID,
+				director.Name,
+				boolLabel(director.Custom, "custom", "built-in"),
+				director.Strategy.Enabled,
+				director.Strategy.MainlineStrength,
+				director.Strategy.FailurePolicy,
+				director.Strategy.PacingCurve,
+				director.Strategy.RandomEventRate,
+				eventPackages,
+				eventCards,
+				len(director.EventSystem.CustomEvents),
+				len(director.StatSystem.Attributes),
+				len(director.TRPGSystem.RuleTemplates),
+				len(director.OpeningSelector.TraitPools),
+			)
+			if director.Description != "" {
+				fmt.Fprintf(&sb, "  简介: %s\n", director.Description)
+			}
+			if len(director.Tags) > 0 {
+				fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(director.Tags, "、"))
+			}
+			sb.WriteString("\n")
+		}
+		return strings.TrimSpace(sb.String()), nil
+	})
+}
+
+func newReadStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
+	return utils.InferTool("read_story_directors", "按故事导演 ID 批量读取完整配置。故事导演是游戏模式独占模块；配置按 strategy、event_system、stat_system、trpg_system、opening_selector 分区。", func(ctx context.Context, input idListInput) (string, error) {
+		_ = ctx
+		if novaDir == "" {
+			return "", fmt.Errorf("nova_dir 不可用，无法读取故事导演")
+		}
+		lib := interactive.NewStoryDirectorLibrary(novaDir)
+		result := []interactive.StoryDirector{}
+		for _, id := range input.IDs {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			director, err := lib.Get(id)
+			if err != nil {
+				return "", err
+			}
+			result = append(result, director)
+		}
+		return marshalToolJSON(result)
+	})
+}
+
+func newWriteStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
+	return utils.InferTool("write_story_directors", "批量创建、更新或删除故事导演配置。故事导演、事件系统、规则系统和开局选择器是游戏模式独占能力，不存在每个资源可配置的模式字段。create/update 必须写完整分区：strategy、event_system、stat_system、trpg_system、opening_selector。删除内置故事导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input storyDirectorWriteInput) (string, error) {
+		_ = ctx
+		if novaDir == "" {
+			return "", fmt.Errorf("nova_dir 不可用，无法写入故事导演")
+		}
+		lib := interactive.NewStoryDirectorLibrary(novaDir)
+		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
+		for _, op := range input.Operations {
+			switch strings.TrimSpace(op.Op) {
+			case "create":
+				director, err := lib.Create(op.Director)
+				if err != nil {
+					return "", err
+				}
+				result["created"] = append(result["created"], director.ID)
+			case "update":
+				id := firstConfigNonEmpty(op.ID, op.Director.ID)
+				director, err := lib.Update(id, op.Director, "")
+				if err != nil {
+					return "", err
+				}
+				result["updated"] = append(result["updated"], director.ID)
+			case "delete":
+				id := strings.TrimSpace(op.ID)
+				if err := lib.Delete(id); err != nil {
+					return "", err
+				}
+				result["deleted"] = append(result["deleted"], id)
+			default:
+				return "", fmt.Errorf("不支持的故事导演操作: %s", op.Op)
+			}
+		}
+		return formatBatchResult(firstConfigNonEmpty(input.Message, "故事导演已更新"), result), nil
 	})
 }
 

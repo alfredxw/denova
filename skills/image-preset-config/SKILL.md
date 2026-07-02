@@ -15,6 +15,7 @@ Use this skill before calling `write_image_presets`.
 3. Built-in image presets can be read and copied as examples. Deleting built-ins is rejected.
 4. For update, preserve fields the user did not ask to change.
 5. For delete, require an explicit user request.
+6. Image presets are shared modules for Writing Mode and Game Mode. Do not add a per-preset mode/scope field.
 
 ## Image Preset Shape
 

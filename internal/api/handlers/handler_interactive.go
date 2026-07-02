@@ -38,6 +38,20 @@ func (h *Handlers) HandleInteractiveStoryCreate(ctx context.Context, c *app.Requ
 	writeJSON(c, consts.StatusOK, story)
 }
 
+func (h *Handlers) HandleInteractiveOpeningRoll(ctx context.Context, c *app.RequestContext) {
+	var body interactive.OpeningRollRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	result, err := h.app.RollInteractiveOpening(body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
 func (h *Handlers) HandleInteractiveStoryUpdate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.UpdateStoryRequest
 	if err := c.BindJSON(&body); err != nil {
@@ -67,6 +81,98 @@ func (h *Handlers) HandleInteractiveSnapshot(ctx context.Context, c *app.Request
 		return
 	}
 	writeJSON(c, consts.StatusOK, snapshot)
+}
+
+func (h *Handlers) HandleInteractiveRuleResolutionReroll(ctx context.Context, c *app.RequestContext) {
+	var body interactive.RuleResolutionRerollRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if body.BranchID == "" {
+		body.BranchID = c.Query("branch")
+	}
+	resolution, err := h.app.RerollInteractiveRuleResolution(c.Param("id"), c.Param("resolution_id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, resolution)
+}
+
+func (h *Handlers) HandleInteractiveDirector(ctx context.Context, c *app.RequestContext) {
+	state, err := h.app.InteractiveDirector(c.Param("id"), c.Query("branch"))
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, state)
+}
+
+func (h *Handlers) HandleInteractiveDirectorUpdate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.UpdateDirectorStateRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if body.BranchID == "" {
+		body.BranchID = c.Query("branch")
+	}
+	state, err := h.app.UpdateInteractiveDirector(c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, state)
+}
+
+func (h *Handlers) HandleInteractiveDirectorRebuild(ctx context.Context, c *app.RequestContext) {
+	var body interactive.RebuildDirectorStateRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if body.BranchID == "" {
+		body.BranchID = c.Query("branch")
+	}
+	state, err := h.app.RebuildInteractiveDirector(c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, state)
+}
+
+func (h *Handlers) HandleInteractiveDirectorEventForce(ctx context.Context, c *app.RequestContext) {
+	state, err := h.applyInteractiveDirectorEventAction(c, true)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, state)
+}
+
+func (h *Handlers) HandleInteractiveDirectorEventDisable(ctx context.Context, c *app.RequestContext) {
+	state, err := h.applyInteractiveDirectorEventAction(c, false)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, state)
+}
+
+func (h *Handlers) applyInteractiveDirectorEventAction(c *app.RequestContext, force bool) (interactive.DirectorState, error) {
+	var body interactive.DirectorEventActionRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		return interactive.DirectorState{}, err
+	}
+	if body.BranchID == "" {
+		body.BranchID = c.Query("branch")
+	}
+	if force {
+		return h.app.ForceInteractiveDirectorEvent(c.Param("id"), c.Param("event_id"), body)
+	}
+	return h.app.DisableInteractiveDirectorEvent(c.Param("id"), c.Param("event_id"), body)
 }
 
 func (h *Handlers) HandleInteractiveMemory(ctx context.Context, c *app.RequestContext) {
@@ -502,6 +608,250 @@ func (h *Handlers) HandleInteractiveTellerUpdate(ctx context.Context, c *app.Req
 
 func (h *Handlers) HandleInteractiveTellerDelete(ctx context.Context, c *app.RequestContext) {
 	if err := h.app.DeleteInteractiveTeller(c.Param("id")); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handlers) HandleStoryDirectors(ctx context.Context, c *app.RequestContext) {
+	directors, err := h.app.StoryDirectors()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]any{"directors": directors})
+}
+
+func (h *Handlers) HandleStoryDirector(ctx context.Context, c *app.RequestContext) {
+	director, err := h.app.StoryDirector(c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, director)
+}
+
+func (h *Handlers) HandleStoryDirectorCreate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.StoryDirector
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	director, err := h.app.CreateStoryDirector(body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, director)
+}
+
+func (h *Handlers) HandleStoryDirectorUpdate(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		interactive.StoryDirector
+		BaseRevision string `json:"base_revision"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	director, err := h.app.UpdateStoryDirector(c.Param("id"), body.StoryDirector, body.BaseRevision)
+	if err != nil {
+		if errors.Is(err, interactive.ErrStoryDirectorRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, director)
+}
+
+func (h *Handlers) HandleStoryDirectorDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteStoryDirector(c.Param("id")); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handlers) HandleEventSystems(ctx context.Context, c *app.RequestContext) {
+	items, err := h.app.EventSystems()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]any{"event_systems": items})
+}
+
+func (h *Handlers) HandleEventSystem(ctx context.Context, c *app.RequestContext) {
+	item, err := h.app.EventSystem(c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleEventSystemCreate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.EventSystemModule
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.CreateEventSystem(body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleEventSystemUpdate(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		interactive.EventSystemModule
+		BaseRevision string `json:"base_revision"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.UpdateEventSystem(c.Param("id"), body.EventSystemModule, body.BaseRevision)
+	if err != nil {
+		if errors.Is(err, interactive.ErrEventSystemRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleEventSystemDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteEventSystem(c.Param("id")); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handlers) HandleRuleSystems(ctx context.Context, c *app.RequestContext) {
+	items, err := h.app.RuleSystems()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]any{"rule_systems": items})
+}
+
+func (h *Handlers) HandleRuleSystem(ctx context.Context, c *app.RequestContext) {
+	item, err := h.app.RuleSystem(c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleRuleSystemCreate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.RuleSystemModule
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.CreateRuleSystem(body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleRuleSystemUpdate(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		interactive.RuleSystemModule
+		BaseRevision string `json:"base_revision"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.UpdateRuleSystem(c.Param("id"), body.RuleSystemModule, body.BaseRevision)
+	if err != nil {
+		if errors.Is(err, interactive.ErrRuleSystemRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleRuleSystemDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteRuleSystem(c.Param("id")); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handlers) HandleOpeningSelectors(ctx context.Context, c *app.RequestContext) {
+	items, err := h.app.OpeningSelectors()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]any{"opening_selectors": items})
+}
+
+func (h *Handlers) HandleOpeningSelector(ctx context.Context, c *app.RequestContext) {
+	item, err := h.app.OpeningSelector(c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleOpeningSelectorCreate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.OpeningSelectorModule
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.CreateOpeningSelector(body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleOpeningSelectorUpdate(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		interactive.OpeningSelectorModule
+		BaseRevision string `json:"base_revision"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.UpdateOpeningSelector(c.Param("id"), body.OpeningSelectorModule, body.BaseRevision)
+	if err != nil {
+		if errors.Is(err, interactive.ErrOpeningSelectorRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleOpeningSelectorDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteOpeningSelector(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}

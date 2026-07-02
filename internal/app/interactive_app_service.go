@@ -8,6 +8,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/book"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
 	"denova/internal/session"
@@ -24,6 +25,9 @@ const (
 )
 
 var generateInteractiveStateForStoryMemory = agent.GenerateInteractiveState
+var generateInteractiveDirectorForPlan = func(ctx context.Context, cfg *config.Config, state *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
+	return agent.GenerateInteractiveDirectorWithTools(ctx, cfg, state, toolContext, instruction)
+}
 
 // InteractiveTurnPersistedEvent is emitted after a game-mode turn is durably
 // appended, allowing the UI to merge the new turn without a blocking snapshot
@@ -32,6 +36,7 @@ type InteractiveTurnPersistedEvent struct {
 	StoryID                  string                                     `json:"story_id"`
 	BranchID                 string                                     `json:"branch_id"`
 	Turn                     interactive.TurnEvent                      `json:"turn"`
+	DirectorState            interactive.DirectorState                  `json:"director_state"`
 	State                    map[string]any                             `json:"state"`
 	Graph                    interactive.StoryGraph                     `json:"graph"`
 	Branches                 []interactive.BranchSummary                `json:"branches"`
@@ -60,7 +65,69 @@ func (s *InteractiveAppService) CreateInteractiveStory(req interactive.CreateSto
 	if store == nil {
 		return interactive.StorySummary{}, ErrNoWorkspace
 	}
+	req = s.withStoryDirectorDefaults(req)
 	return store.CreateStory(req)
+}
+
+func (a *App) RollInteractiveOpening(req interactive.OpeningRollRequest) (interactive.OpeningRollResult, error) {
+	return a.interactiveService().RollInteractiveOpening(req)
+}
+
+func (s *InteractiveAppService) RollInteractiveOpening(req interactive.OpeningRollRequest) (interactive.OpeningRollResult, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.OpeningRollResult{}, ErrNoWorkspace
+	}
+	directorID := interactive.NormalizeStoryDirectorID(req.StoryDirectorID)
+	if directorID == "" {
+		directorID = interactive.DefaultStoryDirectorID
+	}
+	director, err := interactive.NewStoryDirectorLibrary(cfg.NovaDir).Get(directorID)
+	if err != nil {
+		tellerID := strings.TrimSpace(req.TellerID)
+		if tellerID == "" {
+			return interactive.OpeningRollResult{}, err
+		}
+		teller, tellerErr := interactive.NewTellerLibrary(cfg.NovaDir).Get(tellerID)
+		if tellerErr != nil {
+			return interactive.OpeningRollResult{}, err
+		}
+		req.TellerID = tellerID
+		return interactive.RollOpening(teller, req)
+	}
+	req.StoryDirectorID = directorID
+	return interactive.RollOpeningWithStoryDirector(director, req)
+}
+
+func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.CreateStoryRequest) interactive.CreateStoryRequest {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return req
+	}
+	directorID := interactive.NormalizeStoryDirectorID(req.StoryDirectorID)
+	if directorID == "" {
+		directorID = interactive.DefaultStoryDirectorID
+	}
+	req.StoryDirectorID = directorID
+	director, err := interactive.NewStoryDirectorLibrary(cfg.NovaDir).Get(directorID)
+	if err != nil {
+		log.Printf("[interactive-director] load story director failed story_director_id=%s err=%v", directorID, err)
+		return req
+	}
+	if strings.TrimSpace(req.StoryTellerID) == "" && strings.TrimSpace(director.ModuleRefs.NarrativeStyleID) != "" {
+		req.StoryTellerID = strings.TrimSpace(director.ModuleRefs.NarrativeStyleID)
+	}
+	if strings.TrimSpace(req.ImageSettings.PresetID) == "" && strings.TrimSpace(director.ModuleRefs.ImagePresetID) != "" {
+		req.ImageSettings.PresetID = strings.TrimSpace(director.ModuleRefs.ImagePresetID)
+	}
+	if req.DirectorState == nil {
+		state := interactive.DirectorStateFromStoryDirector(director)
+		req.DirectorState = &state
+	}
+	if len(req.InitialStateOps) == 0 {
+		req.InitialStateOps = interactive.StoryDirectorInitialStateOps(director)
+	}
+	return req
 }
 
 func (a *App) UpdateInteractiveStory(storyID string, req interactive.UpdateStoryRequest) (interactive.StorySummary, error) {
@@ -107,6 +174,78 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 		return interactive.Snapshot{}, ErrNoWorkspace
 	}
 	return store.Snapshot(storyID, branchID)
+}
+
+func (a *App) RerollInteractiveRuleResolution(storyID, resolutionID string, req interactive.RuleResolutionRerollRequest) (interactive.RuleResolution, error) {
+	return a.interactiveService().RerollInteractiveRuleResolution(storyID, resolutionID, req)
+}
+
+func (s *InteractiveAppService) RerollInteractiveRuleResolution(storyID, resolutionID string, req interactive.RuleResolutionRerollRequest) (interactive.RuleResolution, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.RuleResolution{}, ErrNoWorkspace
+	}
+	return store.RerollRuleResolution(storyID, resolutionID, req)
+}
+
+func (a *App) InteractiveDirector(storyID, branchID string) (interactive.DirectorState, error) {
+	return a.interactiveService().InteractiveDirector(storyID, branchID)
+}
+
+func (s *InteractiveAppService) InteractiveDirector(storyID, branchID string) (interactive.DirectorState, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.DirectorState{}, ErrNoWorkspace
+	}
+	return store.DirectorState(storyID, branchID)
+}
+
+func (a *App) UpdateInteractiveDirector(storyID string, req interactive.UpdateDirectorStateRequest) (interactive.DirectorState, error) {
+	return a.interactiveService().UpdateInteractiveDirector(storyID, req)
+}
+
+func (s *InteractiveAppService) UpdateInteractiveDirector(storyID string, req interactive.UpdateDirectorStateRequest) (interactive.DirectorState, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.DirectorState{}, ErrNoWorkspace
+	}
+	return store.UpdateDirectorState(storyID, req)
+}
+
+func (a *App) RebuildInteractiveDirector(storyID string, req interactive.RebuildDirectorStateRequest) (interactive.DirectorState, error) {
+	return a.interactiveService().RebuildInteractiveDirector(storyID, req)
+}
+
+func (s *InteractiveAppService) RebuildInteractiveDirector(storyID string, req interactive.RebuildDirectorStateRequest) (interactive.DirectorState, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.DirectorState{}, ErrNoWorkspace
+	}
+	return store.RebuildDirectorState(storyID, req)
+}
+
+func (a *App) ForceInteractiveDirectorEvent(storyID, eventID string, req interactive.DirectorEventActionRequest) (interactive.DirectorState, error) {
+	return a.interactiveService().ForceInteractiveDirectorEvent(storyID, eventID, req)
+}
+
+func (s *InteractiveAppService) ForceInteractiveDirectorEvent(storyID, eventID string, req interactive.DirectorEventActionRequest) (interactive.DirectorState, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.DirectorState{}, ErrNoWorkspace
+	}
+	return store.ForceDirectorEvent(storyID, eventID, req)
+}
+
+func (a *App) DisableInteractiveDirectorEvent(storyID, eventID string, req interactive.DirectorEventActionRequest) (interactive.DirectorState, error) {
+	return a.interactiveService().DisableInteractiveDirectorEvent(storyID, eventID, req)
+}
+
+func (s *InteractiveAppService) DisableInteractiveDirectorEvent(storyID, eventID string, req interactive.DirectorEventActionRequest) (interactive.DirectorState, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.DirectorState{}, ErrNoWorkspace
+	}
+	return store.DisableDirectorEvent(storyID, eventID, req)
 }
 
 func (a *App) InteractiveMemory(storyID, branchID string, includeArchived bool) (interactive.InteractiveMemoryState, error) {
@@ -631,6 +770,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	state := a.bookState
 	bookService := a.bookService
 	chatService := a.chatService
+	sessionStore := a.sessionStore
 	runtimeCfg := *a.cfg
 	workspace := a.workspace
 	runtimeCfg.Workspace = workspace
@@ -658,10 +798,12 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	}
 	log.Printf("[interactive-agent-task] use story settings story_id=%s teller_id=%s target_chars=%d style_rules=%d", storyID, teller.ID, runtimeCfg.InteractiveReplyTargetChars, len(styleRules))
 	tellerSystemInput := interactiveStoryTellerSystemInput(teller, styleRules)
+	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
 	runner, err := buildInteractiveStoryRunner(context.Background(), &runtimeCfg, state, tellerSystemInput, agent.InteractiveStoryToolContext{
-		Store:    store,
-		StoryID:  storyID,
-		BranchID: storyCtx.Snapshot.BranchID,
+		Store:       store,
+		StoryID:     storyID,
+		BranchID:    storyCtx.Snapshot.BranchID,
+		PrepareTurn: conversation.PrepareInteractiveTurn,
 	})
 	if err != nil {
 		log.Printf("[interactive-agent-task] 刷新互动故事 Agent Runner 失败 workspace=%s err=%v", workspace, err)
@@ -687,7 +829,6 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		StyleRules:  styleRules,
 		Locale:      locale,
 	}
-	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleScenes))
 		persistedEmitted := false
@@ -708,18 +849,21 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 			SystemPromptLog:     agent.BuildInteractiveStoryInstructionComposition(&runtimeCfg, state, tellerSystemInput),
 			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
 		}, interactiveEmit)
-		if turn, stateReady, ok := conversation.LastTurnForState(); ok && !stateReady && ctx.Err() == nil {
-			shouldGenerate, nextAuto, err := store.ShouldGenerateStoryMemory(storyID, turn.BranchID)
-			if err != nil {
-				log.Printf("[interactive-memory-agent] auto decision failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
-				markInteractiveStateFailed(conversation, turn, err)
-			} else if shouldGenerate {
-				log.Printf("[interactive-memory-agent] auto pending for stream story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
-			} else if err := store.MarkInteractiveMemoryReady(storyID, turn.BranchID, turn.ID); err != nil {
-				log.Printf("[interactive-memory-agent] mark skipped turn ready failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
-				markInteractiveStateFailed(conversation, turn, err)
-			} else {
-				log.Printf("[interactive-memory-agent] auto skipped story_id=%s branch_id=%s turn_id=%s next_auto_in_turns=%d", storyID, turn.BranchID, turn.ID, nextAuto)
+		if turn, stateReady, ok := conversation.LastTurnForState(); ok && ctx.Err() == nil {
+			startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore)
+			if !stateReady {
+				shouldGenerate, nextAuto, err := store.ShouldGenerateStoryMemory(storyID, turn.BranchID)
+				if err != nil {
+					log.Printf("[interactive-memory-agent] auto decision failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
+					markInteractiveStateFailed(conversation, turn, err)
+				} else if shouldGenerate {
+					log.Printf("[interactive-memory-agent] auto pending for stream story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
+				} else if err := store.MarkInteractiveMemoryReady(storyID, turn.BranchID, turn.ID); err != nil {
+					log.Printf("[interactive-memory-agent] mark skipped turn ready failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
+					markInteractiveStateFailed(conversation, turn, err)
+				} else {
+					log.Printf("[interactive-memory-agent] auto skipped story_id=%s branch_id=%s turn_id=%s next_auto_in_turns=%d", storyID, turn.BranchID, turn.ID, nextAuto)
+				}
 			}
 		}
 		log.Printf("[interactive-agent-task] run end id=%s status=%s", task.ID(), task.Status())
@@ -756,6 +900,7 @@ func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conv
 		StoryID:                  storyID,
 		BranchID:                 snapshot.BranchID,
 		Turn:                     persistedTurn,
+		DirectorState:            snapshot.DirectorState,
 		State:                    snapshot.State,
 		Graph:                    snapshot.Graph,
 		Branches:                 snapshot.Graph.Branches,
@@ -824,6 +969,246 @@ func (s *InteractiveAppService) DeleteInteractiveTeller(id string) error {
 		return ErrNoWorkspace
 	}
 	return interactive.NewTellerLibrary(cfg.NovaDir).Delete(id)
+}
+
+func (a *App) StoryDirectors() ([]interactive.StoryDirector, error) {
+	return a.interactiveService().StoryDirectors()
+}
+
+func (s *InteractiveAppService) StoryDirectors() ([]interactive.StoryDirector, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return nil, ErrNoWorkspace
+	}
+	return interactive.NewStoryDirectorLibrary(cfg.NovaDir).List()
+}
+
+func (a *App) StoryDirector(id string) (interactive.StoryDirector, error) {
+	return a.interactiveService().StoryDirector(id)
+}
+
+func (s *InteractiveAppService) StoryDirector(id string) (interactive.StoryDirector, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.StoryDirector{}, ErrNoWorkspace
+	}
+	return interactive.NewStoryDirectorLibrary(cfg.NovaDir).Get(id)
+}
+
+func (a *App) CreateStoryDirector(director interactive.StoryDirector) (interactive.StoryDirector, error) {
+	return a.interactiveService().CreateStoryDirector(director)
+}
+
+func (s *InteractiveAppService) CreateStoryDirector(director interactive.StoryDirector) (interactive.StoryDirector, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.StoryDirector{}, ErrNoWorkspace
+	}
+	return interactive.NewStoryDirectorLibrary(cfg.NovaDir).Create(director)
+}
+
+func (a *App) UpdateStoryDirector(id string, director interactive.StoryDirector, baseRevision ...string) (interactive.StoryDirector, error) {
+	return a.interactiveService().UpdateStoryDirector(id, director, firstRevision(baseRevision))
+}
+
+func (s *InteractiveAppService) UpdateStoryDirector(id string, director interactive.StoryDirector, baseRevision string) (interactive.StoryDirector, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.StoryDirector{}, ErrNoWorkspace
+	}
+	return interactive.NewStoryDirectorLibrary(cfg.NovaDir).Update(id, director, baseRevision)
+}
+
+func (a *App) DeleteStoryDirector(id string) error {
+	return a.interactiveService().DeleteStoryDirector(id)
+}
+
+func (s *InteractiveAppService) DeleteStoryDirector(id string) error {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return ErrNoWorkspace
+	}
+	return interactive.NewStoryDirectorLibrary(cfg.NovaDir).Delete(id)
+}
+
+func (a *App) EventSystems() ([]interactive.EventSystemModule, error) {
+	return a.interactiveService().EventSystems()
+}
+
+func (s *InteractiveAppService) EventSystems() ([]interactive.EventSystemModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return nil, ErrNoWorkspace
+	}
+	return interactive.NewEventSystemLibrary(cfg.NovaDir).List()
+}
+
+func (a *App) EventSystem(id string) (interactive.EventSystemModule, error) {
+	return a.interactiveService().EventSystem(id)
+}
+
+func (s *InteractiveAppService) EventSystem(id string) (interactive.EventSystemModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.EventSystemModule{}, ErrNoWorkspace
+	}
+	return interactive.NewEventSystemLibrary(cfg.NovaDir).Get(id)
+}
+
+func (a *App) CreateEventSystem(item interactive.EventSystemModule) (interactive.EventSystemModule, error) {
+	return a.interactiveService().CreateEventSystem(item)
+}
+
+func (s *InteractiveAppService) CreateEventSystem(item interactive.EventSystemModule) (interactive.EventSystemModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.EventSystemModule{}, ErrNoWorkspace
+	}
+	return interactive.NewEventSystemLibrary(cfg.NovaDir).Create(item)
+}
+
+func (a *App) UpdateEventSystem(id string, item interactive.EventSystemModule, baseRevision ...string) (interactive.EventSystemModule, error) {
+	return a.interactiveService().UpdateEventSystem(id, item, firstRevision(baseRevision))
+}
+
+func (s *InteractiveAppService) UpdateEventSystem(id string, item interactive.EventSystemModule, baseRevision string) (interactive.EventSystemModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.EventSystemModule{}, ErrNoWorkspace
+	}
+	return interactive.NewEventSystemLibrary(cfg.NovaDir).Update(id, item, baseRevision)
+}
+
+func (a *App) DeleteEventSystem(id string) error {
+	return a.interactiveService().DeleteEventSystem(id)
+}
+
+func (s *InteractiveAppService) DeleteEventSystem(id string) error {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return ErrNoWorkspace
+	}
+	return interactive.NewEventSystemLibrary(cfg.NovaDir).Delete(id)
+}
+
+func (a *App) RuleSystems() ([]interactive.RuleSystemModule, error) {
+	return a.interactiveService().RuleSystems()
+}
+
+func (s *InteractiveAppService) RuleSystems() ([]interactive.RuleSystemModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return nil, ErrNoWorkspace
+	}
+	return interactive.NewRuleSystemLibrary(cfg.NovaDir).List()
+}
+
+func (a *App) RuleSystem(id string) (interactive.RuleSystemModule, error) {
+	return a.interactiveService().RuleSystem(id)
+}
+
+func (s *InteractiveAppService) RuleSystem(id string) (interactive.RuleSystemModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.RuleSystemModule{}, ErrNoWorkspace
+	}
+	return interactive.NewRuleSystemLibrary(cfg.NovaDir).Get(id)
+}
+
+func (a *App) CreateRuleSystem(item interactive.RuleSystemModule) (interactive.RuleSystemModule, error) {
+	return a.interactiveService().CreateRuleSystem(item)
+}
+
+func (s *InteractiveAppService) CreateRuleSystem(item interactive.RuleSystemModule) (interactive.RuleSystemModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.RuleSystemModule{}, ErrNoWorkspace
+	}
+	return interactive.NewRuleSystemLibrary(cfg.NovaDir).Create(item)
+}
+
+func (a *App) UpdateRuleSystem(id string, item interactive.RuleSystemModule, baseRevision ...string) (interactive.RuleSystemModule, error) {
+	return a.interactiveService().UpdateRuleSystem(id, item, firstRevision(baseRevision))
+}
+
+func (s *InteractiveAppService) UpdateRuleSystem(id string, item interactive.RuleSystemModule, baseRevision string) (interactive.RuleSystemModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.RuleSystemModule{}, ErrNoWorkspace
+	}
+	return interactive.NewRuleSystemLibrary(cfg.NovaDir).Update(id, item, baseRevision)
+}
+
+func (a *App) DeleteRuleSystem(id string) error {
+	return a.interactiveService().DeleteRuleSystem(id)
+}
+
+func (s *InteractiveAppService) DeleteRuleSystem(id string) error {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return ErrNoWorkspace
+	}
+	return interactive.NewRuleSystemLibrary(cfg.NovaDir).Delete(id)
+}
+
+func (a *App) OpeningSelectors() ([]interactive.OpeningSelectorModule, error) {
+	return a.interactiveService().OpeningSelectors()
+}
+
+func (s *InteractiveAppService) OpeningSelectors() ([]interactive.OpeningSelectorModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return nil, ErrNoWorkspace
+	}
+	return interactive.NewOpeningSelectorLibrary(cfg.NovaDir).List()
+}
+
+func (a *App) OpeningSelector(id string) (interactive.OpeningSelectorModule, error) {
+	return a.interactiveService().OpeningSelector(id)
+}
+
+func (s *InteractiveAppService) OpeningSelector(id string) (interactive.OpeningSelectorModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.OpeningSelectorModule{}, ErrNoWorkspace
+	}
+	return interactive.NewOpeningSelectorLibrary(cfg.NovaDir).Get(id)
+}
+
+func (a *App) CreateOpeningSelector(item interactive.OpeningSelectorModule) (interactive.OpeningSelectorModule, error) {
+	return a.interactiveService().CreateOpeningSelector(item)
+}
+
+func (s *InteractiveAppService) CreateOpeningSelector(item interactive.OpeningSelectorModule) (interactive.OpeningSelectorModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.OpeningSelectorModule{}, ErrNoWorkspace
+	}
+	return interactive.NewOpeningSelectorLibrary(cfg.NovaDir).Create(item)
+}
+
+func (a *App) UpdateOpeningSelector(id string, item interactive.OpeningSelectorModule, baseRevision ...string) (interactive.OpeningSelectorModule, error) {
+	return a.interactiveService().UpdateOpeningSelector(id, item, firstRevision(baseRevision))
+}
+
+func (s *InteractiveAppService) UpdateOpeningSelector(id string, item interactive.OpeningSelectorModule, baseRevision string) (interactive.OpeningSelectorModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.OpeningSelectorModule{}, ErrNoWorkspace
+	}
+	return interactive.NewOpeningSelectorLibrary(cfg.NovaDir).Update(id, item, baseRevision)
+}
+
+func (a *App) DeleteOpeningSelector(id string) error {
+	return a.interactiveService().DeleteOpeningSelector(id)
+}
+
+func (s *InteractiveAppService) DeleteOpeningSelector(id string) error {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return ErrNoWorkspace
+	}
+	return interactive.NewOpeningSelectorLibrary(cfg.NovaDir).Delete(id)
 }
 
 func (a *App) ImagePresets() ([]imagepreset.Preset, error) {

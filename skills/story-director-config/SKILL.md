@@ -1,0 +1,86 @@
+---
+name: story-director-config
+description: Use when config_manager creates or updates Denova Story Director resources.
+agent: config_manager
+---
+
+# Story Director Config
+
+Use this skill before calling `write_story_directors`.
+
+## Workflow
+
+1. Call `list_story_directors` first. For updates, call `read_story_directors` for the exact director IDs.
+2. Use `write_story_directors` for create/update/delete. Do not edit story director JSON files directly.
+3. Built-in story directors can be read and copied as examples. Deleting built-ins is rejected.
+4. For update, preserve sections the user did not ask to change.
+5. For delete, require an explicit user request.
+6. When grounding event cards in the current work, call `list_lore_items` first, then `read_lore_items` for only the small relevant set. Do not claim concrete world, faction, character, or relationship facts unless they came from read lore, read director data, or explicit user input.
+7. Story Directors, event systems, rule systems, and opening selectors are Game Mode-only module types. Do not add per-resource mode/scope fields.
+
+## Shape
+
+Story Directors are Game Mode modules independent from shared narrative styles and shared image presets. They must contain these sections:
+
+- `strategy`: `enabled`, `mainline_strength`, `failure_policy`, `pacing_curve`, `random_event_rate`.
+- `event_system`: `event_packages` and `custom_events`; used only by the background director planner.
+- `stat_system`: `attributes` with `path`, `name`, `type`, `default`, optional `min`/`max`, and `visibility` (`visible`, `hidden`, or `spoiler`).
+- `trpg_system`: `rule_templates` for checks, including `mode` (`default`, `d20_dc`, or `d100_under`), dice, modifiers, difficulty, outcomes, StateOps, and terminal candidates.
+- `opening_selector`: `enabled`, `trait_pools`, and `initial_state_ops`; this affects only new stories or explicit opening rolls.
+
+Do not change `version`, `path`, `custom`, `invalid`, `error`, `created_at`, or `updated_at` unless preserving an existing complete object from `read_story_directors`.
+
+## Event Cards
+
+Event packages are made of rich event cards. Do not generate keyword-only category packages.
+
+Each `event_packages[].events[]` item should use this schema:
+
+- `id`: stable ASCII ID, unique inside the director.
+- `type_name`: user-visible event type name, for example `外门考核打脸`.
+- `description_markdown`: Markdown event card, up to 8000 characters.
+- `enabled`: boolean.
+- `category`: broad category such as `打脸`, `奇遇`, `学院`, `恋爱`.
+- `tags`: short searchable labels.
+- `weight`: positive number, usually `1`.
+- `cooldown_turns`: non-negative integer, usually `2`.
+- `intensity`: short value such as `low`, `medium`, `high`.
+
+`description_markdown` should contain these sections:
+
+```markdown
+## 触发场景
+
+## 背景融合方式
+
+## 大致事件逻辑（起承转合）
+
+## 事件回收 / 后果
+
+## 奖励 / 代价
+
+## 避免生硬的约束
+```
+
+Every card must bind to at least one concrete source from the work: a world rule, faction, place, item, character relationship, current conflict source, or user-provided premise. Do not generate generic "any protagonist anywhere" cards unless the user explicitly asks for a generic template package.
+
+Default generation strategy:
+
+- Generate 12-24 event cards in one package when the user asks for an event pack.
+- Cover a mix of 打脸, 扮猪吃虎, 奇遇, 秘境, 天降, 意外, 世界事件, 冲突, 学院, 比拼, 排行, 恋爱, 英雄救美, 误会与消解 where suitable for the actual work.
+- Each card should describe a flexible reusable situation, not a fixed future chapter outline.
+- The event must integrate with user action and current background; do not force the protagonist into a single choice.
+- Include payoff/recovery hooks so the Director Agent can close the event later without leaving dangling pressure.
+- If lore was not read, write cards using only user-provided facts and clearly keep them generic.
+
+## Rule Checks
+
+Use `mode` intentionally:
+
+- `default` or omitted: compatible `total >= difficulty`.
+- `d20_dc`: d20-style DC check using the same success condition as default, with success/failure tiers.
+- `d100_under`: success when the d100 roll is less than or equal to the target value.
+
+Keep `state_ops` explicit and reversible where possible. Avoid hidden state changes unless the user asked for hidden or spoiler attributes.
+
+When writing the director back, use `write_story_directors` with the complete updated director object and a concise change message.

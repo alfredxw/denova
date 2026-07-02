@@ -455,7 +455,7 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      "interactive_teller",
 			Source:  teller.StoryTellerID,
-			Title:   "互动叙事方案系统规则",
+			Title:   "互动叙事风格系统规则",
 			Content: teller.StoryTellerSystemPrompt,
 		}))
 	}
@@ -483,7 +483,7 @@ func styleRuleContextAnalysisParts(rules []StyleRule) []ContextAnalysisPart {
 		}
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      fmt.Sprintf("style_rule_%d", i+1),
-			Source:  "当前叙事方案",
+			Source:  "当前叙事风格",
 			Title:   "场景化风格规则：" + scene,
 			Content: content,
 			Note:    "system prompt",

@@ -28,6 +28,7 @@ export interface ChatSendOptions {
   writingSkill?: string
   ideContext?: IDEContext
   imagePresetId?: string
+  tellerId?: string
   planMode?: boolean
   displayMessage?: string
   hideUserMessage?: boolean
@@ -240,7 +241,7 @@ export function useChat(options: ChatOptions = {}) {
     setAbortController(abortController)
 
     try {
-      const stream = await sendMessage(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, abortController.signal, prepared.planMode, options.writingSkill, options.ideContext, options.imagePresetId)
+      const stream = await sendMessage(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, abortController.signal, prepared.planMode, options.writingSkill, options.ideContext, options.imagePresetId, options.tellerId)
       await consumeAgentStream(stream, { clearInputsOnFinish: clearInputState, showAbortMessage: true })
     } catch (e) {
       setMessages(prev => [...prev, { role: 'error', content: t('chat.activity.requestFailed', { error: String(e) }) }])
@@ -250,7 +251,7 @@ export function useChat(options: ChatOptions = {}) {
   const analyzeContext = useCallback(async (input: string, options: ChatSendOptions = {}): Promise<ContextAnalysis> => {
     if (isStreaming) throw new Error(t('chat.contextAnalysis.streamingUnavailable'))
     const prepared = prepareAgentRequest(input)
-    return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, prepared.planMode, options.writingSkill, options.ideContext, options.imagePresetId)
+    return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, prepared.planMode, options.writingSkill, options.ideContext, options.imagePresetId, options.tellerId)
   }, [isStreaming, prepareAgentRequest, t])
 
   const submitPlanQuestion = useCallback((message: ChatMessage, content: string, _preview: string) => {

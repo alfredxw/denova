@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { BookMarked, Bot, Building2, ChevronDown, FileText, Folder, Images, Library, Loader2, MapPin, Plus, ScrollText, Search, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
+import { BookMarked, Bot, Building2, ChevronDown, Compass, Dice5, FileText, Folder, Images, Library, Loader2, MapPin, Plus, ScrollText, Search, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isSaveShortcut } from '@/lib/keyboard'
@@ -8,11 +8,15 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { type LoreItem, workspaceAssetURL } from '@/lib/api'
 import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpeningPreset } from '../opening'
-import type { ImagePreset, ImagePresetSlot, Teller } from '../types'
+import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
+import type { EventSystemModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorEventSystem, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, Teller } from '../types'
+import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
+import { EventSystemVisualEditor, OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -41,7 +45,6 @@ const LORE_RESIDENT_ITEM_WARNING_CHARS = 8000
 const LORE_RESIDENT_TOTAL_WARNING_CHARS = 40000
 const IMAGE_PRESET_PROMPT_LIMIT = 4000
 const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_request' }] as const
-type PresetResourceKind = 'teller' | 'image'
 type ImagePresetTarget = ImagePresetSlot['target']
 type LoreType = LoreItem['type']
 interface KnowledgeSection {
@@ -248,51 +251,107 @@ export function CreatorDirectory() {
 export function TellerDirectory({
   resourceKind,
   tellers,
+  storyDirectors,
   imagePresets,
+  eventSystems,
+  ruleSystems,
+  openingSelectors,
   activeTellerId,
+  activeStoryDirectorId,
   activeImagePresetId,
+  activeEventSystemId,
+  activeRuleSystemId,
+  activeOpeningSelectorId,
   saving,
-  onResourceKindChange,
   onSelectTeller,
+  onSelectStoryDirector,
   onSelectImagePreset,
+  onSelectEventSystem,
+  onSelectRuleSystem,
+  onSelectOpeningSelector,
   onCreateTeller,
+  onCreateStoryDirector,
   onCreateImagePreset,
+  onCreateEventSystem,
+  onCreateRuleSystem,
+  onCreateOpeningSelector,
+  usageMode,
 }: {
   resourceKind: PresetResourceKind
+  usageMode: PresetUsageMode
   tellers: Teller[]
+  storyDirectors: StoryDirector[]
   imagePresets: ImagePreset[]
+  eventSystems: EventSystemModule[]
+  ruleSystems: RuleSystemModule[]
+  openingSelectors: OpeningSelectorModule[]
   activeTellerId: string
+  activeStoryDirectorId: string
   activeImagePresetId: string
+  activeEventSystemId: string
+  activeRuleSystemId: string
+  activeOpeningSelectorId: string
   saving: boolean
-  onResourceKindChange: (kind: PresetResourceKind) => void
   onSelectTeller: (id: string) => void
+  onSelectStoryDirector: (id: string) => void
   onSelectImagePreset: (id: string) => void
+  onSelectEventSystem: (id: string) => void
+  onSelectRuleSystem: (id: string) => void
+  onSelectOpeningSelector: (id: string) => void
   onCreateTeller: () => void
+  onCreateStoryDirector: () => void
   onCreateImagePreset: () => void
+  onCreateEventSystem: () => void
+  onCreateRuleSystem: () => void
+  onCreateOpeningSelector: () => void
 }) {
   const { t } = useTranslation()
-  const createLabel = resourceKind === 'image' ? t('settingPanel.newImagePreset') : t('settingPanel.newTeller')
+  const [collapsedSections, setCollapsedSections] = useState<Partial<Record<PresetResourceKind, boolean>>>({})
+  const isConfigAgentActive = activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
+  const isVisible = (kind: PresetResourceKind) => presetResourceVisibleInMode(kind, usageMode)
+  const isCollapsed = (kind: PresetResourceKind) => collapsedSections[kind] ?? (kind !== 'director' && kind !== resourceKind)
+  const toggleSection = (kind: PresetResourceKind) => {
+    setCollapsedSections((current) => ({
+      ...current,
+      [kind]: !isCollapsed(kind),
+    }))
+  }
+  useEffect(() => {
+    setCollapsedSections((current) => {
+      if (current.director === false && current[resourceKind] === false) return current
+      return { ...current, director: false, [resourceKind]: false }
+    })
+  }, [resourceKind])
+
+  useEffect(() => {
+    if (isConfigAgentActive || presetResourceVisibleInMode(resourceKind, usageMode)) return
+    if (presetResourceVisibleInMode('teller', usageMode) && tellers[0]) {
+      onSelectTeller(tellers[0].id)
+      return
+    }
+    if (presetResourceVisibleInMode('image', usageMode) && imagePresets[0]) {
+      onSelectImagePreset(imagePresets[0].id)
+      return
+    }
+    if (presetResourceVisibleInMode('director', usageMode) && storyDirectors[0]) {
+      onSelectStoryDirector(storyDirectors[0].id)
+      return
+    }
+    if (presetResourceVisibleInMode('event', usageMode) && eventSystems[0]) {
+      onSelectEventSystem(eventSystems[0].id)
+      return
+    }
+    if (presetResourceVisibleInMode('rule', usageMode) && ruleSystems[0]) {
+      onSelectRuleSystem(ruleSystems[0].id)
+      return
+    }
+    if (presetResourceVisibleInMode('opening', usageMode) && openingSelectors[0]) {
+      onSelectOpeningSelector(openingSelectors[0].id)
+    }
+  }, [eventSystems, imagePresets, isConfigAgentActive, onSelectEventSystem, onSelectImagePreset, onSelectOpeningSelector, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, openingSelectors, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
+
   return (
     <>
-      <div className="flex min-h-12 items-center justify-between gap-2 border-b border-[var(--nova-border)] px-3 py-2">
-        <div className="grid min-w-0 flex-1 grid-cols-2 gap-1 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-0.5">
-          {(['teller', 'image'] as const).map((kind) => (
-            <button
-              key={kind}
-              type="button"
-              onClick={() => onResourceKindChange(kind)}
-              className={`h-7 min-w-0 truncate rounded-[6px] px-2 text-[11px] transition ${
-                resourceKind === kind ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'
-              }`}
-            >
-              {kind === 'image' ? t('settingPanel.presetKind.image') : t('settingPanel.presetKind.teller')}
-            </button>
-          ))}
-        </div>
-        <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving} onClick={resourceKind === 'image' ? onCreateImagePreset : onCreateTeller} aria-label={createLabel}>
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
-      </div>
       <div className="border-b border-[var(--nova-border)] p-2">
         <button
           type="button"
@@ -306,49 +365,759 @@ export function TellerDirectory({
         </button>
       </div>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="p-2">
-          <div className="flex h-8 items-center gap-2 rounded px-2 text-xs text-[var(--nova-text-muted)]">
-            <ChevronDown className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-            <Folder className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-            <span className="font-medium">{resourceKind === 'image' ? t('settingPanel.imagePresetDirectory') : t('settingPanel.rulePackages')}</span>
-          </div>
-          <div className="ml-5 space-y-0.5 border-l border-[var(--nova-border)] pl-2">
-            {resourceKind === 'image' ? imagePresets.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => onSelectImagePreset(preset.id)}
-                className={`flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition ${
-                  activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID && activeImagePresetId === preset.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-                }`}
-              >
-                <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{preset.name}</span>
-                  <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{preset.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · {t('settingPanel.imagePreset.ruleCount', { count: enabledImagePresetSlotCount(preset), total: normalizedImagePresetSlots(preset).length })}</span>
-                </span>
-              </button>
-            )) : tellers.map((teller) => (
-              <button
-                key={teller.id}
-                type="button"
-                onClick={() => onSelectTeller(teller.id)}
-                className={`flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition ${
-                  activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID && activeTellerId === teller.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-                }`}
-              >
-                <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{teller.name}</span>
-                  <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{teller.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · {t('settingPanel.enabledRules', { count: (teller.slots || []).filter((slot) => slot.enabled).length })}</span>
-                </span>
-              </button>
-            ))}
-          </div>
+        <div className="space-y-2 p-2">
+          {isVisible('director') ? (
+            <PresetDirectorySection
+              kind="director"
+              label={presetKindDirectoryLabel('director', t)}
+              Icon={Compass}
+              count={storyDirectors.length}
+              createLabel={presetKindCreateLabel('director', t)}
+              saving={saving}
+              collapsed={isCollapsed('director')}
+              onToggle={() => toggleSection('director')}
+              onCreate={onCreateStoryDirector}
+            >
+              {storyDirectors.map((director) => (
+                <PresetDirectoryItem
+                  key={director.id}
+                  active={!isConfigAgentActive && resourceKind === 'director' && activeStoryDirectorId === director.id}
+                  Icon={Compass}
+                  title={director.name}
+                  summary={`${director.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.storyDirector.summaryCount', { count: storyDirectorSummaryCount(director) })}`}
+                  onSelect={() => onSelectStoryDirector(director.id)}
+                />
+              ))}
+            </PresetDirectorySection>
+          ) : null}
+
+          {isVisible('teller') ? (
+            <PresetDirectorySection
+              kind="teller"
+              label={presetKindDirectoryLabel('teller', t)}
+              Icon={SlidersHorizontal}
+              count={tellers.length}
+              createLabel={presetKindCreateLabel('teller', t)}
+              saving={saving}
+              collapsed={isCollapsed('teller')}
+              onToggle={() => toggleSection('teller')}
+              onCreate={onCreateTeller}
+            >
+              {tellers.map((teller) => (
+                <PresetDirectoryItem
+                  key={teller.id}
+                  active={!isConfigAgentActive && resourceKind === 'teller' && activeTellerId === teller.id}
+                  Icon={SlidersHorizontal}
+                  title={teller.name}
+                  summary={`${teller.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.enabledRules', { count: (teller.slots || []).filter((slot) => slot.enabled).length })}`}
+                  onSelect={() => onSelectTeller(teller.id)}
+                />
+              ))}
+            </PresetDirectorySection>
+          ) : null}
+
+          {isVisible('image') ? (
+            <PresetDirectorySection
+              kind="image"
+              label={presetKindDirectoryLabel('image', t)}
+              Icon={Sparkles}
+              count={imagePresets.length}
+              createLabel={presetKindCreateLabel('image', t)}
+              saving={saving}
+              collapsed={isCollapsed('image')}
+              onToggle={() => toggleSection('image')}
+              onCreate={onCreateImagePreset}
+            >
+              {imagePresets.map((preset) => (
+                <PresetDirectoryItem
+                  key={preset.id}
+                  active={!isConfigAgentActive && resourceKind === 'image' && activeImagePresetId === preset.id}
+                  Icon={Sparkles}
+                  title={preset.name}
+                  summary={`${preset.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.imagePreset.ruleCount', { count: enabledImagePresetSlotCount(preset), total: normalizedImagePresetSlots(preset).length })}`}
+                  onSelect={() => onSelectImagePreset(preset.id)}
+                />
+              ))}
+            </PresetDirectorySection>
+          ) : null}
+
+          {isVisible('event') ? (
+            <PresetDirectorySection
+              kind="event"
+              label={presetKindDirectoryLabel('event', t)}
+              Icon={ScrollText}
+              count={eventSystems.length}
+              createLabel={presetKindCreateLabel('event', t)}
+              saving={saving}
+              collapsed={isCollapsed('event')}
+              onToggle={() => toggleSection('event')}
+              onCreate={onCreateEventSystem}
+            >
+              {eventSystems.map((item) => (
+                <PresetDirectoryItem
+                  key={item.id}
+                  active={!isConfigAgentActive && resourceKind === 'event' && activeEventSystemId === item.id}
+                  Icon={ScrollText}
+                  title={item.name}
+                  summary={`${item.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.eventSystem.summaryCount', { count: eventSystemSummaryCount(item) })}`}
+                  onSelect={() => onSelectEventSystem(item.id)}
+                />
+              ))}
+            </PresetDirectorySection>
+          ) : null}
+
+          {isVisible('rule') ? (
+            <PresetDirectorySection
+              kind="rule"
+              label={presetKindDirectoryLabel('rule', t)}
+              Icon={Dice5}
+              count={ruleSystems.length}
+              createLabel={presetKindCreateLabel('rule', t)}
+              saving={saving}
+              collapsed={isCollapsed('rule')}
+              onToggle={() => toggleSection('rule')}
+              onCreate={onCreateRuleSystem}
+            >
+              {ruleSystems.map((item) => (
+                <PresetDirectoryItem
+                  key={item.id}
+                  active={!isConfigAgentActive && resourceKind === 'rule' && activeRuleSystemId === item.id}
+                  Icon={Dice5}
+                  title={item.name}
+                  summary={`${item.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.ruleSystem.summaryCount', { attributes: item.stat_system?.attributes?.length || 0, rules: item.trpg_system?.rule_templates?.length || 0 })}`}
+                  onSelect={() => onSelectRuleSystem(item.id)}
+                />
+              ))}
+            </PresetDirectorySection>
+          ) : null}
+
+          {isVisible('opening') ? (
+            <PresetDirectorySection
+              kind="opening"
+              label={presetKindDirectoryLabel('opening', t)}
+              Icon={Sparkles}
+              count={openingSelectors.length}
+              createLabel={presetKindCreateLabel('opening', t)}
+              saving={saving}
+              collapsed={isCollapsed('opening')}
+              onToggle={() => toggleSection('opening')}
+              onCreate={onCreateOpeningSelector}
+            >
+              {openingSelectors.map((item) => (
+                <PresetDirectoryItem
+                  key={item.id}
+                  active={!isConfigAgentActive && resourceKind === 'opening' && activeOpeningSelectorId === item.id}
+                  Icon={Sparkles}
+                  title={item.name}
+                  summary={`${item.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.openingSelector.summaryCount', { pools: item.opening_selector?.trait_pools?.length || 0, ops: item.opening_selector?.initial_state_ops?.length || 0 })}`}
+                  onSelect={() => onSelectOpeningSelector(item.id)}
+                />
+              ))}
+            </PresetDirectorySection>
+          ) : null}
         </div>
       </ScrollArea>
     </>
   )
+}
+
+function PresetDirectorySection({
+  kind,
+  label,
+  Icon,
+  count,
+  createLabel,
+  saving,
+  collapsed,
+  onToggle,
+  onCreate,
+  children,
+}: {
+  kind: PresetResourceKind
+  label: string
+  Icon: LucideIcon
+  count: number
+  createLabel: string
+  saving: boolean
+  collapsed: boolean
+  onToggle: () => void
+  onCreate: () => void
+  children: ReactNode
+}) {
+  const { t } = useTranslation()
+  return (
+    <section data-preset-kind={kind}>
+      <div className={`flex h-8 items-center gap-2 rounded px-2 text-xs ${count > 0 ? 'text-[var(--nova-text-muted)]' : 'text-[var(--nova-text-faint)]'}`}>
+        <button
+          type="button"
+          className="nova-nav-item rounded p-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          onClick={onToggle}
+          aria-label={collapsed ? `${t('chat.tool.expand')}${label}` : `${t('chat.tool.collapse')}${label}`}
+        >
+          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
+        </button>
+        <Icon className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
+        <button type="button" className="min-w-0 flex-1 truncate text-left font-medium" onClick={onToggle}>
+          {label}
+        </button>
+        <span className="text-[11px] text-[var(--nova-text-faint)]">{count}</span>
+        <button
+          type="button"
+          className="nova-nav-item rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          disabled={saving}
+          onClick={onCreate}
+          aria-label={createLabel}
+          title={createLabel}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      {!collapsed && (
+        <div className="ml-5 space-y-0.5 border-l border-[var(--nova-border)] pl-2">
+          {children}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function PresetDirectoryItem({
+  active,
+  Icon,
+  title,
+  summary,
+  onSelect,
+}: {
+  active: boolean
+  Icon: LucideIcon
+  title: string
+  summary: string
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition ${
+        active ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{title}</span>
+        <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{summary}</span>
+      </span>
+    </button>
+  )
+}
+
+export function StoryDirectorEditor({
+  draft,
+  tellers,
+  eventSystems,
+  ruleSystems,
+  openingSelectors,
+  imagePresets,
+  tagDraft,
+  setDraft,
+  setTagDraft,
+  onSave,
+  onValidityChange,
+}: {
+  draft: StoryDirector | null
+  tellers: Teller[]
+  eventSystems: EventSystemModule[]
+  ruleSystems: RuleSystemModule[]
+  openingSelectors: OpeningSelectorModule[]
+  imagePresets: ImagePreset[]
+  tagDraft: string
+  setDraft: (draft: StoryDirector | null) => void
+  setTagDraft: (value: string) => void
+  onSave: () => void
+  onValidityChange?: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const setSectionValid = usePresetSectionValidity(draft?.id || '', onValidityChange)
+
+  if (!draft) {
+    return <EmptyState title={t('settingPanel.editor.noStoryDirectorSelected')} description={t('settingPanel.editor.noStoryDirectorSelectedDesc')} />
+  }
+
+  const updateStrategy = (patch: Partial<StoryDirector['strategy']>) => {
+    setDraft({
+      ...draft,
+      strategy: {
+        ...(draft.strategy || {}),
+        enabled: draft.strategy?.enabled !== false,
+        ...patch,
+      },
+    })
+  }
+  const refs = normalizedStoryDirectorRefs(draft.module_refs)
+  const updateModuleRef = (key: keyof StoryDirectorModuleRefs, value: string) => {
+    setDraft({
+      ...draft,
+      module_refs: {
+        ...refs,
+        [key]: value,
+      },
+    })
+  }
+
+  const emptySections = newEmptyStoryDirectorSections()
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_180px_120px]">
+        <Field label={t('settingPanel.field.name')}>
+          <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+        </Field>
+        <Field label={t('settingPanel.field.description')}>
+          <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
+        </Field>
+        <Field label={t('settingPanel.field.tags')}>
+          <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
+        </Field>
+        <div className="flex items-end">
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{draft.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')}</span>
+        </div>
+      </div>
+      <div className="grid gap-4 p-4">
+        <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
+          <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.storyDirector.composer')}</div>
+              <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.composerDesc')}</div>
+            </div>
+            <span className="rounded border border-[var(--nova-accent)]/35 bg-[var(--nova-accent)]/10 px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">{t('settingPanel.storyDirector.liveReference')}</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <ModuleSelect
+              label={t('settingPanel.presetKind.teller')}
+              value={refs.narrative_style_id || ''}
+              fallbackValue="classic"
+              items={tellers}
+              onChange={(value) => updateModuleRef('narrative_style_id', value)}
+            />
+            <ModuleSelect
+              label={t('settingPanel.presetKind.event')}
+              value={refs.event_system_id || ''}
+              fallbackValue="default"
+              items={eventSystems}
+              onChange={(value) => updateModuleRef('event_system_id', value)}
+            />
+            <ModuleSelect
+              label={t('settingPanel.presetKind.rule')}
+              value={refs.rule_system_id || ''}
+              fallbackValue="default"
+              items={ruleSystems}
+              onChange={(value) => updateModuleRef('rule_system_id', value)}
+            />
+            <ModuleSelect
+              label={t('settingPanel.presetKind.opening')}
+              value={refs.opening_selector_id || ''}
+              fallbackValue="default"
+              items={openingSelectors}
+              onChange={(value) => updateModuleRef('opening_selector_id', value)}
+            />
+            <ModuleSelect
+              label={t('settingPanel.presetKind.image')}
+              value={refs.image_preset_id || ''}
+              fallbackValue="game-cg"
+              items={imagePresets}
+              onChange={(value) => updateModuleRef('image_preset_id', value)}
+            />
+          </div>
+          <div className="mt-3 grid gap-2">
+            {draft.resolved_snapshot?.warnings?.length ? draft.resolved_snapshot.warnings.map((warning, index) => (
+              <div key={`${warning.module}-${warning.id || index}`} className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-danger)]">
+                {t('settingPanel.storyDirector.moduleWarning', { module: warning.module, id: warning.id || '-', message: warning.message })}
+              </div>
+            )) : (
+              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+                {t('settingPanel.storyDirector.snapshotReady', { time: draft.resolved_snapshot?.resolved_at || '-' })}
+              </div>
+            )}
+          </div>
+        </section>
+        <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
+          <div className="mb-3">
+            <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.storyDirector.strategy')}</div>
+            <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.strategyDesc')}</div>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <Field label={t('settingPanel.field.enabled')}>
+              <Select value={String(draft.strategy?.enabled !== false)} onValueChange={(value) => updateStrategy({ enabled: value === 'true' })}>
+                <SelectTrigger size="sm" className={selectClassName}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                  <SelectItem value="true">{t('settingPanel.enabled')}</SelectItem>
+                  <SelectItem value="false">{t('settingPanel.disabled')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label={t('settingPanel.orchestration.mainlineStrength')}>
+              <Input className={inputClassName} value={draft.strategy?.mainline_strength || ''} onChange={(event) => updateStrategy({ mainline_strength: event.target.value })} />
+            </Field>
+            <Field label={t('settingPanel.orchestration.failurePolicy')}>
+              <Input className={inputClassName} value={draft.strategy?.failure_policy || ''} onChange={(event) => updateStrategy({ failure_policy: event.target.value })} />
+            </Field>
+            <Field label={t('settingPanel.orchestration.pacingCurve')}>
+              <Input className={inputClassName} value={draft.strategy?.pacing_curve || ''} onChange={(event) => updateStrategy({ pacing_curve: event.target.value })} />
+            </Field>
+            <Field label={t('settingPanel.field.randomEventRate')}>
+              <Input className={inputClassName} inputMode="decimal" value={String(draft.strategy?.random_event_rate ?? 0)} onChange={(event) => updateStrategy({ random_event_rate: parseDecimalInput(event.target.value) })} />
+            </Field>
+          </div>
+        </section>
+        <PresetConfigSectionEditor
+          sectionId="story-director.event-system"
+          resetKey={`${draft.id}:event_system`}
+          title={t('settingPanel.storyDirector.eventSystem')}
+          description={t('settingPanel.storyDirector.eventSystemDesc')}
+          value={draft.event_system || emptySections.event_system}
+          summary={t('settingPanel.storyDirector.eventSystemSummary', { packages: draft.event_system?.event_packages?.length || 0, cards: directorEventCardCount(draft.event_system), events: draft.event_system?.custom_events?.length || 0 })}
+          onChange={(event_system) => setDraft({ ...draft, event_system })}
+          onSave={onSave}
+          onValidityChange={(valid) => setSectionValid('event_system', valid)}
+        >
+          {(props) => <EventSystemVisualEditor {...props} />}
+        </PresetConfigSectionEditor>
+        <PresetConfigSectionEditor
+          sectionId="story-director.stat-system"
+          resetKey={`${draft.id}:stat_system`}
+          title={t('settingPanel.storyDirector.statSystem')}
+          description={t('settingPanel.storyDirector.statSystemDesc')}
+          value={draft.stat_system || emptySections.stat_system}
+          summary={t('settingPanel.storyDirector.statSystemSummary', { count: draft.stat_system?.attributes?.length || 0 })}
+          onChange={(stat_system) => setDraft({ ...draft, stat_system })}
+          onSave={onSave}
+          onValidityChange={(valid) => setSectionValid('stat_system', valid)}
+        >
+          {(props) => <StatSystemVisualEditor {...props} />}
+        </PresetConfigSectionEditor>
+        <PresetConfigSectionEditor
+          sectionId="story-director.trpg-system"
+          resetKey={`${draft.id}:trpg_system`}
+          title={t('settingPanel.storyDirector.trpgSystem')}
+          description={t('settingPanel.storyDirector.trpgSystemDesc')}
+          value={draft.trpg_system || emptySections.trpg_system}
+          summary={t('settingPanel.storyDirector.trpgSystemSummary', { count: draft.trpg_system?.rule_templates?.length || 0 })}
+          onChange={(trpg_system) => setDraft({ ...draft, trpg_system })}
+          onSave={onSave}
+          onValidityChange={(valid) => setSectionValid('trpg_system', valid)}
+        >
+          {(props) => <TRPGSystemVisualEditor {...props} />}
+        </PresetConfigSectionEditor>
+        <PresetConfigSectionEditor
+          sectionId="story-director.opening-selector"
+          resetKey={`${draft.id}:opening_selector`}
+          title={t('settingPanel.storyDirector.openingSelector')}
+          description={t('settingPanel.storyDirector.openingSelectorDesc')}
+          value={draft.opening_selector || emptySections.opening_selector}
+          summary={t('settingPanel.storyDirector.openingSelectorSummary', { pools: draft.opening_selector?.trait_pools?.length || 0, ops: draft.opening_selector?.initial_state_ops?.length || 0 })}
+          onChange={(opening_selector) => setDraft({ ...draft, opening_selector })}
+          onSave={onSave}
+          onValidityChange={(valid) => setSectionValid('opening_selector', valid)}
+        >
+          {(props) => <OpeningSelectorVisualEditor {...props} />}
+        </PresetConfigSectionEditor>
+      </div>
+    </div>
+  )
+}
+
+export function EventSystemEditor({
+  draft,
+  tagDraft,
+  setDraft,
+  setTagDraft,
+  onSave,
+  onValidityChange,
+}: {
+  draft: EventSystemModule | null
+  tagDraft: string
+  setDraft: (draft: EventSystemModule | null) => void
+  setTagDraft: (value: string) => void
+  onSave: () => void
+  onValidityChange?: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+
+  if (!draft) {
+    return <EmptyState title={t('settingPanel.editor.noEventSystemSelected')} description={t('settingPanel.editor.noEventSystemSelectedDesc')} />
+  }
+
+  return (
+    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
+      <PresetConfigSectionEditor
+        sectionId="event-system.event-system"
+        resetKey={`${draft.id}:event_system`}
+        title={t('settingPanel.storyDirector.eventSystem')}
+        description={t('settingPanel.storyDirector.eventSystemDesc')}
+        value={draft.event_system || { event_packages: [], custom_events: [] }}
+        summary={t('settingPanel.storyDirector.eventSystemSummary', { packages: draft.event_system?.event_packages?.length || 0, cards: directorEventCardCount(draft.event_system), events: draft.event_system?.custom_events?.length || 0 })}
+        onChange={(event_system) => setDraft({ ...draft, event_system })}
+        onSave={onSave}
+        onValidityChange={onValidityChange}
+      >
+        {(props) => <EventSystemVisualEditor {...props} />}
+      </PresetConfigSectionEditor>
+    </ModuleEditorShell>
+  )
+}
+
+export function RuleSystemEditor({
+  draft,
+  tagDraft,
+  setDraft,
+  setTagDraft,
+  onSave,
+  onValidityChange,
+}: {
+  draft: RuleSystemModule | null
+  tagDraft: string
+  setDraft: (draft: RuleSystemModule | null) => void
+  setTagDraft: (value: string) => void
+  onSave: () => void
+  onValidityChange?: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const setSectionValid = usePresetSectionValidity(draft?.id || '', onValidityChange)
+
+  if (!draft) {
+    return <EmptyState title={t('settingPanel.editor.noRuleSystemSelected')} description={t('settingPanel.editor.noRuleSystemSelectedDesc')} />
+  }
+
+  return (
+    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
+      <PresetConfigSectionEditor
+        sectionId="rule-system.stat-system"
+        resetKey={`${draft.id}:stat_system`}
+        title={t('settingPanel.storyDirector.statSystem')}
+        description={t('settingPanel.storyDirector.statSystemDesc')}
+        value={draft.stat_system || { attributes: [] }}
+        summary={t('settingPanel.storyDirector.statSystemSummary', { count: draft.stat_system?.attributes?.length || 0 })}
+        onChange={(stat_system) => setDraft({ ...draft, stat_system })}
+        onSave={onSave}
+        onValidityChange={(valid) => setSectionValid('stat_system', valid)}
+      >
+        {(props) => <StatSystemVisualEditor {...props} />}
+      </PresetConfigSectionEditor>
+      <PresetConfigSectionEditor
+        sectionId="rule-system.trpg-system"
+        resetKey={`${draft.id}:trpg_system`}
+        title={t('settingPanel.storyDirector.trpgSystem')}
+        description={t('settingPanel.storyDirector.trpgSystemDesc')}
+        value={draft.trpg_system || { rule_templates: [] }}
+        summary={t('settingPanel.storyDirector.trpgSystemSummary', { count: draft.trpg_system?.rule_templates?.length || 0 })}
+        onChange={(trpg_system) => setDraft({ ...draft, trpg_system })}
+        onSave={onSave}
+        onValidityChange={(valid) => setSectionValid('trpg_system', valid)}
+      >
+        {(props) => <TRPGSystemVisualEditor {...props} />}
+      </PresetConfigSectionEditor>
+    </ModuleEditorShell>
+  )
+}
+
+export function OpeningSelectorEditor({
+  draft,
+  tagDraft,
+  setDraft,
+  setTagDraft,
+  onSave,
+  onValidityChange,
+}: {
+  draft: OpeningSelectorModule | null
+  tagDraft: string
+  setDraft: (draft: OpeningSelectorModule | null) => void
+  setTagDraft: (value: string) => void
+  onSave: () => void
+  onValidityChange?: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+
+  if (!draft) {
+    return <EmptyState title={t('settingPanel.editor.noOpeningSelectorSelected')} description={t('settingPanel.editor.noOpeningSelectorSelectedDesc')} />
+  }
+
+  return (
+    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
+      <PresetConfigSectionEditor
+        sectionId="opening-selector.opening-selector"
+        resetKey={`${draft.id}:opening_selector`}
+        title={t('settingPanel.storyDirector.openingSelector')}
+        description={t('settingPanel.storyDirector.openingSelectorDesc')}
+        value={draft.opening_selector || { enabled: true, trait_pools: [], initial_state_ops: [] }}
+        summary={t('settingPanel.storyDirector.openingSelectorSummary', { pools: draft.opening_selector?.trait_pools?.length || 0, ops: draft.opening_selector?.initial_state_ops?.length || 0 })}
+        onChange={(opening_selector) => setDraft({ ...draft, opening_selector })}
+        onSave={onSave}
+        onValidityChange={onValidityChange}
+      >
+        {(props) => <OpeningSelectorVisualEditor {...props} />}
+      </PresetConfigSectionEditor>
+    </ModuleEditorShell>
+  )
+}
+
+function ModuleEditorShell<T extends { name: string; description: string; custom: boolean }>({
+  draft,
+  tagDraft,
+  setDraft,
+  setTagDraft,
+  children,
+}: {
+  draft: T
+  tagDraft: string
+  setDraft: (draft: T | null) => void
+  setTagDraft: (value: string) => void
+  children: ReactNode
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_180px_120px]">
+        <Field label={t('settingPanel.field.name')}>
+          <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+        </Field>
+        <Field label={t('settingPanel.field.description')}>
+          <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
+        </Field>
+        <Field label={t('settingPanel.field.tags')}>
+          <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
+        </Field>
+        <div className="flex items-end">
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{draft.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')}</span>
+        </div>
+      </div>
+      <div className="grid gap-4 p-4">
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+          {draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')}
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function parseDecimalInput(value: string) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function ModuleSelect<T extends { id: string; name: string; custom?: boolean; invalid?: boolean }>({
+  label,
+  value,
+  fallbackValue,
+  items,
+  onChange,
+}: {
+  label: string
+  value: string
+  fallbackValue: string
+  items: T[]
+  onChange: (value: string) => void
+}) {
+  const { t } = useTranslation()
+  const selectedValue = value || fallbackValue
+  const hasSelected = items.some((item) => item.id === selectedValue)
+  return (
+    <Field label={label}>
+      <Select value={hasSelected ? selectedValue : fallbackValue} onValueChange={onChange}>
+        <SelectTrigger size="sm" className={selectClassName}>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent className="nova-panel border text-[var(--nova-text)]">
+          {items.length > 0 ? items.map((item) => (
+            <SelectItem key={item.id} value={item.id}>
+              {item.name}{item.invalid ? ` · ${t('settingPanel.invalid')}` : ''}
+            </SelectItem>
+          )) : (
+            <SelectItem value={fallbackValue}>{fallbackValue}</SelectItem>
+          )}
+        </SelectContent>
+      </Select>
+    </Field>
+  )
+}
+
+function normalizedStoryDirectorRefs(refs: StoryDirectorModuleRefs | undefined): StoryDirectorModuleRefs {
+  return {
+    narrative_style_id: refs?.narrative_style_id || 'classic',
+    event_system_id: refs?.event_system_id || 'default',
+    rule_system_id: refs?.rule_system_id || 'default',
+    opening_selector_id: refs?.opening_selector_id || 'default',
+    image_preset_id: refs?.image_preset_id || 'game-cg',
+  }
+}
+
+function storyDirectorSummaryCount(director: StoryDirector) {
+  return directorEventCardCount(director.event_system)
+    + (director.event_system?.custom_events?.length || 0)
+    + (director.stat_system?.attributes?.length || 0)
+    + (director.trpg_system?.rule_templates?.length || 0)
+    + (director.opening_selector?.trait_pools?.length || 0)
+}
+
+function directorEventCardCount(eventSystem: StoryDirectorEventSystem | undefined) {
+  return (eventSystem?.event_packages || []).reduce((total, pkg) => total + (pkg.events?.length || 0), 0)
+}
+
+function eventSystemSummaryCount(item: EventSystemModule) {
+  return directorEventCardCount(item.event_system) + (item.event_system?.custom_events?.length || 0)
+}
+
+function presetKindDirectoryLabel(kind: PresetResourceKind, t: (key: string) => string) {
+  if (kind === 'image') return t('settingPanel.imagePresetDirectory')
+  if (kind === 'director') return t('settingPanel.storyDirectorDirectory')
+  if (kind === 'event') return t('settingPanel.eventSystemDirectory')
+  if (kind === 'rule') return t('settingPanel.ruleSystemDirectory')
+  if (kind === 'opening') return t('settingPanel.openingSelectorDirectory')
+  return t('settingPanel.rulePackages')
+}
+
+function presetKindCreateLabel(kind: PresetResourceKind, t: (key: string) => string) {
+  if (kind === 'image') return t('settingPanel.newImagePreset')
+  if (kind === 'director') return t('settingPanel.newStoryDirector')
+  if (kind === 'event') return t('settingPanel.newEventSystem')
+  if (kind === 'rule') return t('settingPanel.newRuleSystem')
+  if (kind === 'opening') return t('settingPanel.newOpeningSelector')
+  return t('settingPanel.newTeller')
+}
+
+function newEmptyStoryDirectorSections(): {
+  event_system: StoryDirectorEventSystem
+  stat_system: StoryDirectorStatSystem
+  trpg_system: StoryDirectorTRPGSystem
+  opening_selector: StoryDirectorOpeningSelector
+} {
+  return {
+    event_system: { event_packages: [], custom_events: [] },
+    stat_system: { attributes: [] },
+    trpg_system: { rule_templates: [] },
+    opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },
+  }
+}
+
+function usePresetSectionValidity(resetKey: string, onValidityChange?: (valid: boolean) => void) {
+  const [validity, setValidity] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    setValidity({})
+  }, [resetKey])
+
+  useEffect(() => {
+    onValidityChange?.(Object.values(validity).every((valid) => valid !== false))
+  }, [onValidityChange, validity])
+
+  return (section: string, valid: boolean) => {
+    setValidity((current) => {
+      if (current[section] === valid) return current
+      return { ...current, [section]: valid }
+    })
+  }
 }
 
 export function ImagePresetEditor({
@@ -451,14 +1220,12 @@ export function ImagePresetEditor({
                       </span>
                     </span>
                   </button>
-                  <button
-                    type="button"
+                  <Switch
+                    checked={slot.enabled}
+                    onCheckedChange={(enabled) => updateSlotById(slot.id, { enabled })}
                     aria-label={slot.enabled ? t('settingPanel.switch.disableRule') : t('settingPanel.switch.enableRule')}
-                    onClick={() => updateSlotById(slot.id, { enabled: !slot.enabled })}
-                    className={`relative h-5 w-9 rounded-full border transition ${slot.enabled ? 'border-[var(--nova-accent)] bg-[var(--nova-accent)]/35' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)]'}`}
-                  >
-                    <span className={`absolute top-0.5 h-3.5 w-3.5 rounded-full bg-[var(--nova-text)] transition ${slot.enabled ? 'left-4' : 'left-0.5'}`} />
-                  </button>
+                    title={slot.enabled ? t('settingPanel.switch.disableRule') : t('settingPanel.switch.enableRule')}
+                  />
                 </div>
               ))}
             </div>

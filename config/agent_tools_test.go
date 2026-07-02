@@ -48,6 +48,10 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 	if summary.FileRead || summary.FileWrite || summary.ShellExecute || summary.Skills || summary.LoreRead || summary.LoreWrite || summary.Todo || summary.WebSearch || summary.ImageGeneration || summary.AgentConfigRead || summary.AgentConfigWrite {
 		t.Fatalf("版本说明 Agent 默认不应注册工具: %+v", summary)
 	}
+	director := ResolveAgentTools(&Config{}, AgentKindInteractiveDirector)
+	if director.FileRead || director.FileWrite || director.ShellExecute || director.Skills || director.LoreRead || director.LoreWrite || director.Todo || director.WebSearch || director.ImageGeneration || director.AgentConfigRead || director.AgentConfigWrite {
+		t.Fatalf("互动导演 Agent 默认不应注册工具: %+v", director)
+	}
 	toolAgent := ResolveAgentTools(&Config{}, AgentKindToolAgent)
 	if toolAgent.FileRead || toolAgent.FileWrite || toolAgent.ShellExecute || toolAgent.Skills || toolAgent.LoreRead || toolAgent.LoreWrite || toolAgent.Todo || toolAgent.WebSearch || toolAgent.ImageGeneration || toolAgent.AgentConfigRead || toolAgent.AgentConfigWrite {
 		t.Fatalf("工具 Agent 默认不应注册工具: %+v", toolAgent)

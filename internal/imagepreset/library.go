@@ -143,6 +143,9 @@ func (l *Library) Update(id string, preset Preset, baseRevision ...string) (Pres
 	if err := validateID(id); err != nil {
 		return Preset{}, err
 	}
+	if IsBuiltinID(id) {
+		return Preset{}, errors.New("内置图像方案不能修改，请复制后编辑")
+	}
 	current, err := l.Get(id)
 	if err != nil {
 		return Preset{}, err

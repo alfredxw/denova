@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Archive, Brain, Edit3, Loader2, RefreshCw, RotateCcw, Search, X } from 'lucide-react'
+import { Activity, Archive, Ban, Brain, Edit3, Loader2, RefreshCw, RotateCcw, Search, Sparkles, X, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MessageList } from '@/components/Chat/MessageList'
 import { useAgentEventStream } from '@/hooks/useAgentEventStream'
-import { generateStoryMemoryStream, getStoryMemory } from '../api'
-import type { Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
+import { disableInteractiveDirectorEvent, forceInteractiveDirectorEvent, generateStoryMemoryStream, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution } from '../api'
+import type { DirectorEvent, DirectorRunStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
 type MemoryPanelView = 'content' | 'generation'
 
@@ -15,11 +15,12 @@ interface MemoryPanelProps {
   loading?: boolean
   refreshKey?: string | number
   onOpenMemoryManager?: () => void
+  onSnapshotRefresh?: () => void | Promise<unknown>
 }
 
 const allStructuresId = '__all__'
 
-export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refreshKey, onOpenMemoryManager }: MemoryPanelProps) {
+export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refreshKey, onOpenMemoryManager, onSnapshotRefresh }: MemoryPanelProps) {
   const { t } = useTranslation()
   const [memory, setMemory] = useState<StoryMemoryState | null>(null)
   const [memoryLoading, setMemoryLoading] = useState(false)
@@ -204,6 +205,7 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          <NarrativeOrchestrationSummary storyId={storyId} branchId={effectiveBranchId} snapshot={snapshot} onSnapshotRefresh={onSnapshotRefresh} />
           <div className="-mx-1 mb-3 overflow-x-auto px-1" aria-label={t('memoryPanel.structureTabs')} data-testid="memory-panel-structure-tabs">
             <div className="flex w-max min-w-full gap-1">
               <StructureTab
@@ -257,6 +259,267 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
       )}
     </aside>
   )
+}
+
+function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshotRefresh }: { storyId?: string; branchId?: string; snapshot: Snapshot | null; onSnapshotRefresh?: () => void | Promise<unknown> }) {
+  const { t } = useTranslation()
+  const [rebuilding, setRebuilding] = useState(false)
+  const [rerolling, setRerolling] = useState(false)
+  const [eventActionId, setEventActionId] = useState('')
+  const [directorError, setDirectorError] = useState('')
+  const [ruleError, setRuleError] = useState('')
+  const directorState = snapshot?.director_state
+  const ruleResolution = snapshot?.current_turn?.rule_resolution
+  const acceptedBrief = ruleResolution?.accepted_brief || snapshot?.current_turn?.turn_brief
+  const ruleResults = ruleResolution?.rule_results || []
+  const terminalCandidate = ruleResolution?.terminal_candidate
+  const terminalOutcome = snapshot?.current_turn?.terminal_outcome
+  const hasRuleAudit = !!acceptedBrief || !!ruleResolution || !!terminalOutcome
+
+  if (!directorState && !hasRuleAudit) return null
+
+  const rebuildDirector = async () => {
+    if (!storyId || rebuilding) return
+    setRebuilding(true)
+    setDirectorError('')
+    try {
+      await rebuildInteractiveDirector(storyId, branchId)
+      await onSnapshotRefresh?.()
+    } catch (err) {
+      console.error('[interactive-memory-panel] rebuild director failed', err)
+      setDirectorError(err instanceof Error ? err.message : t('snapshot.director.rebuildFailed'))
+    } finally {
+      setRebuilding(false)
+    }
+  }
+
+  const rerollRules = async () => {
+    const resolutionId = ruleResolution?.id
+    const turnId = snapshot?.current_turn?.id
+    if (!storyId || !resolutionId || rerolling) return
+    setRerolling(true)
+    setRuleError('')
+    try {
+      await rerollInteractiveRuleResolution(storyId, resolutionId, { branch_id: branchId, turn_id: turnId })
+      await onSnapshotRefresh?.()
+    } catch (err) {
+      console.error('[interactive-memory-panel] reroll rules failed', err)
+      setRuleError(err instanceof Error ? err.message : t('snapshot.ruleAudit.rerollFailed'))
+    } finally {
+      setRerolling(false)
+    }
+  }
+
+  const updateDirectorEvent = async (event: DirectorEvent, action: 'force' | 'disable') => {
+    const eventId = event.id?.trim()
+    if (!storyId || !eventId || eventActionId) return
+    setEventActionId(`${action}:${eventId}`)
+    setDirectorError('')
+    try {
+      if (action === 'force') {
+        await forceInteractiveDirectorEvent(storyId, eventId, { branch_id: branchId, event })
+      } else {
+        await disableInteractiveDirectorEvent(storyId, eventId, { branch_id: branchId, event })
+      }
+      await onSnapshotRefresh?.()
+    } catch (err) {
+      console.error('[interactive-memory-panel] update director event failed', err)
+      setDirectorError(err instanceof Error ? err.message : t('snapshot.director.eventActionFailed'))
+    } finally {
+      setEventActionId('')
+    }
+  }
+
+  return (
+    <div className="mb-3 space-y-2">
+      {directorState ? (
+        <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
+          <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-[var(--nova-text)]">
+            <div className="flex min-w-0 items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+              <span className="truncate">{t('snapshot.director.title')}</span>
+            </div>
+            <button type="button" className="nova-icon-button flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} title={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} onClick={() => void rebuildDirector()} disabled={!storyId || rebuilding}>
+              {rebuilding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+          {directorError ? <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{directorError}</div> : null}
+          <div className="flex flex-wrap gap-1.5">
+            <MemoryChip>{directorState.enabled ? t('common.yes') : t('common.no')}</MemoryChip>
+            <MemoryChip>{directorState.spoiler_mode || t('snapshot.noRecord')}</MemoryChip>
+            <MemoryChip>{`${t('snapshot.director.events')}: ${(directorState.event_queue || []).length}`}</MemoryChip>
+          </div>
+          {directorState.last_director_run ? <DirectorRunSummary run={directorState.last_director_run} /> : null}
+          {directorState.main_arc || directorState.stage_plan ? (
+            <div className="mt-2 space-y-1 text-xs leading-5 text-[var(--nova-text-muted)]">
+              {directorState.main_arc ? <InfoLine label={t('snapshot.field.main_arc')} value={directorState.main_arc} /> : null}
+              {directorState.stage_plan ? <InfoLine label={t('snapshot.field.stage_plan')} value={directorState.stage_plan} /> : null}
+            </div>
+          ) : null}
+          <CompactDirectorEvents
+            className="mt-2"
+            label={t('snapshot.director.eventQueue')}
+            events={directorState.event_queue || []}
+            empty={t('snapshot.director.noEvents')}
+            disabled={!storyId || Boolean(eventActionId)}
+            busyId={eventActionId}
+            onForce={(event) => void updateDirectorEvent(event, 'force')}
+            onDisable={(event) => void updateDirectorEvent(event, 'disable')}
+          />
+          <CompactStrings
+            className="mt-2"
+            label={t('snapshot.director.foreshadowing')}
+            values={(directorState.foreshadowing || []).map((thread) => thread.title || thread.summary || thread.id || '').filter(Boolean)}
+            empty={t('snapshot.director.noForeshadowing')}
+          />
+        </section>
+      ) : null}
+
+      {hasRuleAudit ? (
+        <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
+          <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-[var(--nova-text)]">
+            <div className="flex min-w-0 items-center gap-2">
+              <Activity className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+              <span className="truncate">{t('snapshot.ruleAudit.title')}</span>
+            </div>
+            {ruleResolution?.id ? (
+              <button type="button" className="nova-icon-button flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={rerolling ? t('snapshot.ruleAudit.rerolling') : t('snapshot.ruleAudit.reroll')} title={rerolling ? t('snapshot.ruleAudit.rerolling') : t('snapshot.ruleAudit.reroll')} onClick={() => void rerollRules()} disabled={!storyId || rerolling}>
+                <RefreshCw className={`h-3.5 w-3.5 ${rerolling ? 'animate-spin' : ''}`} />
+              </button>
+            ) : null}
+          </div>
+          {ruleError ? <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{ruleError}</div> : null}
+          <div className="flex flex-wrap gap-1.5">
+            <MemoryChip>{acceptedBrief?.intent || t('snapshot.noRecord')}</MemoryChip>
+            <MemoryChip>{`${t('snapshot.ruleAudit.checks')}: ${acceptedBrief?.rule_checks?.length || 0}`}</MemoryChip>
+            <MemoryChip>{`${t('snapshot.ruleAudit.results')}: ${ruleResults.length}`}</MemoryChip>
+          </div>
+          {acceptedBrief?.turn_goal || acceptedBrief?.pressure || acceptedBrief?.cost_policy ? (
+            <div className="mt-2 space-y-1 text-xs leading-5 text-[var(--nova-text-muted)]">
+              {acceptedBrief.turn_goal ? <InfoLine label={t('snapshot.field.turn_goal')} value={acceptedBrief.turn_goal} /> : null}
+              {acceptedBrief.pressure ? <InfoLine label={t('snapshot.field.pressure')} value={acceptedBrief.pressure} /> : null}
+              {acceptedBrief.cost_policy ? <InfoLine label={t('snapshot.field.cost_policy')} value={acceptedBrief.cost_policy} /> : null}
+            </div>
+          ) : null}
+          {ruleResults.length ? (
+            <div className="mt-2 space-y-1.5">
+              {ruleResults.slice(0, 3).map((result, index) => (
+                <div key={result.id || index} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-[var(--nova-text)]">{result.label || result.id || t('snapshot.ruleAudit.resultFallback', { index: index + 1 })}</span>
+                    <span className={ruleOutcomeClass(result.outcome)}>{result.outcome}</span>
+                  </div>
+                  <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">
+                    {[result.dice, result.rolls?.length ? `${t('snapshot.field.rolls')}: ${result.rolls.join(', ')}` : '', Number.isFinite(result.total) ? `${t('snapshot.field.total')}: ${result.total}` : ''].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {terminalCandidate || terminalOutcome ? (
+            <div className="mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">
+              {terminalOutcome?.reason || terminalCandidate?.reason || terminalOutcome?.type || terminalCandidate?.type}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+    </div>
+  )
+}
+
+function InfoLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
+      <span className="truncate text-[var(--nova-text-faint)]" title={label}>{label}</span>
+      <span className="min-w-0 break-words text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">{value}</span>
+    </div>
+  )
+}
+
+function DirectorRunSummary({ run }: { run: DirectorRunStatus }) {
+  const { t } = useTranslation()
+  const failed = run.status === 'failed'
+  return (
+    <div className={`mt-2 rounded-[var(--nova-radius)] border px-2 py-1.5 text-xs ${failed ? 'border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)]'}`}>
+      <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
+        <span className="truncate font-medium text-[var(--nova-text)]">{t('snapshot.director.lastRun')}</span>
+        {run.status ? <span className={`shrink-0 ${failed ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>{run.status}</span> : null}
+      </div>
+      {run.summary ? <div className="break-words leading-5 [overflow-wrap:anywhere]">{run.summary}</div> : null}
+      {run.error ? <div className="mt-1 break-words text-[11px] leading-5 [overflow-wrap:anywhere]">{run.error}</div> : null}
+    </div>
+  )
+}
+
+function CompactStrings({ label, values, empty, className = '' }: { label: string; values: string[]; empty: string; className?: string }) {
+  return (
+    <div className={className}>
+      <div className="mb-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {values.length ? values.slice(0, 4).map((value) => <MemoryChip key={value}>{value}</MemoryChip>) : <span className="text-xs text-[var(--nova-text-muted)]">{empty}</span>}
+      </div>
+    </div>
+  )
+}
+
+function CompactDirectorEvents({ label, events, empty, className = '', disabled, busyId, onForce, onDisable }: {
+  label: string
+  events: DirectorEvent[]
+  empty: string
+  className?: string
+  disabled?: boolean
+  busyId?: string
+  onForce: (event: DirectorEvent) => void
+  onDisable: (event: DirectorEvent) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className={className}>
+      <div className="mb-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{label}</div>
+      <div className="space-y-1.5">
+        {events.length ? events.slice(0, 4).map((event, index) => {
+          const eventId = event.id || ''
+          const title = event.name || event.summary || event.id || t('snapshot.eventFallback', { index: index + 1 })
+          const forceBusy = busyId === `force:${eventId}`
+          const disableBusy = busyId === `disable:${eventId}`
+          return (
+            <div key={eventId || index} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[var(--nova-text-muted)]" title={title}>{title}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{[event.category, event.status].filter(Boolean).join(' · ') || t('snapshot.noRecord')}</span>
+              </span>
+              <button
+                type="button"
+                className="nova-icon-button flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label={`${t('snapshot.director.forceEvent')} ${title}`}
+                title={t('snapshot.director.forceEvent')}
+                disabled={disabled || !eventId}
+                onClick={() => onForce(event)}
+              >
+                {forceBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                className="nova-icon-button flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-danger)] disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label={`${t('snapshot.director.disableEvent')} ${title}`}
+                title={t('snapshot.director.disableEvent')}
+                disabled={disabled || !eventId || event.enabled === false}
+                onClick={() => onDisable(event)}
+              >
+                {disableBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          )
+        }) : <span className="text-xs text-[var(--nova-text-muted)]">{empty}</span>}
+      </div>
+    </div>
+  )
+}
+
+function ruleOutcomeClass(outcome: string) {
+  if (outcome.includes('success')) return 'shrink-0 text-[var(--nova-success)]'
+  if (outcome.includes('failure') || outcome === 'error') return 'shrink-0 text-[var(--nova-danger)]'
+  return 'shrink-0 text-[var(--nova-text-muted)]'
 }
 
 function StructureTab({ active, label, count, onClick }: { active: boolean; label: string; count: number; onClick: () => void }) {

@@ -156,21 +156,13 @@ function App() {
     removeTextSelection,
   } = useChat({ onAgentFileChange: handleAgentFileChange })
 
-  const notifyPlanModeEnabled = useCallback(() => {
-    toast.info(t('chat.plan.modeOn'), {
-      description: t('chat.plan.shiftTabHint'),
-    })
-  }, [t])
-
   const handleChatPlanModeChange = useCallback((value: boolean) => {
-    if (value && !planMode) notifyPlanModeEnabled()
     setPlanMode(value)
-  }, [notifyPlanModeEnabled, planMode, setPlanMode])
+  }, [setPlanMode])
 
   const handleChatPlanModeToggle = useCallback(() => {
-    if (!planMode) notifyPlanModeEnabled()
     togglePlanMode()
-  }, [notifyPlanModeEnabled, planMode, togglePlanMode])
+  }, [togglePlanMode])
 
   const refreshLoreItems = useCallback(async () => {
     if (!workspace) {

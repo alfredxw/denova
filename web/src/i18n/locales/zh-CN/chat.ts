@@ -30,7 +30,7 @@ const chat = {
   'chat.unknownTime': '时间未知',
   'chat.closeAgent': '关闭创作 Agent',
   'chat.teller': '叙事',
-  'chat.tellerTitle': '写作 Agent 下一轮使用的默认叙事方案',
+  'chat.tellerTitle': '写作 Agent 下一轮使用的默认叙事风格',
   'chat.imagePreset': '图像方案',
   'chat.imagePresetTitle': '写作 Agent 下一轮生成图像时使用的图像方案',
   'chat.writingSkill': '写作 Skill',

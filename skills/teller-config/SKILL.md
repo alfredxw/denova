@@ -1,10 +1,10 @@
 ---
 name: teller-config
-description: Use when config_manager creates or updates Denova interactive teller/director configurations.
+description: Use when config_manager creates or updates Denova narrative style configurations.
 agent: config_manager
 ---
 
-# Teller Config
+# Narrative Style Config
 
 Use this skill before calling `write_tellers`.
 
@@ -12,9 +12,11 @@ Use this skill before calling `write_tellers`.
 
 1. Call `list_tellers` first. For updates, call `read_tellers` for the exact teller IDs.
 2. Use `write_tellers` for create/update/delete. Do not edit teller JSON files directly.
-3. Built-in tellers can be read and copied as examples. Deleting built-in tellers is rejected.
+3. Built-in narrative styles can be read and copied as examples. Deleting built-in styles is rejected.
 4. For update, preserve slots and policy fields the user did not ask to change.
 5. For delete, require an explicit user request.
+6. Do not create or update `orchestration` here. Events, stats, TRPG checks, and opening trait rolls belong in `story-director-config` and `write_story_directors`.
+7. Narrative styles are shared modules for Writing Mode and Game Mode. Do not add a per-style mode/scope field.
 
 ## Teller Shape
 
@@ -22,11 +24,10 @@ Important fields:
 
 - `id`: stable ID. Required for update/delete; create may generate one if omitted.
 - `name`: user visible name.
-- `description`: short explanation of the teller's narrative role.
-- `random_event_rate`: number between 0 and 1. Use small values unless the user wants surprise events.
+- `description`: short explanation of the narrative style.
 - `tags`: short searchable labels.
 - `context_policy`: controls which context groups the teller expects.
-- `slots`: prompt slots used by the interactive story agent.
+- `slots`: prompt slots used by writing and interactive story prompt assembly.
 
 Do not change `version`, `path`, `custom`, `invalid`, `error`, `created_at`, or `updated_at` unless preserving an existing complete object from `read_tellers`.
 
@@ -65,3 +66,5 @@ When modifying slots:
 - `style_contents`: list of text snippets used as prose style references. Each item is stored as text, not a file path, and should stay within 8000 characters.
 
 Only add style rules when the user asks for scene-specific style behavior or when an existing teller already uses that pattern.
+
+When writing the teller back, use `write_tellers` with the complete updated teller object and a concise change message.

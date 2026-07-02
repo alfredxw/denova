@@ -53,8 +53,8 @@ interface AgentPanelProps {
   onSwitchSession: (id: string) => void | Promise<void>
   onRenameSession: (id: string, title: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
-  onSend: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string }) => void
-  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string }) => Promise<ContextAnalysis>
+  onSend: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string }) => void
+  onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
@@ -145,14 +145,14 @@ export function AgentPanel({
       const prompt = detail?.prompt || t('writingAgent.initPrompt')
       setView('chat')
       if (detail?.autoSend && !isStreaming) {
-        onSend(prompt, { writingSkill, ideContext, imagePresetId })
+        onSend(prompt, { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId })
         return
       }
       setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
     }
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
-  }, [ideContext, imagePresetId, isStreaming, onSend, t, writingSkill])
+  }, [ideContext, ideTellerId, imagePresetId, isStreaming, onSend, t, writingSkill])
 
   useEffect(() => {
     onSubAgentDetailsChange?.(Boolean(activeSubAgentSessionKey))
@@ -201,7 +201,7 @@ export function AgentPanel({
     setContextAnalysisError(null)
     setContextAnalysis(null)
     try {
-      setContextAnalysis(await onAnalyzeContext(message, { writingSkill, ideContext, imagePresetId }))
+      setContextAnalysis(await onAnalyzeContext(message, { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId }))
     } catch (e) {
       setContextAnalysis(null)
       setContextAnalysisError((e as Error).message)
@@ -235,7 +235,7 @@ export function AgentPanel({
   }
 
   const sendWithWritingSkill = (message: string) => {
-    onSend(message, { writingSkill, ideContext, imagePresetId })
+    onSend(message, { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId })
   }
 
   return (

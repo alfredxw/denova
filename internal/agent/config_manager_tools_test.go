@@ -26,12 +26,12 @@ func TestConfigManagerToolsRespectToolSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	names := configManagerToolNameSet(t, tools)
-	for _, name := range []string{"list_tellers", "read_tellers", "list_image_presets", "read_image_presets", "list_story_memory_structures", "list_story_memory_records", "read_story_memory_records"} {
+	for _, name := range []string{"list_tellers", "read_tellers", "list_image_presets", "read_image_presets", "list_story_memory_structures", "list_story_memory_records", "read_story_memory_records", "list_lore_items", "read_lore_items"} {
 		if !names[name] {
 			t.Fatalf("lore read should expose %s, names=%v", name, names)
 		}
 	}
-	for _, name := range []string{"write_tellers", "write_image_presets", "write_story_memory_structures", "write_story_memory_records", "list_skills", "write_skills", "list_automations", "write_automations"} {
+	for _, name := range []string{"write_tellers", "write_image_presets", "write_lore_items", "write_story_memory_structures", "write_story_memory_records", "list_skills", "write_skills", "list_automations", "write_automations"} {
 		if names[name] {
 			t.Fatalf("lore read should not expose %s, names=%v", name, names)
 		}
@@ -77,6 +77,53 @@ func TestConfigManagerSubAgentToolsAreCappedBySubAgentOverride(t *testing.T) {
 	}
 	if len(tools) != 0 {
 		t.Fatalf("subagent with all tools disabled should not expose config manager tools, got %v", configManagerToolNameSet(t, tools))
+	}
+}
+
+func TestPresetConfigManagerToolIndexesDescribeFixedModuleOwnership(t *testing.T) {
+	novaDir := t.TempDir()
+	for _, tc := range []struct {
+		name     string
+		build    func(string) (tool.BaseTool, error)
+		required []string
+	}{
+		{
+			name:     "tellers",
+			build:    newListTellersTool,
+			required: []string{"适用: 共享模块（写作模式 / 游戏模式）"},
+		},
+		{
+			name:     "image presets",
+			build:    newListImagePresetsTool,
+			required: []string{"适用: 共享模块（写作模式 / 游戏模式）"},
+		},
+		{
+			name:     "story directors",
+			build:    newListStoryDirectorsTool,
+			required: []string{"适用: 游戏模式"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base, err := tc.build(novaDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			output, err := base.(tool.InvokableTool).InvokableRun(context.Background(), `{}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, required := range tc.required {
+				if !strings.Contains(output, required) {
+					t.Fatalf("tool output missing %q:\n%s", required, output)
+				}
+			}
+			forbidden := []string{"mode_scope", "可配置模式"}
+			for _, item := range forbidden {
+				if strings.Contains(output, item) {
+					t.Fatalf("tool output should not expose per-resource mode field %q:\n%s", item, output)
+				}
+			}
+		})
 	}
 }
 

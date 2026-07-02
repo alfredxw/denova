@@ -5,7 +5,7 @@ import type { Teller } from '../types'
 
 describe('TellerPicker', () => {
   it('shows every narrative option immediately when opened', () => {
-    const tellers = Array.from({ length: 12 }, (_, index) => teller(`teller_${index + 1}`, `叙事方案 ${index + 1}`))
+    const tellers = Array.from({ length: 12 }, (_, index) => teller(`teller_${index + 1}`, `叙事风格 ${index + 1}`))
 
     render(
       <TellerPicker
@@ -14,6 +14,7 @@ describe('TellerPicker', () => {
           title: '故事线',
           origin: '',
           story_teller_id: 'teller_1',
+          story_director_id: 'default',
           reply_target_chars: 900,
           opening: { mode: 'ai' },
           created_at: '',
@@ -29,7 +30,7 @@ describe('TellerPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: '选择叙事' }))
 
     expect(screen.getAllByRole('option')).toHaveLength(12)
-    expect(screen.getByRole('option', { name: '叙事方案 12' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '叙事风格 12' })).toBeInTheDocument()
   })
 
   it('selects a narrative option and closes the panel', () => {
@@ -42,6 +43,7 @@ describe('TellerPicker', () => {
           title: '故事线',
           origin: '',
           story_teller_id: 'classic',
+          story_director_id: 'default',
           reply_target_chars: 900,
           opening: { mode: 'ai' },
           created_at: '',

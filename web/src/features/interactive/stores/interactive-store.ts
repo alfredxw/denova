@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { ChatMessage } from '@/lib/api'
-import type { BranchSummary, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StorySummary, Teller, TurnEvent } from '../types'
+import type { BranchSummary, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller, TurnEvent } from '../types'
 
 const CURRENT_STORY_STORAGE_KEY = 'nova.interactive.current_story.v1'
 const CURRENT_BRANCH_STORAGE_KEY = 'nova.interactive.current_branch.v1'
@@ -16,6 +16,7 @@ export interface StoryStageRunState {
 interface InteractiveStore {
   stories: StorySummary[]
   tellers: Teller[]
+  storyDirectors: StoryDirector[]
   branches: BranchSummary[]
   snapshot: Snapshot | null
   storyStageRuns: Record<string, StoryStageRunState>
@@ -24,6 +25,7 @@ interface InteractiveStore {
   submode: InteractiveSubmode
   setStories: (stories: StorySummary[], currentStoryId?: string) => void
   setTellers: (tellers: Teller[]) => void
+  setStoryDirectors: (directors: StoryDirector[]) => void
   setBranches: (branches: BranchSummary[]) => void
   setSnapshot: (snapshot: Snapshot | null) => void
   applyTurnPersisted: (event: InteractiveTurnPersistedEvent) => Snapshot | null
@@ -103,6 +105,7 @@ function isInteractiveSubmode(value: unknown): value is InteractiveSubmode {
 export const useInteractiveStore = create<InteractiveStore>((set) => ({
   stories: [],
   tellers: [],
+  storyDirectors: [],
   branches: [],
   snapshot: null,
   storyStageRuns: {},
@@ -120,6 +123,7 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
     }
   }),
   setTellers: (tellers) => set({ tellers }),
+  setStoryDirectors: (storyDirectors) => set({ storyDirectors }),
   setBranches: (branches) => set((state) => {
     const branchId = rememberedBranchFor(state.currentStoryId, branches) || branches.find(branch => branch.current)?.id || (branches.some(branch => branch.id === state.currentBranchId) ? state.currentBranchId : 'main')
     rememberCurrentBranch(state.currentStoryId, branchId)
@@ -180,6 +184,7 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
   resetWorkspaceState: () => set({
     stories: [],
     tellers: [],
+    storyDirectors: [],
     branches: [],
     snapshot: null,
     storyStageRuns: {},
@@ -200,6 +205,7 @@ export function mergeInteractiveTurnPersistedSnapshot(current: Snapshot | null, 
     branch_id: event.branch_id,
     turns,
     current_turn: turn,
+    director_state: event.director_state || base.director_state,
     state: event.state || base.state || {},
     graph: event.graph || base.graph,
     context_compaction: event.context_compaction === undefined ? base.context_compaction : event.context_compaction,

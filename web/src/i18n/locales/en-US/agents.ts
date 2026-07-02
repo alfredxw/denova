@@ -78,7 +78,7 @@ const agents = {
   'agents.prompt.source.runtime_contract': 'Runtime Contract',
   'agents.prompt.source.output_protocol': 'Output Format',
   'agents.prompt.source.creator': 'CREATOR.md',
-  'agents.prompt.source.teller': 'Narrative Plan',
+  'agents.prompt.source.teller': 'Narrative Style',
   'agents.prompt.source.workspace_context': 'Workspace State / Lore Injection',
   'agents.prompt.source.flow': 'Flow Rules',
   'agents.prompt.source.custom': 'User Custom Rules',
@@ -164,9 +164,9 @@ const agents = {
   'agents.builtIn.loreWrite.title': 'Write Lore',
   'agents.builtIn.loreWrite.value': 'Generate create / update / delete operations for backend validation and application.',
   'agents.builtIn.tellerRead.title': 'Read Presets',
-  'agents.builtIn.tellerRead.value': 'Read current narrative plans, image presets, selected presets, and user-referenced presets.',
+  'agents.builtIn.tellerRead.value': 'Read current narrative styles, story directors, image presets, selected presets, and user-referenced presets.',
   'agents.builtIn.tellerWrite.title': 'Write Presets',
-  'agents.builtIn.tellerWrite.value': 'Generate create / update plans for backend validation and saving as narrative plans or image presets.',
+  'agents.builtIn.tellerWrite.value': 'Generate create / update plans for backend validation and saving as narrative styles, story directors, or image presets.',
 } as const
 
 export default agents

@@ -15,12 +15,13 @@ const (
 	configManagerResourceSkillMaxBytes      = 12 * 1024
 	configManagerResourceSkillMaxTotalBytes = 32 * 1024
 
-	configManagerAutomationSkill  = "automation-config"
-	configManagerStoryMemorySkill = "story-memory-config"
-	configManagerTellerSkill      = "teller-config"
-	configManagerImagePresetSkill = "image-preset-config"
-	configManagerSkillsSkill      = "skills-creator"
-	configManagerAgentConfigSkill = "agent-config"
+	configManagerAutomationSkill    = "automation-config"
+	configManagerStoryMemorySkill   = "story-memory-config"
+	configManagerTellerSkill        = "teller-config"
+	configManagerStoryDirectorSkill = "story-director-config"
+	configManagerImagePresetSkill   = "image-preset-config"
+	configManagerSkillsSkill        = "skills-creator"
+	configManagerAgentConfigSkill   = "agent-config"
 )
 
 func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, req ConfigManagerRequest) []agent.ConfigManagerResourceSkill {
@@ -97,8 +98,9 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 		add(configManagerAutomationSkill)
 	case "story_memory", "story-memory", "storymemory", "interactive_memory", "interactive-memory":
 		add(configManagerStoryMemorySkill)
-	case "teller", "tellers", "director", "narrative":
+	case "teller", "tellers", "narrative", "style", "styles", "director", "story_director", "story-director", "story_directors", "story-directors":
 		add(configManagerTellerSkill)
+		add(configManagerStoryDirectorSkill)
 		add(configManagerImagePresetSkill)
 	case "image_preset", "image_preset_config", "image_presets", "image-preset", "image-presets", "preset", "presets":
 		add(configManagerTellerSkill)
@@ -126,8 +128,12 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 		add(configManagerStoryMemorySkill)
 	}
 	switch {
-	case strings.Contains(text, "teller") || strings.Contains(text, "director") || strings.Contains(text, "narrative"):
+	case strings.Contains(text, "teller") || strings.Contains(text, "narrative") || strings.Contains(text, "叙事风格"):
 		add(configManagerTellerSkill)
+	}
+	switch {
+	case strings.Contains(text, "story_director") || strings.Contains(text, "write_story_directors") || strings.Contains(text, "故事导演") || strings.Contains(text, "导演策略") || strings.Contains(text, "事件系统") || strings.Contains(text, "数值系统") || strings.Contains(text, "trpg"):
+		add(configManagerStoryDirectorSkill)
 	}
 	switch {
 	case strings.Contains(text, "image_preset") || strings.Contains(text, "image_presets") || strings.Contains(text, "图像方案") || strings.Contains(text, "方案预设") || strings.Contains(text, "preset"):

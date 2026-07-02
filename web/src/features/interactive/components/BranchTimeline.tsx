@@ -323,15 +323,16 @@ export function BranchTimeline({
                       : undefined,
                   }}
                   onClick={() => selectNode(node)}
-                  title={`${node.title}\n${node.summary}`}
-                >
+	                  title={`${node.title}\n${node.summary}${node.terminal ? `\n${t('branchTimeline.terminalNode')}` : ''}`}
+	                >
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_14px_currentColor]" style={{ background: color, color }} />
                   <span className="min-w-0 flex-1 overflow-hidden">
                     <span className="block truncate text-[12px] leading-4 font-medium">{node.title}</span>
                     <span className="mt-0.5 block truncate text-[11px] leading-4 text-[var(--nova-text-faint)]">{node.summary || t('branchTimeline.nodeFallback')}</span>
                   </span>
-                  {node.head && <Badge variant="outline" className="h-5 max-w-12 shrink-0 border-[var(--nova-border)] bg-[var(--nova-surface)] px-1.5 text-[10px] text-[var(--nova-text-muted)]">HEAD</Badge>}
-                </button>
+	                  {node.terminal && <Badge variant="outline" className="h-5 max-w-14 shrink-0 border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-1.5 text-[10px] text-[var(--nova-danger)]">{t('branchTimeline.terminalBadge')}</Badge>}
+	                  {node.head && <Badge variant="outline" className="h-5 max-w-12 shrink-0 border-[var(--nova-border)] bg-[var(--nova-surface)] px-1.5 text-[10px] text-[var(--nova-text-muted)]">HEAD</Badge>}
+	                </button>
               ))}
 
               {layout.emptyBranches.map((empty) => (
@@ -730,11 +731,13 @@ function turnToPlotNode(turn: TurnEvent, index: number, total: number, t: (key: 
     branch_id: turn.branch_id || 'main',
     title: truncateText(title, 18),
     summary: truncateText(firstLine(turn.narrative) || t('branchTimeline.nodeFallback'), 28),
-    ts: turn.ts,
-    current: index === total - 1,
-    head: index === total - 1,
-  }
-}
+	    ts: turn.ts,
+	    current: index === total - 1,
+	    head: index === total - 1,
+	    terminal: turn.terminal_outcome?.terminal === true,
+	    terminal_type: turn.terminal_outcome?.type,
+	  }
+	}
 
 function firstLine(value: string) {
   return value.trim().split(/\r?\n/).find(Boolean) || ''

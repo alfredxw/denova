@@ -453,6 +453,7 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 		InteractiveStory:      config.AgentPromptOverride{SystemPrompt: BuildInteractiveStoryInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})},
 		ConfigManager:         config.AgentPromptOverride{SystemPrompt: BuildConfigManagerInstruction(promptCfg, state)},
 		InteractiveState:      config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction())},
+		InteractiveDirector:   config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction())},
 		InteractiveHotChoices: config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())},
 		VersionSummary:        config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")},
 		ToolAgent:             config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction())},
@@ -477,6 +478,7 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 		InteractiveStory:      builtinPromptBlocks(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
 		ConfigManager:         builtinPromptBlocks(promptCfg, config.AgentKindConfigManager, configManagerFlow),
 		InteractiveState:      builtinPromptBlocks(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
+		InteractiveDirector:   builtinPromptBlocks(promptCfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction()),
 		InteractiveHotChoices: builtinPromptBlocks(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
 		VersionSummary:        builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
 		ToolAgent:             builtinPromptBlocks(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
@@ -510,6 +512,7 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 		),
 		ConfigManager:         builtinPromptSourceList(promptCfg, config.AgentKindConfigManager, configManagerFlow, readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", configManagerCreator)),
 		InteractiveState:      builtinPromptSourceList(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
+		InteractiveDirector:   builtinPromptSourceList(promptCfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction()),
 		InteractiveHotChoices: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
 		VersionSummary:        builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
 		ToolAgent:             builtinPromptSourceList(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction()),
@@ -590,7 +593,7 @@ func styleRulePromptSources(rules []StyleRule) []promptSource {
 			source:  "系统提示",
 			title:   "场景化风格规则：" + scene,
 			content: content,
-			note:    "当前叙事方案",
+			note:    "当前叙事风格",
 		})
 	}
 	return sources
@@ -618,6 +621,8 @@ func interactiveStoryFlowInstruction(cfg *config.Config, workspace string) strin
 func editablePromptFlowForAgent(agentKind, flow string) string {
 	switch agentKind {
 	case config.AgentKindInteractiveState:
+		return ""
+	case config.AgentKindInteractiveDirector:
 		return ""
 	case config.AgentKindInteractiveHotChoices:
 		return filterPromptLines(flow, "必须只输出", "不要输出")
@@ -685,7 +690,7 @@ func configManagerFlowInstruction(cfg *config.Config, state *book.State) string 
 
 func configManagerFlowInstructionFor(workspace, creator string) string {
 	var sb strings.Builder
-	sb.WriteString("你是 Denova 的统一配置管理 Agent，负责在模块内嵌入口中帮助用户管理资料库、方案预设（叙事方案和图像方案）、自动化任务、Skills、故事记忆结构和故事记忆记录。\n\n")
+	sb.WriteString("你是 Denova 的统一配置管理 Agent，负责在模块内嵌入口中帮助用户管理资料库、方案预设（叙事风格、故事导演和图像方案）、自动化任务、Skills、故事记忆结构和故事记忆记录。\n\n")
 	if strings.TrimSpace(workspace) != "" {
 		sb.WriteString("当前作品 workspace: ")
 		sb.WriteString(strings.TrimSpace(workspace))
@@ -708,7 +713,7 @@ func configManagerFlowInstructionFor(workspace, creator string) string {
 		"",
 		"## 模块边界",
 		"- 资料库记录长期稳定设定；短期位置、伤势、心理、目标优先进入故事记忆或写作状态，不默认写资料库。",
-		"- 叙事方案只维护导演/讲述规则、槽位和互动生成偏好，不写故事正文；图像方案只维护视觉风格、媒介、构图、限制和避免项。",
+		"- 叙事风格只维护文风、提示词槽位、场景风格和上下文策略；故事导演维护事件系统、数值/TRPG、开局选择器和编排策略；图像方案只维护视觉风格、媒介、构图、限制和避免项。",
 		"- Skills 写入 SKILL.md 文档，必须说明适用场景、上下文获取和具体工作流；内置预制 Skill 只能通过工作区同名覆盖修改，不得写入内置 Skills 目录。",
 		"- 自动化任务必须保持触发条件、通知/执行策略和写入权限清晰。",
 		"- 故事记忆结构定义字段和生成规则；故事记忆记录保存具体故事状态，两者必须分开操作。",

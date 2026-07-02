@@ -141,6 +141,8 @@ describe('api', () => {
       true,
       'novel-heavy',
       { currentFile: 'chapters/ch02.md', openFiles: ['chapters/ch01.md', 'chapters/ch02.md'] },
+      'game-cg',
+      'slow-burn',
     )
     const reader = stream.getReader()
 
@@ -170,6 +172,8 @@ describe('api', () => {
       },
       plan_mode: true,
       writing_skill: 'novel-heavy',
+      image_preset_id: 'game-cg',
+      teller_id: 'slow-burn',
     })
   })
 

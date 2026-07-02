@@ -87,6 +87,7 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		config.AgentKindImage:                 "图像 Agent",
 		config.AgentKindConfigManager:         "配置管理 Agent",
 		config.AgentKindInteractiveState:      "互动记忆 Agent",
+		config.AgentKindInteractiveDirector:   "互动导演 Agent",
 		config.AgentKindInteractiveHotChoices: "快捷选项 Agent",
 		config.AgentKindVersionSummary:        "版本说明 Agent",
 		config.AgentKindToolAgent:             "model-only",

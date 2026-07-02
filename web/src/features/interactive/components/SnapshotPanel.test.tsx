@@ -10,6 +10,63 @@ describe('SnapshotPanel', () => {
           story_id: 'st_1',
           branch_id: 'main',
           turns: [],
+          director_state: {
+            enabled: true,
+            spoiler_mode: 'layered',
+            main_arc: '青云逆袭主线',
+            stage_plan: '外门比拼前夜',
+            beat_queue: [{ id: 'beat_1', summary: '制造排名压力', pressure: '同门嘲讽' }],
+            event_queue: [{ id: 'event_1', name: '学院比拼打脸', category: 'face_slap', status: 'queued' }],
+            foreshadowing: [{ id: 'thread_1', title: '残卷真正来历', status: 'seeded' }],
+            disabled_events: ['天降神兵'],
+            last_director_run: { status: 'ready', summary: '已更新近期事件队列' },
+          },
+          current_turn: {
+            id: 'turn-2',
+            parent_id: null,
+            branch_id: 'main',
+            ts: '2026-05-17T00:00:00Z',
+            user: '我强行闯入藏书阁',
+            narrative: '守阁长老拦在门前。',
+            rule_resolution: {
+              id: 'rr_1',
+              created_at: '2026-05-17T00:00:00Z',
+              accepted_brief: {
+                user_action: '强行闯入藏书阁',
+                intent: '冒险',
+                turn_goal: '让错误选择产生明确代价',
+                pressure: '守阁长老正在靠近',
+                event_intents: ['冲突升级'],
+                cost_policy: '失败会损失体力并暴露行踪',
+                state_expectation: '体力下降，学院警戒升高',
+                continuity_notes: '守阁长老不能被写成临时消失',
+                rule_checks: [{ id: 'check_1', label: '潜入检定', kind: 'skill', dice: '1d20', difficulty: 18 }],
+              },
+              rule_results: [{
+                id: 'check_1',
+                label: '潜入检定',
+                kind: 'skill',
+                dice: '1d20',
+                rolls: [4],
+                roll_total: 4,
+                modifier: 2,
+                difficulty: 18,
+                total: 6,
+                outcome: 'failure',
+                constraints: ['潜入检定失败，总值 6 / 难度 18。'],
+              }],
+              state_ops_preview: [{ op: 'inc', path: 'resources.hp', value: -10 }],
+              terminal_candidate: { type: 'bad_end', reason: '强闯失败导致主线中断', check_id: 'check_1' },
+              rule_constraints: ['潜入检定失败，总值 6 / 难度 18。'],
+            },
+            terminal_outcome: {
+              terminal: true,
+              type: 'bad_end',
+              reason: '强闯失败导致主线中断',
+              final_narrative_summary: '主角被逐出学院。',
+              restart_suggestions: ['从上一安全回合创建新分支'],
+            },
+          },
           state: {
             on_stage: ['林川'],
             scene: {
@@ -72,7 +129,7 @@ describe('SnapshotPanel', () => {
     expect(screen.getByText('物品与资源')).toBeInTheDocument()
     expect(screen.getAllByText('火把').length).toBeGreaterThan(0)
     expect(screen.getByText('资源')).toBeInTheDocument()
-    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0)
     expect(screen.getByText('规则与暗线')).toBeInTheDocument()
     expect(screen.getByText('黄泉酒馆会回应火光')).toBeInTheDocument()
     expect(screen.getByText('午夜后只进不出')).toBeInTheDocument()
@@ -83,6 +140,19 @@ describe('SnapshotPanel', () => {
     expect(screen.getByText('线索')).toBeInTheDocument()
     expect(screen.getByText('来源事件')).toBeInTheDocument()
     expect(screen.getByText('酒馆门自行关上')).toBeInTheDocument()
+    expect(screen.getByText('导演编排')).toBeInTheDocument()
+    expect(screen.getByText('青云逆袭主线')).toBeInTheDocument()
+    expect(screen.getByText('学院比拼打脸')).toBeInTheDocument()
+    expect(screen.getByText('残卷真正来历')).toBeInTheDocument()
+    expect(screen.getByText('规则审计')).toBeInTheDocument()
+    expect(screen.getByText('本回合简报')).toBeInTheDocument()
+    expect(screen.getByText('强行闯入藏书阁')).toBeInTheDocument()
+    expect(screen.getByText('潜入检定')).toBeInTheDocument()
+    expect(screen.getByText('failure')).toBeInTheDocument()
+    expect(screen.getByText('终局候选')).toBeInTheDocument()
+    expect(screen.getAllByText('强闯失败导致主线中断').length).toBeGreaterThan(0)
+    expect(screen.getByText('重开建议')).toBeInTheDocument()
+    expect(screen.getByText('从上一安全回合创建新分支')).toBeInTheDocument()
     expect(document.body).not.toHaveTextContent(/current_goal|last_seen_at|relationship_score|from_event/)
   })
 })

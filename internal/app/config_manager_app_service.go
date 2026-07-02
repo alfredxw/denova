@@ -16,6 +16,8 @@ type ConfigManagerAppService struct {
 	app *App
 }
 
+const configManagerRequestContextValueMaxBytes = 2048
+
 type ConfigManagerRequest struct {
 	Instruction string            `json:"instruction"`
 	Origin      string            `json:"origin,omitempty"`
@@ -142,6 +144,10 @@ func buildConfigManagerMessage(req ConfigManagerRequest) string {
 	lines = append(lines, "【模块上下文】")
 	appendKV := func(key, value string) {
 		if strings.TrimSpace(value) != "" {
+			value, truncated := trimStringToUTF8Bytes(value, configManagerRequestContextValueMaxBytes)
+			if truncated {
+				value += "\n  ...（已按请求上下文上限截断）"
+			}
 			lines = append(lines, fmt.Sprintf("- %s: %s", key, strings.TrimSpace(value)))
 		}
 	}

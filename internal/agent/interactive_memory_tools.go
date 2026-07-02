@@ -21,9 +21,10 @@ const (
 // interactive story run. The story and branch are fixed by the backend; the
 // model never supplies them.
 type InteractiveStoryToolContext struct {
-	Store    *interactive.Store
-	StoryID  string
-	BranchID string
+	Store       *interactive.Store
+	StoryID     string
+	BranchID    string
+	PrepareTurn func(context.Context, interactive.TurnBrief) (interactive.RuleResolution, error)
 }
 
 type listInteractiveMemoriesInput struct {
@@ -137,6 +138,34 @@ func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool
 		return nil, err
 	}
 	return []tool.BaseTool{listTool, readTool}, nil
+}
+
+func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
+	if ctx.PrepareTurn == nil {
+		return nil, nil
+	}
+	prepareTool, err := utils.InferTool("prepare_interactive_turn", "提交本回合 TurnBrief 并执行固定规则结算。Interactive Agent 负责语义理解、事件选择和剧情编排；本工具只校验 TurnBrief、记录审计信息，并执行数值、骰子、词条、资源、关系和终局候选等确定性规则检定，返回 RuleResolution。输出正文前必须先根据返回结果调整叙事。", func(callCtx context.Context, input interactive.TurnBrief) (string, error) {
+		resolution, err := ctx.PrepareTurn(callCtx, input)
+		if err != nil {
+			return "", err
+		}
+		data, err := json.MarshalIndent(map[string]any{
+			"source": map[string]string{
+				"kind":      "interactive_rule_resolution",
+				"story_id":  ctx.StoryID,
+				"branch_id": ctx.BranchID,
+			},
+			"rule_resolution": resolution,
+		}, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return []tool.BaseTool{prepareTool}, nil
 }
 
 func normalizeInteractiveMemoryToolLimit(value, fallback, max int) int {

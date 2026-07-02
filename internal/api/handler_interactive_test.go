@@ -162,6 +162,158 @@ func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
 	}
 }
 
+func TestInteractiveDirectorAPI(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+
+	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]string{
+		"title":           "导演接口",
+		"origin":          "主角准备参加学院大比",
+		"story_teller_id": "classic",
+	})
+	if createResp.Code != http.StatusOK {
+		t.Fatalf("create story status = %d body=%s", createResp.Code, createResp.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	decodeResponse(t, createResp.Body.Bytes(), &created)
+
+	getResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/director", nil)
+	if getResp.Code != http.StatusOK {
+		t.Fatalf("get director status = %d body=%s", getResp.Code, getResp.Body.String())
+	}
+	type directorResponse struct {
+		Enabled     bool     `json:"enabled"`
+		SpoilerMode string   `json:"spoiler_mode"`
+		MainArc     string   `json:"main_arc"`
+		Forced      []string `json:"forced_events"`
+		Disabled    []string `json:"disabled_events"`
+		EventQueue  []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"event_queue"`
+	}
+	var director directorResponse
+	decodeResponse(t, getResp.Body.Bytes(), &director)
+	if !director.Enabled || director.SpoilerMode != "layered" {
+		t.Fatalf("default director mismatch: %#v", director)
+	}
+
+	mainArc := "学院逆袭主线"
+	patchResp := performJSONRequest(t, server, http.MethodPatch, "/api/interactive/stories/"+created.ID+"/director", map[string]any{
+		"main_arc": &mainArc,
+		"summary":  "手动设置主线",
+	})
+	if patchResp.Code != http.StatusOK {
+		t.Fatalf("patch director status = %d body=%s", patchResp.Code, patchResp.Body.String())
+	}
+	decodeResponse(t, patchResp.Body.Bytes(), &director)
+	if director.MainArc != mainArc {
+		t.Fatalf("director patch mismatch: %#v", director)
+	}
+
+	forceResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/events/contest/force", map[string]string{"reason": "安排比拼"})
+	if forceResp.Code != http.StatusOK {
+		t.Fatalf("force director event status = %d body=%s", forceResp.Code, forceResp.Body.String())
+	}
+	director = directorResponse{}
+	decodeResponse(t, forceResp.Body.Bytes(), &director)
+	if len(director.Forced) != 1 || director.Forced[0] != "contest" || !directorEventStatus(director.EventQueue, "contest", "forced") {
+		t.Fatalf("forced director event mismatch: %#v", director)
+	}
+
+	disableResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/events/contest/disable", nil)
+	if disableResp.Code != http.StatusOK {
+		t.Fatalf("disable director event status = %d body=%s", disableResp.Code, disableResp.Body.String())
+	}
+	director = directorResponse{}
+	decodeResponse(t, disableResp.Body.Bytes(), &director)
+	if len(director.Disabled) != 1 || director.Disabled[0] != "contest" || len(director.Forced) != 0 {
+		t.Fatalf("disabled director event mismatch: %#v", director)
+	}
+
+	rebuildResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/rebuild", nil)
+	if rebuildResp.Code != http.StatusOK {
+		t.Fatalf("rebuild director status = %d body=%s", rebuildResp.Code, rebuildResp.Body.String())
+	}
+	director = directorResponse{}
+	decodeResponse(t, rebuildResp.Body.Bytes(), &director)
+	if director.MainArc == "" || len(director.EventQueue) == 0 {
+		t.Fatalf("rebuilt director mismatch: %#v", director)
+	}
+}
+
+func TestInteractiveOpeningRollAndInitialStateAPI(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+
+	rollResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/opening/roll", map[string]any{
+		"story_director_id": "default",
+		"seed":              42,
+	})
+	if rollResp.Code != http.StatusOK {
+		t.Fatalf("opening roll status = %d body=%s", rollResp.Code, rollResp.Body.String())
+	}
+	var rolled struct {
+		StoryDirectorID string `json:"story_director_id"`
+		Seed            int64  `json:"seed"`
+		StateOps        []any  `json:"state_ops"`
+		DirectorState   struct {
+			Enabled bool `json:"enabled"`
+		} `json:"director_state"`
+	}
+	decodeResponse(t, rollResp.Body.Bytes(), &rolled)
+	if rolled.StoryDirectorID != "default" || rolled.Seed != 42 || !rolled.DirectorState.Enabled || len(rolled.StateOps) == 0 {
+		t.Fatalf("opening roll mismatch: %#v", rolled)
+	}
+
+	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]any{
+		"title":           "带开局状态",
+		"story_teller_id": "classic",
+		"initial_state_ops": []map[string]any{{
+			"op":    "set",
+			"path":  "resources.hp",
+			"value": 18,
+		}},
+	})
+	if createResp.Code != http.StatusOK {
+		t.Fatalf("create story with initial state status = %d body=%s", createResp.Code, createResp.Body.String())
+	}
+	var created struct {
+		ID     string `json:"id"`
+		Events int    `json:"events"`
+	}
+	decodeResponse(t, createResp.Body.Bytes(), &created)
+	if created.ID == "" || created.Events != 1 {
+		t.Fatalf("created story with initial state mismatch: %#v", created)
+	}
+	snapshotResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/snapshot", nil)
+	if snapshotResp.Code != http.StatusOK {
+		t.Fatalf("snapshot status = %d body=%s", snapshotResp.Code, snapshotResp.Body.String())
+	}
+	var snapshot struct {
+		State map[string]any `json:"state"`
+	}
+	decodeResponse(t, snapshotResp.Body.Bytes(), &snapshot)
+	resources, _ := snapshot.State["resources"].(map[string]any)
+	if resources["hp"] != float64(18) {
+		t.Fatalf("initial state should be visible in snapshot: %#v", snapshot.State)
+	}
+}
+
+func directorEventStatus(events []struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}, id, status string) bool {
+	for _, event := range events {
+		if event.ID == id && event.Status == status {
+			return true
+		}
+	}
+	return false
+}
+
 func TestInteractiveChatRequiresStoryID(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")

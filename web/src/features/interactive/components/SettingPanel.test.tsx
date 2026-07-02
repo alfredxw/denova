@@ -1,18 +1,66 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
-import { getImagePresets, getInteractiveTellers } from '../api'
-import type { ImagePreset, Teller } from '../types'
+import { createStoryDirector, getEventSystems, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors } from '../api'
+import type { EventSystemModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { SettingPanel } from './SettingPanel'
 
-const { configManagerChatProps } = vi.hoisted(() => ({
+const { configManagerChatProps, monacoEditorActions } = vi.hoisted(() => ({
   configManagerChatProps: [] as Array<{
     origin?: string
     resourceId?: string
     onMutated?: () => void
   }>,
+  monacoEditorActions: [] as string[],
+}))
+
+vi.mock('@monaco-editor/react', () => ({
+  Editor: ({ value, onChange, onMount, language, theme, options }: {
+    value?: string
+    onChange?: (value?: string) => void
+    onMount?: (
+      editor: {
+        addCommand: (command: number, callback: () => void) => void
+        focus: () => void
+        getAction: (id: string) => { run: () => void }
+      },
+      monaco: { KeyMod: { CtrlCmd: number }; KeyCode: { KeyS: number } }
+    ) => void
+    language?: string
+    theme?: string
+    options?: { ariaLabel?: string; wordWrap?: string }
+  }) => {
+    onMount?.(
+      {
+        addCommand: () => undefined,
+        focus: () => undefined,
+        getAction: (id: string) => ({
+          run: () => {
+            monacoEditorActions.push(id)
+          },
+        }),
+      },
+      { KeyMod: { CtrlCmd: 1 }, KeyCode: { KeyS: 2 } },
+    )
+
+    return (
+      <textarea
+        aria-label={options?.ariaLabel}
+        data-testid="monaco-json-editor"
+        data-language={language}
+        data-theme={theme}
+        data-word-wrap={options?.wordWrap}
+        value={value}
+        onChange={(event) => onChange?.(event.target.value)}
+      />
+    )
+  },
+}))
+
+vi.mock('next-themes', () => ({
+  useTheme: () => ({ resolvedTheme: 'dark' }),
 }))
 
 vi.mock('@/components/Chat/ConfigManagerChat', () => ({
@@ -45,19 +93,37 @@ vi.mock('@/lib/api', () => ({
 }))
 
 vi.mock('../api', () => ({
+  createEventSystem: vi.fn(),
   createImagePreset: vi.fn(),
   createInteractiveTeller: vi.fn(),
+  createOpeningSelector: vi.fn(),
+  createRuleSystem: vi.fn(),
+  createStoryDirector: vi.fn(),
+  deleteEventSystem: vi.fn(),
   deleteImagePreset: vi.fn(),
   deleteInteractiveTeller: vi.fn(),
+  deleteOpeningSelector: vi.fn(),
+  deleteRuleSystem: vi.fn(),
+  deleteStoryDirector: vi.fn(),
+  getEventSystems: vi.fn(),
   getImagePresets: vi.fn(),
   getInteractiveTellers: vi.fn(),
+  getOpeningSelectors: vi.fn(),
+  getRuleSystems: vi.fn(),
+  getStoryDirectors: vi.fn(),
+  updateEventSystem: vi.fn(),
   updateImagePreset: vi.fn(),
   updateInteractiveTeller: vi.fn(),
+  updateOpeningSelector: vi.fn(),
+  updateRuleSystem: vi.fn(),
+  updateStoryDirector: vi.fn(),
 }))
 
 describe('SettingPanel', () => {
   beforeEach(() => {
+    window.localStorage.clear()
     configManagerChatProps.length = 0
+    monacoEditorActions.length = 0
     vi.mocked(getLoreItems).mockReset()
     vi.mocked(updateLoreItem).mockReset()
     vi.mocked(deleteLoreItem).mockReset()
@@ -65,12 +131,22 @@ describe('SettingPanel', () => {
     vi.mocked(streamLoreImagesGenerate).mockReset()
     vi.mocked(getInteractiveTellers).mockReset()
     vi.mocked(getImagePresets).mockReset()
+    vi.mocked(getStoryDirectors).mockReset()
+    vi.mocked(createStoryDirector).mockReset()
+    vi.mocked(getEventSystems).mockReset()
+    vi.mocked(getRuleSystems).mockReset()
+    vi.mocked(getOpeningSelectors).mockReset()
     vi.mocked(getLoreItems).mockResolvedValue([])
     vi.mocked(getInteractiveTellers).mockResolvedValue([teller('classic', '经典叙事'), teller('slow-burn', '慢热叙事')])
+    vi.mocked(getStoryDirectors).mockResolvedValue([storyDirector('default', '默认导演')])
+    vi.mocked(createStoryDirector).mockResolvedValue(storyDirector('default-custom', '默认导演'))
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
+    vi.mocked(getEventSystems).mockResolvedValue([eventSystem('default-events', '默认事件系统')])
+    vi.mocked(getRuleSystems).mockResolvedValue([ruleSystem('default-rules', '默认数值规则')])
+    vi.mocked(getOpeningSelectors).mockResolvedValue([openingSelector('default-opening', '默认开局选择')])
   })
 
-  it('keeps the presets config Agent open after its tools refresh narrative plans', async () => {
+  it('keeps the presets config Agent open after its tools refresh narrative styles', async () => {
     const user = userEvent.setup()
     render(<PresetPanelHarness />)
 
@@ -90,25 +166,112 @@ describe('SettingPanel', () => {
     expect(screen.getAllByText('配置管理 Agent').length).toBeGreaterThan(0)
   })
 
-  it('opens the presets config Agent without leaving the image presets tab', async () => {
+  it('opens the presets config Agent without leaving the expanded image preset group', async () => {
     const user = userEvent.setup()
     render(<PresetPanelHarness />)
 
-    const imageTab = screen.getByRole('button', { name: '图像方案' })
-    await user.click(imageTab)
-    expect(imageTab).toHaveClass('bg-[var(--nova-active)]')
+    await user.click(screen.getByRole('button', { name: '图像方案' }))
+    await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
+    expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '配置管理 Agent' }))
 
     expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
-    expect(imageTab).toHaveClass('bg-[var(--nova-active)]')
+    expect(screen.getByRole('button', { name: /游戏 CG/ })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '经典叙事' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
 
     expect(screen.queryByTestId('config-manager-chat')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
-    expect(imageTab).toHaveClass('bg-[var(--nova-active)]')
+  })
+
+  it('follows the global mode when filtering preset module types', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    expect(screen.queryByLabelText('方案预设模式筛选')).not.toBeInTheDocument()
+    expect(screen.queryByText('在目录中选择条目，右侧打开编辑。')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '配置管理 Agent' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '叙事风格' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '图像方案' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '故事导演' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新建故事导演' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新建叙事风格' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /默认事件系统/ })).not.toBeInTheDocument()
+    expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('叙事风格')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('图像方案')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    expect(screen.getAllByTestId('preset-config-visual-editor')).toHaveLength(4)
+    expect(screen.queryByTestId('monaco-json-editor')).not.toBeInTheDocument()
+    await user.click(screen.getAllByRole('button', { name: 'JSON' })[0])
+    expect(window.localStorage.getItem('nova.settingPanel.presetConfigView.v1')).toContain('story-director.event-system')
+    const jsonEditors = screen.getAllByTestId('story-director-json-editor')
+    expect(jsonEditors).toHaveLength(1)
+    expect(jsonEditors[0]).toHaveClass('overflow-hidden')
+    expect(screen.getByTestId('monaco-json-editor')).toHaveAttribute('data-word-wrap', 'on')
+    expect(screen.getByDisplayValue(/event_packages/)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '折叠全部' })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '折叠全部' }))
+    expect(monacoEditorActions).toEqual(['editor.foldAll'])
+    expect(screen.getByRole('button', { name: '展开全部' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '展开全部' }))
+    expect(monacoEditorActions).toEqual(['editor.foldAll', 'editor.unfoldAll'])
+    expect(screen.getAllByRole('button', { name: '折叠全部' })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '事件系统' }))
+
+    expect(screen.getByRole('button', { name: /默认事件系统/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新建事件系统' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /默认事件系统/ }))
+    expect(screen.getByRole('heading', { name: '默认事件系统' })).toBeInTheDocument()
+    expect(screen.getByTestId('preset-config-visual-editor')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '写作模式' }))
+
+    expect(screen.getByRole('button', { name: '叙事风格' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '图像方案' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '故事导演' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '事件系统' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '数值与TRPG系统' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '开局选择器' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '默认事件系统' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '经典叙事' })).toBeInTheDocument()
+  })
+
+  it('saves visual edits from a story director event card', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await user.click(await screen.findByRole('button', { name: '新增事件卡' }))
+    await user.type(screen.getByLabelText('事件类型名'), '伏笔回收')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    expect(payload.event_system?.event_packages?.[0]?.events?.[0]?.type_name).toBe('伏笔回收')
+  })
+
+  it('blocks saving and preset navigation while JSON view is invalid', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await user.click(screen.getAllByRole('button', { name: 'JSON' })[0])
+    fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeDisabled())
+    expect(screen.getByText('请先修复 JSON，再切回可视化视图。')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '事件系统' }))
+    expect(screen.getByRole('heading', { name: '默认导演' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '默认事件系统' })).not.toBeInTheDocument()
+    expect(createStoryDirector).not.toHaveBeenCalled()
   })
 
   it('generates a current image for one lore item from the editor', async () => {
@@ -206,8 +369,23 @@ describe('SettingPanel', () => {
   })
 })
 
-function PresetPanelHarness() {
+function sectionHeader(name: string) {
+  return screen.getByRole('button', { name })
+}
+
+function PresetModeHarness() {
+  const [presetUsageMode, setPresetUsageMode] = useState<'writing' | 'game'>('game')
+  return (
+    <>
+      <button type="button" onClick={() => setPresetUsageMode('writing')}>写作模式</button>
+      <PresetPanelHarness presetUsageMode={presetUsageMode} />
+    </>
+  )
+}
+
+function PresetPanelHarness({ presetUsageMode = 'game' }: { presetUsageMode?: 'writing' | 'game' }) {
   const [tellers, setTellers] = useState([teller('classic', '经典叙事')])
+  const [storyDirectors, setStoryDirectors] = useState([storyDirector('default', '默认导演')])
   const [imagePresets, setImagePresets] = useState([imagePreset('game-cg', '游戏 CG')])
 
   return (
@@ -215,8 +393,11 @@ function PresetPanelHarness() {
       mode="teller"
       workspace="/workspace"
       tellers={tellers}
+      storyDirectors={storyDirectors}
       imagePresets={imagePresets}
+      presetUsageMode={presetUsageMode}
       onTellersChange={setTellers}
+      onStoryDirectorsChange={setStoryDirectors}
       onImagePresetsChange={setImagePresets}
     />
   )
@@ -247,6 +428,67 @@ function imagePreset(id: string, name: string): ImagePreset {
     slots: [{ id: 'tool_request', name: '图像请求 Prompt', target: 'tool_request', enabled: true, content: 'visual prompt' }],
     tags: [],
     custom: id !== 'game-cg',
+  }
+}
+
+function storyDirector(id: string, name: string): StoryDirector {
+  return {
+    version: 1,
+    id,
+    name,
+    description: `${name} description`,
+    strategy: { enabled: true, mainline_strength: 'balanced' },
+    event_system: {
+      event_packages: [{
+        id: 'webnovel_core',
+        name: '爽文核心事件包',
+        enabled: true,
+        events: [],
+      }],
+      custom_events: [],
+    },
+    stat_system: { attributes: [] },
+    trpg_system: { rule_templates: [] },
+    opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },
+    tags: [],
+    custom: id !== 'default',
+  }
+}
+
+function eventSystem(id: string, name: string): EventSystemModule {
+  return {
+    version: 1,
+    id,
+    name,
+    description: `${name} description`,
+    event_system: { event_packages: [], custom_events: [] },
+    tags: [],
+    custom: id !== 'default-events',
+  }
+}
+
+function ruleSystem(id: string, name: string): RuleSystemModule {
+  return {
+    version: 1,
+    id,
+    name,
+    description: `${name} description`,
+    stat_system: { attributes: [] },
+    trpg_system: { rule_templates: [] },
+    tags: [],
+    custom: id !== 'default-rules',
+  }
+}
+
+function openingSelector(id: string, name: string): OpeningSelectorModule {
+  return {
+    version: 1,
+    id,
+    name,
+    description: `${name} description`,
+    opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },
+    tags: [],
+    custom: id !== 'default-opening',
   }
 }
 

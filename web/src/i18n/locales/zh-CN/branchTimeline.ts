@@ -26,6 +26,8 @@ const branchTimeline = {
   'branchTimeline.recenter': '回到当前节点',
   'branchTimeline.unknownBranch': '未知剧情线',
   'branchTimeline.mainBranch': '主线',
+  'branchTimeline.terminalBadge': '终局',
+  'branchTimeline.terminalNode': '终局节点',
 } as const
 
 export default branchTimeline

@@ -120,6 +120,48 @@ func TestInteractiveMemoryToolsListReadAndRecordRecall(t *testing.T) {
 	}
 }
 
+func TestPrepareInteractiveTurnToolUsesRuleResolutionCallback(t *testing.T) {
+	expected := interactive.RuleResolution{
+		ID: "rr_test",
+		AcceptedBrief: interactive.TurnBrief{
+			UserAction: "强闯秘境",
+			Intent:     "冒险",
+			TurnGoal:   "制造代价",
+		},
+		RuleResults: []interactive.RuleResult{{ID: "check_1", Outcome: "failure"}},
+	}
+	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
+		StoryID:  "st_tool",
+		BranchID: "main",
+		PrepareTurn: func(ctx context.Context, brief interactive.TurnBrief) (interactive.RuleResolution, error) {
+			if brief.UserAction != "强闯秘境" || brief.Intent != "冒险" || brief.TurnGoal != "制造代价" {
+				t.Fatalf("unexpected brief: %#v", brief)
+			}
+			return expected, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("tool count = %d, want 1", len(tools))
+	}
+	info, err := tools[0].Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != "prepare_interactive_turn" {
+		t.Fatalf("tool name = %s", info.Name)
+	}
+	output, err := tools[0].(tool.InvokableTool).InvokableRun(context.Background(), `{"user_action":"强闯秘境","intent":"冒险","turn_goal":"制造代价"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, `"id": "rr_test"`) || !strings.Contains(output, `"outcome": "failure"`) {
+		t.Fatalf("unexpected output: %s", output)
+	}
+}
+
 func TestInteractiveMemoryReadToolReturnsAllRequestedContent(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)

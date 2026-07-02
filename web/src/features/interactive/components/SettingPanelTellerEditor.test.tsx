@@ -133,6 +133,14 @@ describe('TellerEditor style contents', () => {
     expect(rateInput).toHaveValue('0.15')
     expect(currentDraft.random_event_rate).toBe(0.15)
   })
+
+  it('keeps orchestration editing out of narrative styles', () => {
+    render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
+
+    expect(screen.queryByText('叙事编排')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '新增事件包' })).not.toBeInTheDocument()
+    expect(screen.getByText('注入规则')).toBeInTheDocument()
+  })
 })
 
 function Harness({ initial, onChange, onSave }: { initial: Teller; onChange: (draft: Teller) => void; onSave: () => void }) {

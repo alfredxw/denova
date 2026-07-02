@@ -13,7 +13,7 @@ type InteractiveStorySystemInstructionInput struct {
 	StoryTellerName         string
 	StoryTellerDescription  string
 	StoryTellerSystemPrompt string
-	// StyleRules 是当前叙事方案的场景化风格规则；调用方需先按本轮 # 选择和大小上限过滤。
+	// StyleRules 是当前叙事风格的场景化风格规则；调用方需先按本轮 # 选择和大小上限过滤。
 	StyleRules []StyleRule
 }
 
@@ -21,9 +21,12 @@ type InteractiveStoryPromptInput struct {
 	Title                string
 	Origin               string
 	StoryTellerID        string
+	StoryDirectorID      string
 	BranchID             string
 	ReplyTargetChars     int
 	LongTermMemory       string
+	DirectorStateSummary string
+	StoryDirectorRules   string
 	PreviousTurnsSummary string
 }
 
@@ -39,6 +42,20 @@ type InteractiveStatePromptInput struct {
 	TurnHistory       string
 	UserAction        string
 	Narrative         string
+}
+
+type InteractiveDirectorPromptInput struct {
+	Title                string
+	Origin               string
+	StoryTellerID        string
+	StoryDirectorID      string
+	BranchID             string
+	DirectorStateJSON    string
+	TurnAuditJSON        string
+	TurnHistory          string
+	StoryMemorySummary   string
+	StoryDirectorPlan    string
+	DirectorEventCatalog string
 }
 
 func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstructionInput) string {
@@ -84,16 +101,19 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 禁止使用写文件工具，包括 write_file、edit_file、delete_file 以及任何会修改 workspace 文件的工具。\n")
 	sb.WriteString("- 禁止调用 write_todos、任务计划工具或输出 <invoke> 工具调用片段；游戏模式不维护待办列表。\n")
 	sb.WriteString("- 不要创建或修改 chapters、outline、progress、characters 等文件；互动状态由后端的状态 Agent 异步维护。\n")
-	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的场景化风格内容继续剧情；# 只用于选择当前叙事方案中的场景风格，不再代表文件引用。\n\n")
+	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的场景化风格内容继续剧情；# 只用于选择当前叙事风格中的场景风格，不再代表文件引用。\n\n")
 	sb.WriteString("## 工具化召回流程\n")
 	sb.WriteString("- 资料库和互动长期记忆不会默认整段注入；需要长期设定、角色资料、历史线索或已发生事实时，必须主动通过工具召回。\n")
 	sb.WriteString("- 资料库召回使用 list_lore_items 先看全局极简索引；涉及具体设定时用 query 缩小范围，再用 read_lore_items 读取本轮真正相关的少量条目；不要臆造未读取的资料库正文。\n")
 	sb.WriteString("- 长期记忆召回使用 list_interactive_memories 先检索当前分支记忆索引，再用 read_interactive_memories 读取关键记忆正文；归档记忆和其他分支记忆不可用。\n")
-	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 结合导演规则裁定后果 → 输出可展示的故事正文。\n")
+	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 生成本回合 TurnBrief → 如有数值/骰子/资源/关系/终局检定，调用 prepare_interactive_turn 执行固定规则结算 → 基于 RuleResolution 和导演规则裁定后果 → 输出可展示的故事正文。\n")
+	sb.WriteString("- prepare_interactive_turn 不替你做语义理解、文学判断或事件编排；你必须先自行判断用户行动、事件意图、压力、代价和禁忌，再只把需要固定结算的 rule_checks 交给工具。\n")
+	sb.WriteString("- 如果后台导演状态摘要中存在事件卡或事件 template，TurnBrief.event_intents 优先引用对应事件卡 id、type_name/name 或明确事件类型；事件只能顺着用户行动、当前背景和已读设定自然发生，不能为了触发事件而生硬改写场景。\n")
 	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和历史上下文继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
 	sb.WriteString("## 互动主持人原则\n")
 	sb.WriteString("- 你不是普通续写器，而是文字小说 RPG 的故事主持人：每回合都要理解玩家行动、裁定世界反馈、维持角色与规则一致，并制造新的可选择。\n")
 	sb.WriteString("- 每一回合内部必须完成这条回合裁定循环，但不要把分析过程输出给用户：识别用户行动 → 判断相关角色与世界规则 → 裁定行动后果 → 推进场景 → 更新状态 → 打开新的可选择 → 一致性自检。\n")
+	sb.WriteString("- 如果本回合存在生命、体力、好感、资源、骰子、词条、失败等级或终局候选等固定规则检定，输出正文前必须调用 prepare_interactive_turn，并严格遵守返回的 RuleResolution。\n")
 	sb.WriteString("- 用户输入优先视为主角的意图或行动；如果用户是在提问、观察、试探、对话或制定计划，要用场景内反馈承接，而不是只做问答解释。\n")
 	sb.WriteString("- 主角不是静止的摄像机。允许主角在本回合内观察、移动、试探、交谈、触碰物品、受到环境反馈，并和其他角色自然互动。\n")
 	sb.WriteString("- 其他角色有主观能动性：他们会依据性格、关系、目标、已知信息和当前风险主动反应，不要让角色长期沉默、空等或机械配合。\n")
@@ -114,6 +134,12 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	sb.WriteString("故事记忆仅提供当前分支的有界摘要；若本轮需要更细的长期事实，请通过 list_interactive_memories/read_interactive_memories 主动召回。\n\n")
 	if strings.TrimSpace(in.LongTermMemory) != "" {
 		writeBlock(&sb, "当前分支故事记忆", in.LongTermMemory)
+	}
+	if strings.TrimSpace(in.DirectorStateSummary) != "" {
+		writeBlock(&sb, "后台导演状态摘要（source: DirectorState, limit: 4096 bytes）", in.DirectorStateSummary)
+	}
+	if strings.TrimSpace(in.StoryDirectorRules) != "" {
+		writeBlock(&sb, "故事导演规则清单（source: StoryDirector, bounded）", in.StoryDirectorRules)
 	}
 	if strings.TrimSpace(in.PreviousTurnsSummary) != "" {
 		writeBlock(&sb, "较早剧情压缩记忆", in.PreviousTurnsSummary)
@@ -168,6 +194,7 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 
 请基于互动故事上下文续写下一回合，只输出读者可直接看到的故事正文；不要输出计划、解释、状态 JSON、Markdown 标题、工具说明或 XML 包装。
 本回合必须隐式完成：识别用户行动、判断相关角色和世界规则、裁定后果、制造新的可选择、保持角色和世界一致性；不要输出这些分析过程。
+如果本回合涉及数值、骰子、资源、关系、词条、失败等级或终局候选，请先生成 TurnBrief 并调用 prepare_interactive_turn；工具只负责固定规则结算，不负责替你理解剧情或选择事件。
 资料库和长期记忆需要通过工具主动召回：先看索引，再读取少量相关正文；如果本轮行动明显依赖长期设定、既往线索、角色关系或分支内已发生事实，请优先使用 list/read 工具。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
 其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。%s`, strings.TrimSpace(message), turnBlock, contextBlock)
@@ -192,6 +219,60 @@ func BuildInteractiveHotChoicesSystemInstruction() string {
 		"choices 需要是 2 到 5 条中文行动句，每条都应从玩家第一人称或明确行动意图出发，可直接放入输入框。",
 		"建议要彼此有区分度，覆盖观察、对话、探索、冒险、保守应对等不同可行方向，但不得引入上下文未支撑的新事实。",
 	}, "\n")
+}
+
+func BuildInteractiveDirectorSystemInstruction() string {
+	return strings.Join([]string{
+		"你是 Denova 游戏模式的后台导演 Agent。",
+		"你只负责更新 DirectorState，用于后续互动 Agent 读取叙事计划、事件队列、伏笔、潜在角色和分支补丁；不负责续写本回合剧情。",
+		"互动 Agent 已经完成用户行动理解、TurnBrief 生成、固定规则检定请求和本回合正文输出；你不能改写本回合正文，也不能替用户选择下一步行动。",
+		"固定数值、骰子、资源、关系、词条和终局候选必须以 RuleResolution 为准；你只能围绕这些结果安排后续节奏、压力、代价、爽点、伏笔回收和长期主线。",
+		"不要输出故事正文、解释、Markdown 或代码块。",
+		"必须只输出 JSON object，字段只能来自 DirectorState patch schema。",
+	}, "\n")
+}
+
+func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
+	var sb strings.Builder
+	sb.WriteString("请根据本回合已落盘的审计数据，生成一个后台 DirectorState patch JSON。\n\n")
+	sb.WriteString("## 输出 JSON schema\n")
+	sb.WriteString(`{
+  "summary": "本次导演更新摘要，80字内",
+  "enabled": true,
+  "spoiler_mode": "layered",
+  "main_arc": "长期主线方向，可省略表示不变",
+  "stage_plan": "下一阶段计划，可省略表示不变",
+  "beat_queue": [{"id":"...", "summary":"...", "pressure":"...", "payoff":"...", "status":"planned"}],
+  "event_queue": [{"id":"...", "name":"...", "category":"...", "status":"planned", "enabled":true, "summary":"...", "public_summary":"...", "hidden_truth":"...", "template":"...", "normalized_trigger":"...", "weight":1, "cooldown_turns":2, "intensity":"medium", "required_foreshadowing":["..."], "payoff_target":"...", "reward":"...", "cost":"...", "failure_level":"...", "compatible_genres":["..."], "incompatible_state_flags":["..."], "user_configured":false, "director_instruction_note":"..."}],
+  "foreshadowing": [{"id":"...", "title":"...", "status":"open", "summary":"..."}],
+  "potential_characters": [{"id":"...", "title":"...", "status":"candidate", "summary":"..."}],
+  "branch_patches": {"当前分支ID": "这个分支相对主线的局部计划调整"},
+  "forced_events": ["event_id"],
+  "disabled_events": ["event_id"]
+}`)
+	sb.WriteString("\n\n")
+	sb.WriteString("## 更新原则\n")
+	sb.WriteString("- 只输出需要保存的 patch；如果某个数组字段输出了，会整体替换对应队列，所以要保留仍有效的旧项。\n")
+	sb.WriteString("- 你不负责续写剧情、不负责改写本回合正文、不负责替用户选择下一步行动；只更新后台 DirectorState。\n")
+	sb.WriteString("- 事件安排要兼顾用户自由选择：给后续互动 Agent 一个主线方向，但不要强行锁死唯一解。\n")
+	sb.WriteString("- 节奏要体现目标、压力/危机、结果/代价、状态变化；每个 beat 都要能转化成本轮后的可玩冲突或回报。\n")
+	sb.WriteString("- 可用事件目录中的 template 可能是事件卡 Markdown，包含触发场景、背景融合、起承转合、回收/后果、奖励/代价和避免生硬约束；引用这类事件时要保留 template，并让它绑定当前设定、角色关系和冲突源。\n")
+	sb.WriteString("- 可以安排打脸、扮猪吃虎、奇遇、秘境、天降、意外、世界事件、冲突、学院、比拼、排行、恋爱、英雄救美、误会与消解、逆袭、复仇、种田等事件，但必须符合已发生事实和分支状态。\n")
+	sb.WriteString("- 避免把未来答案剧透给用户可见正文；hidden_truth 只用于后台计划。\n")
+	sb.WriteString("- 如果本回合出现终局或重大失败，要在 stage_plan 和 beat_queue 中承接失败后果或分支终局，而不是强行圆回原主线。\n\n")
+	writeBlock(&sb, "故事标题", in.Title)
+	writeBlock(&sb, "开局设定", in.Origin)
+	writeBlock(&sb, "叙事风格 ID", in.StoryTellerID)
+	writeBlock(&sb, "故事导演 ID", in.StoryDirectorID)
+	writeBlock(&sb, "当前分支", in.BranchID)
+	writeBlock(&sb, "当前 DirectorState JSON（source: DirectorState, bounded）", in.DirectorStateJSON)
+	writeBlock(&sb, "本回合 TurnBrief / RuleResolution / TerminalOutcome 审计 JSON（source: turn audit, bounded）", in.TurnAuditJSON)
+	writeBlock(&sb, "近期剧情历史（source: current branch turns, bounded）", in.TurnHistory)
+	writeBlock(&sb, "当前分支故事记忆摘要（source: story memory, bounded）", in.StoryMemorySummary)
+	writeBlock(&sb, "故事导演规划配置（source: StoryDirector, bounded）", in.StoryDirectorPlan)
+	writeBlock(&sb, "可用事件类型目录（source: built-in + story director, bounded）", in.DirectorEventCatalog)
+	sb.WriteString("\n只输出 JSON object，不要输出 Markdown、解释或代码块。\n")
+	return sb.String()
 }
 
 func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) string {

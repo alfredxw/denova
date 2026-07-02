@@ -78,7 +78,7 @@ const agents = {
   'agents.prompt.source.runtime_contract': '运行契约',
   'agents.prompt.source.output_protocol': '输出格式',
   'agents.prompt.source.creator': 'CREATOR.md',
-  'agents.prompt.source.teller': '叙事方案',
+  'agents.prompt.source.teller': '叙事风格',
   'agents.prompt.source.workspace_context': '作品状态 / 资料库注入',
   'agents.prompt.source.flow': '流程规则',
   'agents.prompt.source.custom': '用户自定义',
@@ -164,9 +164,9 @@ const agents = {
   'agents.builtIn.loreWrite.title': '写入资料库',
   'agents.builtIn.loreWrite.value': '生成 create / update / delete 操作，由后端校验后应用到资料库。',
   'agents.builtIn.tellerRead.title': '读取方案预设',
-  'agents.builtIn.tellerRead.value': '读取当前叙事方案和图像方案列表、选中方案和用户引用的方案。',
+  'agents.builtIn.tellerRead.value': '读取当前叙事风格、故事导演和图像方案列表、选中方案和用户引用的方案。',
   'agents.builtIn.tellerWrite.title': '写入方案预设',
-  'agents.builtIn.tellerWrite.value': '生成 create / update 方案，由后端校验后保存为叙事方案或图像方案。',
+  'agents.builtIn.tellerWrite.value': '生成 create / update 方案，由后端校验后保存为叙事风格、故事导演或图像方案。',
 } as const
 
 export default agents

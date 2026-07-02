@@ -21,6 +21,7 @@ type AgentToolSettings struct {
 	InteractiveStory      AgentToolOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager         AgentToolOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
 	InteractiveState      AgentToolOverride `toml:"interactive_state,omitempty" json:"interactive_state,omitempty"`
+	InteractiveDirector   AgentToolOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
 	InteractiveHotChoices AgentToolOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentToolOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
 	ToolAgent             AgentToolOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
@@ -91,6 +92,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentConfigWrite: on,
 		},
 		InteractiveState:      noToolAgentOverride(),
+		InteractiveDirector:   noToolAgentOverride(),
 		InteractiveHotChoices: noToolAgentOverride(),
 		VersionSummary:        noToolAgentOverride(),
 		ToolAgent:             noToolAgentOverride(),
@@ -148,6 +150,7 @@ func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 		InteractiveStory:      mergeAgentToolOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:         mergeAgentToolOverride(parent.ConfigManager, child.ConfigManager),
 		InteractiveState:      mergeAgentToolOverride(parent.InteractiveState, child.InteractiveState),
+		InteractiveDirector:   mergeAgentToolOverride(parent.InteractiveDirector, child.InteractiveDirector),
 		InteractiveHotChoices: mergeAgentToolOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentToolOverride(parent.VersionSummary, child.VersionSummary),
 		ToolAgent:             mergeAgentToolOverride(parent.ToolAgent, child.ToolAgent),

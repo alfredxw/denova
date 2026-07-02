@@ -1,6 +1,18 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoryPicker } from './StoryPicker'
+
+const { rollInteractiveOpeningMock } = vi.hoisted(() => ({
+  rollInteractiveOpeningMock: vi.fn(),
+}))
+
+vi.mock('../api', () => ({
+  rollInteractiveOpening: rollInteractiveOpeningMock,
+}))
+
+beforeEach(() => {
+  rollInteractiveOpeningMock.mockReset()
+})
 
 describe('StoryPicker', () => {
   it('shows every story option immediately when opened', () => {
@@ -100,11 +112,139 @@ describe('StoryPicker', () => {
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         story_teller_id: 'classic',
+        story_director_id: 'default',
         reply_target_chars: 650,
       }),
     )
   })
+
+  it('rolls opening traits and includes initial director state in create input', async () => {
+    const onCreate = vi.fn()
+    rollInteractiveOpeningMock.mockResolvedValue({
+      teller_id: 'classic',
+      seed: 42,
+      traits: [{ pool_id: 'talent', id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' }],
+      state_ops: [{ op: 'set', path: 'resources.hp', value: 18 }],
+      director_state: { enabled: true, spoiler_mode: 'layered', main_arc: '开局隐脉线' },
+    })
+
+    render(
+      <StoryPicker
+        stories={[]}
+        currentStoryId=""
+        tellers={[classicTeller()]}
+        storyDirectors={[classicStoryDirector()]}
+        onSelect={vi.fn()}
+        onCreate={onCreate}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '新建' }))
+    fireEvent.click(screen.getByRole('button', { name: '抽取词条' }))
+
+    await waitFor(() => expect(rollInteractiveOpeningMock).toHaveBeenCalledWith({ story_director_id: 'default', selected_trait_ids: [] }))
+    await waitFor(() => expect(screen.getAllByText('隐脉').length).toBeGreaterThan(0))
+
+    fireEvent.click(screen.getByRole('button', { name: '创建' }))
+
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      director_state: expect.objectContaining({ main_arc: '开局隐脉线' }),
+      initial_state_ops: [{ op: 'set', path: 'resources.hp', value: 18 }],
+    }))
+  })
+
+  it('applies manually selected opening traits', async () => {
+    rollInteractiveOpeningMock.mockResolvedValue({
+      teller_id: 'classic',
+      seed: 42,
+      traits: [{ pool_id: 'talent', id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' }],
+      state_ops: [],
+      director_state: { enabled: true, spoiler_mode: 'layered' },
+    })
+
+    render(
+      <StoryPicker
+        stories={[]}
+        currentStoryId=""
+        tellers={[classicTeller()]}
+        storyDirectors={[classicStoryDirector()]}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '新建' }))
+    fireEvent.click(screen.getByRole('button', { name: '隐脉' }))
+    expect(screen.getByText('已选择 1 个词条')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '应用选择' }))
+
+    await waitFor(() => expect(rollInteractiveOpeningMock).toHaveBeenCalledWith({ story_director_id: 'default', selected_trait_ids: ['hidden-bloodline'] }))
+  })
 })
+
+function classicTeller() {
+  return {
+    version: 5,
+    id: 'classic',
+    name: '经典叙事',
+    description: '',
+    random_event_rate: 0.15,
+    tags: [],
+    context_policy: {
+      creator: 'always',
+      lore: 'relevant',
+      runtime_state: 'always',
+    },
+    orchestration: {
+      enabled: true,
+      opening: {
+        enabled: true,
+        trait_pools: [{
+          id: 'talent',
+          name: '天赋',
+          draw_count: 1,
+          traits: [
+            { id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' },
+            { id: 'poor-family', name: '寒门', summary: '初始资源更少' },
+          ],
+        }],
+        initial_state_ops: [],
+      },
+    },
+    slots: [],
+    custom: false,
+  }
+}
+
+function classicStoryDirector() {
+  return {
+    version: 1,
+    id: 'default',
+    name: '默认导演',
+    description: '',
+    strategy: { enabled: true },
+    event_system: {},
+    stat_system: {},
+    trpg_system: {},
+    opening_selector: {
+      enabled: true,
+      trait_pools: [{
+        id: 'talent',
+        name: '天赋',
+        draw_count: 1,
+        traits: [
+          { id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' },
+          { id: 'poor-family', name: '寒门', summary: '初始资源更少' },
+        ],
+      }],
+      initial_state_ops: [],
+    },
+    tags: [],
+    custom: false,
+  }
+}
 
 function story(id: string, title: string) {
   return {
@@ -112,6 +252,7 @@ function story(id: string, title: string) {
     title,
     origin: '',
     story_teller_id: 'classic',
+    story_director_id: 'default',
     reply_target_chars: 900,
     opening: { mode: 'ai' as const },
     created_at: '',

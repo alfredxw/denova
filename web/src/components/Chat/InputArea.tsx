@@ -563,8 +563,8 @@ export function InputArea({
             onKeyDown={handleKeyDown}
             placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
             disabled={disabled}
-            rows={2}
-            minRows={2}
+            rows={1}
+            minRows={1}
             maxRows={isMobile ? 5 : 10}
             multilineMode="always"
             inputMode="text"

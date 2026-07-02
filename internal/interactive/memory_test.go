@@ -116,7 +116,7 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if enabled := enabledStoryMemoryStructureCount(state.Structures); enabled != 6 || state.Settings.AutoIntervalTurns != defaultStoryMemoryInterval || !state.Settings.Enabled {
+	if enabled := enabledStoryMemoryStructureCount(state.Structures); enabled != 10 || state.Settings.AutoIntervalTurns != defaultStoryMemoryInterval || !state.Settings.Enabled {
 		t.Fatalf("default story memory state mismatch: %#v", state)
 	}
 	currentState := storyMemoryStructureByID(state.Structures, "current_state")
@@ -137,6 +137,23 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 	for _, disabledID := range []string{"romance_profile", "romance_diary", "mature_relationship_profile"} {
 		if structure := storyMemoryStructureByID(state.Structures, disabledID); storyMemoryStructureEnabled(structure) {
 			t.Fatalf("optional built-in structure should be disabled by default: %#v", structure)
+		}
+	}
+	defaultNarrativeStructures := map[string][]string{
+		"rule_state_summary":     {"resources", "conditions", "last_rule_checks"},
+		"relationship_state":     {"name", "relationship_type", "misunderstanding", "next_hook"},
+		"foreshadowing_resolved": {"title", "status", "payoff_condition", "payoff_result"},
+		"long_term_arc_progress": {"arc_name", "arc_type", "current_phase", "terminal_risk"},
+	}
+	for structureID, fields := range defaultNarrativeStructures {
+		structure := storyMemoryStructureByID(state.Structures, structureID)
+		if !storyMemoryStructureEnabled(structure) {
+			t.Fatalf("default narrative structure should be enabled: %#v", structure)
+		}
+		for _, fieldID := range fields {
+			if !storyMemoryStructureHasField(structure, fieldID) {
+				t.Fatalf("default narrative structure %s missing field %q: %#v", structureID, fieldID, structure.Fields)
+			}
 		}
 	}
 	structure, err := store.SaveStoryMemoryStructure(story.ID, StoryMemoryStructureRequest{
@@ -299,6 +316,10 @@ func TestNormalizeMemoryBookRefreshesBuiltInStoryMemoryPresets(t *testing.T) {
 	if openThreads.ID == "" || !storyMemoryStructureEnabled(openThreads) {
 		t.Fatalf("new built-in open_threads structure should be added and enabled: %#v", openThreads)
 	}
+	longArcProgress := storyMemoryStructureByID(book.Structures, "long_term_arc_progress")
+	if longArcProgress.ID == "" || !storyMemoryStructureHasField(longArcProgress, "terminal_risk") {
+		t.Fatalf("new built-in long_term_arc_progress structure should be added: %#v", longArcProgress)
+	}
 	romanceProfile := storyMemoryStructureByID(book.Structures, "romance_profile")
 	if romanceProfile.ID == "" || storyMemoryStructureEnabled(romanceProfile) {
 		t.Fatalf("optional built-in romance_profile should be added disabled: %#v", romanceProfile)
@@ -330,7 +351,7 @@ func TestStoryMemorySchemaContextIncludesStructuresWithoutRecords(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	context, err := store.StoryMemorySchemaContext(story.ID, 12*1024)
+	context, err := store.StoryMemorySchemaContext(story.ID, 32*1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,6 +360,10 @@ func TestStoryMemorySchemaContextIncludesStructuresWithoutRecords(t *testing.T) 
 		"## current_state",
 		"## important_character",
 		"## open_threads",
+		"## rule_state_summary",
+		"## relationship_state",
+		"## foreshadowing_resolved",
+		"## long_term_arc_progress",
 		"## relationship_clock",
 		"values 必须包含目标结构列出的所有字段",
 		"mode: keyed",

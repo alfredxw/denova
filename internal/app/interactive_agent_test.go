@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -74,6 +75,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"list_lore_items",
 		"list_interactive_memories",
 		"当前分支故事记忆",
+		"后台导演状态摘要",
+		"source: DirectorState",
 		"上限: 12288 bytes",
 	} {
 		if !strings.Contains(history[2].Content, want) {
@@ -99,6 +102,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"主角醒来发现世界已末日",
 		"导演注入规则",
 		"本轮上下文",
+		"DirectorState",
+		"后台导演状态摘要",
 	} {
 		if !strings.Contains(sources, want) {
 			t.Fatalf("context sources should include %q: %s", want, sources)
@@ -197,6 +202,105 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	threads := snapshot.State["threads"].([]any)
 	if len(threads) != 1 {
 		t.Fatalf("unexpected threads: %#v", threads)
+	}
+}
+
+func TestInteractiveDirectorEventCatalogIncludesTellerEventCards(t *testing.T) {
+	teller := interactive.Teller{
+		ID:   "catalog",
+		Name: "事件目录",
+		Orchestration: &interactive.TellerOrchestrationConfig{
+			Enabled: true,
+			EventPackages: []interactive.TellerEventPackage{{
+				ID:      "academy-pack",
+				Enabled: true,
+				Events: []interactive.TellerEventCard{{
+					ID:                  "academy_trial",
+					TypeName:            "外门考核打脸",
+					DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
+					Enabled:             true,
+					Category:            "学院",
+				}},
+			}},
+		},
+		Slots: []interactive.TellerPromptSlot{{
+			ID:      "identity",
+			Name:    "系统提示",
+			Target:  "system",
+			Enabled: true,
+			Content: "规则",
+		}},
+	}
+	director := interactive.StoryDirectorFromTellerOrchestration(teller.ID, teller.Name, teller.Description, teller.RandomEventRate, *teller.Orchestration)
+	catalog := interactiveDirectorEventCatalog(director)
+	found := false
+	for _, event := range catalog {
+		if event.ID == "academy_trial" {
+			found = true
+			if !strings.Contains(event.Template, "外门考核") || event.Category != "学院" {
+				t.Fatalf("event card catalog entry mismatch: %#v", event)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("director catalog should include event card: %#v", catalog)
+	}
+}
+
+func TestInteractiveConversationPersistsTurnBriefRuleResolutionAndTerminalOutcome(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:         "规则审计",
+		Origin:        "主角站在秘境入口",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "我强闯秘境入口", story.ReplyTargetChars, &config.Config{})
+	resolution, err := conversation.PrepareInteractiveTurn(
+		context.Background(),
+		interactive.TurnBrief{
+			UserAction: "我强闯秘境入口",
+			Intent:     "冒险",
+			TurnGoal:   "让主角承担强闯禁制的代价",
+			RuleChecks: []interactive.RuleCheck{{
+				ID:                "gate",
+				Label:             "秘境禁制",
+				Dice:              "1d20",
+				Difficulty:        100,
+				TerminalOnFailure: true,
+				TerminalType:      "bad_end",
+				TerminalReason:    "禁制反噬导致主线中断。",
+				Seed:              7,
+			}},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.TerminalCandidate == nil {
+		t.Fatalf("expected terminal candidate: %#v", resolution)
+	}
+	if err := conversation.AppendAssistant("秘境入口的白光猛然坍缩，主角被禁制震回台阶。"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.TurnBrief == nil || snapshot.CurrentTurn.RuleResolution == nil {
+		t.Fatalf("turn audit missing: %#v", snapshot.CurrentTurn)
+	}
+	if snapshot.CurrentTurn.RuleResolution.ID != resolution.ID {
+		t.Fatalf("rule resolution id mismatch: %#v", snapshot.CurrentTurn.RuleResolution)
+	}
+	if snapshot.CurrentTurn.TerminalOutcome == nil || !snapshot.CurrentTurn.TerminalOutcome.Terminal || snapshot.CurrentTurn.TerminalOutcome.Type != "bad_end" {
+		t.Fatalf("terminal outcome missing: %#v", snapshot.CurrentTurn.TerminalOutcome)
+	}
+	if len(snapshot.CurrentTurn.TerminalOutcome.RestartSuggestions) == 0 {
+		t.Fatalf("terminal outcome should include restart suggestions: %#v", snapshot.CurrentTurn.TerminalOutcome)
 	}
 }
 

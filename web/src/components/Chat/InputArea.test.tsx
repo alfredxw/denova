@@ -38,7 +38,7 @@ describe('InputArea command menu', () => {
       />,
     )
 
-    expect(screen.getByRole('textbox')).toHaveAttribute('rows', '2')
+    expect(screen.getByRole('textbox')).toHaveAttribute('rows', '1')
     expect(screen.queryByRole('button', { name: 'Chat' })).not.toBeInTheDocument()
     expect(screen.queryByText('Plan')).not.toBeInTheDocument()
 

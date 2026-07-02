@@ -390,6 +390,8 @@ func setAgentModelOverride(settings *config.Settings, agent string, value config
 		settings.AgentModels.ConfigManager = value
 	case config.AgentKindInteractiveState:
 		settings.AgentModels.InteractiveState = value
+	case config.AgentKindInteractiveDirector:
+		settings.AgentModels.InteractiveDirector = value
 	case config.AgentKindInteractiveHotChoices:
 		settings.AgentModels.InteractiveHotChoices = value
 	case config.AgentKindVersionSummary:
@@ -417,6 +419,8 @@ func setAgentToolOverride(settings *config.Settings, agent string, value config.
 		settings.AgentTools.ConfigManager = value
 	case config.AgentKindInteractiveState:
 		settings.AgentTools.InteractiveState = value
+	case config.AgentKindInteractiveDirector:
+		settings.AgentTools.InteractiveDirector = value
 	case config.AgentKindInteractiveHotChoices:
 		settings.AgentTools.InteractiveHotChoices = value
 	case config.AgentKindVersionSummary:
@@ -444,6 +448,8 @@ func setAgentPromptOverride(settings *config.Settings, agent string, value confi
 		settings.AgentPrompts.ConfigManager = value
 	case config.AgentKindInteractiveState:
 		settings.AgentPrompts.InteractiveState = value
+	case config.AgentKindInteractiveDirector:
+		settings.AgentPrompts.InteractiveDirector = value
 	case config.AgentKindInteractiveHotChoices:
 		settings.AgentPrompts.InteractiveHotChoices = value
 	case config.AgentKindVersionSummary:
@@ -471,6 +477,8 @@ func setAgentSkillOverride(settings *config.Settings, agent string, value config
 		settings.AgentSkills.ConfigManager = value
 	case config.AgentKindInteractiveState:
 		settings.AgentSkills.InteractiveState = value
+	case config.AgentKindInteractiveDirector:
+		settings.AgentSkills.InteractiveDirector = value
 	case config.AgentKindInteractiveHotChoices:
 		settings.AgentSkills.InteractiveHotChoices = value
 	case config.AgentKindVersionSummary:
@@ -498,6 +506,8 @@ func setAgentContextOverride(settings *config.Settings, agent string, value conf
 		settings.AgentContexts.ConfigManager = value
 	case config.AgentKindInteractiveState:
 		settings.AgentContexts.InteractiveState = value
+	case config.AgentKindInteractiveDirector:
+		settings.AgentContexts.InteractiveDirector = value
 	case config.AgentKindInteractiveHotChoices:
 		settings.AgentContexts.InteractiveHotChoices = value
 	case config.AgentKindVersionSummary:

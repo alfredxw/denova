@@ -92,6 +92,8 @@ func outputProtocolForAgent(agentKind string) string {
 		}, "\n")
 	case config.AgentKindInteractiveState:
 		return "- 必须只输出符合互动记忆 schema 的 JSON object，格式为 {\"story_memory_patches\":[...]}；每条 patch 必须按目标表的字段协议填写完整 values，所有字段都必须出现且不能为空，不得输出 Markdown、解释或代码块。"
+	case config.AgentKindInteractiveDirector:
+		return "- 必须只输出符合 DirectorState patch schema 的 JSON object；不得续写剧情、不得输出 Markdown、解释、代码块或额外文本。"
 	case config.AgentKindInteractiveHotChoices:
 		return "- 必须只输出 JSON object，格式为 {\"choices\":[\"...\"]}；不得续写剧情或修改故事状态。"
 	case config.AgentKindVersionSummary:
@@ -135,6 +137,13 @@ func agentRuntimeContract(agentKind string) string {
 		}, "\n")
 	case config.AgentKindInteractiveState:
 		return "- 互动记忆 Agent 必须只输出符合内置 schema 的 story_memory_patches JSON object；structure_id、op、key、字段 ID 和内容边界仍由后端校验。"
+	case config.AgentKindInteractiveDirector:
+		return strings.Join([]string{
+			"- 互动导演 Agent 是后台叙事编排 Agent，只能根据调用方提供的有界回合审计、DirectorState 和故事摘要生成 DirectorState patch。",
+			"- 互动导演 Agent 不得续写故事正文，不得替用户选择行动，不得修改文件、资料库、todo 或故事记忆表。",
+			"- 互动导演 Agent 只能规划目标、节奏、压力、事件候选、伏笔、潜在角色、分支补丁和长期主线；固定数值、骰子和资源结算结果必须以 RuleResolution 为准。",
+			"- 互动导演 Agent 不得把未来计划写入用户可见正文或故事记忆；它的输出只能由后端写入 DirectorState 审计事件。",
+		}, "\n")
 	case config.AgentKindInteractiveHotChoices:
 		return "- 快捷选项 Agent 必须只输出符合内置 schema 的 JSON object；不得续写剧情或修改故事状态。"
 	case config.AgentKindVersionSummary:

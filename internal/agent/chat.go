@@ -37,6 +37,7 @@ type ChatRequest struct {
 	PlanMode       bool               `json:"plan_mode"`
 	WritingSkill   string             `json:"writing_skill"`
 	ImagePresetID  string             `json:"image_preset_id"`
+	TellerID       string             `json:"teller_id"`
 	Locale         string             `json:"-"`
 
 	// StyleRules 由后端按当前导演配置注入（场景 → 风格内容）。

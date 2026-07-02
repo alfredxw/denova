@@ -21,6 +21,9 @@
   --nova-accent: #a8adb7;
   --nova-accent-blue: #7fa7d9;
   --nova-accent-green: #81b38d;
+  --nova-switch-checked: #3c5d48;
+  --nova-switch-checked-border: #3c5d48;
+  --nova-switch-thumb: #f4fff7;
   --nova-danger: #ff6b6b;
   --nova-danger-foreground: #1a1a1a;
   --nova-danger-bg: rgba(255, 107, 107, 0.12);
@@ -138,6 +141,9 @@
   --nova-accent: #536a86;
   --nova-accent-blue: #2f6fae;
   --nova-accent-green: #3f7f54;
+  --nova-switch-checked: #3c5d48;
+  --nova-switch-checked-border: #3c5d48;
+  --nova-switch-thumb: #ffffff;
   --nova-danger: #b42318;
   --nova-danger-foreground: #ffffff;
   --nova-danger-bg: rgba(180, 35, 24, 0.1);

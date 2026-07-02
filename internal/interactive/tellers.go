@@ -12,32 +12,37 @@ import (
 )
 
 const (
-	tellerVersion        = 4
-	MaxStyleContentChars = 8000
+	tellerVersion                  = 5
+	MaxStyleContentChars           = 8000
+	MaxEventCardDescriptionChars   = 8000
+	maxTellerEventCardsPerPackage  = 24
+	maxEventCardSummaryChars       = 240
+	maxEventCardContextSummaryByte = 900
 )
 
 type TellerLibrary struct {
 	novaDir string
 }
 
-var ErrTellerRevisionConflict = errors.New("叙事方案已被其他操作更新，请重新加载后再保存")
+var ErrTellerRevisionConflict = errors.New("叙事风格已被其他操作更新，请重新加载后再保存")
 
 type Teller struct {
-	Version         int                 `json:"version"`
-	ID              string              `json:"id"`
-	Name            string              `json:"name"`
-	Description     string              `json:"description"`
-	RandomEventRate float64             `json:"random_event_rate"`
-	StyleRules      []StyleRule         `json:"style_rules,omitempty"`
-	Tags            []string            `json:"tags"`
-	ContextPolicy   TellerContextPolicy `json:"context_policy"`
-	Slots           []TellerPromptSlot  `json:"slots"`
-	Path            string              `json:"path,omitempty"`
-	Custom          bool                `json:"custom"`
-	Invalid         bool                `json:"invalid,omitempty"`
-	Error           string              `json:"error,omitempty"`
-	CreatedAt       string              `json:"created_at,omitempty"`
-	UpdatedAt       string              `json:"updated_at,omitempty"`
+	Version         int                        `json:"version"`
+	ID              string                     `json:"id"`
+	Name            string                     `json:"name"`
+	Description     string                     `json:"description"`
+	RandomEventRate float64                    `json:"random_event_rate"`
+	StyleRules      []StyleRule                `json:"style_rules,omitempty"`
+	Orchestration   *TellerOrchestrationConfig `json:"orchestration,omitempty"`
+	Tags            []string                   `json:"tags"`
+	ContextPolicy   TellerContextPolicy        `json:"context_policy"`
+	Slots           []TellerPromptSlot         `json:"slots"`
+	Path            string                     `json:"path,omitempty"`
+	Custom          bool                       `json:"custom"`
+	Invalid         bool                       `json:"invalid,omitempty"`
+	Error           string                     `json:"error,omitempty"`
+	CreatedAt       string                     `json:"created_at,omitempty"`
+	UpdatedAt       string                     `json:"updated_at,omitempty"`
 }
 
 type TellerContextPolicy struct {
@@ -52,6 +57,62 @@ type TellerPromptSlot struct {
 	Target  string `json:"target"`
 	Enabled bool   `json:"enabled"`
 	Content string `json:"content"`
+}
+
+// TellerOrchestrationConfig stores reusable game-mode narrative orchestration
+// defaults. Each story copies these into its own DirectorState at creation time.
+type TellerOrchestrationConfig struct {
+	Enabled          bool                 `json:"enabled"`
+	MainlineStrength string               `json:"mainline_strength,omitempty"`
+	FailurePolicy    string               `json:"failure_policy,omitempty"`
+	PacingCurve      string               `json:"pacing_curve,omitempty"`
+	EventPackages    []TellerEventPackage `json:"event_packages,omitempty"`
+	CustomEvents     []DirectorEvent      `json:"custom_events,omitempty"`
+	RuleTemplates    []RuleCheck          `json:"rule_templates,omitempty"`
+	Opening          TellerOpeningConfig  `json:"opening,omitempty"`
+}
+
+type TellerEventPackage struct {
+	ID      string            `json:"id,omitempty"`
+	Name    string            `json:"name,omitempty"`
+	Enabled bool              `json:"enabled"`
+	Events  []TellerEventCard `json:"events,omitempty"`
+}
+
+// TellerEventCard is a reusable, creator-editable narrative event package card.
+// Runtime DirectorState still receives it as a DirectorEvent, with Markdown
+// stored in DirectorEvent.Template.
+type TellerEventCard struct {
+	ID                  string   `json:"id,omitempty"`
+	TypeName            string   `json:"type_name,omitempty"`
+	DescriptionMarkdown string   `json:"description_markdown,omitempty"`
+	Enabled             bool     `json:"enabled"`
+	Category            string   `json:"category,omitempty"`
+	Tags                []string `json:"tags,omitempty"`
+	Weight              float64  `json:"weight,omitempty"`
+	CooldownTurns       int      `json:"cooldown_turns,omitempty"`
+	Intensity           string   `json:"intensity,omitempty"`
+}
+
+type TellerOpeningConfig struct {
+	Enabled         bool               `json:"enabled"`
+	TraitPools      []OpeningTraitPool `json:"trait_pools,omitempty"`
+	InitialStateOps []StateOp          `json:"initial_state_ops,omitempty"`
+}
+
+type OpeningTraitPool struct {
+	ID        string         `json:"id,omitempty"`
+	Name      string         `json:"name,omitempty"`
+	DrawCount int            `json:"draw_count,omitempty"`
+	Traits    []OpeningTrait `json:"traits,omitempty"`
+}
+
+type OpeningTrait struct {
+	ID      string    `json:"id,omitempty"`
+	Name    string    `json:"name,omitempty"`
+	Summary string    `json:"summary,omitempty"`
+	Weight  float64   `json:"weight,omitempty"`
+	Ops     []StateOp `json:"ops,omitempty"`
 }
 
 // StyleRule 表示导演自己的「场景 → 风格内容」映射。
@@ -147,6 +208,9 @@ func (l *TellerLibrary) Update(id string, teller Teller, baseRevision ...string)
 	}
 	if err := validateTellerID(id); err != nil {
 		return Teller{}, err
+	}
+	if isBuiltinID(id) {
+		return Teller{}, errors.New("内置叙事风格不能修改，请复制后编辑")
 	}
 	current, err := l.Get(id)
 	if err != nil {
@@ -271,6 +335,7 @@ func normalizeTeller(teller Teller) Teller {
 	teller.Name = strings.TrimSpace(teller.Name)
 	teller.Description = strings.TrimSpace(teller.Description)
 	teller.StyleRules = normalizeStyleRules(teller.StyleRules)
+	teller.Orchestration = normalizeTellerOrchestrationPointer(teller.Orchestration)
 	teller.Tags = normalizeTellerTags(teller.Tags)
 	teller.ContextPolicy = normalizeContextPolicy(teller.ContextPolicy)
 	teller.Slots = normalizePromptSlots(teller.Slots)
@@ -300,6 +365,379 @@ func normalizeStyleRules(rules []StyleRule) []StyleRule {
 		result = append(result, StyleRule{Scene: scene, StyleContents: contents})
 	}
 	return result
+}
+
+func DefaultTellerOrchestrationConfig() TellerOrchestrationConfig {
+	return TellerOrchestrationConfig{
+		Enabled:          true,
+		MainlineStrength: "soft_guidance",
+		FailurePolicy:    "reversible",
+		PacingCurve:      "progressive",
+		EventPackages: []TellerEventPackage{{
+			ID:      "webnovel_core",
+			Name:    "爽文核心事件包",
+			Enabled: true,
+			Events:  defaultTellerEventCards(),
+		}},
+		Opening: TellerOpeningConfig{Enabled: true},
+	}
+}
+
+func defaultTellerEventCards() []TellerEventCard {
+	templates := DefaultDirectorEventTemplates()
+	cards := make([]TellerEventCard, 0, len(templates))
+	for _, event := range templates {
+		cards = append(cards, TellerEventCard{
+			ID:                  event.ID,
+			TypeName:            event.Name,
+			DescriptionMarkdown: defaultTellerEventCardMarkdown(event),
+			Enabled:             true,
+			Category:            event.Category,
+			Weight:              event.Weight,
+			CooldownTurns:       event.CooldownTurns,
+			Intensity:           event.Intensity,
+		})
+	}
+	return cards
+}
+
+func defaultTellerEventCardMarkdown(event DirectorEvent) string {
+	summary := firstNonEmptyString(event.Summary, event.PublicSummary, event.Name)
+	return strings.TrimSpace(fmt.Sprintf(`## 触发场景
+
+%s
+
+## 背景融合方式
+
+结合当前作品已确认的世界观、势力、地点、人物关系或冲突源选择触发点；没有明确设定依据时保持为可变形的通用事件，不编造具体事实。
+
+## 大致事件逻辑（起承转合）
+
+先顺着用户行动和当前压力铺垫，再让阻力或机会自然升级；中段给出可被玩家行动影响的转折，最后落到阶段性结果或新的选择点。
+
+## 事件回收 / 后果
+
+回收本事件造成的关系变化、线索暴露、资源消耗或外界评价，并为后续 DirectorState 留下可追踪的伏笔或压力。
+
+## 奖励 / 代价
+
+奖励可以是信息、名望、资源、关系推进或阶段性主动权；代价可以是体力、资源、人情债、暴露风险、敌意升级或失败后果。
+
+## 避免生硬的约束
+
+不要强行触发，不要替用户选择行动，不要违背已确认设定；必须让事件融入当前场景、用户输入和已读资料库事实。`, summary))
+}
+
+func normalizeTellerOrchestrationPointer(config *TellerOrchestrationConfig) *TellerOrchestrationConfig {
+	if config == nil {
+		defaultConfig := DefaultTellerOrchestrationConfig()
+		return &defaultConfig
+	}
+	normalized := *config
+	normalized.MainlineStrength = normalizeOrchestrationOption(normalized.MainlineStrength, "soft_guidance")
+	normalized.FailurePolicy = normalizeOrchestrationOption(normalized.FailurePolicy, "reversible")
+	normalized.PacingCurve = normalizeOrchestrationOption(normalized.PacingCurve, "progressive")
+	normalized.EventPackages = normalizeTellerEventPackages(normalized.EventPackages)
+	normalized.CustomEvents = normalizeDirectorEvents(normalized.CustomEvents)
+	normalized.RuleTemplates = normalizeRuleChecks(normalized.RuleTemplates)
+	normalized.Opening = normalizeTellerOpeningConfig(normalized.Opening)
+	return &normalized
+}
+
+func normalizeOrchestrationOption(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func normalizeTellerEventPackages(packages []TellerEventPackage) []TellerEventPackage {
+	if packages == nil {
+		return DefaultTellerOrchestrationConfig().EventPackages
+	}
+	if len(packages) > maxTurnBriefListItems {
+		packages = packages[:maxTurnBriefListItems]
+	}
+	result := make([]TellerEventPackage, 0, len(packages))
+	seen := map[string]bool{}
+	for _, pkg := range packages {
+		pkg.ID = normalizeSlotID(pkg.ID)
+		if pkg.ID == "" {
+			pkg.ID = fmt.Sprintf("event-package-%d", len(result)+1)
+		}
+		if seen[pkg.ID] {
+			continue
+		}
+		seen[pkg.ID] = true
+		pkg.Name = strings.TrimSpace(pkg.Name)
+		if pkg.Name == "" {
+			pkg.Name = pkg.ID
+		}
+		pkg.Events = normalizeTellerEventCards(pkg.Events, pkg.ID)
+		result = append(result, pkg)
+	}
+	return result
+}
+
+func normalizeTellerEventCards(events []TellerEventCard, packageID string) []TellerEventCard {
+	if len(events) > maxTellerEventCardsPerPackage {
+		events = events[:maxTellerEventCardsPerPackage]
+	}
+	result := make([]TellerEventCard, 0, len(events))
+	seen := map[string]bool{}
+	for _, event := range events {
+		event.ID = normalizeSlotID(event.ID)
+		if event.ID == "" {
+			event.ID = fmt.Sprintf("%s-event-%d", packageID, len(result)+1)
+		}
+		if seen[event.ID] {
+			continue
+		}
+		event.TypeName = strings.TrimSpace(event.TypeName)
+		event.DescriptionMarkdown = truncateRunes(strings.TrimSpace(event.DescriptionMarkdown), MaxEventCardDescriptionChars)
+		if event.TypeName == "" && event.DescriptionMarkdown == "" {
+			continue
+		}
+		if event.TypeName == "" {
+			event.TypeName = event.ID
+		}
+		if seen[event.ID] {
+			continue
+		}
+		seen[event.ID] = true
+		event.Category = strings.TrimSpace(event.Category)
+		if event.Category == "" {
+			event.Category = event.TypeName
+		}
+		event.Tags = normalizeStringListLimit(event.Tags, maxTurnBriefListItems)
+		if event.Weight <= 0 {
+			event.Weight = 1
+		}
+		if event.CooldownTurns < 0 {
+			event.CooldownTurns = 0
+		}
+		event.Intensity = strings.TrimSpace(event.Intensity)
+		if event.Intensity == "" {
+			event.Intensity = "medium"
+		}
+		result = append(result, event)
+	}
+	return result
+}
+
+func normalizeRuleChecks(checks []RuleCheck) []RuleCheck {
+	if len(checks) > maxRuleChecksPerTurn {
+		checks = checks[:maxRuleChecksPerTurn]
+	}
+	result := make([]RuleCheck, 0, len(checks))
+	for i, check := range checks {
+		check = normalizeRuleCheck(check, i)
+		if check.ID == "" && check.Label == "" {
+			continue
+		}
+		result = append(result, check)
+	}
+	return result
+}
+
+func normalizeTellerOpeningConfig(config TellerOpeningConfig) TellerOpeningConfig {
+	config.TraitPools = normalizeOpeningTraitPools(config.TraitPools)
+	config.InitialStateOps = normalizeStateOps(config.InitialStateOps)
+	return config
+}
+
+func normalizeOpeningTraitPools(pools []OpeningTraitPool) []OpeningTraitPool {
+	if len(pools) > maxTurnBriefListItems {
+		pools = pools[:maxTurnBriefListItems]
+	}
+	result := make([]OpeningTraitPool, 0, len(pools))
+	seen := map[string]bool{}
+	for _, pool := range pools {
+		pool.ID = normalizeSlotID(pool.ID)
+		if pool.ID == "" {
+			pool.ID = fmt.Sprintf("trait-pool-%d", len(result)+1)
+		}
+		if seen[pool.ID] {
+			continue
+		}
+		seen[pool.ID] = true
+		pool.Name = strings.TrimSpace(pool.Name)
+		if pool.Name == "" {
+			pool.Name = pool.ID
+		}
+		if pool.DrawCount <= 0 {
+			pool.DrawCount = 1
+		}
+		if pool.DrawCount > 10 {
+			pool.DrawCount = 10
+		}
+		pool.Traits = normalizeOpeningTraits(pool.Traits)
+		result = append(result, pool)
+	}
+	return result
+}
+
+func normalizeOpeningTraits(traits []OpeningTrait) []OpeningTrait {
+	if len(traits) > 64 {
+		traits = traits[:64]
+	}
+	result := make([]OpeningTrait, 0, len(traits))
+	seen := map[string]bool{}
+	for _, trait := range traits {
+		trait.ID = normalizeSlotID(trait.ID)
+		if trait.ID == "" {
+			trait.ID = fmt.Sprintf("trait-%d", len(result)+1)
+		}
+		if seen[trait.ID] {
+			continue
+		}
+		seen[trait.ID] = true
+		trait.Name = strings.TrimSpace(trait.Name)
+		if trait.Name == "" {
+			trait.Name = trait.ID
+		}
+		trait.Summary = truncateRunes(strings.TrimSpace(trait.Summary), 1000)
+		if trait.Weight <= 0 {
+			trait.Weight = 1
+		}
+		trait.Ops = normalizeStateOps(trait.Ops)
+		result = append(result, trait)
+	}
+	return result
+}
+
+func normalizeStateOps(ops []StateOp) []StateOp {
+	if len(ops) > maxTurnBriefListItems {
+		ops = ops[:maxTurnBriefListItems]
+	}
+	result := make([]StateOp, 0, len(ops))
+	for _, op := range ops {
+		op.Op = strings.TrimSpace(op.Op)
+		op.Path = strings.TrimSpace(op.Path)
+		if op.Op == "" || op.Path == "" {
+			continue
+		}
+		result = append(result, op)
+	}
+	return result
+}
+
+func DirectorStateFromTeller(teller Teller) DirectorState {
+	teller = normalizeTeller(teller)
+	state := DefaultDirectorState()
+	config := teller.Orchestration
+	if config == nil {
+		defaultConfig := DefaultTellerOrchestrationConfig()
+		config = &defaultConfig
+	}
+	state.Enabled = config.Enabled
+	if !config.Enabled {
+		state.LastDirectorRun = &DirectorRunStatus{Status: "ready", Summary: "方案预设已关闭叙事编排。"}
+		return NormalizeDirectorState(state)
+	}
+	for _, pkg := range config.EventPackages {
+		if !pkg.Enabled {
+			continue
+		}
+		for _, eventCard := range pkg.Events {
+			if len(state.EventQueue) >= maxTurnBriefListItems {
+				break
+			}
+			if !eventCard.Enabled {
+				continue
+			}
+			state.EventQueue = upsertDirectorEvent(state.EventQueue, directorEventFromTellerEventCard(eventCard))
+		}
+	}
+	for _, event := range config.CustomEvents {
+		state.EventQueue = upsertDirectorEvent(state.EventQueue, event)
+	}
+	state.LastDirectorRun = &DirectorRunStatus{
+		Status:  "ready",
+		Summary: fmt.Sprintf("已从方案预设“%s”初始化叙事编排：%s/%s/%s。", teller.Name, config.MainlineStrength, config.FailurePolicy, config.PacingCurve),
+	}
+	return NormalizeDirectorState(state)
+}
+
+// DirectorEventCatalogFromTeller returns built-in and teller-defined event cards
+// in runtime DirectorEvent form for Director Agent planning prompts.
+func DirectorEventCatalogFromTeller(teller Teller) []DirectorEvent {
+	teller = normalizeTeller(teller)
+	events := DefaultDirectorEventTemplates()
+	if teller.Orchestration == nil {
+		return events
+	}
+	for _, pkg := range teller.Orchestration.EventPackages {
+		for _, eventCard := range pkg.Events {
+			if !eventCard.Enabled {
+				continue
+			}
+			events = upsertDirectorEvent(events, directorEventFromTellerEventCard(eventCard))
+		}
+	}
+	for _, event := range teller.Orchestration.CustomEvents {
+		events = upsertDirectorEvent(events, event)
+	}
+	return events
+}
+
+func directorEventFromTellerEventCard(card TellerEventCard) DirectorEvent {
+	summary := eventCardSummaryFromMarkdown(card.DescriptionMarkdown, card.TypeName)
+	if summary == "" {
+		summary = card.TypeName
+	}
+	return DirectorEvent{
+		ID:                      card.ID,
+		Name:                    card.TypeName,
+		Category:                firstNonEmpty(card.Category, "自定义事件"),
+		Status:                  "available",
+		Enabled:                 true,
+		Summary:                 summary,
+		PublicSummary:           summary,
+		Template:                card.DescriptionMarkdown,
+		NormalizedTrigger:       firstNonEmpty(card.Category, card.TypeName, card.ID),
+		Weight:                  card.Weight,
+		CooldownTurns:           card.CooldownTurns,
+		Intensity:               card.Intensity,
+		CompatibleGenres:        card.Tags,
+		UserConfigured:          true,
+		DirectorInstructionNote: fmt.Sprintf("来源事件卡：%s。template 字段包含触发场景、背景融合、起承转合、回收/后果、奖励/代价和避免生硬约束。", card.TypeName),
+	}
+}
+
+func eventCardSummaryFromMarkdown(markdown, fallback string) string {
+	markdown = strings.TrimSpace(markdown)
+	if markdown == "" {
+		return truncateRunes(strings.TrimSpace(fallback), maxEventCardSummaryChars)
+	}
+	parts := make([]string, 0, 4)
+	inFence := false
+	for _, line := range strings.Split(markdown, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence || line == "" {
+			continue
+		}
+		cleaned := cleanMarkdownSummaryLine(line)
+		if cleaned == "" {
+			continue
+		}
+		parts = append(parts, cleaned)
+		if len(strings.Join(parts, " ")) >= maxEventCardSummaryChars {
+			break
+		}
+	}
+	return truncateRunes(strings.TrimSpace(strings.Join(parts, " ")), maxEventCardSummaryChars)
+}
+
+func cleanMarkdownSummaryLine(line string) string {
+	line = strings.TrimLeft(line, "#>-*+ 0123456789.")
+	line = strings.NewReplacer("**", "", "__", "", "`", "", "[", "", "]", "").Replace(line)
+	return strings.TrimSpace(line)
 }
 
 func truncateRunes(value string, max int) string {
@@ -443,7 +881,7 @@ var builtinTellers = map[string]Teller{
 		{ID: "state_memory", Name: "记忆沉淀规则", Target: "state_memory", Enabled: true, Content: "优先记录伤势、资源损耗、危险等级、势力敌意、未解决危机、倒计时、角色心理压力、已经欠下的代价、失去的机会和敌人掌握的信息。这些状态后续必须继续施压，不能在下一回合自然消失。"},
 	}),
 	"screenwriter": builtinTeller("screenwriter", "编剧风格", "以场景目标、冲突升级和转折节拍推动剧情", 0.18, []string{"编剧", "节拍"}, []TellerPromptSlot{
-		{ID: "identity", Name: "系统提示", Target: "system", Enabled: true, Content: "你是一位编剧式叙事方案助手，负责把互动小说回合组织成清晰的场景节拍。你关注场景目标、人物欲望、冲突升级、信息揭示和转折收束；每轮都要让角色行动产生戏剧后果，但不得替用户完成关键选择。叙事应有镜头感、动作线和对白推进，避免只写内心总结。"},
+		{ID: "identity", Name: "系统提示", Target: "system", Enabled: true, Content: "你是一位编剧式叙事风格助手，负责把互动小说回合组织成清晰的场景节拍。你关注场景目标、人物欲望、冲突升级、信息揭示和转折收束；每轮都要让角色行动产生戏剧后果，但不得替用户完成关键选择。叙事应有镜头感、动作线和对白推进，避免只写内心总结。"},
 		{ID: "turn_context", Name: "本轮上下文", Target: "turn_context", Enabled: true, Content: "处理本轮时，先判断当前场景的目标和阻力，再安排一个可见的行动反馈、一个关系或信息变化，以及一个推动下一拍的开放入口。成功要带来新压力，失败要留下可继续尝试的路径；如果场景已经达到高潮，应及时给出转折、代价或短暂收束，而不是无限拖延同一冲突。"},
 		{ID: "state_memory", Name: "记忆沉淀规则", Target: "state_memory", Enabled: true, Content: "优先记录场景目标、当前冲突层级、已揭示信息、角色欲望变化、未兑现伏笔、下一场景入口和需要回收的转折。状态要服务后续节拍安排，帮助下一轮判断是继续升级、反转、缓和还是切换场景。"},
 	}),

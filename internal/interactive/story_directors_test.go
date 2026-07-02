@@ -1,0 +1,218 @@
+package interactive
+
+import (
+	"errors"
+	"testing"
+)
+
+func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
+	library := NewStoryDirectorLibrary(t.TempDir())
+
+	directors, err := library.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(directors) == 0 || directors[0].ID != DefaultStoryDirectorID || directors[0].Custom {
+		t.Fatalf("default story director should be materialized first: %#v", directors)
+	}
+
+	created, err := library.Create(StoryDirector{
+		ID:          "custom-director",
+		Name:        "自定义导演",
+		Description: "用于测试",
+		Strategy: StoryDirectorStrategy{
+			Enabled:         true,
+			RandomEventRate: 2,
+		},
+		StatSystem: StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{
+			{ID: "mana", Path: "resources.mana", Name: "法力", Default: 3, Max: 9, Visibility: "hidden"},
+			{ID: "invalid", Path: ".bad", Name: "无效"},
+		}},
+		TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
+			ID:         "luck",
+			Label:      "幸运",
+			Kind:       "dice",
+			Mode:       "d100_under",
+			Dice:       "1d100",
+			Difficulty: 55,
+		}}},
+		OpeningSelector: StoryDirectorOpeningSelector{
+			Enabled: true,
+			InitialStateOps: []StateOp{{
+				Op:    "set",
+				Path:  "flags.opening",
+				Value: true,
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if !created.Custom || created.Strategy.RandomEventRate != 1 {
+		t.Fatalf("custom director should be marked and random rate clamped: %#v", created)
+	}
+	if len(created.StatSystem.Attributes) != 1 || created.StatSystem.Attributes[0].Visibility != "hidden" {
+		t.Fatalf("attributes should be validated and preserve visibility: %#v", created.StatSystem.Attributes)
+	}
+	ops := StoryDirectorInitialStateOps(created)
+	if !containsStateOp(ops, "resources.mana", float64(3)) || !containsStateOp(ops, "resources.mana_max", float64(9)) || !containsStateOp(ops, "flags.opening", true) {
+		t.Fatalf("initial state ops should include attribute defaults and opening ops: %#v", ops)
+	}
+
+	updated, err := library.Update(created.ID, StoryDirector{
+		Name:        "Agent 更新",
+		Strategy:    StoryDirectorStrategy{Enabled: true},
+		StatSystem:  StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{}},
+		TRPGSystem:  created.TRPGSystem,
+		EventSystem: created.EventSystem,
+		OpeningSelector: StoryDirectorOpeningSelector{
+			Enabled: true,
+		},
+	}, created.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+	if _, err := library.Update(created.ID, StoryDirector{Name: "旧前端保存"}, created.UpdatedAt); !errors.Is(err, ErrStoryDirectorRevisionConflict) {
+		t.Fatalf("expected story director revision conflict, got %v", err)
+	}
+	got, err := library.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if got.Name != updated.Name {
+		t.Fatalf("stale update should not overwrite story director: %#v", got)
+	}
+}
+
+func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.T) {
+	novaDir := t.TempDir()
+	tellers := NewTellerLibrary(novaDir)
+	directors := NewStoryDirectorLibrary(novaDir)
+	if _, err := directors.Create(StoryDirector{
+		ID:       "preexisting",
+		Name:     "手动导演",
+		Strategy: StoryDirectorStrategy{Enabled: true},
+	}); err != nil {
+		t.Fatalf("create preexisting director failed: %v", err)
+	}
+	if _, err := tellers.Create(Teller{
+		ID:              "legacy-style",
+		Name:            "旧风格",
+		RandomEventRate: 0.42,
+		Orchestration:   legacyOrchestrationForTest(),
+		Slots:           []TellerPromptSlot{testTellerSlot()},
+	}); err != nil {
+		t.Fatalf("create legacy teller failed: %v", err)
+	}
+	if _, err := tellers.Create(Teller{
+		ID:            "preexisting",
+		Name:          "不应覆盖",
+		Orchestration: legacyOrchestrationForTest(),
+		Slots:         []TellerPromptSlot{testTellerSlot()},
+	}); err != nil {
+		t.Fatalf("create preexisting teller failed: %v", err)
+	}
+
+	if _, err := directors.List(); err != nil {
+		t.Fatalf("List should migrate legacy tellers: %v", err)
+	}
+	migrated, err := directors.Get("legacy-style")
+	if err != nil {
+		t.Fatalf("legacy teller orchestration should migrate: %v", err)
+	}
+	if migrated.Name != "旧风格 故事导演" || migrated.Strategy.RandomEventRate != 0.42 {
+		t.Fatalf("unexpected migrated metadata: %#v", migrated)
+	}
+	if migrated.ModuleRefs.EventSystemID == "" || migrated.ModuleRefs.RuleSystemID == "" || migrated.ModuleRefs.OpeningSelectorID == "" {
+		t.Fatalf("legacy embedded orchestration should be split into module refs: %#v", migrated.ModuleRefs)
+	}
+	eventModule, err := NewEventSystemLibrary(novaDir).Get(migrated.ModuleRefs.EventSystemID)
+	if err != nil {
+		t.Fatalf("migrated event module should be readable: %v", err)
+	}
+	if len(eventModule.EventSystem.EventPackages) != 1 || eventModule.EventSystem.EventPackages[0].ID != "legacy-pack" {
+		t.Fatalf("migrated event module should preserve event packages: %#v", eventModule.EventSystem.EventPackages)
+	}
+	if migrated.Strategy.MainlineStrength != "hard_guidance" || migrated.Strategy.FailurePolicy != "fail_forward" || migrated.Strategy.PacingCurve != "spiky" {
+		t.Fatalf("strategy should be copied: %#v", migrated.Strategy)
+	}
+	if len(migrated.EventSystem.EventPackages) != 1 || len(migrated.EventSystem.EventPackages[0].Events) != 1 {
+		t.Fatalf("event packages should be copied: %#v", migrated.EventSystem.EventPackages)
+	}
+	if len(migrated.TRPGSystem.RuleTemplates) != 1 || migrated.TRPGSystem.RuleTemplates[0].Mode != "d20_dc" {
+		t.Fatalf("rule templates should be copied: %#v", migrated.TRPGSystem.RuleTemplates)
+	}
+	if len(migrated.OpeningSelector.TraitPools) != 1 || !containsStateOp(migrated.OpeningSelector.InitialStateOps, "resources.hp", float64(12)) {
+		t.Fatalf("opening selector should be copied: %#v", migrated.OpeningSelector)
+	}
+
+	preexisting, err := directors.Get("preexisting")
+	if err != nil {
+		t.Fatalf("Get preexisting failed: %v", err)
+	}
+	if preexisting.Name != "手动导演" {
+		t.Fatalf("migration should not overwrite existing story director: %#v", preexisting)
+	}
+}
+
+func legacyOrchestrationForTest() *TellerOrchestrationConfig {
+	return &TellerOrchestrationConfig{
+		Enabled:          true,
+		MainlineStrength: "hard_guidance",
+		FailurePolicy:    "fail_forward",
+		PacingCurve:      "spiky",
+		EventPackages: []TellerEventPackage{{
+			ID:      "legacy-pack",
+			Name:    "旧事件包",
+			Enabled: true,
+			Events: []TellerEventCard{{
+				ID:                  "reversal",
+				TypeName:            "反转",
+				DescriptionMarkdown: "误会后反转。",
+				Enabled:             true,
+				Weight:              2,
+			}},
+		}},
+		RuleTemplates: []RuleCheck{{
+			ID:         "stealth",
+			Label:      "潜行",
+			Kind:       "dice",
+			Mode:       "d20_dc",
+			Dice:       "1d20",
+			Difficulty: 15,
+		}},
+		Opening: TellerOpeningConfig{
+			Enabled: true,
+			TraitPools: []OpeningTraitPool{{
+				ID:        "talent",
+				Name:      "天赋",
+				DrawCount: 1,
+				Traits:    []OpeningTrait{{ID: "sharp-eye", Name: "慧眼"}},
+			}},
+			InitialStateOps: []StateOp{{
+				Op:    "set",
+				Path:  "resources.hp",
+				Value: float64(12),
+			}},
+		},
+	}
+}
+
+func testTellerSlot() TellerPromptSlot {
+	return TellerPromptSlot{
+		ID:      "identity",
+		Name:    "系统提示",
+		Target:  "system",
+		Enabled: true,
+		Content: "规则",
+	}
+}
+
+func containsStateOp(ops []StateOp, path string, value any) bool {
+	for _, op := range ops {
+		if op.Path == path && op.Value == value {
+			return true
+		}
+	}
+	return false
+}
