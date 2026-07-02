@@ -104,7 +104,6 @@ func defaultWebSearchEngines() []webSearchEngine {
 
 func newDefaultWebSearchAggregator() *webSearchAggregator {
 	engines := defaultWebSearchEngines()
-	log.Printf("[agent] web_search 已启用引擎: %s", joinEngineNames(engines))
 	return &webSearchAggregator{engines: engines, maxTotal: webSearchMaxTotal}
 }
 

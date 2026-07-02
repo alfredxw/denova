@@ -44,17 +44,17 @@ func (s *State) NovaDir() string {
 
 // SessionDir 返回内部 sessions/ 目录路径（会话存储）。
 func (s *State) SessionDir() string {
-	return filepath.Join(s.NovaDir(), "sessions")
+	return workspacepath.Path(s.workspace, "sessions")
 }
 
 // BackupDir 返回内部 backups/ 目录路径。
 func (s *State) BackupDir() string {
-	return filepath.Join(s.NovaDir(), "backups")
+	return workspacepath.Path(s.workspace, "backups")
 }
 
 // LoreDir 返回内部 lore/ 目录路径（结构化资料库）。
 func (s *State) LoreDir() string {
-	return filepath.Join(s.NovaDir(), "lore")
+	return workspacepath.Path(s.workspace, "lore")
 }
 
 // SettingDir 返回 setting/ 目录路径（作品设定，用户可查看和编辑）。

@@ -279,11 +279,11 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
               setActivityContent('')
               break
             }
-            const toolKey = getToolEventKey(data)
-            const existingToolId = toolKey ? toolKeyToMessageIdRef.current[toolKey] : undefined
-            const toolId = existingToolId || createToolMessageId(toolKey, toolIdCounterRef)
-            if (toolKey) {
-              toolKeyToMessageIdRef.current = { ...toolKeyToMessageIdRef.current, [toolKey]: toolId }
+            const toolKeys = getToolEventKeys(data)
+            const existingToolId = findMappedToolId(toolKeys, toolKeyToMessageIdRef.current)
+            const toolId = existingToolId || createToolMessageId(toolKeys[0], toolIdCounterRef)
+            if (toolKeys.length > 0) {
+              toolKeyToMessageIdRef.current = bindToolEventKeys(toolKeys, toolKeyToMessageIdRef.current, toolId)
             }
             pendingToolCallsRef.current = {
               ...pendingToolCallsRef.current,
@@ -319,6 +319,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             const toolCall = toolId ? pendingToolCallsRef.current[toolId] : undefined
             const toolName = readString(data.name) || toolCall?.name || ''
             if (toolId) {
+              toolKeyToMessageIdRef.current = bindToolEventKeys(getToolEventKeys(data), toolKeyToMessageIdRef.current, toolId)
               const { [toolId]: _, ...restPending } = pendingToolCallsRef.current
               pendingToolCallsRef.current = restPending
               toolCallQueueRef.current = toolCallQueueRef.current.filter(id => id !== toolId)
@@ -352,6 +353,7 @@ export function useAgentEventStream(options: AgentEventStreamOptions = {}) {
             const displayMetadata = readEventDisplayMetadata(data)
             const toolId = findToolMessageId(data, toolKeyToMessageIdRef.current, toolCallQueueRef.current, pendingToolCallsRef.current)
             if (toolId) {
+              toolKeyToMessageIdRef.current = bindToolEventKeys(getToolEventKeys(data), toolKeyToMessageIdRef.current, toolId)
               const pending = pendingToolCallsRef.current[toolId]
               if (delta) {
                 if (pending) {
@@ -607,12 +609,33 @@ function segmentSourceKey(metadata: EventMetadata) {
   return `${metadata.subagent ? 'sub' : 'root'}:${metadata.subagent_session_id || ''}:${metadata.agent_name || ''}:${path}`
 }
 
-function getToolEventKey(data: Record<string, unknown>): string | undefined {
+function getToolEventKeys(data: Record<string, unknown>): string[] {
   const source = segmentSourceKey(readEventMetadata(data))
-  if (typeof data.id === 'string' && data.id) return `${source}:id:${data.id}`
-  if (typeof data.index === 'number') return `${source}:index:${data.index}`
-  if (typeof data.index === 'string' && data.index) return `${source}:index:${data.index}`
+  const keys: string[] = []
+  const id = readString(data.id)
+  if (id) keys.push(`${source}:id:${id}`)
+  if (typeof data.index === 'number') keys.push(`${source}:index:${data.index}`)
+  if (typeof data.index === 'string' && data.index) keys.push(`${source}:index:${data.index}`)
+  return keys
+}
+
+function findMappedToolId(keys: string[], keyToMessageId: Record<string, string>) {
+  for (const key of keys) {
+    if (keyToMessageId[key]) return keyToMessageId[key]
+  }
   return undefined
+}
+
+function bindToolEventKeys(keys: string[], keyToMessageId: Record<string, string>, toolId: string) {
+  if (keys.length === 0) return keyToMessageId
+  let changed = false
+  const next = { ...keyToMessageId }
+  for (const key of keys) {
+    if (next[key] === toolId) continue
+    next[key] = toolId
+    changed = true
+  }
+  return changed ? next : keyToMessageId
 }
 
 function createToolMessageId(toolKey: string | undefined, counterRef: { current: number }) {
@@ -838,9 +861,10 @@ function findToolMessageId(
   fallbackQueue: string[],
   pendingToolCalls: Record<string, ToolCallInfo>,
 ) {
-  const toolKey = getToolEventKey(data)
-  if (toolKey && keyToMessageId[toolKey]) return keyToMessageId[toolKey]
-  if (toolKey) return undefined
+  const toolKeys = getToolEventKeys(data)
+  const mappedToolId = findMappedToolId(toolKeys, keyToMessageId)
+  if (mappedToolId) return mappedToolId
+  if (toolKeys.length > 0) return undefined
   const name = readString(data.name)
   if (name) {
     const queuedMatches = fallbackQueue.filter(id => pendingToolCalls[id]?.name === name)

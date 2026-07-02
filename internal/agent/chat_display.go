@@ -251,6 +251,12 @@ func (r *displayEventRecorder) Record(ev Event) {
 		r.pendingToolIDs = make(map[string]string)
 	case "done":
 		r.flushThinking()
+		for id, name := range r.pendingToolIDs {
+			if err := r.appender.UpdateDisplayToolStatus(id, name, "success"); err != nil {
+				log.Printf("[agent-run] persist display tool_done failed name=%s id=%s err=%v", name, id, err)
+			}
+		}
+		r.pendingToolIDs = make(map[string]string)
 	}
 }
 

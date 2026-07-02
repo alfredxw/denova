@@ -23,17 +23,11 @@ func TestParseChangelogMessages(t *testing.T) {
 - 修复互动图像预览。
 `
 	items := parseChangelogMessages(content)
-	if len(items) != 2 {
-		t.Fatalf("messages length = %d, want 2", len(items))
+	if len(items) != 1 {
+		t.Fatalf("messages length = %d, want 1", len(items))
 	}
-	if !strings.HasPrefix(items[0].ID, "changelog:unreleased:") || items[0].Title != "Unreleased" {
-		t.Fatalf("unreleased message = %#v", items[0])
-	}
-	if items[0].Summary != "消息中心展示更新日志。" {
-		t.Fatalf("summary = %q", items[0].Summary)
-	}
-	if !strings.HasPrefix(items[1].ID, "changelog:v0.1.17:") || items[1].PublishedAt != "2026-06-27" {
-		t.Fatalf("version message = %#v", items[1])
+	if !strings.HasPrefix(items[0].ID, "changelog:v0.1.17:") || items[0].PublishedAt != "2026-06-27" {
+		t.Fatalf("version message = %#v", items[0])
 	}
 }
 
@@ -100,6 +94,12 @@ func TestServiceMarksReadPersistently(t *testing.T) {
 ### Added
 
 - 第一条消息。
+
+## [v0.2.0] - 2026-07-01
+
+### Added
+
+- 正式发布消息。
 `), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -110,6 +110,9 @@ func TestServiceMarksReadPersistently(t *testing.T) {
 	}
 	if list.UnreadCount != 1 || len(list.Items) != 1 || list.Items[0].ReadAt != nil {
 		t.Fatalf("initial list = %#v", list)
+	}
+	if list.Items[0].Title != "v0.2.0" {
+		t.Fatalf("unreleased changelog should be skipped: %#v", list.Items[0])
 	}
 	read, err := service.MarkRead(list.Items[0].ID)
 	if err != nil {
@@ -186,6 +189,12 @@ func TestServiceMarksAllReadPersistently(t *testing.T) {
 ### Added
 
 - 第一条消息。
+
+## [v0.2.0] - 2026-07-01
+
+### Added
+
+- 正式发布消息。
 
 ## [v0.1.17] - 2026-06-27
 

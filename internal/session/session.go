@@ -128,7 +128,28 @@ func (s *Session) History() []HistoryEntry {
 			})
 		}
 	}
-	return result
+	return normalizeCompletedToolDisplayEntries(result)
+}
+
+func normalizeCompletedToolDisplayEntries(entries []HistoryEntry) []HistoryEntry {
+	pendingByRun := make(map[string][]int)
+	for index := range entries {
+		entry := entries[index]
+		if entry.Role == "tool_call" && entry.Status == "running" && strings.TrimSpace(entry.RunID) != "" {
+			pendingByRun[entry.RunID] = append(pendingByRun[entry.RunID], index)
+			continue
+		}
+		if entry.Role != "token_usage" || strings.TrimSpace(entry.RunID) == "" {
+			continue
+		}
+		for _, pendingIndex := range pendingByRun[entry.RunID] {
+			if entries[pendingIndex].Status == "running" {
+				entries[pendingIndex].Status = "success"
+			}
+		}
+		delete(pendingByRun, entry.RunID)
+	}
+	return entries
 }
 
 func cloneTokenUsageCalls(calls []TokenUsageCall) []TokenUsageCall {

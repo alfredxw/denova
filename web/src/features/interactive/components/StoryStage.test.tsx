@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoryStage } from './StoryStage'
-import { mergeInteractiveTurnPersistedSnapshot } from '../stores/interactive-store'
+import { mergeInteractiveTurnPersistedSnapshot, useInteractiveStore } from '../stores/interactive-store'
 import type { InteractiveTurnPersistedEvent, Snapshot, StorySummary } from '../types'
 
 const { generateInteractiveHotChoicesMock, generateInteractiveImageMock, sendInteractiveMessageMock } = vi.hoisted(() => ({
@@ -34,6 +34,7 @@ vi.mock('../api', () => ({
 
 beforeEach(() => {
   window.localStorage.clear()
+  useInteractiveStore.setState({ storyStageRuns: {} })
   generateInteractiveHotChoicesMock.mockReset()
   generateInteractiveImageMock.mockReset()
   generateInteractiveImageMock.mockResolvedValue({ enabled: false, skipped: true })
@@ -217,6 +218,40 @@ describe('StoryStage streaming rendering', () => {
       stream.close()
       window.requestAnimationFrame = originalRequestAnimationFrame
       window.cancelAnimationFrame = originalCancelAnimationFrame
+    }
+  })
+
+  it('updates a live tool card when an index-based call later receives an id', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+
+    try {
+      sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+      render(<StoryStageHarness />)
+
+      await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
+      await user.click(screen.getByRole('button', { name: '发送' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+
+      act(() => {
+        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ index: 0, name: 'execute', args: '' }) })
+        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', index: 0, name: 'execute', delta: '{"command":"pwd"}' }) })
+        stream.enqueue({ event: 'tool_result', data: JSON.stringify({ id: 'call-execute', index: 0, name: 'execute', content: 'command done' }) })
+      })
+
+      await waitFor(() => {
+        const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
+        const executeMessages = liveMessages.filter((message) => message.role === 'tool_call' && message.name === 'execute')
+        expect(executeMessages).toHaveLength(1)
+        expect(executeMessages[0]).toMatchObject({
+          args: '{"command":"pwd"}',
+          status: 'success',
+          result: 'command done',
+          streaming: false,
+        })
+      })
+    } finally {
+      stream.close()
     }
   })
 

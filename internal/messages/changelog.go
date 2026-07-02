@@ -34,6 +34,11 @@ func parseChangelogMessagesForLocale(content, locale string) []Message {
 		if strings.TrimSpace(label) == "" {
 			label = strings.TrimSpace(currentHeading)
 		}
+		if isUnreleasedChangelogLabel(label) {
+			currentHeading = ""
+			body = body[:0]
+			return
+		}
 		rawBodyText := trimBlankLines(strings.Join(body, "\n"))
 		if strings.TrimSpace(rawBodyText) == "" {
 			currentHeading = ""
@@ -379,6 +384,11 @@ func parseChangelogHeading(heading string) (string, string) {
 		return heading, ""
 	}
 	return strings.TrimSpace(matches[1]), strings.TrimSpace(matches[2])
+}
+
+func isUnreleasedChangelogLabel(label string) bool {
+	normalized := strings.TrimSpace(strings.ToLower(label))
+	return normalized == "unreleased"
 }
 
 func changelogID(label, body string) string {

@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { BookMarked, Bot, Building2, ChevronDown, Compass, Dice5, FileText, Folder, Images, Library, Loader2, MapPin, Plus, ScrollText, Search, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
+import { BookMarked, Bot, Building2, ChevronDown, ChevronsDownUp, ChevronsUpDown, Compass, Dice5, FileText, Folder, Images, Library, Loader2, MapPin, Plus, ScrollText, Search, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isSaveShortcut } from '@/lib/keyboard'
@@ -45,6 +45,7 @@ const LORE_RESIDENT_ITEM_WARNING_CHARS = 8000
 const LORE_RESIDENT_TOTAL_WARNING_CHARS = 40000
 const IMAGE_PRESET_PROMPT_LIMIT = 4000
 const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_request' }] as const
+const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'opening']
 type ImagePresetTarget = ImagePresetSlot['target']
 type LoreType = LoreItem['type']
 interface KnowledgeSection {
@@ -310,11 +311,24 @@ export function TellerDirectory({
   const isConfigAgentActive = activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
   const isVisible = (kind: PresetResourceKind) => presetResourceVisibleInMode(kind, usageMode)
   const isCollapsed = (kind: PresetResourceKind) => collapsedSections[kind] ?? (kind !== 'director' && kind !== resourceKind)
+  const visibleKinds = PRESET_DIRECTORY_ORDER.filter(isVisible)
+  const hasCollapsedVisibleSections = visibleKinds.some(isCollapsed)
+  const DirectoryToggleIcon = hasCollapsedVisibleSections ? ChevronsUpDown : ChevronsDownUp
+  const directoryToggleLabel = hasCollapsedVisibleSections ? t('settingPanel.directory.expandAll') : t('settingPanel.directory.collapseAll')
   const toggleSection = (kind: PresetResourceKind) => {
     setCollapsedSections((current) => ({
       ...current,
       [kind]: !isCollapsed(kind),
     }))
+  }
+  const toggleAllSections = () => {
+    setCollapsedSections((current) => {
+      const next = { ...current }
+      for (const kind of visibleKinds) {
+        next[kind] = !hasCollapsedVisibleSections
+      }
+      return next
+    })
   }
   useEffect(() => {
     setCollapsedSections((current) => {
@@ -353,16 +367,27 @@ export function TellerDirectory({
   return (
     <>
       <div className="border-b border-[var(--nova-border)] p-2">
-        <button
-          type="button"
-          onClick={() => onSelectTeller(TELLER_CONFIG_AGENT_ENTRY_ID)}
-          className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
-            activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-          }`}
-        >
-          <Bot className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-          <span className="min-w-0 flex-1 truncate">{t('settingPanel.tellerAgent.title')}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onSelectTeller(TELLER_CONFIG_AGENT_ENTRY_ID)}
+            className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-xs transition ${
+              activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+            }`}
+          >
+            <Bot className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+            <span className="min-w-0 flex-1 truncate">{t('settingPanel.tellerAgent.title')}</span>
+          </button>
+          <button
+            type="button"
+            onClick={toggleAllSections}
+            aria-label={directoryToggleLabel}
+            title={directoryToggleLabel}
+            className="nova-nav-item flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          >
+            <DirectoryToggleIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-2 p-2">

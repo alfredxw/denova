@@ -37,6 +37,29 @@ func TestInitWorkspaceCreatesIdeasMarkdown(t *testing.T) {
 	}
 }
 
+func TestStateInternalDirsUseLegacyTargetsWhenCurrentIsGeneratedEmpty(t *testing.T) {
+	dir := t.TempDir()
+	currentLore := filepath.Join(dir, ".denova", "lore", "items.json")
+	legacyLore := filepath.Join(dir, ".nova", "lore", "items.json")
+	if err := os.MkdirAll(filepath.Dir(currentLore), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(currentLore, []byte(`{"version":1,"items":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyLore), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyLore, []byte(`{"version":1,"items":[{"id":"hero"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	state := NewState(dir)
+	if got, want := state.LoreDir(), filepath.Join(dir, ".nova", "lore"); got != want {
+		t.Fatalf("LoreDir should keep using legacy lore target: want=%s got=%s", want, got)
+	}
+}
+
 func TestInitWorkspaceMigratesLegacyBrainstormMarkdown(t *testing.T) {
 	dir := t.TempDir()
 	legacyPath := filepath.Join(dir, LegacyBrainstormFileName)

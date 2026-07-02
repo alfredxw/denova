@@ -52,10 +52,10 @@ func TestMessagesAPIListsAndMarksRead(t *testing.T) {
 		UnreadCount int               `json:"unread_count"`
 	}
 	decodeResponse(t, listResp.Body.Bytes(), &listBody)
-	if listBody.UnreadCount != 2 || len(listBody.Items) != 2 {
+	if listBody.UnreadCount != 1 || len(listBody.Items) != 1 {
 		t.Fatalf("initial messages = %#v", listBody)
 	}
-	if !strings.HasPrefix(listBody.Items[0].ID, "changelog:unreleased:") || listBody.Items[0].ReadAt != nil {
+	if !strings.HasPrefix(listBody.Items[0].ID, "changelog:v0.1.17:") || listBody.Items[0].ReadAt != nil {
 		t.Fatalf("first message = %#v", listBody.Items[0])
 	}
 
@@ -71,7 +71,7 @@ func TestMessagesAPIListsAndMarksRead(t *testing.T) {
 
 	nextResp := performJSONRequest(t, server, http.MethodGet, "/api/messages", nil)
 	decodeResponse(t, nextResp.Body.Bytes(), &listBody)
-	if listBody.UnreadCount != 1 || listBody.Items[0].ReadAt == nil {
+	if listBody.UnreadCount != 0 || listBody.Items[0].ReadAt == nil {
 		t.Fatalf("messages after read = %#v", listBody)
 	}
 
@@ -80,7 +80,7 @@ func TestMessagesAPIListsAndMarksRead(t *testing.T) {
 		t.Fatalf("read all status = %d body=%s", readAllResp.Code, readAllResp.Body.String())
 	}
 	decodeResponse(t, readAllResp.Body.Bytes(), &listBody)
-	if listBody.UnreadCount != 0 || len(listBody.Items) != 2 {
+	if listBody.UnreadCount != 0 || len(listBody.Items) != 1 {
 		t.Fatalf("messages after read all = %#v", listBody)
 	}
 	for _, item := range listBody.Items {
