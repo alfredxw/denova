@@ -106,4 +106,48 @@ describe('SubAgentSessionPanel', () => {
     fireEvent.click(scrollButton)
     await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
   })
+
+  it('同一时间戳的子会话消息不会触发重复 key 警告', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const createdAt = '2026-07-02T12:35:58Z'
+    const messages: ChatMessage[] = [
+      {
+        role: 'thinking',
+        content: '读取资料',
+        agent_name: 'researcher',
+        subagent: true,
+        subagent_session_id: 'run-1-subagent-01-researcher',
+        created_at: createdAt,
+      },
+      {
+        role: 'tool_call',
+        content: 'read_file',
+        name: 'read_file',
+        agent_name: 'researcher',
+        subagent: true,
+        subagent_session_id: 'run-1-subagent-01-researcher',
+        created_at: createdAt,
+      },
+      {
+        role: 'tool_result',
+        content: '读取完成',
+        name: 'read_file',
+        agent_name: 'researcher',
+        subagent: true,
+        subagent_session_id: 'run-1-subagent-01-researcher',
+        created_at: createdAt,
+      },
+    ]
+
+    try {
+      const { container } = renderPanel(messages)
+      await waitFor(() => {
+        expect(container.querySelectorAll('[data-nova-chat-item="subagent-message"]').length).toBeGreaterThan(0)
+      })
+      const keyWarnings = consoleError.mock.calls.filter((call) => String(call[0]).includes('same key'))
+      expect(keyWarnings).toEqual([])
+    } finally {
+      consoleError.mockRestore()
+    }
+  })
 })

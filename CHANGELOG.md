@@ -48,6 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- WebUI：修复写作 Chat 和 SubAgent 详情在多条消息共用同一 `created_at` 时生成重复虚拟列表 key 的问题，避免 React 行复用异常导致底部锁定和“回到底部”行为不稳定。
+- WebUI: Fixed duplicate virtual-list keys in Writing Chat and SubAgent details when multiple messages share the same `created_at`, preventing React row reuse issues that could destabilize bottom locking and "Back to bottom" behavior.
 - Agent：OpenAI 兼容流式请求会过滤 SSE 心跳空行、注释和事件元数据，避免长推理或代理保活时触发 `stream has sent too many empty messages`。
 - Agent: OpenAI-compatible streaming requests now filter SSE heartbeat blank lines, comments, and event metadata to avoid `stream has sent too many empty messages` during long reasoning or proxy keep-alives.
 - WebUI：应用内更新执行“重启并安装”后，前端会等待新后端可用并带缓存刷新标记自动重载页面，避免用户手动强刷才看到新版前端。

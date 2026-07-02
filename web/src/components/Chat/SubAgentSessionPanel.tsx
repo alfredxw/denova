@@ -101,7 +101,7 @@ export function SubAgentSessionPanel({ messages, sessionKey, onClose, highlightD
             initialItemCount={Math.min(sessionMessages.length, 40)}
             data={sessionMessages}
             components={SUBAGENT_SESSION_COMPONENTS}
-            computeItemKey={(index, message) => message?.id || message?.created_at || index}
+            computeItemKey={(index, message) => subAgentSessionMessageKey(message, index)}
             itemContent={itemContent}
             overscan={{ main: 360, reverse: 180 }}
             increaseViewportBy={{ top: 300, bottom: 560 }}
@@ -122,4 +122,10 @@ export function SubAgentSessionPanel({ messages, sessionKey, onClose, highlightD
 
 function SubAgentSessionListPadding() {
   return <div aria-hidden="true" className="h-4 shrink-0" />
+}
+
+function subAgentSessionMessageKey(message: ChatMessage | undefined, index: number) {
+  if (message?.id) return message.id
+  if (message?.created_at) return `${message.created_at}-${index}`
+  return index
 }

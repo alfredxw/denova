@@ -412,7 +412,11 @@ function buildMessageListScrollKey(items: ChatListItem[], bottomPaddingPx?: numb
 }
 
 function messageItemKey(message: ChatMessage, index: number) {
-  return `${message.type === 'clear' ? 'clear' : 'message'}-${message.render_key || message.id || message.created_at || index}`
+  const prefix = message.type === 'clear' ? 'clear' : 'message'
+  const stableKey = message.render_key || message.id
+  if (stableKey) return `${prefix}-${stableKey}`
+  if (message.created_at) return `${prefix}-${message.created_at}-${index}`
+  return `${prefix}-${index}`
 }
 
 function latestPlanCardBottomAnchorTarget(items: ChatListItem[]) {

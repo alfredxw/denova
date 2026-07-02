@@ -227,6 +227,31 @@ describe('MessageList', () => {
     await waitFor(() => expect(scroller.scrollTop).toBe(scrollMetrics.maxScrollTop()))
   })
 
+  it('同一时间戳的历史消息不会生成重复列表行 key', () => {
+    const createdAt = '2026-07-02T12:35:58Z'
+    const { container } = render(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[
+          { type: 'message', role: 'thinking', content: '思考过程', created_at: createdAt },
+          { type: 'message', role: 'tool_call', content: 'read_file', name: 'read_file', created_at: createdAt },
+          { type: 'message', role: 'tool_result', content: '读取完成', name: 'read_file', created_at: createdAt },
+        ]}
+        scrollResetKey="session-a"
+      />,
+    )
+
+    const rowKeys = Array.from(container.querySelectorAll<HTMLElement>('[data-nova-chat-row-key]'))
+      .map((row) => row.dataset.novaChatRowKey)
+    expect(rowKeys).toEqual([
+      `message-${createdAt}-0`,
+      `message-${createdAt}-1`,
+      `message-${createdAt}-2`,
+    ])
+    expect(new Set(rowKeys).size).toBe(rowKeys.length)
+  })
+
   it('使用 render_key 保持流式消息落盘后的列表行身份稳定', () => {
     const { container, rerender } = render(
       <MessageList
