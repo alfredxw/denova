@@ -14,9 +14,10 @@ func chatModelConfigForAgent(cfg *config.Config, agentKind string) openai.ChatMo
 
 func chatModelConfigFromResolved(resolved config.ResolvedModelSettings) openai.ChatModelConfig {
 	modelCfg := openai.ChatModelConfig{
-		APIKey:  resolved.OpenAIAPIKey,
-		Model:   resolved.OpenAIModel,
-		BaseURL: resolved.OpenAIBaseURL,
+		APIKey:     resolved.OpenAIAPIKey,
+		Model:      resolved.OpenAIModel,
+		BaseURL:    resolved.OpenAIBaseURL,
+		HTTPClient: providercompat.WrapHTTPClient(nil),
 	}
 	if resolved.Temperature != nil {
 		temperature := float32(*resolved.Temperature)

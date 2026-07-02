@@ -48,6 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Agent：OpenAI 兼容流式请求会过滤 SSE 心跳空行、注释和事件元数据，避免长推理或代理保活时触发 `stream has sent too many empty messages`。
+- Agent: OpenAI-compatible streaming requests now filter SSE heartbeat blank lines, comments, and event metadata to avoid `stream has sent too many empty messages` during long reasoning or proxy keep-alives.
 - WebUI：应用内更新执行“重启并安装”后，前端会等待新后端可用并带缓存刷新标记自动重载页面，避免用户手动强刷才看到新版前端。
 - WebUI: After in-app "Restart and install", the frontend now waits for the restarted backend and reloads with a cache-busting marker so users do not need to hard-refresh manually.
 - WebUI：补充历史 `/sw.js` 清理脚本，旧浏览器 Service Worker 注册会自动注销，避免 Windows 上反复出现 Hertz 找不到 `web/sw.js` 的错误日志。
