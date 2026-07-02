@@ -314,6 +314,49 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	}
 }
 
+func TestLoreStoreReadsLegacyNovaLoreWhenDenovaWasGeneratedEmpty(t *testing.T) {
+	workspace := t.TempDir()
+	currentLore := filepath.Join(workspace, ".denova", "lore", "items.json")
+	legacyLore := filepath.Join(workspace, ".nova", "lore", "items.json")
+	if err := os.MkdirAll(filepath.Dir(currentLore), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(currentLore, []byte(`{"version":1,"items":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(legacyLore), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyLore, []byte(`{
+  "version": 1,
+  "items": [
+    {"id":"hero","enabled":true,"type":"character","name":"林川","importance":"major","content":"旧资料库正文"}
+  ]
+}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	store := NewLoreStore(workspace)
+	items, err := store.ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != "hero" {
+		t.Fatalf("should read existing legacy lore items: %#v", items)
+	}
+
+	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", Content: "据点。"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(legacyLore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"id": "hero"`) || !strings.Contains(string(data), `"id": "base"`) {
+		t.Fatalf("writes should stay with legacy lore file, got:\n%s", data)
+	}
+}
+
 func TestLoreStoreUpdateRejectsStaleRevision(t *testing.T) {
 	store := NewLoreStore(t.TempDir())
 	item, err := store.Create(LoreItemInput{Type: "character", Name: "林川", Importance: "major", Content: "旧内容"})

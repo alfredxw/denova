@@ -143,6 +143,32 @@ func TestDisplayRecorderConvertsPlanProtocolToolCall(t *testing.T) {
 	}
 }
 
+func TestDisplayRecorderMarksPendingToolsSuccessOnDone(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{
+		appender:       appender,
+		pendingToolIDs: map[string]string{},
+	}
+
+	recorder.Record(Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": AgentKindIDE,
+		"id":         "call-execute",
+		"name":       "execute",
+		"args":       `{"command":"pwd"}`,
+	}})
+	recorder.Record(Event{Type: "done", Data: map[string]string{}})
+
+	if len(appender.events) != 1 {
+		t.Fatalf("events = %d, want 1", len(appender.events))
+	}
+	if appender.events[0].Status != "success" {
+		t.Fatalf("pending tool should be marked success on done: %#v", appender.events[0])
+	}
+	if len(recorder.pendingToolIDs) != 0 {
+		t.Fatalf("pending tool ids should be cleared on done: %#v", recorder.pendingToolIDs)
+	}
+}
+
 type displayRecorderTestAppender struct {
 	events []session.DisplayEvent
 }
@@ -153,6 +179,12 @@ func (a *displayRecorderTestAppender) AppendDisplayEvent(event session.DisplayEv
 }
 
 func (a *displayRecorderTestAppender) UpdateDisplayToolStatus(id, name, status string) error {
+	for i := len(a.events) - 1; i >= 0; i-- {
+		if a.events[i].ID == id || (id == "" && a.events[i].Name == name) {
+			a.events[i].Status = status
+			return nil
+		}
+	}
 	return nil
 }
 

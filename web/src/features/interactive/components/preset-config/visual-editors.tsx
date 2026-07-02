@@ -13,6 +13,9 @@ import { cloneWithNewId, formatPresetJSON, itemKey, joinListInput, nextPresetId,
 const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
 const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
 const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+const visualEditorShellClassName = 'grid h-[clamp(360px,calc(100dvh-15rem),720px)] min-h-0 gap-3 overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)]'
+const nestedEditorClassName = 'grid min-h-0 gap-3 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]'
+const detailScrollPaneClassName = 'min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]'
 
 export function EventSystemVisualEditor({
   value,
@@ -100,7 +103,7 @@ export function EventSystemVisualEditor({
         <ToggleButton active={mode === 'custom'} onClick={() => setMode('custom')}>{t('settingPanel.presetConfig.customEvents')}</ToggleButton>
       </div>
       {mode === 'packages' ? (
-        <div className="grid min-h-[360px] gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <div className={visualEditorShellClassName} data-testid="event-system-packages-editor">
           <SortablePresetList
             items={packages}
             activeId={activePackageId}
@@ -125,7 +128,7 @@ export function EventSystemVisualEditor({
           ) : <EmptyDetail>{t('settingPanel.presetConfig.emptyPackages')}</EmptyDetail>}
         </div>
       ) : (
-        <div className="grid min-h-[360px] gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <div className={visualEditorShellClassName} data-testid="event-system-custom-events-editor">
           <SortablePresetList
             items={customEvents}
             activeId={activeEventId}
@@ -139,7 +142,9 @@ export function EventSystemVisualEditor({
             onItemsChange={setCustomEvents}
           />
           {activeEvent ? (
-            <DirectorEventDetails item={activeEvent} onPatch={patchCustomEvent} onCopy={copyCustomEvent} onDelete={deleteCustomEvent} />
+            <div className={detailScrollPaneClassName}>
+              <DirectorEventDetails item={activeEvent} onPatch={patchCustomEvent} onCopy={copyCustomEvent} onDelete={deleteCustomEvent} />
+            </div>
           ) : <EmptyDetail>{t('settingPanel.presetConfig.emptyCustomEvents')}</EmptyDetail>}
         </div>
       )}
@@ -197,7 +202,7 @@ function EventPackageDetails({
   }
 
   return (
-    <DetailPanel>
+    <DetailPanel className="h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden">
       <DetailActions onCopy={onCopy} onDelete={onDelete} />
       <div className="grid gap-3 md:grid-cols-2">
         <Field label={t('settingPanel.presetConfig.id')}>
@@ -208,7 +213,7 @@ function EventPackageDetails({
         </Field>
         <SwitchField label={t('settingPanel.field.enabled')} checked={item.enabled !== false} onChange={(enabled) => onPatch({ enabled })} />
       </div>
-      <div className="grid min-h-[300px] gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
+      <div className={nestedEditorClassName} data-testid="event-package-card-editor">
         <SortablePresetList
           items={cards}
           activeId={activeCardId}
@@ -221,7 +226,9 @@ function EventPackageDetails({
           onActiveIdChange={setActiveCardId}
           onItemsChange={setCards}
         />
-        {activeCard ? <EventCardDetails item={activeCard} onPatch={patchCard} onCopy={copyCard} onDelete={deleteCard} /> : <EmptyDetail>{t('settingPanel.presetConfig.emptyEventCards')}</EmptyDetail>}
+        <div className={detailScrollPaneClassName} data-testid="event-package-card-detail-scroll">
+          {activeCard ? <EventCardDetails item={activeCard} onPatch={patchCard} onCopy={copyCard} onDelete={deleteCard} /> : <EmptyDetail>{t('settingPanel.presetConfig.emptyEventCards')}</EmptyDetail>}
+        </div>
       </div>
     </DetailPanel>
   )
@@ -733,8 +740,8 @@ function ToggleButton({ active, onClick, children }: { active: boolean; onClick:
   )
 }
 
-function DetailPanel({ children, dense = false }: { children: ReactNode; dense?: boolean }) {
-  return <section className={`min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] ${dense ? 'p-3' : 'p-4'} grid gap-3`}>{children}</section>
+function DetailPanel({ children, dense = false, className = '' }: { children: ReactNode; dense?: boolean; className?: string }) {
+  return <section className={`min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] ${dense ? 'p-3' : 'p-4'} grid gap-3 ${className}`}>{children}</section>
 }
 
 function EmptyDetail({ children }: { children: ReactNode }) {

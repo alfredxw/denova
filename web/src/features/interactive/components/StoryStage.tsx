@@ -145,6 +145,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const liveMessageBufferRef = useRef<BufferedLiveMessage[]>([])
   const liveMessageRafRef = useRef<number | null>(null)
   const liveMessagePromoteRafRef = useRef<number | null>(null)
+  const liveToolKeyToMessageIdRef = useRef<Record<string, string>>({})
   const nonNarrativeLiveMessageStreamingRef = useRef(false)
   const liveStageKeyRef = useRef(stageKey)
   const currentLiveTurnRenderKeysRef = useRef<LiveTurnRenderKeys | null>(null)
@@ -575,6 +576,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setActiveSkillCommandIndex(0)
     setStageActivityContent(t('storyStage.activity.connecting'))
     flushLiveMessageBuffer()
+    liveToolKeyToMessageIdRef.current = {}
     nonNarrativeLiveMessageStreamingRef.current = false
     const liveTurnRenderKeys = createLiveTurnRenderKeys()
     currentLiveTurnRenderKeysRef.current = liveTurnRenderKeys
@@ -646,7 +648,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           case 'tool_result': {
             const data = JSON.parse(value.data)
             flushLiveMessageBuffer()
-            updateToolCallMessage(data.id, data.name, 'success', data.content || '')
+            updateToolCallMessage(data, 'success', data.content || '')
             setStageActivityContent('')
             break
           }
@@ -740,6 +742,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     } finally {
       setStageStreaming(false)
       stageAbortControllers.delete(stageKey)
+      liveToolKeyToMessageIdRef.current = {}
       currentCompactionMessageIdRef.current = null
       currentLiveTurnRenderKeysRef.current = null
       setStageActivityContent('')
@@ -1476,9 +1479,14 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   }
 
   function appendToolCallMessage(payload: Record<string, unknown> & { id?: string; name?: string; args?: string }) {
-    const id = payload.id || `tool-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    const toolKeys = liveToolEventKeys(payload)
+    const mappedId = findMappedLiveToolId(toolKeys, liveToolKeyToMessageIdRef.current)
+    const id = payload.id || mappedId || `tool-${Date.now()}-${Math.random().toString(16).slice(2)}`
     const name = payload.name || 'unknown_tool'
     const metadata = streamMetadataFromPayload(payload)
+    if (toolKeys.length > 0) {
+      liveToolKeyToMessageIdRef.current = bindLiveToolEventKeys(toolKeys, liveToolKeyToMessageIdRef.current, id)
+    }
     nonNarrativeLiveMessageStreamingRef.current = true
     setStageLiveMessages((prev) => [
       ...prev,
@@ -1495,11 +1503,15 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     ])
   }
 
-  function appendToolArgsDelta(payload: { id?: string; name?: string; args?: string; delta?: string }) {
-    if (!payload.id && !payload.name) return
+  function appendToolArgsDelta(payload: Record<string, unknown> & { id?: string; name?: string; args?: string; delta?: string }) {
+    if (!payload.id && !payload.name && liveToolEventKeys(payload).length === 0) return
     setStageLiveMessages((prev) => {
-      const targetIndex = findToolMessageIndex(prev, payload.id, payload.name)
+      const targetIndex = findToolMessageIndexForPayload(prev, payload, liveToolKeyToMessageIdRef.current)
       if (targetIndex < 0) return prev
+      const matchedId = prev[targetIndex].id
+      if (matchedId) {
+        liveToolKeyToMessageIdRef.current = bindLiveToolEventKeys(liveToolEventKeys(payload), liveToolKeyToMessageIdRef.current, matchedId)
+      }
       return prev.map((msg, index) =>
         index === targetIndex
           ? {
@@ -1511,10 +1523,14 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     })
   }
 
-  function updateToolCallMessage(id: string | undefined, name: string | undefined, status: 'success' | 'error', result = '') {
+  function updateToolCallMessage(payload: Record<string, unknown> & { id?: string; name?: string }, status: 'success' | 'error', result = '') {
     setStageLiveMessages((prev) => {
-      const targetIndex = findToolMessageIndex(prev, id, name)
+      const targetIndex = findToolMessageIndexForPayload(prev, payload, liveToolKeyToMessageIdRef.current)
       if (targetIndex < 0) return prev
+      const matchedId = prev[targetIndex].id
+      if (matchedId) {
+        liveToolKeyToMessageIdRef.current = bindLiveToolEventKeys(liveToolEventKeys(payload), liveToolKeyToMessageIdRef.current, matchedId)
+      }
       return prev.map((msg, index) => (
         index === targetIndex ? { ...msg, status, result, streaming: false } : msg
       ))
@@ -1546,6 +1562,15 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       }
     }
     return -1
+  }
+
+  function findToolMessageIndexForPayload(messages: ChatMessage[], payload: Record<string, unknown> & { id?: string; name?: string }, keyToMessageId: Record<string, string>) {
+    const toolKeys = liveToolEventKeys(payload)
+    const mappedId = findMappedLiveToolId(toolKeys, keyToMessageId)
+    if (mappedId) return findToolMessageIndex(messages, mappedId, undefined)
+    if (payload.id) return findToolMessageIndex(messages, payload.id, undefined)
+    if (toolKeys.length > 0) return -1
+    return findToolMessageIndex(messages, undefined, payload.name)
   }
 
   function appendContextCompactionMessage(data: Record<string, unknown>) {
@@ -1650,6 +1675,36 @@ function sameLiveMessageSource(message: ChatMessage, metadata: Partial<ChatMessa
     return subAgentSessionKey(message) === subAgentSessionKey(metadata)
   }
   return true
+}
+
+function liveToolEventKeys(payload: Record<string, unknown>) {
+  const metadata = streamMetadataFromPayload(payload)
+  const path = metadata.run_path?.join('/') || ''
+  const source = `${metadata.subagent ? 'sub' : 'root'}:${metadata.subagent_session_id || ''}:${metadata.agent_name || ''}:${path}`
+  const keys: string[] = []
+  if (typeof payload.id === 'string' && payload.id) keys.push(`${source}:id:${payload.id}`)
+  if (typeof payload.index === 'number') keys.push(`${source}:index:${payload.index}`)
+  if (typeof payload.index === 'string' && payload.index) keys.push(`${source}:index:${payload.index}`)
+  return keys
+}
+
+function findMappedLiveToolId(keys: string[], keyToMessageId: Record<string, string>) {
+  for (const key of keys) {
+    if (keyToMessageId[key]) return keyToMessageId[key]
+  }
+  return undefined
+}
+
+function bindLiveToolEventKeys(keys: string[], keyToMessageId: Record<string, string>, toolId: string) {
+  if (keys.length === 0) return keyToMessageId
+  let changed = false
+  const next = { ...keyToMessageId }
+  for (const key of keys) {
+    if (next[key] === toolId) continue
+    next[key] = toolId
+    changed = true
+  }
+  return changed ? next : keyToMessageId
 }
 
 function readStreamBool(value: unknown) {

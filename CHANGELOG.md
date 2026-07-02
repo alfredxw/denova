@@ -48,8 +48,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 工作区：修复同一本书同时存在 `.denova` 和旧 `.nova` 目录时，新建的空 `.denova` 状态会遮住 `.nova` 中已有资料库等工作区私有数据的问题。
+- Workspace: Fixed mixed `.denova` / legacy `.nova` book directories where newly generated empty `.denova` state could hide existing private workspace data such as lore.
 - WebUI：修复写作 Chat 和 SubAgent 详情在多条消息共用同一 `created_at` 时生成重复虚拟列表 key 的问题，避免 React 行复用异常导致底部锁定和“回到底部”行为不稳定。
 - WebUI: Fixed duplicate virtual-list keys in Writing Chat and SubAgent details when multiple messages share the same `created_at`, preventing React row reuse issues that could destabilize bottom locking and "Back to bottom" behavior.
+- WebUI：修复写作 Chat 与游戏模式 live 工具卡在流式工具事件先按 `index` 创建、后续才带 `id` 时无法回填 `execute` 结果的问题；后端展示历史会在正常完成时收敛 pending 工具，避免工具实际完成后卡片仍显示执行中。
+- WebUI: Fixed Writing Chat and Game Mode live tool cards failing to attach `execute` results when streaming tool events start with `index` and receive `id` later; persisted display history now also settles pending tools on successful completion so finished tools do not remain visually in progress.
+- 方案预设：左侧目录新增单图标按钮，可一键展开或折叠所有可见分组，减少逐个展开模块的重复操作。
+- Presets: Added a single icon-only control in the left directory to expand or collapse all visible groups at once.
+- 方案预设：事件系统可视化编辑器会按屏幕高度限制事件包与事件卡编辑区，长事件卡列表和详情可在局部上下滚动，不再撑出工作台底部。
+- Presets: The Event System visual editor now constrains event-package and event-card editors to the viewport height, letting long card lists and details scroll locally instead of overflowing the workspace.
+- 消息中心：不再把 `CHANGELOG.md` 的 `Unreleased` 段落生成通知，开发期记录更新不会反复点亮未读提醒。
+- Message center: `CHANGELOG.md` `Unreleased` entries no longer generate notifications, so development notes do not repeatedly trigger unread badges.
 - Agent：OpenAI 兼容流式请求会过滤 SSE 心跳空行、注释和事件元数据，避免长推理或代理保活时触发 `stream has sent too many empty messages`。
 - Agent: OpenAI-compatible streaming requests now filter SSE heartbeat blank lines, comments, and event metadata to avoid `stream has sent too many empty messages` during long reasoning or proxy keep-alives.
 - WebUI：应用内更新执行“重启并安装”后，前端会等待新后端可用并带缓存刷新标记自动重载页面，避免用户手动强刷才看到新版前端。

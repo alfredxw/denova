@@ -203,6 +203,15 @@ describe('SettingPanel', () => {
     expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('叙事风格')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('图像方案')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
+    await user.click(screen.getByRole('button', { name: '展开全部目录' }))
+    expect(screen.getByRole('button', { name: /默认事件系统/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /默认数值规则/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '折叠全部目录' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '折叠全部目录' }))
+    expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /经典叙事/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '故事导演' }))
+
     await user.click(screen.getByRole('button', { name: /默认导演/ }))
     expect(screen.getAllByTestId('preset-config-visual-editor')).toHaveLength(4)
     expect(screen.queryByTestId('monaco-json-editor')).not.toBeInTheDocument()
@@ -249,6 +258,10 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: /默认导演/ }))
     await user.click(await screen.findByRole('button', { name: '新增事件卡' }))
+    expect(screen.getAllByTestId('event-system-packages-editor')[0].className).toContain('h-[clamp(360px,calc(100dvh-15rem),720px)]')
+    expect(screen.getByTestId('event-package-card-editor')).toHaveClass('min-h-0', 'overflow-hidden')
+    expect(screen.getByTestId('event-package-card-detail-scroll')).toHaveClass('overflow-y-auto')
+    expect(screen.getByTestId('event-package-card-detail-scroll').className).toContain('[scrollbar-gutter:stable]')
     await user.type(screen.getByLabelText('事件类型名'), '伏笔回收')
     await user.click(screen.getByRole('button', { name: '保存' }))
 

@@ -40,6 +40,29 @@ describe('useAgentEventStream', () => {
     expect(readMessages().find((message) => message.name === 'execute')?.result).toBeUndefined()
   })
 
+  it('工具先按 index 创建后仍能用后续 id/index 事件完成同一卡片', async () => {
+    let agent: ReturnType<typeof useAgentEventStream> | undefined
+    render(<AgentStreamHarness onChange={(value) => { agent = value }} />)
+    await waitFor(() => expect(agent).toBeDefined())
+
+    await act(async () => {
+      await agent?.consumeAgentStream(sseStream([
+        ['tool_call', { index: 0, name: 'execute', args: '' }],
+        ['tool_args_delta', { id: 'call-execute', index: 0, name: 'execute', delta: '{"command":"pwd"}' }],
+        ['tool_result', { id: 'call-execute', index: 0, name: 'execute', content: 'command done' }],
+      ]))
+    })
+
+    const executeMessages = readMessages().filter((message) => message.name === 'execute')
+    expect(executeMessages).toHaveLength(1)
+    expect(executeMessages[0]).toMatchObject({
+      args: '{"command":"pwd"}',
+      status: 'success',
+      result: 'command done',
+      streaming: false,
+    })
+  })
+
   it('正常结束时将未收到 tool_result 的工具卡片收敛为成功态', async () => {
     let agent: ReturnType<typeof useAgentEventStream> | undefined
     render(<AgentStreamHarness onChange={(value) => { agent = value }} />)

@@ -89,6 +89,8 @@ const settingPanel = {
   'settingPanel.eventSystemDirectory': '事件系统',
   'settingPanel.ruleSystemDirectory': '数值与TRPG系统',
   'settingPanel.openingSelectorDirectory': '开局选择器',
+  'settingPanel.directory.expandAll': '展开全部目录',
+  'settingPanel.directory.collapseAll': '折叠全部目录',
   'settingPanel.presetKind.teller': '叙事风格',
   'settingPanel.presetKind.event': '事件系统',
   'settingPanel.presetKind.rule': '数值规则',

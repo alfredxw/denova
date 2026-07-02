@@ -141,6 +141,55 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	}
 }
 
+func TestHistoryNormalizesRunningToolAfterSameRunTokenUsage(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID:      "call-execute",
+		Role:    "tool_call",
+		Name:    "execute",
+		Content: "execute",
+		Status:  "running",
+		RunID:   "run-1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID:      "run-2",
+		Role:    "tool_call",
+		Name:    "execute",
+		Content: "execute",
+		Status:  "running",
+		RunID:   "run-2",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID:     "run-1",
+		Role:   "token_usage",
+		Name:   "token_usage",
+		RunID:  "run-1",
+		Status: "success",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	history := sess.History()
+	if history[0].Status != "success" {
+		t.Fatalf("same-run completed tool should be shown as success: %#v", history[0])
+	}
+	if history[1].Status != "running" {
+		t.Fatalf("different run without token_usage should stay running: %#v", history[1])
+	}
+}
+
 func TestSubAgentAssistantDisplayChunksPersistOutsideEffectiveContext(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

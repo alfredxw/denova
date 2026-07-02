@@ -89,6 +89,8 @@ const settingPanel = {
   'settingPanel.eventSystemDirectory': 'Event Systems',
   'settingPanel.ruleSystemDirectory': 'Rule Systems',
   'settingPanel.openingSelectorDirectory': 'Opening Selectors',
+  'settingPanel.directory.expandAll': 'Expand all directories',
+  'settingPanel.directory.collapseAll': 'Collapse all directories',
   'settingPanel.presetKind.teller': 'Narrative Styles',
   'settingPanel.presetKind.event': 'Event Systems',
   'settingPanel.presetKind.rule': 'Rule Systems',
