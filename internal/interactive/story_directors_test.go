@@ -2,7 +2,9 @@ package interactive
 
 import (
 	"errors"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
@@ -14,6 +16,9 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	}
 	if len(directors) == 0 || directors[0].ID != DefaultStoryDirectorID || directors[0].Custom {
 		t.Fatalf("default story director should be materialized first: %#v", directors)
+	}
+	if directors[0].ModuleRefs.NarrativeStyleDisabled || directors[0].ModuleRefs.EventSystemDisabled || directors[0].ModuleRefs.RuleSystemDisabled || directors[0].ModuleRefs.OpeningSelectorDisabled || directors[0].ModuleRefs.ImagePresetDisabled {
+		t.Fatalf("default story director modules should start enabled: %#v", directors[0].ModuleRefs)
 	}
 
 	created, err := library.Create(StoryDirector{
@@ -51,6 +56,9 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if !created.Custom || created.Strategy.RandomEventRate != 1 {
 		t.Fatalf("custom director should be marked and random rate clamped: %#v", created)
 	}
+	if created.ModuleRefs.EventSystemDisabled || created.ModuleRefs.RuleSystemDisabled || created.ModuleRefs.OpeningSelectorDisabled {
+		t.Fatalf("legacy-style directors without disabled refs should keep modules enabled: %#v", created.ModuleRefs)
+	}
 	if len(created.StatSystem.Attributes) != 1 || created.StatSystem.Attributes[0].Visibility != "hidden" {
 		t.Fatalf("attributes should be validated and preserve visibility: %#v", created.StatSystem.Attributes)
 	}
@@ -81,6 +89,46 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	}
 	if got.Name != updated.Name {
 		t.Fatalf("stale update should not overwrite story director: %#v", got)
+	}
+}
+
+func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) {
+	longPrompt := "  " + strings.Repeat("策略", 3000)
+	director := normalizeStoryDirector(StoryDirector{
+		ID:   "prompt-director",
+		Name: "提示导演",
+		Strategy: StoryDirectorStrategy{
+			Enabled:        true,
+			PromptMarkdown: longPrompt,
+		},
+	})
+	if director.Strategy.PromptMarkdown == "" {
+		t.Fatalf("prompt markdown should be preserved")
+	}
+	if strings.HasPrefix(director.Strategy.PromptMarkdown, " ") {
+		t.Fatalf("prompt markdown should be trimmed: %q", director.Strategy.PromptMarkdown[:8])
+	}
+	if len(director.Strategy.PromptMarkdown) > MaxStoryDirectorStrategyPromptBytes {
+		t.Fatalf("prompt markdown should be bounded, bytes=%d", len(director.Strategy.PromptMarkdown))
+	}
+	if !utf8.ValidString(director.Strategy.PromptMarkdown) {
+		t.Fatalf("prompt markdown should remain valid UTF-8")
+	}
+	if got := StoryDirectorStrategyPromptMarkdown(director); got != director.Strategy.PromptMarkdown {
+		t.Fatalf("strategy prompt helper mismatch: %q vs %q", got, director.Strategy.PromptMarkdown)
+	}
+	if DefaultStoryDirector().Strategy.PromptMarkdown != "" {
+		t.Fatalf("default story director should not set a custom prompt")
+	}
+	ruleSummary := StoryDirectorRuleSummary(director, 8*1024)
+	planningSummary := StoryDirectorPlanningSummary(director, 128*1024)
+	for name, summary := range map[string]string{"rule": ruleSummary, "planning": planningSummary} {
+		if strings.Contains(summary, "prompt_markdown") || strings.Contains(summary, "策略策略策略") {
+			t.Fatalf("%s summary should keep markdown prompt out of structured summary:\n%s", name, summary)
+		}
+		if !strings.Contains(summary, `"strategy"`) || !strings.Contains(summary, `"mainline_strength"`) {
+			t.Fatalf("%s summary should retain structured strategy fields:\n%s", name, summary)
+		}
 	}
 }
 

@@ -96,10 +96,15 @@ export interface StoryDirector {
 
 export interface StoryDirectorModuleRefs {
   narrative_style_id?: string
+  narrative_style_disabled?: boolean
   event_system_id?: string
+  event_system_disabled?: boolean
   rule_system_id?: string
+  rule_system_disabled?: boolean
   opening_selector_id?: string
+  opening_selector_disabled?: boolean
   image_preset_id?: string
+  image_preset_disabled?: boolean
 }
 
 export interface StoryDirectorModuleWarning {
@@ -174,6 +179,7 @@ export interface StoryDirectorStrategy {
   failure_policy?: string
   pacing_curve?: string
   random_event_rate?: number
+  prompt_markdown?: string
 }
 
 export interface StoryDirectorEventSystem {

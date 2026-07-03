@@ -109,6 +109,52 @@ func TestDirectorStateContextSummaryIncludesEventCardMarkdown(t *testing.T) {
 	}
 }
 
+func TestDirectorStateInteractiveContextSummaryOmitsEventCardQueue(t *testing.T) {
+	state := DefaultDirectorState()
+	state.MainArc = "外门逆袭"
+	state.StagePlan = "下一阶段制造公开压力，并让玩家行动决定是否正面迎击。"
+	state.BeatQueue = []DirectorBeat{{
+		ID:       "beat_trial_pressure",
+		Summary:  "公开压力升高",
+		Pressure: "同门质疑",
+		Payoff:   "玩家可以选择反证、迂回或调查。",
+		Status:   "planned",
+	}}
+	state.Foreshadowing = []DirectorThread{{
+		ID:      "thread_scroll",
+		Title:   "残卷线索",
+		Status:  "open",
+		Summary: "残卷来源尚未公开。",
+	}}
+	state.EventQueue = []DirectorEvent{{
+		ID:            "academy_trial",
+		Name:          "外门考核打脸",
+		Category:      "学院",
+		Status:        "available",
+		Enabled:       true,
+		Summary:       "外门考核压力",
+		PublicSummary: "外门考核压力",
+		Template: "## 触发场景\n主角在外门考核被同门质疑。\n\n" +
+			"## 背景融合方式\n绑定外门名额、执事偏见和残卷线索。\n\n" +
+			"## 事件回收 / 后果\n考核结束后以榜单和戒律回收。",
+	}}
+
+	summary := DirectorStateInteractiveContextSummary(state, "main", 2048)
+	for _, want := range []string{"外门逆袭", "公开压力", "同门质疑", "残卷线索"} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("interactive director summary should include translated plan %q:\n%s", want, summary)
+		}
+	}
+	for _, forbidden := range []string{"事件 1", "外门考核打脸", "事件卡", "触发场景", "背景融合方式", "事件回收"} {
+		if strings.Contains(summary, forbidden) {
+			t.Fatalf("interactive director summary should not expose raw event cards %q:\n%s", forbidden, summary)
+		}
+	}
+	if len([]byte(summary)) > 2048 {
+		t.Fatalf("interactive director summary should stay bounded, got %d bytes", len([]byte(summary)))
+	}
+}
+
 func TestAppendTurnWithBriefAutoUpdatesDirectorState(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{

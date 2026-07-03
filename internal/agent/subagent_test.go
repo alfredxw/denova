@@ -135,9 +135,6 @@ func TestBuildSubAgentInstructionInheritsInteractiveStoryBoundary(t *testing.T) 
 			t.Fatalf("interactive subagent instruction missing %q:\n%s", required, instruction)
 		}
 	}
-	if strings.Contains(instruction, "<NARRATIVE>") {
-		t.Fatalf("interactive subagent instruction should not require narrative XML wrapper:\n%s", instruction)
-	}
 }
 
 func TestBuildDeepAgentCanDisableGeneralSubAgent(t *testing.T) {

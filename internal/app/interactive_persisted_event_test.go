@@ -18,12 +18,20 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
-	if err := conversation.AppendAssistantWithThinking(`<NARRATIVE>
-雾气在门外散开。
-</NARRATIVE>
-<STATE_DELTA>
-{"ops":[{"op":"merge","path":"scene","value":{"location":"旧门外"}}]}
-</STATE_DELTA>`, "先确认场景。"); err != nil {
+	if err := conversation.AppendAssistantWithThinking("雾气在门外散开。", "先确认场景。"); err != nil {
+		t.Fatal(err)
+	}
+	turn, _, ok := conversation.LastTurnForState()
+	if !ok {
+		t.Fatal("expected last turn")
+	}
+	if _, err := store.AppendStateDelta(story.ID, interactive.AppendStateDeltaRequest{
+		ParentID: turn.ID,
+		BranchID: turn.BranchID,
+		Ops: []interactive.StateOp{
+			{Op: "merge", Path: "scene", Value: map[string]any{"location": "旧门外"}},
+		},
+	}); err != nil {
 		t.Fatal(err)
 	}
 

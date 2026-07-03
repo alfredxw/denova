@@ -35,8 +35,11 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
   const [openingRollError, setOpeningRollError] = useState('')
   const defaultDirector = selectedDirectorId || storyDirectors[0]?.id || 'default'
   const selectedDirector = storyDirectors.find((director) => director.id === defaultDirector) || storyDirectors[0] || null
-  const defaultTeller = selectedTellerId || selectedDirector?.module_refs?.narrative_style_id || tellers[0]?.id || 'classic'
-  const openingPools = selectedDirector?.opening_selector?.trait_pools || []
+  const directorNarrativeStyleEnabled = selectedDirector?.module_refs?.narrative_style_disabled !== true
+  const directorImagePresetEnabled = selectedDirector?.module_refs?.image_preset_disabled !== true
+  const directorOpeningEnabled = selectedDirector?.module_refs?.opening_selector_disabled !== true && selectedDirector?.opening_selector?.enabled !== false
+  const defaultTeller = selectedTellerId || (directorNarrativeStyleEnabled ? selectedDirector?.module_refs?.narrative_style_id : '') || tellers[0]?.id || 'classic'
+  const openingPools = directorOpeningEnabled ? selectedDirector?.opening_selector?.trait_pools || [] : []
   const sidebar = layout === 'sidebar'
   const suggestedTitle = defaultStoryTitle(stories, t)
   const selectedStory = stories.find((story) => story.id === currentStoryId) || null
@@ -57,7 +60,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
   }
 
   const rollOpening = async () => {
-    if (openingRolling) return
+    if (openingRolling || !directorOpeningEnabled) return
     setOpeningRolling(true)
     setOpeningRollError('')
     try {
@@ -80,7 +83,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
       image_settings: {
         mode: 'manual',
         interval_turns: 3,
-        preset_id: selectedDirector?.module_refs?.image_preset_id || 'game-cg',
+        preset_id: directorImagePresetEnabled ? selectedDirector?.module_refs?.image_preset_id || 'game-cg' : 'game-cg',
       },
       director_state: openingRoll?.director_state,
       initial_state_ops: openingRoll?.state_ops,
@@ -180,7 +183,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
         const nextDirectorId = selectedDirectorId || storyDirectors[0]?.id || 'default'
         const nextDirector = storyDirectors.find((director) => director.id === nextDirectorId) || storyDirectors[0] || null
         setSelectedDirectorId(nextDirectorId)
-        setSelectedTellerId((current) => current || nextDirector?.module_refs?.narrative_style_id || tellers[0]?.id || 'classic')
+        setSelectedTellerId((current) => current || (nextDirector?.module_refs?.narrative_style_disabled === true ? '' : nextDirector?.module_refs?.narrative_style_id) || tellers[0]?.id || 'classic')
       }}
     >
       <PopoverTrigger asChild>
@@ -208,7 +211,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
               const nextDirectorId = event.target.value
               const nextDirector = storyDirectors.find((director) => director.id === nextDirectorId) || null
               setSelectedDirectorId(nextDirectorId)
-              if (nextDirector?.module_refs?.narrative_style_id) setSelectedTellerId(nextDirector.module_refs.narrative_style_id)
+              if (nextDirector?.module_refs?.narrative_style_disabled !== true && nextDirector?.module_refs?.narrative_style_id) setSelectedTellerId(nextDirector.module_refs.narrative_style_id)
               setOpeningRoll(null)
               setOpeningSelectedTraitIds([])
             }}>
@@ -228,7 +231,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
               <span className="truncate">{t('storyPicker.openingBuilder.title')}</span>
             </div>
-            <Button type="button" variant="outline" size="xs" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)]" disabled={openingRolling} onClick={() => void rollOpening()}>
+            <Button type="button" variant="outline" size="xs" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)]" disabled={openingRolling || !directorOpeningEnabled} onClick={() => void rollOpening()}>
               <RefreshCw className={`h-3 w-3 ${openingRolling ? 'animate-spin' : ''}`} />
               {openingRoll ? t('storyPicker.openingBuilder.reroll') : openingSelectedTraitIds.length ? t('storyPicker.openingBuilder.applySelection') : t('storyPicker.openingBuilder.roll')}
             </Button>
@@ -273,8 +276,10 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
 	              </div>
 	              <div className="text-[11px] text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.ops', { count: openingStateOps.length })}</div>
             </div>
-          ) : (
+          ) : directorOpeningEnabled ? (
             <div className="mt-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.empty')}</div>
+          ) : (
+            <div className="mt-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.disabled')}</div>
           )}
           {openingSelectedTraitIds.length ? <div className="mt-2 text-[11px] text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.selected', { count: openingSelectedTraitIds.length })}</div> : null}
         </div>

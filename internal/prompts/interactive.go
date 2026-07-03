@@ -18,16 +18,17 @@ type InteractiveStorySystemInstructionInput struct {
 }
 
 type InteractiveStoryPromptInput struct {
-	Title                string
-	Origin               string
-	StoryTellerID        string
-	StoryDirectorID      string
-	BranchID             string
-	ReplyTargetChars     int
-	LongTermMemory       string
-	DirectorStateSummary string
-	StoryDirectorRules   string
-	PreviousTurnsSummary string
+	Title                       string
+	Origin                      string
+	StoryTellerID               string
+	StoryDirectorID             string
+	BranchID                    string
+	ReplyTargetChars            int
+	LongTermMemory              string
+	DirectorStateSummary        string
+	StoryDirectorRules          string
+	StoryDirectorStrategyPrompt string
+	PreviousTurnsSummary        string
 }
 
 type InteractiveStatePromptInput struct {
@@ -45,17 +46,18 @@ type InteractiveStatePromptInput struct {
 }
 
 type InteractiveDirectorPromptInput struct {
-	Title                string
-	Origin               string
-	StoryTellerID        string
-	StoryDirectorID      string
-	BranchID             string
-	DirectorStateJSON    string
-	TurnAuditJSON        string
-	TurnHistory          string
-	StoryMemorySummary   string
-	StoryDirectorPlan    string
-	DirectorEventCatalog string
+	Title                       string
+	Origin                      string
+	StoryTellerID               string
+	StoryDirectorID             string
+	BranchID                    string
+	DirectorStateJSON           string
+	TurnAuditJSON               string
+	TurnHistory                 string
+	StoryMemorySummary          string
+	StoryDirectorPlan           string
+	StoryDirectorStrategyPrompt string
+	DirectorEventCatalog        string
 }
 
 func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstructionInput) string {
@@ -83,7 +85,7 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 	sb.WriteString("## 输出协议\n")
 	sb.WriteString("必须只输出本回合可展示在故事舞台上的故事正文。\n")
 	sb.WriteString("- 正文只写场景、动作、对白和后果；不要输出计划、解释、工具说明、Markdown 标题、XML 包装或状态 JSON。\n")
-	sb.WriteString("- 不要输出 <HOT_STATE>、<STATE_DELTA> 或任何 JSON；正式状态和快捷选择由后台独立生成。\n")
+	sb.WriteString("- 不要输出隐藏状态块、快捷选择块、结构化补丁或任何 JSON；正式状态和快捷选择由后台独立生成。\n")
 	if ws := strings.TrimSpace(in.Workspace); ws != "" {
 		sb.WriteString("\n## 作品工作目录\n")
 		sb.WriteString(ws)
@@ -108,7 +110,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 长期记忆召回使用 list_interactive_memories 先检索当前分支记忆索引，再用 read_interactive_memories 读取关键记忆正文；归档记忆和其他分支记忆不可用。\n")
 	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 生成本回合 TurnBrief → 如有数值/骰子/资源/关系/终局检定，调用 prepare_interactive_turn 执行固定规则结算 → 基于 RuleResolution 和导演规则裁定后果 → 输出可展示的故事正文。\n")
 	sb.WriteString("- prepare_interactive_turn 不替你做语义理解、文学判断或事件编排；你必须先自行判断用户行动、事件意图、压力、代价和禁忌，再只把需要固定结算的 rule_checks 交给工具。\n")
-	sb.WriteString("- 如果后台导演状态摘要中存在事件卡或事件 template，TurnBrief.event_intents 优先引用对应事件卡 id、type_name/name 或明确事件类型；事件只能顺着用户行动、当前背景和已读设定自然发生，不能为了触发事件而生硬改写场景。\n")
+	sb.WriteString("- 后台导演状态摘要是导演已消化后的当前计划，不是事件系统清单；TurnBrief.event_intents 只记录本回合自然形成或推进的叙事意图，不要为了引用事件 ID 或事件类型而生硬触发事件。\n")
 	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和历史上下文继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
 	sb.WriteString("## 互动主持人原则\n")
 	sb.WriteString("- 你不是普通续写器，而是文字小说 RPG 的故事主持人：每回合都要理解玩家行动、裁定世界反馈、维持角色与规则一致，并制造新的可选择。\n")
@@ -140,6 +142,9 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	}
 	if strings.TrimSpace(in.StoryDirectorRules) != "" {
 		writeBlock(&sb, "故事导演规则清单（source: StoryDirector, bounded）", in.StoryDirectorRules)
+	}
+	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {
+		writeBlock(&sb, "故事导演 Markdown 策略提示（source: StoryDirector.strategy.prompt_markdown, limit: 4000 bytes）", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))
 	}
 	if strings.TrimSpace(in.PreviousTurnsSummary) != "" {
 		writeBlock(&sb, "较早剧情压缩记忆", in.PreviousTurnsSummary)
@@ -270,9 +275,20 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	writeBlock(&sb, "近期剧情历史（source: current branch turns, bounded）", in.TurnHistory)
 	writeBlock(&sb, "当前分支故事记忆摘要（source: story memory, bounded）", in.StoryMemorySummary)
 	writeBlock(&sb, "故事导演规划配置（source: StoryDirector, bounded）", in.StoryDirectorPlan)
+	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {
+		writeBlock(&sb, "故事导演 Markdown 策略提示（source: StoryDirector.strategy.prompt_markdown, limit: 4000 bytes）", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))
+	}
 	writeBlock(&sb, "可用事件类型目录（source: built-in + story director, bounded）", in.DirectorEventCatalog)
 	sb.WriteString("\n只输出 JSON object，不要输出 Markdown、解释或代码块。\n")
 	return sb.String()
+}
+
+func strategyPromptWithPriorityNote(prompt string) string {
+	prompt = strings.TrimSpace(prompt)
+	if prompt == "" {
+		return ""
+	}
+	return "【优先级】结构化导演策略、工具权限、输出协议、RuleResolution、上下文上限和安全边界优先；本 Markdown 只用于补充导演偏好、禁忌、节奏和调度说明。\n\n" + prompt
 }
 
 func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) string {

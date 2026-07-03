@@ -104,3 +104,79 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 		t.Fatalf("missing module should produce warning snapshot: %#v", fallback.ResolvedSnapshot)
 	}
 }
+
+func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
+	novaDir := t.TempDir()
+	library := NewStoryDirectorLibrary(novaDir)
+
+	director, err := library.Create(StoryDirector{
+		ID:   "detached",
+		Name: "可关闭模块导演",
+		ModuleRefs: StoryDirectorModuleRefs{
+			NarrativeStyleID:        "missing-style",
+			NarrativeStyleDisabled:  true,
+			EventSystemID:           "missing-events",
+			EventSystemDisabled:     true,
+			RuleSystemID:            "missing-rules",
+			RuleSystemDisabled:      true,
+			OpeningSelectorID:       "missing-opening",
+			OpeningSelectorDisabled: true,
+			ImagePresetID:           "missing-image",
+			ImagePresetDisabled:     true,
+		},
+		Strategy: StoryDirectorStrategy{Enabled: true},
+		ResolvedSnapshot: StoryDirectorResolvedSnapshot{
+			EventSystem: StoryDirectorEventSystem{CustomEvents: []DirectorEvent{{
+				ID:      "snapshot-event",
+				Name:    "旧快照事件",
+				Enabled: true,
+			}}},
+			StatSystem: StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{{
+				ID:         "snapshot-stat",
+				Path:       "resources.snapshot",
+				Name:       "旧快照属性",
+				Visibility: "visible",
+			}}},
+			TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
+				ID:         "snapshot-rule",
+				Label:      "旧快照规则",
+				Kind:       "dice",
+				Mode:       "d20_dc",
+				Dice:       "1d20",
+				Difficulty: 10,
+			}}},
+			OpeningSelector: StoryDirectorOpeningSelector{
+				Enabled: true,
+				InitialStateOps: []StateOp{{
+					Op:    "set",
+					Path:  "flags.snapshot",
+					Value: true,
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create detached director failed: %v", err)
+	}
+	if !director.ModuleRefs.EventSystemDisabled || director.ModuleRefs.EventSystemID != "missing-events" {
+		t.Fatalf("disabled event ref should be preserved: %#v", director.ModuleRefs)
+	}
+	if len(director.ResolvedSnapshot.Warnings) != 0 || director.ResolvedSnapshot.Status != "ready" {
+		t.Fatalf("disabled missing modules should not warn: %#v", director.ResolvedSnapshot)
+	}
+	if len(director.EventSystem.CustomEvents) != 0 || len(director.EventSystem.EventPackages) != 0 {
+		t.Fatalf("disabled event system should stay empty, got %#v", director.EventSystem)
+	}
+	if len(director.StatSystem.Attributes) != 0 || len(director.TRPGSystem.RuleTemplates) != 0 {
+		t.Fatalf("disabled rule system should not use defaults or snapshot, got stats=%#v trpg=%#v", director.StatSystem, director.TRPGSystem)
+	}
+	if director.OpeningSelector.Enabled || len(director.OpeningSelector.InitialStateOps) != 0 || len(director.OpeningSelector.TraitPools) != 0 {
+		t.Fatalf("disabled opening selector should stay off, got %#v", director.OpeningSelector)
+	}
+	if len(StoryDirectorInitialStateOps(director)) != 0 {
+		t.Fatalf("disabled rule/opening modules should not generate initial state ops")
+	}
+	if events := DirectorEventCatalogFromStoryDirector(director); len(events) != 0 {
+		t.Fatalf("disabled event system should not expose default event catalog: %#v", events)
+	}
+}

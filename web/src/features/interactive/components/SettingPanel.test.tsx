@@ -270,6 +270,93 @@ describe('SettingPanel', () => {
     expect(payload.event_system?.event_packages?.[0]?.events?.[0]?.type_name).toBe('伏笔回收')
   })
 
+  it('saves disabled story director module switches without clearing selected refs', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    const eventSwitch = screen.getByRole('switch', { name: '停用事件系统模块' })
+    expect(eventSwitch).toBeChecked()
+    await user.click(eventSwitch)
+    expect(screen.getByRole('switch', { name: '启用事件系统模块' })).not.toBeChecked()
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    expect(payload.module_refs).toMatchObject({
+      event_system_id: 'default',
+      event_system_disabled: true,
+    })
+  })
+
+  it('uses localized enum controls for story director strategy values', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    expect(screen.getByText('平衡牵引')).toBeInTheDocument()
+    expect(screen.getByText('在自由行动和长期主线之间保持平衡，适合作为通用默认。')).toBeInTheDocument()
+    expect(screen.getByText('可逆失败')).toBeInTheDocument()
+    expect(screen.getByText('中等扰动')).toBeInTheDocument()
+    expect(screen.queryByText('balanced')).not.toBeInTheDocument()
+
+    const mainlineField = screen.getByText('主线强度').closest('label') as HTMLElement
+    await user.click(within(mainlineField).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /强主线/ }))
+
+    const failureField = screen.getByText('失败策略').closest('label') as HTMLElement
+    await user.click(within(failureField).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /失败前进/ }))
+
+    const pacingField = screen.getByText('节奏曲线').closest('label') as HTMLElement
+    await user.click(within(pacingField).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /波峰波谷/ }))
+
+    const randomField = screen.getByText('随机事件率').closest('label') as HTMLElement
+    await user.click(within(randomField).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /高扰动/ }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    expect(payload.strategy).toMatchObject({
+      mainline_strength: 'strong_arc',
+      failure_policy: 'fail_forward',
+      pacing_curve: 'wave',
+      random_event_rate: 0.3,
+    })
+  })
+
+  it('saves advanced Markdown strategy prompt for story directors', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await user.click(screen.getByRole('button', { name: /高级 Markdown 策略提示/ }))
+    const prompt = '- 避免连续两回合使用同类型突发事件。\n- 伏笔回收前至少给一次可感知征兆。'
+    fireEvent.change(screen.getByPlaceholderText(/优先制造可逆但有代价的选择/), { target: { value: prompt } })
+    expect(screen.getAllByText('已启用自定义策略提示').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    expect(payload.strategy?.prompt_markdown).toBe(prompt)
+  })
+
+  it('blocks saving oversized story director Markdown strategy prompts', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await user.click(screen.getByRole('button', { name: /高级 Markdown 策略提示/ }))
+    fireEvent.change(screen.getByPlaceholderText(/优先制造可逆但有代价的选择/), { target: { value: 'a'.repeat(4001) } })
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeDisabled())
+    expect(screen.getByText('策略提示已超过 4000 bytes（当前 4001 bytes），请缩短后再保存。')).toBeInTheDocument()
+    expect(createStoryDirector).not.toHaveBeenCalled()
+  })
+
   it('blocks saving and preset navigation while JSON view is invalid', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)

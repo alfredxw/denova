@@ -2,13 +2,111 @@
 set -e
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BACKEND_PORT="${DENOVA_BACKEND_PORT:-${NOVA_BACKEND_PORT:-8080}}"
-FRONTEND_PORT="${DENOVA_FRONTEND_PORT:-${NOVA_FRONTEND_PORT:-5173}}"
-FRONTEND_URL="http://localhost:${FRONTEND_PORT}"
-BACKEND_URL="http://localhost:${BACKEND_PORT}"
 FRONTEND_BIND_HOST="${DENOVA_FRONTEND_HOST:-${NOVA_FRONTEND_HOST:-}}"
 
 cd "${ROOT_DIR}"
+
+read_config_value() {
+    local path="$1"
+    local key="$2"
+    if [ ! -f "${path}" ]; then
+        return
+    fi
+    awk -v key="${key}" '
+        /^[[:space:]]*#/ { next }
+        $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+            sub(/^[^=]*=/, "", $0)
+            sub(/[[:space:]]*#.*/, "", $0)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
+            gsub(/^"|"$/, "", $0)
+            print $0
+            exit
+        }
+    ' "${path}"
+}
+
+is_valid_port() {
+    [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
+}
+
+expand_path() {
+    local path="$1"
+    case "${path}" in
+      "~")
+        echo "${HOME:-~}"
+        ;;
+      "~/"*)
+        echo "${HOME:-~}/${path#~/}"
+        ;;
+      *)
+        echo "${path}"
+        ;;
+    esac
+}
+
+default_data_dir() {
+    if [ -d ".nova" ] && [ ! -d ".denova" ]; then
+        echo "./.nova"
+        return
+    fi
+    echo "./.denova"
+}
+
+startup_data_dir() {
+    if [ -n "${DENOVA_DIR:-}" ]; then
+        expand_path "${DENOVA_DIR}"
+        return
+    fi
+    if [ -n "${NOVA_DIR:-}" ]; then
+        expand_path "${NOVA_DIR}"
+        return
+    fi
+
+    local configured
+    configured="$(read_config_value "config.toml" "denova_dir")"
+    if [ -z "${configured}" ]; then
+        configured="$(read_config_value "config.toml" "nova_dir")"
+    fi
+    if [ -n "${configured}" ]; then
+        expand_path "${configured}"
+        return
+    fi
+
+    default_data_dir
+}
+
+resolve_port() {
+    local current_env_value="$1"
+    local legacy_env_value="$2"
+    local key="$3"
+    local fallback="$4"
+    local port="${fallback}"
+    local value
+
+    value="$(read_config_value "config.toml" "${key}")"
+    if is_valid_port "${value}"; then
+        port="${value}"
+    fi
+
+    value="$(read_config_value "$(startup_data_dir)/config.toml" "${key}")"
+    if is_valid_port "${value}"; then
+        port="${value}"
+    fi
+
+    if is_valid_port "${legacy_env_value}"; then
+        port="${legacy_env_value}"
+    fi
+    if is_valid_port "${current_env_value}"; then
+        port="${current_env_value}"
+    fi
+
+    echo "${port}"
+}
+
+BACKEND_PORT="$(resolve_port "${DENOVA_BACKEND_PORT:-}" "${NOVA_BACKEND_PORT:-}" "backend_port" "8080")"
+FRONTEND_PORT="$(resolve_port "${DENOVA_FRONTEND_PORT:-}" "${NOVA_FRONTEND_PORT:-}" "frontend_port" "5173")"
+FRONTEND_URL="http://localhost:${FRONTEND_PORT}"
+BACKEND_URL="http://localhost:${BACKEND_PORT}"
 
 MODE="all"  # all | fe | be
 if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
@@ -110,6 +208,8 @@ case "$MODE" in
     fi
 
     echo "  按 Ctrl+C 停止服务"
+    export DENOVA_BACKEND_PORT="${BACKEND_PORT}"
+    export DENOVA_FRONTEND_PORT="${FRONTEND_PORT}"
     if [ -n "${FRONTEND_BIND_HOST}" ]; then
         cd web && exec pnpm dev --host "${FRONTEND_BIND_HOST}" --port "${FRONTEND_PORT}"
     fi
@@ -125,7 +225,7 @@ case "$MODE" in
     go mod tidy
 
     echo "  按 Ctrl+C 停止服务"
-    exec go run ./cmd/denova --port "${BACKEND_PORT}" --dev-mode --no-open
+    exec go run ./cmd/denova --dev-mode --no-open
     ;;
 
   all)
@@ -151,7 +251,7 @@ case "$MODE" in
     echo "  按 Ctrl+C 停止服务"
     echo ""
 
-    exec go run ./cmd/denova --port "${BACKEND_PORT}" --dev --dev-mode --no-open
+    exec go run ./cmd/denova --dev --dev-mode --no-open
     ;;
 
   *)

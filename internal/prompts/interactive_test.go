@@ -59,30 +59,33 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 				t.Fatalf("%s prompt should contain direct narrative contract %q:\n%s", name, required, output)
 			}
 		}
-		if strings.Contains(output, "<NARRATIVE>") {
-			t.Fatalf("%s prompt should not require narrative XML wrapper:\n%s", name, output)
-		}
 	}
-	for _, hidden := range []string{"<HOT_STATE>", "<STATE_DELTA>"} {
-		if !strings.Contains(system, hidden) {
-			t.Fatalf("system prompt should still forbid hidden state output %q:\n%s", hidden, system)
-		}
-	}
-	for _, want := range []string{"event_intents", "事件卡", "type_name"} {
+	for _, want := range []string{"event_intents", "自然形成", "不要为了引用事件 ID"} {
 		if !strings.Contains(system, want) {
-			t.Fatalf("system prompt should guide event card intents %q:\n%s", want, system)
+			t.Fatalf("system prompt should keep event intents organic %q:\n%s", want, system)
+		}
+	}
+	for _, forbidden := range []string{"优先引用对应事件卡", "type_name/name"} {
+		if strings.Contains(system, forbidden) {
+			t.Fatalf("system prompt should not ask prose agent to trigger raw event cards %q:\n%s", forbidden, system)
 		}
 	}
 }
 
 func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorState(t *testing.T) {
 	output := InteractiveStoryRuntimeContext(InteractiveStoryPromptInput{
-		ReplyTargetChars:     800,
-		DirectorStateSummary: "- 长期主线: 外门逆袭\n- 事件 1: 学院比拼",
+		ReplyTargetChars:            800,
+		DirectorStateSummary:        "- 长期主线: 外门逆袭\n- 节拍 1: 学院比拼压力",
+		StoryDirectorStrategyPrompt: "- 避免连续两回合使用同类型突发事件。",
 	})
-	for _, want := range []string{"后台导演状态摘要", "source: DirectorState", "limit: 4096 bytes", "外门逆袭", "学院比拼"} {
+	for _, want := range []string{"后台导演状态摘要", "source: DirectorState", "limit: 4096 bytes", "外门逆袭", "学院比拼压力"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("runtime context should include %q:\n%s", want, output)
+		}
+	}
+	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "limit: 4000 bytes", "结构化导演策略", "避免连续两回合"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("runtime context should include strategy prompt %q:\n%s", want, output)
 		}
 	}
 }
@@ -90,15 +93,16 @@ func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorState(t *testing.T
 func TestInteractiveDirectorPromptOnlyPlansDirectorStatePatch(t *testing.T) {
 	system := BuildInteractiveDirectorSystemInstruction()
 	instruction := InteractiveDirectorInstruction(InteractiveDirectorPromptInput{
-		Title:                "外门逆袭",
-		Origin:               "主角被同门轻视",
-		StoryTellerID:        "classic",
-		BranchID:             "main",
-		DirectorStateJSON:    `{"main_arc":"外门逆袭"}`,
-		TurnAuditJSON:        `{"turn_brief":{"turn_goal":"公开比试"}}`,
-		TurnHistory:          "第 1 回合剧情：主角报名。",
-		StoryMemorySummary:   "主角仍被低估。",
-		DirectorEventCatalog: `[{"id":"face_slap","category":"打脸"}]`,
+		Title:                       "外门逆袭",
+		Origin:                      "主角被同门轻视",
+		StoryTellerID:               "classic",
+		BranchID:                    "main",
+		DirectorStateJSON:           `{"main_arc":"外门逆袭"}`,
+		TurnAuditJSON:               `{"turn_brief":{"turn_goal":"公开比试"}}`,
+		TurnHistory:                 "第 1 回合剧情：主角报名。",
+		StoryMemorySummary:          "主角仍被低估。",
+		StoryDirectorStrategyPrompt: "- 伏笔回收前至少给一次可感知征兆。",
+		DirectorEventCatalog:        `[{"id":"face_slap","category":"打脸"}]`,
 	})
 	for name, output := range map[string]string{"system": system, "instruction": instruction} {
 		for _, want := range []string{"DirectorState", "patch", "只输出 JSON", "不负责续写", "RuleResolution"} {
@@ -113,6 +117,11 @@ func TestInteractiveDirectorPromptOnlyPlansDirectorStatePatch(t *testing.T) {
 	for _, want := range []string{"beat_queue", "event_queue", "foreshadowing", "potential_characters", "branch_patches", "打脸", "事件卡 Markdown", "template"} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("director instruction should include %q:\n%s", want, instruction)
+		}
+	}
+	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "limit: 4000 bytes", "结构化导演策略", "伏笔回收前"} {
+		if !strings.Contains(instruction, want) {
+			t.Fatalf("director instruction should include strategy prompt %q:\n%s", want, instruction)
 		}
 	}
 }

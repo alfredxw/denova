@@ -1,15 +1,6 @@
-const NARRATIVE_START = '<NARRATIVE>'
-const NARRATIVE_END = '</NARRATIVE>'
-const THINK_START = '<think>'
-const THINK_END = '</think>'
-
-const VISIBLE_TAGS = [NARRATIVE_START, NARRATIVE_END]
-const THINK_TAGS = [THINK_START, THINK_END]
-const HIDDEN_TAG_PREFIXES = ['<hot_state', '<state_delta']
 const TAG_PREFIXES = [
-  ...VISIBLE_TAGS.map((tag) => tag.toLowerCase()),
-  ...THINK_TAGS.map((tag) => tag.toLowerCase()),
-  ...HIDDEN_TAG_PREFIXES,
+  '<think',
+  '</think',
 ]
 
 export interface NarrativeChunk {
@@ -20,26 +11,23 @@ export interface NarrativeChunk {
 }
 
 /**
- * 互动叙事流式过滤器：默认放行裸正文，隐藏思考、状态、热状态。
- * 历史或异常模型输出里的 <NARRATIVE> 包装会被兼容清洗。
+ * 互动叙事流式过滤器：默认放行裸正文，隐藏思考。
  *
  * 兼容部分 provider 模型的「思考前言无 <think> 开始标签、仅以 </think> 收尾」的输出：
  * 见到 <think> 或孤立 </think> 时，会把此前误显示的前言通过 reset 信号清除。
  */
 export function createInteractiveNarrativeFilter() {
   let buffer = ''
-  let stopped = false
   let inThink = false
   let emittedVisible = false
 
   return {
     push(chunk: string): NarrativeChunk {
-      if (!chunk || stopped) return { text: '', reset: false }
+      if (!chunk) return { text: '', reset: false }
       buffer += chunk
       return drain(false)
     },
     flush(): NarrativeChunk {
-      if (stopped) return { text: '', reset: false }
       return drain(true)
     },
   }
@@ -59,9 +47,9 @@ export function createInteractiveNarrativeFilter() {
 
     while (buffer) {
       if (inThink) {
-        const end = indexOfFold(buffer, THINK_END)
-        if (end >= 0) {
-          buffer = trimStart(buffer.slice(end + THINK_END.length))
+        const end = findTag(buffer, 'think', true)
+        if (end) {
+          buffer = trimStart(buffer.slice(end.index + end.length))
           inThink = false
           continue
         }
@@ -71,30 +59,18 @@ export function createInteractiveNarrativeFilter() {
         return { text: output, reset }
       }
 
-      if (startsWithHiddenTag(buffer)) {
-        stopped = true
-        buffer = ''
-        return { text: output, reset }
-      }
-
-      if (startsWithFold(buffer, THINK_START)) {
-        buffer = buffer.slice(THINK_START.length)
+      const thinkStart = matchTagAtStart(buffer, 'think', false)
+      if (thinkStart) {
+        buffer = buffer.slice(thinkStart.length)
         inThink = true
         requestReset()
         continue
       }
-      if (startsWithFold(buffer, THINK_END)) {
+      const thinkEnd = matchTagAtStart(buffer, 'think', true)
+      if (thinkEnd) {
         // 思考前言无 <think> 开始标签，到这里才闭合。
-        buffer = trimStart(buffer.slice(THINK_END.length))
+        buffer = trimStart(buffer.slice(thinkEnd.length))
         requestReset()
-        continue
-      }
-      if (startsWithFold(buffer, NARRATIVE_START)) {
-        buffer = trimStart(buffer.slice(NARRATIVE_START.length))
-        continue
-      }
-      if (startsWithFold(buffer, NARRATIVE_END)) {
-        buffer = trimStart(buffer.slice(NARRATIVE_END.length))
         continue
       }
 
@@ -121,46 +97,31 @@ export function createInteractiveNarrativeFilter() {
 }
 
 /**
- * 清洗已持久化的叙事正文，兜底历史脏数据（思考前言、</think>、旧 <NARRATIVE> 包装等标签残留）。
+ * 清洗已持久化的叙事正文，兜底思考前言残留。
  * 用于渲染存档 turn.narrative，与流式过滤器对齐。
  */
 export function sanitizeStoredNarrative(text: string): string {
   if (!text) return text
   let result = text
-  const open = result.search(/<\s*NARRATIVE\s*>/i)
-  if (open >= 0) {
-    // 有 <NARRATIVE> 包裹时直接取其内容，自然丢弃前面的思考前言。
-    result = result.slice(open).replace(/<\s*NARRATIVE\s*>/i, '')
-    const close = result.search(/<\s*\/\s*NARRATIVE\s*>/i)
-    if (close >= 0) result = result.slice(0, close)
-  } else {
-    // 无 <NARRATIVE>：移除配对 / 未闭合 <think>，再处理孤立 </think> 前言。
-    result = result.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
-    const close = result.search(/<\s*\/\s*think\s*>/i)
-    if (close >= 0) result = result.slice(close).replace(/<\s*\/\s*think\s*>/i, '')
-  }
-  // 截断隐藏状态块及之后的内容。
-  result = result.replace(/<\s*(hot_state|state_delta)[\s\S]*$/i, '')
-  // 清理任何残留标签。
-  result = result.replace(/<\/?\s*(think|NARRATIVE)\s*>/gi, '')
+  result = result.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '')
+  const close = result.search(/<\s*\/\s*think\s*>/i)
+  if (close >= 0) result = result.slice(close).replace(/<\s*\/\s*think\s*>/i, '')
+  result = result.replace(/<\/?\s*think\s*>/gi, '')
   return result.trim()
 }
 
 function findNextTag(value: string): number {
-  const lower = value.toLowerCase()
   let next = -1
-  for (const tag of [...VISIBLE_TAGS, ...THINK_TAGS]) {
-    const index = lower.indexOf(tag.toLowerCase())
-    if (index >= 0 && (next < 0 || index < next)) next = index
+  for (const closing of [false, true]) {
+    const match = findTag(value, 'think', closing)
+    if (match && (next < 0 || match.index < next)) next = match.index
   }
-  const hiddenIndex = findHiddenTagIndex(lower)
-  if (hiddenIndex >= 0 && (next < 0 || hiddenIndex < next)) next = hiddenIndex
   return next
 }
 
 function partialTagSuffixLength(value: string): number {
   const lowerValue = value.toLowerCase()
-  const max = Math.min(value.length, Math.max(...TAG_PREFIXES.map((tag) => tag.length)) - 1)
+  const max = Math.min(value.length, Math.max(...TAG_PREFIXES.map((tag) => tag.length)) + 4)
   for (let length = max; length > 0; length--) {
     const suffix = normalizeTagStart(lowerValue.slice(lowerValue.length - length))
     if (TAG_PREFIXES.some((tag) => tag.startsWith(suffix))) return length
@@ -168,26 +129,21 @@ function partialTagSuffixLength(value: string): number {
   return 0
 }
 
-function startsWithHiddenTag(value: string): boolean {
-  const normalized = normalizeTagStart(value.toLowerCase())
-  return HIDDEN_TAG_PREFIXES.some((tag) => normalized.startsWith(tag))
-}
-
-function findHiddenTagIndex(value: string): number {
-  const match = /<\s*(hot_state|state_delta)/i.exec(value)
-  return match?.index ?? -1
-}
-
 function normalizeTagStart(value: string): string {
-  return value.replace(/^<\s*/, '<')
+  if (!value.startsWith('<')) return value
+  return value.replace(/^<\s*\/\s*/, '</').replace(/^<\s*/, '<').replace(/\s+$/, '')
 }
 
-function startsWithFold(value: string, prefix: string): boolean {
-  return value.slice(0, prefix.length).toLowerCase() === prefix.toLowerCase()
+function matchTagAtStart(value: string, name: string, closing: boolean): { length: number } | null {
+  const slash = closing ? String.raw`\/\s*` : ''
+  const match = new RegExp(String.raw`^<\s*${slash}${name}\s*>`, 'i').exec(value)
+  return match ? { length: match[0].length } : null
 }
 
-function indexOfFold(value: string, sub: string): number {
-  return value.toLowerCase().indexOf(sub.toLowerCase())
+function findTag(value: string, name: string, closing: boolean): { index: number; length: number } | null {
+  const slash = closing ? String.raw`\/\s*` : ''
+  const match = new RegExp(String.raw`<\s*${slash}${name}\s*>`, 'i').exec(value)
+  return match ? { index: match.index, length: match[0].length } : null
 }
 
 function trimStart(value: string): string {

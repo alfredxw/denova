@@ -1,6 +1,7 @@
 package api
 
 import (
+	"denova/internal/interactive"
 	"net/http"
 	"strings"
 	"testing"
@@ -299,6 +300,68 @@ func TestInteractiveOpeningRollAndInitialStateAPI(t *testing.T) {
 	resources, _ := snapshot.State["resources"].(map[string]any)
 	if resources["hp"] != float64(18) {
 		t.Fatalf("initial state should be visible in snapshot: %#v", snapshot.State)
+	}
+}
+
+func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
+	application := newTestApplication(t)
+	if _, err := application.CreateStoryDirector(interactive.StoryDirector{
+		ID:   "detached",
+		Name: "关闭模块导演",
+		ModuleRefs: interactive.StoryDirectorModuleRefs{
+			NarrativeStyleID:        "non-classic-style",
+			NarrativeStyleDisabled:  true,
+			EventSystemID:           "default",
+			EventSystemDisabled:     true,
+			RuleSystemID:            "default",
+			RuleSystemDisabled:      true,
+			OpeningSelectorID:       "default",
+			OpeningSelectorDisabled: true,
+			ImagePresetID:           "non-default-image",
+			ImagePresetDisabled:     true,
+		},
+		Strategy: interactive.StoryDirectorStrategy{Enabled: true},
+	}); err != nil {
+		t.Fatalf("create detached story director failed: %v", err)
+	}
+	server := NewServer(application, "0")
+
+	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]any{
+		"title":             "关闭模块故事",
+		"story_director_id": "detached",
+	})
+	if createResp.Code != http.StatusOK {
+		t.Fatalf("create detached story status = %d body=%s", createResp.Code, createResp.Body.String())
+	}
+	var created struct {
+		ID              string `json:"id"`
+		StoryTellerID   string `json:"story_teller_id"`
+		StoryDirectorID string `json:"story_director_id"`
+		ImageSettings   struct {
+			PresetID string `json:"preset_id"`
+		} `json:"image_settings"`
+	}
+	decodeResponse(t, createResp.Body.Bytes(), &created)
+	if created.ID == "" || created.StoryDirectorID != "detached" {
+		t.Fatalf("created detached story mismatch: %#v", created)
+	}
+	if created.StoryTellerID != "classic" {
+		t.Fatalf("disabled narrative style should not be inherited, got %#v", created)
+	}
+	if created.ImageSettings.PresetID != "game-cg" {
+		t.Fatalf("disabled image preset should not be inherited, got %#v", created.ImageSettings)
+	}
+
+	rebuildResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/rebuild", nil)
+	if rebuildResp.Code != http.StatusOK {
+		t.Fatalf("rebuild detached director status = %d body=%s", rebuildResp.Code, rebuildResp.Body.String())
+	}
+	var rebuilt struct {
+		EventQueue []any `json:"event_queue"`
+	}
+	decodeResponse(t, rebuildResp.Body.Bytes(), &rebuilt)
+	if len(rebuilt.EventQueue) != 0 {
+		t.Fatalf("disabled event module should not refill default event queue: %#v", rebuilt.EventQueue)
 	}
 }
 

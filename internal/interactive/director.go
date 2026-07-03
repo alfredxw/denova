@@ -36,8 +36,9 @@ type UpdateDirectorStateRequest struct {
 }
 
 type RebuildDirectorStateRequest struct {
-	BranchID string `json:"branch_id,omitempty"`
-	Source   string `json:"source,omitempty"`
+	BranchID     string           `json:"branch_id,omitempty"`
+	Source       string           `json:"source,omitempty"`
+	EventCatalog *[]DirectorEvent `json:"-"`
 }
 
 type DirectorEventActionRequest struct {
@@ -97,7 +98,7 @@ func (s *Store) RebuildDirectorState(storyID string, req RebuildDirectorStateReq
 		return DirectorState{}, err
 	}
 	currentTurn := latestTurnForBranchHead(lines, branch.Head)
-	next := buildRebuiltDirectorState(meta, branchID, NormalizeDirectorState(meta.DirectorState), currentTurn)
+	next := buildRebuiltDirectorState(meta, branchID, NormalizeDirectorState(meta.DirectorState), currentTurn, req.EventCatalog)
 	summary := "已基于当前分支重建导演计划。"
 	if currentTurn != nil && strings.TrimSpace(currentTurn.User) != "" {
 		summary = "已围绕最近行动重建导演计划：" + trimBytes(currentTurn.User, 160)
@@ -410,14 +411,14 @@ func applyDirectorStatePatch(state DirectorState, req UpdateDirectorStateRequest
 	return state
 }
 
-func buildRebuiltDirectorState(meta StoryMeta, branchID string, state DirectorState, currentTurn *TurnEvent) DirectorState {
+func buildRebuiltDirectorState(meta StoryMeta, branchID string, state DirectorState, currentTurn *TurnEvent, eventCatalog *[]DirectorEvent) DirectorState {
 	state.Enabled = true
 	if strings.TrimSpace(state.MainArc) == "" {
 		state.MainArc = defaultDirectorMainArc(meta)
 	}
 	state.StagePlan = defaultDirectorStagePlan(meta, currentTurn)
 	state.BeatQueue = rebuiltDirectorBeats(currentTurn)
-	state.EventQueue = rebuiltDirectorEvents(state.EventQueue, state.ForcedEvents, state.DisabledEvents)
+	state.EventQueue = rebuiltDirectorEvents(state.EventQueue, state.ForcedEvents, state.DisabledEvents, eventCatalog)
 	if len(state.Foreshadowing) == 0 {
 		state.Foreshadowing = []DirectorThread{{
 			ID:      "thread_core_hook",
@@ -480,7 +481,7 @@ func rebuiltDirectorBeats(currentTurn *TurnEvent) []DirectorBeat {
 	}
 }
 
-func rebuiltDirectorEvents(existing []DirectorEvent, forced, disabled []string) []DirectorEvent {
+func rebuiltDirectorEvents(existing []DirectorEvent, forced, disabled []string, eventCatalog *[]DirectorEvent) []DirectorEvent {
 	events := make([]DirectorEvent, 0, maxTurnBriefListItems)
 	for _, event := range existing {
 		if stringInList(event.ID, disabled) {
@@ -494,7 +495,11 @@ func rebuiltDirectorEvents(existing []DirectorEvent, forced, disabled []string) 
 		}
 		events = upsertDirectorEvent(events, directorEventForAction(id, nil))
 	}
-	for _, event := range DefaultDirectorEventTemplates() {
+	templates := DefaultDirectorEventTemplates()
+	if eventCatalog != nil {
+		templates = *eventCatalog
+	}
+	for _, event := range templates {
 		if len(events) >= 8 {
 			break
 		}
@@ -559,7 +564,7 @@ func DirectorStateContextSummary(state DirectorState, branchID string, limitByte
 		if i >= 5 {
 			break
 		}
-		writeDirectorSummaryLine(&sb, fmt.Sprintf("节拍 %d", i+1), firstNonEmpty(beat.Summary, beat.Pressure, beat.Payoff))
+		writeDirectorSummaryLine(&sb, fmt.Sprintf("节拍 %d", i+1), directorBeatInteractiveLine(beat))
 	}
 	for i, event := range state.EventQueue {
 		if i >= 8 {
@@ -586,6 +591,93 @@ func DirectorStateContextSummary(state DirectorState, branchID string, limitByte
 	return strings.TrimSpace(trimBytes(sb.String(), limitBytes))
 }
 
+// DirectorStateInteractiveContextSummary returns the director plan visible to
+// the prose agent. Raw event-system cards stay reserved for the background
+// director so event packs act as planning material instead of a trigger list.
+func DirectorStateInteractiveContextSummary(state DirectorState, branchID string, limitBytes int) string {
+	if limitBytes <= 0 {
+		limitBytes = 4096
+	}
+	if limitBytes > 16*1024 {
+		limitBytes = 16 * 1024
+	}
+	state = NormalizeDirectorState(state)
+	var sb strings.Builder
+	writeDirectorSummaryLine(&sb, "启用", fmt.Sprintf("%t", state.Enabled))
+	writeDirectorSummaryLine(&sb, "剧透层级", state.SpoilerMode)
+	writeDirectorSummaryLine(&sb, "长期主线", state.MainArc)
+	writeDirectorSummaryLine(&sb, "阶段计划", state.StagePlan)
+	if branchID != "" && state.BranchPatches != nil {
+		writeDirectorSummaryLine(&sb, "当前分支补丁", state.BranchPatches[branchID])
+	}
+	for i, beat := range state.BeatQueue {
+		if i >= 5 {
+			break
+		}
+		writeDirectorSummaryLine(&sb, fmt.Sprintf("节拍 %d", i+1), directorBeatInteractiveLine(beat))
+	}
+	writeForcedDirectorEvents(&sb, state)
+	for i, thread := range state.Foreshadowing {
+		if i >= 6 {
+			break
+		}
+		writeDirectorSummaryLine(&sb, fmt.Sprintf("伏笔 %d", i+1), firstNonEmpty(thread.Title, thread.Summary))
+	}
+	for i, character := range state.PotentialCharacters {
+		if i >= 6 {
+			break
+		}
+		writeDirectorSummaryLine(&sb, fmt.Sprintf("潜在角色 %d", i+1), firstNonEmpty(character.Title, character.Summary))
+	}
+	return strings.TrimSpace(trimBytes(sb.String(), limitBytes))
+}
+
+func writeForcedDirectorEvents(sb *strings.Builder, state DirectorState) {
+	if len(state.ForcedEvents) == 0 {
+		return
+	}
+	for i, eventID := range normalizeStringListLimit(state.ForcedEvents, 8) {
+		if i >= 8 {
+			break
+		}
+		label := eventID
+		if event, ok := forcedDirectorEventByID(state.EventQueue, eventID); ok {
+			label = directorEventInteractiveLine(event)
+		}
+		writeDirectorSummaryLine(sb, fmt.Sprintf("强制事件 %d", i+1), label)
+	}
+}
+
+func directorBeatInteractiveLine(beat DirectorBeat) string {
+	return strings.TrimSpace(strings.Join(nonEmptyStrings([]string{
+		beat.Summary,
+		beat.Pressure,
+		beat.Payoff,
+	}), " / "))
+}
+
+func forcedDirectorEventByID(events []DirectorEvent, id string) (DirectorEvent, bool) {
+	id = strings.TrimSpace(id)
+	for _, event := range events {
+		if strings.TrimSpace(event.ID) == id {
+			return event, true
+		}
+	}
+	return DirectorEvent{}, false
+}
+
+func directorEventInteractiveLine(event DirectorEvent) string {
+	parts := []string{
+		firstNonEmpty(event.Name, event.ID),
+		event.Category,
+		firstNonEmpty(event.PublicSummary, event.Summary),
+	}
+	if event.Reward != "" || event.Cost != "" || event.PayoffTarget != "" {
+		parts = append(parts, strings.TrimSpace(strings.Join([]string{event.PayoffTarget, event.Reward, event.Cost}, " / ")))
+	}
+	return strings.TrimSpace(strings.Join(nonEmptyStrings(parts), " / "))
+}
+
 func directorEventContextLine(event DirectorEvent) string {
 	parts := []string{
 		firstNonEmpty(event.Name, event.ID),
@@ -600,6 +692,17 @@ func directorEventContextLine(event DirectorEvent) string {
 		parts = append(parts, strings.TrimSpace(strings.Join([]string{event.PayoffTarget, event.Reward, event.Cost}, " / ")))
 	}
 	return strings.TrimSpace(strings.Join(parts, " / "))
+}
+
+func nonEmptyStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func compactEventCardMarkdown(markdown string) string {

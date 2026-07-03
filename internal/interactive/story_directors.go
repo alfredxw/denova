@@ -15,8 +15,9 @@ const (
 	storyDirectorVersion   = 2
 	DefaultStoryDirectorID = "default"
 
-	maxStoryDirectorAttributes = 64
-	maxStoryDirectorRules      = 64
+	maxStoryDirectorAttributes          = 64
+	maxStoryDirectorRules               = 64
+	MaxStoryDirectorStrategyPromptBytes = maxTurnBriefTextBytes
 )
 
 var ErrStoryDirectorRevisionConflict = errors.New("故事导演已被其他操作更新，请重新加载后再保存")
@@ -52,6 +53,7 @@ type StoryDirectorStrategy struct {
 	FailurePolicy    string  `json:"failure_policy,omitempty"`
 	PacingCurve      string  `json:"pacing_curve,omitempty"`
 	RandomEventRate  float64 `json:"random_event_rate,omitempty"`
+	PromptMarkdown   string  `json:"prompt_markdown,omitempty"`
 }
 
 type StoryDirectorEventSystem struct {
@@ -550,9 +552,17 @@ func normalizeStoryDirector(director StoryDirector) StoryDirector {
 		director.ModuleRefs = DefaultStoryDirectorModuleRefs()
 	}
 	director.Strategy = normalizeStoryDirectorStrategy(director.Strategy)
-	director.EventSystem.EventPackages = normalizeTellerEventPackages(director.EventSystem.EventPackages)
+	if director.ModuleRefs.EventSystemDisabled {
+		director.EventSystem.EventPackages = normalizeTellerEventPackagesNoDefault(director.EventSystem.EventPackages)
+	} else {
+		director.EventSystem.EventPackages = normalizeTellerEventPackages(director.EventSystem.EventPackages)
+	}
 	director.EventSystem.CustomEvents = normalizeDirectorEvents(director.EventSystem.CustomEvents)
-	director.StatSystem.Attributes = normalizeStoryDirectorAttributes(director.StatSystem.Attributes)
+	if director.ModuleRefs.RuleSystemDisabled {
+		director.StatSystem.Attributes = normalizeStoryDirectorAttributesNoDefault(director.StatSystem.Attributes)
+	} else {
+		director.StatSystem.Attributes = normalizeStoryDirectorAttributes(director.StatSystem.Attributes)
+	}
 	director.TRPGSystem.RuleTemplates = normalizeRuleChecks(director.TRPGSystem.RuleTemplates)
 	director.OpeningSelector = normalizeStoryDirectorOpeningSelector(director.OpeningSelector)
 	director.ResolvedSnapshot = normalizeStoryDirectorResolvedSnapshot(director.ResolvedSnapshot)
@@ -564,6 +574,7 @@ func normalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirecto
 	strategy.MainlineStrength = normalizeOrchestrationOption(strategy.MainlineStrength, "soft_guidance")
 	strategy.FailurePolicy = normalizeOrchestrationOption(strategy.FailurePolicy, "reversible")
 	strategy.PacingCurve = normalizeOrchestrationOption(strategy.PacingCurve, "progressive")
+	strategy.PromptMarkdown = trimBytes(strategy.PromptMarkdown, MaxStoryDirectorStrategyPromptBytes)
 	if strategy.RandomEventRate < 0 {
 		strategy.RandomEventRate = 0
 	}
@@ -576,6 +587,13 @@ func normalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirecto
 func normalizeStoryDirectorAttributes(attributes []StoryDirectorAttribute) []StoryDirectorAttribute {
 	if attributes == nil {
 		return defaultStoryDirectorAttributes()
+	}
+	return normalizeStoryDirectorAttributesNoDefault(attributes)
+}
+
+func normalizeStoryDirectorAttributesNoDefault(attributes []StoryDirectorAttribute) []StoryDirectorAttribute {
+	if attributes == nil {
+		return []StoryDirectorAttribute{}
 	}
 	if len(attributes) > maxStoryDirectorAttributes {
 		attributes = attributes[:maxStoryDirectorAttributes]
@@ -672,8 +690,16 @@ func DirectorStateFromStoryDirector(director StoryDirector) DirectorState {
 	return NormalizeDirectorState(state)
 }
 
+func StoryDirectorStrategyPromptMarkdown(director StoryDirector) string {
+	director = normalizeStoryDirector(director)
+	return director.Strategy.PromptMarkdown
+}
+
 func DirectorEventCatalogFromStoryDirector(director StoryDirector) []DirectorEvent {
 	director = normalizeStoryDirector(director)
+	if !StoryDirectorEventSystemEnabled(director) {
+		return []DirectorEvent{}
+	}
 	events := DefaultDirectorEventTemplates()
 	for _, pkg := range director.EventSystem.EventPackages {
 		for _, eventCard := range pkg.Events {
@@ -718,7 +744,7 @@ func StoryDirectorRuleSummary(director StoryDirector, limitBytes int) string {
 			"name":              director.Name,
 		},
 		"limits":      map[string]int{"max_bytes": limitBytes},
-		"strategy":    director.Strategy,
+		"strategy":    storyDirectorStructuredStrategySummary(director.Strategy),
 		"stat_system": map[string]any{"attributes": attrs},
 		"trpg_system": director.TRPGSystem,
 	}
@@ -738,7 +764,7 @@ func StoryDirectorPlanningSummary(director StoryDirector, limitBytes int) string
 			"name":              director.Name,
 		},
 		"limits":       map[string]int{"max_bytes": limitBytes},
-		"strategy":     director.Strategy,
+		"strategy":     storyDirectorStructuredStrategySummary(director.Strategy),
 		"event_system": director.EventSystem,
 		"stat_system":  director.StatSystem,
 		"trpg_system":  director.TRPGSystem,
@@ -748,6 +774,24 @@ func StoryDirectorPlanningSummary(director StoryDirector, limitBytes int) string
 		return ""
 	}
 	return trimBytes(string(data), limitBytes)
+}
+
+type storyDirectorStructuredStrategy struct {
+	Enabled          bool    `json:"enabled"`
+	MainlineStrength string  `json:"mainline_strength,omitempty"`
+	FailurePolicy    string  `json:"failure_policy,omitempty"`
+	PacingCurve      string  `json:"pacing_curve,omitempty"`
+	RandomEventRate  float64 `json:"random_event_rate,omitempty"`
+}
+
+func storyDirectorStructuredStrategySummary(strategy StoryDirectorStrategy) storyDirectorStructuredStrategy {
+	return storyDirectorStructuredStrategy{
+		Enabled:          strategy.Enabled,
+		MainlineStrength: strategy.MainlineStrength,
+		FailurePolicy:    strategy.FailurePolicy,
+		PacingCurve:      strategy.PacingCurve,
+		RandomEventRate:  strategy.RandomEventRate,
+	}
 }
 
 func NormalizeStoryDirectorID(id string) string {

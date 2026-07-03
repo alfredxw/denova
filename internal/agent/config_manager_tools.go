@@ -39,7 +39,7 @@ type storyDirectorWriteInput struct {
 type storyDirectorWriteOperation struct {
 	Op       string                    `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID       string                    `json:"id" jsonschema:"description=目标故事导演 ID；update/delete 必填"`
-	Director interactive.StoryDirector `json:"director" jsonschema:"description=create/update 使用的完整故事导演配置，包含 strategy、event_system、stat_system、trpg_system、opening_selector"`
+	Director interactive.StoryDirector `json:"director" jsonschema:"description=create/update 使用的完整故事导演配置；module_refs 保存叙事风格、事件系统、规则系统、开局选择器和图像方案引用，并用 *_disabled 显式关闭某个模块；strategy 建议使用枚举 mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 4000 bytes，不能覆盖结构化策略和输出协议"`
 }
 
 type imagePresetWriteInput struct {
@@ -365,7 +365,7 @@ func newWriteTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_story_directors", "列出故事导演索引，返回 ID、名称、简介、标签、策略和系统配置概览；故事导演是游戏模式独占模块；需要完整配置时再调用 read_story_directors。故事导演负责事件系统、数值系统、TRPG 检定和开局选择器。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_story_directors", "列出故事导演索引，返回 ID、名称、简介、标签、策略、模块引用开关和系统配置概览；策略会用中文标签展示，完整枚举 ID 见 read/write 工具说明。故事导演是游戏模式独占模块；需要完整配置时再调用 read_story_directors。故事导演可插拔组合叙事风格、事件系统、规则系统、开局选择器和图像方案。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -386,15 +386,20 @@ func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 			for _, pkg := range director.EventSystem.EventPackages {
 				eventCards += len(pkg.Events)
 			}
-			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 游戏模式\n  策略: enabled=%t mainline=%s failure=%s pacing=%s random=%.2f\n  事件: %d 包 / %d 卡 / %d 自定义\n  数值: %d 属性\n  TRPG: %d 规则\n  开局: %d 词条池\n",
+			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 游戏模式\n  策略: enabled=%t 主线=%s 失败=%s 节奏=%s 扰动=%s\n  模块: narrative=%s event=%s rule=%s opening=%s image=%s\n  事件: %d 包 / %d 卡 / %d 自定义\n  数值: %d 属性\n  TRPG: %d 规则\n  开局: %d 词条池\n",
 				director.ID,
 				director.Name,
 				boolLabel(director.Custom, "custom", "built-in"),
 				director.Strategy.Enabled,
-				director.Strategy.MainlineStrength,
-				director.Strategy.FailurePolicy,
-				director.Strategy.PacingCurve,
-				director.Strategy.RandomEventRate,
+				storyDirectorStrategyLabel("mainline", director.Strategy.MainlineStrength),
+				storyDirectorStrategyLabel("failure", director.Strategy.FailurePolicy),
+				storyDirectorStrategyLabel("pacing", director.Strategy.PacingCurve),
+				storyDirectorRandomRateLabel(director.Strategy.RandomEventRate),
+				boolLabel(!director.ModuleRefs.NarrativeStyleDisabled, "on:"+director.ModuleRefs.NarrativeStyleID, "off:"+director.ModuleRefs.NarrativeStyleID),
+				boolLabel(!director.ModuleRefs.EventSystemDisabled, "on:"+director.ModuleRefs.EventSystemID, "off:"+director.ModuleRefs.EventSystemID),
+				boolLabel(!director.ModuleRefs.RuleSystemDisabled, "on:"+director.ModuleRefs.RuleSystemID, "off:"+director.ModuleRefs.RuleSystemID),
+				boolLabel(!director.ModuleRefs.OpeningSelectorDisabled, "on:"+director.ModuleRefs.OpeningSelectorID, "off:"+director.ModuleRefs.OpeningSelectorID),
+				boolLabel(!director.ModuleRefs.ImagePresetDisabled, "on:"+director.ModuleRefs.ImagePresetID, "off:"+director.ModuleRefs.ImagePresetID),
 				eventPackages,
 				eventCards,
 				len(director.EventSystem.CustomEvents),
@@ -415,7 +420,7 @@ func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_story_directors", "按故事导演 ID 批量读取完整配置。故事导演是游戏模式独占模块；配置按 strategy、event_system、stat_system、trpg_system、opening_selector 分区。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_story_directors", "按故事导演 ID 批量读取完整配置。故事导演是游戏模式独占模块；module_refs 决定引用哪些模块，*_disabled=true 表示该模块关闭且保留原 ID 以便重新启用。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3；strategy.prompt_markdown 是纯 Markdown 高级策略提示，最多 4000 bytes。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取故事导演")
@@ -438,7 +443,7 @@ func newReadStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_story_directors", "批量创建、更新或删除故事导演配置。故事导演、事件系统、规则系统和开局选择器是游戏模式独占能力，不存在每个资源可配置的模式字段。create/update 必须写完整分区：strategy、event_system、stat_system、trpg_system、opening_selector。删除内置故事导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input storyDirectorWriteInput) (string, error) {
+	return utils.InferTool("write_story_directors", "批量创建、更新或删除故事导演配置。故事导演通过 module_refs 可插拔组合叙事风格、事件系统、规则系统、开局选择器和图像方案；用 narrative_style_disabled、event_system_disabled、rule_system_disabled、opening_selector_disabled、image_preset_disabled 关闭模块，关闭时保留对应 ID。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 4000 bytes，不能覆盖结构化策略、工具权限和输出协议。删除内置故事导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input storyDirectorWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入故事导演")
@@ -782,6 +787,44 @@ func firstConfigNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func storyDirectorStrategyLabel(kind, value string) string {
+	switch kind + ":" + strings.TrimSpace(value) {
+	case "mainline:soft_guidance":
+		return "柔性主线"
+	case "mainline:balanced":
+		return "平衡牵引"
+	case "mainline:strong_arc":
+		return "强主线"
+	case "failure:reversible":
+		return "可逆失败"
+	case "failure:consequence":
+		return "带后果推进"
+	case "failure:fail_forward":
+		return "失败前进"
+	case "pacing:progressive":
+		return "递进节奏"
+	case "pacing:wave":
+		return "波峰波谷"
+	case "pacing:goal-pressure-payoff":
+		return "目标-压力-回报"
+	default:
+		return firstConfigNonEmpty(strings.TrimSpace(value), "默认")
+	}
+}
+
+func storyDirectorRandomRateLabel(rate float64) string {
+	switch {
+	case rate <= 0:
+		return "关闭扰动"
+	case rate <= 0.08:
+		return "低扰动"
+	case rate <= 0.15:
+		return "中等扰动"
+	default:
+		return "高扰动"
+	}
 }
 
 func boolLabel(value bool, trueLabel, falseLabel string) string {

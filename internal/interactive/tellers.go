@@ -456,6 +456,13 @@ func normalizeTellerEventPackages(packages []TellerEventPackage) []TellerEventPa
 	if packages == nil {
 		return DefaultTellerOrchestrationConfig().EventPackages
 	}
+	return normalizeTellerEventPackagesNoDefault(packages)
+}
+
+func normalizeTellerEventPackagesNoDefault(packages []TellerEventPackage) []TellerEventPackage {
+	if packages == nil {
+		return []TellerEventPackage{}
+	}
 	if len(packages) > maxTurnBriefListItems {
 		packages = packages[:maxTurnBriefListItems]
 	}

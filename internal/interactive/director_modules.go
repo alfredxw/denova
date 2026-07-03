@@ -29,11 +29,16 @@ var (
 // StoryDirectorModuleRefs declares the reusable resources a story director
 // combines at runtime. Changing a referenced module affects future resolution.
 type StoryDirectorModuleRefs struct {
-	NarrativeStyleID  string `json:"narrative_style_id,omitempty"`
-	EventSystemID     string `json:"event_system_id,omitempty"`
-	RuleSystemID      string `json:"rule_system_id,omitempty"`
-	OpeningSelectorID string `json:"opening_selector_id,omitempty"`
-	ImagePresetID     string `json:"image_preset_id,omitempty"`
+	NarrativeStyleID        string `json:"narrative_style_id,omitempty"`
+	NarrativeStyleDisabled  bool   `json:"narrative_style_disabled,omitempty"`
+	EventSystemID           string `json:"event_system_id,omitempty"`
+	EventSystemDisabled     bool   `json:"event_system_disabled,omitempty"`
+	RuleSystemID            string `json:"rule_system_id,omitempty"`
+	RuleSystemDisabled      bool   `json:"rule_system_disabled,omitempty"`
+	OpeningSelectorID       string `json:"opening_selector_id,omitempty"`
+	OpeningSelectorDisabled bool   `json:"opening_selector_disabled,omitempty"`
+	ImagePresetID           string `json:"image_preset_id,omitempty"`
+	ImagePresetDisabled     bool   `json:"image_preset_disabled,omitempty"`
 }
 
 type StoryDirectorModuleWarning struct {
@@ -531,17 +536,51 @@ func DefaultStoryDirectorModuleRefs() StoryDirectorModuleRefs {
 
 func NormalizeStoryDirectorModuleRefs(refs StoryDirectorModuleRefs) StoryDirectorModuleRefs {
 	return StoryDirectorModuleRefs{
-		NarrativeStyleID:  strings.TrimSpace(refs.NarrativeStyleID),
-		EventSystemID:     normalizeDirectorModuleID(refs.EventSystemID),
-		RuleSystemID:      normalizeDirectorModuleID(refs.RuleSystemID),
-		OpeningSelectorID: normalizeDirectorModuleID(refs.OpeningSelectorID),
-		ImagePresetID:     imagepreset.NormalizeID(refs.ImagePresetID),
+		NarrativeStyleID:        strings.TrimSpace(refs.NarrativeStyleID),
+		NarrativeStyleDisabled:  refs.NarrativeStyleDisabled,
+		EventSystemID:           normalizeDirectorModuleID(refs.EventSystemID),
+		EventSystemDisabled:     refs.EventSystemDisabled,
+		RuleSystemID:            normalizeDirectorModuleID(refs.RuleSystemID),
+		RuleSystemDisabled:      refs.RuleSystemDisabled,
+		OpeningSelectorID:       normalizeDirectorModuleID(refs.OpeningSelectorID),
+		OpeningSelectorDisabled: refs.OpeningSelectorDisabled,
+		ImagePresetID:           imagepreset.NormalizeID(refs.ImagePresetID),
+		ImagePresetDisabled:     refs.ImagePresetDisabled,
 	}
 }
 
 func StoryDirectorModuleRefsEmpty(refs StoryDirectorModuleRefs) bool {
 	refs = NormalizeStoryDirectorModuleRefs(refs)
-	return refs.NarrativeStyleID == "" && refs.EventSystemID == "" && refs.RuleSystemID == "" && refs.OpeningSelectorID == "" && refs.ImagePresetID == ""
+	return refs.NarrativeStyleID == "" &&
+		refs.EventSystemID == "" &&
+		refs.RuleSystemID == "" &&
+		refs.OpeningSelectorID == "" &&
+		refs.ImagePresetID == "" &&
+		!refs.NarrativeStyleDisabled &&
+		!refs.EventSystemDisabled &&
+		!refs.RuleSystemDisabled &&
+		!refs.OpeningSelectorDisabled &&
+		!refs.ImagePresetDisabled
+}
+
+func StoryDirectorNarrativeStyleEnabled(director StoryDirector) bool {
+	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).NarrativeStyleDisabled
+}
+
+func StoryDirectorEventSystemEnabled(director StoryDirector) bool {
+	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).EventSystemDisabled
+}
+
+func StoryDirectorRuleSystemEnabled(director StoryDirector) bool {
+	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).RuleSystemDisabled
+}
+
+func StoryDirectorOpeningSelectorEnabled(director StoryDirector) bool {
+	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).OpeningSelectorDisabled
+}
+
+func StoryDirectorImagePresetEnabled(director StoryDirector) bool {
+	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).ImagePresetDisabled
 }
 
 func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDirector {
@@ -561,7 +600,9 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	effective := director
 	effective.ModuleRefs = refs
 
-	if refs.EventSystemID != "" {
+	if refs.EventSystemDisabled {
+		effective.EventSystem = StoryDirectorEventSystem{EventPackages: []TellerEventPackage{}, CustomEvents: []DirectorEvent{}}
+	} else if refs.EventSystemID != "" {
 		if module, err := NewEventSystemLibrary(novaDir).Get(refs.EventSystemID); err == nil {
 			effective.EventSystem = module.EventSystem
 		} else if !eventSystemEmpty(snapshot.EventSystem) {
@@ -571,7 +612,10 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 			warnings = append(warnings, moduleWarning("event_system", refs.EventSystemID, err))
 		}
 	}
-	if refs.RuleSystemID != "" {
+	if refs.RuleSystemDisabled {
+		effective.StatSystem = StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{}}
+		effective.TRPGSystem = StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{}}
+	} else if refs.RuleSystemID != "" {
 		if module, err := NewRuleSystemLibrary(novaDir).Get(refs.RuleSystemID); err == nil {
 			effective.StatSystem = module.StatSystem
 			effective.TRPGSystem = module.TRPGSystem
@@ -583,7 +627,9 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 			warnings = append(warnings, moduleWarning("rule_system", refs.RuleSystemID, err))
 		}
 	}
-	if refs.OpeningSelectorID != "" {
+	if refs.OpeningSelectorDisabled {
+		effective.OpeningSelector = StoryDirectorOpeningSelector{Enabled: false, TraitPools: []OpeningTraitPool{}, InitialStateOps: []StateOp{}}
+	} else if refs.OpeningSelectorID != "" {
 		if module, err := NewOpeningSelectorLibrary(novaDir).Get(refs.OpeningSelectorID); err == nil {
 			effective.OpeningSelector = module.OpeningSelector
 		} else if !openingSelectorEmpty(snapshot.OpeningSelector) {
@@ -593,12 +639,12 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 			warnings = append(warnings, moduleWarning("opening_selector", refs.OpeningSelectorID, err))
 		}
 	}
-	if refs.NarrativeStyleID != "" {
+	if !refs.NarrativeStyleDisabled && refs.NarrativeStyleID != "" {
 		if _, err := NewTellerLibrary(novaDir).Get(refs.NarrativeStyleID); err != nil {
 			warnings = append(warnings, moduleWarning("narrative_style", refs.NarrativeStyleID, err))
 		}
 	}
-	if refs.ImagePresetID != "" {
+	if !refs.ImagePresetDisabled && refs.ImagePresetID != "" {
 		if _, err := imagepreset.NewLibrary(novaDir).Get(refs.ImagePresetID); err != nil {
 			warnings = append(warnings, moduleWarning("image_preset", refs.ImagePresetID, err))
 		}
@@ -725,9 +771,17 @@ func normalizeStoryDirectorResolvedSnapshot(snapshot StoryDirectorResolvedSnapsh
 	snapshot.ModuleRefs = NormalizeStoryDirectorModuleRefs(snapshot.ModuleRefs)
 	snapshot.NarrativeStyleID = strings.TrimSpace(firstNonEmptyString(snapshot.NarrativeStyleID, snapshot.ModuleRefs.NarrativeStyleID))
 	snapshot.ImagePresetID = imagepreset.NormalizeID(firstNonEmptyString(snapshot.ImagePresetID, snapshot.ModuleRefs.ImagePresetID))
-	snapshot.EventSystem.EventPackages = normalizeTellerEventPackages(snapshot.EventSystem.EventPackages)
+	if snapshot.ModuleRefs.EventSystemDisabled {
+		snapshot.EventSystem.EventPackages = normalizeTellerEventPackagesNoDefault(snapshot.EventSystem.EventPackages)
+	} else {
+		snapshot.EventSystem.EventPackages = normalizeTellerEventPackages(snapshot.EventSystem.EventPackages)
+	}
 	snapshot.EventSystem.CustomEvents = normalizeDirectorEvents(snapshot.EventSystem.CustomEvents)
-	snapshot.StatSystem.Attributes = normalizeStoryDirectorAttributes(snapshot.StatSystem.Attributes)
+	if snapshot.ModuleRefs.RuleSystemDisabled {
+		snapshot.StatSystem.Attributes = normalizeStoryDirectorAttributesNoDefault(snapshot.StatSystem.Attributes)
+	} else {
+		snapshot.StatSystem.Attributes = normalizeStoryDirectorAttributes(snapshot.StatSystem.Attributes)
+	}
 	snapshot.TRPGSystem.RuleTemplates = normalizeRuleChecks(snapshot.TRPGSystem.RuleTemplates)
 	snapshot.OpeningSelector = normalizeStoryDirectorOpeningSelector(snapshot.OpeningSelector)
 	outWarnings := make([]StoryDirectorModuleWarning, 0, len(snapshot.Warnings))

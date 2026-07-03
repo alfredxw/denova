@@ -98,9 +98,6 @@ func TestInteractiveContextAnalysisShowsDirectNarrativeOutputProtocol(t *testing
 	if !strings.Contains(outputProtocol.Content, "只输出本回合可展示在故事舞台上的故事正文") {
 		t.Fatalf("output protocol should describe direct narrative text: %#v", outputProtocol)
 	}
-	if strings.Contains(outputProtocol.Content, "<NARRATIVE>") {
-		t.Fatalf("output protocol should not require narrative XML wrapper: %#v", outputProtocol)
-	}
 }
 
 func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {

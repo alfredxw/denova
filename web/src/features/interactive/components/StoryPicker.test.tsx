@@ -118,6 +118,39 @@ describe('StoryPicker', () => {
     )
   })
 
+  it('does not inherit disabled director modules when creating a story', () => {
+    const onCreate = vi.fn()
+
+    render(
+      <StoryPicker
+        stories={[]}
+        currentStoryId=""
+        tellers={[classicTeller(), { ...classicTeller(), id: 'alt-style', name: '强风格' }]}
+        storyDirectors={[detachedStoryDirector()]}
+        onSelect={vi.fn()}
+        onCreate={onCreate}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '新建' }))
+
+    expect(screen.getByText('当前故事导演已关闭开局选择器；新故事不会从导演抽取开局词条。')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '抽取词条' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: '抽取词条' }))
+    expect(rollInteractiveOpeningMock).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: '创建' }))
+
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      story_teller_id: 'classic',
+      story_director_id: 'detached',
+      image_settings: expect.objectContaining({ preset_id: 'game-cg' }),
+      director_state: undefined,
+      initial_state_ops: undefined,
+    }))
+  })
+
   it('rolls opening traits and includes initial director state in create input', async () => {
     const onCreate = vi.fn()
     rollInteractiveOpeningMock.mockResolvedValue({
@@ -243,6 +276,36 @@ function classicStoryDirector() {
     },
     tags: [],
     custom: false,
+  }
+}
+
+function detachedStoryDirector() {
+  return {
+    ...classicStoryDirector(),
+    id: 'detached',
+    name: '关闭模块导演',
+    module_refs: {
+      narrative_style_id: 'alt-style',
+      narrative_style_disabled: true,
+      event_system_id: 'default',
+      event_system_disabled: true,
+      rule_system_id: 'default',
+      rule_system_disabled: true,
+      opening_selector_id: 'default',
+      opening_selector_disabled: true,
+      image_preset_id: 'ink-wash',
+      image_preset_disabled: true,
+    },
+    opening_selector: {
+      enabled: true,
+      trait_pools: [{
+        id: 'talent',
+        name: '天赋',
+        draw_count: 1,
+        traits: [{ id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' }],
+      }],
+      initial_state_ops: [],
+    },
   }
 }
 

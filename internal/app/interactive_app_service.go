@@ -114,10 +114,10 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 		log.Printf("[interactive-director] load story director failed story_director_id=%s err=%v", directorID, err)
 		return req
 	}
-	if strings.TrimSpace(req.StoryTellerID) == "" && strings.TrimSpace(director.ModuleRefs.NarrativeStyleID) != "" {
+	if interactive.StoryDirectorNarrativeStyleEnabled(director) && strings.TrimSpace(req.StoryTellerID) == "" && strings.TrimSpace(director.ModuleRefs.NarrativeStyleID) != "" {
 		req.StoryTellerID = strings.TrimSpace(director.ModuleRefs.NarrativeStyleID)
 	}
-	if strings.TrimSpace(req.ImageSettings.PresetID) == "" && strings.TrimSpace(director.ModuleRefs.ImagePresetID) != "" {
+	if interactive.StoryDirectorImagePresetEnabled(director) && strings.TrimSpace(req.ImageSettings.PresetID) == "" && strings.TrimSpace(director.ModuleRefs.ImagePresetID) != "" {
 		req.ImageSettings.PresetID = strings.TrimSpace(director.ModuleRefs.ImagePresetID)
 	}
 	if req.DirectorState == nil {
@@ -220,6 +220,18 @@ func (s *InteractiveAppService) RebuildInteractiveDirector(storyID string, req i
 	store := s.store()
 	if store == nil {
 		return interactive.DirectorState{}, ErrNoWorkspace
+	}
+	if cfg := s.cfg(); cfg != nil && cfg.NovaDir != "" {
+		if storyCtx, err := store.StoryContext(storyID, req.BranchID); err == nil {
+			if director, err := interactive.NewStoryDirectorLibrary(cfg.NovaDir).Get(storyCtx.Meta.StoryDirectorID); err == nil {
+				eventCatalog := interactive.DirectorEventCatalogFromStoryDirector(director)
+				req.EventCatalog = &eventCatalog
+			} else {
+				log.Printf("[interactive-director] load story director for rebuild failed story_id=%s story_director_id=%s err=%v", storyID, storyCtx.Meta.StoryDirectorID, err)
+			}
+		} else {
+			log.Printf("[interactive-director] load story context for rebuild failed story_id=%s branch_id=%s err=%v", storyID, req.BranchID, err)
+		}
 	}
 	return store.RebuildDirectorState(storyID, req)
 }

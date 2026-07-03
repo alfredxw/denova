@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 
 	"denova/config"
 	"denova/internal/agent"
@@ -50,7 +51,7 @@ func main() {
 	observability.ConfigureStructuredLogging()
 	log.Printf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath)
 	port = selectStartupPort(port, shouldAutoPickPort())
-	frontendPort = selectFrontendPort(frontendPort)
+	frontendPort = selectFrontendPort(frontendPort, port)
 	if runtimeWebPort, err := strconv.Atoi(port); err == nil {
 		cfg.RuntimeWebPort = runtimeWebPort
 	}
@@ -104,7 +105,7 @@ func main() {
 
 	// 开发模式：同时启动 Vite dev server
 	if dev {
-		go startViteDev(frontendPort, listenHost)
+		go startViteDev(frontendPort, listenHost, port)
 	}
 	if !noOpen {
 		if dev {
@@ -143,7 +144,7 @@ func openBrowser(url string) {
 }
 
 // startViteDev 启动 Vite 前端开发服务器
-func startViteDev(port, host string) {
+func startViteDev(port, host, backendPort string) {
 	// 查找 web 目录
 	webDir := "./web"
 	if _, err := os.Stat(webDir); os.IsNotExist(err) {
@@ -157,11 +158,30 @@ func startViteDev(port, host string) {
 
 	cmd := exec.Command("pnpm", "dev", "--host", host, "--port", port)
 	cmd.Dir = webDir
+	cmd.Env = viteDevEnv(os.Environ(), port, backendPort)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Vite dev server 退出: %v\n", err)
 	}
+}
+
+func viteDevEnv(base []string, frontendPort, backendPort string) []string {
+	env := setEnvValue(base, "DENOVA_BACKEND_PORT", backendPort)
+	env = setEnvValue(env, "DENOVA_FRONTEND_PORT", frontendPort)
+	return env
+}
+
+func setEnvValue(base []string, key, value string) []string {
+	prefix := key + "="
+	env := make([]string, 0, len(base)+1)
+	for _, item := range base {
+		if strings.HasPrefix(item, prefix) {
+			continue
+		}
+		env = append(env, item)
+	}
+	return append(env, prefix+value)
 }
 
 func defaultPort(cfg *config.Config) string {
@@ -213,12 +233,12 @@ func selectStartupPort(preferred string, autoPick bool) string {
 
 // selectFrontendPort 为前端 Vite dev server 自动选择一个可用端口。
 // 与 HTTP 后端端口不同，前端端口总是尝试自动选择（因为 Vite 不负责端口协商）。
-func selectFrontendPort(preferred string) string {
-	if portAvailable(preferred) {
+func selectFrontendPort(preferred string, reservedPorts ...string) string {
+	if !portReserved(preferred, reservedPorts...) && portAvailable(preferred) {
 		return preferred
 	}
 
-	next, err := findAvailablePort(preferred, 20)
+	next, err := findAvailablePort(preferred, 20, reservedPorts...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "警告: 前端端口 %s 不可用且自动选择失败: %v\n", preferred, err)
 		log.Printf("[startup] 前端端口 %s 不可用且自动选择失败 err=%v", preferred, err)
@@ -230,18 +250,32 @@ func selectFrontendPort(preferred string) string {
 	return next
 }
 
-func findAvailablePort(preferred string, attempts int) (string, error) {
+func findAvailablePort(preferred string, attempts int, reservedPorts ...string) (string, error) {
 	start, err := strconv.Atoi(preferred)
 	if err != nil || start <= 0 || start > 65535 {
 		return "", fmt.Errorf("端口号无效: %s", preferred)
 	}
 	for port := start + 1; port <= 65535 && port <= start+attempts; port++ {
 		candidate := strconv.Itoa(port)
-		if portAvailable(candidate) {
+		if !portReserved(candidate, reservedPorts...) && portAvailable(candidate) {
 			return candidate, nil
 		}
 	}
 	return "", fmt.Errorf("未找到可用端口: %d-%d", start+1, start+attempts)
+}
+
+func portReserved(port string, reservedPorts ...string) bool {
+	value, err := strconv.Atoi(port)
+	if err != nil {
+		return false
+	}
+	for _, reserved := range reservedPorts {
+		reservedValue, err := strconv.Atoi(reserved)
+		if err == nil && reservedValue == value {
+			return true
+		}
+	}
+	return false
 }
 
 func portAvailable(port string) bool {
