@@ -21,10 +21,11 @@ const (
 // interactive story run. The story and branch are fixed by the backend; the
 // model never supplies them.
 type InteractiveStoryToolContext struct {
-	Store       *interactive.Store
-	StoryID     string
-	BranchID    string
-	PrepareTurn func(context.Context, interactive.TurnBrief) (interactive.RuleResolution, error)
+	Store                    *interactive.Store
+	StoryID                  string
+	BranchID                 string
+	DirectorPlanAllowedPaths []string
+	PrepareTurn              func(context.Context, interactive.TurnBrief) (interactive.RuleResolution, error)
 }
 
 type listInteractiveMemoriesInput struct {

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,7 +14,7 @@ import (
 	"denova/internal/interactive"
 )
 
-func TestInteractiveDirectorTaskAppliesGeneratedPatch(t *testing.T) {
+func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)
 	story, err := store.CreateStory(interactive.CreateStoryRequest{
@@ -39,23 +40,32 @@ func TestInteractiveDirectorTaskAppliesGeneratedPatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	previous := generateInteractiveDirectorForPlan
-	generateInteractiveDirectorForPlan = func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
-		return `{"summary":"导演安排公开反转","stage_plan":"下一阶段围绕公开比试制造打脸反转。","beat_queue":[{"id":"beat_test","summary":"公开比试开场","pressure":"同门质疑","payoff":"证明实力","status":"planned"}],"event_queue":[{"id":"face_slap","name":"打脸反转","category":"打脸","status":"planned","enabled":true,"summary":"公开反证轻视者。"}]}`, nil
+	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
+		if !strings.Contains(instruction, "mainline.md") || len(toolContext.DirectorPlanAllowedPaths) != 3 {
+			t.Fatalf("director should receive plan paths and guard context: paths=%#v\n%s", toolContext.DirectorPlanAllowedPaths, instruction)
+		}
+		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
+		if err != nil {
+			return "", err
+		}
+		docs := plan.Docs
+		docs.CurrentEvent = strings.Replace(docs.CurrentEvent, "明确当前事件的可玩目标，让用户知道能采取行动。", "公开比试制造质疑与反证机会。", 1)
+		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
+			return "", err
+		}
+		return "导演安排公开反转", nil
 	}
 	defer func() { generateInteractiveDirectorForPlan = previous }()
 
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
 	startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
 
-	snapshot := waitForDirectorRunSummary(t, store, story.ID, "main", "导演安排公开反转")
-	if !strings.Contains(snapshot.DirectorState.StagePlan, "公开比试") {
-		t.Fatalf("stage plan should come from director patch: %#v", snapshot.DirectorState)
+	snapshot := waitForDirectorPlanRunSummary(t, store, story.ID, "main", "导演安排公开反转")
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turn.ID {
+		t.Fatalf("turn should remain current after director update: %#v", snapshot.CurrentTurn)
 	}
-	if snapshot.DirectorState.LastDirectorRun == nil || snapshot.DirectorState.LastDirectorRun.Summary != "导演安排公开反转" {
-		t.Fatalf("director run summary mismatch: %#v", snapshot.DirectorState.LastDirectorRun)
-	}
-	if len(snapshot.DirectorState.BeatQueue) == 0 || snapshot.DirectorState.BeatQueue[0].ID != "beat_test" {
-		t.Fatalf("beat queue mismatch: %#v", snapshot.DirectorState.BeatQueue)
+	if snapshot.DirectorPlan == nil || !strings.Contains(snapshot.DirectorPlan.Docs.CurrentEvent, "公开比试制造质疑") {
+		t.Fatalf("director plan should include file update: %#v", snapshot.DirectorPlan)
 	}
 }
 
@@ -91,26 +101,28 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
 	startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
 
-	snapshot := waitForDirectorRunStatus(t, store, story.ID, "main", "failed")
+	snapshot := waitForDirectorPlanRunStatus(t, store, story.ID, "main", "failed")
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turn.ID {
 		t.Fatalf("turn should remain current after director failure: %#v", snapshot.CurrentTurn)
 	}
-	if snapshot.DirectorState.LastDirectorRun == nil || !strings.Contains(snapshot.DirectorState.LastDirectorRun.Error, "director unavailable") {
-		t.Fatalf("failure should be recorded: %#v", snapshot.DirectorState.LastDirectorRun)
+	if snapshot.DirectorPlan == nil || snapshot.DirectorPlan.Metadata.LastRun == nil || !strings.Contains(snapshot.DirectorPlan.Metadata.LastRun.Error, "director unavailable") {
+		t.Fatalf("failure should be recorded: %#v", snapshot.DirectorPlan)
 	}
 }
 
-func TestParseInteractiveDirectorPatchAcceptsFencedJSON(t *testing.T) {
-	patch, err := parseInteractiveDirectorPatch("```json\n{\"summary\":\"已更新\",\"stage_plan\":\"安排误会消解\"}\n```")
-	if err != nil {
-		t.Fatal(err)
+func writeDirectorPlanDocsForTest(paths []string, docs interactive.DirectorPlanDocs) error {
+	if len(paths) != 3 {
+		return errors.New("expected three director plan paths")
 	}
-	if patch.StagePlan == nil || *patch.StagePlan != "安排误会消解" || patch.Summary != "已更新" {
-		t.Fatalf("unexpected patch: %#v", patch)
+	for i, content := range []string{docs.Mainline, docs.CurrentEvent, docs.NextBranches} {
+		if err := os.WriteFile(paths[i], []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func waitForDirectorRunStatus(t *testing.T, store *interactive.Store, storyID, branchID, status string) interactive.Snapshot {
+func waitForDirectorPlanRunStatus(t *testing.T, store *interactive.Store, storyID, branchID, status string) interactive.Snapshot {
 	t.Helper()
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for {
@@ -118,17 +130,17 @@ func waitForDirectorRunStatus(t *testing.T, store *interactive.Store, storyID, b
 		if err != nil {
 			t.Fatal(err)
 		}
-		if snapshot.DirectorState.LastDirectorRun != nil && snapshot.DirectorState.LastDirectorRun.Status == status {
+		if snapshot.DirectorPlan != nil && snapshot.DirectorPlan.Metadata.LastRun != nil && snapshot.DirectorPlan.Metadata.LastRun.Status == status {
 			return snapshot
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("director run did not reach status %q: %#v", status, snapshot.DirectorState.LastDirectorRun)
+			t.Fatalf("director run did not reach status %q: %#v", status, snapshot.DirectorPlan)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 }
 
-func waitForDirectorRunSummary(t *testing.T, store *interactive.Store, storyID, branchID, summary string) interactive.Snapshot {
+func waitForDirectorPlanRunSummary(t *testing.T, store *interactive.Store, storyID, branchID, summary string) interactive.Snapshot {
 	t.Helper()
 	deadline := time.Now().Add(500 * time.Millisecond)
 	for {
@@ -136,11 +148,11 @@ func waitForDirectorRunSummary(t *testing.T, store *interactive.Store, storyID, 
 		if err != nil {
 			t.Fatal(err)
 		}
-		if snapshot.DirectorState.LastDirectorRun != nil && snapshot.DirectorState.LastDirectorRun.Summary == summary {
+		if snapshot.DirectorPlan != nil && snapshot.DirectorPlan.Metadata.LastRun != nil && snapshot.DirectorPlan.Metadata.LastRun.Summary == summary {
 			return snapshot
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("director run did not reach summary %q: %#v", summary, snapshot.DirectorState.LastDirectorRun)
+			t.Fatalf("director run did not reach summary %q: %#v", summary, snapshot.DirectorPlan)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}

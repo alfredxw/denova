@@ -20,6 +20,9 @@ describe('MemoryPanel', () => {
           ['done', { status: 'ok' }],
         ]), { headers: { 'Content-Type': 'text/event-stream' } })
       }
+      if (url.includes('/director')) {
+        return Response.json(directorPlan())
+      }
       if (url.includes('/story-memory')) {
         return Response.json(storyMemoryState())
       }
@@ -61,23 +64,19 @@ describe('MemoryPanel', () => {
     }))
   })
 
-  it('shows director state and rule audit from the current snapshot', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json(storyMemoryState())))
+  it('shows director plan and rule audit from the current snapshot', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url.includes('/director')) return Response.json(directorPlan())
+      return Response.json(storyMemoryState())
+    }))
 
     render(<MemoryPanel storyId="story-1" branchId="main" snapshot={{
       story_id: 'story-1',
       branch_id: 'main',
       turns: [],
       state: {},
-      director_state: {
-        enabled: true,
-        spoiler_mode: 'layered',
-        main_arc: '外门逆袭',
-        stage_plan: '宗门小比前夜',
-        event_queue: [{ id: 'event_1', name: '学院比拼打脸', category: 'face_slap' }],
-        foreshadowing: [{ id: 'thread_1', title: '残卷真正来历' }],
-        last_director_run: { status: 'failed', summary: '后台导演更新失败，已保留本回合正文。', error: 'director unavailable' },
-      },
+      director_plan: directorPlan(),
       current_turn: {
         id: 'turn-1',
         parent_id: null,
@@ -110,9 +109,7 @@ describe('MemoryPanel', () => {
 
     await waitFor(() => expect(screen.getAllByText('顾清漪').length).toBeGreaterThan(0))
     expect(screen.getByText('导演编排')).toBeInTheDocument()
-    expect(screen.getByText('外门逆袭')).toBeInTheDocument()
-    expect(screen.getByText('学院比拼打脸')).toBeInTheDocument()
-    expect(screen.getByText('残卷真正来历')).toBeInTheDocument()
+    expect(screen.getByDisplayValue(/公开压力升高/)).toBeInTheDocument()
     expect(screen.getByText('最近后台更新')).toBeInTheDocument()
     expect(screen.getByText('failed')).toBeInTheDocument()
     expect(screen.getByText('director unavailable')).toBeInTheDocument()
@@ -128,7 +125,10 @@ describe('MemoryPanel', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (url.includes('/director/rebuild')) {
-        return Response.json({ enabled: true, spoiler_mode: 'layered', main_arc: '重建后的主线' })
+        return Response.json(directorPlan({ mainline: '# 大方向 / Mainline\n\n## 正文Agent可读 / Prose-agent visible\n\n重建后的主线\n\n## 后台导演私密 / Director private\n\n后台' }))
+      }
+      if (url.includes('/director')) {
+        return Response.json(directorPlan())
       }
       if (url.includes('/story-memory')) {
         return Response.json(storyMemoryState())
@@ -142,11 +142,7 @@ describe('MemoryPanel', () => {
       branch_id: 'main',
       turns: [],
       state: {},
-      director_state: {
-        enabled: true,
-        spoiler_mode: 'layered',
-        main_arc: '外门逆袭',
-      },
+      director_plan: directorPlan(),
     }} />)
 
     await userEvent.click(screen.getByRole('button', { name: '重建导演计划' }))
@@ -158,15 +154,12 @@ describe('MemoryPanel', () => {
     await waitFor(() => expect(onSnapshotRefresh).toHaveBeenCalledTimes(1))
   })
 
-  it('forces and disables director events from the summary action', async () => {
+  it('saves director plan edits from the summary action', async () => {
     const onSnapshotRefresh = vi.fn()
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
-      if (url.includes('/director/events/event_1/force')) {
-        return Response.json({ enabled: true, event_queue: [] })
-      }
-      if (url.includes('/director/events/event_1/disable')) {
-        return Response.json({ enabled: true, event_queue: [] })
+      if (url.includes('/director')) {
+        return Response.json(directorPlan())
       }
       if (url.includes('/story-memory')) {
         return Response.json(storyMemoryState())
@@ -180,31 +173,16 @@ describe('MemoryPanel', () => {
       branch_id: 'main',
       turns: [],
       state: {},
-      director_state: {
-        enabled: true,
-        spoiler_mode: 'layered',
-        event_queue: [{ id: 'event_1', name: '学院比拼打脸', category: '打脸', enabled: true }],
-      },
+      director_plan: directorPlan(),
     }} />)
 
-    await userEvent.click(screen.getByRole('button', { name: '强制安排事件 学院比拼打脸' }))
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/director/events/event_1/force', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        branch_id: 'main',
-        event: { id: 'event_1', name: '学院比拼打脸', category: '打脸', enabled: true },
-      }),
+    await userEvent.clear(screen.getByLabelText('大方向'))
+    await userEvent.type(screen.getByLabelText('大方向'), '新主线')
+    await userEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/director', expect.objectContaining({
+      method: 'PATCH',
     })))
-
-    await userEvent.click(screen.getByRole('button', { name: '禁用事件 学院比拼打脸' }))
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/director/events/event_1/disable', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({
-        branch_id: 'main',
-        event: { id: 'event_1', name: '学院比拼打脸', category: '打脸', enabled: true },
-      }),
-    })))
-    await waitFor(() => expect(onSnapshotRefresh).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(onSnapshotRefresh).toHaveBeenCalledTimes(1))
   })
 
   it('rerolls current rule resolution from the rule audit action', async () => {
@@ -213,6 +191,9 @@ describe('MemoryPanel', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (url.includes('/rules/resolutions/rr_1/reroll')) {
         return Response.json({ id: 'rr_2', accepted_brief: {}, rule_results: [] })
+      }
+      if (url.includes('/director')) {
+        return Response.json(directorPlan())
       }
       if (url.includes('/story-memory')) {
         return Response.json(storyMemoryState())
@@ -307,5 +288,33 @@ function storyMemoryState() {
       },
     ],
     sync_status: 'ready',
+  }
+}
+
+function directorPlan(overrides: Partial<{ mainline: string; current_event: string; next_branches: string }> = {}) {
+  const docs = {
+    mainline: overrides.mainline || '# 大方向 / Mainline\n\n## 正文Agent可读 / Prose-agent visible\n\n### 目标 / Goal\n外门逆袭\n\n## 后台导演私密 / Director private\n\n### 目标 / Goal\n隐藏反转',
+    current_event: overrides.current_event || '# 当前主线事件 / Current Main Event\n\n## 正文Agent可读 / Prose-agent visible\n\n### 目标 / Goal\n公开压力升高，同门质疑逼近。\n\n## 后台导演私密 / Director private\n\n### 目标 / Goal\n幕后安排',
+    next_branches: overrides.next_branches || '# 最近分支安排 / Next Branches\n\n## 正文Agent可读 / Prose-agent visible\n\n### 分支处理 / Branch Handling\n观察、对话、调查都成立。\n\n## 后台导演私密 / Director private\n\n### 分支处理 / Branch Handling\n隐藏代价',
+  }
+  return {
+    story_id: 'story-1',
+    branch_id: 'main',
+    docs,
+    visible_docs: docs,
+    metadata: {
+      version: 1,
+      story_id: 'story-1',
+      branch_id: 'main',
+      revision: 'rev-1',
+      branch_planning_turns: 5,
+      updated_at: '2026-06-19T06:00:00Z',
+      docs: {
+        mainline: { path: '/tmp/mainline.md', bytes: docs.mainline.length, hash: 'h1' },
+        current_event: { path: '/tmp/current-event.md', bytes: docs.current_event.length, hash: 'h2' },
+        next_branches: { path: '/tmp/next-branches.md', bytes: docs.next_branches.length, hash: 'h3' },
+      },
+      last_run: { status: 'failed', summary: '后台导演更新失败，已保留本回合正文。', error: 'director unavailable' },
+    },
   }
 }

@@ -85,7 +85,6 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
         interval_turns: 3,
         preset_id: directorImagePresetEnabled ? selectedDirector?.module_refs?.image_preset_id || 'game-cg' : 'game-cg',
       },
-      director_state: openingRoll?.director_state,
       initial_state_ops: openingRoll?.state_ops,
     })
     closeCreate()

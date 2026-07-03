@@ -10,16 +10,32 @@ describe('SnapshotPanel', () => {
           story_id: 'st_1',
           branch_id: 'main',
           turns: [],
-          director_state: {
-            enabled: true,
-            spoiler_mode: 'layered',
-            main_arc: '青云逆袭主线',
-            stage_plan: '外门比拼前夜',
-            beat_queue: [{ id: 'beat_1', summary: '制造排名压力', pressure: '同门嘲讽' }],
-            event_queue: [{ id: 'event_1', name: '学院比拼打脸', category: 'face_slap', status: 'queued' }],
-            foreshadowing: [{ id: 'thread_1', title: '残卷真正来历', status: 'seeded' }],
-            disabled_events: ['天降神兵'],
-            last_director_run: { status: 'ready', summary: '已更新近期事件队列' },
+          director_plan: {
+            story_id: 'st_1',
+            branch_id: 'main',
+            docs: {
+              mainline: '# 大方向',
+              current_event: '# 当前事件',
+              next_branches: '# 最近分支',
+            },
+            visible_docs: {
+              mainline: '青云逆袭主线',
+              current_event: '外门比拼前夜，制造排名压力。',
+            },
+            metadata: {
+              version: 1,
+              story_id: 'st_1',
+              branch_id: 'main',
+              revision: 'rev-1',
+              branch_planning_turns: 5,
+              updated_at: '2026-05-17T00:00:00Z',
+              docs: {
+                mainline: { path: '/tmp/mainline.md', bytes: 10, hash: 'h1' },
+                current_event: { path: '/tmp/current-event.md', bytes: 10, hash: 'h2' },
+                next_branches: { path: '/tmp/next-branches.md', bytes: 10, hash: 'h3' },
+              },
+              last_run: { status: 'ready', summary: '已更新近期规划' },
+            },
           },
           current_turn: {
             id: 'turn-2',
@@ -142,8 +158,8 @@ describe('SnapshotPanel', () => {
     expect(screen.getByText('酒馆门自行关上')).toBeInTheDocument()
     expect(screen.getByText('导演编排')).toBeInTheDocument()
     expect(screen.getByText('青云逆袭主线')).toBeInTheDocument()
-    expect(screen.getByText('学院比拼打脸')).toBeInTheDocument()
-    expect(screen.getByText('残卷真正来历')).toBeInTheDocument()
+    expect(screen.getByText('外门比拼前夜，制造排名压力。')).toBeInTheDocument()
+    expect(screen.getByText('已更新近期规划')).toBeInTheDocument()
     expect(screen.getByText('规则审计')).toBeInTheDocument()
     expect(screen.getByText('本回合简报')).toBeInTheDocument()
     expect(screen.getByText('强行闯入藏书阁')).toBeInTheDocument()

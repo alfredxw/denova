@@ -19,9 +19,6 @@ const (
 	maxStoryDirectorRules               = 64
 	MaxStoryDirectorStrategyPromptBytes = maxTurnBriefTextBytes
 	DefaultDirectorAgentMode            = DirectorAgentModeTriggered
-	DefaultDirectorAgentIntervalTurns   = 4
-	MinDirectorAgentIntervalTurns       = 1
-	MaxDirectorAgentIntervalTurns       = 20
 	DirectorAgentModeTriggered          = "triggered"
 	DirectorAgentModeEveryTurn          = "every_turn"
 	DirectorAgentModeOff                = "off"
@@ -55,14 +52,15 @@ type StoryDirector struct {
 }
 
 type StoryDirectorStrategy struct {
-	Enabled                    bool    `json:"enabled"`
-	MainlineStrength           string  `json:"mainline_strength,omitempty"`
-	FailurePolicy              string  `json:"failure_policy,omitempty"`
-	PacingCurve                string  `json:"pacing_curve,omitempty"`
-	RandomEventRate            float64 `json:"random_event_rate,omitempty"`
-	DirectorAgentMode          string  `json:"director_agent_mode,omitempty"`
-	DirectorAgentIntervalTurns int     `json:"director_agent_interval_turns,omitempty"`
-	PromptMarkdown             string  `json:"prompt_markdown,omitempty"`
+	Enabled             bool                           `json:"enabled"`
+	MainlineStrength    string                         `json:"mainline_strength,omitempty"`
+	FailurePolicy       string                         `json:"failure_policy,omitempty"`
+	PacingCurve         string                         `json:"pacing_curve,omitempty"`
+	RandomEventRate     float64                        `json:"random_event_rate,omitempty"`
+	DirectorAgentMode   string                         `json:"director_agent_mode,omitempty"`
+	PromptMarkdown      string                         `json:"prompt_markdown,omitempty"`
+	BranchPlanningTurns int                            `json:"branch_planning_turns,omitempty"`
+	PlanningTemplates   StoryDirectorPlanningTemplates `json:"planning_templates,omitempty"`
 }
 
 type StoryDirectorEventSystem struct {
@@ -504,13 +502,14 @@ func DefaultStoryDirector() StoryDirector {
 		Description: "通用互动故事导演，提供软主线、可逆失败、递进节奏、事件系统、基础数值和开局选择器。",
 		ModuleRefs:  refs,
 		Strategy: StoryDirectorStrategy{
-			Enabled:                    true,
-			MainlineStrength:           "soft_guidance",
-			FailurePolicy:              "reversible",
-			PacingCurve:                "progressive",
-			RandomEventRate:            0.15,
-			DirectorAgentMode:          DefaultDirectorAgentMode,
-			DirectorAgentIntervalTurns: DefaultDirectorAgentIntervalTurns,
+			Enabled:             true,
+			MainlineStrength:    "soft_guidance",
+			FailurePolicy:       "reversible",
+			PacingCurve:         "progressive",
+			RandomEventRate:     0.15,
+			DirectorAgentMode:   DefaultDirectorAgentMode,
+			BranchPlanningTurns: defaultBranchPlanningTurns,
+			PlanningTemplates:   DefaultStoryDirectorPlanningTemplates(),
 		},
 		EventSystem:     DefaultEventSystemModule().EventSystem,
 		StatSystem:      DefaultRuleSystemModule().StatSystem,
@@ -528,13 +527,14 @@ func StoryDirectorFromTellerOrchestration(id, name, description string, randomEv
 		Description: description,
 		ModuleRefs:  StoryDirectorModuleRefs{},
 		Strategy: StoryDirectorStrategy{
-			Enabled:                    config.Enabled,
-			MainlineStrength:           config.MainlineStrength,
-			FailurePolicy:              config.FailurePolicy,
-			PacingCurve:                config.PacingCurve,
-			RandomEventRate:            randomEventRate,
-			DirectorAgentMode:          DefaultDirectorAgentMode,
-			DirectorAgentIntervalTurns: DefaultDirectorAgentIntervalTurns,
+			Enabled:             config.Enabled,
+			MainlineStrength:    config.MainlineStrength,
+			FailurePolicy:       config.FailurePolicy,
+			PacingCurve:         config.PacingCurve,
+			RandomEventRate:     randomEventRate,
+			DirectorAgentMode:   DefaultDirectorAgentMode,
+			BranchPlanningTurns: defaultBranchPlanningTurns,
+			PlanningTemplates:   DefaultStoryDirectorPlanningTemplates(),
 		},
 		EventSystem: StoryDirectorEventSystem{
 			EventPackages: config.EventPackages,
@@ -583,13 +583,18 @@ func normalizeStoryDirector(director StoryDirector) StoryDirector {
 	return director
 }
 
+func NormalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirectorStrategy {
+	return normalizeStoryDirectorStrategy(strategy)
+}
+
 func normalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirectorStrategy {
 	strategy.MainlineStrength = normalizeOrchestrationOption(strategy.MainlineStrength, "soft_guidance")
 	strategy.FailurePolicy = normalizeOrchestrationOption(strategy.FailurePolicy, "reversible")
 	strategy.PacingCurve = normalizeOrchestrationOption(strategy.PacingCurve, "progressive")
 	strategy.DirectorAgentMode = normalizeDirectorAgentMode(strategy.DirectorAgentMode)
-	strategy.DirectorAgentIntervalTurns = normalizeDirectorAgentIntervalTurns(strategy.DirectorAgentIntervalTurns)
 	strategy.PromptMarkdown = trimBytes(strategy.PromptMarkdown, MaxStoryDirectorStrategyPromptBytes)
+	strategy.BranchPlanningTurns = NormalizeBranchPlanningTurns(strategy.BranchPlanningTurns)
+	strategy.PlanningTemplates = NormalizeStoryDirectorPlanningTemplates(strategy.PlanningTemplates)
 	if strategy.RandomEventRate < 0 {
 		strategy.RandomEventRate = 0
 	}
@@ -610,19 +615,6 @@ func normalizeDirectorAgentMode(mode string) string {
 	default:
 		return DirectorAgentModeTriggered
 	}
-}
-
-func normalizeDirectorAgentIntervalTurns(value int) int {
-	if value <= 0 {
-		return DefaultDirectorAgentIntervalTurns
-	}
-	if value < MinDirectorAgentIntervalTurns {
-		return MinDirectorAgentIntervalTurns
-	}
-	if value > MaxDirectorAgentIntervalTurns {
-		return MaxDirectorAgentIntervalTurns
-	}
-	return value
 }
 
 func normalizeStoryDirectorAttributes(attributes []StoryDirectorAttribute) []StoryDirectorAttribute {
@@ -697,38 +689,6 @@ func StoryDirectorInitialStateOps(director StoryDirector) []StateOp {
 	}
 	ops = append(ops, director.OpeningSelector.InitialStateOps...)
 	return normalizeStateOps(ops)
-}
-
-func DirectorStateFromStoryDirector(director StoryDirector) DirectorState {
-	director = normalizeStoryDirector(director)
-	state := DefaultDirectorState()
-	state.Enabled = director.Strategy.Enabled
-	if !director.Strategy.Enabled {
-		state.LastDirectorRun = &DirectorRunStatus{Status: "ready", Summary: "故事导演已关闭叙事编排。"}
-		return NormalizeDirectorState(state)
-	}
-	for _, pkg := range director.EventSystem.EventPackages {
-		if !pkg.Enabled {
-			continue
-		}
-		for _, eventCard := range pkg.Events {
-			if len(state.EventQueue) >= maxTurnBriefListItems {
-				break
-			}
-			if !eventCard.Enabled {
-				continue
-			}
-			state.EventQueue = upsertDirectorEvent(state.EventQueue, directorEventFromTellerEventCard(eventCard))
-		}
-	}
-	for _, event := range director.EventSystem.CustomEvents {
-		state.EventQueue = upsertDirectorEvent(state.EventQueue, event)
-	}
-	state.LastDirectorRun = &DirectorRunStatus{
-		Status:  "ready",
-		Summary: fmt.Sprintf("已从故事导演“%s”初始化叙事编排：%s/%s/%s。", director.Name, director.Strategy.MainlineStrength, director.Strategy.FailurePolicy, director.Strategy.PacingCurve),
-	}
-	return NormalizeDirectorState(state)
 }
 
 func StoryDirectorStrategyPromptMarkdown(director StoryDirector) string {
@@ -818,24 +778,24 @@ func StoryDirectorPlanningSummary(director StoryDirector, limitBytes int) string
 }
 
 type storyDirectorStructuredStrategy struct {
-	Enabled                    bool    `json:"enabled"`
-	MainlineStrength           string  `json:"mainline_strength,omitempty"`
-	FailurePolicy              string  `json:"failure_policy,omitempty"`
-	PacingCurve                string  `json:"pacing_curve,omitempty"`
-	RandomEventRate            float64 `json:"random_event_rate,omitempty"`
-	DirectorAgentMode          string  `json:"director_agent_mode,omitempty"`
-	DirectorAgentIntervalTurns int     `json:"director_agent_interval_turns,omitempty"`
+	Enabled             bool    `json:"enabled"`
+	MainlineStrength    string  `json:"mainline_strength,omitempty"`
+	FailurePolicy       string  `json:"failure_policy,omitempty"`
+	PacingCurve         string  `json:"pacing_curve,omitempty"`
+	RandomEventRate     float64 `json:"random_event_rate,omitempty"`
+	DirectorAgentMode   string  `json:"director_agent_mode,omitempty"`
+	BranchPlanningTurns int     `json:"branch_planning_turns,omitempty"`
 }
 
 func storyDirectorStructuredStrategySummary(strategy StoryDirectorStrategy) storyDirectorStructuredStrategy {
 	return storyDirectorStructuredStrategy{
-		Enabled:                    strategy.Enabled,
-		MainlineStrength:           strategy.MainlineStrength,
-		FailurePolicy:              strategy.FailurePolicy,
-		PacingCurve:                strategy.PacingCurve,
-		RandomEventRate:            strategy.RandomEventRate,
-		DirectorAgentMode:          strategy.DirectorAgentMode,
-		DirectorAgentIntervalTurns: strategy.DirectorAgentIntervalTurns,
+		Enabled:             strategy.Enabled,
+		MainlineStrength:    strategy.MainlineStrength,
+		FailurePolicy:       strategy.FailurePolicy,
+		PacingCurve:         strategy.PacingCurve,
+		RandomEventRate:     strategy.RandomEventRate,
+		DirectorAgentMode:   strategy.DirectorAgentMode,
+		BranchPlanningTurns: strategy.BranchPlanningTurns,
 	}
 }
 

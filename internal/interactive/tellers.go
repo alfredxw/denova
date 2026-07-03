@@ -60,7 +60,8 @@ type TellerPromptSlot struct {
 }
 
 // TellerOrchestrationConfig stores reusable game-mode narrative orchestration
-// defaults. Each story copies these into its own DirectorState at creation time.
+// defaults. Each story copies these into branch-scoped Director Plan templates
+// and Director Agent planning inputs at creation time.
 type TellerOrchestrationConfig struct {
 	Enabled          bool                 `json:"enabled"`
 	MainlineStrength string               `json:"mainline_strength,omitempty"`
@@ -80,7 +81,7 @@ type TellerEventPackage struct {
 }
 
 // TellerEventCard is a reusable, creator-editable narrative event package card.
-// Runtime DirectorState still receives it as a DirectorEvent, with Markdown
+// Director Agent planning prompts receive it as a DirectorEvent, with Markdown
 // stored in DirectorEvent.Template.
 type TellerEventCard struct {
 	ID                  string   `json:"id,omitempty"`
@@ -417,7 +418,7 @@ func defaultTellerEventCardMarkdown(event DirectorEvent) string {
 
 ## 事件回收 / 后果
 
-回收本事件造成的关系变化、线索暴露、资源消耗或外界评价，并为后续 DirectorState 留下可追踪的伏笔或压力。
+回收本事件造成的关系变化、线索暴露、资源消耗或外界评价，并为后续 Director Plan 留下可追踪的伏笔或压力。
 
 ## 奖励 / 代价
 
@@ -628,43 +629,6 @@ func normalizeStateOps(ops []StateOp) []StateOp {
 		result = append(result, op)
 	}
 	return result
-}
-
-func DirectorStateFromTeller(teller Teller) DirectorState {
-	teller = normalizeTeller(teller)
-	state := DefaultDirectorState()
-	config := teller.Orchestration
-	if config == nil {
-		defaultConfig := DefaultTellerOrchestrationConfig()
-		config = &defaultConfig
-	}
-	state.Enabled = config.Enabled
-	if !config.Enabled {
-		state.LastDirectorRun = &DirectorRunStatus{Status: "ready", Summary: "方案预设已关闭叙事编排。"}
-		return NormalizeDirectorState(state)
-	}
-	for _, pkg := range config.EventPackages {
-		if !pkg.Enabled {
-			continue
-		}
-		for _, eventCard := range pkg.Events {
-			if len(state.EventQueue) >= maxTurnBriefListItems {
-				break
-			}
-			if !eventCard.Enabled {
-				continue
-			}
-			state.EventQueue = upsertDirectorEvent(state.EventQueue, directorEventFromTellerEventCard(eventCard))
-		}
-	}
-	for _, event := range config.CustomEvents {
-		state.EventQueue = upsertDirectorEvent(state.EventQueue, event)
-	}
-	state.LastDirectorRun = &DirectorRunStatus{
-		Status:  "ready",
-		Summary: fmt.Sprintf("已从方案预设“%s”初始化叙事编排：%s/%s/%s。", teller.Name, config.MainlineStrength, config.FailurePolicy, config.PacingCurve),
-	}
-	return NormalizeDirectorState(state)
 }
 
 // DirectorEventCatalogFromTeller returns built-in and teller-defined event cards

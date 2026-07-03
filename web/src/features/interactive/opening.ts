@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next'
-import type { DirectorState, StateOp, StoryImageSettings, StoryOpeningConfig, StoryOpeningMode, StorySummary } from './types'
+import type { StateOp, StoryImageSettings, StoryOpeningConfig, StoryOpeningMode, StorySummary } from './types'
 
 export interface StoryCreateInput {
   title: string
@@ -9,7 +9,6 @@ export interface StoryCreateInput {
   reply_target_chars: number
   image_settings?: StoryImageSettings
   opening?: StoryOpeningConfig
-  director_state?: DirectorState
   initial_state_ops?: StateOp[]
 }
 

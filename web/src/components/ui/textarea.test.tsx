@@ -15,7 +15,7 @@ describe('Textarea', () => {
       borderTopWidth: '1px',
       borderBottomWidth: '1px',
     } as CSSStyleDeclaration)
-    render(<Textarea autoResize maxRows={10} aria-label="prompt" />)
+    render(<Textarea maxRows={10} aria-label="prompt" />)
     const textarea = screen.getByLabelText('prompt') as HTMLTextAreaElement
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 360 })
 
@@ -35,7 +35,7 @@ describe('Textarea', () => {
       borderBottomWidth: '1px',
       minHeight: '38px',
     } as CSSStyleDeclaration)
-    render(<Textarea autoResize aria-label="prompt" />)
+    render(<Textarea aria-label="prompt" />)
     const textarea = screen.getByLabelText('prompt') as HTMLTextAreaElement
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 360 })
 
@@ -43,6 +43,26 @@ describe('Textarea', () => {
 
     expect(textarea.style.height).toBe('218px')
     expect(textarea.style.overflowY).toBe('auto')
+  })
+
+  it('can opt out of the default auto-resize behavior', () => {
+    vi.spyOn(window, 'getComputedStyle').mockReturnValue({
+      lineHeight: '20px',
+      paddingTop: '8px',
+      paddingBottom: '8px',
+      borderTopWidth: '1px',
+      borderBottomWidth: '1px',
+      minHeight: '38px',
+    } as CSSStyleDeclaration)
+    render(<Textarea autoResize={false} aria-label="prompt" />)
+    const textarea = screen.getByLabelText('prompt') as HTMLTextAreaElement
+    Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 360 })
+
+    fireEvent.input(textarea, { target: { value: 'line\n'.repeat(20) } })
+
+    expect(textarea.style.height).toBe('')
+    expect(textarea.style.overflowY).toBe('')
+    expect(textarea).not.toHaveAttribute('data-nova-multiline')
   })
 
   it('marks multiline auto-resize only after content exceeds one row', () => {
@@ -53,7 +73,7 @@ describe('Textarea', () => {
       borderTopWidth: '1px',
       borderBottomWidth: '1px',
     } as CSSStyleDeclaration)
-    render(<Textarea autoResize aria-label="prompt" />)
+    render(<Textarea aria-label="prompt" />)
     const textarea = screen.getByLabelText('prompt') as HTMLTextAreaElement
 
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 36 })
@@ -74,7 +94,7 @@ describe('Textarea', () => {
       borderBottomWidth: '1px',
       minHeight: '42px',
     } as CSSStyleDeclaration)
-    render(<Textarea autoResize aria-label="prompt" />)
+    render(<Textarea aria-label="prompt" />)
     const textarea = screen.getByLabelText('prompt') as HTMLTextAreaElement
 
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 42 })
@@ -156,7 +176,7 @@ describe('Textarea', () => {
       borderTopWidth: '1px',
       borderBottomWidth: '1px',
     } as CSSStyleDeclaration)
-    render(<Textarea autoResize aria-label="prompt" placeholder="a long placeholder" />)
+    render(<Textarea aria-label="prompt" placeholder="a long placeholder" />)
     const textarea = screen.getByLabelText('prompt') as HTMLTextAreaElement
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 58 })
 
@@ -176,7 +196,7 @@ describe('Textarea', () => {
       borderBottomWidth: '1px',
       minHeight: '38px',
     } as CSSStyleDeclaration)
-    render(<Textarea autoResize aria-label="prompt" />)
+    render(<Textarea aria-label="prompt" />)
     const textarea = screen.getByLabelText('prompt') as HTMLTextAreaElement
 
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 58 })
@@ -222,7 +242,7 @@ describe('Textarea', () => {
       borderTopWidth: '1px',
       borderBottomWidth: '1px',
     } as CSSStyleDeclaration)
-    render(<Textarea autoResize maxRows={10} aria-label="prompt" />)
+    render(<Textarea maxRows={10} aria-label="prompt" />)
     const textarea = screen.getByLabelText('prompt') as HTMLTextAreaElement
     let scrollTop = 800
     Object.defineProperty(textarea, 'scrollHeight', { configurable: true, value: 1000 })

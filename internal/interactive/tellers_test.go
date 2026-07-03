@@ -167,7 +167,7 @@ func TestNormalizeStyleRulesStoresContentsOnly(t *testing.T) {
 	}
 }
 
-func TestTellerOrchestrationDefaultsAndDirectorStateSeed(t *testing.T) {
+func TestTellerOrchestrationDefaultsAndDirectorEventCatalog(t *testing.T) {
 	library := NewTellerLibrary(t.TempDir())
 	created, err := library.Create(Teller{
 		ID:   "orchestrated",
@@ -186,9 +186,9 @@ func TestTellerOrchestrationDefaultsAndDirectorStateSeed(t *testing.T) {
 	if created.Orchestration == nil || !created.Orchestration.Enabled || len(created.Orchestration.EventPackages) == 0 {
 		t.Fatalf("default orchestration missing: %#v", created.Orchestration)
 	}
-	state := DirectorStateFromTeller(created)
-	if !state.Enabled || len(state.EventQueue) == 0 || state.LastDirectorRun == nil {
-		t.Fatalf("director state should be seeded from teller orchestration: %#v", state)
+	catalog := DirectorEventCatalogFromTeller(created)
+	if len(catalog) == 0 || !directorEventQueued(catalog, "face_slap") {
+		t.Fatalf("director event catalog should include default planning inputs: %#v", catalog)
 	}
 }
 
@@ -220,13 +220,13 @@ func TestTellerOrchestrationPreservesDisabledConfig(t *testing.T) {
 	if created.Orchestration == nil || created.Orchestration.Enabled {
 		t.Fatalf("disabled orchestration should be preserved: %#v", created.Orchestration)
 	}
-	state := DirectorStateFromTeller(created)
-	if state.Enabled || len(state.EventQueue) != 0 {
-		t.Fatalf("disabled orchestration should seed disabled director state: %#v", state)
+	catalog := DirectorEventCatalogFromTeller(created)
+	if !directorEventQueued(catalog, "custom_trial") {
+		t.Fatalf("disabled orchestration should preserve configured event catalog input: %#v", catalog)
 	}
 }
 
-func TestTellerEventCardsNormalizeAndSeedDirectorState(t *testing.T) {
+func TestTellerEventCardsNormalizeAndBuildDirectorCatalog(t *testing.T) {
 	longDescription := strings.Repeat("伏笔", MaxEventCardDescriptionChars+20)
 	teller := normalizeTeller(Teller{
 		ID:   "event-cards",
@@ -289,11 +289,11 @@ func TestTellerEventCardsNormalizeAndSeedDirectorState(t *testing.T) {
 		t.Fatalf("event card tags should be deduped: %#v", pkg.Events[0].Tags)
 	}
 
-	state := DirectorStateFromTeller(teller)
-	if !directorEventQueued(state.EventQueue, "academy_trial") || !directorEventQueued(state.EventQueue, "long_card") || directorEventQueued(state.EventQueue, "disabled_card") {
-		t.Fatalf("director state should contain enabled event cards only: %#v", state.EventQueue)
+	catalog := DirectorEventCatalogFromTeller(teller)
+	if !directorEventQueued(catalog, "academy_trial") || !directorEventQueued(catalog, "long_card") || directorEventQueued(catalog, "disabled_card") {
+		t.Fatalf("director catalog should contain enabled event cards only: %#v", catalog)
 	}
-	event := directorEventByID(state.EventQueue, "academy_trial")
+	event := directorEventByID(catalog, "academy_trial")
 	if event.Name != "外门考核打脸" || event.Category != "学院" || event.Template == "" || event.Weight != 2 || event.CooldownTurns != 3 || event.Intensity != "high" {
 		t.Fatalf("event card should map to director event: %#v", event)
 	}
@@ -341,6 +341,19 @@ func TestDirectorEventCatalogFromTellerIncludesEventCardMarkdown(t *testing.T) {
 	if !directorEventQueued(catalog, "custom_trial") || !directorEventQueued(catalog, "face_slap") {
 		t.Fatalf("catalog should include custom and built-in events: %#v", catalog)
 	}
+}
+
+func directorEventQueued(events []DirectorEvent, id string) bool {
+	return directorEventByID(events, id).ID != ""
+}
+
+func directorEventByID(events []DirectorEvent, id string) DirectorEvent {
+	for _, event := range events {
+		if event.ID == id {
+			return event
+		}
+	}
+	return DirectorEvent{}
 }
 
 func TestTellerLibraryIgnoresLegacyStylePathField(t *testing.T) {

@@ -67,6 +67,10 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 }
 
 func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (adk.Agent, error) {
+	var allowedPaths []string
+	if len(toolContexts) > 0 {
+		allowedPaths = toolContexts[0].DirectorPlanAllowedPaths
+	}
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{
 		Kind:              config.AgentKindInteractiveDirector,
 		Name:              "DenovaInteractiveDirectorAgent",
@@ -74,6 +78,7 @@ func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *bo
 		Instruction:       protectedSystemInstruction(cfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction()),
 		EnableSkills:      false,
 		DisableWriteTodos: true,
+		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveDirectorPlanFileMiddleware(allowedPaths)},
 		ExtraToolsFactory: interactiveDirectorToolsFactory(cfg, toolContexts...),
 	})
 }
@@ -496,22 +501,10 @@ func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...Interactiv
 
 func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-		var tools []tool.BaseTool
-		if cfg != nil && settings.LoreRead {
-			loreTools, err := newLoreTools(cfg.Workspace, false)
-			if err != nil {
-				return nil, err
-			}
-			tools = append(tools, loreTools...)
-		}
-		if len(toolContexts) > 0 {
-			memoryTools, err := newInteractiveMemoryTools(toolContexts[0])
-			if err != nil {
-				return nil, err
-			}
-			tools = append(tools, memoryTools...)
-		}
-		return tools, nil
+		_ = cfg
+		_ = settings
+		_ = toolContexts
+		return nil, nil
 	}
 }
 

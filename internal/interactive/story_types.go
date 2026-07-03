@@ -14,8 +14,8 @@ type CreateStoryRequest struct {
 	ReplyTargetChars int                `json:"reply_target_chars"`
 	Opening          StoryOpeningConfig `json:"opening,omitempty"`
 	ImageSettings    StoryImageSettings `json:"image_settings,omitempty"`
-	DirectorState    *DirectorState     `json:"director_state,omitempty"`
 	InitialStateOps  []StateOp          `json:"initial_state_ops,omitempty"`
+	DirectorPlanSeed *DirectorPlanSeed  `json:"-"`
 }
 
 type AppendTurnRequest struct {
@@ -150,7 +150,6 @@ type StoryMeta struct {
 	ReplyTargetChars int                   `json:"reply_target_chars"`
 	Opening          StoryOpeningConfig    `json:"opening"`
 	ImageSettings    StoryImageSettings    `json:"image_settings"`
-	DirectorState    DirectorState         `json:"director_state,omitempty"`
 	CurrentBranch    string                `json:"current_branch"`
 	Branches         map[string]BranchMeta `json:"branches"`
 	CreatedAt        string                `json:"created_at"`
@@ -343,7 +342,7 @@ type Snapshot struct {
 	TokenUsageEvents         []TokenUsageEvent              `json:"token_usage_events,omitempty"`
 	ContextCompaction        *ContextCompactionEvent        `json:"context_compaction,omitempty"`
 	ContextCompactionRemoval *ContextCompactionRemovalEvent `json:"context_compaction_removal,omitempty"`
-	DirectorState            DirectorState                  `json:"director_state"`
+	DirectorPlan             *DirectorPlan                  `json:"director_plan,omitempty"`
 	State                    map[string]any                 `json:"state"`
 	Graph                    StoryGraph                     `json:"graph"`
 }

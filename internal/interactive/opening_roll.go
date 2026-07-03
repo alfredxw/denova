@@ -20,7 +20,6 @@ type OpeningRollResult struct {
 	Seed            int64                `json:"seed"`
 	Traits          []OpeningRolledTrait `json:"traits"`
 	StateOps        []StateOp            `json:"state_ops"`
-	DirectorState   DirectorState        `json:"director_state"`
 }
 
 type OpeningRolledTrait struct {
@@ -37,18 +36,12 @@ func RollOpening(teller Teller, req OpeningRollRequest) (OpeningRollResult, erro
 		seed = time.Now().UnixNano()
 	}
 	result := OpeningRollResult{
-		TellerID:      firstNonEmptyString(strings.TrimSpace(req.TellerID), teller.ID),
-		Seed:          seed,
-		Traits:        []OpeningRolledTrait{},
-		StateOps:      append([]StateOp(nil), teller.Orchestration.Opening.InitialStateOps...),
-		DirectorState: DirectorStateFromTeller(teller),
+		TellerID: firstNonEmptyString(strings.TrimSpace(req.TellerID), teller.ID),
+		Seed:     seed,
+		Traits:   []OpeningRolledTrait{},
+		StateOps: append([]StateOp(nil), teller.Orchestration.Opening.InitialStateOps...),
 	}
 	if teller.Orchestration == nil || !teller.Orchestration.Opening.Enabled {
-		result.DirectorState.LastDirectorRun = &DirectorRunStatus{
-			Status:    "ready",
-			Summary:   "开局构建器已跳过，使用默认导演计划。",
-			UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
 		return result, nil
 	}
 	rng := mathrand.New(mathrand.NewSource(seed))
@@ -76,14 +69,6 @@ func RollOpening(teller Teller, req OpeningRollRequest) (OpeningRollResult, erro
 			})
 		}
 	}
-	if len(result.Traits) > 0 {
-		result.DirectorState.StagePlan = "开局词条已确定：" + openingTraitNames(result.Traits) + "。围绕这些优势、缺陷和身份安排第一阶段目标与代价。"
-		result.DirectorState.LastDirectorRun = &DirectorRunStatus{
-			Status:    "ready",
-			Summary:   "开局构建器已生成初始词条和规则状态。",
-			UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
-	}
 	result.StateOps = normalizeStateOps(result.StateOps)
 	return result, nil
 }
@@ -99,14 +84,8 @@ func RollOpeningWithStoryDirector(director StoryDirector, req OpeningRollRequest
 		Seed:            seed,
 		Traits:          []OpeningRolledTrait{},
 		StateOps:        StoryDirectorInitialStateOps(director),
-		DirectorState:   DirectorStateFromStoryDirector(director),
 	}
 	if !director.OpeningSelector.Enabled {
-		result.DirectorState.LastDirectorRun = &DirectorRunStatus{
-			Status:    "ready",
-			Summary:   "开局构建器已跳过，使用默认导演计划。",
-			UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
-		}
 		return result, nil
 	}
 	rng := mathrand.New(mathrand.NewSource(seed))
@@ -132,14 +111,6 @@ func RollOpeningWithStoryDirector(director StoryDirector, req OpeningRollRequest
 					"summary": trait.Summary,
 				},
 			})
-		}
-	}
-	if len(result.Traits) > 0 {
-		result.DirectorState.StagePlan = "开局词条已确定：" + openingTraitNames(result.Traits) + "。围绕这些优势、缺陷和身份安排第一阶段目标与代价。"
-		result.DirectorState.LastDirectorRun = &DirectorRunStatus{
-			Status:    "ready",
-			Summary:   "开局构建器已生成初始词条和规则状态。",
-			UpdatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		}
 	}
 	result.StateOps = normalizeStateOps(result.StateOps)

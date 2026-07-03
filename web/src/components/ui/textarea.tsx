@@ -14,7 +14,7 @@ let textMeasureCanvas: HTMLCanvasElement | null = null
 
 function Textarea({
   className,
-  autoResize = false,
+  autoResize = true,
   minRows = 1,
   maxRows = DEFAULT_MAX_ROWS,
   multilineMode = "auto",

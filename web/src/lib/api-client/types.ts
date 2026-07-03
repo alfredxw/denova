@@ -545,6 +545,23 @@ export interface SkillDocument extends SkillSummary {
   content: string
 }
 
+export interface SkillInstallCandidate {
+  id: string
+  name?: string
+  description?: string
+  source_path: string
+  conflict: boolean
+  invalid_reason?: string
+}
+
+export interface SkillInstallPreview {
+  candidates: SkillInstallCandidate[]
+}
+
+export interface SkillInstallResult {
+  installed: SkillSummary[]
+}
+
 export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at'>
 
 export type AutomationScope = 'user' | 'workspace'

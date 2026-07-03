@@ -1,12 +1,12 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
-import type { BranchSummary, DirectorEventActionInput, DirectorState, EventSystemModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorStateInput } from './types'
+import type { BranchSummary, DirectorPlan, EventSystemModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
 }
 
-export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; reply_target_chars?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig; director_state?: DirectorState; initial_state_ops?: StateOp[] }): Promise<StorySummary> {
+export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; reply_target_chars?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig; initial_state_ops?: StateOp[] }): Promise<StorySummary> {
   return requestJSON('/api/interactive/stories', {
     method: 'POST',
     headers: jsonHeaders,
@@ -59,12 +59,12 @@ export function rerollInteractiveRuleResolution(storyId: string, resolutionId: s
   })
 }
 
-export function getInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorState> {
+export function getInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorPlan> {
   const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director${query}`)
 }
 
-export function updateInteractiveDirector(storyId: string, input: UpdateDirectorStateInput): Promise<DirectorState> {
+export function updateInteractiveDirector(storyId: string, input: UpdateDirectorPlanInput): Promise<DirectorPlan> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director`, {
     method: 'PATCH',
     headers: jsonHeaders,
@@ -72,27 +72,11 @@ export function updateInteractiveDirector(storyId: string, input: UpdateDirector
   })
 }
 
-export function rebuildInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorState> {
+export function rebuildInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorPlan> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/rebuild`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ branch_id: branchId }),
-  })
-}
-
-export function forceInteractiveDirectorEvent(storyId: string, eventId: string, input: DirectorEventActionInput = {}): Promise<DirectorState> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/events/${encodeURIComponent(eventId)}/force`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(input),
-  })
-}
-
-export function disableInteractiveDirectorEvent(storyId: string, eventId: string, input: DirectorEventActionInput = {}): Promise<DirectorState> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/events/${encodeURIComponent(eventId)}/disable`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(input),
   })
 }
 

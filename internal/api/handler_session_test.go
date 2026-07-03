@@ -11,7 +11,9 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
 	"denova/config"
+	"denova/internal/agent"
 	runtimeapp "denova/internal/app"
+	"denova/internal/book"
 	"denova/internal/session"
 )
 
@@ -261,6 +263,10 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 	if err != nil {
 		t.Fatal(err)
 	}
+	restoreDirector := runtimeapp.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+		return "测试初始化导演规划完成。", nil
+	})
+	t.Cleanup(restoreDirector)
 	return application
 }
 

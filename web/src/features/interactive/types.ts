@@ -180,7 +180,8 @@ export interface StoryDirectorStrategy {
   pacing_curve?: string
   random_event_rate?: number
   director_agent_mode?: 'triggered' | 'every_turn' | 'off' | string
-  director_agent_interval_turns?: number
+  branch_planning_turns?: number
+  planning_templates?: DirectorPlanDocs
   prompt_markdown?: string
 }
 
@@ -389,29 +390,6 @@ export interface HotState {
   choices: string[]
 }
 
-export interface DirectorState {
-  enabled: boolean
-  spoiler_mode?: string
-  main_arc?: string
-  stage_plan?: string
-  beat_queue?: DirectorBeat[]
-  event_queue?: DirectorEvent[]
-  foreshadowing?: DirectorThread[]
-  potential_characters?: DirectorThread[]
-  branch_patches?: Record<string, string>
-  forced_events?: string[]
-  disabled_events?: string[]
-  last_director_run?: DirectorRunStatus
-}
-
-export interface DirectorBeat {
-  id?: string
-  summary?: string
-  pressure?: string
-  payoff?: string
-  status?: string
-}
-
 export interface DirectorEvent {
   id?: string
   name?: string
@@ -439,43 +417,60 @@ export interface DirectorEvent {
   director_instruction_note?: string
 }
 
-export interface UpdateDirectorStateInput {
-  branch_id?: string
-  enabled?: boolean
-  spoiler_mode?: string
-  main_arc?: string
-  stage_plan?: string
-  beat_queue?: DirectorBeat[]
-  event_queue?: DirectorEvent[]
-  foreshadowing?: DirectorThread[]
-  potential_characters?: DirectorThread[]
-  branch_patches?: Record<string, string>
-  forced_events?: string[]
-  disabled_events?: string[]
-  last_director_run?: DirectorRunStatus
-  source?: string
-  summary?: string
+export interface DirectorPlanDocs {
+  mainline: string
+  current_event: string
+  next_branches: string
 }
 
-export interface DirectorEventActionInput {
-  branch_id?: string
-  event?: DirectorEvent
-  reason?: string
-  source?: string
+export interface DirectorPlanVisibleDocs {
+  mainline?: string
+  current_event?: string
+  next_branches?: string
 }
 
-export interface DirectorThread {
-  id?: string
-  title?: string
-  status?: string
-  summary?: string
+export interface DirectorPlanDocInfo {
+  path: string
+  bytes: number
+  hash: string
+  visible_bytes?: number
 }
 
-export interface DirectorRunStatus {
+export interface DirectorPlanRunStatus {
   status?: string
   summary?: string
   error?: string
+  source_turn_id?: string
   updated_at?: string
+}
+
+export interface DirectorPlanMetadata {
+  version: number
+  story_id: string
+  branch_id: string
+  revision: string
+  branch_planning_turns: number
+  updated_at: string
+  source?: string
+  source_turn_id?: string
+  docs?: Record<string, DirectorPlanDocInfo>
+  last_run?: DirectorPlanRunStatus
+}
+
+export interface DirectorPlan {
+  story_id: string
+  branch_id: string
+  docs: DirectorPlanDocs
+  visible_docs?: DirectorPlanVisibleDocs
+  metadata: DirectorPlanMetadata
+}
+
+export interface UpdateDirectorPlanInput {
+  branch_id?: string
+  docs: DirectorPlanDocs
+  base_revision?: string
+  source?: string
+  summary?: string
 }
 
 export interface TurnBrief {
@@ -576,7 +571,6 @@ export interface OpeningRollResult {
   seed: number
   traits: OpeningRolledTrait[]
   state_ops: StateOp[]
-  director_state: DirectorState
 }
 
 export interface OpeningRolledTrait {
@@ -599,7 +593,7 @@ export interface Snapshot {
   token_usage_events?: TokenUsageEvent[]
   context_compaction?: ContextCompactionEvent | null
   context_compaction_removal?: ContextCompactionRemovalEvent | null
-  director_state?: DirectorState
+  director_plan?: DirectorPlan
   state: Record<string, unknown>
   graph?: StoryGraph
 }
@@ -752,7 +746,7 @@ export interface InteractiveTurnPersistedEvent {
   story_id: string
   branch_id: string
   turn: TurnEvent
-  director_state?: DirectorState
+  director_plan?: DirectorPlan
   state?: Record<string, unknown>
   graph?: StoryGraph
   branches?: BranchSummary[]

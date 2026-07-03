@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSkill, deleteSkillDocument, getSkillDocument, getSkills, saveSkillDocument } from '@/lib/api'
+import { createSkill, deleteSkillDocument, getSkillDocument, getSkills, installSkillGitHub, installSkillZip, previewSkillGitHubInstall, previewSkillZipInstall, saveSkillDocument } from '@/lib/api'
 import type { SkillDocument, SkillSnapshot } from '@/lib/api'
 import { SkillsView } from './SkillsView'
 
@@ -14,6 +14,10 @@ vi.mock('@/lib/api', () => ({
   deleteSkillDocument: vi.fn(),
   getSkillDocument: vi.fn(),
   getSkills: vi.fn(),
+  installSkillGitHub: vi.fn(),
+  installSkillZip: vi.fn(),
+  previewSkillGitHubInstall: vi.fn(),
+  previewSkillZipInstall: vi.fn(),
   saveSkillDocument: vi.fn(),
 }))
 
@@ -23,6 +27,10 @@ describe('SkillsView', () => {
     vi.mocked(deleteSkillDocument).mockReset()
     vi.mocked(getSkillDocument).mockReset()
     vi.mocked(getSkills).mockReset()
+    vi.mocked(installSkillGitHub).mockReset()
+    vi.mocked(installSkillZip).mockReset()
+    vi.mocked(previewSkillGitHubInstall).mockReset()
+    vi.mocked(previewSkillZipInstall).mockReset()
     vi.mocked(saveSkillDocument).mockReset()
     vi.mocked(getSkills).mockResolvedValue(skillsSnapshot())
     vi.mocked(createSkill).mockImplementation(async (scope, name, description, agents = []) => skillDocument({
@@ -37,7 +45,7 @@ describe('SkillsView', () => {
     const user = userEvent.setup()
     render(<SkillsView workspace="/books/demo" />)
 
-    await user.click(await screen.findByRole('button', { name: /新建 Skill/ }))
+    await user.click(await screen.findByRole('button', { name: '新建' }))
     await user.type(screen.getByLabelText('Skill 名称'), 'draft-plan')
     await user.type(screen.getByLabelText('触发说明'), '规划章节草稿')
     await user.click(screen.getByRole('button', { name: '创建 SKILL.md' }))
@@ -132,6 +140,75 @@ describe('SkillsView', () => {
       )
     })
     expect(vi.mocked(saveSkillDocument).mock.calls[0][2]).toContain('description: "Beat planning"')
+  })
+
+  it('scans GitHub sources and installs only selected Skills', async () => {
+    const user = userEvent.setup()
+    vi.mocked(previewSkillGitHubInstall).mockResolvedValue({
+      candidates: [
+        { id: 'id-one', name: 'one', description: 'One skill', source_path: 'skills/one', conflict: false },
+        { id: 'id-two', name: 'two', description: 'Two skill', source_path: 'skills/two', conflict: false },
+      ],
+    })
+    vi.mocked(installSkillGitHub).mockResolvedValue({
+      installed: [skillDocument({ name: 'one', description: 'One skill', scope: 'user' })],
+    })
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    await user.click(await screen.findByRole('button', { name: '导入' }))
+    await user.type(screen.getByLabelText('GitHub 地址'), 'owner/repo')
+    await user.click(screen.getByRole('button', { name: '扫描' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(previewSkillGitHubInstall)).toHaveBeenCalledWith({
+        url: 'owner/repo',
+        ref: '',
+        subdir: '',
+        scope: 'user',
+      })
+    })
+    await user.click(screen.getByText('/one').closest('label')!)
+    await user.click(screen.getByRole('button', { name: '安装 1 个' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(installSkillGitHub)).toHaveBeenCalledWith({
+        url: 'owner/repo',
+        ref: '',
+        subdir: '',
+        scope: 'user',
+        candidateIds: ['id-one'],
+      })
+    })
+  })
+
+  it('scans ZIP uploads and auto-selects a single installable Skill', async () => {
+    const user = userEvent.setup()
+    const file = new File(['zip'], 'skill.zip', { type: 'application/zip' })
+    vi.mocked(previewSkillZipInstall).mockResolvedValue({
+      candidates: [
+        { id: 'zip-one', name: 'zip-one', description: 'Zip skill', source_path: 'skills/zip-one', conflict: false },
+      ],
+    })
+    vi.mocked(installSkillZip).mockResolvedValue({
+      installed: [skillDocument({ name: 'zip-one', description: 'Zip skill', scope: 'user' })],
+    })
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    await user.click(await screen.findByRole('button', { name: '导入' }))
+    await user.click(screen.getByRole('button', { name: 'ZIP' }))
+    await user.upload(screen.getByLabelText('ZIP 文件'), file)
+    await user.click(screen.getByRole('button', { name: '扫描' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(previewSkillZipInstall)).toHaveBeenCalledWith(file, 'user')
+    })
+    await user.click(screen.getByRole('button', { name: '安装 1 个' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(installSkillZip)).toHaveBeenCalledWith(file, 'user', ['zip-one'])
+    })
   })
 
   it('restores built-in Skill by deleting the active override', async () => {

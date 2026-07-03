@@ -36,6 +36,22 @@ func (a *App) DeleteSkillDocument(ctx context.Context, scope novaskills.Scope, n
 	return a.skills().Delete(ctx, scope, name)
 }
 
+func (a *App) PreviewSkillZip(ctx context.Context, scope novaskills.Scope, data []byte) (novaskills.InstallPreview, error) {
+	return a.skills().PreviewZip(ctx, scope, data)
+}
+
+func (a *App) InstallSkillZip(ctx context.Context, scope novaskills.Scope, data []byte, candidateIDs []string) (novaskills.InstallResult, error) {
+	return a.skills().InstallZip(ctx, scope, data, candidateIDs)
+}
+
+func (a *App) PreviewSkillGitHub(ctx context.Context, scope novaskills.Scope, source novaskills.GitHubSource) (novaskills.InstallPreview, error) {
+	return a.skills().PreviewGitHub(ctx, scope, source)
+}
+
+func (a *App) InstallSkillGitHub(ctx context.Context, scope novaskills.Scope, source novaskills.GitHubSource, candidateIDs []string) (novaskills.InstallResult, error) {
+	return a.skills().InstallGitHub(ctx, scope, source, candidateIDs)
+}
+
 func (s *SkillsAppService) Snapshot(ctx context.Context) (novaskills.Snapshot, error) {
 	return novaskills.SnapshotFor(ctx, s.directories())
 }
@@ -77,6 +93,32 @@ func (s *SkillsAppService) Delete(ctx context.Context, scope novaskills.Scope, n
 	}
 	log.Printf("[skills] Skill deleted scope=%s name=%s", scope, name)
 	return nil
+}
+
+func (s *SkillsAppService) PreviewZip(ctx context.Context, scope novaskills.Scope, data []byte) (novaskills.InstallPreview, error) {
+	return novaskills.PreviewZip(ctx, s.directories(), scope, data)
+}
+
+func (s *SkillsAppService) InstallZip(ctx context.Context, scope novaskills.Scope, data []byte, candidateIDs []string) (novaskills.InstallResult, error) {
+	result, err := novaskills.InstallZip(ctx, s.directories(), scope, data, candidateIDs)
+	if err != nil {
+		return novaskills.InstallResult{}, err
+	}
+	log.Printf("[skills] Skills installed from zip scope=%s count=%d", scope, len(result.Installed))
+	return result, nil
+}
+
+func (s *SkillsAppService) PreviewGitHub(ctx context.Context, scope novaskills.Scope, source novaskills.GitHubSource) (novaskills.InstallPreview, error) {
+	return novaskills.PreviewGitHub(ctx, s.directories(), scope, source)
+}
+
+func (s *SkillsAppService) InstallGitHub(ctx context.Context, scope novaskills.Scope, source novaskills.GitHubSource, candidateIDs []string) (novaskills.InstallResult, error) {
+	result, err := novaskills.InstallGitHub(ctx, s.directories(), scope, source, candidateIDs)
+	if err != nil {
+		return novaskills.InstallResult{}, err
+	}
+	log.Printf("[skills] Skills installed from github scope=%s url=%q count=%d", scope, source.URL, len(result.Installed))
+	return result, nil
 }
 
 func (s *SkillsAppService) directories() []novaskills.Directory {

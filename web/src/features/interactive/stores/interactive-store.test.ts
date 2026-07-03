@@ -208,7 +208,7 @@ describe('interactive-store', () => {
     expect(next.turns.map((item) => item.id)).toEqual(['turn-1', 'turn-2'])
     expect(next.current_turn?.id).toBe('turn-2')
     expect(next.state).toEqual({ scene: { location: '门外' } })
-    expect(next.director_state?.main_arc).toBe('外门逆袭')
+    expect(next.director_plan?.visible_docs?.mainline).toBe('外门逆袭')
     expect(next.graph?.branches[0].head).toBe('turn-2')
   })
 
@@ -291,7 +291,7 @@ function persistedEvent(turnEvent: TurnEvent): InteractiveTurnPersistedEvent {
     story_id: 'story-1',
     branch_id: 'main',
     turn: turnEvent,
-    director_state: { enabled: true, spoiler_mode: 'layered', main_arc: '外门逆袭' },
+    director_plan: directorPlan(),
     state: { scene: { location: '门外' } },
     graph: {
       nodes: [{
@@ -307,6 +307,31 @@ function persistedEvent(turnEvent: TurnEvent): InteractiveTurnPersistedEvent {
       branches: [{ id: 'main', head: turnEvent.id, created_at: '', current: true }],
     },
     branches: [{ id: 'main', head: turnEvent.id, created_at: '', current: true }],
+  }
+}
+
+function directorPlan() {
+  return {
+    story_id: 'story-1',
+    branch_id: 'main',
+    docs: {
+      mainline: '外门逆袭',
+      current_event: '当前事件',
+      next_branches: '最近分支',
+    },
+    visible_docs: {
+      mainline: '外门逆袭',
+      current_event: '当前事件',
+      next_branches: '最近分支',
+    },
+    metadata: {
+      version: 1,
+      story_id: 'story-1',
+      branch_id: 'main',
+      revision: 'rev-1',
+      branch_planning_turns: 5,
+      updated_at: '2026-06-28T00:00:00Z',
+    },
   }
 }
 

@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"denova/config"
 	"denova/internal/agent"
@@ -29,6 +31,16 @@ var generateInteractiveDirectorForPlan = func(ctx context.Context, cfg *config.C
 	return agent.GenerateInteractiveDirectorWithTools(ctx, cfg, state, toolContext, instruction)
 }
 
+func SetInteractiveDirectorGeneratorForTest(fn func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error)) func() {
+	previous := generateInteractiveDirectorForPlan
+	if fn != nil {
+		generateInteractiveDirectorForPlan = fn
+	}
+	return func() {
+		generateInteractiveDirectorForPlan = previous
+	}
+}
+
 // InteractiveTurnPersistedEvent is emitted after a game-mode turn is durably
 // appended, allowing the UI to merge the new turn without a blocking snapshot
 // reload.
@@ -36,7 +48,7 @@ type InteractiveTurnPersistedEvent struct {
 	StoryID                  string                                     `json:"story_id"`
 	BranchID                 string                                     `json:"branch_id"`
 	Turn                     interactive.TurnEvent                      `json:"turn"`
-	DirectorState            interactive.DirectorState                  `json:"director_state"`
+	DirectorPlan             *interactive.DirectorPlan                  `json:"director_plan,omitempty"`
 	State                    map[string]any                             `json:"state"`
 	Graph                    interactive.StoryGraph                     `json:"graph"`
 	Branches                 []interactive.BranchSummary                `json:"branches"`
@@ -66,7 +78,43 @@ func (s *InteractiveAppService) CreateInteractiveStory(req interactive.CreateSto
 		return interactive.StorySummary{}, ErrNoWorkspace
 	}
 	req = s.withStoryDirectorDefaults(req)
-	return store.CreateStory(req)
+	story, err := store.CreateStory(req)
+	if err != nil {
+		return interactive.StorySummary{}, err
+	}
+	if err := s.initializeDirectorPlanForNewStory(store, story); err != nil {
+		if deleteErr := store.DeleteStory(story.ID); deleteErr != nil {
+			return interactive.StorySummary{}, fmt.Errorf("初始化导演规划失败: %w；回滚新故事失败: %v", err, deleteErr)
+		}
+		return interactive.StorySummary{}, fmt.Errorf("初始化导演规划失败: %w", err)
+	}
+	return story, nil
+}
+
+func (s *InteractiveAppService) initializeDirectorPlanForNewStory(store *interactive.Store, story interactive.StorySummary) error {
+	cfg := s.cfg()
+	if cfg == nil || store == nil {
+		return nil
+	}
+	director := loadStoryDirector(cfg.NovaDir, story.StoryDirectorID)
+	decision := shouldRunInteractiveDirectorAgent(director.Strategy)
+	if !decision.ShouldRun {
+		log.Printf("[interactive-director-agent] initial run skipped story_id=%s branch_id=main reason=%s", story.ID, decision.Reason)
+		return nil
+	}
+	state := book.NewState(cfg.Workspace)
+	conversation := newInteractiveConversation(store, cfg.NovaDir, cfg.Workspace, story.ID, "main", "story_create", story.ReplyTargetChars, cfg)
+	turn := interactive.TurnEvent{
+		ID:        "story_create",
+		BranchID:  "main",
+		Ts:        time.Now().UTC().Format(time.RFC3339Nano),
+		User:      "新建故事 / Story creation",
+		Narrative: "初始化三层导演规划 / Initialize three-layer director plan",
+	}
+	if _, err := runInteractiveDirectorPlan(context.Background(), cfg, state, conversation, turn, nil); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (a *App) RollInteractiveOpening(req interactive.OpeningRollRequest) (interactive.OpeningRollResult, error) {
@@ -120,14 +168,31 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 	if interactive.StoryDirectorImagePresetEnabled(director) && strings.TrimSpace(req.ImageSettings.PresetID) == "" && strings.TrimSpace(director.ModuleRefs.ImagePresetID) != "" {
 		req.ImageSettings.PresetID = strings.TrimSpace(director.ModuleRefs.ImagePresetID)
 	}
-	if req.DirectorState == nil {
-		state := interactive.DirectorStateFromStoryDirector(director)
-		req.DirectorState = &state
+	openingSummary := openingSummaryFromStateOps(req.InitialStateOps)
+	req.DirectorPlanSeed = &interactive.DirectorPlanSeed{
+		Templates:           director.Strategy.PlanningTemplates,
+		BranchPlanningTurns: director.Strategy.BranchPlanningTurns,
+		Source:              "story_create",
+		OpeningSummary:      openingSummary,
 	}
 	if len(req.InitialStateOps) == 0 {
 		req.InitialStateOps = interactive.StoryDirectorInitialStateOps(director)
 	}
+	if req.DirectorPlanSeed.OpeningSummary == "" {
+		req.DirectorPlanSeed.OpeningSummary = openingSummaryFromStateOps(req.InitialStateOps)
+	}
 	return req
+}
+
+func openingSummaryFromStateOps(ops []interactive.StateOp) string {
+	if len(ops) == 0 {
+		return ""
+	}
+	data, err := json.Marshal(ops)
+	if err != nil {
+		return ""
+	}
+	return "开局状态操作：" + string(data)
 }
 
 func (a *App) UpdateInteractiveStory(storyID string, req interactive.UpdateStoryRequest) (interactive.StorySummary, error) {
@@ -188,44 +253,45 @@ func (s *InteractiveAppService) RerollInteractiveRuleResolution(storyID, resolut
 	return store.RerollRuleResolution(storyID, resolutionID, req)
 }
 
-func (a *App) InteractiveDirector(storyID, branchID string) (interactive.DirectorState, error) {
-	return a.interactiveService().InteractiveDirector(storyID, branchID)
+func (a *App) InteractiveDirectorPlan(storyID, branchID string) (interactive.DirectorPlan, error) {
+	return a.interactiveService().InteractiveDirectorPlan(storyID, branchID)
 }
 
-func (s *InteractiveAppService) InteractiveDirector(storyID, branchID string) (interactive.DirectorState, error) {
+func (s *InteractiveAppService) InteractiveDirectorPlan(storyID, branchID string) (interactive.DirectorPlan, error) {
 	store := s.store()
 	if store == nil {
-		return interactive.DirectorState{}, ErrNoWorkspace
+		return interactive.DirectorPlan{}, ErrNoWorkspace
 	}
-	return store.DirectorState(storyID, branchID)
+	return store.DirectorPlan(storyID, branchID)
 }
 
-func (a *App) UpdateInteractiveDirector(storyID string, req interactive.UpdateDirectorStateRequest) (interactive.DirectorState, error) {
-	return a.interactiveService().UpdateInteractiveDirector(storyID, req)
+func (a *App) UpdateInteractiveDirectorPlan(storyID string, req interactive.UpdateDirectorPlanRequest) (interactive.DirectorPlan, error) {
+	return a.interactiveService().UpdateInteractiveDirectorPlan(storyID, req)
 }
 
-func (s *InteractiveAppService) UpdateInteractiveDirector(storyID string, req interactive.UpdateDirectorStateRequest) (interactive.DirectorState, error) {
+func (s *InteractiveAppService) UpdateInteractiveDirectorPlan(storyID string, req interactive.UpdateDirectorPlanRequest) (interactive.DirectorPlan, error) {
 	store := s.store()
 	if store == nil {
-		return interactive.DirectorState{}, ErrNoWorkspace
+		return interactive.DirectorPlan{}, ErrNoWorkspace
 	}
-	return store.UpdateDirectorState(storyID, req)
+	return store.UpdateDirectorPlan(storyID, req)
 }
 
-func (a *App) RebuildInteractiveDirector(storyID string, req interactive.RebuildDirectorStateRequest) (interactive.DirectorState, error) {
-	return a.interactiveService().RebuildInteractiveDirector(storyID, req)
+func (a *App) RebuildInteractiveDirectorPlan(storyID string, req interactive.RebuildDirectorPlanRequest) (interactive.DirectorPlan, error) {
+	return a.interactiveService().RebuildInteractiveDirectorPlan(storyID, req)
 }
 
-func (s *InteractiveAppService) RebuildInteractiveDirector(storyID string, req interactive.RebuildDirectorStateRequest) (interactive.DirectorState, error) {
+func (s *InteractiveAppService) RebuildInteractiveDirectorPlan(storyID string, req interactive.RebuildDirectorPlanRequest) (interactive.DirectorPlan, error) {
 	store := s.store()
 	if store == nil {
-		return interactive.DirectorState{}, ErrNoWorkspace
+		return interactive.DirectorPlan{}, ErrNoWorkspace
 	}
+	seed := interactive.DirectorPlanSeed{Templates: interactive.DefaultStoryDirectorPlanningTemplates(), BranchPlanningTurns: 5, Source: firstNonEmptyApp(req.Source, "manual_rebuild")}
 	if cfg := s.cfg(); cfg != nil && cfg.NovaDir != "" {
 		if storyCtx, err := store.StoryContext(storyID, req.BranchID); err == nil {
 			if director, err := interactive.NewStoryDirectorLibrary(cfg.NovaDir).Get(storyCtx.Meta.StoryDirectorID); err == nil {
-				eventCatalog := interactive.DirectorEventCatalogFromStoryDirector(director)
-				req.EventCatalog = &eventCatalog
+				seed.Templates = director.Strategy.PlanningTemplates
+				seed.BranchPlanningTurns = director.Strategy.BranchPlanningTurns
 			} else {
 				log.Printf("[interactive-director] load story director for rebuild failed story_id=%s story_director_id=%s err=%v", storyID, storyCtx.Meta.StoryDirectorID, err)
 			}
@@ -233,31 +299,7 @@ func (s *InteractiveAppService) RebuildInteractiveDirector(storyID string, req i
 			log.Printf("[interactive-director] load story context for rebuild failed story_id=%s branch_id=%s err=%v", storyID, req.BranchID, err)
 		}
 	}
-	return store.RebuildDirectorState(storyID, req)
-}
-
-func (a *App) ForceInteractiveDirectorEvent(storyID, eventID string, req interactive.DirectorEventActionRequest) (interactive.DirectorState, error) {
-	return a.interactiveService().ForceInteractiveDirectorEvent(storyID, eventID, req)
-}
-
-func (s *InteractiveAppService) ForceInteractiveDirectorEvent(storyID, eventID string, req interactive.DirectorEventActionRequest) (interactive.DirectorState, error) {
-	store := s.store()
-	if store == nil {
-		return interactive.DirectorState{}, ErrNoWorkspace
-	}
-	return store.ForceDirectorEvent(storyID, eventID, req)
-}
-
-func (a *App) DisableInteractiveDirectorEvent(storyID, eventID string, req interactive.DirectorEventActionRequest) (interactive.DirectorState, error) {
-	return a.interactiveService().DisableInteractiveDirectorEvent(storyID, eventID, req)
-}
-
-func (s *InteractiveAppService) DisableInteractiveDirectorEvent(storyID, eventID string, req interactive.DirectorEventActionRequest) (interactive.DirectorState, error) {
-	store := s.store()
-	if store == nil {
-		return interactive.DirectorState{}, ErrNoWorkspace
-	}
-	return store.DisableDirectorEvent(storyID, eventID, req)
+	return store.RebuildDirectorPlan(storyID, req, seed)
 }
 
 func (a *App) InteractiveMemory(storyID, branchID string, includeArchived bool) (interactive.InteractiveMemoryState, error) {
@@ -863,15 +905,12 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		}, interactiveEmit)
 		if turn, stateReady, ok := conversation.LastTurnForState(); ok && ctx.Err() == nil {
 			director := loadStoryDirector(novaDir, storyCtx.Meta.StoryDirectorID)
-			decision, err := store.ShouldRunDirectorAgent(storyID, turn.BranchID, turn, director.Strategy)
-			if err != nil {
-				log.Printf("[interactive-director-agent] schedule decision failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
-				markInteractiveDirectorFailed(conversation, turn, err)
-			} else if decision.ShouldRun {
-				log.Printf("[interactive-director-agent] scheduled story_id=%s branch_id=%s turn_id=%s reason=%s turns_since_last_run=%d", storyID, turn.BranchID, turn.ID, decision.Reason, decision.TurnsSinceLastRun)
+			decision := shouldRunInteractiveDirectorAgent(director.Strategy)
+			if decision.ShouldRun {
+				log.Printf("[interactive-director-agent] scheduled story_id=%s branch_id=%s turn_id=%s reason=%s", storyID, turn.BranchID, turn.ID, decision.Reason)
 				startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore)
 			} else {
-				log.Printf("[interactive-director-agent] skipped by schedule story_id=%s branch_id=%s turn_id=%s reason=%s turns_since_last_run=%d", storyID, turn.BranchID, turn.ID, decision.Reason, decision.TurnsSinceLastRun)
+				log.Printf("[interactive-director-agent] skipped by schedule story_id=%s branch_id=%s turn_id=%s reason=%s", storyID, turn.BranchID, turn.ID, decision.Reason)
 			}
 			if !stateReady {
 				shouldGenerate, nextAuto, err := store.ShouldGenerateStoryMemory(storyID, turn.BranchID)
@@ -922,7 +961,7 @@ func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conv
 		StoryID:                  storyID,
 		BranchID:                 snapshot.BranchID,
 		Turn:                     persistedTurn,
-		DirectorState:            snapshot.DirectorState,
+		DirectorPlan:             snapshot.DirectorPlan,
 		State:                    snapshot.State,
 		Graph:                    snapshot.Graph,
 		Branches:                 snapshot.Graph.Branches,

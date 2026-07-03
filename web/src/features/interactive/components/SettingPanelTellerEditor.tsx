@@ -210,6 +210,7 @@ export function TellerEditor({ draft, setDraft, tagDraft, setTagDraft, activeSlo
             </div>
             <div className="min-h-[420px] flex-1 p-4 lg:min-h-0">
               <Textarea
+                autoResize={false}
                 className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
                 value={activeSlot.content}
                 onChange={(event) => updateSlot({ content: event.target.value })}
@@ -364,6 +365,7 @@ function InteractiveStyleRuleRow({ rule, onChange, onRemove }: { rule: StyleRule
           </div>
           <div className="flex min-h-0 flex-1 flex-col p-4">
             <Textarea
+              autoResize={false}
               className="nova-field h-[min(52vh,420px)] min-h-0 resize-none overflow-y-auto text-sm leading-6 shadow-none [field-sizing:fixed] focus-visible:ring-0"
               value={contentDraft}
               onChange={(event) => setContentDraft(limitStyleContent(event.target.value))}

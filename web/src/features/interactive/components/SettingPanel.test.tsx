@@ -327,29 +327,84 @@ describe('SettingPanel', () => {
     })
   })
 
-  it('saves background director scheduling settings', async () => {
+  it('saves background director planning settings', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
     await user.click(screen.getByRole('button', { name: /默认导演/ }))
-    expect(screen.getByText('触发/间隔')).toBeInTheDocument()
-    const intervalField = screen.getByText('后台导演间隔').closest('label') as HTMLElement
-    const intervalInput = within(intervalField).getByRole('spinbutton')
-    expect(intervalInput).toHaveValue(4)
-    fireEvent.change(intervalInput, { target: { value: '7' } })
+    expect(screen.getByText('回合后规划')).toBeInTheDocument()
+    const branchTurnsField = screen.getByText('分支规划回合').closest('label') as HTMLElement
+    const branchTurnsInput = within(branchTurnsField).getByRole('spinbutton')
+    expect(branchTurnsInput).toHaveValue(5)
+    fireEvent.change(branchTurnsInput, { target: { value: '7' } })
 
     const modeField = screen.getByText('后台导演运行方式').closest('label') as HTMLElement
     await user.click(within(modeField).getByRole('combobox'))
     await user.click(screen.getByRole('option', { name: /每回合/ }))
-    expect(screen.queryByText('后台导演间隔')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
     const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
     expect(payload.strategy).toMatchObject({
       director_agent_mode: 'every_turn',
-      director_agent_interval_turns: 7,
+      branch_planning_turns: 7,
     })
+  })
+
+  it('saves custom director planning templates', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await user.click(screen.getByText('导演规划模板').closest('button') as HTMLElement)
+    expect(screen.getByRole('tablist', { name: '导演规划模板' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '大方向模板' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '当前事件模板' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /当前事件模板/ })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: '当前事件模板' }))
+    expect(screen.getByRole('textbox', { name: /当前事件模板/ })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /大方向模板/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '大方向模板' }))
+    const template = [
+      '# 自定义大方向',
+      '',
+      '## 正文Agent可读 / Prose-agent visible',
+      '### 目标 / Goal',
+      '主线目标',
+      '### 节奏、压力与危机 / Pacing, Pressure, Crisis',
+      '压力',
+      '### 结果与代价 / Outcome and Cost',
+      '代价',
+      '### 状态 / State',
+      '状态',
+      '### 分支处理 / Branch Handling',
+      '分支',
+      '### 伏笔与回收 / Foreshadowing and Payoff',
+      '伏笔',
+      '',
+      '## 后台导演私密 / Director private',
+      '### 目标 / Goal',
+      '隐藏目标',
+      '### 节奏、压力与危机 / Pacing, Pressure, Crisis',
+      '隐藏压力',
+      '### 结果与代价 / Outcome and Cost',
+      '隐藏代价',
+      '### 状态 / State',
+      '隐藏状态',
+      '### 分支处理 / Branch Handling',
+      '隐藏分支',
+      '### 伏笔与回收 / Foreshadowing and Payoff',
+      '隐藏伏笔',
+    ].join('\n')
+    const mainlineTemplateField = screen.getByRole('textbox', { name: /大方向模板/ })
+    expect(mainlineTemplateField).toHaveClass('min-h-[calc(20*1.25rem+1rem)]')
+    fireEvent.change(mainlineTemplateField, { target: { value: template } })
+
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    expect(payload.strategy?.planning_templates?.mainline).toBe(template)
   })
 
   it('saves advanced Markdown strategy prompt for story directors', async () => {

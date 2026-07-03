@@ -31,7 +31,8 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
   const pov = pickString(state, ['pov', 'viewpoint', '视角'])
   const sceneEntries = Object.entries(scene).filter(([key]) => !SCENE_METRIC_KEYS.has(key))
   const stateStatus = snapshot?.current_turn?.state_status
-  const directorState = snapshot?.director_state
+  const directorPlan = snapshot?.director_plan
+  const directorMetadata = directorPlan?.metadata
   const ruleResolution = snapshot?.current_turn?.rule_resolution
   const acceptedBrief = ruleResolution?.accepted_brief || snapshot?.current_turn?.turn_brief
   const ruleResults = ruleResolution?.rule_results || []
@@ -84,35 +85,29 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
           </div>
         </section>
 
-        {directorState ? (
+        {directorPlan ? (
           <section className={panelSectionClass}>
             <div className={sectionTitleClass}>
               <Sparkles className="h-3.5 w-3.5" />
               {t('snapshot.director.title')}
             </div>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(72px,1fr))] gap-2">
-              <SnapshotMetric label={t('snapshot.director.enabled')} value={directorState.enabled ? t('common.yes') : t('common.no')} />
-              <SnapshotMetric label={t('snapshot.director.spoilerMode')} value={directorState.spoiler_mode || t('snapshot.noRecord')} />
-              <SnapshotMetric label={t('snapshot.director.events')} value={String((directorState.event_queue || []).length)} />
+              <SnapshotMetric label={t('snapshot.director.status')} value={directorMetadata?.last_run?.status || t('snapshot.noRecord')} />
+              <SnapshotMetric label={t('snapshot.director.docs')} value={String(Object.keys(directorMetadata?.docs || {}).length || 3)} />
+              <SnapshotMetric label={t('snapshot.director.branchPlanningTurns')} value={String(directorMetadata?.branch_planning_turns || 5)} />
             </div>
-            {directorState.main_arc || directorState.stage_plan ? (
+            {directorPlan.visible_docs?.mainline || directorPlan.visible_docs?.current_event ? (
               <div className={`${panelCardClass} mt-3 p-2 text-xs text-[var(--nova-text-muted)]`}>
                 <StateValue value={compactRecord({
-                  main_arc: directorState.main_arc,
-                  stage_plan: directorState.stage_plan,
+                  mainline: directorPlan.visible_docs?.mainline,
+                  current_event: directorPlan.visible_docs?.current_event,
                 })} />
               </div>
             ) : null}
-            <div className="mt-3 space-y-3 text-xs text-[var(--nova-text-muted)]">
-              <LabeledList label={t('snapshot.director.beatQueue')} items={directorState.beat_queue || []} empty={t('snapshot.director.noBeats')} />
-              <LabeledList label={t('snapshot.director.eventQueue')} items={directorState.event_queue || []} empty={t('snapshot.director.noEvents')} />
-              <LabeledList label={t('snapshot.director.foreshadowing')} items={directorState.foreshadowing || []} empty={t('snapshot.director.noForeshadowing')} />
-              <LabeledList label={t('snapshot.director.disabledEvents')} items={directorState.disabled_events || []} empty={t('snapshot.director.noDisabledEvents')} />
-            </div>
-            {directorState.last_director_run ? (
+            {directorMetadata?.last_run ? (
               <div className={`${panelCardClass} mt-3 p-2 text-xs text-[var(--nova-text-muted)]`}>
                 <div className="mb-1 font-medium text-[var(--nova-text)]">{t('snapshot.director.lastRun')}</div>
-                <StateValue value={directorState.last_director_run} />
+                <StateValue value={directorMetadata.last_run} />
               </div>
             ) : null}
           </section>

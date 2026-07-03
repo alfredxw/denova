@@ -1,10 +1,17 @@
 package api
 
 import (
-	"denova/internal/interactive"
+	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
+
+	"denova/config"
+	"denova/internal/agent"
+	runtimeapp "denova/internal/app"
+	"denova/internal/book"
+	"denova/internal/interactive"
 )
 
 func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
@@ -185,53 +192,37 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 		t.Fatalf("get director status = %d body=%s", getResp.Code, getResp.Body.String())
 	}
 	type directorResponse struct {
-		Enabled     bool     `json:"enabled"`
-		SpoilerMode string   `json:"spoiler_mode"`
-		MainArc     string   `json:"main_arc"`
-		Forced      []string `json:"forced_events"`
-		Disabled    []string `json:"disabled_events"`
-		EventQueue  []struct {
-			ID     string `json:"id"`
-			Status string `json:"status"`
-		} `json:"event_queue"`
+		Docs struct {
+			Mainline     string `json:"mainline"`
+			CurrentEvent string `json:"current_event"`
+			NextBranches string `json:"next_branches"`
+		} `json:"docs"`
+		Metadata struct {
+			Revision string `json:"revision"`
+			LastRun  struct {
+				Status string `json:"status"`
+			} `json:"last_run"`
+		} `json:"metadata"`
 	}
 	var director directorResponse
 	decodeResponse(t, getResp.Body.Bytes(), &director)
-	if !director.Enabled || director.SpoilerMode != "layered" {
-		t.Fatalf("default director mismatch: %#v", director)
+	if director.Metadata.LastRun.Status != "ready" || !strings.Contains(director.Docs.Mainline, "正文Agent可读") {
+		t.Fatalf("default director plan mismatch: %#v", director)
 	}
 
-	mainArc := "学院逆袭主线"
+	nextDocs := director.Docs
+	nextDocs.Mainline += "\n\n手动设置主线：学院逆袭主线。"
 	patchResp := performJSONRequest(t, server, http.MethodPatch, "/api/interactive/stories/"+created.ID+"/director", map[string]any{
-		"main_arc": &mainArc,
-		"summary":  "手动设置主线",
+		"docs":          nextDocs,
+		"base_revision": director.Metadata.Revision,
+		"summary":       "手动设置主线",
 	})
 	if patchResp.Code != http.StatusOK {
 		t.Fatalf("patch director status = %d body=%s", patchResp.Code, patchResp.Body.String())
 	}
 	decodeResponse(t, patchResp.Body.Bytes(), &director)
-	if director.MainArc != mainArc {
-		t.Fatalf("director patch mismatch: %#v", director)
-	}
-
-	forceResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/events/contest/force", map[string]string{"reason": "安排比拼"})
-	if forceResp.Code != http.StatusOK {
-		t.Fatalf("force director event status = %d body=%s", forceResp.Code, forceResp.Body.String())
-	}
-	director = directorResponse{}
-	decodeResponse(t, forceResp.Body.Bytes(), &director)
-	if len(director.Forced) != 1 || director.Forced[0] != "contest" || !directorEventStatus(director.EventQueue, "contest", "forced") {
-		t.Fatalf("forced director event mismatch: %#v", director)
-	}
-
-	disableResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/events/contest/disable", nil)
-	if disableResp.Code != http.StatusOK {
-		t.Fatalf("disable director event status = %d body=%s", disableResp.Code, disableResp.Body.String())
-	}
-	director = directorResponse{}
-	decodeResponse(t, disableResp.Body.Bytes(), &director)
-	if len(director.Disabled) != 1 || director.Disabled[0] != "contest" || len(director.Forced) != 0 {
-		t.Fatalf("disabled director event mismatch: %#v", director)
+	if !strings.Contains(director.Docs.Mainline, "学院逆袭主线") || director.Metadata.LastRun.Status != "ready" {
+		t.Fatalf("director plan patch mismatch: %#v", director)
 	}
 
 	rebuildResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/rebuild", nil)
@@ -240,8 +231,38 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	director = directorResponse{}
 	decodeResponse(t, rebuildResp.Body.Bytes(), &director)
-	if director.MainArc == "" || len(director.EventQueue) == 0 {
-		t.Fatalf("rebuilt director mismatch: %#v", director)
+	if !strings.Contains(director.Docs.Mainline, "正文Agent可读") || director.Metadata.LastRun.Status != "ready" {
+		t.Fatalf("rebuilt director plan mismatch: %#v", director)
+	}
+}
+
+func TestInteractiveStoryCreateRollsBackWhenInitialDirectorFails(t *testing.T) {
+	application := newTestApplication(t)
+	restoreDirector := runtimeapp.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+		return "", errors.New("director unavailable")
+	})
+	t.Cleanup(restoreDirector)
+	server := NewServer(application, "0")
+
+	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]string{
+		"title":           "失败回滚",
+		"origin":          "主角准备出发",
+		"story_teller_id": "classic",
+	})
+	if createResp.Code == http.StatusOK {
+		t.Fatalf("create story should fail when initial director fails, body=%s", createResp.Body.String())
+	}
+
+	listResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories", nil)
+	if listResp.Code != http.StatusOK {
+		t.Fatalf("list stories status = %d body=%s", listResp.Code, listResp.Body.String())
+	}
+	var list struct {
+		Stories []any `json:"stories"`
+	}
+	decodeResponse(t, listResp.Body.Bytes(), &list)
+	if len(list.Stories) != 0 {
+		t.Fatalf("failed create should not commit story: %#v", list)
 	}
 }
 
@@ -260,12 +281,9 @@ func TestInteractiveOpeningRollAndInitialStateAPI(t *testing.T) {
 		StoryDirectorID string `json:"story_director_id"`
 		Seed            int64  `json:"seed"`
 		StateOps        []any  `json:"state_ops"`
-		DirectorState   struct {
-			Enabled bool `json:"enabled"`
-		} `json:"director_state"`
 	}
 	decodeResponse(t, rollResp.Body.Bytes(), &rolled)
-	if rolled.StoryDirectorID != "default" || rolled.Seed != 42 || !rolled.DirectorState.Enabled || len(rolled.StateOps) == 0 {
+	if rolled.StoryDirectorID != "default" || rolled.Seed != 42 || len(rolled.StateOps) == 0 {
 		t.Fatalf("opening roll mismatch: %#v", rolled)
 	}
 
@@ -357,24 +375,14 @@ func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 		t.Fatalf("rebuild detached director status = %d body=%s", rebuildResp.Code, rebuildResp.Body.String())
 	}
 	var rebuilt struct {
-		EventQueue []any `json:"event_queue"`
+		Docs struct {
+			Mainline string `json:"mainline"`
+		} `json:"docs"`
 	}
 	decodeResponse(t, rebuildResp.Body.Bytes(), &rebuilt)
-	if len(rebuilt.EventQueue) != 0 {
-		t.Fatalf("disabled event module should not refill default event queue: %#v", rebuilt.EventQueue)
+	if !strings.Contains(rebuilt.Docs.Mainline, "正文Agent可读") {
+		t.Fatalf("rebuilt detached director should return plan docs: %#v", rebuilt)
 	}
-}
-
-func directorEventStatus(events []struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-}, id, status string) bool {
-	for _, event := range events {
-		if event.ID == id && event.Status == status {
-			return true
-		}
-	}
-	return false
 }
 
 func TestInteractiveChatRequiresStoryID(t *testing.T) {

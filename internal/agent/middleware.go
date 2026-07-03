@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
@@ -26,8 +27,78 @@ type interactiveStoryToolMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
 }
 
+type interactiveDirectorPlanFileMiddleware struct {
+	*adk.BaseChatModelAgentMiddleware
+	allowedPaths map[string]bool
+}
+
 func newInteractiveStoryToolMiddleware() *interactiveStoryToolMiddleware {
 	return &interactiveStoryToolMiddleware{}
+}
+
+func newInteractiveDirectorPlanFileMiddleware(allowedPaths []string) *interactiveDirectorPlanFileMiddleware {
+	allowed := make(map[string]bool, len(allowedPaths))
+	for _, path := range allowedPaths {
+		cleaned := cleanDirectorPlanToolPath(path)
+		if cleaned != "" {
+			allowed[cleaned] = true
+		}
+	}
+	return &interactiveDirectorPlanFileMiddleware{allowedPaths: allowed}
+}
+
+func (m *interactiveDirectorPlanFileMiddleware) WrapInvokableToolCall(
+	_ context.Context,
+	endpoint adk.InvokableToolCallEndpoint,
+	toolCtx *adk.ToolContext,
+) (adk.InvokableToolCallEndpoint, error) {
+	return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
+		if msg := m.blockedDirectorToolMessage(toolName(toolCtx), args); msg != "" {
+			return msg, nil
+		}
+		return endpoint(ctx, args, opts...)
+	}, nil
+}
+
+func (m *interactiveDirectorPlanFileMiddleware) WrapStreamableToolCall(
+	_ context.Context,
+	endpoint adk.StreamableToolCallEndpoint,
+	toolCtx *adk.ToolContext,
+) (adk.StreamableToolCallEndpoint, error) {
+	return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
+		if msg := m.blockedDirectorToolMessage(toolName(toolCtx), args); msg != "" {
+			return singleChunkReader(msg), nil
+		}
+		return endpoint(ctx, args, opts...)
+	}, nil
+}
+
+func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name, args string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	switch name {
+	case "read_file", "write_file", "edit_file":
+		target := cleanDirectorPlanToolPath(toolPathFromArgs(args))
+		if target == "" {
+			return fmt.Sprintf("[tool error] interactive_director 工具 %q 必须提供 file_path。", name)
+		}
+		if m == nil || !m.allowedPaths[target] {
+			return fmt.Sprintf("[tool error] interactive_director 只能访问当前分支导演规划文件，拒绝路径: %s", target)
+		}
+		return ""
+	default:
+		return fmt.Sprintf("[tool error] interactive_director 只能使用 read_file、write_file、edit_file 更新当前分支导演规划，拒绝工具: %s", name)
+	}
+}
+
+func cleanDirectorPlanToolPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	return filepath.Clean(path)
 }
 
 func (m *interactiveStoryToolMiddleware) WrapInvokableToolCall(

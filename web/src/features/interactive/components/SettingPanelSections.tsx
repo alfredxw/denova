@@ -9,12 +9,13 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { type LoreItem, workspaceAssetURL } from '@/lib/api'
 import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpeningPreset } from '../opening'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
-import type { EventSystemModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorEventSystem, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, Teller } from '../types'
+import type { DirectorPlanDocs, EventSystemModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorEventSystem, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, Teller } from '../types'
 import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
 import { EventSystemVisualEditor, OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
 
@@ -45,6 +46,8 @@ const LORE_RESIDENT_ITEM_WARNING_CHARS = 8000
 const LORE_RESIDENT_TOTAL_WARNING_CHARS = 40000
 const IMAGE_PRESET_PROMPT_LIMIT = 4000
 const STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT = 4000
+const STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT = 24 * 1024
+const STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK = 5
 const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_request' }] as const
 const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'opening']
 const STORY_DIRECTOR_MAINLINE_OPTIONS = [
@@ -73,7 +76,18 @@ const STORY_DIRECTOR_AGENT_MODE_OPTIONS = [
   { value: 'every_turn', labelKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurn', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurnDesc' },
   { value: 'off', labelKey: 'settingPanel.storyDirector.strategy.agentMode.off', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.offDesc' },
 ] as const
-const STORY_DIRECTOR_AGENT_INTERVAL_FALLBACK = 4
+const DIRECTOR_PLAN_REQUIRED_HEADINGS = [
+  '## 正文Agent可读 / Prose-agent visible',
+  '## 后台导演私密 / Director private',
+  '### 目标 / Goal',
+  '### 节奏、压力与危机 / Pacing, Pressure, Crisis',
+  '### 结果与代价 / Outcome and Cost',
+  '### 状态 / State',
+  '### 分支处理 / Branch Handling',
+  '### 伏笔与回收 / Foreshadowing and Payoff',
+] as const
+const EMPTY_DIRECTOR_PLANNING_TEMPLATES: DirectorPlanDocs = { mainline: '', current_event: '', next_branches: '' }
+const DIRECTOR_PLANNING_TEMPLATE_KEYS = ['mainline', 'current_event', 'next_branches'] as const
 type ImagePresetTarget = ImagePresetSlot['target']
 type LoreType = LoreItem['type']
 type StrategySelectOption = {
@@ -700,17 +714,36 @@ export function StoryDirectorEditor({
   const { t } = useTranslation()
   const setSectionValid = usePresetSectionValidity(draft?.id || '', onValidityChange)
   const [strategyPromptOpen, setStrategyPromptOpen] = useState(false)
+  const [planningTemplatesOpen, setPlanningTemplatesOpen] = useState(false)
   const strategyPrompt = draft?.strategy?.prompt_markdown || ''
   const strategyPromptBytes = utf8ByteLength(strategyPrompt)
   const strategyPromptValid = strategyPromptBytes <= STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT
+  const planningTemplates = draft?.strategy?.planning_templates || EMPTY_DIRECTOR_PLANNING_TEMPLATES
+  const planningTemplateValidity = {
+    mainline: validateDirectorPlanningTemplate(planningTemplates.mainline),
+    current_event: validateDirectorPlanningTemplate(planningTemplates.current_event),
+    next_branches: validateDirectorPlanningTemplate(planningTemplates.next_branches),
+  }
+  const planningTemplatesValid = Object.values(planningTemplateValidity).every((item) => item.valid)
+  const planningTemplateTabs = DIRECTOR_PLANNING_TEMPLATE_KEYS.map((key) => ({
+    key,
+    label: t(`settingPanel.storyDirector.planningTemplate.${planningTemplateLabelKey(key)}`),
+    value: planningTemplates[key],
+    validity: planningTemplateValidity[key],
+  }))
 
   useEffect(() => {
     setStrategyPromptOpen(false)
+    setPlanningTemplatesOpen(false)
   }, [draft?.id])
 
   useEffect(() => {
     setSectionValid('strategy_prompt', strategyPromptValid)
   }, [draft?.id, strategyPromptValid, setSectionValid])
+
+  useEffect(() => {
+    setSectionValid('planning_templates', planningTemplatesValid)
+  }, [draft?.id, planningTemplatesValid, setSectionValid])
 
   if (!draft) {
     return <EmptyState title={t('settingPanel.editor.noStoryDirectorSelected')} description={t('settingPanel.editor.noStoryDirectorSelectedDesc')} />
@@ -725,6 +758,9 @@ export function StoryDirectorEditor({
         ...patch,
       },
     })
+  }
+  const updatePlanningTemplate = (key: keyof DirectorPlanDocs, value: string) => {
+    updateStrategy({ planning_templates: { ...planningTemplates, [key]: value } })
   }
   const refs = normalizedStoryDirectorRefs(draft.module_refs)
   const updateModuleRef = <K extends keyof StoryDirectorModuleRefs>(key: K, value: StoryDirectorModuleRefs[K]) => {
@@ -877,19 +913,17 @@ export function StoryDirectorEditor({
               options={STORY_DIRECTOR_AGENT_MODE_OPTIONS}
               onChange={(director_agent_mode) => updateStrategy({ director_agent_mode })}
             />
-            {(draft.strategy?.director_agent_mode || 'triggered') === 'triggered' && (
-              <Field label={t('settingPanel.storyDirector.agentInterval')}>
-                <Input
-                  className={inputClassName}
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={draft.strategy?.director_agent_interval_turns || STORY_DIRECTOR_AGENT_INTERVAL_FALLBACK}
-                  onChange={(event) => updateStrategy({ director_agent_interval_turns: normalizeDirectorAgentInterval(event.target.value) })}
-                />
-                <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.agentIntervalDesc')}</span>
-              </Field>
-            )}
+            <Field label={t('settingPanel.storyDirector.branchPlanningTurns')}>
+              <Input
+                className={inputClassName}
+                type="number"
+                min={1}
+                max={12}
+                value={draft.strategy?.branch_planning_turns || STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK}
+                onChange={(event) => updateStrategy({ branch_planning_turns: normalizeBranchPlanningTurns(event.target.value) })}
+              />
+              <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.branchPlanningTurnsDesc')}</span>
+            </Field>
           </div>
           <div className="mt-3 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
             <button
@@ -922,6 +956,46 @@ export function StoryDirectorEditor({
                     {t('settingPanel.storyDirector.strategyPromptTooLong', { bytes: strategyPromptBytes, limit: STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT })}
                   </div>
                 )}
+              </div>
+            ) : null}
+          </div>
+          <div className="mt-3 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
+            <button
+              type="button"
+              className="flex min-h-9 w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+              onClick={() => setPlanningTemplatesOpen((open) => !open)}
+              aria-expanded={planningTemplatesOpen}
+            >
+              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${planningTemplatesOpen ? '' : '-rotate-90'}`} />
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium text-[var(--nova-text)]">{t('settingPanel.storyDirector.planningTemplates')}</span>
+                <span className="block text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.planningTemplatesDesc')}</span>
+              </span>
+              <span className={`shrink-0 text-[11px] ${planningTemplatesValid ? 'text-[var(--nova-text-faint)]' : 'text-[var(--nova-danger)]'}`}>
+                {planningTemplatesValid ? t('settingPanel.storyDirector.planningTemplatesValid') : t('settingPanel.storyDirector.planningTemplatesInvalid')}
+              </span>
+            </button>
+            {planningTemplatesOpen ? (
+              <div className="border-t border-[var(--nova-border)] p-3">
+                <Tabs defaultValue="mainline" className="gap-3">
+                  <TabsList aria-label={t('settingPanel.storyDirector.planningTemplates')} className="h-auto w-full justify-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-1">
+                    {planningTemplateTabs.map((tab) => (
+                      <TabsTrigger
+                        key={tab.key}
+                        value={tab.key}
+                        className={`min-h-8 px-3 text-xs ${tab.validity.valid ? '' : 'text-[var(--nova-danger)] data-active:text-[var(--nova-danger)]'}`}
+                      >
+                        {tab.label}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  {planningTemplateTabs.map((tab) => (
+                    <TabsContent key={tab.key} value={tab.key} className="mt-0">
+                      <PlanningTemplateTextarea label={tab.label} value={tab.value} validity={tab.validity} onChange={(value) => updatePlanningTemplate(tab.key, value)} />
+                    </TabsContent>
+                  ))}
+                </Tabs>
+                <div className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.planningTemplatesRequiredHeadings')}</div>
               </div>
             ) : null}
           </div>
@@ -1162,10 +1236,29 @@ function parseDecimalInput(value: string) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-function normalizeDirectorAgentInterval(value: string) {
+function normalizeBranchPlanningTurns(value: string) {
   const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return STORY_DIRECTOR_AGENT_INTERVAL_FALLBACK
-  return Math.min(20, Math.max(1, Math.round(parsed)))
+  if (!Number.isFinite(parsed)) return STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK
+  return Math.min(12, Math.max(1, Math.round(parsed)))
+}
+
+function validateDirectorPlanningTemplate(value: string) {
+  const bytes = utf8ByteLength(value || '')
+  if (!String(value || '').trim()) {
+    return { bytes, missingHeadings: [], valid: true }
+  }
+  const missingHeadings = DIRECTOR_PLAN_REQUIRED_HEADINGS.filter((heading) => !String(value || '').includes(heading))
+  return {
+    bytes,
+    missingHeadings,
+    valid: bytes <= STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT && missingHeadings.length === 0,
+  }
+}
+
+function planningTemplateLabelKey(key: keyof DirectorPlanDocs) {
+  if (key === 'mainline') return 'mainline'
+  if (key === 'current_event') return 'currentEvent'
+  return 'nextBranches'
 }
 
 function StrategySelect({
@@ -1545,6 +1638,7 @@ export function ImagePresetEditor({
                 <span className="shrink-0 font-mono text-[10px] text-[var(--nova-text-faint)]">{contentValue.length}/{IMAGE_PRESET_PROMPT_LIMIT}</span>
               </div>
               <Textarea
+                autoResize={false}
                 className="nova-field h-[calc(100%-1.75rem)] min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
                 value={contentValue}
                 maxLength={IMAGE_PRESET_PROMPT_LIMIT}
@@ -1760,6 +1854,7 @@ export function LoreEditor({
       </div>
       <div className="min-h-[420px] flex-1 p-4 md:min-h-0">
         <Textarea
+          autoResize={false}
           className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
           value={draft.content || ''}
           onChange={(event) => setDraft({ ...draft, content: event.target.value })}
@@ -1914,6 +2009,7 @@ export function CreatorEditor({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
       <Textarea
+        autoResize={false}
         className="nova-field h-full min-h-[520px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
         value={content}
         onChange={(event) => setContent(event.target.value)}
@@ -2008,6 +2104,7 @@ export function OpeningPresetEditor({
                 </Button>
               </div>
               <Textarea
+                autoResize={false}
                 className="nova-field min-h-0 flex-1 resize-none text-sm leading-7 shadow-none focus-visible:ring-0"
                 value={activePreset.content}
                 onChange={(event) => updateActivePreset({ content: event.target.value })}
@@ -2027,6 +2124,37 @@ export function OpeningPresetEditor({
         </div>
       </div>
     </div>
+  )
+}
+
+function PlanningTemplateTextarea({ label, value, validity, onChange }: {
+  label: string
+  value: string
+  validity: ReturnType<typeof validateDirectorPlanningTemplate>
+  onChange: (value: string) => void
+}) {
+  const { t } = useTranslation()
+  const hasError = !validity.valid
+  return (
+    <label className="grid gap-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-[var(--nova-text-faint)]">{label}</span>
+        <span className={`text-[11px] ${hasError ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>
+          {t('settingPanel.storyDirector.planningTemplateBytes', { bytes: validity.bytes, limit: STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT })}
+        </span>
+      </div>
+      <Textarea
+        minRows={20}
+        className="nova-field min-h-[calc(20*1.25rem+1rem)] resize-y font-mono text-xs leading-5 focus-visible:ring-0"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      {validity.missingHeadings.length ? (
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1 text-[11px] leading-5 text-[var(--nova-danger)]">
+          {t('settingPanel.storyDirector.planningTemplateMissingHeadings', { headings: validity.missingHeadings.join(' / ') })}
+        </div>
+      ) : null}
+    </label>
   )
 }
 

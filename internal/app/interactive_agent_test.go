@@ -75,8 +75,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"list_lore_items",
 		"list_interactive_memories",
 		"当前分支故事记忆",
-		"后台导演状态摘要",
-		"source: DirectorState",
+		"后台导演三层规划可读区",
+		"source: DirectorPlan visible sections",
 		"上限: 12288 bytes",
 	} {
 		if !strings.Contains(history[2].Content, want) {
@@ -102,8 +102,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"主角醒来发现世界已末日",
 		"导演注入规则",
 		"本轮上下文",
-		"DirectorState",
-		"后台导演状态摘要",
+		"DirectorPlan",
+		"后台导演三层规划可读区",
 	} {
 		if !strings.Contains(sources, want) {
 			t.Fatalf("context sources should include %q: %s", want, sources)
@@ -317,24 +317,23 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := interactive.DirectorStateFromStoryDirector(director)
-	state.StagePlan = "下一阶段制造公开压力，但让玩家行动决定是否正面迎击。"
-	state.BeatQueue = []interactive.DirectorBeat{{
-		ID:       "beat_public_pressure",
-		Summary:  "公开压力升高",
-		Pressure: "同门质疑",
-		Payoff:   "玩家可以反证、迂回或调查。",
-		Status:   "planned",
-	}}
 	store := interactive.NewStore(workspace)
 	story, err := store.CreateStory(interactive.CreateStoryRequest{
 		Title:           "事件卡上下文",
 		Origin:          "主角进入外门",
 		StoryTellerID:   "classic",
 		StoryDirectorID: director.ID,
-		DirectorState:   &state,
 	})
 	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := store.DirectorPlan(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs := plan.Docs
+	docs.CurrentEvent = strings.Replace(docs.CurrentEvent, "明确当前事件的可玩目标，让用户知道能采取行动。", "公开压力升高，同门质疑逼近；玩家可以反证、迂回或调查。", 1)
+	if _, err := store.UpdateDirectorPlan(story.ID, interactive.UpdateDirectorPlanRequest{BranchID: "main", Docs: docs, BaseRevision: plan.Metadata.Revision}); err != nil {
 		t.Fatal(err)
 	}
 	turn, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
@@ -351,7 +350,7 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnInstruction := history[len(history)-1].Content
-	for _, want := range []string{"后台导演状态摘要", "公开压力升高", "同门质疑"} {
+	for _, want := range []string{"后台导演三层规划可读区", "公开压力升高", "同门质疑"} {
 		if !strings.Contains(turnInstruction, want) {
 			t.Fatalf("interactive turn instruction should include translated director plan %q:\n%s", want, turnInstruction)
 		}

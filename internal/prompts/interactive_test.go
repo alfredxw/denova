@@ -72,13 +72,13 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 	}
 }
 
-func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorState(t *testing.T) {
+func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorPlanVisibleSections(t *testing.T) {
 	output := InteractiveStoryRuntimeContext(InteractiveStoryPromptInput{
 		ReplyTargetChars:            800,
-		DirectorStateSummary:        "- 长期主线: 外门逆袭\n- 节拍 1: 学院比拼压力",
+		DirectorPlanVisible:         "## 大方向规划 / Mainline\n\n### 目标 / Goal\n外门逆袭\n\n### 节奏、压力与危机 / Pacing, Pressure, Crisis\n学院比拼压力",
 		StoryDirectorStrategyPrompt: "- 避免连续两回合使用同类型突发事件。",
 	})
-	for _, want := range []string{"后台导演状态摘要", "source: DirectorState", "limit: 4096 bytes", "外门逆袭", "学院比拼压力"} {
+	for _, want := range []string{"后台导演三层规划可读区", "source: DirectorPlan visible sections", "limit: 12288 bytes", "外门逆袭", "学院比拼压力"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("runtime context should include %q:\n%s", want, output)
 		}
@@ -90,14 +90,17 @@ func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorState(t *testing.T
 	}
 }
 
-func TestInteractiveDirectorPromptOnlyPlansDirectorStatePatch(t *testing.T) {
+func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 	system := BuildInteractiveDirectorSystemInstruction()
 	instruction := InteractiveDirectorInstruction(InteractiveDirectorPromptInput{
 		Title:                       "外门逆袭",
 		Origin:                      "主角被同门轻视",
 		StoryTellerID:               "classic",
 		BranchID:                    "main",
-		DirectorStateJSON:           `{"main_arc":"外门逆袭"}`,
+		DirectorPlanPaths:           "/tmp/mainline.md\n/tmp/current-event.md\n/tmp/next-branches.md",
+		DirectorPlanDocs:            `{"mainline":"## 正文Agent可读 / Prose-agent visible","current_event":"## 正文Agent可读 / Prose-agent visible","next_branches":"## 正文Agent可读 / Prose-agent visible"}`,
+		PlanningTemplates:           `{"mainline":"# 大方向 / Mainline"}`,
+		BranchPlanningTurns:         5,
 		TurnAuditJSON:               `{"turn_brief":{"turn_goal":"公开比试"}}`,
 		TurnHistory:                 "第 1 回合剧情：主角报名。",
 		StoryMemorySummary:          "主角仍被低估。",
@@ -105,7 +108,7 @@ func TestInteractiveDirectorPromptOnlyPlansDirectorStatePatch(t *testing.T) {
 		DirectorEventCatalog:        `[{"id":"face_slap","category":"打脸"}]`,
 	})
 	for name, output := range map[string]string{"system": system, "instruction": instruction} {
-		for _, want := range []string{"DirectorState", "patch", "只输出 JSON", "不负责续写", "RuleResolution"} {
+		for _, want := range []string{"read_file", "write_file", "edit_file", "不负责续写", "RuleResolution", "Director private"} {
 			if !strings.Contains(output, want) {
 				t.Fatalf("%s director prompt should include %q:\n%s", name, want, output)
 			}
@@ -114,7 +117,7 @@ func TestInteractiveDirectorPromptOnlyPlansDirectorStatePatch(t *testing.T) {
 			t.Fatalf("%s director prompt should not ask for story prose:\n%s", name, output)
 		}
 	}
-	for _, want := range []string{"beat_queue", "event_queue", "foreshadowing", "potential_characters", "branch_patches", "打脸", "事件卡 Markdown", "template"} {
+	for _, want := range []string{"mainline.md", "current-event.md", "next-branches.md", "目标 / Goal", "分支处理 / Branch Handling", "打脸", "事件目录", "template"} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("director instruction should include %q:\n%s", want, instruction)
 		}

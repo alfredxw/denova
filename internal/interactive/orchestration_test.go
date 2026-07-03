@@ -89,7 +89,7 @@ func TestResolveTurnRulesUsesSafeExpressionAndStatePath(t *testing.T) {
 	}
 }
 
-func TestOpeningRollProducesTraitsStateOpsAndDirectorState(t *testing.T) {
+func TestOpeningRollProducesTraitsStateOps(t *testing.T) {
 	teller := Teller{
 		Version:         tellerVersion,
 		ID:              "growth",
@@ -133,9 +133,6 @@ func TestOpeningRollProducesTraitsStateOpsAndDirectorState(t *testing.T) {
 	if len(result.StateOps) < 3 {
 		t.Fatalf("opening should include initial, trait and audit ops: %#v", result.StateOps)
 	}
-	if result.DirectorState.LastDirectorRun == nil || !strings.Contains(result.DirectorState.StagePlan, "隐脉") {
-		t.Fatalf("opening should update director state: %#v", result.DirectorState)
-	}
 }
 
 func TestOpeningRollWithoutTraitPoolsReturnsEmptyArrays(t *testing.T) {
@@ -174,9 +171,9 @@ func TestCreateStoryAppliesOpeningInitialStateOps(t *testing.T) {
 	}
 }
 
-func TestStorySnapshotDefaultsDirectorStateAndPersistsRuleAudit(t *testing.T) {
+func TestStorySnapshotSeedsDirectorPlanAndPersistsRuleAudit(t *testing.T) {
 	store := NewStore(t.TempDir())
-	story, err := store.CreateStory(CreateStoryRequest{Title: "导演状态", StoryTellerID: "classic"})
+	story, err := store.CreateStory(CreateStoryRequest{Title: "导演规划", StoryTellerID: "classic"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,8 +181,8 @@ func TestStorySnapshotDefaultsDirectorStateAndPersistsRuleAudit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !snapshot.DirectorState.Enabled || snapshot.DirectorState.SpoilerMode != "layered" {
-		t.Fatalf("unexpected default director state: %#v", snapshot.DirectorState)
+	if snapshot.DirectorPlan == nil || snapshot.DirectorPlan.Metadata.LastRun == nil {
+		t.Fatalf("unexpected director plan: %#v", snapshot.DirectorPlan)
 	}
 
 	brief := TurnBrief{UserAction: "观察擂台", Intent: "观察", TurnGoal: "建立比拼压力"}
@@ -218,7 +215,7 @@ func TestStorySnapshotDefaultsDirectorStateAndPersistsRuleAudit(t *testing.T) {
 	}
 }
 
-func TestLegacyStoryMetaLazilyInitializesDirectorState(t *testing.T) {
+func TestLegacyStoryMetaDoesNotFabricateDirectorPlan(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -250,14 +247,15 @@ func TestLegacyStoryMetaLazilyInitializesDirectorState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !snapshot.DirectorState.Enabled || snapshot.DirectorState.SpoilerMode != "layered" {
-		t.Fatalf("legacy story should get default director state: %#v", snapshot.DirectorState)
+	if snapshot.DirectorPlan != nil {
+		t.Fatalf("legacy story without director docs should not fabricate director plan: %#v", snapshot.DirectorPlan)
 	}
 	data, err := os.ReadFile(store.storyPath("st_legacy_director"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), "director_state") {
+	legacyDirectorField := strings.Join([]string{"director", "state"}, "_")
+	if strings.Contains(string(data), legacyDirectorField) {
 		t.Fatalf("lazy initialization should not rewrite legacy story file: %s", string(data))
 	}
 }

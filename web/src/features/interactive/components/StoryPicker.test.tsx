@@ -146,19 +146,17 @@ describe('StoryPicker', () => {
       story_teller_id: 'classic',
       story_director_id: 'detached',
       image_settings: expect.objectContaining({ preset_id: 'game-cg' }),
-      director_state: undefined,
       initial_state_ops: undefined,
     }))
   })
 
-  it('rolls opening traits and includes initial director state in create input', async () => {
+  it('rolls opening traits and includes initial state ops in create input', async () => {
     const onCreate = vi.fn()
     rollInteractiveOpeningMock.mockResolvedValue({
       teller_id: 'classic',
       seed: 42,
       traits: [{ pool_id: 'talent', id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' }],
       state_ops: [{ op: 'set', path: 'resources.hp', value: 18 }],
-      director_state: { enabled: true, spoiler_mode: 'layered', main_arc: '开局隐脉线' },
     })
 
     render(
@@ -182,7 +180,6 @@ describe('StoryPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: '创建' }))
 
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
-      director_state: expect.objectContaining({ main_arc: '开局隐脉线' }),
       initial_state_ops: [{ op: 'set', path: 'resources.hp', value: 18 }],
     }))
   })
@@ -193,7 +190,6 @@ describe('StoryPicker', () => {
       seed: 42,
       traits: [{ pool_id: 'talent', id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' }],
       state_ops: [],
-      director_state: { enabled: true, spoiler_mode: 'layered' },
     })
 
     render(

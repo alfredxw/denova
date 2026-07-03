@@ -49,8 +49,11 @@ func TestResolveAgentToolsDefaults(t *testing.T) {
 		t.Fatalf("版本说明 Agent 默认不应注册工具: %+v", summary)
 	}
 	director := ResolveAgentTools(&Config{}, AgentKindInteractiveDirector)
-	if director.FileRead || director.FileWrite || director.ShellExecute || director.Skills || director.LoreRead || director.LoreWrite || director.Todo || director.WebSearch || director.ImageGeneration || director.AgentConfigRead || director.AgentConfigWrite {
-		t.Fatalf("互动导演 Agent 默认不应注册工具: %+v", director)
+	if !director.FileRead || !director.FileWrite {
+		t.Fatalf("互动导演 Agent 默认应启用文件读写以维护导演规划 Markdown: %+v", director)
+	}
+	if director.ShellExecute || director.Skills || director.LoreRead || director.LoreWrite || director.Todo || director.WebSearch || director.ImageGeneration || director.AgentConfigRead || director.AgentConfigWrite {
+		t.Fatalf("互动导演 Agent 默认只应启用文件读写: %+v", director)
 	}
 	toolAgent := ResolveAgentTools(&Config{}, AgentKindToolAgent)
 	if toolAgent.FileRead || toolAgent.FileWrite || toolAgent.ShellExecute || toolAgent.Skills || toolAgent.LoreRead || toolAgent.LoreWrite || toolAgent.Todo || toolAgent.WebSearch || toolAgent.ImageGeneration || toolAgent.AgentConfigRead || toolAgent.AgentConfigWrite {

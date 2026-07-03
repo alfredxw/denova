@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Archive, Ban, Brain, Edit3, Loader2, RefreshCw, RotateCcw, Search, Sparkles, X, Zap } from 'lucide-react'
+import { Activity, Archive, Brain, Edit3, Loader2, RefreshCw, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MessageList } from '@/components/Chat/MessageList'
 import { useAgentEventStream } from '@/hooks/useAgentEventStream'
-import { disableInteractiveDirectorEvent, forceInteractiveDirectorEvent, generateStoryMemoryStream, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution } from '../api'
-import type { DirectorEvent, DirectorRunStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
+import { generateStoryMemoryStream, getInteractiveDirector, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution, updateInteractiveDirector } from '../api'
+import type { DirectorPlan, DirectorPlanDocs, DirectorPlanRunStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
 type MemoryPanelView = 'content' | 'generation'
 
@@ -264,32 +264,87 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
 function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshotRefresh }: { storyId?: string; branchId?: string; snapshot: Snapshot | null; onSnapshotRefresh?: () => void | Promise<unknown> }) {
   const { t } = useTranslation()
   const [rebuilding, setRebuilding] = useState(false)
+  const [planLoading, setPlanLoading] = useState(false)
+  const [savingPlan, setSavingPlan] = useState(false)
   const [rerolling, setRerolling] = useState(false)
-  const [eventActionId, setEventActionId] = useState('')
   const [directorError, setDirectorError] = useState('')
   const [ruleError, setRuleError] = useState('')
-  const directorState = snapshot?.director_state
+  const [directorPlan, setDirectorPlan] = useState<DirectorPlan | null>(snapshot?.director_plan || null)
+  const [draftDocs, setDraftDocs] = useState<DirectorPlanDocs | null>(snapshot?.director_plan?.docs || null)
   const ruleResolution = snapshot?.current_turn?.rule_resolution
   const acceptedBrief = ruleResolution?.accepted_brief || snapshot?.current_turn?.turn_brief
   const ruleResults = ruleResolution?.rule_results || []
   const terminalCandidate = ruleResolution?.terminal_candidate
   const terminalOutcome = snapshot?.current_turn?.terminal_outcome
   const hasRuleAudit = !!acceptedBrief || !!ruleResolution || !!terminalOutcome
+  const effectiveBranchId = branchId || snapshot?.branch_id || ''
+  const directorMetadata = directorPlan?.metadata
 
-  if (!directorState && !hasRuleAudit) return null
+  useEffect(() => {
+    setDirectorPlan(snapshot?.director_plan || null)
+    setDraftDocs(snapshot?.director_plan?.docs || null)
+  }, [snapshot?.director_plan, snapshot?.director_plan?.metadata?.revision])
+
+  useEffect(() => {
+    if (!storyId) return
+    let cancelled = false
+    setPlanLoading(true)
+    setDirectorError('')
+    getInteractiveDirector(storyId, effectiveBranchId)
+      .then((plan) => {
+        if (cancelled) return
+        setDirectorPlan(plan)
+        setDraftDocs(plan.docs)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        console.error('[interactive-memory-panel] load director plan failed', err)
+        setDirectorError(err instanceof Error ? err.message : t('snapshot.director.loadFailed'))
+      })
+      .finally(() => {
+        if (!cancelled) setPlanLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [effectiveBranchId, storyId, t])
+
+  if (!directorPlan && !hasRuleAudit && !planLoading) return null
 
   const rebuildDirector = async () => {
     if (!storyId || rebuilding) return
     setRebuilding(true)
     setDirectorError('')
     try {
-      await rebuildInteractiveDirector(storyId, branchId)
+      const plan = await rebuildInteractiveDirector(storyId, effectiveBranchId)
+      setDirectorPlan(plan)
+      setDraftDocs(plan.docs)
       await onSnapshotRefresh?.()
     } catch (err) {
       console.error('[interactive-memory-panel] rebuild director failed', err)
       setDirectorError(err instanceof Error ? err.message : t('snapshot.director.rebuildFailed'))
     } finally {
       setRebuilding(false)
+    }
+  }
+
+  const saveDirectorPlan = async () => {
+    if (!storyId || !draftDocs || !directorPlan || !directorMetadata?.revision || savingPlan) return
+    setSavingPlan(true)
+    setDirectorError('')
+    try {
+      const plan = await updateInteractiveDirector(storyId, {
+        branch_id: effectiveBranchId,
+        docs: draftDocs,
+        base_revision: directorMetadata.revision,
+        summary: t('snapshot.director.savedSummary'),
+      })
+      setDirectorPlan(plan)
+      setDraftDocs(plan.docs)
+      await onSnapshotRefresh?.()
+    } catch (err) {
+      console.error('[interactive-memory-panel] save director plan failed', err)
+      setDirectorError(err instanceof Error ? err.message : t('snapshot.director.saveFailed'))
+    } finally {
+      setSavingPlan(false)
     }
   }
 
@@ -310,68 +365,43 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
     }
   }
 
-  const updateDirectorEvent = async (event: DirectorEvent, action: 'force' | 'disable') => {
-    const eventId = event.id?.trim()
-    if (!storyId || !eventId || eventActionId) return
-    setEventActionId(`${action}:${eventId}`)
-    setDirectorError('')
-    try {
-      if (action === 'force') {
-        await forceInteractiveDirectorEvent(storyId, eventId, { branch_id: branchId, event })
-      } else {
-        await disableInteractiveDirectorEvent(storyId, eventId, { branch_id: branchId, event })
-      }
-      await onSnapshotRefresh?.()
-    } catch (err) {
-      console.error('[interactive-memory-panel] update director event failed', err)
-      setDirectorError(err instanceof Error ? err.message : t('snapshot.director.eventActionFailed'))
-    } finally {
-      setEventActionId('')
-    }
-  }
-
   return (
     <div className="mb-3 space-y-2">
-      {directorState ? (
+      {directorPlan || planLoading ? (
         <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
           <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-[var(--nova-text)]">
             <div className="flex min-w-0 items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
               <span className="truncate">{t('snapshot.director.title')}</span>
             </div>
-            <button type="button" className="nova-icon-button flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} title={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} onClick={() => void rebuildDirector()} disabled={!storyId || rebuilding}>
-              {rebuilding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <button type="button" className="nova-icon-button flex h-6 w-6 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={savingPlan ? t('common.saving') : t('common.save')} title={savingPlan ? t('common.saving') : t('common.save')} onClick={() => void saveDirectorPlan()} disabled={!storyId || !draftDocs || !directorPlan || savingPlan}>
+                {savingPlan ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              </button>
+              <button type="button" className="nova-icon-button flex h-6 w-6 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} title={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} onClick={() => void rebuildDirector()} disabled={!storyId || rebuilding}>
+                {rebuilding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              </button>
+            </div>
           </div>
           {directorError ? <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{directorError}</div> : null}
-          <div className="flex flex-wrap gap-1.5">
-            <MemoryChip>{directorState.enabled ? t('common.yes') : t('common.no')}</MemoryChip>
-            <MemoryChip>{directorState.spoiler_mode || t('snapshot.noRecord')}</MemoryChip>
-            <MemoryChip>{`${t('snapshot.director.events')}: ${(directorState.event_queue || []).length}`}</MemoryChip>
-          </div>
-          {directorState.last_director_run ? <DirectorRunSummary run={directorState.last_director_run} /> : null}
-          {directorState.main_arc || directorState.stage_plan ? (
-            <div className="mt-2 space-y-1 text-xs leading-5 text-[var(--nova-text-muted)]">
-              {directorState.main_arc ? <InfoLine label={t('snapshot.field.main_arc')} value={directorState.main_arc} /> : null}
-              {directorState.stage_plan ? <InfoLine label={t('snapshot.field.stage_plan')} value={directorState.stage_plan} /> : null}
-            </div>
+          {planLoading && !directorPlan ? <div className="text-xs text-[var(--nova-text-muted)]">{t('common.loading')}</div> : null}
+          {directorPlan ? (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                <MemoryChip>{`${t('snapshot.director.status')}: ${directorMetadata?.last_run?.status || t('snapshot.noRecord')}`}</MemoryChip>
+                <MemoryChip>{`${t('snapshot.director.docs')}: ${Object.keys(directorMetadata?.docs || {}).length || 3}`}</MemoryChip>
+                <MemoryChip>{`${t('snapshot.director.branchPlanningTurns')}: ${directorMetadata?.branch_planning_turns || 5}`}</MemoryChip>
+              </div>
+              {directorMetadata?.last_run ? <DirectorRunSummary run={directorMetadata.last_run} /> : null}
+              {draftDocs ? (
+                <div className="mt-3 space-y-2">
+                  <DirectorPlanTextarea label={t('snapshot.director.mainline')} value={draftDocs.mainline} onChange={(value) => setDraftDocs({ ...draftDocs, mainline: value })} />
+                  <DirectorPlanTextarea label={t('snapshot.director.currentEvent')} value={draftDocs.current_event} onChange={(value) => setDraftDocs({ ...draftDocs, current_event: value })} />
+                  <DirectorPlanTextarea label={t('snapshot.director.nextBranches')} value={draftDocs.next_branches} onChange={(value) => setDraftDocs({ ...draftDocs, next_branches: value })} />
+                </div>
+              ) : null}
+            </>
           ) : null}
-          <CompactDirectorEvents
-            className="mt-2"
-            label={t('snapshot.director.eventQueue')}
-            events={directorState.event_queue || []}
-            empty={t('snapshot.director.noEvents')}
-            disabled={!storyId || Boolean(eventActionId)}
-            busyId={eventActionId}
-            onForce={(event) => void updateDirectorEvent(event, 'force')}
-            onDisable={(event) => void updateDirectorEvent(event, 'disable')}
-          />
-          <CompactStrings
-            className="mt-2"
-            label={t('snapshot.director.foreshadowing')}
-            values={(directorState.foreshadowing || []).map((thread) => thread.title || thread.summary || thread.id || '').filter(Boolean)}
-            empty={t('snapshot.director.noForeshadowing')}
-          />
         </section>
       ) : null}
 
@@ -436,7 +466,7 @@ function InfoLine({ label, value }: { label: string; value: string }) {
   )
 }
 
-function DirectorRunSummary({ run }: { run: DirectorRunStatus }) {
+function DirectorRunSummary({ run }: { run: DirectorPlanRunStatus }) {
   const { t } = useTranslation()
   const failed = run.status === 'failed'
   return (
@@ -451,68 +481,17 @@ function DirectorRunSummary({ run }: { run: DirectorRunStatus }) {
   )
 }
 
-function CompactStrings({ label, values, empty, className = '' }: { label: string; values: string[]; empty: string; className?: string }) {
+function DirectorPlanTextarea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <div className={className}>
-      <div className="mb-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{label}</div>
-      <div className="flex flex-wrap gap-1.5">
-        {values.length ? values.slice(0, 4).map((value) => <MemoryChip key={value}>{value}</MemoryChip>) : <span className="text-xs text-[var(--nova-text-muted)]">{empty}</span>}
-      </div>
-    </div>
-  )
-}
-
-function CompactDirectorEvents({ label, events, empty, className = '', disabled, busyId, onForce, onDisable }: {
-  label: string
-  events: DirectorEvent[]
-  empty: string
-  className?: string
-  disabled?: boolean
-  busyId?: string
-  onForce: (event: DirectorEvent) => void
-  onDisable: (event: DirectorEvent) => void
-}) {
-  const { t } = useTranslation()
-  return (
-    <div className={className}>
-      <div className="mb-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{label}</div>
-      <div className="space-y-1.5">
-        {events.length ? events.slice(0, 4).map((event, index) => {
-          const eventId = event.id || ''
-          const title = event.name || event.summary || event.id || t('snapshot.eventFallback', { index: index + 1 })
-          const forceBusy = busyId === `force:${eventId}`
-          const disableBusy = busyId === `disable:${eventId}`
-          return (
-            <div key={eventId || index} className="flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[var(--nova-text-muted)]" title={title}>{title}</span>
-                <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{[event.category, event.status].filter(Boolean).join(' · ') || t('snapshot.noRecord')}</span>
-              </span>
-              <button
-                type="button"
-                className="nova-icon-button flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label={`${t('snapshot.director.forceEvent')} ${title}`}
-                title={t('snapshot.director.forceEvent')}
-                disabled={disabled || !eventId}
-                onClick={() => onForce(event)}
-              >
-                {forceBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-              </button>
-              <button
-                type="button"
-                className="nova-icon-button flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-danger)] disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label={`${t('snapshot.director.disableEvent')} ${title}`}
-                title={t('snapshot.director.disableEvent')}
-                disabled={disabled || !eventId || event.enabled === false}
-                onClick={() => onDisable(event)}
-              >
-                {disableBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Ban className="h-3.5 w-3.5" />}
-              </button>
-            </div>
-          )
-        }) : <span className="text-xs text-[var(--nova-text-muted)]">{empty}</span>}
-      </div>
-    </div>
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-medium text-[var(--nova-text-faint)]">{label}</span>
+      <textarea
+        className="min-h-[132px] w-full resize-y rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-2 font-mono text-[11px] leading-5 text-[var(--nova-text)] outline-none transition-colors focus:border-[var(--nova-accent)]"
+        value={value}
+        spellCheck={false}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   )
 }
 

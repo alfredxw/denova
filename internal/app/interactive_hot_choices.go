@@ -60,17 +60,22 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 	}
 	loreItems := hotChoicesLoreContext(workspace)
 	turnMemory := buildInteractiveModelVisibleTurnMemory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
+	directorPlan := ""
+	if storyCtx.Snapshot.DirectorPlan != nil {
+		directorPlan = storyCtx.Snapshot.DirectorPlan.VisibleDocs.NextBranches
+	}
 	instruction := prompts.InteractiveHotChoicesInstruction(prompts.InteractiveHotChoicesPromptInput{
 		Title:          storyCtx.Meta.Title,
 		Origin:         storyCtx.Meta.Origin,
 		StoryTellerID:  storyCtx.Meta.StoryTellerID,
 		BranchID:       storyCtx.Snapshot.BranchID,
 		LoreItems:      loreItems,
+		DirectorPlan:   directorPlan,
 		TurnHistory:    formatHotChoicesTurnHistory(turnMemory, storyCtx.Snapshot.ContextCompaction),
 		ExcludeChoices: formatHotChoicesExcludeChoices(excludeChoices),
 	})
 	log.Printf(
-		"[interactive-hot-choices] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s turns=%d model_turns=%d lore=%s instruction=%s",
+		"[interactive-hot-choices] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s turns=%d model_turns=%d lore=%s director_plan=%s instruction=%s",
 		storyID,
 		storyCtx.Snapshot.BranchID,
 		interactivePartSummary(storyCtx.Meta.Title),
@@ -79,6 +84,7 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 		len(storyCtx.Snapshot.Turns),
 		len(turnMemory.Turns),
 		interactivePartSummary(loreItems),
+		interactivePartSummary(directorPlan),
 		interactivePartSummary(instruction),
 	)
 	choices, err := agent.GenerateInteractiveHotChoices(ctx, &runtimeCfg, instruction)

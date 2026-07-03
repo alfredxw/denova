@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -90,10 +91,6 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		story.StoryDirectorID = DefaultStoryDirectorID
 	}
 
-	directorState := DefaultDirectorState()
-	if req.DirectorState != nil {
-		directorState = NormalizeDirectorState(*req.DirectorState)
-	}
 	meta := StoryMeta{
 		V:                schemaVersion,
 		Type:             StoryEventTypeMeta,
@@ -105,7 +102,6 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		ReplyTargetChars: story.ReplyTargetChars,
 		Opening:          story.Opening,
 		ImageSettings:    story.ImageSettings,
-		DirectorState:    directorState,
 		CurrentBranch:    "main",
 		Branches: map[string]BranchMeta{
 			"main": {CreatedAt: now},
@@ -132,6 +128,18 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		events = append(events, newStateDeltaEvent(meta.Branches["main"].Head, "", "main", now, initialStateOps))
 	}
 	if err := writeJSONL(s.storyPath(story.ID), events); err != nil {
+		return StorySummary{}, err
+	}
+	seed := DirectorPlanSeed{Templates: DefaultStoryDirectorPlanningTemplates(), BranchPlanningTurns: defaultBranchPlanningTurns, Source: "story_create"}
+	if req.DirectorPlanSeed != nil {
+		seed = *req.DirectorPlanSeed
+		if seed.Source == "" {
+			seed.Source = "story_create"
+		}
+	}
+	if err := s.seedDirectorPlanLocked(story.ID, "main", meta, seed); err != nil {
+		_ = os.Remove(s.storyPath(story.ID))
+		_ = os.RemoveAll(s.directorPlanBranchDir(story.ID, "main"))
 		return StorySummary{}, err
 	}
 
@@ -232,6 +240,9 @@ func (s *Store) DeleteStory(storyID string) error {
 	if err := os.Remove(s.usagePath(storyID)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
+	if err := os.RemoveAll(filepath.Join(s.root, "interactive", "stories", storyID)); err != nil {
+		return err
+	}
 	return s.writeIndexLocked(index)
 }
 
@@ -246,6 +257,9 @@ func (s *Store) StoryContext(storyID, branchID string) (StoryContext, error) {
 	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
 	if err != nil {
 		return StoryContext{}, err
+	}
+	if plan, planErr := s.readDirectorPlanLocked(storyID, snapshot.BranchID); planErr == nil {
+		snapshot.DirectorPlan = &plan
 	}
 	usageEvents, err := s.readTokenUsageEventsLocked(storyID, snapshot.BranchID)
 	if err != nil {
@@ -493,16 +507,10 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	meta.Branches[branchID] = branch
 	meta.UpdatedAt = now
 	newEvents := []any{turn}
-	eventDelta := 1
-	if directorPatch, directorState, ok := directorPatchAfterTurn(meta, branchID, turn, now); ok {
-		meta.DirectorState = directorState
-		newEvents = append(newEvents, directorPatch)
-		eventDelta++
-	}
 	if err := s.rewriteStoryLocked(storyID, meta, lines, newEvents...); err != nil {
 		return TurnEvent{}, nil, err
 	}
-	if err := s.touchIndexLocked(storyID, now, eventDelta); err != nil {
+	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
 		return TurnEvent{}, nil, err
 	}
 	return turn, delta, nil
@@ -875,24 +883,6 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 		return RuleResolution{}, fmt.Errorf("规则结算所属回合不存在: %s", target.ID)
 	}
 	meta.UpdatedAt = now
-	if directorPatch, directorState, ok := directorPatchAfterTurn(meta, branchID, TurnEvent{
-		ID:              target.ID,
-		BranchID:        branchID,
-		User:            target.User,
-		Narrative:       target.Narrative,
-		TurnBrief:       &next.AcceptedBrief,
-		RuleResolution:  &next,
-		TerminalOutcome: terminalOutcome,
-	}, now); ok {
-		meta.DirectorState = directorState
-		if err := s.rewriteStoryLocked(storyID, meta, lines, directorPatch); err != nil {
-			return RuleResolution{}, err
-		}
-		if err := s.touchIndexLocked(storyID, now, 1); err != nil {
-			return RuleResolution{}, err
-		}
-		return next, nil
-	}
 	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
 		return RuleResolution{}, err
 	}
@@ -932,8 +922,6 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 		FromEvent: parentID,
 		Title:     title,
 	}
-	meta.DirectorState = NormalizeDirectorState(meta.DirectorState)
-	meta.DirectorState.BranchPatches[branchID] = fmt.Sprintf("从分支 %s 的事件 %s 创建分支“%s”，继承祖先导演计划并允许后续局部调整。", fromBranch, parentID, title)
 	meta.UpdatedAt = now
 	event := BranchEvent{
 		V:        schemaVersion,
@@ -945,7 +933,11 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 		Ts:       now,
 		Title:    title,
 	}
+	if err := s.cloneDirectorPlanForBranchLocked(storyID, fromBranch, branchID, title); err != nil {
+		return BranchSummary{}, err
+	}
 	if err := s.rewriteStoryLocked(storyID, meta, lines, event); err != nil {
+		_ = os.RemoveAll(s.directorPlanBranchDir(storyID, branchID))
 		return BranchSummary{}, err
 	}
 	if err := s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, 1); err != nil {
@@ -1010,8 +1002,6 @@ func (s *Store) DeleteBranch(storyID, branchID string) error {
 		return fmt.Errorf("分支记录不存在: %s", branchID)
 	}
 	delete(meta.Branches, branchID)
-	meta.DirectorState = NormalizeDirectorState(meta.DirectorState)
-	delete(meta.DirectorState.BranchPatches, branchID)
 	if meta.CurrentBranch == branchID {
 		if branch.From != "" {
 			meta.CurrentBranch = branch.From
@@ -1024,6 +1014,7 @@ func (s *Store) DeleteBranch(storyID, branchID string) error {
 	if err := s.rewriteStoryLocked(storyID, meta, nextLines); err != nil {
 		return err
 	}
+	_ = os.RemoveAll(s.directorPlanBranchDir(storyID, branchID))
 	return s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, -removedEvents)
 }
 
@@ -1049,6 +1040,9 @@ func (s *Store) Snapshot(storyID, branchID string) (Snapshot, error) {
 	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
 	if err != nil {
 		return Snapshot{}, err
+	}
+	if plan, planErr := s.readDirectorPlanLocked(storyID, snapshot.BranchID); planErr == nil {
+		snapshot.DirectorPlan = &plan
 	}
 	usageEvents, err := s.readTokenUsageEventsLocked(storyID, snapshot.BranchID)
 	if err != nil {
@@ -1159,7 +1153,6 @@ func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)
 	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
 	meta.ImageSettings = normalizeStoryImageSettings(meta.ImageSettings)
-	meta.DirectorState = NormalizeDirectorState(meta.DirectorState)
 	return meta
 }
 

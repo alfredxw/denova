@@ -20,31 +20,6 @@ const (
 
 var diceExprPattern = regexp.MustCompile(`^\s*(\d*)d(\d+)\s*$`)
 
-// DirectorState stores story-level narrative orchestration state. It is
-// normalized on read so legacy stories can opt in without a migration pass.
-type DirectorState struct {
-	Enabled             bool               `json:"enabled"`
-	SpoilerMode         string             `json:"spoiler_mode,omitempty"`
-	MainArc             string             `json:"main_arc,omitempty"`
-	StagePlan           string             `json:"stage_plan,omitempty"`
-	BeatQueue           []DirectorBeat     `json:"beat_queue,omitempty"`
-	EventQueue          []DirectorEvent    `json:"event_queue,omitempty"`
-	Foreshadowing       []DirectorThread   `json:"foreshadowing,omitempty"`
-	PotentialCharacters []DirectorThread   `json:"potential_characters,omitempty"`
-	BranchPatches       map[string]string  `json:"branch_patches,omitempty"`
-	ForcedEvents        []string           `json:"forced_events,omitempty"`
-	DisabledEvents      []string           `json:"disabled_events,omitempty"`
-	LastDirectorRun     *DirectorRunStatus `json:"last_director_run,omitempty"`
-}
-
-type DirectorBeat struct {
-	ID       string `json:"id,omitempty"`
-	Summary  string `json:"summary,omitempty"`
-	Pressure string `json:"pressure,omitempty"`
-	Payoff   string `json:"payoff,omitempty"`
-	Status   string `json:"status,omitempty"`
-}
-
 type DirectorEvent struct {
 	ID                      string   `json:"id,omitempty"`
 	Name                    string   `json:"name,omitempty"`
@@ -70,20 +45,6 @@ type DirectorEvent struct {
 	LastTriggeredTurnID     string   `json:"last_triggered_turn_id,omitempty"`
 	NextEligibleAfterTurns  int      `json:"next_eligible_after_turns,omitempty"`
 	DirectorInstructionNote string   `json:"director_instruction_note,omitempty"`
-}
-
-type DirectorThread struct {
-	ID      string `json:"id,omitempty"`
-	Title   string `json:"title,omitempty"`
-	Status  string `json:"status,omitempty"`
-	Summary string `json:"summary,omitempty"`
-}
-
-type DirectorRunStatus struct {
-	Status    string `json:"status,omitempty"`
-	Summary   string `json:"summary,omitempty"`
-	Error     string `json:"error,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // TurnBrief is the Interactive Agent's semantic plan for one turn. The backend
@@ -165,52 +126,6 @@ type TerminalOutcome struct {
 	CausedByTurnID        string   `json:"caused_by_turn_id,omitempty"`
 	RuleResolutionID      string   `json:"rule_resolution_id,omitempty"`
 	RestartSuggestions    []string `json:"restart_suggestions,omitempty"`
-}
-
-func DefaultDirectorState() DirectorState {
-	return DirectorState{
-		Enabled:       true,
-		SpoilerMode:   "layered",
-		BranchPatches: map[string]string{},
-	}
-}
-
-func NormalizeDirectorState(state DirectorState) DirectorState {
-	if directorStateLooksEmpty(state) {
-		state = DefaultDirectorState()
-	}
-	if strings.TrimSpace(state.SpoilerMode) == "" {
-		state.SpoilerMode = "layered"
-	}
-	if state.BranchPatches == nil {
-		state.BranchPatches = map[string]string{}
-	}
-	state.ForcedEvents = normalizeStringListLimit(state.ForcedEvents, maxTurnBriefListItems)
-	state.DisabledEvents = normalizeStringListLimit(state.DisabledEvents, maxTurnBriefListItems)
-	state.BeatQueue = normalizeDirectorBeats(state.BeatQueue)
-	state.EventQueue = normalizeDirectorEvents(state.EventQueue)
-	state.Foreshadowing = normalizeDirectorThreads(state.Foreshadowing)
-	state.PotentialCharacters = normalizeDirectorThreads(state.PotentialCharacters)
-	if state.LastDirectorRun != nil {
-		run := normalizeDirectorRunStatus(*state.LastDirectorRun)
-		state.LastDirectorRun = &run
-	}
-	return state
-}
-
-func directorStateLooksEmpty(state DirectorState) bool {
-	return !state.Enabled &&
-		strings.TrimSpace(state.SpoilerMode) == "" &&
-		strings.TrimSpace(state.MainArc) == "" &&
-		strings.TrimSpace(state.StagePlan) == "" &&
-		len(state.BeatQueue) == 0 &&
-		len(state.EventQueue) == 0 &&
-		len(state.Foreshadowing) == 0 &&
-		len(state.PotentialCharacters) == 0 &&
-		len(state.BranchPatches) == 0 &&
-		len(state.ForcedEvents) == 0 &&
-		len(state.DisabledEvents) == 0 &&
-		state.LastDirectorRun == nil
 }
 
 func NormalizeTurnBrief(brief TurnBrief) TurnBrief {
@@ -578,24 +493,6 @@ func maxFloat(a, b float64) float64 {
 	return b
 }
 
-func normalizeDirectorBeats(values []DirectorBeat) []DirectorBeat {
-	if len(values) > maxTurnBriefListItems {
-		values = values[:maxTurnBriefListItems]
-	}
-	out := make([]DirectorBeat, 0, len(values))
-	for _, value := range values {
-		value.ID = trimBytes(value.ID, 128)
-		value.Summary = trimBytes(value.Summary, maxTurnBriefTextBytes)
-		value.Pressure = trimBytes(value.Pressure, maxTurnBriefTextBytes)
-		value.Payoff = trimBytes(value.Payoff, maxTurnBriefTextBytes)
-		value.Status = trimBytes(value.Status, 128)
-		if value.ID != "" || value.Summary != "" {
-			out = append(out, value)
-		}
-	}
-	return out
-}
-
 func normalizeDirectorEvents(values []DirectorEvent) []DirectorEvent {
 	if len(values) > maxTurnBriefListItems {
 		values = values[:maxTurnBriefListItems]
@@ -645,34 +542,6 @@ func normalizeDirectorEvents(values []DirectorEvent) []DirectorEvent {
 		out = append(out, value)
 	}
 	return out
-}
-
-func normalizeDirectorThreads(values []DirectorThread) []DirectorThread {
-	if len(values) > maxTurnBriefListItems {
-		values = values[:maxTurnBriefListItems]
-	}
-	out := make([]DirectorThread, 0, len(values))
-	for _, value := range values {
-		value.ID = trimBytes(value.ID, 128)
-		value.Title = trimBytes(value.Title, 256)
-		value.Status = trimBytes(value.Status, 128)
-		value.Summary = trimBytes(value.Summary, maxTurnBriefTextBytes)
-		if value.ID != "" || value.Title != "" {
-			out = append(out, value)
-		}
-	}
-	return out
-}
-
-func normalizeDirectorRunStatus(value DirectorRunStatus) DirectorRunStatus {
-	value.Status = trimBytes(value.Status, 128)
-	value.Summary = trimBytes(value.Summary, maxTurnBriefTextBytes)
-	value.Error = trimBytes(value.Error, maxTurnBriefTextBytes)
-	value.UpdatedAt = trimBytes(value.UpdatedAt, 128)
-	if value.Status == "" {
-		value.Status = "ready"
-	}
-	return value
 }
 
 func normalizeStateOpsForRule(ops []StateOp) []StateOp {
