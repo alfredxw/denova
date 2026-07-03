@@ -24,8 +24,8 @@ func chatModelConfigFromResolved(resolved config.ResolvedModelSettings) openai.C
 		modelCfg.Temperature = &temperature
 	}
 	extraFields := map[string]any{}
-	if resolved.EnableThinking != nil {
-		extraFields["enable_thinking"] = *resolved.EnableThinking
+	for k, v := range providercompat.ThinkingExtraFields(modelCfg, resolved.EnableThinking) {
+		extraFields[k] = v
 	}
 	// 让 providercompat 决定是否要注入 provider 特有的请求字段。
 	// agent 包不感知任何具体 provider。

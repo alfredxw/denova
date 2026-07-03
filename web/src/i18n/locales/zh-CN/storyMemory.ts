@@ -9,7 +9,7 @@ const storyMemory = {
   'storyMemory.currentBranch': '当前分支',
   'storyMemory.noHead': '暂无',
   'storyMemory.autoEnabled': '自动整理',
-  'storyMemory.interval': '自动整理间隔',
+  'storyMemory.interval': '长期整理间隔',
   'storyMemory.generate': '手动整理',
   'storyMemory.agent': '打开配置管理 Agent',
   'storyMemory.configAgent': '配置 Agent',

@@ -179,6 +179,8 @@ export interface StoryDirectorStrategy {
   failure_policy?: string
   pacing_curve?: string
   random_event_rate?: number
+  director_agent_mode?: 'triggered' | 'every_turn' | 'off' | string
+  director_agent_interval_turns?: number
   prompt_markdown?: string
 }
 

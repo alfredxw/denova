@@ -327,6 +327,31 @@ describe('SettingPanel', () => {
     })
   })
 
+  it('saves background director scheduling settings', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    expect(screen.getByText('触发/间隔')).toBeInTheDocument()
+    const intervalField = screen.getByText('后台导演间隔').closest('label') as HTMLElement
+    const intervalInput = within(intervalField).getByRole('spinbutton')
+    expect(intervalInput).toHaveValue(4)
+    fireEvent.change(intervalInput, { target: { value: '7' } })
+
+    const modeField = screen.getByText('后台导演运行方式').closest('label') as HTMLElement
+    await user.click(within(modeField).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /每回合/ }))
+    expect(screen.queryByText('后台导演间隔')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    expect(payload.strategy).toMatchObject({
+      director_agent_mode: 'every_turn',
+      director_agent_interval_turns: 7,
+    })
+  })
+
   it('saves advanced Markdown strategy prompt for story directors', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)

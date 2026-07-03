@@ -32,6 +32,18 @@ openai_model = "deepseek-v4-pro"
 # enable_thinking = true       # 可选：不填则不传；适用于支持 enable_thinking 的 OpenAI 兼容平台
 # reasoning_effort = "medium"  # 可选：low / medium / high；不填则不传
 #
+# Gemini OpenAI 兼容端点不支持 enable_thinking；需要控制思考强度时配置 reasoning_effort。
+# [[model_profiles]]
+# id = "gemini"
+# name = "Gemini"
+# openai_base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+# openai_api_key = ""
+# openai_model = "gemini-3.5-flash"
+#
+# [agent_models.ide]
+# profile_id = "gemini"
+# reasoning_effort = "low"
+#
 # [agent_models.config_manager]
 # profile_id = "gpt-4.1"
 # temperature = 0.2

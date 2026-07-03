@@ -286,7 +286,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
             <input type="checkbox" checked={state?.settings.enabled ?? true} onChange={(event) => void saveSettings({ enabled: event.target.checked })} />
             {t('storyMemory.autoEnabled')}
           </label>
-          <input aria-label={t('storyMemory.interval')} type="number" min={1} max={50} value={state?.settings.auto_interval_turns || 3} onChange={(event) => void saveSettings({ auto_interval_turns: Number(event.target.value) || 3 })} className="h-8 w-16 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-xs outline-none" />
+          <input aria-label={t('storyMemory.interval')} type="number" min={1} max={50} value={state?.settings.auto_interval_turns || 6} onChange={(event) => void saveSettings({ auto_interval_turns: Number(event.target.value) || 6 })} className="h-8 w-16 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-xs outline-none" />
           <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.generate')} onClick={() => void runGenerate()}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </button>

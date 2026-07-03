@@ -15,7 +15,7 @@ import (
 	"denova/internal/session"
 )
 
-const interactiveDirectorPatchSource = "interactive_director"
+const interactiveDirectorPatchSource = interactive.DirectorPatchSourceInteractiveDirector
 
 func startInteractiveDirectorTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) {
 	go func() {

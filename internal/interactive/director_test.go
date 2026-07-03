@@ -220,6 +220,169 @@ func TestAppendTurnWithBriefAutoUpdatesDirectorState(t *testing.T) {
 	}
 }
 
+func TestShouldRunDirectorAgentSchedule(t *testing.T) {
+	defaultStrategy := DefaultStoryDirector().Strategy
+
+	t.Run("default triggered skips ordinary early turn but keeps deterministic patch", func(t *testing.T) {
+		store := NewStore(t.TempDir())
+		story, err := store.CreateStory(CreateStoryRequest{Title: "默认调度", StoryTellerID: "classic"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		turn := appendScheduleTurn(t, store, story.ID, "普通观察", nil)
+		decision, err := store.ShouldRunDirectorAgent(story.ID, "main", turn, defaultStrategy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if decision.ShouldRun || decision.Reason != "not_due" || decision.TurnsSinceLastRun != 1 {
+			t.Fatalf("ordinary early turn should not run director agent: %#v", decision)
+		}
+		snapshot, err := store.Snapshot(story.ID, "main")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snapshot.DirectorState.LastDirectorRun == nil || snapshot.DirectorState.LastDirectorRun.Status != "ready" {
+			t.Fatalf("deterministic director patch should still be recorded: %#v", snapshot.DirectorState.LastDirectorRun)
+		}
+	})
+
+	t.Run("interval reached", func(t *testing.T) {
+		store := NewStore(t.TempDir())
+		story, err := store.CreateStory(CreateStoryRequest{Title: "间隔调度", StoryTellerID: "classic"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var turn TurnEvent
+		for i := 0; i < DefaultDirectorAgentIntervalTurns; i++ {
+			turn = appendScheduleTurn(t, store, story.ID, "推进普通回合", nil)
+		}
+		decision, err := store.ShouldRunDirectorAgent(story.ID, "main", turn, defaultStrategy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !decision.ShouldRun || decision.Reason != "interval_reached" {
+			t.Fatalf("interval should trigger director agent: %#v", decision)
+		}
+	})
+
+	t.Run("rule failure and terminal candidate trigger", func(t *testing.T) {
+		store := NewStore(t.TempDir())
+		story, err := store.CreateStory(CreateStoryRequest{Title: "失败调度", StoryTellerID: "classic"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		failed := appendScheduleTurn(t, store, story.ID, "尝试强行破阵", &RuleResolution{
+			AcceptedBrief: scheduleBrief("尝试强行破阵"),
+			RuleResults:   []RuleResult{{ID: "break", Outcome: "failure"}},
+		})
+		decision, err := store.ShouldRunDirectorAgent(story.ID, "main", failed, defaultStrategy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !decision.ShouldRun || decision.Reason != "rule_failure" {
+			t.Fatalf("rule failure should trigger director agent: %#v", decision)
+		}
+		terminal := appendScheduleTurn(t, store, story.ID, "继续冒险", &RuleResolution{
+			AcceptedBrief:     scheduleBrief("继续冒险"),
+			TerminalCandidate: &TerminalCandidate{Type: "bad_end", Reason: "阵法反噬"},
+		})
+		decision, err = store.ShouldRunDirectorAgent(story.ID, "main", terminal, defaultStrategy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !decision.ShouldRun || decision.Reason != "terminal_candidate" {
+			t.Fatalf("terminal candidate should trigger director agent: %#v", decision)
+		}
+	})
+
+	t.Run("event intents require two turns since last director agent run", func(t *testing.T) {
+		store := NewStore(t.TempDir())
+		story, err := store.CreateStory(CreateStoryRequest{Title: "事件冷却", StoryTellerID: "classic"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		first := appendScheduleTurn(t, store, story.ID, "先稳住局面", nil)
+		ready := DirectorRunStatus{Status: "ready", Summary: "后台导演已运行"}
+		if _, err := store.UpdateDirectorState(story.ID, UpdateDirectorStateRequest{
+			BranchID:        "main",
+			Source:          DirectorPatchSourceInteractiveDirector,
+			Summary:         ready.Summary,
+			LastDirectorRun: &ready,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if first.ID == "" {
+			t.Fatal("first turn should exist")
+		}
+		second := appendScheduleTurn(t, store, story.ID, "推进比拼", &RuleResolution{
+			AcceptedBrief: scheduleBriefWithEvents("推进比拼", []string{"contest"}),
+		})
+		decision, err := store.ShouldRunDirectorAgent(story.ID, "main", second, defaultStrategy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if decision.ShouldRun || decision.Reason != "not_due" || decision.TurnsSinceLastRun != 1 {
+			t.Fatalf("event intent should respect two-turn spacing: %#v", decision)
+		}
+		third := appendScheduleTurn(t, store, story.ID, "继续推进比拼", &RuleResolution{
+			AcceptedBrief: scheduleBriefWithEvents("继续推进比拼", []string{"contest"}),
+		})
+		decision, err = store.ShouldRunDirectorAgent(story.ID, "main", third, defaultStrategy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !decision.ShouldRun || decision.Reason != "event_intents" || decision.TurnsSinceLastRun != 2 {
+			t.Fatalf("event intent should trigger after two turns: %#v", decision)
+		}
+	})
+
+	t.Run("forced events trigger", func(t *testing.T) {
+		store := NewStore(t.TempDir())
+		story, err := store.CreateStory(CreateStoryRequest{Title: "强制事件", StoryTellerID: "classic"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.ForceDirectorEvent(story.ID, "face_slap", DirectorEventActionRequest{Reason: "用户指定"}); err != nil {
+			t.Fatal(err)
+		}
+		turn := appendScheduleTurn(t, store, story.ID, "走上擂台", nil)
+		decision, err := store.ShouldRunDirectorAgent(story.ID, "main", turn, defaultStrategy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !decision.ShouldRun || decision.Reason != "forced_events" {
+			t.Fatalf("forced events should trigger director agent: %#v", decision)
+		}
+	})
+
+	t.Run("every turn and off modes", func(t *testing.T) {
+		store := NewStore(t.TempDir())
+		story, err := store.CreateStory(CreateStoryRequest{Title: "模式调度", StoryTellerID: "classic"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		turn := appendScheduleTurn(t, store, story.ID, "普通回合", nil)
+		everyTurn := defaultStrategy
+		everyTurn.DirectorAgentMode = DirectorAgentModeEveryTurn
+		decision, err := store.ShouldRunDirectorAgent(story.ID, "main", turn, everyTurn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !decision.ShouldRun || decision.Reason != "mode_every_turn" {
+			t.Fatalf("every_turn should always run: %#v", decision)
+		}
+		off := defaultStrategy
+		off.DirectorAgentMode = DirectorAgentModeOff
+		decision, err = store.ShouldRunDirectorAgent(story.ID, "main", turn, off)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if decision.ShouldRun || decision.Reason != "mode_off" {
+			t.Fatalf("off should skip director agent: %#v", decision)
+		}
+	})
+}
+
 func TestRebuildDirectorStateCreatesPlanAndBranchPatch(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{
@@ -274,6 +437,39 @@ func TestRebuildDirectorStateCreatesPlanAndBranchPatch(t *testing.T) {
 	}
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turn.ID {
 		t.Fatalf("rebuild patch must not move branch head: %#v", snapshot.CurrentTurn)
+	}
+}
+
+func appendScheduleTurn(t *testing.T, store *Store, storyID, action string, resolution *RuleResolution) TurnEvent {
+	t.Helper()
+	brief := scheduleBrief(action)
+	if resolution != nil {
+		brief = NormalizeTurnBrief(resolution.AcceptedBrief)
+	}
+	turn, _, err := store.AppendTurnWithState(storyID, AppendTurnWithStateRequest{
+		BranchID:       "main",
+		User:           action,
+		Narrative:      action + "后的局势继续推进。",
+		TurnBrief:      &brief,
+		RuleResolution: resolution,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return turn
+}
+
+func scheduleBrief(action string) TurnBrief {
+	return scheduleBriefWithEvents(action, nil)
+}
+
+func scheduleBriefWithEvents(action string, events []string) TurnBrief {
+	return TurnBrief{
+		UserAction:       action,
+		Intent:           "观察",
+		TurnGoal:         action + "的直接后果",
+		EventIntents:     events,
+		StateExpectation: "局势继续推进",
 	}
 }
 

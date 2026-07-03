@@ -61,6 +61,61 @@ func TestExtraRequestFields_OpenAIProvider(t *testing.T) {
 	}
 }
 
+func TestThinkingExtraFields_ProviderSupport(t *testing.T) {
+	enabled := true
+	disabled := false
+	tests := []struct {
+		name string
+		cfg  openai.ChatModelConfig
+		in   *bool
+		want map[string]any
+	}{
+		{
+			name: "deepseek keeps enable thinking",
+			cfg:  openai.ChatModelConfig{BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-reasoner"},
+			in:   &enabled,
+			want: map[string]any{"enable_thinking": true},
+		},
+		{
+			name: "explicit false still sent for supported providers",
+			cfg:  openai.ChatModelConfig{BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat"},
+			in:   &disabled,
+			want: map[string]any{"enable_thinking": false},
+		},
+		{
+			name: "gemini endpoint skips unsupported field",
+			cfg:  openai.ChatModelConfig{BaseURL: "https://generativelanguage.googleapis.com/v1beta/openai/", Model: "gemini-3.5-flash"},
+			in:   &enabled,
+			want: nil,
+		},
+		{
+			name: "gemini model behind proxy skips unsupported field",
+			cfg:  openai.ChatModelConfig{BaseURL: "https://proxy.example/v1", Model: "gemini-2.5-flash"},
+			in:   &enabled,
+			want: nil,
+		},
+		{
+			name: "unset means no extra field",
+			cfg:  openai.ChatModelConfig{BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat"},
+			in:   nil,
+			want: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ThinkingExtraFields(tt.cfg, tt.in)
+			if len(got) != len(tt.want) {
+				t.Fatalf("field count = %d, want %d: %v", len(got), len(tt.want), got)
+			}
+			for k, want := range tt.want {
+				if got[k] != want {
+					t.Fatalf("field %s = %v, want %v in %v", k, got[k], want, got)
+				}
+			}
+		})
+	}
+}
+
 func TestWrap_NonStandardProvider_RepairsToolCallAndThink(t *testing.T) {
 	// 复刻一个返回非标准输出的模型：think + 文本工具调用 + 内部特殊 token
 	content := "<think>Let me load the skill.</think>\n\n" +

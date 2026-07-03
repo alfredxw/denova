@@ -20,14 +20,19 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if directors[0].ModuleRefs.NarrativeStyleDisabled || directors[0].ModuleRefs.EventSystemDisabled || directors[0].ModuleRefs.RuleSystemDisabled || directors[0].ModuleRefs.OpeningSelectorDisabled || directors[0].ModuleRefs.ImagePresetDisabled {
 		t.Fatalf("default story director modules should start enabled: %#v", directors[0].ModuleRefs)
 	}
+	if directors[0].Strategy.DirectorAgentMode != DirectorAgentModeTriggered || directors[0].Strategy.DirectorAgentIntervalTurns != DefaultDirectorAgentIntervalTurns {
+		t.Fatalf("default story director should use triggered background director schedule: %#v", directors[0].Strategy)
+	}
 
 	created, err := library.Create(StoryDirector{
 		ID:          "custom-director",
 		Name:        "自定义导演",
 		Description: "用于测试",
 		Strategy: StoryDirectorStrategy{
-			Enabled:         true,
-			RandomEventRate: 2,
+			Enabled:                    true,
+			RandomEventRate:            2,
+			DirectorAgentMode:          "unknown",
+			DirectorAgentIntervalTurns: 99,
 		},
 		StatSystem: StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{
 			{ID: "mana", Path: "resources.mana", Name: "法力", Default: 3, Max: 9, Visibility: "hidden"},
@@ -53,8 +58,8 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
-	if !created.Custom || created.Strategy.RandomEventRate != 1 {
-		t.Fatalf("custom director should be marked and random rate clamped: %#v", created)
+	if !created.Custom || created.Strategy.RandomEventRate != 1 || created.Strategy.DirectorAgentMode != DirectorAgentModeTriggered || created.Strategy.DirectorAgentIntervalTurns != MaxDirectorAgentIntervalTurns {
+		t.Fatalf("custom director should be marked and strategy should be normalized: %#v", created)
 	}
 	if created.ModuleRefs.EventSystemDisabled || created.ModuleRefs.RuleSystemDisabled || created.ModuleRefs.OpeningSelectorDisabled {
 		t.Fatalf("legacy-style directors without disabled refs should keep modules enabled: %#v", created.ModuleRefs)
@@ -128,6 +133,9 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 		}
 		if !strings.Contains(summary, `"strategy"`) || !strings.Contains(summary, `"mainline_strength"`) {
 			t.Fatalf("%s summary should retain structured strategy fields:\n%s", name, summary)
+		}
+		if !strings.Contains(summary, `"director_agent_mode"`) || !strings.Contains(summary, `"director_agent_interval_turns"`) {
+			t.Fatalf("%s summary should retain background director schedule:\n%s", name, summary)
 		}
 	}
 }

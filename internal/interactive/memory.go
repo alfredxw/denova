@@ -14,7 +14,7 @@ import (
 
 const (
 	defaultMemoryImportance    = 3
-	defaultStoryMemoryInterval = 3
+	defaultStoryMemoryInterval = 6
 	maxMemoryTextBytes         = 12 * 1024
 	maxStoryMemorySchemaBytes  = 32 * 1024
 	maxMemoryListItems         = 24

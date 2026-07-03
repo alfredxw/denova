@@ -47,6 +47,16 @@ func ExtraRequestFields(cfg openai.ChatModelConfig) map[string]any {
 	return out
 }
 
+// ThinkingExtraFields returns non-standard thinking request fields supported by
+// the current OpenAI-compatible provider. Gemini's OpenAI endpoint rejects
+// enable_thinking; callers should use reasoning_effort for Gemini instead.
+func ThinkingExtraFields(cfg openai.ChatModelConfig, enableThinking *bool) map[string]any {
+	if enableThinking == nil || usesGeminiOpenAICompatibility(cfg) {
+		return nil
+	}
+	return map[string]any{"enable_thinking": *enableThinking}
+}
+
 type polyfill interface {
 	apply(model.ToolCallingChatModel) model.ToolCallingChatModel
 }
@@ -87,6 +97,14 @@ func needsRepair(cfg openai.ChatModelConfig) bool {
 		}
 	}
 	return false
+}
+
+func usesGeminiOpenAICompatibility(cfg openai.ChatModelConfig) bool {
+	base := strings.ToLower(strings.TrimSpace(cfg.BaseURL))
+	model := strings.ToLower(strings.TrimSpace(cfg.Model))
+	return strings.Contains(base, "generativelanguage.googleapis.com") ||
+		strings.Contains(base, "aiplatform.googleapis.com") ||
+		strings.HasPrefix(model, "gemini-")
 }
 
 // -----------------------------------------------------------------------------

@@ -68,6 +68,12 @@ const STORY_DIRECTOR_RANDOM_RATE_OPTIONS = [
   { value: '0.15', rate: 0.15, labelKey: 'settingPanel.storyDirector.strategy.random.medium', descriptionKey: 'settingPanel.storyDirector.strategy.random.mediumDesc' },
   { value: '0.3', rate: 0.3, labelKey: 'settingPanel.storyDirector.strategy.random.high', descriptionKey: 'settingPanel.storyDirector.strategy.random.highDesc' },
 ] as const
+const STORY_DIRECTOR_AGENT_MODE_OPTIONS = [
+  { value: 'triggered', labelKey: 'settingPanel.storyDirector.strategy.agentMode.triggered', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.triggeredDesc' },
+  { value: 'every_turn', labelKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurn', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurnDesc' },
+  { value: 'off', labelKey: 'settingPanel.storyDirector.strategy.agentMode.off', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.offDesc' },
+] as const
+const STORY_DIRECTOR_AGENT_INTERVAL_FALLBACK = 4
 type ImagePresetTarget = ImagePresetSlot['target']
 type LoreType = LoreItem['type']
 type StrategySelectOption = {
@@ -864,6 +870,26 @@ export function StoryDirectorEditor({
               fallbackValue="0.15"
               onChange={(random_event_rate) => updateStrategy({ random_event_rate })}
             />
+            <StrategySelect
+              label={t('settingPanel.storyDirector.agentMode')}
+              value={draft.strategy?.director_agent_mode || ''}
+              fallbackValue="triggered"
+              options={STORY_DIRECTOR_AGENT_MODE_OPTIONS}
+              onChange={(director_agent_mode) => updateStrategy({ director_agent_mode })}
+            />
+            {(draft.strategy?.director_agent_mode || 'triggered') === 'triggered' && (
+              <Field label={t('settingPanel.storyDirector.agentInterval')}>
+                <Input
+                  className={inputClassName}
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={draft.strategy?.director_agent_interval_turns || STORY_DIRECTOR_AGENT_INTERVAL_FALLBACK}
+                  onChange={(event) => updateStrategy({ director_agent_interval_turns: normalizeDirectorAgentInterval(event.target.value) })}
+                />
+                <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.agentIntervalDesc')}</span>
+              </Field>
+            )}
           </div>
           <div className="mt-3 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
             <button
@@ -1134,6 +1160,12 @@ function ModuleEditorShell<T extends { name: string; description: string; custom
 function parseDecimalInput(value: string) {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function normalizeDirectorAgentInterval(value: string) {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return STORY_DIRECTOR_AGENT_INTERVAL_FALLBACK
+  return Math.min(20, Math.max(1, Math.round(parsed)))
 }
 
 function StrategySelect({

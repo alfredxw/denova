@@ -12,6 +12,8 @@ const (
 	directorPatchSourceForce   = "force_event"
 	directorPatchSourceDisable = "disable_event"
 	directorPatchSourceTurn    = "turn_auto"
+
+	DirectorPatchSourceInteractiveDirector = "interactive_director"
 )
 
 // UpdateDirectorStateRequest patches the story-level director plan. Slice and
@@ -61,6 +63,12 @@ type DirectorPatchEvent struct {
 	Source        string        `json:"source,omitempty"`
 	Summary       string        `json:"summary,omitempty"`
 	DirectorState DirectorState `json:"director_state"`
+}
+
+type DirectorAgentScheduleDecision struct {
+	ShouldRun         bool   `json:"should_run"`
+	Reason            string `json:"reason,omitempty"`
+	TurnsSinceLastRun int    `json:"turns_since_last_run,omitempty"`
 }
 
 func (s *Store) DirectorState(storyID, branchID string) (DirectorState, error) {
@@ -157,6 +165,62 @@ func (s *Store) DisableDirectorEvent(storyID, eventID string, req DirectorEventA
 	return s.persistDirectorStateLocked(storyID, meta, lines, branchID, branch, next, firstNonEmpty(req.Source, directorPatchSourceDisable), next.LastDirectorRun.Summary)
 }
 
+func (s *Store) ShouldRunDirectorAgent(storyID, branchID string, turn TurnEvent, strategy StoryDirectorStrategy) (DirectorAgentScheduleDecision, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	strategy = normalizeStoryDirectorStrategy(strategy)
+	meta, lines, resolvedBranchID, branch, err := s.directorStoryForUpdateLocked(storyID, branchID)
+	if err != nil {
+		return DirectorAgentScheduleDecision{}, err
+	}
+	state := NormalizeDirectorState(meta.DirectorState)
+	if !state.Enabled || !strategy.Enabled {
+		return DirectorAgentScheduleDecision{Reason: "disabled"}, nil
+	}
+	switch strategy.DirectorAgentMode {
+	case DirectorAgentModeOff:
+		return DirectorAgentScheduleDecision{Reason: "mode_off"}, nil
+	case DirectorAgentModeEveryTurn:
+		return DirectorAgentScheduleDecision{ShouldRun: true, Reason: "mode_every_turn"}, nil
+	}
+
+	turnsSinceLastRun := turnsSinceLastSuccessfulDirectorAgentRun(lines, branch.Head, resolvedBranchID)
+	decision := DirectorAgentScheduleDecision{TurnsSinceLastRun: turnsSinceLastRun}
+	if turnHasTerminalCandidate(turn) {
+		decision.ShouldRun = true
+		decision.Reason = "terminal_candidate"
+		return decision, nil
+	}
+	if turnHasRuleFailure(turn) {
+		decision.ShouldRun = true
+		decision.Reason = "rule_failure"
+		return decision, nil
+	}
+	if len(state.ForcedEvents) > 0 {
+		decision.ShouldRun = true
+		decision.Reason = "forced_events"
+		return decision, nil
+	}
+	if resolvedBranchID != "main" && strings.TrimSpace(state.BranchPatches[resolvedBranchID]) == "" {
+		decision.ShouldRun = true
+		decision.Reason = "branch_patch_missing"
+		return decision, nil
+	}
+	if turnHasEventIntents(turn) && turnsSinceLastRun >= 2 {
+		decision.ShouldRun = true
+		decision.Reason = "event_intents"
+		return decision, nil
+	}
+	if turnsSinceLastRun >= strategy.DirectorAgentIntervalTurns {
+		decision.ShouldRun = true
+		decision.Reason = "interval_reached"
+		return decision, nil
+	}
+	decision.Reason = "not_due"
+	return decision, nil
+}
+
 func (s *Store) directorStoryForUpdateLocked(storyID, branchID string) (StoryMeta, []StoryEventRecord, string, BranchMeta, error) {
 	meta, lines, err := s.readStoryLocked(storyID)
 	if err != nil {
@@ -167,6 +231,71 @@ func (s *Store) directorStoryForUpdateLocked(storyID, branchID string) (StoryMet
 		return StoryMeta{}, nil, "", BranchMeta{}, err
 	}
 	return meta, lines, resolvedBranchID, branch, nil
+}
+
+func turnsSinceLastSuccessfulDirectorAgentRun(lines []StoryEventRecord, headID, branchID string) int {
+	turns := turnPath(lines, headID)
+	if len(turns) == 0 {
+		return 0
+	}
+	turnIndex := make(map[string]int, len(turns))
+	for i, turn := range turns {
+		turnIndex[turn.ID] = i
+	}
+	pathSet := eventPathSet(headID, lines)
+	lastIndex := -1
+	for _, record := range lines {
+		if record.Envelope.Type != StoryEventTypeDirectorPatch || record.Envelope.BranchID != branchID {
+			continue
+		}
+		var patch DirectorPatchEvent
+		if err := mapToStruct(record.Raw, &patch); err != nil {
+			continue
+		}
+		if strings.TrimSpace(patch.Source) != DirectorPatchSourceInteractiveDirector {
+			continue
+		}
+		if patch.DirectorState.LastDirectorRun == nil || patch.DirectorState.LastDirectorRun.Status != "ready" {
+			continue
+		}
+		parentID := parentIDFromRaw(record.Raw)
+		if !pathSet[parentID] {
+			continue
+		}
+		if index, ok := turnIndex[parentID]; ok && index > lastIndex {
+			lastIndex = index
+		}
+	}
+	return len(turns) - lastIndex - 1
+}
+
+func turnHasTerminalCandidate(turn TurnEvent) bool {
+	if turn.TerminalOutcome != nil && turn.TerminalOutcome.Terminal {
+		return true
+	}
+	return turn.RuleResolution != nil && turn.RuleResolution.TerminalCandidate != nil
+}
+
+func turnHasRuleFailure(turn TurnEvent) bool {
+	if turn.RuleResolution == nil {
+		return false
+	}
+	for _, result := range turn.RuleResolution.RuleResults {
+		if strings.TrimSpace(result.Outcome) != "" && strings.TrimSpace(result.Outcome) != "success" {
+			return true
+		}
+	}
+	return false
+}
+
+func turnHasEventIntents(turn TurnEvent) bool {
+	if turn.TurnBrief != nil && len(NormalizeTurnBrief(*turn.TurnBrief).EventIntents) > 0 {
+		return true
+	}
+	if turn.RuleResolution != nil && len(NormalizeTurnBrief(turn.RuleResolution.AcceptedBrief).EventIntents) > 0 {
+		return true
+	}
+	return false
 }
 
 func (s *Store) persistDirectorStateLocked(storyID string, meta StoryMeta, lines []StoryEventRecord, branchID string, branch BranchMeta, next DirectorState, source, summary string) (DirectorState, error) {

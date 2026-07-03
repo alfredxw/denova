@@ -9,7 +9,7 @@ const storyMemory = {
   'storyMemory.currentBranch': 'Current branch',
   'storyMemory.noHead': 'None',
   'storyMemory.autoEnabled': 'Auto',
-  'storyMemory.interval': 'Auto interval',
+  'storyMemory.interval': 'Long-term interval',
   'storyMemory.generate': 'Generate memory',
   'storyMemory.agent': 'Open Config Manager Agent',
   'storyMemory.configAgent': 'Config Agent',

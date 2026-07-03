@@ -862,7 +862,17 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
 		}, interactiveEmit)
 		if turn, stateReady, ok := conversation.LastTurnForState(); ok && ctx.Err() == nil {
-			startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore)
+			director := loadStoryDirector(novaDir, storyCtx.Meta.StoryDirectorID)
+			decision, err := store.ShouldRunDirectorAgent(storyID, turn.BranchID, turn, director.Strategy)
+			if err != nil {
+				log.Printf("[interactive-director-agent] schedule decision failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
+				markInteractiveDirectorFailed(conversation, turn, err)
+			} else if decision.ShouldRun {
+				log.Printf("[interactive-director-agent] scheduled story_id=%s branch_id=%s turn_id=%s reason=%s turns_since_last_run=%d", storyID, turn.BranchID, turn.ID, decision.Reason, decision.TurnsSinceLastRun)
+				startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore)
+			} else {
+				log.Printf("[interactive-director-agent] skipped by schedule story_id=%s branch_id=%s turn_id=%s reason=%s turns_since_last_run=%d", storyID, turn.BranchID, turn.ID, decision.Reason, decision.TurnsSinceLastRun)
+			}
 			if !stateReady {
 				shouldGenerate, nextAuto, err := store.ShouldGenerateStoryMemory(storyID, turn.BranchID)
 				if err != nil {

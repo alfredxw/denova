@@ -2148,6 +2148,8 @@ function newStoryDirectorDraft(): Partial<StoryDirector> {
       failure_policy: 'consequence',
       pacing_curve: 'goal-pressure-payoff',
       random_event_rate: 0.15,
+      director_agent_mode: 'triggered',
+      director_agent_interval_turns: 4,
     },
     event_system: {
       event_packages: [],
