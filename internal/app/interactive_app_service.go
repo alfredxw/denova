@@ -711,7 +711,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	}
 	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
 	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
-	styleRules := convertTellerStyleRules(teller.StyleRules, styleScenes)
+	styleRules := convertTellerStyleRules(novaDir, teller.StyleRules, styleScenes)
 	req := agent.ChatRequest{
 		Message:     message,
 		StyleScenes: styleScenes,
@@ -847,7 +847,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	}
 	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
 	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
-	styleRules := convertTellerStyleRules(teller.StyleRules, styleScenes)
+	styleRules := convertTellerStyleRules(novaDir, teller.StyleRules, styleScenes)
 	if len(styleRules) > 0 {
 		log.Printf("[interactive-agent-task] inject teller style rules teller_id=%s scenes=%q count=%d rules=%q", teller.ID, styleScenes, len(styleRules), appStyleRuleNames(styleRules))
 	}

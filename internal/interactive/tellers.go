@@ -9,10 +9,13 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"denova/internal/styleref"
 )
 
 const (
-	tellerVersion                  = 5
+	tellerVersion                  = 6
+	MaxStyleRefsPerRule            = 12
 	MaxStyleContentChars           = 8000
 	MaxEventCardDescriptionChars   = 8000
 	maxTellerEventCardsPerPackage  = 24
@@ -116,10 +119,11 @@ type OpeningTrait struct {
 	Ops     []StateOp `json:"ops,omitempty"`
 }
 
-// StyleRule 表示导演自己的「场景 → 风格内容」映射。
+// StyleRule 表示叙事风格自己的「场景 → 共享文风参考」映射。
 type StyleRule struct {
 	Scene         string   `json:"scene"`
-	StyleContents []string `json:"style_contents"`
+	StyleRefs     []string `json:"style_refs,omitempty"`
+	StyleContents []string `json:"style_contents,omitempty"`
 }
 
 func NewTellerLibrary(novaDir string) *TellerLibrary {
@@ -350,6 +354,19 @@ func normalizeStyleRules(rules []StyleRule) []StyleRule {
 		if scene == "" {
 			continue
 		}
+		refs := make([]string, 0, len(rule.StyleRefs))
+		seenRefs := map[string]bool{}
+		for _, ref := range rule.StyleRefs {
+			ref = styleref.NormalizeStoragePath(ref)
+			if ref == "" || seenRefs[ref] {
+				continue
+			}
+			seenRefs[ref] = true
+			refs = append(refs, ref)
+			if len(refs) >= MaxStyleRefsPerRule {
+				break
+			}
+		}
 		contents := make([]string, 0, len(rule.StyleContents))
 		seen := map[string]bool{}
 		for _, content := range rule.StyleContents {
@@ -360,10 +377,10 @@ func normalizeStyleRules(rules []StyleRule) []StyleRule {
 			seen[content] = true
 			contents = append(contents, content)
 		}
-		if len(contents) == 0 {
+		if len(refs) == 0 && len(contents) == 0 {
 			continue
 		}
-		result = append(result, StyleRule{Scene: scene, StyleContents: contents})
+		result = append(result, StyleRule{Scene: scene, StyleRefs: refs, StyleContents: contents})
 	}
 	return result
 }

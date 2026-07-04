@@ -89,32 +89,76 @@ func ResumeFromInterruption(current string, prev InterruptedResume) string {
 	return sb.String()
 }
 
-// StyleRule 表示「场景 → 风格内容」映射。
-type StyleRule struct {
-	Scene         string
-	StyleContents []string
+// StyleReference 表示一个可由 Agent 按路径读取的共享文风参考。
+type StyleReference struct {
+	Name        string
+	Description string
+	Path        string
+	DisplayPath string
+	Missing     bool
+	Error       string
 }
 
-// StyleRulesInstruction 把导演的「场景 → 风格内容」映射拼成稳定 system prompt 片段。
+// StyleRule 表示「场景 → 文风参考」映射。
+type StyleRule struct {
+	Scene           string
+	StyleReferences []StyleReference
+	StyleContents   []string
+}
+
+// StyleRulesInstruction 把导演的「场景 → 文风参考索引」映射拼成稳定 system prompt 片段。
 func StyleRulesInstruction(rules []StyleRule) string {
 	var sb strings.Builder
 	sb.WriteString("## 场景化风格规则\n\n")
-	sb.WriteString("当前叙事风格配置了以下「场景 → 风格内容」规则：\n")
+	sb.WriteString("当前叙事风格配置了以下「场景 → 文风参考索引」规则。文风参考是所有叙事风格共享的 Markdown 文件，统一存放在 `.denova/styles/`；索引只提供 name、description、path，不包含全文。\n")
+	wrote := false
 	for i, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
-		if scene == "" || len(rule.StyleContents) == 0 {
+		if scene == "" || (len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0) {
 			continue
 		}
+		wrote = true
 		fmt.Fprintf(&sb, "%d. 场景：%s\n", i+1, scene)
+		for _, ref := range rule.StyleReferences {
+			name := strings.TrimSpace(ref.Name)
+			if name == "" {
+				name = strings.TrimSpace(ref.DisplayPath)
+			}
+			path := strings.TrimSpace(ref.Path)
+			if path == "" {
+				path = strings.TrimSpace(ref.DisplayPath)
+			}
+			if name == "" || path == "" {
+				continue
+			}
+			fmt.Fprintf(&sb, "   - name: %s\n", name)
+			if desc := strings.TrimSpace(ref.Description); desc != "" {
+				fmt.Fprintf(&sb, "     description: %s\n", desc)
+			}
+			if display := strings.TrimSpace(ref.DisplayPath); display != "" {
+				fmt.Fprintf(&sb, "     display_path: %s\n", display)
+			}
+			fmt.Fprintf(&sb, "     path: %s\n", path)
+			if ref.Missing {
+				fmt.Fprintf(&sb, "     status: missing")
+				if err := strings.TrimSpace(ref.Error); err != "" {
+					fmt.Fprintf(&sb, " (%s)", err)
+				}
+				sb.WriteString("\n")
+			}
+		}
 		for j, content := range rule.StyleContents {
 			content = strings.TrimSpace(content)
 			if content == "" {
 				continue
 			}
-			fmt.Fprintf(&sb, "   风格内容 %d：\n```markdown\n%s\n```\n", j+1, content)
+			fmt.Fprintf(&sb, "   旧版内联风格内容 %d：\n```markdown\n%s\n```\n", j+1, content)
 		}
 	}
-	sb.WriteString("\n触发规则：仅当本轮要执行『章节正文的创作 / 续写 / 重写』或『互动故事下一回合正文生成』时，先根据当前章节内容或互动场景选出最贴近的场景，把对应风格内容作为文风、节奏、叙述方式、句式和氛围参考；不要照搬其中的人物、情节或设定。\n")
+	if !wrote {
+		return ""
+	}
+	sb.WriteString("\n触发规则：仅当本轮要执行『章节正文的创作 / 续写 / 重写』或『互动故事下一回合正文生成』时，先根据当前章节内容或互动场景选出最贴近的场景；若该场景列出文风参考 path，必须先用 read_file 读取真正需要的参考文件，再把其作为文风、节奏、叙述方式、句式和氛围参考；不要照搬其中的人物、情节或设定。\n")
 	sb.WriteString("若本轮属于脑暴、大纲、设定、问答、规划等非正文生成场景，请完全忽略以上规则；若没有场景明显匹配，也不必强行选择。\n")
 	return sb.String()
 }

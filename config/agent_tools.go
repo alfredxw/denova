@@ -80,6 +80,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			ImageGeneration: on,
 		},
 		InteractiveStory: AgentToolOverride{
+			FileWrite:       off,
 			LoreWrite:       off,
 			Todo:            off,
 			WebSearch:       off,

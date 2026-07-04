@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,10 +142,10 @@ func TestTellerLibraryUpdateRejectsStaleRevision(t *testing.T) {
 	}
 }
 
-func TestNormalizeStyleRulesStoresContentsOnly(t *testing.T) {
+func TestNormalizeStyleRulesStoresRefsAndLegacyContents(t *testing.T) {
 	longContent := strings.Repeat("风", MaxStyleContentChars+20)
 	rules := normalizeStyleRules([]StyleRule{
-		{Scene: " 激烈打斗 ", StyleContents: []string{" 短句留白 ", "短句留白", longContent}},
+		{Scene: " 激烈打斗 ", StyleRefs: []string{" style.md ", ".denova/styles/style.md", "../bad.md"}, StyleContents: []string{" 短句留白 ", "短句留白", longContent}},
 		{Scene: "", StyleContents: []string{"无效"}},
 		{Scene: "空内容", StyleContents: []string{"", " "}},
 	})
@@ -156,6 +157,9 @@ func TestNormalizeStyleRulesStoresContentsOnly(t *testing.T) {
 	if rule.Scene != "激烈打斗" {
 		t.Fatalf("scene = %q", rule.Scene)
 	}
+	if len(rule.StyleRefs) != 2 || rule.StyleRefs[0] != ".denova/styles/style.md" || rule.StyleRefs[1] != ".denova/styles/bad.md" {
+		t.Fatalf("style refs = %#v, want normalized deduped refs", rule.StyleRefs)
+	}
 	if len(rule.StyleContents) != 2 {
 		t.Fatalf("style contents = %#v, want deduped contents", rule.StyleContents)
 	}
@@ -164,6 +168,20 @@ func TestNormalizeStyleRulesStoresContentsOnly(t *testing.T) {
 	}
 	if got := len([]rune(rule.StyleContents[1])); got != MaxStyleContentChars {
 		t.Fatalf("long content chars = %d, want %d", got, MaxStyleContentChars)
+	}
+}
+
+func TestNormalizeStyleRulesCapsRefsPerRule(t *testing.T) {
+	refs := make([]string, 0, MaxStyleRefsPerRule+3)
+	for i := 0; i < MaxStyleRefsPerRule+3; i++ {
+		refs = append(refs, fmt.Sprintf("style-%02d.md", i))
+	}
+	rules := normalizeStyleRules([]StyleRule{{Scene: "日常", StyleRefs: refs}})
+	if len(rules) != 1 {
+		t.Fatalf("rules = %#v", rules)
+	}
+	if len(rules[0].StyleRefs) != MaxStyleRefsPerRule {
+		t.Fatalf("style refs = %d, want %d", len(rules[0].StyleRefs), MaxStyleRefsPerRule)
 	}
 }
 

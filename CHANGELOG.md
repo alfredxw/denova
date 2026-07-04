@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式：叙事风格的场景文风规则改为引用所有 Teller 共享的 `.denova/styles/*.md` 文风参考索引，System Prompt 只注入 name、description、path，互动正文 Agent 可按需通过只读文件工具读取参考正文。
+- Game Mode: Narrative-style scene rules now reference shared `.denova/styles/*.md` style-reference indexes across all Tellers. The System Prompt injects only name, description, and path, and the interactive prose agent can read the referenced files through read-only file tools when needed.
+- WebUI：Teller 编辑器新增共享文风参考上传流程，默认通过配置管理 Agent 提炼为 Markdown，也支持用户选择直接保存源文件为共享参考。
+- WebUI: The Teller editor now supports uploading shared style references, defaulting to Config Manager Agent extraction into Markdown while still allowing users to save the source file directly as a shared reference.
 - Agent：开发模式 LLM 输入日志新增 cache attribution 指纹，记录完整消息、system prompt、工具 schema 的稳定哈希和工具名列表，便于定位 prompt cache 前缀变化而不把大 schema 复制进运行轨迹。
 - Agent: Developer LLM input logs now include cache-attribution fingerprints for full messages, system prompts, tool schemas, and tool names, making prompt-cache prefix changes easier to diagnose without copying large schemas into run traces.
 - Agent：运行轨迹摘要新增工具调用质量计数，包括调用数、成功数、阻断数、错误数、截断数和无效 JSON 参数数。

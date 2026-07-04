@@ -582,7 +582,7 @@ func styleRulePromptSources(rules []StyleRule) []promptSource {
 	sources := make([]promptSource, 0, len(rules))
 	for _, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
-		if scene == "" || len(rule.StyleContents) == 0 {
+		if scene == "" || (len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0) {
 			continue
 		}
 		content := styleRulesSystemInstruction([]StyleRule{rule})

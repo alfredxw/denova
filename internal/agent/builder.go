@@ -62,6 +62,7 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 		Instruction:       BuildInteractiveStoryInstruction(cfg, state, teller),
 		EnableSkills:      true,
 		DisableWriteTodos: true,
+		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveStoryToolMiddleware()},
 		ExtraToolsFactory: interactiveStoryToolsFactory(cfg, toolContexts...),
 	})
 }

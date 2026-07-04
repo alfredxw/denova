@@ -128,6 +128,28 @@ export const handlers = [
       ],
     }),
   ),
+  http.get('/api/styles', () =>
+    HttpResponse.json({
+      styles: [
+        {
+          name: '克制细腻',
+          description: '动作、对白和停顿承载情绪',
+          path: '/tmp/.denova/styles/restraint.md',
+          display_path: '.denova/styles/restraint.md',
+        },
+      ],
+    }),
+  ),
+  http.post('/api/styles', async ({ request }) => {
+    const body = await request.json() as { name?: string; filename?: string }
+    const filename = body.filename || 'style.md'
+    return HttpResponse.json({
+      name: body.name || filename,
+      description: '',
+      path: `/tmp/.denova/styles/${filename}`,
+      display_path: `.denova/styles/${filename}`,
+    })
+  }),
   http.get('/api/workspace/file', () =>
     HttpResponse.json({
       path: 'setting/characters.md',

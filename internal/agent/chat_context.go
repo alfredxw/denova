@@ -129,7 +129,7 @@ func appendLoreReferenceContext(bookService *book.Service, message string, refer
 	return sb.String()
 }
 
-// styleRulesSystemInstruction 把工作区配置的「场景 → 风格内容」规则集作为 system prompt 片段。
+// styleRulesSystemInstruction 把工作区配置的「场景 → 文风参考」规则集作为 system prompt 片段。
 func styleRulesSystemInstruction(rules []StyleRule) string {
 	return prompts.StyleRulesInstruction(boundedStyleRules(rules, maxStyleRuleContextChars))
 }
@@ -142,8 +142,43 @@ func boundedStyleRules(rules []StyleRule, maxChars int) []StyleRule {
 	used := 0
 	for _, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
-		if scene == "" || len(rule.StyleContents) == 0 {
+		if scene == "" || (len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0) {
 			continue
+		}
+		refs := make([]prompts.StyleReference, 0, len(rule.StyleReferences))
+		for _, ref := range rule.StyleReferences {
+			name := strings.TrimSpace(ref.Name)
+			path := strings.TrimSpace(ref.Path)
+			displayPath := strings.TrimSpace(ref.DisplayPath)
+			if name == "" {
+				name = displayPath
+			}
+			if path == "" {
+				path = displayPath
+			}
+			if name == "" || path == "" {
+				continue
+			}
+			desc := truncateRunes(strings.TrimSpace(ref.Description), 240)
+			errText := truncateRunes(strings.TrimSpace(ref.Error), 240)
+			remain := maxChars - used
+			if remain <= 0 {
+				break
+			}
+			cost := styleReferencePromptCost(name, desc, path, displayPath, errText)
+			if cost > remain {
+				used = maxChars
+				break
+			}
+			used += cost
+			refs = append(refs, prompts.StyleReference{
+				Name:        name,
+				Description: desc,
+				Path:        path,
+				DisplayPath: displayPath,
+				Missing:     ref.Missing,
+				Error:       errText,
+			})
 		}
 		contents := make([]string, 0, len(rule.StyleContents))
 		for _, content := range rule.StyleContents {
@@ -164,14 +199,19 @@ func boundedStyleRules(rules []StyleRule, maxChars int) []StyleRule {
 			}
 			contents = append(contents, content)
 		}
-		if len(contents) > 0 {
-			result = append(result, StyleRule{Scene: scene, StyleContents: contents})
+		if len(contents) > 0 || len(refs) > 0 {
+			used += len([]rune(scene)) + 16
+			result = append(result, StyleRule{Scene: scene, StyleReferences: refs, StyleContents: contents})
 		}
 		if used >= maxChars {
 			break
 		}
 	}
 	return result
+}
+
+func styleReferencePromptCost(name, description, path, displayPath, errText string) int {
+	return len([]rune(name)) + len([]rune(description)) + len([]rune(path)) + len([]rune(displayPath)) + len([]rune(errText)) + 64
 }
 
 func truncateRunes(value string, limit int) string {

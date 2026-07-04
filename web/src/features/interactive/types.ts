@@ -226,7 +226,19 @@ export interface ImagePresetSlot {
 
 export interface StyleRule {
   scene: string
-  style_contents: string[]
+  style_refs?: string[]
+  style_contents?: string[]
+}
+
+export interface StyleReference {
+  name: string
+  description: string
+  path: string
+  display_path: string
+  size?: number
+  updated_at?: string
+  missing?: boolean
+  error?: string
 }
 
 export interface TellerOrchestrationConfig {

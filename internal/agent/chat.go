@@ -40,7 +40,7 @@ type ChatRequest struct {
 	TellerID       string             `json:"teller_id"`
 	Locale         string             `json:"-"`
 
-	// StyleRules 由后端按当前导演配置注入（场景 → 风格内容）。
+	// StyleRules 由后端按当前导演配置注入（场景 → 共享文风参考索引）。
 	// StyleScenes 非空时只注入用户本轮通过 # 指定的场景；为空时作为场景化建议参与本轮上下文。
 	StyleRules []StyleRule `json:"-"`
 
@@ -50,6 +50,9 @@ type ChatRequest struct {
 
 // StyleRule 是 prompts.StyleRule 的镜像，避免调用方直接依赖 prompts 包。
 type StyleRule = prompts.StyleRule
+
+// StyleReference 是 prompts.StyleReference 的镜像，避免调用方直接依赖 prompts 包。
+type StyleReference = prompts.StyleReference
 
 // IDEContextRef carries lightweight, model-visible IDE state for one turn.
 // It must describe UI focus only and must not include editor file content.

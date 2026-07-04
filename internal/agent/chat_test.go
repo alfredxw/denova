@@ -154,7 +154,7 @@ func TestAppendContextBoundaryInstructionEmphasizesCurrentRequest(t *testing.T) 
 
 func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {
 	got := styleRulesSystemInstruction([]StyleRule{
-		{Scene: "激烈打斗", StyleContents: []string{"短句留白", "强冲突快节奏"}},
+		{Scene: "激烈打斗", StyleReferences: []StyleReference{{Name: "克制细腻", Description: "短句留白", Path: "/tmp/.denova/styles/restraint.md", DisplayPath: ".denova/styles/restraint.md"}}, StyleContents: []string{"短句留白", "强冲突快节奏"}},
 		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
 		{Scene: "", StyleContents: []string{"无效内容"}},     // 应被跳过
 		{Scene: "空风格", StyleContents: []string{"", " "}}, // 空内容应被跳过
@@ -164,15 +164,31 @@ func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {
 	assertContains(t, got, "场景：激烈打斗")
 	assertContains(t, got, "短句留白")
 	assertContains(t, got, "强冲突快节奏")
+	assertContains(t, got, "name: 克制细腻")
+	assertContains(t, got, "path: /tmp/.denova/styles/restraint.md")
 	assertContains(t, got, "场景：日常对话")
 	assertContains(t, got, "温吞对白")
 	assertContains(t, got, "选出最贴近的场景")
 	assertContains(t, got, "完全忽略以上规则")
-	if strings.Contains(got, "read_file") {
-		t.Fatalf("场景风格内容不应要求 read_file：\n%s", got)
-	}
+	assertContains(t, got, "read_file")
 	if strings.Contains(got, "无效内容") {
 		t.Fatalf("空 scene 的规则应被跳过，但仍包含无效内容：\n%s", got)
+	}
+}
+
+func TestBoundedStyleRulesBoundsReferenceIndex(t *testing.T) {
+	got := boundedStyleRules([]StyleRule{{
+		Scene: "日常对话",
+		StyleReferences: []StyleReference{
+			{Name: "短", Path: "/tmp/.denova/styles/short.md", DisplayPath: ".denova/styles/short.md"},
+			{Name: strings.Repeat("长", 100), Description: strings.Repeat("风", 100), Path: "/tmp/.denova/styles/long.md", DisplayPath: ".denova/styles/long.md"},
+		},
+	}}, 120)
+	if len(got) != 1 || len(got[0].StyleReferences) != 1 {
+		t.Fatalf("bounded refs = %#v, want only first ref", got)
+	}
+	if got[0].StyleReferences[0].Name != "短" {
+		t.Fatalf("first ref mismatch: %#v", got[0].StyleReferences[0])
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
 	"denova/internal/session"
+	"denova/internal/styleref"
 )
 
 // ChatAppService 负责普通创作 Agent 任务与会话管理。
@@ -429,7 +430,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 
 		teller := loadInteractiveTeller(novaDir, runtime.cfg.IDEStoryTellerID)
 		if len(teller.StyleRules) > 0 {
-			converted := convertTellerStyleRules(teller.StyleRules, req.StyleScenes)
+			converted := convertTellerStyleRules(novaDir, teller.StyleRules, req.StyleScenes)
 			req.StyleRules = converted
 			log.Printf("[agent-task] inject teller style rules teller_id=%s scenes=%q count=%d rules=%q", teller.ID, req.StyleScenes, len(converted), appStyleRuleNames(converted))
 		}
@@ -520,25 +521,45 @@ func (s *ChatAppService) AbortTask() {
 func appStyleRuleNames(rules []agent.StyleRule) []string {
 	names := make([]string, 0, len(rules))
 	for _, rule := range rules {
-		names = append(names, fmt.Sprintf("%s -> %d contents", rule.Scene, len(rule.StyleContents)))
+		names = append(names, fmt.Sprintf("%s -> %d refs, %d legacy contents", rule.Scene, len(rule.StyleReferences), len(rule.StyleContents)))
 	}
 	return names
 }
 
-func convertTellerStyleRules(rules []interactive.StyleRule, scenes []string) []agent.StyleRule {
+func convertTellerStyleRules(novaDir string, rules []interactive.StyleRule, scenes []string) []agent.StyleRule {
 	converted := make([]agent.StyleRule, 0, len(rules))
 	allowed := styleSceneSet(scenes)
+	styleRefs := styleref.NewLibrary(novaDir)
 	for _, r := range rules {
 		scene := strings.TrimSpace(r.Scene)
-		if scene == "" || len(r.StyleContents) == 0 {
+		if scene == "" || (len(r.StyleRefs) == 0 && len(r.StyleContents) == 0) {
 			continue
 		}
 		if len(allowed) > 0 && !allowed[scene] {
 			continue
 		}
-		converted = append(converted, agent.StyleRule{Scene: scene, StyleContents: r.StyleContents})
+		converted = append(converted, agent.StyleRule{
+			Scene:           scene,
+			StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(r.StyleRefs)),
+			StyleContents:   r.StyleContents,
+		})
 	}
 	return converted
+}
+
+func styleReferencesForPrompt(refs []styleref.Reference) []agent.StyleReference {
+	result := make([]agent.StyleReference, 0, len(refs))
+	for _, ref := range refs {
+		result = append(result, agent.StyleReference{
+			Name:        ref.Name,
+			Description: ref.Description,
+			Path:        ref.Path,
+			DisplayPath: ref.DisplayPath,
+			Missing:     ref.Missing,
+			Error:       ref.Error,
+		})
+	}
+	return result
 }
 
 func styleSceneSet(scenes []string) map[string]bool {

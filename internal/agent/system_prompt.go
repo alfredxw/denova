@@ -121,7 +121,7 @@ func agentRuntimeContract(agentKind string) string {
 		return "- 写作 Agent 必须遵守文件工具安全边界和作品工作区边界；书籍内容规则仍以 CREATOR.md 和用户本轮明确要求为准。"
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
-			"- 互动叙事 Agent 禁止修改 workspace 文件，禁止输出或调用写文件、删除文件、任务计划等工具。",
+			"- 互动叙事 Agent 可以使用只读文件工具读取 system prompt 明确给出的共享文风参考；禁止修改 workspace 文件，禁止输出或调用写文件、删除文件、任务计划等工具。",
 			"- 互动叙事 Agent 必须遵守内置输出协议，面向故事舞台的正文必须直接作为最终回复输出，不得夹带状态 JSON、工具说明或 XML 包装。",
 			"- 互动叙事 Agent 的篇幅必须以当前 story 的每轮目标字数为最高约束；其它内置提示、CREATOR.md 章节篇幅、导演规则或用户自定义提示中的篇幅倾向都不得要求超过该目标。",
 		}, "\n")

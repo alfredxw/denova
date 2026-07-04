@@ -11,12 +11,13 @@ Use this skill before calling `write_tellers`.
 ## Workflow
 
 1. Call `list_tellers` first. For updates, call `read_tellers` for the exact teller IDs.
-2. Use `write_tellers` for create/update/delete. Do not edit teller JSON files directly.
-3. Built-in narrative styles can be read and copied as examples. Deleting built-in styles is rejected.
-4. For update, preserve slots and policy fields the user did not ask to change.
-5. For delete, require an explicit user request.
-6. Do not create or update `orchestration` here. Events, stats, TRPG checks, and opening trait rolls belong in `story-director-config` and `write_story_directors`.
-7. Narrative styles are shared modules for Writing Mode and Game Mode. Do not add a per-style mode/scope field.
+2. Call `list_style_references` before editing `style_rules`. If a needed reference does not exist, use `write_style_references` to create a `.denova/styles/*.md` Markdown file first.
+3. Use `write_tellers` for create/update/delete. Do not edit teller JSON files directly.
+4. Built-in narrative styles can be read and copied as examples. Deleting built-in styles is rejected.
+5. For update, preserve slots and policy fields the user did not ask to change.
+6. For delete, require an explicit user request.
+7. Do not create or update `orchestration` here. Events, stats, TRPG checks, and opening trait rolls belong in `story-director-config` and `write_story_directors`.
+8. Narrative styles are shared modules for Writing Mode and Game Mode. Do not add a per-style mode/scope field.
 
 ## Teller Shape
 
@@ -60,11 +61,24 @@ When modifying slots:
 
 ## Style Rules
 
-`style_rules` maps scenes to inline style reference content:
+`style_rules` maps scenes to shared style reference files:
 
 - `scene`: scenario label.
-- `style_contents`: list of text snippets used as prose style references. Each item is stored as text, not a file path, and should stay within 8000 characters.
+- `style_refs`: list of paths returned by `list_style_references`, usually `.denova/styles/<name>.md`.
+- `style_contents`: legacy inline snippets. Preserve existing values unless the user asks to migrate them, but do not add new inline content.
 
 Only add style rules when the user asks for scene-specific style behavior or when an existing teller already uses that pattern.
+
+## Shared Style References
+
+Style references are shared by all narrative styles and live under `.denova/styles/`.
+
+When creating a reference from a user source file:
+
+- Default to extracting a Markdown style reference instead of saving the raw original.
+- The Markdown should be dominated by distilled typical reference paragraphs, with short supporting style guidance.
+- Do not include real-world author names, work names, source notes, or long raw quotations.
+- Keep it reusable across Writing Mode and Game Mode.
+- If the user explicitly chooses not to extract, save the provided source content as a Markdown reference with a clear name and description.
 
 When writing the teller back, use `write_tellers` with the complete updated teller object and a concise change message.

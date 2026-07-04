@@ -1,6 +1,6 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
-import type { BranchSummary, DirectorPlan, EventSystemModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
+import type { BranchSummary, DirectorPlan, EventSystemModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StyleReference, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
@@ -204,6 +204,23 @@ export function deleteInteractiveTeller(id: string): Promise<void> {
   return requestJSON(`/api/interactive/tellers/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
+}
+
+export async function getStyleReferences(): Promise<StyleReference[]> {
+  const data = await requestJSON<{ styles: StyleReference[] }>('/api/styles')
+  return data.styles || []
+}
+
+export function saveStyleReference(input: { name: string; description?: string; filename?: string; content: string }): Promise<StyleReference> {
+  return requestJSON('/api/styles', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function deleteStyleReference(path: string): Promise<void> {
+  return requestJSON(`/api/styles?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
 }
 
 export async function getStoryDirectors(): Promise<StoryDirector[]> {

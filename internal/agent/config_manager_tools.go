@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -14,6 +15,7 @@ import (
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
 	novaskills "denova/internal/skills"
+	"denova/internal/styleref"
 )
 
 type idListInput struct {
@@ -29,6 +31,17 @@ type tellerWriteOperation struct {
 	Op     string             `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID     string             `json:"id" jsonschema:"description=目标叙事风格 ID；update/delete 必填"`
 	Teller interactive.Teller `json:"teller" jsonschema:"description=create/update 使用的完整叙事风格配置；不要新增 orchestration，故事编排请使用 story_directors"`
+}
+
+type styleReferenceWriteInput struct {
+	Message    string                         `json:"message" jsonschema:"description=本次文风参考变更说明"`
+	Operations []styleReferenceWriteOperation `json:"operations" jsonschema:"description=批量文风参考操作"`
+}
+
+type styleReferenceWriteOperation struct {
+	Op        string                `json:"op" jsonschema:"description=操作类型：create/update/delete"`
+	Path      string                `json:"path" jsonschema:"description=delete 使用的文风参考路径，例如 .denova/styles/name.md"`
+	Reference styleref.WriteRequest `json:"reference" jsonschema:"description=create/update 使用的 Markdown 文风参考；content 必须是最终提炼后的 md，不要写原始长文"`
 }
 
 type storyDirectorWriteInput struct {
@@ -131,6 +144,8 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 	novaDir := strings.TrimSpace(cfg.NovaDir)
 	workspace := strings.TrimSpace(cfg.Workspace)
 	builders := []configManagerToolBuilder{
+		{build: func() (tool.BaseTool, error) { return newListStyleReferencesTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newWriteStyleReferencesTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newListTellersTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newReadTellersTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newWriteTellersTool(novaDir) }},
@@ -269,8 +284,78 @@ func newWriteImagePresetsTool(novaDir string) (tool.BaseTool, error) {
 	})
 }
 
+func newListStyleReferencesTool(novaDir string) (tool.BaseTool, error) {
+	return utils.InferTool("list_style_references", "列出共享文风参考索引。文风参考统一位于 .denova/styles/，返回 name、description、path；叙事风格的 style_rules 只能引用这些 path，不应内联长文风内容。", func(ctx context.Context, input struct{}) (string, error) {
+		_ = ctx
+		_ = input
+		if novaDir == "" {
+			return "", fmt.Errorf("nova_dir 不可用，无法读取文风参考")
+		}
+		refs, err := styleref.NewLibrary(novaDir).List()
+		if err != nil {
+			return "", err
+		}
+		if len(refs) == 0 {
+			return "暂无共享文风参考。", nil
+		}
+		var sb strings.Builder
+		sb.WriteString("# 共享文风参考索引\n\n")
+		for _, ref := range refs {
+			fmt.Fprintf(&sb, "- name: %s\n  description: %s\n  path: %s\n", ref.Name, ref.Description, ref.DisplayPath)
+			if ref.Missing {
+				fmt.Fprintf(&sb, "  status: missing %s\n", ref.Error)
+			}
+			sb.WriteString("\n")
+		}
+		return strings.TrimSpace(sb.String()), nil
+	})
+}
+
+func newWriteStyleReferencesTool(novaDir string) (tool.BaseTool, error) {
+	return utils.InferTool("write_style_references", "批量创建、更新或删除共享文风参考 Markdown。用于把用户源文件提炼为 .denova/styles/*.md；content 必须是最终可复用的 md 文风参考，以提炼出的典型参考段落为主，辅以风格总结，不要写现实作者名、作品名、来源说明或大段原文。", func(ctx context.Context, input styleReferenceWriteInput) (string, error) {
+		_ = ctx
+		if novaDir == "" {
+			return "", fmt.Errorf("nova_dir 不可用，无法写入文风参考")
+		}
+		lib := styleref.NewLibrary(novaDir)
+		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
+		for _, op := range input.Operations {
+			switch strings.TrimSpace(op.Op) {
+			case "create", "update":
+				req := op.Reference
+				if strings.TrimSpace(op.Op) == "update" && strings.TrimSpace(req.Filename) == "" {
+					if stored := styleref.NormalizeStoragePath(op.Path); stored != "" {
+						req.Filename = path.Base(stored)
+					}
+				}
+				ref, err := lib.Write(req)
+				if err != nil {
+					return "", err
+				}
+				if strings.TrimSpace(op.Op) == "update" {
+					result["updated"] = append(result["updated"], ref.DisplayPath)
+				} else {
+					result["created"] = append(result["created"], ref.DisplayPath)
+				}
+			case "delete":
+				path := strings.TrimSpace(op.Path)
+				if path == "" {
+					path = strings.TrimSpace(op.Reference.Filename)
+				}
+				if err := lib.Delete(path); err != nil {
+					return "", err
+				}
+				result["deleted"] = append(result["deleted"], styleref.NormalizeStoragePath(path))
+			default:
+				return "", fmt.Errorf("不支持的文风参考操作: %s", op.Op)
+			}
+		}
+		return formatBatchResult(firstConfigNonEmpty(input.Message, "共享文风参考已更新"), result), nil
+	})
+}
+
 func newListTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_tellers", "列出叙事风格索引，返回 ID、名称、简介、标签和槽位概览；叙事风格是共享模块，可用于写作模式和游戏模式；需要完整配置时再调用 read_tellers。叙事风格只负责文风、提示词槽位、场景风格和上下文策略。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_tellers", "列出叙事风格索引，返回 ID、名称、简介、标签和槽位概览；叙事风格是共享模块，可用于写作模式和游戏模式；需要完整配置时再调用 read_tellers。叙事风格只负责文风、提示词槽位、场景风格和上下文策略；场景风格应引用 list_style_references 返回的共享 path。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -300,7 +385,7 @@ func newListTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_tellers", "按叙事风格 ID 批量读取完整配置。叙事风格是共享模块；旧配置里可能带 orchestration；新配置不要继续写该字段，事件/数值/TRPG/开局选择器应写入故事导演。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_tellers", "按叙事风格 ID 批量读取完整配置。style_rules 使用 scene + style_refs 引用 .denova/styles/*.md；旧 style_contents 只为兼容保留，新配置不要继续内联长文风内容。旧配置里可能带 orchestration；新配置不要继续写该字段，事件/数值/TRPG/开局选择器应写入故事导演。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事风格")
@@ -323,7 +408,7 @@ func newReadTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_tellers", "批量创建、更新或删除叙事风格配置。叙事风格是共享模块，不存在每个风格可配置的模式字段；只维护文风、提示词槽位、场景风格和上下文策略；不要新增 orchestration，故事编排请使用 write_story_directors。删除内置风格会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
+	return utils.InferTool("write_tellers", "批量创建、更新或删除叙事风格配置。叙事风格是共享模块，不存在每个风格可配置的模式字段；只维护文风、提示词槽位、场景风格和上下文策略。style_rules 必须优先使用 style_refs 引用 .denova/styles/*.md；如需新增文风参考，先用 write_style_references 创建 md，再把 path 写入 style_refs。不要新增 orchestration，故事编排请使用 write_story_directors。删除内置风格会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入叙事风格")

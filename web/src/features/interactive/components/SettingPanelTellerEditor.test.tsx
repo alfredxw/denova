@@ -49,7 +49,7 @@ describe('TellerEditor style contents', () => {
     expect(currentDraft.slots).toHaveLength(1)
   })
 
-  it('uploads style content and truncates it to 8000 chars', async () => {
+  it('uploads a direct shared style reference and attaches its path', async () => {
     let currentDraft = teller()
     const onSave = vi.fn()
     render(
@@ -62,32 +62,38 @@ describe('TellerEditor style contents', () => {
       />,
     )
 
-    const content = '风'.repeat(8050)
+    const content = '风'.repeat(40500)
     const file = new File([content], 'style.md', { type: 'text/markdown' })
     Object.defineProperty(file, 'text', { value: () => Promise.resolve(content) })
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(input, { target: { files: [file] } })
 
-    await waitFor(() => expect(screen.getByText('风格内容')).toBeInTheDocument())
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(screen.getByText('导入文风参考')).toBeInTheDocument())
+    expect(screen.getByText('40000/40000')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '直接保存' }))
 
     await waitFor(() => {
-      const saved = currentDraft.style_rules?.[0]?.style_contents?.[0] || ''
-      expect(saved).toHaveLength(8000)
+      const saved = currentDraft.style_rules?.[0]?.style_refs?.[0] || ''
+      expect(saved).toBe('.denova/styles/style.md')
     })
   })
 
-  it('keeps long style content scrollable inside the dialog and uses the Nova save style', async () => {
+  it('keeps uploaded source scrollable inside the dialog and uses the Nova primary style', async () => {
     render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '自定义' }))
+    const content = '风'.repeat(500)
+    const file = new File([content], 'style.md', { type: 'text/markdown' })
+    Object.defineProperty(file, 'text', { value: () => Promise.resolve(content) })
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
 
     const dialog = await screen.findByRole('dialog')
-    const editor = within(dialog).getByRole('textbox')
+    const editor = within(dialog).getAllByRole('textbox').find((node) => node.tagName.toLowerCase() === 'textarea')
+    if (!editor) throw new Error('textarea editor missing')
     expect(editor.className).toContain('overflow-y-auto')
     expect(editor.className).toContain('[field-sizing:fixed]')
 
-    const save = within(dialog).getByRole('button', { name: '保存' })
+    const save = within(dialog).getByRole('button', { name: '提炼为 md' })
     expect(save).toHaveClass('bg-[var(--nova-active)]')
     expect(save).toHaveClass('text-[var(--nova-text)]')
 
@@ -195,12 +201,12 @@ function imagePreset(): ImagePreset {
 
 function teller(): Teller {
   return {
-    version: 4,
+    version: 6,
     id: 'custom',
     name: '自定义',
     description: '',
     random_event_rate: 0,
-    style_rules: [{ scene: '激烈打斗', style_contents: [] }],
+    style_rules: [{ scene: '激烈打斗', style_refs: [] }],
     tags: [],
     context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' },
     slots: [{ id: 'identity', name: '系统提示', target: 'system', enabled: true, content: '规则' }],
