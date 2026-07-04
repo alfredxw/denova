@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
-import { createImagePreset, createInteractiveTeller, createStoryDirector, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getEventSystems, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStyleReferences, updateEventSystem, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector } from '../api'
-import type { EventSystemModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller } from '../types'
+import { createImagePreset, createInteractiveTeller, createStoryDirector, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStyleReferences, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector } from '../api'
+import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { SettingPanel } from './SettingPanel'
 
 const { configManagerChatProps, monacoEditorActions } = vi.hoisted(() => ({
@@ -93,19 +93,19 @@ vi.mock('@/lib/api', () => ({
 }))
 
 vi.mock('../api', () => ({
-  createEventSystem: vi.fn(),
+  createEventPackage: vi.fn(),
   createImagePreset: vi.fn(),
   createInteractiveTeller: vi.fn(),
   createOpeningSelector: vi.fn(),
   createRuleSystem: vi.fn(),
   createStoryDirector: vi.fn(),
-  deleteEventSystem: vi.fn(),
+  deleteEventPackage: vi.fn(),
   deleteImagePreset: vi.fn(),
   deleteInteractiveTeller: vi.fn(),
   deleteOpeningSelector: vi.fn(),
   deleteRuleSystem: vi.fn(),
   deleteStoryDirector: vi.fn(),
-  getEventSystems: vi.fn(),
+  getEventPackages: vi.fn(),
   getImagePresets: vi.fn(),
   getInteractiveTellers: vi.fn(),
   getOpeningSelectors: vi.fn(),
@@ -113,7 +113,7 @@ vi.mock('../api', () => ({
   getStoryDirectors: vi.fn(),
   getStyleReferences: vi.fn(),
   saveStyleReference: vi.fn(),
-  updateEventSystem: vi.fn(),
+  updateEventPackage: vi.fn(),
   updateImagePreset: vi.fn(),
   updateInteractiveTeller: vi.fn(),
   updateOpeningSelector: vi.fn(),
@@ -141,8 +141,8 @@ describe('SettingPanel', () => {
     vi.mocked(createStoryDirector).mockReset()
     vi.mocked(updateStoryDirector).mockReset()
     vi.mocked(deleteStoryDirector).mockReset()
-    vi.mocked(getEventSystems).mockReset()
-    vi.mocked(updateEventSystem).mockReset()
+    vi.mocked(getEventPackages).mockReset()
+    vi.mocked(updateEventPackage).mockReset()
     vi.mocked(getRuleSystems).mockReset()
     vi.mocked(updateRuleSystem).mockReset()
     vi.mocked(getOpeningSelectors).mockReset()
@@ -161,8 +161,8 @@ describe('SettingPanel', () => {
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
     vi.mocked(updateImagePreset).mockImplementation(async (id, input) => ({ ...imagePreset(id, input.name || id), ...input, id, custom: id !== 'game-cg', builtin_overridden: id === 'game-cg', updated_at: '2026-01-01T00:00:01Z' }) as ImagePreset)
     vi.mocked(deleteImagePreset).mockResolvedValue(undefined)
-    vi.mocked(getEventSystems).mockResolvedValue([eventSystem('default-events', '默认事件系统')])
-    vi.mocked(updateEventSystem).mockImplementation(async (id, input) => ({ ...eventSystem(id, input.name || id), ...input, id, custom: id !== 'default-events', builtin_overridden: id === 'default-events', updated_at: '2026-01-01T00:00:01Z' }) as EventSystemModule)
+    vi.mocked(getEventPackages).mockResolvedValue([eventPackage('default', '默认事件包')])
+    vi.mocked(updateEventPackage).mockImplementation(async (id, input) => ({ ...eventPackage(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as EventPackageModule)
     vi.mocked(getRuleSystems).mockResolvedValue([ruleSystem('default-rules', '默认数值规则')])
     vi.mocked(updateRuleSystem).mockImplementation(async (id, input) => ({ ...ruleSystem(id, input.name || id), ...input, id, custom: id !== 'default-rules', builtin_overridden: id === 'default-rules', updated_at: '2026-01-01T00:00:01Z' }) as RuleSystemModule)
     vi.mocked(getOpeningSelectors).mockResolvedValue([openingSelector('default-opening', '默认开局选择')])
@@ -299,12 +299,12 @@ describe('SettingPanel', () => {
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建故事导演' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建叙事风格' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /默认事件系统/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /默认事件包/ })).not.toBeInTheDocument()
     expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('叙事风格')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('图像方案')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: '展开全部目录' }))
-    expect(screen.getByRole('button', { name: /默认事件系统/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /默认数值规则/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '折叠全部目录' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '折叠全部目录' }))
@@ -313,15 +313,15 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '故事导演' }))
 
     await selectDefaultDirector(user)
-    expect(screen.getAllByTestId('preset-config-visual-editor')).toHaveLength(4)
+    expect(screen.getAllByTestId('preset-config-visual-editor')).toHaveLength(3)
     expect(screen.queryByTestId('monaco-json-editor')).not.toBeInTheDocument()
     await user.click(screen.getAllByRole('button', { name: 'JSON' })[0])
-    expect(window.localStorage.getItem('nova.settingPanel.presetConfigView.v1')).toContain('story-director.event-system')
+    expect(window.localStorage.getItem('nova.settingPanel.presetConfigView.v1')).toContain('story-director.stat-system')
     const jsonEditors = screen.getAllByTestId('story-director-json-editor')
     expect(jsonEditors).toHaveLength(1)
     expect(jsonEditors[0]).toHaveClass('overflow-hidden')
     expect(screen.getByTestId('monaco-json-editor')).toHaveAttribute('data-word-wrap', 'on')
-    expect(screen.getByDisplayValue(/event_packages/)).toBeInTheDocument()
+    expect(screen.getByDisplayValue(/attributes/)).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: '折叠全部' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '折叠全部' }))
@@ -332,12 +332,12 @@ describe('SettingPanel', () => {
     expect(screen.getAllByRole('button', { name: '折叠全部' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '事件系统' }))
+    await user.click(screen.getByRole('button', { name: '事件包' }))
 
-    expect(screen.getByRole('button', { name: /默认事件系统/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '新建事件系统' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /默认事件系统/ }))
-    expect(screen.getByRole('heading', { name: '默认事件系统' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新建事件包' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /默认事件包/ }))
+    expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
     expect(screen.getByTestId('preset-config-visual-editor')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '写作模式' }))
@@ -345,31 +345,32 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('button', { name: '叙事风格' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '图像方案' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '故事导演' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '事件系统' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '事件包' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '数值与TRPG系统' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '开局选择器' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '默认事件系统' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '默认事件包' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '经典叙事' })).toBeInTheDocument()
   })
 
-  it('saves visual edits from a story director event card', async () => {
+  it('saves visual edits from an event package card', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await selectDefaultDirector(user)
+    await user.click(screen.getByRole('button', { name: '事件包' }))
+    await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
     await user.click(await screen.findByRole('button', { name: '新增事件卡' }))
-    expect(screen.getAllByTestId('event-system-packages-editor')[0].className).toContain('h-[clamp(360px,calc(100dvh-15rem),720px)]')
+    expect(screen.getByTestId('event-package-card-editor').className).toContain('h-[clamp(360px,calc(100dvh-15rem),720px)]')
     expect(screen.getByTestId('event-package-card-editor')).toHaveClass('min-h-0', 'overflow-hidden')
     expect(screen.getByTestId('event-package-card-detail-scroll')).toHaveClass('overflow-y-auto')
     expect(screen.getByTestId('event-package-card-detail-scroll').className).toContain('[scrollbar-gutter:stable]')
     await user.type(screen.getByLabelText('事件类型名'), '伏笔回收')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
-    await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
-    expect(updateStoryDirector).toHaveBeenCalledWith('default', expect.objectContaining({ id: 'default', custom: false }), '')
+    await waitFor(() => expect(updateEventPackage).toHaveBeenCalled())
+    expect(updateEventPackage).toHaveBeenCalledWith('default', expect.objectContaining({ id: 'default', custom: false }), '')
     expect(createStoryDirector).not.toHaveBeenCalled()
-    const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
-    expect(payload.event_system?.event_packages?.[0]?.events?.[0]?.type_name).toBe('伏笔回收')
+    const payload = vi.mocked(updateEventPackage).mock.calls.at(-1)?.[1] as Partial<EventPackageModule>
+    expect(payload.events?.[0]?.type_name).toBe('伏笔回收')
   })
 
   it('saves disabled story director module switches without clearing selected refs', async () => {
@@ -377,17 +378,17 @@ describe('SettingPanel', () => {
     render(<PresetModeHarness />)
 
     await selectDefaultDirector(user)
-    const eventSwitch = screen.getByRole('switch', { name: '停用事件系统模块' })
+    const eventSwitch = screen.getByRole('switch', { name: '停用事件包模块' })
     expect(eventSwitch).toBeChecked()
     await user.click(eventSwitch)
-    expect(screen.getByRole('switch', { name: '启用事件系统模块' })).not.toBeChecked()
+    expect(screen.getByRole('switch', { name: '启用事件包模块' })).not.toBeChecked()
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
     const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.module_refs).toMatchObject({
-      event_system_id: 'default',
-      event_system_disabled: true,
+      event_package_ids: ['default'],
+      event_packages_disabled: true,
     })
   })
 
@@ -550,9 +551,9 @@ describe('SettingPanel', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeDisabled())
     expect(screen.getByText('请先修复 JSON，再切回可视化视图。')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '事件系统' }))
+    await user.click(screen.getByRole('button', { name: '事件包' }))
     expect(screen.getByRole('heading', { name: '默认导演' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '默认事件系统' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '默认事件包' })).not.toBeInTheDocument()
     expect(updateStoryDirector).not.toHaveBeenCalled()
   })
 
@@ -759,16 +760,20 @@ function storyDirector(id: string, name: string): StoryDirector {
     id,
     name,
     description: `${name} description`,
-    strategy: { enabled: true, mainline_strength: 'balanced' },
-    event_system: {
-      event_packages: [{
-        id: 'webnovel_core',
-        name: '爽文核心事件包',
-        enabled: true,
-        events: [],
-      }],
-      custom_events: [],
+    module_refs: {
+      narrative_style_id: 'classic',
+      event_package_ids: ['default'],
+      rule_system_id: 'default-rules',
+      opening_selector_id: 'default-opening',
+      image_preset_id: 'game-cg',
     },
+    strategy: { enabled: true, mainline_strength: 'balanced' },
+    event_packages: [{
+      id: 'default',
+      name: '默认事件包',
+      enabled: true,
+      events: [],
+    }],
     stat_system: { attributes: [] },
     trpg_system: { rule_templates: [] },
     opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },
@@ -777,15 +782,15 @@ function storyDirector(id: string, name: string): StoryDirector {
   }
 }
 
-function eventSystem(id: string, name: string): EventSystemModule {
+function eventPackage(id: string, name: string): EventPackageModule {
   return {
     version: 1,
     id,
     name,
     description: `${name} description`,
-    event_system: { event_packages: [], custom_events: [] },
+    events: [],
     tags: [],
-    custom: id !== 'default-events',
+    custom: id !== 'default',
   }
 }
 

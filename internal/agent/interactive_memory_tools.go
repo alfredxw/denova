@@ -25,7 +25,7 @@ type InteractiveStoryToolContext struct {
 	StoryID                  string
 	BranchID                 string
 	DirectorPlanAllowedPaths []string
-	PrepareTurn              func(context.Context, interactive.TurnBrief) (interactive.RuleResolution, error)
+	PrepareTurn              func(context.Context, interactive.TurnCheckRequest) (interactive.RuleResolution, error)
 }
 
 type listInteractiveMemoriesInput struct {
@@ -145,19 +145,12 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 	if ctx.PrepareTurn == nil {
 		return nil, nil
 	}
-	prepareTool, err := utils.InferTool("prepare_interactive_turn", "提交本回合 TurnBrief 并执行固定规则结算。Interactive Agent 负责语义理解、事件选择和剧情编排；本工具只校验 TurnBrief、记录审计信息，并执行数值、骰子、词条、资源、关系和终局候选等确定性规则检定，返回 RuleResolution。输出正文前必须先根据返回结果调整叙事。", func(callCtx context.Context, input interactive.TurnBrief) (string, error) {
+	prepareTool, err := utils.InferTool("prepare_interactive_turn", "执行本回合一次 1d20 规则检定。Interactive Agent 负责填写用户行为、意图、挑战、消耗、当前状态说明、加成原因和值、难度等级，以及大成功/成功/失败/大失败四档后果；本工具只负责掷骰、应用优势或劣势、求和、判定结果，并返回命中的最终后果。", func(callCtx context.Context, input interactive.TurnCheckRequest) (string, error) {
 		resolution, err := ctx.PrepareTurn(callCtx, input)
 		if err != nil {
 			return "", err
 		}
-		data, err := json.MarshalIndent(map[string]any{
-			"source": map[string]string{
-				"kind":      "interactive_rule_resolution",
-				"story_id":  ctx.StoryID,
-				"branch_id": ctx.BranchID,
-			},
-			"rule_resolution": resolution,
-		}, "", "  ")
+		data, err := json.MarshalIndent(resolution.ToolOutput(), "", "  ")
 		if err != nil {
 			return "", err
 		}

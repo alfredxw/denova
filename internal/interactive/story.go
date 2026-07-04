@@ -852,15 +852,9 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 	if target.ID == "" {
 		return RuleResolution{}, fmt.Errorf("当前分支路径中未找到规则结算: %s", resolutionID)
 	}
-	brief := NormalizeTurnBrief(target.RuleResolution.AcceptedBrief)
-	if strings.TrimSpace(brief.UserAction) == "" && target.TurnBrief != nil {
-		brief = NormalizeTurnBrief(*target.TurnBrief)
-	}
-	for i := range brief.RuleChecks {
-		brief.RuleChecks[i].Seed = newRuleSeed(storyID, branchID, resolutionID, target.ID, fmt.Sprint(i), time.Now().UTC().Format(time.RFC3339Nano))
-	}
+	request := NormalizeTurnCheckRequest(target.RuleResolution.Request)
 	state := stateBeforeTurn(path, target.ID)
-	next, err := ResolveTurnRules(storyID, branchID, state, brief)
+	next, err := ResolveTurnRules(storyID, branchID, state, request)
 	if err != nil {
 		return RuleResolution{}, err
 	}
@@ -874,7 +868,7 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 			continue
 		}
 		lines[i].Raw["rule_resolution"] = next
-		lines[i].Raw["turn_brief"] = next.AcceptedBrief
+		delete(lines[i].Raw, "turn_brief")
 		if terminalOutcome != nil {
 			lines[i].Raw["terminal_outcome"] = terminalOutcome
 		} else {

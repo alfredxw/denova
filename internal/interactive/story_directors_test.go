@@ -17,7 +17,7 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if len(directors) == 0 || directors[0].ID != DefaultStoryDirectorID || directors[0].Custom {
 		t.Fatalf("default story director should be materialized first: %#v", directors)
 	}
-	if directors[0].ModuleRefs.NarrativeStyleDisabled || directors[0].ModuleRefs.EventSystemDisabled || directors[0].ModuleRefs.RuleSystemDisabled || directors[0].ModuleRefs.OpeningSelectorDisabled || directors[0].ModuleRefs.ImagePresetDisabled {
+	if directors[0].ModuleRefs.NarrativeStyleDisabled || directors[0].ModuleRefs.EventPackagesDisabled || directors[0].ModuleRefs.RuleSystemDisabled || directors[0].ModuleRefs.OpeningSelectorDisabled || directors[0].ModuleRefs.ImagePresetDisabled {
 		t.Fatalf("default story director modules should start enabled: %#v", directors[0].ModuleRefs)
 	}
 	if directors[0].Strategy.DirectorAgentMode != DirectorAgentModeTriggered || directors[0].Strategy.BranchPlanningTurns != defaultBranchPlanningTurns {
@@ -61,7 +61,7 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if !created.Custom || created.Strategy.RandomEventRate != 1 || created.Strategy.DirectorAgentMode != DirectorAgentModeTriggered || created.Strategy.BranchPlanningTurns != 12 {
 		t.Fatalf("custom director should be marked and strategy should be normalized: %#v", created)
 	}
-	if created.ModuleRefs.EventSystemDisabled || created.ModuleRefs.RuleSystemDisabled || created.ModuleRefs.OpeningSelectorDisabled {
+	if created.ModuleRefs.EventPackagesDisabled || created.ModuleRefs.RuleSystemDisabled || created.ModuleRefs.OpeningSelectorDisabled {
 		t.Fatalf("legacy-style directors without disabled refs should keep modules enabled: %#v", created.ModuleRefs)
 	}
 	if len(created.StatSystem.Attributes) != 1 || created.StatSystem.Attributes[0].Visibility != "hidden" {
@@ -73,11 +73,11 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	}
 
 	updated, err := library.Update(created.ID, StoryDirector{
-		Name:        "Agent 更新",
-		Strategy:    StoryDirectorStrategy{Enabled: true},
-		StatSystem:  StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{}},
-		TRPGSystem:  created.TRPGSystem,
-		EventSystem: created.EventSystem,
+		Name:          "Agent 更新",
+		Strategy:      StoryDirectorStrategy{Enabled: true},
+		StatSystem:    StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{}},
+		TRPGSystem:    created.TRPGSystem,
+		EventPackages: created.EventPackages,
 		OpeningSelector: StoryDirectorOpeningSelector{
 			Enabled: true,
 		},
@@ -223,21 +223,21 @@ func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.
 	if migrated.Name != "旧风格 故事导演" || migrated.Strategy.RandomEventRate != 0.42 {
 		t.Fatalf("unexpected migrated metadata: %#v", migrated)
 	}
-	if migrated.ModuleRefs.EventSystemID == "" || migrated.ModuleRefs.RuleSystemID == "" || migrated.ModuleRefs.OpeningSelectorID == "" {
+	if len(migrated.ModuleRefs.EventPackageIDs) == 0 || migrated.ModuleRefs.RuleSystemID == "" || migrated.ModuleRefs.OpeningSelectorID == "" {
 		t.Fatalf("legacy embedded orchestration should be split into module refs: %#v", migrated.ModuleRefs)
 	}
-	eventModule, err := NewEventSystemLibrary(novaDir).Get(migrated.ModuleRefs.EventSystemID)
+	eventModule, err := NewEventPackageLibrary(novaDir).Get(migrated.ModuleRefs.EventPackageIDs[0])
 	if err != nil {
 		t.Fatalf("migrated event module should be readable: %v", err)
 	}
-	if len(eventModule.EventSystem.EventPackages) != 1 || eventModule.EventSystem.EventPackages[0].ID != "legacy-pack" {
-		t.Fatalf("migrated event module should preserve event packages: %#v", eventModule.EventSystem.EventPackages)
+	if eventModule.ID != "legacy-pack" || len(eventModule.Events) != 1 {
+		t.Fatalf("migrated event package should preserve event cards: %#v", eventModule)
 	}
 	if migrated.Strategy.MainlineStrength != "hard_guidance" || migrated.Strategy.FailurePolicy != "fail_forward" || migrated.Strategy.PacingCurve != "spiky" {
 		t.Fatalf("strategy should be copied: %#v", migrated.Strategy)
 	}
-	if len(migrated.EventSystem.EventPackages) != 1 || len(migrated.EventSystem.EventPackages[0].Events) != 1 {
-		t.Fatalf("event packages should be copied: %#v", migrated.EventSystem.EventPackages)
+	if len(migrated.EventPackages) != 1 || len(migrated.EventPackages[0].Events) != 1 {
+		t.Fatalf("event packages should be copied: %#v", migrated.EventPackages)
 	}
 	if len(migrated.TRPGSystem.RuleTemplates) != 1 || migrated.TRPGSystem.RuleTemplates[0].Mode != "d20_dc" {
 		t.Fatalf("rule templates should be copied: %#v", migrated.TRPGSystem.RuleTemplates)

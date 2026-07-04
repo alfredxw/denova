@@ -139,7 +139,7 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 		add(configManagerTellerSkill)
 	}
 	switch {
-	case strings.Contains(text, "story_director") || strings.Contains(text, "write_story_directors") || strings.Contains(text, "故事导演") || strings.Contains(text, "导演策略") || strings.Contains(text, "事件系统") || strings.Contains(text, "数值系统") || strings.Contains(text, "trpg"):
+	case strings.Contains(text, "story_director") || strings.Contains(text, "write_story_directors") || strings.Contains(text, "event_package") || strings.Contains(text, "event-packages") || strings.Contains(text, "故事导演") || strings.Contains(text, "导演策略") || strings.Contains(text, "事件包") || strings.Contains(text, "事件系统") || strings.Contains(text, "数值系统") || strings.Contains(text, "trpg"):
 		add(configManagerStoryDirectorSkill)
 	}
 	switch {

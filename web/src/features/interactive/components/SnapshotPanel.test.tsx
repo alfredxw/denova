@@ -34,31 +34,41 @@ describe('SnapshotPanel', () => {
             rule_resolution: {
               id: 'rr_1',
               created_at: '2026-05-17T00:00:00Z',
-              accepted_brief: {
-                user_action: '强行闯入藏书阁',
+              request: {
+                action: '强行闯入藏书阁',
                 intent: '冒险',
-                turn_goal: '让错误选择产生明确代价',
-                pressure: '守阁长老正在靠近',
-                event_intents: ['冲突升级'],
-                cost_policy: '失败会损失体力并暴露行踪',
-                state_expectation: '体力下降，学院警戒升高',
-                continuity_notes: '守阁长老不能被写成临时消失',
-                rule_checks: [{ id: 'check_1', label: '潜入检定', kind: 'skill', dice: '1d20', difficulty: 18 }],
+                challenge: '潜入检定',
+                cost: '失败会损失体力并暴露行踪',
+                state: '守阁长老正在靠近',
+                rule: { template: 'dice_check', dice: '1d20', roll_mode: 'normal' },
+                bonuses: [{ reason: '熟悉地形', value: 2 }],
+                difficulty: 'hard',
+                outcomes: {
+                  critical_success: { result: '无声潜入。' },
+                  success: { result: '成功潜入。' },
+                  failure: { result: '强闯失败导致主线中断', state_changes: [{ path: 'resources.hp', change: -10 }] },
+                  critical_failure: { result: '被当场抓住。' },
+                },
               },
-              rule_results: [{
+              result: {
                 id: 'check_1',
                 label: '潜入检定',
                 kind: 'skill',
                 dice: '1d20',
+                roll_mode: 'normal',
                 rolls: [4],
                 roll_total: 4,
+                kept_roll: 4,
+                bonus_total: 2,
                 modifier: 2,
                 difficulty: 18,
+                target: 18,
                 total: 6,
                 outcome: 'failure',
+                result: '强闯失败导致主线中断',
+                state_changes: [{ path: 'resources.hp', change: -10 }],
                 constraints: ['潜入检定失败，总值 6 / 难度 18。'],
-              }],
-              state_ops_preview: [{ op: 'inc', path: 'resources.hp', value: -10 }],
+              },
               terminal_candidate: { type: 'bad_end', reason: '强闯失败导致主线中断', check_id: 'check_1' },
               rule_constraints: ['潜入检定失败，总值 6 / 难度 18。'],
             },
@@ -150,10 +160,10 @@ describe('SnapshotPanel', () => {
     expect(screen.queryByText('青云逆袭主线')).not.toBeInTheDocument()
     expect(screen.queryByText('外门比拼前夜，制造排名压力。')).not.toBeInTheDocument()
     expect(screen.getByText('规则审计')).toBeInTheDocument()
-    expect(screen.getByText('本回合简报')).toBeInTheDocument()
+    expect(screen.getByText('本次检定')).toBeInTheDocument()
     expect(screen.getByText('强行闯入藏书阁')).toBeInTheDocument()
-    expect(screen.getByText('潜入检定')).toBeInTheDocument()
-    expect(screen.getByText('failure')).toBeInTheDocument()
+    expect(screen.getAllByText('潜入检定').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('failure').length).toBeGreaterThan(0)
     expect(screen.getByText('终局候选')).toBeInTheDocument()
     expect(screen.getAllByText('强闯失败导致主线中断').length).toBeGreaterThan(0)
     expect(screen.getByText('重开建议')).toBeInTheDocument()

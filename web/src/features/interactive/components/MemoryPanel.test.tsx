@@ -3,6 +3,23 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryPanel } from './MemoryPanel'
 
+function ruleRequestFixture(action: string) {
+  return {
+    action,
+    intent: '冒险',
+    challenge: '冲刺检定',
+    cost: '失败会浪费体力',
+    state: '体力仍可支撑一次短距离冲刺。',
+    difficulty: 'normal',
+    outcomes: {
+      critical_success: { result: '大成功' },
+      success: { result: '成功' },
+      failure: { result: '失败' },
+      critical_failure: { result: '大失败' },
+    },
+  }
+}
+
 describe('MemoryPanel', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -89,22 +106,32 @@ describe('MemoryPanel', () => {
         narrative: '守阁长老拦在门前。',
         rule_resolution: {
           id: 'rr_1',
-          accepted_brief: {
-            user_action: '强行闯入藏书阁',
+          request: {
+            action: '强行闯入藏书阁',
             intent: '冒险',
-            turn_goal: '让错误选择产生明确代价',
-            pressure: '守阁长老正在靠近',
-            cost_policy: '失败会损失体力并暴露行踪',
-            rule_checks: [{ id: 'check_1', label: '潜入检定', dice: '1d20', difficulty: 18 }],
+            challenge: '潜入检定',
+            cost: '失败会损失体力并暴露行踪',
+            state: '守阁长老正在靠近',
+            difficulty: 'hard',
+            outcomes: {
+              critical_success: { result: '无声潜入。' },
+              success: { result: '成功潜入。' },
+              failure: { result: '强闯失败导致主线中断' },
+              critical_failure: { result: '被当场抓住。' },
+            },
           },
-          rule_results: [{
+          result: {
             id: 'check_1',
             label: '潜入检定',
             dice: '1d20',
+            roll_mode: 'normal',
             rolls: [4],
+            kept_roll: 4,
+            bonus_total: 2,
             total: 6,
             outcome: 'failure',
-          }],
+            result: '强闯失败导致主线中断',
+          },
           terminal_candidate: { type: 'bad_end', reason: '强闯失败导致主线中断', check_id: 'check_1' },
         },
       },
@@ -125,10 +152,10 @@ describe('MemoryPanel', () => {
     expect(screen.getByText('failed')).toBeInTheDocument()
     expect(screen.getByText('director unavailable')).toBeInTheDocument()
     expect(screen.getByText('规则审计')).toBeInTheDocument()
-    expect(screen.getByText('让错误选择产生明确代价')).toBeInTheDocument()
-    expect(screen.getByText('潜入检定')).toBeInTheDocument()
+    expect(screen.getByText('失败会损失体力并暴露行踪')).toBeInTheDocument()
+    expect(screen.getAllByText('潜入检定').length).toBeGreaterThan(0)
     expect(screen.getByText('failure')).toBeInTheDocument()
-    expect(screen.getByText('强闯失败导致主线中断')).toBeInTheDocument()
+    expect(screen.getAllByText('强闯失败导致主线中断').length).toBeGreaterThan(0)
   })
 
   it('rebuilds director plan from the summary action', async () => {
@@ -207,7 +234,7 @@ describe('MemoryPanel', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (url.includes('/rules/resolutions/rr_1/reroll')) {
-        return Response.json({ id: 'rr_2', accepted_brief: {}, rule_results: [] })
+        return Response.json({ id: 'rr_2', request: ruleRequestFixture('冲刺'), result: { outcome: 'success' } })
       }
       if (url.includes('/director')) {
         return Response.json(directorPlan())
@@ -233,8 +260,8 @@ describe('MemoryPanel', () => {
         narrative: '他冲了出去。',
         rule_resolution: {
           id: 'rr_1',
-          accepted_brief: { user_action: '冲刺', intent: '冒险', turn_goal: '结算冲刺' },
-          rule_results: [{ id: 'dash', label: '冲刺检定', dice: '1d20', rolls: [2], total: 7, outcome: 'failure' }],
+          request: ruleRequestFixture('冲刺'),
+          result: { id: 'dash', label: '冲刺检定', dice: '1d20', roll_mode: 'normal', rolls: [2], kept_roll: 2, total: 7, outcome: 'failure', result: '冲刺失败' },
         },
       },
     }} />)

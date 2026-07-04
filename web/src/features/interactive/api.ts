@@ -1,6 +1,6 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
-import type { BranchSummary, DirectorPlan, DirectorPlanStatus, EventSystemModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
+import type { BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
@@ -275,29 +275,29 @@ export function deleteStoryDirector(id: string): Promise<void> {
   })
 }
 
-export async function getEventSystems(): Promise<EventSystemModule[]> {
-  const data = await requestJSON<{ event_systems: EventSystemModule[] }>('/api/event-systems')
-  return data.event_systems || []
+export async function getEventPackages(): Promise<EventPackageModule[]> {
+  const data = await requestJSON<{ event_packages: EventPackageModule[] }>('/api/event-packages')
+  return data.event_packages || []
 }
 
-export function createEventSystem(input: Partial<EventSystemModule>): Promise<EventSystemModule> {
-  return requestJSON('/api/event-systems', {
+export function createEventPackage(input: Partial<EventPackageModule>): Promise<EventPackageModule> {
+  return requestJSON('/api/event-packages', {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(input),
   })
 }
 
-export function updateEventSystem(id: string, input: Partial<EventSystemModule>, baseRevision?: string): Promise<EventSystemModule> {
-  return requestJSON(`/api/event-systems/${encodeURIComponent(id)}`, {
+export function updateEventPackage(id: string, input: Partial<EventPackageModule>, baseRevision?: string): Promise<EventPackageModule> {
+  return requestJSON(`/api/event-packages/${encodeURIComponent(id)}`, {
     method: 'PATCH',
     headers: jsonHeaders,
     body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
   })
 }
 
-export function deleteEventSystem(id: string): Promise<void> {
-  return requestJSON(`/api/event-systems/${encodeURIComponent(id)}`, {
+export function deleteEventPackage(id: string): Promise<void> {
+  return requestJSON(`/api/event-packages/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
 }

@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import type { DirectorEvent, OpeningTrait, OpeningTraitPool, RuleCheck, StateOp, StoryDirectorAttribute, StoryDirectorEventSystem, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, TellerEventCard, TellerEventPackage } from '../../types'
+import type { EventPackageModule, OpeningTrait, OpeningTraitPool, RuleCheck, StateOp, StoryDirectorAttribute, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, TellerEventCard } from '../../types'
 import { SortablePresetList } from './SortablePresetList'
 import { cloneWithNewId, formatPresetJSON, itemKey, joinListInput, nextPresetId, parseIntegerInput, parseNumberInput, splitListInput } from './utils'
 
@@ -14,171 +14,31 @@ const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
 const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
 const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const visualEditorShellClassName = 'grid h-[clamp(360px,calc(100dvh-15rem),720px)] min-h-0 gap-3 overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)]'
-const nestedEditorClassName = 'grid min-h-0 gap-3 overflow-hidden lg:grid-cols-[240px_minmax(0,1fr)]'
 const detailScrollPaneClassName = 'min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]'
 
-export function EventSystemVisualEditor({
+export function EventPackageVisualEditor({
   value,
   onChange,
   onValidityChange,
 }: {
-  value: StoryDirectorEventSystem
-  onChange: (value: StoryDirectorEventSystem) => void
+  value: EventPackageModule
+  onChange: (value: EventPackageModule) => void
   onValidityChange: (valid: boolean) => void
 }) {
   const { t } = useTranslation()
-  const [mode, setMode] = useState<'packages' | 'custom'>('packages')
-  const [activePackageId, setActivePackageId] = useState('')
   const [activeCardId, setActiveCardId] = useState('')
-  const [activeEventId, setActiveEventId] = useState('')
-  const packages = value.event_packages || []
-  const customEvents = value.custom_events || []
+  const cards = value.events || []
 
   useEffect(() => onValidityChange(true), [onValidityChange])
-  useEffect(() => {
-    if (!packages.some((item, index) => itemKey(item, index, 'package') === activePackageId)) {
-      setActivePackageId(packages[0] ? itemKey(packages[0], 0, 'package') : '')
-    }
-  }, [activePackageId, packages])
-  useEffect(() => {
-    if (!customEvents.some((item, index) => itemKey(item, index, 'event') === activeEventId)) {
-      setActiveEventId(customEvents[0] ? itemKey(customEvents[0], 0, 'event') : '')
-    }
-  }, [activeEventId, customEvents])
-
-  const setPackages = (event_packages: TellerEventPackage[]) => onChange({ ...value, event_packages })
-  const setCustomEvents = (custom_events: DirectorEvent[]) => onChange({ ...value, custom_events })
-  const activePackageIndex = packages.findIndex((item, index) => itemKey(item, index, 'package') === activePackageId)
-  const activePackage = activePackageIndex >= 0 ? packages[activePackageIndex] : null
-  const activeEventIndex = customEvents.findIndex((item, index) => itemKey(item, index, 'event') === activeEventId)
-  const activeEvent = activeEventIndex >= 0 ? customEvents[activeEventIndex] : null
-
-  const patchPackage = (patch: Partial<TellerEventPackage>) => {
-    if (!activePackage) return
-    setPackages(packages.map((item, index) => (index === activePackageIndex ? { ...item, ...patch } : item)))
-  }
-  const addPackage = () => {
-    const item: TellerEventPackage = { id: nextPresetId('event-package'), name: '', enabled: true, events: [] }
-    setPackages([...packages, item])
-    setActivePackageId(item.id || '')
-  }
-  const copyPackage = () => {
-    if (!activePackage) return
-    const item = cloneWithNewId(activePackage, 'event-package')
-    setPackages([...packages, item])
-    setActivePackageId(item.id || '')
-  }
-  const deletePackage = () => {
-    if (!activePackage) return
-    const next = packages.filter((_, index) => index !== activePackageIndex)
-    setPackages(next)
-    setActivePackageId(next[0] ? itemKey(next[0], 0, 'package') : '')
-  }
-  const patchCustomEvent = (patch: Partial<DirectorEvent>) => {
-    if (!activeEvent) return
-    setCustomEvents(customEvents.map((item, index) => (index === activeEventIndex ? { ...item, ...patch } : item)))
-  }
-  const addCustomEvent = () => {
-    const item: DirectorEvent = { id: nextPresetId('event'), name: '', enabled: true }
-    setCustomEvents([...customEvents, item])
-    setActiveEventId(item.id || '')
-  }
-  const copyCustomEvent = () => {
-    if (!activeEvent) return
-    const item = cloneWithNewId(activeEvent, 'event')
-    setCustomEvents([...customEvents, item])
-    setActiveEventId(item.id || '')
-  }
-  const deleteCustomEvent = () => {
-    if (!activeEvent) return
-    const next = customEvents.filter((_, index) => index !== activeEventIndex)
-    setCustomEvents(next)
-    setActiveEventId(next[0] ? itemKey(next[0], 0, 'event') : '')
-  }
-
-  return (
-    <div className="grid gap-3">
-      <div className="flex w-fit overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
-        <ToggleButton active={mode === 'packages'} onClick={() => setMode('packages')}>{t('settingPanel.presetConfig.eventPackages')}</ToggleButton>
-        <ToggleButton active={mode === 'custom'} onClick={() => setMode('custom')}>{t('settingPanel.presetConfig.customEvents')}</ToggleButton>
-      </div>
-      {mode === 'packages' ? (
-        <div className={visualEditorShellClassName} data-testid="event-system-packages-editor">
-          <SortablePresetList
-            items={packages}
-            activeId={activePackageId}
-            getId={(item, index) => itemKey(item, index, 'package')}
-            getTitle={(item, index) => item.name || item.id || `${t('settingPanel.presetConfig.eventPackage')} ${index + 1}`}
-            getSubtitle={(item) => `${item.enabled === false ? t('settingPanel.disabled') : t('settingPanel.enabled')} · ${(item.events || []).length}`}
-            addLabel={t('settingPanel.presetConfig.addPackage')}
-            emptyLabel={t('settingPanel.presetConfig.eventPackages')}
-            onAdd={addPackage}
-            onActiveIdChange={setActivePackageId}
-            onItemsChange={setPackages}
-          />
-          {activePackage ? (
-            <EventPackageDetails
-              item={activePackage}
-              activeCardId={activeCardId}
-              setActiveCardId={setActiveCardId}
-              onPatch={patchPackage}
-              onCopy={copyPackage}
-              onDelete={deletePackage}
-            />
-          ) : <EmptyDetail>{t('settingPanel.presetConfig.emptyPackages')}</EmptyDetail>}
-        </div>
-      ) : (
-        <div className={visualEditorShellClassName} data-testid="event-system-custom-events-editor">
-          <SortablePresetList
-            items={customEvents}
-            activeId={activeEventId}
-            getId={(item, index) => itemKey(item, index, 'event')}
-            getTitle={(item, index) => item.name || item.id || `${t('settingPanel.presetConfig.customEvent')} ${index + 1}`}
-            getSubtitle={(item) => [item.category, item.status].filter(Boolean).join(' · ')}
-            addLabel={t('settingPanel.presetConfig.addCustomEvent')}
-            emptyLabel={t('settingPanel.presetConfig.customEvents')}
-            onAdd={addCustomEvent}
-            onActiveIdChange={setActiveEventId}
-            onItemsChange={setCustomEvents}
-          />
-          {activeEvent ? (
-            <div className={detailScrollPaneClassName}>
-              <DirectorEventDetails item={activeEvent} onPatch={patchCustomEvent} onCopy={copyCustomEvent} onDelete={deleteCustomEvent} />
-            </div>
-          ) : <EmptyDetail>{t('settingPanel.presetConfig.emptyCustomEvents')}</EmptyDetail>}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function EventPackageDetails({
-  item,
-  activeCardId,
-  setActiveCardId,
-  onPatch,
-  onCopy,
-  onDelete,
-}: {
-  item: TellerEventPackage
-  activeCardId: string
-  setActiveCardId: (id: string) => void
-  onPatch: (patch: Partial<TellerEventPackage>) => void
-  onCopy: () => void
-  onDelete: () => void
-}) {
-  const { t } = useTranslation()
-  const cards = item.events || []
-  const activeIndex = cards.findIndex((card, index) => itemKey(card, index, 'card') === activeCardId)
-  const activeCard = activeIndex >= 0 ? cards[activeIndex] : null
-
   useEffect(() => {
     if (!cards.some((card, index) => itemKey(card, index, 'card') === activeCardId)) {
       setActiveCardId(cards[0] ? itemKey(cards[0], 0, 'card') : '')
     }
-  }, [activeCardId, cards, setActiveCardId])
+  }, [activeCardId, cards])
 
-  const setCards = (events: TellerEventCard[]) => onPatch({ events })
+  const setCards = (events: TellerEventCard[]) => onChange({ ...value, events })
+  const activeIndex = cards.findIndex((card, index) => itemKey(card, index, 'card') === activeCardId)
+  const activeCard = activeIndex >= 0 ? cards[activeIndex] : null
   const patchCard = (patch: Partial<TellerEventCard>) => {
     if (!activeCard) return
     setCards(cards.map((card, index) => (index === activeIndex ? { ...card, ...patch } : card)))
@@ -202,35 +62,23 @@ function EventPackageDetails({
   }
 
   return (
-    <DetailPanel className="h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden">
-      <DetailActions onCopy={onCopy} onDelete={onDelete} />
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field label={t('settingPanel.presetConfig.id')}>
-          <Input className={inputClassName} value={item.id || ''} onChange={(event) => onPatch({ id: event.target.value })} />
-        </Field>
-        <Field label={t('settingPanel.field.name')}>
-          <Input className={inputClassName} value={item.name || ''} onChange={(event) => onPatch({ name: event.target.value })} />
-        </Field>
-        <SwitchField label={t('settingPanel.field.enabled')} checked={item.enabled !== false} onChange={(enabled) => onPatch({ enabled })} />
+    <div className={visualEditorShellClassName} data-testid="event-package-card-editor">
+      <SortablePresetList
+        items={cards}
+        activeId={activeCardId}
+        getId={(card, index) => itemKey(card, index, 'card')}
+        getTitle={(card, index) => card.type_name || card.id || `${t('settingPanel.presetConfig.eventCard')} ${index + 1}`}
+        getSubtitle={(card) => [card.category, card.intensity].filter(Boolean).join(' · ')}
+        addLabel={t('settingPanel.presetConfig.addEventCard')}
+        emptyLabel={t('settingPanel.presetConfig.eventCards')}
+        onAdd={addCard}
+        onActiveIdChange={setActiveCardId}
+        onItemsChange={setCards}
+      />
+      <div className={detailScrollPaneClassName} data-testid="event-package-card-detail-scroll">
+        {activeCard ? <EventCardDetails item={activeCard} onPatch={patchCard} onCopy={copyCard} onDelete={deleteCard} /> : <EmptyDetail>{t('settingPanel.presetConfig.emptyEventCards')}</EmptyDetail>}
       </div>
-      <div className={nestedEditorClassName} data-testid="event-package-card-editor">
-        <SortablePresetList
-          items={cards}
-          activeId={activeCardId}
-          getId={(card, index) => itemKey(card, index, 'card')}
-          getTitle={(card, index) => card.type_name || card.id || `${t('settingPanel.presetConfig.eventCard')} ${index + 1}`}
-          getSubtitle={(card) => [card.category, card.intensity].filter(Boolean).join(' · ')}
-          addLabel={t('settingPanel.presetConfig.addEventCard')}
-          emptyLabel={t('settingPanel.presetConfig.eventCards')}
-          onAdd={addCard}
-          onActiveIdChange={setActiveCardId}
-          onItemsChange={setCards}
-        />
-        <div className={detailScrollPaneClassName} data-testid="event-package-card-detail-scroll">
-          {activeCard ? <EventCardDetails item={activeCard} onPatch={patchCard} onCopy={copyCard} onDelete={deleteCard} /> : <EmptyDetail>{t('settingPanel.presetConfig.emptyEventCards')}</EmptyDetail>}
-        </div>
-      </div>
-    </DetailPanel>
+    </div>
   )
 }
 
@@ -262,43 +110,6 @@ function EventCardDetails({
       <Field label={t('settingPanel.presetConfig.descriptionMarkdown')}>
         <Textarea className="nova-field min-h-28 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={item.description_markdown || ''} onChange={(event) => onPatch({ description_markdown: event.target.value })} />
       </Field>
-    </DetailPanel>
-  )
-}
-
-function DirectorEventDetails({
-  item,
-  onPatch,
-  onCopy,
-  onDelete,
-}: {
-  item: DirectorEvent
-  onPatch: (patch: Partial<DirectorEvent>) => void
-  onCopy: () => void
-  onDelete: () => void
-}) {
-  const { t } = useTranslation()
-  return (
-    <DetailPanel>
-      <DetailActions onCopy={onCopy} onDelete={onDelete} />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={item.id || ''} onChange={(event) => onPatch({ id: event.target.value })} /></Field>
-        <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={item.name || ''} onChange={(event) => onPatch({ name: event.target.value })} /></Field>
-        <Field label={t('settingPanel.orchestration.category')}><Input className={inputClassName} value={item.category || ''} onChange={(event) => onPatch({ category: event.target.value })} /></Field>
-        <Field label={t('settingPanel.presetConfig.status')}><Input className={inputClassName} value={item.status || ''} onChange={(event) => onPatch({ status: event.target.value })} /></Field>
-        <Field label={t('settingPanel.presetConfig.weight')}><Input className={inputClassName} inputMode="decimal" value={String(item.weight ?? '')} onChange={(event) => onPatch({ weight: parseNumberInput(event.target.value) })} /></Field>
-        <Field label={t('settingPanel.presetConfig.cooldown')}><Input className={inputClassName} inputMode="numeric" value={String(item.cooldown_turns ?? '')} onChange={(event) => onPatch({ cooldown_turns: parseIntegerInput(event.target.value) })} /></Field>
-        <Field label={t('settingPanel.presetConfig.intensity')}><Input className={inputClassName} value={item.intensity || ''} onChange={(event) => onPatch({ intensity: event.target.value })} /></Field>
-        <Field label={t('settingPanel.presetConfig.reward')}><Input className={inputClassName} value={item.reward || ''} onChange={(event) => onPatch({ reward: event.target.value })} /></Field>
-        <Field label={t('settingPanel.presetConfig.cost')}><Input className={inputClassName} value={item.cost || ''} onChange={(event) => onPatch({ cost: event.target.value })} /></Field>
-        <SwitchField label={t('settingPanel.field.enabled')} checked={item.enabled !== false} onChange={(enabled) => onPatch({ enabled })} />
-      </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field label={t('settingPanel.presetConfig.compatibleGenres')}><Input className={inputClassName} value={joinListInput(item.compatible_genres)} onChange={(event) => onPatch({ compatible_genres: splitListInput(event.target.value) })} /></Field>
-        <Field label={t('settingPanel.presetConfig.incompatibleFlags')}><Input className={inputClassName} value={joinListInput(item.incompatible_state_flags)} onChange={(event) => onPatch({ incompatible_state_flags: splitListInput(event.target.value) })} /></Field>
-      </div>
-      <Field label={t('settingPanel.presetConfig.summary')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={item.summary || ''} onChange={(event) => onPatch({ summary: event.target.value })} /></Field>
-      <Field label={t('settingPanel.presetConfig.template')}><Textarea className="nova-field min-h-28 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={item.template || ''} onChange={(event) => onPatch({ template: event.target.value })} /></Field>
     </DetailPanel>
   )
 }
@@ -730,14 +541,6 @@ function JSONFragmentEditor({
 
 function statAttributeId(item: StoryDirectorAttribute, index: number) {
   return item.id || item.path || `attribute-${index}`
-}
-
-function ToggleButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <Button type="button" className={`h-7 rounded-none border-0 px-2 text-[11px] ${active ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`} variant="ghost" size="sm" onClick={onClick}>
-      {children}
-    </Button>
-  )
 }
 
 function DetailPanel({ children, dense = false, className = '' }: { children: ReactNode; dense?: boolean; className?: string }) {

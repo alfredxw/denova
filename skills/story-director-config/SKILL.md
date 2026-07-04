@@ -6,37 +6,38 @@ agent: config_manager
 
 # Story Director Config
 
-Use this skill before calling `write_story_directors`.
+Use this skill before calling `write_story_directors` or `write_event_packages`.
 
 ## Workflow
 
 1. Call `list_story_directors` first. For updates, call `read_story_directors` for the exact director IDs.
-2. Use `write_story_directors` for create/update/delete. Do not edit story director JSON files directly.
-3. Built-in story directors can be read and copied as examples. Deleting built-ins is rejected.
-4. For update, preserve sections the user did not ask to change.
-5. For delete, require an explicit user request.
-6. When grounding event cards in the current work, call `list_lore_items` first, then `read_lore_items` for only the small relevant set. Do not claim concrete world, faction, character, or relationship facts unless they came from read lore, read director data, or explicit user input.
-7. Story Directors, event systems, rule systems, and opening selectors are Game Mode-only module types. Do not add per-resource mode/scope fields.
+2. Call `list_event_packages` before changing a director's event package references. For event-card content updates, call `read_event_packages` for exact package IDs.
+3. Use `write_story_directors` for director create/update/delete and `write_event_packages` for event package create/update/delete. Do not edit JSON files directly.
+4. Built-in story directors and event packages can be read and copied as examples. Deleting built-ins restores their built-in version.
+5. For update, preserve sections the user did not ask to change.
+6. For delete, require an explicit user request.
+7. When grounding event cards in the current work, call `list_lore_items` first, then `read_lore_items` for only the small relevant set. Do not claim concrete world, faction, character, or relationship facts unless they came from read lore, read director/package data, or explicit user input.
+8. Story Directors, event packages, rule systems, and opening selectors are Game Mode-only module types. Do not add per-resource mode/scope fields.
 
 ## Shape
 
 Story Directors are Game Mode modules independent from shared narrative styles and shared image presets. They combine reusable modules through `module_refs` and keep expanded resolved sections for inspection.
 
-- `module_refs`: referenced module IDs plus switches. Use `narrative_style_id`, `event_system_id`, `rule_system_id`, `opening_selector_id`, and `image_preset_id`; set `narrative_style_disabled`, `event_system_disabled`, `rule_system_disabled`, `opening_selector_disabled`, or `image_preset_disabled` to `true` to turn a module off. When disabling, preserve the ID so the user can re-enable without reselecting.
+- `module_refs`: referenced module IDs plus switches. Use `narrative_style_id`, `event_package_ids`, `rule_system_id`, `opening_selector_id`, and `image_preset_id`; set `narrative_style_disabled`, `event_packages_disabled`, `rule_system_disabled`, `opening_selector_disabled`, or `image_preset_disabled` to `true` to turn a module off. When disabling, preserve IDs so the user can re-enable without reselecting.
 - `strategy`: `enabled`, `mainline_strength`, `failure_policy`, `pacing_curve`, `random_event_rate`. Prefer the standard enum IDs used by the UI: `mainline_strength` is `soft_guidance`, `balanced`, or `strong_arc`; `failure_policy` is `reversible`, `consequence`, or `fail_forward`; `pacing_curve` is `progressive`, `wave`, or `goal-pressure-payoff`; `random_event_rate` is usually `0`, `0.08`, `0.15`, or `0.3`.
-- `event_system`: resolved event packages and custom events; used only by the background director planner and empty when the event module is disabled.
+- `event_packages`: resolved event packages; used only by the background director planner and empty when event packages are disabled.
 - `stat_system`: resolved attributes with `path`, `name`, `type`, `default`, optional `min`/`max`, and `visibility` (`visible`, `hidden`, or `spoiler`).
 - `trpg_system`: resolved rule templates for checks, including `mode` (`default`, `d20_dc`, or `d100_under`), dice, modifiers, difficulty, outcomes, StateOps, and terminal candidates.
 - `opening_selector`: resolved opening selector with `enabled`, `trait_pools`, and `initial_state_ops`; this affects only new stories or explicit opening rolls and is empty/off when the opening module is disabled.
 
 Do not change `version`, `path`, `custom`, `invalid`, `error`, `created_at`, or `updated_at` unless preserving an existing complete object from `read_story_directors`.
-Do not use empty IDs to mean disabled; use the explicit `*_disabled` switches.
+Do not use empty IDs to mean disabled; use the explicit `*_disabled` switches. Do not write `event_system`, `event_system_id`, `event_system_disabled`, or `custom_events` in new data.
 
 ## Event Cards
 
-Event packages are made of rich event cards. Do not generate keyword-only category packages.
+Event packages are standalone resources made of rich event cards. Do not generate keyword-only category packages.
 
-Each `event_packages[].events[]` item should use this schema:
+Each `events[]` item in an event package should use this schema:
 
 - `id`: stable ASCII ID, unique inside the director.
 - `type_name`: user-visible event type name, for example `外门考核打脸`.
@@ -68,7 +69,7 @@ Every card must bind to at least one concrete source from the work: a world rule
 
 Default generation strategy:
 
-- Generate 12-24 event cards in one package when the user asks for an event pack.
+- Generate 12-24 event cards in one package when the user asks for an event pack. Write the package with `write_event_packages`, then add its ID to `story_director.module_refs.event_package_ids` only if the user asked to attach it to a director.
 - Cover a mix of 打脸, 扮猪吃虎, 奇遇, 秘境, 天降, 意外, 世界事件, 冲突, 学院, 比拼, 排行, 恋爱, 英雄救美, 误会与消解 where suitable for the actual work.
 - Each card should describe a flexible reusable situation, not a fixed future chapter outline.
 - The event must integrate with user action and current background; do not force the protagonist into a single choice.
@@ -85,4 +86,4 @@ Use `mode` intentionally:
 
 Keep `state_ops` explicit and reversible where possible. Avoid hidden state changes unless the user asked for hidden or spoiler attributes.
 
-When writing the director back, use `write_story_directors` with the complete updated director object, preserve unrelated `module_refs`, and include a concise change message.
+When writing the director back, use `write_story_directors` with the complete updated director object, preserve unrelated `module_refs`, and include a concise change message. When writing event cards, use `write_event_packages` with the complete updated package object.

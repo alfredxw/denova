@@ -83,7 +83,7 @@ export interface StoryDirector {
   description: string
   module_refs?: StoryDirectorModuleRefs
   strategy: StoryDirectorStrategy
-  event_system: StoryDirectorEventSystem
+  event_packages?: TellerEventPackage[]
   stat_system: StoryDirectorStatSystem
   trpg_system: StoryDirectorTRPGSystem
   opening_selector: StoryDirectorOpeningSelector
@@ -101,6 +101,8 @@ export interface StoryDirector {
 export interface StoryDirectorModuleRefs {
   narrative_style_id?: string
   narrative_style_disabled?: boolean
+  event_package_ids?: string[]
+  event_packages_disabled?: boolean
   event_system_id?: string
   event_system_disabled?: boolean
   rule_system_id?: string
@@ -125,18 +127,19 @@ export interface StoryDirectorResolvedSnapshot {
   module_refs?: StoryDirectorModuleRefs
   narrative_style_id?: string
   image_preset_id?: string
+  event_packages?: TellerEventPackage[]
   event_system?: StoryDirectorEventSystem
   stat_system?: StoryDirectorStatSystem
   trpg_system?: StoryDirectorTRPGSystem
   opening_selector?: StoryDirectorOpeningSelector
 }
 
-export interface EventSystemModule {
+export interface EventPackageModule {
   version: number
   id: string
   name: string
   description: string
-  event_system: StoryDirectorEventSystem
+  events?: TellerEventCard[]
   tags: string[]
   path?: string
   custom: boolean
@@ -330,7 +333,6 @@ export interface TurnEvent {
   display_events?: TurnDisplayEvent[]
   state_delta?: StateDelta
   hot_state?: HotState
-  turn_brief?: TurnBrief
   rule_resolution?: RuleResolution
   terminal_outcome?: TerminalOutcome
   state_status?: 'pending' | 'ready' | 'failed'
@@ -519,18 +521,6 @@ export interface UpdateDirectorPlanInput {
   summary?: string
 }
 
-export interface TurnBrief {
-  user_action?: string
-  intent?: string
-  turn_goal?: string
-  pressure?: string
-  event_intents?: string[]
-  cost_policy?: string
-  rule_checks?: RuleCheck[]
-  state_expectation?: string
-  continuity_notes?: string
-}
-
 export interface RuleCheck {
   id?: string
   label?: string
@@ -553,12 +543,52 @@ export interface RuleCheck {
 
 export interface RuleResolution {
   id?: string
-  accepted_brief: TurnBrief
-  rule_results?: RuleResult[]
-  state_ops_preview?: StateOp[]
+  request: TurnCheckRequest
+  result: RuleResult
   terminal_candidate?: TerminalCandidate
   rule_constraints?: string[]
   created_at?: string
+  seed?: number
+}
+
+export interface TurnCheckRequest {
+  action: string
+  intent: string
+  challenge: string
+  cost: string
+  state: string
+  rule?: TurnCheckRule
+  bonuses?: TurnCheckBonus[]
+  difficulty: 'very_easy' | 'easy' | 'normal' | 'hard' | 'very_hard' | string
+  outcomes: TurnCheckOutcomes
+}
+
+export interface TurnCheckRule {
+  template?: string
+  dice?: string
+  roll_mode?: 'normal' | 'advantage' | 'disadvantage' | string
+}
+
+export interface TurnCheckBonus {
+  reason: string
+  value: number
+}
+
+export interface TurnCheckOutcomes {
+  critical_success: TurnCheckOutcome
+  success: TurnCheckOutcome
+  failure: TurnCheckOutcome
+  critical_failure: TurnCheckOutcome
+}
+
+export interface TurnCheckOutcome {
+  result: string
+  state_changes?: TurnStateChange[]
+}
+
+export interface TurnStateChange {
+  path: string
+  change: number
 }
 
 export interface RuleResult {
@@ -580,6 +610,12 @@ export interface RuleResult {
   seed?: number
   constraints?: string[]
   error?: string
+  roll_mode?: string
+  kept_roll?: number
+  bonus_total?: number
+  target?: number
+  result?: string
+  state_changes?: TurnStateChange[]
 }
 
 export interface TerminalCandidate {

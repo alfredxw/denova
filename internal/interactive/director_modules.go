@@ -16,12 +16,14 @@ import (
 
 const (
 	storyDirectorModuleVersion = 1
+	DefaultEventPackageID      = "default"
 	DefaultEventSystemID       = "default"
 	DefaultRuleSystemID        = "default"
 	DefaultOpeningSelectorID   = "default"
 )
 
 var (
+	ErrEventPackageRevisionConflict    = errors.New("事件包已被其他操作更新，请重新加载后再保存")
 	ErrEventSystemRevisionConflict     = errors.New("事件系统已被其他操作更新，请重新加载后再保存")
 	ErrRuleSystemRevisionConflict      = errors.New("数值规则系统已被其他操作更新，请重新加载后再保存")
 	ErrOpeningSelectorRevisionConflict = errors.New("开局选择器已被其他操作更新，请重新加载后再保存")
@@ -30,16 +32,18 @@ var (
 // StoryDirectorModuleRefs declares the reusable resources a story director
 // combines at runtime. Changing a referenced module affects future resolution.
 type StoryDirectorModuleRefs struct {
-	NarrativeStyleID        string `json:"narrative_style_id,omitempty"`
-	NarrativeStyleDisabled  bool   `json:"narrative_style_disabled,omitempty"`
-	EventSystemID           string `json:"event_system_id,omitempty"`
-	EventSystemDisabled     bool   `json:"event_system_disabled,omitempty"`
-	RuleSystemID            string `json:"rule_system_id,omitempty"`
-	RuleSystemDisabled      bool   `json:"rule_system_disabled,omitempty"`
-	OpeningSelectorID       string `json:"opening_selector_id,omitempty"`
-	OpeningSelectorDisabled bool   `json:"opening_selector_disabled,omitempty"`
-	ImagePresetID           string `json:"image_preset_id,omitempty"`
-	ImagePresetDisabled     bool   `json:"image_preset_disabled,omitempty"`
+	NarrativeStyleID        string   `json:"narrative_style_id,omitempty"`
+	NarrativeStyleDisabled  bool     `json:"narrative_style_disabled,omitempty"`
+	EventPackageIDs         []string `json:"event_package_ids,omitempty"`
+	EventPackagesDisabled   bool     `json:"event_packages_disabled,omitempty"`
+	EventSystemID           string   `json:"event_system_id,omitempty"`
+	EventSystemDisabled     bool     `json:"event_system_disabled,omitempty"`
+	RuleSystemID            string   `json:"rule_system_id,omitempty"`
+	RuleSystemDisabled      bool     `json:"rule_system_disabled,omitempty"`
+	OpeningSelectorID       string   `json:"opening_selector_id,omitempty"`
+	OpeningSelectorDisabled bool     `json:"opening_selector_disabled,omitempty"`
+	ImagePresetID           string   `json:"image_preset_id,omitempty"`
+	ImagePresetDisabled     bool     `json:"image_preset_disabled,omitempty"`
 }
 
 type StoryDirectorModuleWarning struct {
@@ -59,10 +63,27 @@ type StoryDirectorResolvedSnapshot struct {
 	ModuleRefs       StoryDirectorModuleRefs      `json:"module_refs"`
 	NarrativeStyleID string                       `json:"narrative_style_id,omitempty"`
 	ImagePresetID    string                       `json:"image_preset_id,omitempty"`
-	EventSystem      StoryDirectorEventSystem     `json:"event_system,omitempty"`
+	EventPackages    []TellerEventPackage         `json:"event_packages,omitempty"`
+	EventSystem      StoryDirectorEventSystem     `json:"-"`
 	StatSystem       StoryDirectorStatSystem      `json:"stat_system,omitempty"`
 	TRPGSystem       StoryDirectorTRPGSystem      `json:"trpg_system,omitempty"`
 	OpeningSelector  StoryDirectorOpeningSelector `json:"opening_selector,omitempty"`
+}
+
+type EventPackageModule struct {
+	Version           int               `json:"version"`
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Description       string            `json:"description"`
+	Events            []TellerEventCard `json:"events,omitempty"`
+	Tags              []string          `json:"tags"`
+	Path              string            `json:"path,omitempty"`
+	Custom            bool              `json:"custom"`
+	BuiltinOverridden bool              `json:"builtin_overridden,omitempty"`
+	Invalid           bool              `json:"invalid,omitempty"`
+	Error             string            `json:"error,omitempty"`
+	CreatedAt         string            `json:"created_at,omitempty"`
+	UpdatedAt         string            `json:"updated_at,omitempty"`
 }
 
 type EventSystemModule struct {
@@ -114,6 +135,10 @@ type OpeningSelectorModule struct {
 	UpdatedAt         string                       `json:"updated_at,omitempty"`
 }
 
+type EventPackageLibrary struct {
+	novaDir string
+}
+
 type EventSystemLibrary struct {
 	novaDir string
 }
@@ -126,6 +151,10 @@ type OpeningSelectorLibrary struct {
 	novaDir string
 }
 
+func NewEventPackageLibrary(novaDir string) *EventPackageLibrary {
+	return &EventPackageLibrary{novaDir: novaDir}
+}
+
 func NewEventSystemLibrary(novaDir string) *EventSystemLibrary {
 	return &EventSystemLibrary{novaDir: novaDir}
 }
@@ -136,6 +165,173 @@ func NewRuleSystemLibrary(novaDir string) *RuleSystemLibrary {
 
 func NewOpeningSelectorLibrary(novaDir string) *OpeningSelectorLibrary {
 	return &OpeningSelectorLibrary{novaDir: novaDir}
+}
+
+func (l *EventPackageLibrary) List() ([]EventPackageModule, error) {
+	if err := l.ensureBuiltins(); err != nil {
+		return nil, err
+	}
+	files, err := filepath.Glob(filepath.Join(l.dir(), "*.json"))
+	if err != nil {
+		return nil, err
+	}
+	items := make([]EventPackageModule, 0, len(files))
+	for _, file := range files {
+		item, err := parseEventPackageFile(file)
+		if err != nil {
+			id := strings.TrimSuffix(filepath.Base(file), ".json")
+			items = append(items, EventPackageModule{ID: id, Path: file, Invalid: true, Error: err.Error(), Custom: !IsBuiltinEventPackageID(id)})
+			continue
+		}
+		item.Path = file
+		item = applyEventPackageOwnership(item)
+		items = append(items, item)
+	}
+	sortEventPackages(items)
+	return items, nil
+}
+
+func (l *EventPackageLibrary) Get(id string) (EventPackageModule, error) {
+	if err := l.ensureBuiltins(); err != nil {
+		return EventPackageModule{}, err
+	}
+	id = normalizeDirectorModuleID(id)
+	if id == "" {
+		id = DefaultEventPackageID
+	}
+	if err := validateDirectorModuleID(id, "事件包"); err != nil {
+		return EventPackageModule{}, err
+	}
+	item, err := parseEventPackageFile(filepath.Join(l.dir(), id+".json"))
+	if err != nil {
+		return EventPackageModule{}, err
+	}
+	return applyEventPackageOwnership(item), nil
+}
+
+func (l *EventPackageLibrary) Create(item EventPackageModule) (EventPackageModule, error) {
+	if err := l.ensureBuiltins(); err != nil {
+		return EventPackageModule{}, err
+	}
+	item = normalizeEventPackageModule(item)
+	if item.ID == "" {
+		item.ID = newDirectorModuleID("event-package")
+	}
+	item.BuiltinOverridden = false
+	if err := validateEventPackageModule(item); err != nil {
+		return EventPackageModule{}, err
+	}
+	path := filepath.Join(l.dir(), item.ID+".json")
+	if _, err := os.Stat(path); err == nil {
+		return EventPackageModule{}, fmt.Errorf("事件包已存在: %s", item.ID)
+	} else if !os.IsNotExist(err) {
+		return EventPackageModule{}, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	item.CreatedAt = now
+	item.UpdatedAt = now
+	if err := writeEventPackageFile(path, item); err != nil {
+		return EventPackageModule{}, err
+	}
+	item.Path = path
+	return applyEventPackageOwnership(item), nil
+}
+
+func (l *EventPackageLibrary) Update(id string, item EventPackageModule, baseRevision string) (EventPackageModule, error) {
+	if err := l.ensureBuiltins(); err != nil {
+		return EventPackageModule{}, err
+	}
+	id = normalizeDirectorModuleID(id)
+	if err := validateDirectorModuleID(id, "事件包"); err != nil {
+		return EventPackageModule{}, err
+	}
+	isBuiltin := IsBuiltinEventPackageID(id)
+	current, err := l.Get(id)
+	if err != nil {
+		return EventPackageModule{}, err
+	}
+	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
+		return EventPackageModule{}, ErrEventPackageRevisionConflict
+	}
+	item = normalizeEventPackageModule(item)
+	item.ID = id
+	item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
+	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	item.BuiltinOverridden = isBuiltin
+	if err := validateEventPackageModule(item); err != nil {
+		return EventPackageModule{}, err
+	}
+	path := filepath.Join(l.dir(), id+".json")
+	if err := writeEventPackageFile(path, item); err != nil {
+		return EventPackageModule{}, err
+	}
+	item.Path = path
+	return applyEventPackageOwnership(item), nil
+}
+
+func (l *EventPackageLibrary) Delete(id string) error {
+	id = normalizeDirectorModuleID(id)
+	if err := validateDirectorModuleID(id, "事件包"); err != nil {
+		return err
+	}
+	if IsBuiltinEventPackageID(id) {
+		item, ok := builtinEventPackageModuleByID(id)
+		if !ok {
+			return fmt.Errorf("内置事件包不存在: %s", id)
+		}
+		return writeEventPackageFile(filepath.Join(l.dir(), id+".json"), item)
+	}
+	return os.Remove(filepath.Join(l.dir(), id+".json"))
+}
+
+func (l *EventPackageLibrary) dir() string {
+	return filepath.Join(l.novaDir, "story-director-modules", "event-packages")
+}
+
+func (l *EventPackageLibrary) ensureBuiltins() error {
+	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
+		return err
+	}
+	for _, item := range builtinEventPackageModules() {
+		path := filepath.Join(l.dir(), item.ID+".json")
+		if current, err := parseEventPackageFile(path); err == nil && current.BuiltinOverridden {
+			continue
+		} else if err == nil && current.Version == item.Version {
+			continue
+		}
+		if err := writeEventPackageFile(path, item); err != nil {
+			return err
+		}
+	}
+	return l.migrateLegacyEventSystems()
+}
+
+func (l *EventPackageLibrary) migrateLegacyEventSystems() error {
+	files, err := filepath.Glob(filepath.Join(l.novaDir, "story-director-modules", "event-systems", "*.json"))
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		legacy, err := parseEventSystemFile(file)
+		if err != nil {
+			continue
+		}
+		for _, item := range eventPackageModulesFromLegacyEventSystem(legacy) {
+			path := filepath.Join(l.dir(), item.ID+".json")
+			current, currentErr := parseEventPackageFile(path)
+			if currentErr == nil {
+				if !legacy.BuiltinOverridden || current.BuiltinOverridden || !IsBuiltinEventPackageID(item.ID) {
+					continue
+				}
+			} else if !os.IsNotExist(currentErr) {
+				return currentErr
+			}
+			if err := writeEventPackageFile(path, item); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (l *EventSystemLibrary) List() ([]EventSystemModule, error) {
@@ -537,7 +733,7 @@ func (l *OpeningSelectorLibrary) ensureBuiltins() error {
 func DefaultStoryDirectorModuleRefs() StoryDirectorModuleRefs {
 	return StoryDirectorModuleRefs{
 		NarrativeStyleID:  "classic",
-		EventSystemID:     DefaultEventSystemID,
+		EventPackageIDs:   []string{DefaultEventPackageID},
 		RuleSystemID:      DefaultRuleSystemID,
 		OpeningSelectorID: DefaultOpeningSelectorID,
 		ImagePresetID:     imagepreset.DefaultID,
@@ -545,11 +741,15 @@ func DefaultStoryDirectorModuleRefs() StoryDirectorModuleRefs {
 }
 
 func NormalizeStoryDirectorModuleRefs(refs StoryDirectorModuleRefs) StoryDirectorModuleRefs {
+	eventPackageIDs := normalizeEventPackageIDs(refs.EventPackageIDs)
+	if len(eventPackageIDs) == 0 && strings.TrimSpace(refs.EventSystemID) != "" {
+		eventPackageIDs = []string{normalizeDirectorModuleID(refs.EventSystemID)}
+	}
 	return StoryDirectorModuleRefs{
 		NarrativeStyleID:        strings.TrimSpace(refs.NarrativeStyleID),
 		NarrativeStyleDisabled:  refs.NarrativeStyleDisabled,
-		EventSystemID:           normalizeDirectorModuleID(refs.EventSystemID),
-		EventSystemDisabled:     refs.EventSystemDisabled,
+		EventPackageIDs:         eventPackageIDs,
+		EventPackagesDisabled:   refs.EventPackagesDisabled || refs.EventSystemDisabled,
 		RuleSystemID:            normalizeDirectorModuleID(refs.RuleSystemID),
 		RuleSystemDisabled:      refs.RuleSystemDisabled,
 		OpeningSelectorID:       normalizeDirectorModuleID(refs.OpeningSelectorID),
@@ -562,12 +762,12 @@ func NormalizeStoryDirectorModuleRefs(refs StoryDirectorModuleRefs) StoryDirecto
 func StoryDirectorModuleRefsEmpty(refs StoryDirectorModuleRefs) bool {
 	refs = NormalizeStoryDirectorModuleRefs(refs)
 	return refs.NarrativeStyleID == "" &&
-		refs.EventSystemID == "" &&
+		len(refs.EventPackageIDs) == 0 &&
 		refs.RuleSystemID == "" &&
 		refs.OpeningSelectorID == "" &&
 		refs.ImagePresetID == "" &&
 		!refs.NarrativeStyleDisabled &&
-		!refs.EventSystemDisabled &&
+		!refs.EventPackagesDisabled &&
 		!refs.RuleSystemDisabled &&
 		!refs.OpeningSelectorDisabled &&
 		!refs.ImagePresetDisabled
@@ -578,7 +778,7 @@ func StoryDirectorNarrativeStyleEnabled(director StoryDirector) bool {
 }
 
 func StoryDirectorEventSystemEnabled(director StoryDirector) bool {
-	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).EventSystemDisabled
+	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).EventPackagesDisabled
 }
 
 func StoryDirectorRuleSystemEnabled(director StoryDirector) bool {
@@ -596,6 +796,7 @@ func StoryDirectorImagePresetEnabled(director StoryDirector) bool {
 func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDirector {
 	director = normalizeStoryDirector(director)
 	refs := NormalizeStoryDirectorModuleRefs(director.ModuleRefs)
+	refs.EventPackageIDs = expandLegacyEventPackageRefs(novaDir, refs.EventPackageIDs)
 	if StoryDirectorModuleRefsEmpty(refs) {
 		if storyDirectorHasEmbeddedModules(director) {
 			director.ResolvedSnapshot = snapshotFromEffectiveDirector(director, refs, nil)
@@ -610,16 +811,19 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	effective := director
 	effective.ModuleRefs = refs
 
-	if refs.EventSystemDisabled {
-		effective.EventSystem = StoryDirectorEventSystem{EventPackages: []TellerEventPackage{}, CustomEvents: []DirectorEvent{}}
-	} else if refs.EventSystemID != "" {
-		if module, err := NewEventSystemLibrary(novaDir).Get(refs.EventSystemID); err == nil {
-			effective.EventSystem = module.EventSystem
-		} else if !eventSystemEmpty(snapshot.EventSystem) {
-			effective.EventSystem = snapshot.EventSystem
-			warnings = append(warnings, moduleWarning("event_system", refs.EventSystemID, err))
+	if refs.EventPackagesDisabled {
+		effective.EventPackages = []TellerEventPackage{}
+	} else if len(refs.EventPackageIDs) > 0 {
+		packages, packageWarnings := resolveEventPackages(novaDir, refs.EventPackageIDs)
+		if len(packageWarnings) > 0 {
+			warnings = append(warnings, packageWarnings...)
+		}
+		if len(packages) > 0 && len(packageWarnings) == 0 {
+			effective.EventPackages = packages
+		} else if len(snapshot.EventPackages) > 0 {
+			effective.EventPackages = snapshot.EventPackages
 		} else {
-			warnings = append(warnings, moduleWarning("event_system", refs.EventSystemID, err))
+			effective.EventPackages = packages
 		}
 	}
 	if refs.RuleSystemDisabled {
@@ -676,7 +880,7 @@ func snapshotFromEffectiveDirector(director StoryDirector, refs StoryDirectorMod
 		ModuleRefs:       refs,
 		NarrativeStyleID: refs.NarrativeStyleID,
 		ImagePresetID:    refs.ImagePresetID,
-		EventSystem:      director.EventSystem,
+		EventPackages:    director.EventPackages,
 		StatSystem:       director.StatSystem,
 		TRPGSystem:       director.TRPGSystem,
 		OpeningSelector:  director.OpeningSelector,
@@ -689,6 +893,19 @@ func moduleWarning(module, id string, err error) StoryDirectorModuleWarning {
 		message = err.Error()
 	}
 	return StoryDirectorModuleWarning{Module: module, ID: id, Message: trimBytes(message, 512)}
+}
+
+func DefaultEventPackageModule() EventPackageModule {
+	config := DefaultTellerOrchestrationConfig()
+	pkg := config.EventPackages[0]
+	return normalizeEventPackageModule(EventPackageModule{
+		Version:     storyDirectorModuleVersion,
+		ID:          DefaultEventPackageID,
+		Name:        "默认事件包",
+		Description: "通用爽文与互动叙事事件卡，覆盖打脸、奇遇、冲突、恋爱、伏笔回收等基础事件。",
+		Events:      pkg.Events,
+		Tags:        []string{"内置", "事件"},
+	})
 }
 
 func DefaultEventSystemModule() EventSystemModule {
@@ -728,6 +945,11 @@ func DefaultOpeningSelectorModule() OpeningSelectorModule {
 	})
 }
 
+func IsBuiltinEventPackageID(id string) bool {
+	_, ok := builtinEventPackageModuleByID(id)
+	return ok
+}
+
 func IsBuiltinEventSystemID(id string) bool {
 	switch normalizeDirectorModuleID(id) {
 	case DefaultEventSystemID,
@@ -751,6 +973,16 @@ func IsBuiltinOpeningSelectorID(id string) bool {
 	return normalizeDirectorModuleID(id) == DefaultOpeningSelectorID
 }
 
+func builtinEventPackageModuleByID(id string) (EventPackageModule, bool) {
+	id = normalizeDirectorModuleID(id)
+	for _, item := range builtinEventPackageModules() {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return EventPackageModule{}, false
+}
+
 func builtinEventSystemModuleByID(id string) (EventSystemModule, bool) {
 	id = normalizeDirectorModuleID(id)
 	for _, item := range builtinEventSystemModules() {
@@ -759,6 +991,37 @@ func builtinEventSystemModuleByID(id string) (EventSystemModule, bool) {
 		}
 	}
 	return EventSystemModule{}, false
+}
+
+func applyEventPackageOwnership(item EventPackageModule) EventPackageModule {
+	if !IsBuiltinEventPackageID(item.ID) {
+		item.Custom = true
+		item.BuiltinOverridden = false
+		return item
+	}
+	item.Custom = false
+	item.BuiltinOverridden = item.BuiltinOverridden || eventPackageDiffersFromBuiltin(item)
+	return item
+}
+
+func eventPackageDiffersFromBuiltin(item EventPackageModule) bool {
+	builtin, ok := builtinEventPackageModuleByID(item.ID)
+	if !ok {
+		return false
+	}
+	return !reflect.DeepEqual(eventPackageComparable(item), eventPackageComparable(builtin))
+}
+
+func eventPackageComparable(item EventPackageModule) EventPackageModule {
+	item = normalizeEventPackageModule(item)
+	item.Path = ""
+	item.Custom = false
+	item.BuiltinOverridden = false
+	item.Invalid = false
+	item.Error = ""
+	item.CreatedAt = ""
+	item.UpdatedAt = ""
+	return item
 }
 
 func applyEventSystemOwnership(item EventSystemModule) EventSystemModule {
@@ -846,6 +1109,16 @@ func openingSelectorComparable(item OpeningSelectorModule) OpeningSelectorModule
 	return item
 }
 
+func normalizeEventPackageModule(item EventPackageModule) EventPackageModule {
+	item.Version = storyDirectorModuleVersion
+	item.ID = normalizeDirectorModuleID(item.ID)
+	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "事件包"), 256)
+	item.Description = trimBytes(item.Description, 1024)
+	item.Events = normalizeTellerEventCards(item.Events, item.ID)
+	item.Tags = normalizeStringListLimit(item.Tags, maxTurnBriefListItems)
+	return item
+}
+
 func normalizeEventSystemModule(item EventSystemModule) EventSystemModule {
 	item.Version = storyDirectorModuleVersion
 	item.ID = normalizeDirectorModuleID(item.ID)
@@ -887,12 +1160,15 @@ func normalizeStoryDirectorResolvedSnapshot(snapshot StoryDirectorResolvedSnapsh
 	snapshot.ModuleRefs = NormalizeStoryDirectorModuleRefs(snapshot.ModuleRefs)
 	snapshot.NarrativeStyleID = strings.TrimSpace(firstNonEmptyString(snapshot.NarrativeStyleID, snapshot.ModuleRefs.NarrativeStyleID))
 	snapshot.ImagePresetID = imagepreset.NormalizeID(firstNonEmptyString(snapshot.ImagePresetID, snapshot.ModuleRefs.ImagePresetID))
-	if snapshot.ModuleRefs.EventSystemDisabled {
-		snapshot.EventSystem.EventPackages = normalizeTellerEventPackagesNoDefault(snapshot.EventSystem.EventPackages)
-	} else {
-		snapshot.EventSystem.EventPackages = normalizeTellerEventPackages(snapshot.EventSystem.EventPackages)
+	if len(snapshot.EventPackages) == 0 && !eventSystemEmpty(snapshot.EventSystem) {
+		snapshot.EventPackages = eventPackagesFromLegacyEventSystem(snapshot.EventSystem, "snapshot")
 	}
-	snapshot.EventSystem.CustomEvents = normalizeDirectorEvents(snapshot.EventSystem.CustomEvents)
+	if snapshot.ModuleRefs.EventPackagesDisabled {
+		snapshot.EventPackages = normalizeTellerEventPackagesNoDefault(snapshot.EventPackages)
+	} else {
+		snapshot.EventPackages = normalizeTellerEventPackagesNoDefault(snapshot.EventPackages)
+	}
+	snapshot.EventSystem = StoryDirectorEventSystem{}
 	if snapshot.ModuleRefs.RuleSystemDisabled {
 		snapshot.StatSystem.Attributes = normalizeStoryDirectorAttributesNoDefault(snapshot.StatSystem.Attributes)
 	} else {
@@ -914,6 +1190,16 @@ func normalizeStoryDirectorResolvedSnapshot(snapshot StoryDirectorResolvedSnapsh
 	}
 	snapshot.Warnings = outWarnings
 	return snapshot
+}
+
+func validateEventPackageModule(item EventPackageModule) error {
+	if err := validateDirectorModuleID(item.ID, "事件包"); err != nil {
+		return err
+	}
+	if strings.TrimSpace(item.Name) == "" {
+		return errors.New("事件包名称不能为空")
+	}
+	return nil
 }
 
 func validateEventSystemModule(item EventSystemModule) error {
@@ -965,6 +1251,23 @@ func validateOpeningSelectorModule(item OpeningSelectorModule) error {
 	return nil
 }
 
+func parseEventPackageFile(path string) (EventPackageModule, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return EventPackageModule{}, err
+	}
+	var item EventPackageModule
+	if err := json.Unmarshal(data, &item); err != nil {
+		return EventPackageModule{}, fmt.Errorf("解析事件包 JSON 失败: %w", err)
+	}
+	item = normalizeEventPackageModule(item)
+	if err := validateEventPackageModule(item); err != nil {
+		return EventPackageModule{}, err
+	}
+	item.Path = path
+	return item, nil
+}
+
 func parseEventSystemFile(path string) (EventSystemModule, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -1014,6 +1317,18 @@ func parseOpeningSelectorFile(path string) (OpeningSelectorModule, error) {
 	}
 	item.Path = path
 	return item, nil
+}
+
+func writeEventPackageFile(path string, item EventPackageModule) error {
+	item = normalizeEventPackageModule(item)
+	data, err := json.MarshalIndent(item, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
 func writeEventSystemFile(path string, item EventSystemModule) error {
@@ -1070,6 +1385,15 @@ func newDirectorModuleID(prefix string) string {
 	return fmt.Sprintf("%s-%d", prefix, time.Now().Unix())
 }
 
+func sortEventPackages(items []EventPackageModule) {
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Custom != items[j].Custom {
+			return !items[i].Custom
+		}
+		return items[i].ID < items[j].ID
+	})
+}
+
 func sortEventSystems(items []EventSystemModule) {
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Custom != items[j].Custom {
@@ -1097,8 +1421,213 @@ func sortOpeningSelectors(items []OpeningSelectorModule) {
 	})
 }
 
+func normalizeEventPackageIDs(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	seen := map[string]bool{}
+	for _, id := range ids {
+		id = normalizeDirectorModuleID(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+		if len(out) >= maxTurnBriefListItems {
+			break
+		}
+	}
+	return out
+}
+
+func expandLegacyEventPackageRefs(novaDir string, ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range normalizeEventPackageIDs(ids) {
+		expanded := eventPackageIDsFromLegacyEventSystemID(novaDir, id)
+		if len(expanded) == 0 {
+			expanded = []string{id}
+		}
+		out = append(out, expanded...)
+	}
+	return normalizeEventPackageIDs(out)
+}
+
+func eventPackageIDsFromLegacyEventSystemID(novaDir, id string) []string {
+	switch normalizeDirectorModuleID(id) {
+	case "":
+		return nil
+	case DefaultEventSystemID:
+		return []string{DefaultEventPackageID}
+	case GenreXuanhuanEventSystemID:
+		return []string{GenreXuanhuanEventPackageID}
+	case GenreXiuxianEventSystemID:
+		return []string{GenreXiuxianEventPackageID}
+	case GenreApocalypseEventSystemID:
+		return []string{GenreApocalypseEventPackageID}
+	case GenreWesternEventSystemID:
+		return []string{GenreWesternEventPackageID}
+	case GenreUrbanEventSystemID:
+		return []string{GenreUrbanEventPackageID}
+	case GenreTRPGEventSystemID:
+		return []string{GenreTRPGEventPackageID}
+	}
+	if strings.TrimSpace(novaDir) == "" {
+		return nil
+	}
+	item, err := parseEventSystemFile(filepath.Join(novaDir, "story-director-modules", "event-systems", normalizeDirectorModuleID(id)+".json"))
+	if err != nil {
+		return nil
+	}
+	ids := make([]string, 0, len(item.EventSystem.EventPackages)+1)
+	for _, module := range eventPackageModulesFromLegacyEventSystem(item) {
+		ids = append(ids, module.ID)
+	}
+	return normalizeEventPackageIDs(ids)
+}
+
+func resolveEventPackages(novaDir string, ids []string) ([]TellerEventPackage, []StoryDirectorModuleWarning) {
+	library := NewEventPackageLibrary(novaDir)
+	packages := make([]TellerEventPackage, 0, len(ids))
+	warnings := []StoryDirectorModuleWarning{}
+	for _, id := range normalizeEventPackageIDs(ids) {
+		module, err := library.Get(id)
+		if err != nil {
+			warnings = append(warnings, moduleWarning("event_packages", id, err))
+			continue
+		}
+		packages = append(packages, tellerEventPackageFromModule(module))
+	}
+	return normalizeTellerEventPackagesNoDefault(packages), warnings
+}
+
+func tellerEventPackageFromModule(module EventPackageModule) TellerEventPackage {
+	module = normalizeEventPackageModule(module)
+	return TellerEventPackage{
+		ID:      module.ID,
+		Name:    module.Name,
+		Enabled: true,
+		Events:  module.Events,
+	}
+}
+
+func eventPackageModulesFromLegacyEventSystem(item EventSystemModule) []EventPackageModule {
+	item = normalizeEventSystemModule(item)
+	modules := make([]EventPackageModule, 0, len(item.EventSystem.EventPackages)+1)
+	for _, pkg := range item.EventSystem.EventPackages {
+		module := eventPackageModuleFromTellerPackage(pkg, item)
+		if module.ID == "" {
+			continue
+		}
+		modules = append(modules, module)
+	}
+	if len(item.EventSystem.CustomEvents) > 0 {
+		modules = append(modules, eventPackageModuleFromCustomEvents(item))
+	}
+	return modules
+}
+
+func eventPackageModuleFromTellerPackage(pkg TellerEventPackage, source EventSystemModule) EventPackageModule {
+	pkg.ID = legacyEventPackageIDForSystemPackage(source.ID, pkg.ID)
+	if pkg.ID == "" {
+		pkg.ID = normalizeDirectorModuleID(source.ID + "-events")
+	}
+	return normalizeEventPackageModule(EventPackageModule{
+		Version:           storyDirectorModuleVersion,
+		ID:                pkg.ID,
+		Name:              firstNonEmptyString(pkg.Name, source.Name, pkg.ID),
+		Description:       firstNonEmptyString(source.Description, "由旧事件系统迁移生成。"),
+		Events:            pkg.Events,
+		Tags:              source.Tags,
+		BuiltinOverridden: source.BuiltinOverridden && IsBuiltinEventPackageID(pkg.ID),
+		CreatedAt:         source.CreatedAt,
+		UpdatedAt:         source.UpdatedAt,
+	})
+}
+
+func legacyEventPackageIDForSystemPackage(systemID, packageID string) string {
+	systemID = normalizeDirectorModuleID(systemID)
+	packageID = normalizeDirectorModuleID(packageID)
+	switch systemID {
+	case DefaultEventSystemID:
+		return DefaultEventPackageID
+	case GenreXuanhuanEventSystemID:
+		return GenreXuanhuanEventPackageID
+	case GenreXiuxianEventSystemID:
+		return GenreXiuxianEventPackageID
+	case GenreApocalypseEventSystemID:
+		return GenreApocalypseEventPackageID
+	case GenreWesternEventSystemID:
+		return GenreWesternEventPackageID
+	case GenreUrbanEventSystemID:
+		return GenreUrbanEventPackageID
+	case GenreTRPGEventSystemID:
+		return GenreTRPGEventPackageID
+	default:
+		return packageID
+	}
+}
+
+func eventPackageModuleFromCustomEvents(source EventSystemModule) EventPackageModule {
+	id := normalizeDirectorModuleID(source.ID + "-custom-events")
+	cards := make([]TellerEventCard, 0, len(source.EventSystem.CustomEvents))
+	for i, event := range source.EventSystem.CustomEvents {
+		card := eventCardFromDirectorEvent(event, fmt.Sprintf("%s-custom-%d", source.ID, i+1))
+		if card.ID != "" {
+			cards = append(cards, card)
+		}
+	}
+	return normalizeEventPackageModule(EventPackageModule{
+		Version:     storyDirectorModuleVersion,
+		ID:          id,
+		Name:        firstNonEmptyString(source.Name, source.ID) + " 迁移事件包",
+		Description: "由旧事件系统 custom_events 自动迁移生成。",
+		Events:      cards,
+		Tags:        append(normalizeStringListLimit(source.Tags, maxTurnBriefListItems), "迁移"),
+		CreatedAt:   source.CreatedAt,
+		UpdatedAt:   source.UpdatedAt,
+	})
+}
+
+func eventPackagesFromLegacyEventSystem(system StoryDirectorEventSystem, sourceID string) []TellerEventPackage {
+	system.EventPackages = normalizeTellerEventPackagesNoDefault(system.EventPackages)
+	system.CustomEvents = normalizeDirectorEvents(system.CustomEvents)
+	packages := make([]TellerEventPackage, 0, len(system.EventPackages)+1)
+	packages = append(packages, system.EventPackages...)
+	if len(system.CustomEvents) > 0 {
+		module := eventPackageModuleFromCustomEvents(EventSystemModule{
+			ID:          firstNonEmptyString(sourceID, "legacy"),
+			Name:        "迁移事件",
+			EventSystem: StoryDirectorEventSystem{CustomEvents: system.CustomEvents},
+		})
+		packages = append(packages, tellerEventPackageFromModule(module))
+	}
+	return normalizeTellerEventPackagesNoDefault(packages)
+}
+
+func eventCardFromDirectorEvent(event DirectorEvent, fallbackID string) TellerEventCard {
+	normalized := normalizeDirectorEvents([]DirectorEvent{event})
+	if len(normalized) == 0 {
+		return TellerEventCard{}
+	}
+	event = normalized[0]
+	description := strings.TrimSpace(event.Template)
+	if description == "" {
+		description = strings.TrimSpace(firstNonEmptyString(event.Summary, event.PublicSummary, event.Name))
+	}
+	return TellerEventCard{
+		ID:                  firstNonEmptyString(event.ID, normalizeSlotID(fallbackID)),
+		TypeName:            firstNonEmptyString(event.Name, event.ID, fallbackID),
+		DescriptionMarkdown: description,
+		Enabled:             event.Enabled,
+		Category:            event.Category,
+		Tags:                event.CompatibleGenres,
+		Weight:              event.Weight,
+		CooldownTurns:       event.CooldownTurns,
+		Intensity:           event.Intensity,
+	}
+}
+
 func storyDirectorHasEmbeddedModules(director StoryDirector) bool {
-	return !eventSystemEmpty(director.EventSystem) ||
+	return len(director.EventPackages) > 0 ||
+		!eventSystemEmpty(director.EventSystem) ||
 		!ruleSystemEmpty(director.StatSystem, director.TRPGSystem) ||
 		!openingSelectorEmpty(director.OpeningSelector)
 }

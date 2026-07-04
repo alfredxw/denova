@@ -40,7 +40,6 @@ type interactiveConversation struct {
 	lastSources          string
 	displayEvents        []interactive.DisplayEvent
 	modelContextMessages []interactive.ModelContextMessage
-	turnBrief            *interactive.TurnBrief
 	ruleResolution       *interactive.RuleResolution
 }
 
@@ -132,7 +131,7 @@ func (c *interactiveConversation) ContextSourceSummary() string {
 	return c.lastSources
 }
 
-func (c *interactiveConversation) PrepareInteractiveTurn(ctx context.Context, brief interactive.TurnBrief) (interactive.RuleResolution, error) {
+func (c *interactiveConversation) PrepareInteractiveTurn(ctx context.Context, request interactive.TurnCheckRequest) (interactive.RuleResolution, error) {
 	if c == nil || c.store == nil {
 		return interactive.RuleResolution{}, fmt.Errorf("互动故事不存在")
 	}
@@ -145,13 +144,11 @@ func (c *interactiveConversation) PrepareInteractiveTurn(ctx context.Context, br
 		return interactive.RuleResolution{}, ctx.Err()
 	default:
 	}
-	resolution, err := interactive.ResolveTurnRules(c.storyID, storyCtx.Snapshot.BranchID, storyCtx.Snapshot.State, brief)
+	resolution, err := interactive.ResolveTurnRules(c.storyID, storyCtx.Snapshot.BranchID, storyCtx.Snapshot.State, request)
 	if err != nil {
 		return interactive.RuleResolution{}, err
 	}
 	c.mu.Lock()
-	acceptedBrief := resolution.AcceptedBrief
-	c.turnBrief = &acceptedBrief
 	c.ruleResolution = &resolution
 	c.mu.Unlock()
 	return resolution, nil
@@ -394,7 +391,6 @@ func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking 
 		Thinking:             thinking,
 		DisplayEvents:        c.displayEventsSnapshot(),
 		ModelContextMessages: c.modelContextMessagesSnapshot(),
-		TurnBrief:            c.turnBriefSnapshot(),
 		RuleResolution:       c.ruleResolutionSnapshot(),
 		TerminalOutcome:      c.terminalOutcomeSnapshot(narrative),
 	})
@@ -704,16 +700,6 @@ func (c *interactiveConversation) modelContextMessagesSnapshot() []interactive.M
 	return result
 }
 
-func (c *interactiveConversation) turnBriefSnapshot() *interactive.TurnBrief {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.turnBrief == nil {
-		return nil
-	}
-	brief := *c.turnBrief
-	return &brief
-}
-
 func (c *interactiveConversation) ruleResolutionSnapshot() *interactive.RuleResolution {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -864,7 +850,6 @@ func interactiveDirectorTurnAudit(turn interactive.TurnEvent) map[string]any {
 		"branch_id":        turn.BranchID,
 		"user_action":      turn.User,
 		"narrative":        turn.Narrative,
-		"turn_brief":       turn.TurnBrief,
 		"rule_resolution":  turn.RuleResolution,
 		"terminal_outcome": turn.TerminalOutcome,
 	}

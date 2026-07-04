@@ -15,9 +15,9 @@ import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { type LoreItem, workspaceAssetURL } from '@/lib/api'
 import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpeningPreset } from '../opening'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
-import type { DirectorPlanDocs, EventSystemModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorEventSystem, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, Teller } from '../types'
+import type { DirectorPlanDocs, EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, Teller, TellerEventPackage } from '../types'
 import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
-import { EventSystemVisualEditor, OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
+import { EventPackageVisualEditor, OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -301,26 +301,26 @@ export function TellerDirectory({
   tellers,
   storyDirectors,
   imagePresets,
-  eventSystems,
+  eventPackages,
   ruleSystems,
   openingSelectors,
   activeTellerId,
   activeStoryDirectorId,
   activeImagePresetId,
-  activeEventSystemId,
+  activeEventPackageId,
   activeRuleSystemId,
   activeOpeningSelectorId,
   saving,
   onSelectTeller,
   onSelectStoryDirector,
   onSelectImagePreset,
-  onSelectEventSystem,
+  onSelectEventPackage,
   onSelectRuleSystem,
   onSelectOpeningSelector,
   onCreateTeller,
   onCreateStoryDirector,
   onCreateImagePreset,
-  onCreateEventSystem,
+  onCreateEventPackage,
   onCreateRuleSystem,
   onCreateOpeningSelector,
   usageMode,
@@ -330,26 +330,26 @@ export function TellerDirectory({
   tellers: Teller[]
   storyDirectors: StoryDirector[]
   imagePresets: ImagePreset[]
-  eventSystems: EventSystemModule[]
+  eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   openingSelectors: OpeningSelectorModule[]
   activeTellerId: string
   activeStoryDirectorId: string
   activeImagePresetId: string
-  activeEventSystemId: string
+  activeEventPackageId: string
   activeRuleSystemId: string
   activeOpeningSelectorId: string
   saving: boolean
   onSelectTeller: (id: string) => void
   onSelectStoryDirector: (id: string) => void
   onSelectImagePreset: (id: string) => void
-  onSelectEventSystem: (id: string) => void
+  onSelectEventPackage: (id: string) => void
   onSelectRuleSystem: (id: string) => void
   onSelectOpeningSelector: (id: string) => void
   onCreateTeller: () => void
   onCreateStoryDirector: () => void
   onCreateImagePreset: () => void
-  onCreateEventSystem: () => void
+  onCreateEventPackage: () => void
   onCreateRuleSystem: () => void
   onCreateOpeningSelector: () => void
 }) {
@@ -398,8 +398,8 @@ export function TellerDirectory({
       onSelectStoryDirector(storyDirectors[0].id)
       return
     }
-    if (presetResourceVisibleInMode('event', usageMode) && eventSystems[0]) {
-      onSelectEventSystem(eventSystems[0].id)
+    if (presetResourceVisibleInMode('event', usageMode) && eventPackages[0]) {
+      onSelectEventPackage(eventPackages[0].id)
       return
     }
     if (presetResourceVisibleInMode('rule', usageMode) && ruleSystems[0]) {
@@ -409,7 +409,7 @@ export function TellerDirectory({
     if (presetResourceVisibleInMode('opening', usageMode) && openingSelectors[0]) {
       onSelectOpeningSelector(openingSelectors[0].id)
     }
-  }, [eventSystems, imagePresets, isConfigAgentActive, onSelectEventSystem, onSelectImagePreset, onSelectOpeningSelector, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, openingSelectors, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
+  }, [eventPackages, imagePresets, isConfigAgentActive, onSelectEventPackage, onSelectImagePreset, onSelectOpeningSelector, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, openingSelectors, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
 
   return (
     <>
@@ -521,21 +521,21 @@ export function TellerDirectory({
               kind="event"
               label={presetKindDirectoryLabel('event', t)}
               Icon={ScrollText}
-              count={eventSystems.length}
+              count={eventPackages.length}
               createLabel={presetKindCreateLabel('event', t)}
               saving={saving}
               collapsed={isCollapsed('event')}
               onToggle={() => toggleSection('event')}
-              onCreate={onCreateEventSystem}
+              onCreate={onCreateEventPackage}
             >
-              {eventSystems.map((item) => (
+              {eventPackages.map((item) => (
                 <PresetDirectoryItem
                   key={item.id}
-                  active={!isConfigAgentActive && resourceKind === 'event' && activeEventSystemId === item.id}
+                  active={!isConfigAgentActive && resourceKind === 'event' && activeEventPackageId === item.id}
                   Icon={ScrollText}
                   title={item.name}
-                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.eventSystem.summaryCount', { count: eventSystemSummaryCount(item) })}`}
-                  onSelect={() => onSelectEventSystem(item.id)}
+                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.eventPackage.summaryCount', { count: eventPackageSummaryCount(item) })}`}
+                  onSelect={() => onSelectEventPackage(item.id)}
                 />
               ))}
             </PresetDirectorySection>
@@ -695,7 +695,7 @@ function presetStatusLabel(item: { custom?: boolean; builtin_overridden?: boolea
 export function StoryDirectorEditor({
   draft,
   tellers,
-  eventSystems,
+  eventPackages,
   ruleSystems,
   openingSelectors,
   imagePresets,
@@ -707,7 +707,7 @@ export function StoryDirectorEditor({
 }: {
   draft: StoryDirector | null
   tellers: Teller[]
-  eventSystems: EventSystemModule[]
+  eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   openingSelectors: OpeningSelectorModule[]
   imagePresets: ImagePreset[]
@@ -778,6 +778,13 @@ export function StoryDirectorEditor({
       },
     })
   }
+  const resolvedEventPackages = directorResolvedEventPackages(draft)
+  const selectedEventPackageIDs = refs.event_package_ids || ['default']
+  const selectedEventCardCount = selectedEventPackageIDs.reduce((total, id) => {
+    const module = eventPackages.find((item) => item.id === id)
+    const resolved = resolvedEventPackages.find((item) => item.id === id)
+    return total + (module?.events?.length ?? resolved?.events?.length ?? 0)
+  }, 0)
 
   const emptySections = newEmptyStoryDirectorSections()
 
@@ -816,14 +823,14 @@ export function StoryDirectorEditor({
               onChange={(value) => updateModuleRef('narrative_style_id', value)}
               onEnabledChange={(enabled) => updateModuleRef('narrative_style_disabled', !enabled)}
             />
-            <ModuleSelect
+            <EventPackageMultiSelect
               label={t('settingPanel.presetKind.event')}
-              value={refs.event_system_id || ''}
-              fallbackValue="default"
-              enabled={!refs.event_system_disabled}
-              items={eventSystems}
-              onChange={(value) => updateModuleRef('event_system_id', value)}
-              onEnabledChange={(enabled) => updateModuleRef('event_system_disabled', !enabled)}
+              values={refs.event_package_ids || ['default']}
+              fallbackValues={['default']}
+              enabled={!refs.event_packages_disabled}
+              items={eventPackages}
+              onChange={(value) => updateModuleRef('event_package_ids', value)}
+              onEnabledChange={(enabled) => updateModuleRef('event_packages_disabled', !enabled)}
             />
             <ModuleSelect
               label={t('settingPanel.presetKind.rule')}
@@ -1006,19 +1013,35 @@ export function StoryDirectorEditor({
             ) : null}
           </div>
         </section>
-        <PresetConfigSectionEditor
-          sectionId="story-director.event-system"
-          resetKey={`${draft.id}:event_system`}
-          title={t('settingPanel.storyDirector.eventSystem')}
-          description={t('settingPanel.storyDirector.eventSystemDesc')}
-          value={draft.event_system || emptySections.event_system}
-          summary={t('settingPanel.storyDirector.eventSystemSummary', { packages: draft.event_system?.event_packages?.length || 0, cards: directorEventCardCount(draft.event_system), events: draft.event_system?.custom_events?.length || 0 })}
-          onChange={(event_system) => setDraft({ ...draft, event_system })}
-          onSave={onSave}
-          onValidityChange={(valid) => setSectionValid('event_system', valid)}
-        >
-          {(props) => <EventSystemVisualEditor {...props} />}
-        </PresetConfigSectionEditor>
+        <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.storyDirector.eventPackages')}</div>
+              <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.eventPackagesDesc')}</div>
+            </div>
+            <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-[11px] text-[var(--nova-text-faint)]">
+              {t('settingPanel.storyDirector.eventPackagesSummary', { packages: selectedEventPackageIDs.length, cards: selectedEventCardCount })}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {selectedEventPackageIDs.map((id) => {
+              const module = eventPackages.find((item) => item.id === id)
+              const resolved = resolvedEventPackages.find((item) => item.id === id)
+              const cardCount = module?.events?.length ?? resolved?.events?.length ?? 0
+              return (
+                <div key={id} className="min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2">
+                  <div className="truncate text-xs text-[var(--nova-text)]">{module?.name || resolved?.name || id}</div>
+                  <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">
+                    {module?.invalid ? `${t('settingPanel.invalid')} · ` : ''}{t('settingPanel.eventPackage.summaryCount', { count: cardCount })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {refs.event_packages_disabled ? (
+            <div className="mt-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.eventPackagesDisabled')}</div>
+          ) : null}
+        </section>
         <PresetConfigSectionEditor
           sectionId="story-director.stat-system"
           resetKey={`${draft.id}:stat_system`}
@@ -1063,7 +1086,7 @@ export function StoryDirectorEditor({
   )
 }
 
-export function EventSystemEditor({
+export function EventPackageEditor({
   draft,
   tagDraft,
   setDraft,
@@ -1071,9 +1094,9 @@ export function EventSystemEditor({
   onSave,
   onValidityChange,
 }: {
-  draft: EventSystemModule | null
+  draft: EventPackageModule | null
   tagDraft: string
-  setDraft: (draft: EventSystemModule | null) => void
+  setDraft: (draft: EventPackageModule | null) => void
   setTagDraft: (value: string) => void
   onSave: () => void
   onValidityChange?: (valid: boolean) => void
@@ -1081,23 +1104,23 @@ export function EventSystemEditor({
   const { t } = useTranslation()
 
   if (!draft) {
-    return <EmptyState title={t('settingPanel.editor.noEventSystemSelected')} description={t('settingPanel.editor.noEventSystemSelectedDesc')} />
+    return <EmptyState title={t('settingPanel.editor.noEventPackageSelected')} description={t('settingPanel.editor.noEventPackageSelectedDesc')} />
   }
 
   return (
     <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
       <PresetConfigSectionEditor
-        sectionId="event-system.event-system"
-        resetKey={`${draft.id}:event_system`}
-        title={t('settingPanel.storyDirector.eventSystem')}
-        description={t('settingPanel.storyDirector.eventSystemDesc')}
-        value={draft.event_system || { event_packages: [], custom_events: [] }}
-        summary={t('settingPanel.storyDirector.eventSystemSummary', { packages: draft.event_system?.event_packages?.length || 0, cards: directorEventCardCount(draft.event_system), events: draft.event_system?.custom_events?.length || 0 })}
-        onChange={(event_system) => setDraft({ ...draft, event_system })}
+        sectionId="event-package.events"
+        resetKey={`${draft.id}:events`}
+        title={t('settingPanel.presetConfig.eventCards')}
+        description={t('settingPanel.editor.eventPackageEventsDesc')}
+        value={draft}
+        summary={t('settingPanel.eventPackage.summaryCount', { count: eventPackageSummaryCount(draft) })}
+        onChange={setDraft}
         onSave={onSave}
         onValidityChange={onValidityChange}
       >
-        {(props) => <EventSystemVisualEditor {...props} />}
+        {(props) => <EventPackageVisualEditor {...props} />}
       </PresetConfigSectionEditor>
     </ModuleEditorShell>
   )
@@ -1406,12 +1429,75 @@ function ModuleSelect<T extends { id: string; name: string; custom?: boolean; in
   )
 }
 
+function EventPackageMultiSelect<T extends { id: string; name: string; invalid?: boolean }>({
+  label,
+  values,
+  fallbackValues,
+  enabled,
+  items,
+  onChange,
+  onEnabledChange,
+}: {
+  label: string
+  values: string[]
+  fallbackValues: string[]
+  enabled: boolean
+  items: T[]
+  onChange: (values: string[]) => void
+  onEnabledChange: (enabled: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const selectedValues = normalizeIDList(values.length ? values : fallbackValues)
+  const selectedSet = new Set(selectedValues)
+  const switchLabel = enabled
+    ? t('settingPanel.storyDirector.disableModule', { module: label })
+    : t('settingPanel.storyDirector.enableModule', { module: label })
+  const toggleValue = (id: string, checked: boolean) => {
+    const next = checked
+      ? normalizeIDList([...selectedValues, id])
+      : selectedValues.filter((value) => value !== id)
+    onChange(next.length ? next : fallbackValues)
+  }
+
+  return (
+    <div className="grid min-w-0 gap-1.5 md:col-span-2 xl:col-span-1">
+      <div className="flex h-5 items-center justify-between gap-2">
+        <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{label}</span>
+        <Switch checked={enabled} onCheckedChange={onEnabledChange} aria-label={switchLabel} title={switchLabel} />
+      </div>
+      <div className={`grid max-h-36 min-h-8 gap-1 overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 ${enabled ? '' : 'opacity-60'}`}>
+        {items.length > 0 ? items.map((item) => (
+          <label key={item.id} className="flex min-h-7 cursor-pointer items-center gap-2 rounded px-2 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5 shrink-0 accent-[var(--nova-accent)]"
+              checked={selectedSet.has(item.id)}
+              disabled={!enabled}
+              onChange={(event) => toggleValue(item.id, event.target.checked)}
+            />
+            <span className="min-w-0 flex-1 truncate">{item.name}</span>
+            {item.invalid ? <span className="shrink-0 text-[10px] text-[var(--nova-danger)]">{t('settingPanel.invalid')}</span> : null}
+          </label>
+        )) : (
+          <div className="px-2 py-1.5 text-xs text-[var(--nova-text-faint)]">{fallbackValues.join(', ')}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function normalizedStoryDirectorRefs(refs: StoryDirectorModuleRefs | undefined): StoryDirectorModuleRefs {
+  const legacyEventPackageID = refs?.event_system_id || ''
+  const eventPackageIDs = refs?.event_package_ids?.length
+    ? refs.event_package_ids
+    : legacyEventPackageID
+      ? [legacyEventPackageID]
+      : ['default']
   return {
     narrative_style_id: refs?.narrative_style_id || 'classic',
     narrative_style_disabled: refs?.narrative_style_disabled === true,
-    event_system_id: refs?.event_system_id || 'default',
-    event_system_disabled: refs?.event_system_disabled === true,
+    event_package_ids: normalizeIDList(eventPackageIDs),
+    event_packages_disabled: refs?.event_packages_disabled === true || refs?.event_system_disabled === true,
     rule_system_id: refs?.rule_system_id || 'default',
     rule_system_disabled: refs?.rule_system_disabled === true,
     opening_selector_id: refs?.opening_selector_id || 'default',
@@ -1421,26 +1507,45 @@ function normalizedStoryDirectorRefs(refs: StoryDirectorModuleRefs | undefined):
   }
 }
 
+function normalizeIDList(ids: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const raw of ids) {
+    const id = raw.trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    result.push(id)
+  }
+  return result
+}
+
 function storyDirectorSummaryCount(director: StoryDirector) {
-  return directorEventCardCount(director.event_system)
-    + (director.event_system?.custom_events?.length || 0)
+  return directorEventCardCount(directorResolvedEventPackages(director))
     + (director.stat_system?.attributes?.length || 0)
     + (director.trpg_system?.rule_templates?.length || 0)
     + (director.opening_selector?.trait_pools?.length || 0)
 }
 
-function directorEventCardCount(eventSystem: StoryDirectorEventSystem | undefined) {
-  return (eventSystem?.event_packages || []).reduce((total, pkg) => total + (pkg.events?.length || 0), 0)
+function directorResolvedEventPackages(director: StoryDirector): TellerEventPackage[] {
+  return director.event_packages?.length
+    ? director.event_packages
+    : director.resolved_snapshot?.event_packages?.length
+      ? director.resolved_snapshot.event_packages
+      : director.resolved_snapshot?.event_system?.event_packages || []
 }
 
-function eventSystemSummaryCount(item: EventSystemModule) {
-  return directorEventCardCount(item.event_system) + (item.event_system?.custom_events?.length || 0)
+function directorEventCardCount(eventPackages: TellerEventPackage[] | undefined) {
+  return (eventPackages || []).reduce((total, pkg) => total + (pkg.events?.length || 0), 0)
+}
+
+function eventPackageSummaryCount(item: EventPackageModule) {
+  return item.events?.length || 0
 }
 
 function presetKindDirectoryLabel(kind: PresetResourceKind, t: (key: string) => string) {
   if (kind === 'image') return t('settingPanel.imagePresetDirectory')
   if (kind === 'director') return t('settingPanel.storyDirectorDirectory')
-  if (kind === 'event') return t('settingPanel.eventSystemDirectory')
+  if (kind === 'event') return t('settingPanel.eventPackageDirectory')
   if (kind === 'rule') return t('settingPanel.ruleSystemDirectory')
   if (kind === 'opening') return t('settingPanel.openingSelectorDirectory')
   return t('settingPanel.rulePackages')
@@ -1449,20 +1554,18 @@ function presetKindDirectoryLabel(kind: PresetResourceKind, t: (key: string) => 
 function presetKindCreateLabel(kind: PresetResourceKind, t: (key: string) => string) {
   if (kind === 'image') return t('settingPanel.newImagePreset')
   if (kind === 'director') return t('settingPanel.newStoryDirector')
-  if (kind === 'event') return t('settingPanel.newEventSystem')
+  if (kind === 'event') return t('settingPanel.newEventPackage')
   if (kind === 'rule') return t('settingPanel.newRuleSystem')
   if (kind === 'opening') return t('settingPanel.newOpeningSelector')
   return t('settingPanel.newTeller')
 }
 
 function newEmptyStoryDirectorSections(): {
-  event_system: StoryDirectorEventSystem
   stat_system: StoryDirectorStatSystem
   trpg_system: StoryDirectorTRPGSystem
   opening_selector: StoryDirectorOpeningSelector
 } {
   return {
-    event_system: { event_packages: [], custom_events: [] },
     stat_system: { attributes: [] },
     trpg_system: { rule_templates: [] },
     opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },

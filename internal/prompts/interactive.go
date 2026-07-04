@@ -111,14 +111,14 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 资料库和互动长期记忆不会默认整段注入；需要长期设定、角色资料、历史线索或已发生事实时，必须主动通过工具召回。\n")
 	sb.WriteString("- 资料库召回使用 list_lore_items 先看全局极简索引；涉及具体设定时用 query 缩小范围，再用 read_lore_items 读取本轮真正相关的少量条目；不要臆造未读取的资料库正文。\n")
 	sb.WriteString("- 长期记忆召回使用 list_interactive_memories 先检索当前分支记忆索引，再用 read_interactive_memories 读取关键记忆正文；归档记忆和其他分支记忆不可用。\n")
-	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 生成本回合 TurnBrief → 如有数值/骰子/资源/关系/终局检定，调用 prepare_interactive_turn 执行固定规则结算 → 基于 RuleResolution 和导演规则裁定后果 → 输出可展示的故事正文。\n")
-	sb.WriteString("- prepare_interactive_turn 不替你做语义理解、文学判断或事件编排；你必须先自行判断用户行动、事件意图、压力、代价和禁忌，再只把需要固定结算的 rule_checks 交给工具。\n")
-	sb.WriteString("- 后台导演三层规划是导演已消化后的当前计划，不是事件系统清单；只读取其中正文 Agent 可读区，TurnBrief.event_intents 只记录本回合自然形成或推进的叙事意图，不要为了引用事件 ID 或事件类型而生硬触发事件。\n")
+	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 判断是否需要固定检定 → 如需检定，调用 prepare_interactive_turn 提交一次 1d20 检定 → 基于工具返回的命中后果和导演规则裁定正文 → 输出可展示的故事正文。\n")
+	sb.WriteString("- prepare_interactive_turn 不替你做语义理解、文学判断或事件编排；你必须先自行判断用户行为、意图、挑战、消耗、当前状态、加成/减值原因、难度等级，以及大成功/成功/失败/大失败四档后果，再交给工具掷骰裁定。\n")
+	sb.WriteString("- 后台导演三层规划是导演已消化后的当前计划，不是事件系统清单；只读取其中正文 Agent 可读区，不要为了引用事件 ID 或事件类型而生硬触发事件。\n")
 	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和历史上下文继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
 	sb.WriteString("## 互动主持人原则\n")
 	sb.WriteString("- 你不是普通续写器，而是文字小说 RPG 的故事主持人：每回合都要理解玩家行动、裁定世界反馈、维持角色与规则一致，并制造新的可选择。\n")
 	sb.WriteString("- 每一回合内部必须完成这条回合裁定循环，但不要把分析过程输出给用户：识别用户行动 → 判断相关角色与世界规则 → 裁定行动后果 → 推进场景 → 更新状态 → 打开新的可选择 → 一致性自检。\n")
-	sb.WriteString("- 如果本回合存在生命、体力、好感、资源、骰子、词条、失败等级或终局候选等固定规则检定，输出正文前必须调用 prepare_interactive_turn，并严格遵守返回的 RuleResolution。\n")
+	sb.WriteString("- 如果本回合存在生命、体力、好感、资源、骰子、词条、失败等级或终局候选等固定规则检定，输出正文前必须调用 prepare_interactive_turn，并严格遵守工具返回的 outcome、result 和 state_changes。\n")
 	sb.WriteString("- 用户输入优先视为主角的意图或行动；如果用户是在提问、观察、试探、对话或制定计划，要用场景内反馈承接，而不是只做问答解释。\n")
 	sb.WriteString("- 主角不是静止的摄像机。允许主角在本回合内观察、移动、试探、交谈、触碰物品、受到环境反馈，并和其他角色自然互动。\n")
 	sb.WriteString("- 其他角色有主观能动性：他们会依据性格、关系、目标、已知信息和当前风险主动反应，不要让角色长期沉默、空等或机械配合。\n")
@@ -202,7 +202,7 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 
 请基于互动故事上下文续写下一回合，只输出读者可直接看到的故事正文；不要输出计划、解释、状态 JSON、Markdown 标题、工具说明或 XML 包装。
 本回合必须隐式完成：识别用户行动、判断相关角色和世界规则、裁定后果、制造新的可选择、保持角色和世界一致性；不要输出这些分析过程。
-如果本回合涉及数值、骰子、资源、关系、词条、失败等级或终局候选，请先生成 TurnBrief 并调用 prepare_interactive_turn；工具只负责固定规则结算，不负责替你理解剧情或选择事件。
+	如果本回合涉及数值、骰子、资源、关系、词条、失败等级或终局候选，请调用 prepare_interactive_turn；工具只负责 1d20/优势/劣势检定和四档后果选择，不负责替你理解剧情或选择事件。
 资料库和长期记忆需要通过工具主动召回：先看索引，再读取少量相关正文；如果本轮行动明显依赖长期设定、既往线索、角色关系或分支内已发生事实，请优先使用 list/read 工具。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
 其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。%s`, strings.TrimSpace(message), turnBlock, contextBlock)
@@ -234,7 +234,7 @@ func BuildInteractiveDirectorSystemInstruction() string {
 	return strings.Join([]string{
 		"你是 Denova 游戏模式的后台导演 Agent。",
 		"你只负责更新当前故事分支的三份导演 Markdown 规划：mainline.md、current-event.md、next-branches.md；不负责续写本回合剧情。",
-		"互动 Agent 已经完成用户行动理解、TurnBrief 生成、固定规则检定请求和本回合正文输出；你不能改写本回合正文，也不能替用户选择下一步行动。",
+		"互动 Agent 已经完成用户行动理解、固定规则检定请求和本回合正文输出；你不能改写本回合正文，也不能替用户选择下一步行动。",
 		"固定数值、骰子、资源、关系、词条和终局候选必须以 RuleResolution 为准；你只能围绕这些结果安排后续节奏、压力、代价、爽点、伏笔回收和长期主线。",
 		"你只能使用 read_file、write_file、edit_file，且只能访问调用方列出的三份导演规划 Markdown 文件；不得使用 shell、删除、移动、资料库写入或任意 workspace 写入。",
 		"三份 Markdown 必须保留固定标题：正文Agent可读 / Prose-agent visible、后台导演私密 / Director private、目标 / Goal、节奏、压力与危机 / Pacing, Pressure, Crisis、结果与代价 / Outcome and Cost、状态 / State、分支处理 / Branch Handling、伏笔与回收 / Foreshadowing and Payoff。",
@@ -274,7 +274,7 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	writeBlock(&sb, "允许读写的导演规划文件路径（source: backend guard）", in.DirectorPlanPaths)
 	writeBlock(&sb, "当前导演规划文档快照（source: DirectorPlan docs, bounded）", in.DirectorPlanDocs)
 	writeBlock(&sb, "导演规划模板要求（source: StoryDirector.strategy.planning_templates, bounded）", in.PlanningTemplates)
-	writeBlock(&sb, "本回合 TurnBrief / RuleResolution / TerminalOutcome 审计 JSON（source: turn audit, bounded）", in.TurnAuditJSON)
+	writeBlock(&sb, "本回合 RuleResolution / TerminalOutcome 审计 JSON（source: turn audit, bounded）", in.TurnAuditJSON)
 	writeBlock(&sb, "近期剧情历史（source: current branch turns, bounded）", in.TurnHistory)
 	writeBlock(&sb, "当前分支故事记忆摘要（source: story memory, bounded）", in.StoryMemorySummary)
 	writeBlock(&sb, "故事导演规划配置（source: StoryDirector, bounded）", in.StoryDirectorPlan)

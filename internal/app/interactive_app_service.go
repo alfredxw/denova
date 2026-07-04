@@ -1130,6 +1130,66 @@ func (s *InteractiveAppService) DeleteStoryDirector(id string) error {
 	return interactive.NewStoryDirectorLibrary(cfg.NovaDir).Delete(id)
 }
 
+func (a *App) EventPackages() ([]interactive.EventPackageModule, error) {
+	return a.interactiveService().EventPackages()
+}
+
+func (s *InteractiveAppService) EventPackages() ([]interactive.EventPackageModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return nil, ErrNoWorkspace
+	}
+	return interactive.NewEventPackageLibrary(cfg.NovaDir).List()
+}
+
+func (a *App) EventPackage(id string) (interactive.EventPackageModule, error) {
+	return a.interactiveService().EventPackage(id)
+}
+
+func (s *InteractiveAppService) EventPackage(id string) (interactive.EventPackageModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.EventPackageModule{}, ErrNoWorkspace
+	}
+	return interactive.NewEventPackageLibrary(cfg.NovaDir).Get(id)
+}
+
+func (a *App) CreateEventPackage(item interactive.EventPackageModule) (interactive.EventPackageModule, error) {
+	return a.interactiveService().CreateEventPackage(item)
+}
+
+func (s *InteractiveAppService) CreateEventPackage(item interactive.EventPackageModule) (interactive.EventPackageModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.EventPackageModule{}, ErrNoWorkspace
+	}
+	return interactive.NewEventPackageLibrary(cfg.NovaDir).Create(item)
+}
+
+func (a *App) UpdateEventPackage(id string, item interactive.EventPackageModule, baseRevision ...string) (interactive.EventPackageModule, error) {
+	return a.interactiveService().UpdateEventPackage(id, item, firstRevision(baseRevision))
+}
+
+func (s *InteractiveAppService) UpdateEventPackage(id string, item interactive.EventPackageModule, baseRevision string) (interactive.EventPackageModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.EventPackageModule{}, ErrNoWorkspace
+	}
+	return interactive.NewEventPackageLibrary(cfg.NovaDir).Update(id, item, baseRevision)
+}
+
+func (a *App) DeleteEventPackage(id string) error {
+	return a.interactiveService().DeleteEventPackage(id)
+}
+
+func (s *InteractiveAppService) DeleteEventPackage(id string) error {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return ErrNoWorkspace
+	}
+	return interactive.NewEventPackageLibrary(cfg.NovaDir).Delete(id)
+}
+
 func (a *App) EventSystems() ([]interactive.EventSystemModule, error) {
 	return a.interactiveService().EventSystems()
 }

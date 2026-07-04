@@ -38,7 +38,8 @@ type StoryDirector struct {
 	Description       string                        `json:"description"`
 	ModuleRefs        StoryDirectorModuleRefs       `json:"module_refs,omitempty"`
 	Strategy          StoryDirectorStrategy         `json:"strategy"`
-	EventSystem       StoryDirectorEventSystem      `json:"event_system"`
+	EventPackages     []TellerEventPackage          `json:"event_packages,omitempty"`
+	EventSystem       StoryDirectorEventSystem      `json:"-"`
 	StatSystem        StoryDirectorStatSystem       `json:"stat_system"`
 	TRPGSystem        StoryDirectorTRPGSystem       `json:"trpg_system"`
 	OpeningSelector   StoryDirectorOpeningSelector  `json:"opening_selector"`
@@ -230,7 +231,7 @@ func (l *StoryDirectorLibrary) dir() string {
 }
 
 func (l *StoryDirectorLibrary) ensureBuiltins() error {
-	if err := NewEventSystemLibrary(l.novaDir).ensureBuiltins(); err != nil {
+	if err := NewEventPackageLibrary(l.novaDir).ensureBuiltins(); err != nil {
 		return err
 	}
 	if err := NewRuleSystemLibrary(l.novaDir).ensureBuiltins(); err != nil {
@@ -322,7 +323,7 @@ func (l *StoryDirectorLibrary) migrateEmbeddedStoryDirectorModules() error {
 	if err != nil {
 		return err
 	}
-	eventLibrary := NewEventSystemLibrary(l.novaDir)
+	eventLibrary := NewEventPackageLibrary(l.novaDir)
 	ruleLibrary := NewRuleSystemLibrary(l.novaDir)
 	openingLibrary := NewOpeningSelectorLibrary(l.novaDir)
 	for _, file := range files {
@@ -344,12 +345,12 @@ func (l *StoryDirectorLibrary) migrateEmbeddedStoryDirectorModules() error {
 		if refs.ImagePresetID == "" {
 			refs.ImagePresetID = "game-cg"
 		}
-		if !eventSystemEmpty(raw.EventSystem) {
-			id, err := ensureMigratedEventSystem(eventLibrary, director)
+		if len(raw.EventPackages) > 0 || !eventSystemEmpty(raw.EventSystem) {
+			ids, err := ensureMigratedEventPackages(eventLibrary, director)
 			if err != nil {
 				return err
 			}
-			refs.EventSystemID = id
+			refs.EventPackageIDs = ids
 		}
 		if !ruleSystemEmpty(raw.StatSystem, raw.TRPGSystem) {
 			id, err := ensureMigratedRuleSystem(ruleLibrary, director)
@@ -393,8 +394,8 @@ func parseRawStoryDirectorFile(path string) (StoryDirector, error) {
 	if err != nil {
 		return StoryDirector{}, err
 	}
-	var director StoryDirector
-	if err := json.Unmarshal(data, &director); err != nil {
+	director, err := decodeStoryDirectorJSON(data)
+	if err != nil {
 		return StoryDirector{}, fmt.Errorf("解析故事导演 JSON 失败: %w", err)
 	}
 	director.Path = path
@@ -406,13 +407,36 @@ func parseStoryDirectorFile(path string) (StoryDirector, error) {
 	if err != nil {
 		return StoryDirector{}, err
 	}
-	var director StoryDirector
-	if err := json.Unmarshal(data, &director); err != nil {
+	director, err := decodeStoryDirectorJSON(data)
+	if err != nil {
 		return StoryDirector{}, fmt.Errorf("解析故事导演 JSON 失败: %w", err)
 	}
 	director = normalizeStoryDirector(director)
 	director.Path = path
 	return applyStoryDirectorOwnership(director), nil
+}
+
+func decodeStoryDirectorJSON(data []byte) (StoryDirector, error) {
+	var director StoryDirector
+	if err := json.Unmarshal(data, &director); err != nil {
+		return StoryDirector{}, err
+	}
+	var legacy struct {
+		EventSystem      StoryDirectorEventSystem `json:"event_system"`
+		ResolvedSnapshot struct {
+			EventSystem StoryDirectorEventSystem `json:"event_system"`
+		} `json:"resolved_snapshot"`
+	}
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return StoryDirector{}, err
+	}
+	if len(director.EventPackages) == 0 && !eventSystemEmpty(legacy.EventSystem) {
+		director.EventSystem = legacy.EventSystem
+	}
+	if len(director.ResolvedSnapshot.EventPackages) == 0 && !eventSystemEmpty(legacy.ResolvedSnapshot.EventSystem) {
+		director.ResolvedSnapshot.EventSystem = legacy.ResolvedSnapshot.EventSystem
+	}
+	return director, nil
 }
 
 func writeStoryDirectorFile(path string, director StoryDirector) error {
@@ -428,22 +452,34 @@ func writeStoryDirectorFile(path string, director StoryDirector) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-func ensureMigratedEventSystem(library *EventSystemLibrary, director StoryDirector) (string, error) {
-	id := normalizeDirectorModuleID(director.ID + "-events")
-	if _, err := library.Get(id); err == nil {
-		return id, nil
+func ensureMigratedEventPackages(library *EventPackageLibrary, director StoryDirector) ([]string, error) {
+	packages := director.EventPackages
+	if len(packages) == 0 && !eventSystemEmpty(director.EventSystem) {
+		packages = eventPackagesFromLegacyEventSystem(director.EventSystem, director.ID)
 	}
-	module, err := library.Create(EventSystemModule{
-		ID:          id,
-		Name:        director.Name + " 事件系统",
-		Description: "由旧故事导演内嵌 event_system 迁移生成。",
-		EventSystem: director.EventSystem,
-		Tags:        migratedDirectorModuleTags(director.Tags),
-	})
-	if err != nil {
-		return "", err
+	ids := make([]string, 0, len(packages))
+	for i, pkg := range packages {
+		id := normalizeDirectorModuleID(pkg.ID)
+		if id == "" {
+			id = normalizeDirectorModuleID(fmt.Sprintf("%s-events-%d", director.ID, i+1))
+		}
+		if _, err := library.Get(id); err == nil {
+			ids = append(ids, id)
+			continue
+		}
+		module, err := library.Create(EventPackageModule{
+			ID:          id,
+			Name:        firstNonEmptyString(pkg.Name, director.Name+" 事件包"),
+			Description: "由旧故事导演内嵌事件配置迁移生成。",
+			Events:      pkg.Events,
+			Tags:        migratedDirectorModuleTags(director.Tags),
+		})
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, module.ID)
 	}
-	return module.ID, nil
+	return normalizeEventPackageIDs(ids), nil
 }
 
 func ensureMigratedRuleSystem(library *RuleSystemLibrary, director StoryDirector) (string, error) {
@@ -528,7 +564,7 @@ func DefaultStoryDirector() StoryDirector {
 		Version:     storyDirectorVersion,
 		ID:          DefaultStoryDirectorID,
 		Name:        "默认故事导演",
-		Description: "通用互动故事导演，提供软主线、可逆失败、递进节奏、事件系统、基础数值和开局选择器。",
+		Description: "通用互动故事导演，提供软主线、可逆失败、递进节奏、事件包、基础数值和开局选择器。",
 		ModuleRefs:  refs,
 		Strategy: StoryDirectorStrategy{
 			Enabled:             true,
@@ -540,7 +576,7 @@ func DefaultStoryDirector() StoryDirector {
 			BranchPlanningTurns: defaultBranchPlanningTurns,
 			PlanningTemplates:   DefaultStoryDirectorPlanningTemplates(),
 		},
-		EventSystem:     DefaultEventSystemModule().EventSystem,
+		EventPackages:   []TellerEventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
 		StatSystem:      DefaultRuleSystemModule().StatSystem,
 		TRPGSystem:      DefaultRuleSystemModule().TRPGSystem,
 		OpeningSelector: DefaultOpeningSelectorModule().OpeningSelector,
@@ -565,10 +601,7 @@ func StoryDirectorFromTellerOrchestration(id, name, description string, randomEv
 			BranchPlanningTurns: defaultBranchPlanningTurns,
 			PlanningTemplates:   DefaultStoryDirectorPlanningTemplates(),
 		},
-		EventSystem: StoryDirectorEventSystem{
-			EventPackages: config.EventPackages,
-			CustomEvents:  config.CustomEvents,
-		},
+		EventPackages: eventPackagesFromLegacyEventSystem(StoryDirectorEventSystem{EventPackages: config.EventPackages, CustomEvents: config.CustomEvents}, id),
 		StatSystem: StoryDirectorStatSystem{
 			Attributes: defaultStoryDirectorAttributes(),
 		},
@@ -594,12 +627,15 @@ func normalizeStoryDirector(director StoryDirector) StoryDirector {
 		director.ModuleRefs = DefaultStoryDirectorModuleRefs()
 	}
 	director.Strategy = normalizeStoryDirectorStrategy(director.Strategy)
-	if director.ModuleRefs.EventSystemDisabled {
-		director.EventSystem.EventPackages = normalizeTellerEventPackagesNoDefault(director.EventSystem.EventPackages)
-	} else {
-		director.EventSystem.EventPackages = normalizeTellerEventPackages(director.EventSystem.EventPackages)
+	if len(director.EventPackages) == 0 && !eventSystemEmpty(director.EventSystem) {
+		director.EventPackages = eventPackagesFromLegacyEventSystem(director.EventSystem, director.ID)
 	}
-	director.EventSystem.CustomEvents = normalizeDirectorEvents(director.EventSystem.CustomEvents)
+	if director.ModuleRefs.EventPackagesDisabled {
+		director.EventPackages = normalizeTellerEventPackagesNoDefault(director.EventPackages)
+	} else {
+		director.EventPackages = normalizeTellerEventPackagesNoDefault(director.EventPackages)
+	}
+	director.EventSystem = StoryDirectorEventSystem{}
 	if director.ModuleRefs.RuleSystemDisabled {
 		director.StatSystem.Attributes = normalizeStoryDirectorAttributesNoDefault(director.StatSystem.Attributes)
 	} else {
@@ -731,16 +767,13 @@ func DirectorEventCatalogFromStoryDirector(director StoryDirector) []DirectorEve
 		return []DirectorEvent{}
 	}
 	events := []DirectorEvent{}
-	for _, pkg := range director.EventSystem.EventPackages {
+	for _, pkg := range director.EventPackages {
 		for _, eventCard := range pkg.Events {
 			if !eventCard.Enabled {
 				continue
 			}
 			events = upsertDirectorEvent(events, directorEventFromTellerEventCard(eventCard))
 		}
-	}
-	for _, event := range director.EventSystem.CustomEvents {
-		events = upsertDirectorEvent(events, event)
 	}
 	return appendDefaultDirectorEventTemplates(events)
 }
@@ -793,11 +826,11 @@ func StoryDirectorPlanningSummary(director StoryDirector, limitBytes int) string
 			"story_director_id": director.ID,
 			"name":              director.Name,
 		},
-		"limits":       map[string]int{"max_bytes": limitBytes},
-		"strategy":     storyDirectorStructuredStrategySummary(director.Strategy),
-		"event_system": director.EventSystem,
-		"stat_system":  director.StatSystem,
-		"trpg_system":  director.TRPGSystem,
+		"limits":         map[string]int{"max_bytes": limitBytes},
+		"strategy":       storyDirectorStructuredStrategySummary(director.Strategy),
+		"event_packages": director.EventPackages,
+		"stat_system":    director.StatSystem,
+		"trpg_system":    director.TRPGSystem,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {

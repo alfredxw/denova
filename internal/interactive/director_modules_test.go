@@ -5,66 +5,66 @@ import (
 	"testing"
 )
 
-func TestEventSystemLibraryMaterializesGenreBuiltins(t *testing.T) {
-	library := NewEventSystemLibrary(t.TempDir())
+func TestEventPackageLibraryMaterializesGenreBuiltins(t *testing.T) {
+	library := NewEventPackageLibrary(t.TempDir())
 	items, err := library.List()
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
 	wantIDs := []string{
-		DefaultEventSystemID,
-		GenreXuanhuanEventSystemID,
-		GenreXiuxianEventSystemID,
-		GenreApocalypseEventSystemID,
-		GenreWesternEventSystemID,
-		GenreUrbanEventSystemID,
-		GenreTRPGEventSystemID,
+		DefaultEventPackageID,
+		GenreXuanhuanEventPackageID,
+		GenreXiuxianEventPackageID,
+		GenreApocalypseEventPackageID,
+		GenreWesternEventPackageID,
+		GenreUrbanEventPackageID,
+		GenreTRPGEventPackageID,
 	}
-	byID := map[string]EventSystemModule{}
+	byID := map[string]EventPackageModule{}
 	for _, item := range items {
 		byID[item.ID] = item
 	}
 	for _, id := range wantIDs {
 		item, ok := byID[id]
 		if !ok {
-			t.Fatalf("missing built-in event system %s in %#v", id, items)
+			t.Fatalf("missing built-in event package %s in %#v", id, items)
 		}
-		if item.Custom || !IsBuiltinEventSystemID(id) {
-			t.Fatalf("event system %s should be read-only built-in: %#v", id, item)
+		if item.Custom || !IsBuiltinEventPackageID(id) {
+			t.Fatalf("event package %s should be read-only built-in: %#v", id, item)
 		}
-		if len(item.EventSystem.EventPackages) != 1 || len(item.EventSystem.EventPackages[0].Events) == 0 {
-			t.Fatalf("event system %s should include one non-empty event package: %#v", id, item.EventSystem.EventPackages)
+		if len(item.Events) == 0 {
+			t.Fatalf("event package %s should include non-empty event cards: %#v", id, item.Events)
 		}
 	}
 
-	xiuxian, err := library.Get(GenreXiuxianEventSystemID)
+	xiuxian, err := library.Get(GenreXiuxianEventPackageID)
 	if err != nil {
 		t.Fatalf("Get xiuxian preset failed: %v", err)
 	}
-	if xiuxian.EventSystem.EventPackages[0].ID != "xiuxian-core" || len(xiuxian.EventSystem.EventPackages[0].Events) != 8 {
-		t.Fatalf("xiuxian event pack mismatch: %#v", xiuxian.EventSystem.EventPackages[0])
+	if xiuxian.ID != GenreXiuxianEventPackageID || len(xiuxian.Events) != 8 {
+		t.Fatalf("xiuxian event package mismatch: %#v", xiuxian)
 	}
-	firstCard := xiuxian.EventSystem.EventPackages[0].Events[0]
+	firstCard := xiuxian.Events[0]
 	if !strings.Contains(firstCard.TypeName, "Bottleneck") || !strings.Contains(firstCard.DescriptionMarkdown, "Trigger Scene") {
 		t.Fatalf("genre cards should include bilingual names and structured markdown: %#v", firstCard)
 	}
-	xiuxian.Name = "我的修仙事件系统"
-	overridden, err := library.Update(GenreXiuxianEventSystemID, xiuxian, xiuxian.UpdatedAt)
+	xiuxian.Name = "我的修仙事件包"
+	overridden, err := library.Update(GenreXiuxianEventPackageID, xiuxian, xiuxian.UpdatedAt)
 	if err != nil {
-		t.Fatalf("Update built-in genre event system should create override: %v", err)
+		t.Fatalf("Update built-in genre event package should create override: %v", err)
 	}
-	if overridden.Custom || !overridden.BuiltinOverridden || overridden.ID != GenreXiuxianEventSystemID || overridden.Name != "我的修仙事件系统" {
-		t.Fatalf("unexpected built-in event system override: %#v", overridden)
+	if overridden.Custom || !overridden.BuiltinOverridden || overridden.ID != GenreXiuxianEventPackageID || overridden.Name != "我的修仙事件包" {
+		t.Fatalf("unexpected built-in event package override: %#v", overridden)
 	}
-	if err := library.Delete(GenreXiuxianEventSystemID); err != nil {
-		t.Fatalf("Delete built-in event system override should restore builtin: %v", err)
+	if err := library.Delete(GenreXiuxianEventPackageID); err != nil {
+		t.Fatalf("Delete built-in event package override should restore builtin: %v", err)
 	}
-	restored, err := library.Get(GenreXiuxianEventSystemID)
+	restored, err := library.Get(GenreXiuxianEventPackageID)
 	if err != nil {
 		t.Fatalf("Get restored xiuxian preset failed: %v", err)
 	}
-	if restored.Custom || restored.BuiltinOverridden || restored.Name == "我的修仙事件系统" {
-		t.Fatalf("unexpected restored built-in event system: %#v", restored)
+	if restored.Custom || restored.BuiltinOverridden || restored.Name == "我的修仙事件包" {
+		t.Fatalf("unexpected restored built-in event package: %#v", restored)
 	}
 }
 
@@ -120,25 +120,23 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 }
 
 func TestDirectorEventCatalogPrioritizesConfiguredEventCardsBeforeDefaults(t *testing.T) {
-	module := builtinGenreEventSystem(
-		"test-genre-events",
-		"测试事件系统",
-		"用于验证事件目录顺序。",
-		nil,
+	module := builtinGenreEventPackageModule(
 		"test-pack",
 		"测试事件包",
+		"用于验证事件目录顺序。",
+		nil,
 		urbanEventCards(),
 	)
 	director := normalizeStoryDirector(StoryDirector{
-		ID:          "catalog-order",
-		Name:        "目录顺序",
-		ModuleRefs:  StoryDirectorModuleRefs{EventSystemDisabled: false},
-		Strategy:    StoryDirectorStrategy{Enabled: true},
-		EventSystem: module.EventSystem,
+		ID:            "catalog-order",
+		Name:          "目录顺序",
+		ModuleRefs:    StoryDirectorModuleRefs{EventPackagesDisabled: false},
+		Strategy:      StoryDirectorStrategy{Enabled: true},
+		EventPackages: []TellerEventPackage{tellerEventPackageFromModule(module)},
 	})
 
 	catalog := DirectorEventCatalogFromStoryDirector(director)
-	packCards := module.EventSystem.EventPackages[0].Events
+	packCards := module.Events
 	if len(catalog) != maxTurnBriefListItems {
 		t.Fatalf("catalog should still be filled to the bounded default size, got %d: %#v", len(catalog), catalog)
 	}
@@ -154,23 +152,23 @@ func TestDirectorEventCatalogPrioritizesConfiguredEventCardsBeforeDefaults(t *te
 
 func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	novaDir := t.TempDir()
-	eventLibrary := NewEventSystemLibrary(novaDir)
+	eventLibrary := NewEventPackageLibrary(novaDir)
 	ruleLibrary := NewRuleSystemLibrary(novaDir)
 	openingLibrary := NewOpeningSelectorLibrary(novaDir)
 	directorLibrary := NewStoryDirectorLibrary(novaDir)
 
-	eventModule, err := eventLibrary.Create(EventSystemModule{
+	eventModule, err := eventLibrary.Create(EventPackageModule{
 		ID:   "storm-events",
-		Name: "风暴事件",
-		EventSystem: StoryDirectorEventSystem{CustomEvents: []DirectorEvent{{
-			ID:      "storm",
-			Name:    "风暴",
-			Enabled: true,
-			Summary: "v1",
-		}}},
+		Name: "风暴事件包",
+		Events: []TellerEventCard{{
+			ID:                  "storm",
+			TypeName:            "风暴",
+			Enabled:             true,
+			DescriptionMarkdown: "v1",
+		}},
 	})
 	if err != nil {
-		t.Fatalf("create event system failed: %v", err)
+		t.Fatalf("create event package failed: %v", err)
 	}
 	ruleModule, err := ruleLibrary.Create(RuleSystemModule{
 		ID:   "survival-rules",
@@ -208,7 +206,7 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 		Name: "模块化导演",
 		ModuleRefs: StoryDirectorModuleRefs{
 			NarrativeStyleID:  "classic",
-			EventSystemID:     eventModule.ID,
+			EventPackageIDs:   []string{eventModule.ID},
 			RuleSystemID:      ruleModule.ID,
 			OpeningSelectorID: openingModule.ID,
 			ImagePresetID:     "game-cg",
@@ -218,8 +216,8 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create story director failed: %v", err)
 	}
-	if len(director.EventSystem.CustomEvents) != 1 || director.EventSystem.CustomEvents[0].Summary != "v1" {
-		t.Fatalf("director should resolve event module on create: %#v", director.EventSystem.CustomEvents)
+	if len(director.EventPackages) != 1 || len(director.EventPackages[0].Events) != 1 || director.EventPackages[0].Events[0].DescriptionMarkdown != "v1" {
+		t.Fatalf("director should resolve event package on create: %#v", director.EventPackages)
 	}
 	if len(director.StatSystem.Attributes) != 1 || director.StatSystem.Attributes[0].Path != "resources.heat" {
 		t.Fatalf("director should resolve rule module on create: %#v", director.StatSystem.Attributes)
@@ -228,27 +226,27 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 		t.Fatalf("director should resolve opening module on create: %#v", director.OpeningSelector.InitialStateOps)
 	}
 
-	eventModule.EventSystem.CustomEvents[0].Summary = "v2"
+	eventModule.Events[0].DescriptionMarkdown = "v2"
 	if _, err := eventLibrary.Update(eventModule.ID, eventModule, eventModule.UpdatedAt); err != nil {
-		t.Fatalf("update event system failed: %v", err)
+		t.Fatalf("update event package failed: %v", err)
 	}
 	live, err := directorLibrary.Get("modular")
 	if err != nil {
 		t.Fatalf("get live director failed: %v", err)
 	}
-	if live.EventSystem.CustomEvents[0].Summary != "v2" {
-		t.Fatalf("director should resolve latest module content, got %#v", live.EventSystem.CustomEvents[0])
+	if live.EventPackages[0].Events[0].DescriptionMarkdown != "v2" {
+		t.Fatalf("director should resolve latest module content, got %#v", live.EventPackages[0].Events[0])
 	}
 
 	if err := eventLibrary.Delete(eventModule.ID); err != nil {
-		t.Fatalf("delete event system failed: %v", err)
+		t.Fatalf("delete event package failed: %v", err)
 	}
 	fallback, err := directorLibrary.Get("modular")
 	if err != nil {
 		t.Fatalf("get fallback director failed: %v", err)
 	}
-	if fallback.EventSystem.CustomEvents[0].Summary != "v2" {
-		t.Fatalf("director should use last resolved snapshot after module deletion, got %#v", fallback.EventSystem.CustomEvents[0])
+	if fallback.EventPackages[0].Events[0].DescriptionMarkdown != "v2" {
+		t.Fatalf("director should use last resolved snapshot after module deletion, got %#v", fallback.EventPackages[0].Events[0])
 	}
 	if fallback.ResolvedSnapshot.Status != "warning" || len(fallback.ResolvedSnapshot.Warnings) == 0 {
 		t.Fatalf("missing module should produce warning snapshot: %#v", fallback.ResolvedSnapshot)
@@ -265,8 +263,8 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 		ModuleRefs: StoryDirectorModuleRefs{
 			NarrativeStyleID:        "missing-style",
 			NarrativeStyleDisabled:  true,
-			EventSystemID:           "missing-events",
-			EventSystemDisabled:     true,
+			EventPackageIDs:         []string{"missing-events"},
+			EventPackagesDisabled:   true,
 			RuleSystemID:            "missing-rules",
 			RuleSystemDisabled:      true,
 			OpeningSelectorID:       "missing-opening",
@@ -276,11 +274,16 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 		},
 		Strategy: StoryDirectorStrategy{Enabled: true},
 		ResolvedSnapshot: StoryDirectorResolvedSnapshot{
-			EventSystem: StoryDirectorEventSystem{CustomEvents: []DirectorEvent{{
-				ID:      "snapshot-event",
-				Name:    "旧快照事件",
+			EventPackages: []TellerEventPackage{{
+				ID:      "snapshot-pack",
+				Name:    "旧快照包",
 				Enabled: true,
-			}}},
+				Events: []TellerEventCard{{
+					ID:       "snapshot-event",
+					TypeName: "旧快照事件",
+					Enabled:  true,
+				}},
+			}},
 			StatSystem: StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{{
 				ID:         "snapshot-stat",
 				Path:       "resources.snapshot",
@@ -308,14 +311,14 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create detached director failed: %v", err)
 	}
-	if !director.ModuleRefs.EventSystemDisabled || director.ModuleRefs.EventSystemID != "missing-events" {
+	if !director.ModuleRefs.EventPackagesDisabled || len(director.ModuleRefs.EventPackageIDs) != 1 || director.ModuleRefs.EventPackageIDs[0] != "missing-events" {
 		t.Fatalf("disabled event ref should be preserved: %#v", director.ModuleRefs)
 	}
 	if len(director.ResolvedSnapshot.Warnings) != 0 || director.ResolvedSnapshot.Status != "ready" {
 		t.Fatalf("disabled missing modules should not warn: %#v", director.ResolvedSnapshot)
 	}
-	if len(director.EventSystem.CustomEvents) != 0 || len(director.EventSystem.EventPackages) != 0 {
-		t.Fatalf("disabled event system should stay empty, got %#v", director.EventSystem)
+	if len(director.EventPackages) != 0 {
+		t.Fatalf("disabled event packages should stay empty, got %#v", director.EventPackages)
 	}
 	if len(director.StatSystem.Attributes) != 0 || len(director.TRPGSystem.RuleTemplates) != 0 {
 		t.Fatalf("disabled rule system should not use defaults or snapshot, got stats=%#v trpg=%#v", director.StatSystem, director.TRPGSystem)
@@ -327,6 +330,6 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 		t.Fatalf("disabled rule/opening modules should not generate initial state ops")
 	}
 	if events := DirectorEventCatalogFromStoryDirector(director); len(events) != 0 {
-		t.Fatalf("disabled event system should not expose default event catalog: %#v", events)
+		t.Fatalf("disabled event packages should not expose default event catalog: %#v", events)
 	}
 }

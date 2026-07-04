@@ -349,11 +349,11 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
   const [directorPlan, setDirectorPlan] = useState<DirectorPlan | null>(snapshot?.director_plan || null)
   const [draftDocs, setDraftDocs] = useState<DirectorPlanDocs | null>(snapshot?.director_plan?.docs || null)
   const ruleResolution = snapshot?.current_turn?.rule_resolution
-  const acceptedBrief = ruleResolution?.accepted_brief || snapshot?.current_turn?.turn_brief
-  const ruleResults = ruleResolution?.rule_results || []
+  const ruleRequest = ruleResolution?.request
+  const ruleResult = ruleResolution?.result
   const terminalCandidate = ruleResolution?.terminal_candidate
   const terminalOutcome = snapshot?.current_turn?.terminal_outcome
-  const hasRuleAudit = !!acceptedBrief || !!ruleResolution || !!terminalOutcome
+  const hasRuleAudit = !!ruleResolution || !!terminalOutcome
   const effectiveBranchId = branchId || snapshot?.branch_id || ''
   const directorMetadata = directorPlan?.metadata
 
@@ -497,30 +497,29 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
           </div>
           {ruleError ? <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{ruleError}</div> : null}
           <div className="flex flex-wrap gap-1.5">
-            <MemoryChip>{acceptedBrief?.intent || t('snapshot.noRecord')}</MemoryChip>
-            <MemoryChip>{`${t('snapshot.ruleAudit.checks')}: ${acceptedBrief?.rule_checks?.length || 0}`}</MemoryChip>
-            <MemoryChip>{`${t('snapshot.ruleAudit.results')}: ${ruleResults.length}`}</MemoryChip>
+            <MemoryChip>{ruleRequest?.intent || t('snapshot.noRecord')}</MemoryChip>
+            <MemoryChip>{`${t('snapshot.ruleAudit.difficulty')}: ${ruleRequest?.difficulty || t('snapshot.noRecord')}`}</MemoryChip>
+            <MemoryChip>{`${t('snapshot.ruleAudit.outcome')}: ${ruleResult?.outcome || t('snapshot.noRecord')}`}</MemoryChip>
           </div>
-          {acceptedBrief?.turn_goal || acceptedBrief?.pressure || acceptedBrief?.cost_policy ? (
+          {ruleRequest?.challenge || ruleRequest?.cost || ruleRequest?.state ? (
             <div className="mt-2 space-y-1 text-xs leading-5 text-[var(--nova-text-muted)]">
-              {acceptedBrief.turn_goal ? <InfoLine label={t('snapshot.field.turn_goal')} value={acceptedBrief.turn_goal} /> : null}
-              {acceptedBrief.pressure ? <InfoLine label={t('snapshot.field.pressure')} value={acceptedBrief.pressure} /> : null}
-              {acceptedBrief.cost_policy ? <InfoLine label={t('snapshot.field.cost_policy')} value={acceptedBrief.cost_policy} /> : null}
+              {ruleRequest.challenge ? <InfoLine label={t('snapshot.field.challenge')} value={ruleRequest.challenge} /> : null}
+              {ruleRequest.cost ? <InfoLine label={t('snapshot.field.cost')} value={ruleRequest.cost} /> : null}
+              {ruleRequest.state ? <InfoLine label={t('snapshot.field.state')} value={ruleRequest.state} /> : null}
             </div>
           ) : null}
-          {ruleResults.length ? (
+          {ruleResult ? (
             <div className="mt-2 space-y-1.5">
-              {ruleResults.slice(0, 3).map((result, index) => (
-                <div key={result.id || index} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="min-w-0 truncate text-[var(--nova-text)]">{result.label || result.id || t('snapshot.ruleAudit.resultFallback', { index: index + 1 })}</span>
-                    <span className={ruleOutcomeClass(result.outcome)}>{result.outcome}</span>
-                  </div>
-                  <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">
-                    {[result.dice, result.rolls?.length ? `${t('snapshot.field.rolls')}: ${result.rolls.join(', ')}` : '', Number.isFinite(result.total) ? `${t('snapshot.field.total')}: ${result.total}` : ''].filter(Boolean).join(' · ')}
-                  </div>
+              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="min-w-0 truncate text-[var(--nova-text)]">{ruleResult.label || ruleRequest?.challenge || t('snapshot.ruleAudit.result')}</span>
+                  <span className={ruleOutcomeClass(ruleResult.outcome)}>{ruleResult.outcome}</span>
                 </div>
-              ))}
+                <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">
+                  {[ruleResult.dice, ruleResult.roll_mode, ruleResult.rolls?.length ? `${t('snapshot.field.rolls')}: ${ruleResult.rolls.join(', ')}` : '', Number.isFinite(ruleResult.kept_roll) ? `${t('snapshot.field.kept_roll')}: ${ruleResult.kept_roll}` : '', Number.isFinite(ruleResult.bonus_total) ? `${t('snapshot.field.bonus_total')}: ${ruleResult.bonus_total}` : '', Number.isFinite(ruleResult.total) ? `${t('snapshot.field.total')}: ${ruleResult.total}` : ''].filter(Boolean).join(' · ')}
+                </div>
+                {ruleResult.result ? <div className="mt-1 text-[var(--nova-text-muted)]">{ruleResult.result}</div> : null}
+              </div>
             </div>
           ) : null}
           {terminalCandidate || terminalOutcome ? (

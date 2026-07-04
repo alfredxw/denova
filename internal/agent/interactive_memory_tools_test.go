@@ -123,19 +123,22 @@ func TestInteractiveMemoryToolsListReadAndRecordRecall(t *testing.T) {
 func TestPrepareInteractiveTurnToolUsesRuleResolutionCallback(t *testing.T) {
 	expected := interactive.RuleResolution{
 		ID: "rr_test",
-		AcceptedBrief: interactive.TurnBrief{
-			UserAction: "强闯秘境",
+		Request: interactive.TurnCheckRequest{
+			Action:     "强闯秘境",
 			Intent:     "冒险",
-			TurnGoal:   "制造代价",
+			Challenge:  "秘境入口禁制",
+			Cost:       "失败会受伤",
+			State:      "禁制正在收束",
+			Difficulty: "normal",
 		},
-		RuleResults: []interactive.RuleResult{{ID: "check_1", Outcome: "failure"}},
+		Result: interactive.RuleResult{ID: "check_1", Dice: "1d20", Rolls: []int{7}, RollMode: "normal", KeptRoll: 7, Total: 7, Target: 15, Outcome: "failure", Result: "强闯失败"},
 	}
 	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
 		StoryID:  "st_tool",
 		BranchID: "main",
-		PrepareTurn: func(ctx context.Context, brief interactive.TurnBrief) (interactive.RuleResolution, error) {
-			if brief.UserAction != "强闯秘境" || brief.Intent != "冒险" || brief.TurnGoal != "制造代价" {
-				t.Fatalf("unexpected brief: %#v", brief)
+		PrepareTurn: func(ctx context.Context, request interactive.TurnCheckRequest) (interactive.RuleResolution, error) {
+			if request.Action != "强闯秘境" || request.Intent != "冒险" || request.Challenge != "秘境入口禁制" {
+				t.Fatalf("unexpected request: %#v", request)
 			}
 			return expected, nil
 		},
@@ -153,11 +156,11 @@ func TestPrepareInteractiveTurnToolUsesRuleResolutionCallback(t *testing.T) {
 	if info.Name != "prepare_interactive_turn" {
 		t.Fatalf("tool name = %s", info.Name)
 	}
-	output, err := tools[0].(tool.InvokableTool).InvokableRun(context.Background(), `{"user_action":"强闯秘境","intent":"冒险","turn_goal":"制造代价"}`)
+	output, err := tools[0].(tool.InvokableTool).InvokableRun(context.Background(), `{"action":"强闯秘境","intent":"冒险","challenge":"秘境入口禁制","cost":"失败会受伤","state":"禁制正在收束","difficulty":"normal","outcomes":{"critical_success":{"result":"大成功"},"success":{"result":"成功"},"failure":{"result":"强闯失败"},"critical_failure":{"result":"大失败"}}}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output, `"id": "rr_test"`) || !strings.Contains(output, `"outcome": "failure"`) {
+	if !strings.Contains(output, `"resolution_id": "rr_test"`) || !strings.Contains(output, `"outcome": "failure"`) || strings.Contains(output, "accepted_brief") || strings.Contains(output, `"seed"`) || strings.Contains(output, `"request"`) {
 		t.Fatalf("unexpected output: %s", output)
 	}
 }

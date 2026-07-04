@@ -47,8 +47,9 @@ type DirectorEvent struct {
 	DirectorInstructionNote string   `json:"director_instruction_note,omitempty"`
 }
 
-// TurnBrief is the Interactive Agent's semantic plan for one turn. The backend
-// records it for audit and only performs deterministic rule checks.
+// TurnBrief is retained for rule-template editor compatibility. The
+// prepare_interactive_turn tool now uses TurnCheckRequest instead of asking the
+// prose agent to submit a full brief.
 type TurnBrief struct {
 	UserAction       string      `json:"user_action,omitempty"`
 	Intent           string      `json:"intent,omitempty"`
@@ -81,35 +82,96 @@ type RuleCheck struct {
 	Seed              int64     `json:"seed,omitempty"`
 }
 
+type TurnCheckRequest struct {
+	Action     string            `json:"action"`
+	Intent     string            `json:"intent"`
+	Challenge  string            `json:"challenge"`
+	Cost       string            `json:"cost"`
+	State      string            `json:"state"`
+	Rule       TurnCheckRule     `json:"rule,omitempty"`
+	Bonuses    []TurnCheckBonus  `json:"bonuses,omitempty"`
+	Difficulty string            `json:"difficulty"`
+	Outcomes   TurnCheckOutcomes `json:"outcomes"`
+}
+
+type TurnCheckRule struct {
+	Template string `json:"template,omitempty"`
+	Dice     string `json:"dice,omitempty"`
+	RollMode string `json:"roll_mode,omitempty"`
+}
+
+type TurnCheckBonus struct {
+	Reason string  `json:"reason"`
+	Value  float64 `json:"value"`
+}
+
+type TurnCheckOutcomes struct {
+	CriticalSuccess TurnCheckOutcome `json:"critical_success"`
+	Success         TurnCheckOutcome `json:"success"`
+	Failure         TurnCheckOutcome `json:"failure"`
+	CriticalFailure TurnCheckOutcome `json:"critical_failure"`
+}
+
+type TurnCheckOutcome struct {
+	Result       string            `json:"result"`
+	StateChanges []TurnStateChange `json:"state_changes,omitempty"`
+}
+
+type TurnStateChange struct {
+	Path   string  `json:"path"`
+	Change float64 `json:"change"`
+}
+
 type RuleResolution struct {
 	ID                string             `json:"id,omitempty"`
-	AcceptedBrief     TurnBrief          `json:"accepted_brief"`
-	RuleResults       []RuleResult       `json:"rule_results,omitempty"`
-	StateOpsPreview   []StateOp          `json:"state_ops_preview,omitempty"`
+	Request           TurnCheckRequest   `json:"request"`
+	Result            RuleResult         `json:"result"`
 	TerminalCandidate *TerminalCandidate `json:"terminal_candidate,omitempty"`
 	RuleConstraints   []string           `json:"rule_constraints,omitempty"`
 	CreatedAt         string             `json:"created_at,omitempty"`
+	Seed              int64              `json:"seed,omitempty"`
 }
 
 type RuleResult struct {
-	ID              string   `json:"id,omitempty"`
-	Label           string   `json:"label,omitempty"`
-	Kind            string   `json:"kind,omitempty"`
-	Mode            string   `json:"mode,omitempty"`
-	AttributePath   string   `json:"attribute_path,omitempty"`
-	AttributeValue  float64  `json:"attribute_value,omitempty"`
-	Expression      string   `json:"expression,omitempty"`
-	ExpressionValue float64  `json:"expression_value,omitempty"`
-	Dice            string   `json:"dice,omitempty"`
-	Rolls           []int    `json:"rolls,omitempty"`
-	RollTotal       float64  `json:"roll_total,omitempty"`
-	Modifier        float64  `json:"modifier,omitempty"`
-	Difficulty      float64  `json:"difficulty,omitempty"`
-	Total           float64  `json:"total,omitempty"`
-	Outcome         string   `json:"outcome"`
-	Seed            int64    `json:"seed,omitempty"`
-	Constraints     []string `json:"constraints,omitempty"`
-	Error           string   `json:"error,omitempty"`
+	ID              string            `json:"id,omitempty"`
+	Label           string            `json:"label,omitempty"`
+	Kind            string            `json:"kind,omitempty"`
+	Mode            string            `json:"mode,omitempty"`
+	AttributePath   string            `json:"attribute_path,omitempty"`
+	AttributeValue  float64           `json:"attribute_value,omitempty"`
+	Expression      string            `json:"expression,omitempty"`
+	ExpressionValue float64           `json:"expression_value,omitempty"`
+	Dice            string            `json:"dice,omitempty"`
+	Rolls           []int             `json:"rolls,omitempty"`
+	RollTotal       float64           `json:"roll_total,omitempty"`
+	Modifier        float64           `json:"modifier,omitempty"`
+	Difficulty      float64           `json:"difficulty,omitempty"`
+	Total           float64           `json:"total,omitempty"`
+	Outcome         string            `json:"outcome"`
+	Seed            int64             `json:"seed,omitempty"`
+	Constraints     []string          `json:"constraints,omitempty"`
+	Error           string            `json:"error,omitempty"`
+	RollMode        string            `json:"roll_mode,omitempty"`
+	KeptRoll        float64           `json:"kept_roll,omitempty"`
+	BonusTotal      float64           `json:"bonus_total,omitempty"`
+	Target          float64           `json:"target,omitempty"`
+	Result          string            `json:"result,omitempty"`
+	StateChanges    []TurnStateChange `json:"state_changes,omitempty"`
+}
+
+type RuleResolutionToolOutput struct {
+	ResolutionID string            `json:"resolution_id"`
+	Dice         string            `json:"dice"`
+	RollMode     string            `json:"roll_mode"`
+	Rolls        []int             `json:"rolls"`
+	KeptRoll     int               `json:"kept_roll"`
+	BonusTotal   float64           `json:"bonus_total"`
+	Total        float64           `json:"total"`
+	Difficulty   string            `json:"difficulty"`
+	Target       float64           `json:"target"`
+	Outcome      string            `json:"outcome"`
+	Result       string            `json:"result"`
+	StateChanges []TurnStateChange `json:"state_changes,omitempty"`
 }
 
 type TerminalCandidate struct {
@@ -165,7 +227,7 @@ func normalizeRuleResolutionPointer(resolution *RuleResolution) *RuleResolution 
 		return nil
 	}
 	normalized := *resolution
-	normalized.AcceptedBrief = NormalizeTurnBrief(normalized.AcceptedBrief)
+	normalized.Request = NormalizeTurnCheckRequest(normalized.Request)
 	normalized.RuleConstraints = normalizeStringListLimit(normalized.RuleConstraints, maxTurnBriefListItems)
 	return &normalized
 }
@@ -212,27 +274,272 @@ func ValidateTurnBrief(brief TurnBrief) error {
 	return nil
 }
 
-func ResolveTurnRules(storyID, branchID string, state map[string]any, brief TurnBrief) (RuleResolution, error) {
-	brief = NormalizeTurnBrief(brief)
-	if err := ValidateTurnBrief(brief); err != nil {
-		return RuleResolution{}, err
+func NormalizeTurnCheckRequest(req TurnCheckRequest) TurnCheckRequest {
+	req.Action = trimBytes(req.Action, maxTurnBriefTextBytes)
+	req.Intent = trimBytes(req.Intent, maxTurnBriefTextBytes)
+	req.Challenge = trimBytes(req.Challenge, maxTurnBriefTextBytes)
+	req.Cost = trimBytes(req.Cost, maxTurnBriefTextBytes)
+	req.State = trimBytes(req.State, maxTurnBriefTextBytes)
+	req.Rule.Template = trimBytes(firstNonEmptyString(req.Rule.Template, "dice_check"), 128)
+	req.Rule.Dice = strings.TrimSpace(firstNonEmptyString(req.Rule.Dice, "1d20"))
+	req.Rule.RollMode = normalizeTurnCheckRollMode(req.Rule.RollMode)
+	req.Difficulty = normalizeTurnCheckDifficulty(req.Difficulty)
+	if len(req.Bonuses) > maxTurnBriefListItems {
+		req.Bonuses = req.Bonuses[:maxTurnBriefListItems]
 	}
-	resolution := RuleResolution{
-		ID:            newID("rr"),
-		AcceptedBrief: brief,
-		CreatedAt:     time.Now().UTC().Format(time.RFC3339Nano),
+	for i := range req.Bonuses {
+		req.Bonuses[i].Reason = trimBytes(req.Bonuses[i].Reason, 512)
 	}
-	for _, check := range brief.RuleChecks {
-		result, ops, terminal := resolveRuleCheck(storyID, branchID, state, check)
-		resolution.RuleResults = append(resolution.RuleResults, result)
-		resolution.StateOpsPreview = append(resolution.StateOpsPreview, ops...)
-		resolution.RuleConstraints = append(resolution.RuleConstraints, result.Constraints...)
-		if terminal != nil && resolution.TerminalCandidate == nil {
-			resolution.TerminalCandidate = terminal
+	req.Outcomes.CriticalSuccess = normalizeTurnCheckOutcome(req.Outcomes.CriticalSuccess)
+	req.Outcomes.Success = normalizeTurnCheckOutcome(req.Outcomes.Success)
+	req.Outcomes.Failure = normalizeTurnCheckOutcome(req.Outcomes.Failure)
+	req.Outcomes.CriticalFailure = normalizeTurnCheckOutcome(req.Outcomes.CriticalFailure)
+	return req
+}
+
+func ValidateTurnCheckRequest(req TurnCheckRequest) error {
+	if strings.TrimSpace(req.Action) == "" {
+		return fmt.Errorf("prepare_interactive_turn 缺少 action")
+	}
+	if strings.TrimSpace(req.Intent) == "" {
+		return fmt.Errorf("prepare_interactive_turn 缺少 intent")
+	}
+	if strings.TrimSpace(req.Challenge) == "" {
+		return fmt.Errorf("prepare_interactive_turn 缺少 challenge")
+	}
+	if strings.TrimSpace(req.Cost) == "" {
+		return fmt.Errorf("prepare_interactive_turn 缺少 cost")
+	}
+	if strings.TrimSpace(req.State) == "" {
+		return fmt.Errorf("prepare_interactive_turn 缺少 state")
+	}
+	if req.Rule.Template != "" && req.Rule.Template != "dice_check" && req.Rule.Template != "d20_check" {
+		return fmt.Errorf("prepare_interactive_turn rule.template 仅支持 dice_check")
+	}
+	if req.Rule.Dice != "" && req.Rule.Dice != "1d20" {
+		return fmt.Errorf("prepare_interactive_turn rule.dice 仅支持 1d20")
+	}
+	if _, ok := turnCheckDifficultyTargets[normalizeTurnCheckDifficulty(req.Difficulty)]; !ok {
+		return fmt.Errorf("prepare_interactive_turn difficulty 无效: %s", req.Difficulty)
+	}
+	for name, outcome := range map[string]TurnCheckOutcome{
+		"critical_success": req.Outcomes.CriticalSuccess,
+		"success":          req.Outcomes.Success,
+		"failure":          req.Outcomes.Failure,
+		"critical_failure": req.Outcomes.CriticalFailure,
+	} {
+		if strings.TrimSpace(outcome.Result) == "" {
+			return fmt.Errorf("prepare_interactive_turn outcomes.%s 缺少 result", name)
+		}
+		for _, change := range outcome.StateChanges {
+			if !validStatePathSyntax(change.Path) {
+				return fmt.Errorf("prepare_interactive_turn outcomes.%s.state_changes path 无效: %s", name, change.Path)
+			}
 		}
 	}
-	resolution.RuleConstraints = normalizeStringListLimit(resolution.RuleConstraints, maxTurnBriefListItems)
+	return nil
+}
+
+func ResolveTurnRules(storyID, branchID string, state map[string]any, req TurnCheckRequest) (RuleResolution, error) {
+	return resolveTurnRulesWithSeed(storyID, branchID, state, req, 0)
+}
+
+func resolveTurnRulesWithSeed(storyID, branchID string, state map[string]any, req TurnCheckRequest, seed int64) (RuleResolution, error) {
+	_ = state
+	req = NormalizeTurnCheckRequest(req)
+	if err := ValidateTurnCheckRequest(req); err != nil {
+		return RuleResolution{}, err
+	}
+	if seed == 0 {
+		seed = newRuleSeed(storyID, branchID, req.Action, req.Challenge)
+	}
+	rolls, keptRoll, err := rollTurnCheck(seed, req.Rule.RollMode)
+	if err != nil {
+		return RuleResolution{}, err
+	}
+	bonusTotal := turnCheckBonusTotal(req.Bonuses)
+	target := turnCheckDifficultyTargets[req.Difficulty]
+	total := float64(keptRoll) + bonusTotal
+	outcomeName := resolveTurnCheckOutcome(keptRoll, total, target)
+	outcome := req.outcomeByName(outcomeName)
+	constraint := fmt.Sprintf("%s：%s，总值 %.0f / 难度 %.0f。", firstNonEmptyString(req.Challenge, req.Action), turnCheckOutcomeText(outcomeName), total, target)
+	result := RuleResult{
+		ID:           "check_1",
+		Label:        firstNonEmptyString(req.Challenge, req.Action),
+		Kind:         "dice_check",
+		Mode:         "d20_dc",
+		Dice:         "1d20",
+		Rolls:        rolls,
+		RollTotal:    float64(keptRoll),
+		Modifier:     bonusTotal,
+		Difficulty:   target,
+		Total:        total,
+		Outcome:      outcomeName,
+		Seed:         seed,
+		Constraints:  []string{constraint},
+		RollMode:     req.Rule.RollMode,
+		KeptRoll:     float64(keptRoll),
+		BonusTotal:   bonusTotal,
+		Target:       target,
+		Result:       outcome.Result,
+		StateChanges: outcome.StateChanges,
+	}
+	resolution := RuleResolution{
+		ID:              newID("rr"),
+		Request:         req,
+		Result:          result,
+		RuleConstraints: []string{constraint},
+		CreatedAt:       time.Now().UTC().Format(time.RFC3339Nano),
+		Seed:            seed,
+	}
 	return resolution, nil
+}
+
+var turnCheckDifficultyTargets = map[string]float64{
+	"very_easy": 5,
+	"easy":      10,
+	"normal":    15,
+	"hard":      20,
+	"very_hard": 25,
+}
+
+func (req TurnCheckRequest) outcomeByName(name string) TurnCheckOutcome {
+	switch name {
+	case "critical_success":
+		return req.Outcomes.CriticalSuccess
+	case "success":
+		return req.Outcomes.Success
+	case "critical_failure":
+		return req.Outcomes.CriticalFailure
+	default:
+		return req.Outcomes.Failure
+	}
+}
+
+func (resolution RuleResolution) ToolOutput() RuleResolutionToolOutput {
+	keptRoll := int(resolution.Result.KeptRoll)
+	if keptRoll == 0 {
+		keptRoll = int(resolution.Result.RollTotal)
+	}
+	return RuleResolutionToolOutput{
+		ResolutionID: resolution.ID,
+		Dice:         firstNonEmptyString(resolution.Result.Dice, "1d20"),
+		RollMode:     firstNonEmptyString(resolution.Result.RollMode, "normal"),
+		Rolls:        append([]int(nil), resolution.Result.Rolls...),
+		KeptRoll:     keptRoll,
+		BonusTotal:   resolution.Result.BonusTotal,
+		Total:        resolution.Result.Total,
+		Difficulty:   resolution.Request.Difficulty,
+		Target:       resolution.Result.Target,
+		Outcome:      resolution.Result.Outcome,
+		Result:       resolution.Result.Result,
+		StateChanges: append([]TurnStateChange(nil), resolution.Result.StateChanges...),
+	}
+}
+
+func normalizeTurnCheckOutcome(outcome TurnCheckOutcome) TurnCheckOutcome {
+	outcome.Result = trimBytes(outcome.Result, maxTurnBriefTextBytes)
+	if len(outcome.StateChanges) > maxTurnBriefListItems {
+		outcome.StateChanges = outcome.StateChanges[:maxTurnBriefListItems]
+	}
+	for i := range outcome.StateChanges {
+		outcome.StateChanges[i].Path = strings.TrimSpace(outcome.StateChanges[i].Path)
+	}
+	return outcome
+}
+
+func normalizeTurnCheckRollMode(value string) string {
+	switch strings.TrimSpace(value) {
+	case "", "normal":
+		return "normal"
+	case "advantage", "disadvantage":
+		return strings.TrimSpace(value)
+	default:
+		return strings.TrimSpace(value)
+	}
+}
+
+func normalizeTurnCheckDifficulty(value string) string {
+	switch strings.TrimSpace(value) {
+	case "", "normal":
+		return "normal"
+	case "very_easy", "easy", "hard", "very_hard":
+		return strings.TrimSpace(value)
+	default:
+		return strings.TrimSpace(value)
+	}
+}
+
+func rollTurnCheck(seed int64, rollMode string) ([]int, int, error) {
+	count := 1
+	switch normalizeTurnCheckRollMode(rollMode) {
+	case "normal":
+		count = 1
+	case "advantage", "disadvantage":
+		count = 2
+	default:
+		return nil, 0, fmt.Errorf("prepare_interactive_turn rule.roll_mode 无效: %s", rollMode)
+	}
+	rolls, _, err := rollDice(seed, fmt.Sprintf("%dd20", count))
+	if err != nil {
+		return nil, 0, err
+	}
+	kept := rolls[0]
+	if rollMode == "advantage" {
+		for _, roll := range rolls[1:] {
+			if roll > kept {
+				kept = roll
+			}
+		}
+	}
+	if rollMode == "disadvantage" {
+		for _, roll := range rolls[1:] {
+			if roll < kept {
+				kept = roll
+			}
+		}
+	}
+	return rolls, kept, nil
+}
+
+func turnCheckBonusTotal(bonuses []TurnCheckBonus) float64 {
+	total := 0.0
+	for _, bonus := range bonuses {
+		total += bonus.Value
+	}
+	return total
+}
+
+func resolveTurnCheckOutcome(keptRoll int, total, target float64) string {
+	if keptRoll == 20 {
+		return "critical_success"
+	}
+	if keptRoll == 1 {
+		return "critical_failure"
+	}
+	if total >= target+10 {
+		return "critical_success"
+	}
+	if total >= target {
+		return "success"
+	}
+	if total <= target-10 {
+		return "critical_failure"
+	}
+	return "failure"
+}
+
+func turnCheckOutcomeText(outcome string) string {
+	switch outcome {
+	case "critical_success":
+		return "大成功"
+	case "success":
+		return "成功"
+	case "critical_failure":
+		return "大失败"
+	default:
+		return "失败"
+	}
 }
 
 func resolveRuleCheck(storyID, branchID string, state map[string]any, check RuleCheck) (RuleResult, []StateOp, *TerminalCandidate) {

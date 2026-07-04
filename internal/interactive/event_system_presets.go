@@ -12,6 +12,13 @@ const (
 	GenreWesternEventSystemID    = "genre-western-fantasy"
 	GenreUrbanEventSystemID      = "genre-urban"
 	GenreTRPGEventSystemID       = "genre-trpg"
+
+	GenreXuanhuanEventPackageID   = "xuanhuan-core"
+	GenreXiuxianEventPackageID    = "xiuxian-core"
+	GenreApocalypseEventPackageID = "apocalypse-core"
+	GenreWesternEventPackageID    = "western-fantasy-core"
+	GenreUrbanEventPackageID      = "urban-core"
+	GenreTRPGEventPackageID       = "trpg-core"
 )
 
 type genreEventCardPreset struct {
@@ -37,7 +44,7 @@ func builtinEventSystemModules() []EventSystemModule {
 			"玄幻事件系统 / Xuanhuan Events",
 			"面向东方玄幻、热血升级、家族宗门冲突和大世界奇遇的事件卡包。",
 			[]string{"内置", "事件", "玄幻", "Xuanhuan"},
-			"xuanhuan-core",
+			GenreXuanhuanEventPackageID,
 			"玄幻核心事件包 / Xuanhuan Core Pack",
 			xuanhuanEventCards(),
 		),
@@ -46,7 +53,7 @@ func builtinEventSystemModules() []EventSystemModule {
 			"修仙事件系统 / Cultivation Events",
 			"面向修仙、问道、宗门任务、心魔天劫和因果机缘的事件卡包。",
 			[]string{"内置", "事件", "修仙", "Cultivation"},
-			"xiuxian-core",
+			GenreXiuxianEventPackageID,
 			"修仙核心事件包 / Cultivation Core Pack",
 			xiuxianEventCards(),
 		),
@@ -55,7 +62,7 @@ func builtinEventSystemModules() []EventSystemModule {
 			"末世事件系统 / Apocalypse Events",
 			"面向末世求生、基地建设、感染异变、资源稀缺和幸存者冲突的事件卡包。",
 			[]string{"内置", "事件", "末世", "Apocalypse"},
-			"apocalypse-core",
+			GenreApocalypseEventPackageID,
 			"末世核心事件包 / Apocalypse Core Pack",
 			apocalypseEventCards(),
 		),
@@ -64,7 +71,7 @@ func builtinEventSystemModules() []EventSystemModule {
 			"西幻事件系统 / Western Fantasy Events",
 			"面向剑与魔法、王国纷争、地下城、神谕教会和异族盟约的事件卡包。",
 			[]string{"内置", "事件", "西幻", "Western Fantasy"},
-			"western-fantasy-core",
+			GenreWesternEventPackageID,
 			"西幻核心事件包 / Western Fantasy Core Pack",
 			westernFantasyEventCards(),
 		),
@@ -73,7 +80,7 @@ func builtinEventSystemModules() []EventSystemModule {
 			"都市事件系统 / Urban Events",
 			"面向都市成长、职场商业、家庭关系、舆论案件和情感拉扯的事件卡包。",
 			[]string{"内置", "事件", "都市", "Urban"},
-			"urban-core",
+			GenreUrbanEventPackageID,
 			"都市核心事件包 / Urban Core Pack",
 			urbanEventCards(),
 		),
@@ -82,11 +89,71 @@ func builtinEventSystemModules() []EventSystemModule {
 			"TRPG事件系统 / TRPG Events",
 			"面向桌面角色扮演式互动叙事，强调任务钩子、线索、检定、遭遇和失败前进。",
 			[]string{"内置", "事件", "TRPG", "Tabletop"},
-			"trpg-core",
+			GenreTRPGEventPackageID,
 			"TRPG核心事件包 / TRPG Core Pack",
 			trpgEventCards(),
 		),
 	}
+}
+
+func builtinEventPackageModules() []EventPackageModule {
+	return []EventPackageModule{
+		DefaultEventPackageModule(),
+		builtinGenreEventPackageModule(
+			GenreXuanhuanEventPackageID,
+			"玄幻核心事件包 / Xuanhuan Core Pack",
+			"面向东方玄幻、热血升级、家族宗门冲突和大世界奇遇的事件卡包。",
+			[]string{"内置", "事件", "玄幻", "Xuanhuan"},
+			xuanhuanEventCards(),
+		),
+		builtinGenreEventPackageModule(
+			GenreXiuxianEventPackageID,
+			"修仙核心事件包 / Cultivation Core Pack",
+			"面向修仙、问道、宗门任务、心魔天劫和因果机缘的事件卡包。",
+			[]string{"内置", "事件", "修仙", "Cultivation"},
+			xiuxianEventCards(),
+		),
+		builtinGenreEventPackageModule(
+			GenreApocalypseEventPackageID,
+			"末世核心事件包 / Apocalypse Core Pack",
+			"面向末世求生、基地建设、感染异变、资源稀缺和幸存者冲突的事件卡包。",
+			[]string{"内置", "事件", "末世", "Apocalypse"},
+			apocalypseEventCards(),
+		),
+		builtinGenreEventPackageModule(
+			GenreWesternEventPackageID,
+			"西幻核心事件包 / Western Fantasy Core Pack",
+			"面向剑与魔法、王国纷争、地下城、神谕教会和异族盟约的事件卡包。",
+			[]string{"内置", "事件", "西幻", "Western Fantasy"},
+			westernFantasyEventCards(),
+		),
+		builtinGenreEventPackageModule(
+			GenreUrbanEventPackageID,
+			"都市核心事件包 / Urban Core Pack",
+			"面向都市成长、职场商业、家庭关系、舆论案件和情感拉扯的事件卡包。",
+			[]string{"内置", "事件", "都市", "Urban"},
+			urbanEventCards(),
+		),
+		builtinGenreEventPackageModule(
+			GenreTRPGEventPackageID,
+			"TRPG核心事件包 / TRPG Core Pack",
+			"面向桌面角色扮演式互动叙事，强调任务钩子、线索、检定、遭遇和失败前进。",
+			[]string{"内置", "事件", "TRPG", "Tabletop"},
+			trpgEventCards(),
+		),
+	}
+}
+
+func builtinGenreEventPackageModule(id, name, description string, tags []string, cards []genreEventCardPreset) EventPackageModule {
+	pkg := builtinGenreEventPackage(id, name, cards)
+	return normalizeEventPackageModule(EventPackageModule{
+		Version:     storyDirectorModuleVersion,
+		ID:          id,
+		Name:        name,
+		Description: description,
+		Events:      pkg.Events,
+		Tags:        tags,
+	})
 }
 
 func builtinGenreEventSystem(id, name, description string, tags []string, packageID, packageName string, cards []genreEventCardPreset) EventSystemModule {

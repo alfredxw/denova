@@ -166,29 +166,27 @@ func TestTerminalBranchRejectsFurtherTurnsUntilNewBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	brief := TurnBrief{
-		UserAction: "强闯禁制",
-		Intent:     "冒险",
-		TurnGoal:   "错误选择产生终局",
-		RuleChecks: []RuleCheck{{
-			ID:                "gate",
-			Difficulty:        99,
-			TerminalOnFailure: true,
-			TerminalType:      "mainline_failed",
-			TerminalReason:    "主线入口崩塌。",
-			Seed:              1,
-		}},
-	}
-	resolution, err := ResolveTurnRules(story.ID, "main", initialStoryState(), brief)
+	request := sampleTurnCheckRequest()
+	request.Action = "强闯禁制"
+	request.Intent = "冒险"
+	request.Challenge = "穿过即将崩塌的主线入口"
+	request.Cost = "失败会导致主线入口崩塌"
+	request.State = "禁制已经濒临失控。"
+	seed := seedForTurnCheckOutcome(t, "normal", "normal", 0, "critical_failure")
+	resolution, err := resolveTurnRulesWithSeed(story.ID, "main", initialStoryState(), request, seed)
 	if err != nil {
 		t.Fatal(err)
 	}
-	terminal := terminalOutcomeFromRuleResolution(resolution, "turn", "禁制炸裂，入口坍塌。")
+	terminal := &TerminalOutcome{
+		Terminal:         true,
+		Type:             "mainline_failed",
+		Reason:           "主线入口崩塌。",
+		RuleResolutionID: resolution.ID,
+	}
 	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
 		BranchID:        "main",
-		User:            brief.UserAction,
+		User:            request.Action,
 		Narrative:       "禁制炸裂，入口坍塌。",
-		TurnBrief:       &brief,
 		RuleResolution:  &resolution,
 		TerminalOutcome: terminal,
 	})
@@ -229,21 +227,20 @@ func TestRerollRuleResolutionUpdatesTurnAudit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	brief := TurnBrief{
-		UserAction: "冲刺",
-		Intent:     "冒险",
-		TurnGoal:   "结算冲刺",
-		RuleChecks: []RuleCheck{{ID: "dash", AttributePath: "resources.stamina", Dice: "1d20", Difficulty: 10, Seed: 2}},
-	}
-	resolution, err := ResolveTurnRules(story.ID, "main", snapshot.State, brief)
+	request := sampleTurnCheckRequest()
+	request.Action = "冲刺"
+	request.Intent = "冒险"
+	request.Challenge = "冲过即将关闭的门"
+	request.Cost = "失败会浪费体力"
+	request.State = "体力仍可支撑一次短距离冲刺。"
+	resolution, err := ResolveTurnRules(story.ID, "main", snapshot.State, request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
 		BranchID:       "main",
-		User:           brief.UserAction,
+		User:           request.Action,
 		Narrative:      "他冲了出去。",
-		TurnBrief:      &brief,
 		RuleResolution: &resolution,
 	})
 	if err != nil {
@@ -256,8 +253,8 @@ func TestRerollRuleResolutionUpdatesTurnAudit(t *testing.T) {
 	if reroll.ID == resolution.ID {
 		t.Fatalf("reroll should create a new resolution id")
 	}
-	if reroll.RuleResults[0].Seed == resolution.RuleResults[0].Seed {
-		t.Fatalf("reroll should use a new seed: old=%d new=%d", resolution.RuleResults[0].Seed, reroll.RuleResults[0].Seed)
+	if reroll.Seed == resolution.Seed {
+		t.Fatalf("reroll should use a new seed: old=%d new=%d", resolution.Seed, reroll.Seed)
 	}
 	snapshot, err = store.Snapshot(story.ID, "main")
 	if err != nil {

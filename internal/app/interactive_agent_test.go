@@ -414,7 +414,7 @@ func TestInteractiveDirectorEventCatalogIncludesTellerEventCards(t *testing.T) {
 	}
 }
 
-func TestInteractiveConversationPersistsTurnBriefRuleResolutionAndTerminalOutcome(t *testing.T) {
+func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)
 	story, err := store.CreateStory(interactive.CreateStoryRequest{
@@ -428,27 +428,23 @@ func TestInteractiveConversationPersistsTurnBriefRuleResolutionAndTerminalOutcom
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "我强闯秘境入口", story.ReplyTargetChars, &config.Config{})
 	resolution, err := conversation.PrepareInteractiveTurn(
 		context.Background(),
-		interactive.TurnBrief{
-			UserAction: "我强闯秘境入口",
+		interactive.TurnCheckRequest{
+			Action:     "我强闯秘境入口",
 			Intent:     "冒险",
-			TurnGoal:   "让主角承担强闯禁制的代价",
-			RuleChecks: []interactive.RuleCheck{{
-				ID:                "gate",
-				Label:             "秘境禁制",
-				Dice:              "1d20",
-				Difficulty:        100,
-				TerminalOnFailure: true,
-				TerminalType:      "bad_end",
-				TerminalReason:    "禁制反噬导致主线中断。",
-				Seed:              7,
-			}},
+			Challenge:  "秘境禁制",
+			Cost:       "失败会导致禁制反噬",
+			State:      "主角站在秘境入口，禁制正在收束。",
+			Difficulty: "very_hard",
+			Outcomes: interactive.TurnCheckOutcomes{
+				CriticalSuccess: interactive.TurnCheckOutcome{Result: "强闯成功。"},
+				Success:         interactive.TurnCheckOutcome{Result: "勉强闯入。"},
+				Failure:         interactive.TurnCheckOutcome{Result: "被禁制震回。"},
+				CriticalFailure: interactive.TurnCheckOutcome{Result: "禁制彻底反噬。"},
+			},
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if resolution.TerminalCandidate == nil {
-		t.Fatalf("expected terminal candidate: %#v", resolution)
 	}
 	if err := conversation.AppendAssistant("秘境入口的白光猛然坍缩，主角被禁制震回台阶。"); err != nil {
 		t.Fatal(err)
@@ -457,17 +453,11 @@ func TestInteractiveConversationPersistsTurnBriefRuleResolutionAndTerminalOutcom
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.TurnBrief == nil || snapshot.CurrentTurn.RuleResolution == nil {
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.RuleResolution == nil {
 		t.Fatalf("turn audit missing: %#v", snapshot.CurrentTurn)
 	}
 	if snapshot.CurrentTurn.RuleResolution.ID != resolution.ID {
 		t.Fatalf("rule resolution id mismatch: %#v", snapshot.CurrentTurn.RuleResolution)
-	}
-	if snapshot.CurrentTurn.TerminalOutcome == nil || !snapshot.CurrentTurn.TerminalOutcome.Terminal || snapshot.CurrentTurn.TerminalOutcome.Type != "bad_end" {
-		t.Fatalf("terminal outcome missing: %#v", snapshot.CurrentTurn.TerminalOutcome)
-	}
-	if len(snapshot.CurrentTurn.TerminalOutcome.RestartSuggestions) == 0 {
-		t.Fatalf("terminal outcome should include restart suggestions: %#v", snapshot.CurrentTurn.TerminalOutcome)
 	}
 }
 
