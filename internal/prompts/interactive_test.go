@@ -60,14 +60,45 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"event_intents", "自然形成", "不要为了引用事件 ID"} {
+	for _, want := range []string{"不是所有用户行动都需要检定", "普通观察", "低风险试探", "只有当行动存在明确风险", "需要固定规则裁定时，才调用 prepare_interactive_turn", "不要为了引用事件 ID"} {
 		if !strings.Contains(system, want) {
-			t.Fatalf("system prompt should keep event intents organic %q:\n%s", want, system)
+			t.Fatalf("system prompt should include DM-style check rule %q:\n%s", want, system)
 		}
+	}
+	for _, want := range []string{"不是所有用户行动都需要检定", "低风险试探", "应由你直接裁定", "只有当本回合存在明确风险", "需要固定规则裁定时，才调用 prepare_interactive_turn"} {
+		if !strings.Contains(turn, want) {
+			t.Fatalf("turn prompt should include DM-style check rule %q:\n%s", want, turn)
+		}
+	}
+	if strings.Contains(turn, "如果本回合涉及数值、骰子、资源、关系、词条、失败等级或终局候选，请调用 prepare_interactive_turn") {
+		t.Fatalf("turn prompt should not force checks for every numeric/resource mention:\n%s", turn)
 	}
 	for _, forbidden := range []string{"优先引用对应事件卡", "type_name/name"} {
 		if strings.Contains(system, forbidden) {
 			t.Fatalf("system prompt should not ask prose agent to trigger raw event cards %q:\n%s", forbidden, system)
+		}
+	}
+}
+
+func TestInteractiveStoryPromptRequiresGlobalStyleReferenceRead(t *testing.T) {
+	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{
+		StyleRules: []StyleRule{
+			{Global: true, StyleReferences: []StyleReference{{Name: "全局克制", Path: "/tmp/.denova/styles/global.md", DisplayPath: ".denova/styles/global.md"}}},
+			{Scene: "激烈打斗", StyleReferences: []StyleReference{{Name: "短促打斗", Path: "/tmp/.denova/styles/fight.md", DisplayPath: ".denova/styles/fight.md"}}},
+		},
+	})
+
+	for _, want := range []string{
+		"全局文风参考：所有正文生成默认生效",
+		"path: /tmp/.denova/styles/global.md",
+		"互动故事下一回合正文生成时",
+		"编制故事正文前必须先用 read_file 读取这些全局参考文件",
+		"分场景文风参考仍根据当前章节内容、互动场景或本轮 # 场景选择",
+		"不要强行选择分场景参考",
+		"不要照搬其中的人物、情节或设定",
+	} {
+		if !strings.Contains(system, want) {
+			t.Fatalf("interactive system prompt should include style reference rule %q:\n%s", want, system)
 		}
 	}
 }

@@ -172,6 +172,10 @@ func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {
 	assertContains(t, got, "场景：日常对话")
 	assertContains(t, got, "温吞对白")
 	assertContains(t, got, "全局文风参考默认适用于所有正文生成")
+	assertContains(t, got, "互动故事下一回合正文生成时")
+	assertContains(t, got, "编制故事正文前必须先用 read_file 读取这些全局参考文件")
+	assertContains(t, got, "分场景文风参考仍根据当前章节内容、互动场景或本轮 # 场景选择")
+	assertContains(t, got, "不要强行选择分场景参考")
 	assertContains(t, got, "完全忽略以上参考")
 	assertContains(t, got, "read_file")
 	if strings.Contains(got, "无效内容") {
