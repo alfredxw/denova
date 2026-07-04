@@ -141,6 +141,60 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	}
 }
 
+func TestContextMessagesPersistInEffectiveContextButNotHistory(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.UserMessage("读取第一章")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendContextMessage(schema.AssistantMessage("", []schema.ToolCall{{
+		ID:   "call-read",
+		Type: "function",
+		Function: schema.FunctionCall{
+			Name:      "read_file",
+			Arguments: `{"path":"chapters/1.md"}`,
+		},
+	}})); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendContextMessage(schema.ToolMessage("第一章内容", "call-read", schema.WithToolName("read_file"))); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.AssistantMessage("已读取", nil)); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	effective := reloaded.GetEffectiveMessages()
+	if len(effective) != 4 {
+		t.Fatalf("context messages should enter effective context: %#v", effective)
+	}
+	if effective[1].Role != schema.Assistant || len(effective[1].ToolCalls) != 1 || effective[2].Role != schema.Tool || effective[2].Content != "第一章内容" {
+		t.Fatalf("context tool chain mismatch: %#v", effective)
+	}
+	history := reloaded.History()
+	if len(history) != 2 {
+		t.Fatalf("context messages should stay hidden from UI history: %#v", history)
+	}
+	if count := reloaded.MessageCount(); count != 2 {
+		t.Fatalf("visible message count should ignore context messages, got %d", count)
+	}
+}
+
 func TestHistoryNormalizesRunningToolAfterSameRunTokenUsage(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

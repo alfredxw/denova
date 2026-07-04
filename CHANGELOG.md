@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Agent：IDE 写作 Agent 与互动 Agent 现在会把工具调用和工具结果作为隐藏的模型上下文保留到下一轮；新增按 Agent 配置的工具结果保留开关、最近完整结果数、上下文预算和单结果预览上限，旧结果超出预算后会替换为可追踪占位，同时 raw thinking 仍不进入下一轮模型输入。
+- Agent: IDE writing and interactive agents now retain tool calls and tool results as hidden model context for the next turn. Added per-agent settings for tool-result retention, recent full results, context budget, and per-result preview limits; old over-budget results become traceable placeholders while raw thinking remains excluded from the next model input.
+- 游戏模式：事件系统新增玄幻、修仙、末世、西幻、都市和 TRPG 六个只读内置预设，每个预设包含结构化 Markdown 事件卡包；导演事件目录会优先保留所选事件包和自定义事件，再用通用事件补齐上下文上限。
+- Game Mode: Added six read-only built-in Event System presets for xuanhuan, cultivation, apocalypse, western fantasy, urban, and TRPG stories, each with structured Markdown event-card packs; Director event catalogs now prioritize selected package and custom events before filling remaining context slots with generic events.
+- Skills：管理页现在按 Skill 目录展示文件，除入口 `SKILL.md` 外可查看并编辑目录内的 reference 文档；重命名、迁移或创建内置 Skill 覆盖时会保留原 Skill 目录下的附属文件。
+- Skills: The management page now exposes files inside each Skill directory, so reference documents alongside `SKILL.md` can be viewed and edited; renaming, moving, or creating built-in Skill overrides preserves supporting files in the Skill directory.
 - Skills：支持从 ZIP 上传或公开 GitHub 仓库扫描并选择安装 Skill；GitHub/ZIP 来源都会先列出候选项，用户只安装勾选的条目，同名目标默认拒绝覆盖。
 - Skills: Added selectable Skill installation from ZIP uploads or public GitHub repositories. GitHub and ZIP sources are scanned first, users install only checked candidates, and same-name targets are rejected by default.
 - 游戏模式：故事导演策略新增高级 Markdown 提示，作为结构化主线、失败、节奏和随机扰动策略的补充；该提示会以独立来源和 4000 bytes 上限注入互动正文 Agent 与后台 Director Agent。

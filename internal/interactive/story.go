@@ -425,17 +425,18 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	event := TurnEvent{
-		V:             schemaVersion,
-		Type:          StoryEventTypeTurn,
-		ID:            newID("ev"),
-		ParentID:      parentID,
-		BranchID:      branchID,
-		Ts:            now,
-		User:          req.User,
-		Narrative:     req.Narrative,
-		Thinking:      strings.TrimSpace(req.Thinking),
-		DisplayEvents: sanitizeDisplayEvents(req.DisplayEvents),
-		Flags:         map[string]bool{"pinned": false, "locked": false},
+		V:                    schemaVersion,
+		Type:                 StoryEventTypeTurn,
+		ID:                   newID("ev"),
+		ParentID:             parentID,
+		BranchID:             branchID,
+		Ts:                   now,
+		User:                 req.User,
+		Narrative:            req.Narrative,
+		Thinking:             strings.TrimSpace(req.Thinking),
+		DisplayEvents:        sanitizeDisplayEvents(req.DisplayEvents),
+		ModelContextMessages: sanitizeModelContextMessages(req.ModelContextMessages),
+		Flags:                map[string]bool{"pinned": false, "locked": false},
 	}
 	branch.Head = event.ID
 	meta.Branches[branchID] = branch
@@ -474,22 +475,23 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	turn := TurnEvent{
-		V:               schemaVersion,
-		Type:            StoryEventTypeTurn,
-		ID:              newID("ev"),
-		ParentID:        parentID,
-		BranchID:        branchID,
-		Ts:              now,
-		User:            req.User,
-		Narrative:       req.Narrative,
-		Thinking:        strings.TrimSpace(req.Thinking),
-		DisplayEvents:   sanitizeDisplayEvents(req.DisplayEvents),
-		HotState:        normalizeHotState(req.HotState),
-		TurnBrief:       normalizeTurnBriefPointer(req.TurnBrief),
-		RuleResolution:  normalizeRuleResolutionPointer(req.RuleResolution),
-		TerminalOutcome: normalizeTerminalOutcomePointer(req.TerminalOutcome),
-		MemoryStatus:    "pending",
-		Flags:           map[string]bool{"pinned": false, "locked": false},
+		V:                    schemaVersion,
+		Type:                 StoryEventTypeTurn,
+		ID:                   newID("ev"),
+		ParentID:             parentID,
+		BranchID:             branchID,
+		Ts:                   now,
+		User:                 req.User,
+		Narrative:            req.Narrative,
+		Thinking:             strings.TrimSpace(req.Thinking),
+		DisplayEvents:        sanitizeDisplayEvents(req.DisplayEvents),
+		ModelContextMessages: sanitizeModelContextMessages(req.ModelContextMessages),
+		HotState:             normalizeHotState(req.HotState),
+		TurnBrief:            normalizeTurnBriefPointer(req.TurnBrief),
+		RuleResolution:       normalizeRuleResolutionPointer(req.RuleResolution),
+		TerminalOutcome:      normalizeTerminalOutcomePointer(req.TerminalOutcome),
+		MemoryStatus:         "pending",
+		Flags:                map[string]bool{"pinned": false, "locked": false},
 	}
 	branch.Head = turn.ID
 

@@ -24,6 +24,21 @@ func (s *Session) Append(msg *schema.Message) error {
 	return s.persistLocked()
 }
 
+// AppendContextMessage appends a model-visible message that is hidden from UI history.
+func (s *Session) AppendContextMessage(msg *schema.Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if msg == nil || (msg.Role == "" && strings.TrimSpace(msg.Content) == "" && len(msg.ToolCalls) == 0) {
+		return nil
+	}
+	now := time.Now().UTC()
+	s.messages = append(s.messages, msg)
+	s.records = append(s.records, historyRecord{kind: historyTypeContextMessage, message: msg, createdAt: now})
+	s.UpdatedAt = now
+	return s.persistLocked()
+}
+
 // AppendClearMarker 追加上下文清理标记，不删除历史消息。
 func (s *Session) AppendClearMarker() error {
 	s.mu.Lock()
@@ -203,7 +218,13 @@ func (s *Session) Title() string {
 func (s *Session) MessageCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.messages)
+	count := 0
+	for _, record := range s.records {
+		if record.kind == historyTypeMessage {
+			count++
+		}
+	}
+	return count
 }
 
 func (s *Session) titleLocked() string {

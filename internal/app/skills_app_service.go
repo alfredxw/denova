@@ -20,12 +20,20 @@ func (a *App) SkillDocument(ctx context.Context, scope novaskills.Scope, name st
 	return a.skills().Document(ctx, scope, name)
 }
 
+func (a *App) SkillFileDocument(ctx context.Context, scope novaskills.Scope, name, path string) (novaskills.FileDocument, error) {
+	return a.skills().FileDocument(ctx, scope, name, path)
+}
+
 func (a *App) CreateSkillDocument(ctx context.Context, scope novaskills.Scope, name, description string, agents []string) (novaskills.Document, error) {
 	return a.skills().Create(ctx, scope, name, description, agents)
 }
 
 func (a *App) SaveSkillDocument(ctx context.Context, scope novaskills.Scope, name, content string) (novaskills.Document, error) {
 	return a.skills().Save(ctx, scope, name, content)
+}
+
+func (a *App) SaveSkillFileDocument(ctx context.Context, scope novaskills.Scope, name, path, content string) (novaskills.FileDocument, error) {
+	return a.skills().SaveFile(ctx, scope, name, path, content)
 }
 
 func (a *App) SaveSkillDocumentAs(ctx context.Context, scope novaskills.Scope, name string, targetScope novaskills.Scope, targetName, content string) (novaskills.Document, error) {
@@ -60,6 +68,10 @@ func (s *SkillsAppService) Document(ctx context.Context, scope novaskills.Scope,
 	return novaskills.ReadDocument(ctx, s.directories(), scope, name)
 }
 
+func (s *SkillsAppService) FileDocument(ctx context.Context, scope novaskills.Scope, name, path string) (novaskills.FileDocument, error) {
+	return novaskills.ReadSkillFile(ctx, s.directories(), scope, name, path)
+}
+
 func (s *SkillsAppService) Create(ctx context.Context, scope novaskills.Scope, name, description string, agents []string) (novaskills.Document, error) {
 	doc, err := novaskills.CreateDocument(ctx, s.directories(), scope, name, description, agents...)
 	if err != nil {
@@ -75,6 +87,15 @@ func (s *SkillsAppService) Save(ctx context.Context, scope novaskills.Scope, nam
 		return novaskills.Document{}, err
 	}
 	log.Printf("[skills] Skill saved scope=%s name=%s path=%s", scope, name, doc.Path)
+	return doc, nil
+}
+
+func (s *SkillsAppService) SaveFile(ctx context.Context, scope novaskills.Scope, name, path, content string) (novaskills.FileDocument, error) {
+	doc, err := novaskills.SaveSkillFile(ctx, s.directories(), scope, name, path, content)
+	if err != nil {
+		return novaskills.FileDocument{}, err
+	}
+	log.Printf("[skills] Skill file saved scope=%s name=%s file=%s", scope, name, path)
 	return doc, nil
 }
 

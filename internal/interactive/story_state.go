@@ -51,6 +51,61 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 	return result
 }
 
+func sanitizeModelContextMessages(messages []ModelContextMessage) []ModelContextMessage {
+	if len(messages) == 0 {
+		return nil
+	}
+	result := make([]ModelContextMessage, 0, len(messages))
+	for _, msg := range messages {
+		role := strings.TrimSpace(msg.Role)
+		switch role {
+		case "assistant":
+			calls := sanitizeModelContextToolCalls(msg.ToolCalls)
+			if len(calls) == 0 {
+				continue
+			}
+			result = append(result, ModelContextMessage{Role: role, ToolCalls: calls})
+		case "tool":
+			toolCallID := strings.TrimSpace(msg.ToolCallID)
+			toolName := strings.TrimSpace(msg.ToolName)
+			if toolCallID == "" && toolName == "" {
+				continue
+			}
+			result = append(result, ModelContextMessage{
+				Role:       role,
+				Content:    msg.Content,
+				Name:       strings.TrimSpace(msg.Name),
+				ToolCallID: toolCallID,
+				ToolName:   toolName,
+			})
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func sanitizeModelContextToolCalls(calls []ModelContextToolCall) []ModelContextToolCall {
+	if len(calls) == 0 {
+		return nil
+	}
+	result := make([]ModelContextToolCall, 0, len(calls))
+	for _, call := range calls {
+		name := strings.TrimSpace(call.Function.Name)
+		if name == "" {
+			continue
+		}
+		call.ID = strings.TrimSpace(call.ID)
+		if call.Type == "" {
+			call.Type = "function"
+		}
+		call.Function.Name = name
+		result = append(result, call)
+	}
+	return result
+}
+
 func nonNegativeInt(value int) int {
 	if value < 0 {
 		return 0

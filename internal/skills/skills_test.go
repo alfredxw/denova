@@ -93,6 +93,71 @@ func TestReadAndSaveDocumentReportActiveScope(t *testing.T) {
 	}
 }
 
+func TestReadAndSaveSkillFile(t *testing.T) {
+	ctx := context.Background()
+	user := filepath.Join(t.TempDir(), "skills")
+	dirs := []Directory{{Scope: ScopeUser, Path: user, Writable: true}}
+	writeSkillFile(t, user, "outline", "outline", "user desc")
+	refPath := filepath.Join(user, "outline", "references", "style.md")
+	if err := os.MkdirAll(filepath.Dir(refPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(refPath, []byte("# Style\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	doc, err := ReadDocument(ctx, dirs, ScopeUser, "outline")
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	var foundRef bool
+	for _, file := range doc.Files {
+		if file.Path == "references/style.md" && file.Editable && !file.Entry {
+			foundRef = true
+		}
+	}
+	if !foundRef {
+		t.Fatalf("reference file missing from document files: %#v", doc.Files)
+	}
+
+	fileDoc, err := ReadSkillFile(ctx, dirs, ScopeUser, "outline", "references/style.md")
+	if err != nil {
+		t.Fatalf("ReadSkillFile() error = %v", err)
+	}
+	if fileDoc.Content != "# Style\n" || fileDoc.File.Path != "references/style.md" {
+		t.Fatalf("file document = %#v", fileDoc)
+	}
+
+	saved, err := SaveSkillFile(ctx, dirs, ScopeUser, "outline", "references/style.md", "# Updated\n")
+	if err != nil {
+		t.Fatalf("SaveSkillFile() error = %v", err)
+	}
+	if saved.Content != "# Updated\n" {
+		t.Fatalf("saved content = %q", saved.Content)
+	}
+	data, err := os.ReadFile(refPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "# Updated\n" {
+		t.Fatalf("file content = %q", string(data))
+	}
+}
+
+func TestSkillFileRejectsTraversalAndEntrySave(t *testing.T) {
+	ctx := context.Background()
+	user := filepath.Join(t.TempDir(), "skills")
+	dirs := []Directory{{Scope: ScopeUser, Path: user, Writable: true}}
+	writeSkillFile(t, user, "outline", "outline", "user desc")
+
+	if _, err := ReadSkillFile(ctx, dirs, ScopeUser, "outline", "../outside.md"); err == nil {
+		t.Fatalf("ReadSkillFile() expected traversal error")
+	}
+	if _, err := SaveSkillFile(ctx, dirs, ScopeUser, "outline", SkillFileName, "bad"); err == nil {
+		t.Fatalf("SaveSkillFile(%s) expected error", SkillFileName)
+	}
+}
+
 func TestCreateAndSaveDocument(t *testing.T) {
 	ctx := context.Background()
 	user := filepath.Join(t.TempDir(), "skills")
@@ -162,6 +227,13 @@ func TestSaveDocumentAsRenamesAndMovesEditableSkill(t *testing.T) {
 	user := filepath.Join(root, "user")
 	workspace := filepath.Join(root, "workspace")
 	writeSkillFile(t, user, "outline", "outline", "user outline")
+	refPath := filepath.Join(user, "outline", "references", "style.md")
+	if err := os.MkdirAll(filepath.Dir(refPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(refPath, []byte("# Style\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	dirs := []Directory{
 		{Scope: ScopeUser, Path: user, Writable: true},
 		{Scope: ScopeWorkspace, Path: workspace, Writable: true},
@@ -179,6 +251,42 @@ func TestSaveDocumentAsRenamesAndMovesEditableSkill(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(workspace, "beats", SkillFileName)); err != nil {
 		t.Fatalf("moved skill missing: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(workspace, "beats", "references", "style.md")); err != nil || string(data) != "# Style\n" {
+		t.Fatalf("moved reference file = %q, err=%v", string(data), err)
+	}
+}
+
+func TestSaveDocumentAsCopiesReadonlySkillDirectoryForOverride(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	builtin := filepath.Join(root, "builtin")
+	user := filepath.Join(root, "user")
+	writeSkillFile(t, builtin, "outline", "outline", "builtin outline")
+	refPath := filepath.Join(builtin, "outline", "references", "style.md")
+	if err := os.MkdirAll(filepath.Dir(refPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(refPath, []byte("# Builtin Style\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dirs := []Directory{
+		{Scope: ScopeBuiltin, Path: builtin},
+		{Scope: ScopeUser, Path: user, Writable: true},
+	}
+
+	doc, err := SaveDocumentAs(ctx, dirs, ScopeBuiltin, "outline", ScopeUser, "outline", DefaultContent("outline", "user override"))
+	if err != nil {
+		t.Fatalf("SaveDocumentAs() error = %v", err)
+	}
+	if doc.Scope != ScopeUser || doc.Description != "user override" {
+		t.Fatalf("override doc = %#v", doc)
+	}
+	if _, err := os.Stat(filepath.Join(builtin, "outline", SkillFileName)); err != nil {
+		t.Fatalf("builtin source should remain: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(user, "outline", "references", "style.md")); err != nil || string(data) != "# Builtin Style\n" {
+		t.Fatalf("copied reference file = %q, err=%v", string(data), err)
 	}
 }
 

@@ -30,6 +30,13 @@ type skillSaveRequest struct {
 	TargetName  string           `json:"target_name"`
 }
 
+type skillFileSaveRequest struct {
+	Scope   novaskills.Scope `json:"scope"`
+	Name    string           `json:"name"`
+	Path    string           `json:"path"`
+	Content string           `json:"content"`
+}
+
 type skillInstallGitHubRequest struct {
 	URL          string           `json:"url"`
 	Ref          string           `json:"ref"`
@@ -55,6 +62,22 @@ func (h *Handlers) HandleSkillDocument(ctx context.Context, c *app.RequestContex
 		return
 	}
 	doc, err := h.app.SkillDocument(ctx, scope, name)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, doc)
+}
+
+func (h *Handlers) HandleSkillFileDocument(ctx context.Context, c *app.RequestContext) {
+	scope := novaskills.Scope(strings.TrimSpace(c.Query("scope")))
+	name := strings.TrimSpace(c.Query("name"))
+	path := strings.TrimSpace(c.Query("path"))
+	if scope == "" || name == "" || path == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.skills.scopeNamePathRequired")
+		return
+	}
+	doc, err := h.app.SkillFileDocument(ctx, scope, name, path)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
@@ -95,6 +118,27 @@ func (h *Handlers) HandleSkillSave(ctx context.Context, c *app.RequestContext) {
 		body.TargetName = body.Name
 	}
 	doc, err := h.app.SaveSkillDocumentAs(ctx, body.Scope, body.Name, body.TargetScope, body.TargetName, body.Content)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, doc)
+}
+
+func (h *Handlers) HandleSkillFileSave(ctx context.Context, c *app.RequestContext) {
+	var body skillFileSaveRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	body.Scope = novaskills.Scope(strings.TrimSpace(string(body.Scope)))
+	body.Name = strings.TrimSpace(body.Name)
+	body.Path = strings.TrimSpace(body.Path)
+	if body.Scope == "" || body.Name == "" || body.Path == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.skills.scopeNamePathRequired")
+		return
+	}
+	doc, err := h.app.SaveSkillFileDocument(ctx, body.Scope, body.Name, body.Path, body.Content)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return

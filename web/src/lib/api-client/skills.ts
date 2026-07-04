@@ -1,5 +1,5 @@
 import { jsonHeaders, requestJSON } from './client'
-import type { SkillDocument, SkillInstallPreview, SkillInstallResult, SkillScope, SkillSnapshot } from './types'
+import type { SkillDocument, SkillFileDocument, SkillInstallPreview, SkillInstallResult, SkillScope, SkillSnapshot } from './types'
 
 export interface SkillSaveTarget {
   scope: SkillScope
@@ -16,7 +16,13 @@ export async function getSkills(): Promise<SkillSnapshot> {
 
 export async function getSkillDocument(scope: SkillScope, name: string): Promise<SkillDocument> {
   const query = new URLSearchParams({ scope, name })
-  return requestJSON(`/api/skills/document?${query.toString()}`)
+  const data = await requestJSON<SkillDocument>(`/api/skills/document?${query.toString()}`)
+  return { ...data, files: data.files || [] }
+}
+
+export async function getSkillFileDocument(scope: SkillScope, name: string, path: string): Promise<SkillFileDocument> {
+  const query = new URLSearchParams({ scope, name, path })
+  return requestJSON(`/api/skills/file?${query.toString()}`)
 }
 
 export async function createSkill(scope: SkillScope, name: string, description = '', agents: string[] = []): Promise<SkillDocument> {
@@ -28,7 +34,7 @@ export async function createSkill(scope: SkillScope, name: string, description =
 }
 
 export async function saveSkillDocument(scope: SkillScope, name: string, content: string, target?: SkillSaveTarget): Promise<SkillDocument> {
-  return requestJSON('/api/skills/document', {
+  const data = await requestJSON<SkillDocument>('/api/skills/document', {
     method: 'PUT',
     headers: jsonHeaders,
     body: JSON.stringify({
@@ -38,6 +44,15 @@ export async function saveSkillDocument(scope: SkillScope, name: string, content
       target_scope: target?.scope,
       target_name: target?.name,
     }),
+  })
+  return { ...data, files: data.files || [] }
+}
+
+export async function saveSkillFileDocument(scope: SkillScope, name: string, path: string, content: string): Promise<SkillFileDocument> {
+  return requestJSON('/api/skills/file', {
+    method: 'PUT',
+    headers: jsonHeaders,
+    body: JSON.stringify({ scope, name, path, content }),
   })
 }
 
