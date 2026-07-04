@@ -25,7 +25,7 @@ agent: config_manager,interactive_story
 4. 只有作者明确确认“确认、写入、保存、就按这个初始化、可以落库”等意图后，才执行写入。
 5. 写入时：
    - 使用 `write_lore_items` 创建角色、世界观、地点、势力、规则、物品等长期稳定设定
-   - 每个资料条目的 `brief_description` 必须以“类型 名称。”开头，后接 3-5 句身份、别名、关键事实、适用场景和触发词说明，最后写明“上下文出现相关内容时，一定要参考本项详情。”
+   - 每个资料条目的 `brief_description` 必须以“类型 名称。”开头，后接 3-5 句身份、别名、关键事实、适用场景和触发词说明
    - 使用文件写入工具更新 `CREATOR.md`
    - 不写 `ideas.md`
    - 不写 `setting/outline.md`、`setting/progress.md`、`setting/character-states.md`

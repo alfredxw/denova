@@ -249,9 +249,11 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 			Name: "tool_orchestrator",
 			Build: func(context.Context, agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
 				return &toolOrchestratorMiddleware{
-					agentKind:          spec.Kind,
-					policyKind:         firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
-					toolResultMaxBytes: configToolResultMaxBytes(cfg),
+					agentKind:           spec.Kind,
+					policyKind:          firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
+					toolSettings:        spec.ToolSettings,
+					enforceToolSettings: true,
+					toolResultMaxBytes:  configToolResultMaxBytes(cfg),
 				}, nil
 			},
 		},
@@ -277,7 +279,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	}
 	toolRegistrations = append(toolRegistrations, agenttools.ToolRegistration{
 		Name:    "web_search",
-		Enabled: agenttools.CapabilityAllowed(config.AgentToolWebSearch),
+		Enabled: stableWebSearchSchemaAllowed(firstNonEmpty(spec.ToolPolicyKind, spec.Kind)),
 		Build: func(agenttools.Settings) ([]tool.BaseTool, error) {
 			return newWebSearchTools()
 		},
@@ -431,42 +433,37 @@ func buildSubAgentInstruction(parent deepAgentSpec, sub config.SubAgentConfig) s
 }
 
 func loreToolsFactory(cfg *config.Config, forceReadOnly bool) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-		if cfg == nil || !settings.LoreRead {
+	return func(_ config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+		if cfg == nil {
 			return nil, nil
 		}
-		allowWrite := settings.LoreWrite && !forceReadOnly
+		allowWrite := !forceReadOnly
 		return newLoreTools(cfg.Workspace, allowWrite)
 	}
 }
 
 func ideToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+	return func(_ config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 		if cfg == nil {
 			return nil, nil
 		}
-		var tools []tool.BaseTool
-		if settings.LoreRead {
-			loreTools, err := newLoreTools(cfg.Workspace, settings.LoreWrite)
-			if err != nil {
-				return nil, err
-			}
-			tools = append(tools, loreTools...)
+		loreTools, err := newLoreTools(cfg.Workspace, true)
+		if err != nil {
+			return nil, err
 		}
-		if settings.ImageGeneration {
-			imageTools, err := newIllustrationTools(cfg)
-			if err != nil {
-				return nil, err
-			}
-			tools = append(tools, imageTools...)
+		imageTools, err := newIllustrationTools(cfg)
+		if err != nil {
+			return nil, err
 		}
+		tools := append([]tool.BaseTool{}, loreTools...)
+		tools = append(tools, imageTools...)
 		return tools, nil
 	}
 }
 
 func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-		if cfg == nil || !settings.ImageGeneration {
+	return func(_ config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+		if cfg == nil {
 			return nil, nil
 		}
 		return newIllustrationTools(cfg)
@@ -474,9 +471,9 @@ func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings
 }
 
 func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+	return func(_ config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 		var tools []tool.BaseTool
-		if cfg != nil && settings.LoreRead {
+		if cfg != nil {
 			loreTools, err := newLoreTools(cfg.Workspace, false)
 			if err != nil {
 				return nil, err
@@ -513,21 +510,24 @@ func configManagerToolsFactory(cfg *config.Config) func(config.ResolvedAgentTool
 		if cfg == nil {
 			return nil, nil
 		}
-		var tools []tool.BaseTool
-		if settings.LoreRead {
-			loreTools, err := newLoreTools(cfg.Workspace, settings.LoreWrite)
-			if err != nil {
-				return nil, err
-			}
-			tools = append(tools, loreTools...)
+		if !configManagerFactoryAllowed(settings) {
+			return nil, nil
 		}
 		configTools, err := newConfigManagerTools(cfg, settings)
 		if err != nil {
 			return nil, err
 		}
-		tools = append(tools, configTools...)
-		return tools, nil
+		return configTools, nil
 	}
+}
+
+func configManagerFactoryAllowed(settings config.ResolvedAgentToolSettings) bool {
+	return settings.LoreRead ||
+		settings.LoreWrite ||
+		settings.Todo ||
+		settings.Skills ||
+		settings.AgentConfigRead ||
+		settings.AgentConfigWrite
 }
 
 func newFilesystemMiddleware(ctx context.Context, backend filesystem.Backend, streamingShell filesystem.StreamingShell, settings config.ResolvedAgentToolSettings) (adk.ChatModelAgentMiddleware, error) {
@@ -538,31 +538,34 @@ func newFilesystemMiddleware(ctx context.Context, backend filesystem.Backend, st
 		return nil, nil
 	}
 	mwConfig := &filesystemmw.MiddlewareConfig{
-		Backend: backend,
-		LsToolConfig: &filesystemmw.ToolConfig{
-			Disable: !settings.FileRead,
-		},
+		Backend:      backend,
+		LsToolConfig: &filesystemmw.ToolConfig{},
 		ReadFileToolConfig: &filesystemmw.ToolConfig{
-			Disable: !settings.FileRead,
-			Desc:    &novaReadFileToolDesc,
+			Desc: &novaReadFileToolDesc,
 		},
-		GlobToolConfig: &filesystemmw.ToolConfig{
-			Disable: !settings.FileRead,
-		},
-		GrepToolConfig: &filesystemmw.ToolConfig{
-			Disable: !settings.FileRead,
-		},
-		WriteFileToolConfig: &filesystemmw.ToolConfig{
-			Disable: !settings.FileWrite,
-		},
-		EditFileToolConfig: &filesystemmw.ToolConfig{
-			Disable: !settings.FileWrite,
-		},
+		GlobToolConfig:      &filesystemmw.ToolConfig{},
+		GrepToolConfig:      &filesystemmw.ToolConfig{},
+		WriteFileToolConfig: &filesystemmw.ToolConfig{},
+		EditFileToolConfig:  &filesystemmw.ToolConfig{},
 	}
-	if settings.ShellExecute {
+	if streamingShell != nil {
 		mwConfig.StreamingShell = streamingShell
 	}
 	return filesystemmw.New(ctx, mwConfig)
+}
+
+func stableWebSearchSchemaAllowed(agentKind string) func(config.ResolvedAgentToolSettings) bool {
+	return func(settings config.ResolvedAgentToolSettings) bool {
+		if settings.WebSearch {
+			return true
+		}
+		switch agentKind {
+		case config.AgentKindIDE, config.AgentKindInteractiveStory, config.AgentKindConfigManager, config.AgentKindAutomation:
+			return true
+		default:
+			return false
+		}
+	}
 }
 
 func configMaxIteration(cfg *config.Config) int {

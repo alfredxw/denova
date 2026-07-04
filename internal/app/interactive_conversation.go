@@ -196,6 +196,7 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 		TokensAfter:         result.TokensAfter,
 		TargetRatio:         result.TargetRatio,
 		ContextWindowTokens: result.ContextWindowTokens,
+		Strategy:            result.Strategy,
 		Threshold:           result.Threshold,
 		Reason:              "context_usage_threshold",
 		Phase:               result.Phase,

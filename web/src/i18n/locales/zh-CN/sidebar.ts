@@ -5,6 +5,7 @@ const sidebar = {
   'sidebar.copy': '复制',
   'sidebar.move': '移动',
   'sidebar.delete': '删除',
+  'sidebar.moreActions': '更多操作',
   'sidebar.special.ideas': '灵感',
   'sidebar.filePath': '文件路径',
   'sidebar.dirPath': '目录路径',

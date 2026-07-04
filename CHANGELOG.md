@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Agent：开发模式 LLM 输入日志新增 cache attribution 指纹，记录完整消息、system prompt、工具 schema 的稳定哈希和工具名列表，便于定位 prompt cache 前缀变化而不把大 schema 复制进运行轨迹。
+- Agent: Developer LLM input logs now include cache-attribution fingerprints for full messages, system prompts, tool schemas, and tool names, making prompt-cache prefix changes easier to diagnose without copying large schemas into run traces.
+- Agent：运行轨迹摘要新增工具调用质量计数，包括调用数、成功数、阻断数、错误数、截断数和无效 JSON 参数数。
+- Agent: Run trace summaries now include tool quality counters for calls, successes, blocked calls, errors, truncations, and invalid JSON arguments.
+- Agent：上下文压缩配置新增显式 `compaction_strategy` 字段；当前支持的真实策略为 `summary_agent`，压缩事件和持久化记录会写入该策略，便于后续扩展时保持边界清晰。
+- Agent: Context compaction settings now include an explicit `compaction_strategy` field. The currently supported concrete strategy is `summary_agent`, and compaction events plus persisted records store it for clearer future extension boundaries.
 - Agent：IDE 写作 Agent 与互动 Agent 现在会把工具调用和工具结果作为隐藏的模型上下文保留到下一轮；新增按 Agent 配置的工具结果保留开关、最近完整结果数、上下文预算和单结果预览上限，旧结果超出预算后会替换为可追踪占位，同时 raw thinking 仍不进入下一轮模型输入。
 - Agent: IDE writing and interactive agents now retain tool calls and tool results as hidden model context for the next turn. Added per-agent settings for tool-result retention, recent full results, context budget, and per-result preview limits; old over-budget results become traceable placeholders while raw thinking remains excluded from the next model input.
 - 游戏模式：事件系统新增玄幻、修仙、末世、西幻、都市和 TRPG 六个只读内置预设，每个预设包含结构化 Markdown 事件卡包；导演事件目录会优先保留所选事件包和自定义事件，再用通用事件补齐上下文上限。
@@ -24,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Lore: Lore items now keep a current image reference with generation metadata; the editor supports per-item generate, regenerate, and clear while preserving historical image files.
 - 资料库：新增批量生成资料图片弹窗，由用户手动多选条目后串行生成；默认跳过已有图片，可切换为覆盖当前图片引用。
 - Lore: Added a manual multi-select batch dialog for serial lore image generation. Existing images are skipped by default, with an overwrite option for replacing the current image reference.
+- Skills：新增内置 `lore` Skill，简要说明 `list_lore_items`、`read_lore_items` 和 `write_lore_items` 的使用顺序、参数格式与长期设定边界。
+- Skills: Added the built-in `lore` Skill with concise guidance for `list_lore_items`, `read_lore_items`, and `write_lore_items` order, argument shape, and stable-lore boundaries.
 - 游戏模式：新增叙事编排基础能力，互动 Agent 可提交 TurnBrief，并通过 `prepare_interactive_turn` 执行固定数值、骰子、安全表达式、资源和终局候选检定；回合会持久化 RuleResolution 审计数据。新增独立 `interactive_director` 后台导演 Agent，按故事分支维护三份 Markdown 导演规划文档（大方向、当前主线事件、最近分支安排）和后端元数据；互动正文与热选项只注入有界可见区，导演私密区只供后台导演使用。前端支持导演规划读取、编辑、重建、规则重抽、开局词条抽取，以及在故事导演策略中配置主线强度、失败策略、节奏曲线、分支规划回合数、规划模板、事件包和自定义事件。终局分支默认禁止继续追加普通回合，需要从历史节点创建新分支。
 - Game Mode: Added the narrative orchestration foundation. The interactive agent can submit a TurnBrief and use `prepare_interactive_turn` for fixed numeric, dice, safe-expression, resource, and terminal-candidate checks; turns now persist RuleResolution audit data. Added an independent `interactive_director` background Director Agent that maintains three branch-scoped Markdown director plan docs (mainline, current main event, and near-branch arrangements) plus backend metadata; interactive prose and hot choices only receive bounded visible sections, while private director sections remain exclusive to the background director. The frontend now supports Director plan read/edit/rebuild, rule rerolls, opening-trait rolls, and Story Director strategy configuration for mainline strength, failure policy, pacing curve, branch planning turns, planning templates, event packages, and custom events. Terminal branches now block normal continuation by default and require branching from history.
 - 游戏模式：事件包升级为只由事件卡组成的可编辑卡包，支持事件类型名、Markdown 事件描述、权重、冷却、强度和标签；配置 Agent 可读取有界资料库上下文并通过方案预设工具生成 12-24 张贴合世界观的事件卡。
@@ -35,6 +43,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Agent：本地工具 schema 改为尽量稳定注册；禁用文件、资料库、图像、Web 搜索、配置管理等能力时，相关工具会由 Denova orchestrator 在执行前按 capability 阻断，而不是总是从模型可见工具列表中移除。完全关闭配置管理相关能力的 SubAgent 仍不会注册配置管理工具。
+- Agent: Local tool schemas are now registered more stably. When file, lore, image, web search, or config-management capabilities are disabled, Denova's orchestrator blocks execution by capability before the tool runs instead of always removing the tool from the model-visible list. SubAgents with all config-management capabilities disabled still receive no config-manager tools.
+- 书籍管理：新建书籍、小说导入和角色卡导入到新书时默认写入用户级 `.denova/projects/<书名>`；旧版直接位于 `.denova/<书名>` 的书籍仍会被书架扫描和打开。
+- Books: New books, novel imports, and character-card imports into a new book now default to user-level `.denova/projects/<book>`; legacy books directly under `.denova/<book>` remain discoverable and openable.
 - 方案预设：预设页跟随顶部全局写作/游戏模式过滤模块类型；叙事风格和图像方案作为共享模块显示，故事导演、事件系统、规则系统和开局选择器仅在游戏模式下显示，且故事导演在游戏模式模块列表中置顶。配置管理 Agent 文案同步固定模块归属，不新增资源字段或数据迁移。
 - Presets: The presets page now follows the top-level Writing/Game mode when filtering module types. Narrative styles and image presets are shared modules, while story directors, event systems, rule systems, and opening selectors appear only in Game Mode, with Story Directors listed first in the Game Mode module list. Config Manager Agent guidance now reflects fixed module ownership, with no new resource fields or data migration.
 - 方案预设：故事导演、事件系统、规则系统和开局选择器的大型 JSON 配置改用 Monaco JSON 编辑器，支持直接编辑、滚动查看、代码折叠、默认自动换行，以及单按钮全折叠/全展开切换。
@@ -60,6 +72,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- WebUI：修复项目文件树行内「更多操作」按钮打开菜单时偶发定位到页面左上角的问题；按钮现在保留可测量锚点，仅用透明度控制 hover 显示。
+- WebUI: Fixed project file-tree row "More actions" menus sometimes opening at the page's top-left; the trigger now keeps a measurable anchor and only uses opacity for hover visibility.
 - Agent：Gemini OpenAI 兼容端点不再发送不支持的 `enable_thinking` 字段，避免请求直接返回 400；Gemini 思考强度继续通过 `reasoning_effort` 配置。
 - Agent: Gemini OpenAI-compatible endpoints no longer receive the unsupported `enable_thinking` field, preventing immediate 400 errors; Gemini thinking strength remains configurable through `reasoning_effort`.
 - 游戏模式：互动正文 Agent 的输出链路只保留裸故事正文；正文落库不再解析内联状态或快捷选择块，状态与快捷选择继续由后台/独立流程生成。

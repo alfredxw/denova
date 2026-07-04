@@ -23,6 +23,26 @@ describe('FileTree', () => {
     expect(screen.getByText('CREATOR.md')).toBeInTheDocument()
   })
 
+  it('keeps action menu triggers measurable while visually hidden', () => {
+    const nodes: FileNode[] = [
+      { name: 'interactive-openings.json', type: 'file' },
+    ]
+
+    render(
+      <FileTree
+        nodes={nodes}
+        selectedFile={null}
+        onSelectFile={vi.fn()}
+      />,
+    )
+
+    const trigger = screen.getByLabelText('更多操作')
+
+    expect(trigger).not.toHaveClass('hidden')
+    expect(trigger).toHaveClass('opacity-0')
+    expect(trigger).toHaveClass('data-[state=open]:opacity-100')
+  })
+
   it('sorts Chinese chapter ordinals in reading order', () => {
     const nodes: FileNode[] = [{
       name: 'chapters',

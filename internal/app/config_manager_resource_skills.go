@@ -22,6 +22,7 @@ const (
 	configManagerImagePresetSkill   = "image-preset-config"
 	configManagerSkillsSkill        = "skills-creator"
 	configManagerAgentConfigSkill   = "agent-config"
+	configManagerLoreSkill          = "lore"
 )
 
 func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, req ConfigManagerRequest) []agent.ConfigManagerResourceSkill {
@@ -94,6 +95,8 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 
 	origin := normalizeConfigManagerSignal(req.Origin)
 	switch origin {
+	case "lore":
+		add(configManagerLoreSkill)
 	case "automation", "automations":
 		add(configManagerAutomationSkill)
 	case "story_memory", "story-memory", "storymemory", "interactive_memory", "interactive-memory":
@@ -119,6 +122,10 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 		signals = append(signals, key, value)
 	}
 	text := normalizeConfigManagerSignal(strings.Join(signals, " "))
+	switch {
+	case strings.Contains(text, "write_lore_items") || strings.Contains(text, "lore_item") || strings.Contains(text, "selected_lore") || strings.Contains(text, "资料库"):
+		add(configManagerLoreSkill)
+	}
 	switch {
 	case strings.Contains(text, "automation") || strings.Contains(text, "write_automations") || strings.Contains(text, "active_automation"):
 		add(configManagerAutomationSkill)

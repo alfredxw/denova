@@ -263,6 +263,36 @@ func TestToolOrchestratorBlocksMalformedJSONArgumentsForStream(t *testing.T) {
 	}
 }
 
+func TestToolOrchestratorBlocksDisabledCapability(t *testing.T) {
+	middleware := &toolOrchestratorMiddleware{
+		agentKind:           AgentKindIDE,
+		enforceToolSettings: true,
+		toolSettings:        config.ResolvedAgentToolSettings{FileRead: true},
+	}
+	called := false
+	endpoint, err := middleware.WrapInvokableToolCall(
+		context.Background(),
+		func(context.Context, string, ...tool.Option) (string, error) {
+			called = true
+			return "ok", nil
+		},
+		&adk.ToolContext{Name: "write_file", CallID: "call-1"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := endpoint(context.Background(), `{"file_path":"chapters/ch01.md"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("disabled file_write capability should block before endpoint is called")
+	}
+	if !strings.Contains(result, "file_write") || !strings.Contains(result, "disabled for this Agent") {
+		t.Fatalf("unexpected disabled capability result: %s", result)
+	}
+}
+
 func TestToolOrchestratorTruncatesStreamResultWhenLimitConfigured(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
 	endpoint, err := middleware.WrapStreamableToolCall(
@@ -326,8 +356,8 @@ func TestNewFilesystemMiddlewareRespectsToolSettings(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"write_file", "edit_file", "execute"} {
-		if names[name] {
-			t.Fatalf("tool %s should be disabled, names=%v", name, names)
+		if !names[name] {
+			t.Fatalf("tool %s should keep a stable schema and be blocked by orchestrator, names=%v", name, names)
 		}
 	}
 }

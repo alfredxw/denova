@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cloudwego/eino/adk"
 
@@ -248,7 +249,11 @@ func (a *App) CreateBook(ctx context.Context, parentDir, title, author, descript
 
 func (s *WorkspaceRuntimeManager) CreateBook(ctx context.Context, parentDir, title, author, description string) (string, book.BookMeta, error) {
 	a := s.app
-	absParent, err := filepath.Abs(parentDir)
+	novaDir := ""
+	if a.cfg != nil {
+		novaDir = strings.TrimSpace(a.cfg.NovaDir)
+	}
+	absParent, err := bookCreationParentDir(parentDir, novaDir)
 	if err != nil {
 		return "", book.BookMeta{}, fmt.Errorf("路径无效: %w", err)
 	}
@@ -256,6 +261,14 @@ func (s *WorkspaceRuntimeManager) CreateBook(ctx context.Context, parentDir, tit
 	dir := filepath.Join(absParent, title)
 	if _, err := os.Stat(dir); err == nil {
 		return "", book.BookMeta{}, fmt.Errorf("目录已存在: %s", dir)
+	}
+	if novaDir != "" {
+		if absNovaDir, err := filepath.Abs(novaDir); err == nil && absParent == filepath.Join(absNovaDir, bookProjectsDirName) {
+			legacyDir := filepath.Join(absNovaDir, title)
+			if legacyDir != dir && isBookWorkspace(legacyDir) {
+				return "", book.BookMeta{}, fmt.Errorf("目录已存在: %s", legacyDir)
+			}
+		}
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {

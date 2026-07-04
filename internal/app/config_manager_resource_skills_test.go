@@ -59,9 +59,9 @@ func TestConfigManagerResourceSkillNames(t *testing.T) {
 			want: []string{configManagerAutomationSkill},
 		},
 		{
-			name: "unknown",
+			name: "lore origin",
 			req:  ConfigManagerRequest{Origin: "lore", ResourceID: "lore-config-agent"},
-			want: nil,
+			want: []string{configManagerLoreSkill},
 		},
 	}
 

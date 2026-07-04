@@ -1607,6 +1607,7 @@ function mergeAgentContextOverride(parent: AgentContextOverride, child: AgentCon
   const toolResultPreview = child.tool_result_preview_chars ?? parent.tool_result_preview_chars ?? 2000
   return {
     compaction_enabled: child.compaction_enabled ?? parent.compaction_enabled ?? true,
+    compaction_strategy: child.compaction_strategy || parent.compaction_strategy || 'summary_agent',
     compaction_threshold: Math.max(0.5, Math.min(0.98, compactionThreshold)),
     compaction_recent_turns: Math.max(1, Math.min(30, compactionRecentTurns)),
     compaction_target_min_ratio: Math.max(0.01, Math.min(0.8, compactionTargetMin)),

@@ -11,6 +11,8 @@ const (
 	MaxToolResultKeepRecent               = 20
 	MaxToolResultContextBudgetKB          = 4096
 	MaxToolResultPreviewChars             = 20000
+
+	AgentContextCompactionStrategySummaryAgent = "summary_agent"
 )
 
 // AgentContextSettings stores per-agent context compaction settings.
@@ -31,6 +33,7 @@ type AgentContextSettings struct {
 
 type AgentContextOverride struct {
 	CompactionEnabled          *bool    `toml:"compaction_enabled,omitempty" json:"compaction_enabled,omitempty"`
+	CompactionStrategy         *string  `toml:"compaction_strategy,omitempty" json:"compaction_strategy,omitempty"`
 	CompactionThreshold        *float64 `toml:"compaction_threshold,omitempty" json:"compaction_threshold,omitempty"`
 	CompactionRecentTurns      *int     `toml:"compaction_recent_turns,omitempty" json:"compaction_recent_turns,omitempty"`
 	CompactionTargetMin        *float64 `toml:"compaction_target_min_ratio,omitempty" json:"compaction_target_min_ratio,omitempty"`
@@ -43,6 +46,7 @@ type AgentContextOverride struct {
 
 type ResolvedAgentContextSettings struct {
 	CompactionEnabled          bool    `json:"compaction_enabled"`
+	CompactionStrategy         string  `json:"compaction_strategy"`
 	CompactionThreshold        float64 `json:"compaction_threshold"`
 	CompactionRecentTurns      int     `json:"compaction_recent_turns"`
 	CompactionTargetMin        float64 `json:"compaction_target_min_ratio"`
@@ -57,6 +61,7 @@ func DefaultAgentContextSettings() AgentContextSettings {
 	return AgentContextSettings{
 		Default: AgentContextOverride{
 			CompactionEnabled:     boolPtr(true),
+			CompactionStrategy:    stringPtr(AgentContextCompactionStrategySummaryAgent),
 			CompactionThreshold:   floatPtr(0.90),
 			CompactionRecentTurns: intPtr(DefaultContextCompactionRetainedTurns),
 			CompactionTargetMin:   floatPtr(0.05),
@@ -91,6 +96,10 @@ func ResolveAgentContext(cfg *Config, agentKind string) ResolvedAgentContextSett
 	compactionEnabled := true
 	if override.CompactionEnabled != nil {
 		compactionEnabled = *override.CompactionEnabled
+	}
+	compactionStrategy := AgentContextCompactionStrategySummaryAgent
+	if override.CompactionStrategy != nil {
+		compactionStrategy = normalizeCompactionStrategy(*override.CompactionStrategy)
 	}
 	compactionThreshold := 0.90
 	if override.CompactionThreshold != nil {
@@ -137,6 +146,7 @@ func ResolveAgentContext(cfg *Config, agentKind string) ResolvedAgentContextSett
 	}
 	return ResolvedAgentContextSettings{
 		CompactionEnabled:          compactionEnabled,
+		CompactionStrategy:         compactionStrategy,
 		CompactionThreshold:        compactionThreshold,
 		CompactionRecentTurns:      compactionRecentTurns,
 		CompactionTargetMin:        compactionTargetMin,
@@ -152,6 +162,9 @@ func mergeAgentContextOverride(parent, child AgentContextOverride) AgentContextO
 	out := parent
 	if child.CompactionEnabled != nil {
 		out.CompactionEnabled = child.CompactionEnabled
+	}
+	if child.CompactionStrategy != nil {
+		out.CompactionStrategy = child.CompactionStrategy
 	}
 	if child.CompactionThreshold != nil {
 		out.CompactionThreshold = child.CompactionThreshold
@@ -212,6 +225,9 @@ func sanitizeAgentContextOverride(override AgentContextOverride) AgentContextOve
 			*override.CompactionThreshold = 0.98
 		}
 	}
+	if override.CompactionStrategy != nil {
+		*override.CompactionStrategy = normalizeCompactionStrategy(*override.CompactionStrategy)
+	}
 	if override.CompactionRecentTurns != nil {
 		*override.CompactionRecentTurns = normalizeCompactionRetainedTurns(*override.CompactionRecentTurns)
 	}
@@ -234,6 +250,15 @@ func sanitizeAgentContextOverride(override AgentContextOverride) AgentContextOve
 		*override.ToolResultPreviewChars = normalizeToolResultPreviewChars(*override.ToolResultPreviewChars)
 	}
 	return override
+}
+
+func normalizeCompactionStrategy(value string) string {
+	switch value {
+	case AgentContextCompactionStrategySummaryAgent:
+		return value
+	default:
+		return AgentContextCompactionStrategySummaryAgent
+	}
 }
 
 func normalizeCompactionRetainedTurns(value int) int {

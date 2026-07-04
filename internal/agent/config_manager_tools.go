@@ -120,58 +120,53 @@ type storyMemoryRecordWriteOperation struct {
 }
 
 type configManagerToolBuilder struct {
-	enabled bool
-	build   func() (tool.BaseTool, error)
+	build func() (tool.BaseTool, error)
 }
 
 func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
+	_ = settings
 	novaDir := strings.TrimSpace(cfg.NovaDir)
 	workspace := strings.TrimSpace(cfg.Workspace)
 	builders := []configManagerToolBuilder{
-		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListTellersTool(novaDir) }},
-		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newReadTellersTool(novaDir) }},
-		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteTellersTool(novaDir) }},
-		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListStoryDirectorsTool(novaDir) }},
-		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newReadStoryDirectorsTool(novaDir) }},
-		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteStoryDirectorsTool(novaDir) }},
-		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListImagePresetsTool(novaDir) }},
-		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newReadImagePresetsTool(novaDir) }},
-		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteImagePresetsTool(novaDir) }},
-		{enabled: settings.Todo, build: func() (tool.BaseTool, error) { return newListAutomationsTool(novaDir, workspace) }},
-		{enabled: settings.Todo, build: func() (tool.BaseTool, error) { return newReadAutomationsTool(novaDir, workspace) }},
-		{enabled: settings.Todo, build: func() (tool.BaseTool, error) { return newWriteAutomationsTool(novaDir, workspace) }},
-		{enabled: settings.Skills, build: func() (tool.BaseTool, error) { return newListSkillsTool(cfg) }},
-		{enabled: settings.Skills, build: func() (tool.BaseTool, error) { return newReadSkillsTool(cfg) }},
-		{enabled: settings.Skills, build: func() (tool.BaseTool, error) { return newWriteSkillsTool(cfg) }},
-		{enabled: settings.AgentConfigRead, build: func() (tool.BaseTool, error) { return newListAgentConfigsTool(cfg) }},
-		{enabled: settings.AgentConfigWrite, build: func() (tool.BaseTool, error) { return newWriteAgentConfigsTool(cfg) }},
-		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListStoryMemoryStructuresTool(workspace) }},
-		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteStoryMemoryStructuresTool(workspace) }},
-		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newListStoryMemoryRecordsTool(workspace) }},
-		{enabled: settings.LoreRead, build: func() (tool.BaseTool, error) { return newReadStoryMemoryRecordsTool(workspace) }},
-		{enabled: settings.LoreWrite, build: func() (tool.BaseTool, error) { return newWriteStoryMemoryRecordsTool(workspace) }},
+		{build: func() (tool.BaseTool, error) { return newListTellersTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newReadTellersTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newWriteTellersTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newListStoryDirectorsTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newReadStoryDirectorsTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newWriteStoryDirectorsTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newListImagePresetsTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newReadImagePresetsTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newWriteImagePresetsTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newListAutomationsTool(novaDir, workspace) }},
+		{build: func() (tool.BaseTool, error) { return newReadAutomationsTool(novaDir, workspace) }},
+		{build: func() (tool.BaseTool, error) { return newWriteAutomationsTool(novaDir, workspace) }},
+		{build: func() (tool.BaseTool, error) { return newListSkillsTool(cfg) }},
+		{build: func() (tool.BaseTool, error) { return newReadSkillsTool(cfg) }},
+		{build: func() (tool.BaseTool, error) { return newWriteSkillsTool(cfg) }},
+		{build: func() (tool.BaseTool, error) { return newListAgentConfigsTool(cfg) }},
+		{build: func() (tool.BaseTool, error) { return newWriteAgentConfigsTool(cfg) }},
+		{build: func() (tool.BaseTool, error) { return newListStoryMemoryStructuresTool(workspace) }},
+		{build: func() (tool.BaseTool, error) { return newWriteStoryMemoryStructuresTool(workspace) }},
+		{build: func() (tool.BaseTool, error) { return newListStoryMemoryRecordsTool(workspace) }},
+		{build: func() (tool.BaseTool, error) { return newReadStoryMemoryRecordsTool(workspace) }},
+		{build: func() (tool.BaseTool, error) { return newWriteStoryMemoryRecordsTool(workspace) }},
 	}
 	tools := make([]tool.BaseTool, 0, len(builders)+2)
 	for _, builder := range builders {
-		if !builder.enabled {
-			continue
-		}
 		t, err := builder.build()
 		if err != nil {
 			return nil, err
 		}
 		tools = append(tools, t)
 	}
-	if settings.LoreRead {
-		loreTools, err := newLoreTools(workspace, false)
-		if err != nil {
-			return nil, err
-		}
-		tools = append(tools, loreTools...)
+	loreTools, err := newLoreTools(workspace, true)
+	if err != nil {
+		return nil, err
 	}
+	tools = append(tools, loreTools...)
 	return tools, nil
 }
 

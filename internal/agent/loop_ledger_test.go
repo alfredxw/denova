@@ -40,11 +40,15 @@ func TestFilterToolResultAddsManifestWithoutDefaultTruncation(t *testing.T) {
 	if filtered.Manifest.Source != ToolSourceWrite || !filtered.Manifest.MutatesWorkspace || !filtered.Manifest.RequiresPostCheck {
 		t.Fatalf("write_file should be classified as workspace mutation: %#v", filtered.Manifest)
 	}
+	if filtered.Manifest.Capability != "file_write" {
+		t.Fatalf("write_file capability = %q, want file_write", filtered.Manifest.Capability)
+	}
 	if filtered.Truncated {
 		t.Fatalf("default tool result filtering should not truncate")
 	}
 	if !strings.Contains(filtered.Content, "schema: tool_result.v1") ||
 		!strings.Contains(filtered.Content, "mutates_workspace: true") ||
+		!strings.Contains(filtered.Content, "capability: file_write") ||
 		!strings.Contains(filtered.Content, "target: chapters/ch00001.md") ||
 		!strings.Contains(filtered.Content, "idempotency_key: write_file:") {
 		t.Fatalf("filtered result should include model-visible metadata: %s", filtered.Content)
@@ -123,6 +127,47 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
+	if err := ledger.RecordToolDecision(ToolDecision{
+		ToolName:   "write_file",
+		ToolCallID: "call-1",
+		Source:     ToolSourceWrite,
+		Capability: "file_write",
+		Action:     "allowed",
+		Target:     "chapters/ch01.md",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordToolExecution(ToolExecutionRecord{
+		ToolName:      "write_file",
+		ToolCallID:    "call-1",
+		Status:        "success",
+		Capability:    "file_write",
+		OriginalBytes: 64,
+		ReturnedBytes: 48,
+		Truncated:     true,
+		Target:        "chapters/ch01.md",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordToolDecision(ToolDecision{
+		ToolName:   "write_file",
+		ToolCallID: "call-2",
+		Source:     ToolSourceWrite,
+		Capability: "file_write",
+		Action:     "blocked",
+		Reason:     "参数不是完整 JSON 对象",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.RecordToolExecution(ToolExecutionRecord{
+		ToolName:   "write_file",
+		ToolCallID: "call-2",
+		Status:     "blocked",
+		Capability: "file_write",
+		Error:      "参数不是完整 JSON 对象",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err := ledger.RecordMutations([]ToolMutation{{ToolName: "write_file", Source: ToolSourceWrite, Target: "chapters/ch01.md"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -145,11 +190,14 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	if summaries[0].AgentKind != AgentKindIDE || summaries[0].TaskID != "task-1" || summaries[0].SessionID != "session-1" || summaries[0].Mutations != 1 || summaries[0].VerificationStatus != "ok" {
 		t.Fatalf("trace summary should include durable run state: %#v", summaries[0])
 	}
+	if summaries[0].ToolCalls != 2 || summaries[0].ToolSuccesses != 1 || summaries[0].ToolBlocked != 1 || summaries[0].ToolTruncated != 1 || summaries[0].InvalidToolArgs != 1 {
+		t.Fatalf("trace summary should include tool quality counters: %#v", summaries[0])
+	}
 	trace, err := ReadRunTrace(workspace, summaries[0].ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(trace.Records) != 6 || trace.Summary.ID != summaries[0].ID {
+	if len(trace.Records) != 10 || trace.Summary.ID != summaries[0].ID {
 		t.Fatalf("unexpected trace detail: %#v", trace)
 	}
 }

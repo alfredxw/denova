@@ -12,7 +12,10 @@ import (
 	"denova/internal/workspacepath"
 )
 
-const maxBookRecords = 20
+const (
+	maxBookRecords      = 20
+	bookProjectsDirName = "projects"
+)
 
 // BookRecord 表示 Nova 数据目录中的一个书籍工作目录。
 type BookRecord struct {
@@ -128,28 +131,58 @@ func (r *BookRegistry) scanNovaBooks(data bookRegistryData) ([]BookRecord, error
 	}
 	hidden := pathSet(data.Hidden)
 
+	seen := make(map[string]bool, len(entries))
+	books := make([]BookRecord, 0, len(entries))
+	projectsDir := filepath.Join(absNovaDir, bookProjectsDirName)
+	if info, err := os.Stat(projectsDir); err == nil && info.IsDir() {
+		projectBooks, err := scanBooksInDir(projectsDir, openedAt, hidden, seen, false)
+		if err != nil {
+			return nil, err
+		}
+		books = append(books, projectBooks...)
+	} else if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	rootBooks, err := scanBooksInDir(absNovaDir, openedAt, hidden, seen, true)
+	if err != nil {
+		return nil, err
+	}
+	books = append(books, rootBooks...)
+
+	sortBooksByOrder(books, data.Order, func(i, j int) bool {
+		return strings.ToLower(books[i].Name) < strings.ToLower(books[j].Name)
+	})
+	return books, nil
+}
+
+func scanBooksInDir(root string, openedAt map[string]string, hidden map[string]bool, seen map[string]bool, skipUserDataDirs bool) ([]BookRecord, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
 	books := make([]BookRecord, 0, len(entries))
 	for _, entry := range entries {
-		if !entry.IsDir() || isNovaUserDataDir(entry.Name()) {
+		if !entry.IsDir() || (skipUserDataDirs && isNovaUserDataDir(entry.Name())) {
 			continue
 		}
-		bookPath := filepath.Join(absNovaDir, entry.Name())
+		bookPath := filepath.Join(root, entry.Name())
+		if seen[bookPath] {
+			continue
+		}
 		if !isBookWorkspace(bookPath) {
 			continue
 		}
 		if hidden[bookPath] {
 			continue
 		}
+		seen[bookPath] = true
 		books = append(books, BookRecord{
 			Name:         entry.Name(),
 			Path:         bookPath,
 			LastOpenedAt: openedAt[bookPath],
 		})
 	}
-
-	sortBooksByOrder(books, data.Order, func(i, j int) bool {
-		return strings.ToLower(books[i].Name) < strings.ToLower(books[j].Name)
-	})
 	return books, nil
 }
 
@@ -192,11 +225,27 @@ func pathSet(paths []string) map[string]bool {
 
 func isNovaUserDataDir(name string) bool {
 	switch name {
-	case "book_meta", "styles":
+	case "book_meta", "styles", bookProjectsDirName:
 		return true
 	default:
 		return strings.HasPrefix(name, ".")
 	}
+}
+
+func bookCreationParentDir(parentDir, novaDir string) (string, error) {
+	absParent, err := filepath.Abs(parentDir)
+	if err != nil {
+		return "", err
+	}
+	novaDir = strings.TrimSpace(novaDir)
+	if novaDir == "" {
+		return absParent, nil
+	}
+	absNovaDir, err := filepath.Abs(novaDir)
+	if err == nil && absParent == absNovaDir {
+		return filepath.Join(absParent, bookProjectsDirName), nil
+	}
+	return absParent, nil
 }
 
 func isBookWorkspace(path string) bool {

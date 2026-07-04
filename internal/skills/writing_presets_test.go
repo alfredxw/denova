@@ -82,6 +82,28 @@ func TestBuiltinChapterIllustrationSkillIsIDEOnly(t *testing.T) {
 	}
 }
 
+func TestBuiltinLoreSkillCoversToolUsage(t *testing.T) {
+	content := readBuiltinWritingPreset(t, "lore")
+	for _, required := range []string{
+		"name: lore",
+		"agent: ide,config_manager,interactive_story",
+		"list_lore_items",
+		"read_lore_items",
+		"write_lore_items",
+		"`list_lore_items` 全量索引",
+		"`read_lore_items` 批量读取正文",
+		"`write_lore_items` 创建或更新条目",
+		`"delete_ids": []`,
+		`"items":[],"delete_ids":["old-hero-draft"]`,
+		"`delete_ids` 必须是数组",
+		"不要传字符串 `\"[]\"`",
+	} {
+		if !strings.Contains(content, required) {
+			t.Fatalf("lore skill missing required instruction %q", required)
+		}
+	}
+}
+
 func readBuiltinWritingPreset(t *testing.T, name string) string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "..", "skills", name, SkillFileName))

@@ -326,6 +326,7 @@ type ContextCompactionEvent struct {
 	TokensAfter         int     `json:"tokens_after"`
 	TargetRatio         float64 `json:"target_ratio,omitempty"`
 	ContextWindowTokens int     `json:"context_window_tokens"`
+	Strategy            string  `json:"strategy,omitempty"`
 	Threshold           float64 `json:"threshold"`
 	Reason              string  `json:"reason,omitempty"`
 	Phase               string  `json:"phase,omitempty"`

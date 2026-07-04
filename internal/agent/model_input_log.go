@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -63,6 +64,7 @@ type modelInputLogRecord struct {
 	ModelConfig  modelInputLogModelConfig `json:"model_config"`
 	MessageCount int                      `json:"message_count"`
 	ToolCount    int                      `json:"tool_count"`
+	Cache        modelInputLogCache       `json:"cache_attribution"`
 	Messages     []*schema.Message        `json:"messages"`
 	Tools        []modelInputLogTool      `json:"tools,omitempty"`
 }
@@ -123,6 +125,15 @@ type modelInputLogTool struct {
 	Extra           map[string]any `json:"extra,omitempty"`
 	Parameters      any            `json:"parameters,omitempty"`
 	ParametersError string         `json:"parameters_error,omitempty"`
+}
+
+type modelInputLogCache struct {
+	MessageFingerprint      string   `json:"message_fingerprint,omitempty"`
+	SystemPromptFingerprint string   `json:"system_prompt_fingerprint,omitempty"`
+	ToolSchemaFingerprint   string   `json:"tool_schema_fingerprint,omitempty"`
+	ToolNames               []string `json:"tool_names,omitempty"`
+	MessageCount            int      `json:"message_count"`
+	ToolCount               int      `json:"tool_count"`
 }
 
 // SetModelInputLoggingEnabled controls full model input logging.
@@ -278,6 +289,7 @@ func writeModelInputLogJob(job modelInputLogJob) error {
 	switch {
 	case job.input != nil:
 		input := job.input
+		tools := modelInputLogTools(input.Tools)
 		record := modelInputLogRecord{
 			Type:         "llm_input",
 			Timestamp:    input.Timestamp,
@@ -288,8 +300,9 @@ func writeModelInputLogJob(job modelInputLogJob) error {
 			ModelConfig:  modelInputLogConfigFromOpenAI(input.Config),
 			MessageCount: input.MessageCount,
 			ToolCount:    input.ToolCount,
+			Cache:        modelInputLogCacheAttribution(input.Messages, tools),
 			Messages:     input.Messages,
-			Tools:        modelInputLogTools(input.Tools),
+			Tools:        tools,
 		}
 		payload, err := marshalModelInputLogRecord(record)
 		if err != nil {
@@ -532,6 +545,55 @@ func modelInputLogTools(tools []*schema.ToolInfo) []modelInputLogTool {
 		result = append(result, item)
 	}
 	return result
+}
+
+func modelInputLogCacheAttribution(messages []*schema.Message, tools []modelInputLogTool) modelInputLogCache {
+	return modelInputLogCache{
+		MessageFingerprint:      modelInputLogFingerprint(messages),
+		SystemPromptFingerprint: modelInputLogFingerprint(modelInputLogSystemMessages(messages)),
+		ToolSchemaFingerprint:   modelInputLogFingerprint(tools),
+		ToolNames:               modelInputLogToolNames(tools),
+		MessageCount:            len(messages),
+		ToolCount:               len(tools),
+	}
+}
+
+func modelInputLogSystemMessages(messages []*schema.Message) []*schema.Message {
+	if len(messages) == 0 {
+		return nil
+	}
+	var result []*schema.Message
+	for _, msg := range messages {
+		if msg == nil || msg.Role != schema.System {
+			continue
+		}
+		result = append(result, msg)
+	}
+	return result
+}
+
+func modelInputLogToolNames(tools []modelInputLogTool) []string {
+	if len(tools) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(tools))
+	for _, item := range tools {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+func modelInputLogFingerprint(value any) string {
+	payload, err := json.Marshal(value)
+	if err != nil || len(payload) == 0 || bytes.Equal(payload, []byte("null")) {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
+	return fmt.Sprintf("sha256:%x", sum[:8])
 }
 
 type modelInputLoggingMiddleware struct {

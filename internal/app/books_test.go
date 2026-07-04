@@ -77,6 +77,50 @@ func TestBookRegistryListScansNovaDirBooks(t *testing.T) {
 	}
 }
 
+func TestBookRegistryListScansProjectsAndLegacyRootBooks(t *testing.T) {
+	root := t.TempDir()
+	legacyBook := filepath.Join(root, "alpha")
+	projectBook := filepath.Join(root, bookProjectsDirName, "beta")
+	for _, dir := range []string{
+		filepath.Join(legacyBook, ".nova"),
+		filepath.Join(projectBook, ".denova"),
+		filepath.Join(root, bookProjectsDirName, "notes"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	registry := &BookRegistry{path: filepath.Join(root, "books.json"), novaDir: root}
+	books := registry.List()
+	if len(books) != 2 {
+		t.Fatalf("书籍数量不符合预期: %#v", books)
+	}
+	if books[0].Path != legacyBook || books[1].Path != projectBook {
+		t.Fatalf("书籍应同时包含根目录旧书和 projects 新书: %#v", books)
+	}
+}
+
+func TestBookCreationParentDirUsesProjectsForNovaDir(t *testing.T) {
+	root := t.TempDir()
+	parent, err := bookCreationParentDir(root, root)
+	if err != nil {
+		t.Fatalf("解析创建父目录失败: %v", err)
+	}
+	if want := filepath.Join(root, bookProjectsDirName); parent != want {
+		t.Fatalf("默认书籍父目录不符合预期: want=%s got=%s", want, parent)
+	}
+
+	customParent := filepath.Join(root, "custom")
+	parent, err = bookCreationParentDir(customParent, root)
+	if err != nil {
+		t.Fatalf("解析自定义父目录失败: %v", err)
+	}
+	if parent != customParent {
+		t.Fatalf("自定义父目录不应被改写: want=%s got=%s", customParent, parent)
+	}
+}
+
 func TestBooksIncludesCoverUpdatedAt(t *testing.T) {
 	root := t.TempDir()
 	bookDir := filepath.Join(root, "alpha")

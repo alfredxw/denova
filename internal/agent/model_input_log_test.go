@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -74,6 +75,12 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 	if record.ToolCount != 1 || len(record.Tools) != 1 {
 		t.Fatalf("unexpected tools count: count=%d len=%d", record.ToolCount, len(record.Tools))
 	}
+	if record.Cache.MessageFingerprint == "" || record.Cache.ToolSchemaFingerprint == "" || record.Cache.SystemPromptFingerprint == "" {
+		t.Fatalf("cache attribution should include message/system/tool fingerprints: %#v", record.Cache)
+	}
+	if len(record.Cache.ToolNames) != 1 || record.Cache.ToolNames[0] != "read_file" {
+		t.Fatalf("cache attribution tool names = %#v", record.Cache.ToolNames)
+	}
 	if record.Tools[0].Parameters == nil {
 		t.Fatal("tool parameters schema was not logged")
 	}
@@ -82,6 +89,49 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 	}
 	if record.ModelConfig.Model != "test-model" || record.ModelConfig.BaseURL != "https://example.test/v1" {
 		t.Fatalf("unexpected model metadata: %#v", record.ModelConfig)
+	}
+}
+
+func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
+	messages := []*schema.Message{
+		schema.SystemMessage("system"),
+		schema.UserMessage("hello"),
+	}
+	tools := []*schema.ToolInfo{
+		{
+			Name: "read_file",
+			Desc: "Read a file",
+			ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+				"path": {Type: schema.String, Desc: "File path", Required: true},
+			}),
+		},
+	}
+	firstTools := modelInputLogTools(tools)
+	first := modelInputLogCacheAttribution(messages, firstTools)
+	second := modelInputLogCacheAttribution(messages, modelInputLogTools(tools))
+	if first.MessageFingerprint == "" || first.ToolSchemaFingerprint == "" {
+		t.Fatalf("fingerprints should be populated: %#v", first)
+	}
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("same input should produce stable attribution: first=%#v second=%#v", first, second)
+	}
+
+	changedTools := modelInputLogTools([]*schema.ToolInfo{
+		{
+			Name: "read_file",
+			Desc: "Read a file with line offsets",
+			ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+				"path":   {Type: schema.String, Desc: "File path", Required: true},
+				"offset": {Type: schema.Number, Desc: "Line offset"},
+			}),
+		},
+	})
+	changed := modelInputLogCacheAttribution(messages, changedTools)
+	if changed.ToolSchemaFingerprint == first.ToolSchemaFingerprint {
+		t.Fatalf("tool schema fingerprint should change when schema changes: before=%#v after=%#v", first, changed)
+	}
+	if changed.MessageFingerprint != first.MessageFingerprint || changed.SystemPromptFingerprint != first.SystemPromptFingerprint {
+		t.Fatalf("tool-only changes should not alter message/system fingerprints: before=%#v after=%#v", first, changed)
 	}
 }
 

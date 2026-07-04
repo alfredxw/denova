@@ -637,14 +637,21 @@ function FileTreeNode({
 }
 
 function NodeDropdown({ actions }: { actions: TreeAction[] }) {
+  const { t } = useTranslation()
+  const label = t('sidebar.moreActions')
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          className="mr-1 hidden rounded p-0.5 text-[var(--nova-tree-icon)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] group-hover:block max-md:block max-md:p-1.5"
+          aria-label={label}
+          title={label}
+          className="pointer-events-none mr-1 flex shrink-0 items-center justify-center rounded p-0.5 text-[var(--nova-tree-icon)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100 max-md:pointer-events-auto max-md:opacity-100 max-md:p-1.5"
+          onPointerDown={(e) => {
+            e.stopPropagation()
+          }}
           onClick={(e) => {
-            e.preventDefault()
             e.stopPropagation()
           }}
         >

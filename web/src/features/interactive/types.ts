@@ -609,6 +609,7 @@ export interface ContextCompactionEvent {
   tokens_after?: number
   target_ratio?: number
   context_window_tokens?: number
+  strategy?: string
   threshold?: number
   reason?: string
   phase?: string

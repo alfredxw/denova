@@ -146,6 +146,7 @@ export interface AgentContextSettings {
 
 export interface AgentContextOverride {
   compaction_enabled?: boolean | null
+  compaction_strategy?: string | null
   compaction_threshold?: number | null
   compaction_recent_turns?: number | null
   compaction_target_min_ratio?: number | null

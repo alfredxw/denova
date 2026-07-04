@@ -5,6 +5,7 @@ const sidebar = {
   'sidebar.copy': 'Copy',
   'sidebar.move': 'Move',
   'sidebar.delete': 'Delete',
+  'sidebar.moreActions': 'More actions',
   'sidebar.special.ideas': 'Ideas',
   'sidebar.filePath': 'File Path',
   'sidebar.dirPath': 'Folder Path',

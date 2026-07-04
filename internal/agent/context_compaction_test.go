@@ -172,12 +172,17 @@ func TestContextCompactionPolicyUsesConfiguredRetainedTurns(t *testing.T) {
 	}
 
 	retainedTurns := 3
+	strategy := config.AgentContextCompactionStrategySummaryAgent
 	cfg = &config.Config{AgentContexts: config.AgentContextSettings{
+		IDE:               config.AgentContextOverride{CompactionStrategy: &strategy},
 		ContextCompaction: config.AgentContextOverride{CompactionRecentTurns: &retainedTurns},
 	}}
 	policy = resolveContextCompactionPolicy(cfg, config.AgentKindIDE)
 	if policy.RetainedTurns != 3 {
 		t.Fatalf("retained turns = %d, want configured 3", policy.RetainedTurns)
+	}
+	if policy.Strategy != config.AgentContextCompactionStrategySummaryAgent {
+		t.Fatalf("strategy = %q, want summary_agent", policy.Strategy)
 	}
 }
 

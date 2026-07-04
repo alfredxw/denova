@@ -13,14 +13,18 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
+
+	"denova/config"
 )
 
 // toolOrchestratorMiddleware centralizes Nova's internal tool execution policy.
 type toolOrchestratorMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
-	agentKind          string
-	policyKind         string
-	toolResultMaxBytes int
+	agentKind           string
+	policyKind          string
+	toolSettings        config.ResolvedAgentToolSettings
+	enforceToolSettings bool
+	toolResultMaxBytes  int
 }
 
 type interactiveStoryToolMiddleware struct {
@@ -157,6 +161,7 @@ type ToolDecision struct {
 	ToolName          string     `json:"tool_name"`
 	ToolCallID        string     `json:"tool_call_id,omitempty"`
 	Source            ToolSource `json:"source"`
+	Capability        string     `json:"capability,omitempty"`
 	Action            string     `json:"action"`
 	Reason            string     `json:"reason,omitempty"`
 	MutatesWorkspace  bool       `json:"mutates_workspace"`
@@ -168,6 +173,7 @@ type ToolExecutionRecord struct {
 	ToolName       string `json:"tool_name"`
 	ToolCallID     string `json:"tool_call_id,omitempty"`
 	Status         string `json:"status"`
+	Capability     string `json:"capability,omitempty"`
 	OriginalBytes  int    `json:"original_bytes,omitempty"`
 	ReturnedBytes  int    `json:"returned_bytes,omitempty"`
 	Truncated      bool   `json:"truncated,omitempty"`
@@ -195,6 +201,7 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 				ToolName:   decision.ToolName,
 				ToolCallID: decision.ToolCallID,
 				Status:     "blocked",
+				Capability: decision.Capability,
 				Target:     decision.Target,
 				Error:      msg,
 			})
@@ -210,6 +217,7 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 				ToolName:   decision.ToolName,
 				ToolCallID: decision.ToolCallID,
 				Status:     "error",
+				Capability: decision.Capability,
 				Target:     decision.Target,
 				Error:      err.Error(),
 			})
@@ -220,6 +228,7 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 			ToolName:       filtered.Manifest.Name,
 			ToolCallID:     decision.ToolCallID,
 			Status:         "success",
+			Capability:     filtered.Manifest.Capability,
 			OriginalBytes:  filtered.OriginalBytes,
 			ReturnedBytes:  filtered.ReturnedBytes,
 			Truncated:      filtered.Truncated,
@@ -249,6 +258,7 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 				ToolName:   decision.ToolName,
 				ToolCallID: decision.ToolCallID,
 				Status:     "blocked",
+				Capability: decision.Capability,
 				Target:     decision.Target,
 				Error:      msg,
 			})
@@ -263,6 +273,7 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 				ToolName:   decision.ToolName,
 				ToolCallID: decision.ToolCallID,
 				Status:     "error",
+				Capability: decision.Capability,
 				Target:     decision.Target,
 				Error:      err.Error(),
 			})
@@ -316,6 +327,7 @@ func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string]
 					ToolName:       filtered.Manifest.Name,
 					ToolCallID:     toolCallID(toolCtx),
 					Status:         "success",
+					Capability:     filtered.Manifest.Capability,
 					OriginalBytes:  filtered.OriginalBytes,
 					ReturnedBytes:  filtered.ReturnedBytes,
 					Truncated:      filtered.Truncated,
@@ -330,6 +342,7 @@ func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string]
 					ToolName:   manifest.Name,
 					ToolCallID: toolCallID(toolCtx),
 					Status:     "error",
+					Capability: manifest.Capability,
 					Target:     toolPathFromArgs(args),
 					Error:      err.Error(),
 				})
@@ -370,6 +383,7 @@ func (m *toolOrchestratorMiddleware) buildToolDecision(toolCtx *adk.ToolContext,
 		ToolName:          manifest.Name,
 		ToolCallID:        toolCallID(toolCtx),
 		Source:            manifest.Source,
+		Capability:        manifest.Capability,
 		Action:            "allowed",
 		MutatesWorkspace:  manifest.MutatesWorkspace,
 		RequiresPostCheck: manifest.RequiresPostCheck,
@@ -378,8 +392,17 @@ func (m *toolOrchestratorMiddleware) buildToolDecision(toolCtx *adk.ToolContext,
 	if m != nil && m.effectivePolicyKind() == AgentKindInteractiveStory && isInteractiveStoryWriteTool(name) {
 		decision.Action = "blocked"
 		decision.Reason = interactiveStoryWriteToolBlockedMessage(name)
+		return decision
+	}
+	if m != nil && m.enforceToolSettings && manifest.Capability != "" && !config.AgentToolAllowed(m.toolSettings, manifest.Capability) {
+		decision.Action = "blocked"
+		decision.Reason = disabledToolCapabilityMessage(manifest.Name, manifest.Capability)
 	}
 	return decision
+}
+
+func disabledToolCapabilityMessage(name, capability string) string {
+	return fmt.Sprintf("[tool error] 工具 %q 需要当前 Agent 启用 %s 能力，但该能力已关闭。请改用已授权工具，或请用户在 Agent Tools 中开启该能力。 / Tool %q requires capability %s, which is disabled for this Agent.", name, capability, name, capability)
 }
 
 func applyToolArgumentValidation(decision ToolDecision, args string) ToolDecision {

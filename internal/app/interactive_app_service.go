@@ -766,6 +766,7 @@ func (s *InteractiveAppService) CompactInteractiveContext(ctx context.Context, s
 		TokensAfter:         result.TokensAfter,
 		TargetRatio:         result.TargetRatio,
 		ContextWindowTokens: result.ContextWindowTokens,
+		Strategy:            result.Strategy,
 		Threshold:           result.Threshold,
 		Reason:              "manual",
 		Phase:               result.Phase,

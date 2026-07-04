@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
+
+	"denova/config"
 )
 
 type ToolSource string
@@ -26,6 +28,7 @@ const (
 type ToolManifest struct {
 	Name              string     `json:"name"`
 	Source            ToolSource `json:"source"`
+	Capability        string     `json:"capability,omitempty"`
 	MutatesWorkspace  bool       `json:"mutates_workspace"`
 	MaxResultBytes    int        `json:"max_result_bytes"`
 	RequiresPostCheck bool       `json:"requires_post_check"`
@@ -55,31 +58,66 @@ func ManifestForTool(name string) ToolManifest {
 	switch {
 	case normalized == generateImageToolName || normalized == generateChapterIllustrationToolName:
 		manifest.Source = ToolSourceImage
+		manifest.Capability = config.AgentToolImageGeneration
 		manifest.MutatesWorkspace = true
 		manifest.RequiresPostCheck = true
 	case normalized == "write_lore_items":
 		manifest.Source = ToolSourceLore
+		manifest.Capability = config.AgentToolLoreWrite
 		manifest.MutatesWorkspace = true
 		manifest.RequiresPostCheck = true
 	case normalized == "read_lore_items" || normalized == "list_lore_items":
 		manifest.Source = ToolSourceLore
+		manifest.Capability = config.AgentToolLoreRead
 	case normalized == "read_interactive_memories" || normalized == "list_interactive_memories":
 		manifest.Source = ToolSourceMemory
+	case capabilityForConfigManagerTool(normalized) != "":
+		manifest.Capability = capabilityForConfigManagerTool(normalized)
+		if strings.HasPrefix(normalized, "write_") {
+			manifest.Source = ToolSourceWrite
+			manifest.MutatesWorkspace = true
+			manifest.RequiresPostCheck = true
+		} else {
+			manifest.Source = ToolSourceRead
+		}
 	case isToolWriteLike(normalized):
 		manifest.Source = ToolSourceWrite
+		manifest.Capability = config.AgentToolFileWrite
 		manifest.MutatesWorkspace = true
 		manifest.RequiresPostCheck = true
 	case isToolReadLike(normalized):
 		manifest.Source = ToolSourceRead
+		manifest.Capability = config.AgentToolFileRead
 	case isToolShellLike(normalized):
 		manifest.Source = ToolSourceShell
+		manifest.Capability = config.AgentToolShellExecute
 	case isToolWebLike(normalized):
 		manifest.Source = ToolSourceWeb
+		manifest.Capability = config.AgentToolWebSearch
 	}
 	if manifest.Name == "" {
 		manifest.Name = "unknown_tool"
 	}
 	return manifest
+}
+
+func capabilityForConfigManagerTool(name string) string {
+	switch name {
+	case "list_tellers", "read_tellers", "list_story_directors", "read_story_directors", "list_image_presets", "read_image_presets", "list_story_memory_structures", "list_story_memory_records", "read_story_memory_records":
+		return config.AgentToolLoreRead
+	case "write_tellers", "write_story_directors", "write_image_presets", "write_story_memory_structures", "write_story_memory_records":
+		return config.AgentToolLoreWrite
+	case "list_automations", "read_automations", "write_automations":
+		return config.AgentToolTodo
+	case "list_skills", "read_skills", "write_skills":
+		return config.AgentToolSkills
+	case "list_agent_configs":
+		return config.AgentToolAgentConfigRead
+	case "write_agent_configs":
+		return config.AgentToolAgentConfigWrite
+	default:
+		return ""
+	}
 }
 
 func FilterToolResultForModel(toolName, args, content string) FilteredToolResult {
@@ -207,6 +245,7 @@ func formatToolResultMetadata(manifest ToolManifest, originalBytes, returnedBody
 		"[Denova tool result metadata]",
 		"schema: tool_result.v1",
 		"source: " + string(manifest.Source),
+		"capability: " + firstNonEmpty(manifest.Capability, "unclassified"),
 		fmt.Sprintf("mutates_workspace: %t", manifest.MutatesWorkspace),
 		fmt.Sprintf("requires_post_check: %t", manifest.RequiresPostCheck),
 		fmt.Sprintf("max_result_bytes: %d", manifest.MaxResultBytes),

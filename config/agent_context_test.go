@@ -13,6 +13,9 @@ func TestResolveAgentContextCompactionDefaultsAndCaps(t *testing.T) {
 	if resolved.CompactionRecentTurns != DefaultContextCompactionRetainedTurns {
 		t.Fatalf("default compaction recent turns = %d, want %d", resolved.CompactionRecentTurns, DefaultContextCompactionRetainedTurns)
 	}
+	if resolved.CompactionStrategy != AgentContextCompactionStrategySummaryAgent {
+		t.Fatalf("default compaction strategy = %q, want %q", resolved.CompactionStrategy, AgentContextCompactionStrategySummaryAgent)
+	}
 	if resolved.CompactionTargetMin != 0.05 {
 		t.Fatalf("default compaction target min = %v, want 0.05", resolved.CompactionTargetMin)
 	}
@@ -73,9 +76,11 @@ func TestResolveAgentContextCompactionDefaultsAndCaps(t *testing.T) {
 	highToolKeepRecent := MaxToolResultKeepRecent + 20
 	highToolBudget := MaxToolResultContextBudgetKB + 20
 	highPreviewChars := MaxToolResultPreviewChars + 20
+	unknownStrategy := "parent_prefix"
 	cfg = &Config{AgentContexts: AgentContextSettings{
 		IDE: AgentContextOverride{
 			CompactionRecentTurns:     &highRecentTurns,
+			CompactionStrategy:        &unknownStrategy,
 			ToolResultKeepRecent:      &highToolKeepRecent,
 			ToolResultContextBudgetKB: &highToolBudget,
 			ToolResultPreviewChars:    &highPreviewChars,
@@ -87,6 +92,9 @@ func TestResolveAgentContextCompactionDefaultsAndCaps(t *testing.T) {
 	}
 	if resolved.ToolResultKeepRecent != MaxToolResultKeepRecent || resolved.ToolResultContextBudgetKB != MaxToolResultContextBudgetKB || resolved.ToolResultPreviewChars != MaxToolResultPreviewChars {
 		t.Fatalf("tool result context caps not applied: %+v", resolved)
+	}
+	if resolved.CompactionStrategy != AgentContextCompactionStrategySummaryAgent {
+		t.Fatalf("unknown compaction strategy should fall back to %q, got %q", AgentContextCompactionStrategySummaryAgent, resolved.CompactionStrategy)
 	}
 }
 

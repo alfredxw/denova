@@ -130,6 +130,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 		Phase:               phase,
 		TokensBefore:        tokensBefore,
 		ContextWindowTokens: policy.ContextWindowTokens,
+		Strategy:            policy.Strategy,
 		Threshold:           policy.Threshold,
 		MessageCountBefore:  len(input.Messages),
 		RetainedTurns:       policy.RetainedTurns,

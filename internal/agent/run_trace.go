@@ -31,6 +31,12 @@ type RunTraceSummary struct {
 	AgentKind          string    `json:"agent_kind,omitempty"`
 	SessionID          string    `json:"session_id,omitempty"`
 	Phase              string    `json:"phase,omitempty"`
+	ToolCalls          int       `json:"tool_calls,omitempty"`
+	ToolSuccesses      int       `json:"tool_successes,omitempty"`
+	ToolBlocked        int       `json:"tool_blocked,omitempty"`
+	ToolErrors         int       `json:"tool_errors,omitempty"`
+	ToolTruncated      int       `json:"tool_truncated,omitempty"`
+	InvalidToolArgs    int       `json:"invalid_tool_args,omitempty"`
 	Mutations          int       `json:"mutations,omitempty"`
 	VerificationStatus string    `json:"verification_status,omitempty"`
 	Recoverable        bool      `json:"recoverable,omitempty"`
@@ -158,7 +164,24 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 		summary.ContextParts += runTraceContextPartCount(record.Data)
 		summary.Phase = "context_ready"
 	case "tool_decision":
+		summary.ToolCalls++
+		if runTraceToolDecisionInvalidArgs(record.Data) {
+			summary.InvalidToolArgs++
+		}
 		summary.Phase = "tool_running"
+	case "tool_execution":
+		status, truncated := runTraceToolExecutionStatus(record.Data)
+		switch status {
+		case "success":
+			summary.ToolSuccesses++
+		case "blocked":
+			summary.ToolBlocked++
+		case "error":
+			summary.ToolErrors++
+		}
+		if truncated {
+			summary.ToolTruncated++
+		}
 	case "mutations":
 		summary.Mutations += runTraceMutationCount(record.Data)
 		summary.Phase = "verifying"
@@ -196,6 +219,25 @@ func runTraceMutationCount(data map[string]any) int {
 		return 0
 	}
 	return len(mutations)
+}
+
+func runTraceToolDecisionInvalidArgs(data map[string]any) bool {
+	decision, ok := data["decision"].(map[string]any)
+	if !ok {
+		return false
+	}
+	reason := stringField(decision, "reason")
+	return strings.Contains(reason, "参数不是完整 JSON 对象") ||
+		strings.Contains(reason, "Tool arguments must be a complete JSON object")
+}
+
+func runTraceToolExecutionStatus(data map[string]any) (string, bool) {
+	result, ok := data["result"].(map[string]any)
+	if !ok {
+		return "", false
+	}
+	truncated, _ := result["truncated"].(bool)
+	return stringField(result, "status"), truncated
 }
 
 func runTraceVerificationStatus(data map[string]any) string {

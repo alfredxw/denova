@@ -12,39 +12,33 @@ import (
 	"denova/config"
 )
 
-func TestConfigManagerToolsRespectToolSettings(t *testing.T) {
+func TestConfigManagerToolsExposeStableSchema(t *testing.T) {
 	tools, err := newConfigManagerTools(&config.Config{}, config.ResolvedAgentToolSettings{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 0 {
-		t.Fatalf("disabled settings should not expose config manager tools, got %v", configManagerToolNameSet(t, tools))
-	}
-
-	tools, err = newConfigManagerTools(&config.Config{}, config.ResolvedAgentToolSettings{LoreRead: true})
-	if err != nil {
-		t.Fatal(err)
-	}
 	names := configManagerToolNameSet(t, tools)
-	for _, name := range []string{"list_tellers", "read_tellers", "list_image_presets", "read_image_presets", "list_story_memory_structures", "list_story_memory_records", "read_story_memory_records", "list_lore_items", "read_lore_items"} {
+
+	for _, name := range []string{"list_tellers", "read_tellers", "write_tellers", "list_image_presets", "read_image_presets", "write_image_presets", "list_story_memory_structures", "write_story_memory_structures", "list_story_memory_records", "read_story_memory_records", "write_story_memory_records", "list_lore_items", "read_lore_items", "write_lore_items", "list_skills", "read_skills", "write_skills", "list_automations", "read_automations", "write_automations", "list_agent_configs", "write_agent_configs"} {
 		if !names[name] {
-			t.Fatalf("lore read should expose %s, names=%v", name, names)
-		}
-	}
-	for _, name := range []string{"write_tellers", "write_image_presets", "write_lore_items", "write_story_memory_structures", "write_story_memory_records", "list_skills", "write_skills", "list_automations", "write_automations"} {
-		if names[name] {
-			t.Fatalf("lore read should not expose %s, names=%v", name, names)
+			t.Fatalf("stable config manager schema should expose %s, names=%v", name, names)
 		}
 	}
 
-	tools, err = newConfigManagerTools(&config.Config{}, config.ResolvedAgentToolSettings{AgentConfigRead: true, AgentConfigWrite: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	names = configManagerToolNameSet(t, tools)
-	for _, name := range []string{"list_agent_configs", "write_agent_configs"} {
-		if !names[name] {
-			t.Fatalf("agent config settings should expose %s, names=%v", name, names)
+	for _, tc := range []struct {
+		name       string
+		capability string
+	}{
+		{name: "list_tellers", capability: config.AgentToolLoreRead},
+		{name: "write_tellers", capability: config.AgentToolLoreWrite},
+		{name: "list_automations", capability: config.AgentToolTodo},
+		{name: "write_skills", capability: config.AgentToolSkills},
+		{name: "list_agent_configs", capability: config.AgentToolAgentConfigRead},
+		{name: "write_agent_configs", capability: config.AgentToolAgentConfigWrite},
+		{name: "write_lore_items", capability: config.AgentToolLoreWrite},
+	} {
+		if got := ManifestForTool(tc.name).Capability; got != tc.capability {
+			t.Fatalf("%s capability = %q, want %q", tc.name, got, tc.capability)
 		}
 	}
 }
@@ -76,7 +70,7 @@ func TestConfigManagerSubAgentToolsAreCappedBySubAgentOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(tools) != 0 {
-		t.Fatalf("subagent with all tools disabled should not expose config manager tools, got %v", configManagerToolNameSet(t, tools))
+		t.Fatalf("subagent with all tools disabled should keep no extra factory schema, got %v", configManagerToolNameSet(t, tools))
 	}
 }
 
