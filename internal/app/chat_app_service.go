@@ -429,8 +429,8 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 		log.Printf("[agent-task] load ide teller id=%s workspace=%s", runtime.cfg.IDEStoryTellerID, runtime.workspace)
 
 		teller := loadInteractiveTeller(novaDir, runtime.cfg.IDEStoryTellerID)
-		if len(teller.StyleRules) > 0 {
-			converted := convertTellerStyleRules(novaDir, teller.StyleRules, req.StyleScenes)
+		if len(teller.StyleRefs) > 0 || len(teller.StyleRules) > 0 {
+			converted := convertTellerStyleRules(novaDir, teller.StyleRefs, teller.StyleRules, req.StyleScenes)
 			req.StyleRules = converted
 			log.Printf("[agent-task] inject teller style rules teller_id=%s scenes=%q count=%d rules=%q", teller.ID, req.StyleScenes, len(converted), appStyleRuleNames(converted))
 		}
@@ -521,18 +521,36 @@ func (s *ChatAppService) AbortTask() {
 func appStyleRuleNames(rules []agent.StyleRule) []string {
 	names := make([]string, 0, len(rules))
 	for _, rule := range rules {
-		names = append(names, fmt.Sprintf("%s -> %d refs, %d legacy contents", rule.Scene, len(rule.StyleReferences), len(rule.StyleContents)))
+		scene := strings.TrimSpace(rule.Scene)
+		if rule.Global {
+			scene = "global"
+		}
+		names = append(names, fmt.Sprintf("%s -> %d refs, %d legacy contents", scene, len(rule.StyleReferences), len(rule.StyleContents)))
 	}
 	return names
 }
 
-func convertTellerStyleRules(novaDir string, rules []interactive.StyleRule, scenes []string) []agent.StyleRule {
-	converted := make([]agent.StyleRule, 0, len(rules))
+func convertTellerStyleRules(novaDir string, globalRefs []string, rules []interactive.StyleRule, scenes []string) []agent.StyleRule {
+	converted := make([]agent.StyleRule, 0, len(rules)+1)
 	allowed := styleSceneSet(scenes)
 	styleRefs := styleref.NewLibrary(novaDir)
+	if len(globalRefs) > 0 {
+		converted = append(converted, agent.StyleRule{
+			Global:          true,
+			StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(globalRefs)),
+		})
+	}
 	for _, r := range rules {
 		scene := strings.TrimSpace(r.Scene)
 		if scene == "" || (len(r.StyleRefs) == 0 && len(r.StyleContents) == 0) {
+			continue
+		}
+		if isGlobalStyleScene(scene) {
+			converted = append(converted, agent.StyleRule{
+				Global:          true,
+				StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(r.StyleRefs)),
+				StyleContents:   r.StyleContents,
+			})
 			continue
 		}
 		if len(allowed) > 0 && !allowed[scene] {
@@ -545,6 +563,11 @@ func convertTellerStyleRules(novaDir string, rules []interactive.StyleRule, scen
 		})
 	}
 	return converted
+}
+
+func isGlobalStyleScene(scene string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(scene))
+	return normalized == "全局" || normalized == "global"
 }
 
 func styleReferencesForPrompt(refs []styleref.Reference) []agent.StyleReference {

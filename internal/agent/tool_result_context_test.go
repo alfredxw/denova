@@ -70,3 +70,18 @@ func TestToolResultContextRecorderBoundsLargeResults(t *testing.T) {
 		t.Fatalf("large tool args should be bounded: %#v", call)
 	}
 }
+
+func TestToolResultContextRemovesDenovaMetadata(t *testing.T) {
+	raw := "章节内容\n\n[Denova tool result metadata]\nschema: tool_result.v1\nmutates_workspace: false"
+	content := toolResultContextContent("read_file", "call-1", raw, ToolResultContextPolicy{PreviewChars: 100})
+	if content != "章节内容" {
+		t.Fatalf("retained content should remove metadata, got %q", content)
+	}
+
+	filtered := applyToolResultContextPolicy([]*schema.Message{
+		schema.ToolMessage(raw, "call-1", schema.WithToolName("read_file")),
+	}, ToolResultContextPolicy{Enabled: true, KeepRecent: 1, BudgetBytes: 1024, PreviewChars: 100})
+	if len(filtered) != 1 || filtered[0].Content != "章节内容" {
+		t.Fatalf("policy should sanitize legacy retained tool result: %#v", filtered)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -65,49 +66,52 @@ type StoryDirectorResolvedSnapshot struct {
 }
 
 type EventSystemModule struct {
-	Version     int                      `json:"version"`
-	ID          string                   `json:"id"`
-	Name        string                   `json:"name"`
-	Description string                   `json:"description"`
-	EventSystem StoryDirectorEventSystem `json:"event_system"`
-	Tags        []string                 `json:"tags"`
-	Path        string                   `json:"path,omitempty"`
-	Custom      bool                     `json:"custom"`
-	Invalid     bool                     `json:"invalid,omitempty"`
-	Error       string                   `json:"error,omitempty"`
-	CreatedAt   string                   `json:"created_at,omitempty"`
-	UpdatedAt   string                   `json:"updated_at,omitempty"`
+	Version           int                      `json:"version"`
+	ID                string                   `json:"id"`
+	Name              string                   `json:"name"`
+	Description       string                   `json:"description"`
+	EventSystem       StoryDirectorEventSystem `json:"event_system"`
+	Tags              []string                 `json:"tags"`
+	Path              string                   `json:"path,omitempty"`
+	Custom            bool                     `json:"custom"`
+	BuiltinOverridden bool                     `json:"builtin_overridden,omitempty"`
+	Invalid           bool                     `json:"invalid,omitempty"`
+	Error             string                   `json:"error,omitempty"`
+	CreatedAt         string                   `json:"created_at,omitempty"`
+	UpdatedAt         string                   `json:"updated_at,omitempty"`
 }
 
 type RuleSystemModule struct {
-	Version     int                     `json:"version"`
-	ID          string                  `json:"id"`
-	Name        string                  `json:"name"`
-	Description string                  `json:"description"`
-	StatSystem  StoryDirectorStatSystem `json:"stat_system"`
-	TRPGSystem  StoryDirectorTRPGSystem `json:"trpg_system"`
-	Tags        []string                `json:"tags"`
-	Path        string                  `json:"path,omitempty"`
-	Custom      bool                    `json:"custom"`
-	Invalid     bool                    `json:"invalid,omitempty"`
-	Error       string                  `json:"error,omitempty"`
-	CreatedAt   string                  `json:"created_at,omitempty"`
-	UpdatedAt   string                  `json:"updated_at,omitempty"`
+	Version           int                     `json:"version"`
+	ID                string                  `json:"id"`
+	Name              string                  `json:"name"`
+	Description       string                  `json:"description"`
+	StatSystem        StoryDirectorStatSystem `json:"stat_system"`
+	TRPGSystem        StoryDirectorTRPGSystem `json:"trpg_system"`
+	Tags              []string                `json:"tags"`
+	Path              string                  `json:"path,omitempty"`
+	Custom            bool                    `json:"custom"`
+	BuiltinOverridden bool                    `json:"builtin_overridden,omitempty"`
+	Invalid           bool                    `json:"invalid,omitempty"`
+	Error             string                  `json:"error,omitempty"`
+	CreatedAt         string                  `json:"created_at,omitempty"`
+	UpdatedAt         string                  `json:"updated_at,omitempty"`
 }
 
 type OpeningSelectorModule struct {
-	Version         int                          `json:"version"`
-	ID              string                       `json:"id"`
-	Name            string                       `json:"name"`
-	Description     string                       `json:"description"`
-	OpeningSelector StoryDirectorOpeningSelector `json:"opening_selector"`
-	Tags            []string                     `json:"tags"`
-	Path            string                       `json:"path,omitempty"`
-	Custom          bool                         `json:"custom"`
-	Invalid         bool                         `json:"invalid,omitempty"`
-	Error           string                       `json:"error,omitempty"`
-	CreatedAt       string                       `json:"created_at,omitempty"`
-	UpdatedAt       string                       `json:"updated_at,omitempty"`
+	Version           int                          `json:"version"`
+	ID                string                       `json:"id"`
+	Name              string                       `json:"name"`
+	Description       string                       `json:"description"`
+	OpeningSelector   StoryDirectorOpeningSelector `json:"opening_selector"`
+	Tags              []string                     `json:"tags"`
+	Path              string                       `json:"path,omitempty"`
+	Custom            bool                         `json:"custom"`
+	BuiltinOverridden bool                         `json:"builtin_overridden,omitempty"`
+	Invalid           bool                         `json:"invalid,omitempty"`
+	Error             string                       `json:"error,omitempty"`
+	CreatedAt         string                       `json:"created_at,omitempty"`
+	UpdatedAt         string                       `json:"updated_at,omitempty"`
 }
 
 type EventSystemLibrary struct {
@@ -150,7 +154,7 @@ func (l *EventSystemLibrary) List() ([]EventSystemModule, error) {
 			continue
 		}
 		item.Path = file
-		item.Custom = !IsBuiltinEventSystemID(item.ID)
+		item = applyEventSystemOwnership(item)
 		items = append(items, item)
 	}
 	sortEventSystems(items)
@@ -172,8 +176,7 @@ func (l *EventSystemLibrary) Get(id string) (EventSystemModule, error) {
 	if err != nil {
 		return EventSystemModule{}, err
 	}
-	item.Custom = !IsBuiltinEventSystemID(item.ID)
-	return item, nil
+	return applyEventSystemOwnership(item), nil
 }
 
 func (l *EventSystemLibrary) Create(item EventSystemModule) (EventSystemModule, error) {
@@ -184,6 +187,7 @@ func (l *EventSystemLibrary) Create(item EventSystemModule) (EventSystemModule, 
 	if item.ID == "" {
 		item.ID = newDirectorModuleID("event-system")
 	}
+	item.BuiltinOverridden = false
 	if err := validateEventSystemModule(item); err != nil {
 		return EventSystemModule{}, err
 	}
@@ -200,8 +204,7 @@ func (l *EventSystemLibrary) Create(item EventSystemModule) (EventSystemModule, 
 		return EventSystemModule{}, err
 	}
 	item.Path = path
-	item.Custom = !IsBuiltinEventSystemID(item.ID)
-	return item, nil
+	return applyEventSystemOwnership(item), nil
 }
 
 func (l *EventSystemLibrary) Update(id string, item EventSystemModule, baseRevision string) (EventSystemModule, error) {
@@ -212,9 +215,7 @@ func (l *EventSystemLibrary) Update(id string, item EventSystemModule, baseRevis
 	if err := validateDirectorModuleID(id, "事件系统"); err != nil {
 		return EventSystemModule{}, err
 	}
-	if IsBuiltinEventSystemID(id) {
-		return EventSystemModule{}, errors.New("内置事件系统不能修改，请复制后编辑")
-	}
+	isBuiltin := IsBuiltinEventSystemID(id)
 	current, err := l.Get(id)
 	if err != nil {
 		return EventSystemModule{}, err
@@ -226,6 +227,7 @@ func (l *EventSystemLibrary) Update(id string, item EventSystemModule, baseRevis
 	item.ID = id
 	item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
 	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	item.BuiltinOverridden = isBuiltin
 	if err := validateEventSystemModule(item); err != nil {
 		return EventSystemModule{}, err
 	}
@@ -234,8 +236,7 @@ func (l *EventSystemLibrary) Update(id string, item EventSystemModule, baseRevis
 		return EventSystemModule{}, err
 	}
 	item.Path = path
-	item.Custom = true
-	return item, nil
+	return applyEventSystemOwnership(item), nil
 }
 
 func (l *EventSystemLibrary) Delete(id string) error {
@@ -244,7 +245,11 @@ func (l *EventSystemLibrary) Delete(id string) error {
 		return err
 	}
 	if IsBuiltinEventSystemID(id) {
-		return errors.New("内置事件系统不能删除")
+		item, ok := builtinEventSystemModuleByID(id)
+		if !ok {
+			return fmt.Errorf("内置事件系统不存在: %s", id)
+		}
+		return writeEventSystemFile(filepath.Join(l.dir(), id+".json"), item)
 	}
 	return os.Remove(filepath.Join(l.dir(), id+".json"))
 }
@@ -259,7 +264,9 @@ func (l *EventSystemLibrary) ensureBuiltins() error {
 	}
 	for _, item := range builtinEventSystemModules() {
 		path := filepath.Join(l.dir(), item.ID+".json")
-		if current, err := parseEventSystemFile(path); err == nil && current.Version == item.Version {
+		if current, err := parseEventSystemFile(path); err == nil && current.BuiltinOverridden {
+			continue
+		} else if err == nil && current.Version == item.Version {
 			continue
 		}
 		if err := writeEventSystemFile(path, item); err != nil {
@@ -285,7 +292,7 @@ func (l *RuleSystemLibrary) List() ([]RuleSystemModule, error) {
 			continue
 		}
 		item.Path = file
-		item.Custom = !IsBuiltinRuleSystemID(item.ID)
+		item = applyRuleSystemOwnership(item)
 		items = append(items, item)
 	}
 	sortRuleSystems(items)
@@ -307,8 +314,7 @@ func (l *RuleSystemLibrary) Get(id string) (RuleSystemModule, error) {
 	if err != nil {
 		return RuleSystemModule{}, err
 	}
-	item.Custom = !IsBuiltinRuleSystemID(item.ID)
-	return item, nil
+	return applyRuleSystemOwnership(item), nil
 }
 
 func (l *RuleSystemLibrary) Create(item RuleSystemModule) (RuleSystemModule, error) {
@@ -319,6 +325,7 @@ func (l *RuleSystemLibrary) Create(item RuleSystemModule) (RuleSystemModule, err
 	if item.ID == "" {
 		item.ID = newDirectorModuleID("rule-system")
 	}
+	item.BuiltinOverridden = false
 	if err := validateRuleSystemModule(item); err != nil {
 		return RuleSystemModule{}, err
 	}
@@ -335,8 +342,7 @@ func (l *RuleSystemLibrary) Create(item RuleSystemModule) (RuleSystemModule, err
 		return RuleSystemModule{}, err
 	}
 	item.Path = path
-	item.Custom = !IsBuiltinRuleSystemID(item.ID)
-	return item, nil
+	return applyRuleSystemOwnership(item), nil
 }
 
 func (l *RuleSystemLibrary) Update(id string, item RuleSystemModule, baseRevision string) (RuleSystemModule, error) {
@@ -347,9 +353,7 @@ func (l *RuleSystemLibrary) Update(id string, item RuleSystemModule, baseRevisio
 	if err := validateDirectorModuleID(id, "数值规则系统"); err != nil {
 		return RuleSystemModule{}, err
 	}
-	if IsBuiltinRuleSystemID(id) {
-		return RuleSystemModule{}, errors.New("内置数值规则系统不能修改，请复制后编辑")
-	}
+	isBuiltin := IsBuiltinRuleSystemID(id)
 	current, err := l.Get(id)
 	if err != nil {
 		return RuleSystemModule{}, err
@@ -361,6 +365,7 @@ func (l *RuleSystemLibrary) Update(id string, item RuleSystemModule, baseRevisio
 	item.ID = id
 	item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
 	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	item.BuiltinOverridden = isBuiltin
 	if err := validateRuleSystemModule(item); err != nil {
 		return RuleSystemModule{}, err
 	}
@@ -369,8 +374,7 @@ func (l *RuleSystemLibrary) Update(id string, item RuleSystemModule, baseRevisio
 		return RuleSystemModule{}, err
 	}
 	item.Path = path
-	item.Custom = true
-	return item, nil
+	return applyRuleSystemOwnership(item), nil
 }
 
 func (l *RuleSystemLibrary) Delete(id string) error {
@@ -379,7 +383,7 @@ func (l *RuleSystemLibrary) Delete(id string) error {
 		return err
 	}
 	if IsBuiltinRuleSystemID(id) {
-		return errors.New("内置数值规则系统不能删除")
+		return writeRuleSystemFile(filepath.Join(l.dir(), id+".json"), DefaultRuleSystemModule())
 	}
 	return os.Remove(filepath.Join(l.dir(), id+".json"))
 }
@@ -393,7 +397,9 @@ func (l *RuleSystemLibrary) ensureBuiltins() error {
 		return err
 	}
 	path := filepath.Join(l.dir(), DefaultRuleSystemID+".json")
-	if current, err := parseRuleSystemFile(path); err == nil && current.Version == storyDirectorModuleVersion {
+	if current, err := parseRuleSystemFile(path); err == nil && current.BuiltinOverridden {
+		return nil
+	} else if err == nil && current.Version == storyDirectorModuleVersion {
 		return nil
 	}
 	return writeRuleSystemFile(path, DefaultRuleSystemModule())
@@ -415,7 +421,7 @@ func (l *OpeningSelectorLibrary) List() ([]OpeningSelectorModule, error) {
 			continue
 		}
 		item.Path = file
-		item.Custom = !IsBuiltinOpeningSelectorID(item.ID)
+		item = applyOpeningSelectorOwnership(item)
 		items = append(items, item)
 	}
 	sortOpeningSelectors(items)
@@ -437,8 +443,7 @@ func (l *OpeningSelectorLibrary) Get(id string) (OpeningSelectorModule, error) {
 	if err != nil {
 		return OpeningSelectorModule{}, err
 	}
-	item.Custom = !IsBuiltinOpeningSelectorID(item.ID)
-	return item, nil
+	return applyOpeningSelectorOwnership(item), nil
 }
 
 func (l *OpeningSelectorLibrary) Create(item OpeningSelectorModule) (OpeningSelectorModule, error) {
@@ -449,6 +454,7 @@ func (l *OpeningSelectorLibrary) Create(item OpeningSelectorModule) (OpeningSele
 	if item.ID == "" {
 		item.ID = newDirectorModuleID("opening-selector")
 	}
+	item.BuiltinOverridden = false
 	if err := validateOpeningSelectorModule(item); err != nil {
 		return OpeningSelectorModule{}, err
 	}
@@ -465,8 +471,7 @@ func (l *OpeningSelectorLibrary) Create(item OpeningSelectorModule) (OpeningSele
 		return OpeningSelectorModule{}, err
 	}
 	item.Path = path
-	item.Custom = !IsBuiltinOpeningSelectorID(item.ID)
-	return item, nil
+	return applyOpeningSelectorOwnership(item), nil
 }
 
 func (l *OpeningSelectorLibrary) Update(id string, item OpeningSelectorModule, baseRevision string) (OpeningSelectorModule, error) {
@@ -477,9 +482,7 @@ func (l *OpeningSelectorLibrary) Update(id string, item OpeningSelectorModule, b
 	if err := validateDirectorModuleID(id, "开局选择器"); err != nil {
 		return OpeningSelectorModule{}, err
 	}
-	if IsBuiltinOpeningSelectorID(id) {
-		return OpeningSelectorModule{}, errors.New("内置开局选择器不能修改，请复制后编辑")
-	}
+	isBuiltin := IsBuiltinOpeningSelectorID(id)
 	current, err := l.Get(id)
 	if err != nil {
 		return OpeningSelectorModule{}, err
@@ -491,6 +494,7 @@ func (l *OpeningSelectorLibrary) Update(id string, item OpeningSelectorModule, b
 	item.ID = id
 	item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
 	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	item.BuiltinOverridden = isBuiltin
 	if err := validateOpeningSelectorModule(item); err != nil {
 		return OpeningSelectorModule{}, err
 	}
@@ -499,8 +503,7 @@ func (l *OpeningSelectorLibrary) Update(id string, item OpeningSelectorModule, b
 		return OpeningSelectorModule{}, err
 	}
 	item.Path = path
-	item.Custom = true
-	return item, nil
+	return applyOpeningSelectorOwnership(item), nil
 }
 
 func (l *OpeningSelectorLibrary) Delete(id string) error {
@@ -509,7 +512,7 @@ func (l *OpeningSelectorLibrary) Delete(id string) error {
 		return err
 	}
 	if IsBuiltinOpeningSelectorID(id) {
-		return errors.New("内置开局选择器不能删除")
+		return writeOpeningSelectorFile(filepath.Join(l.dir(), id+".json"), DefaultOpeningSelectorModule())
 	}
 	return os.Remove(filepath.Join(l.dir(), id+".json"))
 }
@@ -523,7 +526,9 @@ func (l *OpeningSelectorLibrary) ensureBuiltins() error {
 		return err
 	}
 	path := filepath.Join(l.dir(), DefaultOpeningSelectorID+".json")
-	if current, err := parseOpeningSelectorFile(path); err == nil && current.Version == storyDirectorModuleVersion {
+	if current, err := parseOpeningSelectorFile(path); err == nil && current.BuiltinOverridden {
+		return nil
+	} else if err == nil && current.Version == storyDirectorModuleVersion {
 		return nil
 	}
 	return writeOpeningSelectorFile(path, DefaultOpeningSelectorModule())
@@ -744,6 +749,101 @@ func IsBuiltinRuleSystemID(id string) bool {
 
 func IsBuiltinOpeningSelectorID(id string) bool {
 	return normalizeDirectorModuleID(id) == DefaultOpeningSelectorID
+}
+
+func builtinEventSystemModuleByID(id string) (EventSystemModule, bool) {
+	id = normalizeDirectorModuleID(id)
+	for _, item := range builtinEventSystemModules() {
+		if item.ID == id {
+			return item, true
+		}
+	}
+	return EventSystemModule{}, false
+}
+
+func applyEventSystemOwnership(item EventSystemModule) EventSystemModule {
+	if !IsBuiltinEventSystemID(item.ID) {
+		item.Custom = true
+		item.BuiltinOverridden = false
+		return item
+	}
+	item.Custom = false
+	item.BuiltinOverridden = item.BuiltinOverridden || eventSystemDiffersFromBuiltin(item)
+	return item
+}
+
+func eventSystemDiffersFromBuiltin(item EventSystemModule) bool {
+	builtin, ok := builtinEventSystemModuleByID(item.ID)
+	if !ok {
+		return false
+	}
+	return !reflect.DeepEqual(eventSystemComparable(item), eventSystemComparable(builtin))
+}
+
+func eventSystemComparable(item EventSystemModule) EventSystemModule {
+	item = normalizeEventSystemModule(item)
+	item.Path = ""
+	item.Custom = false
+	item.BuiltinOverridden = false
+	item.Invalid = false
+	item.Error = ""
+	item.CreatedAt = ""
+	item.UpdatedAt = ""
+	return item
+}
+
+func applyRuleSystemOwnership(item RuleSystemModule) RuleSystemModule {
+	if !IsBuiltinRuleSystemID(item.ID) {
+		item.Custom = true
+		item.BuiltinOverridden = false
+		return item
+	}
+	item.Custom = false
+	item.BuiltinOverridden = item.BuiltinOverridden || ruleSystemDiffersFromBuiltin(item)
+	return item
+}
+
+func ruleSystemDiffersFromBuiltin(item RuleSystemModule) bool {
+	return !reflect.DeepEqual(ruleSystemComparable(item), ruleSystemComparable(DefaultRuleSystemModule()))
+}
+
+func ruleSystemComparable(item RuleSystemModule) RuleSystemModule {
+	item = normalizeRuleSystemModule(item)
+	item.Path = ""
+	item.Custom = false
+	item.BuiltinOverridden = false
+	item.Invalid = false
+	item.Error = ""
+	item.CreatedAt = ""
+	item.UpdatedAt = ""
+	return item
+}
+
+func applyOpeningSelectorOwnership(item OpeningSelectorModule) OpeningSelectorModule {
+	if !IsBuiltinOpeningSelectorID(item.ID) {
+		item.Custom = true
+		item.BuiltinOverridden = false
+		return item
+	}
+	item.Custom = false
+	item.BuiltinOverridden = item.BuiltinOverridden || openingSelectorDiffersFromBuiltin(item)
+	return item
+}
+
+func openingSelectorDiffersFromBuiltin(item OpeningSelectorModule) bool {
+	return !reflect.DeepEqual(openingSelectorComparable(item), openingSelectorComparable(DefaultOpeningSelectorModule()))
+}
+
+func openingSelectorComparable(item OpeningSelectorModule) OpeningSelectorModule {
+	item = normalizeOpeningSelectorModule(item)
+	item.Path = ""
+	item.Custom = false
+	item.BuiltinOverridden = false
+	item.Invalid = false
+	item.Error = ""
+	item.CreatedAt = ""
+	item.UpdatedAt = ""
+	return item
 }
 
 func normalizeEventSystemModule(item EventSystemModule) EventSystemModule {

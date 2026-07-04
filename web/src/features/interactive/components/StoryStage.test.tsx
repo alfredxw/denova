@@ -7,9 +7,10 @@ import { StoryStage } from './StoryStage'
 import { mergeInteractiveTurnPersistedSnapshot, useInteractiveStore } from '../stores/interactive-store'
 import type { InteractiveTurnPersistedEvent, Snapshot, StorySummary } from '../types'
 
-const { generateInteractiveHotChoicesMock, generateInteractiveImageMock, sendInteractiveMessageMock } = vi.hoisted(() => ({
+const { generateInteractiveHotChoicesMock, generateInteractiveImageMock, runInteractiveDirectorMock, sendInteractiveMessageMock } = vi.hoisted(() => ({
   generateInteractiveHotChoicesMock: vi.fn(),
   generateInteractiveImageMock: vi.fn(),
+  runInteractiveDirectorMock: vi.fn(),
   sendInteractiveMessageMock: vi.fn(),
 }))
 
@@ -28,6 +29,7 @@ vi.mock('../api', () => ({
   generateInteractiveHotChoices: generateInteractiveHotChoicesMock,
   generateInteractiveImage: generateInteractiveImageMock,
   removeInteractiveContextCompaction: vi.fn(),
+  runInteractiveDirector: runInteractiveDirectorMock,
   sendInteractiveMessage: sendInteractiveMessageMock,
   switchInteractiveTurnVersion: vi.fn(),
 }))
@@ -38,6 +40,8 @@ beforeEach(() => {
   generateInteractiveHotChoicesMock.mockReset()
   generateInteractiveImageMock.mockReset()
   generateInteractiveImageMock.mockResolvedValue({ enabled: false, skipped: true })
+  runInteractiveDirectorMock.mockReset()
+  runInteractiveDirectorMock.mockResolvedValue(directorStatus('running', { completed_docs: 1 }))
   sendInteractiveMessageMock.mockReset()
 })
 
@@ -169,6 +173,97 @@ describe('StoryStage composer', () => {
 
     expect(screen.getByPlaceholderText('当前分支已终局，请从历史回合创建新分支')).toBeDisabled()
     expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+  })
+
+  it('locks forward actions while the initial director plan is blocking', async () => {
+    const user = userEvent.setup()
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={{
+          story_id: 'story-1',
+          branch_id: 'main',
+          state: {},
+          turns: [{
+            id: 'turn-1',
+            parent_id: null,
+            branch_id: 'main',
+            ts: '2026-06-28T00:00:00Z',
+            user: '开局',
+            narrative: '雨停了。',
+          }],
+          current_turn: {
+            id: 'turn-1',
+            parent_id: null,
+            branch_id: 'main',
+            ts: '2026-06-28T00:00:00Z',
+            user: '开局',
+            narrative: '雨停了。',
+          },
+          director_plan_status: directorStatus('running', { completed_docs: 1, blocking: true }),
+        }}
+        onDone={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('导演正在规划故事')).toBeInTheDocument()
+    expect(screen.getByText('已规划 1/3')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('导演正在规划故事，完成后即可继续行动')).toBeDisabled()
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '获取行动选择' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: '获取行动选择' }))
+    expect(generateInteractiveHotChoicesMock).not.toHaveBeenCalled()
+  })
+
+  it('retries failed director planning without revealing plan docs', async () => {
+    const user = userEvent.setup()
+    const handleDone = vi.fn().mockResolvedValue(undefined)
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={{
+          story_id: 'story-1',
+          branch_id: 'main',
+          state: {},
+          turns: [{
+            id: 'turn-1',
+            parent_id: null,
+            branch_id: 'main',
+            ts: '2026-06-28T00:00:00Z',
+            user: '开局',
+            narrative: '雨停了。',
+          }],
+          current_turn: {
+            id: 'turn-1',
+            parent_id: null,
+            branch_id: 'main',
+            ts: '2026-06-28T00:00:00Z',
+            user: '开局',
+            narrative: '雨停了。',
+          },
+          director_plan_status: directorStatus('failed', { error: 'director unavailable', blocking: true }),
+        }}
+        onDone={handleDone}
+      />,
+    )
+
+    expect(screen.getByText('director unavailable')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '重试规划' }))
+
+    await waitFor(() => expect(runInteractiveDirectorMock).toHaveBeenCalledWith('story-1', 'main'))
+    await waitFor(() => expect(handleDone).toHaveBeenCalledWith({ silent: true }))
+    expect(screen.queryByDisplayValue(/后台导演私密/)).not.toBeInTheDocument()
   })
 })
 
@@ -413,7 +508,11 @@ describe('StoryStage interactive image rendering', () => {
 })
 
 describe('StoryStage opening panel', () => {
-  it('fills custom opening text from the book preset button', () => {
+  it('starts the current book preset from the book preset button', async () => {
+    const user = userEvent.setup()
+    sendInteractiveMessageMock.mockResolvedValue(interactiveStream([
+      { event: 'done', data: '{}' },
+    ]))
     render(
       <StoryStage
         workspace="/tmp/book"
@@ -428,9 +527,53 @@ describe('StoryStage opening panel', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '使用书籍预设' }))
+    expect(screen.getByPlaceholderText('写下你想使用的开局。生成时会作为有界来源传给游戏 Agent。')).toHaveValue('')
+    await user.click(screen.getByRole('button', { name: '使用书籍预设' }))
 
-    expect(screen.getByPlaceholderText('写下你想使用的开局。生成时会作为有界来源传给游戏 Agent。')).toHaveValue('青石镇的雨刚刚停。')
+    await waitFor(() => {
+      expect(sendInteractiveMessageMock).toHaveBeenCalledWith(expect.objectContaining({
+        mode: 'story',
+        story_id: 'story-1',
+        branch: 'main',
+        message: expect.stringContaining('书籍预设开场白：青石镇的雨刚刚停。'),
+      }))
+    })
+  })
+
+  it('starts opening from the selected book preset', async () => {
+    const user = userEvent.setup()
+    sendInteractiveMessageMock.mockResolvedValue(interactiveStream([
+      { event: 'done', data: '{}' },
+    ]))
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {} }}
+        bookOpeningPresets={[
+          { id: 'preset-1', title: '默认开场', content: '青石镇的雨刚刚停。' },
+          { id: 'preset-2', title: '雪夜开场', content: '雪夜里，山门外只剩一盏灯。' },
+        ]}
+        onDone={() => {}}
+      />,
+    )
+
+    await user.click(screen.getByRole('combobox', { name: '选择书籍预设' }))
+    await user.click(await screen.findByRole('option', { name: '雪夜开场' }))
+    await user.click(screen.getByRole('button', { name: '使用书籍预设' }))
+
+    await waitFor(() => {
+      expect(sendInteractiveMessageMock).toHaveBeenCalledWith(expect.objectContaining({
+        mode: 'story',
+        story_id: 'story-1',
+        branch: 'main',
+        message: expect.stringContaining('书籍预设开场白：雪夜里，山门外只剩一盏灯。'),
+      }))
+    })
   })
 })
 
@@ -519,6 +662,25 @@ function persistedTurnEvent(): InteractiveTurnPersistedEvent {
       branches: [{ id: 'main', head: 'turn-1', created_at: '2026-06-28T00:00:00Z', current: true }],
     },
     branches: [{ id: 'main', head: 'turn-1', created_at: '2026-06-28T00:00:00Z', current: true }],
+  }
+}
+
+function directorStatus(status: string, overrides: Partial<NonNullable<Snapshot['director_plan_status']>> = {}) {
+  return {
+    story_id: 'story-1',
+    branch_id: 'main',
+    status,
+    summary: status === 'running' ? '后台导演正在规划开局。' : '后台导演更新失败，已保留现有规划。',
+    error: '',
+    source_turn_id: 'turn-1',
+    updated_at: '2026-06-28T00:00:00Z',
+    planned_docs: 3,
+    completed_docs: status === 'ready' ? 3 : 0,
+    doc_bytes: 1200,
+    visible_bytes: 320,
+    start_ready: status === 'ready',
+    blocking: status !== 'ready',
+    ...overrides,
   }
 }
 

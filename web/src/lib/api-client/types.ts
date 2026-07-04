@@ -170,6 +170,9 @@ export interface ContextAnalysisPart {
   source: string
   title: string
   role?: string
+  kind?: string
+  tool_name?: string
+  tool_call_id?: string
   content: string
   note?: string
   bytes: number

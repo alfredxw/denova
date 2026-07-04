@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -27,19 +28,20 @@ type Library struct {
 var ErrPresetRevisionConflict = errors.New("图像方案已被其他操作更新，请重新加载后再保存")
 
 type Preset struct {
-	Version     int      `json:"version"`
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Prompt      string   `json:"prompt,omitempty"`
-	Slots       []Slot   `json:"slots,omitempty"`
-	Tags        []string `json:"tags"`
-	Path        string   `json:"path,omitempty"`
-	Custom      bool     `json:"custom"`
-	Invalid     bool     `json:"invalid,omitempty"`
-	Error       string   `json:"error,omitempty"`
-	CreatedAt   string   `json:"created_at,omitempty"`
-	UpdatedAt   string   `json:"updated_at,omitempty"`
+	Version           int      `json:"version"`
+	ID                string   `json:"id"`
+	Name              string   `json:"name"`
+	Description       string   `json:"description"`
+	Prompt            string   `json:"prompt,omitempty"`
+	Slots             []Slot   `json:"slots,omitempty"`
+	Tags              []string `json:"tags"`
+	Path              string   `json:"path,omitempty"`
+	Custom            bool     `json:"custom"`
+	BuiltinOverridden bool     `json:"builtin_overridden,omitempty"`
+	Invalid           bool     `json:"invalid,omitempty"`
+	Error             string   `json:"error,omitempty"`
+	CreatedAt         string   `json:"created_at,omitempty"`
+	UpdatedAt         string   `json:"updated_at,omitempty"`
 }
 
 type Slot struct {
@@ -76,7 +78,7 @@ func (l *Library) List() ([]Preset, error) {
 			continue
 		}
 		preset.Path = file
-		preset.Custom = !IsBuiltinID(preset.ID)
+		preset = applyPresetOwnership(preset)
 		presets = append(presets, preset)
 	}
 	sort.Slice(presets, func(i, j int) bool {
@@ -103,8 +105,7 @@ func (l *Library) Get(id string) (Preset, error) {
 	if err != nil {
 		return Preset{}, err
 	}
-	preset.Custom = !IsBuiltinID(preset.ID)
-	return preset, nil
+	return applyPresetOwnership(preset), nil
 }
 
 func (l *Library) Create(preset Preset) (Preset, error) {
@@ -115,6 +116,7 @@ func (l *Library) Create(preset Preset) (Preset, error) {
 	if preset.ID == "" {
 		preset.ID = newPresetID()
 	}
+	preset.BuiltinOverridden = false
 	if err := validatePreset(preset); err != nil {
 		return Preset{}, err
 	}
@@ -131,8 +133,7 @@ func (l *Library) Create(preset Preset) (Preset, error) {
 		return Preset{}, err
 	}
 	preset.Path = path
-	preset.Custom = !IsBuiltinID(preset.ID)
-	return preset, nil
+	return applyPresetOwnership(preset), nil
 }
 
 func (l *Library) Update(id string, preset Preset, baseRevision ...string) (Preset, error) {
@@ -143,9 +144,7 @@ func (l *Library) Update(id string, preset Preset, baseRevision ...string) (Pres
 	if err := validateID(id); err != nil {
 		return Preset{}, err
 	}
-	if IsBuiltinID(id) {
-		return Preset{}, errors.New("内置图像方案不能修改，请复制后编辑")
-	}
+	isBuiltin := IsBuiltinID(id)
 	current, err := l.Get(id)
 	if err != nil {
 		return Preset{}, err
@@ -156,6 +155,7 @@ func (l *Library) Update(id string, preset Preset, baseRevision ...string) (Pres
 	preset.ID = id
 	preset.CreatedAt = current.CreatedAt
 	preset.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	preset.BuiltinOverridden = isBuiltin
 	preset = normalizePreset(preset)
 	if err := validatePreset(preset); err != nil {
 		return Preset{}, err
@@ -165,8 +165,7 @@ func (l *Library) Update(id string, preset Preset, baseRevision ...string) (Pres
 		return Preset{}, err
 	}
 	preset.Path = path
-	preset.Custom = !IsBuiltinID(preset.ID)
-	return preset, nil
+	return applyPresetOwnership(preset), nil
 }
 
 func firstPresetRevision(values []string) string {
@@ -182,9 +181,20 @@ func (l *Library) Delete(id string) error {
 		return err
 	}
 	if IsBuiltinID(id) {
-		return errors.New("内置图像方案不能删除")
+		return l.restoreBuiltin(id)
 	}
 	return os.Remove(filepath.Join(l.dir(), id+".json"))
+}
+
+func (l *Library) restoreBuiltin(id string) error {
+	preset, ok := builtinPresets[NormalizeID(id)]
+	if !ok {
+		return fmt.Errorf("内置图像方案不存在: %s", id)
+	}
+	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
+		return err
+	}
+	return writePresetFile(filepath.Join(l.dir(), NormalizeID(id)+".json"), preset)
 }
 
 func (l *Library) dir() string {
@@ -199,6 +209,9 @@ func (l *Library) ensureBuiltins() error {
 		path := filepath.Join(l.dir(), id+".json")
 		version, versionErr := readPresetFileVersion(path)
 		current, parseErr := parsePresetFile(path)
+		if parseErr == nil && current.BuiltinOverridden {
+			continue
+		}
 		if versionErr == nil && parseErr == nil && current.Version == Version && version == Version {
 			continue
 		}
@@ -261,6 +274,37 @@ func normalizePreset(preset Preset) Preset {
 	}
 	preset.Prompt = preset.PromptForTargets(TargetToolRequest)
 	preset.Tags = normalizeTags(preset.Tags)
+	return preset
+}
+
+func applyPresetOwnership(preset Preset) Preset {
+	if !IsBuiltinID(preset.ID) {
+		preset.Custom = true
+		preset.BuiltinOverridden = false
+		return preset
+	}
+	preset.Custom = false
+	preset.BuiltinOverridden = preset.BuiltinOverridden || presetDiffersFromBuiltin(preset)
+	return preset
+}
+
+func presetDiffersFromBuiltin(preset Preset) bool {
+	builtin, ok := builtinPresets[NormalizeID(preset.ID)]
+	if !ok {
+		return false
+	}
+	return !reflect.DeepEqual(presetComparable(preset), presetComparable(builtin))
+}
+
+func presetComparable(preset Preset) Preset {
+	preset = normalizePreset(preset)
+	preset.Path = ""
+	preset.Custom = false
+	preset.BuiltinOverridden = false
+	preset.Invalid = false
+	preset.Error = ""
+	preset.CreatedAt = ""
+	preset.UpdatedAt = ""
 	return preset
 }
 

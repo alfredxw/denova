@@ -136,7 +136,7 @@ export function AgentPanel({
   const messageListBottomPadding = inputAreaHeight > 0 ? inputAreaHeight + 20 : undefined
   const styleSceneSuggestions = useMemo(() => {
     const teller = tellers.find((item) => item.id === ideTellerId) || tellers.find((item) => item.id === 'classic') || tellers[0]
-    return Array.from(new Set((teller?.style_rules || []).map((rule) => rule.scene.trim()).filter(Boolean)))
+    return Array.from(new Set((teller?.style_rules || []).map((rule) => rule.scene.trim()).filter((scene) => scene && !isGlobalStyleSceneName(scene))))
   }, [ideTellerId, tellers])
 
   useEffect(() => {
@@ -475,6 +475,11 @@ export function AgentPanel({
       )}
     </aside>
   )
+}
+
+function isGlobalStyleSceneName(scene: string) {
+  const normalized = scene.trim().toLowerCase()
+  return normalized === '全局' || normalized === 'global'
 }
 
 function SubAgentDetailsResizeHandle({ label }: { label: string }) {

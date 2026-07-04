@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 func TestPreviewNovelImportSplitsMarkdownAndChineseChapters(t *testing.T) {
@@ -31,6 +33,25 @@ func TestPreviewNovelImportSplitsMarkdownAndChineseChapters(t *testing.T) {
 	}
 	if preview.Chapters[0].Title != "序章" || preview.Chapters[1].Title != "第一章 风起" || preview.Chapters[2].Title != "第二章 雨落" {
 		t.Fatalf("unexpected chapter titles: %#v", preview.Chapters)
+	}
+}
+
+func TestPreviewNovelImportDecodesGB18030ChineseText(t *testing.T) {
+	source := "第一章 风起\n\n第一章正文。\n\n第二章 雨落\n\n第二章正文。"
+	data, err := simplifiedchinese.GB18030.NewEncoder().Bytes([]byte(source))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	preview, err := PreviewNovelImport("长夜.txt", data)
+	if err != nil {
+		t.Fatalf("PreviewNovelImport failed: %v", err)
+	}
+	if preview.ChapterCount != 2 {
+		t.Fatalf("chapter count = %d, want 2", preview.ChapterCount)
+	}
+	if preview.Chapters[0].Title != "第一章 风起" || preview.Chapters[1].Title != "第二章 雨落" {
+		t.Fatalf("decoded chapter titles mismatch: %#v", preview.Chapters)
 	}
 }
 

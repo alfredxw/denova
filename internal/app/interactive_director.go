@@ -42,6 +42,9 @@ func runInteractiveDirectorPlan(ctx context.Context, cfg *config.Config, state *
 	if err != nil {
 		return interactive.DirectorPlan{}, fmt.Errorf("准备导演规划运行版本失败: %w", err)
 	}
+	if err := conversation.store.MarkDirectorPlanRunStarted(conversation.storyID, turn.BranchID, token, turn.ID); err != nil {
+		return interactive.DirectorPlan{}, fmt.Errorf("标记导演规划运行状态失败: %w", err)
+	}
 	allowedPaths := conversation.store.DirectorPlanAllowedPaths(conversation.storyID, turn.BranchID)
 	log.Printf("[interactive-director-agent] run begin story_id=%s branch_id=%s turn_id=%s revision=%s allowed_paths=%d", conversation.storyID, turn.BranchID, turn.ID, token.Revision, len(allowedPaths))
 	instruction, err := conversation.BuildDirectorInstruction(turn)

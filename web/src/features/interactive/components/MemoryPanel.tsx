@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Activity, Archive, Brain, Edit3, Loader2, RefreshCw, RotateCcw, Save, Search, Sparkles, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Activity, Archive, Brain, Edit3, Eye, Loader2, RefreshCw, RotateCcw, Save, Search, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MessageList } from '@/components/Chat/MessageList'
 import { useAgentEventStream } from '@/hooks/useAgentEventStream'
 import { generateStoryMemoryStream, getInteractiveDirector, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution, updateInteractiveDirector } from '../api'
 import type { DirectorPlan, DirectorPlanDocs, DirectorPlanRunStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
+type MemoryPanelTab = 'memory' | 'director'
 type MemoryPanelView = 'content' | 'generation'
 
 interface MemoryPanelProps {
@@ -28,13 +29,20 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
   const [query, setQuery] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [selectedStructureId, setSelectedStructureId] = useState(allStructuresId)
+  const [panelTab, setPanelTab] = useState<MemoryPanelTab>('memory')
   const [view, setView] = useState<MemoryPanelView>('content')
+  const [directorRevealed, setDirectorRevealed] = useState(false)
   const autoGenerateTurnKeyRef = useRef('')
 
   const effectiveBranchId = branchId || snapshot?.branch_id || ''
   const turnSyncStatus = snapshot?.current_turn?.memory_status || snapshot?.current_turn?.state_status || ''
   const syncStatus = turnSyncStatus === 'pending' || turnSyncStatus === 'failed' ? turnSyncStatus : memory?.sync_status || turnSyncStatus
   const syncError = snapshot?.current_turn?.memory_error || snapshot?.current_turn?.state_error || memory?.sync_error || ''
+
+  useEffect(() => {
+    setPanelTab('memory')
+    setDirectorRevealed(false)
+  }, [effectiveBranchId, storyId])
 
   const loadMemory = useCallback(async () => {
     if (!storyId) {
@@ -128,31 +136,28 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
     <aside className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface)]">
       <div className="shrink-0 border-b border-[var(--nova-border)] px-4 py-3">
         <div className="flex items-center justify-between gap-3">
-          <div data-testid="memory-panel-icon" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)]" aria-label={t('memoryPanel.title')} title={t('memoryPanel.title')}>
-            <Brain className="h-4 w-4" />
+          <div className="flex min-w-0 items-center gap-2">
+            <div data-testid="memory-panel-icon" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)]" aria-label={panelTab === 'director' ? t('snapshot.director.title') : t('memoryPanel.title')} title={panelTab === 'director' ? t('snapshot.director.title') : t('memoryPanel.title')}>
+              {panelTab === 'director' ? <Sparkles className="h-4 w-4" /> : <Brain className="h-4 w-4" />}
+            </div>
+            <div className="flex h-7 min-w-0 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('memoryPanel.sidebarTabs')}>
+              <PanelTabButton active={panelTab === 'memory'} onClick={() => setPanelTab('memory')}>
+                <Brain className="h-3.5 w-3.5 shrink-0" />
+                <span className="min-w-0 truncate">{t('memoryPanel.tab.memory')}</span>
+              </PanelTabButton>
+              <PanelTabButton active={panelTab === 'director'} onClick={() => setPanelTab('director')}>
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                <span className="min-w-0 truncate">{t('memoryPanel.tab.director')}</span>
+              </PanelTabButton>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <div className="flex h-7 min-w-0 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('memoryPanel.panelSwitch')}>
-              <button
-                type="button"
-                onClick={() => setView('content')}
-                className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'content' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-              >
-                {t('memoryPanel.view.content')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setView('generation')}
-                className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'generation' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
-              >
-                {t('memoryPanel.view.generation')}
-              </button>
-            </div>
-            <SyncBadge status={syncStatus} error={syncError} loading={loading || memoryLoading} />
+            {panelTab === 'memory' ? <SyncBadge status={syncStatus} error={syncError} loading={loading || memoryLoading} /> : null}
           </div>
         </div>
-        {view === 'content' ? (
+        {panelTab === 'memory' ? view === 'content' ? (
           <div className="mt-3 flex items-center gap-2">
+            <MemoryViewSwitch view={view} onChange={setView} />
             <label className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs text-[var(--nova-text-muted)]">
               <Search className="h-3.5 w-3.5 shrink-0" />
               <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('memoryPanel.search')} className="min-w-0 flex-1 bg-transparent text-[var(--nova-text)] outline-none placeholder:text-[var(--nova-text-faint)]" />
@@ -169,6 +174,7 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
           </div>
         ) : (
           <div className="mt-3 flex items-center gap-2">
+            <MemoryViewSwitch view={view} onChange={setView} />
             <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs text-[var(--nova-text-muted)]">
               <Brain className="h-3.5 w-3.5 shrink-0" />
               <span className="min-w-0 truncate">{t('memoryPanel.generateLog')}</span>
@@ -183,11 +189,25 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
               </button>
             )}
           </div>
-        )}
+        ) : null}
         {error && <p className="mt-2 text-xs text-[var(--nova-danger)]">{error}</p>}
       </div>
 
-      {view === 'generation' ? (
+      {panelTab === 'director' ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          {directorRevealed ? (
+            <NarrativeOrchestrationSummary
+              storyId={storyId}
+              branchId={effectiveBranchId}
+              snapshot={snapshot}
+              onSnapshotRefresh={onSnapshotRefresh}
+              emptyFallback={<div className="flex min-h-[180px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs text-[var(--nova-text-muted)]">{t('memoryPanel.directorEmpty')}</div>}
+            />
+          ) : (
+            <DirectorSpoilerGate onReveal={() => setDirectorRevealed(true)} />
+          )}
+        </div>
+      ) : view === 'generation' ? (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-3">
           {generateMessages.length > 0 || generating ? (
             <MessageList
@@ -205,7 +225,6 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-          <NarrativeOrchestrationSummary storyId={storyId} branchId={effectiveBranchId} snapshot={snapshot} onSnapshotRefresh={onSnapshotRefresh} />
           <div className="-mx-1 mb-3 overflow-x-auto px-1" aria-label={t('memoryPanel.structureTabs')} data-testid="memory-panel-structure-tabs">
             <div className="flex w-max min-w-full gap-1">
               <StructureTab
@@ -261,7 +280,65 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
   )
 }
 
-function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshotRefresh }: { storyId?: string; branchId?: string; snapshot: Snapshot | null; onSnapshotRefresh?: () => void | Promise<unknown> }) {
+function MemoryViewSwitch({ view, onChange }: { view: MemoryPanelView; onChange: (view: MemoryPanelView) => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex h-7 min-w-0 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('memoryPanel.panelSwitch')}>
+      <button
+        type="button"
+        onClick={() => onChange('content')}
+        className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'content' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+      >
+        {t('memoryPanel.view.content')}
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('generation')}
+        className={`rounded-[6px] px-2 py-0.5 text-[11px] transition-colors ${view === 'generation' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+      >
+        {t('memoryPanel.view.generation')}
+      </button>
+    </div>
+  )
+}
+
+function PanelTabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      className={`flex h-6 max-w-[128px] min-w-0 items-center gap-1.5 rounded-[6px] px-2 text-[11px] transition-colors ${active ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
+      aria-pressed={active}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  )
+}
+
+function DirectorSpoilerGate({ onReveal }: { onReveal: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex min-h-[260px] items-center justify-center">
+      <section className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-4 text-center">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)]">
+          <ShieldAlert className="h-5 w-5" />
+        </div>
+        <h3 className="mt-3 text-sm font-semibold text-[var(--nova-text)]">{t('memoryPanel.directorSpoilerTitle')}</h3>
+        <p className="mt-2 text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.directorSpoilerDescription')}</p>
+        <button
+          type="button"
+          className="mt-4 inline-flex h-8 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 text-xs font-medium text-[var(--nova-text)] transition-colors hover:border-[var(--nova-accent)]"
+          onClick={onReveal}
+        >
+          <Eye className="h-3.5 w-3.5" />
+          {t('memoryPanel.directorReveal')}
+        </button>
+      </section>
+    </div>
+  )
+}
+
+function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshotRefresh, emptyFallback = null }: { storyId?: string; branchId?: string; snapshot: Snapshot | null; onSnapshotRefresh?: () => void | Promise<unknown>; emptyFallback?: ReactNode }) {
   const { t } = useTranslation()
   const [rebuilding, setRebuilding] = useState(false)
   const [planLoading, setPlanLoading] = useState(false)
@@ -307,7 +384,7 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
     return () => { cancelled = true }
   }, [effectiveBranchId, storyId, t])
 
-  if (!directorPlan && !hasRuleAudit && !planLoading) return null
+  if (!directorPlan && !hasRuleAudit && !planLoading) return emptyFallback
 
   const rebuildDirector = async () => {
     if (!storyId || rebuilding) return

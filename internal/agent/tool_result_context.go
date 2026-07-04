@@ -119,6 +119,7 @@ func assistantToolContextMessage(msg *schema.Message, policy ToolResultContextPo
 }
 
 func toolResultContextContent(toolName, toolCallID, content string, policy ToolResultContextPolicy) string {
+	content = stripToolResultMetadata(content)
 	content = strings.TrimRight(content, "\n")
 	if content == "" {
 		content = "(无返回内容)"
@@ -130,6 +131,22 @@ func toolResultContextContent(toolName, toolCallID, content string, policy ToolR
 		countRunes(content),
 		policy.PreviewChars,
 	))
+}
+
+func stripToolResultMetadata(content string) string {
+	content = strings.TrimRight(content, "\n")
+	if content == "" {
+		return ""
+	}
+	for _, separator := range []string{"\n\n" + toolResultMetadataHeader, "\n" + toolResultMetadataHeader} {
+		if before, _, ok := strings.Cut(content, separator); ok {
+			return strings.TrimRight(before, "\n")
+		}
+	}
+	if strings.HasPrefix(strings.TrimSpace(content), toolResultMetadataHeader) {
+		return ""
+	}
+	return content
 }
 
 func limitContextText(content string, maxRunes int, marker string) string {
@@ -171,6 +188,8 @@ func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultC
 		if msg == nil || msg.Role != schema.Tool {
 			continue
 		}
+		msg = sanitizedToolContextMessage(msg)
+		result[i] = msg
 		size := len(msg.Content)
 		if keepFull[i] {
 			used += size
@@ -183,6 +202,19 @@ func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultC
 		result[i] = toolResultPlaceholderMessage(msg, "tool_result_context_budget_exceeded")
 	}
 	return result
+}
+
+func sanitizedToolContextMessage(msg *schema.Message) *schema.Message {
+	if msg == nil || msg.Role != schema.Tool {
+		return msg
+	}
+	content := stripToolResultMetadata(msg.Content)
+	if content == msg.Content {
+		return msg
+	}
+	next := *msg
+	next.Content = content
+	return &next
 }
 
 func ApplyToolResultContextPolicyForConversation(messages []*schema.Message, policy ToolResultContextPolicy) []*schema.Message {

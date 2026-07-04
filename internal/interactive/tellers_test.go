@@ -92,6 +92,64 @@ func TestTellerLibraryRefreshesOldBuiltinVersion(t *testing.T) {
 	}
 }
 
+func TestTellerLibraryOverridesAndRestoresBuiltinInUserSpace(t *testing.T) {
+	novaDir := t.TempDir()
+	library := NewTellerLibrary(novaDir)
+
+	classic, err := library.Get("classic")
+	if err != nil {
+		t.Fatalf("Get classic failed: %v", err)
+	}
+	classic.Name = "我的经典叙事"
+	classic.Slots[0].Content = "用户覆盖规则"
+
+	overridden, err := library.Update("classic", classic, classic.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update builtin teller should create user override: %v", err)
+	}
+	if overridden.ID != "classic" || overridden.Custom || !overridden.BuiltinOverridden {
+		t.Fatalf("builtin override ownership mismatch: %#v", overridden)
+	}
+	if overridden.Name != "我的经典叙事" || overridden.Slots[0].Content != "用户覆盖规则" {
+		t.Fatalf("builtin override should keep edited content: %#v", overridden)
+	}
+
+	listed, err := library.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	found := false
+	for _, teller := range listed {
+		if teller.ID == "classic" {
+			found = true
+			if teller.Custom || !teller.BuiltinOverridden || teller.Name != "我的经典叙事" {
+				t.Fatalf("list should expose builtin override state: %#v", teller)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("classic teller missing from list: %#v", listed)
+	}
+
+	path := filepath.Join(novaDir, "story-tellers", "classic.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read overridden classic: %v", err)
+	}
+	assertContains(t, string(data), `"builtin_overridden": true`)
+
+	if err := library.Delete("classic"); err != nil {
+		t.Fatalf("Delete builtin override should restore builtin: %v", err)
+	}
+	restored, err := library.Get("classic")
+	if err != nil {
+		t.Fatalf("Get restored classic failed: %v", err)
+	}
+	if restored.Custom || restored.BuiltinOverridden || restored.Name != builtinTellers["classic"].Name || restored.Slots[0].Content != builtinTellers["classic"].Slots[0].Content {
+		t.Fatalf("classic should be restored to builtin: %#v", restored)
+	}
+}
+
 func TestTellerLibraryUpdateRejectsStaleRevision(t *testing.T) {
 	library := NewTellerLibrary(t.TempDir())
 	created, err := library.Create(Teller{
@@ -144,11 +202,19 @@ func TestTellerLibraryUpdateRejectsStaleRevision(t *testing.T) {
 
 func TestNormalizeStyleRulesStoresRefsAndLegacyContents(t *testing.T) {
 	longContent := strings.Repeat("风", MaxStyleContentChars+20)
-	rules := normalizeStyleRules([]StyleRule{
-		{Scene: " 激烈打斗 ", StyleRefs: []string{" style.md ", ".denova/styles/style.md", "../bad.md"}, StyleContents: []string{" 短句留白 ", "短句留白", longContent}},
-		{Scene: "", StyleContents: []string{"无效"}},
-		{Scene: "空内容", StyleContents: []string{"", " "}},
+	teller := normalizeTeller(Teller{
+		StyleRefs: []string{" default.md ", ".denova/styles/default.md", "../bad.md"},
+		StyleRules: []StyleRule{
+			{Scene: " 激烈打斗 ", StyleRefs: []string{" style.md ", ".denova/styles/style.md", "../bad.md"}, StyleContents: []string{" 短句留白 ", "短句留白", longContent}},
+			{Scene: "", StyleContents: []string{"无效"}},
+			{Scene: "空内容", StyleContents: []string{"", " "}},
+		},
 	})
+	rules := teller.StyleRules
+
+	if len(teller.StyleRefs) != 2 || teller.StyleRefs[0] != ".denova/styles/default.md" || teller.StyleRefs[1] != ".denova/styles/bad.md" {
+		t.Fatalf("global style refs = %#v, want normalized deduped refs", teller.StyleRefs)
+	}
 
 	if len(rules) != 1 {
 		t.Fatalf("style rules = %#v, want one valid rule", rules)

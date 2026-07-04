@@ -46,6 +46,7 @@ type FilteredToolResult struct {
 
 const (
 	defaultToolResultMaxBytes = 0
+	toolResultMetadataHeader = "[Denova tool result metadata]"
 )
 
 func ManifestForTool(name string) ToolManifest {
@@ -242,7 +243,7 @@ func toolIdempotencyKey(toolName, args string) string {
 
 func formatToolResultMetadata(manifest ToolManifest, originalBytes, returnedBodyBytes int, truncated bool, target, idempotencyKey string) string {
 	fields := []string{
-		"[Denova tool result metadata]",
+		toolResultMetadataHeader,
 		"schema: tool_result.v1",
 		"source: " + string(manifest.Source),
 		"capability: " + firstNonEmpty(manifest.Capability, "unclassified"),

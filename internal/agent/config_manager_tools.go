@@ -385,7 +385,7 @@ func newListTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_tellers", "按叙事风格 ID 批量读取完整配置。style_rules 使用 scene + style_refs 引用 .denova/styles/*.md；旧 style_contents 只为兼容保留，新配置不要继续内联长文风内容。旧配置里可能带 orchestration；新配置不要继续写该字段，事件/数值/TRPG/开局选择器应写入故事导演。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_tellers", "按叙事风格 ID 批量读取完整配置。顶层 style_refs 是所有场景默认生效的文风参考；style_rules 使用 scene + style_refs 引用 .denova/styles/*.md 表示分场景文风参考。旧 style_contents 只为兼容保留，新配置不要继续内联长文风内容。旧配置里可能带 orchestration；新配置不要继续写该字段，事件/数值/TRPG/开局选择器应写入故事导演。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事风格")
@@ -408,7 +408,7 @@ func newReadTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_tellers", "批量创建、更新或删除叙事风格配置。叙事风格是共享模块，不存在每个风格可配置的模式字段；只维护文风、提示词槽位、场景风格和上下文策略。style_rules 必须优先使用 style_refs 引用 .denova/styles/*.md；如需新增文风参考，先用 write_style_references 创建 md，再把 path 写入 style_refs。不要新增 orchestration，故事编排请使用 write_story_directors。删除内置风格会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
+	return utils.InferTool("write_tellers", "批量创建、更新或删除叙事风格配置。叙事风格是共享模块，不存在每个风格可配置的模式字段；只维护文风、提示词槽位、文风参考和上下文策略。顶层 style_refs 表示所有场景默认生效的文风参考；style_rules 表示分场景文风参考，必须优先使用 style_refs 引用 .denova/styles/*.md。如需新增文风参考，先用 write_style_references 创建 md，再把 path 写入顶层 style_refs 或对应 style_rules[].style_refs。不要新增 orchestration，故事编排请使用 write_story_directors。更新内置 ID 会在用户空间覆盖同一个叙事风格；删除内置 ID 只用于恢复内置默认内容，必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入叙事风格")

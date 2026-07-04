@@ -370,7 +370,8 @@ type Snapshot struct {
 	TokenUsageEvents         []TokenUsageEvent              `json:"token_usage_events,omitempty"`
 	ContextCompaction        *ContextCompactionEvent        `json:"context_compaction,omitempty"`
 	ContextCompactionRemoval *ContextCompactionRemovalEvent `json:"context_compaction_removal,omitempty"`
-	DirectorPlan             *DirectorPlan                  `json:"director_plan,omitempty"`
+	DirectorPlan             *DirectorPlan                  `json:"-"`
+	DirectorPlanStatus       *DirectorPlanStatus            `json:"director_plan_status,omitempty"`
 	State                    map[string]any                 `json:"state"`
 	Graph                    StoryGraph                     `json:"graph"`
 }

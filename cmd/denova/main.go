@@ -50,7 +50,7 @@ func main() {
 	defer closeLog()
 	observability.ConfigureStructuredLogging()
 	log.Printf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath)
-	port = selectStartupPort(port, shouldAutoPickPort())
+	port = selectStartupPort(port, shouldAutoPickPort(cfg.DevMode))
 	frontendPort = selectFrontendPort(frontendPort, port)
 	if runtimeWebPort, err := strconv.Atoi(port); err == nil {
 		cfg.RuntimeWebPort = runtimeWebPort
@@ -198,7 +198,10 @@ func defaultFrontendPort(cfg *config.Config) string {
 	return "5173"
 }
 
-func shouldAutoPickPort() bool {
+func shouldAutoPickPort(devStartup bool) bool {
+	if devStartup {
+		return false
+	}
 	if envCompat("DENOVA_BACKEND_PORT", "NOVA_BACKEND_PORT") != "" {
 		return false
 	}

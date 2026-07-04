@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
-import { createStoryDirector, getEventSystems, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors } from '../api'
+import { createImagePreset, createInteractiveTeller, createStoryDirector, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getEventSystems, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStyleReferences, updateEventSystem, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector } from '../api'
 import type { EventSystemModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { SettingPanel } from './SettingPanel'
 
@@ -111,6 +111,8 @@ vi.mock('../api', () => ({
   getOpeningSelectors: vi.fn(),
   getRuleSystems: vi.fn(),
   getStoryDirectors: vi.fn(),
+  getStyleReferences: vi.fn(),
+  saveStyleReference: vi.fn(),
   updateEventSystem: vi.fn(),
   updateImagePreset: vi.fn(),
   updateInteractiveTeller: vi.fn(),
@@ -130,20 +132,42 @@ describe('SettingPanel', () => {
     vi.mocked(generateLoreItemImage).mockReset()
     vi.mocked(streamLoreImagesGenerate).mockReset()
     vi.mocked(getInteractiveTellers).mockReset()
+    vi.mocked(createInteractiveTeller).mockReset()
+    vi.mocked(updateInteractiveTeller).mockReset()
+    vi.mocked(deleteInteractiveTeller).mockReset()
     vi.mocked(getImagePresets).mockReset()
+    vi.mocked(createImagePreset).mockReset()
     vi.mocked(getStoryDirectors).mockReset()
     vi.mocked(createStoryDirector).mockReset()
+    vi.mocked(updateStoryDirector).mockReset()
+    vi.mocked(deleteStoryDirector).mockReset()
     vi.mocked(getEventSystems).mockReset()
+    vi.mocked(updateEventSystem).mockReset()
     vi.mocked(getRuleSystems).mockReset()
+    vi.mocked(updateRuleSystem).mockReset()
     vi.mocked(getOpeningSelectors).mockReset()
+    vi.mocked(updateOpeningSelector).mockReset()
+    vi.mocked(getStyleReferences).mockReset()
+    vi.mocked(updateImagePreset).mockReset()
+    vi.mocked(deleteImagePreset).mockReset()
     vi.mocked(getLoreItems).mockResolvedValue([])
     vi.mocked(getInteractiveTellers).mockResolvedValue([teller('classic', '经典叙事'), teller('slow-burn', '慢热叙事')])
+    vi.mocked(updateInteractiveTeller).mockImplementation(async (id, input) => ({ ...teller(id, input.name || id), ...input, id, custom: id !== 'classic', builtin_overridden: id === 'classic', updated_at: '2026-01-01T00:00:01Z' }) as Teller)
+    vi.mocked(deleteInteractiveTeller).mockResolvedValue(undefined)
     vi.mocked(getStoryDirectors).mockResolvedValue([storyDirector('default', '默认导演')])
     vi.mocked(createStoryDirector).mockResolvedValue(storyDirector('default-custom', '默认导演'))
+    vi.mocked(updateStoryDirector).mockImplementation(async (id, input) => ({ ...storyDirector(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as StoryDirector)
+    vi.mocked(deleteStoryDirector).mockResolvedValue(undefined)
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
+    vi.mocked(updateImagePreset).mockImplementation(async (id, input) => ({ ...imagePreset(id, input.name || id), ...input, id, custom: id !== 'game-cg', builtin_overridden: id === 'game-cg', updated_at: '2026-01-01T00:00:01Z' }) as ImagePreset)
+    vi.mocked(deleteImagePreset).mockResolvedValue(undefined)
     vi.mocked(getEventSystems).mockResolvedValue([eventSystem('default-events', '默认事件系统')])
+    vi.mocked(updateEventSystem).mockImplementation(async (id, input) => ({ ...eventSystem(id, input.name || id), ...input, id, custom: id !== 'default-events', builtin_overridden: id === 'default-events', updated_at: '2026-01-01T00:00:01Z' }) as EventSystemModule)
     vi.mocked(getRuleSystems).mockResolvedValue([ruleSystem('default-rules', '默认数值规则')])
+    vi.mocked(updateRuleSystem).mockImplementation(async (id, input) => ({ ...ruleSystem(id, input.name || id), ...input, id, custom: id !== 'default-rules', builtin_overridden: id === 'default-rules', updated_at: '2026-01-01T00:00:01Z' }) as RuleSystemModule)
     vi.mocked(getOpeningSelectors).mockResolvedValue([openingSelector('default-opening', '默认开局选择')])
+    vi.mocked(updateOpeningSelector).mockImplementation(async (id, input) => ({ ...openingSelector(id, input.name || id), ...input, id, custom: id !== 'default-opening', builtin_overridden: id === 'default-opening', updated_at: '2026-01-01T00:00:01Z' }) as OpeningSelectorModule)
+    vi.mocked(getStyleReferences).mockResolvedValue([])
   })
 
   it('keeps the presets config Agent open after its tools refresh narrative styles', async () => {
@@ -166,11 +190,87 @@ describe('SettingPanel', () => {
     expect(screen.getAllByText('配置管理 Agent').length).toBeGreaterThan(0)
   })
 
+  it('overrides a built-in narrative style in place instead of copying it', async () => {
+    const user = userEvent.setup()
+    render(<PresetPanelHarness />)
+
+    await user.click(screen.getByRole('button', { name: /经典叙事/ }))
+    fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '覆盖后的经典叙事' } })
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(updateInteractiveTeller).toHaveBeenCalled())
+    expect(updateInteractiveTeller).toHaveBeenCalledWith(
+      'classic',
+      expect.objectContaining({
+        id: 'classic',
+        name: '覆盖后的经典叙事',
+        custom: false,
+      }),
+      '',
+    )
+    expect(createInteractiveTeller).not.toHaveBeenCalled()
+  })
+
+  it('restores an overridden built-in narrative style from the top-right action', async () => {
+    const user = userEvent.setup()
+    const overridden = { ...teller('classic', '覆盖后的经典叙事'), builtin_overridden: true }
+    vi.mocked(getInteractiveTellers).mockResolvedValue([teller('classic', '经典叙事')])
+    render(
+      <SettingPanel
+        mode="teller"
+        workspace="/workspace"
+        tellers={[overridden]}
+        storyDirectors={[storyDirector('default', '默认导演')]}
+        imagePresets={[imagePreset('game-cg', '游戏 CG')]}
+      />,
+    )
+
+    expect(screen.getAllByText('内置覆盖').length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: '恢复内置' }))
+
+    await waitFor(() => {
+      expect(deleteInteractiveTeller).toHaveBeenCalledWith('classic')
+    })
+    expect(getInteractiveTellers).toHaveBeenCalled()
+  })
+
+  it('overrides and restores a built-in image preset in place', async () => {
+    const user = userEvent.setup()
+    vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
+    render(<PresetPanelHarness />)
+
+    await user.click(screen.getByRole('button', { name: '图像方案' }))
+    await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
+    fireEvent.change(screen.getByDisplayValue('游戏 CG'), { target: { value: '覆盖后的图像方案' } })
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(updateImagePreset).toHaveBeenCalled())
+    expect(updateImagePreset).toHaveBeenCalledWith(
+      'game-cg',
+      expect.objectContaining({
+        id: 'game-cg',
+        name: '覆盖后的图像方案',
+        custom: false,
+      }),
+      '',
+    )
+    expect(createImagePreset).not.toHaveBeenCalled()
+    expect(screen.getAllByText('内置覆盖').length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole('button', { name: '恢复内置' }))
+
+    await waitFor(() => {
+      expect(deleteImagePreset).toHaveBeenCalledWith('game-cg')
+    })
+    expect(getImagePresets).toHaveBeenCalled()
+  })
+
   it('opens the presets config Agent without leaving the expanded image preset group', async () => {
     const user = userEvent.setup()
     render(<PresetPanelHarness />)
 
     await user.click(screen.getByRole('button', { name: '图像方案' }))
+    expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
     expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
 
@@ -196,7 +296,7 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('button', { name: '叙事风格' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '图像方案' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '故事导演' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建故事导演' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建叙事风格' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /默认事件系统/ })).not.toBeInTheDocument()
@@ -212,7 +312,7 @@ describe('SettingPanel', () => {
     expect(screen.queryByRole('button', { name: /经典叙事/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '故事导演' }))
 
-    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await selectDefaultDirector(user)
     expect(screen.getAllByTestId('preset-config-visual-editor')).toHaveLength(4)
     expect(screen.queryByTestId('monaco-json-editor')).not.toBeInTheDocument()
     await user.click(screen.getAllByRole('button', { name: 'JSON' })[0])
@@ -256,7 +356,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await selectDefaultDirector(user)
     await user.click(await screen.findByRole('button', { name: '新增事件卡' }))
     expect(screen.getAllByTestId('event-system-packages-editor')[0].className).toContain('h-[clamp(360px,calc(100dvh-15rem),720px)]')
     expect(screen.getByTestId('event-package-card-editor')).toHaveClass('min-h-0', 'overflow-hidden')
@@ -265,8 +365,10 @@ describe('SettingPanel', () => {
     await user.type(screen.getByLabelText('事件类型名'), '伏笔回收')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
-    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
-    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
+    expect(updateStoryDirector).toHaveBeenCalledWith('default', expect.objectContaining({ id: 'default', custom: false }), '')
+    expect(createStoryDirector).not.toHaveBeenCalled()
+    const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.event_system?.event_packages?.[0]?.events?.[0]?.type_name).toBe('伏笔回收')
   })
 
@@ -274,15 +376,15 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await selectDefaultDirector(user)
     const eventSwitch = screen.getByRole('switch', { name: '停用事件系统模块' })
     expect(eventSwitch).toBeChecked()
     await user.click(eventSwitch)
     expect(screen.getByRole('switch', { name: '启用事件系统模块' })).not.toBeChecked()
     await user.click(screen.getByRole('button', { name: '保存' }))
 
-    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
-    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.module_refs).toMatchObject({
       event_system_id: 'default',
       event_system_disabled: true,
@@ -293,7 +395,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await selectDefaultDirector(user)
     expect(screen.getByText('平衡牵引')).toBeInTheDocument()
     expect(screen.getByText('在自由行动和长期主线之间保持平衡，适合作为通用默认。')).toBeInTheDocument()
     expect(screen.getByText('可逆失败')).toBeInTheDocument()
@@ -317,8 +419,8 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('option', { name: /高扰动/ }))
     await user.click(screen.getByRole('button', { name: '保存' }))
 
-    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
-    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.strategy).toMatchObject({
       mainline_strength: 'strong_arc',
       failure_policy: 'fail_forward',
@@ -331,7 +433,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await selectDefaultDirector(user)
     expect(screen.getByText('回合后规划')).toBeInTheDocument()
     const branchTurnsField = screen.getByText('分支规划回合').closest('label') as HTMLElement
     const branchTurnsInput = within(branchTurnsField).getByRole('spinbutton')
@@ -343,8 +445,8 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('option', { name: /每回合/ }))
 
     await user.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
-    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.strategy).toMatchObject({
       director_agent_mode: 'every_turn',
       branch_planning_turns: 7,
@@ -355,7 +457,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await selectDefaultDirector(user)
     await user.click(screen.getByText('导演规划模板').closest('button') as HTMLElement)
     expect(screen.getByRole('tablist', { name: '导演规划模板' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: '大方向模板' })).toBeInTheDocument()
@@ -402,8 +504,8 @@ describe('SettingPanel', () => {
     fireEvent.change(mainlineTemplateField, { target: { value: template } })
 
     await user.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
-    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.strategy?.planning_templates?.mainline).toBe(template)
   })
 
@@ -411,7 +513,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await selectDefaultDirector(user)
     await user.click(screen.getByRole('button', { name: /高级 Markdown 策略提示/ }))
     const prompt = '- 避免连续两回合使用同类型突发事件。\n- 伏笔回收前至少给一次可感知征兆。'
     fireEvent.change(screen.getByPlaceholderText(/优先制造可逆但有代价的选择/), { target: { value: prompt } })
@@ -419,8 +521,8 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '保存' }))
 
-    await waitFor(() => expect(createStoryDirector).toHaveBeenCalled())
-    const payload = vi.mocked(createStoryDirector).mock.calls.at(-1)?.[0] as Partial<StoryDirector>
+    await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.strategy?.prompt_markdown).toBe(prompt)
   })
 
@@ -428,20 +530,20 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await selectDefaultDirector(user)
     await user.click(screen.getByRole('button', { name: /高级 Markdown 策略提示/ }))
     fireEvent.change(screen.getByPlaceholderText(/优先制造可逆但有代价的选择/), { target: { value: 'a'.repeat(4001) } })
 
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeDisabled())
     expect(screen.getByText('策略提示已超过 4000 bytes（当前 4001 bytes），请缩短后再保存。')).toBeInTheDocument()
-    expect(createStoryDirector).not.toHaveBeenCalled()
+    expect(updateStoryDirector).not.toHaveBeenCalled()
   })
 
   it('blocks saving and preset navigation while JSON view is invalid', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: /默认导演/ }))
+    await selectDefaultDirector(user)
     await user.click(screen.getAllByRole('button', { name: 'JSON' })[0])
     fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
 
@@ -451,7 +553,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '事件系统' }))
     expect(screen.getByRole('heading', { name: '默认导演' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '默认事件系统' })).not.toBeInTheDocument()
-    expect(createStoryDirector).not.toHaveBeenCalled()
+    expect(updateStoryDirector).not.toHaveBeenCalled()
   })
 
   it('generates a current image for one lore item from the editor', async () => {
@@ -516,6 +618,38 @@ describe('SettingPanel', () => {
     confirmSpy.mockRestore()
   })
 
+  it('confirms narrative style deletion with an in-app dialog', async () => {
+    const user = userEvent.setup()
+    const customTeller = teller('custom-noir', '黑色幽默')
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.mocked(getInteractiveTellers).mockResolvedValue([teller('classic', '经典叙事')])
+    vi.mocked(deleteInteractiveTeller).mockResolvedValue(undefined)
+
+    render(
+      <SettingPanel
+        mode="teller"
+        workspace="/workspace"
+        tellers={[customTeller]}
+        storyDirectors={[storyDirector('default', '默认导演')]}
+        imagePresets={[imagePreset('game-cg', '游戏 CG')]}
+      />,
+    )
+
+    expect(await screen.findByRole('heading', { name: '黑色幽默' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '删除叙事风格' }))
+
+    const dialog = await screen.findByRole('alertdialog', { name: '删除叙事风格' })
+    expect(within(dialog).getByText('删除叙事风格「黑色幽默」？')).toBeInTheDocument()
+    expect(confirmSpy).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: '删除' }))
+
+    await waitFor(() => {
+      expect(deleteInteractiveTeller).toHaveBeenCalledWith('custom-noir')
+    })
+    confirmSpy.mockRestore()
+  })
+
   it('requires explicit multi-select before starting lore image batch generation', async () => {
     const user = userEvent.setup()
     const lin = loreItem('lin-chuan', '林川')
@@ -551,6 +685,13 @@ describe('SettingPanel', () => {
 
 function sectionHeader(name: string) {
   return screen.getByRole('button', { name })
+}
+
+async function selectDefaultDirector(user: ReturnType<typeof userEvent.setup>) {
+  if (!screen.queryByRole('button', { name: /默认导演/ })) {
+    await user.click(screen.getByRole('button', { name: '故事导演' }))
+  }
+  await user.click(screen.getByRole('button', { name: /默认导演/ }))
 }
 
 function PresetModeHarness() {
@@ -590,6 +731,7 @@ function teller(id: string, name: string): Teller {
     name,
     description: `${name} description`,
     random_event_rate: 0.15,
+    style_refs: [],
     style_rules: [],
     tags: [],
     context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' },

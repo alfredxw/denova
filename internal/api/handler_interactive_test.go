@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"denova/config"
 	"denova/internal/agent"
@@ -54,13 +56,22 @@ func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
 		t.Fatalf("snapshot status = %d body=%s", snapshotResp.Code, snapshotResp.Body.String())
 	}
 	var snapshot struct {
-		StoryID  string `json:"story_id"`
-		BranchID string `json:"branch_id"`
-		Turns    []any  `json:"turns"`
+		StoryID            string                          `json:"story_id"`
+		BranchID           string                          `json:"branch_id"`
+		Turns              []any                           `json:"turns"`
+		DirectorPlanStatus *interactive.DirectorPlanStatus `json:"director_plan_status"`
 	}
 	decodeResponse(t, snapshotResp.Body.Bytes(), &snapshot)
 	if snapshot.StoryID != created.ID || snapshot.BranchID != "main" || len(snapshot.Turns) != 0 {
 		t.Fatalf("snapshot mismatch: %#v", snapshot)
+	}
+	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusWaitingOpening || snapshot.DirectorPlanStatus.Blocking {
+		t.Fatalf("new story snapshot should expose waiting director status without blocking: %#v", snapshot.DirectorPlanStatus)
+	}
+	var rawSnapshot map[string]json.RawMessage
+	decodeResponse(t, snapshotResp.Body.Bytes(), &rawSnapshot)
+	if _, ok := rawSnapshot["director_plan"]; ok {
+		t.Fatalf("snapshot must not expose full director plan docs: %s", snapshotResp.Body.String())
 	}
 
 	if _, err := application.AppendInteractiveTurn(created.ID, "", "我推开酒馆的门", "门后传来低沉的风声。"); err != nil {
@@ -187,6 +198,16 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	decodeResponse(t, createResp.Body.Bytes(), &created)
 
+	statusResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/director/status", nil)
+	if statusResp.Code != http.StatusOK {
+		t.Fatalf("get director status endpoint = %d body=%s", statusResp.Code, statusResp.Body.String())
+	}
+	var status interactive.DirectorPlanStatus
+	decodeResponse(t, statusResp.Body.Bytes(), &status)
+	if status.Status != interactive.DirectorPlanStatusWaitingOpening || status.Blocking || status.StartReady || status.CompletedDocs != 0 || status.PlannedDocs != 3 {
+		t.Fatalf("initial director status mismatch: %#v", status)
+	}
+
 	getResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/director", nil)
 	if getResp.Code != http.StatusOK {
 		t.Fatalf("get director status = %d body=%s", getResp.Code, getResp.Body.String())
@@ -206,7 +227,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	var director directorResponse
 	decodeResponse(t, getResp.Body.Bytes(), &director)
-	if director.Metadata.LastRun.Status != "ready" || !strings.Contains(director.Docs.Mainline, "正文Agent可读") {
+	if director.Metadata.LastRun.Status != interactive.DirectorPlanStatusWaitingOpening || !strings.Contains(director.Docs.Mainline, "正文Agent可读") {
 		t.Fatalf("default director plan mismatch: %#v", director)
 	}
 
@@ -234,11 +255,28 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	if !strings.Contains(director.Docs.Mainline, "正文Agent可读") || director.Metadata.LastRun.Status != "ready" {
 		t.Fatalf("rebuilt director plan mismatch: %#v", director)
 	}
+
+	if _, err := application.AppendInteractiveTurn(created.ID, "", "我报名学院大比", "报名弟子把他的名字写进木牌。"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := application.InteractiveDirectorPlanStatus(created.ID, "main"); err != nil {
+		t.Fatal(err)
+	}
+	runResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/run", map[string]string{"branch_id": "main"})
+	if runResp.Code != http.StatusOK {
+		t.Fatalf("run director status = %d body=%s", runResp.Code, runResp.Body.String())
+	}
+	status = waitForDirectorStatusAPI(t, server, created.ID, interactive.DirectorPlanStatusReady)
+	if !status.StartReady || status.Blocking || status.CompletedDocs != status.PlannedDocs {
+		t.Fatalf("manual director run should become ready: %#v", status)
+	}
 }
 
-func TestInteractiveStoryCreateRollsBackWhenInitialDirectorFails(t *testing.T) {
+func TestInteractiveStoryCreateDoesNotRunInitialDirector(t *testing.T) {
 	application := newTestApplication(t)
+	calls := 0
 	restoreDirector := runtimeapp.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+		calls++
 		return "", errors.New("director unavailable")
 	})
 	t.Cleanup(restoreDirector)
@@ -249,8 +287,11 @@ func TestInteractiveStoryCreateRollsBackWhenInitialDirectorFails(t *testing.T) {
 		"origin":          "主角准备出发",
 		"story_teller_id": "classic",
 	})
-	if createResp.Code == http.StatusOK {
-		t.Fatalf("create story should fail when initial director fails, body=%s", createResp.Body.String())
+	if createResp.Code != http.StatusOK {
+		t.Fatalf("create story should not run initial director status=%d body=%s", createResp.Code, createResp.Body.String())
+	}
+	if calls != 0 {
+		t.Fatalf("director generator should not run during story creation, calls=%d", calls)
 	}
 
 	listResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories", nil)
@@ -258,11 +299,22 @@ func TestInteractiveStoryCreateRollsBackWhenInitialDirectorFails(t *testing.T) {
 		t.Fatalf("list stories status = %d body=%s", listResp.Code, listResp.Body.String())
 	}
 	var list struct {
-		Stories []any `json:"stories"`
+		Stories []struct {
+			ID string `json:"id"`
+		} `json:"stories"`
 	}
 	decodeResponse(t, listResp.Body.Bytes(), &list)
-	if len(list.Stories) != 0 {
-		t.Fatalf("failed create should not commit story: %#v", list)
+	if len(list.Stories) != 1 || list.Stories[0].ID == "" {
+		t.Fatalf("story should be committed after creation without director run: %#v", list)
+	}
+	statusResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+list.Stories[0].ID+"/director/status", nil)
+	if statusResp.Code != http.StatusOK {
+		t.Fatalf("director status after create = %d body=%s", statusResp.Code, statusResp.Body.String())
+	}
+	var status interactive.DirectorPlanStatus
+	decodeResponse(t, statusResp.Body.Bytes(), &status)
+	if status.Status != interactive.DirectorPlanStatusWaitingOpening || status.Blocking {
+		t.Fatalf("created story should wait for opening before director run: %#v", status)
 	}
 }
 
@@ -398,5 +450,25 @@ func TestInteractiveChatRequiresStoryID(t *testing.T) {
 	}
 	if !strings.Contains(resp.Body.String(), "故事 ID 不能为空") {
 		t.Fatalf("unexpected response body: %s", resp.Body.String())
+	}
+}
+
+func waitForDirectorStatusAPI(t *testing.T, server *Server, storyID, status string) interactive.DirectorPlanStatus {
+	t.Helper()
+	deadline := time.Now().Add(500 * time.Millisecond)
+	var current interactive.DirectorPlanStatus
+	for {
+		resp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+storyID+"/director/status?branch=main", nil)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("director status polling = %d body=%s", resp.Code, resp.Body.String())
+		}
+		decodeResponse(t, resp.Body.Bytes(), &current)
+		if current.Status == status {
+			return current
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("director status did not reach %q: %#v", status, current)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }

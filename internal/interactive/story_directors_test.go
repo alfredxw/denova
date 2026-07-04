@@ -97,6 +97,50 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	}
 }
 
+func TestStoryDirectorBuiltinOverrideAndRestore(t *testing.T) {
+	library := NewStoryDirectorLibrary(t.TempDir())
+	builtin, err := library.Get(DefaultStoryDirectorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	builtin.Name = "我的默认导演"
+	overridden, err := library.Update(DefaultStoryDirectorID, builtin, builtin.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update built-in story director should create override: %v", err)
+	}
+	if overridden.Custom || !overridden.BuiltinOverridden || overridden.ID != DefaultStoryDirectorID || overridden.Name != "我的默认导演" {
+		t.Fatalf("unexpected built-in director override: %#v", overridden)
+	}
+
+	listed, err := library.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundOverride := false
+	for _, director := range listed {
+		if director.ID == DefaultStoryDirectorID {
+			foundOverride = true
+			if director.Custom || !director.BuiltinOverridden || director.Name != "我的默认导演" {
+				t.Fatalf("list should expose built-in director override: %#v", director)
+			}
+		}
+	}
+	if !foundOverride {
+		t.Fatalf("default story director missing from list: %#v", listed)
+	}
+
+	if err := library.Delete(DefaultStoryDirectorID); err != nil {
+		t.Fatalf("Delete built-in director override should restore builtin: %v", err)
+	}
+	restored, err := library.Get(DefaultStoryDirectorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Custom || restored.BuiltinOverridden || restored.Name != DefaultStoryDirector().Name {
+		t.Fatalf("unexpected restored built-in director: %#v", restored)
+	}
+}
+
 func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) {
 	longPrompt := "  " + strings.Repeat("策略", 3000)
 	director := normalizeStoryDirector(StoryDirector{

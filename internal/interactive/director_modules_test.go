@@ -48,8 +48,74 @@ func TestEventSystemLibraryMaterializesGenreBuiltins(t *testing.T) {
 	if !strings.Contains(firstCard.TypeName, "Bottleneck") || !strings.Contains(firstCard.DescriptionMarkdown, "Trigger Scene") {
 		t.Fatalf("genre cards should include bilingual names and structured markdown: %#v", firstCard)
 	}
-	if _, err := library.Update(GenreXiuxianEventSystemID, xiuxian, xiuxian.UpdatedAt); err == nil {
-		t.Fatalf("built-in genre event systems should not be editable")
+	xiuxian.Name = "我的修仙事件系统"
+	overridden, err := library.Update(GenreXiuxianEventSystemID, xiuxian, xiuxian.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update built-in genre event system should create override: %v", err)
+	}
+	if overridden.Custom || !overridden.BuiltinOverridden || overridden.ID != GenreXiuxianEventSystemID || overridden.Name != "我的修仙事件系统" {
+		t.Fatalf("unexpected built-in event system override: %#v", overridden)
+	}
+	if err := library.Delete(GenreXiuxianEventSystemID); err != nil {
+		t.Fatalf("Delete built-in event system override should restore builtin: %v", err)
+	}
+	restored, err := library.Get(GenreXiuxianEventSystemID)
+	if err != nil {
+		t.Fatalf("Get restored xiuxian preset failed: %v", err)
+	}
+	if restored.Custom || restored.BuiltinOverridden || restored.Name == "我的修仙事件系统" {
+		t.Fatalf("unexpected restored built-in event system: %#v", restored)
+	}
+}
+
+func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
+	novaDir := t.TempDir()
+	ruleLibrary := NewRuleSystemLibrary(novaDir)
+	rule, err := ruleLibrary.Get(DefaultRuleSystemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rule.Name = "我的数值规则"
+	overriddenRule, err := ruleLibrary.Update(DefaultRuleSystemID, rule, rule.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update built-in rule system should create override: %v", err)
+	}
+	if overriddenRule.Custom || !overriddenRule.BuiltinOverridden || overriddenRule.Name != "我的数值规则" {
+		t.Fatalf("unexpected rule override: %#v", overriddenRule)
+	}
+	if err := ruleLibrary.Delete(DefaultRuleSystemID); err != nil {
+		t.Fatalf("Delete rule override should restore builtin: %v", err)
+	}
+	restoredRule, err := ruleLibrary.Get(DefaultRuleSystemID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredRule.Custom || restoredRule.BuiltinOverridden || restoredRule.Name == "我的数值规则" {
+		t.Fatalf("unexpected restored rule system: %#v", restoredRule)
+	}
+
+	openingLibrary := NewOpeningSelectorLibrary(novaDir)
+	opening, err := openingLibrary.Get(DefaultOpeningSelectorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opening.Name = "我的开局选择"
+	overriddenOpening, err := openingLibrary.Update(DefaultOpeningSelectorID, opening, opening.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update built-in opening selector should create override: %v", err)
+	}
+	if overriddenOpening.Custom || !overriddenOpening.BuiltinOverridden || overriddenOpening.Name != "我的开局选择" {
+		t.Fatalf("unexpected opening override: %#v", overriddenOpening)
+	}
+	if err := openingLibrary.Delete(DefaultOpeningSelectorID); err != nil {
+		t.Fatalf("Delete opening override should restore builtin: %v", err)
+	}
+	restoredOpening, err := openingLibrary.Get(DefaultOpeningSelectorID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredOpening.Custom || restoredOpening.BuiltinOverridden || restoredOpening.Name == "我的开局选择" {
+		t.Fatalf("unexpected restored opening selector: %#v", restoredOpening)
 	}
 }
 

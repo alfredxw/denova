@@ -57,6 +57,12 @@ func TestSelectFrontendPortAvoidsAutoPickedBackendPort(t *testing.T) {
 	}
 }
 
+func TestShouldAutoPickPortDisabledInDevStartup(t *testing.T) {
+	if shouldAutoPickPort(true) {
+		t.Fatal("dev startup should keep the configured backend port fixed")
+	}
+}
+
 func envValue(env []string, key string) string {
 	prefix := key + "="
 	for _, item := range env {

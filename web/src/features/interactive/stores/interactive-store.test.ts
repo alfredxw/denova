@@ -208,7 +208,9 @@ describe('interactive-store', () => {
     expect(next.turns.map((item) => item.id)).toEqual(['turn-1', 'turn-2'])
     expect(next.current_turn?.id).toBe('turn-2')
     expect(next.state).toEqual({ scene: { location: '门外' } })
-    expect(next.director_plan?.visible_docs?.mainline).toBe('外门逆袭')
+    expect(next.director_plan).toBeUndefined()
+    expect(next.director_plan_status?.status).toBe('running')
+    expect(next.director_plan_status?.completed_docs).toBe(1)
     expect(next.graph?.branches[0].head).toBe('turn-2')
   })
 
@@ -291,7 +293,7 @@ function persistedEvent(turnEvent: TurnEvent): InteractiveTurnPersistedEvent {
     story_id: 'story-1',
     branch_id: 'main',
     turn: turnEvent,
-    director_plan: directorPlan(),
+    director_plan_status: directorPlanStatus(),
     state: { scene: { location: '门外' } },
     graph: {
       nodes: [{
@@ -310,28 +312,20 @@ function persistedEvent(turnEvent: TurnEvent): InteractiveTurnPersistedEvent {
   }
 }
 
-function directorPlan() {
+function directorPlanStatus() {
   return {
     story_id: 'story-1',
     branch_id: 'main',
-    docs: {
-      mainline: '外门逆袭',
-      current_event: '当前事件',
-      next_branches: '最近分支',
-    },
-    visible_docs: {
-      mainline: '外门逆袭',
-      current_event: '当前事件',
-      next_branches: '最近分支',
-    },
-    metadata: {
-      version: 1,
-      story_id: 'story-1',
-      branch_id: 'main',
-      revision: 'rev-1',
-      branch_planning_turns: 5,
-      updated_at: '2026-06-28T00:00:00Z',
-    },
+    status: 'running',
+    summary: '后台导演正在规划开局。',
+    source_turn_id: 'turn-2',
+    updated_at: '2026-06-28T00:00:00Z',
+    planned_docs: 3,
+    completed_docs: 1,
+    doc_bytes: 1200,
+    visible_bytes: 320,
+    start_ready: false,
+    blocking: true,
   }
 }
 

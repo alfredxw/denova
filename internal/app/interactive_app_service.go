@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
 	"denova/config"
 	"denova/internal/agent"
@@ -48,7 +47,7 @@ type InteractiveTurnPersistedEvent struct {
 	StoryID                  string                                     `json:"story_id"`
 	BranchID                 string                                     `json:"branch_id"`
 	Turn                     interactive.TurnEvent                      `json:"turn"`
-	DirectorPlan             *interactive.DirectorPlan                  `json:"director_plan,omitempty"`
+	DirectorPlanStatus       *interactive.DirectorPlanStatus            `json:"director_plan_status,omitempty"`
 	State                    map[string]any                             `json:"state"`
 	Graph                    interactive.StoryGraph                     `json:"graph"`
 	Branches                 []interactive.BranchSummary                `json:"branches"`
@@ -82,39 +81,7 @@ func (s *InteractiveAppService) CreateInteractiveStory(req interactive.CreateSto
 	if err != nil {
 		return interactive.StorySummary{}, err
 	}
-	if err := s.initializeDirectorPlanForNewStory(store, story); err != nil {
-		if deleteErr := store.DeleteStory(story.ID); deleteErr != nil {
-			return interactive.StorySummary{}, fmt.Errorf("初始化导演规划失败: %w；回滚新故事失败: %v", err, deleteErr)
-		}
-		return interactive.StorySummary{}, fmt.Errorf("初始化导演规划失败: %w", err)
-	}
 	return story, nil
-}
-
-func (s *InteractiveAppService) initializeDirectorPlanForNewStory(store *interactive.Store, story interactive.StorySummary) error {
-	cfg := s.cfg()
-	if cfg == nil || store == nil {
-		return nil
-	}
-	director := loadStoryDirector(cfg.NovaDir, story.StoryDirectorID)
-	decision := shouldRunInteractiveDirectorAgent(director.Strategy)
-	if !decision.ShouldRun {
-		log.Printf("[interactive-director-agent] initial run skipped story_id=%s branch_id=main reason=%s", story.ID, decision.Reason)
-		return nil
-	}
-	state := book.NewState(cfg.Workspace)
-	conversation := newInteractiveConversation(store, cfg.NovaDir, cfg.Workspace, story.ID, "main", "story_create", story.ReplyTargetChars, cfg)
-	turn := interactive.TurnEvent{
-		ID:        "story_create",
-		BranchID:  "main",
-		Ts:        time.Now().UTC().Format(time.RFC3339Nano),
-		User:      "新建故事 / Story creation",
-		Narrative: "初始化三层导演规划 / Initialize three-layer director plan",
-	}
-	if _, err := runInteractiveDirectorPlan(context.Background(), cfg, state, conversation, turn, nil); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (a *App) RollInteractiveOpening(req interactive.OpeningRollRequest) (interactive.OpeningRollResult, error) {
@@ -174,6 +141,14 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 		BranchPlanningTurns: director.Strategy.BranchPlanningTurns,
 		Source:              "story_create",
 		OpeningSummary:      openingSummary,
+		InitialStatus:       interactive.DirectorPlanStatusWaitingOpening,
+		InitialSummary:      "等待玩家开局完成后由后台导演规划。",
+	}
+	decision := shouldRunInteractiveDirectorAgent(director.Strategy)
+	if !decision.ShouldRun {
+		req.DirectorPlanSeed.InitialStatus = interactive.DirectorPlanStatusSkipped
+		req.DirectorPlanSeed.InitialSummary = "后台导演已关闭，跳过开局规划。"
+		req.DirectorPlanSeed.StartReady = true
 	}
 	if len(req.InitialStateOps) == 0 {
 		req.InitialStateOps = interactive.StoryDirectorInitialStateOps(director)
@@ -265,6 +240,18 @@ func (s *InteractiveAppService) InteractiveDirectorPlan(storyID, branchID string
 	return store.DirectorPlan(storyID, branchID)
 }
 
+func (a *App) InteractiveDirectorPlanStatus(storyID, branchID string) (interactive.DirectorPlanStatus, error) {
+	return a.interactiveService().InteractiveDirectorPlanStatus(storyID, branchID)
+}
+
+func (s *InteractiveAppService) InteractiveDirectorPlanStatus(storyID, branchID string) (interactive.DirectorPlanStatus, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.DirectorPlanStatus{}, ErrNoWorkspace
+	}
+	return store.DirectorPlanStatus(storyID, branchID)
+}
+
 func (a *App) UpdateInteractiveDirectorPlan(storyID string, req interactive.UpdateDirectorPlanRequest) (interactive.DirectorPlan, error) {
 	return a.interactiveService().UpdateInteractiveDirectorPlan(storyID, req)
 }
@@ -300,6 +287,53 @@ func (s *InteractiveAppService) RebuildInteractiveDirectorPlan(storyID string, r
 		}
 	}
 	return store.RebuildDirectorPlan(storyID, req, seed)
+}
+
+func (a *App) RunInteractiveDirectorPlan(storyID string, req interactive.RunDirectorPlanRequest) (interactive.DirectorPlanStatus, error) {
+	return a.interactiveService().RunInteractiveDirectorPlan(storyID, req)
+}
+
+func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req interactive.RunDirectorPlanRequest) (interactive.DirectorPlanStatus, error) {
+	a := s.app
+	a.mu.RLock()
+	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
+		a.mu.RUnlock()
+		return interactive.DirectorPlanStatus{}, ErrNoWorkspace
+	}
+	store := a.interactive
+	state := a.bookState
+	sessionStore := a.sessionStore
+	runtimeCfg := *a.cfg
+	workspace := a.workspace
+	runtimeCfg.Workspace = workspace
+	novaDir := runtimeCfg.NovaDir
+	a.mu.RUnlock()
+
+	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
+		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+	} else {
+		log.Printf("[interactive-director-agent] load settings for manual run failed workspace=%s err=%v", workspace, err)
+	}
+	storyCtx, err := store.StoryContext(storyID, req.BranchID)
+	if err != nil {
+		return interactive.DirectorPlanStatus{}, err
+	}
+	if storyCtx.Snapshot.CurrentTurn == nil {
+		return interactive.DirectorPlanStatus{}, fmt.Errorf("开局尚未完成，无法运行导演规划")
+	}
+	turn := *storyCtx.Snapshot.CurrentTurn
+	director := loadStoryDirector(novaDir, storyCtx.Meta.StoryDirectorID)
+	decision := shouldRunInteractiveDirectorAgent(director.Strategy)
+	if !decision.ShouldRun {
+		if err := store.MarkDirectorPlanRunSkipped(storyID, storyCtx.Snapshot.BranchID, turn.ID, decision.Reason); err != nil {
+			return interactive.DirectorPlanStatus{}, err
+		}
+		return store.DirectorPlanStatus(storyID, storyCtx.Snapshot.BranchID)
+	}
+	log.Printf("[interactive-director-agent] manual run scheduled story_id=%s branch_id=%s turn_id=%s source=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, firstNonEmptyApp(req.Source, "manual_retry"))
+	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg)
+	startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore)
+	return store.DirectorPlanStatus(storyID, storyCtx.Snapshot.BranchID)
 }
 
 func (a *App) InteractiveMemory(storyID, branchID string, includeArchived bool) (interactive.InteractiveMemoryState, error) {
@@ -711,7 +745,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	}
 	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
 	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
-	styleRules := convertTellerStyleRules(novaDir, teller.StyleRules, styleScenes)
+	styleRules := convertTellerStyleRules(novaDir, teller.StyleRefs, teller.StyleRules, styleScenes)
 	req := agent.ChatRequest{
 		Message:     message,
 		StyleScenes: styleScenes,
@@ -847,7 +881,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	}
 	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
 	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
-	styleRules := convertTellerStyleRules(novaDir, teller.StyleRules, styleScenes)
+	styleRules := convertTellerStyleRules(novaDir, teller.StyleRefs, teller.StyleRules, styleScenes)
 	if len(styleRules) > 0 {
 		log.Printf("[interactive-agent-task] inject teller style rules teller_id=%s scenes=%q count=%d rules=%q", teller.ID, styleScenes, len(styleRules), appStyleRuleNames(styleRules))
 	}
@@ -912,6 +946,9 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 				startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore)
 			} else {
 				log.Printf("[interactive-director-agent] skipped by schedule story_id=%s branch_id=%s turn_id=%s reason=%s", storyID, turn.BranchID, turn.ID, decision.Reason)
+				if err := store.MarkDirectorPlanRunSkipped(storyID, turn.BranchID, turn.ID, decision.Reason); err != nil {
+					log.Printf("[interactive-director-agent] mark skipped failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
+				}
 			}
 			if !stateReady {
 				shouldGenerate, nextAuto, err := store.ShouldGenerateStoryMemory(storyID, turn.BranchID)
@@ -962,7 +999,7 @@ func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conv
 		StoryID:                  storyID,
 		BranchID:                 snapshot.BranchID,
 		Turn:                     persistedTurn,
-		DirectorPlan:             snapshot.DirectorPlan,
+		DirectorPlanStatus:       snapshot.DirectorPlanStatus,
 		State:                    snapshot.State,
 		Graph:                    snapshot.Graph,
 		Branches:                 snapshot.Graph.Branches,

@@ -154,13 +154,16 @@ func TestAppendContextBoundaryInstructionEmphasizesCurrentRequest(t *testing.T) 
 
 func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {
 	got := styleRulesSystemInstruction([]StyleRule{
+		{Global: true, StyleReferences: []StyleReference{{Name: "默认克制", Path: "/tmp/.denova/styles/global.md", DisplayPath: ".denova/styles/global.md"}}},
 		{Scene: "激烈打斗", StyleReferences: []StyleReference{{Name: "克制细腻", Description: "短句留白", Path: "/tmp/.denova/styles/restraint.md", DisplayPath: ".denova/styles/restraint.md"}}, StyleContents: []string{"短句留白", "强冲突快节奏"}},
 		{Scene: "日常对话", StyleContents: []string{"温吞对白"}},
 		{Scene: "", StyleContents: []string{"无效内容"}},     // 应被跳过
 		{Scene: "空风格", StyleContents: []string{"", " "}}, // 空内容应被跳过
 	})
 
-	assertContains(t, got, "## 场景化风格规则")
+	assertContains(t, got, "## 文风参考")
+	assertContains(t, got, "全局文风参考：所有正文生成默认生效")
+	assertContains(t, got, "name: 默认克制")
 	assertContains(t, got, "场景：激烈打斗")
 	assertContains(t, got, "短句留白")
 	assertContains(t, got, "强冲突快节奏")
@@ -168,8 +171,8 @@ func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {
 	assertContains(t, got, "path: /tmp/.denova/styles/restraint.md")
 	assertContains(t, got, "场景：日常对话")
 	assertContains(t, got, "温吞对白")
-	assertContains(t, got, "选出最贴近的场景")
-	assertContains(t, got, "完全忽略以上规则")
+	assertContains(t, got, "全局文风参考默认适用于所有正文生成")
+	assertContains(t, got, "完全忽略以上参考")
 	assertContains(t, got, "read_file")
 	if strings.Contains(got, "无效内容") {
 		t.Fatalf("空 scene 的规则应被跳过，但仍包含无效内容：\n%s", got)

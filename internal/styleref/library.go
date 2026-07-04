@@ -1,6 +1,7 @@
 package styleref
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 )
+
+// ErrReferenceRevisionConflict 表示文风参考文件在编辑器读取后已被外部更新。
+var ErrReferenceRevisionConflict = errors.New("文风参考文件已被其他来源更新，请重新加载后再保存")
 
 const (
 	DirName            = "styles"
@@ -38,6 +42,18 @@ type WriteRequest struct {
 	Description string `json:"description"`
 	Filename    string `json:"filename,omitempty"`
 	Content     string `json:"content"`
+}
+
+type FileDocument struct {
+	Reference Reference `json:"reference"`
+	Content   string    `json:"content"`
+	Revision  string    `json:"revision"`
+}
+
+type UpdateRequest struct {
+	Path         string `json:"path"`
+	Content      string `json:"content"`
+	BaseRevision string `json:"base_revision"`
 }
 
 func NewLibrary(novaDir string) *Library {
@@ -139,6 +155,66 @@ func (l *Library) Write(req WriteRequest) (Reference, error) {
 	return ref, nil
 }
 
+func (l *Library) Read(path string) (FileDocument, error) {
+	if l == nil || strings.TrimSpace(l.novaDir) == "" {
+		return FileDocument{}, fmt.Errorf("nova_dir 不可用，无法读取文风参考")
+	}
+	stored := NormalizeStoragePath(path)
+	if stored == "" {
+		return FileDocument{}, fmt.Errorf("文风参考路径不能为空")
+	}
+	abs := l.AbsPath(stored)
+	info, err := os.Stat(abs)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	if info.IsDir() {
+		return FileDocument{}, fmt.Errorf("文风参考路径是目录")
+	}
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	ref, err := l.referenceFromFile(abs)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	return FileDocument{
+		Reference: ref,
+		Content:   string(data),
+		Revision:  fileRevision(info),
+	}, nil
+}
+
+func (l *Library) Update(req UpdateRequest) (FileDocument, error) {
+	if l == nil || strings.TrimSpace(l.novaDir) == "" {
+		return FileDocument{}, fmt.Errorf("nova_dir 不可用，无法写入文风参考")
+	}
+	stored := NormalizeStoragePath(req.Path)
+	if stored == "" {
+		return FileDocument{}, fmt.Errorf("文风参考路径不能为空")
+	}
+	content := trimBytes(req.Content, MaxContentBytes)
+	if strings.TrimSpace(content) == "" {
+		return FileDocument{}, fmt.Errorf("文风参考内容不能为空")
+	}
+	abs := l.AbsPath(stored)
+	info, err := os.Stat(abs)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	if info.IsDir() {
+		return FileDocument{}, fmt.Errorf("文风参考路径是目录")
+	}
+	if req.BaseRevision != "" && fileRevision(info) != req.BaseRevision {
+		return FileDocument{}, ErrReferenceRevisionConflict
+	}
+	if err := os.WriteFile(abs, []byte(ensureTrailingNewline(content)), 0o644); err != nil {
+		return FileDocument{}, err
+	}
+	return l.Read(stored)
+}
+
 func (l *Library) Delete(path string) error {
 	if l == nil || strings.TrimSpace(l.novaDir) == "" {
 		return fmt.Errorf("nova_dir 不可用，无法删除文风参考")
@@ -180,6 +256,10 @@ func (l *Library) referenceFromFile(path string) (Reference, error) {
 		Size:        info.Size(),
 		UpdatedAt:   info.ModTime().UTC().Format(time.RFC3339Nano),
 	}, nil
+}
+
+func fileRevision(info os.FileInfo) string {
+	return fmt.Sprintf("%d:%d", info.ModTime().UnixNano(), info.Size())
 }
 
 func NormalizeStoragePath(path string) string {

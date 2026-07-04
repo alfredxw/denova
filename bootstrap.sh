@@ -225,7 +225,7 @@ case "$MODE" in
     go mod tidy
 
     echo "  按 Ctrl+C 停止服务"
-    exec go run ./cmd/denova --dev-mode --no-open
+    exec go run ./cmd/denova --dev-mode --no-open --port "${BACKEND_PORT}" --frontend-port "${FRONTEND_PORT}"
     ;;
 
   all)
@@ -251,7 +251,7 @@ case "$MODE" in
     echo "  按 Ctrl+C 停止服务"
     echo ""
 
-    exec go run ./cmd/denova --dev --dev-mode --no-open
+    exec go run ./cmd/denova --dev --dev-mode --no-open --port "${BACKEND_PORT}" --frontend-port "${FRONTEND_PORT}"
     ;;
 
   *)

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { BookMarked, Building2, Database, FileText, Image as ImageIcon, Library, Loader2, MapPin, PanelLeft, Save, ScrollText, Search, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
+import { BookMarked, Building2, Database, FileText, Image as ImageIcon, Library, Loader2, MapPin, PanelLeft, RotateCcw, Save, ScrollText, Search, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -30,10 +30,26 @@ const EMPTY_IMAGE_PRESETS: ImagePreset[] = []
 const EMPTY_EVENT_SYSTEMS: EventSystemModule[] = []
 const EMPTY_RULE_SYSTEMS: RuleSystemModule[] = []
 const EMPTY_OPENING_SELECTORS: OpeningSelectorModule[] = []
+const PRESET_DELETE_COPY: Record<PresetResourceKind, { titleKey: string; descriptionKey: string }> = {
+  teller: { titleKey: 'settingPanel.deleteTeller', descriptionKey: 'settingPanel.confirmDeleteTeller' },
+  image: { titleKey: 'settingPanel.deleteImagePreset', descriptionKey: 'settingPanel.confirmDeleteImagePreset' },
+  director: { titleKey: 'settingPanel.deleteStoryDirector', descriptionKey: 'settingPanel.confirmDeleteStoryDirector' },
+  event: { titleKey: 'settingPanel.deleteEventSystem', descriptionKey: 'settingPanel.confirmDeleteEventSystem' },
+  rule: { titleKey: 'settingPanel.deleteRuleSystem', descriptionKey: 'settingPanel.confirmDeleteRuleSystem' },
+  opening: { titleKey: 'settingPanel.deleteOpeningSelector', descriptionKey: 'settingPanel.confirmDeleteOpeningSelector' },
+}
 
 export type SettingPanelMode = 'lore' | 'creator' | 'teller'
 
 type LoreType = LoreItem['type']
+
+interface PresetDeleteTarget {
+  kind: PresetResourceKind
+  id: string
+  name: string
+  titleKey: string
+  descriptionKey: string
+}
 
 interface KnowledgeSection {
   id: string
@@ -165,6 +181,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const [loreImageBatchRunning, setLoreImageBatchRunning] = useState(false)
   const [loreImageBatchProgress, setLoreImageBatchProgress] = useState<Record<string, LoreImageProgressEvent>>({})
   const [deleteLoreTarget, setDeleteLoreTarget] = useState<LoreItem | null>(null)
+  const [deletePresetTarget, setDeletePresetTarget] = useState<PresetDeleteTarget | null>(null)
   const [saving, setSaving] = useState(false)
   const [presetConfigValid, setPresetConfigValid] = useState(true)
   const loreDraftRef = useRef<LoreItem | null>(null)
@@ -496,6 +513,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
           tags: [...(teller.tags || [])],
           slots: [...(teller.slots || [])],
           context_policy: { ...teller.context_policy },
+          style_refs: [...(teller.style_refs || [])],
           style_rules: [...(teller.style_rules || [])],
         }
       : null
@@ -634,8 +652,11 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }
 
   const mergeSavedTeller = (teller: Teller) => {
-    setTellers((current) => current.map((entry) => (entry.id === teller.id ? teller : entry)))
-    onTellersChange?.(tellers.map((entry) => (entry.id === teller.id ? teller : entry)))
+    setTellers((current) => {
+      const next = current.map((entry) => (entry.id === teller.id ? teller : entry))
+      onTellersChange?.(next)
+      return next
+    })
     setActiveTellerId(teller.id)
   }
 
@@ -698,20 +719,19 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 
   const saveTellerDraft = async (mode: 'manual' | 'auto') => {
     if (!tellerDraft) return
-    const copyingBuiltin = !tellerDraft.custom
+    const overridingBuiltin = !tellerDraft.custom
     const payload = {
       ...tellerDraft,
-      id: copyingBuiltin ? copiedResourceId(tellerDraft.id, 'teller') : tellerDraft.id,
-      custom: true,
+      id: tellerDraft.id,
       tags: splitTags(tellerTagDraft),
     }
     const signature = tellerDraftSignature(payload, tellerTagDraft)
     if (mode === 'auto' && signature === tellerSavedSignature.current) return
-    const teller = copyingBuiltin ? await createInteractiveTeller(payload) : await updateInteractiveTeller(tellerDraft.id, payload, tellerBaseRevisionRef.current)
+    const teller = await updateInteractiveTeller(tellerDraft.id, payload, tellerBaseRevisionRef.current)
     tellerBaseRevisionRef.current = teller.updated_at || ''
     tellerSavedSignature.current = tellerDraftSignature(teller, (teller.tags || []).join('，'))
-    if (copyingBuiltin) {
-      await refreshTellers(teller.id)
+    if (overridingBuiltin) {
+      mergeSavedTeller(teller)
     } else if (mode === 'manual') {
       mergeSavedTeller(teller)
     }
@@ -720,42 +740,36 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const saveStoryDirectorDraft = async (mode: 'manual' | 'auto') => {
     if (!storyDirectorDraft) return
     if (!presetConfigValidRef.current) return
-    const copyingBuiltin = !storyDirectorDraft.custom
+    const overridingBuiltin = !storyDirectorDraft.custom
     const payload = {
       ...storyDirectorDraft,
-      id: copyingBuiltin ? copiedResourceId(storyDirectorDraft.id, 'director') : storyDirectorDraft.id,
-      custom: true,
+      id: storyDirectorDraft.id,
       tags: splitTags(storyDirectorTagDraft),
     }
     const signature = storyDirectorDraftSignature(payload, storyDirectorTagDraft)
     if (mode === 'auto' && signature === storyDirectorSavedSignature.current) return
-    const director = copyingBuiltin ? await createStoryDirector(payload) : await updateStoryDirector(storyDirectorDraft.id, payload, storyDirectorBaseRevisionRef.current)
+    const director = await updateStoryDirector(storyDirectorDraft.id, payload, storyDirectorBaseRevisionRef.current)
     storyDirectorBaseRevisionRef.current = director.updated_at || ''
     storyDirectorSavedSignature.current = storyDirectorDraftSignature(director, (director.tags || []).join('，'))
-    if (copyingBuiltin) {
-      await refreshStoryDirectors(director.id)
-    } else if (mode === 'manual') {
+    if (overridingBuiltin || mode === 'manual') {
       mergeSavedStoryDirector(director)
     }
   }
 
   const saveImagePresetDraft = async (mode: 'manual' | 'auto') => {
     if (!imagePresetDraft) return
-    const copyingBuiltin = !imagePresetDraft.custom
+    const overridingBuiltin = !imagePresetDraft.custom
     const payload = {
       ...imagePresetDraft,
-      id: copyingBuiltin ? copiedResourceId(imagePresetDraft.id, 'image') : imagePresetDraft.id,
-      custom: true,
+      id: imagePresetDraft.id,
       tags: splitTags(imagePresetTagDraft),
     }
     const signature = imagePresetDraftSignature(payload, imagePresetTagDraft)
     if (mode === 'auto' && signature === imagePresetSavedSignature.current) return
-    const preset = copyingBuiltin ? await createImagePreset(payload) : await updateImagePreset(imagePresetDraft.id, payload, imagePresetBaseRevisionRef.current)
+    const preset = await updateImagePreset(imagePresetDraft.id, payload, imagePresetBaseRevisionRef.current)
     imagePresetBaseRevisionRef.current = preset.updated_at || ''
     imagePresetSavedSignature.current = imagePresetDraftSignature(preset, (preset.tags || []).join('，'))
-    if (copyingBuiltin) {
-      await refreshImagePresets(preset.id)
-    } else if (mode === 'manual') {
+    if (overridingBuiltin || mode === 'manual') {
       mergeSavedImagePreset(preset)
     }
   }
@@ -763,21 +777,18 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const saveEventSystemDraft = async (mode: 'manual' | 'auto') => {
     if (!eventSystemDraft) return
     if (!presetConfigValidRef.current) return
-    const copyingBuiltin = !eventSystemDraft.custom
+    const overridingBuiltin = !eventSystemDraft.custom
     const payload = {
       ...eventSystemDraft,
-      id: copyingBuiltin ? copiedResourceId(eventSystemDraft.id, 'event') : eventSystemDraft.id,
-      custom: true,
+      id: eventSystemDraft.id,
       tags: splitTags(eventSystemTagDraft),
     }
     const signature = eventSystemDraftSignature(payload, eventSystemTagDraft)
     if (mode === 'auto' && signature === eventSystemSavedSignature.current) return
-    const item = copyingBuiltin ? await createEventSystem(payload) : await updateEventSystem(eventSystemDraft.id, payload, eventSystemBaseRevisionRef.current)
+    const item = await updateEventSystem(eventSystemDraft.id, payload, eventSystemBaseRevisionRef.current)
     eventSystemBaseRevisionRef.current = item.updated_at || ''
     eventSystemSavedSignature.current = eventSystemDraftSignature(item, (item.tags || []).join('，'))
-    if (copyingBuiltin) {
-      await refreshEventSystems(item.id)
-    } else if (mode === 'manual') {
+    if (overridingBuiltin || mode === 'manual') {
       mergeSavedEventSystem(item)
     }
   }
@@ -785,21 +796,18 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const saveRuleSystemDraft = async (mode: 'manual' | 'auto') => {
     if (!ruleSystemDraft) return
     if (!presetConfigValidRef.current) return
-    const copyingBuiltin = !ruleSystemDraft.custom
+    const overridingBuiltin = !ruleSystemDraft.custom
     const payload = {
       ...ruleSystemDraft,
-      id: copyingBuiltin ? copiedResourceId(ruleSystemDraft.id, 'rule') : ruleSystemDraft.id,
-      custom: true,
+      id: ruleSystemDraft.id,
       tags: splitTags(ruleSystemTagDraft),
     }
     const signature = ruleSystemDraftSignature(payload, ruleSystemTagDraft)
     if (mode === 'auto' && signature === ruleSystemSavedSignature.current) return
-    const item = copyingBuiltin ? await createRuleSystem(payload) : await updateRuleSystem(ruleSystemDraft.id, payload, ruleSystemBaseRevisionRef.current)
+    const item = await updateRuleSystem(ruleSystemDraft.id, payload, ruleSystemBaseRevisionRef.current)
     ruleSystemBaseRevisionRef.current = item.updated_at || ''
     ruleSystemSavedSignature.current = ruleSystemDraftSignature(item, (item.tags || []).join('，'))
-    if (copyingBuiltin) {
-      await refreshRuleSystems(item.id)
-    } else if (mode === 'manual') {
+    if (overridingBuiltin || mode === 'manual') {
       mergeSavedRuleSystem(item)
     }
   }
@@ -807,21 +815,18 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const saveOpeningSelectorDraft = async (mode: 'manual' | 'auto') => {
     if (!openingSelectorDraft) return
     if (!presetConfigValidRef.current) return
-    const copyingBuiltin = !openingSelectorDraft.custom
+    const overridingBuiltin = !openingSelectorDraft.custom
     const payload = {
       ...openingSelectorDraft,
-      id: copyingBuiltin ? copiedResourceId(openingSelectorDraft.id, 'opening') : openingSelectorDraft.id,
-      custom: true,
+      id: openingSelectorDraft.id,
       tags: splitTags(openingSelectorTagDraft),
     }
     const signature = openingSelectorDraftSignature(payload, openingSelectorTagDraft)
     if (mode === 'auto' && signature === openingSelectorSavedSignature.current) return
-    const item = copyingBuiltin ? await createOpeningSelector(payload) : await updateOpeningSelector(openingSelectorDraft.id, payload, openingSelectorBaseRevisionRef.current)
+    const item = await updateOpeningSelector(openingSelectorDraft.id, payload, openingSelectorBaseRevisionRef.current)
     openingSelectorBaseRevisionRef.current = item.updated_at || ''
     openingSelectorSavedSignature.current = openingSelectorDraftSignature(item, (item.tags || []).join('，'))
-    if (copyingBuiltin) {
-      await refreshOpeningSelectors(item.id)
-    } else if (mode === 'manual') {
+    if (overridingBuiltin || mode === 'manual') {
       mergeSavedOpeningSelector(item)
     }
   }
@@ -912,102 +917,97 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     }
   }
 
-  const handleDelete = async () => {
+  const requestDeletePreset = (kind: PresetResourceKind, target: { id: string; name: string; custom?: boolean } | null) => {
+    if (!target?.custom) return
+    setDeletePresetTarget({
+      kind,
+      id: target.id,
+      name: target.name,
+      ...PRESET_DELETE_COPY[kind],
+    })
+  }
+
+  const handleDelete = () => {
     if (activeMode === 'teller') {
       if (activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) return
       if (presetResourceKind === 'image') {
-        if (!imagePresetDraft?.custom) return
-        if (!window.confirm(t('settingPanel.confirmDeleteImagePreset', { name: imagePresetDraft.name }))) return
-        setSaving(true)
-        try {
-          if (imagePresetAutoSaveTimer.current) {
-            window.clearTimeout(imagePresetAutoSaveTimer.current)
-            imagePresetAutoSaveTimer.current = null
-          }
-          await deleteImagePreset(imagePresetDraft.id)
-          await refreshImagePresets()
-        } finally {
-          setSaving(false)
-        }
+        requestDeletePreset('image', imagePresetDraft)
         return
       }
       if (presetResourceKind === 'event') {
-        if (!eventSystemDraft?.custom) return
-        if (!window.confirm(t('settingPanel.confirmDeleteEventSystem', { name: eventSystemDraft.name }))) return
-        setSaving(true)
-        try {
-          if (eventSystemAutoSaveTimer.current) {
-            window.clearTimeout(eventSystemAutoSaveTimer.current)
-            eventSystemAutoSaveTimer.current = null
-          }
-          await deleteEventSystem(eventSystemDraft.id)
-          await refreshEventSystems()
-        } finally {
-          setSaving(false)
-        }
+        requestDeletePreset('event', eventSystemDraft)
         return
       }
       if (presetResourceKind === 'rule') {
-        if (!ruleSystemDraft?.custom) return
-        if (!window.confirm(t('settingPanel.confirmDeleteRuleSystem', { name: ruleSystemDraft.name }))) return
-        setSaving(true)
-        try {
-          if (ruleSystemAutoSaveTimer.current) {
-            window.clearTimeout(ruleSystemAutoSaveTimer.current)
-            ruleSystemAutoSaveTimer.current = null
-          }
-          await deleteRuleSystem(ruleSystemDraft.id)
-          await refreshRuleSystems()
-        } finally {
-          setSaving(false)
-        }
+        requestDeletePreset('rule', ruleSystemDraft)
         return
       }
       if (presetResourceKind === 'opening') {
-        if (!openingSelectorDraft?.custom) return
-        if (!window.confirm(t('settingPanel.confirmDeleteOpeningSelector', { name: openingSelectorDraft.name }))) return
-        setSaving(true)
-        try {
-          if (openingSelectorAutoSaveTimer.current) {
-            window.clearTimeout(openingSelectorAutoSaveTimer.current)
-            openingSelectorAutoSaveTimer.current = null
-          }
-          await deleteOpeningSelector(openingSelectorDraft.id)
-          await refreshOpeningSelectors()
-        } finally {
-          setSaving(false)
-        }
+        requestDeletePreset('opening', openingSelectorDraft)
         return
       }
       if (presetResourceKind === 'director') {
-        if (!storyDirectorDraft?.custom) return
-        if (!window.confirm(t('settingPanel.confirmDeleteStoryDirector', { name: storyDirectorDraft.name }))) return
-        setSaving(true)
-        try {
-          if (storyDirectorAutoSaveTimer.current) {
-            window.clearTimeout(storyDirectorAutoSaveTimer.current)
-            storyDirectorAutoSaveTimer.current = null
-          }
-          await deleteStoryDirector(storyDirectorDraft.id)
-          await refreshStoryDirectors()
-        } finally {
-          setSaving(false)
-        }
+        requestDeletePreset('director', storyDirectorDraft)
         return
       }
-      if (!tellerDraft || !tellerDraft.custom) return
-      if (!window.confirm(t('settingPanel.confirmDeleteTeller', { name: tellerDraft.name }))) return
-      setSaving(true)
-      try {
-        await deleteInteractiveTeller(tellerDraft.id)
-        await refreshTellers()
-      } finally {
-        setSaving(false)
-      }
+      requestDeletePreset('teller', tellerDraft)
       return
     }
     if (!draft) return
     setDeleteLoreTarget(draft)
+  }
+
+  const confirmDeletePresetTarget = async () => {
+    if (!deletePresetTarget) return
+    setSaving(true)
+    try {
+      if (deletePresetTarget.kind === 'image') {
+        if (imagePresetAutoSaveTimer.current) {
+          window.clearTimeout(imagePresetAutoSaveTimer.current)
+          imagePresetAutoSaveTimer.current = null
+        }
+        await deleteImagePreset(deletePresetTarget.id)
+        await refreshImagePresets()
+      } else if (deletePresetTarget.kind === 'event') {
+        if (eventSystemAutoSaveTimer.current) {
+          window.clearTimeout(eventSystemAutoSaveTimer.current)
+          eventSystemAutoSaveTimer.current = null
+        }
+        await deleteEventSystem(deletePresetTarget.id)
+        await refreshEventSystems()
+      } else if (deletePresetTarget.kind === 'rule') {
+        if (ruleSystemAutoSaveTimer.current) {
+          window.clearTimeout(ruleSystemAutoSaveTimer.current)
+          ruleSystemAutoSaveTimer.current = null
+        }
+        await deleteRuleSystem(deletePresetTarget.id)
+        await refreshRuleSystems()
+      } else if (deletePresetTarget.kind === 'opening') {
+        if (openingSelectorAutoSaveTimer.current) {
+          window.clearTimeout(openingSelectorAutoSaveTimer.current)
+          openingSelectorAutoSaveTimer.current = null
+        }
+        await deleteOpeningSelector(deletePresetTarget.id)
+        await refreshOpeningSelectors()
+      } else if (deletePresetTarget.kind === 'director') {
+        if (storyDirectorAutoSaveTimer.current) {
+          window.clearTimeout(storyDirectorAutoSaveTimer.current)
+          storyDirectorAutoSaveTimer.current = null
+        }
+        await deleteStoryDirector(deletePresetTarget.id)
+        await refreshStoryDirectors()
+      } else {
+        if (tellerAutoSaveTimer.current) {
+          window.clearTimeout(tellerAutoSaveTimer.current)
+          tellerAutoSaveTimer.current = null
+        }
+        await deleteInteractiveTeller(deletePresetTarget.id)
+        await refreshTellers()
+      }
+      setDeletePresetTarget(null)
+    } finally {
+      setSaving(false)
+    }
   }
 
   const confirmDeleteLoreTarget = async () => {
@@ -1022,6 +1022,61 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
       await refreshItems()
       notifyLoreUpdated([deleteLoreTarget.id])
       setDeleteLoreTarget(null)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleRestoreBuiltinPreset = async () => {
+    if (!currentPresetBuiltinOverridden(presetResourceKind, tellerDraft, storyDirectorDraft, imagePresetDraft, eventSystemDraft, ruleSystemDraft, openingSelectorDraft)) return
+    setSaving(true)
+    try {
+      if (presetResourceKind === 'image' && imagePresetDraft) {
+        if (imagePresetAutoSaveTimer.current) {
+          window.clearTimeout(imagePresetAutoSaveTimer.current)
+          imagePresetAutoSaveTimer.current = null
+        }
+        await deleteImagePreset(imagePresetDraft.id)
+        await refreshImagePresets(imagePresetDraft.id)
+      } else if (presetResourceKind === 'event' && eventSystemDraft) {
+        if (eventSystemAutoSaveTimer.current) {
+          window.clearTimeout(eventSystemAutoSaveTimer.current)
+          eventSystemAutoSaveTimer.current = null
+        }
+        await deleteEventSystem(eventSystemDraft.id)
+        await refreshEventSystems(eventSystemDraft.id)
+      } else if (presetResourceKind === 'rule' && ruleSystemDraft) {
+        if (ruleSystemAutoSaveTimer.current) {
+          window.clearTimeout(ruleSystemAutoSaveTimer.current)
+          ruleSystemAutoSaveTimer.current = null
+        }
+        await deleteRuleSystem(ruleSystemDraft.id)
+        await refreshRuleSystems(ruleSystemDraft.id)
+      } else if (presetResourceKind === 'opening' && openingSelectorDraft) {
+        if (openingSelectorAutoSaveTimer.current) {
+          window.clearTimeout(openingSelectorAutoSaveTimer.current)
+          openingSelectorAutoSaveTimer.current = null
+        }
+        await deleteOpeningSelector(openingSelectorDraft.id)
+        await refreshOpeningSelectors(openingSelectorDraft.id)
+      } else if (presetResourceKind === 'director' && storyDirectorDraft) {
+        if (storyDirectorAutoSaveTimer.current) {
+          window.clearTimeout(storyDirectorAutoSaveTimer.current)
+          storyDirectorAutoSaveTimer.current = null
+        }
+        await deleteStoryDirector(storyDirectorDraft.id)
+        await refreshStoryDirectors(storyDirectorDraft.id)
+      } else if (tellerDraft) {
+        if (tellerAutoSaveTimer.current) {
+          window.clearTimeout(tellerAutoSaveTimer.current)
+          tellerAutoSaveTimer.current = null
+        }
+        await deleteInteractiveTeller(tellerDraft.id)
+        await refreshTellers(tellerDraft.id)
+      }
+      toast.success(t('settingPanel.restoreBuiltinDone'))
+    } catch (err) {
+      toast.error((err as Error).message || t('settingPanel.restoreBuiltinFailed'))
     } finally {
       setSaving(false)
     }
@@ -1544,6 +1599,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const isRuleSystemEditorActive = activeMode === 'teller' && presetResourceKind === 'rule'
   const isOpeningSelectorEditorActive = activeMode === 'teller' && presetResourceKind === 'opening'
   const presetConfigInvalid = activeMode === 'teller' && isPresetConfigResourceKind(presetResourceKind) && !presetConfigValid
+  const canRestoreBuiltinPreset = activeMode === 'teller' && !isTellerConfigAgentActive && currentPresetBuiltinOverridden(presetResourceKind, tellerDraft, storyDirectorDraft, imagePresetDraft, eventSystemDraft, ruleSystemDraft, openingSelectorDraft)
   const saveDisabled = saving
     || presetConfigInvalid
     || (activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && !draft)
@@ -1605,6 +1661,12 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
             {activeMode === 'lore' && !isLoreConfigAgentActive && !isCreatorActive && !isOpeningPresetActive && (
               <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !draft} onClick={handleDelete} aria-label={t('settingPanel.deleteLore')}>
                 <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+            {canRestoreBuiltinPreset && (
+              <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving} onClick={() => void handleRestoreBuiltinPreset()} aria-label={t('settingPanel.restoreBuiltin')} title={t('settingPanel.restoreBuiltin')}>
+                <RotateCcw className="h-4 w-4" />
+                <span className="hidden sm:inline">{t('settingPanel.restoreBuiltin')}</span>
               </Button>
             )}
             {activeMode === 'teller' && presetResourceKind === 'teller' && !isTellerConfigAgentActive && (
@@ -1722,6 +1784,32 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         onRun={() => void handleRunLoreImageBatch()}
         onAbort={handleAbortLoreImageBatch}
       />
+      <AlertDialog open={Boolean(deletePresetTarget)} onOpenChange={(open) => {
+        if (!open && !saving) setDeletePresetTarget(null)
+      }}>
+        <AlertDialogContent className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{deletePresetTarget ? t(deletePresetTarget.titleKey) : t('common.delete')}</AlertDialogTitle>
+            <AlertDialogDescription className="text-[var(--nova-text-muted)]">
+              {deletePresetTarget ? t(deletePresetTarget.descriptionKey, { name: deletePresetTarget.name }) : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-[var(--nova-danger-bg)] text-[var(--nova-danger)] hover:bg-[var(--nova-danger-bg)]"
+              disabled={saving || !deletePresetTarget}
+              onClick={(event) => {
+                event.preventDefault()
+                void confirmDeletePresetTarget()
+              }}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {t('common.delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AlertDialog open={Boolean(deleteLoreTarget)} onOpenChange={(open) => {
         if (!open && !saving) setDeleteLoreTarget(null)
       }}>
@@ -2097,6 +2185,7 @@ function newTellerDraft(): Partial<Teller> {
     name: '自定义叙事风格',
     description: '新的叙事风格',
     random_event_rate: 0.15,
+    style_refs: [],
     style_rules: [],
     tags: ['自定义'],
     context_policy: {
@@ -2271,6 +2360,23 @@ function isPresetConfigResourceKind(kind: PresetResourceKind) {
   return kind === 'director' || kind === 'event' || kind === 'rule' || kind === 'opening'
 }
 
+function currentPresetBuiltinOverridden(
+  kind: PresetResourceKind,
+  teller: Teller | null,
+  director: StoryDirector | null,
+  image: ImagePreset | null,
+  event: EventSystemModule | null,
+  rule: RuleSystemModule | null,
+  opening: OpeningSelectorModule | null,
+) {
+  if (kind === 'director') return Boolean(director?.builtin_overridden)
+  if (kind === 'image') return Boolean(image?.builtin_overridden)
+  if (kind === 'event') return Boolean(event?.builtin_overridden)
+  if (kind === 'rule') return Boolean(rule?.builtin_overridden)
+  if (kind === 'opening') return Boolean(opening?.builtin_overridden)
+  return Boolean(teller?.builtin_overridden)
+}
+
 function cloneStoryDirector(director: StoryDirector): StoryDirector {
   return JSON.parse(JSON.stringify(director)) as StoryDirector
 }
@@ -2285,9 +2391,4 @@ function cloneRuleSystem(item: RuleSystemModule): RuleSystemModule {
 
 function cloneOpeningSelector(item: OpeningSelectorModule): OpeningSelectorModule {
   return JSON.parse(JSON.stringify(item)) as OpeningSelectorModule
-}
-
-function copiedResourceId(id: string, fallback: string) {
-  const base = (id || fallback).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || fallback
-  return `${base}-copy-${Date.now()}`
 }

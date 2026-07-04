@@ -10,32 +10,19 @@ describe('SnapshotPanel', () => {
           story_id: 'st_1',
           branch_id: 'main',
           turns: [],
-          director_plan: {
+          director_plan_status: {
             story_id: 'st_1',
             branch_id: 'main',
-            docs: {
-              mainline: '# 大方向',
-              current_event: '# 当前事件',
-              next_branches: '# 最近分支',
-            },
-            visible_docs: {
-              mainline: '青云逆袭主线',
-              current_event: '外门比拼前夜，制造排名压力。',
-            },
-            metadata: {
-              version: 1,
-              story_id: 'st_1',
-              branch_id: 'main',
-              revision: 'rev-1',
-              branch_planning_turns: 5,
-              updated_at: '2026-05-17T00:00:00Z',
-              docs: {
-                mainline: { path: '/tmp/mainline.md', bytes: 10, hash: 'h1' },
-                current_event: { path: '/tmp/current-event.md', bytes: 10, hash: 'h2' },
-                next_branches: { path: '/tmp/next-branches.md', bytes: 10, hash: 'h3' },
-              },
-              last_run: { status: 'ready', summary: '已更新近期规划' },
-            },
+            status: 'ready',
+            summary: '已更新近期规划',
+            updated_at: '2026-05-17T00:00:00Z',
+            planned_docs: 3,
+            completed_docs: 3,
+            doc_bytes: 30,
+            visible_bytes: 20,
+            start_ready: true,
+            blocking: false,
+            revision: 'rev-1',
           },
           current_turn: {
             id: 'turn-2',
@@ -157,9 +144,11 @@ describe('SnapshotPanel', () => {
     expect(screen.getByText('来源事件')).toBeInTheDocument()
     expect(screen.getByText('酒馆门自行关上')).toBeInTheDocument()
     expect(screen.getByText('导演编排')).toBeInTheDocument()
-    expect(screen.getByText('青云逆袭主线')).toBeInTheDocument()
-    expect(screen.getByText('外门比拼前夜，制造排名压力。')).toBeInTheDocument()
+    expect(screen.getAllByText('ready').length).toBeGreaterThan(0)
+    expect(screen.getByText('3/3')).toBeInTheDocument()
     expect(screen.getByText('已更新近期规划')).toBeInTheDocument()
+    expect(screen.queryByText('青云逆袭主线')).not.toBeInTheDocument()
+    expect(screen.queryByText('外门比拼前夜，制造排名压力。')).not.toBeInTheDocument()
     expect(screen.getByText('规则审计')).toBeInTheDocument()
     expect(screen.getByText('本回合简报')).toBeInTheDocument()
     expect(screen.getByText('强行闯入藏书阁')).toBeInTheDocument()

@@ -1,6 +1,7 @@
 package styleref
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,5 +101,76 @@ func TestLibraryTrimsLargeContentByBytes(t *testing.T) {
 	}
 	if len(data) > MaxContentBytes+1 {
 		t.Fatalf("content bytes = %d, want <= %d", len(data), MaxContentBytes+1)
+	}
+}
+
+func TestLibraryReadAndUpdateFileDocument(t *testing.T) {
+	lib := NewLibrary(t.TempDir())
+	ref, err := lib.Write(WriteRequest{
+		Name:     "旧文风",
+		Filename: "restraint.md",
+		Content:  "# 旧文风\n\n动作承载情绪。\n",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := lib.Read(ref.DisplayPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Reference.DisplayPath != ref.DisplayPath || !strings.Contains(doc.Content, "动作承载情绪") || doc.Revision == "" {
+		t.Fatalf("unexpected document: %#v", doc)
+	}
+
+	updated, err := lib.Update(UpdateRequest{
+		Path:         ref.DisplayPath,
+		Content:      "# 新文风\n\n对白更锋利，句子更短，停顿更多。",
+		BaseRevision: doc.Revision,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Reference.Name != "新文风" || updated.Reference.Description != "对白更锋利，句子更短，停顿更多。" {
+		t.Fatalf("updated reference mismatch: %#v", updated.Reference)
+	}
+	if updated.Content != "# 新文风\n\n对白更锋利，句子更短，停顿更多。\n" {
+		t.Fatalf("updated content should preserve edited markdown without injected header, got:\n%s", updated.Content)
+	}
+	if updated.Revision == "" || updated.Revision == doc.Revision {
+		t.Fatalf("revision should change after update: before=%q after=%q", doc.Revision, updated.Revision)
+	}
+}
+
+func TestLibraryUpdateRejectsStaleRevision(t *testing.T) {
+	lib := NewLibrary(t.TempDir())
+	ref, err := lib.Write(WriteRequest{
+		Name:     "旧文风",
+		Filename: "stale.md",
+		Content:  "# 旧文风\n\n旧内容。\n",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := lib.Read(ref.DisplayPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ref.Path, []byte("# 外部更新\n\n外部内容明显更长。\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := lib.Update(UpdateRequest{
+		Path:         ref.DisplayPath,
+		Content:      "# 前端旧内容\n\n旧编辑器内容。",
+		BaseRevision: doc.Revision,
+	}); !errors.Is(err, ErrReferenceRevisionConflict) {
+		t.Fatalf("expected stale revision conflict, got %v", err)
+	}
+	got, err := os.ReadFile(ref.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(got), "外部更新") {
+		t.Fatalf("stale update should keep external content, got:\n%s", string(got))
 	}
 }
