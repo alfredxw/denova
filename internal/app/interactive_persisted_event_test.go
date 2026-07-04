@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"testing"
 
 	"denova/internal/agent"
@@ -56,8 +57,25 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 	if payload.Turn.User != "继续前进" || payload.Turn.Narrative != "雾气在门外散开。" || payload.Turn.Thinking != "先确认场景。" {
 		t.Fatalf("payload turn mismatch: %#v", payload.Turn)
 	}
-	if payload.DirectorPlan == nil || payload.DirectorPlan.Metadata.LastRun == nil {
-		t.Fatalf("payload director plan should come from current snapshot: %#v", payload.DirectorPlan)
+	if payload.DirectorPlanStatus == nil || payload.DirectorPlanStatus.Status == "" {
+		t.Fatalf("payload director status should come from current snapshot: %#v", payload.DirectorPlanStatus)
+	}
+	if payload.DirectorPlanStatus.Status != interactive.DirectorPlanStatusWaitingOpening {
+		t.Fatalf("payload director status mismatch: %#v", payload.DirectorPlanStatus)
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["director_plan"]; ok {
+		t.Fatalf("persisted turn payload should not expose director plan docs: %s", string(encoded))
+	}
+	if _, ok := raw["visible_docs"]; ok {
+		t.Fatalf("persisted turn payload should not expose director visible docs: %s", string(encoded))
 	}
 	scene := payload.State["scene"].(map[string]any)
 	if scene["location"] != "旧门外" {

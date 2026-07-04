@@ -164,9 +164,46 @@ func TestPresetUpdateRejectsStaleRevision(t *testing.T) {
 	}
 }
 
-func TestBuiltinPresetCannotBeDeleted(t *testing.T) {
+func TestBuiltinPresetOverrideAndRestore(t *testing.T) {
 	lib := NewLibrary(t.TempDir())
-	if err := lib.Delete(DefaultID); err == nil {
-		t.Fatalf("expected built-in delete to fail")
+	builtin, err := lib.Get(DefaultID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	builtin.Name = "我的游戏 CG"
+	overridden, err := lib.Update(DefaultID, builtin, builtin.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update built-in preset should create override: %v", err)
+	}
+	if overridden.Custom || !overridden.BuiltinOverridden || overridden.ID != DefaultID || overridden.Name != "我的游戏 CG" {
+		t.Fatalf("unexpected overridden built-in preset: %#v", overridden)
+	}
+
+	listed, err := lib.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundOverride := false
+	for _, preset := range listed {
+		if preset.ID == DefaultID {
+			foundOverride = true
+			if preset.Custom || !preset.BuiltinOverridden || preset.Name != "我的游戏 CG" {
+				t.Fatalf("list should expose built-in override state: %#v", preset)
+			}
+		}
+	}
+	if !foundOverride {
+		t.Fatalf("default preset missing from list: %#v", listed)
+	}
+
+	if err := lib.Delete(DefaultID); err != nil {
+		t.Fatalf("Delete built-in override should restore builtin: %v", err)
+	}
+	restored, err := lib.Get(DefaultID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Custom || restored.BuiltinOverridden || restored.Name != builtinPresets[DefaultID].Name {
+		t.Fatalf("unexpected restored built-in preset: %#v", restored)
 	}
 }

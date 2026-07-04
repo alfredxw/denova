@@ -189,10 +189,11 @@ func parseNovelImport(filename string, data []byte, opts NovelImportOptions) (pa
 	if len(data) == 0 {
 		return parsedNovel{}, fmt.Errorf("文件为空")
 	}
-	if !utf8.Valid(data) {
-		return parsedNovel{}, fmt.Errorf("只支持 UTF-8 编码的 txt/md 文件")
+	decodedText, err := decodeNovelTextBytes(data)
+	if err != nil {
+		return parsedNovel{}, fmt.Errorf("只支持 UTF-8、UTF-16 或 GB18030 编码的 txt/md 文件")
 	}
-	text := normalizeNovelText(string(data))
+	text := normalizeNovelText(decodedText)
 	if strings.TrimSpace(text) == "" {
 		return parsedNovel{}, fmt.Errorf("文件内容为空")
 	}

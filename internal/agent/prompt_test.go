@@ -209,7 +209,7 @@ func TestBuildInstructionIncludesStyleRulesInSystemPrompt(t *testing.T) {
 		StyleRules: []StyleRule{{Scene: "激烈打斗", StyleContents: []string{"短句留白"}}},
 	})
 
-	for _, required := range []string{"## 场景化风格规则", "场景：激烈打斗", "短句留白", "触发规则", "system prompt 注入了场景化风格规则"} {
+	for _, required := range []string{"## 文风参考", "场景：激烈打斗", "短句留白", "触发规则", "system prompt 注入了文风参考"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("system prompt should include style rule %q:\n%s", required, instruction)
 		}
@@ -243,7 +243,7 @@ func TestBuildInteractiveStoryInstructionIncludesStyleRulesInSystemPrompt(t *tes
 		StyleRules:              []prompts.StyleRule{{Scene: "日常对话", StyleContents: []string{"克制对白"}}},
 	})
 
-	for _, required := range []string{"## 场景化风格规则", "场景：日常对话", "克制对白", "system prompt 中的场景化风格索引"} {
+	for _, required := range []string{"## 文风参考", "场景：日常对话", "克制对白", "system prompt 中的文风参考索引"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive system prompt should include style rule %q:\n%s", required, instruction)
 		}

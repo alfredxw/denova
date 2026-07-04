@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -23,7 +24,7 @@ import type { ChatMessage, ContextAnalysis, InteractiveImage, InteractiveImageEr
 import { isComposingKeyboardEvent } from '@/lib/keyboard'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveHotChoices, generateInteractiveImage, removeInteractiveContextCompaction, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
+import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveHotChoices, generateInteractiveImage, removeInteractiveContextCompaction, runInteractiveDirector, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
 import { createInteractiveNarrativeFilter, sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
@@ -130,6 +131,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [hotChoicesMode, setHotChoicesMode] = useState<HotChoicesMode>(readStoredHotChoicesMode)
   const [generatingImageTurnId, setGeneratingImageTurnId] = useState<string | null>(null)
   const [customOpeningText, setCustomOpeningText] = useState('')
+  const [selectedBookOpeningPresetId, setSelectedBookOpeningPresetId] = useState('')
+  const [directorRetrying, setDirectorRetrying] = useState(false)
+  const [directorRetryError, setDirectorRetryError] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
@@ -462,11 +466,17 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         .slice(0, 10),
     [generatedHotChoices],
   )
-  const canUseHotChoices = !branchTerminal && !streaming && !editingTurn && stagePreferences.hotChoicesEnabled && Boolean(storyId)
+  const directorPlanStatus = snapshot?.director_plan_status
+  const directorBlocking = Boolean(directorPlanStatus?.blocking)
+  const directorStatusVisible = Boolean(directorPlanStatus && (directorBlocking || directorPlanStatus.status === 'running' || directorPlanStatus.status === 'failed'))
+  const canUseHotChoices = !branchTerminal && !streaming && !editingTurn && !directorBlocking && stagePreferences.hotChoicesEnabled && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
   const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + keyboardInset + 20 : undefined
   const availableBookOpeningPresets = useMemo(() => bookOpeningPresets.filter((preset) => preset.content.trim()), [bookOpeningPresets])
-  const selectedBookOpeningPreset = availableBookOpeningPresets[0] || null
+  const selectedBookOpeningPreset = useMemo(
+    () => availableBookOpeningPresets.find((preset) => preset.id === selectedBookOpeningPresetId) || availableBookOpeningPresets[0] || null,
+    [availableBookOpeningPresets, selectedBookOpeningPresetId],
+  )
   const turnsById = useMemo(() => {
     const result = new Map<string, { user: string }>()
     for (const turn of snapshot?.turns || []) {
@@ -484,7 +494,18 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   useLayoutEffect(() => {
     syncInputFloatHeight()
-  }, [editingTurn, hotChoices.length, hotChoicesLoading, input, showHotChoices, syncInputFloatHeight])
+  }, [directorRetryError, directorRetrying, directorStatusVisible, editingTurn, hotChoices.length, hotChoicesLoading, input, showHotChoices, syncInputFloatHeight])
+
+  useEffect(() => {
+    setSelectedBookOpeningPresetId((current) => {
+      if (current && availableBookOpeningPresets.some((preset) => preset.id === current)) return current
+      return availableBookOpeningPresets[0]?.id || ''
+    })
+  }, [availableBookOpeningPresets])
+
+  useEffect(() => {
+    if (directorPlanStatus?.status !== 'failed') setDirectorRetryError('')
+  }, [directorPlanStatus?.status])
 
   useEffect(() => {
     const element = inputFloatRef.current
@@ -497,7 +518,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const requestHotChoices = useCallback(
     async (options: boolean | HotChoicesRequestOptions = false) => {
       const append = typeof options === 'boolean' ? options : options.append === true
-      if (branchTerminal || !stagePreferences.hotChoicesEnabled || streaming || editingTurn || !storyId || hotChoicesLoading) return false
+      if (branchTerminal || directorBlocking || !stagePreferences.hotChoicesEnabled || streaming || editingTurn || !storyId || hotChoicesLoading) return false
       const abortController = new AbortController()
       hotChoicesAbortRef.current?.abort()
       hotChoicesAbortRef.current = abortController
@@ -522,7 +543,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         if (!abortController.signal.aborted) setHotChoicesLoading(false)
       }
     },
-    [branchId, branchTerminal, editingTurn, hotChoices, hotChoicesLoading, snapshot?.branch_id, stagePreferences.hotChoicesEnabled, storyId, streaming],
+    [branchId, branchTerminal, directorBlocking, editingTurn, hotChoices, hotChoicesLoading, snapshot?.branch_id, stagePreferences.hotChoicesEnabled, storyId, streaming],
   )
 
   const toggleHotChoices = () => {
@@ -560,7 +581,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const send = async (override?: { message?: string; rewindTurnId?: string }) => {
     const sourceMessage = override?.message ?? input
     const message = sourceMessage.trim()
-    if (!message || !storyId || streaming || branchTerminal) return
+    if (!message || !storyId || streaming || branchTerminal || directorBlocking) return
     if (message === '/compact') {
       await compactCurrentContext()
       return
@@ -910,9 +931,21 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     [branchId, onDone, rememberGeneratedInteractiveImage, snapshot, storyId],
   )
 
-  const fillBookPresetOpening = () => {
+  const startBookPresetOpening = () => {
+    if (!storyId || streaming) return
     if (!selectedBookOpeningPreset?.content.trim()) return
-    setCustomOpeningText(truncateStoryOpeningText(selectedBookOpeningPreset.content))
+    void send({
+      message: buildOpeningPrompt(
+        story,
+        t,
+        {
+          mode: 'preset',
+          preset_id: selectedBookOpeningPreset.id,
+          preset_text: truncateStoryOpeningText(selectedBookOpeningPreset.content),
+        },
+        'book_preset',
+      ),
+    })
   }
 
   const startAIOpening = () => {
@@ -926,6 +959,21 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     if (!customText) return
     void send({ message: buildOpeningPrompt(story, t, { mode: 'custom', custom_text: customText }) })
     setCustomOpeningText('')
+  }
+
+  const retryDirectorPlanning = async () => {
+    if (!storyId || directorRetrying) return
+    setDirectorRetrying(true)
+    setDirectorRetryError('')
+    try {
+      await runInteractiveDirector(storyId, branchId || snapshot?.branch_id)
+      await onDone({ silent: true })
+    } catch (error) {
+      console.warn('[interactive-stage] retry director planning failed', error)
+      setDirectorRetryError(error instanceof Error ? error.message : t('storyStage.director.retryFailed'))
+    } finally {
+      setDirectorRetrying(false)
+    }
   }
 
   const switchMessageVersion = async (message: ChatMessage, direction: -1 | 1) => {
@@ -1076,17 +1124,33 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                     <Textarea autoResize className="nova-field min-h-24 resize-none text-xs" placeholder={t('storyStage.opening.customPlaceholder')} value={customOpeningText} onChange={(event) => setCustomOpeningText(event.target.value)} />
                     <div className="flex w-full min-w-0 flex-wrap items-center justify-center gap-2">
                       <Button type="button" size="sm" className="gap-1.5" disabled={!storyId || streaming} onClick={startAIOpening}>
-                        <Sparkles className="h-3.5 w-3.5" />
+                        <Sparkles data-icon="inline-start" />
                         {t('storyStage.opening.startAI')}
                       </Button>
                       <Button type="button" variant="outline" size="sm" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !customOpeningText.trim()} onClick={startOpening}>
-                        <Pencil className="h-3.5 w-3.5" />
+                        <Pencil data-icon="inline-start" />
                         {t('storyStage.opening.startCustom')}
                       </Button>
-                      <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !selectedBookOpeningPreset} onClick={fillBookPresetOpening} title={selectedBookOpeningPreset ? selectedBookOpeningPreset.title || t('storyStage.opening.bookPresetUntitled') : t('storyStage.opening.bookPresetMissing')}>
-                        <BookOpen className="h-3.5 w-3.5" />
-                        {selectedBookOpeningPreset ? t('storyStage.opening.startBookPreset') : t('storyStage.opening.noBookPreset')}
-                      </Button>
+                      <div className="flex min-w-0 max-w-full flex-wrap items-center justify-center gap-1 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1">
+                        <Select disabled={!storyId || streaming || availableBookOpeningPresets.length === 0} value={selectedBookOpeningPreset?.id || ''} onValueChange={setSelectedBookOpeningPresetId}>
+                          <SelectTrigger size="sm" aria-label={t('storyStage.opening.bookPresetSelect')} className="min-w-0 max-w-full border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs text-[var(--nova-text)] hover:bg-[var(--nova-hover)] sm:w-48">
+                            <SelectValue placeholder={t('storyStage.opening.noBookPreset')} />
+                          </SelectTrigger>
+                          <SelectContent className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]">
+                            <SelectGroup>
+                              {availableBookOpeningPresets.map((preset) => (
+                                <SelectItem key={preset.id} value={preset.id} className="text-xs focus:bg-[var(--nova-hover)] focus:text-[var(--nova-text)]">
+                                  {preset.title || t('storyStage.opening.bookPresetUntitled')}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !selectedBookOpeningPreset} onClick={startBookPresetOpening} title={selectedBookOpeningPreset ? selectedBookOpeningPreset.title || t('storyStage.opening.bookPresetUntitled') : t('storyStage.opening.bookPresetMissing')}>
+                          <BookOpen data-icon="inline-start" />
+                          {selectedBookOpeningPreset ? t('storyStage.opening.startBookPreset') : t('storyStage.opening.noBookPreset')}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1136,6 +1200,26 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               <Button type="button" variant="ghost" size="icon-xs" className="h-7 w-7 shrink-0 text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]" onClick={cancelEditing} aria-label={t('storyStage.cancelEdit')}>
                 <X className="h-3.5 w-3.5" />
               </Button>
+            </div>
+          ) : null}
+          {directorStatusVisible && directorPlanStatus ? (
+            <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]/90 px-3 py-2 text-xs text-[var(--nova-text-muted)] shadow-[var(--nova-shadow)] backdrop-blur-xl">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {directorPlanStatus.status === 'running' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--nova-text-faint)]" /> : <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
+                <span className="min-w-0 flex-1 font-medium text-[var(--nova-text)]">{t('storyStage.director.title')}</span>
+                <span className="shrink-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[11px] text-[var(--nova-text-faint)]">
+                  {t('storyStage.director.progress', { completed: directorPlanStatus.completed_docs, planned: directorPlanStatus.planned_docs })}
+                </span>
+                {directorPlanStatus.status === 'failed' ? (
+                  <Button type="button" variant="outline" size="xs" className="h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)]" disabled={directorRetrying || !storyId} onClick={() => void retryDirectorPlanning()}>
+                    {directorRetrying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                    {t('storyStage.director.retry')}
+                  </Button>
+                ) : null}
+              </div>
+              <div className="mt-1 leading-5 text-[var(--nova-text-faint)]">
+                {directorRetryError || directorPlanStatus.error || directorPlanStatus.summary || t('storyStage.director.description')}
+              </div>
             </div>
           ) : null}
           {showHotChoices ? (
@@ -1294,11 +1378,11 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                   className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0"
                   style={inputTextStyle}
                   value={input}
-                  disabled={branchTerminal}
+                  disabled={branchTerminal || directorBlocking}
                   inputMode="text"
                   enterKeyHint="send"
                   autoCapitalize="sentences"
-                  placeholder={branchTerminal ? t('storyStage.inputPlaceholderTerminal') : !isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
+                  placeholder={branchTerminal ? t('storyStage.inputPlaceholderTerminal') : directorBlocking ? t('storyStage.director.inputBlocked') : !isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
                   onChange={handleInputChange}
                   onKeyDown={(event) => {
                     const canPickSkill = showSkillCommands && filteredSkillCommands.length > 0
@@ -1342,7 +1426,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                         variant="outline"
                         size="icon-sm"
                         className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                        disabled={streaming || branchTerminal || (!storyId && tokenUsageMessages.length === 0 && !workspace)}
+                        disabled={streaming || branchTerminal || directorBlocking || (!storyId && tokenUsageMessages.length === 0 && !workspace)}
                         aria-label={t('chat.input.actions')}
                         title={t('chat.input.actions')}
                       >
@@ -1350,10 +1434,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-                      <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming} />
-	                      <HotChoicesModeMenu value={hotChoicesMode} disabled={!stagePreferences.hotChoicesEnabled || streaming || branchTerminal} onChange={setHotChoicesMode} />
-                      <InteractiveImageSettingsMenu story={story} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
-                      <StoryImagePresetMenu story={story} presets={imagePresets} disabled={!storyId || streaming || !onImageSettingsChange} onChange={onImageSettingsChange} />
+                      <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming || directorBlocking} />
+	                      <HotChoicesModeMenu value={hotChoicesMode} disabled={!stagePreferences.hotChoicesEnabled || streaming || branchTerminal || directorBlocking} onChange={setHotChoicesMode} />
+                      <InteractiveImageSettingsMenu story={story} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
+                      <StoryImagePresetMenu story={story} presets={imagePresets} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <DropdownMenuItem
                         onSelect={() => setTokenUsageOpen(true)}
                         className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
@@ -1364,7 +1448,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                       </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                       <DropdownMenuItem
-	                        disabled={!storyId || streaming || branchTerminal}
+	                        disabled={!storyId || streaming || branchTerminal || directorBlocking}
                         onSelect={openContextAnalysis}
                         className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
                       >
@@ -1378,7 +1462,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               toolbarEnd={
                 <>
                   {stagePreferences.hotChoicesEnabled ? (
-	                    <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || branchTerminal || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
+	                    <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || branchTerminal || directorBlocking || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
                       <Compass className={`h-3.5 w-3.5 ${hotChoicesLoading ? 'animate-pulse' : ''}`} />
                       {!isMobile ? t('storyStage.hotChoices.button') : null}
                     </Button>
@@ -1393,7 +1477,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               submitControl={
                 <Button
                   className={`nova-agent-composer-submit h-9 w-9 shrink-0 rounded-[10px] px-0 text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] ${streaming ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)]'}`}
-                  disabled={streaming ? false : !storyId || branchTerminal || !input.trim()}
+                  disabled={streaming ? false : !storyId || branchTerminal || directorBlocking || !input.trim()}
                   onClick={() => {
                     streaming ? stop() : void send()
                   }}

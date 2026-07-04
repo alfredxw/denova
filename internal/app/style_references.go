@@ -28,6 +28,30 @@ func (s *InteractiveAppService) SaveStyleReference(req styleref.WriteRequest) (s
 	return styleref.NewLibrary(cfg.NovaDir).Write(req)
 }
 
+func (a *App) StyleReferenceFile(path string) (styleref.FileDocument, error) {
+	return a.interactiveService().StyleReferenceFile(path)
+}
+
+func (s *InteractiveAppService) StyleReferenceFile(path string) (styleref.FileDocument, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return styleref.FileDocument{}, ErrNoWorkspace
+	}
+	return styleref.NewLibrary(cfg.NovaDir).Read(path)
+}
+
+func (a *App) UpdateStyleReferenceFile(req styleref.UpdateRequest) (styleref.FileDocument, error) {
+	return a.interactiveService().UpdateStyleReferenceFile(req)
+}
+
+func (s *InteractiveAppService) UpdateStyleReferenceFile(req styleref.UpdateRequest) (styleref.FileDocument, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return styleref.FileDocument{}, ErrNoWorkspace
+	}
+	return styleref.NewLibrary(cfg.NovaDir).Update(req)
+}
+
 func (a *App) DeleteStyleReference(path string) error {
 	return a.interactiveService().DeleteStyleReference(path)
 }

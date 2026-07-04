@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -31,24 +32,25 @@ type StoryDirectorLibrary struct {
 }
 
 type StoryDirector struct {
-	Version          int                           `json:"version"`
-	ID               string                        `json:"id"`
-	Name             string                        `json:"name"`
-	Description      string                        `json:"description"`
-	ModuleRefs       StoryDirectorModuleRefs       `json:"module_refs,omitempty"`
-	Strategy         StoryDirectorStrategy         `json:"strategy"`
-	EventSystem      StoryDirectorEventSystem      `json:"event_system"`
-	StatSystem       StoryDirectorStatSystem       `json:"stat_system"`
-	TRPGSystem       StoryDirectorTRPGSystem       `json:"trpg_system"`
-	OpeningSelector  StoryDirectorOpeningSelector  `json:"opening_selector"`
-	ResolvedSnapshot StoryDirectorResolvedSnapshot `json:"resolved_snapshot,omitempty"`
-	Tags             []string                      `json:"tags"`
-	Path             string                        `json:"path,omitempty"`
-	Custom           bool                          `json:"custom"`
-	Invalid          bool                          `json:"invalid,omitempty"`
-	Error            string                        `json:"error,omitempty"`
-	CreatedAt        string                        `json:"created_at,omitempty"`
-	UpdatedAt        string                        `json:"updated_at,omitempty"`
+	Version           int                           `json:"version"`
+	ID                string                        `json:"id"`
+	Name              string                        `json:"name"`
+	Description       string                        `json:"description"`
+	ModuleRefs        StoryDirectorModuleRefs       `json:"module_refs,omitempty"`
+	Strategy          StoryDirectorStrategy         `json:"strategy"`
+	EventSystem       StoryDirectorEventSystem      `json:"event_system"`
+	StatSystem        StoryDirectorStatSystem       `json:"stat_system"`
+	TRPGSystem        StoryDirectorTRPGSystem       `json:"trpg_system"`
+	OpeningSelector   StoryDirectorOpeningSelector  `json:"opening_selector"`
+	ResolvedSnapshot  StoryDirectorResolvedSnapshot `json:"resolved_snapshot,omitempty"`
+	Tags              []string                      `json:"tags"`
+	Path              string                        `json:"path,omitempty"`
+	Custom            bool                          `json:"custom"`
+	BuiltinOverridden bool                          `json:"builtin_overridden,omitempty"`
+	Invalid           bool                          `json:"invalid,omitempty"`
+	Error             string                        `json:"error,omitempty"`
+	CreatedAt         string                        `json:"created_at,omitempty"`
+	UpdatedAt         string                        `json:"updated_at,omitempty"`
 }
 
 type StoryDirectorStrategy struct {
@@ -120,7 +122,7 @@ func (l *StoryDirectorLibrary) List() ([]StoryDirector, error) {
 			continue
 		}
 		director.Path = file
-		director.Custom = !IsBuiltinStoryDirectorID(director.ID)
+		director = applyStoryDirectorOwnership(director)
 		director = ResolveStoryDirectorModules(l.novaDir, director)
 		persistResolvedStoryDirectorSnapshot(file, director)
 		directors = append(directors, director)
@@ -149,7 +151,7 @@ func (l *StoryDirectorLibrary) Get(id string) (StoryDirector, error) {
 	if err != nil {
 		return StoryDirector{}, err
 	}
-	director.Custom = !IsBuiltinStoryDirectorID(director.ID)
+	director = applyStoryDirectorOwnership(director)
 	director = ResolveStoryDirectorModules(l.novaDir, director)
 	persistResolvedStoryDirectorSnapshot(filepath.Join(l.dir(), id+".json"), director)
 	return director, nil
@@ -163,6 +165,7 @@ func (l *StoryDirectorLibrary) Create(director StoryDirector) (StoryDirector, er
 	if director.ID == "" {
 		director.ID = newStoryDirectorID(director.Name)
 	}
+	director.BuiltinOverridden = false
 	if err := validateStoryDirectorID(director.ID); err != nil {
 		return StoryDirector{}, err
 	}
@@ -178,12 +181,11 @@ func (l *StoryDirectorLibrary) Create(director StoryDirector) (StoryDirector, er
 		return StoryDirector{}, err
 	}
 	director.Path = path
-	director.Custom = !IsBuiltinStoryDirectorID(director.ID)
-	return director, nil
+	return applyStoryDirectorOwnership(director), nil
 }
 
 func (l *StoryDirectorLibrary) Update(id string, director StoryDirector, baseRevision string) (StoryDirector, error) {
-	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
+	if err := l.ensureBuiltins(); err != nil {
 		return StoryDirector{}, err
 	}
 	id = NormalizeStoryDirectorID(id)
@@ -195,6 +197,7 @@ func (l *StoryDirectorLibrary) Update(id string, director StoryDirector, baseRev
 	if err != nil {
 		return StoryDirector{}, err
 	}
+	isBuiltin := IsBuiltinStoryDirectorID(id)
 	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
 		return StoryDirector{}, ErrStoryDirectorRevisionConflict
 	}
@@ -202,16 +205,13 @@ func (l *StoryDirectorLibrary) Update(id string, director StoryDirector, baseRev
 	director.ID = id
 	director.CreatedAt = firstNonEmptyString(current.CreatedAt, director.CreatedAt)
 	director.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	if IsBuiltinStoryDirectorID(id) {
-		return StoryDirector{}, errors.New("内置故事导演不能修改")
-	}
+	director.BuiltinOverridden = isBuiltin
 	director = ResolveStoryDirectorModules(l.novaDir, director)
 	if err := writeStoryDirectorFile(path, director); err != nil {
 		return StoryDirector{}, err
 	}
 	director.Path = path
-	director.Custom = !IsBuiltinStoryDirectorID(director.ID)
-	return director, nil
+	return applyStoryDirectorOwnership(director), nil
 }
 
 func (l *StoryDirectorLibrary) Delete(id string) error {
@@ -220,7 +220,7 @@ func (l *StoryDirectorLibrary) Delete(id string) error {
 		return err
 	}
 	if IsBuiltinStoryDirectorID(id) {
-		return errors.New("内置故事导演不能删除")
+		return writeStoryDirectorFile(filepath.Join(l.dir(), id+".json"), DefaultStoryDirector())
 	}
 	return os.Remove(filepath.Join(l.dir(), id+".json"))
 }
@@ -245,6 +245,9 @@ func (l *StoryDirectorLibrary) ensureBuiltins() error {
 	path := filepath.Join(l.dir(), DefaultStoryDirectorID+".json")
 	version, versionErr := readStoryDirectorFileVersion(path)
 	current, parseErr := parseStoryDirectorFile(path)
+	if parseErr == nil && current.BuiltinOverridden {
+		return l.migrateStoryDirectorResources()
+	}
 	if versionErr == nil && parseErr == nil && current.Version == storyDirectorVersion && version == storyDirectorVersion {
 		return l.migrateStoryDirectorResources()
 	}
@@ -395,8 +398,7 @@ func parseRawStoryDirectorFile(path string) (StoryDirector, error) {
 		return StoryDirector{}, fmt.Errorf("解析故事导演 JSON 失败: %w", err)
 	}
 	director.Path = path
-	director.Custom = !IsBuiltinStoryDirectorID(director.ID)
-	return director, nil
+	return applyStoryDirectorOwnership(director), nil
 }
 
 func parseStoryDirectorFile(path string) (StoryDirector, error) {
@@ -410,8 +412,7 @@ func parseStoryDirectorFile(path string) (StoryDirector, error) {
 	}
 	director = normalizeStoryDirector(director)
 	director.Path = path
-	director.Custom = !IsBuiltinStoryDirectorID(director.ID)
-	return director, nil
+	return applyStoryDirectorOwnership(director), nil
 }
 
 func writeStoryDirectorFile(path string, director StoryDirector) error {
@@ -491,6 +492,34 @@ func persistResolvedStoryDirectorSnapshot(path string, director StoryDirector) {
 		return
 	}
 	_ = writeStoryDirectorFile(path, director)
+}
+
+func applyStoryDirectorOwnership(director StoryDirector) StoryDirector {
+	if !IsBuiltinStoryDirectorID(director.ID) {
+		director.Custom = true
+		director.BuiltinOverridden = false
+		return director
+	}
+	director.Custom = false
+	director.BuiltinOverridden = director.BuiltinOverridden || storyDirectorDiffersFromBuiltin(director)
+	return director
+}
+
+func storyDirectorDiffersFromBuiltin(director StoryDirector) bool {
+	return !reflect.DeepEqual(storyDirectorComparable(director), storyDirectorComparable(DefaultStoryDirector()))
+}
+
+func storyDirectorComparable(director StoryDirector) StoryDirector {
+	director = normalizeStoryDirector(director)
+	director.Path = ""
+	director.Custom = false
+	director.BuiltinOverridden = false
+	director.Invalid = false
+	director.Error = ""
+	director.CreatedAt = ""
+	director.UpdatedAt = ""
+	director.ResolvedSnapshot = StoryDirectorResolvedSnapshot{}
+	return director
 }
 
 func DefaultStoryDirector() StoryDirector {

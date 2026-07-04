@@ -109,6 +109,15 @@ func (h *Handlers) HandleInteractiveDirector(ctx context.Context, c *app.Request
 	writeJSON(c, consts.StatusOK, plan)
 }
 
+func (h *Handlers) HandleInteractiveDirectorStatus(ctx context.Context, c *app.RequestContext) {
+	status, err := h.app.InteractiveDirectorPlanStatus(c.Param("id"), c.Query("branch"))
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, status)
+}
+
 func (h *Handlers) HandleInteractiveDirectorUpdate(ctx context.Context, c *app.RequestContext) {
 	var body interactive.UpdateDirectorPlanRequest
 	if err := c.BindJSON(&body); err != nil {
@@ -141,6 +150,23 @@ func (h *Handlers) HandleInteractiveDirectorRebuild(ctx context.Context, c *app.
 		return
 	}
 	writeJSON(c, consts.StatusOK, plan)
+}
+
+func (h *Handlers) HandleInteractiveDirectorRun(ctx context.Context, c *app.RequestContext) {
+	var body interactive.RunDirectorPlanRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	if body.BranchID == "" {
+		body.BranchID = c.Query("branch")
+	}
+	status, err := h.app.RunInteractiveDirectorPlan(c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, status)
 }
 
 func (h *Handlers) HandleInteractiveMemory(ctx context.Context, c *app.RequestContext) {

@@ -45,12 +45,14 @@ export interface Teller {
   name: string
   description: string
   random_event_rate: number
+  style_refs?: string[] | null
   style_rules?: StyleRule[] | null
   orchestration?: TellerOrchestrationConfig | null
   tags: string[]
   context_policy: TellerContextPolicy
   slots: TellerPromptSlot[]
   custom: boolean
+  builtin_overridden?: boolean
   invalid?: boolean
   error?: string
   created_at?: string
@@ -67,6 +69,7 @@ export interface ImagePreset {
   tags: string[]
   path?: string
   custom: boolean
+  builtin_overridden?: boolean
   invalid?: boolean
   error?: string
   created_at?: string
@@ -88,6 +91,7 @@ export interface StoryDirector {
   tags: string[]
   path?: string
   custom: boolean
+  builtin_overridden?: boolean
   invalid?: boolean
   error?: string
   created_at?: string
@@ -136,6 +140,7 @@ export interface EventSystemModule {
   tags: string[]
   path?: string
   custom: boolean
+  builtin_overridden?: boolean
   invalid?: boolean
   error?: string
   created_at?: string
@@ -152,6 +157,7 @@ export interface RuleSystemModule {
   tags: string[]
   path?: string
   custom: boolean
+  builtin_overridden?: boolean
   invalid?: boolean
   error?: string
   created_at?: string
@@ -167,6 +173,7 @@ export interface OpeningSelectorModule {
   tags: string[]
   path?: string
   custom: boolean
+  builtin_overridden?: boolean
   invalid?: boolean
   error?: string
   created_at?: string
@@ -239,6 +246,12 @@ export interface StyleReference {
   updated_at?: string
   missing?: boolean
   error?: string
+}
+
+export interface StyleReferenceFileDocument {
+  reference: StyleReference
+  content: string
+  revision: string
 }
 
 export interface TellerOrchestrationConfig {
@@ -454,6 +467,27 @@ export interface DirectorPlanRunStatus {
   error?: string
   source_turn_id?: string
   updated_at?: string
+  planned_docs?: number
+  completed_docs?: number
+  start_ready?: boolean
+  blocking?: boolean
+}
+
+export interface DirectorPlanStatus {
+  story_id: string
+  branch_id: string
+  status: string
+  summary?: string
+  error?: string
+  source_turn_id?: string
+  updated_at?: string
+  planned_docs: number
+  completed_docs: number
+  doc_bytes: number
+  visible_bytes: number
+  start_ready: boolean
+  blocking: boolean
+  revision?: string
 }
 
 export interface DirectorPlanMetadata {
@@ -606,6 +640,7 @@ export interface Snapshot {
   context_compaction?: ContextCompactionEvent | null
   context_compaction_removal?: ContextCompactionRemovalEvent | null
   director_plan?: DirectorPlan
+  director_plan_status?: DirectorPlanStatus
   state: Record<string, unknown>
   graph?: StoryGraph
 }
@@ -760,6 +795,7 @@ export interface InteractiveTurnPersistedEvent {
   branch_id: string
   turn: TurnEvent
   director_plan?: DirectorPlan
+  director_plan_status?: DirectorPlanStatus
   state?: Record<string, unknown>
   graph?: StoryGraph
   branches?: BranchSummary[]

@@ -99,26 +99,34 @@ type StyleReference struct {
 	Error       string
 }
 
-// StyleRule 表示「场景 → 文风参考」映射。
+// StyleRule 表示全局或「场景 → 文风参考」映射。
 type StyleRule struct {
+	Global          bool
 	Scene           string
 	StyleReferences []StyleReference
 	StyleContents   []string
 }
 
-// StyleRulesInstruction 把导演的「场景 → 文风参考索引」映射拼成稳定 system prompt 片段。
+// StyleRulesInstruction 把导演的文风参考索引拼成稳定 system prompt 片段。
 func StyleRulesInstruction(rules []StyleRule) string {
 	var sb strings.Builder
-	sb.WriteString("## 场景化风格规则\n\n")
-	sb.WriteString("当前叙事风格配置了以下「场景 → 文风参考索引」规则。文风参考是所有叙事风格共享的 Markdown 文件，统一存放在 `.denova/styles/`；索引只提供 name、description、path，不包含全文。\n")
-	wrote := false
-	for i, rule := range rules {
+	sb.WriteString("## 文风参考\n\n")
+	sb.WriteString("当前叙事风格配置了以下文风参考索引。文风参考是所有叙事风格共享的 Markdown 文件，统一存放在 `.denova/styles/`；索引只提供 name、description、path，不包含全文。\n")
+	wrote := 0
+	for _, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
-		if scene == "" || (len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0) {
+		if !rule.Global && scene == "" {
 			continue
 		}
-		wrote = true
-		fmt.Fprintf(&sb, "%d. 场景：%s\n", i+1, scene)
+		if len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0 {
+			continue
+		}
+		wrote++
+		if rule.Global {
+			fmt.Fprintf(&sb, "%d. 全局文风参考：所有正文生成默认生效\n", wrote)
+		} else {
+			fmt.Fprintf(&sb, "%d. 场景：%s\n", wrote, scene)
+		}
 		for _, ref := range rule.StyleReferences {
 			name := strings.TrimSpace(ref.Name)
 			if name == "" {
@@ -155,11 +163,11 @@ func StyleRulesInstruction(rules []StyleRule) string {
 			fmt.Fprintf(&sb, "   旧版内联风格内容 %d：\n```markdown\n%s\n```\n", j+1, content)
 		}
 	}
-	if !wrote {
+	if wrote == 0 {
 		return ""
 	}
-	sb.WriteString("\n触发规则：仅当本轮要执行『章节正文的创作 / 续写 / 重写』或『互动故事下一回合正文生成』时，先根据当前章节内容或互动场景选出最贴近的场景；若该场景列出文风参考 path，必须先用 read_file 读取真正需要的参考文件，再把其作为文风、节奏、叙述方式、句式和氛围参考；不要照搬其中的人物、情节或设定。\n")
-	sb.WriteString("若本轮属于脑暴、大纲、设定、问答、规划等非正文生成场景，请完全忽略以上规则；若没有场景明显匹配，也不必强行选择。\n")
+	sb.WriteString("\n触发规则：仅当本轮要执行『章节正文的创作 / 续写 / 重写』或『互动故事下一回合正文生成』时使用文风参考。全局文风参考默认适用于所有正文生成；分场景文风参考需要先根据当前章节内容、互动场景或本轮 # 场景选择出最贴近的场景。若需要使用某条文风参考 path，必须先用 read_file 读取真正需要的参考文件，再把其作为文风、节奏、叙述方式、句式和氛围参考；不要照搬其中的人物、情节或设定。\n")
+	sb.WriteString("若本轮属于脑暴、大纲、设定、问答、规划等非正文生成场景，请完全忽略以上参考；若没有场景明显匹配，也不必强行选择分场景参考。\n")
 	return sb.String()
 }
 

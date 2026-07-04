@@ -357,7 +357,7 @@ export function TellerDirectory({
   const [collapsedSections, setCollapsedSections] = useState<Partial<Record<PresetResourceKind, boolean>>>({})
   const isConfigAgentActive = activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
   const isVisible = (kind: PresetResourceKind) => presetResourceVisibleInMode(kind, usageMode)
-  const isCollapsed = (kind: PresetResourceKind) => collapsedSections[kind] ?? (kind !== 'director' && kind !== resourceKind)
+  const isCollapsed = (kind: PresetResourceKind) => collapsedSections[kind] ?? kind !== resourceKind
   const visibleKinds = PRESET_DIRECTORY_ORDER.filter(isVisible)
   const hasCollapsedVisibleSections = visibleKinds.some(isCollapsed)
   const DirectoryToggleIcon = hasCollapsedVisibleSections ? ChevronsUpDown : ChevronsDownUp
@@ -379,8 +379,8 @@ export function TellerDirectory({
   }
   useEffect(() => {
     setCollapsedSections((current) => {
-      if (current.director === false && current[resourceKind] === false) return current
-      return { ...current, director: false, [resourceKind]: false }
+      if (current[resourceKind] === false) return current
+      return { ...current, [resourceKind]: false }
     })
   }, [resourceKind])
 
@@ -457,7 +457,7 @@ export function TellerDirectory({
                   Icon={Compass}
                   title={director.name}
                   summary={[
-                    `${director.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.storyDirector.summaryCount', { count: storyDirectorSummaryCount(director) })}`,
+                    `${presetStatusLabel(director, t)} · ${t('settingPanel.storyDirector.summaryCount', { count: storyDirectorSummaryCount(director) })}`,
                     director.strategy?.prompt_markdown?.trim() ? t('settingPanel.storyDirector.strategyPromptEnabled') : '',
                   ].filter(Boolean).join(' · ')}
                   onSelect={() => onSelectStoryDirector(director.id)}
@@ -484,7 +484,7 @@ export function TellerDirectory({
                   active={!isConfigAgentActive && resourceKind === 'teller' && activeTellerId === teller.id}
                   Icon={SlidersHorizontal}
                   title={teller.name}
-                  summary={`${teller.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.enabledRules', { count: (teller.slots || []).filter((slot) => slot.enabled).length })}`}
+                  summary={`${presetStatusLabel(teller, t)} · ${t('settingPanel.enabledRules', { count: (teller.slots || []).filter((slot) => slot.enabled).length })}`}
                   onSelect={() => onSelectTeller(teller.id)}
                 />
               ))}
@@ -509,7 +509,7 @@ export function TellerDirectory({
                   active={!isConfigAgentActive && resourceKind === 'image' && activeImagePresetId === preset.id}
                   Icon={Sparkles}
                   title={preset.name}
-                  summary={`${preset.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.imagePreset.ruleCount', { count: enabledImagePresetSlotCount(preset), total: normalizedImagePresetSlots(preset).length })}`}
+                  summary={`${presetStatusLabel(preset, t)} · ${t('settingPanel.imagePreset.ruleCount', { count: enabledImagePresetSlotCount(preset), total: normalizedImagePresetSlots(preset).length })}`}
                   onSelect={() => onSelectImagePreset(preset.id)}
                 />
               ))}
@@ -534,7 +534,7 @@ export function TellerDirectory({
                   active={!isConfigAgentActive && resourceKind === 'event' && activeEventSystemId === item.id}
                   Icon={ScrollText}
                   title={item.name}
-                  summary={`${item.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.eventSystem.summaryCount', { count: eventSystemSummaryCount(item) })}`}
+                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.eventSystem.summaryCount', { count: eventSystemSummaryCount(item) })}`}
                   onSelect={() => onSelectEventSystem(item.id)}
                 />
               ))}
@@ -559,7 +559,7 @@ export function TellerDirectory({
                   active={!isConfigAgentActive && resourceKind === 'rule' && activeRuleSystemId === item.id}
                   Icon={Dice5}
                   title={item.name}
-                  summary={`${item.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.ruleSystem.summaryCount', { attributes: item.stat_system?.attributes?.length || 0, rules: item.trpg_system?.rule_templates?.length || 0 })}`}
+                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.ruleSystem.summaryCount', { attributes: item.stat_system?.attributes?.length || 0, rules: item.trpg_system?.rule_templates?.length || 0 })}`}
                   onSelect={() => onSelectRuleSystem(item.id)}
                 />
               ))}
@@ -584,7 +584,7 @@ export function TellerDirectory({
                   active={!isConfigAgentActive && resourceKind === 'opening' && activeOpeningSelectorId === item.id}
                   Icon={Sparkles}
                   title={item.name}
-                  summary={`${item.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')} · ${t('settingPanel.openingSelector.summaryCount', { pools: item.opening_selector?.trait_pools?.length || 0, ops: item.opening_selector?.initial_state_ops?.length || 0 })}`}
+                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.openingSelector.summaryCount', { pools: item.opening_selector?.trait_pools?.length || 0, ops: item.opening_selector?.initial_state_ops?.length || 0 })}`}
                   onSelect={() => onSelectOpeningSelector(item.id)}
                 />
               ))}
@@ -684,6 +684,12 @@ function PresetDirectoryItem({
       </span>
     </button>
   )
+}
+
+function presetStatusLabel(item: { custom?: boolean; builtin_overridden?: boolean }, t: (key: string) => string) {
+  if (item.custom) return t('settingPanel.custom')
+  if (item.builtin_overridden) return t('settingPanel.builtInOverridden')
+  return t('settingPanel.builtIn')
 }
 
 export function StoryDirectorEditor({
@@ -788,7 +794,7 @@ export function StoryDirectorEditor({
           <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
         </Field>
         <div className="flex items-end">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{draft.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')}</span>
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{presetStatusLabel(draft, t)}</span>
         </div>
       </div>
       <div className="grid gap-4 p-4">
@@ -1191,7 +1197,7 @@ export function OpeningSelectorEditor({
   )
 }
 
-function ModuleEditorShell<T extends { name: string; description: string; custom: boolean }>({
+function ModuleEditorShell<T extends { name: string; description: string; custom: boolean; builtin_overridden?: boolean }>({
   draft,
   tagDraft,
   setDraft,
@@ -1218,7 +1224,7 @@ function ModuleEditorShell<T extends { name: string; description: string; custom
           <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
         </Field>
         <div className="flex items-end">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{draft.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')}</span>
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{presetStatusLabel(draft, t)}</span>
         </div>
       </div>
       <div className="grid gap-4 p-4">
@@ -1556,7 +1562,7 @@ export function ImagePresetEditor({
           <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
         </Field>
         <div className="flex items-end">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{draft.custom ? t('settingPanel.custom') : t('settingPanel.builtIn')}</span>
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{presetStatusLabel(draft, t)}</span>
         </div>
       </div>
       <div className="grid min-h-[520px] flex-1 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">

@@ -582,16 +582,23 @@ func styleRulePromptSources(rules []StyleRule) []promptSource {
 	sources := make([]promptSource, 0, len(rules))
 	for _, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
-		if scene == "" || (len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0) {
+		if !rule.Global && scene == "" {
+			continue
+		}
+		if len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0 {
 			continue
 		}
 		content := styleRulesSystemInstruction([]StyleRule{rule})
 		if strings.TrimSpace(content) == "" {
 			continue
 		}
+		title := "文风参考：全局"
+		if !rule.Global {
+			title = "文风参考：" + scene
+		}
 		sources = append(sources, promptSource{
 			source:  "系统提示",
-			title:   "场景化风格规则：" + scene,
+			title:   title,
 			content: content,
 			note:    "当前叙事风格",
 		})

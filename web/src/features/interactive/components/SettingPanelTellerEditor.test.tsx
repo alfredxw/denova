@@ -1,11 +1,49 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { runConfigManagerStream } from '@/lib/api'
 import { ImagePresetEditor } from './SettingPanelSections'
 import { TellerEditor } from './SettingPanelTellerEditor'
+import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateStyleReferenceFile } from '../api'
 import type { ImagePreset, Teller } from '../types'
 
+vi.mock('@/lib/api', () => ({
+  runConfigManagerStream: vi.fn(),
+}))
+
+vi.mock('../api', () => ({
+  getStyleReferences: vi.fn(),
+  readStyleReferenceFile: vi.fn(),
+  saveStyleReference: vi.fn(),
+  updateStyleReferenceFile: vi.fn(),
+}))
+
 describe('TellerEditor style contents', () => {
+  beforeEach(() => {
+    vi.mocked(getStyleReferences).mockReset()
+    vi.mocked(readStyleReferenceFile).mockReset()
+    vi.mocked(saveStyleReference).mockReset()
+    vi.mocked(updateStyleReferenceFile).mockReset()
+    vi.mocked(runConfigManagerStream).mockReset()
+    vi.mocked(getStyleReferences).mockResolvedValue([])
+    vi.mocked(readStyleReferenceFile).mockResolvedValue({
+      reference: styleReference(),
+      content: '# 克制细腻\n\n动作、对白和停顿承载情绪。\n',
+      revision: 'r1',
+    })
+    vi.mocked(saveStyleReference).mockImplementation(async (input) => ({
+      name: input.name,
+      description: input.description || '',
+      path: `/tmp/.denova/styles/${input.filename || 'style.md'}`,
+      display_path: `.denova/styles/${input.filename || 'style.md'}`,
+    }))
+    vi.mocked(updateStyleReferenceFile).mockImplementation(async (input) => ({
+      reference: styleReference(),
+      content: `${input.content.replace(/\s+$/, '')}\n`,
+      revision: 'r2',
+    }))
+  })
+
   it('edits image preset tool request slot and caps it at 4000 chars', async () => {
     let currentDraft = imagePreset()
     render(
@@ -65,7 +103,8 @@ describe('TellerEditor style contents', () => {
     const content = '风'.repeat(40500)
     const file = new File([content], 'style.md', { type: 'text/markdown' })
     Object.defineProperty(file, 'text', { value: () => Promise.resolve(content) })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.click(screen.getAllByRole('button', { name: '上传/粘贴' })[1])
+    const input = document.querySelectorAll('input[type="file"]')[1] as HTMLInputElement
     fireEvent.change(input, { target: { files: [file] } })
 
     await waitFor(() => expect(screen.getByText('导入文风参考')).toBeInTheDocument())
@@ -84,7 +123,8 @@ describe('TellerEditor style contents', () => {
     const content = '风'.repeat(500)
     const file = new File([content], 'style.md', { type: 'text/markdown' })
     Object.defineProperty(file, 'text', { value: () => Promise.resolve(content) })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.click(screen.getAllByRole('button', { name: '上传/粘贴' })[0])
+    const input = document.querySelectorAll('input[type="file"]')[0] as HTMLInputElement
     fireEvent.change(input, { target: { files: [file] } })
 
     const dialog = await screen.findByRole('dialog')
@@ -93,7 +133,7 @@ describe('TellerEditor style contents', () => {
     expect(editor.className).toContain('overflow-y-auto')
     expect(editor.className).toContain('[field-sizing:fixed]')
 
-    const save = within(dialog).getByRole('button', { name: '提炼为 md' })
+    const save = within(dialog).getByRole('button', { name: 'AI提炼文风' })
     expect(save).toHaveClass('bg-[var(--nova-active)]')
     expect(save).toHaveClass('text-[var(--nova-text)]')
 
@@ -101,6 +141,160 @@ describe('TellerEditor style contents', () => {
     expect(footer).toHaveClass('!mx-0')
     expect(footer).toHaveClass('!mb-0')
     expect(footer).toHaveClass('bg-[var(--nova-surface)]/95')
+
+    const progressEmpty = within(dialog).getByText('开始提炼后这里会显示配置 Agent 的实时进展。')
+    expect(progressEmpty.parentElement).toHaveClass('flex')
+    expect(progressEmpty.parentElement).toHaveClass('flex-col')
+  })
+
+  it('saves pasted text as a global style reference', async () => {
+    let currentDraft = teller()
+    render(
+      <Harness
+        initial={currentDraft}
+        onChange={(draft) => {
+          currentDraft = draft
+        }}
+        onSave={() => {}}
+      />,
+    )
+
+    fireEvent.click(screen.getAllByRole('button', { name: '上传/粘贴' })[0])
+
+    const dialog = await screen.findByRole('dialog')
+    const editor = within(dialog).getAllByRole('textbox').find((node) => node.tagName.toLowerCase() === 'textarea')
+    if (!editor) throw new Error('textarea editor missing')
+    fireEvent.change(editor, { target: { value: '克制短句，动作承载情绪。' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '直接保存' }))
+
+    await waitFor(() => {
+      expect(currentDraft.style_refs?.[0]).toMatch(/^\.denova\/styles\/style-\d+\.md$/)
+    })
+    const calls = vi.mocked(saveStyleReference).mock.calls
+    expect(calls[calls.length - 1]?.[0].content).toBe('克制短句，动作承载情绪。')
+  })
+
+  it('streams AI style extraction in the Chat panel, reads the generated file, and saves edited Markdown with revision', async () => {
+    let currentDraft = teller()
+    let extractedPath = ''
+    vi.mocked(runConfigManagerStream).mockResolvedValue(streamEvents([
+      { event: 'thinking', data: { content: '正在分析句式和节奏。' } },
+      { event: 'chunk', data: { content: '<style_reference_markdown>\n# 克制雨夜\n\n## 总体原则\n\n短句推进，动作承载情绪。\n</style_reference_markdown>' } },
+      { event: 'done', data: {} },
+    ]))
+    vi.mocked(readStyleReferenceFile).mockImplementation(async (path) => {
+      if (path.startsWith('.denova/styles/style-')) {
+        extractedPath = path
+        return {
+          reference: {
+            name: '克制雨夜',
+            description: '短句推进，动作承载情绪。',
+            path: `/tmp/${path}`,
+            display_path: path,
+          },
+          content: '# 克制雨夜\n\n## 总体原则\n\n短句推进，动作承载情绪。',
+          revision: 'r-extracted',
+        }
+      }
+      return {
+        reference: styleReference(),
+        content: '# 克制细腻\n\n动作、对白和停顿承载情绪。\n',
+        revision: 'r1',
+      }
+    })
+    render(
+      <Harness
+        initial={currentDraft}
+        onChange={(draft) => {
+          currentDraft = draft
+        }}
+        onSave={() => {}}
+      />,
+    )
+
+    fireEvent.click(screen.getAllByRole('button', { name: '上传/粘贴' })[0])
+    const dialog = await screen.findByRole('dialog')
+    const editor = within(dialog).getAllByRole('textbox').find((node) => node.tagName.toLowerCase() === 'textarea') as HTMLTextAreaElement | undefined
+    if (!editor) throw new Error('textarea editor missing')
+    fireEvent.change(editor, { target: { value: '雨落得很轻。他没有立刻回答。' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'AI提炼文风' }))
+
+    await waitFor(() => {
+      expect(within(dialog).getByText('提炼进展')).toBeInTheDocument()
+      expect(within(dialog).getByText(/已写入并选择/)).toBeInTheDocument()
+      expect(editor).toHaveValue('# 克制雨夜\n\n## 总体原则\n\n短句推进，动作承载情绪。')
+      expect(currentDraft.style_refs?.[0]).toMatch(/^\.denova\/styles\/style-\d+\.md$/)
+    })
+    expect(readStyleReferenceFile).toHaveBeenCalledWith(extractedPath)
+    expect(saveStyleReference).not.toHaveBeenCalled()
+
+    fireEvent.change(editor, { target: { value: '# 克制雨夜\n\n编辑后的文风规则。' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(updateStyleReferenceFile).toHaveBeenCalledWith({
+        path: extractedPath,
+        content: '# 克制雨夜\n\n编辑后的文风规则。',
+        base_revision: 'r-extracted',
+      })
+    })
+  })
+
+  it('opens a selected shared style reference for editing and saves with revision', async () => {
+    const existing = styleReference()
+    vi.mocked(getStyleReferences).mockResolvedValue([existing])
+    let currentDraft: Teller = { ...teller(), style_refs: [existing.display_path] }
+    render(
+      <Harness
+        initial={currentDraft}
+        onChange={(draft) => {
+          currentDraft = draft
+        }}
+        onSave={() => {}}
+      />,
+    )
+
+    const editButton = await screen.findByRole('button', { name: '编辑 克制细腻' })
+    fireEvent.click(editButton)
+
+    const dialog = await screen.findByRole('dialog')
+    const editor = await within(dialog).findByPlaceholderText('编辑 Markdown 文风参考内容。')
+    expect(readStyleReferenceFile).toHaveBeenCalledWith(existing.display_path)
+    fireEvent.change(editor, { target: { value: '# 新文风\n\n对白更锋利。' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(updateStyleReferenceFile).toHaveBeenCalledWith({
+        path: existing.display_path,
+        content: '# 新文风\n\n对白更锋利。',
+        base_revision: 'r1',
+      })
+      expect(screen.queryByText('编辑文风参考')).not.toBeInTheDocument()
+    })
+    expect(currentDraft.style_refs).toEqual([existing.display_path])
+  })
+
+  it('opens picker style reference editing without toggling selection', async () => {
+    const existing = styleReference()
+    vi.mocked(getStyleReferences).mockResolvedValue([existing])
+    let currentDraft = teller()
+    render(
+      <Harness
+        initial={currentDraft}
+        onChange={(draft) => {
+          currentDraft = draft
+        }}
+        onSave={() => {}}
+      />,
+    )
+
+    fireEvent.click(screen.getAllByRole('button', { name: '选择参考' })[0])
+    const pickerEdit = await screen.findByRole('button', { name: '编辑 克制细腻' })
+    fireEvent.click(pickerEdit)
+
+    await screen.findByText('编辑文风参考')
+    expect(readStyleReferenceFile).toHaveBeenCalledWith(existing.display_path)
+    expect(currentDraft.style_refs).toEqual([])
   })
 
   it('keeps the teller editor scrollable when style rules grow', () => {
@@ -206,10 +400,31 @@ function teller(): Teller {
     name: '自定义',
     description: '',
     random_event_rate: 0,
+    style_refs: [],
     style_rules: [{ scene: '激烈打斗', style_refs: [] }],
     tags: [],
     context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' },
     slots: [{ id: 'identity', name: '系统提示', target: 'system', enabled: true, content: '规则' }],
     custom: true,
   }
+}
+
+function styleReference() {
+  return {
+    name: '克制细腻',
+    description: '动作、对白和停顿承载情绪',
+    path: '/tmp/.denova/styles/restraint.md',
+    display_path: '.denova/styles/restraint.md',
+  }
+}
+
+function streamEvents(events: Array<{ event: string; data: unknown }>) {
+  return new ReadableStream({
+    start(controller) {
+      for (const event of events) {
+        controller.enqueue({ event: event.event, data: JSON.stringify(event.data) })
+      }
+      controller.close()
+    },
+  })
 }

@@ -1,6 +1,6 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
-import type { BranchSummary, DirectorPlan, EventSystemModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StyleReference, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
+import type { BranchSummary, DirectorPlan, DirectorPlanStatus, EventSystemModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
@@ -64,6 +64,11 @@ export function getInteractiveDirector(storyId: string, branchId?: string): Prom
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director${query}`)
 }
 
+export function getInteractiveDirectorStatus(storyId: string, branchId?: string): Promise<DirectorPlanStatus> {
+  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/status${query}`)
+}
+
 export function updateInteractiveDirector(storyId: string, input: UpdateDirectorPlanInput): Promise<DirectorPlan> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director`, {
     method: 'PATCH',
@@ -74,6 +79,14 @@ export function updateInteractiveDirector(storyId: string, input: UpdateDirector
 
 export function rebuildInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorPlan> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/rebuild`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ branch_id: branchId }),
+  })
+}
+
+export function runInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorPlanStatus> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/run`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ branch_id: branchId }),
@@ -214,6 +227,18 @@ export async function getStyleReferences(): Promise<StyleReference[]> {
 export function saveStyleReference(input: { name: string; description?: string; filename?: string; content: string }): Promise<StyleReference> {
   return requestJSON('/api/styles', {
     method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function readStyleReferenceFile(path: string): Promise<StyleReferenceFileDocument> {
+  return requestJSON(`/api/styles/file?path=${encodeURIComponent(path)}`)
+}
+
+export function updateStyleReferenceFile(input: { path: string; content: string; base_revision?: string }): Promise<StyleReferenceFileDocument> {
+  return requestJSON('/api/styles/file', {
+    method: 'PUT',
     headers: jsonHeaders,
     body: JSON.stringify(input),
   })

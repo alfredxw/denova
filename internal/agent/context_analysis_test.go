@@ -100,6 +100,53 @@ func TestInteractiveContextAnalysisShowsDirectNarrativeOutputProtocol(t *testing
 	}
 }
 
+func TestIDEContextAnalysisShowsToolContextWithoutDenovaMetadata(t *testing.T) {
+	analysis, err := BuildIDEContextAnalysis(
+		&config.Config{},
+		nil,
+		IDEStoryTeller{},
+		nil,
+		[]*schema.Message{
+			schema.UserMessage("读取第一章"),
+			schema.AssistantMessage("", []schema.ToolCall{{
+				ID:   "call-read",
+				Type: "function",
+				Function: schema.FunctionCall{
+					Name:      "read_file",
+					Arguments: `{"path":"chapters/1.md"}`,
+				},
+			}}),
+			schema.ToolMessage("第一章内容\n\n"+toolResultMetadataHeader+"\nschema: tool_result.v1", "call-read", schema.WithToolName("read_file")),
+			schema.AssistantMessage("已读取", nil),
+		},
+		4,
+		nil,
+		nil,
+		ChatRequest{Message: "继续"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawToolCall, sawToolResult bool
+	for _, part := range analysis.ContextMessages {
+		switch part.Kind {
+		case "tool_call":
+			sawToolCall = true
+			if part.ToolName != "read_file" || !strings.Contains(part.Content, `{"path":"chapters/1.md"}`) {
+				t.Fatalf("tool call part should include tool name and args: %#v", part)
+			}
+		case "tool_result":
+			sawToolResult = true
+			if part.ToolName != "read_file" || part.Content != "第一章内容" || strings.Contains(part.Content, toolResultMetadataHeader) {
+				t.Fatalf("tool result part should be sanitized: %#v", part)
+			}
+		}
+	}
+	if !sawToolCall || !sawToolResult {
+		t.Fatalf("context analysis should include tool call and result parts: %#v", analysis.ContextMessages)
+	}
+}
+
 func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
 	analysis, err := BuildIDEContextAnalysis(
 		&config.Config{},
@@ -123,7 +170,7 @@ func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
 	}
 	var foundSystemPart bool
 	for _, part := range analysis.SystemPromptParts {
-		if part.Title == "场景化风格规则：激烈打斗" && strings.Contains(part.Content, "短句留白") {
+		if part.Title == "文风参考：激烈打斗" && strings.Contains(part.Content, "短句留白") {
 			foundSystemPart = true
 		}
 	}
@@ -134,7 +181,7 @@ func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
 		t.Fatal("context messages should not be empty")
 	}
 	final := analysis.ContextMessages[len(analysis.ContextMessages)-1].Content
-	if strings.Contains(final, "场景化风格规则") || strings.Contains(final, "短句留白") {
+	if strings.Contains(final, "文风参考") || strings.Contains(final, "短句留白") {
 		t.Fatalf("style rule should not be appended to final user message:\n%s", final)
 	}
 }
@@ -162,7 +209,7 @@ func TestInteractiveContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing
 	}
 	var foundSystemPart bool
 	for _, part := range analysis.SystemPromptParts {
-		if part.Title == "场景化风格规则：日常对话" && strings.Contains(part.Content, "克制对白") {
+		if part.Title == "文风参考：日常对话" && strings.Contains(part.Content, "克制对白") {
 			foundSystemPart = true
 		}
 	}
@@ -170,7 +217,7 @@ func TestInteractiveContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing
 		t.Fatalf("style rule should be a system prompt part: %#v", analysis.SystemPromptParts)
 	}
 	final := analysis.ContextMessages[len(analysis.ContextMessages)-1].Content
-	if strings.Contains(final, "场景化风格规则") || strings.Contains(final, "克制对白") {
+	if strings.Contains(final, "文风参考") || strings.Contains(final, "克制对白") {
 		t.Fatalf("style rule should not be appended to final interactive message:\n%s", final)
 	}
 }

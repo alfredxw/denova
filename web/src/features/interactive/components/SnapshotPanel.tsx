@@ -32,7 +32,9 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
   const sceneEntries = Object.entries(scene).filter(([key]) => !SCENE_METRIC_KEYS.has(key))
   const stateStatus = snapshot?.current_turn?.state_status
   const directorPlan = snapshot?.director_plan
+  const directorStatus = snapshot?.director_plan_status
   const directorMetadata = directorPlan?.metadata
+  const directorRun = directorStatus || directorMetadata?.last_run
   const ruleResolution = snapshot?.current_turn?.rule_resolution
   const acceptedBrief = ruleResolution?.accepted_brief || snapshot?.current_turn?.turn_brief
   const ruleResults = ruleResolution?.rule_results || []
@@ -85,29 +87,27 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
           </div>
         </section>
 
-        {directorPlan ? (
+        {directorStatus || directorPlan ? (
           <section className={panelSectionClass}>
             <div className={sectionTitleClass}>
               <Sparkles className="h-3.5 w-3.5" />
               {t('snapshot.director.title')}
             </div>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(72px,1fr))] gap-2">
-              <SnapshotMetric label={t('snapshot.director.status')} value={directorMetadata?.last_run?.status || t('snapshot.noRecord')} />
-              <SnapshotMetric label={t('snapshot.director.docs')} value={String(Object.keys(directorMetadata?.docs || {}).length || 3)} />
+              <SnapshotMetric label={t('snapshot.director.status')} value={directorRun?.status || t('snapshot.noRecord')} />
+              <SnapshotMetric label={t('snapshot.director.docs')} value={directorStatus ? `${directorStatus.completed_docs}/${directorStatus.planned_docs}` : String(Object.keys(directorMetadata?.docs || {}).length || 3)} />
               <SnapshotMetric label={t('snapshot.director.branchPlanningTurns')} value={String(directorMetadata?.branch_planning_turns || 5)} />
             </div>
-            {directorPlan.visible_docs?.mainline || directorPlan.visible_docs?.current_event ? (
-              <div className={`${panelCardClass} mt-3 p-2 text-xs text-[var(--nova-text-muted)]`}>
-                <StateValue value={compactRecord({
-                  mainline: directorPlan.visible_docs?.mainline,
-                  current_event: directorPlan.visible_docs?.current_event,
-                })} />
-              </div>
-            ) : null}
-            {directorMetadata?.last_run ? (
+            {directorRun ? (
               <div className={`${panelCardClass} mt-3 p-2 text-xs text-[var(--nova-text-muted)]`}>
                 <div className="mb-1 font-medium text-[var(--nova-text)]">{t('snapshot.director.lastRun')}</div>
-                <StateValue value={directorMetadata.last_run} />
+                <StateValue value={compactRecord({
+                  status: directorRun.status,
+                  summary: directorRun.summary,
+                  error: directorRun.error,
+                  source_turn_id: directorRun.source_turn_id,
+                  updated_at: directorRun.updated_at,
+                })} />
               </div>
             ) : null}
           </section>

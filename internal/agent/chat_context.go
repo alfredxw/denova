@@ -142,7 +142,10 @@ func boundedStyleRules(rules []StyleRule, maxChars int) []StyleRule {
 	used := 0
 	for _, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
-		if scene == "" || (len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0) {
+		if !rule.Global && scene == "" {
+			continue
+		}
+		if len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0 {
 			continue
 		}
 		refs := make([]prompts.StyleReference, 0, len(rule.StyleReferences))
@@ -201,7 +204,7 @@ func boundedStyleRules(rules []StyleRule, maxChars int) []StyleRule {
 		}
 		if len(contents) > 0 || len(refs) > 0 {
 			used += len([]rune(scene)) + 16
-			result = append(result, StyleRule{Scene: scene, StyleReferences: refs, StyleContents: contents})
+			result = append(result, StyleRule{Global: rule.Global, Scene: scene, StyleReferences: refs, StyleContents: contents})
 		}
 		if used >= maxChars {
 			break

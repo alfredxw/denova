@@ -50,8 +50,10 @@ describe('MemoryPanel', () => {
       method: 'POST',
       body: JSON.stringify({ branch_id: 'main', source: 'auto' }),
     })))
+    expect(screen.getByRole('button', { name: '记忆' })).toHaveClass('bg-[var(--nova-active)]')
     expect(screen.getByRole('button', { name: '记忆内容' })).toHaveClass('bg-[var(--nova-active)]')
     expect(screen.getAllByText('顾清漪').length).toBeGreaterThan(0)
+    expect(screen.queryByText('导演编排可能涉及剧透')).not.toBeInTheDocument()
     expect(screen.queryByText('自动整理当前回合的故事记忆')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '整理过程' }))
@@ -65,18 +67,19 @@ describe('MemoryPanel', () => {
   })
 
   it('shows director plan and rule audit from the current snapshot', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (url.includes('/director')) return Response.json(directorPlan())
       return Response.json(storyMemoryState())
-    }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     render(<MemoryPanel storyId="story-1" branchId="main" snapshot={{
       story_id: 'story-1',
       branch_id: 'main',
       turns: [],
       state: {},
-      director_plan: directorPlan(),
+      director_plan_status: directorStatus('failed'),
       current_turn: {
         id: 'turn-1',
         parent_id: null,
@@ -108,7 +111,15 @@ describe('MemoryPanel', () => {
     }} />)
 
     await waitFor(() => expect(screen.getAllByText('顾清漪').length).toBeGreaterThan(0))
-    expect(screen.getByText('导演编排')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue(/公开压力升高/)).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/director'))).toBe(false)
+    await openDirectorPanel()
+    expect(screen.getByText('导演编排可能涉及剧透')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue(/公开压力升高/)).not.toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/director'))).toBe(false)
+    await userEvent.click(screen.getByRole('button', { name: '查看导演编排' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/director?branch=main'))).toBe(true))
+    expect(screen.getAllByText('导演编排').length).toBeGreaterThan(0)
     expect(screen.getByDisplayValue(/公开压力升高/)).toBeInTheDocument()
     expect(screen.getByText('最近后台更新')).toBeInTheDocument()
     expect(screen.getByText('failed')).toBeInTheDocument()
@@ -142,9 +153,12 @@ describe('MemoryPanel', () => {
       branch_id: 'main',
       turns: [],
       state: {},
-      director_plan: directorPlan(),
+      director_plan_status: directorStatus('ready'),
     }} />)
 
+    await openDirectorPanel()
+    await userEvent.click(screen.getByRole('button', { name: '查看导演编排' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '重建导演计划' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: '重建导演计划' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/director/rebuild', expect.objectContaining({
@@ -173,9 +187,12 @@ describe('MemoryPanel', () => {
       branch_id: 'main',
       turns: [],
       state: {},
-      director_plan: directorPlan(),
+      director_plan_status: directorStatus('ready'),
     }} />)
 
+    await openDirectorPanel()
+    await userEvent.click(screen.getByRole('button', { name: '查看导演编排' }))
+    await waitFor(() => expect(screen.getByLabelText('大方向')).toBeInTheDocument())
     await userEvent.clear(screen.getByLabelText('大方向'))
     await userEvent.type(screen.getByLabelText('大方向'), '新主线')
     await userEvent.click(screen.getByRole('button', { name: '保存' }))
@@ -222,6 +239,9 @@ describe('MemoryPanel', () => {
       },
     }} />)
 
+    await openDirectorPanel()
+    await userEvent.click(screen.getByRole('button', { name: '查看导演编排' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '重抽规则结算' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: '重抽规则结算' }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/rules/resolutions/rr_1/reroll', expect.objectContaining({
@@ -231,6 +251,11 @@ describe('MemoryPanel', () => {
     await waitFor(() => expect(onSnapshotRefresh).toHaveBeenCalledTimes(1))
   })
 })
+
+async function openDirectorPanel() {
+  await waitFor(() => expect(screen.getByRole('button', { name: '记忆' })).toHaveClass('bg-[var(--nova-active)]'))
+  await userEvent.click(screen.getByRole('button', { name: '导演编排' }))
+}
 
 function sse(events: Array<[string, unknown]>) {
   return events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('')
@@ -316,5 +341,23 @@ function directorPlan(overrides: Partial<{ mainline: string; current_event: stri
       },
       last_run: { status: 'failed', summary: '后台导演更新失败，已保留本回合正文。', error: 'director unavailable' },
     },
+  }
+}
+
+function directorStatus(status: string) {
+  return {
+    story_id: 'story-1',
+    branch_id: 'main',
+    status,
+    summary: status === 'failed' ? '后台导演更新失败，已保留本回合正文。' : '后台导演已更新三层规划。',
+    error: status === 'failed' ? 'director unavailable' : '',
+    source_turn_id: 'turn-1',
+    updated_at: '2026-06-19T06:00:00Z',
+    planned_docs: 3,
+    completed_docs: status === 'ready' ? 3 : 0,
+    doc_bytes: 600,
+    visible_bytes: 260,
+    start_ready: status === 'ready',
+    blocking: status === 'failed',
   }
 }

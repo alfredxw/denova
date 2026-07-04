@@ -11,9 +11,9 @@ Use this skill before calling `write_tellers`.
 ## Workflow
 
 1. Call `list_tellers` first. For updates, call `read_tellers` for the exact teller IDs.
-2. Call `list_style_references` before editing `style_rules`. If a needed reference does not exist, use `write_style_references` to create a `.denova/styles/*.md` Markdown file first.
+2. Call `list_style_references` before editing `style_refs` or `style_rules`. If a needed reference does not exist, use `write_style_references` to create a `.denova/styles/*.md` Markdown file first.
 3. Use `write_tellers` for create/update/delete. Do not edit teller JSON files directly.
-4. Built-in narrative styles can be read and copied as examples. Deleting built-in styles is rejected.
+4. Updating a built-in narrative-style ID creates a user-space override of that same ID. Deleting a built-in ID is only for restoring the code-defined default and requires an explicit restore request.
 5. For update, preserve slots and policy fields the user did not ask to change.
 6. For delete, require an explicit user request.
 7. Do not create or update `orchestration` here. Events, stats, TRPG checks, and opening trait rolls belong in `story-director-config` and `write_story_directors`.
@@ -30,7 +30,7 @@ Important fields:
 - `context_policy`: controls which context groups the teller expects.
 - `slots`: prompt slots used by writing and interactive story prompt assembly.
 
-Do not change `version`, `path`, `custom`, `invalid`, `error`, `created_at`, or `updated_at` unless preserving an existing complete object from `read_tellers`.
+Do not change `version`, `path`, `custom`, `builtin_overridden`, `invalid`, `error`, `created_at`, or `updated_at` unless preserving an existing complete object from `read_tellers`.
 
 ## Context Policy
 
@@ -59,15 +59,17 @@ When modifying slots:
 - Do not put story facts, chapter prose, or temporary scene state into teller slots.
 - If a new slot target is needed, mirror the target style already present in existing tellers.
 
-## Style Rules
+## Style References
 
-`style_rules` maps scenes to shared style reference files:
+Top-level `style_refs` lists shared style reference files that apply to every scene by default.
+
+`style_rules` maps specific scenes to shared style reference files:
 
 - `scene`: scenario label.
 - `style_refs`: list of paths returned by `list_style_references`, usually `.denova/styles/<name>.md`.
 - `style_contents`: legacy inline snippets. Preserve existing values unless the user asks to migrate them, but do not add new inline content.
 
-Only add style rules when the user asks for scene-specific style behavior or when an existing teller already uses that pattern.
+Use top-level `style_refs` when the user wants one reference style to affect all scenes. Only add `style_rules` when the user asks for scene-specific style behavior or when an existing teller already uses that pattern.
 
 ## Shared Style References
 

@@ -5,6 +5,7 @@ import { MessageList } from './MessageList'
 import { clearConfigManagerSession, getConfigManagerMessages, runConfigManagerStream } from '@/lib/api'
 import type { ChatMessage, ConfigManagerRunRequest, SSEEvent } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
+import { appendConfigManagerMessage, parseConfigManagerPayload, reduceConfigManagerMessages, type ConfigManagerToolPayload } from './config-manager-events'
 
 interface ConfigManagerChatProps {
   workspace?: string
@@ -63,86 +64,16 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
   }, [chatKey, loadMessages])
 
   const appendMessage = (message: ChatMessage) => {
-    setMessages((current) => [...current, { ...message, id: message.id || `${Date.now()}-${current.length}` }])
-  }
-
-  const appendStreaming = (role: ChatMessage['role'], content: string, metadata: ChatEventMetadata = {}) => {
-    if (!content) return
-    setMessages((current) => {
-      const last = current[current.length - 1]
-      if (last?.role === role && last.status !== 'success' && sameChatEventSource(last, metadata)) {
-        return [...current.slice(0, -1), { ...last, content: `${last.content || ''}${content}` }]
-      }
-      return [...current, { id: `${Date.now()}-${current.length}`, role, content, ...metadata }]
-    })
-  }
-
-  const upsertToolCall = (payload: ToolPayload) => {
-    const id = payload.id || `tool-${Date.now()}`
-    const name = payload.name || t('configManager.tool')
-    setMessages((current) => {
-      const existing = current.findIndex((message) => message.id === id)
-      const next: ChatMessage = { id, role: 'tool_call', content: name, name, args: payload.args || '', status: 'running', ...metadataFromPayload(payload) }
-      if (existing >= 0) return current.map((message, index) => index === existing ? { ...message, ...next, args: message.args || next.args } : message)
-      return [...current, next]
-    })
-  }
-
-  const appendToolArgs = (payload: ToolPayload) => {
-    if (!payload.id || !payload.delta) return
-    setMessages((current) => current.map((message) => (
-      message.id === payload.id && message.role === 'tool_call'
-        ? { ...message, args: `${message.args || ''}${payload.delta}` }
-        : message
-    )))
-  }
-
-  const finishToolCall = (payload: ToolPayload) => {
-    if (!payload.id) return
-    setMessages((current) => current.map((message) => (
-      message.id === payload.id && message.role === 'tool_call'
-        ? { ...message, status: 'success', result: payload.content || '', ...metadataFromPayload(payload) }
-        : message
-    )))
-    onMutated?.()
+    setMessages((current) => appendConfigManagerMessage(current, message, 'config-manager'))
   }
 
   const handleEvent = (event: SSEEvent) => {
-    if (event.event === 'thinking') {
-      const payload = parsePayload<ToolPayload>(event.data)
-      appendStreaming('thinking', payload?.content || '', metadataFromPayload(payload))
-      return
-    }
-    if (event.event === 'chunk') {
-      const payload = parsePayload<ToolPayload>(event.data)
-      appendStreaming('assistant', payload?.content || '', metadataFromPayload(payload))
-      return
-    }
-    if (event.event === 'tool_call') {
-      const payload = parsePayload<ToolPayload>(event.data)
-      if (payload) upsertToolCall(payload)
-      return
-    }
-    if (event.event === 'tool_args_delta') {
-      const payload = parsePayload<ToolPayload>(event.data)
-      if (payload) appendToolArgs(payload)
-      return
-    }
-    if (event.event === 'tool_result') {
-      const payload = parsePayload<ToolPayload>(event.data)
-      if (payload) finishToolCall(payload)
-      return
-    }
-    if (event.event === 'token_usage') {
-      const payload = parsePayload<Record<string, unknown>>(event.data)
-      if (payload) {
-        setMessages((current) => upsertTokenUsageMessage(current, buildTokenUsageMessage(payload)))
-      }
-      return
-    }
-    if (event.event === 'error') {
-      appendMessage({ role: 'error', content: parsePayload<{ message?: string }>(event.data)?.message || t('configManager.runFailed') })
-    }
+    setMessages((current) => reduceConfigManagerMessages(current, event, {
+      idPrefix: 'config-manager',
+      toolLabel: t('configManager.tool'),
+      failureMessage: t('configManager.runFailed'),
+    }))
+    if (event.event === 'tool_result' && parseConfigManagerPayload<ConfigManagerToolPayload>(event.data)) onMutated?.()
   }
 
   const send = async (message: string) => {
@@ -213,125 +144,4 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
       />
     </div>
   )
-}
-
-interface ToolPayload {
-  id?: string
-  name?: string
-  args?: string
-  delta?: string
-  content?: string
-  run_id?: string
-  agent_name?: string
-  root_agent_name?: string
-  run_path?: string[]
-  subagent?: boolean
-  subagent_session_id?: string
-  subagent_type?: string
-}
-
-type ChatEventMetadata = Pick<ChatMessage, 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_session_id' | 'subagent_type'>
-
-function parsePayload<T>(data: string): T | null {
-  try {
-    return JSON.parse(data) as T
-  } catch {
-    return null
-  }
-}
-
-function metadataFromPayload(payload?: ToolPayload | null): ChatEventMetadata {
-  if (!payload) return {}
-  return {
-    run_id: payload.run_id,
-    agent_name: payload.agent_name,
-    root_agent_name: payload.root_agent_name,
-    run_path: payload.run_path,
-    subagent: payload.subagent,
-    subagent_session_id: payload.subagent_session_id,
-    subagent_type: payload.subagent_type,
-  }
-}
-
-function buildTokenUsageMessage(data: Record<string, unknown>): ChatMessage {
-  const runId = readString(data.run_id)
-  return {
-    role: 'token_usage',
-    id: runId || `token-usage-${Date.now()}`,
-    content: readString(data.content),
-    run_id: runId,
-    agent_kind: readString(data.agent_kind),
-    prompt_tokens: readNumber(data.prompt_tokens),
-    cached_prompt_tokens: readNumber(data.cached_prompt_tokens),
-    uncached_prompt_tokens: readNumber(data.uncached_prompt_tokens),
-    cache_hit_rate: readNumber(data.cache_hit_rate),
-    completion_tokens: readNumber(data.completion_tokens),
-    reasoning_tokens: readNumber(data.reasoning_tokens),
-    total_tokens: readNumber(data.total_tokens),
-    model_calls: readNumber(data.model_calls),
-    generated_bytes: readNumber(data.generated_bytes),
-    usage_calls: readUsageCalls(data.usage_calls),
-    created_at: readString(data.created_at) || new Date().toISOString(),
-  }
-}
-
-function upsertTokenUsageMessage(messages: ChatMessage[], next: ChatMessage) {
-  if (!next.run_id) return [...messages, next]
-  let found = false
-  const updated = messages.map((message) => {
-    if (message.role === 'token_usage' && message.run_id === next.run_id) {
-      found = true
-      return { ...message, ...next }
-    }
-    return message
-  })
-  return found ? updated : [...updated, next]
-}
-
-function readUsageCalls(value: unknown) {
-  if (!Array.isArray(value)) return undefined
-  const calls = value
-    .map((item) => {
-      if (!item || typeof item !== 'object') return null
-      const call = item as Record<string, unknown>
-      return {
-        index: readNumber(call.index),
-        created_at: readString(call.created_at),
-        finish_reason: readString(call.finish_reason),
-        requested_tools: readStringArray(call.requested_tools),
-        after_tools: readStringArray(call.after_tools),
-        prompt_tokens: readNumber(call.prompt_tokens),
-        cached_prompt_tokens: readNumber(call.cached_prompt_tokens),
-        uncached_prompt_tokens: readNumber(call.uncached_prompt_tokens),
-        cache_hit_rate: readNumber(call.cache_hit_rate),
-        completion_tokens: readNumber(call.completion_tokens),
-        reasoning_tokens: readNumber(call.reasoning_tokens),
-        total_tokens: readNumber(call.total_tokens),
-      }
-    })
-    .filter((call): call is NonNullable<typeof call> => Boolean(call))
-  return calls.length > 0 ? calls : undefined
-}
-
-function readStringArray(value: unknown) {
-  if (!Array.isArray(value)) return undefined
-  const result = value.map((item) => readString(item)).filter(Boolean)
-  return result.length > 0 ? result : undefined
-}
-
-function readString(value: unknown) {
-  return typeof value === 'string' ? value : ''
-}
-
-function readNumber(value: unknown) {
-  const numberValue = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(numberValue) ? numberValue : 0
-}
-
-function sameChatEventSource(message: ChatMessage, metadata: ChatEventMetadata) {
-  return Boolean(message.subagent) === Boolean(metadata.subagent) &&
-    (message.subagent_session_id || '') === (metadata.subagent_session_id || '') &&
-    (message.agent_name || '') === (metadata.agent_name || '') &&
-    (message.root_agent_name || '') === (metadata.root_agent_name || '') &&
-    (message.run_path || []).join('/') === (metadata.run_path || []).join('/')
 }

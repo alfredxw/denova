@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -30,22 +31,24 @@ type TellerLibrary struct {
 var ErrTellerRevisionConflict = errors.New("叙事风格已被其他操作更新，请重新加载后再保存")
 
 type Teller struct {
-	Version         int                        `json:"version"`
-	ID              string                     `json:"id"`
-	Name            string                     `json:"name"`
-	Description     string                     `json:"description"`
-	RandomEventRate float64                    `json:"random_event_rate"`
-	StyleRules      []StyleRule                `json:"style_rules,omitempty"`
-	Orchestration   *TellerOrchestrationConfig `json:"orchestration,omitempty"`
-	Tags            []string                   `json:"tags"`
-	ContextPolicy   TellerContextPolicy        `json:"context_policy"`
-	Slots           []TellerPromptSlot         `json:"slots"`
-	Path            string                     `json:"path,omitempty"`
-	Custom          bool                       `json:"custom"`
-	Invalid         bool                       `json:"invalid,omitempty"`
-	Error           string                     `json:"error,omitempty"`
-	CreatedAt       string                     `json:"created_at,omitempty"`
-	UpdatedAt       string                     `json:"updated_at,omitempty"`
+	Version           int                        `json:"version"`
+	ID                string                     `json:"id"`
+	Name              string                     `json:"name"`
+	Description       string                     `json:"description"`
+	RandomEventRate   float64                    `json:"random_event_rate"`
+	StyleRefs         []string                   `json:"style_refs,omitempty"`
+	StyleRules        []StyleRule                `json:"style_rules,omitempty"`
+	Orchestration     *TellerOrchestrationConfig `json:"orchestration,omitempty"`
+	Tags              []string                   `json:"tags"`
+	ContextPolicy     TellerContextPolicy        `json:"context_policy"`
+	Slots             []TellerPromptSlot         `json:"slots"`
+	Path              string                     `json:"path,omitempty"`
+	Custom            bool                       `json:"custom"`
+	BuiltinOverridden bool                       `json:"builtin_overridden,omitempty"`
+	Invalid           bool                       `json:"invalid,omitempty"`
+	Error             string                     `json:"error,omitempty"`
+	CreatedAt         string                     `json:"created_at,omitempty"`
+	UpdatedAt         string                     `json:"updated_at,omitempty"`
 }
 
 type TellerContextPolicy struct {
@@ -152,7 +155,7 @@ func (l *TellerLibrary) List() ([]Teller, error) {
 			continue
 		}
 		teller.Path = file
-		teller.Custom = !isBuiltinID(teller.ID)
+		teller = applyTellerOwnership(teller)
 		tellers = append(tellers, teller)
 	}
 	sort.Slice(tellers, func(i, j int) bool {
@@ -175,7 +178,7 @@ func (l *TellerLibrary) Get(id string) (Teller, error) {
 	if err != nil {
 		return Teller{}, err
 	}
-	teller.Custom = !isBuiltinID(teller.ID)
+	teller = applyTellerOwnership(teller)
 	return teller, nil
 }
 
@@ -187,6 +190,7 @@ func (l *TellerLibrary) Create(teller Teller) (Teller, error) {
 	if teller.ID == "" {
 		teller.ID = newTellerID()
 	}
+	teller.BuiltinOverridden = false
 	if err := validateTeller(teller); err != nil {
 		return Teller{}, err
 	}
@@ -203,7 +207,7 @@ func (l *TellerLibrary) Create(teller Teller) (Teller, error) {
 		return Teller{}, err
 	}
 	teller.Path = path
-	teller.Custom = !isBuiltinID(teller.ID)
+	teller = applyTellerOwnership(teller)
 	return teller, nil
 }
 
@@ -214,9 +218,7 @@ func (l *TellerLibrary) Update(id string, teller Teller, baseRevision ...string)
 	if err := validateTellerID(id); err != nil {
 		return Teller{}, err
 	}
-	if isBuiltinID(id) {
-		return Teller{}, errors.New("内置叙事风格不能修改，请复制后编辑")
-	}
+	isBuiltin := isBuiltinID(id)
 	current, err := l.Get(id)
 	if err != nil {
 		return Teller{}, err
@@ -224,9 +226,14 @@ func (l *TellerLibrary) Update(id string, teller Teller, baseRevision ...string)
 	if firstTellerRevision(baseRevision) != "" && current.UpdatedAt != firstTellerRevision(baseRevision) {
 		return Teller{}, ErrTellerRevisionConflict
 	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
 	teller.ID = id
 	teller.CreatedAt = current.CreatedAt
-	teller.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	if teller.CreatedAt == "" {
+		teller.CreatedAt = now
+	}
+	teller.UpdatedAt = now
+	teller.BuiltinOverridden = isBuiltin
 	teller = normalizeTeller(teller)
 	if err := validateTeller(teller); err != nil {
 		return Teller{}, err
@@ -236,7 +243,7 @@ func (l *TellerLibrary) Update(id string, teller Teller, baseRevision ...string)
 		return Teller{}, err
 	}
 	teller.Path = path
-	teller.Custom = !isBuiltinID(teller.ID)
+	teller = applyTellerOwnership(teller)
 	return teller, nil
 }
 
@@ -252,9 +259,20 @@ func (l *TellerLibrary) Delete(id string) error {
 		return err
 	}
 	if isBuiltinID(id) {
-		return errors.New("内置导演不能删除")
+		return l.restoreBuiltin(id)
 	}
 	return os.Remove(filepath.Join(l.dir(), id+".json"))
+}
+
+func (l *TellerLibrary) restoreBuiltin(id string) error {
+	teller, ok := builtinTellers[id]
+	if !ok {
+		return fmt.Errorf("内置叙事风格不存在: %s", id)
+	}
+	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
+		return err
+	}
+	return writeTellerFile(filepath.Join(l.dir(), id+".json"), teller)
 }
 
 func (l *TellerLibrary) dir() string {
@@ -269,6 +287,9 @@ func (l *TellerLibrary) ensureBuiltins() error {
 		path := filepath.Join(l.dir(), id+".json")
 		version, versionErr := readTellerFileVersion(path)
 		current, parseErr := parseTellerFile(path)
+		if parseErr == nil && current.BuiltinOverridden {
+			continue
+		}
 		if versionErr == nil && parseErr == nil && current.Version == tellerVersion && version == tellerVersion {
 			continue
 		}
@@ -319,6 +340,37 @@ func writeTellerFile(path string, teller Teller) error {
 	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
+func applyTellerOwnership(teller Teller) Teller {
+	if !isBuiltinID(teller.ID) {
+		teller.Custom = true
+		teller.BuiltinOverridden = false
+		return teller
+	}
+	teller.Custom = false
+	teller.BuiltinOverridden = teller.BuiltinOverridden || tellerDiffersFromBuiltin(teller)
+	return teller
+}
+
+func tellerDiffersFromBuiltin(teller Teller) bool {
+	builtin, ok := builtinTellers[teller.ID]
+	if !ok {
+		return false
+	}
+	return !reflect.DeepEqual(tellerComparable(teller), tellerComparable(builtin))
+}
+
+func tellerComparable(teller Teller) Teller {
+	teller = normalizeTeller(teller)
+	teller.Path = ""
+	teller.Custom = false
+	teller.BuiltinOverridden = false
+	teller.Invalid = false
+	teller.Error = ""
+	teller.CreatedAt = ""
+	teller.UpdatedAt = ""
+	return teller
+}
+
 func (t Teller) PromptForTargets(targets ...string) string {
 	allowed := map[string]bool{}
 	for _, target := range targets {
@@ -339,6 +391,7 @@ func normalizeTeller(teller Teller) Teller {
 	teller.ID = strings.TrimSpace(teller.ID)
 	teller.Name = strings.TrimSpace(teller.Name)
 	teller.Description = strings.TrimSpace(teller.Description)
+	teller.StyleRefs = normalizeStyleRefs(teller.StyleRefs, MaxStyleRefsPerRule)
 	teller.StyleRules = normalizeStyleRules(teller.StyleRules)
 	teller.Orchestration = normalizeTellerOrchestrationPointer(teller.Orchestration)
 	teller.Tags = normalizeTellerTags(teller.Tags)
@@ -354,19 +407,7 @@ func normalizeStyleRules(rules []StyleRule) []StyleRule {
 		if scene == "" {
 			continue
 		}
-		refs := make([]string, 0, len(rule.StyleRefs))
-		seenRefs := map[string]bool{}
-		for _, ref := range rule.StyleRefs {
-			ref = styleref.NormalizeStoragePath(ref)
-			if ref == "" || seenRefs[ref] {
-				continue
-			}
-			seenRefs[ref] = true
-			refs = append(refs, ref)
-			if len(refs) >= MaxStyleRefsPerRule {
-				break
-			}
-		}
+		refs := normalizeStyleRefs(rule.StyleRefs, MaxStyleRefsPerRule)
 		contents := make([]string, 0, len(rule.StyleContents))
 		seen := map[string]bool{}
 		for _, content := range rule.StyleContents {
@@ -383,6 +424,26 @@ func normalizeStyleRules(rules []StyleRule) []StyleRule {
 		result = append(result, StyleRule{Scene: scene, StyleRefs: refs, StyleContents: contents})
 	}
 	return result
+}
+
+func normalizeStyleRefs(input []string, max int) []string {
+	if max <= 0 {
+		return nil
+	}
+	refs := make([]string, 0, len(input))
+	seen := map[string]bool{}
+	for _, ref := range input {
+		ref = styleref.NormalizeStoragePath(ref)
+		if ref == "" || seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		refs = append(refs, ref)
+		if len(refs) >= max {
+			break
+		}
+	}
+	return refs
 }
 
 func DefaultTellerOrchestrationConfig() TellerOrchestrationConfig {

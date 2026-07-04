@@ -18,7 +18,7 @@ export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenCh
   const { t } = useTranslation()
   const [removingCompaction, setRemovingCompaction] = useState(false)
   const [removeError, setRemoveError] = useState<string | null>(null)
-  const finalMessageParts = analysis ? buildFinalMessageParts(analysis.context_messages) : []
+  const finalMessageGroups = analysis ? buildFinalMessageGroups(analysis.context_messages, t) : []
   const handleRemoveCompaction = async () => {
     if (!onRemoveCompaction || removingCompaction) return
     setRemovingCompaction(true)
@@ -63,10 +63,9 @@ export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenCh
             <div className="space-y-4">
               <ContextUsageSummary analysis={analysis} />
               <ContextAnalysisSection title={t('chat.contextAnalysis.systemPrompt')} parts={analysis.system_prompt_parts} />
-              <ContextAnalysisSection
+              <ContextAnalysisMessageGroups
                 title={t('chat.contextAnalysis.finalMessages')}
-                parts={finalMessageParts}
-                showRole
+                groups={finalMessageGroups}
                 compaction={analysis.compaction}
                 removingCompaction={removingCompaction}
                 removeCompactionError={removeError}

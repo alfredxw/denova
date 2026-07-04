@@ -260,6 +260,8 @@ func (s *Store) StoryContext(storyID, branchID string) (StoryContext, error) {
 	}
 	if plan, planErr := s.readDirectorPlanLocked(storyID, snapshot.BranchID); planErr == nil {
 		snapshot.DirectorPlan = &plan
+		status := DirectorPlanStatusFromPlan(plan, len(snapshot.Turns) > 0)
+		snapshot.DirectorPlanStatus = &status
 	}
 	usageEvents, err := s.readTokenUsageEventsLocked(storyID, snapshot.BranchID)
 	if err != nil {
@@ -1045,6 +1047,8 @@ func (s *Store) Snapshot(storyID, branchID string) (Snapshot, error) {
 	}
 	if plan, planErr := s.readDirectorPlanLocked(storyID, snapshot.BranchID); planErr == nil {
 		snapshot.DirectorPlan = &plan
+		status := DirectorPlanStatusFromPlan(plan, len(snapshot.Turns) > 0)
+		snapshot.DirectorPlanStatus = &status
 	}
 	usageEvents, err := s.readTokenUsageEventsLocked(storyID, snapshot.BranchID)
 	if err != nil {

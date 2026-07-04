@@ -46,37 +46,138 @@ type ContextAnalysisCompaction struct {
 }
 
 type ContextAnalysisPart struct {
-	ID      string `json:"id,omitempty"`
-	Source  string `json:"source"`
-	Title   string `json:"title"`
-	Role    string `json:"role,omitempty"`
-	Content string `json:"content"`
-	Note    string `json:"note,omitempty"`
-	Bytes   int    `json:"bytes"`
-	Chars   int    `json:"chars"`
+	ID         string `json:"id,omitempty"`
+	Source     string `json:"source"`
+	Title      string `json:"title"`
+	Role       string `json:"role,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	ToolName   string `json:"tool_name,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
+	Content    string `json:"content"`
+	Note       string `json:"note,omitempty"`
+	Bytes      int    `json:"bytes"`
+	Chars      int    `json:"chars"`
 }
 
 type ContextAnalysisPartInput struct {
-	ID      string
-	Source  string
-	Title   string
-	Role    string
-	Content string
-	Note    string
+	ID         string
+	Source     string
+	Title      string
+	Role       string
+	Kind       string
+	ToolName   string
+	ToolCallID string
+	Content    string
+	Note       string
 }
 
 func NewContextAnalysisPart(in ContextAnalysisPartInput) ContextAnalysisPart {
 	content := in.Content
 	return ContextAnalysisPart{
-		ID:      strings.TrimSpace(in.ID),
-		Source:  strings.TrimSpace(in.Source),
-		Title:   strings.TrimSpace(in.Title),
-		Role:    strings.TrimSpace(in.Role),
-		Content: content,
-		Note:    strings.TrimSpace(in.Note),
-		Bytes:   len(content),
-		Chars:   utf8.RuneCountInString(content),
+		ID:         strings.TrimSpace(in.ID),
+		Source:     strings.TrimSpace(in.Source),
+		Title:      strings.TrimSpace(in.Title),
+		Role:       strings.TrimSpace(in.Role),
+		Kind:       strings.TrimSpace(in.Kind),
+		ToolName:   strings.TrimSpace(in.ToolName),
+		ToolCallID: strings.TrimSpace(in.ToolCallID),
+		Content:    content,
+		Note:       strings.TrimSpace(in.Note),
+		Bytes:      len(content),
+		Chars:      utf8.RuneCountInString(content),
 	}
+}
+
+func contextAnalysisPartFromMessage(id, source, title string, msg *schema.Message) ContextAnalysisPart {
+	if msg == nil {
+		return NewContextAnalysisPart(ContextAnalysisPartInput{ID: id, Source: source, Title: title})
+	}
+	input := ContextAnalysisPartInput{
+		ID:      id,
+		Source:  source,
+		Title:   title,
+		Role:    string(msg.Role),
+		Kind:    string(msg.Role),
+		Content: msg.Content,
+	}
+	switch msg.Role {
+	case schema.User:
+		input.Kind = "body"
+	case schema.Assistant:
+		input.Kind = "body"
+		if len(msg.ToolCalls) > 0 {
+			input.Kind = "tool_call"
+			input.ToolName = contextAnalysisToolCallNames(msg.ToolCalls)
+			input.ToolCallID = contextAnalysisToolCallIDs(msg.ToolCalls)
+			if strings.TrimSpace(msg.Content) == "" {
+				input.Title = "工具调用：" + firstNonEmpty(input.ToolName, "unknown_tool")
+				input.Content = contextAnalysisToolCallsContent(msg.ToolCalls)
+			} else {
+				input.Title = "助手正文与工具调用：" + firstNonEmpty(input.ToolName, "unknown_tool")
+				input.Content = strings.TrimRight(msg.Content, "\n") + "\n\n" + contextAnalysisToolCallsContent(msg.ToolCalls)
+			}
+		}
+	case schema.Tool:
+		input.Kind = "tool_result"
+		input.ToolName = msg.ToolName
+		input.ToolCallID = msg.ToolCallID
+		input.Title = "工具结果：" + firstNonEmpty(strings.TrimSpace(msg.ToolName), "unknown_tool")
+		if strings.TrimSpace(input.ToolCallID) != "" {
+			input.Note = "tool_call_id=" + strings.TrimSpace(input.ToolCallID)
+		}
+	}
+	return NewContextAnalysisPart(input)
+}
+
+func contextAnalysisToolCallNames(calls []schema.ToolCall) string {
+	names := make([]string, 0, len(calls))
+	seen := make(map[string]bool, len(calls))
+	for _, call := range calls {
+		name := strings.TrimSpace(call.Function.Name)
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
+func contextAnalysisToolCallIDs(calls []schema.ToolCall) string {
+	ids := make([]string, 0, len(calls))
+	for _, call := range calls {
+		if id := strings.TrimSpace(call.ID); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return strings.Join(ids, ", ")
+}
+
+func contextAnalysisToolCallsContent(calls []schema.ToolCall) string {
+	if len(calls) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("[工具调用]\n")
+	for i, call := range calls {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		name := strings.TrimSpace(call.Function.Name)
+		if name == "" {
+			name = "unknown_tool"
+		}
+		sb.WriteString(fmt.Sprintf("%d. %s", i+1, name))
+		if id := strings.TrimSpace(call.ID); id != "" {
+			sb.WriteString(" (id: ")
+			sb.WriteString(id)
+			sb.WriteString(")")
+		}
+		sb.WriteString("\narguments:\n")
+		sb.WriteString(strings.TrimSpace(call.Function.Arguments))
+		sb.WriteString("\n")
+	}
+	return strings.TrimRight(sb.String(), "\n")
 }
 
 func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller, bookService *book.Service, effectiveMessages []*schema.Message, totalMessages int, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest) (ContextAnalysis, error) {
@@ -87,6 +188,7 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 	policy := DefaultLoopPolicy().normalized()
 	composition := composeAgentInput(req, pending, bookService, policy)
 	messages := buildIDEAnalysisMessages(cfg, effectiveMessages, totalMessages, compaction)
+	messages = applyToolResultContextPolicy(messages, resolveToolResultContextPolicy(cfg, config.AgentKindIDE))
 	runtimeContexts := IDEWorkspaceRuntimeContextsForRequest(state, req)
 	messages = append(messages, schema.UserMessage(composition.AgentMessage))
 	contextResult, err := agentcontext.Build(context.Background(), agentcontext.Request{
@@ -122,13 +224,7 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 				title = "本轮发送给 Agent 的用户消息"
 			}
 		}
-		contextMessages = append(contextMessages, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      fmt.Sprintf("message_%d", i+1),
-			Source:  source,
-			Title:   title,
-			Role:    string(msg.Role),
-			Content: msg.Content,
-		}))
+		contextMessages = append(contextMessages, contextAnalysisPartFromMessage(fmt.Sprintf("message_%d", i+1), source, title, msg))
 	}
 	usage := analyzeContextUsage(cfg, config.AgentKindIDE, systemPrompt, messages)
 	return ContextAnalysis{
@@ -202,13 +298,7 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 			source = "本轮互动指令"
 			title = "本轮互动指令与动态上下文"
 		}
-		contextMessages = append(contextMessages, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      fmt.Sprintf("message_%d", i+1),
-			Source:  source,
-			Title:   title,
-			Role:    string(msg.Role),
-			Content: msg.Content,
-		}))
+		contextMessages = append(contextMessages, contextAnalysisPartFromMessage(fmt.Sprintf("message_%d", i+1), source, title, msg))
 	}
 	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, systemPrompt, messages)
 	return ContextAnalysis{
@@ -474,7 +564,10 @@ func styleRuleContextAnalysisParts(rules []StyleRule) []ContextAnalysisPart {
 	parts := make([]ContextAnalysisPart, 0, len(rules))
 	for i, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
-		if scene == "" || (len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0) {
+		if !rule.Global && scene == "" {
+			continue
+		}
+		if len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0 {
 			continue
 		}
 		content := styleRulesSystemInstruction([]StyleRule{rule})
@@ -484,12 +577,19 @@ func styleRuleContextAnalysisParts(rules []StyleRule) []ContextAnalysisPart {
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
 			ID:      fmt.Sprintf("style_rule_%d", i+1),
 			Source:  "当前叙事风格",
-			Title:   "场景化风格规则：" + scene,
+			Title:   "文风参考：" + styleRuleAnalysisTitle(rule),
 			Content: content,
 			Note:    "system prompt",
 		}))
 	}
 	return parts
+}
+
+func styleRuleAnalysisTitle(rule StyleRule) string {
+	if rule.Global {
+		return "全局"
+	}
+	return strings.TrimSpace(rule.Scene)
 }
 
 type agentInputComposition struct {
