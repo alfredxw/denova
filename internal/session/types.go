@@ -15,6 +15,7 @@ const (
 	displayToolArgsTruncatedHint = "\n...\n[session preview truncated / 会话预览已截断]"
 	maxTokenUsageDisplayEvents   = 10
 	historyTypeMessage           = "message"
+	historyTypeContextMessage    = "context_message"
 	historyTypeDisplay           = "display"
 	historyTypeClear             = "clear"
 	historyTypeInterrupt         = "interrupt"

@@ -67,6 +67,14 @@ func (s *Session) persistLocked() error {
 			if err := writeJSONLine(&sb, message); err != nil {
 				return err
 			}
+		case historyTypeContextMessage:
+			if record.message == nil {
+				continue
+			}
+			message := messageRecord{Type: historyTypeContextMessage, CreatedAt: record.createdAt, Message: *record.message}
+			if err := writeJSONLine(&sb, message); err != nil {
+				return err
+			}
 		}
 	}
 	return os.WriteFile(s.filePath, []byte(sb.String()), 0o644)
@@ -292,17 +300,20 @@ func appendRecordLine(sess *Session, line string) error {
 		return nil
 	}
 	if typed.Type == historyTypeMessage {
-		return appendMessageRecordLine(sess, line)
+		return appendMessageRecordLine(sess, line, historyTypeMessage)
+	}
+	if typed.Type == historyTypeContextMessage {
+		return appendMessageRecordLine(sess, line, historyTypeContextMessage)
 	}
 	return appendMessageLine(sess, line)
 }
 
-func appendMessageRecordLine(sess *Session, line string) error {
+func appendMessageRecordLine(sess *Session, line string, kind string) error {
 	var record messageRecord
 	if err := json.Unmarshal([]byte(line), &record); err != nil {
 		return err
 	}
-	if record.Message.Role == "" && record.Message.Content == "" {
+	if record.Message.Role == "" && record.Message.Content == "" && len(record.Message.ToolCalls) == 0 {
 		return nil
 	}
 	createdAt := record.CreatedAt
@@ -311,7 +322,7 @@ func appendMessageRecordLine(sess *Session, line string) error {
 	}
 	msg := record.Message
 	sess.messages = append(sess.messages, &msg)
-	sess.records = append(sess.records, historyRecord{kind: historyTypeMessage, message: &msg, createdAt: createdAt})
+	sess.records = append(sess.records, historyRecord{kind: kind, message: &msg, createdAt: createdAt})
 	if createdAt.After(sess.UpdatedAt) {
 		sess.UpdatedAt = createdAt
 	}

@@ -1,8 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSkill, deleteSkillDocument, getSkillDocument, getSkills, installSkillGitHub, installSkillZip, previewSkillGitHubInstall, previewSkillZipInstall, saveSkillDocument } from '@/lib/api'
-import type { SkillDocument, SkillSnapshot } from '@/lib/api'
+import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillGitHub, installSkillZip, previewSkillGitHubInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
+import type { SkillDocument, SkillFileDocument, SkillSnapshot } from '@/lib/api'
 import { SkillsView } from './SkillsView'
 
 vi.mock('@/components/Chat/ConfigManagerChat', () => ({
@@ -13,12 +13,14 @@ vi.mock('@/lib/api', () => ({
   createSkill: vi.fn(),
   deleteSkillDocument: vi.fn(),
   getSkillDocument: vi.fn(),
+  getSkillFileDocument: vi.fn(),
   getSkills: vi.fn(),
   installSkillGitHub: vi.fn(),
   installSkillZip: vi.fn(),
   previewSkillGitHubInstall: vi.fn(),
   previewSkillZipInstall: vi.fn(),
   saveSkillDocument: vi.fn(),
+  saveSkillFileDocument: vi.fn(),
 }))
 
 describe('SkillsView', () => {
@@ -26,12 +28,14 @@ describe('SkillsView', () => {
     vi.mocked(createSkill).mockReset()
     vi.mocked(deleteSkillDocument).mockReset()
     vi.mocked(getSkillDocument).mockReset()
+    vi.mocked(getSkillFileDocument).mockReset()
     vi.mocked(getSkills).mockReset()
     vi.mocked(installSkillGitHub).mockReset()
     vi.mocked(installSkillZip).mockReset()
     vi.mocked(previewSkillGitHubInstall).mockReset()
     vi.mocked(previewSkillZipInstall).mockReset()
     vi.mocked(saveSkillDocument).mockReset()
+    vi.mocked(saveSkillFileDocument).mockReset()
     vi.mocked(getSkills).mockResolvedValue(skillsSnapshot())
     vi.mocked(createSkill).mockImplementation(async (scope, name, description, agents = []) => skillDocument({
       scope,
@@ -94,7 +98,7 @@ describe('SkillsView', () => {
     await user.click(await screen.findByRole('button', { name: '创建用户覆盖' }))
 
     await waitFor(() => {
-      expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledWith('user', 'outline', content)
+      expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledWith('builtin', 'outline', content, { scope: 'user', name: 'outline' })
     })
   })
 
@@ -140,6 +144,55 @@ describe('SkillsView', () => {
       )
     })
     expect(vi.mocked(saveSkillDocument).mock.calls[0][2]).toContain('description: "Beat planning"')
+  })
+
+  it('opens and saves supporting files inside a Skill directory', async () => {
+    const user = userEvent.setup()
+    const doc = skillDocument({
+      name: 'draft-plan',
+      description: 'Planning',
+      scope: 'user',
+      path: '/nova/skills/draft-plan/SKILL.md',
+      editable: true,
+      active: true,
+      content: '---\nname: draft-plan\ndescription: Planning\n---\n\n# Draft Plan\n',
+      files: [
+        { path: 'SKILL.md', size: 64, entry: true, editable: true },
+        { path: 'references/style.md', size: 8, entry: false, editable: true },
+      ],
+    })
+    const refDoc = skillFileDocument({
+      skill: doc,
+      file: { path: 'references/style.md', size: 8, entry: false, editable: true },
+      content: '# Style\n',
+    })
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [doc] }))
+    vi.mocked(getSkillDocument).mockResolvedValue(doc)
+    vi.mocked(getSkillFileDocument).mockResolvedValue(refDoc)
+    vi.mocked(saveSkillFileDocument).mockResolvedValue({
+      ...refDoc,
+      content: '# Updated\n',
+      file: { ...refDoc.file, size: 10 },
+    })
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    await user.click(await screen.findByRole('button', { name: /references\/style\.md/ }))
+    await waitFor(() => {
+      expect(vi.mocked(getSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md')
+    })
+    const editor = screen.getByRole('textbox') as HTMLTextAreaElement
+    await waitFor(() => {
+      expect(editor.value).toContain('# Style')
+    })
+    await user.clear(editor)
+    await user.type(editor, '# Updated\n')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(saveSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md', '# Updated\n')
+    })
+    expect(vi.mocked(saveSkillDocument)).not.toHaveBeenCalled()
   })
 
   it('scans GitHub sources and installs only selected Skills', async () => {
@@ -269,6 +322,17 @@ function skillDocument(patch: Partial<SkillDocument>): SkillDocument {
     editable: true,
     active: true,
     content: '---\nname: draft-plan\ndescription: Planning\n---\n',
+    files: [{ path: 'SKILL.md', size: 48, entry: true, editable: true }],
+    ...patch,
+  }
+}
+
+function skillFileDocument(patch: Partial<SkillFileDocument>): SkillFileDocument {
+  const baseSkill = skillDocument({})
+  return {
+    skill: baseSkill,
+    file: { path: 'references/style.md', size: 0, entry: false, editable: true },
+    content: '',
     ...patch,
   }
 }

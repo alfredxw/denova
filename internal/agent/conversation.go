@@ -209,6 +209,7 @@ func (c *SessionConversation) modelMessages(agentMessage string) []*schema.Messa
 		history = append(history, NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
 		history = append(history, tail...)
 	}
+	history = applyToolResultContextPolicy(history, c.ToolResultContextPolicy())
 	if len(history) > 0 {
 		history[len(history)-1] = schema.UserMessage(agentMessage)
 	}
@@ -326,7 +327,7 @@ func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) (
 	if sourceEnd < sourceStart {
 		sourceEnd = sourceStart
 	}
-	source := compactionSourceMessages(messages[sourceStart:sourceEnd], true)
+	source := compactionSourceMessages(applyToolResultContextPolicy(messages[sourceStart:sourceEnd], c.ToolResultContextPolicy()), true)
 	return source, existingMemory, sourceStart, sourceEnd
 }
 
@@ -386,6 +387,24 @@ func (c *SessionConversation) AppendAssistant(content string) error {
 		return fmt.Errorf("会话不存在")
 	}
 	return c.session.Append(schema.AssistantMessage(content, nil))
+}
+
+func (c *SessionConversation) AppendContextMessage(msg *schema.Message) error {
+	if c == nil || c.session == nil {
+		return fmt.Errorf("会话不存在")
+	}
+	return c.session.AppendContextMessage(msg)
+}
+
+func (c *SessionConversation) ToolResultContextPolicy() ToolResultContextPolicy {
+	if c == nil {
+		return ToolResultContextPolicy{}
+	}
+	agentKind := c.agentKind
+	if strings.TrimSpace(agentKind) == "" {
+		agentKind = config.AgentKindIDE
+	}
+	return resolveToolResultContextPolicy(c.cfg, agentKind)
 }
 
 func (c *SessionConversation) AppendDisplayEvent(event session.DisplayEvent) error {

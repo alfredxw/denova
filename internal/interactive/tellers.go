@@ -635,9 +635,9 @@ func normalizeStateOps(ops []StateOp) []StateOp {
 // in runtime DirectorEvent form for Director Agent planning prompts.
 func DirectorEventCatalogFromTeller(teller Teller) []DirectorEvent {
 	teller = normalizeTeller(teller)
-	events := DefaultDirectorEventTemplates()
+	events := []DirectorEvent{}
 	if teller.Orchestration == nil {
-		return events
+		return appendDefaultDirectorEventTemplates(events)
 	}
 	for _, pkg := range teller.Orchestration.EventPackages {
 		for _, eventCard := range pkg.Events {
@@ -650,7 +650,7 @@ func DirectorEventCatalogFromTeller(teller Teller) []DirectorEvent {
 	for _, event := range teller.Orchestration.CustomEvents {
 		events = upsertDirectorEvent(events, event)
 	}
-	return events
+	return appendDefaultDirectorEventTemplates(events)
 }
 
 func directorEventFromTellerEventCard(card TellerEventCard) DirectorEvent {

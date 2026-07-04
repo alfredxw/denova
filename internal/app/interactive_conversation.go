@@ -26,21 +26,22 @@ import (
 )
 
 type interactiveConversation struct {
-	store            *interactive.Store
-	novaDir          string
-	workspace        string
-	cfg              *config.Config
-	storyID          string
-	branchID         string
-	user             string
-	replyTargetChars int
-	mu               sync.Mutex
-	lastTurn         *interactive.TurnEvent
-	lastStateReady   bool
-	lastSources      string
-	displayEvents    []interactive.DisplayEvent
-	turnBrief        *interactive.TurnBrief
-	ruleResolution   *interactive.RuleResolution
+	store                *interactive.Store
+	novaDir              string
+	workspace            string
+	cfg                  *config.Config
+	storyID              string
+	branchID             string
+	user                 string
+	replyTargetChars     int
+	mu                   sync.Mutex
+	lastTurn             *interactive.TurnEvent
+	lastStateReady       bool
+	lastSources          string
+	displayEvents        []interactive.DisplayEvent
+	modelContextMessages []interactive.ModelContextMessage
+	turnBrief            *interactive.TurnBrief
+	ruleResolution       *interactive.RuleResolution
 }
 
 func newInteractiveConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int, cfg *config.Config) *interactiveConversation {
@@ -90,8 +91,10 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	}
 	for _, turn := range turnMemory.Turns {
 		history = append(history, schema.UserMessage(turn.User))
+		history = append(history, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
 		history = append(history, schema.AssistantMessage(turn.Narrative, nil))
 	}
+	history = agent.ApplyToolResultContextPolicyForConversation(history, c.ToolResultContextPolicy())
 	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage, tellerTurnContextPrompt, storyDirector.Strategy.RandomEventRate, runtimeContext)))
 	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, storyMemory, directorPlanVisible, ruleSummary, strategyPrompt, turnMemory, agentMessage)
 	c.mu.Lock()
@@ -166,6 +169,7 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 		return input.Messages, agent.ContextCompactionResult{SkippedReason: "removed_same_source"}, nil
 	}
 	source, existingMemory := interactiveCompactionSource(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
+	source = agent.ApplyToolResultContextPolicyForConversation(source, c.ToolResultContextPolicy())
 	epoch := 1
 	if storyCtx.Snapshot.ContextCompaction != nil {
 		epoch = storyCtx.Snapshot.ContextCompaction.Epoch + 1
@@ -215,11 +219,106 @@ func interactiveTurnMessages(turns []interactive.TurnEvent) []*schema.Message {
 		if strings.TrimSpace(turn.User) != "" {
 			messages = append(messages, schema.UserMessage(turn.User))
 		}
+		messages = append(messages, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
 		if strings.TrimSpace(turn.Narrative) != "" {
 			messages = append(messages, schema.AssistantMessage(turn.Narrative, nil))
 		}
 	}
 	return messages
+}
+
+func interactiveContextMessageFromSchema(msg *schema.Message) (interactive.ModelContextMessage, bool) {
+	if msg == nil {
+		return interactive.ModelContextMessage{}, false
+	}
+	switch msg.Role {
+	case schema.Assistant:
+		calls := interactiveToolCallsFromSchema(msg.ToolCalls)
+		if len(calls) == 0 {
+			return interactive.ModelContextMessage{}, false
+		}
+		return interactive.ModelContextMessage{Role: string(schema.Assistant), ToolCalls: calls}, true
+	case schema.Tool:
+		if strings.TrimSpace(msg.ToolCallID) == "" && strings.TrimSpace(msg.ToolName) == "" {
+			return interactive.ModelContextMessage{}, false
+		}
+		return interactive.ModelContextMessage{
+			Role:       string(schema.Tool),
+			Content:    msg.Content,
+			Name:       msg.Name,
+			ToolCallID: msg.ToolCallID,
+			ToolName:   msg.ToolName,
+		}, true
+	default:
+		return interactive.ModelContextMessage{}, false
+	}
+}
+
+func interactiveToolCallsFromSchema(calls []schema.ToolCall) []interactive.ModelContextToolCall {
+	if len(calls) == 0 {
+		return nil
+	}
+	result := make([]interactive.ModelContextToolCall, 0, len(calls))
+	for _, call := range calls {
+		if strings.TrimSpace(call.Function.Name) == "" {
+			continue
+		}
+		result = append(result, interactive.ModelContextToolCall{
+			Index: call.Index,
+			ID:    call.ID,
+			Type:  call.Type,
+			Function: interactive.ModelContextFunctionCall{
+				Name:      call.Function.Name,
+				Arguments: call.Function.Arguments,
+			},
+			Extra: call.Extra,
+		})
+	}
+	return result
+}
+
+func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMessage) []*schema.Message {
+	if len(messages) == 0 {
+		return nil
+	}
+	result := make([]*schema.Message, 0, len(messages))
+	for _, msg := range messages {
+		switch strings.TrimSpace(msg.Role) {
+		case string(schema.Assistant):
+			calls := schemaToolCallsFromInteractive(msg.ToolCalls)
+			if len(calls) > 0 {
+				result = append(result, schema.AssistantMessage("", calls))
+			}
+		case string(schema.Tool):
+			if strings.TrimSpace(msg.ToolCallID) != "" || strings.TrimSpace(msg.ToolName) != "" {
+				result = append(result, schema.ToolMessage(msg.Content, msg.ToolCallID, schema.WithToolName(msg.ToolName)))
+			}
+		}
+	}
+	return result
+}
+
+func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []schema.ToolCall {
+	if len(calls) == 0 {
+		return nil
+	}
+	result := make([]schema.ToolCall, 0, len(calls))
+	for _, call := range calls {
+		if strings.TrimSpace(call.Function.Name) == "" {
+			continue
+		}
+		result = append(result, schema.ToolCall{
+			Index: call.Index,
+			ID:    call.ID,
+			Type:  call.Type,
+			Function: schema.FunctionCall{
+				Name:      call.Function.Name,
+				Arguments: call.Function.Arguments,
+			},
+			Extra: call.Extra,
+		})
+	}
+	return result
 }
 
 func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) ([]*schema.Message, string) {
@@ -258,6 +357,24 @@ func (c *interactiveConversation) AppendAssistant(content string) error {
 	return c.AppendAssistantWithThinking(content, "")
 }
 
+func (c *interactiveConversation) AppendContextMessage(msg *schema.Message) error {
+	if c == nil || msg == nil {
+		return nil
+	}
+	converted, ok := interactiveContextMessageFromSchema(msg)
+	if !ok {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.modelContextMessages = append(c.modelContextMessages, converted)
+	return nil
+}
+
+func (c *interactiveConversation) ToolResultContextPolicy() agent.ToolResultContextPolicy {
+	return agent.ResolveToolResultContextPolicyForConversation(c.cfg, config.AgentKindInteractiveStory)
+}
+
 func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking string) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("互动故事不存在")
@@ -270,14 +387,15 @@ func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking 
 	}
 	log.Printf("[interactive-agent] parse assistant output result story_id=%s branch_id=%s narrative=%q", c.storyID, c.branchID, narrative)
 	turn, _, err := c.store.AppendTurnWithState(c.storyID, interactive.AppendTurnWithStateRequest{
-		BranchID:        c.branchID,
-		User:            c.user,
-		Narrative:       narrative,
-		Thinking:        thinking,
-		DisplayEvents:   c.displayEventsSnapshot(),
-		TurnBrief:       c.turnBriefSnapshot(),
-		RuleResolution:  c.ruleResolutionSnapshot(),
-		TerminalOutcome: c.terminalOutcomeSnapshot(narrative),
+		BranchID:             c.branchID,
+		User:                 c.user,
+		Narrative:            narrative,
+		Thinking:             thinking,
+		DisplayEvents:        c.displayEventsSnapshot(),
+		ModelContextMessages: c.modelContextMessagesSnapshot(),
+		TurnBrief:            c.turnBriefSnapshot(),
+		RuleResolution:       c.ruleResolutionSnapshot(),
+		TerminalOutcome:      c.terminalOutcomeSnapshot(narrative),
 	})
 	if err == nil {
 		c.mu.Lock()
@@ -571,6 +689,17 @@ func (c *interactiveConversation) displayEventsSnapshot() []interactive.DisplayE
 	}
 	result := make([]interactive.DisplayEvent, len(c.displayEvents))
 	copy(result, c.displayEvents)
+	return result
+}
+
+func (c *interactiveConversation) modelContextMessagesSnapshot() []interactive.ModelContextMessage {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.modelContextMessages) == 0 {
+		return nil
+	}
+	result := make([]interactive.ModelContextMessage, len(c.modelContextMessages))
+	copy(result, c.modelContextMessages)
 	return result
 }
 

@@ -39,6 +39,15 @@ type SkillSummary struct {
 	UpdatedAt   string `json:"updated_at,omitempty"`
 }
 
+// SkillFile describes a regular file stored inside a Skill directory.
+type SkillFile struct {
+	Path      string `json:"path"`
+	Size      int64  `json:"size"`
+	Entry     bool   `json:"entry"`
+	Editable  bool   `json:"editable"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
 // Snapshot is the full skills management view returned by the API.
 type Snapshot struct {
 	Scopes []ScopeInfo    `json:"scopes"`
@@ -48,5 +57,13 @@ type Snapshot struct {
 // Document is a single editable SKILL.md payload.
 type Document struct {
 	SkillSummary
-	Content string `json:"content"`
+	Content string      `json:"content"`
+	Files   []SkillFile `json:"files,omitempty"`
+}
+
+// FileDocument is a single supporting file payload inside a Skill directory.
+type FileDocument struct {
+	Skill   SkillSummary `json:"skill"`
+	File    SkillFile    `json:"file"`
+	Content string       `json:"content"`
 }

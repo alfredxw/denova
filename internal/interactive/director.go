@@ -108,6 +108,30 @@ func upsertDirectorEvent(events []DirectorEvent, next DirectorEvent) []DirectorE
 	return append(events, next)
 }
 
+func appendDefaultDirectorEventTemplates(events []DirectorEvent) []DirectorEvent {
+	for _, event := range DefaultDirectorEventTemplates() {
+		events = appendDirectorEventIfMissing(events, event)
+	}
+	return events
+}
+
+func appendDirectorEventIfMissing(events []DirectorEvent, next DirectorEvent) []DirectorEvent {
+	normalized := normalizeDirectorEvents([]DirectorEvent{next})
+	if len(normalized) == 0 {
+		return events
+	}
+	next = normalized[0]
+	for _, event := range events {
+		if event.ID == next.ID {
+			return events
+		}
+	}
+	if len(events) >= maxTurnBriefListItems {
+		return events
+	}
+	return append(events, next)
+}
+
 func latestTurnForBranchHead(lines []StoryEventRecord, head string) *TurnEvent {
 	path, _ := eventPath(head, eventsByID(lines))
 	for i := len(path) - 1; i >= 0; i-- {

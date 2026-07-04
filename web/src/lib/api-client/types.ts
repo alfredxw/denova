@@ -536,12 +536,27 @@ export interface SkillSummary {
   updated_at?: string
 }
 
+export interface SkillFile {
+  path: string
+  size: number
+  entry: boolean
+  editable: boolean
+  updated_at?: string
+}
+
 export interface SkillSnapshot {
   scopes: SkillScopeInfo[]
   skills: SkillSummary[]
 }
 
 export interface SkillDocument extends SkillSummary {
+  content: string
+  files?: SkillFile[]
+}
+
+export interface SkillFileDocument {
+  skill: SkillSummary
+  file: SkillFile
   content: string
 }
 

@@ -19,24 +19,26 @@ type CreateStoryRequest struct {
 }
 
 type AppendTurnRequest struct {
-	BranchID      string         `json:"branch_id"`
-	User          string         `json:"user"`
-	Narrative     string         `json:"narrative"`
-	Thinking      string         `json:"thinking,omitempty"`
-	DisplayEvents []DisplayEvent `json:"display_events,omitempty"`
+	BranchID             string                `json:"branch_id"`
+	User                 string                `json:"user"`
+	Narrative            string                `json:"narrative"`
+	Thinking             string                `json:"thinking,omitempty"`
+	DisplayEvents        []DisplayEvent        `json:"display_events,omitempty"`
+	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
 }
 
 type AppendTurnWithStateRequest struct {
-	BranchID        string           `json:"branch_id"`
-	User            string           `json:"user"`
-	Narrative       string           `json:"narrative"`
-	Thinking        string           `json:"thinking,omitempty"`
-	DisplayEvents   []DisplayEvent   `json:"display_events,omitempty"`
-	Ops             []StateOp        `json:"ops,omitempty"`
-	HotState        *HotState        `json:"hot_state,omitempty"`
-	TurnBrief       *TurnBrief       `json:"turn_brief,omitempty"`
-	RuleResolution  *RuleResolution  `json:"rule_resolution,omitempty"`
-	TerminalOutcome *TerminalOutcome `json:"terminal_outcome,omitempty"`
+	BranchID             string                `json:"branch_id"`
+	User                 string                `json:"user"`
+	Narrative            string                `json:"narrative"`
+	Thinking             string                `json:"thinking,omitempty"`
+	DisplayEvents        []DisplayEvent        `json:"display_events,omitempty"`
+	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
+	Ops                  []StateOp             `json:"ops,omitempty"`
+	HotState             *HotState             `json:"hot_state,omitempty"`
+	TurnBrief            *TurnBrief            `json:"turn_brief,omitempty"`
+	RuleResolution       *RuleResolution       `json:"rule_resolution,omitempty"`
+	TerminalOutcome      *TerminalOutcome      `json:"terminal_outcome,omitempty"`
 }
 
 type RuleResolutionRerollRequest struct {
@@ -157,31 +159,32 @@ type StoryMeta struct {
 }
 
 type TurnEvent struct {
-	V               int              `json:"v"`
-	Type            string           `json:"type"`
-	ID              string           `json:"id"`
-	ParentID        any              `json:"parent_id"`
-	BranchID        string           `json:"branch_id"`
-	Ts              string           `json:"ts"`
-	User            string           `json:"user"`
-	Narrative       string           `json:"narrative"`
-	Thinking        string           `json:"thinking,omitempty"`
-	DisplayEvents   []DisplayEvent   `json:"display_events,omitempty"`
-	StateDelta      *StateDelta      `json:"state_delta,omitempty"`
-	HotState        *HotState        `json:"hot_state,omitempty"`
-	TurnBrief       *TurnBrief       `json:"turn_brief,omitempty"`
-	RuleResolution  *RuleResolution  `json:"rule_resolution,omitempty"`
-	TerminalOutcome *TerminalOutcome `json:"terminal_outcome,omitempty"`
-	StateStatus     string           `json:"state_status,omitempty"`
-	StateError      string           `json:"state_error,omitempty"`
-	MemoryEntryID   string           `json:"memory_entry_id,omitempty"`
-	MemoryStatus    string           `json:"memory_status,omitempty"`
-	MemoryError     string           `json:"memory_error,omitempty"`
-	Alts            []TurnAlt        `json:"alts,omitempty"`
-	AltIdx          int              `json:"alt_idx,omitempty"`
-	Versions        []TurnVersion    `json:"versions,omitempty"`
-	VersionIdx      int              `json:"version_idx,omitempty"`
-	Flags           map[string]bool  `json:"flags,omitempty"`
+	V                    int                   `json:"v"`
+	Type                 string                `json:"type"`
+	ID                   string                `json:"id"`
+	ParentID             any                   `json:"parent_id"`
+	BranchID             string                `json:"branch_id"`
+	Ts                   string                `json:"ts"`
+	User                 string                `json:"user"`
+	Narrative            string                `json:"narrative"`
+	Thinking             string                `json:"thinking,omitempty"`
+	DisplayEvents        []DisplayEvent        `json:"display_events,omitempty"`
+	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
+	StateDelta           *StateDelta           `json:"state_delta,omitempty"`
+	HotState             *HotState             `json:"hot_state,omitempty"`
+	TurnBrief            *TurnBrief            `json:"turn_brief,omitempty"`
+	RuleResolution       *RuleResolution       `json:"rule_resolution,omitempty"`
+	TerminalOutcome      *TerminalOutcome      `json:"terminal_outcome,omitempty"`
+	StateStatus          string                `json:"state_status,omitempty"`
+	StateError           string                `json:"state_error,omitempty"`
+	MemoryEntryID        string                `json:"memory_entry_id,omitempty"`
+	MemoryStatus         string                `json:"memory_status,omitempty"`
+	MemoryError          string                `json:"memory_error,omitempty"`
+	Alts                 []TurnAlt             `json:"alts,omitempty"`
+	AltIdx               int                   `json:"alt_idx,omitempty"`
+	Versions             []TurnVersion         `json:"versions,omitempty"`
+	VersionIdx           int                   `json:"version_idx,omitempty"`
+	Flags                map[string]bool       `json:"flags,omitempty"`
 }
 
 const TokenUsageEventType = "token_usage"
@@ -204,6 +207,30 @@ type DisplayEvent struct {
 	RunID             string   `json:"run_id,omitempty"`
 	SubAgentSessionID string   `json:"subagent_session_id,omitempty"`
 	SubAgentType      string   `json:"subagent_type,omitempty"`
+}
+
+// ModelContextMessage is model-visible turn evidence hidden from the chat UI.
+// It stores only assistant tool calls and tool results, never raw thinking.
+type ModelContextMessage struct {
+	Role       string                 `json:"role"`
+	Content    string                 `json:"content,omitempty"`
+	Name       string                 `json:"name,omitempty"`
+	ToolCalls  []ModelContextToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string                 `json:"tool_call_id,omitempty"`
+	ToolName   string                 `json:"tool_name,omitempty"`
+}
+
+type ModelContextToolCall struct {
+	Index    *int                     `json:"index,omitempty"`
+	ID       string                   `json:"id"`
+	Type     string                   `json:"type"`
+	Function ModelContextFunctionCall `json:"function"`
+	Extra    map[string]any           `json:"extra,omitempty"`
+}
+
+type ModelContextFunctionCall struct {
+	Name      string `json:"name,omitempty"`
+	Arguments string `json:"arguments,omitempty"`
 }
 
 type TokenUsageEvent struct {

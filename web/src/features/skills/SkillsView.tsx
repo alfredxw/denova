@@ -1,17 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, CheckCircle2, Copy, Download, FileCode2, GitBranch, Loader2, Lock, PanelLeft, PanelRight, Plus, RefreshCw, Save, Search, Settings2, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { Bot, CheckCircle2, Copy, Download, FileCode2, FileText, GitBranch, Loader2, Lock, PanelLeft, PanelRight, Plus, RefreshCw, Save, Search, Settings2, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { Textarea } from '@/components/ui/textarea'
-import { createSkill, deleteSkillDocument, getSkillDocument, getSkills, installSkillGitHub, installSkillZip, previewSkillGitHubInstall, previewSkillZipInstall, saveSkillDocument } from '@/lib/api'
-import type { SkillDocument, SkillInstallCandidate, SkillInstallResult, SkillScope, SkillScopeInfo, SkillSnapshot, SkillSummary } from '@/lib/api'
+import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillGitHub, installSkillZip, previewSkillGitHubInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
+import type { SkillDocument, SkillFile, SkillFileDocument, SkillInstallCandidate, SkillInstallResult, SkillScope, SkillScopeInfo, SkillSnapshot, SkillSummary } from '@/lib/api'
 import { AGENTS } from '@/features/agents/agent-registry'
 import type { AgentViewDefinition, VisibleAgentKey } from '@/features/agents/agent-registry'
 
 const skillNamePattern = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/
+const skillEntryFile = 'SKILL.md'
 const scopes: SkillScope[] = ['user', 'workspace', 'builtin']
 const skillAgentOptions = AGENTS.filter((agent) => agent.capabilityMode === 'tools')
 
@@ -31,6 +32,10 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [document, setDocument] = useState<SkillDocument | null>(null)
   const [draft, setDraft] = useState('')
+  const [selectedFilePath, setSelectedFilePath] = useState(skillEntryFile)
+  const [fileDocument, setFileDocument] = useState<SkillFileDocument | null>(null)
+  const [fileDraft, setFileDraft] = useState('')
+  const [fileLoading, setFileLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -55,7 +60,11 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
   const [agentOpen, setAgentOpen] = useState(false)
 
   const selectedSkill = useMemo(() => snapshot.skills.find((skill) => keyOf(skill) === selectedKey) ?? null, [selectedKey, snapshot.skills])
-  const dirty = document ? draft !== document.content : false
+  const editingEntryFile = selectedFilePath === skillEntryFile
+  const dirty = document ? (editingEntryFile ? draft !== document.content : Boolean(fileDocument && fileDraft !== fileDocument.content)) : false
+  const activeContent = editingEntryFile ? draft : fileDraft
+  const activeEditable = editingEntryFile ? Boolean(document?.editable) : Boolean(fileDocument?.file.editable)
+  const activeDisplayPath = document ? skillDisplayPath(document, selectedFilePath) : ''
   const writableScopes = useMemo(() => snapshot.scopes.filter((scope) => scope.writable), [snapshot.scopes])
   const builtinOverrideScope = useMemo(() => preferredBuiltinOverrideScope(snapshot.scopes), [snapshot.scopes])
   const builtinOverride = useMemo(() => {
@@ -101,6 +110,9 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
     if (!selectedSkill) {
       setDocument(null)
       setDraft('')
+      setSelectedFilePath(skillEntryFile)
+      setFileDocument(null)
+      setFileDraft('')
       return () => { cancelled = true }
     }
     setError(null)
@@ -109,11 +121,17 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
         if (cancelled) return
         setDocument(doc)
         setDraft(doc.content)
+        setSelectedFilePath(skillEntryFile)
+        setFileDocument(null)
+        setFileDraft('')
       })
       .catch((e) => {
         if (!cancelled) {
           setDocument(null)
           setDraft('')
+          setSelectedFilePath(skillEntryFile)
+          setFileDocument(null)
+          setFileDraft('')
           setError((e as Error).message)
         }
       })
@@ -215,17 +233,51 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
     if (first) setSelectedKey(keyOf(first))
   }
 
+  const selectSkillFile = async (path: string) => {
+    if (!document || path === selectedFilePath) return
+    if (dirty && !window.confirm(t('skills.files.discardConfirm'))) return
+    setError(null)
+    if (path === skillEntryFile) {
+      setSelectedFilePath(skillEntryFile)
+      setFileDocument(null)
+      setFileDraft('')
+      return
+    }
+    setFileLoading(true)
+    try {
+      const doc = await getSkillFileDocument(document.scope, document.name, path)
+      setFileDocument(doc)
+      setFileDraft(doc.content)
+      setSelectedFilePath(path)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setFileLoading(false)
+    }
+  }
+
   const onSave = async () => {
-    if (!document || !document.editable) return
+    if (!document || !activeEditable) return
     setSaving(true)
     setError(null)
     try {
-      const doc = await saveSkillDocument(document.scope, document.name, draft)
-      setDocument(doc)
-      setDraft(doc.content)
-      setSelectedKey(keyOf(doc))
-      window.dispatchEvent(new CustomEvent('nova:skills-updated'))
-      await load()
+      if (editingEntryFile) {
+        const doc = await saveSkillDocument(document.scope, document.name, draft)
+        setDocument(doc)
+        setDraft(doc.content)
+        setSelectedKey(keyOf(doc))
+        setSelectedFilePath(skillEntryFile)
+        window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+        await load()
+      } else {
+        const fileDoc = await saveSkillFileDocument(document.scope, document.name, selectedFilePath, fileDraft)
+        setFileDocument(fileDoc)
+        setFileDraft(fileDoc.content)
+        const refreshed = await getSkillDocument(document.scope, document.name)
+        setDocument(refreshed)
+        setDraft(refreshed.content)
+        window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+      }
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -248,9 +300,12 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
     setSaving(true)
     setError(null)
     try {
-      const doc = await saveSkillDocument(builtinOverrideScope.scope, document.name, draft)
+      const doc = await saveSkillDocument(document.scope, document.name, draft, { scope: builtinOverrideScope.scope, name: document.name })
       setDocument(doc)
       setDraft(doc.content)
+      setSelectedFilePath(skillEntryFile)
+      setFileDocument(null)
+      setFileDraft('')
       setSelectedKey(keyOf(doc))
       setMode('editor')
       window.dispatchEvent(new CustomEvent('nova:skills-updated'))
@@ -295,6 +350,9 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
       const doc = await saveSkillDocument(document.scope, document.name, nextContent, { scope: configScope, name })
       setDocument(doc)
       setDraft(doc.content)
+      setSelectedFilePath(skillEntryFile)
+      setFileDocument(null)
+      setFileDraft('')
       setMode('editor')
       window.dispatchEvent(new CustomEvent('nova:skills-updated'))
       await load()
@@ -315,6 +373,9 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
       await deleteSkillDocument(document.scope, document.name)
       setDocument(null)
       setDraft('')
+      setSelectedFilePath(skillEntryFile)
+      setFileDocument(null)
+      setFileDraft('')
       setMode('editor')
       setSelectedKey(null)
       window.dispatchEvent(new CustomEvent('nova:skills-updated'))
@@ -336,6 +397,9 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
       await deleteSkillDocument(document.scope, document.name)
       setDocument(null)
       setDraft('')
+      setSelectedFilePath(skillEntryFile)
+      setFileDocument(null)
+      setFileDraft('')
       setMode('editor')
       window.dispatchEvent(new CustomEvent('nova:skills-updated'))
       const data = await load()
@@ -460,7 +524,7 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
         <button
           type="button"
           onClick={() => void onSave()}
-          disabled={mode !== 'editor' || !dirty || saving || !document?.editable}
+          disabled={mode !== 'editor' || !dirty || saving || fileLoading || !activeEditable}
           className="nova-nav-item inline-flex shrink-0 items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-45"
         >
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
@@ -590,16 +654,17 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
             ) : document ? (
               <>
               <div className="flex min-h-12 shrink-0 items-center gap-3 border-b border-[var(--nova-border)] px-4">
-                <FileCode2 className="h-4 w-4 text-[var(--nova-text-muted)]" />
+                {editingEntryFile ? <FileCode2 className="h-4 w-4 text-[var(--nova-text-muted)]" /> : <FileText className="h-4 w-4 text-[var(--nova-text-muted)]" />}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-sm text-[var(--nova-text)]">/{document.name}</span>
+                    <span className="font-mono text-sm text-[var(--nova-text)]">{editingEntryFile ? `/${document.name}` : selectedFilePath}</span>
                     <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{scopeLabel(document.scope, t)}</span>
+                    {!editingEntryFile && <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('skills.files.reference')}</span>}
                     {!document.active && <span className="rounded bg-[var(--nova-warning-bg)] px-1.5 py-0.5 text-[10px] text-[var(--nova-warning)]">{t('skills.shadowed')}</span>}
                     {document.agent && <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{document.agent}</span>}
-                    {!document.editable && <Lock className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
+                    {!activeEditable && <Lock className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
                   </div>
-                  <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]" title={document.path}>{document.path}</div>
+                  <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]" title={activeDisplayPath}>{activeDisplayPath}</div>
                 </div>
                 {dirty && <span className="text-[11px] text-[var(--nova-warning)]">{t('skills.unsaved')}</span>}
                 {document.editable && (
@@ -649,14 +714,26 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
                   </button>
                 )}
               </div>
-              <Textarea
-                autoResize={false}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                readOnly={!document.editable}
-                spellCheck={false}
-                className="min-h-0 flex-1 resize-none rounded-none border-0 bg-[var(--nova-bg)] px-5 py-4 font-mono text-xs leading-5 text-[var(--nova-text)] shadow-none focus-visible:ring-0"
+              <SkillFileStrip
+                files={skillFilesForDocument(document)}
+                selectedPath={selectedFilePath}
+                onSelect={(path) => void selectSkillFile(path)}
               />
+              {fileLoading ? (
+                <div className="flex min-h-0 flex-1 items-center justify-center gap-2 text-xs text-[var(--nova-text-faint)]">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {t('skills.files.loading')}
+                </div>
+              ) : (
+                <Textarea
+                  autoResize={false}
+                  value={activeContent}
+                  onChange={(event) => editingEntryFile ? setDraft(event.target.value) : setFileDraft(event.target.value)}
+                  readOnly={!activeEditable}
+                  spellCheck={false}
+                  className="min-h-0 flex-1 resize-none rounded-none border-0 bg-[var(--nova-bg)] px-5 py-4 font-mono text-xs leading-5 text-[var(--nova-text)] shadow-none focus-visible:ring-0"
+                />
+              )}
               </>
             ) : (
               <div className="flex h-full items-center justify-center px-6 text-center text-xs text-[var(--nova-text-faint)]">
@@ -1309,6 +1386,45 @@ function SkillScopeList({
   )
 }
 
+function SkillFileStrip({
+  files,
+  selectedPath,
+  onSelect,
+}: {
+  files: SkillFile[]
+  selectedPath: string
+  onSelect: (path: string) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <div className="flex min-h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-1.5">
+      <span className="shrink-0 text-[10px] font-medium uppercase text-[var(--nova-text-faint)]">{t('skills.files.title')}</span>
+      <div className="flex min-w-0 flex-1 gap-1">
+        {files.map((file) => {
+          const active = selectedPath === file.path
+          return (
+            <button
+              key={file.path}
+              type="button"
+              onClick={() => onSelect(file.path)}
+              className={`nova-nav-item inline-flex h-7 max-w-56 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border px-2 font-mono text-[11px] ${
+                active
+                  ? 'is-active border-[var(--nova-border)]'
+                  : 'border-transparent bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:border-[var(--nova-border)]'
+              }`}
+              title={`${file.path} · ${formatFileSize(file.size)}`}
+            >
+              {file.entry ? <FileCode2 className="h-3.5 w-3.5 shrink-0" /> : <FileText className="h-3.5 w-3.5 shrink-0" />}
+              <span className="min-w-0 truncate">{file.path}</span>
+              {!file.editable && <Lock className="h-3 w-3 shrink-0 text-[var(--nova-text-faint)]" />}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function SectionTitle({ icon: Icon, title }: { icon: ElementType; title: string }) {
   return (
     <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
@@ -1342,7 +1458,35 @@ function keyOf(skill: Pick<SkillSummary, 'scope' | 'name'>) {
 
 function skillFilePath(scope: SkillScopeInfo | undefined, name: string) {
   if (!scope?.path) return ''
-  return `${scope.path.replace(/\/+$/, '')}/${name}/SKILL.md`
+  return `${scope.path.replace(/[\\/]+$/, '')}/${name}/SKILL.md`
+}
+
+function skillDisplayPath(document: SkillDocument, filePath: string) {
+  if (filePath === skillEntryFile) return document.path
+  const root = document.path.replace(/[\\/]SKILL\.md$/, '')
+  return `${root}/${filePath}`
+}
+
+function skillFilesForDocument(document: SkillDocument): SkillFile[] {
+  const files = document.files || []
+  if (files.some((file) => file.path === skillEntryFile)) return files
+  return [
+    {
+      path: skillEntryFile,
+      size: new Blob([document.content]).size,
+      entry: true,
+      editable: document.editable,
+      updated_at: document.updated_at,
+    },
+    ...files,
+  ]
+}
+
+function formatFileSize(size: number) {
+  if (!Number.isFinite(size) || size <= 0) return '0 B'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(size < 10 * 1024 ? 1 : 0)} KB`
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function parseAgentKeys(agentField?: string): VisibleAgentKey[] {

@@ -701,7 +701,7 @@ func DirectorEventCatalogFromStoryDirector(director StoryDirector) []DirectorEve
 	if !StoryDirectorEventSystemEnabled(director) {
 		return []DirectorEvent{}
 	}
-	events := DefaultDirectorEventTemplates()
+	events := []DirectorEvent{}
 	for _, pkg := range director.EventSystem.EventPackages {
 		for _, eventCard := range pkg.Events {
 			if !eventCard.Enabled {
@@ -713,7 +713,7 @@ func DirectorEventCatalogFromStoryDirector(director StoryDirector) []DirectorEve
 	for _, event := range director.EventSystem.CustomEvents {
 		events = upsertDirectorEvent(events, event)
 	}
-	return events
+	return appendDefaultDirectorEventTemplates(events)
 }
 
 func StoryDirectorRuleSummary(director StoryDirector, limitBytes int) string {

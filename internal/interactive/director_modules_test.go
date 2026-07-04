@@ -1,6 +1,90 @@
 package interactive
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestEventSystemLibraryMaterializesGenreBuiltins(t *testing.T) {
+	library := NewEventSystemLibrary(t.TempDir())
+	items, err := library.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	wantIDs := []string{
+		DefaultEventSystemID,
+		GenreXuanhuanEventSystemID,
+		GenreXiuxianEventSystemID,
+		GenreApocalypseEventSystemID,
+		GenreWesternEventSystemID,
+		GenreUrbanEventSystemID,
+		GenreTRPGEventSystemID,
+	}
+	byID := map[string]EventSystemModule{}
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	for _, id := range wantIDs {
+		item, ok := byID[id]
+		if !ok {
+			t.Fatalf("missing built-in event system %s in %#v", id, items)
+		}
+		if item.Custom || !IsBuiltinEventSystemID(id) {
+			t.Fatalf("event system %s should be read-only built-in: %#v", id, item)
+		}
+		if len(item.EventSystem.EventPackages) != 1 || len(item.EventSystem.EventPackages[0].Events) == 0 {
+			t.Fatalf("event system %s should include one non-empty event package: %#v", id, item.EventSystem.EventPackages)
+		}
+	}
+
+	xiuxian, err := library.Get(GenreXiuxianEventSystemID)
+	if err != nil {
+		t.Fatalf("Get xiuxian preset failed: %v", err)
+	}
+	if xiuxian.EventSystem.EventPackages[0].ID != "xiuxian-core" || len(xiuxian.EventSystem.EventPackages[0].Events) != 8 {
+		t.Fatalf("xiuxian event pack mismatch: %#v", xiuxian.EventSystem.EventPackages[0])
+	}
+	firstCard := xiuxian.EventSystem.EventPackages[0].Events[0]
+	if !strings.Contains(firstCard.TypeName, "Bottleneck") || !strings.Contains(firstCard.DescriptionMarkdown, "Trigger Scene") {
+		t.Fatalf("genre cards should include bilingual names and structured markdown: %#v", firstCard)
+	}
+	if _, err := library.Update(GenreXiuxianEventSystemID, xiuxian, xiuxian.UpdatedAt); err == nil {
+		t.Fatalf("built-in genre event systems should not be editable")
+	}
+}
+
+func TestDirectorEventCatalogPrioritizesConfiguredEventCardsBeforeDefaults(t *testing.T) {
+	module := builtinGenreEventSystem(
+		"test-genre-events",
+		"测试事件系统",
+		"用于验证事件目录顺序。",
+		nil,
+		"test-pack",
+		"测试事件包",
+		urbanEventCards(),
+	)
+	director := normalizeStoryDirector(StoryDirector{
+		ID:          "catalog-order",
+		Name:        "目录顺序",
+		ModuleRefs:  StoryDirectorModuleRefs{EventSystemDisabled: false},
+		Strategy:    StoryDirectorStrategy{Enabled: true},
+		EventSystem: module.EventSystem,
+	})
+
+	catalog := DirectorEventCatalogFromStoryDirector(director)
+	packCards := module.EventSystem.EventPackages[0].Events
+	if len(catalog) != maxTurnBriefListItems {
+		t.Fatalf("catalog should still be filled to the bounded default size, got %d: %#v", len(catalog), catalog)
+	}
+	for i, card := range packCards {
+		if catalog[i].ID != card.ID {
+			t.Fatalf("configured event cards should be first, index %d got %s want %s in %#v", i, catalog[i].ID, card.ID, catalog)
+		}
+	}
+	if !directorEventQueued(catalog, "face_slap") {
+		t.Fatalf("default templates should fill remaining catalog slots: %#v", catalog)
+	}
+}
 
 func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	novaDir := t.TempDir()

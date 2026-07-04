@@ -1,0 +1,233 @@
+package agent
+
+import (
+	"fmt"
+	"log"
+	"strings"
+
+	"github.com/cloudwego/eino/schema"
+
+	"denova/config"
+)
+
+type ToolResultContextPolicy struct {
+	Enabled      bool
+	KeepRecent   int
+	BudgetBytes  int
+	PreviewChars int
+}
+
+func resolveToolResultContextPolicy(cfg *config.Config, agentKind string) ToolResultContextPolicy {
+	settings := config.ResolveAgentContext(cfg, agentKind)
+	return ToolResultContextPolicy{
+		Enabled:      settings.ToolResultRetentionEnabled,
+		KeepRecent:   settings.ToolResultKeepRecent,
+		BudgetBytes:  settings.ToolResultContextBudgetKB * 1024,
+		PreviewChars: settings.ToolResultPreviewChars,
+	}
+}
+
+func ResolveToolResultContextPolicyForConversation(cfg *config.Config, agentKind string) ToolResultContextPolicy {
+	return resolveToolResultContextPolicy(cfg, agentKind)
+}
+
+func (p ToolResultContextPolicy) normalized() ToolResultContextPolicy {
+	if p.KeepRecent <= 0 {
+		p.KeepRecent = config.DefaultToolResultKeepRecent
+	}
+	if p.BudgetBytes <= 0 {
+		p.BudgetBytes = config.DefaultToolResultContextBudgetKB * 1024
+	}
+	if p.PreviewChars <= 0 {
+		p.PreviewChars = config.DefaultToolResultPreviewChars
+	}
+	return p
+}
+
+type toolResultContextConversation interface {
+	AppendContextMessage(msg *schema.Message) error
+	ToolResultContextPolicy() ToolResultContextPolicy
+}
+
+type toolResultContextRecorder struct {
+	conversation toolResultContextConversation
+	policy       ToolResultContextPolicy
+}
+
+func newToolResultContextRecorder(conversation Conversation) *toolResultContextRecorder {
+	contextConversation, ok := conversation.(toolResultContextConversation)
+	if !ok || contextConversation == nil {
+		return &toolResultContextRecorder{}
+	}
+	policy := contextConversation.ToolResultContextPolicy().normalized()
+	if !policy.Enabled {
+		return &toolResultContextRecorder{}
+	}
+	return &toolResultContextRecorder{conversation: contextConversation, policy: policy}
+}
+
+func (r *toolResultContextRecorder) RecordAssistantToolCalls(msg *schema.Message, meta agentEventMetadata) {
+	if r == nil || r.conversation == nil || meta.SubAgent || msg == nil || len(msg.ToolCalls) == 0 {
+		return
+	}
+	next := assistantToolContextMessage(msg, r.policy)
+	if next == nil {
+		return
+	}
+	if err := r.conversation.AppendContextMessage(next); err != nil {
+		logAgentContextPersistError("assistant_tool_calls", err)
+	}
+}
+
+func (r *toolResultContextRecorder) RecordToolResult(toolName, toolCallID, content string, meta agentEventMetadata) {
+	if r == nil || r.conversation == nil || meta.SubAgent || isPlanProtocolToolName(toolName) {
+		return
+	}
+	msg := schema.ToolMessage(toolResultContextContent(toolName, toolCallID, content, r.policy), toolCallID, schema.WithToolName(toolName))
+	if err := r.conversation.AppendContextMessage(msg); err != nil {
+		logAgentContextPersistError("tool_result", err)
+	}
+}
+
+func logAgentContextPersistError(kind string, err error) {
+	log.Printf("[agent-run] persist tool result context failed kind=%s err=%v", kind, err)
+}
+
+func assistantToolContextMessage(msg *schema.Message, policy ToolResultContextPolicy) *schema.Message {
+	if msg == nil || len(msg.ToolCalls) == 0 {
+		return nil
+	}
+	calls := make([]schema.ToolCall, 0, len(msg.ToolCalls))
+	for _, call := range msg.ToolCalls {
+		if isPlanProtocolToolName(call.Function.Name) {
+			continue
+		}
+		next := call
+		next.Function.Arguments = limitContextText(next.Function.Arguments, policy.PreviewChars, fmt.Sprintf(
+			"\n[Denova tool call args truncated for context]\ntool_name: %s\ntool_call_id: %s\noriginal_chars: %d\npreview_chars: %d",
+			next.Function.Name,
+			next.ID,
+			countRunes(next.Function.Arguments),
+			policy.PreviewChars,
+		))
+		calls = append(calls, next)
+	}
+	if len(calls) == 0 {
+		return nil
+	}
+	return schema.AssistantMessage("", calls)
+}
+
+func toolResultContextContent(toolName, toolCallID, content string, policy ToolResultContextPolicy) string {
+	content = strings.TrimRight(content, "\n")
+	if content == "" {
+		content = "(无返回内容)"
+	}
+	return limitContextText(content, policy.PreviewChars, fmt.Sprintf(
+		"\n[Denova tool result preview truncated for context]\ntool_name: %s\ntool_call_id: %s\noriginal_chars: %d\npreview_chars: %d",
+		toolName,
+		toolCallID,
+		countRunes(content),
+		policy.PreviewChars,
+	))
+}
+
+func limitContextText(content string, maxRunes int, marker string) string {
+	if maxRunes <= 0 || content == "" {
+		return content
+	}
+	runes := []rune(content)
+	if len(runes) <= maxRunes {
+		return content
+	}
+	return strings.TrimRight(string(runes[:maxRunes]), "\n") + marker
+}
+
+func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultContextPolicy) []*schema.Message {
+	if len(messages) == 0 {
+		return messages
+	}
+	policy = policy.normalized()
+	if !policy.Enabled {
+		return removeToolContextMessages(messages)
+	}
+	toolIndexes := make([]int, 0)
+	for i, msg := range messages {
+		if msg != nil && msg.Role == schema.Tool {
+			toolIndexes = append(toolIndexes, i)
+		}
+	}
+	if len(toolIndexes) == 0 {
+		return messages
+	}
+	keepFull := make(map[int]bool, policy.KeepRecent)
+	for i := len(toolIndexes) - 1; i >= 0 && len(keepFull) < policy.KeepRecent; i-- {
+		keepFull[toolIndexes[i]] = true
+	}
+	result := append([]*schema.Message(nil), messages...)
+	used := 0
+	for i := len(result) - 1; i >= 0; i-- {
+		msg := result[i]
+		if msg == nil || msg.Role != schema.Tool {
+			continue
+		}
+		size := len(msg.Content)
+		if keepFull[i] {
+			used += size
+			continue
+		}
+		if used+size <= policy.BudgetBytes {
+			used += size
+			continue
+		}
+		result[i] = toolResultPlaceholderMessage(msg, "tool_result_context_budget_exceeded")
+	}
+	return result
+}
+
+func ApplyToolResultContextPolicyForConversation(messages []*schema.Message, policy ToolResultContextPolicy) []*schema.Message {
+	return applyToolResultContextPolicy(messages, policy)
+}
+
+func removeToolContextMessages(messages []*schema.Message) []*schema.Message {
+	filtered := make([]*schema.Message, 0, len(messages))
+	for _, msg := range messages {
+		if msg == nil {
+			continue
+		}
+		if msg.Role == schema.Tool {
+			continue
+		}
+		if msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
+			if strings.TrimSpace(msg.Content) == "" {
+				continue
+			}
+			next := *msg
+			next.ToolCalls = nil
+			filtered = append(filtered, &next)
+			continue
+		}
+		filtered = append(filtered, msg)
+	}
+	return filtered
+}
+
+func toolResultPlaceholderMessage(msg *schema.Message, reason string) *schema.Message {
+	if msg == nil {
+		return nil
+	}
+	content := fmt.Sprintf(`[Denova retained tool result placeholder]
+schema: tool_result.placeholder.v1
+reason: %s
+tool_name: %s
+tool_call_id: %s
+omitted_bytes: %d
+
+The full retained tool result was omitted from this model context. Re-run the tool if exact content is required.`,
+		reason,
+		strings.TrimSpace(msg.ToolName),
+		strings.TrimSpace(msg.ToolCallID),
+		len(msg.Content),
+	)
+	return schema.ToolMessage(content, msg.ToolCallID, schema.WithToolName(msg.ToolName))
+}

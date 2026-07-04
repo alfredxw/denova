@@ -27,6 +27,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 				return Snapshot{}, err
 			}
 			turn.DisplayEvents = sanitizeDisplayEvents(turn.DisplayEvents)
+			turn.ModelContextMessages = sanitizeModelContextMessages(turn.ModelContextMessages)
 			versions := turnVersions[turnVersionKey(turn.BranchID, parentIDFromRaw(record.Raw))]
 			if len(versions) > 1 {
 				turn.Versions = versions

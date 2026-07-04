@@ -257,11 +257,16 @@ func (l *EventSystemLibrary) ensureBuiltins() error {
 	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
 		return err
 	}
-	path := filepath.Join(l.dir(), DefaultEventSystemID+".json")
-	if current, err := parseEventSystemFile(path); err == nil && current.Version == storyDirectorModuleVersion {
-		return nil
+	for _, item := range builtinEventSystemModules() {
+		path := filepath.Join(l.dir(), item.ID+".json")
+		if current, err := parseEventSystemFile(path); err == nil && current.Version == item.Version {
+			continue
+		}
+		if err := writeEventSystemFile(path, item); err != nil {
+			return err
+		}
 	}
-	return writeEventSystemFile(path, DefaultEventSystemModule())
+	return nil
 }
 
 func (l *RuleSystemLibrary) List() ([]RuleSystemModule, error) {
@@ -719,7 +724,18 @@ func DefaultOpeningSelectorModule() OpeningSelectorModule {
 }
 
 func IsBuiltinEventSystemID(id string) bool {
-	return normalizeDirectorModuleID(id) == DefaultEventSystemID
+	switch normalizeDirectorModuleID(id) {
+	case DefaultEventSystemID,
+		GenreXuanhuanEventSystemID,
+		GenreXiuxianEventSystemID,
+		GenreApocalypseEventSystemID,
+		GenreWesternEventSystemID,
+		GenreUrbanEventSystemID,
+		GenreTRPGEventSystemID:
+		return true
+	default:
+		return false
+	}
 }
 
 func IsBuiltinRuleSystemID(id string) bool {
