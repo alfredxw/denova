@@ -17,8 +17,9 @@ import { createEventPackage, createImagePreset, createInteractiveTeller, createO
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, INTERACTIVE_OPENING_PRESET_ENTRY_ID, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, serializeBookOpeningPresets, type BookOpeningPreset } from '../opening'
 import type { PresetResourceKind, PresetUsageMode } from '../preset-ownership'
 import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller } from '../types'
-import { CreatorDirectory, CreatorEditor, EventPackageEditor, ImagePresetEditor, LoreDirectory, LoreEditor, OpeningPresetEditor, OpeningSelectorEditor, RuleSystemEditor, StoryDirectorEditor, TellerDirectory } from './SettingPanelSections'
+import { CreatorDirectory, CreatorEditor, EventPackageEditor, ImagePresetEditor, LoreDirectory, LoreEditor, OpeningPresetEditor, OpeningSelectorEditor, RuleSystemEditor, TellerDirectory } from './SettingPanelSections'
 import { TellerEditor } from './SettingPanelTellerEditor'
+import { StoryDirectorEditor } from './story-director/StoryDirectorEditor'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -1769,7 +1770,19 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 	        ) : activeMode === 'teller' && presetResourceKind === 'opening' ? (
 	          <OpeningSelectorEditor draft={openingSelectorDraft} setDraft={setOpeningSelectorDraft} tagDraft={openingSelectorTagDraft} setTagDraft={setOpeningSelectorTagDraft} onSave={handleSave} onValidityChange={setPresetConfigValid} />
 	        ) : activeMode === 'teller' && presetResourceKind === 'director' ? (
-	          <StoryDirectorEditor draft={storyDirectorDraft} tellers={tellers} eventPackages={eventPackages} ruleSystems={ruleSystems} openingSelectors={openingSelectors} imagePresets={imagePresets} setDraft={setStoryDirectorDraft} tagDraft={storyDirectorTagDraft} setTagDraft={setStoryDirectorTagDraft} onSave={handleSave} onValidityChange={setPresetConfigValid} />
+	          <StoryDirectorEditor
+	            draft={storyDirectorDraft}
+	            tellers={tellers}
+	            eventPackages={eventPackages}
+	            ruleSystems={ruleSystems}
+	            openingSelectors={openingSelectors}
+	            imagePresets={imagePresets}
+	            setDraft={setStoryDirectorDraft}
+	            tagDraft={storyDirectorTagDraft}
+	            setTagDraft={setStoryDirectorTagDraft}
+	            onSave={handleSave}
+	            onValidityChange={setPresetConfigValid}
+	          />
 	        ) : (
           <TellerEditor workspace={workspace} draft={tellerDraft} setDraft={setTellerDraft} tagDraft={tellerTagDraft} setTagDraft={setTellerTagDraft} activeSlotId={activeSlotId} setActiveSlotId={setActiveSlotId} onSave={handleSave} />
         )}

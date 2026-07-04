@@ -313,7 +313,12 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '故事导演' }))
 
     await selectDefaultDirector(user)
-    expect(screen.getAllByTestId('preset-config-visual-editor')).toHaveLength(3)
+    expect(screen.getByRole('tablist', { name: '导演资源' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /事件引用/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /数值系统/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /TRPG 检定/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /开局选择/ })).toBeInTheDocument()
+    expect(screen.getAllByTestId('preset-config-visual-editor')).toHaveLength(1)
     expect(screen.queryByTestId('monaco-json-editor')).not.toBeInTheDocument()
     await user.click(screen.getAllByRole('button', { name: 'JSON' })[0])
     expect(window.localStorage.getItem('nova.settingPanel.presetConfigView.v1')).toContain('story-director.stat-system')

@@ -53,6 +53,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 方案预设：故事导演配置页重构为紧凑导演控制台，首屏展示模块链路、策略状态和资源摘要；事件包选择改为弹出面板，数值系统、TRPG 检定、开局选择和事件引用收进同一资源 Tab 区。
+- Presets: The Story Director settings page is now a compact director console with first-screen module links, strategy state, and resource summaries. Event package selection moved into a popover, and stats, TRPG checks, opening selection, and event references now live in one resource tab area.
 - 不兼容变更：游戏模式 `prepare_interactive_turn` 工具改为单次 1d20 检定输入，Agent 只需提交用户行为、意图、挑战、消耗、状态说明、优势/劣势、加成列表、5 档难度和四档后果；后端内置掷骰、加成求和和结果判定，seed 只做内部审计保存，工具返回简化后的命中后果。
 - Breaking: Game Mode `prepare_interactive_turn` now accepts a single 1d20 check request. The agent only submits action, intent, challenge, cost, state summary, advantage/disadvantage, bonus list, five-level difficulty, and four outcome definitions; the backend owns rolling, bonus summing, and outcome selection, keeps the seed only for internal audit, and returns a simplified selected consequence.
 - 不兼容变更：事件系统已扁平化为事件包；事件包直接包含 `events` 事件卡列表，故事导演改为通过 `module_refs.event_package_ids` 加载多个事件包，并使用 `event_packages_disabled` 控制开关。旧 `event_system_id`、`event_system_disabled`、`event_system.event_packages` 和 `custom_events` 会自动迁移为事件包/事件卡；前端和主 API 改用 `/api/event-packages`。

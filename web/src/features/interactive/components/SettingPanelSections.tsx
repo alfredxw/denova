@@ -9,13 +9,12 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { type LoreItem, workspaceAssetURL } from '@/lib/api'
 import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpeningPreset } from '../opening'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
-import type { DirectorPlanDocs, EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, Teller, TellerEventPackage } from '../types'
+import type { EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller, TellerEventPackage } from '../types'
 import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
 import { EventPackageVisualEditor, OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
 
@@ -45,56 +44,10 @@ const LOAD_MODE_OPTIONS = [
 const LORE_RESIDENT_ITEM_WARNING_CHARS = 8000
 const LORE_RESIDENT_TOTAL_WARNING_CHARS = 40000
 const IMAGE_PRESET_PROMPT_LIMIT = 4000
-const STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT = 4000
-const STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT = 24 * 1024
-const STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK = 5
 const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_request' }] as const
 const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'opening']
-const STORY_DIRECTOR_MAINLINE_OPTIONS = [
-  { value: 'soft_guidance', labelKey: 'settingPanel.storyDirector.strategy.mainline.softGuidance', descriptionKey: 'settingPanel.storyDirector.strategy.mainline.softGuidanceDesc' },
-  { value: 'balanced', labelKey: 'settingPanel.storyDirector.strategy.mainline.balanced', descriptionKey: 'settingPanel.storyDirector.strategy.mainline.balancedDesc' },
-  { value: 'strong_arc', labelKey: 'settingPanel.storyDirector.strategy.mainline.strongArc', descriptionKey: 'settingPanel.storyDirector.strategy.mainline.strongArcDesc' },
-] as const
-const STORY_DIRECTOR_FAILURE_OPTIONS = [
-  { value: 'reversible', labelKey: 'settingPanel.storyDirector.strategy.failure.reversible', descriptionKey: 'settingPanel.storyDirector.strategy.failure.reversibleDesc' },
-  { value: 'consequence', labelKey: 'settingPanel.storyDirector.strategy.failure.consequence', descriptionKey: 'settingPanel.storyDirector.strategy.failure.consequenceDesc' },
-  { value: 'fail_forward', labelKey: 'settingPanel.storyDirector.strategy.failure.failForward', descriptionKey: 'settingPanel.storyDirector.strategy.failure.failForwardDesc' },
-] as const
-const STORY_DIRECTOR_PACING_OPTIONS = [
-  { value: 'progressive', labelKey: 'settingPanel.storyDirector.strategy.pacing.progressive', descriptionKey: 'settingPanel.storyDirector.strategy.pacing.progressiveDesc' },
-  { value: 'wave', labelKey: 'settingPanel.storyDirector.strategy.pacing.wave', descriptionKey: 'settingPanel.storyDirector.strategy.pacing.waveDesc' },
-  { value: 'goal-pressure-payoff', labelKey: 'settingPanel.storyDirector.strategy.pacing.goalPressurePayoff', descriptionKey: 'settingPanel.storyDirector.strategy.pacing.goalPressurePayoffDesc' },
-] as const
-const STORY_DIRECTOR_RANDOM_RATE_OPTIONS = [
-  { value: '0', rate: 0, labelKey: 'settingPanel.storyDirector.strategy.random.off', descriptionKey: 'settingPanel.storyDirector.strategy.random.offDesc' },
-  { value: '0.08', rate: 0.08, labelKey: 'settingPanel.storyDirector.strategy.random.low', descriptionKey: 'settingPanel.storyDirector.strategy.random.lowDesc' },
-  { value: '0.15', rate: 0.15, labelKey: 'settingPanel.storyDirector.strategy.random.medium', descriptionKey: 'settingPanel.storyDirector.strategy.random.mediumDesc' },
-  { value: '0.3', rate: 0.3, labelKey: 'settingPanel.storyDirector.strategy.random.high', descriptionKey: 'settingPanel.storyDirector.strategy.random.highDesc' },
-] as const
-const STORY_DIRECTOR_AGENT_MODE_OPTIONS = [
-  { value: 'triggered', labelKey: 'settingPanel.storyDirector.strategy.agentMode.triggered', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.triggeredDesc' },
-  { value: 'every_turn', labelKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurn', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurnDesc' },
-  { value: 'off', labelKey: 'settingPanel.storyDirector.strategy.agentMode.off', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.offDesc' },
-] as const
-const DIRECTOR_PLAN_REQUIRED_HEADINGS = [
-  '## 正文Agent可读 / Prose-agent visible',
-  '## 后台导演私密 / Director private',
-  '### 目标 / Goal',
-  '### 节奏、压力与危机 / Pacing, Pressure, Crisis',
-  '### 结果与代价 / Outcome and Cost',
-  '### 状态 / State',
-  '### 分支处理 / Branch Handling',
-  '### 伏笔与回收 / Foreshadowing and Payoff',
-] as const
-const EMPTY_DIRECTOR_PLANNING_TEMPLATES: DirectorPlanDocs = { mainline: '', current_event: '', next_branches: '' }
-const DIRECTOR_PLANNING_TEMPLATE_KEYS = ['mainline', 'current_event', 'next_branches'] as const
 type ImagePresetTarget = ImagePresetSlot['target']
 type LoreType = LoreItem['type']
-type StrategySelectOption = {
-  value: string
-  labelKey: string
-  descriptionKey: string
-}
 interface KnowledgeSection {
   id: string
   labelKey: string
@@ -692,400 +645,6 @@ function presetStatusLabel(item: { custom?: boolean; builtin_overridden?: boolea
   return t('settingPanel.builtIn')
 }
 
-export function StoryDirectorEditor({
-  draft,
-  tellers,
-  eventPackages,
-  ruleSystems,
-  openingSelectors,
-  imagePresets,
-  tagDraft,
-  setDraft,
-  setTagDraft,
-  onSave,
-  onValidityChange,
-}: {
-  draft: StoryDirector | null
-  tellers: Teller[]
-  eventPackages: EventPackageModule[]
-  ruleSystems: RuleSystemModule[]
-  openingSelectors: OpeningSelectorModule[]
-  imagePresets: ImagePreset[]
-  tagDraft: string
-  setDraft: (draft: StoryDirector | null) => void
-  setTagDraft: (value: string) => void
-  onSave: () => void
-  onValidityChange?: (valid: boolean) => void
-}) {
-  const { t } = useTranslation()
-  const setSectionValid = usePresetSectionValidity(draft?.id || '', onValidityChange)
-  const [strategyPromptOpen, setStrategyPromptOpen] = useState(false)
-  const [planningTemplatesOpen, setPlanningTemplatesOpen] = useState(false)
-  const strategyPrompt = draft?.strategy?.prompt_markdown || ''
-  const strategyPromptBytes = utf8ByteLength(strategyPrompt)
-  const strategyPromptValid = strategyPromptBytes <= STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT
-  const planningTemplates = draft?.strategy?.planning_templates || EMPTY_DIRECTOR_PLANNING_TEMPLATES
-  const planningTemplateValidity = {
-    mainline: validateDirectorPlanningTemplate(planningTemplates.mainline),
-    current_event: validateDirectorPlanningTemplate(planningTemplates.current_event),
-    next_branches: validateDirectorPlanningTemplate(planningTemplates.next_branches),
-  }
-  const planningTemplatesValid = Object.values(planningTemplateValidity).every((item) => item.valid)
-  const planningTemplateTabs = DIRECTOR_PLANNING_TEMPLATE_KEYS.map((key) => ({
-    key,
-    label: t(`settingPanel.storyDirector.planningTemplate.${planningTemplateLabelKey(key)}`),
-    value: planningTemplates[key],
-    validity: planningTemplateValidity[key],
-  }))
-
-  useEffect(() => {
-    setStrategyPromptOpen(false)
-    setPlanningTemplatesOpen(false)
-  }, [draft?.id])
-
-  useEffect(() => {
-    setSectionValid('strategy_prompt', strategyPromptValid)
-  }, [draft?.id, strategyPromptValid, setSectionValid])
-
-  useEffect(() => {
-    setSectionValid('planning_templates', planningTemplatesValid)
-  }, [draft?.id, planningTemplatesValid, setSectionValid])
-
-  if (!draft) {
-    return <EmptyState title={t('settingPanel.editor.noStoryDirectorSelected')} description={t('settingPanel.editor.noStoryDirectorSelectedDesc')} />
-  }
-
-  const updateStrategy = (patch: Partial<StoryDirector['strategy']>) => {
-    setDraft({
-      ...draft,
-      strategy: {
-        ...(draft.strategy || {}),
-        enabled: draft.strategy?.enabled !== false,
-        ...patch,
-      },
-    })
-  }
-  const updatePlanningTemplate = (key: keyof DirectorPlanDocs, value: string) => {
-    updateStrategy({ planning_templates: { ...planningTemplates, [key]: value } })
-  }
-  const refs = normalizedStoryDirectorRefs(draft.module_refs)
-  const updateModuleRef = <K extends keyof StoryDirectorModuleRefs>(key: K, value: StoryDirectorModuleRefs[K]) => {
-    setDraft({
-      ...draft,
-      module_refs: {
-        ...refs,
-        [key]: value,
-      },
-    })
-  }
-  const resolvedEventPackages = directorResolvedEventPackages(draft)
-  const selectedEventPackageIDs = refs.event_package_ids || ['default']
-  const selectedEventCardCount = selectedEventPackageIDs.reduce((total, id) => {
-    const module = eventPackages.find((item) => item.id === id)
-    const resolved = resolvedEventPackages.find((item) => item.id === id)
-    return total + (module?.events?.length ?? resolved?.events?.length ?? 0)
-  }, 0)
-
-  const emptySections = newEmptyStoryDirectorSections()
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-      <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_180px_120px]">
-        <Field label={t('settingPanel.field.name')}>
-          <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-        </Field>
-        <Field label={t('settingPanel.field.description')}>
-          <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
-        </Field>
-        <Field label={t('settingPanel.field.tags')}>
-          <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
-        </Field>
-        <div className="flex items-end">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{presetStatusLabel(draft, t)}</span>
-        </div>
-      </div>
-      <div className="grid gap-4 p-4">
-        <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
-          <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.storyDirector.composer')}</div>
-              <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.composerDesc')}</div>
-            </div>
-            <span className="rounded border border-[var(--nova-accent)]/35 bg-[var(--nova-accent)]/10 px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">{t('settingPanel.storyDirector.liveReference')}</span>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <ModuleSelect
-              label={t('settingPanel.presetKind.teller')}
-              value={refs.narrative_style_id || ''}
-              fallbackValue="classic"
-              enabled={!refs.narrative_style_disabled}
-              items={tellers}
-              onChange={(value) => updateModuleRef('narrative_style_id', value)}
-              onEnabledChange={(enabled) => updateModuleRef('narrative_style_disabled', !enabled)}
-            />
-            <EventPackageMultiSelect
-              label={t('settingPanel.presetKind.event')}
-              values={refs.event_package_ids || ['default']}
-              fallbackValues={['default']}
-              enabled={!refs.event_packages_disabled}
-              items={eventPackages}
-              onChange={(value) => updateModuleRef('event_package_ids', value)}
-              onEnabledChange={(enabled) => updateModuleRef('event_packages_disabled', !enabled)}
-            />
-            <ModuleSelect
-              label={t('settingPanel.presetKind.rule')}
-              value={refs.rule_system_id || ''}
-              fallbackValue="default"
-              enabled={!refs.rule_system_disabled}
-              items={ruleSystems}
-              onChange={(value) => updateModuleRef('rule_system_id', value)}
-              onEnabledChange={(enabled) => updateModuleRef('rule_system_disabled', !enabled)}
-            />
-            <ModuleSelect
-              label={t('settingPanel.presetKind.opening')}
-              value={refs.opening_selector_id || ''}
-              fallbackValue="default"
-              enabled={!refs.opening_selector_disabled}
-              items={openingSelectors}
-              onChange={(value) => updateModuleRef('opening_selector_id', value)}
-              onEnabledChange={(enabled) => updateModuleRef('opening_selector_disabled', !enabled)}
-            />
-            <ModuleSelect
-              label={t('settingPanel.presetKind.image')}
-              value={refs.image_preset_id || ''}
-              fallbackValue="game-cg"
-              enabled={!refs.image_preset_disabled}
-              items={imagePresets}
-              onChange={(value) => updateModuleRef('image_preset_id', value)}
-              onEnabledChange={(enabled) => updateModuleRef('image_preset_disabled', !enabled)}
-            />
-          </div>
-          {draft.resolved_snapshot?.warnings?.length ? (
-            <div className="mt-3 grid gap-2">
-              {draft.resolved_snapshot.warnings.map((warning, index) => (
-                <div key={`${warning.module}-${warning.id || index}`} className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-danger)]">
-                  {t('settingPanel.storyDirector.moduleWarning', { module: warning.module, id: warning.id || '-', message: warning.message })}
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </section>
-        <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
-          <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.storyDirector.strategy')}</div>
-              <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.strategyDesc')}</div>
-            </div>
-            {strategyPrompt.trim() ? (
-              <span className="rounded border border-[var(--nova-accent)]/35 bg-[var(--nova-accent)]/10 px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">{t('settingPanel.storyDirector.strategyPromptEnabled')}</span>
-            ) : null}
-          </div>
-          <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-            <Field label={t('settingPanel.field.enabled')}>
-              <Select value={String(draft.strategy?.enabled !== false)} onValueChange={(value) => updateStrategy({ enabled: value === 'true' })}>
-                <SelectTrigger size="sm" className={selectClassName}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                  <SelectItem value="true">{t('settingPanel.enabled')}</SelectItem>
-                  <SelectItem value="false">{t('settingPanel.disabled')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <StrategySelect
-              label={t('settingPanel.orchestration.mainlineStrength')}
-              value={draft.strategy?.mainline_strength || ''}
-              fallbackValue="soft_guidance"
-              options={STORY_DIRECTOR_MAINLINE_OPTIONS}
-              onChange={(mainline_strength) => updateStrategy({ mainline_strength })}
-            />
-            <StrategySelect
-              label={t('settingPanel.orchestration.failurePolicy')}
-              value={draft.strategy?.failure_policy || ''}
-              fallbackValue="reversible"
-              options={STORY_DIRECTOR_FAILURE_OPTIONS}
-              onChange={(failure_policy) => updateStrategy({ failure_policy })}
-            />
-            <StrategySelect
-              label={t('settingPanel.orchestration.pacingCurve')}
-              value={draft.strategy?.pacing_curve || ''}
-              fallbackValue="progressive"
-              options={STORY_DIRECTOR_PACING_OPTIONS}
-              onChange={(pacing_curve) => updateStrategy({ pacing_curve })}
-            />
-            <StrategyRateSelect
-              label={t('settingPanel.field.randomEventRate')}
-              value={draft.strategy?.random_event_rate}
-              fallbackValue="0.15"
-              onChange={(random_event_rate) => updateStrategy({ random_event_rate })}
-            />
-            <StrategySelect
-              label={t('settingPanel.storyDirector.agentMode')}
-              value={draft.strategy?.director_agent_mode || ''}
-              fallbackValue="triggered"
-              options={STORY_DIRECTOR_AGENT_MODE_OPTIONS}
-              onChange={(director_agent_mode) => updateStrategy({ director_agent_mode })}
-            />
-            <Field label={t('settingPanel.storyDirector.branchPlanningTurns')}>
-              <Input
-                className={inputClassName}
-                type="number"
-                min={1}
-                max={12}
-                value={draft.strategy?.branch_planning_turns || STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK}
-                onChange={(event) => updateStrategy({ branch_planning_turns: normalizeBranchPlanningTurns(event.target.value) })}
-              />
-              <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.branchPlanningTurnsDesc')}</span>
-            </Field>
-          </div>
-          <div className="mt-3 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
-            <button
-              type="button"
-              className="flex min-h-9 w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-              onClick={() => setStrategyPromptOpen((open) => !open)}
-              aria-expanded={strategyPromptOpen}
-            >
-              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${strategyPromptOpen ? '' : '-rotate-90'}`} />
-              <span className="min-w-0 flex-1">
-                <span className="block font-medium text-[var(--nova-text)]">{t('settingPanel.storyDirector.strategyPrompt')}</span>
-                <span className="block text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.strategyPromptDesc')}</span>
-              </span>
-              <span className={`shrink-0 text-[11px] ${strategyPromptValid ? 'text-[var(--nova-text-faint)]' : 'text-[var(--nova-danger)]'}`}>
-                {t('settingPanel.storyDirector.strategyPromptBytes', { bytes: strategyPromptBytes, limit: STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT })}
-              </span>
-            </button>
-            {strategyPromptOpen ? (
-              <div className="grid gap-2 border-t border-[var(--nova-border)] p-3">
-                <Textarea
-                  className="nova-field min-h-40 resize-y text-xs focus-visible:ring-0"
-                  value={strategyPrompt}
-                  onChange={(event) => updateStrategy({ prompt_markdown: event.target.value })}
-                  placeholder={t('settingPanel.storyDirector.strategyPromptPlaceholder')}
-                />
-                {strategyPromptValid ? (
-                  <div className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.strategyPromptPriority')}</div>
-                ) : (
-                  <div className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1 text-[11px] leading-5 text-[var(--nova-danger)]">
-                    {t('settingPanel.storyDirector.strategyPromptTooLong', { bytes: strategyPromptBytes, limit: STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT })}
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </div>
-          <div className="mt-3 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
-            <button
-              type="button"
-              className="flex min-h-9 w-full items-center gap-2 px-3 py-2 text-left text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-              onClick={() => setPlanningTemplatesOpen((open) => !open)}
-              aria-expanded={planningTemplatesOpen}
-            >
-              <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${planningTemplatesOpen ? '' : '-rotate-90'}`} />
-              <span className="min-w-0 flex-1">
-                <span className="block font-medium text-[var(--nova-text)]">{t('settingPanel.storyDirector.planningTemplates')}</span>
-                <span className="block text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.planningTemplatesDesc')}</span>
-              </span>
-              <span className={`shrink-0 text-[11px] ${planningTemplatesValid ? 'text-[var(--nova-text-faint)]' : 'text-[var(--nova-danger)]'}`}>
-                {planningTemplatesValid ? t('settingPanel.storyDirector.planningTemplatesValid') : t('settingPanel.storyDirector.planningTemplatesInvalid')}
-              </span>
-            </button>
-            {planningTemplatesOpen ? (
-              <div className="border-t border-[var(--nova-border)] p-3">
-                <Tabs defaultValue="mainline" className="gap-3">
-                  <TabsList aria-label={t('settingPanel.storyDirector.planningTemplates')} className="h-auto w-full justify-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-1">
-                    {planningTemplateTabs.map((tab) => (
-                      <TabsTrigger
-                        key={tab.key}
-                        value={tab.key}
-                        className={`min-h-8 px-3 text-xs ${tab.validity.valid ? '' : 'text-[var(--nova-danger)] data-active:text-[var(--nova-danger)]'}`}
-                      >
-                        {tab.label}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                  {planningTemplateTabs.map((tab) => (
-                    <TabsContent key={tab.key} value={tab.key} className="mt-0">
-                      <PlanningTemplateTextarea label={tab.label} value={tab.value} validity={tab.validity} onChange={(value) => updatePlanningTemplate(tab.key, value)} />
-                    </TabsContent>
-                  ))}
-                </Tabs>
-                <div className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.planningTemplatesRequiredHeadings')}</div>
-              </div>
-            ) : null}
-          </div>
-        </section>
-        <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.storyDirector.eventPackages')}</div>
-              <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.eventPackagesDesc')}</div>
-            </div>
-            <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-[11px] text-[var(--nova-text-faint)]">
-              {t('settingPanel.storyDirector.eventPackagesSummary', { packages: selectedEventPackageIDs.length, cards: selectedEventCardCount })}
-            </span>
-          </div>
-          <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {selectedEventPackageIDs.map((id) => {
-              const module = eventPackages.find((item) => item.id === id)
-              const resolved = resolvedEventPackages.find((item) => item.id === id)
-              const cardCount = module?.events?.length ?? resolved?.events?.length ?? 0
-              return (
-                <div key={id} className="min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2">
-                  <div className="truncate text-xs text-[var(--nova-text)]">{module?.name || resolved?.name || id}</div>
-                  <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">
-                    {module?.invalid ? `${t('settingPanel.invalid')} · ` : ''}{t('settingPanel.eventPackage.summaryCount', { count: cardCount })}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          {refs.event_packages_disabled ? (
-            <div className="mt-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.eventPackagesDisabled')}</div>
-          ) : null}
-        </section>
-        <PresetConfigSectionEditor
-          sectionId="story-director.stat-system"
-          resetKey={`${draft.id}:stat_system`}
-          title={t('settingPanel.storyDirector.statSystem')}
-          description={t('settingPanel.storyDirector.statSystemDesc')}
-          value={draft.stat_system || emptySections.stat_system}
-          summary={t('settingPanel.storyDirector.statSystemSummary', { count: draft.stat_system?.attributes?.length || 0 })}
-          onChange={(stat_system) => setDraft({ ...draft, stat_system })}
-          onSave={onSave}
-          onValidityChange={(valid) => setSectionValid('stat_system', valid)}
-        >
-          {(props) => <StatSystemVisualEditor {...props} />}
-        </PresetConfigSectionEditor>
-        <PresetConfigSectionEditor
-          sectionId="story-director.trpg-system"
-          resetKey={`${draft.id}:trpg_system`}
-          title={t('settingPanel.storyDirector.trpgSystem')}
-          description={t('settingPanel.storyDirector.trpgSystemDesc')}
-          value={draft.trpg_system || emptySections.trpg_system}
-          summary={t('settingPanel.storyDirector.trpgSystemSummary', { count: draft.trpg_system?.rule_templates?.length || 0 })}
-          onChange={(trpg_system) => setDraft({ ...draft, trpg_system })}
-          onSave={onSave}
-          onValidityChange={(valid) => setSectionValid('trpg_system', valid)}
-        >
-          {(props) => <TRPGSystemVisualEditor {...props} />}
-        </PresetConfigSectionEditor>
-        <PresetConfigSectionEditor
-          sectionId="story-director.opening-selector"
-          resetKey={`${draft.id}:opening_selector`}
-          title={t('settingPanel.storyDirector.openingSelector')}
-          description={t('settingPanel.storyDirector.openingSelectorDesc')}
-          value={draft.opening_selector || emptySections.opening_selector}
-          summary={t('settingPanel.storyDirector.openingSelectorSummary', { pools: draft.opening_selector?.trait_pools?.length || 0, ops: draft.opening_selector?.initial_state_ops?.length || 0 })}
-          onChange={(opening_selector) => setDraft({ ...draft, opening_selector })}
-          onSave={onSave}
-          onValidityChange={(valid) => setSectionValid('opening_selector', valid)}
-        >
-          {(props) => <OpeningSelectorVisualEditor {...props} />}
-        </PresetConfigSectionEditor>
-      </div>
-    </div>
-  )
-}
-
 export function EventPackageEditor({
   draft,
   tagDraft,
@@ -1260,265 +819,6 @@ function ModuleEditorShell<T extends { name: string; description: string; custom
   )
 }
 
-function parseDecimalInput(value: string) {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function normalizeBranchPlanningTurns(value: string) {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) return STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK
-  return Math.min(12, Math.max(1, Math.round(parsed)))
-}
-
-function validateDirectorPlanningTemplate(value: string) {
-  const bytes = utf8ByteLength(value || '')
-  if (!String(value || '').trim()) {
-    return { bytes, missingHeadings: [], valid: true }
-  }
-  const missingHeadings = DIRECTOR_PLAN_REQUIRED_HEADINGS.filter((heading) => !String(value || '').includes(heading))
-  return {
-    bytes,
-    missingHeadings,
-    valid: bytes <= STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT && missingHeadings.length === 0,
-  }
-}
-
-function planningTemplateLabelKey(key: keyof DirectorPlanDocs) {
-  if (key === 'mainline') return 'mainline'
-  if (key === 'current_event') return 'currentEvent'
-  return 'nextBranches'
-}
-
-function StrategySelect({
-  label,
-  value,
-  fallbackValue,
-  options,
-  onChange,
-}: {
-  label: string
-  value: string
-  fallbackValue: string
-  options: readonly StrategySelectOption[]
-  onChange: (value: string) => void
-}) {
-  const { t } = useTranslation()
-  const selectedValue = value || fallbackValue
-  const hasSelected = options.some((option) => option.value === selectedValue)
-  const displayedOptions = hasSelected
-    ? options
-    : [
-      ...options,
-      {
-        value: selectedValue,
-        labelKey: 'settingPanel.storyDirector.strategy.custom',
-        descriptionKey: 'settingPanel.storyDirector.strategy.customDesc',
-      },
-    ]
-  const selectedOption = displayedOptions.find((option) => option.value === selectedValue) || displayedOptions[0]
-  const selectedLabel = strategyOptionText(t, selectedOption.labelKey, selectedOption.value)
-  const selectedDescription = strategyOptionText(t, selectedOption.descriptionKey, selectedOption.value)
-
-  return (
-    <Field label={label}>
-      <Select value={selectedValue} onValueChange={onChange}>
-        <SelectTrigger size="sm" className={selectClassName}>
-          <SelectValue>{selectedLabel}</SelectValue>
-        </SelectTrigger>
-        <SelectContent className="nova-panel min-w-72 border text-[var(--nova-text)]">
-          {displayedOptions.map((option) => {
-            const optionLabel = strategyOptionText(t, option.labelKey, option.value)
-            const optionDescription = strategyOptionText(t, option.descriptionKey, option.value)
-            return (
-              <SelectItem key={option.value} value={option.value} textValue={optionLabel} className="items-start py-2">
-                <div className="grid gap-0.5 text-left">
-                  <span className="text-xs text-[var(--nova-text)]">{optionLabel}</span>
-                  <span className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{optionDescription}</span>
-                </div>
-              </SelectItem>
-            )
-          })}
-        </SelectContent>
-      </Select>
-      <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{selectedDescription}</span>
-    </Field>
-  )
-}
-
-function StrategyRateSelect({
-  label,
-  value,
-  fallbackValue,
-  onChange,
-}: {
-  label: string
-  value: number | undefined
-  fallbackValue: string
-  onChange: (value: number) => void
-}) {
-  return (
-    <StrategySelect
-      label={label}
-      value={strategyRateValue(value, fallbackValue)}
-      fallbackValue={fallbackValue}
-      options={STORY_DIRECTOR_RANDOM_RATE_OPTIONS}
-      onChange={(next) => onChange(parseDecimalInput(next))}
-    />
-  )
-}
-
-function strategyRateValue(value: number | undefined, fallbackValue: string): string {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallbackValue
-  const clamped = Math.min(1, Math.max(0, value))
-  return String(clamped)
-}
-
-function strategyOptionText(t: (key: string, values?: Record<string, string>) => string, key: string, value: string): string {
-  return t(key, { value })
-}
-
-function utf8ByteLength(value: string): number {
-  return new TextEncoder().encode(value).length
-}
-
-function ModuleSelect<T extends { id: string; name: string; custom?: boolean; invalid?: boolean }>({
-  label,
-  value,
-  fallbackValue,
-  enabled,
-  items,
-  onChange,
-  onEnabledChange,
-}: {
-  label: string
-  value: string
-  fallbackValue: string
-  enabled: boolean
-  items: T[]
-  onChange: (value: string) => void
-  onEnabledChange: (enabled: boolean) => void
-}) {
-  const { t } = useTranslation()
-  const selectedValue = value || fallbackValue
-  const hasSelected = items.some((item) => item.id === selectedValue)
-  const switchLabel = enabled
-    ? t('settingPanel.storyDirector.disableModule', { module: label })
-    : t('settingPanel.storyDirector.enableModule', { module: label })
-  return (
-    <div className="grid min-w-0 gap-1.5">
-      <div className="flex h-5 items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{label}</span>
-        <Switch checked={enabled} onCheckedChange={onEnabledChange} aria-label={switchLabel} title={switchLabel} />
-      </div>
-      <Select value={hasSelected ? selectedValue : fallbackValue} onValueChange={onChange} disabled={!enabled}>
-        <SelectTrigger size="sm" className={selectClassName}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          {items.length > 0 ? items.map((item) => (
-            <SelectItem key={item.id} value={item.id}>
-              {item.name}{item.invalid ? ` · ${t('settingPanel.invalid')}` : ''}
-            </SelectItem>
-          )) : (
-            <SelectItem value={fallbackValue}>{fallbackValue}</SelectItem>
-          )}
-        </SelectContent>
-      </Select>
-    </div>
-  )
-}
-
-function EventPackageMultiSelect<T extends { id: string; name: string; invalid?: boolean }>({
-  label,
-  values,
-  fallbackValues,
-  enabled,
-  items,
-  onChange,
-  onEnabledChange,
-}: {
-  label: string
-  values: string[]
-  fallbackValues: string[]
-  enabled: boolean
-  items: T[]
-  onChange: (values: string[]) => void
-  onEnabledChange: (enabled: boolean) => void
-}) {
-  const { t } = useTranslation()
-  const selectedValues = normalizeIDList(values.length ? values : fallbackValues)
-  const selectedSet = new Set(selectedValues)
-  const switchLabel = enabled
-    ? t('settingPanel.storyDirector.disableModule', { module: label })
-    : t('settingPanel.storyDirector.enableModule', { module: label })
-  const toggleValue = (id: string, checked: boolean) => {
-    const next = checked
-      ? normalizeIDList([...selectedValues, id])
-      : selectedValues.filter((value) => value !== id)
-    onChange(next.length ? next : fallbackValues)
-  }
-
-  return (
-    <div className="grid min-w-0 gap-1.5 md:col-span-2 xl:col-span-1">
-      <div className="flex h-5 items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{label}</span>
-        <Switch checked={enabled} onCheckedChange={onEnabledChange} aria-label={switchLabel} title={switchLabel} />
-      </div>
-      <div className={`grid max-h-36 min-h-8 gap-1 overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 ${enabled ? '' : 'opacity-60'}`}>
-        {items.length > 0 ? items.map((item) => (
-          <label key={item.id} className="flex min-h-7 cursor-pointer items-center gap-2 rounded px-2 text-xs text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]">
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 shrink-0 accent-[var(--nova-accent)]"
-              checked={selectedSet.has(item.id)}
-              disabled={!enabled}
-              onChange={(event) => toggleValue(item.id, event.target.checked)}
-            />
-            <span className="min-w-0 flex-1 truncate">{item.name}</span>
-            {item.invalid ? <span className="shrink-0 text-[10px] text-[var(--nova-danger)]">{t('settingPanel.invalid')}</span> : null}
-          </label>
-        )) : (
-          <div className="px-2 py-1.5 text-xs text-[var(--nova-text-faint)]">{fallbackValues.join(', ')}</div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function normalizedStoryDirectorRefs(refs: StoryDirectorModuleRefs | undefined): StoryDirectorModuleRefs {
-  const legacyEventPackageID = refs?.event_system_id || ''
-  const eventPackageIDs = refs?.event_package_ids?.length
-    ? refs.event_package_ids
-    : legacyEventPackageID
-      ? [legacyEventPackageID]
-      : ['default']
-  return {
-    narrative_style_id: refs?.narrative_style_id || 'classic',
-    narrative_style_disabled: refs?.narrative_style_disabled === true,
-    event_package_ids: normalizeIDList(eventPackageIDs),
-    event_packages_disabled: refs?.event_packages_disabled === true || refs?.event_system_disabled === true,
-    rule_system_id: refs?.rule_system_id || 'default',
-    rule_system_disabled: refs?.rule_system_disabled === true,
-    opening_selector_id: refs?.opening_selector_id || 'default',
-    opening_selector_disabled: refs?.opening_selector_disabled === true,
-    image_preset_id: refs?.image_preset_id || 'game-cg',
-    image_preset_disabled: refs?.image_preset_disabled === true,
-  }
-}
-
-function normalizeIDList(ids: string[]): string[] {
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const raw of ids) {
-    const id = raw.trim()
-    if (!id || seen.has(id)) continue
-    seen.add(id)
-    result.push(id)
-  }
-  return result
-}
-
 function storyDirectorSummaryCount(director: StoryDirector) {
   return directorEventCardCount(directorResolvedEventPackages(director))
     + (director.stat_system?.attributes?.length || 0)
@@ -1558,18 +858,6 @@ function presetKindCreateLabel(kind: PresetResourceKind, t: (key: string) => str
   if (kind === 'rule') return t('settingPanel.newRuleSystem')
   if (kind === 'opening') return t('settingPanel.newOpeningSelector')
   return t('settingPanel.newTeller')
-}
-
-function newEmptyStoryDirectorSections(): {
-  stat_system: StoryDirectorStatSystem
-  trpg_system: StoryDirectorTRPGSystem
-  opening_selector: StoryDirectorOpeningSelector
-} {
-  return {
-    stat_system: { attributes: [] },
-    trpg_system: { rule_templates: [] },
-    opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },
-  }
 }
 
 function usePresetSectionValidity(resetKey: string, onValidityChange?: (valid: boolean) => void) {
@@ -2236,35 +1524,44 @@ export function OpeningPresetEditor({
   )
 }
 
-function PlanningTemplateTextarea({ label, value, validity, onChange }: {
-  label: string
-  value: string
-  validity: ReturnType<typeof validateDirectorPlanningTemplate>
-  onChange: (value: string) => void
-}) {
-  const { t } = useTranslation()
-  const hasError = !validity.valid
-  return (
-    <label className="grid gap-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-[var(--nova-text-faint)]">{label}</span>
-        <span className={`text-[11px] ${hasError ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>
-          {t('settingPanel.storyDirector.planningTemplateBytes', { bytes: validity.bytes, limit: STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT })}
-        </span>
-      </div>
-      <Textarea
-        minRows={20}
-        className="nova-field min-h-[calc(20*1.25rem+1rem)] resize-y font-mono text-xs leading-5 focus-visible:ring-0"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      {validity.missingHeadings.length ? (
-        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1 text-[11px] leading-5 text-[var(--nova-danger)]">
-          {t('settingPanel.storyDirector.planningTemplateMissingHeadings', { headings: validity.missingHeadings.join(' / ') })}
-        </div>
-      ) : null}
-    </label>
-  )
+function sectionItems(items: LoreItem[], section: KnowledgeSection, query = '') {
+  const normalizedQuery = query.trim().toLowerCase()
+  return items.filter((item) => {
+    if (!section.types.includes(item.type)) return false
+    const tags = item.tags || []
+    if (section.tag && !tags.includes(section.tag)) return false
+    if (section.excludeTag && tags.includes(section.excludeTag)) return false
+    if (normalizedQuery) {
+      const haystack = [item.name, item.brief_description || '', item.content || '', tags.join('\n')].join('\n').toLowerCase()
+      if (!haystack.includes(normalizedQuery)) return false
+    }
+    return true
+  })
+}
+
+function loreTypeLabel(type: LoreItem['type'], t: (key: string) => string) {
+  const key = `lore.type.${type}`
+  const label = t(key)
+  return label === key ? t('lore.type.other') : label
+}
+
+function loreImportanceLabel(importance: LoreItem['importance'], t: (key: string) => string) {
+  const key = `lore.importance.${importance}`
+  const label = t(key)
+  return label === key ? t('lore.importance.important') : label
+}
+
+function loreLoadModeLabel(loadMode: LoreItem['load_mode'] | undefined, t: (key: string) => string) {
+  const key = `lore.loadMode.${loadMode || 'auto'}`
+  const label = t(key)
+  return label === key ? t('lore.loadMode.auto') : label
+}
+
+function loadModeDescription(loadMode: LoreItem['load_mode'] | undefined, t: (key: string) => string) {
+  if (loadMode === 'resident') return t('settingPanel.lore.residentDesc')
+  if (loadMode === 'manual') return t('settingPanel.lore.manualDesc')
+  if (loadMode === 'auto') return t('settingPanel.lore.autoDesc')
+  return t('settingPanel.lore.indexDesc')
 }
 
 function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
@@ -2285,44 +1582,4 @@ function EmptyState({ title, description }: { title: string; description: string
       </div>
     </div>
   )
-}
-
-function sectionItems(items: LoreItem[], section: KnowledgeSection, query = '') {
-  const normalizedQuery = query.trim().toLowerCase()
-  return items.filter((item) => {
-    if (!section.types.includes(item.type)) return false
-    const tags = item.tags || []
-    if (section.tag && !tags.includes(section.tag)) return false
-    if (section.excludeTag && tags.includes(section.excludeTag)) return false
-    if (normalizedQuery) {
-      const haystack = [item.name, item.brief_description || '', item.content || '', tags.join('\n')].join('\n').toLowerCase()
-      if (!haystack.includes(normalizedQuery)) return false
-    }
-    return true
-  })
-}
-
-function loadModeDescription(loadMode: LoreItem['load_mode'] | undefined, t: (key: string) => string) {
-  if (loadMode === 'resident') return t('settingPanel.lore.residentDesc')
-  if (loadMode === 'manual') return t('settingPanel.lore.manualDesc')
-  if (loadMode === 'auto') return t('settingPanel.lore.autoDesc')
-  return t('settingPanel.lore.indexDesc')
-}
-
-function loreTypeLabel(type: LoreItem['type'], t: (key: string) => string) {
-  const key = `lore.type.${type}`
-  const label = t(key)
-  return label === key ? t('lore.type.other') : label
-}
-
-function loreImportanceLabel(importance: LoreItem['importance'], t: (key: string) => string) {
-  const key = `lore.importance.${importance}`
-  const label = t(key)
-  return label === key ? t('lore.importance.important') : label
-}
-
-function loreLoadModeLabel(loadMode: LoreItem['load_mode'] | undefined, t: (key: string) => string) {
-  const key = `lore.loadMode.${loadMode || 'auto'}`
-  const label = t(key)
-  return label === key ? t('lore.loadMode.auto') : label
 }
