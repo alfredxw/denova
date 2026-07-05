@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { InteractiveLayout } from './InteractiveLayout'
 import { useInteractiveStore } from '../stores/interactive-store'
-import { createInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors } from '../api'
-import type { StorySummary } from '../types'
+import { createInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, updateInteractiveStory } from '../api'
+import type { StoryDirector, StorySummary, Teller } from '../types'
 
 vi.mock('@/hooks/useIsMobile', () => ({
   useIsMobile: () => false,
@@ -52,6 +52,7 @@ vi.mock('./StoryStage', () => ({
     stories: StorySummary[]
     storyId: string
     onStoryCreate: (input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; reply_target_chars?: number }) => Promise<void>
+    onDirectorChange: (directorId: string) => Promise<void>
   }) => (
     <div data-testid="story-stage-probe" data-story-id={props.storyId}>
       <button
@@ -65,6 +66,12 @@ vi.mock('./StoryStage', () => ({
         })}
       >
         mock create story
+      </button>
+      <button
+        type="button"
+        onClick={() => void props.onDirectorChange('director-alt')}
+      >
+        mock switch director
       </button>
       <div data-testid="story-list">{props.stories.map((item) => item.title).join('|')}</div>
     </div>
@@ -90,6 +97,7 @@ beforeEach(() => {
   vi.mocked(getStoryDirectors).mockReset()
   vi.mocked(getInteractiveSnapshot).mockReset()
   vi.mocked(getInteractiveBranches).mockReset()
+  vi.mocked(updateInteractiveStory).mockReset()
   vi.mocked(getInteractiveTellers).mockResolvedValue([])
   vi.mocked(getStoryDirectors).mockResolvedValue([])
   vi.mocked(getInteractiveSnapshot).mockResolvedValue({ story_id: 'st_new', branch_id: 'main', turns: [], state: {} })
@@ -132,6 +140,29 @@ describe('InteractiveLayout story creation', () => {
     expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_new')
     expect(screen.getByTestId('story-list')).toHaveTextContent('新故事线|旧故事线')
   })
+
+  it('updates the story director and follows the director narrative style', async () => {
+    vi.mocked(getInteractiveStories).mockResolvedValue({
+      current_story_id: 'st_1',
+      stories: [story('st_1', '故事线')],
+    })
+    vi.mocked(getInteractiveTellers).mockResolvedValue([teller('classic', '经典叙事'), teller('alt-style', '强风格')])
+    vi.mocked(getStoryDirectors).mockResolvedValue([storyDirector('director-alt', '强导演', 'alt-style')])
+    vi.mocked(updateInteractiveStory).mockResolvedValue({ ...story('st_1', '故事线'), story_director_id: 'director-alt', story_teller_id: 'alt-style' })
+
+    render(<InteractiveLayout workspace="/workspace" />)
+
+    await waitFor(() => expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_1'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'mock switch director' }))
+
+    await waitFor(() => {
+      expect(updateInteractiveStory).toHaveBeenCalledWith('st_1', {
+        story_director_id: 'director-alt',
+        story_teller_id: 'alt-style',
+      })
+    })
+  })
 })
 
 function deferred<T>() {
@@ -157,5 +188,39 @@ function story(id: string, title: string): StorySummary {
     updated_at: '2026-07-04T00:00:00Z',
     branches: 1,
     events: 0,
+  }
+}
+
+function teller(id: string, name: string): Teller {
+  return {
+    version: 1,
+    id,
+    name,
+    description: '',
+    random_event_rate: 0,
+    tags: [],
+    context_policy: {
+      creator: 'summary',
+      lore: 'summary',
+      runtime_state: 'full',
+    },
+    slots: [],
+    custom: false,
+  }
+}
+
+function storyDirector(id: string, name: string, narrativeStyleId: string): StoryDirector {
+  return {
+    version: 1,
+    id,
+    name,
+    description: '',
+    module_refs: { narrative_style_id: narrativeStyleId },
+    strategy: { enabled: true },
+    stat_system: {},
+    trpg_system: {},
+    opening_selector: { enabled: true },
+    tags: [],
+    custom: false,
   }
 }

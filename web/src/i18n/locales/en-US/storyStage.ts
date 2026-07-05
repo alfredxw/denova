@@ -21,6 +21,7 @@ const storyStage = {
   'storyStage.opening.emptyTitle': 'Choose an opening method',
   'storyStage.opening.emptyDescription': 'This new story has no prose yet. Choose how to start here; after generation, it can be refreshed or version-switched like any first turn.',
   'storyStage.opening.startAI': 'Generate with AI',
+  'storyStage.opening.configureDirector': 'Configure Director',
   'storyStage.opening.startBookPreset': 'Use book preset',
   'storyStage.opening.startCustom': 'Use custom opening',
   'storyStage.opening.noBookPreset': 'No book preset',

@@ -21,6 +21,7 @@ const storyStage = {
   'storyStage.opening.emptyTitle': '选择开场方式',
   'storyStage.opening.emptyDescription': '新的故事线还没有正文。只在这里选择如何开场，生成后可以像普通首轮一样刷新或切换版本。',
   'storyStage.opening.startAI': 'AI 生成开场',
+  'storyStage.opening.configureDirector': '配置导演',
   'storyStage.opening.startBookPreset': '使用书籍预设',
   'storyStage.opening.startCustom': '使用自定义开局',
   'storyStage.opening.noBookPreset': '没有书籍预设',

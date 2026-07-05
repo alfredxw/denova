@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Activity, Archive, Brain, Edit3, Eye, Loader2, RefreshCw, RotateCcw, Save, Search, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { Activity, Archive, Brain, Edit3, Eye, FileText, Loader2, RefreshCw, RotateCcw, Save, Search, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MessageList } from '@/components/Chat/MessageList'
 import { useAgentEventStream } from '@/hooks/useAgentEventStream'
 import { generateStoryMemoryStream, getInteractiveDirector, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution, runInteractiveDirector, updateInteractiveDirector } from '../api'
-import type { DirectorPlan, DirectorPlanDocs, DirectorPlanRunStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
+import type { DirectorPlan, DirectorPlanDocs, DirectorPlanMetadata, DirectorPlanRunStatus, DirectorPlanStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
 type MemoryPanelTab = 'memory' | 'director'
 type MemoryPanelView = 'content' | 'generation'
@@ -459,9 +459,11 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
     }
   }
 
+  const hasDirectorRunChat = Boolean(directorPlan || directorStatus || directorMetadata?.last_run || planLoading)
+
   return (
     <div className="mb-3 space-y-2">
-      {directorPlan || planLoading ? (
+      {hasDirectorRunChat ? (
         <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
           <div className="mb-2 flex items-center justify-between gap-2 text-xs font-semibold text-[var(--nova-text)]">
             <div className="flex min-w-0 items-center gap-2">
@@ -483,15 +485,9 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
             </div>
           </div>
           {directorError ? <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{directorError}</div> : null}
-          {planLoading && !directorPlan ? <div className="text-xs text-[var(--nova-text-muted)]">{t('common.loading')}</div> : null}
+          <DirectorRunChat status={directorStatus} metadata={directorMetadata} loading={planLoading} />
           {directorPlan ? (
             <>
-              <div className="flex flex-wrap gap-1.5">
-                <MemoryChip>{`${t('snapshot.director.status')}: ${directorMetadata?.last_run?.status || t('snapshot.noRecord')}`}</MemoryChip>
-                <MemoryChip>{`${t('snapshot.director.docs')}: ${Object.keys(directorMetadata?.docs || {}).length || 1}`}</MemoryChip>
-                <MemoryChip>{`${t('snapshot.director.branchPlanningTurns')}: ${directorMetadata?.branch_planning_turns || 5}`}</MemoryChip>
-              </div>
-              {directorMetadata?.last_run ? <DirectorRunSummary run={directorMetadata.last_run} /> : null}
               {draftDocs ? (
                 <div className="mt-3 space-y-2">
                   <DirectorPlanTextarea label={t('snapshot.director.plan')} value={draftDocs.plan} onChange={(value) => setDraftDocs({ ...draftDocs, plan: value })} />
@@ -562,19 +558,94 @@ function InfoLine({ label, value }: { label: string; value: string }) {
   )
 }
 
-function DirectorRunSummary({ run }: { run: DirectorPlanRunStatus }) {
+type DirectorStatusLike = Partial<DirectorPlanRunStatus & DirectorPlanStatus>
+
+function DirectorRunChat({ status, metadata, loading }: { status?: DirectorStatusLike; metadata?: DirectorPlanMetadata; loading?: boolean }) {
   const { t } = useTranslation()
-  const failed = run.status === 'failed'
+  const currentStatus = loading && !status?.status ? 'loading' : status?.status || ''
+  const running = currentStatus === 'running' || currentStatus === 'loading'
+  const failed = currentStatus === 'failed'
+  const totals = directorPlanTotals(status, metadata)
+  const summary = status?.error || status?.summary || directorStatusFallback(currentStatus, t)
+  const updatedAt = status?.updated_at || metadata?.updated_at || ''
   return (
-    <div className={`mt-2 rounded-[var(--nova-radius)] border px-2 py-1.5 text-xs ${failed ? 'border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)]'}`}>
-      <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate font-medium text-[var(--nova-text)]">{t('snapshot.director.lastRun')}</span>
-        {run.status ? <span className={`shrink-0 ${failed ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>{run.status}</span> : null}
-      </div>
-      {run.summary ? <div className="break-words leading-5 [overflow-wrap:anywhere]">{run.summary}</div> : null}
-      {run.error ? <div className="mt-1 break-words text-[11px] leading-5 [overflow-wrap:anywhere]">{run.error}</div> : null}
+    <div className="mt-2 space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
+      <DirectorChatBubble
+        icon={running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+        speaker={t('memoryPanel.directorChat.director')}
+        meta={currentStatus || t('snapshot.noRecord')}
+        tone={failed ? 'danger' : 'default'}
+        streaming={running}
+      >
+        {summary}
+      </DirectorChatBubble>
+      <DirectorChatBubble
+        icon={<FileText className="h-3.5 w-3.5" />}
+        speaker={t('snapshot.director.plan')}
+        meta={updatedAt ? t('memoryPanel.directorChat.updatedAt', { time: formatShortDate(updatedAt) }) : t('snapshot.noRecord')}
+      >
+        {t('memoryPanel.directorChat.planProgress', {
+          completed: totals.completed,
+          planned: totals.planned,
+          visible: formatBytes(totals.visibleBytes),
+          total: formatBytes(totals.totalBytes),
+          turns: metadata?.branch_planning_turns || 5,
+        })}
+      </DirectorChatBubble>
     </div>
   )
+}
+
+function DirectorChatBubble({ icon, speaker, meta, tone = 'default', streaming = false, children }: { icon: ReactNode; speaker: string; meta?: string; tone?: 'default' | 'danger'; streaming?: boolean; children: ReactNode }) {
+  const danger = tone === 'danger'
+  return (
+    <div className={`flex items-start gap-2 rounded-[var(--nova-radius)] border px-2 py-2 text-xs ${danger ? 'border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}>
+      <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border ${danger ? 'border-[var(--nova-danger-border)] text-[var(--nova-danger)]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'}`}>
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
+          <span className={`truncate font-medium ${danger ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text)]'}`}>{speaker}</span>
+          {meta ? <span className={`shrink-0 truncate text-[10px] ${danger ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>{meta}</span> : null}
+        </div>
+        <div className="break-words leading-5 [overflow-wrap:anywhere]">
+          {children}
+          {streaming ? <span className="ml-1 inline-block h-3 w-1 animate-pulse rounded-full bg-current align-[-2px]" /> : null}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function directorStatusFallback(status: string, t: ReturnType<typeof useTranslation>['t']) {
+  switch (status) {
+    case 'running':
+    case 'loading':
+      return t('memoryPanel.directorChat.running')
+    case 'ready':
+      return t('memoryPanel.directorChat.ready')
+    case 'failed':
+      return t('memoryPanel.directorChat.failed')
+    case 'conflict':
+      return t('memoryPanel.directorChat.conflict')
+    case 'waiting_opening':
+      return t('memoryPanel.directorChat.waitingOpening')
+    default:
+      return t('memoryPanel.directorChat.noRun')
+  }
+}
+
+function directorPlanTotals(status?: DirectorStatusLike, metadata?: DirectorPlanMetadata) {
+  const docs = Object.values(metadata?.docs || {})
+  const totalBytes = status?.doc_bytes ?? docs.reduce((sum, doc) => sum + (doc.bytes || 0), 0)
+  const visibleBytes = status?.visible_bytes ?? docs.reduce((sum, doc) => sum + (doc.visible_bytes || 0), 0)
+  const planned = status?.planned_docs || docs.length || 1
+  const completed = status?.completed_docs ?? (metadata?.last_run?.completed_docs || (metadata?.last_run?.status === 'ready' ? planned : 0))
+  return { completed, planned, totalBytes, visibleBytes }
+}
+
+function formatBytes(value: number) {
+  return `${new Intl.NumberFormat().format(value)} bytes`
 }
 
 function DirectorPlanTextarea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
