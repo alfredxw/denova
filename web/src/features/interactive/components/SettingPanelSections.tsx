@@ -310,7 +310,7 @@ export function TellerDirectory({
   const [collapsedSections, setCollapsedSections] = useState<Partial<Record<PresetResourceKind, boolean>>>({})
   const isConfigAgentActive = activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
   const isVisible = (kind: PresetResourceKind) => presetResourceVisibleInMode(kind, usageMode)
-  const isCollapsed = (kind: PresetResourceKind) => collapsedSections[kind] ?? kind !== resourceKind
+  const isCollapsed = (kind: PresetResourceKind) => collapsedSections[kind] ?? defaultPresetSectionCollapsed(kind, resourceKind)
   const visibleKinds = PRESET_DIRECTORY_ORDER.filter(isVisible)
   const hasCollapsedVisibleSections = visibleKinds.some(isCollapsed)
   const DirectoryToggleIcon = hasCollapsedVisibleSections ? ChevronsUpDown : ChevronsDownUp
@@ -574,24 +574,24 @@ function PresetDirectorySection({
 }) {
   const { t } = useTranslation()
   return (
-    <section data-preset-kind={kind}>
-      <div className={`flex h-8 items-center gap-2 rounded px-2 text-xs ${count > 0 ? 'text-[var(--nova-text-muted)]' : 'text-[var(--nova-text-faint)]'}`}>
+    <section data-preset-kind={kind} className="min-w-0">
+      <div className={`flex h-8 min-w-0 items-center gap-2 overflow-hidden rounded px-2 text-xs ${count > 0 ? 'text-[var(--nova-text-muted)]' : 'text-[var(--nova-text-faint)]'}`}>
         <button
           type="button"
-          className="nova-nav-item rounded p-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          className="nova-nav-item shrink-0 rounded p-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           onClick={onToggle}
           aria-label={collapsed ? `${t('chat.tool.expand')}${label}` : `${t('chat.tool.collapse')}${label}`}
         >
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
         </button>
-        <Icon className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
+        <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
         <button type="button" className="min-w-0 flex-1 truncate text-left font-medium" onClick={onToggle}>
           {label}
         </button>
-        <span className="text-[11px] text-[var(--nova-text-faint)]">{count}</span>
+        <span className="shrink-0 tabular-nums text-[11px] text-[var(--nova-text-faint)]">{count}</span>
         <button
           type="button"
-          className="nova-nav-item rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          className="nova-nav-item shrink-0 rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           disabled={saving}
           onClick={onCreate}
           aria-label={createLabel}
@@ -626,17 +626,21 @@ function PresetDirectoryItem({
     <button
       type="button"
       onClick={onSelect}
-      className={`flex min-h-9 w-full items-center gap-2 rounded-md px-2 py-1 text-left text-xs transition ${
+      className={`flex min-h-9 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1 text-left text-xs transition ${
         active ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
       }`}
     >
       <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0 flex-1 overflow-hidden">
         <span className="block truncate">{title}</span>
         <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{summary}</span>
       </span>
     </button>
   )
+}
+
+function defaultPresetSectionCollapsed(kind: PresetResourceKind, resourceKind: PresetResourceKind) {
+  return kind !== resourceKind && kind !== 'director' && kind !== 'teller'
 }
 
 function presetStatusLabel(item: { custom?: boolean; builtin_overridden?: boolean }, t: (key: string) => string) {

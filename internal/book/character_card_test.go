@@ -92,6 +92,52 @@ func TestServiceImportTavernCharacterCardCreatesLoreItems(t *testing.T) {
 	}
 }
 
+func TestServiceImportTavernCharacterCardAddsNumericSuffixForDuplicateLoreNames(t *testing.T) {
+	workspace := t.TempDir()
+	service := NewService(workspace)
+	store := NewLoreStore(workspace)
+	if _, err := store.Create(LoreItemInput{Type: "world", Name: "秘密", Importance: "important", Content: "既有资料"}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.ImportTavernCharacterCard("liuyun.json", []byte(`{
+		"spec": "chara_card_v2",
+		"data": {
+			"name": "柳云",
+			"description": "负责整理情报",
+			"character_book": {
+				"entries": [
+					{"keys": ["暗线"], "comment": "秘密", "content": "知道城主府暗线", "enabled": true},
+					{"keys": ["密道"], "comment": "秘密", "content": "知道城主府密道", "enabled": true}
+				]
+			}
+		}
+	}`))
+	if err != nil {
+		t.Fatalf("导入角色卡失败: %v", err)
+	}
+	if result.ItemCount != 3 {
+		t.Fatalf("导入资料数量不符合预期: %#v", result)
+	}
+
+	items, err := store.ListAll()
+	if err != nil {
+		t.Fatalf("读取资料库失败: %v", err)
+	}
+	namesByID := make(map[string]string, len(items))
+	for _, item := range items {
+		namesByID[item.ID] = item.Name
+	}
+	for _, id := range []string{"柳云", "秘密", "秘密-2", "秘密-3"} {
+		if _, ok := namesByID[id]; !ok {
+			t.Fatalf("资料库缺少 ID %s: %#v", id, namesByID)
+		}
+	}
+	if namesByID["秘密-2"] != "秘密-2" || namesByID["秘密-3"] != "秘密-3" {
+		t.Fatalf("重名导入应使用数字后缀名称: %#v", namesByID)
+	}
+}
+
 func TestServiceImportTavernCharacterCardImportsPNGCoverOpeningsAndUserPlaceholder(t *testing.T) {
 	workspace := t.TempDir()
 	service := NewService(workspace)

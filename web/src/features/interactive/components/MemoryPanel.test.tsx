@@ -148,9 +148,10 @@ describe('MemoryPanel', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/director?branch=main'))).toBe(true))
     expect(screen.getAllByText('导演编排').length).toBeGreaterThan(0)
     expect(screen.getByDisplayValue(/公开压力升高/)).toBeInTheDocument()
-    expect(screen.getByText('最近后台更新')).toBeInTheDocument()
-    expect(screen.getByText('failed')).toBeInTheDocument()
-    expect(screen.getByText('director unavailable')).toBeInTheDocument()
+    expect(screen.getByText('规划当前分支的导演编排')).toBeInTheDocument()
+    expect(screen.getAllByText(/director\.md/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/规划文档 0\/1/)).toBeInTheDocument()
+    expect(screen.getByText(/director unavailable/)).toBeInTheDocument()
     expect(screen.getByText('规则审计')).toBeInTheDocument()
     expect(screen.getByText('失败会损失体力并暴露行踪')).toBeInTheDocument()
     expect(screen.getAllByText('潜入检定').length).toBeGreaterThan(0)
@@ -277,6 +278,47 @@ describe('MemoryPanel', () => {
     })))
     await waitFor(() => expect(onSnapshotRefresh).toHaveBeenCalledTimes(1))
   })
+
+  it('can manually trigger director planning when the branch has no plan or rule audit', async () => {
+    const onSnapshotRefresh = vi.fn()
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url.includes('/director/run')) {
+        return Response.json(directorStatus('running', { summary: '' }))
+      }
+      if (url.includes('/director')) {
+        return Response.json({ error: 'director plan not found' }, { status: 404 })
+      }
+      if (url.includes('/story-memory')) {
+        return Response.json(storyMemoryState())
+      }
+      return Response.json({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<MemoryPanel storyId="story-1" branchId="main" onSnapshotRefresh={onSnapshotRefresh} snapshot={{
+      story_id: 'story-1',
+      branch_id: 'main',
+      turns: [],
+      state: {},
+    }} />)
+
+    await openDirectorPanel()
+    await userEvent.click(screen.getByRole('button', { name: '查看导演编排' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '手动触发导演规划' })).toBeInTheDocument())
+    expect(screen.getByText('当前分支暂无导演编排或规则审计')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '手动触发导演规划' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/director/run', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ branch_id: 'main' }),
+    })))
+    await waitFor(() => expect(onSnapshotRefresh).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('规划当前分支的导演编排')).toBeInTheDocument()
+    expect(screen.getAllByText('正在流式整理导演规划').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/director\.md/).length).toBeGreaterThan(0)
+  })
 })
 
 async function openDirectorPanel() {
@@ -367,7 +409,11 @@ function directorPlan(overrides: Partial<{ plan: string }> = {}) {
   }
 }
 
-function directorStatus(status: string) {
+function directorStatus(status: string, overrides: Partial<ReturnType<typeof directorStatusBase>> = {}) {
+  return { ...directorStatusBase(status), ...overrides }
+}
+
+function directorStatusBase(status: string) {
   return {
     story_id: 'story-1',
     branch_id: 'main',

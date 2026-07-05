@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式：导演编排右栏在当前分支没有导演规划或规则审计时提供手动触发规划入口，并在规划中复用 Chat 消息列表展示后台导演状态与 director.md 进度。
+- Game Mode: The Director sidebar now offers a manual planning action when the current branch has no Director plan or rule audit, and reuses the chat message list to show background Director status and director.md progress while planning.
 - WebUI：创作 Agent 与游戏模式输入框支持 `/Skill`、`@文件`、`@资料` 和 `#场景` 的文本内联 token 展示；选中后以主题蓝灰色加粗显示并可作为整体删除，发送协议保持兼容纯文本与现有引用字段。
 - WebUI: Writing Agent and Game Mode composers now render `/Skill`, `@file`, `@lore`, and `#scene` references as inline text tokens. Selected tokens use the theme-aligned blue-gray bold treatment, delete as a unit, and still send compatible plain text plus existing reference fields.
 - 游戏模式：导演规划新增安全状态接口与失败重试入口；开局后后台规划期间，舞台只显示状态、文档进度和错误摘要，不暴露具体规划正文。
@@ -55,6 +57,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 方案预设：进入页面时默认同时展开“故事导演”和“叙事风格”，目录标题与条目长文本会截断在侧栏内；内置事件包名称、事件卡展示文本和默认导演规划模板改为中文标题。
+- Presets: The directory now opens Story Directors and Narrative Styles by default, truncates long directory labels inside the sidebar, and defaults built-in event package names, event-card display text, and Director planning templates to Chinese headings.
+- 方案预设：默认“爽文核心事件包”的事件卡改为差异化预设内容，每类事件都有独立的背景融合、起承转合、回收、奖惩和约束说明。
+- Presets: The default Webnovel Core event package now uses differentiated preset content for each card, with event-specific fusion, arc, payoff, reward/cost, and guardrail guidance.
+- 资料库：新建资料项的自动 ID 不再在名称后追加随机 `_abcd` 后缀，改为稳定使用名称生成；普通资料写入会拒绝重名，酒馆角色卡导入遇到重名资料项时会自动使用 `-2`、`-3` 数字后缀。
+- Lore: Auto-generated lore item IDs no longer append random `_abcd` suffixes after the item name. Normal lore writes now reject duplicate names, while Tavern character-card imports resolve duplicate lore item names with `-2`, `-3` numeric suffixes.
 - WebUI：游戏模式顶部与新建故事线流程改为选择“故事导演”，叙事风格由导演方案自动决定；空开局页新增“配置导演”跳转入口。
 - WebUI: Game Mode now selects Story Directors in the top bar and new-story flow, with narrative style derived from the selected director; the empty opening screen adds a Configure Director jump entry.
 - WebUI：导演编排侧栏改为 Chat 式状态流展示后台导演进度和 `director.md` 文档状态；上下文分析弹窗的展开消息片段增加内缩层级与独立背景，避免和外层分组混淆。

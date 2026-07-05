@@ -29,19 +29,19 @@ const (
 )
 
 var requiredDirectorPlanHeadings = []string{
-	"正文Agent可读 / Prose-agent visible",
-	"后台导演私密 / Director private",
-	"阶段钩子与阅读欲望 / Stage Hook and Reader Desire",
-	"资料库锚点 / Lore Anchors",
-	"核心角色与关系张力 / Core Characters and Relationship Tension",
-	"重要势力与阶段阻力 / Key Factions and Stage Resistance",
-	"当前场景与行动空间 / Current Scene and Action Space",
-	"信息揭示与线索密度 / Information Reveal and Clue Density",
-	"遭遇、检定与代价 / Encounters, Checks, and Costs",
-	"爽点、危机与反转 / Payoff, Crisis, and Reversal",
-	"状态连续性 / State Continuity",
-	"最近分支安排 / Near Branch Arrangements",
-	"伏笔与回收 / Foreshadowing and Payoff",
+	"正文Agent可读",
+	"后台导演私密",
+	"阶段钩子与阅读欲望",
+	"资料库锚点",
+	"核心角色与关系张力",
+	"重要势力与阶段阻力",
+	"当前场景与行动空间",
+	"信息揭示与线索密度",
+	"遭遇、检定与代价",
+	"爽点、危机与反转",
+	"状态连续性",
+	"最近分支安排",
+	"伏笔与回收",
 }
 
 type StoryDirectorPlanningTemplates struct {
@@ -151,76 +151,76 @@ type DirectorPlanRunToken struct {
 
 func DefaultStoryDirectorPlanningTemplates() StoryDirectorPlanningTemplates {
 	return StoryDirectorPlanningTemplates{
-		Plan: strings.TrimSpace(`# 导演规划 / Director Plan
+		Plan: strings.TrimSpace(`# 导演规划
 
-## 正文Agent可读 / Prose-agent visible
+## 正文Agent可读
 
-### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire
+### 阶段钩子与阅读欲望
 围绕主角当前最想解决的问题、可见收益、未解谜团和下一次反转建立推进动力。每个可玩回合至少推进一个有效信息点、角色关系变化、压力升级、收益/代价或新悬念，避免连续空转。
 
-### 资料库锚点 / Lore Anchors
+### 资料库锚点
 优先使用资料库中的重要角色、势力、规则、地点和既有关系；非必要不要自创核心角色、组织或世界规则。资料库不足时，新增内容只能作为临时候选，并要与既有设定自洽。
 
-### 核心角色与关系张力 / Core Characters and Relationship Tension
+### 核心角色与关系张力
 规划男/女主角、关键同伴、阶段性反派、重要势力代表与关系节点的目标、态度和冲突。普通 NPC 只有承担信息、冲突、选择代价或节奏功能时才出现。
 
-### 重要势力与阶段阻力 / Key Factions and Stage Resistance
+### 重要势力与阶段阻力
 记录当前阶段能推动压力的势力、派系、组织规则、资源封锁、舆论评价或追捕压力。
 
-### 当前场景与行动空间 / Current Scene and Action Space
+### 当前场景与行动空间
 明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。
 
-### 信息揭示与线索密度 / Information Reveal and Clue Density
+### 信息揭示与线索密度
 安排本阶段应公开的信息、可发现线索和误导点；失败不应让剧情卡死，失败可以带来代价、不完整信息或危机升级。
 
-### 遭遇、检定与代价 / Encounters, Checks, and Costs
+### 遭遇、检定与代价
 准备可能触发的战斗、谈判、追逐、陷阱、谜题或规则检定，明确成功、部分成功、失败和重大失败的后果。
 
-### 爽点、危机与反转 / Payoff, Crisis, and Reversal
+### 爽点、危机与反转
 给后续回合准备阶段性爽点、危险升级、关系爆点、身份揭露、误会反转或伏笔回收，抓住阅读欲望。
 
-### 状态连续性 / State Continuity
+### 状态连续性
 记录主角、重要角色、势力、资源、任务进度、已公开信息和世界状态的可见变化。
 
-### 最近分支安排 / Near Branch Arrangements
+### 最近分支安排
 规划最近 {{branch_planning_turns}} 回合内可能的用户方向、裁定要点和承接路径；尊重用户选择，不锁死唯一解。
 
-### 伏笔与回收 / Foreshadowing and Payoff
+### 伏笔与回收
 标出可给玩家感知的线索、回收点和新悬念。
 
-## 后台导演私密 / Director private
+## 后台导演私密
 
-### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire
+### 阶段钩子与阅读欲望
 维护隐藏真相、阶段高潮、下一次反转和阅读钩子的投放顺序，保证节奏持续向前。
 
-### 资料库锚点 / Lore Anchors
+### 资料库锚点
 记录后台规划必须遵守的资料库设定、重要角色/势力边界和不可违背的世界规则；新增候选必须注明为何资料库不足。
 
-### 核心角色与关系张力 / Core Characters and Relationship Tension
+### 核心角色与关系张力
 规划重要角色的隐藏动机、真实立场、关系转折、阶段性敌意或结盟机会。
 
-### 重要势力与阶段阻力 / Key Factions and Stage Resistance
+### 重要势力与阶段阻力
 安排势力暗线行动、资源争夺、规则压迫、追杀、审判、交易或舆论压力。
 
-### 当前场景与行动空间 / Current Scene and Action Space
+### 当前场景与行动空间
 准备场景背后的隐藏资源、陷阱、证据、观察角度和可承接行动。
 
-### 信息揭示与线索密度 / Information Reveal and Clue Density
+### 信息揭示与线索密度
 规划本阶段应该揭示、暂缓、误导或拆分的信息，确保用户每轮都有可感知收获。
 
-### 遭遇、检定与代价 / Encounters, Checks, and Costs
+### 遭遇、检定与代价
 准备不同裁定等级下的隐藏代价、奖励、敌对反应、资源损耗和失败推进路径。
 
-### 爽点、危机与反转 / Payoff, Crisis, and Reversal
+### 爽点、危机与反转
 安排爽点释放、危机升级、角色爆点、反派压迫和反转条件，不让剧情只停留在氛围描写。
 
-### 状态连续性 / State Continuity
+### 状态连续性
 记录不应直接剧透的隐藏状态、未公开角色动机、幕后势力变化和长期影响。
 
-### 最近分支安排 / Near Branch Arrangements
+### 最近分支安排
 为最近 {{branch_planning_turns}} 回合的用户选择准备多条承接策略；偏离主线时重规划，不强拉回固定剧本。
 
-### 伏笔与回收 / Foreshadowing and Payoff
+### 伏笔与回收
 维护伏笔投放、误导、回收条件和替代回收路径。`),
 	}
 }
@@ -583,7 +583,7 @@ func renderDirectorPlanTemplate(template string, meta StoryMeta, branchID string
 		out = strings.ReplaceAll(out, key, value)
 	}
 	if strings.TrimSpace(seed.OpeningSummary) != "" && !strings.Contains(out, seed.OpeningSummary) {
-		out += "\n\n## 开局摘要 / Opening Summary\n" + strings.TrimSpace(seed.OpeningSummary)
+		out += "\n\n## 开局摘要\n" + strings.TrimSpace(seed.OpeningSummary)
 	}
 	return strings.TrimSpace(out)
 }
@@ -707,12 +707,12 @@ func ExtractDirectorPlanVisibleSection(content string) string {
 	if content == "" {
 		return ""
 	}
-	start := strings.Index(content, "## 正文Agent可读 / Prose-agent visible")
+	start := strings.Index(content, "## 正文Agent可读")
 	if start < 0 {
 		return ""
 	}
 	visible := content[start:]
-	if end := strings.Index(visible, "## 后台导演私密 / Director private"); end >= 0 {
+	if end := strings.Index(visible, "## 后台导演私密"); end >= 0 {
 		visible = visible[:end]
 	}
 	return strings.TrimSpace(trimBytes(visible, 12*1024))
@@ -723,7 +723,7 @@ func DirectorPlanVisibleContext(plan DirectorPlan, limitBytes int) string {
 		limitBytes = 12 * 1024
 	}
 	var sb strings.Builder
-	writeDirectorPlanContextBlock(&sb, "导演规划 / Director Plan", plan.VisibleDocs.Plan)
+	writeDirectorPlanContextBlock(&sb, "导演规划", plan.VisibleDocs.Plan)
 	return strings.TrimSpace(trimBytes(sb.String(), limitBytes))
 }
 

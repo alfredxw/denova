@@ -244,8 +244,8 @@ func BuildInteractiveDirectorSystemInstruction() string {
 		"规划对象是以 TRPG 回合、检定和分支推进的互动小说，不是纯 TRPG 模组；出场角色不等同于 NPC，应优先规划男/女主角、关键同伴、阶段性反派、重要势力代表和关系节点。",
 		"剧情节奏要高信息密度、网文式可读：每个可玩回合至少推进一个有效信息点、角色关系变化、压力升级、收益/代价或新悬念，避免连续空转、低信息量氛围描写和无关细节。",
 		"你只能使用 read_file、write_file、edit_file，且只能访问调用方列出的 director.md；不得使用 shell、删除、移动、资料库写入或任意 workspace 写入。",
-		"director.md 必须保留固定标题：正文Agent可读 / Prose-agent visible、后台导演私密 / Director private、阶段钩子与阅读欲望、资料库锚点、核心角色与关系张力、重要势力与阶段阻力、当前场景与行动空间、信息揭示与线索密度、遭遇、检定与代价、爽点、危机与反转、状态连续性、最近分支安排、伏笔与回收。",
-		"正文 Agent 和快捷选择只能看到 Prose-agent visible 区；Director private 区只能服务后台规划，不能泄露给玩家正文。",
+		"director.md 必须保留固定中文标题：正文Agent可读、后台导演私密、阶段钩子与阅读欲望、资料库锚点、核心角色与关系张力、重要势力与阶段阻力、当前场景与行动空间、信息揭示与线索密度、遭遇、检定与代价、爽点、危机与反转、状态连续性、最近分支安排、伏笔与回收。",
+		"正文 Agent 和快捷选择只能看到“正文Agent可读”区；“后台导演私密”区只能服务后台规划，不能泄露给玩家正文。",
 		"完成文件编辑后，只用一句话概述更新内容；不要输出故事正文或把完整 Markdown 再贴一遍。",
 	}, "\n")
 }
@@ -258,7 +258,7 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("- 只能修改调用方列出的 director.md；metadata.json 由后端维护，不能读写。\n")
 	sb.WriteString("- director.md 同时承载大方向、当前事件和最近分支安排，但内容组织要围绕互动小说的角色、关系、势力压力、信息揭示、检定代价和阅读钩子。\n\n")
 	sb.WriteString("## 固定标题\n")
-	sb.WriteString("- director.md 必须保留：正文Agent可读 / Prose-agent visible；后台导演私密 / Director private；阶段钩子与阅读欲望 / Stage Hook and Reader Desire；资料库锚点 / Lore Anchors；核心角色与关系张力 / Core Characters and Relationship Tension；重要势力与阶段阻力 / Key Factions and Stage Resistance；当前场景与行动空间 / Current Scene and Action Space；信息揭示与线索密度 / Information Reveal and Clue Density；遭遇、检定与代价 / Encounters, Checks, and Costs；爽点、危机与反转 / Payoff, Crisis, and Reversal；状态连续性 / State Continuity；最近分支安排 / Near Branch Arrangements；伏笔与回收 / Foreshadowing and Payoff。\n\n")
+	sb.WriteString("- director.md 必须保留：正文Agent可读；后台导演私密；阶段钩子与阅读欲望；资料库锚点；核心角色与关系张力；重要势力与阶段阻力；当前场景与行动空间；信息揭示与线索密度；遭遇、检定与代价；爽点、危机与反转；状态连续性；最近分支安排；伏笔与回收。\n\n")
 	sb.WriteString("## 更新原则\n")
 	sb.WriteString("- 你不负责续写本回合剧情、不负责改写正文、不负责替用户选择下一步行动；只维护后台导演规划。\n")
 	sb.WriteString("- 规划要服务后续互动 Agent：通过重要角色、关系张力、势力阻力、信息揭示、遭遇检定、收益代价和状态连续性管理互动流程。\n")
@@ -266,8 +266,8 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("- 重要角色优先：出场角色不等同于 NPC，应优先安排男/女主角、关键同伴、阶段性反派、重要势力代表和关系节点；普通 NPC 只有承担信息、冲突、选择代价或节奏功能时才出现。\n")
 	sb.WriteString("- 高信息密度：最近安排要让用户每个可玩回合都体验到有效信息、关系变化、压力升级、收益/代价或新悬念，避免连续空转和纯氛围描写。\n")
 	sb.WriteString("- 兼顾用户自由选择：给主线牵引和合理后续安排，但不要锁死唯一解，不要替用户做下一步选择。\n")
-	sb.WriteString("- Prose-agent visible 区只放本轮后正文 Agent 可使用的信息；不得放会剧透关键真相、幕后动机或未来答案的内容。\n")
-	sb.WriteString("- Director private 区可保存隐藏真相、长期反转、未公开角色动机、备用代价和伏笔回收条件。\n")
+	sb.WriteString("- “正文Agent可读”区只放本轮后正文 Agent 可使用的信息；不得放会剧透关键真相、幕后动机或未来答案的内容。\n")
+	sb.WriteString("- “后台导演私密”区可保存隐藏真相、长期反转、未公开角色动机、备用代价和伏笔回收条件。\n")
 	sb.WriteString("- 事件目录只是规划输入；不要做强制/禁用队列，事件要融入当前设定、角色关系、冲突源和 RuleResolution 结果。\n")
 	sb.WriteString("- 如果本回合出现终局、重大失败或用户偏离主线，要承接为分支状态和后续代价，而不是强行圆回原主线。\n")
 	sb.WriteString("- 保存后的 director.md 必须包含全部固定标题，且不超过后端字节上限。\n\n")

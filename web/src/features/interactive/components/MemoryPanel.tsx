@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Activity, Archive, Brain, Edit3, Eye, FileText, Loader2, RefreshCw, RotateCcw, Save, Search, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { Activity, Archive, Brain, Edit3, Eye, Loader2, RefreshCw, RotateCcw, Save, Search, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MessageList } from '@/components/Chat/MessageList'
 import { useAgentEventStream } from '@/hooks/useAgentEventStream'
+import type { ChatMessage } from '@/lib/api'
 import { generateStoryMemoryStream, getInteractiveDirector, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution, runInteractiveDirector, updateInteractiveDirector } from '../api'
 import type { DirectorPlan, DirectorPlanDocs, DirectorPlanMetadata, DirectorPlanRunStatus, DirectorPlanStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
@@ -201,7 +202,6 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
               branchId={effectiveBranchId}
               snapshot={snapshot}
               onSnapshotRefresh={onSnapshotRefresh}
-              emptyFallback={<div className="flex min-h-[180px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs text-[var(--nova-text-muted)]">{t('memoryPanel.directorEmpty')}</div>}
             />
           ) : (
             <DirectorSpoilerGate onReveal={() => setDirectorRevealed(true)} />
@@ -338,7 +338,7 @@ function DirectorSpoilerGate({ onReveal }: { onReveal: () => void }) {
   )
 }
 
-function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshotRefresh, emptyFallback = null }: { storyId?: string; branchId?: string; snapshot: Snapshot | null; onSnapshotRefresh?: () => void | Promise<unknown>; emptyFallback?: ReactNode }) {
+function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshotRefresh }: { storyId?: string; branchId?: string; snapshot: Snapshot | null; onSnapshotRefresh?: () => void | Promise<unknown> }) {
   const { t } = useTranslation()
   const [rebuilding, setRebuilding] = useState(false)
   const [planLoading, setPlanLoading] = useState(false)
@@ -349,6 +349,7 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
   const [ruleError, setRuleError] = useState('')
   const [directorPlan, setDirectorPlan] = useState<DirectorPlan | null>(snapshot?.director_plan || null)
   const [draftDocs, setDraftDocs] = useState<DirectorPlanDocs | null>(snapshot?.director_plan?.docs || null)
+  const [manualDirectorStatus, setManualDirectorStatus] = useState<DirectorPlanStatus | null>(null)
   const ruleResolution = snapshot?.current_turn?.rule_resolution
   const ruleRequest = ruleResolution?.request
   const ruleResult = ruleResolution?.result
@@ -357,12 +358,16 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
   const hasRuleAudit = !!ruleResolution || !!terminalOutcome
   const effectiveBranchId = branchId || snapshot?.branch_id || ''
   const directorMetadata = directorPlan?.metadata
-  const directorStatus = snapshot?.director_plan_status || directorMetadata?.last_run
+  const directorStatus = manualDirectorStatus || snapshot?.director_plan_status || directorMetadata?.last_run
 
   useEffect(() => {
     setDirectorPlan(snapshot?.director_plan || null)
     setDraftDocs(snapshot?.director_plan?.docs || null)
   }, [snapshot?.director_plan, snapshot?.director_plan?.metadata?.revision])
+
+  useEffect(() => {
+    if (snapshot?.director_plan_status) setManualDirectorStatus(null)
+  }, [snapshot?.director_plan_status?.revision, snapshot?.director_plan_status?.status, snapshot?.director_plan_status?.updated_at])
 
   useEffect(() => {
     if (!storyId) return
@@ -377,7 +382,11 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
       })
       .catch((err) => {
         if (cancelled) return
-        console.error('[interactive-memory-panel] load director plan failed', err)
+        if (isMissingDirectorPlanError(err)) {
+          console.info('[interactive-memory-panel] director plan missing for branch', { storyId, branchId: effectiveBranchId, error: err })
+        } else {
+          console.error('[interactive-memory-panel] load director plan failed', err)
+        }
         setDirectorError(err instanceof Error ? err.message : t('snapshot.director.loadFailed'))
       })
       .finally(() => {
@@ -385,8 +394,6 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
       })
     return () => { cancelled = true }
   }, [effectiveBranchId, storyId, t])
-
-  if (!directorPlan && !hasRuleAudit && !planLoading) return emptyFallback
 
   const rebuildDirector = async () => {
     if (!storyId || rebuilding) return
@@ -427,12 +434,13 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
     }
   }
 
-  const retryDirectorPlan = async () => {
+  const runDirectorPlan = async () => {
     if (!storyId || retryingDirector) return
     setRetryingDirector(true)
     setDirectorError('')
     try {
-      await runInteractiveDirector(storyId, effectiveBranchId)
+      const status = await runInteractiveDirector(storyId, effectiveBranchId)
+      setManualDirectorStatus(status)
       await onSnapshotRefresh?.()
     } catch (err) {
       console.error('[interactive-memory-panel] retry director failed', err)
@@ -459,7 +467,18 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
     }
   }
 
-  const hasDirectorRunChat = Boolean(directorPlan || directorStatus || directorMetadata?.last_run || planLoading)
+  const hasDirectorRunChat = Boolean(directorPlan || directorStatus || directorMetadata?.last_run || planLoading || retryingDirector)
+
+  if (!hasDirectorRunChat && !hasRuleAudit) {
+    return (
+      <DirectorEmptyState
+        error={directorError}
+        running={retryingDirector}
+        disabled={!storyId}
+        onRun={() => void runDirectorPlan()}
+      />
+    )
+  }
 
   return (
     <div className="mb-3 space-y-2">
@@ -472,7 +491,7 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
             </div>
             <div className="flex shrink-0 items-center gap-1">
               {directorStatus?.status === 'failed' ? (
-                <button type="button" className="nova-icon-button flex h-6 w-6 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={t('storyStage.director.retry')} title={t('storyStage.director.retry')} onClick={() => void retryDirectorPlan()} disabled={!storyId || retryingDirector}>
+                <button type="button" className="nova-icon-button flex h-6 w-6 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={t('storyStage.director.retry')} title={t('storyStage.director.retry')} onClick={() => void runDirectorPlan()} disabled={!storyId || retryingDirector}>
                   {retryingDirector ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                 </button>
               ) : null}
@@ -485,7 +504,7 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
             </div>
           </div>
           {directorError ? <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{directorError}</div> : null}
-          <DirectorRunChat status={directorStatus} metadata={directorMetadata} loading={planLoading} />
+          <DirectorRunChat status={directorStatus} metadata={directorMetadata} loading={planLoading || retryingDirector} branchId={effectiveBranchId} />
           {directorPlan ? (
             <>
               {draftDocs ? (
@@ -549,6 +568,36 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
   )
 }
 
+function DirectorEmptyState({ error, running, disabled, onRun }: { error?: string; running?: boolean; disabled?: boolean; onRun: () => void }) {
+  const { t } = useTranslation()
+  return (
+    <section className="flex min-h-[220px] flex-col items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-4 py-6 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
+        {running ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
+      </div>
+      <h3 className="mt-3 text-sm font-semibold text-[var(--nova-text)]">{t('memoryPanel.directorEmpty')}</h3>
+      <p className="mt-2 max-w-[24rem] text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.directorManualRunHint')}</p>
+      {error ? <div className="mt-3 w-full rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{error}</div> : null}
+      <button
+        type="button"
+        className="mt-4 inline-flex h-8 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 text-xs font-medium text-[var(--nova-text)] transition-colors hover:border-[var(--nova-accent)] disabled:cursor-not-allowed disabled:opacity-60"
+        onClick={onRun}
+        disabled={disabled || running}
+      >
+        {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+        {running ? t('memoryPanel.directorManualRunning') : t('memoryPanel.directorManualRun')}
+      </button>
+    </section>
+  )
+}
+
+function isMissingDirectorPlanError(err: unknown) {
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err || '').toLowerCase()
+  return message.includes('director plan not found') ||
+    message.includes('http 404') ||
+    (message.includes('director.md') && message.includes('no such file or directory'))
+}
+
 function InfoLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[64px_minmax(0,1fr)] gap-2">
@@ -560,59 +609,71 @@ function InfoLine({ label, value }: { label: string; value: string }) {
 
 type DirectorStatusLike = Partial<DirectorPlanRunStatus & DirectorPlanStatus>
 
-function DirectorRunChat({ status, metadata, loading }: { status?: DirectorStatusLike; metadata?: DirectorPlanMetadata; loading?: boolean }) {
+function DirectorRunChat({ status, metadata, loading, branchId }: { status?: DirectorStatusLike; metadata?: DirectorPlanMetadata; loading?: boolean; branchId?: string }) {
   const { t } = useTranslation()
   const currentStatus = loading && !status?.status ? 'loading' : status?.status || ''
   const running = currentStatus === 'running' || currentStatus === 'loading'
-  const failed = currentStatus === 'failed'
   const totals = directorPlanTotals(status, metadata)
   const summary = status?.error || status?.summary || directorStatusFallback(currentStatus, t)
   const updatedAt = status?.updated_at || metadata?.updated_at || ''
-  return (
-    <div className="mt-2 space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
-      <DirectorChatBubble
-        icon={running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-        speaker={t('memoryPanel.directorChat.director')}
-        meta={currentStatus || t('snapshot.noRecord')}
-        tone={failed ? 'danger' : 'default'}
-        streaming={running}
-      >
-        {summary}
-      </DirectorChatBubble>
-      <DirectorChatBubble
-        icon={<FileText className="h-3.5 w-3.5" />}
-        speaker={t('snapshot.director.plan')}
-        meta={updatedAt ? t('memoryPanel.directorChat.updatedAt', { time: formatShortDate(updatedAt) }) : t('snapshot.noRecord')}
-      >
-        {t('memoryPanel.directorChat.planProgress', {
+  const progress = t('memoryPanel.directorChat.planProgress', {
+    completed: totals.completed,
+    planned: totals.planned,
+    visible: formatBytes(totals.visibleBytes),
+    total: formatBytes(totals.totalBytes),
+    turns: metadata?.branch_planning_turns || 5,
+  })
+  const messages = useMemo<ChatMessage[]>(() => {
+    const toolStatus = currentStatus === 'failed' ? 'error' : running ? 'running' : 'success'
+    const meta = updatedAt ? t('memoryPanel.directorChat.updatedAt', { time: formatShortDate(updatedAt) }) : currentStatus || t('snapshot.noRecord')
+    return [
+      {
+        id: 'director-run-request',
+        role: 'user',
+        content: t('memoryPanel.directorChat.request'),
+      },
+      {
+        id: 'director-run-thinking',
+        role: 'thinking',
+        content: summary,
+        streaming: running,
+        created_at: updatedAt,
+      },
+      {
+        id: 'director-run-tool',
+        role: 'tool_call',
+        name: 'director.md',
+        status: toolStatus,
+        args: t('memoryPanel.directorChat.toolArgs', {
+          branch: branchId || metadata?.branch_id || status?.branch_id || t('snapshot.noRecord'),
           completed: totals.completed,
           planned: totals.planned,
           visible: formatBytes(totals.visibleBytes),
           total: formatBytes(totals.totalBytes),
-          turns: metadata?.branch_planning_turns || 5,
-        })}
-      </DirectorChatBubble>
-    </div>
-  )
-}
-
-function DirectorChatBubble({ icon, speaker, meta, tone = 'default', streaming = false, children }: { icon: ReactNode; speaker: string; meta?: string; tone?: 'default' | 'danger'; streaming?: boolean; children: ReactNode }) {
-  const danger = tone === 'danger'
+        }),
+        result: toolStatus === 'success' ? progress : '',
+        created_at: updatedAt,
+      },
+      {
+        id: 'director-run-result',
+        role: currentStatus === 'failed' ? 'error' : 'assistant',
+        content: `${summary}\n\n${t('snapshot.director.plan')}: ${progress}\n${meta}`,
+        streaming: running,
+        created_at: updatedAt,
+      },
+    ]
+  }, [branchId, currentStatus, metadata?.branch_id, progress, running, status?.branch_id, summary, t, totals.completed, totals.planned, totals.totalBytes, totals.visibleBytes, updatedAt])
   return (
-    <div className={`flex items-start gap-2 rounded-[var(--nova-radius)] border px-2 py-2 text-xs ${danger ? 'border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}>
-      <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border ${danger ? 'border-[var(--nova-danger-border)] text-[var(--nova-danger)]' : 'border-[var(--nova-border)] text-[var(--nova-text-faint)]'}`}>
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
-          <span className={`truncate font-medium ${danger ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text)]'}`}>{speaker}</span>
-          {meta ? <span className={`shrink-0 truncate text-[10px] ${danger ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>{meta}</span> : null}
-        </div>
-        <div className="break-words leading-5 [overflow-wrap:anywhere]">
-          {children}
-          {streaming ? <span className="ml-1 inline-block h-3 w-1 animate-pulse rounded-full bg-current align-[-2px]" /> : null}
-        </div>
-      </div>
+    <div className="mt-2 flex h-[236px] min-h-[196px] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+      <MessageList
+        messages={messages}
+        isStreaming={running}
+        activityContent={running ? summary : ''}
+        scrollResetKey={`director:${metadata?.revision || ''}:${currentStatus}:${updatedAt}`}
+        bottomPaddingClassName="pb-2"
+        messageStyle={{ fontSize: '12px', lineHeight: 1.55 }}
+        collapseTraceBeforeAssistant
+      />
     </div>
   )
 }

@@ -106,7 +106,7 @@ func TestInteractiveStoryPromptRequiresGlobalStyleReferenceRead(t *testing.T) {
 func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorPlanVisibleSections(t *testing.T) {
 	output := InteractiveStoryRuntimeContext(InteractiveStoryPromptInput{
 		ReplyTargetChars:            800,
-		DirectorPlanVisible:         "## 正文Agent可读 / Prose-agent visible\n\n### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire\n外门逆袭\n\n### 信息揭示与线索密度 / Information Reveal and Clue Density\n学院比拼压力",
+		DirectorPlanVisible:         "## 正文Agent可读\n\n### 阶段钩子与阅读欲望\n外门逆袭\n\n### 信息揭示与线索密度\n学院比拼压力",
 		StoryDirectorStrategyPrompt: "- 避免连续两回合使用同类型突发事件。",
 	})
 	for _, want := range []string{"后台导演规划可读区", "source: director.md visible section", "limit: 12288 bytes", "外门逆袭", "学院比拼压力"} {
@@ -129,8 +129,8 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 		StoryTellerID:               "classic",
 		BranchID:                    "main",
 		DirectorPlanPaths:           "/tmp/director.md",
-		DirectorPlanDocs:            `{"plan":"## 正文Agent可读 / Prose-agent visible"}`,
-		PlanningTemplates:           `{"plan":"# 导演规划 / Director Plan"}`,
+		DirectorPlanDocs:            `{"plan":"## 正文Agent可读"}`,
+		PlanningTemplates:           `{"plan":"# 导演规划"}`,
 		LoreContext:                 "## 资料库索引（source: lore index, limit: 6144 bytes）\n- 沈凝 / 重要角色\n- 青岚盟 / 重要势力",
 		BranchPlanningTurns:         5,
 		TurnAuditJSON:               `{"turn_brief":{"turn_goal":"公开比试"}}`,
@@ -140,7 +140,7 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 		DirectorEventCatalog:        `[{"id":"face_slap","category":"打脸"}]`,
 	})
 	for name, output := range map[string]string{"system": system, "instruction": instruction} {
-		for _, want := range []string{"read_file", "write_file", "edit_file", "不负责续写", "RuleResolution", "Director private"} {
+		for _, want := range []string{"read_file", "write_file", "edit_file", "不负责续写", "RuleResolution", "后台导演私密"} {
 			if !strings.Contains(output, want) {
 				t.Fatalf("%s director prompt should include %q:\n%s", name, want, output)
 			}

@@ -142,7 +142,7 @@ func agentRuntimeContract(agentKind string) string {
 			"- 互动导演 Agent 是后台叙事编排 Agent，只能根据调用方提供的有界回合审计、资料库导演上下文、导演规划文件、故事记忆摘要和事件目录编辑当前分支 director.md。",
 			"- 互动导演 Agent 不得续写故事正文，不得替用户选择行动，不得使用 shell、todo、资料库写入、故事记忆写入或任意 workspace 写入。",
 			"- 互动导演 Agent 必须优先复用资料库中的重要角色、势力、规则、地点和既有关系，并通过高信息密度的角色关系、势力压力、信息揭示、爽点危机、检定代价和分支安排规划后续互动；固定数值、骰子和资源结算结果必须以 RuleResolution 为准。",
-			"- 互动导演 Agent 必须把可给正文 Agent 读取的信息放在 Prose-agent visible 区，把隐藏真相和未来反转放在 Director private 区。",
+			"- 互动导演 Agent 必须把可给正文 Agent 读取的信息放在“正文Agent可读”区，把隐藏真相和未来反转放在“后台导演私密”区。",
 		}, "\n")
 	case config.AgentKindInteractiveHotChoices:
 		return "- 快捷选项 Agent 必须只输出符合内置 schema 的 JSON object；不得续写剧情或修改故事状态。"

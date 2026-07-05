@@ -270,7 +270,6 @@ describe('SettingPanel', () => {
     render(<PresetPanelHarness />)
 
     await user.click(screen.getByRole('button', { name: '图像方案' }))
-    expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
     expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
 
@@ -296,7 +295,8 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('button', { name: '叙事风格' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '图像方案' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '故事导演' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /经典叙事/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建故事导演' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建叙事风格' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /默认事件包/ })).not.toBeInTheDocument()
@@ -474,31 +474,31 @@ describe('SettingPanel', () => {
     const template = [
       '# 自定义导演规划',
       '',
-      '## 正文Agent可读 / Prose-agent visible',
-      '### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire',
+      '## 正文Agent可读',
+      '### 阶段钩子与阅读欲望',
       '钩子',
-      '### 资料库锚点 / Lore Anchors',
+      '### 资料库锚点',
       '资料库角色与势力',
-      '### 核心角色与关系张力 / Core Characters and Relationship Tension',
+      '### 核心角色与关系张力',
       '核心角色',
-      '### 重要势力与阶段阻力 / Key Factions and Stage Resistance',
+      '### 重要势力与阶段阻力',
       '势力阻力',
-      '### 当前场景与行动空间 / Current Scene and Action Space',
+      '### 当前场景与行动空间',
       '行动空间',
-      '### 信息揭示与线索密度 / Information Reveal and Clue Density',
+      '### 信息揭示与线索密度',
       '线索密度',
-      '### 遭遇、检定与代价 / Encounters, Checks, and Costs',
+      '### 遭遇、检定与代价',
       '检定代价',
-      '### 爽点、危机与反转 / Payoff, Crisis, and Reversal',
+      '### 爽点、危机与反转',
       '爽点反转',
-      '### 状态连续性 / State Continuity',
+      '### 状态连续性',
       '状态',
-      '### 最近分支安排 / Near Branch Arrangements',
+      '### 最近分支安排',
       '最近分支',
-      '### 伏笔与回收 / Foreshadowing and Payoff',
+      '### 伏笔与回收',
       '伏笔',
       '',
-      '## 后台导演私密 / Director private',
+      '## 后台导演私密',
       '隐藏推进安排',
     ].join('\n')
     const planTemplateField = screen.getByRole('textbox', { name: /director\.md 模板/ })

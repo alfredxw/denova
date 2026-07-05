@@ -1,7 +1,6 @@
 package book
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -107,6 +106,10 @@ type LoreStore struct {
 	workspace string
 }
 
+type loreNameAllocator struct {
+	used map[string]bool
+}
+
 // LoreIndexOptions controls model-visible lore index rendering.
 // Empty options render a compact all-item index; query/type options render a
 // narrower searchable view without including full lore content.
@@ -205,6 +208,9 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 	if item.Name == "" {
 		return LoreItem{}, errors.New("资料名称不能为空")
 	}
+	if loreItemNameIndex(collection.Items, item.Name, "") >= 0 {
+		return LoreItem{}, fmt.Errorf("资料名称已存在: %s", item.Name)
+	}
 	if s.hasItem(collection.Items, item.ID) {
 		return LoreItem{}, fmt.Errorf("资料 ID 已存在: %s", item.ID)
 	}
@@ -248,6 +254,9 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 		})
 		if updated.Name == "" {
 			return LoreItem{}, errors.New("资料名称不能为空")
+		}
+		if loreItemNameIndex(collection.Items, updated.Name, id) >= 0 {
+			return LoreItem{}, fmt.Errorf("资料名称已存在: %s", updated.Name)
 		}
 		collection.Items[i] = updated
 		if err := s.save(collection); err != nil {
@@ -313,11 +322,14 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
 				Image:            op.Item.Image,
 			})
-			if item.ID == "" {
-				item.ID = newUniqueLoreID(next, item.Name, item.Type)
-			}
 			if item.Name == "" {
 				return LoreApplyResult{}, errors.New("创建资料时名称不能为空")
+			}
+			if loreItemNameIndex(next, item.Name, "") >= 0 {
+				return LoreApplyResult{}, fmt.Errorf("资料名称已存在: %s", item.Name)
+			}
+			if item.ID == "" {
+				item.ID = newUniqueLoreID(next, item.Name, item.Type)
 			}
 			if loreItemIndex(next, item.ID) >= 0 {
 				return LoreApplyResult{}, fmt.Errorf("资料 ID 已存在: %s", item.ID)
@@ -356,6 +368,9 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 			}
 			if updated.Name == "" {
 				return LoreApplyResult{}, fmt.Errorf("资料名称不能为空: %s", id)
+			}
+			if loreItemNameIndex(next, updated.Name, id) >= 0 {
+				return LoreApplyResult{}, fmt.Errorf("资料名称已存在: %s", updated.Name)
 			}
 			next[idx] = updated
 			result.Updated = append(result.Updated, updated)
@@ -926,7 +941,7 @@ func newLoreID(name, itemType string) string {
 	if base == "" {
 		base = normalizeLoreType(itemType)
 	}
-	return fmt.Sprintf("%s_%s", base, randomLoreIDSuffix())
+	return base
 }
 
 func newUniqueLoreID(items []LoreItem, name, itemType string) string {
@@ -961,7 +976,12 @@ func loreIDBaseFromName(name string) string {
 		case unicode.IsLetter(r) || unicode.IsDigit(r):
 			sb.WriteRune(unicode.ToLower(r))
 			lastUnderscore = false
-		case r == '-' || r == '_' || unicode.IsSpace(r):
+		case r == '-' || r == '_':
+			if sb.Len() > 0 && !lastUnderscore {
+				sb.WriteRune(r)
+				lastUnderscore = true
+			}
+		case unicode.IsSpace(r):
 			if sb.Len() > 0 && !lastUnderscore {
 				sb.WriteRune('_')
 				lastUnderscore = true
@@ -973,23 +993,7 @@ func loreIDBaseFromName(name string) string {
 			}
 		}
 	}
-	return strings.Trim(sb.String(), "_")
-}
-
-func randomLoreIDSuffix() string {
-	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
-	var b [4]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		n := time.Now().UTC().UnixNano()
-		for i := range b {
-			b[i] = byte(n >> (i * 8))
-		}
-	}
-	var sb strings.Builder
-	for _, v := range b {
-		sb.WriteByte(alphabet[int(v)%len(alphabet)])
-	}
-	return sb.String()
+	return strings.Trim(sb.String(), "_-")
 }
 
 func loreItemIndex(items []LoreItem, id string) int {
@@ -1000,6 +1004,60 @@ func loreItemIndex(items []LoreItem, id string) int {
 		}
 	}
 	return -1
+}
+
+func loreItemNameIndex(items []LoreItem, name, exceptID string) int {
+	key := loreNameKey(name)
+	if key == "" {
+		return -1
+	}
+	exceptID = normalizeLoreID(exceptID)
+	for i, item := range items {
+		if exceptID != "" && item.ID == exceptID {
+			continue
+		}
+		if loreNameKey(item.Name) == key {
+			return i
+		}
+	}
+	return -1
+}
+
+func loreNameKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+func newLoreNameAllocator(items []LoreItem) *loreNameAllocator {
+	allocator := &loreNameAllocator{used: make(map[string]bool, len(items))}
+	for _, item := range items {
+		if key := loreNameKey(item.Name); key != "" {
+			allocator.used[key] = true
+		}
+	}
+	return allocator
+}
+
+func (a *loreNameAllocator) Claim(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	if a == nil {
+		return name
+	}
+	if key := loreNameKey(name); key != "" && !a.used[key] {
+		a.used[key] = true
+		return name
+	}
+	for suffix := 2; ; suffix++ {
+		candidate := fmt.Sprintf("%s-%d", name, suffix)
+		key := loreNameKey(candidate)
+		if key == "" || a.used[key] {
+			continue
+		}
+		a.used[key] = true
+		return candidate
+	}
 }
 
 func firstNonEmptyLoreValue(values ...string) string {

@@ -481,30 +481,30 @@ func defaultTellerEventCards() []TellerEventCard {
 }
 
 func defaultTellerEventCardMarkdown(event DirectorEvent) string {
-	summary := firstNonEmptyString(event.Summary, event.PublicSummary, event.Name)
+	details := defaultTellerEventCardDetails(event)
 	return strings.TrimSpace(fmt.Sprintf(`## 触发场景
 
 %s
 
 ## 背景融合方式
 
-结合当前作品已确认的世界观、势力、地点、人物关系或冲突源选择触发点；没有明确设定依据时保持为可变形的通用事件，不编造具体事实。
+%s
 
 ## 大致事件逻辑（起承转合）
 
-先顺着用户行动和当前压力铺垫，再让阻力或机会自然升级；中段给出可被玩家行动影响的转折，最后落到阶段性结果或新的选择点。
+%s
 
 ## 事件回收 / 后果
 
-回收本事件造成的关系变化、线索暴露、资源消耗或外界评价，并为后续 Director Plan 留下可追踪的伏笔或压力。
+%s
 
 ## 奖励 / 代价
 
-奖励可以是信息、名望、资源、关系推进或阶段性主动权；代价可以是体力、资源、人情债、暴露风险、敌意升级或失败后果。
+%s
 
 ## 避免生硬的约束
 
-不要强行触发，不要替用户选择行动，不要违背已确认设定；必须让事件融入当前场景、用户输入和已读资料库事实。`, summary))
+%s`, details.Trigger, details.Fusion, details.Logic, details.Payoff, details.RewardCost, details.Guardrail))
 }
 
 func normalizeTellerOrchestrationPointer(config *TellerOrchestrationConfig) *TellerOrchestrationConfig {

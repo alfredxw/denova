@@ -276,6 +276,33 @@ func TestTellerOrchestrationDefaultsAndDirectorEventCatalog(t *testing.T) {
 	}
 }
 
+func TestDefaultWebnovelEventCardsUseDifferentiatedPresets(t *testing.T) {
+	config := DefaultTellerOrchestrationConfig()
+	if len(config.EventPackages) != 1 {
+		t.Fatalf("default orchestration packages = %#v", config.EventPackages)
+	}
+	cards := config.EventPackages[0].Events
+	if len(cards) < 2 {
+		t.Fatalf("default event package should include multiple cards: %#v", cards)
+	}
+
+	bodies := map[string]string{}
+	for _, card := range cards {
+		markdown := strings.TrimSpace(card.DescriptionMarkdown)
+		if !strings.Contains(markdown, "## 背景融合方式") {
+			t.Fatalf("event card should use structured markdown: %#v", card)
+		}
+		body := markdown[strings.Index(markdown, "## 背景融合方式"):]
+		if previousID, ok := bodies[body]; ok {
+			t.Fatalf("event cards %s and %s should not share the same markdown body:\n%s", previousID, card.ID, body)
+		}
+		bodies[body] = card.ID
+	}
+	if !strings.Contains(cards[0].DescriptionMarkdown, "公开轻视") || !strings.Contains(cards[1].DescriptionMarkdown, "长期隐藏实力") {
+		t.Fatalf("default webnovel cards should carry event-specific preset details: %#v", cards[:2])
+	}
+}
+
 func TestTellerOrchestrationPreservesDisabledConfig(t *testing.T) {
 	library := NewTellerLibrary(t.TempDir())
 	created, err := library.Create(Teller{

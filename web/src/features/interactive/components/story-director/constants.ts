@@ -5,19 +5,19 @@ export const STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT = 32 * 1024
 export const STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK = 5
 export const EMPTY_DIRECTOR_PLANNING_TEMPLATES: DirectorPlanDocs = { plan: '' }
 export const DIRECTOR_PLAN_REQUIRED_HEADINGS = [
-  '## 正文Agent可读 / Prose-agent visible',
-  '## 后台导演私密 / Director private',
-  '### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire',
-  '### 资料库锚点 / Lore Anchors',
-  '### 核心角色与关系张力 / Core Characters and Relationship Tension',
-  '### 重要势力与阶段阻力 / Key Factions and Stage Resistance',
-  '### 当前场景与行动空间 / Current Scene and Action Space',
-  '### 信息揭示与线索密度 / Information Reveal and Clue Density',
-  '### 遭遇、检定与代价 / Encounters, Checks, and Costs',
-  '### 爽点、危机与反转 / Payoff, Crisis, and Reversal',
-  '### 状态连续性 / State Continuity',
-  '### 最近分支安排 / Near Branch Arrangements',
-  '### 伏笔与回收 / Foreshadowing and Payoff',
+  '## 正文Agent可读',
+  '## 后台导演私密',
+  '### 阶段钩子与阅读欲望',
+  '### 资料库锚点',
+  '### 核心角色与关系张力',
+  '### 重要势力与阶段阻力',
+  '### 当前场景与行动空间',
+  '### 信息揭示与线索密度',
+  '### 遭遇、检定与代价',
+  '### 爽点、危机与反转',
+  '### 状态连续性',
+  '### 最近分支安排',
+  '### 伏笔与回收',
 ] as const
 export const STORY_DIRECTOR_MAINLINE_OPTIONS = [
   { value: 'soft_guidance', labelKey: 'settingPanel.storyDirector.strategy.mainline.softGuidance', descriptionKey: 'settingPanel.storyDirector.strategy.mainline.softGuidanceDesc' },

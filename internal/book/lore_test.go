@@ -279,14 +279,17 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	if item.ID == "" || len(item.Tags) != 1 {
 		t.Fatalf("unexpected item: %#v", item)
 	}
-	if !strings.HasPrefix(item.ID, "林川_") {
-		t.Fatalf("generated ID should use lore item name, got %s", item.ID)
+	if item.ID != "林川" {
+		t.Fatalf("generated ID should be based on the lore item name without random suffix, got %s", item.ID)
 	}
 	if item.BriefDescription == "" || !strings.Contains(item.BriefDescription, "角色 林川。") || !strings.Contains(item.BriefDescription, "一定要参考本项详情") {
 		t.Fatalf("brief description should be generated: %#v", item)
 	}
 	if _, err := store.Create(LoreItemInput{ID: item.ID, Type: "character", Name: "重复林川"}); err == nil || !strings.Contains(err.Error(), "资料 ID 已存在") {
 		t.Fatalf("expected duplicate ID error, got %v", err)
+	}
+	if _, err := store.Create(LoreItemInput{Type: "character", Name: "林川"}); err == nil || !strings.Contains(err.Error(), "资料名称已存在") {
+		t.Fatalf("expected duplicate name error, got %v", err)
 	}
 
 	updated, err := store.Update(item.ID, LoreItemInput{
@@ -301,6 +304,12 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	if updated.Type != "location" || updated.Name != "黄泉酒馆" {
 		t.Fatalf("unexpected updated item: %#v", updated)
 	}
+	if _, err := store.Create(LoreItemInput{Type: "location", Name: "林川", Importance: "important"}); err != nil {
+		t.Fatalf("old name should be available after rename: %v", err)
+	}
+	if _, err := store.Update(updated.ID, LoreItemInput{Type: "location", Name: "林川", Importance: "important"}); err == nil || !strings.Contains(err.Error(), "资料名称已存在") {
+		t.Fatalf("expected duplicate name error on update, got %v", err)
+	}
 
 	if err := store.Delete(item.ID); err != nil {
 		t.Fatal(err)
@@ -309,8 +318,8 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 0 {
-		t.Fatalf("items should be empty after delete: %#v", items)
+	if len(items) != 1 || items[0].Name != "林川" {
+		t.Fatalf("only the replacement item should remain after delete: %#v", items)
 	}
 }
 
@@ -458,8 +467,8 @@ func TestLoreStoreApplyOperationsDoesNotCreateSeparateVersions(t *testing.T) {
 	if len(result.Updated) != 1 || len(result.Created) != 1 {
 		t.Fatalf("unexpected apply result: %#v", result)
 	}
-	if !strings.HasPrefix(result.Created[0].ID, "黄泉酒馆_") {
-		t.Fatalf("agent-created item should use name-based ID, got %s", result.Created[0].ID)
+	if result.Created[0].ID != "黄泉酒馆" {
+		t.Fatalf("agent-created item should use name-based ID without random suffix, got %s", result.Created[0].ID)
 	}
 
 	items, err := store.List()
@@ -474,6 +483,18 @@ func TestLoreStoreApplyOperationsDoesNotCreateSeparateVersions(t *testing.T) {
 	}
 }
 
+func TestLoreStoreApplyOperationsRejectsDuplicateNames(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	if _, err := store.Create(LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ApplyOperations("创建重名资料", []LoreOperation{
+		{Op: "create", Item: LoreItemInput{Type: "character", Name: "林川", Importance: "major"}},
+	}); err == nil || !strings.Contains(err.Error(), "资料名称已存在") {
+		t.Fatalf("expected duplicate name error on create operation, got %v", err)
+	}
+}
+
 func TestUniqueLoreIDFromBaseAppendsSuffixOnCollision(t *testing.T) {
 	items := []LoreItem{
 		{ID: "world-1780235672765251000"},
@@ -483,5 +504,15 @@ func TestUniqueLoreIDFromBaseAppendsSuffixOnCollision(t *testing.T) {
 	got := uniqueLoreIDFromBase(items, "world-1780235672765251000")
 	if got != "world-1780235672765251000-3" {
 		t.Fatalf("唯一资料 ID 不符合预期: %s", got)
+	}
+}
+
+func TestNewUniqueLoreIDUsesNameWithoutRandomSuffix(t *testing.T) {
+	if got := newUniqueLoreID(nil, "黄泉酒馆", "location"); got != "黄泉酒馆" {
+		t.Fatalf("generated lore ID should use the normalized name directly, got %s", got)
+	}
+	items := []LoreItem{{ID: "huang_quan"}}
+	if got := newUniqueLoreID(items, "Huang Quan", "location"); got != "huang_quan-2" {
+		t.Fatalf("ID collision should use numeric suffix, got %s", got)
 	}
 }

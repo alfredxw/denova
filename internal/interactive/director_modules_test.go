@@ -44,9 +44,12 @@ func TestEventPackageLibraryMaterializesGenreBuiltins(t *testing.T) {
 	if xiuxian.ID != GenreXiuxianEventPackageID || len(xiuxian.Events) != 8 {
 		t.Fatalf("xiuxian event package mismatch: %#v", xiuxian)
 	}
+	if xiuxian.Name != "修仙核心事件包" {
+		t.Fatalf("genre package name should default to Chinese only: %#v", xiuxian)
+	}
 	firstCard := xiuxian.Events[0]
-	if !strings.Contains(firstCard.TypeName, "Bottleneck") || !strings.Contains(firstCard.DescriptionMarkdown, "Trigger Scene") {
-		t.Fatalf("genre cards should include bilingual names and structured markdown: %#v", firstCard)
+	if firstCard.TypeName != "瓶颈突破" || !strings.Contains(firstCard.DescriptionMarkdown, "## 触发场景") || strings.Contains(firstCard.DescriptionMarkdown, "Trigger Scene") {
+		t.Fatalf("genre cards should default to Chinese names and structured markdown: %#v", firstCard)
 	}
 	xiuxian.Name = "我的修仙事件包"
 	overridden, err := library.Update(GenreXiuxianEventPackageID, xiuxian, xiuxian.UpdatedAt)

@@ -169,8 +169,13 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte, opts .
 	if err != nil {
 		return CharacterCardImportResult{}, err
 	}
-	ops := buildTavernCardLoreOperations(card, filename, time.Now(), coverPath, options.UserCharacterName)
-	applyResult, err := NewLoreStore(s.workspace).ApplyOperations(fmt.Sprintf("导入酒馆角色卡「%s」", card.Name), ops)
+	loreStore := NewLoreStore(s.workspace)
+	existingItems, err := loreStore.ListAll()
+	if err != nil {
+		return CharacterCardImportResult{}, err
+	}
+	ops := buildTavernCardLoreOperations(card, filename, time.Now(), coverPath, options.UserCharacterName, newLoreNameAllocator(existingItems))
+	applyResult, err := loreStore.ApplyOperations(fmt.Sprintf("导入酒馆角色卡「%s」", card.Name), ops)
 	if err != nil {
 		return CharacterCardImportResult{}, err
 	}
@@ -462,14 +467,18 @@ func decodeTavernCardJSON(data []byte) (normalizedTavernCard, error) {
 	return card, nil
 }
 
-func buildTavernCardLoreOperations(card normalizedTavernCard, source string, importedAt time.Time, coverPath, userCharacterName string) []LoreOperation {
+func buildTavernCardLoreOperations(card normalizedTavernCard, source string, importedAt time.Time, coverPath, userCharacterName string, names *loreNameAllocator) []LoreOperation {
+	if names == nil {
+		names = newLoreNameAllocator(nil)
+	}
+	cardLoreName := names.Claim(card.Name)
 	ops := []LoreOperation{
 		{
 			Op: "create",
 			Item: LoreItemInput{
 				Enabled:    loreEnabledPtr(true),
 				Type:       "character",
-				Name:       card.Name,
+				Name:       cardLoreName,
 				Importance: "major",
 				Tags:       tavernCardTags(append([]string{"酒馆角色卡", card.Name}, card.Tags...)...),
 				Content:    renderTavernCardLoreContent(card, source, importedAt, coverPath),
@@ -477,7 +486,7 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source string, imp
 		},
 	}
 	if card.HasUserPlaceholder {
-		name := tavernUserCharacterName(card, userCharacterName)
+		name := names.Claim(tavernUserCharacterName(card, userCharacterName))
 		ops = append(ops, LoreOperation{
 			Op: "create",
 			Item: LoreItemInput{
@@ -495,7 +504,7 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source string, imp
 		return ops
 	}
 	for i, entry := range card.CharacterBook.Entries {
-		title := tavernBookEntryTitle(entry, i)
+		title := names.Claim(tavernBookEntryTitle(entry, i))
 		content := renderTavernBookEntryLoreContent(card.CharacterBook, entry, source)
 		if strings.TrimSpace(content) == "" {
 			continue
