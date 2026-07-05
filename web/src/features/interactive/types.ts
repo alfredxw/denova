@@ -445,15 +445,11 @@ export interface DirectorEvent {
 }
 
 export interface DirectorPlanDocs {
-  mainline: string
-  current_event: string
-  next_branches: string
+  plan: string
 }
 
 export interface DirectorPlanVisibleDocs {
-  mainline?: string
-  current_event?: string
-  next_branches?: string
+  plan?: string
 }
 
 export interface DirectorPlanDocInfo {

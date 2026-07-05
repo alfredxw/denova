@@ -26,9 +26,7 @@ export function validateDirectorPlanningTemplate(value: string) {
 }
 
 export function planningTemplateLabelKey(key: keyof DirectorPlanDocs) {
-  if (key === 'mainline') return 'mainline'
-  if (key === 'current_event') return 'currentEvent'
-  return 'nextBranches'
+  return key === 'plan' ? 'plan' : 'plan'
 }
 
 export function strategyRateValue(value: number | undefined, fallbackValue: string): string {

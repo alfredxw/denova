@@ -61,6 +61,43 @@ Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
   value: () => {},
 })
 
+Object.defineProperty(window, 'scrollBy', {
+  configurable: true,
+  value: () => {},
+})
+
+const testDOMRect = {
+  width: 1,
+  height: 1,
+  top: 0,
+  left: 0,
+  right: 1,
+  bottom: 1,
+  x: 0,
+  y: 0,
+  toJSON: () => ({}),
+} as DOMRect
+
+Object.defineProperty(Element.prototype, 'getClientRects', {
+  configurable: true,
+  value: () => [testDOMRect],
+})
+
+Object.defineProperty(Range.prototype, 'getClientRects', {
+  configurable: true,
+  value: () => [testDOMRect],
+})
+
+Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+  configurable: true,
+  value: () => testDOMRect,
+})
+
+Object.defineProperty(document, 'elementFromPoint', {
+  configurable: true,
+  value: () => document.body,
+})
+
 beforeAll(() => {
   setConfiguredLocale('zh-CN')
   server.listen({ onUnhandledRequest: 'error' })

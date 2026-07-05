@@ -5,13 +5,13 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import type { DirectorPlanDocs, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, Teller } from '../../types'
+import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, Teller } from '../../types'
 import { PresetConfigSectionEditor } from '../preset-config/PresetConfigSectionEditor'
 import { OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from '../preset-config/visual-editors'
 import { DirectorModuleConsole } from './ModuleConsole'
-import { consoleSectionClassName, DIRECTOR_PLANNING_TEMPLATE_KEYS, EDITOR_TABS, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RANDOM_RATE_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StoryDirectorEditorTab, type StrategySelectOption } from './constants'
+import { consoleSectionClassName, EDITOR_TABS, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RANDOM_RATE_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StoryDirectorEditorTab, type StrategySelectOption } from './constants'
 import { EmptyState, Field, SectionTitle } from './shared'
-import { directorResolvedEventPackages, findById, newEmptyStoryDirectorSections, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, parseDecimalInput, planningTemplateLabelKey, presetStatusLabel, strategyOptionText, strategyRateValue, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
+import { directorResolvedEventPackages, findById, newEmptyStoryDirectorSections, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, parseDecimalInput, presetStatusLabel, strategyOptionText, strategyRateValue, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
 
 export function StoryDirectorEditor({
   draft,
@@ -48,18 +48,9 @@ export function StoryDirectorEditor({
   const strategyPromptBytes = utf8ByteLength(strategyPrompt)
   const strategyPromptValid = strategyPromptBytes <= STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT
   const planningTemplates = draft?.strategy?.planning_templates || EMPTY_DIRECTOR_PLANNING_TEMPLATES
-  const planningTemplateValidity = {
-    mainline: validateDirectorPlanningTemplate(planningTemplates.mainline),
-    current_event: validateDirectorPlanningTemplate(planningTemplates.current_event),
-    next_branches: validateDirectorPlanningTemplate(planningTemplates.next_branches),
-  }
-  const planningTemplatesValid = Object.values(planningTemplateValidity).every((item) => item.valid)
-  const planningTemplateTabs = DIRECTOR_PLANNING_TEMPLATE_KEYS.map((key) => ({
-    key,
-    label: t(`settingPanel.storyDirector.planningTemplate.${planningTemplateLabelKey(key)}`),
-    value: planningTemplates[key],
-    validity: planningTemplateValidity[key],
-  }))
+  const planningTemplateValue = planningTemplates.plan || ''
+  const planningTemplateValidity = validateDirectorPlanningTemplate(planningTemplateValue)
+  const planningTemplatesValid = planningTemplateValidity.valid
 
   useEffect(() => {
     setStrategyPromptOpen(false)
@@ -97,8 +88,8 @@ export function StoryDirectorEditor({
       },
     })
   }
-  const updatePlanningTemplate = (key: keyof DirectorPlanDocs, value: string) => {
-    updateStrategy({ planning_templates: { ...planningTemplates, [key]: value } })
+  const updatePlanningTemplate = (value: string) => {
+    updateStrategy({ planning_templates: { ...planningTemplates, plan: value } })
   }
   const refs = normalizedStoryDirectorRefs(draft.module_refs)
   const updateModuleRef = <K extends keyof StoryDirectorModuleRefs>(key: K, value: StoryDirectorModuleRefs[K]) => {
@@ -283,24 +274,7 @@ export function StoryDirectorEditor({
             />
             {planningTemplatesOpen ? (
               <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-                <Tabs defaultValue="mainline" className="gap-3">
-                  <TabsList aria-label={t('settingPanel.storyDirector.planningTemplates')} className="h-auto w-full justify-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-1 group-data-horizontal/tabs:h-auto">
-                    {planningTemplateTabs.map((tab) => (
-                      <TabsTrigger
-                        key={tab.key}
-                        value={tab.key}
-                        className={`min-h-8 px-3 text-xs ${tab.validity.valid ? '' : 'text-[var(--nova-danger)] data-active:text-[var(--nova-danger)]'}`}
-                      >
-                        {tab.label}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                  {planningTemplateTabs.map((tab) => (
-                    <TabsContent key={tab.key} value={tab.key} className="mt-0">
-                      <PlanningTemplateTextarea label={tab.label} value={tab.value} validity={tab.validity} onChange={(value) => updatePlanningTemplate(tab.key, value)} />
-                    </TabsContent>
-                  ))}
-                </Tabs>
+                <PlanningTemplateTextarea label={t('settingPanel.storyDirector.planningTemplate.plan')} value={planningTemplateValue} validity={planningTemplateValidity} onChange={updatePlanningTemplate} />
                 <div className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.planningTemplatesRequiredHeadings')}</div>
               </div>
             ) : null}

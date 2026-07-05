@@ -67,7 +67,7 @@ const storyStage = {
   'storyStage.inputPlaceholderWithSkills': 'What do you do? Type / for commands or Skills',
   'storyStage.inputPlaceholderTerminal': 'This branch has ended. Create a new branch from history to continue.',
   'storyStage.director.title': 'Director is planning the story',
-  'storyStage.director.description': 'The director is organizing the mainline, current event, and near branches from the opening. Continue after planning finishes.',
+  'storyStage.director.description': 'The director is organizing director.md from the opening, lore, and current turn. Continue after planning finishes.',
   'storyStage.director.progress': 'Planned {{completed}}/{{planned}}',
   'storyStage.director.retry': 'Retry planning',
   'storyStage.director.retryFailed': 'Failed to retry director planning',

@@ -29,20 +29,18 @@ func TestCreateStorySeedsDirectorPlanDocs(t *testing.T) {
 	if plan.Metadata.BranchID != "main" || plan.Metadata.BranchPlanningTurns != 5 || plan.Metadata.LastRun == nil {
 		t.Fatalf("director metadata mismatch: %#v", plan.Metadata)
 	}
-	for name, doc := range map[string]string{
-		"mainline":      plan.Docs.Mainline,
-		"current-event": plan.Docs.CurrentEvent,
-		"next-branches": plan.Docs.NextBranches,
-	} {
-		if err := validateDirectorPlanDoc(name, doc); err != nil {
-			t.Fatalf("%s should be valid: %v\n%s", name, err, doc)
-		}
-		if !strings.Contains(doc, "隐脉觉醒") {
-			t.Fatalf("%s should include opening summary:\n%s", name, doc)
-		}
+	if err := validateDirectorPlanDoc("plan", plan.Docs.Plan); err != nil {
+		t.Fatalf("director plan should be valid: %v\n%s", err, plan.Docs.Plan)
 	}
-	if strings.Contains(plan.VisibleDocs.Mainline, "后台导演私密") {
-		t.Fatalf("visible docs must exclude private section:\n%s", plan.VisibleDocs.Mainline)
+	if !strings.Contains(plan.Docs.Plan, "隐脉觉醒") {
+		t.Fatalf("director plan should include opening summary:\n%s", plan.Docs.Plan)
+	}
+	if strings.Contains(plan.VisibleDocs.Plan, "后台导演私密") {
+		t.Fatalf("visible docs must exclude private section:\n%s", plan.VisibleDocs.Plan)
+	}
+	paths := store.DirectorPlanAllowedPaths(story.ID, "main")
+	if len(paths) != 1 || !strings.HasSuffix(paths[0], "director.md") {
+		t.Fatalf("director should expose only director.md path: %#v", paths)
 	}
 	for _, path := range store.DirectorPlanAllowedPaths(story.ID, "main") {
 		if _, err := os.Stat(path); err != nil {
@@ -76,8 +74,8 @@ func TestCreateBranchSeedsBranchDirectorPlan(t *testing.T) {
 	if plan.Metadata.BranchID != branch.ID || plan.Metadata.Source != "branch_seed" {
 		t.Fatalf("branch director metadata mismatch: %#v", plan.Metadata)
 	}
-	if !strings.Contains(plan.Docs.Mainline, "分支说明") || !strings.Contains(plan.Docs.Mainline, branch.ID) {
-		t.Fatalf("branch plan should carry branch note:\n%s", plan.Docs.Mainline)
+	if !strings.Contains(plan.Docs.Plan, "分支说明") || !strings.Contains(plan.Docs.Plan, branch.ID) {
+		t.Fatalf("branch plan should carry branch note:\n%s", plan.Docs.Plan)
 	}
 }
 
@@ -92,7 +90,7 @@ func TestUpdateDirectorPlanValidatesRequiredHeadingsAndRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 	nextDocs := plan.Docs
-	nextDocs.NextBranches += "\n\n可见安排：给玩家观察、对话、调查三个方向。"
+	nextDocs.Plan += "\n\n可见安排：给玩家观察、对话、调查三个方向。"
 	updated, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{
 		BranchID:     "main",
 		Docs:         nextDocs,
@@ -107,7 +105,7 @@ func TestUpdateDirectorPlanValidatesRequiredHeadingsAndRevision(t *testing.T) {
 		t.Fatalf("manual save should refresh metadata: %#v", updated.Metadata)
 	}
 	badDocs := updated.Docs
-	badDocs.Mainline = "# 缺标题"
+	badDocs.Plan = "# 缺标题"
 	if _, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{BranchID: "main", Docs: badDocs}); err == nil || !strings.Contains(err.Error(), "缺少必填标题") {
 		t.Fatalf("invalid plan should be rejected, err=%v", err)
 	}
@@ -131,7 +129,7 @@ func TestCompleteDirectorPlanRunDetectsManualConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	docs := plan.Docs
-	docs.CurrentEvent += "\n\n手动保存：用户调整当前事件。"
+	docs.Plan += "\n\n手动保存：用户调整当前事件。"
 	if _, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{BranchID: "main", Docs: docs, BaseRevision: plan.Metadata.Revision}); err != nil {
 		t.Fatal(err)
 	}
@@ -147,12 +145,10 @@ func TestCompleteDirectorPlanRunDetectsManualConflict(t *testing.T) {
 func TestDirectorPlanVisibleContextExcludesPrivateSections(t *testing.T) {
 	docs := DefaultStoryDirectorPlanningTemplates()
 	plan := DirectorPlan{VisibleDocs: DirectorPlanVisibleDocs{
-		Mainline:     ExtractDirectorPlanVisibleSection(docs.Mainline),
-		CurrentEvent: ExtractDirectorPlanVisibleSection(docs.CurrentEvent),
-		NextBranches: ExtractDirectorPlanVisibleSection(docs.NextBranches),
+		Plan: ExtractDirectorPlanVisibleSection(docs.Plan),
 	}}
 	context := DirectorPlanVisibleContext(plan, 4096)
-	if !strings.Contains(context, "正文Agent可读") || !strings.Contains(context, "大方向规划") {
+	if !strings.Contains(context, "正文Agent可读") || !strings.Contains(context, "导演规划") {
 		t.Fatalf("visible context should include public sections:\n%s", context)
 	}
 	if strings.Contains(context, "后台导演私密") || strings.Contains(context, "隐藏状态") {

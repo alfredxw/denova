@@ -95,7 +95,7 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
             </div>
             <div className="grid grid-cols-[repeat(auto-fit,minmax(72px,1fr))] gap-2">
               <SnapshotMetric label={t('snapshot.director.status')} value={directorRun?.status || t('snapshot.noRecord')} />
-              <SnapshotMetric label={t('snapshot.director.docs')} value={directorStatus ? `${directorStatus.completed_docs}/${directorStatus.planned_docs}` : String(Object.keys(directorMetadata?.docs || {}).length || 3)} />
+              <SnapshotMetric label={t('snapshot.director.docs')} value={directorStatus ? `${directorStatus.completed_docs}/${directorStatus.planned_docs}` : String(Object.keys(directorMetadata?.docs || {}).length || 1)} />
               <SnapshotMetric label={t('snapshot.director.branchPlanningTurns')} value={String(directorMetadata?.branch_planning_turns || 5)} />
             </div>
             {directorRun ? (

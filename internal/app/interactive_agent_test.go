@@ -75,8 +75,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"list_lore_items",
 		"list_interactive_memories",
 		"当前分支故事记忆",
-		"后台导演三层规划可读区",
-		"source: DirectorPlan visible sections",
+		"后台导演规划可读区",
+		"source: director.md visible section",
 		"上限: 12288 bytes",
 	} {
 		if !strings.Contains(history[2].Content, want) {
@@ -103,7 +103,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"导演注入规则",
 		"本轮上下文",
 		"DirectorPlan",
-		"后台导演三层规划可读区",
+		"后台导演规划可读区",
 	} {
 		if !strings.Contains(sources, want) {
 			t.Fatalf("context sources should include %q: %s", want, sources)
@@ -332,7 +332,7 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	docs := plan.Docs
-	docs.CurrentEvent = strings.Replace(docs.CurrentEvent, "明确当前事件的可玩目标，让用户知道能采取行动。", "公开压力升高，同门质疑逼近；玩家可以反证、迂回或调查。", 1)
+	docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "公开压力升高，同门质疑逼近；玩家可以反证、迂回或调查。", 1)
 	if _, err := store.UpdateDirectorPlan(story.ID, interactive.UpdateDirectorPlanRequest{BranchID: "main", Docs: docs, BaseRevision: plan.Metadata.Revision}); err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +350,7 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnInstruction := history[len(history)-1].Content
-	for _, want := range []string{"后台导演三层规划可读区", "公开压力升高", "同门质疑"} {
+	for _, want := range []string{"后台导演规划可读区", "公开压力升高", "同门质疑"} {
 		if !strings.Contains(turnInstruction, want) {
 			t.Fatalf("interactive turn instruction should include translated director plan %q:\n%s", want, turnInstruction)
 		}

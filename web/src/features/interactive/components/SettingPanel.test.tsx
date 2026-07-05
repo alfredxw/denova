@@ -469,54 +469,46 @@ describe('SettingPanel', () => {
 
     await selectDefaultDirector(user)
     await user.click(screen.getByText('导演规划模板').closest('button') as HTMLElement)
-    expect(screen.getByRole('tablist', { name: '导演规划模板' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '大方向模板' })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: '当前事件模板' })).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /当前事件模板/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tablist', { name: '导演规划模板' })).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('tab', { name: '当前事件模板' }))
-    expect(screen.getByRole('textbox', { name: /当前事件模板/ })).toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: /大方向模板/ })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('tab', { name: '大方向模板' }))
     const template = [
-      '# 自定义大方向',
+      '# 自定义导演规划',
       '',
       '## 正文Agent可读 / Prose-agent visible',
-      '### 目标 / Goal',
-      '主线目标',
-      '### 节奏、压力与危机 / Pacing, Pressure, Crisis',
-      '压力',
-      '### 结果与代价 / Outcome and Cost',
-      '代价',
-      '### 状态 / State',
+      '### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire',
+      '钩子',
+      '### 资料库锚点 / Lore Anchors',
+      '资料库角色与势力',
+      '### 核心角色与关系张力 / Core Characters and Relationship Tension',
+      '核心角色',
+      '### 重要势力与阶段阻力 / Key Factions and Stage Resistance',
+      '势力阻力',
+      '### 当前场景与行动空间 / Current Scene and Action Space',
+      '行动空间',
+      '### 信息揭示与线索密度 / Information Reveal and Clue Density',
+      '线索密度',
+      '### 遭遇、检定与代价 / Encounters, Checks, and Costs',
+      '检定代价',
+      '### 爽点、危机与反转 / Payoff, Crisis, and Reversal',
+      '爽点反转',
+      '### 状态连续性 / State Continuity',
       '状态',
-      '### 分支处理 / Branch Handling',
-      '分支',
+      '### 最近分支安排 / Near Branch Arrangements',
+      '最近分支',
       '### 伏笔与回收 / Foreshadowing and Payoff',
       '伏笔',
       '',
       '## 后台导演私密 / Director private',
-      '### 目标 / Goal',
-      '隐藏目标',
-      '### 节奏、压力与危机 / Pacing, Pressure, Crisis',
-      '隐藏压力',
-      '### 结果与代价 / Outcome and Cost',
-      '隐藏代价',
-      '### 状态 / State',
-      '隐藏状态',
-      '### 分支处理 / Branch Handling',
-      '隐藏分支',
-      '### 伏笔与回收 / Foreshadowing and Payoff',
-      '隐藏伏笔',
+      '隐藏推进安排',
     ].join('\n')
-    const mainlineTemplateField = screen.getByRole('textbox', { name: /大方向模板/ })
-    expect(mainlineTemplateField).toHaveClass('min-h-[calc(20*1.25rem+1rem)]')
-    fireEvent.change(mainlineTemplateField, { target: { value: template } })
+    const planTemplateField = screen.getByRole('textbox', { name: /director\.md 模板/ })
+    expect(planTemplateField).toHaveClass('min-h-[calc(20*1.25rem+1rem)]')
+    fireEvent.change(planTemplateField, { target: { value: template } })
 
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
     const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
-    expect(payload.strategy?.planning_templates?.mainline).toBe(template)
+    expect(payload.strategy?.planning_templates?.plan).toBe(template)
   })
 
   it('saves advanced Markdown strategy prompt for story directors', async () => {

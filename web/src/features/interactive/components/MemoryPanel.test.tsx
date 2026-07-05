@@ -163,7 +163,7 @@ describe('MemoryPanel', () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (url.includes('/director/rebuild')) {
-        return Response.json(directorPlan({ mainline: '# 大方向 / Mainline\n\n## 正文Agent可读 / Prose-agent visible\n\n重建后的主线\n\n## 后台导演私密 / Director private\n\n后台' }))
+        return Response.json(directorPlan({ plan: '# 导演规划 / Director Plan\n\n## 正文Agent可读 / Prose-agent visible\n\n重建后的导演规划\n\n## 后台导演私密 / Director private\n\n后台' }))
       }
       if (url.includes('/director')) {
         return Response.json(directorPlan())
@@ -219,9 +219,9 @@ describe('MemoryPanel', () => {
 
     await openDirectorPanel()
     await userEvent.click(screen.getByRole('button', { name: '查看导演编排' }))
-    await waitFor(() => expect(screen.getByLabelText('大方向')).toBeInTheDocument())
-    await userEvent.clear(screen.getByLabelText('大方向'))
-    await userEvent.type(screen.getByLabelText('大方向'), '新主线')
+    await waitFor(() => expect(screen.getByLabelText('director.md')).toBeInTheDocument())
+    await userEvent.clear(screen.getByLabelText('director.md'))
+    await userEvent.type(screen.getByLabelText('director.md'), '新导演规划')
     await userEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/director', expect.objectContaining({
       method: 'PATCH',
@@ -343,11 +343,9 @@ function storyMemoryState() {
   }
 }
 
-function directorPlan(overrides: Partial<{ mainline: string; current_event: string; next_branches: string }> = {}) {
+function directorPlan(overrides: Partial<{ plan: string }> = {}) {
   const docs = {
-    mainline: overrides.mainline || '# 大方向 / Mainline\n\n## 正文Agent可读 / Prose-agent visible\n\n### 目标 / Goal\n外门逆袭\n\n## 后台导演私密 / Director private\n\n### 目标 / Goal\n隐藏反转',
-    current_event: overrides.current_event || '# 当前主线事件 / Current Main Event\n\n## 正文Agent可读 / Prose-agent visible\n\n### 目标 / Goal\n公开压力升高，同门质疑逼近。\n\n## 后台导演私密 / Director private\n\n### 目标 / Goal\n幕后安排',
-    next_branches: overrides.next_branches || '# 最近分支安排 / Next Branches\n\n## 正文Agent可读 / Prose-agent visible\n\n### 分支处理 / Branch Handling\n观察、对话、调查都成立。\n\n## 后台导演私密 / Director private\n\n### 分支处理 / Branch Handling\n隐藏代价',
+    plan: overrides.plan || '# 导演规划 / Director Plan\n\n## 正文Agent可读 / Prose-agent visible\n\n### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire\n外门逆袭\n\n### 当前场景与行动空间 / Current Scene and Action Space\n公开压力升高，同门质疑逼近。\n\n### 最近分支安排 / Near Branch Arrangements\n观察、对话、调查都成立。\n\n## 后台导演私密 / Director private\n\n### 伏笔与回收 / Foreshadowing and Payoff\n隐藏反转',
   }
   return {
     story_id: 'story-1',
@@ -362,9 +360,7 @@ function directorPlan(overrides: Partial<{ mainline: string; current_event: stri
       branch_planning_turns: 5,
       updated_at: '2026-06-19T06:00:00Z',
       docs: {
-        mainline: { path: '/tmp/mainline.md', bytes: docs.mainline.length, hash: 'h1' },
-        current_event: { path: '/tmp/current-event.md', bytes: docs.current_event.length, hash: 'h2' },
-        next_branches: { path: '/tmp/next-branches.md', bytes: docs.next_branches.length, hash: 'h3' },
+        plan: { path: '/tmp/director.md', bytes: docs.plan.length, hash: 'h1' },
       },
       last_run: { status: 'failed', summary: '后台导演更新失败，已保留本回合正文。', error: 'director unavailable' },
     },
@@ -376,12 +372,12 @@ function directorStatus(status: string) {
     story_id: 'story-1',
     branch_id: 'main',
     status,
-    summary: status === 'failed' ? '后台导演更新失败，已保留本回合正文。' : '后台导演已更新三层规划。',
+    summary: status === 'failed' ? '后台导演更新失败，已保留本回合正文。' : '后台导演已更新导演规划。',
     error: status === 'failed' ? 'director unavailable' : '',
     source_turn_id: 'turn-1',
     updated_at: '2026-06-19T06:00:00Z',
-    planned_docs: 3,
-    completed_docs: status === 'ready' ? 3 : 0,
+    planned_docs: 1,
+    completed_docs: status === 'ready' ? 1 : 0,
     doc_bytes: 600,
     visible_bytes: 260,
     start_ready: status === 'ready',

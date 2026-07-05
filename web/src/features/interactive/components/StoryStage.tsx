@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, ChangeEvent } from 'react'
+import type { CSSProperties } from 'react'
 import { Archive, BarChart3, BookOpen, Check, ChevronDown, ChevronUp, Command as CommandIcon, Compass, ImagePlus, List, Loader2, PanelRight, Pencil, Plus, RefreshCw, ScrollText, Send, SlidersHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -14,14 +14,13 @@ import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from '@/com
 import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
-import { ReferenceChips } from '@/components/Chat/ReferenceChips'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
 import { SubAgentSessionPanel } from '@/components/Chat/SubAgentSessionPanel'
+import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from '@/components/Chat/composer-token-input'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 import { subAgentSessionKey } from '@/components/Chat/subagent-session'
 import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobile-layout'
 import type { ChatMessage, ContextAnalysis, InteractiveImage, InteractiveImageError } from '@/lib/api'
-import { isComposingKeyboardEvent } from '@/lib/keyboard'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveHotChoices, generateInteractiveImage, removeInteractiveContextCompaction, runInteractiveDirector, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
@@ -96,10 +95,11 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [styleScenes, setStyleScenes] = useState<string[]>([])
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
   const [showSkillCommands, setShowSkillCommands] = useState(false)
+  const [skillCommandQuery, setSkillCommandQuery] = useState<string | null>(null)
   const [activeSkillCommandIndex, setActiveSkillCommandIndex] = useState(0)
   const [inputFloatHeight, setInputFloatHeight] = useState(0)
   const [optimisticInteractiveImages, setOptimisticInteractiveImages] = useState<Record<string, InteractiveImage[]>>({})
-  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const inputRef = useRef<ComposerTokenInputHandle | null>(null)
   const inputFloatRef = useRef<HTMLDivElement | null>(null)
   const skillCommandRefs = useRef<Array<HTMLDivElement | null>>([])
   const skillCommands = useSkillCommands({
@@ -223,8 +223,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     return normalizeMessageContent(lastTurn.user) === normalizeMessageContent(latestLiveTurn.user) && normalizeMessageContent(lastTurn.narrative) === normalizeMessageContent(latestLiveTurn.narrative)
   }, [latestLiveTurn, snapshot?.turns, stageKey])
   const filteredSkillCommands = useMemo(() => {
-    if (!input.startsWith('/')) return []
-    const query = input.slice(1).toLowerCase()
+    if (skillCommandQuery === null) return []
+    const query = skillCommandQuery.toLowerCase()
     const seen = new Set(['compact'])
     const commands = [
       {
@@ -247,7 +247,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         })),
     ]
     return commands.filter((skill) => skill.name.toLowerCase().startsWith(query))
-  }, [input, skillCommands, t])
+  }, [skillCommandQuery, skillCommands, t])
   const filteredBuiltInCommandItems = useMemo(() => filteredSkillCommands
     .map((command, index) => ({ command, index }))
     .filter(({ command }) => command.builtIn), [filteredSkillCommands])
@@ -468,7 +468,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   )
   const directorPlanStatus = snapshot?.director_plan_status
   const directorBlocking = Boolean(directorPlanStatus?.blocking)
-  const directorStatusVisible = Boolean(directorPlanStatus && (directorBlocking || directorPlanStatus.status === 'running' || directorPlanStatus.status === 'failed'))
+  const directorStatusVisible = Boolean(directorPlanStatus && directorBlocking)
   const canUseHotChoices = !branchTerminal && !streaming && !editingTurn && !directorBlocking && stagePreferences.hotChoicesEnabled && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
   const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + keyboardInset + 20 : undefined
@@ -594,6 +594,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setStyleScenes([])
     setStyleSceneQuery(null)
     setShowSkillCommands(false)
+    setSkillCommandQuery(null)
     setActiveSkillCommandIndex(0)
     setStageActivityContent(t('storyStage.activity.connecting'))
     flushLiveMessageBuffer()
@@ -1011,32 +1012,42 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setInput('')
     setStyleSceneQuery(null)
     setShowSkillCommands(false)
+    setSkillCommandQuery(null)
     setActiveSkillCommandIndex(0)
   }
 
-  const handleInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    const nextValue = event.target.value
+  const handleInputChange = (nextValue: string) => {
     setInput(nextValue)
-    setShowSkillCommands(nextValue.startsWith('/'))
-    setActiveSkillCommandIndex(0)
-    const styleMatch = nextValue.match(/(?:^|\s)#([^\s#]*)$/)
-    setStyleSceneQuery(styleMatch ? styleMatch[1] : null)
+  }
+
+  const handleInputTriggerChange = (trigger: ComposerTrigger | null) => {
+    if (trigger?.kind === 'slash') {
+      setSkillCommandQuery(trigger.query)
+      setShowSkillCommands(true)
+      setActiveSkillCommandIndex(0)
+    } else {
+      setSkillCommandQuery(null)
+      setShowSkillCommands(false)
+      setActiveSkillCommandIndex(0)
+    }
+    setStyleSceneQuery(trigger?.kind === 'style' ? trigger.query : null)
   }
 
   const selectSkillCommand = (name: string) => {
-    setInput(`/${name} `)
+    const command = filteredSkillCommands.find((item) => item.name === name)
+    if (command?.builtIn) {
+      inputRef.current?.replaceActiveTriggerText(`/${name} `)
+    } else {
+      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'skill', value: name, label: name })
+    }
     setShowSkillCommands(false)
+    setSkillCommandQuery(null)
     setActiveSkillCommandIndex(0)
     inputRef.current?.focus()
   }
 
   const selectStyleScene = (scene: string) => {
-    setInput((current) =>
-      current.replace(/(?:^|\s)#([^\s#]*)$/, (match) => {
-        const prefix = match.startsWith(' ') ? ' ' : ''
-        return `${prefix}#${scene} `
-      }),
-    )
+    inputRef.current?.replaceActiveTriggerWithToken({ kind: 'style', value: scene, label: scene })
     setStyleScenes((current) => Array.from(new Set([...current, scene])))
     setStyleSceneQuery(null)
     inputRef.current?.focus()
@@ -1044,6 +1055,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   const removeStyleScene = (scene: string) => {
     setStyleScenes((current) => current.filter((item) => item !== scene))
+  }
+
+  const handleTokenRemove = (token: ComposerTokenSpec) => {
+    if (token.kind === 'style' && styleScenes.includes(token.value)) removeStyleScene(token.value)
   }
 
   const stageControls = (
@@ -1263,6 +1278,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                           onClick={() => {
                             setInput(choice)
                             setShowSkillCommands(false)
+                            setSkillCommandQuery(null)
                             setActiveSkillCommandIndex(0)
                             setHotChoicesExpanded(false)
                             window.requestAnimationFrame(() => {
@@ -1281,7 +1297,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             </div>
           ) : null}
           <div className="relative min-w-0">
-            <ReferenceChips files={styleScenes} onRemove={removeStyleScene} prefix="#" tone="style" />
               <FileReferencePicker open={styleSceneQuery !== null && styleSceneSuggestions.length > 0} query={styleSceneQuery || ''} files={styleSceneSuggestions} onSelect={selectStyleScene} trigger="#" placeholder={t('chat.styleReference.placeholder')} emptyText={t('chat.styleReference.empty')} heading={t('chat.styleReference.heading')} />
               <Popover open={showSkillCommands && filteredSkillCommands.length > 0}>
                 <PopoverTrigger asChild>
@@ -1369,22 +1384,13 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             <AgentComposerShell
               className="nova-story-stage-composer"
               input={
-                <Textarea
+                <ComposerTokenInput
                   ref={inputRef}
-                  autoResize
-                  rows={1}
-                  minRows={1}
-                  maxRows={isMobile ? 5 : 10}
-                  className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0"
-                  style={inputTextStyle}
                   value={input}
-                  disabled={branchTerminal || directorBlocking}
-                  inputMode="text"
-                  enterKeyHint="send"
-                  autoCapitalize="sentences"
-                  placeholder={branchTerminal ? t('storyStage.inputPlaceholderTerminal') : directorBlocking ? t('storyStage.director.inputBlocked') : !isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
                   onChange={handleInputChange}
-                  onKeyDown={(event) => {
+                  onTriggerChange={handleInputTriggerChange}
+                  onTokenRemove={handleTokenRemove}
+                  onEditorKeyDown={(event) => {
                     const canPickSkill = showSkillCommands && filteredSkillCommands.length > 0
                     if (canPickSkill && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
                       event.preventDefault()
@@ -1392,29 +1398,45 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                         const direction = event.key === 'ArrowDown' ? 1 : -1
                         return (current + direction + filteredSkillCommands.length) % filteredSkillCommands.length
                       })
-                      return
+                      return true
                     }
                     if (event.key === 'Escape') {
                       setStyleSceneQuery(null)
                       setShowSkillCommands(false)
+                      setSkillCommandQuery(null)
                       setActiveSkillCommandIndex(0)
-                      return
+                      return true
                     }
                     if (canPickSkill && event.key === 'Tab') {
                       event.preventDefault()
                       selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)
-                      return
+                      return true
                     }
                     if (event.key === 'Enter' && !event.shiftKey) {
-                      if (isComposingKeyboardEvent(event)) return
+                      if (isNativeComposingKeyboardEvent(event)) return false
                       event.preventDefault()
                       if (canPickSkill) {
                         selectSkillCommand(filteredSkillCommands[activeSkillCommandIndex]?.name || filteredSkillCommands[0].name)
-                        return
+                        return true
                       }
                       void send()
+                      return true
                     }
+                    return false
                   }}
+                  knownSkills={skillCommands.map((skill) => skill.name)}
+                  knownStyleScenes={Array.from(new Set([...styleSceneSuggestions, ...styleScenes]))}
+                  externalTokens={styleScenes.map((scene) => ({ kind: 'style', value: scene, label: scene }))}
+                  rows={1}
+                  minRows={1}
+                  maxRows={isMobile ? 5 : 10}
+                  className="nova-agent-composer-textarea nova-agent-token-input min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0"
+                  style={inputTextStyle}
+                  disabled={branchTerminal || directorBlocking}
+                  inputMode="text"
+                  enterKeyHint="send"
+                  autoCapitalize="sentences"
+                  placeholder={branchTerminal ? t('storyStage.inputPlaceholderTerminal') : directorBlocking ? t('storyStage.director.inputBlocked') : !isMobile && skillCommands.length > 0 ? t('storyStage.inputPlaceholderWithSkills') : t('storyStage.inputPlaceholder')}
                 />
               }
               toolbarStart={
@@ -2365,4 +2387,8 @@ function parseInlineStyleScenes(input: string): string[] {
     result.add(match[1])
   }
   return Array.from(result)
+}
+
+function isNativeComposingKeyboardEvent(event: KeyboardEvent) {
+  return event.isComposing || event.key === 'Process' || event.keyCode === 229
 }

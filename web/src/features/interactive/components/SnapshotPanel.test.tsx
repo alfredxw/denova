@@ -16,8 +16,8 @@ describe('SnapshotPanel', () => {
             status: 'ready',
             summary: '已更新近期规划',
             updated_at: '2026-05-17T00:00:00Z',
-            planned_docs: 3,
-            completed_docs: 3,
+            planned_docs: 1,
+            completed_docs: 1,
             doc_bytes: 30,
             visible_bytes: 20,
             start_ready: true,
@@ -155,7 +155,7 @@ describe('SnapshotPanel', () => {
     expect(screen.getByText('酒馆门自行关上')).toBeInTheDocument()
     expect(screen.getByText('导演编排')).toBeInTheDocument()
     expect(screen.getAllByText('ready').length).toBeGreaterThan(0)
-    expect(screen.getByText('3/3')).toBeInTheDocument()
+    expect(screen.getByText('1/1')).toBeInTheDocument()
     expect(screen.getByText('已更新近期规划')).toBeInTheDocument()
     expect(screen.queryByText('青云逆袭主线')).not.toBeInTheDocument()
     expect(screen.queryByText('外门比拼前夜，制造排名压力。')).not.toBeInTheDocument()
