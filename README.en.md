@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Denova is an AI creative platform for novel writing and story-driven games, powered by AI Agents, Skills, Subagent Workflows, Automations, image generation, and versioned project workspaces.</strong>
+  <strong>Denova is an AI creative platform for novel writing and AI generated RPG, with built-in support for AI agents, Skills, subagent workflows, automations, image generation, and version control.</strong>
 </p>
 
 <p align="center">

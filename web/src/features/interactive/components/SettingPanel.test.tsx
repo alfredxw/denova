@@ -313,7 +313,11 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '故事导演' }))
 
     await selectDefaultDirector(user)
-    expect(screen.getByRole('tablist', { name: '导演资源' })).toBeInTheDocument()
+    const directorResourceTabs = screen.getByRole('tablist', { name: '导演资源' })
+    expect(directorResourceTabs).toBeInTheDocument()
+    expect(directorResourceTabs).toHaveAttribute('data-slot', 'tabs-list')
+    expect(directorResourceTabs).toHaveClass('grid', 'group-data-horizontal/tabs:h-auto')
+    expect(directorResourceTabs.className).toContain('grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]')
     expect(screen.getByRole('tab', { name: /事件引用/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /数值系统/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /TRPG 检定/ })).toBeInTheDocument()

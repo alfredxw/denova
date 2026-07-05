@@ -284,7 +284,7 @@ export function StoryDirectorEditor({
             {planningTemplatesOpen ? (
               <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
                 <Tabs defaultValue="mainline" className="gap-3">
-                  <TabsList aria-label={t('settingPanel.storyDirector.planningTemplates')} className="h-auto w-full justify-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-1">
+                  <TabsList aria-label={t('settingPanel.storyDirector.planningTemplates')} className="h-auto w-full justify-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-1 group-data-horizontal/tabs:h-auto">
                     {planningTemplateTabs.map((tab) => (
                       <TabsTrigger
                         key={tab.key}
@@ -310,11 +310,11 @@ export function StoryDirectorEditor({
         <section className={`${consoleSectionClassName} p-4`}>
           <SectionTitle title={t('settingPanel.storyDirector.editorDeck')} description={t('settingPanel.storyDirector.editorDeckDesc')} />
           <Tabs value={activeEditorTab} onValueChange={(value) => setActiveEditorTab(value as StoryDirectorEditorTab)} className="mt-3 gap-3">
-            <TabsList aria-label={t('settingPanel.storyDirector.editorDeck')} className="h-auto w-full flex-wrap justify-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1">
+            <TabsList aria-label={t('settingPanel.storyDirector.editorDeck')} className="grid h-auto w-full grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] items-stretch justify-stretch gap-1 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 group-data-horizontal/tabs:h-auto">
               {EDITOR_TABS.map((tab) => (
-                <TabsTrigger key={tab} value={tab} className="min-h-9 flex-none px-3 text-xs">
-                  <span>{editorTabLabel(tab, t)}</span>
-                  <span className="hidden text-[10px] text-[var(--nova-text-faint)] md:inline">{editorTabSummaries[tab]}</span>
+                <TabsTrigger key={tab} value={tab} className="h-auto min-h-11 min-w-0 flex-col items-start justify-center gap-0.5 whitespace-normal px-3 py-2 text-left text-xs">
+                  <span className="w-full truncate">{editorTabLabel(tab, t)}</span>
+                  <span className="hidden w-full truncate text-[10px] text-[var(--nova-text-faint)] md:block">{editorTabSummaries[tab]}</span>
                 </TabsTrigger>
               ))}
             </TabsList>

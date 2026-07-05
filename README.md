@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Denova 是面向小说写作与剧情驱动游戏的 AI 创作平台，由 AI Agents、Skills、Subagent Workflows、Automations、图像生成和版本化项目工作区驱动。</strong>
+  <strong>Denova 一个面向小说创作与 AI 角色扮演游戏的 AI 创作平台，内置支持 AI Agents、Skills、Subagent Workflows、自动化、图像自动生成与项目版本管理等核心能力</strong>
 </p>
 
 <p align="center">
