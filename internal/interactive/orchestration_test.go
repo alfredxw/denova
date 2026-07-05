@@ -130,6 +130,62 @@ func TestResolveTurnRulesRollModesAndDifficultyTargets(t *testing.T) {
 	}
 }
 
+func TestResolveTurnRulesNormalizesTurnCheckAliases(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		difficulty     string
+		wantDifficulty string
+		template       string
+		wantTemplate   string
+	}{
+		{name: "medium", difficulty: "medium", wantDifficulty: "normal"},
+		{name: "moderate", difficulty: "moderate", wantDifficulty: "normal"},
+		{name: "space separated", difficulty: "very easy", wantDifficulty: "very_easy"},
+		{name: "hyphenated", difficulty: "very-hard", wantDifficulty: "very_hard"},
+		{name: "legacy template", difficulty: "normal", wantDifficulty: "normal", template: "d20_check", wantTemplate: "dice_check"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := sampleTurnCheckRequest()
+			req.Difficulty = tc.difficulty
+			if tc.template != "" {
+				req.Rule.Template = tc.template
+			}
+			resolution, err := resolveTurnRulesWithSeed("st_alias", "main", initialStoryState(), req, 7)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if resolution.Request.Difficulty != tc.wantDifficulty {
+				t.Fatalf("difficulty = %q, want %q", resolution.Request.Difficulty, tc.wantDifficulty)
+			}
+			if tc.wantTemplate != "" && resolution.Request.Rule.Template != tc.wantTemplate {
+				t.Fatalf("template = %q, want %q", resolution.Request.Rule.Template, tc.wantTemplate)
+			}
+		})
+	}
+}
+
+func TestValidateTurnCheckRequestListsAllowedEnums(t *testing.T) {
+	req := sampleTurnCheckRequest()
+	req.Difficulty = "mediumish"
+	_, err := resolveTurnRulesWithSeed("st_invalid", "main", initialStoryState(), req, 7)
+	if err == nil {
+		t.Fatal("expected invalid difficulty error")
+	}
+	if !strings.Contains(err.Error(), "合法值") || !strings.Contains(err.Error(), "very_easy/easy/normal/hard/very_hard") {
+		t.Fatalf("difficulty error should list allowed values, got: %v", err)
+	}
+
+	req = sampleTurnCheckRequest()
+	req.Rule.Template = "safe_expression"
+	_, err = resolveTurnRulesWithSeed("st_invalid_template", "main", initialStoryState(), req, 7)
+	if err == nil {
+		t.Fatal("expected invalid template error")
+	}
+	if !strings.Contains(err.Error(), "合法值") || !strings.Contains(err.Error(), "dice_check") {
+		t.Fatalf("template error should list allowed values, got: %v", err)
+	}
+}
+
 func TestResolveTurnCheckOutcomeCriticalThresholds(t *testing.T) {
 	tests := []struct {
 		name     string

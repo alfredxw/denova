@@ -29,7 +29,6 @@ const memoryPanel = {
   'memoryPanel.directorManualRunHint': '可以让后台导演基于当前分支已落盘回合生成 director.md，完成后这里会显示规划文档与状态。',
   'memoryPanel.directorChat.director': '后台导演',
   'memoryPanel.directorChat.request': '规划当前分支的导演编排',
-  'memoryPanel.directorChat.toolArgs': 'branch={{branch}} docs={{completed}}/{{planned}} visible={{visible}} total={{total}}',
   'memoryPanel.directorChat.running': '正在流式整理导演规划',
   'memoryPanel.directorChat.ready': '导演规划已更新。',
   'memoryPanel.directorChat.failed': '导演规划失败。',

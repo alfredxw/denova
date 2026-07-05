@@ -396,7 +396,7 @@ func (s *Store) MarkDirectorPlanRunStarted(storyID, branchID string, token Direc
 		PlannedDocs:    len(requiredDirectorPlanDocKinds()),
 		CompletedDocs:  0,
 		StartReady:     startReady,
-		Blocking:       !startReady,
+		Blocking:       false,
 		BaselineHashes: token.Hashes,
 	}
 	return s.writeDirectorPlanMetadataLocked(storyID, branchID, metadata)
@@ -441,7 +441,7 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 			PlannedDocs:   len(requiredDirectorPlanDocKinds()),
 			CompletedDocs: directorPlanCompletedDocs(plan.Docs, token.Hashes),
 			StartReady:    startReady,
-			Blocking:      !startReady,
+			Blocking:      false,
 		}
 		if writeErr := s.writeDirectorPlanMetadataLocked(storyID, branchID, plan.Metadata); writeErr != nil {
 			return DirectorPlan{}, writeErr
@@ -492,7 +492,7 @@ func (s *Store) MarkDirectorPlanRunFailed(storyID, branchID, sourceTurnID string
 		PlannedDocs:   len(requiredDirectorPlanDocKinds()),
 		CompletedDocs: directorPlanCompletedDocs(plan.Docs, baselineHashes),
 		StartReady:    startReady,
-		Blocking:      !startReady,
+		Blocking:      false,
 	}
 	return s.writeDirectorPlanMetadataLocked(storyID, branchID, plan.Metadata)
 }
@@ -728,6 +728,7 @@ func DirectorPlanVisibleContext(plan DirectorPlan, limitBytes int) string {
 }
 
 func DirectorPlanStatusFromPlan(plan DirectorPlan, hasTurns bool) DirectorPlanStatus {
+	_ = hasTurns
 	run := plan.Metadata.LastRun
 	status := DirectorPlanStatusWaitingOpening
 	if run != nil && strings.TrimSpace(run.Status) != "" {
@@ -758,20 +759,9 @@ func DirectorPlanStatusFromPlan(plan DirectorPlan, hasTurns bool) DirectorPlanSt
 		if run.StartReady {
 			startReady = true
 		}
-		blocking = run.Blocking
 		if status == DirectorPlanStatusRunning {
 			completedDocs = directorPlanCompletedDocs(plan.Docs, run.BaselineHashes)
-			blocking = !startReady
 		}
-	}
-	if status == DirectorPlanStatusWaitingOpening && hasTurns && !startReady {
-		blocking = true
-	}
-	if status == DirectorPlanStatusFailed && !startReady {
-		blocking = true
-	}
-	if startReady {
-		blocking = false
 	}
 	if completedDocs > plannedDocs {
 		completedDocs = plannedDocs

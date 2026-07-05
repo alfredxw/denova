@@ -140,6 +140,10 @@ func (s *Session) History() []HistoryEntry {
 				ModelCalls:           record.display.ModelCalls,
 				GeneratedBytes:       record.display.GeneratedBytes,
 				UsageCalls:           cloneTokenUsageCalls(record.display.UsageCalls),
+				SSEHiddenFields:      append([]string(nil), record.display.SSEHiddenFields...),
+				SSEHiddenReason:      record.display.SSEHiddenReason,
+				SSEDisplayNotice:     record.display.SSEDisplayNotice,
+				SSEGeneratedChars:    record.display.SSEGeneratedChars,
 			})
 		}
 	}

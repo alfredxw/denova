@@ -410,12 +410,17 @@ export interface TurnDisplayEvent {
   result?: string
   created_at?: string
   run_id?: string
+  agent_kind?: string
   agent_name?: string
   root_agent_name?: string
   run_path?: string[]
   subagent?: boolean
   subagent_session_id?: string
   subagent_type?: string
+  sse_hidden_fields?: string[]
+  sse_hidden_reason?: string
+  sse_display_notice?: string
+  sse_generated_chars?: number
 }
 
 export interface TokenUsageEvent {

@@ -5,7 +5,7 @@ import { MessageList } from '@/components/Chat/MessageList'
 import { useAgentEventStream } from '@/hooks/useAgentEventStream'
 import type { ChatMessage } from '@/lib/api'
 import { generateStoryMemoryStream, getInteractiveDirector, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution, runInteractiveDirector, updateInteractiveDirector } from '../api'
-import type { DirectorPlan, DirectorPlanDocs, DirectorPlanMetadata, DirectorPlanRunStatus, DirectorPlanStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
+import type { DirectorPlan, DirectorPlanDocs, DirectorPlanMetadata, DirectorPlanRunStatus, DirectorPlanStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure, TurnDisplayEvent } from '../types'
 
 type MemoryPanelTab = 'memory' | 'director'
 type MemoryPanelView = 'content' | 'generation'
@@ -359,6 +359,10 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
   const effectiveBranchId = branchId || snapshot?.branch_id || ''
   const directorMetadata = directorPlan?.metadata
   const directorStatus = manualDirectorStatus || snapshot?.director_plan_status || directorMetadata?.last_run
+  const directorDisplayEvents = useMemo(
+    () => extractDirectorDisplayEvents(snapshot, directorStatus),
+    [directorStatus?.source_turn_id, snapshot?.current_turn?.display_events, snapshot?.turns],
+  )
 
   useEffect(() => {
     setDirectorPlan(snapshot?.director_plan || null)
@@ -504,7 +508,7 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
             </div>
           </div>
           {directorError ? <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{directorError}</div> : null}
-          <DirectorRunChat status={directorStatus} metadata={directorMetadata} loading={planLoading || retryingDirector} branchId={effectiveBranchId} />
+          <DirectorRunChat status={directorStatus} metadata={directorMetadata} loading={planLoading || retryingDirector} displayEvents={directorDisplayEvents} />
           {directorPlan ? (
             <>
               {draftDocs ? (
@@ -609,7 +613,7 @@ function InfoLine({ label, value }: { label: string; value: string }) {
 
 type DirectorStatusLike = Partial<DirectorPlanRunStatus & DirectorPlanStatus>
 
-function DirectorRunChat({ status, metadata, loading, branchId }: { status?: DirectorStatusLike; metadata?: DirectorPlanMetadata; loading?: boolean; branchId?: string }) {
+function DirectorRunChat({ status, metadata, loading, displayEvents = [] }: { status?: DirectorStatusLike; metadata?: DirectorPlanMetadata; loading?: boolean; displayEvents?: TurnDisplayEvent[] }) {
   const { t } = useTranslation()
   const currentStatus = loading && !status?.status ? 'loading' : status?.status || ''
   const running = currentStatus === 'running' || currentStatus === 'loading'
@@ -624,8 +628,25 @@ function DirectorRunChat({ status, metadata, loading, branchId }: { status?: Dir
     turns: metadata?.branch_planning_turns || 5,
   })
   const messages = useMemo<ChatMessage[]>(() => {
-    const toolStatus = currentStatus === 'failed' ? 'error' : running ? 'running' : 'success'
     const meta = updatedAt ? t('memoryPanel.directorChat.updatedAt', { time: formatShortDate(updatedAt) }) : currentStatus || t('snapshot.noRecord')
+    const toolStatus = currentStatus === 'failed' ? 'error' : running ? 'running' : 'success'
+    const showFileTool = ['running', 'ready', 'failed', 'conflict'].includes(currentStatus)
+    const persistedToolMessages = displayEvents
+      .filter((event) => event.role === 'tool_call')
+      .map((event, index) => displayEventToChatMessage(event, `director-tool-${index}`))
+    const fileToolMessages: ChatMessage[] = persistedToolMessages.length > 0
+      ? persistedToolMessages
+      : showFileTool
+        ? [{
+            id: 'director-run-tool',
+            role: 'tool_call',
+            name: 'edit_file',
+            status: toolStatus,
+            args: JSON.stringify({ file_path: 'director.md' }),
+            result: toolStatus === 'success' ? progress : '',
+            created_at: updatedAt,
+          }]
+        : []
     return [
       {
         id: 'director-run-request',
@@ -639,21 +660,7 @@ function DirectorRunChat({ status, metadata, loading, branchId }: { status?: Dir
         streaming: running,
         created_at: updatedAt,
       },
-      {
-        id: 'director-run-tool',
-        role: 'tool_call',
-        name: 'director.md',
-        status: toolStatus,
-        args: t('memoryPanel.directorChat.toolArgs', {
-          branch: branchId || metadata?.branch_id || status?.branch_id || t('snapshot.noRecord'),
-          completed: totals.completed,
-          planned: totals.planned,
-          visible: formatBytes(totals.visibleBytes),
-          total: formatBytes(totals.totalBytes),
-        }),
-        result: toolStatus === 'success' ? progress : '',
-        created_at: updatedAt,
-      },
+      ...fileToolMessages,
       {
         id: 'director-run-result',
         role: currentStatus === 'failed' ? 'error' : 'assistant',
@@ -662,7 +669,7 @@ function DirectorRunChat({ status, metadata, loading, branchId }: { status?: Dir
         created_at: updatedAt,
       },
     ]
-  }, [branchId, currentStatus, metadata?.branch_id, progress, running, status?.branch_id, summary, t, totals.completed, totals.planned, totals.totalBytes, totals.visibleBytes, updatedAt])
+  }, [currentStatus, displayEvents, progress, running, summary, t, updatedAt])
   return (
     <div className="mt-2 flex h-[236px] min-h-[196px] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
       <MessageList
@@ -676,6 +683,45 @@ function DirectorRunChat({ status, metadata, loading, branchId }: { status?: Dir
       />
     </div>
   )
+}
+
+function extractDirectorDisplayEvents(snapshot: Snapshot | null, status?: DirectorStatusLike) {
+  const sourceTurnID = status?.source_turn_id || snapshot?.current_turn?.id || ''
+  const sourceTurn = sourceTurnID ? (snapshot?.turns || []).find((turn) => turn.id === sourceTurnID) : snapshot?.current_turn
+  const events = sourceTurn?.display_events || snapshot?.current_turn?.display_events || []
+  return events.filter(isDirectorDisplayEvent)
+}
+
+function isDirectorDisplayEvent(event: TurnDisplayEvent) {
+  if (event.agent_kind === 'interactive_director') return true
+  const name = event.name || event.content || ''
+  if (!['read_file', 'write_file', 'edit_file'].includes(name)) return false
+  return `${event.args || ''}\n${event.result || ''}`.includes('director.md')
+}
+
+function displayEventToChatMessage(event: TurnDisplayEvent, fallbackID: string): ChatMessage {
+  return {
+    id: event.id || fallbackID,
+    role: event.role,
+    content: event.content || event.name || '',
+    name: event.name || event.content,
+    args: event.args || '',
+    status: event.status || 'success',
+    result: event.result || '',
+    created_at: event.created_at,
+    run_id: event.run_id,
+    agent_kind: event.agent_kind,
+    agent_name: event.agent_name,
+    root_agent_name: event.root_agent_name,
+    run_path: event.run_path,
+    subagent: event.subagent,
+    subagent_session_id: event.subagent_session_id,
+    subagent_type: event.subagent_type,
+    sse_hidden_fields: event.sse_hidden_fields,
+    sse_hidden_reason: event.sse_hidden_reason,
+    sse_display_notice: event.sse_display_notice,
+    sse_generated_chars: event.sse_generated_chars,
+  }
 }
 
 function directorStatusFallback(status: string, t: ReturnType<typeof useTranslation>['t']) {

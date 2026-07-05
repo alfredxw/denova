@@ -179,8 +179,9 @@ describe('StoryStage composer', () => {
     expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
   })
 
-  it('locks forward actions while the initial director plan is blocking', async () => {
+  it('keeps forward actions available while the initial director plan runs in the background', async () => {
     const user = userEvent.setup()
+    generateInteractiveHotChoicesMock.mockResolvedValue({ enabled: true, choices: ['继续观察'] })
     render(
       <StoryStage
         workspace="/tmp/book"
@@ -215,15 +216,14 @@ describe('StoryStage composer', () => {
       />,
     )
 
-    expect(screen.getByText('导演正在规划故事')).toBeInTheDocument()
-    expect(screen.getByText('已规划 1/1')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('导演正在规划故事，完成后即可继续行动')).toHaveAttribute('aria-disabled', 'true')
-    expect(screen.getByPlaceholderText('导演正在规划故事，完成后即可继续行动')).toHaveAttribute('contenteditable', 'false')
-    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '获取行动选择' })).toBeDisabled()
+    expect(screen.queryByText('导演正在规划故事')).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText('你要做什么？')).toHaveAttribute('contenteditable', 'true')
+    expect(screen.getByRole('button', { name: '获取行动选择' })).not.toBeDisabled()
 
+    await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
+    expect(screen.getByRole('button', { name: '发送' })).not.toBeDisabled()
     await user.click(screen.getByRole('button', { name: '获取行动选择' }))
-    expect(generateInteractiveHotChoicesMock).not.toHaveBeenCalled()
+    expect(generateInteractiveHotChoicesMock).toHaveBeenCalled()
   })
 
   it('inserts interactive Skills as inline tokens and sends compatible text', async () => {
@@ -288,9 +288,7 @@ describe('StoryStage composer', () => {
     })
   })
 
-  it('retries failed director planning without revealing plan docs', async () => {
-    const user = userEvent.setup()
-    const handleDone = vi.fn().mockResolvedValue(undefined)
+  it('does not show failed director planning as a blocking composer banner', () => {
     render(
       <StoryStage
         workspace="/tmp/book"
@@ -321,15 +319,13 @@ describe('StoryStage composer', () => {
           },
           director_plan_status: directorStatus('failed', { error: 'director unavailable', blocking: true }),
         }}
-        onDone={handleDone}
+        onDone={() => {}}
       />,
     )
 
-    expect(screen.getByText('director unavailable')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '重试规划' }))
-
-    await waitFor(() => expect(runInteractiveDirectorMock).toHaveBeenCalledWith('story-1', 'main'))
-    await waitFor(() => expect(handleDone).toHaveBeenCalledWith({ silent: true }))
+    expect(screen.queryByText('director unavailable')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重试规划' })).not.toBeInTheDocument()
+    expect(getStageInput()).toHaveAttribute('contenteditable', 'true')
     expect(screen.queryByDisplayValue(/后台导演私密/)).not.toBeInTheDocument()
   })
 
@@ -787,7 +783,7 @@ function directorStatus(status: string, overrides: Partial<NonNullable<Snapshot[
     doc_bytes: 1200,
     visible_bytes: 320,
     start_ready: status === 'ready',
-    blocking: status !== 'ready',
+    blocking: false,
     ...overrides,
   }
 }

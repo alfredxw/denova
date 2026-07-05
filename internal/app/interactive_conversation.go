@@ -447,6 +447,7 @@ func (c *interactiveConversation) AppendDisplayEvent(event session.DisplayEvent)
 		Status:            status,
 		Result:            event.Result,
 		CreatedAt:         createdAt,
+		AgentKind:         event.AgentKind,
 		RunID:             event.RunID,
 		AgentName:         event.AgentName,
 		RootAgentName:     event.RootAgentName,
@@ -454,14 +455,18 @@ func (c *interactiveConversation) AppendDisplayEvent(event session.DisplayEvent)
 		SubAgent:          event.SubAgent,
 		SubAgentSessionID: event.SubAgentSessionID,
 		SubAgentType:      event.SubAgentType,
+		SSEHiddenFields:   append([]string(nil), event.SSEHiddenFields...),
+		SSEHiddenReason:   event.SSEHiddenReason,
+		SSEDisplayNotice:  event.SSEDisplayNotice,
+		SSEGeneratedChars: event.SSEGeneratedChars,
 	}
-	c.displayEvents = append(c.displayEvents, next)
+	c.displayEvents = appendOrReplaceDisplayEvent(c.displayEvents, next)
 	turnID := ""
 	branchID := c.branchID
 	if c.lastTurn != nil {
 		turnID = c.lastTurn.ID
 		branchID = c.lastTurn.BranchID
-		c.lastTurn.DisplayEvents = append(c.lastTurn.DisplayEvents, next)
+		c.lastTurn.DisplayEvents = appendOrReplaceDisplayEvent(c.lastTurn.DisplayEvents, next)
 	}
 	storyID := c.storyID
 	store := c.store

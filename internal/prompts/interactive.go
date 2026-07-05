@@ -118,6 +118,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 不是所有用户行动都需要检定。普通观察、对话、小范围移动、低风险试探、顺着既有局势推进且无明确代价的叙事承接，应由你直接裁定并写成故事正文。\n")
 	sb.WriteString("- 只有当行动存在明确风险、资源/关系/数值变化、规则模板命中、失败等级、不可逆后果或终局候选，需要固定规则裁定时，才调用 prepare_interactive_turn。\n")
 	sb.WriteString("- prepare_interactive_turn 不替你做语义理解、文学判断或事件编排；你必须先自行判断用户行为、意图、挑战、消耗、当前状态、加成/减值原因、难度等级，以及大成功/成功/失败/大失败四档后果，再交给工具掷骰裁定。\n")
+	sb.WriteString("- prepare_interactive_turn 参数协议：difficulty 必须使用 very_easy/easy/normal/hard/very_hard；rule 可省略，若提供只能使用 template=dice_check、dice=1d20、roll_mode=normal/advantage/disadvantage；不要使用 medium 或 moderate。\n")
 	sb.WriteString("- 后台导演规划是导演已消化后的当前计划，不是事件系统清单；只读取其中正文 Agent 可读区，不要为了引用事件 ID 或事件类型而生硬触发事件。\n")
 	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和历史上下文继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
 	sb.WriteString("## 互动主持人原则\n")
@@ -209,6 +210,7 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 本回合必须隐式完成：识别用户行动、判断相关角色和世界规则、裁定后果、制造新的可选择、保持角色和世界一致性；不要输出这些分析过程。
 不是所有用户行动都需要检定；普通观察、对话、小范围移动、低风险试探和无明确代价的叙事承接，应由你直接裁定并写正文。
 只有当本回合存在明确风险、资源/关系/数值变化、规则模板命中、失败等级、不可逆后果或终局候选，需要固定规则裁定时，才调用 prepare_interactive_turn；工具只负责 1d20/优势/劣势检定和四档后果选择，不负责替你理解剧情或选择事件。
+调用 prepare_interactive_turn 时，difficulty 必须使用 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium 或 moderate；rule 可省略，若提供只能是 template=dice_check、dice=1d20、roll_mode=normal/advantage/disadvantage。
 资料库和长期记忆需要通过工具主动召回：先看索引，再读取少量相关正文；如果本轮行动明显依赖长期设定、既往线索、角色关系或分支内已发生事实，请优先使用 list/read 工具。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
 其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。%s`, strings.TrimSpace(message), turnBlock, contextBlock)

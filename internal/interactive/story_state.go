@@ -34,16 +34,45 @@ func sanitizeDisplayEvents(events []DisplayEvent) []DisplayEvent {
 			}
 		}
 		next := DisplayEvent{
-			ID:        strings.TrimSpace(event.ID),
-			Role:      role,
-			Content:   content,
-			Name:      name,
-			Args:      event.Args,
-			Status:    status,
-			Result:    event.Result,
-			CreatedAt: strings.TrimSpace(event.CreatedAt),
+			ID:                strings.TrimSpace(event.ID),
+			Role:              role,
+			Content:           content,
+			Name:              name,
+			Args:              event.Args,
+			Status:            status,
+			Result:            event.Result,
+			CreatedAt:         strings.TrimSpace(event.CreatedAt),
+			AgentKind:         strings.TrimSpace(event.AgentKind),
+			AgentName:         strings.TrimSpace(event.AgentName),
+			RootAgentName:     strings.TrimSpace(event.RootAgentName),
+			RunPath:           trimStringSlice(event.RunPath),
+			SubAgent:          event.SubAgent,
+			RunID:             strings.TrimSpace(event.RunID),
+			SubAgentSessionID: strings.TrimSpace(event.SubAgentSessionID),
+			SubAgentType:      strings.TrimSpace(event.SubAgentType),
+			SSEHiddenFields:   trimStringSlice(event.SSEHiddenFields),
+			SSEHiddenReason:   strings.TrimSpace(event.SSEHiddenReason),
+			SSEDisplayNotice:  strings.TrimSpace(event.SSEDisplayNotice),
+			SSEGeneratedChars: nonNegativeInt(event.SSEGeneratedChars),
 		}
 		result = append(result, next)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
+func trimStringSlice(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			result = append(result, value)
+		}
 	}
 	if len(result) == 0 {
 		return nil

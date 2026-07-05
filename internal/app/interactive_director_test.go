@@ -54,8 +54,8 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if initialStatus.Status != interactive.DirectorPlanStatusWaitingOpening || !initialStatus.Blocking {
-		t.Fatalf("first persisted turn should block until director planning starts: %#v", initialStatus)
+	if initialStatus.Status != interactive.DirectorPlanStatusWaitingOpening || initialStatus.Blocking {
+		t.Fatalf("first persisted turn should stay available while director planning is pending: %#v", initialStatus)
 	}
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -67,6 +67,9 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 		<-release
 		if !strings.Contains(instruction, "director.md") || strings.Contains(instruction, "mainline.md") || len(toolContext.DirectorPlanAllowedPaths) != 1 {
 			t.Fatalf("director should receive plan paths and guard context: paths=%#v\n%s", toolContext.DirectorPlanAllowedPaths, instruction)
+		}
+		if toolContext.DisplayConversation == nil {
+			t.Fatalf("director should receive display conversation for background progress")
 		}
 		if !strings.Contains(instruction, "资料库导演上下文") || !strings.Contains(instruction, "沈凝") {
 			t.Fatalf("director should receive bounded lore context:\n%s", instruction)
@@ -89,8 +92,8 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 
 	waitForDirectorGoroutineStart(t, started)
 	runningStatus := waitForDirectorPlanPublicStatus(t, store, story.ID, "main", interactive.DirectorPlanStatusRunning)
-	if !runningStatus.Blocking || runningStatus.StartReady || runningStatus.CompletedDocs != 0 || runningStatus.PlannedDocs != 1 {
-		t.Fatalf("initial director run should expose blocking progress only: %#v", runningStatus)
+	if runningStatus.Blocking || runningStatus.StartReady || runningStatus.CompletedDocs != 0 || runningStatus.PlannedDocs != 1 {
+		t.Fatalf("initial director run should expose non-blocking progress: %#v", runningStatus)
 	}
 	releaseOnce.Do(func() { close(release) })
 	snapshot := waitForDirectorPlanRunSummary(t, store, story.ID, "main", "导演安排公开反转")
@@ -144,8 +147,8 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 	if snapshot.DirectorPlan == nil || snapshot.DirectorPlan.Metadata.LastRun == nil || !strings.Contains(snapshot.DirectorPlan.Metadata.LastRun.Error, "director unavailable") {
 		t.Fatalf("failure should be recorded: %#v", snapshot.DirectorPlan)
 	}
-	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusFailed || !snapshot.DirectorPlanStatus.Blocking || snapshot.DirectorPlanStatus.StartReady {
-		t.Fatalf("initial director failure should block until retry: %#v", snapshot.DirectorPlanStatus)
+	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusFailed || snapshot.DirectorPlanStatus.Blocking || snapshot.DirectorPlanStatus.StartReady {
+		t.Fatalf("initial director failure should be recorded without blocking retry: %#v", snapshot.DirectorPlanStatus)
 	}
 
 	previous = generateInteractiveDirectorForPlan

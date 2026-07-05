@@ -200,6 +200,7 @@ type DisplayEvent struct {
 	Status            string   `json:"status,omitempty"`
 	Result            string   `json:"result,omitempty"`
 	CreatedAt         string   `json:"created_at,omitempty"`
+	AgentKind         string   `json:"agent_kind,omitempty"`
 	AgentName         string   `json:"agent_name,omitempty"`
 	RootAgentName     string   `json:"root_agent_name,omitempty"`
 	RunPath           []string `json:"run_path,omitempty"`
@@ -207,6 +208,10 @@ type DisplayEvent struct {
 	RunID             string   `json:"run_id,omitempty"`
 	SubAgentSessionID string   `json:"subagent_session_id,omitempty"`
 	SubAgentType      string   `json:"subagent_type,omitempty"`
+	SSEHiddenFields   []string `json:"sse_hidden_fields,omitempty"`
+	SSEHiddenReason   string   `json:"sse_hidden_reason,omitempty"`
+	SSEDisplayNotice  string   `json:"sse_display_notice,omitempty"`
+	SSEGeneratedChars int      `json:"sse_generated_chars,omitempty"`
 }
 
 // ModelContextMessage is model-visible turn evidence hidden from the chat UI.

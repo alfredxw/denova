@@ -58,6 +58,10 @@ type HistoryEntry struct {
 	ModelCalls           int              `json:"model_calls,omitempty"`
 	GeneratedBytes       int              `json:"generated_bytes,omitempty"`
 	UsageCalls           []TokenUsageCall `json:"usage_calls,omitempty"`
+	SSEHiddenFields      []string         `json:"sse_hidden_fields,omitempty"`
+	SSEHiddenReason      string           `json:"sse_hidden_reason,omitempty"`
+	SSEDisplayNotice     string           `json:"sse_display_notice,omitempty"`
+	SSEGeneratedChars    int              `json:"sse_generated_chars,omitempty"`
 }
 
 type historyRecord struct {
@@ -108,6 +112,10 @@ type DisplayEvent struct {
 	ModelCalls           int              `json:"model_calls,omitempty"`
 	GeneratedBytes       int              `json:"generated_bytes,omitempty"`
 	UsageCalls           []TokenUsageCall `json:"usage_calls,omitempty"`
+	SSEHiddenFields      []string         `json:"sse_hidden_fields,omitempty"`
+	SSEHiddenReason      string           `json:"sse_hidden_reason,omitempty"`
+	SSEDisplayNotice     string           `json:"sse_display_notice,omitempty"`
+	SSEGeneratedChars    int              `json:"sse_generated_chars,omitempty"`
 }
 
 type ChapterIllustration struct {

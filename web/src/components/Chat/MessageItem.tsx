@@ -825,6 +825,7 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const isDelegationTool = name === 'task'
   const taskSubAgent = isDelegationTool ? (message.subagent_type || parseTaskSubagentType(rawArgs)) : ''
   const isChapterBodyHidden = message.sse_display_notice === 'chapter_body_hidden'
+  const isDirectorPlanHidden = isChapterBodyHidden && message.agent_kind === 'interactive_director'
   const chapterBodyHiddenPath = isChapterBodyHidden ? extractToolArgPath(rawArgs) : ''
   const chapterGeneratedChars = isChapterBodyHidden && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
   const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : name
@@ -838,8 +839,8 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const resultPreview = buildPreview(result, 80)
   const displaySummary = isChapterBodyHidden
     ? chapterGeneratedChars !== undefined
-      ? t(hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount', { count: chapterGeneratedChars })
-      : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting'))
+      ? t(isDirectorPlanHidden ? (hasResult ? 'chat.tool.fileWrittenWithCount' : 'chat.tool.fileWritingWithCount') : (hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount'), { count: chapterGeneratedChars })
+      : (isDirectorPlanHidden ? (hasResult ? t('chat.tool.fileWritten') : t('chat.tool.fileWriting')) : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting')))
     : (hasResult ? resultPreview || t('chat.tool.done') : summary)
   const hasDetail = Boolean(detailArgs || result || isChapterBodyHidden)
   const streamPreviewScrollLock = useBottomScrollLock<HTMLDivElement>({
@@ -895,16 +896,16 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
               <div className="grid gap-1 font-sans">
                 {chapterBodyHiddenPath && (
                   <div className="min-w-0">
-                    <span className="text-[var(--nova-text-faint)]">{t('chat.tool.chapterPath')}</span>
+                    <span className="text-[var(--nova-text-faint)]">{t(isDirectorPlanHidden ? 'chat.tool.filePath' : 'chat.tool.chapterPath')}</span>
                     <code className="ml-1 break-all font-mono text-[var(--nova-text-muted)]">{chapterBodyHiddenPath}</code>
                   </div>
                 )}
                 {chapterGeneratedChars !== undefined && (
                   <div className="text-[var(--nova-text-faint)]">
-                    {t('chat.tool.chapterGeneratedChars', { count: chapterGeneratedChars })}
+                    {t(isDirectorPlanHidden ? 'chat.tool.fileGeneratedChars' : 'chat.tool.chapterGeneratedChars', { count: chapterGeneratedChars })}
                   </div>
                 )}
-                <div className="text-[var(--nova-text-faint)]">{t('chat.tool.chapterBodyHidden')}</div>
+                <div className="text-[var(--nova-text-faint)]">{t(isDirectorPlanHidden ? 'chat.tool.fileBodyHidden' : 'chat.tool.chapterBodyHidden')}</div>
               </div>
             )}
             {detailArgs && <pre className="whitespace-pre-wrap">{detailArgs}</pre>}

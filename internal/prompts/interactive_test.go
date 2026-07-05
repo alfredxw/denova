@@ -65,9 +65,19 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 			t.Fatalf("system prompt should include DM-style check rule %q:\n%s", want, system)
 		}
 	}
+	for _, want := range []string{"very_easy/easy/normal/hard/very_hard", "rule 可省略", "dice_check", "1d20"} {
+		if !strings.Contains(system, want) {
+			t.Fatalf("system prompt should include prepare_interactive_turn enum protocol %q:\n%s", want, system)
+		}
+	}
 	for _, want := range []string{"不是所有用户行动都需要检定", "低风险试探", "应由你直接裁定", "只有当本回合存在明确风险", "需要固定规则裁定时，才调用 prepare_interactive_turn"} {
 		if !strings.Contains(turn, want) {
 			t.Fatalf("turn prompt should include DM-style check rule %q:\n%s", want, turn)
+		}
+	}
+	for _, want := range []string{"very_easy/easy/normal/hard/very_hard", "不要使用 medium 或 moderate"} {
+		if !strings.Contains(turn, want) {
+			t.Fatalf("turn prompt should include prepare_interactive_turn enum protocol %q:\n%s", want, turn)
 		}
 	}
 	if strings.Contains(turn, "如果本回合涉及数值、骰子、资源、关系、词条、失败等级或终局候选，请调用 prepare_interactive_turn") {

@@ -56,6 +56,7 @@ func runInteractiveDirectorPlan(ctx context.Context, cfg *config.Config, state *
 		StoryID:                  conversation.storyID,
 		BranchID:                 turn.BranchID,
 		DirectorPlanAllowedPaths: allowedPaths,
+		DisplayConversation:      conversation,
 	}, instruction)
 	if err != nil {
 		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())

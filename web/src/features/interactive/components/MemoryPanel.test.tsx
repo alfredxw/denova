@@ -104,6 +104,17 @@ describe('MemoryPanel', () => {
         ts: '2026-06-19T06:00:00Z',
         user: '强行闯入藏书阁',
         narrative: '守阁长老拦在门前。',
+        display_events: [{
+          id: 'director-write',
+          role: 'tool_call',
+          name: 'write_file',
+          args: '{"file_path":"director.md"}',
+          status: 'success',
+          result: 'ok',
+          agent_kind: 'interactive_director',
+          sse_display_notice: 'chapter_body_hidden',
+          sse_generated_chars: 128,
+        }],
         rule_resolution: {
           id: 'rr_1',
           request: {
@@ -150,6 +161,9 @@ describe('MemoryPanel', () => {
     expect(screen.getByDisplayValue(/公开压力升高/)).toBeInTheDocument()
     expect(screen.getByText('规划当前分支的导演编排')).toBeInTheDocument()
     expect(screen.getAllByText(/director\.md/).length).toBeGreaterThan(0)
+    expect(screen.getByText('write_file')).toBeInTheDocument()
+    expect(screen.queryByText('edit_file')).not.toBeInTheDocument()
+    expect(screen.getByText('文件已写入 · 128 字')).toBeInTheDocument()
     expect(screen.getByText(/规划文档 0\/1/)).toBeInTheDocument()
     expect(screen.getByText(/director unavailable/)).toBeInTheDocument()
     expect(screen.getByText('规则审计')).toBeInTheDocument()
@@ -157,6 +171,42 @@ describe('MemoryPanel', () => {
     expect(screen.getAllByText('潜入检定').length).toBeGreaterThan(0)
     expect(screen.getByText('failure')).toBeInTheDocument()
     expect(screen.getAllByText('强闯失败导致主线中断').length).toBeGreaterThan(0)
+  })
+
+  it('does not render director.md as a tool name while waiting for the opening turn', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url.includes('/director')) return Response.json(directorPlan({
+        last_run: {
+          status: 'waiting_opening',
+          summary: '等待首个开局回合后开始规划。',
+          updated_at: '2026-06-19T06:00:00Z',
+          planned_docs: 1,
+          completed_docs: 0,
+        },
+      }))
+      return Response.json(storyMemoryState())
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<MemoryPanel storyId="story-1" branchId="main" snapshot={{
+      story_id: 'story-1',
+      branch_id: 'main',
+      turns: [],
+      state: {},
+      director_plan_status: directorStatus('waiting_opening', {
+        summary: '等待首个开局回合后开始规划。',
+        completed_docs: 0,
+        start_ready: false,
+      }),
+    }} />)
+
+    await openDirectorPanel()
+    await userEvent.click(screen.getByRole('button', { name: '查看导演编排' }))
+    await waitFor(() => expect(screen.getByText('等待首个开局回合后开始规划。')).toBeInTheDocument())
+
+    expect(screen.queryByText('edit_file')).not.toBeInTheDocument()
+    expect(screen.getByDisplayValue(/公开压力升高/)).toBeInTheDocument()
   })
 
   it('rebuilds director plan from the summary action', async () => {
@@ -385,7 +435,7 @@ function storyMemoryState() {
   }
 }
 
-function directorPlan(overrides: Partial<{ plan: string }> = {}) {
+function directorPlan(overrides: Partial<{ plan: string; last_run: Record<string, unknown> }> = {}) {
   const docs = {
     plan: overrides.plan || '# 导演规划 / Director Plan\n\n## 正文Agent可读 / Prose-agent visible\n\n### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire\n外门逆袭\n\n### 当前场景与行动空间 / Current Scene and Action Space\n公开压力升高，同门质疑逼近。\n\n### 最近分支安排 / Near Branch Arrangements\n观察、对话、调查都成立。\n\n## 后台导演私密 / Director private\n\n### 伏笔与回收 / Foreshadowing and Payoff\n隐藏反转',
   }
@@ -404,7 +454,7 @@ function directorPlan(overrides: Partial<{ plan: string }> = {}) {
       docs: {
         plan: { path: '/tmp/director.md', bytes: docs.plan.length, hash: 'h1' },
       },
-      last_run: { status: 'failed', summary: '后台导演更新失败，已保留本回合正文。', error: 'director unavailable' },
+      last_run: overrides.last_run || { status: 'failed', summary: '后台导演更新失败，已保留本回合正文。', error: 'director unavailable' },
     },
   }
 }
@@ -427,6 +477,6 @@ function directorStatusBase(status: string) {
     doc_bytes: 600,
     visible_bytes: 260,
     start_ready: status === 'ready',
-    blocking: status === 'failed',
+    blocking: false,
   }
 }

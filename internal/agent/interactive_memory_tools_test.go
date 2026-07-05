@@ -165,6 +165,58 @@ func TestPrepareInteractiveTurnToolUsesRuleResolutionCallback(t *testing.T) {
 	}
 }
 
+func TestPrepareInteractiveTurnToolSchemaDocumentsEnums(t *testing.T) {
+	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
+		PrepareTurn: func(ctx context.Context, request interactive.TurnCheckRequest) (interactive.RuleResolution, error) {
+			return interactive.RuleResolution{}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("tool count = %d, want 1", len(tools))
+	}
+	info, err := tools[0].Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ParamsOneOf == nil {
+		t.Fatal("prepare_interactive_turn should expose parameter schema")
+	}
+	params, err := info.ParamsOneOf.ToJSONSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaText := string(data)
+	for _, want := range []string{
+		`"difficulty"`,
+		`"very_easy"`,
+		`"easy"`,
+		`"normal"`,
+		`"hard"`,
+		`"very_hard"`,
+		`"template"`,
+		`"dice_check"`,
+		`"roll_mode"`,
+		`"advantage"`,
+		`"disadvantage"`,
+		`用户行为`,
+		`四档后果`,
+	} {
+		if !strings.Contains(schemaText, want) {
+			t.Fatalf("prepare_interactive_turn schema missing %q:\n%s", want, schemaText)
+		}
+	}
+	if !strings.Contains(info.Desc, "difficulty") || !strings.Contains(info.Desc, "very_easy/easy/normal/hard/very_hard") || !strings.Contains(info.Desc, "不要使用 medium/moderate") {
+		t.Fatalf("prepare_interactive_turn description should spell out enum protocol:\n%s", info.Desc)
+	}
+}
+
 func TestInteractiveMemoryReadToolReturnsAllRequestedContent(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)

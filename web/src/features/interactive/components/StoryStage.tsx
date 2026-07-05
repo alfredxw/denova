@@ -333,6 +333,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             streaming: false,
             created_at: event.created_at,
             run_id: event.run_id,
+            agent_kind: event.agent_kind,
             agent_name: event.agent_name,
             root_agent_name: event.root_agent_name,
             run_path: event.run_path,
@@ -357,12 +358,17 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             streaming: false,
             created_at: event.created_at,
             run_id: event.run_id,
+            agent_kind: event.agent_kind,
             agent_name: event.agent_name,
             root_agent_name: event.root_agent_name,
             run_path: event.run_path,
             subagent: event.subagent,
             subagent_session_id: event.subagent_session_id,
             subagent_type: event.subagent_type,
+            sse_hidden_fields: event.sse_hidden_fields,
+            sse_hidden_reason: event.sse_hidden_reason,
+            sse_display_notice: event.sse_display_notice,
+            sse_generated_chars: event.sse_generated_chars,
           }
           if (event.name === 'generate_interactive_image') {
             deferredImageMessages.push(toolMessage)
@@ -379,6 +385,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             streaming: false,
             created_at: event.created_at,
             run_id: event.run_id,
+            agent_kind: event.agent_kind,
             agent_name: event.agent_name,
             root_agent_name: event.root_agent_name,
             run_path: event.run_path,
@@ -468,7 +475,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     [generatedHotChoices],
   )
   const directorPlanStatus = snapshot?.director_plan_status
-  const directorBlocking = Boolean(directorPlanStatus?.blocking)
+  const directorBlocking = false
   const directorStatusVisible = Boolean(directorPlanStatus && directorBlocking)
   const canUseHotChoices = !branchTerminal && !streaming && !editingTurn && !directorBlocking && stagePreferences.hotChoicesEnabled && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
@@ -1464,7 +1471,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
                       <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming || directorBlocking} />
-	                      <HotChoicesModeMenu value={hotChoicesMode} disabled={!stagePreferences.hotChoicesEnabled || streaming || branchTerminal || directorBlocking} onChange={setHotChoicesMode} />
+                      <HotChoicesModeMenu value={hotChoicesMode} disabled={!stagePreferences.hotChoicesEnabled || streaming || branchTerminal || directorBlocking} onChange={setHotChoicesMode} />
                       <InteractiveImageSettingsMenu story={story} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <StoryImagePresetMenu story={story} presets={imagePresets} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <DropdownMenuItem
@@ -1477,7 +1484,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                       </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                       <DropdownMenuItem
-	                        disabled={!storyId || streaming || branchTerminal || directorBlocking}
+                        disabled={!storyId || streaming || branchTerminal || directorBlocking}
                         onSelect={openContextAnalysis}
                         className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
                       >
@@ -1491,7 +1498,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               toolbarEnd={
                 <>
                   {stagePreferences.hotChoicesEnabled ? (
-	                    <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || branchTerminal || directorBlocking || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
+                    <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!storyId || streaming || branchTerminal || directorBlocking || Boolean(editingTurn)} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}>
                       <Compass className={`h-3.5 w-3.5 ${hotChoicesLoading ? 'animate-pulse' : ''}`} />
                       {!isMobile ? t('storyStage.hotChoices.button') : null}
                     </Button>

@@ -29,7 +29,6 @@ const memoryPanel = {
   'memoryPanel.directorManualRunHint': 'Let the background director generate director.md from persisted turns on this branch. The plan document and status will appear here when ready.',
   'memoryPanel.directorChat.director': 'Background Director',
   'memoryPanel.directorChat.request': 'Plan Director orchestration for the current branch',
-  'memoryPanel.directorChat.toolArgs': 'branch={{branch}} docs={{completed}}/{{planned}} visible={{visible}} total={{total}}',
   'memoryPanel.directorChat.running': 'Streaming the director plan update',
   'memoryPanel.directorChat.ready': 'Director plan updated.',
   'memoryPanel.directorChat.failed': 'Director planning failed.',
