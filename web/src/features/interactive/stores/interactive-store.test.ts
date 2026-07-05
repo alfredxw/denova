@@ -320,7 +320,7 @@ function directorPlanStatus() {
     summary: '后台导演正在规划开局。',
     source_turn_id: 'turn-2',
     updated_at: '2026-06-28T00:00:00Z',
-    planned_docs: 3,
+    planned_docs: 1,
     completed_docs: 1,
     doc_bytes: 1200,
     visible_bytes: 320,

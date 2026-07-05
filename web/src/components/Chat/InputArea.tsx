@@ -3,14 +3,13 @@ import type { LucideIcon } from 'lucide-react'
 import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
-import { ReferenceChips } from './ReferenceChips'
 import { TokenUsageDialog } from './TokenUsagePanel'
 import type { ChatMessage, TextSelection } from '@/lib/api'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
-import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { AgentComposerShell } from './AgentComposerShell'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
+import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
 import {
   Command,
   CommandEmpty,
@@ -27,7 +26,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { isComposingKeyboardEvent } from '@/lib/keyboard'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
@@ -146,10 +144,11 @@ export function InputArea({
   const [value, setValue] = useState(() => draftKey ? inputDrafts.get(draftKey) || '' : '')
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
   const [showCommands, setShowCommands] = useState(false)
+  const [commandQuery, setCommandQuery] = useState<string | null>(null)
   const [activeCommandIndex, setActiveCommandIndex] = useState(0)
   const [referenceQuery, setReferenceQuery] = useState<string | null>(null)
   const [styleSceneQuery, setStyleSceneQuery] = useState<string | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const inputRef = useRef<ComposerTokenInputHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const commandItemRefs = useRef<Array<HTMLDivElement | null>>([])
   const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
@@ -188,17 +187,29 @@ export function InputArea({
     return [...staticCommands, ...skillCommands]
   }, [builtinCommands, effectiveCommandScope, skills, t])
   const filteredCommands = useMemo(() => {
-    if (!value.startsWith('/')) return []
-    const query = value.toLowerCase()
+    if (commandQuery === null) return []
+    const query = `/${commandQuery}`.toLowerCase()
     return allCommands.filter((command) => command.cmd.toLowerCase().startsWith(query))
-  }, [allCommands, value])
+  }, [allCommands, commandQuery])
   const filteredBuiltinCommands = useMemo(() => filteredCommands
     .map((command, index) => ({ command, index }))
     .filter(({ command }) => command.source === 'builtin'), [filteredCommands])
   const filteredSkillCommands = useMemo(() => filteredCommands
     .map((command, index) => ({ command, index }))
     .filter(({ command }) => command.source === 'skill'), [filteredCommands])
-  const hasReferences = referencedFiles.length > 0 || loreReferences.length > 0 || styleScenes.length > 0 || textSelections.length > 0
+  const hasReferences = textSelections.length > 0
+  const knownFileTokens = useMemo(() => Array.from(new Set([...fileSuggestions, ...referencedFiles])), [fileSuggestions, referencedFiles])
+  const knownLoreTokens = useMemo(() => {
+    const byID = new Map<string, string>()
+    for (const item of loreSuggestions) byID.set(item.value, item.label)
+    for (const id of loreReferences) byID.set(id, loreReferenceLabels[id] || byID.get(id) || id)
+    return Array.from(byID.entries()).map(([id, label]) => ({ id, label }))
+  }, [loreReferenceLabels, loreReferences, loreSuggestions])
+  const externalTokens = useMemo<ComposerTokenSpec[]>(() => [
+    ...referencedFiles.map((path) => ({ kind: 'file' as const, value: path, label: path })),
+    ...loreReferences.map((id) => ({ kind: 'lore' as const, value: id, label: loreReferenceLabels[id] || knownLoreTokens.find((item) => item.id === id)?.label || id })),
+    ...styleScenes.map((scene) => ({ kind: 'style' as const, value: scene, label: scene })),
+  ], [knownLoreTokens, loreReferenceLabels, loreReferences, referencedFiles, styleScenes])
   const tokenUsageCount = useMemo(
     () => Math.min(MAX_TOKEN_USAGE_MENU_COUNT, tokenUsageMessages.filter((message) => message.role === 'token_usage' && Number(message.model_calls || 0) > 0).length),
     [tokenUsageMessages],
@@ -208,6 +219,7 @@ export function InputArea({
     if (!draftKey) return
     setValue(inputDrafts.get(draftKey) || '')
     setShowCommands(false)
+    setCommandQuery(null)
     setActiveCommandIndex(0)
     setReferenceQuery(null)
     setStyleSceneQuery(null)
@@ -232,10 +244,11 @@ export function InputArea({
     if (!inputPrefill) return
     setValue(inputPrefill.prompt)
     setShowCommands(false)
+    setCommandQuery(null)
     setActiveCommandIndex(0)
     setReferenceQuery(null)
     setStyleSceneQuery(null)
-    window.requestAnimationFrame(() => textareaRef.current?.focus())
+    window.requestAnimationFrame(() => inputRef.current?.focus())
     onInputPrefillConsumed?.()
   }, [inputPrefill, onInputPrefillConsumed])
 
@@ -253,7 +266,7 @@ export function InputArea({
 
   useLayoutEffect(() => {
     syncHeight()
-  }, [value, hasReferences, showCommands, referenceQuery, styleSceneQuery, syncHeight])
+  }, [value, hasReferences, showCommands, referenceQuery, styleSceneQuery, externalTokens, syncHeight])
 
   useEffect(() => {
     if (!onHeightChange) return
@@ -268,34 +281,33 @@ export function InputArea({
   }, [onHeightChange, syncHeight])
 
   /** 处理输入变化 */
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const v = e.target.value
-    setValue(v)
+  const handleChange = (nextValue: string) => {
+    setValue(nextValue)
+  }
 
-    // 检测是否输入了 /
-    if (effectiveCommandScope !== 'none' && v.startsWith('/')) {
+  const handleTriggerChange = (trigger: ComposerTrigger | null) => {
+    if (effectiveCommandScope !== 'none' && trigger?.kind === 'slash') {
+      setCommandQuery(trigger.query)
       setShowCommands(true)
       setActiveCommandIndex(0)
     } else {
+      setCommandQuery(null)
       setShowCommands(false)
       setActiveCommandIndex(0)
     }
-
-    const atMatch = v.match(/(?:^|\s)@([^\s@]*)$/)
-    setReferenceQuery(atMatch ? atMatch[1] : null)
-    const styleMatch = v.match(/(?:^|\s)#([^\s#]*)$/)
-    setStyleSceneQuery(styleMatch ? styleMatch[1] : null)
+    setReferenceQuery(trigger?.kind === 'reference' ? trigger.query : null)
+    setStyleSceneQuery(trigger?.kind === 'style' ? trigger.query : null)
   }
 
   /** 处理键盘事件 */
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (e: KeyboardEvent) => {
     const isMod = e.metaKey || e.ctrlKey
     const canPickCommand = effectiveCommandScope !== 'none' && showCommands && filteredCommands.length > 0
 
     if (e.key === 'Tab' && e.shiftKey && onTogglePlanMode && !disabled) {
       e.preventDefault()
       onTogglePlanMode()
-      return
+      return true
     }
 
     if (canPickCommand && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
@@ -304,89 +316,65 @@ export function InputArea({
         const direction = e.key === 'ArrowDown' ? 1 : -1
         return (current + direction + filteredCommands.length) % filteredCommands.length
       })
-      return
+      return true
     }
 
     // Enter 发送
     if (e.key === 'Enter' && !e.shiftKey) {
-      if (isComposingKeyboardEvent(e)) return
+      if (isNativeComposingKeyboardEvent(e)) return false
       e.preventDefault()
       if (canPickCommand) {
         selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
-        return
+        return true
       }
       handleSend()
-      return
+      return true
     }
 
     if (canPickCommand && e.key === 'Tab') {
       e.preventDefault()
       selectCommand(filteredCommands[activeCommandIndex]?.cmd || filteredCommands[0].cmd)
-      return
+      return true
     }
 
     // Escape 关闭菜单
     if (e.key === 'Escape') {
       setShowCommands(false)
+      setCommandQuery(null)
       setActiveCommandIndex(0)
       setReferenceQuery(null)
       setStyleSceneQuery(null)
-      return
+      return true
     }
 
     // Cmd+A：全选输入框内容（阻止冒泡，防止被全局事件拦截）
     if (isMod && e.key === 'a') {
       e.stopPropagation()
-      textareaRef.current?.select()
-      return
+      inputRef.current?.select()
+      return true
     }
 
     // Cmd+Backspace：删除光标到行首
     if (isMod && e.key === 'Backspace') {
       e.preventDefault()
-      const el = textareaRef.current
-      if (!el) return
-      const pos = el.selectionStart
-      const before = el.value.substring(0, pos)
-      const lineStart = before.lastIndexOf('\n') + 1
-      const newValue = el.value.substring(0, lineStart) + el.value.substring(pos)
-      setValue(newValue)
-      requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = lineStart })
-      return
+      inputRef.current?.deleteToLineStart()
+      return true
     }
 
     // Cmd+Shift+K：删除整行
     if (isMod && e.shiftKey && e.key.toLowerCase() === 'k') {
       e.preventDefault()
-      const el = textareaRef.current
-      if (!el) return
-      const pos = el.selectionStart
-      const lineStart = el.value.lastIndexOf('\n', pos - 1) + 1
-      let lineEnd = el.value.indexOf('\n', pos)
-      if (lineEnd === -1) lineEnd = el.value.length
-      else lineEnd += 1 // 包括换行符
-      const newValue = el.value.substring(0, lineStart) + el.value.substring(lineEnd)
-      setValue(newValue)
-      requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = lineStart })
-      return
+      inputRef.current?.deleteCurrentLine()
+      return true
     }
 
     // Cmd+D：选择当前词（类 VSCode 行为）
     if (isMod && e.key.toLowerCase() === 'd') {
       e.preventDefault()
-      const el = textareaRef.current
-      if (!el) return
-      const text = el.value
-      const pos = el.selectionStart
-      const wordBoundary = /[\s,.:;!?'"(){}[\]@#$%^&*+=<>/\\|~`\-]/
-      let start = pos
-      while (start > 0 && !wordBoundary.test(text[start - 1])) start--
-      let end = pos
-      while (end < text.length && !wordBoundary.test(text[end])) end++
-      el.selectionStart = start
-      el.selectionEnd = end
-      return
+      inputRef.current?.selectCurrentWord()
+      return true
     }
+    return false
   }
 
   /** 发送消息 */
@@ -396,6 +384,7 @@ export function InputArea({
     onSend(trimmed)
     setValue('')
     setShowCommands(false)
+    setCommandQuery(null)
     setActiveCommandIndex(0)
     setReferenceQuery(null)
     setStyleSceneQuery(null)
@@ -407,35 +396,44 @@ export function InputArea({
   }
   /** 选择命令 */
   const selectCommand = (cmd: string) => {
-    setValue(cmd + ' ')
+    const command = allCommands.find((item) => item.cmd === cmd)
+    if (command?.source === 'skill') {
+      const name = cmd.replace(/^\//, '')
+      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'skill', value: name, label: name })
+    } else {
+      inputRef.current?.replaceActiveTriggerText(`${cmd} `)
+    }
     setShowCommands(false)
+    setCommandQuery(null)
     setActiveCommandIndex(0)
-    textareaRef.current?.focus()
+    inputRef.current?.focus()
   }
 
   /** 选择引用文件并插入 @path 标签 */
   const selectReference = (path: string) => {
-    setValue((current) => current.replace(/(?:^|\s)@([^\s@]*)$/, (match) => {
-      const prefix = match.startsWith(' ') ? ' ' : ''
-      const loreItem = loreSuggestions.find((item) => item.value === path)
-      return `${prefix}@${loreItem ? `资料:${loreItem.label}` : path} `
-    }))
-    if (loreSuggestions.some((item) => item.value === path)) {
+    const loreItem = loreSuggestions.find((item) => item.value === path)
+    if (loreItem) {
+      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'lore', value: loreItem.value, label: loreItem.label })
       onLoreReferenceAdd?.(path)
+    } else {
+      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'file', value: path, label: path })
     }
     setReferenceQuery(null)
-    textareaRef.current?.focus()
+    inputRef.current?.focus()
   }
 
   /** 选择场景风格并插入 #scene 标签 */
   const selectStyleScene = (scene: string) => {
-    setValue((current) => current.replace(/(?:^|\s)#([^\s#]*)$/, (match) => {
-      const prefix = match.startsWith(' ') ? ' ' : ''
-      return `${prefix}#${scene} `
-    }))
+    inputRef.current?.replaceActiveTriggerWithToken({ kind: 'style', value: scene, label: scene })
     onStyleSceneAdd?.(scene)
     setStyleSceneQuery(null)
-    textareaRef.current?.focus()
+    inputRef.current?.focus()
+  }
+
+  const handleTokenRemove = (token: ComposerTokenSpec) => {
+    if (token.kind === 'file' && referencedFiles.includes(token.value)) onReferenceRemove?.(token.value)
+    if (token.kind === 'lore' && loreReferences.includes(token.value)) onLoreReferenceRemove?.(token.value)
+    if (token.kind === 'style' && styleScenes.includes(token.value)) onStyleSceneRemove?.(token.value)
   }
 
   return (
@@ -513,17 +511,6 @@ export function InputArea({
       <AgentComposerShell
         references={hasReferences ? (
           <>
-            <ReferenceChips files={referencedFiles} onRemove={onReferenceRemove} />
-            <ReferenceChips
-              files={loreReferences.map((id) => loreReferenceLabels[id] || id)}
-              onRemove={onLoreReferenceRemove ? (label) => {
-                const target = loreReferences.find((id) => (loreReferenceLabels[id] || id) === label)
-                if (target) onLoreReferenceRemove(target)
-              } : undefined}
-              prefix="@资料:"
-              tone="lore"
-            />
-            <ReferenceChips files={styleScenes} onRemove={onStyleSceneRemove} prefix="#" tone="style" />
             {textSelections.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {textSelections.map((sel, idx) => (
@@ -555,12 +542,18 @@ export function InputArea({
           </>
         ) : undefined}
         input={
-          <Textarea
-            ref={textareaRef}
-            autoResize
+          <ComposerTokenInput
+            ref={inputRef}
             value={value}
             onChange={handleChange}
-            onKeyDown={handleKeyDown}
+            onTriggerChange={handleTriggerChange}
+            onTokenRemove={handleTokenRemove}
+            onEditorKeyDown={handleKeyDown}
+            knownSkills={skills.map((skill) => skill.name)}
+            knownFiles={knownFileTokens}
+            knownLore={knownLoreTokens}
+            knownStyleScenes={styleSceneSuggestions}
+            externalTokens={externalTokens}
             placeholder={disabled ? (disabledPlaceholder ?? t('chat.input.disabledPlaceholder')) : (placeholder ?? defaultPlaceholder)}
             disabled={disabled}
             rows={1}
@@ -570,7 +563,7 @@ export function InputArea({
             inputMode="text"
             enterKeyHint="send"
             autoCapitalize="sentences"
-            className="nova-agent-composer-textarea min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
+            className="nova-agent-composer-textarea nova-agent-token-input min-h-[42px] resize-none border-0 bg-transparent px-1 py-[9px] text-sm leading-6 text-[var(--nova-text)] shadow-none placeholder:text-[var(--nova-text-faint)] focus-visible:border-transparent focus-visible:ring-0 disabled:opacity-50"
           />
         }
         toolbarStart={
@@ -687,4 +680,8 @@ export function InputArea({
       </CommandItem>
     )
   }
+}
+
+function isNativeComposingKeyboardEvent(event: KeyboardEvent) {
+  return event.isComposing || event.key === 'Process' || event.keyCode === 229
 }

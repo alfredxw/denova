@@ -62,7 +62,7 @@ func (s *InteractiveAppService) GenerateInteractiveHotChoices(ctx context.Contex
 	turnMemory := buildInteractiveModelVisibleTurnMemory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
 	directorPlan := ""
 	if storyCtx.Snapshot.DirectorPlan != nil {
-		directorPlan = storyCtx.Snapshot.DirectorPlan.VisibleDocs.NextBranches
+		directorPlan = storyCtx.Snapshot.DirectorPlan.VisibleDocs.Plan
 	}
 	instruction := prompts.InteractiveHotChoicesInstruction(prompts.InteractiveHotChoicesPromptInput{
 		Title:          storyCtx.Meta.Title,

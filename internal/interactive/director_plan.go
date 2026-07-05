@@ -12,9 +12,7 @@ import (
 )
 
 const (
-	DirectorPlanDocMainline     = "mainline"
-	DirectorPlanDocCurrentEvent = "current_event"
-	DirectorPlanDocNextBranches = "next_branches"
+	DirectorPlanDocPlan = "plan"
 
 	DirectorPlanStatusWaitingOpening = "waiting_opening"
 	DirectorPlanStatusRunning        = "running"
@@ -23,30 +21,31 @@ const (
 	DirectorPlanStatusFailed         = "failed"
 	DirectorPlanStatusConflict       = "conflict"
 
-	directorPlanMainlineFile     = "mainline.md"
-	directorPlanCurrentEventFile = "current-event.md"
-	directorPlanNextBranchesFile = "next-branches.md"
-	directorPlanMetadataFile     = "metadata.json"
+	directorPlanFile         = "director.md"
+	directorPlanMetadataFile = "metadata.json"
 
 	defaultBranchPlanningTurns = 5
-	maxDirectorPlanDocBytes    = 24 * 1024
+	maxDirectorPlanDocBytes    = 32 * 1024
 )
 
 var requiredDirectorPlanHeadings = []string{
 	"正文Agent可读 / Prose-agent visible",
 	"后台导演私密 / Director private",
-	"目标 / Goal",
-	"节奏、压力与危机 / Pacing, Pressure, Crisis",
-	"结果与代价 / Outcome and Cost",
-	"状态 / State",
-	"分支处理 / Branch Handling",
+	"阶段钩子与阅读欲望 / Stage Hook and Reader Desire",
+	"资料库锚点 / Lore Anchors",
+	"核心角色与关系张力 / Core Characters and Relationship Tension",
+	"重要势力与阶段阻力 / Key Factions and Stage Resistance",
+	"当前场景与行动空间 / Current Scene and Action Space",
+	"信息揭示与线索密度 / Information Reveal and Clue Density",
+	"遭遇、检定与代价 / Encounters, Checks, and Costs",
+	"爽点、危机与反转 / Payoff, Crisis, and Reversal",
+	"状态连续性 / State Continuity",
+	"最近分支安排 / Near Branch Arrangements",
 	"伏笔与回收 / Foreshadowing and Payoff",
 }
 
 type StoryDirectorPlanningTemplates struct {
-	Mainline     string `json:"mainline,omitempty"`
-	CurrentEvent string `json:"current_event,omitempty"`
-	NextBranches string `json:"next_branches,omitempty"`
+	Plan string `json:"plan,omitempty"`
 }
 
 type DirectorPlanSeed struct {
@@ -60,15 +59,11 @@ type DirectorPlanSeed struct {
 }
 
 type DirectorPlanDocs struct {
-	Mainline     string `json:"mainline"`
-	CurrentEvent string `json:"current_event"`
-	NextBranches string `json:"next_branches"`
+	Plan string `json:"plan"`
 }
 
 type DirectorPlanVisibleDocs struct {
-	Mainline     string `json:"mainline,omitempty"`
-	CurrentEvent string `json:"current_event,omitempty"`
-	NextBranches string `json:"next_branches,omitempty"`
+	Plan string `json:"plan,omitempty"`
 }
 
 type DirectorPlanDocInfo struct {
@@ -156,137 +151,83 @@ type DirectorPlanRunToken struct {
 
 func DefaultStoryDirectorPlanningTemplates() StoryDirectorPlanningTemplates {
 	return StoryDirectorPlanningTemplates{
-		Mainline: strings.TrimSpace(`# 大方向 / Mainline
+		Plan: strings.TrimSpace(`# 导演规划 / Director Plan
 
 ## 正文Agent可读 / Prose-agent visible
 
-### 目标 / Goal
-围绕主角的长期目标、核心阻力和阶段成长建立主线。
+### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire
+围绕主角当前最想解决的问题、可见收益、未解谜团和下一次反转建立推进动力。每个可玩回合至少推进一个有效信息点、角色关系变化、压力升级、收益/代价或新悬念，避免连续空转。
 
-### 节奏、压力与危机 / Pacing, Pressure, Crisis
-用递进压力推动故事，避免连续空转。
+### 资料库锚点 / Lore Anchors
+优先使用资料库中的重要角色、势力、规则、地点和既有关系；非必要不要自创核心角色、组织或世界规则。资料库不足时，新增内容只能作为临时候选，并要与既有设定自洽。
 
-### 结果与代价 / Outcome and Cost
-每个阶段都需要可见收益、信息推进或代价。
+### 核心角色与关系张力 / Core Characters and Relationship Tension
+规划男/女主角、关键同伴、阶段性反派、重要势力代表与关系节点的目标、态度和冲突。普通 NPC 只有承担信息、冲突、选择代价或节奏功能时才出现。
 
-### 状态 / State
-记录主角、关键角色、势力与世界状态的长期变化。
+### 重要势力与阶段阻力 / Key Factions and Stage Resistance
+记录当前阶段能推动压力的势力、派系、组织规则、资源封锁、舆论评价或追捕压力。
 
-### 分支处理 / Branch Handling
-用户选择优先；根据故事导演的主线强度决定软牵引或强牵引。
+### 当前场景与行动空间 / Current Scene and Action Space
+明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。
 
-### 伏笔与回收 / Foreshadowing and Payoff
-保留可被用户观察、误读、调查和回收的线索。
+### 信息揭示与线索密度 / Information Reveal and Clue Density
+安排本阶段应公开的信息、可发现线索和误导点；失败不应让剧情卡死，失败可以带来代价、不完整信息或危机升级。
 
-## 后台导演私密 / Director private
+### 遭遇、检定与代价 / Encounters, Checks, and Costs
+准备可能触发的战斗、谈判、追逐、陷阱、谜题或规则检定，明确成功、部分成功、失败和重大失败的后果。
 
-### 目标 / Goal
-维护长期真相、潜在反转和主线候选方向。
+### 爽点、危机与反转 / Payoff, Crisis, and Reversal
+给后续回合准备阶段性爽点、危险升级、关系爆点、身份揭露、误会反转或伏笔回收，抓住阅读欲望。
 
-### 节奏、压力与危机 / Pacing, Pressure, Crisis
-规划暗线压力、对手行动和危机升级。
+### 状态连续性 / State Continuity
+记录主角、重要角色、势力、资源、任务进度、已公开信息和世界状态的可见变化。
 
-### 结果与代价 / Outcome and Cost
-为关键选择准备不同结果与代价。
-
-### 状态 / State
-记录不应直接剧透给玩家的隐藏状态。
-
-### 分支处理 / Branch Handling
-准备偏离主线后的重规划策略。
-
-### 伏笔与回收 / Foreshadowing and Payoff
-规划伏笔埋设、误导、回收和新问题。`),
-		CurrentEvent: strings.TrimSpace(`# 当前主线事件 / Current Main Event
-
-## 正文Agent可读 / Prose-agent visible
-
-### 目标 / Goal
-明确当前事件的可玩目标，让用户知道能采取行动。
-
-### 节奏、压力与危机 / Pacing, Pressure, Crisis
-安排本阶段的外部压力、时间压力、关系压力或资源危机。
-
-### 结果与代价 / Outcome and Cost
-给用户行动带来可见后果，避免无成本推进。
-
-### 状态 / State
-记录当前场景、角色站位、资源、风险和已公开信息。
-
-### 分支处理 / Branch Handling
-允许观察、对话、调查、冒险和保守应对等方向成立。
-
-### 伏笔与回收 / Foreshadowing and Payoff
-在当前事件中埋下或回收一个可感知线索。
-
-## 后台导演私密 / Director private
-
-### 目标 / Goal
-维护当前事件背后的真实目标和暗线作用。
-
-### 节奏、压力与危机 / Pacing, Pressure, Crisis
-规划危机升级点、反转点和 NPC 主动行动。
-
-### 结果与代价 / Outcome and Cost
-准备成功、部分成功、失败和重大失败的后续处理。
-
-### 状态 / State
-记录隐藏动机、未公开资源和幕后变化。
-
-### 分支处理 / Branch Handling
-准备用户偏离当前事件时的合理承接。
-
-### 伏笔与回收 / Foreshadowing and Payoff
-明确哪些伏笔本阶段可以露出、回收或继续隐藏。`),
-		NextBranches: strings.TrimSpace(`# 最近分支安排 / Next Branches
-
-## 正文Agent可读 / Prose-agent visible
-
-### 目标 / Goal
-规划最近 5 回合内用户可能选择的方向，并给出可玩抓手。
-
-### 节奏、压力与危机 / Pacing, Pressure, Crisis
-每条候选方向都要有压力、风险或机会。
-
-### 结果与代价 / Outcome and Cost
-为常见选择准备即时反馈、阶段后果和代价。
-
-### 状态 / State
-记录接下来应保持一致的场景、资源、角色和关系状态。
-
-### 分支处理 / Branch Handling
-列出可能用户选择、裁定要点和剧情安排；不要锁死唯一解。
+### 最近分支安排 / Near Branch Arrangements
+规划最近 {{branch_planning_turns}} 回合内可能的用户方向、裁定要点和承接路径；尊重用户选择，不锁死唯一解。
 
 ### 伏笔与回收 / Foreshadowing and Payoff
 标出可给玩家感知的线索、回收点和新悬念。
 
 ## 后台导演私密 / Director private
 
-### 目标 / Goal
-维护最近分支背后的主线牵引目标。
+### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire
+维护隐藏真相、阶段高潮、下一次反转和阅读钩子的投放顺序，保证节奏持续向前。
 
-### 节奏、压力与危机 / Pacing, Pressure, Crisis
-安排不同选择下的危机升级和节奏切换。
+### 资料库锚点 / Lore Anchors
+记录后台规划必须遵守的资料库设定、重要角色/势力边界和不可违背的世界规则；新增候选必须注明为何资料库不足。
 
-### 结果与代价 / Outcome and Cost
-准备不同用户选择下的隐藏代价、奖励和失败候选。
+### 核心角色与关系张力 / Core Characters and Relationship Tension
+规划重要角色的隐藏动机、真实立场、关系转折、阶段性敌意或结盟机会。
 
-### 状态 / State
-记录隐藏状态变化与不可直接泄露的信息。
+### 重要势力与阶段阻力 / Key Factions and Stage Resistance
+安排势力暗线行动、资源争夺、规则压迫、追杀、审判、交易或舆论压力。
 
-### 分支处理 / Branch Handling
-为最近 5 回合的可能用户选择设计裁定要点和剧情安排。
+### 当前场景与行动空间 / Current Scene and Action Space
+准备场景背后的隐藏资源、陷阱、证据、观察角度和可承接行动。
+
+### 信息揭示与线索密度 / Information Reveal and Clue Density
+规划本阶段应该揭示、暂缓、误导或拆分的信息，确保用户每轮都有可感知收获。
+
+### 遭遇、检定与代价 / Encounters, Checks, and Costs
+准备不同裁定等级下的隐藏代价、奖励、敌对反应、资源损耗和失败推进路径。
+
+### 爽点、危机与反转 / Payoff, Crisis, and Reversal
+安排爽点释放、危机升级、角色爆点、反派压迫和反转条件，不让剧情只停留在氛围描写。
+
+### 状态连续性 / State Continuity
+记录不应直接剧透的隐藏状态、未公开角色动机、幕后势力变化和长期影响。
+
+### 最近分支安排 / Near Branch Arrangements
+为最近 {{branch_planning_turns}} 回合的用户选择准备多条承接策略；偏离主线时重规划，不强拉回固定剧本。
 
 ### 伏笔与回收 / Foreshadowing and Payoff
-维护伏笔的投放顺序、回收条件和替代回收路径。`),
+维护伏笔投放、误导、回收条件和替代回收路径。`),
 	}
 }
 
 func NormalizeStoryDirectorPlanningTemplates(templates StoryDirectorPlanningTemplates) StoryDirectorPlanningTemplates {
 	defaults := DefaultStoryDirectorPlanningTemplates()
-	templates.Mainline = normalizeDirectorPlanTemplate(templates.Mainline, defaults.Mainline)
-	templates.CurrentEvent = normalizeDirectorPlanTemplate(templates.CurrentEvent, defaults.CurrentEvent)
-	templates.NextBranches = normalizeDirectorPlanTemplate(templates.NextBranches, defaults.NextBranches)
+	templates.Plan = normalizeDirectorPlanTemplate(templates.Plan, defaults.Plan)
 	return templates
 }
 
@@ -449,7 +390,7 @@ func (s *Store) MarkDirectorPlanRunStarted(storyID, branchID string, token Direc
 	startReady := directorPlanRunStartReady(previous)
 	metadata.LastRun = &DirectorPlanRunStatus{
 		Status:         DirectorPlanStatusRunning,
-		Summary:        "后台导演正在规划开局。",
+		Summary:        "后台导演正在规划故事。",
 		SourceTurnID:   sourceTurnID,
 		UpdatedAt:      time.Now().UTC().Format(time.RFC3339Nano),
 		PlannedDocs:    len(requiredDirectorPlanDocKinds()),
@@ -510,7 +451,7 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 	plan.Metadata = s.buildDirectorPlanMetadataLocked(storyID, branchID, NormalizeBranchPlanningTurns(plan.Metadata.BranchPlanningTurns), "interactive_director", sourceTurnID)
 	plan.Metadata.LastRun = &DirectorPlanRunStatus{
 		Status:        DirectorPlanStatusReady,
-		Summary:       firstNonEmpty(strings.TrimSpace(summary), "后台导演已更新三层规划。"),
+		Summary:       firstNonEmpty(strings.TrimSpace(summary), "后台导演已更新导演规划。"),
 		SourceTurnID:  sourceTurnID,
 		UpdatedAt:     now,
 		PlannedDocs:   len(requiredDirectorPlanDocKinds()),
@@ -578,11 +519,7 @@ func (s *Store) MarkDirectorPlanRunSkipped(storyID, branchID, sourceTurnID, reas
 
 func (s *Store) seedDirectorPlanLocked(storyID, branchID string, meta StoryMeta, seed DirectorPlanSeed) error {
 	templates := NormalizeStoryDirectorPlanningTemplates(seed.Templates)
-	docs := DirectorPlanDocs{
-		Mainline:     renderDirectorPlanTemplate(templates.Mainline, meta, branchID, seed),
-		CurrentEvent: renderDirectorPlanTemplate(templates.CurrentEvent, meta, branchID, seed),
-		NextBranches: renderDirectorPlanTemplate(templates.NextBranches, meta, branchID, seed),
-	}
+	docs := DirectorPlanDocs{Plan: renderDirectorPlanTemplate(templates.Plan, meta, branchID, seed)}
 	if err := validateDirectorPlanDocs(docs); err != nil {
 		return err
 	}
@@ -611,11 +548,7 @@ func (s *Store) cloneDirectorPlanForBranchLocked(storyID, fromBranchID, branchID
 		return err
 	}
 	note := fmt.Sprintf("\n\n> 分支说明：本规划从 `%s` 分支创建，当前分支为 `%s`（%s）。用户选择优先，后续后台导演应按本分支独立刷新。\n", fromBranchID, branchID, strings.TrimSpace(title))
-	docs := DirectorPlanDocs{
-		Mainline:     trimBytes(parent.Docs.Mainline+note, maxDirectorPlanDocBytes),
-		CurrentEvent: trimBytes(parent.Docs.CurrentEvent+note, maxDirectorPlanDocBytes),
-		NextBranches: trimBytes(parent.Docs.NextBranches+note, maxDirectorPlanDocBytes),
-	}
+	docs := DirectorPlanDocs{Plan: trimBytes(parent.Docs.Plan+note, maxDirectorPlanDocBytes)}
 	if err := validateDirectorPlanDocs(docs); err != nil {
 		return err
 	}
@@ -676,36 +609,18 @@ func (s *Store) readDirectorPlanLocked(storyID, branchID string) (DirectorPlan, 
 		BranchID: branchID,
 		Docs:     docs,
 		VisibleDocs: DirectorPlanVisibleDocs{
-			Mainline:     ExtractDirectorPlanVisibleSection(docs.Mainline),
-			CurrentEvent: ExtractDirectorPlanVisibleSection(docs.CurrentEvent),
-			NextBranches: ExtractDirectorPlanVisibleSection(docs.NextBranches),
+			Plan: ExtractDirectorPlanVisibleSection(docs.Plan),
 		},
 		Metadata: metadata,
 	}, nil
 }
 
 func (s *Store) readDirectorPlanDocsLocked(storyID, branchID string) (DirectorPlanDocs, error) {
-	dir := s.directorPlanBranchDir(storyID, branchID)
-	read := func(name string) (string, error) {
-		data, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			return "", err
-		}
-		return string(data), nil
-	}
-	mainline, err := read(directorPlanMainlineFile)
+	data, err := os.ReadFile(filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorPlanFile))
 	if err != nil {
 		return DirectorPlanDocs{}, err
 	}
-	current, err := read(directorPlanCurrentEventFile)
-	if err != nil {
-		return DirectorPlanDocs{}, err
-	}
-	next, err := read(directorPlanNextBranchesFile)
-	if err != nil {
-		return DirectorPlanDocs{}, err
-	}
-	return DirectorPlanDocs{Mainline: mainline, CurrentEvent: current, NextBranches: next}, nil
+	return DirectorPlanDocs{Plan: string(data)}, nil
 }
 
 func (s *Store) writeDirectorPlanDocsLocked(storyID, branchID string, docs DirectorPlanDocs) error {
@@ -713,17 +628,7 @@ func (s *Store) writeDirectorPlanDocsLocked(storyID, branchID string, docs Direc
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	files := map[string]string{
-		directorPlanMainlineFile:     docs.Mainline,
-		directorPlanCurrentEventFile: docs.CurrentEvent,
-		directorPlanNextBranchesFile: docs.NextBranches,
-	}
-	for name, content := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
-			return err
-		}
-	}
-	return nil
+	return os.WriteFile(filepath.Join(dir, directorPlanFile), []byte(strings.TrimSpace(docs.Plan)+"\n"), 0o644)
 }
 
 func (s *Store) readDirectorPlanMetadataLocked(storyID, branchID string) (DirectorPlanMetadata, error) {
@@ -778,16 +683,7 @@ func (s *Store) buildDirectorPlanMetadataLocked(storyID, branchID string, branch
 }
 
 func validateDirectorPlanDocs(docs DirectorPlanDocs) error {
-	for kind, content := range map[string]string{
-		DirectorPlanDocMainline:     docs.Mainline,
-		DirectorPlanDocCurrentEvent: docs.CurrentEvent,
-		DirectorPlanDocNextBranches: docs.NextBranches,
-	} {
-		if err := validateDirectorPlanDoc(kind, content); err != nil {
-			return err
-		}
-	}
-	return nil
+	return validateDirectorPlanDoc(DirectorPlanDocPlan, docs.Plan)
 }
 
 func validateDirectorPlanDoc(kind, content string) error {
@@ -819,7 +715,7 @@ func ExtractDirectorPlanVisibleSection(content string) string {
 	if end := strings.Index(visible, "## 后台导演私密 / Director private"); end >= 0 {
 		visible = visible[:end]
 	}
-	return strings.TrimSpace(trimBytes(visible, 8*1024))
+	return strings.TrimSpace(trimBytes(visible, 12*1024))
 }
 
 func DirectorPlanVisibleContext(plan DirectorPlan, limitBytes int) string {
@@ -827,9 +723,7 @@ func DirectorPlanVisibleContext(plan DirectorPlan, limitBytes int) string {
 		limitBytes = 12 * 1024
 	}
 	var sb strings.Builder
-	writeDirectorPlanContextBlock(&sb, "大方向规划 / Mainline", plan.VisibleDocs.Mainline)
-	writeDirectorPlanContextBlock(&sb, "当前主线事件 / Current Event", plan.VisibleDocs.CurrentEvent)
-	writeDirectorPlanContextBlock(&sb, "最近分支安排 / Next Branches", plan.VisibleDocs.NextBranches)
+	writeDirectorPlanContextBlock(&sb, "导演规划 / Director Plan", plan.VisibleDocs.Plan)
 	return strings.TrimSpace(trimBytes(sb.String(), limitBytes))
 }
 
@@ -917,19 +811,12 @@ func (s *Store) directorPlanBranchDir(storyID, branchID string) string {
 }
 
 func (s *Store) DirectorPlanAllowedPaths(storyID, branchID string) []string {
-	dir := s.directorPlanBranchDir(storyID, branchID)
-	return []string{
-		filepath.Join(dir, directorPlanMainlineFile),
-		filepath.Join(dir, directorPlanCurrentEventFile),
-		filepath.Join(dir, directorPlanNextBranchesFile),
-	}
+	return []string{filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorPlanFile)}
 }
 
 func directorPlanDocInfos(dir string, docs DirectorPlanDocs) map[string]DirectorPlanDocInfo {
 	return map[string]DirectorPlanDocInfo{
-		DirectorPlanDocMainline:     directorPlanDocInfo(filepath.Join(dir, directorPlanMainlineFile), docs.Mainline),
-		DirectorPlanDocCurrentEvent: directorPlanDocInfo(filepath.Join(dir, directorPlanCurrentEventFile), docs.CurrentEvent),
-		DirectorPlanDocNextBranches: directorPlanDocInfo(filepath.Join(dir, directorPlanNextBranchesFile), docs.NextBranches),
+		DirectorPlanDocPlan: directorPlanDocInfo(filepath.Join(dir, directorPlanFile), docs.Plan),
 	}
 }
 
@@ -939,18 +826,16 @@ func directorPlanDocInfo(path, content string) DirectorPlanDocInfo {
 
 func directorPlanHashes(docs DirectorPlanDocs) map[string]string {
 	return map[string]string{
-		DirectorPlanDocMainline:     textHash(docs.Mainline),
-		DirectorPlanDocCurrentEvent: textHash(docs.CurrentEvent),
-		DirectorPlanDocNextBranches: textHash(docs.NextBranches),
+		DirectorPlanDocPlan: textHash(docs.Plan),
 	}
 }
 
 func directorPlanRevision(docs DirectorPlanDocs, updatedAt string) string {
-	return textHash(strings.Join([]string{docs.Mainline, docs.CurrentEvent, docs.NextBranches, updatedAt}, "\n---director-plan---\n"))
+	return textHash(strings.Join([]string{docs.Plan, updatedAt}, "\n---director-plan---\n"))
 }
 
 func requiredDirectorPlanDocKinds() []string {
-	return []string{DirectorPlanDocMainline, DirectorPlanDocCurrentEvent, DirectorPlanDocNextBranches}
+	return []string{DirectorPlanDocPlan}
 }
 
 func directorPlanRunStartReady(run *DirectorPlanRunStatus) bool {

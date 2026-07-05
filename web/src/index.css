@@ -842,6 +842,48 @@ html[data-nova-motion="off"] *::after {
   width: 100%;
 }
 
+.nova-agent-composer-textarea.nova-agent-token-input {
+  position: relative;
+  cursor: text;
+  white-space: pre-wrap;
+}
+
+.nova-agent-composer-textarea.nova-agent-token-input[data-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.nova-agent-token-input .ProseMirror {
+  min-height: 100%;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nova-agent-token-input .ProseMirror p {
+  margin: 0;
+}
+
+.nova-agent-token-input[data-empty="true"]::before {
+  content: attr(data-placeholder);
+  pointer-events: none;
+  position: absolute;
+  left: 0.25rem;
+  top: 0.5625rem;
+  color: var(--nova-text-faint);
+}
+
+.nova-composer-token {
+  color: var(--nova-accent-blue);
+  font-weight: 700;
+}
+
+.nova-composer-token.ProseMirror-selectednode {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--nova-accent-blue) 18%, transparent);
+  outline: none;
+}
+
 .nova-agent-composer-toolbar {
   display: grid;
   width: 100%;

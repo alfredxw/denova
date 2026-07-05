@@ -67,7 +67,7 @@ const storyStage = {
   'storyStage.inputPlaceholderWithSkills': '你要做什么？输入 / 可选择命令或 Skills',
   'storyStage.inputPlaceholderTerminal': '当前分支已终局，请从历史回合创建新分支',
   'storyStage.director.title': '导演正在规划故事',
-  'storyStage.director.description': '导演会基于开局整理主线、当前事件和近期分支。规划完成前暂时不能继续推进。',
+  'storyStage.director.description': '导演会基于开局、资料库和当前回合整理 director.md。规划完成前暂时不能继续推进。',
   'storyStage.director.progress': '已规划 {{completed}}/{{planned}}',
   'storyStage.director.retry': '重试规划',
   'storyStage.director.retryFailed': '重试导演规划失败',

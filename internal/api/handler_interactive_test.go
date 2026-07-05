@@ -204,7 +204,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	var status interactive.DirectorPlanStatus
 	decodeResponse(t, statusResp.Body.Bytes(), &status)
-	if status.Status != interactive.DirectorPlanStatusWaitingOpening || status.Blocking || status.StartReady || status.CompletedDocs != 0 || status.PlannedDocs != 3 {
+	if status.Status != interactive.DirectorPlanStatusWaitingOpening || status.Blocking || status.StartReady || status.CompletedDocs != 0 || status.PlannedDocs != 1 {
 		t.Fatalf("initial director status mismatch: %#v", status)
 	}
 
@@ -214,9 +214,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	type directorResponse struct {
 		Docs struct {
-			Mainline     string `json:"mainline"`
-			CurrentEvent string `json:"current_event"`
-			NextBranches string `json:"next_branches"`
+			Plan string `json:"plan"`
 		} `json:"docs"`
 		Metadata struct {
 			Revision string `json:"revision"`
@@ -227,12 +225,12 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	var director directorResponse
 	decodeResponse(t, getResp.Body.Bytes(), &director)
-	if director.Metadata.LastRun.Status != interactive.DirectorPlanStatusWaitingOpening || !strings.Contains(director.Docs.Mainline, "正文Agent可读") {
+	if director.Metadata.LastRun.Status != interactive.DirectorPlanStatusWaitingOpening || !strings.Contains(director.Docs.Plan, "正文Agent可读") {
 		t.Fatalf("default director plan mismatch: %#v", director)
 	}
 
 	nextDocs := director.Docs
-	nextDocs.Mainline += "\n\n手动设置主线：学院逆袭主线。"
+	nextDocs.Plan += "\n\n手动设置主线：学院逆袭主线。"
 	patchResp := performJSONRequest(t, server, http.MethodPatch, "/api/interactive/stories/"+created.ID+"/director", map[string]any{
 		"docs":          nextDocs,
 		"base_revision": director.Metadata.Revision,
@@ -242,7 +240,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 		t.Fatalf("patch director status = %d body=%s", patchResp.Code, patchResp.Body.String())
 	}
 	decodeResponse(t, patchResp.Body.Bytes(), &director)
-	if !strings.Contains(director.Docs.Mainline, "学院逆袭主线") || director.Metadata.LastRun.Status != "ready" {
+	if !strings.Contains(director.Docs.Plan, "学院逆袭主线") || director.Metadata.LastRun.Status != "ready" {
 		t.Fatalf("director plan patch mismatch: %#v", director)
 	}
 
@@ -252,7 +250,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	director = directorResponse{}
 	decodeResponse(t, rebuildResp.Body.Bytes(), &director)
-	if !strings.Contains(director.Docs.Mainline, "正文Agent可读") || director.Metadata.LastRun.Status != "ready" {
+	if !strings.Contains(director.Docs.Plan, "正文Agent可读") || director.Metadata.LastRun.Status != "ready" {
 		t.Fatalf("rebuilt director plan mismatch: %#v", director)
 	}
 
@@ -428,11 +426,11 @@ func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 	}
 	var rebuilt struct {
 		Docs struct {
-			Mainline string `json:"mainline"`
+			Plan string `json:"plan"`
 		} `json:"docs"`
 	}
 	decodeResponse(t, rebuildResp.Body.Bytes(), &rebuilt)
-	if !strings.Contains(rebuilt.Docs.Mainline, "正文Agent可读") {
+	if !strings.Contains(rebuilt.Docs.Plan, "正文Agent可读") {
 		t.Fatalf("rebuilt detached director should return plan docs: %#v", rebuilt)
 	}
 }

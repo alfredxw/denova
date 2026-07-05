@@ -3,7 +3,7 @@ import { Activity, Archive, Brain, Edit3, Eye, Loader2, RefreshCw, RotateCcw, Sa
 import { useTranslation } from 'react-i18next'
 import { MessageList } from '@/components/Chat/MessageList'
 import { useAgentEventStream } from '@/hooks/useAgentEventStream'
-import { generateStoryMemoryStream, getInteractiveDirector, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution, updateInteractiveDirector } from '../api'
+import { generateStoryMemoryStream, getInteractiveDirector, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution, runInteractiveDirector, updateInteractiveDirector } from '../api'
 import type { DirectorPlan, DirectorPlanDocs, DirectorPlanRunStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
 type MemoryPanelTab = 'memory' | 'director'
@@ -343,6 +343,7 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
   const [rebuilding, setRebuilding] = useState(false)
   const [planLoading, setPlanLoading] = useState(false)
   const [savingPlan, setSavingPlan] = useState(false)
+  const [retryingDirector, setRetryingDirector] = useState(false)
   const [rerolling, setRerolling] = useState(false)
   const [directorError, setDirectorError] = useState('')
   const [ruleError, setRuleError] = useState('')
@@ -356,6 +357,7 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
   const hasRuleAudit = !!ruleResolution || !!terminalOutcome
   const effectiveBranchId = branchId || snapshot?.branch_id || ''
   const directorMetadata = directorPlan?.metadata
+  const directorStatus = snapshot?.director_plan_status || directorMetadata?.last_run
 
   useEffect(() => {
     setDirectorPlan(snapshot?.director_plan || null)
@@ -425,6 +427,21 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
     }
   }
 
+  const retryDirectorPlan = async () => {
+    if (!storyId || retryingDirector) return
+    setRetryingDirector(true)
+    setDirectorError('')
+    try {
+      await runInteractiveDirector(storyId, effectiveBranchId)
+      await onSnapshotRefresh?.()
+    } catch (err) {
+      console.error('[interactive-memory-panel] retry director failed', err)
+      setDirectorError(err instanceof Error ? err.message : t('storyStage.director.retryFailed'))
+    } finally {
+      setRetryingDirector(false)
+    }
+  }
+
   const rerollRules = async () => {
     const resolutionId = ruleResolution?.id
     const turnId = snapshot?.current_turn?.id
@@ -452,6 +469,11 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
               <span className="truncate">{t('snapshot.director.title')}</span>
             </div>
             <div className="flex shrink-0 items-center gap-1">
+              {directorStatus?.status === 'failed' ? (
+                <button type="button" className="nova-icon-button flex h-6 w-6 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={t('storyStage.director.retry')} title={t('storyStage.director.retry')} onClick={() => void retryDirectorPlan()} disabled={!storyId || retryingDirector}>
+                  {retryingDirector ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                </button>
+              ) : null}
               <button type="button" className="nova-icon-button flex h-6 w-6 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={savingPlan ? t('common.saving') : t('common.save')} title={savingPlan ? t('common.saving') : t('common.save')} onClick={() => void saveDirectorPlan()} disabled={!storyId || !draftDocs || !directorPlan || savingPlan}>
                 {savingPlan ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
               </button>
@@ -466,15 +488,13 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
             <>
               <div className="flex flex-wrap gap-1.5">
                 <MemoryChip>{`${t('snapshot.director.status')}: ${directorMetadata?.last_run?.status || t('snapshot.noRecord')}`}</MemoryChip>
-                <MemoryChip>{`${t('snapshot.director.docs')}: ${Object.keys(directorMetadata?.docs || {}).length || 3}`}</MemoryChip>
+                <MemoryChip>{`${t('snapshot.director.docs')}: ${Object.keys(directorMetadata?.docs || {}).length || 1}`}</MemoryChip>
                 <MemoryChip>{`${t('snapshot.director.branchPlanningTurns')}: ${directorMetadata?.branch_planning_turns || 5}`}</MemoryChip>
               </div>
               {directorMetadata?.last_run ? <DirectorRunSummary run={directorMetadata.last_run} /> : null}
               {draftDocs ? (
                 <div className="mt-3 space-y-2">
-                  <DirectorPlanTextarea label={t('snapshot.director.mainline')} value={draftDocs.mainline} onChange={(value) => setDraftDocs({ ...draftDocs, mainline: value })} />
-                  <DirectorPlanTextarea label={t('snapshot.director.currentEvent')} value={draftDocs.current_event} onChange={(value) => setDraftDocs({ ...draftDocs, current_event: value })} />
-                  <DirectorPlanTextarea label={t('snapshot.director.nextBranches')} value={draftDocs.next_branches} onChange={(value) => setDraftDocs({ ...draftDocs, next_branches: value })} />
+                  <DirectorPlanTextarea label={t('snapshot.director.plan')} value={draftDocs.plan} onChange={(value) => setDraftDocs({ ...draftDocs, plan: value })} />
                 </div>
               ) : null}
             </>

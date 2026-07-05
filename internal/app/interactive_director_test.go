@@ -26,6 +26,16 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{
+		ID:               "shen-ning",
+		Type:             "character",
+		Name:             "沈凝",
+		Importance:       "major",
+		BriefDescription: "角色 沈凝。外门比试的关键见证者，与主角关系存在转折空间。上下文出现相关内容时，一定要参考本项详情。",
+		Content:          "沈凝表面冷淡，实际在暗中调查外门资源分配不公。她不会无故帮助主角，但会被公开证据和胆识触动。",
+	}); err != nil {
+		t.Fatal(err)
+	}
 	turn, _, err := store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{
 		BranchID:  "main",
 		User:      "我报名参加公开比试",
@@ -55,15 +65,18 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
 		close(started)
 		<-release
-		if !strings.Contains(instruction, "mainline.md") || len(toolContext.DirectorPlanAllowedPaths) != 3 {
+		if !strings.Contains(instruction, "director.md") || strings.Contains(instruction, "mainline.md") || len(toolContext.DirectorPlanAllowedPaths) != 1 {
 			t.Fatalf("director should receive plan paths and guard context: paths=%#v\n%s", toolContext.DirectorPlanAllowedPaths, instruction)
+		}
+		if !strings.Contains(instruction, "资料库导演上下文") || !strings.Contains(instruction, "沈凝") {
+			t.Fatalf("director should receive bounded lore context:\n%s", instruction)
 		}
 		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
 		if err != nil {
 			return "", err
 		}
 		docs := plan.Docs
-		docs.CurrentEvent = strings.Replace(docs.CurrentEvent, "明确当前事件的可玩目标，让用户知道能采取行动。", "公开比试制造质疑与反证机会。", 1)
+		docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "公开比试制造质疑与反证机会。", 1)
 		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
 			return "", err
 		}
@@ -76,7 +89,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 
 	waitForDirectorGoroutineStart(t, started)
 	runningStatus := waitForDirectorPlanPublicStatus(t, store, story.ID, "main", interactive.DirectorPlanStatusRunning)
-	if !runningStatus.Blocking || runningStatus.StartReady || runningStatus.CompletedDocs != 0 || runningStatus.PlannedDocs != 3 {
+	if !runningStatus.Blocking || runningStatus.StartReady || runningStatus.CompletedDocs != 0 || runningStatus.PlannedDocs != 1 {
 		t.Fatalf("initial director run should expose blocking progress only: %#v", runningStatus)
 	}
 	releaseOnce.Do(func() { close(release) })
@@ -84,10 +97,10 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turn.ID {
 		t.Fatalf("turn should remain current after director update: %#v", snapshot.CurrentTurn)
 	}
-	if snapshot.DirectorPlan == nil || !strings.Contains(snapshot.DirectorPlan.Docs.CurrentEvent, "公开比试制造质疑") {
+	if snapshot.DirectorPlan == nil || !strings.Contains(snapshot.DirectorPlan.Docs.Plan, "公开比试制造质疑") {
 		t.Fatalf("director plan should include file update: %#v", snapshot.DirectorPlan)
 	}
-	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady || !snapshot.DirectorPlanStatus.StartReady || snapshot.DirectorPlanStatus.Blocking || snapshot.DirectorPlanStatus.CompletedDocs != 3 {
+	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady || !snapshot.DirectorPlanStatus.StartReady || snapshot.DirectorPlanStatus.Blocking || snapshot.DirectorPlanStatus.CompletedDocs != 1 {
 		t.Fatalf("completed director run should unblock the story start: %#v", snapshot.DirectorPlanStatus)
 	}
 }
@@ -142,7 +155,7 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 			return "", err
 		}
 		docs := plan.Docs
-		docs.NextBranches = strings.Replace(docs.NextBranches, "用户选择优先；为最近几轮准备多个可承接方向。", "失败后重试成功，准备继续推进。", 1)
+		docs.Plan += "\n\n失败后重试成功，准备继续推进。"
 		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
 			return "", err
 		}
@@ -158,13 +171,11 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 }
 
 func writeDirectorPlanDocsForTest(paths []string, docs interactive.DirectorPlanDocs) error {
-	if len(paths) != 3 {
-		return errors.New("expected three director plan paths")
+	if len(paths) != 1 {
+		return errors.New("expected one director plan path")
 	}
-	for i, content := range []string{docs.Mainline, docs.CurrentEvent, docs.NextBranches} {
-		if err := os.WriteFile(paths[i], []byte(strings.TrimSpace(content)+"\n"), 0o644); err != nil {
-			return err
-		}
+	if err := os.WriteFile(paths[0], []byte(strings.TrimSpace(docs.Plan)+"\n"), 0o644); err != nil {
+		return err
 	}
 	return nil
 }
