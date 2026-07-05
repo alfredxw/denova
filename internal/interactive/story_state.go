@@ -214,6 +214,7 @@ func displayEventKey(event DisplayEvent) string {
 }
 
 func applyStateOp(state map[string]any, op StateOp) {
+	op.Path = canonicalStatePath(op.Path)
 	switch op.Op {
 	case "set":
 		setPath(state, op.Path, op.Value)
@@ -241,9 +242,9 @@ func applyStateOp(state map[string]any, op StateOp) {
 		}
 		setPath(state, op.Path, next)
 	case "inc":
-		current, _ := getPath(state, op.Path).(float64)
+		current := numberFromAny(getPath(state, op.Path))
 		by := 1.0
-		if value, ok := op.Value.(float64); ok {
+		if value, ok := actorStateNumber(op.Value); ok {
 			by = value
 		}
 		setPath(state, op.Path, current+by)
@@ -253,6 +254,17 @@ func applyStateOp(state map[string]any, op StateOp) {
 }
 
 func getPath(root map[string]any, path string) any {
+	path = strings.TrimSpace(path)
+	if value := getPathExact(root, path); value != nil {
+		return value
+	}
+	if next, ok := legacyActorStatePath(path); ok {
+		return getPathExact(root, next)
+	}
+	return nil
+}
+
+func getPathExact(root map[string]any, path string) any {
 	parts := strings.Split(path, ".")
 	var current any = root
 	for _, part := range parts {
@@ -266,6 +278,7 @@ func getPath(root map[string]any, path string) any {
 }
 
 func setPath(root map[string]any, path string, value any) {
+	path = canonicalStatePath(path)
 	parts := strings.Split(path, ".")
 	current := root
 	for _, part := range parts[:len(parts)-1] {
@@ -280,6 +293,7 @@ func setPath(root map[string]any, path string, value any) {
 }
 
 func unsetPath(root map[string]any, path string) {
+	path = canonicalStatePath(path)
 	parts := strings.Split(path, ".")
 	current := root
 	for _, part := range parts[:len(parts)-1] {

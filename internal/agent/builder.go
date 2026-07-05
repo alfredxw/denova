@@ -84,6 +84,18 @@ func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *bo
 	})
 }
 
+func BuildInteractiveState(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (adk.Agent, error) {
+	return buildDeepAgent(ctx, cfg, deepAgentSpec{
+		Kind:              config.AgentKindInteractiveState,
+		Name:              "DenovaInteractiveStateAgent",
+		Description:       "AI 互动故事回合连续性整理助手",
+		Instruction:       protectedSystemInstruction(cfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
+		EnableSkills:      false,
+		DisableWriteTodos: true,
+		ExtraToolsFactory: interactiveStateToolsFactory(cfg, toolContexts...),
+	})
+}
+
 // BuildConfigManagerAgent 构建统一配置管理 Agent（deep agent + 通用工具 + Skill + 模块资源工具）。
 func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (adk.Agent, error) {
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{
@@ -503,6 +515,17 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 		_ = settings
 		_ = toolContexts
 		return nil, nil
+	}
+}
+
+func interactiveStateToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+		_ = cfg
+		_ = settings
+		if len(toolContexts) == 0 {
+			return nil, nil
+		}
+		return newInteractiveActorStateTools(toolContexts[0])
 	}
 }
 

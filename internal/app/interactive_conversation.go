@@ -757,9 +757,14 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		storyMemorySchema = ""
 	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
+	storyDirector := c.storyDirector(storyCtx.Meta.StoryDirectorID)
 	loreContext := c.stateLoreContext()
 	turnMemory := buildInteractiveModelVisibleTurnMemory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
 	turnHistory := formatInteractiveTurnMemoryHistory(turnMemory, storyCtx.Snapshot.ContextCompaction, "（暂无历史回合，请基于本回合行动、正文、资料库和既有故事记忆填表。）")
+	actorStateSnapshot := map[string]any{}
+	if actors, ok := storyCtx.Snapshot.State["actors"]; ok {
+		actorStateSnapshot = map[string]any{"actors": actors}
+	}
 	instruction := prompts.InteractiveStateInstruction(prompts.InteractiveStatePromptInput{
 		Title:             storyCtx.Meta.Title,
 		Origin:            storyCtx.Meta.Origin,
@@ -769,6 +774,8 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		LoreItems:         loreContext,
 		StoryMemorySchema: storyMemorySchema,
 		StoryMemory:       storyMemory,
+		ActorStateSchema:  boundedJSON(storyDirector.ActorState, 24*1024),
+		ActorState:        boundedJSON(actorStateSnapshot, 16*1024),
 		TurnHistory:       turnHistory,
 		UserAction:        turn.User,
 		Narrative:         turn.Narrative,
@@ -780,7 +787,7 @@ func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEve
 		turn.ID,
 		storyCtx.Meta.StoryTellerID,
 		interactiveTellerSlotSummary(teller, "state_memory"),
-		interactiveStateSourceSummary(c.workspace, storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreContext, storyMemorySchema, storyMemory, turnHistory, turn.User, turn.Narrative),
+		interactiveStateSourceSummary(c.workspace, storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreContext, storyMemorySchema, storyMemory, boundedJSON(storyDirector.ActorState, 24*1024), boundedJSON(actorStateSnapshot, 16*1024), turnHistory, turn.User, turn.Narrative),
 		interactivePartSummary(instruction),
 	)
 	return instruction, nil
@@ -1247,7 +1254,7 @@ func interactiveStorySourceSummary(title, origin string, teller interactive.Tell
 	return interactiveContextSourceListSummary(parts)
 }
 
-func interactiveStateSourceSummary(workspace, title, origin string, teller interactive.Teller, loreItems, storyMemorySchema, storyMemory, turnHistory, userAction, narrative string) string {
+func interactiveStateSourceSummary(workspace, title, origin string, teller interactive.Teller, loreItems, storyMemorySchema, storyMemory, actorStateSchema, actorState, turnHistory, userAction, narrative string) string {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title},
 		{Source: "互动故事", Title: "开端", Content: origin},
@@ -1259,6 +1266,8 @@ func interactiveStateSourceSummary(workspace, title, origin string, teller inter
 	parts = append(parts,
 		interactiveContextSource{Source: "故事记忆结构", Title: "story memory schema", Content: storyMemorySchema},
 		interactiveContextSource{Source: "故事记忆", Title: "当前分支可见故事记忆", Content: storyMemory},
+		interactiveContextSource{Source: "故事导演", Title: "Actor State schema", Content: actorStateSchema},
+		interactiveContextSource{Source: "快照状态", Title: "Snapshot.State.actors", Content: actorState},
 		interactiveContextSource{Source: "历史回合", Title: "完整回合上下文", Content: turnHistory},
 		interactiveContextSource{Source: "本轮行动", Title: "用户行动", Content: userAction},
 		interactiveContextSource{Source: "本轮剧情", Title: "Agent 正文", Content: narrative},

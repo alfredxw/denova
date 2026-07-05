@@ -639,10 +639,10 @@ func normalizeRuleCheck(check RuleCheck, index int) RuleCheck {
 	check.Label = trimBytes(firstNonEmptyString(check.Label, check.ID), 256)
 	check.Kind = trimBytes(firstNonEmptyString(check.Kind, "check"), 128)
 	check.Mode = normalizeRuleCheckMode(check.Mode)
-	check.AttributePath = strings.TrimSpace(check.AttributePath)
+	check.AttributePath = canonicalStatePath(strings.TrimSpace(check.AttributePath))
 	check.Expression = trimBytes(check.Expression, 1024)
 	check.Dice = strings.TrimSpace(check.Dice)
-	check.ResourceCostPath = strings.TrimSpace(check.ResourceCostPath)
+	check.ResourceCostPath = canonicalStatePath(strings.TrimSpace(check.ResourceCostPath))
 	check.TerminalType = trimBytes(check.TerminalType, 128)
 	check.TerminalReason = trimBytes(check.TerminalReason, maxTurnBriefTextBytes)
 	check.SuccessStateOps = normalizeStateOpsForRule(check.SuccessStateOps)
@@ -855,7 +855,9 @@ func normalizeStateOpsForRule(ops []StateOp) []StateOp {
 	out := make([]StateOp, 0, len(ops))
 	for _, op := range ops {
 		op.Op = strings.TrimSpace(op.Op)
-		op.Path = strings.TrimSpace(op.Path)
+		op.Path = canonicalStatePath(op.Path)
+		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		op.SourceTurnID = trimBytes(op.SourceTurnID, 128)
 		if op.Op == "" || op.Path == "" {
 			continue
 		}

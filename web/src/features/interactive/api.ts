@@ -1,6 +1,6 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
-import type { BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
+import type { ActorStateModule, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
@@ -325,6 +325,33 @@ export function updateRuleSystem(id: string, input: Partial<RuleSystemModule>, b
 
 export function deleteRuleSystem(id: string): Promise<void> {
   return requestJSON(`/api/rule-systems/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getActorStates(): Promise<ActorStateModule[]> {
+  const data = await requestJSON<{ actor_states: ActorStateModule[] }>('/api/actor-states')
+  return data.actor_states || []
+}
+
+export function createActorState(input: Partial<ActorStateModule>): Promise<ActorStateModule> {
+  return requestJSON('/api/actor-states', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateActorState(id: string, input: Partial<ActorStateModule>, baseRevision?: string): Promise<ActorStateModule> {
+  return requestJSON(`/api/actor-states/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
+  })
+}
+
+export function deleteActorState(id: string): Promise<void> {
+  return requestJSON(`/api/actor-states/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
 }

@@ -42,6 +42,7 @@ type StoryDirector struct {
 	EventSystem       StoryDirectorEventSystem      `json:"-"`
 	StatSystem        StoryDirectorStatSystem       `json:"stat_system"`
 	TRPGSystem        StoryDirectorTRPGSystem       `json:"trpg_system"`
+	ActorState        StoryDirectorActorStateSystem `json:"actor_state,omitempty"`
 	OpeningSelector   StoryDirectorOpeningSelector  `json:"opening_selector"`
 	ResolvedSnapshot  StoryDirectorResolvedSnapshot `json:"resolved_snapshot,omitempty"`
 	Tags              []string                      `json:"tags"`
@@ -237,6 +238,9 @@ func (l *StoryDirectorLibrary) ensureBuiltins() error {
 	if err := NewRuleSystemLibrary(l.novaDir).ensureBuiltins(); err != nil {
 		return err
 	}
+	if err := NewActorStateLibrary(l.novaDir).ensureBuiltins(); err != nil {
+		return err
+	}
 	if err := NewOpeningSelectorLibrary(l.novaDir).ensureBuiltins(); err != nil {
 		return err
 	}
@@ -325,6 +329,7 @@ func (l *StoryDirectorLibrary) migrateEmbeddedStoryDirectorModules() error {
 	}
 	eventLibrary := NewEventPackageLibrary(l.novaDir)
 	ruleLibrary := NewRuleSystemLibrary(l.novaDir)
+	actorStateLibrary := NewActorStateLibrary(l.novaDir)
 	openingLibrary := NewOpeningSelectorLibrary(l.novaDir)
 	for _, file := range files {
 		if isBuiltinStoryDirectorFile(file) {
@@ -358,6 +363,13 @@ func (l *StoryDirectorLibrary) migrateEmbeddedStoryDirectorModules() error {
 				return err
 			}
 			refs.RuleSystemID = id
+		}
+		if !actorStateEmpty(raw.ActorState) || len(raw.StatSystem.Attributes) > 0 {
+			id, err := ensureMigratedActorState(actorStateLibrary, director)
+			if err != nil {
+				return err
+			}
+			refs.ActorStateID = id
 		}
 		if !openingSelectorEmpty(raw.OpeningSelector) {
 			id, err := ensureMigratedOpeningSelector(openingLibrary, director)
@@ -501,6 +513,28 @@ func ensureMigratedRuleSystem(library *RuleSystemLibrary, director StoryDirector
 	return module.ID, nil
 }
 
+func ensureMigratedActorState(library *ActorStateLibrary, director StoryDirector) (string, error) {
+	id := normalizeDirectorModuleID(director.ID + "-actor-state")
+	if _, err := library.Get(id); err == nil {
+		return id, nil
+	}
+	actorState := director.ActorState
+	if actorStateEmpty(actorState) {
+		actorState = actorStateSystemFromAttributes(director.StatSystem.Attributes)
+	}
+	module, err := library.Create(ActorStateModule{
+		ID:          id,
+		Name:        director.Name + " Actor 状态系统",
+		Description: "由旧故事导演内嵌 stat_system/actor_state 迁移生成。",
+		ActorState:  actorState,
+		Tags:        migratedDirectorModuleTags(director.Tags),
+	})
+	if err != nil {
+		return "", err
+	}
+	return module.ID, nil
+}
+
 func ensureMigratedOpeningSelector(library *OpeningSelectorLibrary, director StoryDirector) (string, error) {
 	id := normalizeDirectorModuleID(director.ID + "-opening")
 	if _, err := library.Get(id); err == nil {
@@ -579,6 +613,7 @@ func DefaultStoryDirector() StoryDirector {
 		EventPackages:   []TellerEventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
 		StatSystem:      DefaultRuleSystemModule().StatSystem,
 		TRPGSystem:      DefaultRuleSystemModule().TRPGSystem,
+		ActorState:      DefaultActorStateModule().ActorState,
 		OpeningSelector: DefaultOpeningSelectorModule().OpeningSelector,
 		Tags:            []string{"内置", "导演"},
 	})
@@ -608,6 +643,7 @@ func StoryDirectorFromTellerOrchestration(id, name, description string, randomEv
 		TRPGSystem: StoryDirectorTRPGSystem{
 			RuleTemplates: config.RuleTemplates,
 		},
+		ActorState: actorStateSystemFromAttributes(defaultStoryDirectorAttributes()),
 		OpeningSelector: StoryDirectorOpeningSelector{
 			Enabled:         config.Opening.Enabled,
 			TraitPools:      config.Opening.TraitPools,
@@ -642,6 +678,13 @@ func normalizeStoryDirector(director StoryDirector) StoryDirector {
 		director.StatSystem.Attributes = normalizeStoryDirectorAttributes(director.StatSystem.Attributes)
 	}
 	director.TRPGSystem.RuleTemplates = normalizeRuleChecks(director.TRPGSystem.RuleTemplates)
+	if director.ModuleRefs.ActorStateDisabled {
+		director.ActorState = normalizeActorStateSystem(StoryDirectorActorStateSystem{})
+	} else if actorStateEmpty(director.ActorState) && len(director.StatSystem.Attributes) > 0 {
+		director.ActorState = actorStateSystemFromAttributes(director.StatSystem.Attributes)
+	} else {
+		director.ActorState = normalizeActorStateSystem(director.ActorState)
+	}
 	director.OpeningSelector = normalizeStoryDirectorOpeningSelector(director.OpeningSelector)
 	director.ResolvedSnapshot = normalizeStoryDirectorResolvedSnapshot(director.ResolvedSnapshot)
 	director.Tags = normalizeStringListLimit(director.Tags, maxTurnBriefListItems)
@@ -745,13 +788,11 @@ func defaultStoryDirectorAttributes() []StoryDirectorAttribute {
 
 func StoryDirectorInitialStateOps(director StoryDirector) []StateOp {
 	director = normalizeStoryDirector(director)
-	ops := make([]StateOp, 0, len(director.StatSystem.Attributes)+len(director.OpeningSelector.InitialStateOps))
-	for _, attribute := range director.StatSystem.Attributes {
-		ops = append(ops, StateOp{Op: "set", Path: attribute.Path, Value: attribute.Default})
-		if attribute.Max > 0 {
-			ops = append(ops, StateOp{Op: "set", Path: attribute.Path + "_max", Value: attribute.Max})
-		}
+	actorState := director.ActorState
+	if actorStateEmpty(actorState) && len(director.StatSystem.Attributes) > 0 {
+		actorState = actorStateSystemFromAttributes(director.StatSystem.Attributes)
 	}
+	ops := actorStateInitialOps(actorState)
 	ops = append(ops, director.OpeningSelector.InitialStateOps...)
 	return normalizeStateOps(ops)
 }

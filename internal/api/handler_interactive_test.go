@@ -365,7 +365,10 @@ func TestInteractiveOpeningRollAndInitialStateAPI(t *testing.T) {
 		State map[string]any `json:"state"`
 	}
 	decodeResponse(t, snapshotResp.Body.Bytes(), &snapshot)
-	resources, _ := snapshot.State["resources"].(map[string]any)
+	actors, _ := snapshot.State["actors"].(map[string]any)
+	protagonist, _ := actors["protagonist"].(map[string]any)
+	actorState, _ := protagonist["state"].(map[string]any)
+	resources, _ := actorState["resources"].(map[string]any)
 	if resources["hp"] != float64(18) {
 		t.Fatalf("initial state should be visible in snapshot: %#v", snapshot.State)
 	}

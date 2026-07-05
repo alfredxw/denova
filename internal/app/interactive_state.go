@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"denova/config"
+	"denova/internal/agent"
 	"denova/internal/interactive"
 	"denova/internal/session"
 )
@@ -33,7 +34,11 @@ func startInteractiveStateTask(cfg *config.Config, conversation *interactiveConv
 			markInteractiveStateFailed(conversation, turn, err)
 			return
 		}
-		result, err := runInteractiveMemoryAgentWithRetry(ctx, cfg, instruction, sessionStore, generateInteractiveStateForStoryMemory, func(result interactiveMemoryAgentResult) error {
+		generate := generateInteractiveStateForStoryMemory
+		if generate == nil {
+			generate = agent.GenerateInteractiveState
+		}
+		result, err := runInteractiveMemoryAgentWithRetry(ctx, cfg, instruction, sessionStore, generate, func(result interactiveMemoryAgentResult) error {
 			if len(result.StoryMemoryPatches) == 0 {
 				return nil
 			}
@@ -50,15 +55,7 @@ func startInteractiveStateTask(cfg *config.Config, conversation *interactiveConv
 			return
 		}
 		if len(result.StateOps) > 0 {
-			if _, err := conversation.store.AppendStateDelta(conversation.storyID, interactive.AppendStateDeltaRequest{
-				ParentID: turn.ID,
-				BranchID: turn.BranchID,
-				Ops:      result.StateOps,
-			}); err != nil {
-				log.Printf("[interactive-memory-agent] persist state failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
-				markInteractiveStateFailed(conversation, turn, err)
-				return
-			}
+			log.Printf("[interactive-memory-agent] ignored legacy state_ops story_id=%s branch_id=%s turn_id=%s count=%d", conversation.storyID, turn.BranchID, turn.ID, len(result.StateOps))
 		}
 		if err := conversation.store.MarkInteractiveMemoryReady(conversation.storyID, turn.BranchID, turn.ID); err != nil {
 			log.Printf("[interactive-memory-agent] mark memory ready failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)

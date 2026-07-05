@@ -733,8 +733,17 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 	if parentID == "" {
 		return StateDeltaEvent{}, fmt.Errorf("状态变化缺少所属回合")
 	}
+	ops := normalizeStateOps(req.Ops)
+	if len(ops) == 0 {
+		return StateDeltaEvent{}, fmt.Errorf("状态变化不能为空")
+	}
+	for _, op := range ops {
+		if err := validateStateOp(op); err != nil {
+			return StateDeltaEvent{}, err
+		}
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	event := newStateDeltaEvent(parentID, parentID, branchID, now, req.Ops)
+	event := newStateDeltaEvent(parentID, parentID, branchID, now, ops)
 	updated := false
 	for i := range lines {
 		raw := lines[i].Raw
@@ -745,11 +754,11 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 		if err := mapToStruct(raw, &turn); err != nil {
 			return StateDeltaEvent{}, err
 		}
-		ops := append([]StateOp(nil), req.Ops...)
+		nextOps := append([]StateOp(nil), ops...)
 		if turn.StateDelta != nil && len(turn.StateDelta.Ops) > 0 {
-			ops = append(append([]StateOp(nil), turn.StateDelta.Ops...), req.Ops...)
+			nextOps = append(append([]StateOp(nil), turn.StateDelta.Ops...), nextOps...)
 		}
-		raw["state_delta"] = newStateDelta(ops)
+		raw["state_delta"] = newStateDelta(nextOps)
 		raw["state_status"] = "ready"
 		delete(raw, "state_error")
 		updated = true

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { BookMarked, Bot, Building2, ChevronDown, ChevronsDownUp, ChevronsUpDown, Compass, Dice5, FileText, Folder, Images, Library, Loader2, MapPin, Plus, ScrollText, Search, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
+import { BookMarked, Bot, Building2, ChevronDown, ChevronsDownUp, ChevronsUpDown, Compass, Database, Dice5, FileText, Folder, Images, Library, Loader2, MapPin, Plus, ScrollText, Search, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isSaveShortcut } from '@/lib/keyboard'
@@ -14,9 +14,9 @@ import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { type LoreItem, workspaceAssetURL } from '@/lib/api'
 import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpeningPreset } from '../opening'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
-import type { EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller, TellerEventPackage } from '../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller, TellerEventPackage } from '../types'
 import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
-import { EventPackageVisualEditor, OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
+import { ActorStateVisualEditor, EventPackageVisualEditor, OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -45,7 +45,7 @@ const LORE_RESIDENT_ITEM_WARNING_CHARS = 8000
 const LORE_RESIDENT_TOTAL_WARNING_CHARS = 40000
 const IMAGE_PRESET_PROMPT_LIMIT = 4000
 const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_request' }] as const
-const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'opening']
+const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state', 'opening']
 type ImagePresetTarget = ImagePresetSlot['target']
 type LoreType = LoreItem['type']
 interface KnowledgeSection {
@@ -256,12 +256,14 @@ export function TellerDirectory({
   imagePresets,
   eventPackages,
   ruleSystems,
+  actorStates,
   openingSelectors,
   activeTellerId,
   activeStoryDirectorId,
   activeImagePresetId,
   activeEventPackageId,
   activeRuleSystemId,
+  activeActorStateId,
   activeOpeningSelectorId,
   saving,
   onSelectTeller,
@@ -269,12 +271,14 @@ export function TellerDirectory({
   onSelectImagePreset,
   onSelectEventPackage,
   onSelectRuleSystem,
+  onSelectActorState,
   onSelectOpeningSelector,
   onCreateTeller,
   onCreateStoryDirector,
   onCreateImagePreset,
   onCreateEventPackage,
   onCreateRuleSystem,
+  onCreateActorState,
   onCreateOpeningSelector,
   usageMode,
 }: {
@@ -285,12 +289,14 @@ export function TellerDirectory({
   imagePresets: ImagePreset[]
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
+  actorStates: ActorStateModule[]
   openingSelectors: OpeningSelectorModule[]
   activeTellerId: string
   activeStoryDirectorId: string
   activeImagePresetId: string
   activeEventPackageId: string
   activeRuleSystemId: string
+  activeActorStateId: string
   activeOpeningSelectorId: string
   saving: boolean
   onSelectTeller: (id: string) => void
@@ -298,12 +304,14 @@ export function TellerDirectory({
   onSelectImagePreset: (id: string) => void
   onSelectEventPackage: (id: string) => void
   onSelectRuleSystem: (id: string) => void
+  onSelectActorState: (id: string) => void
   onSelectOpeningSelector: (id: string) => void
   onCreateTeller: () => void
   onCreateStoryDirector: () => void
   onCreateImagePreset: () => void
   onCreateEventPackage: () => void
   onCreateRuleSystem: () => void
+  onCreateActorState: () => void
   onCreateOpeningSelector: () => void
 }) {
   const { t } = useTranslation()
@@ -359,10 +367,14 @@ export function TellerDirectory({
       onSelectRuleSystem(ruleSystems[0].id)
       return
     }
+    if (presetResourceVisibleInMode('actor-state', usageMode) && actorStates[0]) {
+      onSelectActorState(actorStates[0].id)
+      return
+    }
     if (presetResourceVisibleInMode('opening', usageMode) && openingSelectors[0]) {
       onSelectOpeningSelector(openingSelectors[0].id)
     }
-  }, [eventPackages, imagePresets, isConfigAgentActive, onSelectEventPackage, onSelectImagePreset, onSelectOpeningSelector, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, openingSelectors, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
+  }, [actorStates, eventPackages, imagePresets, isConfigAgentActive, onSelectActorState, onSelectEventPackage, onSelectImagePreset, onSelectOpeningSelector, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, openingSelectors, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
 
   return (
     <>
@@ -514,6 +526,31 @@ export function TellerDirectory({
                   title={item.name}
                   summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.ruleSystem.summaryCount', { attributes: item.stat_system?.attributes?.length || 0, rules: item.trpg_system?.rule_templates?.length || 0 })}`}
                   onSelect={() => onSelectRuleSystem(item.id)}
+                />
+              ))}
+            </PresetDirectorySection>
+          ) : null}
+
+          {isVisible('actor-state') ? (
+            <PresetDirectorySection
+              kind="actor-state"
+              label={presetKindDirectoryLabel('actor-state', t)}
+              Icon={Database}
+              count={actorStates.length}
+              createLabel={presetKindCreateLabel('actor-state', t)}
+              saving={saving}
+              collapsed={isCollapsed('actor-state')}
+              onToggle={() => toggleSection('actor-state')}
+              onCreate={onCreateActorState}
+            >
+              {actorStates.map((item) => (
+                <PresetDirectoryItem
+                  key={item.id}
+                  active={!isConfigAgentActive && resourceKind === 'actor-state' && activeActorStateId === item.id}
+                  Icon={Database}
+                  title={item.name}
+                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.actorState.summaryCount', { templates: item.actor_state?.templates?.length || 0, actors: item.actor_state?.initial_actors?.length || 0 })}`}
+                  onSelect={() => onSelectActorState(item.id)}
                 />
               ))}
             </PresetDirectorySection>
@@ -743,6 +780,46 @@ export function RuleSystemEditor({
   )
 }
 
+export function ActorStateEditor({
+  draft,
+  tagDraft,
+  setDraft,
+  setTagDraft,
+  onSave,
+  onValidityChange,
+}: {
+  draft: ActorStateModule | null
+  tagDraft: string
+  setDraft: (draft: ActorStateModule | null) => void
+  setTagDraft: (value: string) => void
+  onSave: () => void
+  onValidityChange?: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+
+  if (!draft) {
+    return <EmptyState title={t('settingPanel.editor.noActorStateSelected')} description={t('settingPanel.editor.noActorStateSelectedDesc')} />
+  }
+
+  return (
+    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
+      <PresetConfigSectionEditor
+        sectionId="actor-state.actor-state"
+        resetKey={`${draft.id}:actor_state`}
+        title={t('settingPanel.actorState.title')}
+        description={t('settingPanel.actorState.description')}
+        value={draft.actor_state || { templates: [], initial_actors: [] }}
+        summary={t('settingPanel.actorState.summaryCount', { templates: draft.actor_state?.templates?.length || 0, actors: draft.actor_state?.initial_actors?.length || 0 })}
+        onChange={(actor_state) => setDraft({ ...draft, actor_state })}
+        onSave={onSave}
+        onValidityChange={onValidityChange}
+      >
+        {(props) => <ActorStateVisualEditor {...props} />}
+      </PresetConfigSectionEditor>
+    </ModuleEditorShell>
+  )
+}
+
 export function OpeningSelectorEditor({
   draft,
   tagDraft,
@@ -851,6 +928,7 @@ function presetKindDirectoryLabel(kind: PresetResourceKind, t: (key: string) => 
   if (kind === 'director') return t('settingPanel.storyDirectorDirectory')
   if (kind === 'event') return t('settingPanel.eventPackageDirectory')
   if (kind === 'rule') return t('settingPanel.ruleSystemDirectory')
+  if (kind === 'actor-state') return t('settingPanel.actorStateDirectory')
   if (kind === 'opening') return t('settingPanel.openingSelectorDirectory')
   return t('settingPanel.rulePackages')
 }
@@ -860,6 +938,7 @@ function presetKindCreateLabel(kind: PresetResourceKind, t: (key: string) => str
   if (kind === 'director') return t('settingPanel.newStoryDirector')
   if (kind === 'event') return t('settingPanel.newEventPackage')
   if (kind === 'rule') return t('settingPanel.newRuleSystem')
+  if (kind === 'actor-state') return t('settingPanel.newActorState')
   if (kind === 'opening') return t('settingPanel.newOpeningSelector')
   return t('settingPanel.newTeller')
 }

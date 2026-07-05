@@ -123,6 +123,9 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 	if currentState.Description != "记录当前剧情线的全局时间、地点和场景状态。此表有且仅有一行。" {
 		t.Fatalf("current_state preset description mismatch: %#v", currentState)
 	}
+	if !currentState.ReadOnly || !currentState.Derived {
+		t.Fatalf("current_state should be read-only derived narrative state: %#v", currentState)
+	}
 	for _, want := range []string{"story_start_date", "location", "time", "current_day", "event"} {
 		if !storyMemoryStructureHasField(currentState, want) {
 			t.Fatalf("current_state preset missing field %q: %#v", want, currentState.Fields)
@@ -149,6 +152,9 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 		structure := storyMemoryStructureByID(state.Structures, structureID)
 		if !storyMemoryStructureEnabled(structure) {
 			t.Fatalf("default narrative structure should be enabled: %#v", structure)
+		}
+		if structureID == "rule_state_summary" && (!structure.ReadOnly || !structure.Derived) {
+			t.Fatalf("rule_state_summary should be read-only derived narrative state: %#v", structure)
 		}
 		for _, fieldID := range fields {
 			if !storyMemoryStructureHasField(structure, fieldID) {
@@ -240,6 +246,54 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 	}
 	if strings.Contains(context, "怀疑主角") {
 		t.Fatalf("archived story memory should not enter model context:\n%s", context)
+	}
+}
+
+func TestDerivedStoryMemoryStateTablesRejectManualEdits(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "派生记忆边界"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SaveStoryMemoryStructure(story.ID, StoryMemoryStructureRequest{
+		ID:   "current_state",
+		Name: "改写当前状态",
+		Mode: "singleton",
+		Fields: []StoryMemoryField{{
+			ID:       "location",
+			Name:     "地点",
+			Required: true,
+			Order:    10,
+		}},
+	}); err == nil {
+		t.Fatal("manual structure edit for current_state should be rejected")
+	}
+	if _, err := store.SaveStoryMemoryRecord(story.ID, StoryMemoryRecordRequest{
+		BranchID:    "main",
+		StructureID: "rule_state_summary",
+		Values: map[string]string{
+			"resources": "hp=999",
+		},
+	}); err == nil {
+		t.Fatal("manual record edit for rule_state_summary should be rejected")
+	}
+	records, err := store.ApplyStoryMemoryPatches(story.ID, "main", "", []StoryMemoryPatch{{
+		Op:          "upsert",
+		StructureID: "rule_state_summary",
+		Values: map[string]string{
+			"resources":           "生命：7/10｜本回合受伤",
+			"attributes":          "无变化",
+			"conditions":          "轻伤",
+			"relationship_scores": "",
+			"flags":               "",
+			"last_rule_checks":    "",
+		},
+	}})
+	if err != nil {
+		t.Fatalf("agent patch should still update derived narrative summary: %v", err)
+	}
+	if len(records) != 1 || records[0].StructureID != "rule_state_summary" || records[0].Source != "agent" {
+		t.Fatalf("derived narrative summary patch mismatch: %#v", records)
 	}
 }
 

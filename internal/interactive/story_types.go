@@ -357,9 +357,11 @@ type BranchEvent struct {
 }
 
 type StateOp struct {
-	Op    string `json:"op"`
-	Path  string `json:"path"`
-	Value any    `json:"value,omitempty"`
+	Op           string `json:"op"`
+	Path         string `json:"path"`
+	Value        any    `json:"value,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	SourceTurnID string `json:"source_turn_id,omitempty"`
 }
 
 type Snapshot struct {
@@ -485,6 +487,8 @@ type StoryMemoryStructure struct {
 	Enabled               *bool              `json:"enabled,omitempty"`
 	Order                 int                `json:"order"`
 	BuiltIn               bool               `json:"built_in,omitempty"`
+	ReadOnly              bool               `json:"read_only,omitempty"`
+	Derived               bool               `json:"derived,omitempty"`
 	CreatedAt             string             `json:"created_at,omitempty"`
 	UpdatedAt             string             `json:"updated_at,omitempty"`
 }
@@ -532,6 +536,8 @@ type StoryMemoryStructureRequest struct {
 	Fields                []StoryMemoryField `json:"fields"`
 	Enabled               *bool              `json:"enabled,omitempty"`
 	Order                 int                `json:"order"`
+	ReadOnly              bool               `json:"read_only,omitempty"`
+	Derived               bool               `json:"derived,omitempty"`
 }
 
 type StoryMemoryRecordRequest struct {

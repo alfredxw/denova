@@ -13,11 +13,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import { createEventPackage, createImagePreset, createInteractiveTeller, createOpeningSelector, createRuleSystem, createStoryDirector, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteOpeningSelector, deleteRuleSystem, deleteStoryDirector, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector } from '../api'
+import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createOpeningSelector, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteOpeningSelector, deleteRuleSystem, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector } from '../api'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, INTERACTIVE_OPENING_PRESET_ENTRY_ID, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, serializeBookOpeningPresets, type BookOpeningPreset } from '../opening'
 import type { PresetResourceKind, PresetUsageMode } from '../preset-ownership'
-import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller } from '../types'
-import { CreatorDirectory, CreatorEditor, EventPackageEditor, ImagePresetEditor, LoreDirectory, LoreEditor, OpeningPresetEditor, OpeningSelectorEditor, RuleSystemEditor, TellerDirectory } from './SettingPanelSections'
+import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller } from '../types'
+import { ActorStateEditor, CreatorDirectory, CreatorEditor, EventPackageEditor, ImagePresetEditor, LoreDirectory, LoreEditor, OpeningPresetEditor, OpeningSelectorEditor, RuleSystemEditor, TellerDirectory } from './SettingPanelSections'
 import { TellerEditor } from './SettingPanelTellerEditor'
 import { StoryDirectorEditor } from './story-director/StoryDirectorEditor'
 
@@ -30,6 +30,7 @@ const EMPTY_STORY_DIRECTORS: StoryDirector[] = []
 const EMPTY_IMAGE_PRESETS: ImagePreset[] = []
 const EMPTY_EVENT_PACKAGES: EventPackageModule[] = []
 const EMPTY_RULE_SYSTEMS: RuleSystemModule[] = []
+const EMPTY_ACTOR_STATES: ActorStateModule[] = []
 const EMPTY_OPENING_SELECTORS: OpeningSelectorModule[] = []
 const PRESET_DELETE_COPY: Record<PresetResourceKind, { titleKey: string; descriptionKey: string }> = {
   teller: { titleKey: 'settingPanel.deleteTeller', descriptionKey: 'settingPanel.confirmDeleteTeller' },
@@ -37,6 +38,7 @@ const PRESET_DELETE_COPY: Record<PresetResourceKind, { titleKey: string; descrip
   director: { titleKey: 'settingPanel.deleteStoryDirector', descriptionKey: 'settingPanel.confirmDeleteStoryDirector' },
   event: { titleKey: 'settingPanel.deleteEventPackage', descriptionKey: 'settingPanel.confirmDeleteEventPackage' },
   rule: { titleKey: 'settingPanel.deleteRuleSystem', descriptionKey: 'settingPanel.confirmDeleteRuleSystem' },
+  'actor-state': { titleKey: 'settingPanel.deleteActorState', descriptionKey: 'settingPanel.confirmDeleteActorState' },
   opening: { titleKey: 'settingPanel.deleteOpeningSelector', descriptionKey: 'settingPanel.confirmDeleteOpeningSelector' },
 }
 
@@ -165,6 +167,10 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const [activeRuleSystemId, setActiveRuleSystemId] = useState('')
   const [ruleSystemDraft, setRuleSystemDraft] = useState<RuleSystemModule | null>(null)
   const [ruleSystemTagDraft, setRuleSystemTagDraft] = useState('')
+  const [actorStates, setActorStates] = useState<ActorStateModule[]>(EMPTY_ACTOR_STATES)
+  const [activeActorStateId, setActiveActorStateId] = useState('')
+  const [actorStateDraft, setActorStateDraft] = useState<ActorStateModule | null>(null)
+  const [actorStateTagDraft, setActorStateTagDraft] = useState('')
   const [openingSelectors, setOpeningSelectors] = useState<OpeningSelectorModule[]>(EMPTY_OPENING_SELECTORS)
   const [activeOpeningSelectorId, setActiveOpeningSelectorId] = useState('')
   const [openingSelectorDraft, setOpeningSelectorDraft] = useState<OpeningSelectorModule | null>(null)
@@ -206,6 +212,9 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const ruleSystemAutoSaveTimer = useRef<number | null>(null)
   const ruleSystemSavedSignature = useRef('')
   const ruleSystemBaseRevisionRef = useRef('')
+  const actorStateAutoSaveTimer = useRef<number | null>(null)
+  const actorStateSavedSignature = useRef('')
+  const actorStateBaseRevisionRef = useRef('')
   const openingSelectorAutoSaveTimer = useRef<number | null>(null)
   const openingSelectorSavedSignature = useRef('')
   const openingSelectorBaseRevisionRef = useRef('')
@@ -217,7 +226,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 
   useEffect(() => {
     setPresetConfigValid(true)
-  }, [activeEventPackageId, activeOpeningSelectorId, activeRuleSystemId, activeStoryDirectorId, presetResourceKind])
+  }, [activeActorStateId, activeEventPackageId, activeOpeningSelectorId, activeRuleSystemId, activeStoryDirectorId, presetResourceKind])
 
   useEffect(() => {
     let cancelled = false
@@ -426,6 +435,23 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   useEffect(() => {
     if (activeMode !== 'teller' || !workspace) return
     let cancelled = false
+    getActorStates()
+      .then((data) => {
+        if (cancelled) return
+        setActorStates(data)
+        setActiveActorStateId((current) => current || data[0]?.id || '')
+      })
+      .catch(() => {
+        if (!cancelled) setActorStates([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeMode, workspace])
+
+  useEffect(() => {
+    if (activeMode !== 'teller' || !workspace) return
+    let cancelled = false
     getOpeningSelectors()
       .then((data) => {
         if (cancelled) return
@@ -488,6 +514,15 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     })
     setRuleSystemDraft(null)
     setRuleSystemTagDraft('')
+  }, [workspace])
+
+  useEffect(() => {
+    setActiveActorStateId((current) => {
+      if (current && actorStates.some((item) => item.id === current)) return current
+      return actorStates[0]?.id || ''
+    })
+    setActorStateDraft(null)
+    setActorStateTagDraft('')
   }, [workspace])
 
   useEffect(() => {
@@ -563,6 +598,15 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     ruleSystemBaseRevisionRef.current = nextDraft?.updated_at || ''
     ruleSystemSavedSignature.current = nextDraft ? ruleSystemDraftSignature(nextDraft, (item?.tags || []).join('，')) : ''
   }, [activeRuleSystemId, ruleSystems])
+
+  useEffect(() => {
+    const item = actorStates.find((entry) => entry.id === activeActorStateId) || null
+    const nextDraft = item ? cloneActorState(item) : null
+    setActorStateDraft(nextDraft)
+    setActorStateTagDraft((item?.tags || []).join('，'))
+    actorStateBaseRevisionRef.current = nextDraft?.updated_at || ''
+    actorStateSavedSignature.current = nextDraft ? actorStateDraftSignature(nextDraft, (item?.tags || []).join('，')) : ''
+  }, [activeActorStateId, actorStates])
 
   useEffect(() => {
     const item = openingSelectors.find((entry) => entry.id === activeOpeningSelectorId) || null
@@ -642,6 +686,16 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     })
   }
 
+  const refreshActorStates = async (nextActiveId?: string) => {
+    const data = await getActorStates()
+    setActorStates(data)
+    setActiveActorStateId((current) => {
+      if (nextActiveId) return nextActiveId
+      if (current && data.some((item) => item.id === current)) return current
+      return data[0]?.id || ''
+    })
+  }
+
   const refreshOpeningSelectors = async (nextActiveId?: string) => {
     const data = await getOpeningSelectors()
     setOpeningSelectors(data)
@@ -687,6 +741,11 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const mergeSavedRuleSystem = (item: RuleSystemModule) => {
     setRuleSystems((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
     setActiveRuleSystemId(item.id)
+  }
+
+  const mergeSavedActorState = (item: ActorStateModule) => {
+    setActorStates((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
+    setActiveActorStateId(item.id)
   }
 
   const mergeSavedOpeningSelector = (item: OpeningSelectorModule) => {
@@ -827,6 +886,25 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     }
   }
 
+  const saveActorStateDraft = async (mode: 'manual' | 'auto') => {
+    if (!actorStateDraft) return
+    if (!presetConfigValidRef.current) return
+    const overridingBuiltin = !actorStateDraft.custom
+    const payload = {
+      ...actorStateDraft,
+      id: actorStateDraft.id,
+      tags: splitTags(actorStateTagDraft),
+    }
+    const signature = actorStateDraftSignature(payload, actorStateTagDraft)
+    if (mode === 'auto' && signature === actorStateSavedSignature.current) return
+    const item = await updateActorState(actorStateDraft.id, payload, actorStateBaseRevisionRef.current)
+    actorStateBaseRevisionRef.current = item.updated_at || ''
+    actorStateSavedSignature.current = actorStateDraftSignature(item, (item.tags || []).join('，'))
+    if (overridingBuiltin || mode === 'manual') {
+      mergeSavedActorState(item)
+    }
+  }
+
   const saveOpeningSelectorDraft = async (mode: 'manual' | 'auto') => {
     if (!openingSelectorDraft) return
     if (!presetConfigValidRef.current) return
@@ -910,6 +988,17 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     }
   }
 
+  const handleCreateActorState = async () => {
+    setSaving(true)
+    try {
+      const item = await createActorState(newActorStateDraft())
+      setPresetResourceKind('actor-state')
+      await refreshActorStates(item.id)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const handleCreateOpeningSelector = async () => {
     setSaving(true)
     try {
@@ -957,6 +1046,10 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         requestDeletePreset('rule', ruleSystemDraft)
         return
       }
+      if (presetResourceKind === 'actor-state') {
+        requestDeletePreset('actor-state', actorStateDraft)
+        return
+      }
       if (presetResourceKind === 'opening') {
         requestDeletePreset('opening', openingSelectorDraft)
         return
@@ -997,6 +1090,13 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         }
         await deleteRuleSystem(deletePresetTarget.id)
         await refreshRuleSystems()
+      } else if (deletePresetTarget.kind === 'actor-state') {
+        if (actorStateAutoSaveTimer.current) {
+          window.clearTimeout(actorStateAutoSaveTimer.current)
+          actorStateAutoSaveTimer.current = null
+        }
+        await deleteActorState(deletePresetTarget.id)
+        await refreshActorStates()
       } else if (deletePresetTarget.kind === 'opening') {
         if (openingSelectorAutoSaveTimer.current) {
           window.clearTimeout(openingSelectorAutoSaveTimer.current)
@@ -1043,7 +1143,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }
 
   const handleRestoreBuiltinPreset = async () => {
-    if (!currentPresetBuiltinOverridden(presetResourceKind, tellerDraft, storyDirectorDraft, imagePresetDraft, eventPackageDraft, ruleSystemDraft, openingSelectorDraft)) return
+    if (!currentPresetBuiltinOverridden(presetResourceKind, tellerDraft, storyDirectorDraft, imagePresetDraft, eventPackageDraft, ruleSystemDraft, actorStateDraft, openingSelectorDraft)) return
     setSaving(true)
     try {
       if (presetResourceKind === 'image' && imagePresetDraft) {
@@ -1067,6 +1167,13 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         }
         await deleteRuleSystem(ruleSystemDraft.id)
         await refreshRuleSystems(ruleSystemDraft.id)
+      } else if (presetResourceKind === 'actor-state' && actorStateDraft) {
+        if (actorStateAutoSaveTimer.current) {
+          window.clearTimeout(actorStateAutoSaveTimer.current)
+          actorStateAutoSaveTimer.current = null
+        }
+        await deleteActorState(actorStateDraft.id)
+        await refreshActorStates(actorStateDraft.id)
       } else if (presetResourceKind === 'opening' && openingSelectorDraft) {
         if (openingSelectorAutoSaveTimer.current) {
           window.clearTimeout(openingSelectorAutoSaveTimer.current)
@@ -1134,6 +1241,12 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
             ruleSystemAutoSaveTimer.current = null
           }
           await saveRuleSystemDraft('manual')
+        } else if (presetResourceKind === 'actor-state') {
+          if (actorStateAutoSaveTimer.current) {
+            window.clearTimeout(actorStateAutoSaveTimer.current)
+            actorStateAutoSaveTimer.current = null
+          }
+          await saveActorStateDraft('manual')
         } else if (presetResourceKind === 'opening') {
           if (openingSelectorAutoSaveTimer.current) {
             window.clearTimeout(openingSelectorAutoSaveTimer.current)
@@ -1324,6 +1437,35 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   }, [activeMode, activeRuleSystemId, presetConfigValid, presetResourceKind, ruleSystemDraft, ruleSystemTagDraft, t])
 
   useEffect(() => {
+    if (activeMode !== 'teller' || presetResourceKind !== 'actor-state' || !actorStateDraft) return
+    if (!presetConfigValid) {
+      if (actorStateAutoSaveTimer.current) {
+        window.clearTimeout(actorStateAutoSaveTimer.current)
+        actorStateAutoSaveTimer.current = null
+      }
+      return
+    }
+    const signature = actorStateDraftSignature(actorStateDraft, actorStateTagDraft)
+    if (signature === actorStateSavedSignature.current) return
+    if (actorStateAutoSaveTimer.current) {
+      window.clearTimeout(actorStateAutoSaveTimer.current)
+    }
+    actorStateAutoSaveTimer.current = window.setTimeout(() => {
+      actorStateAutoSaveTimer.current = null
+      void saveActorStateDraft('auto').catch((err) => {
+        console.warn('[actor-state-editor] 自动保存 Actor 状态系统失败', err)
+        toast.error((err as Error).message || t('editor.saveFailed'))
+      })
+    }, 1200)
+    return () => {
+      if (actorStateAutoSaveTimer.current) {
+        window.clearTimeout(actorStateAutoSaveTimer.current)
+        actorStateAutoSaveTimer.current = null
+      }
+    }
+  }, [activeActorStateId, activeMode, actorStateDraft, actorStateTagDraft, presetConfigValid, presetResourceKind, t])
+
+  useEffect(() => {
     if (activeMode !== 'teller' || presetResourceKind !== 'opening' || !openingSelectorDraft) return
     if (!presetConfigValid) {
       if (openingSelectorAutoSaveTimer.current) {
@@ -1388,6 +1530,15 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     })
   }
 
+  const flushActorStateAutoSave = () => {
+    if (!actorStateAutoSaveTimer.current) return
+    window.clearTimeout(actorStateAutoSaveTimer.current)
+    actorStateAutoSaveTimer.current = null
+    void saveActorStateDraft('auto').catch((err) => {
+      console.warn('[actor-state-editor] 切换条目前自动保存 Actor 状态系统失败', err)
+    })
+  }
+
   const flushOpeningSelectorAutoSave = () => {
     if (!openingSelectorAutoSaveTimer.current) return
     window.clearTimeout(openingSelectorAutoSaveTimer.current)
@@ -1411,6 +1562,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     if (presetResourceKind === 'director') flushStoryDirectorAutoSave()
     if (presetResourceKind === 'event') flushEventPackageAutoSave()
     if (presetResourceKind === 'rule') flushRuleSystemAutoSave()
+    if (presetResourceKind === 'actor-state') flushActorStateAutoSave()
     if (presetResourceKind === 'opening') flushOpeningSelectorAutoSave()
     return true
   }
@@ -1453,6 +1605,14 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     setPresetResourceKind('rule')
     setActiveTellerId((current) => current === TELLER_CONFIG_AGENT_ENTRY_ID ? '' : current)
     setActiveRuleSystemId(id)
+  }
+
+  const handleSelectActorState = (id: string) => {
+    if (presetResourceKind === 'actor-state' && activeActorStateId === id && activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID) return
+    if (!flushPresetResourceAutoSave()) return
+    setPresetResourceKind('actor-state')
+    setActiveTellerId((current) => current === TELLER_CONFIG_AGENT_ENTRY_ID ? '' : current)
+    setActiveActorStateId(id)
   }
 
   const handleSelectOpeningSelector = (id: string) => {
@@ -1612,9 +1772,10 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
   const isImagePresetEditorActive = activeMode === 'teller' && presetResourceKind === 'image'
   const isEventPackageEditorActive = activeMode === 'teller' && presetResourceKind === 'event'
   const isRuleSystemEditorActive = activeMode === 'teller' && presetResourceKind === 'rule'
+  const isActorStateEditorActive = activeMode === 'teller' && presetResourceKind === 'actor-state'
   const isOpeningSelectorEditorActive = activeMode === 'teller' && presetResourceKind === 'opening'
   const presetConfigInvalid = activeMode === 'teller' && isPresetConfigResourceKind(presetResourceKind) && !presetConfigValid
-  const canRestoreBuiltinPreset = activeMode === 'teller' && !isTellerConfigAgentActive && currentPresetBuiltinOverridden(presetResourceKind, tellerDraft, storyDirectorDraft, imagePresetDraft, eventPackageDraft, ruleSystemDraft, openingSelectorDraft)
+  const canRestoreBuiltinPreset = activeMode === 'teller' && !isTellerConfigAgentActive && currentPresetBuiltinOverridden(presetResourceKind, tellerDraft, storyDirectorDraft, imagePresetDraft, eventPackageDraft, ruleSystemDraft, actorStateDraft, openingSelectorDraft)
   const saveDisabled = saving
     || presetConfigInvalid
     || (activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && !draft)
@@ -1623,6 +1784,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
     || (activeMode === 'teller' && presetResourceKind === 'image' && !imagePresetDraft)
     || (activeMode === 'teller' && presetResourceKind === 'event' && !eventPackageDraft)
     || (activeMode === 'teller' && presetResourceKind === 'rule' && !ruleSystemDraft)
+    || (activeMode === 'teller' && presetResourceKind === 'actor-state' && !actorStateDraft)
     || (activeMode === 'teller' && presetResourceKind === 'opening' && !openingSelectorDraft)
   const directoryPanel = (
     <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
@@ -1636,7 +1798,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
         </div>
       )}
 
-      {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} onBatchGenerate={handleOpenLoreImageBatch} /> : activeMode === 'creator' ? <CreatorDirectory /> : <TellerDirectory resourceKind={presetResourceKind} usageMode={presetUsageMode} tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} eventPackages={eventPackages} ruleSystems={ruleSystems} openingSelectors={openingSelectors} activeTellerId={activeTellerId} activeStoryDirectorId={activeStoryDirectorId} activeImagePresetId={activeImagePresetId} activeEventPackageId={activeEventPackageId} activeRuleSystemId={activeRuleSystemId} activeOpeningSelectorId={activeOpeningSelectorId} saving={saving} onSelectTeller={handleSelectTeller} onSelectStoryDirector={handleSelectStoryDirector} onSelectImagePreset={handleSelectImagePreset} onSelectEventPackage={handleSelectEventPackage} onSelectRuleSystem={handleSelectRuleSystem} onSelectOpeningSelector={handleSelectOpeningSelector} onCreateTeller={() => void handleCreateTeller()} onCreateStoryDirector={() => void handleCreateStoryDirector()} onCreateImagePreset={() => void handleCreateImagePreset()} onCreateEventPackage={() => void handleCreateEventPackage()} onCreateRuleSystem={() => void handleCreateRuleSystem()} onCreateOpeningSelector={() => void handleCreateOpeningSelector()} />}
+      {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} onBatchGenerate={handleOpenLoreImageBatch} /> : activeMode === 'creator' ? <CreatorDirectory /> : <TellerDirectory resourceKind={presetResourceKind} usageMode={presetUsageMode} tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} eventPackages={eventPackages} ruleSystems={ruleSystems} actorStates={actorStates} openingSelectors={openingSelectors} activeTellerId={activeTellerId} activeStoryDirectorId={activeStoryDirectorId} activeImagePresetId={activeImagePresetId} activeEventPackageId={activeEventPackageId} activeRuleSystemId={activeRuleSystemId} activeActorStateId={activeActorStateId} activeOpeningSelectorId={activeOpeningSelectorId} saving={saving} onSelectTeller={handleSelectTeller} onSelectStoryDirector={handleSelectStoryDirector} onSelectImagePreset={handleSelectImagePreset} onSelectEventPackage={handleSelectEventPackage} onSelectRuleSystem={handleSelectRuleSystem} onSelectActorState={handleSelectActorState} onSelectOpeningSelector={handleSelectOpeningSelector} onCreateTeller={() => void handleCreateTeller()} onCreateStoryDirector={() => void handleCreateStoryDirector()} onCreateImagePreset={() => void handleCreateImagePreset()} onCreateEventPackage={() => void handleCreateEventPackage()} onCreateRuleSystem={() => void handleCreateRuleSystem()} onCreateActorState={() => void handleCreateActorState()} onCreateOpeningSelector={() => void handleCreateOpeningSelector()} />}
     </div>
   )
   return (
@@ -1666,10 +1828,10 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
             )}
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              {isCreatorActive ? <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : isOpeningPresetActive || isImagePresetEditorActive ? <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : isStoryDirectorEditorActive || isEventPackageEditorActive || isRuleSystemEditorActive || isOpeningSelectorEditorActive ? <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <ModeIcon mode={activeMode} />}
-              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.title') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : isCreatorActive ? CREATOR_PATH : isOpeningPresetActive ? t('settingPanel.openingPreset.title') : editorTitle(activeMode, draft, tellerDraft, storyDirectorDraft, imagePresetDraft, eventPackageDraft, ruleSystemDraft, openingSelectorDraft, presetResourceKind, t)}</h2>
+              {isCreatorActive ? <BookMarked className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : isOpeningPresetActive || isImagePresetEditorActive ? <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : isStoryDirectorEditorActive || isEventPackageEditorActive || isRuleSystemEditorActive || isActorStateEditorActive || isOpeningSelectorEditorActive ? <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <ModeIcon mode={activeMode} />}
+              <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.title') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : isCreatorActive ? CREATOR_PATH : isOpeningPresetActive ? t('settingPanel.openingPreset.title') : editorTitle(activeMode, draft, tellerDraft, storyDirectorDraft, imagePresetDraft, eventPackageDraft, ruleSystemDraft, actorStateDraft, openingSelectorDraft, presetResourceKind, t)}</h2>
             </div>
-            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : isCreatorActive ? t('settingPanel.editor.creatorSubtitle') : isOpeningPresetActive ? t('settingPanel.openingPreset.subtitle') : editorSubtitle(activeMode, draft, tellerDraft, storyDirectorDraft, imagePresetDraft, eventPackageDraft, ruleSystemDraft, openingSelectorDraft, presetResourceKind, t)}</p>
+            <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isLoreConfigAgentActive ? t('settingPanel.loreAgent.subtitle') : isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : isCreatorActive ? t('settingPanel.editor.creatorSubtitle') : isOpeningPresetActive ? t('settingPanel.openingPreset.subtitle') : editorSubtitle(activeMode, draft, tellerDraft, storyDirectorDraft, imagePresetDraft, eventPackageDraft, ruleSystemDraft, actorStateDraft, openingSelectorDraft, presetResourceKind, t)}</p>
           </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -1706,6 +1868,11 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
             )}
             {activeMode === 'teller' && presetResourceKind === 'rule' && !isTellerConfigAgentActive && (
               <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !ruleSystemDraft?.custom} onClick={handleDelete} aria-label={t('settingPanel.deleteRuleSystem')}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
+            {activeMode === 'teller' && presetResourceKind === 'actor-state' && !isTellerConfigAgentActive && (
+              <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !actorStateDraft?.custom} onClick={handleDelete} aria-label={t('settingPanel.deleteActorState')}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             )}
@@ -1751,11 +1918,12 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
             workspace={workspace}
             origin="teller"
             resourceId={TELLER_CONFIG_AGENT_ENTRY_ID}
-	            context={{ teller_count: String(tellers.length), event_package_count: String(eventPackages.length), rule_system_count: String(ruleSystems.length), opening_selector_count: String(openingSelectors.length), story_director_count: String(storyDirectors.length), image_preset_count: String(imagePresets.length), ...tellerAgentContext }}
+	            context={{ teller_count: String(tellers.length), event_package_count: String(eventPackages.length), rule_system_count: String(ruleSystems.length), actor_state_count: String(actorStates.length), opening_selector_count: String(openingSelectors.length), story_director_count: String(storyDirectors.length), image_preset_count: String(imagePresets.length), ...tellerAgentContext }}
             onMutated={() => {
 	              void refreshTellers()
 	              void refreshEventPackages()
 	              void refreshRuleSystems()
+	              void refreshActorStates()
 	              void refreshOpeningSelectors()
 	              void refreshStoryDirectors()
 	              void refreshImagePresets()
@@ -1767,6 +1935,8 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 	          <EventPackageEditor draft={eventPackageDraft} setDraft={setEventPackageDraft} tagDraft={eventPackageTagDraft} setTagDraft={setEventPackageTagDraft} onSave={handleSave} onValidityChange={setPresetConfigValid} />
 	        ) : activeMode === 'teller' && presetResourceKind === 'rule' ? (
 	          <RuleSystemEditor draft={ruleSystemDraft} setDraft={setRuleSystemDraft} tagDraft={ruleSystemTagDraft} setTagDraft={setRuleSystemTagDraft} onSave={handleSave} onValidityChange={setPresetConfigValid} />
+	        ) : activeMode === 'teller' && presetResourceKind === 'actor-state' ? (
+	          <ActorStateEditor draft={actorStateDraft} setDraft={setActorStateDraft} tagDraft={actorStateTagDraft} setTagDraft={setActorStateTagDraft} onSave={handleSave} onValidityChange={setPresetConfigValid} />
 	        ) : activeMode === 'teller' && presetResourceKind === 'opening' ? (
 	          <OpeningSelectorEditor draft={openingSelectorDraft} setDraft={setOpeningSelectorDraft} tagDraft={openingSelectorTagDraft} setTagDraft={setOpeningSelectorTagDraft} onSave={handleSave} onValidityChange={setPresetConfigValid} />
 	        ) : activeMode === 'teller' && presetResourceKind === 'director' ? (
@@ -1775,6 +1945,7 @@ export function SettingPanel({ mode, workspace = '', tellers: externalTellers = 
 	            tellers={tellers}
 	            eventPackages={eventPackages}
 	            ruleSystems={ruleSystems}
+	            actorStates={actorStates}
 	            openingSelectors={openingSelectors}
 	            imagePresets={imagePresets}
 	            setDraft={setStoryDirectorDraft}
@@ -2182,23 +2353,25 @@ function panelTitle(mode: SettingPanelMode, t: (key: string) => string) {
   return t('settingPanel.mode.lore')
 }
 
-function editorTitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null, storyDirectorDraft: StoryDirector | null, imagePresetDraft: ImagePreset | null, eventPackageDraft: EventPackageModule | null, ruleSystemDraft: RuleSystemModule | null, openingSelectorDraft: OpeningSelectorModule | null, presetResourceKind: PresetResourceKind, t: (key: string) => string) {
+function editorTitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null, storyDirectorDraft: StoryDirector | null, imagePresetDraft: ImagePreset | null, eventPackageDraft: EventPackageModule | null, ruleSystemDraft: RuleSystemModule | null, actorStateDraft: ActorStateModule | null, openingSelectorDraft: OpeningSelectorModule | null, presetResourceKind: PresetResourceKind, t: (key: string) => string) {
   if (mode === 'creator') return CREATOR_PATH
   if (mode === 'teller' && presetResourceKind === 'image') return imagePresetDraft?.name || t('settingPanel.editor.defaultImagePreset')
   if (mode === 'teller' && presetResourceKind === 'director') return storyDirectorDraft?.name || t('settingPanel.editor.defaultStoryDirector')
   if (mode === 'teller' && presetResourceKind === 'event') return eventPackageDraft?.name || t('settingPanel.editor.defaultEventPackage')
   if (mode === 'teller' && presetResourceKind === 'rule') return ruleSystemDraft?.name || t('settingPanel.editor.defaultRuleSystem')
+  if (mode === 'teller' && presetResourceKind === 'actor-state') return actorStateDraft?.name || t('settingPanel.editor.defaultActorState')
   if (mode === 'teller' && presetResourceKind === 'opening') return openingSelectorDraft?.name || t('settingPanel.editor.defaultOpeningSelector')
   if (mode === 'teller') return tellerDraft?.name || t('settingPanel.editor.defaultTeller')
   return draft?.name || t('settingPanel.mode.lore')
 }
 
-function editorSubtitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null, storyDirectorDraft: StoryDirector | null, imagePresetDraft: ImagePreset | null, eventPackageDraft: EventPackageModule | null, ruleSystemDraft: RuleSystemModule | null, openingSelectorDraft: OpeningSelectorModule | null, presetResourceKind: PresetResourceKind, t: (key: string) => string) {
+function editorSubtitle(mode: SettingPanelMode, draft: LoreItem | null, tellerDraft: Teller | null, storyDirectorDraft: StoryDirector | null, imagePresetDraft: ImagePreset | null, eventPackageDraft: EventPackageModule | null, ruleSystemDraft: RuleSystemModule | null, actorStateDraft: ActorStateModule | null, openingSelectorDraft: OpeningSelectorModule | null, presetResourceKind: PresetResourceKind, t: (key: string) => string) {
   if (mode === 'creator') return t('settingPanel.editor.creatorSubtitle')
   if (mode === 'teller' && presetResourceKind === 'image') return imagePresetDraft?.description || t('settingPanel.editor.imagePresetSubtitle')
   if (mode === 'teller' && presetResourceKind === 'director') return storyDirectorDraft?.description || t('settingPanel.editor.storyDirectorSubtitle')
   if (mode === 'teller' && presetResourceKind === 'event') return eventPackageDraft?.description || t('settingPanel.editor.eventPackageSubtitle')
   if (mode === 'teller' && presetResourceKind === 'rule') return ruleSystemDraft?.description || t('settingPanel.editor.ruleSystemSubtitle')
+  if (mode === 'teller' && presetResourceKind === 'actor-state') return actorStateDraft?.description || t('settingPanel.editor.actorStateSubtitle')
   if (mode === 'teller' && presetResourceKind === 'opening') return openingSelectorDraft?.description || t('settingPanel.editor.openingSelectorSubtitle')
   if (mode === 'teller') return tellerDraft?.description || t('settingPanel.editor.tellerSubtitle')
   if (!draft) return t('settingPanel.editor.loreSubtitle')
@@ -2255,6 +2428,7 @@ function newStoryDirectorDraft(): Partial<StoryDirector> {
       narrative_style_id: 'classic',
       event_package_ids: ['default'],
       rule_system_id: 'default',
+      actor_state_id: 'default',
       opening_selector_id: 'default',
       image_preset_id: 'game-cg',
     },
@@ -2273,6 +2447,10 @@ function newStoryDirectorDraft(): Partial<StoryDirector> {
     },
     trpg_system: {
       rule_templates: [],
+    },
+    actor_state: {
+      templates: [],
+      initial_actors: [],
     },
     opening_selector: {
       enabled: true,
@@ -2307,6 +2485,30 @@ function newRuleSystemDraft(): Partial<RuleSystemModule> {
     },
     trpg_system: {
       rule_templates: [],
+    },
+    tags: ['自定义'],
+    version: 1,
+    custom: true,
+  }
+}
+
+function newActorStateDraft(): Partial<ActorStateModule> {
+  return {
+    id: `custom-actor-state-${Date.now()}`,
+    name: '自定义 Actor 状态系统',
+    description: '新的 Actor 状态系统，配置关键角色模板、字段 schema 和初始 Actor。',
+    actor_state: {
+      templates: [
+        {
+          id: 'protagonist',
+          name: '主角',
+          description: '主角可计算状态模板。',
+          fields: [
+            { id: 'hp', path: 'resources.hp', name: '生命', type: 'number', default: 10, min: 0, max: 10, visibility: 'visible' },
+          ],
+        },
+      ],
+      initial_actors: [{ id: 'protagonist', name: '主角', template_id: 'protagonist', role: 'protagonist' }],
     },
     tags: ['自定义'],
     version: 1,
@@ -2370,6 +2572,13 @@ function ruleSystemDraftSignature(item: Partial<RuleSystemModule>, tagDraft: str
   })
 }
 
+function actorStateDraftSignature(item: Partial<ActorStateModule>, tagDraft: string) {
+  return JSON.stringify({
+    ...item,
+    tags: splitTags(tagDraft),
+  })
+}
+
 function openingSelectorDraftSignature(item: Partial<OpeningSelectorModule>, tagDraft: string) {
   return JSON.stringify({
     ...item,
@@ -2378,7 +2587,7 @@ function openingSelectorDraftSignature(item: Partial<OpeningSelectorModule>, tag
 }
 
 function isPresetConfigResourceKind(kind: PresetResourceKind) {
-  return kind === 'director' || kind === 'event' || kind === 'rule' || kind === 'opening'
+  return kind === 'director' || kind === 'event' || kind === 'rule' || kind === 'actor-state' || kind === 'opening'
 }
 
 function currentPresetBuiltinOverridden(
@@ -2388,12 +2597,14 @@ function currentPresetBuiltinOverridden(
   image: ImagePreset | null,
   event: EventPackageModule | null,
   rule: RuleSystemModule | null,
+  actorState: ActorStateModule | null,
   opening: OpeningSelectorModule | null,
 ) {
   if (kind === 'director') return Boolean(director?.builtin_overridden)
   if (kind === 'image') return Boolean(image?.builtin_overridden)
   if (kind === 'event') return Boolean(event?.builtin_overridden)
   if (kind === 'rule') return Boolean(rule?.builtin_overridden)
+  if (kind === 'actor-state') return Boolean(actorState?.builtin_overridden)
   if (kind === 'opening') return Boolean(opening?.builtin_overridden)
   return Boolean(teller?.builtin_overridden)
 }
@@ -2408,6 +2619,10 @@ function cloneEventPackage(item: EventPackageModule): EventPackageModule {
 
 function cloneRuleSystem(item: RuleSystemModule): RuleSystemModule {
   return JSON.parse(JSON.stringify(item)) as RuleSystemModule
+}
+
+function cloneActorState(item: ActorStateModule): ActorStateModule {
+  return JSON.parse(JSON.stringify(item)) as ActorStateModule
 }
 
 function cloneOpeningSelector(item: OpeningSelectorModule): OpeningSelectorModule {

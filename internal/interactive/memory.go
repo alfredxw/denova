@@ -146,7 +146,12 @@ func (s *Store) SaveStoryMemoryStructure(storyID string, req StoryMemoryStructur
 		if book.Structures[i].ID != structure.ID {
 			continue
 		}
+		if book.Structures[i].ReadOnly {
+			return StoryMemoryStructure{}, fmt.Errorf("故事记忆结构为只读派生表，不能编辑: %s", structure.ID)
+		}
 		structure.BuiltIn = book.Structures[i].BuiltIn
+		structure.ReadOnly = book.Structures[i].ReadOnly
+		structure.Derived = book.Structures[i].Derived
 		structure.CreatedAt = firstMemoryText(book.Structures[i].CreatedAt, now)
 		structure.UpdatedAt = now
 		book.Structures[i] = structure
@@ -184,6 +189,9 @@ func (s *Store) DeleteStoryMemoryStructure(storyID, structureID string) error {
 	removed := false
 	for _, structure := range book.Structures {
 		if structure.ID == structureID {
+			if structure.ReadOnly {
+				return fmt.Errorf("故事记忆结构为只读派生表，不能删除: %s", structureID)
+			}
 			removed = true
 			continue
 		}
@@ -930,7 +938,7 @@ func normalizeStoryMemoryInterval(value int) int {
 
 func defaultStoryMemoryStructures() []StoryMemoryStructure {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	return []StoryMemoryStructure{
+	structures := []StoryMemoryStructure{
 		defaultStoryMemoryStructure("current_state", "当前状态", "记录当前剧情线的全局时间、地点和场景状态。此表有且仅有一行。", "每轮整理必须更新为当前回合结束后的状态；时间和天数必须自洽，不得按现实消息轮次盲目累加。", "singleton", "", true, 10, []StoryMemoryField{
 			defaultStoryMemoryField("story_start_date", "故事开局日期", "当前故事线的剧内开局日期。", "格式尽量使用 YYYY-MM-DD；初始化后除非用户明确重置开局时间，否则不要改动。", true, 10),
 			defaultStoryMemoryField("location", "当前详细地点", "主角当前所在的具体场景名称。", "填写具体场景名，不要只写宽泛区域。", true, 20),
@@ -1059,6 +1067,22 @@ func defaultStoryMemoryStructures() []StoryMemoryStructure {
 			defaultStoryMemoryField("continuity_notes", "连续性备注", "需要长期保持一致的成人向连续性信息。", "压缩记录，避免露骨流水账。", false, 40),
 		}, now),
 	}
+	for i := range structures {
+		if isDerivedStoryMemoryStructureID(structures[i].ID) {
+			structures[i].ReadOnly = true
+			structures[i].Derived = true
+		}
+	}
+	return structures
+}
+
+func isDerivedStoryMemoryStructureID(id string) bool {
+	switch sanitizeMemoryID(id) {
+	case "current_state", "rule_state_summary":
+		return true
+	default:
+		return false
+	}
 }
 
 func defaultStoryMemoryStructure(id, name, description, generationInstruction, mode, keyFieldID string, enabled bool, order int, fields []StoryMemoryField, now string) StoryMemoryStructure {
@@ -1126,11 +1150,17 @@ func normalizeStoryMemoryStructure(req StoryMemoryStructureRequest, now string) 
 		KeyFieldID:            sanitizeMemoryID(req.KeyFieldID),
 		Enabled:               req.Enabled,
 		Order:                 req.Order,
+		ReadOnly:              req.ReadOnly,
+		Derived:               req.Derived,
 		Fields:                normalizeStoryMemoryFields(req.Fields),
 		UpdatedAt:             now,
 	}
 	if structure.Mode == "" {
 		structure.Mode = "append"
+	}
+	if isDerivedStoryMemoryStructureID(structure.ID) {
+		structure.ReadOnly = true
+		structure.Derived = true
 	}
 	return structure
 }
@@ -1145,6 +1175,10 @@ func normalizeStoryMemoryStructureFromStored(structure StoryMemoryStructure) Sto
 		structure.Mode = "append"
 	}
 	structure.KeyFieldID = sanitizeMemoryID(structure.KeyFieldID)
+	if isDerivedStoryMemoryStructureID(structure.ID) {
+		structure.ReadOnly = true
+		structure.Derived = true
+	}
 	structure.Fields = normalizeStoryMemoryFields(structure.Fields)
 	return structure
 }
@@ -1384,6 +1418,9 @@ func saveStoryMemoryRecordLocked(book *interactiveMemoryBook, branchID, anchorTu
 	if structure.ID == "" {
 		return StoryMemoryRecord{}, fmt.Errorf("故事记忆结构不存在: %s", req.StructureID)
 	}
+	if manual && structure.ReadOnly {
+		return StoryMemoryRecord{}, fmt.Errorf("故事记忆结构为只读派生表，不能手动编辑: %s", structure.ID)
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	record := StoryMemoryRecord{
 		ID:           sanitizeMemoryID(req.ID),
@@ -1496,6 +1533,7 @@ func applyStoryMemoryPatchLocked(book *interactiveMemoryBook, branchID, anchorTu
 			for i := range book.Records {
 				if book.Records[i].ID == record.ID {
 					book.Records[i].Source = "agent"
+					record.Source = "agent"
 					break
 				}
 			}

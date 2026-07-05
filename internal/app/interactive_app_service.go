@@ -25,7 +25,7 @@ const (
 	storyMemoryGenerateSourceAuto   = "auto"
 )
 
-var generateInteractiveStateForStoryMemory = agent.GenerateInteractiveState
+var generateInteractiveStateForStoryMemory interactiveMemoryOutputGenerator
 var generateInteractiveDirectorForPlan = func(ctx context.Context, cfg *config.Config, state *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
 	return agent.GenerateInteractiveDirectorWithTools(ctx, cfg, state, toolContext, instruction)
 }
@@ -466,14 +466,16 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 	cfg := a.cfg
 	workspace := a.workspace
 	sessionStore := a.sessionStore
+	bookState := a.bookState
 	a.mu.Unlock()
 	if store == nil || cfg == nil {
 		return interactive.StoryMemoryState{}, 0, ErrNoWorkspace
 	}
-	snapshot, err := store.Snapshot(storyID, branchID)
+	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
 		return interactive.StoryMemoryState{}, 0, err
 	}
+	snapshot := storyCtx.Snapshot
 	if snapshot.CurrentTurn == nil {
 		return interactive.StoryMemoryState{}, 0, fmt.Errorf("当前分支还没有可整理的互动回合")
 	}
@@ -498,11 +500,19 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 			"content": "已读取当前剧情线、当前回合和有界故事记忆上下文。",
 		}})
 	}
-	generate := generateInteractiveStateForStoryMemory
-	if emit != nil {
-		generate = func(ctx context.Context, cfg *config.Config, instruction string) (string, error) {
-			return agent.StreamInteractiveState(ctx, cfg, instruction, emit)
+	director := loadStoryDirector(runtimeCfg.NovaDir, storyCtx.Meta.StoryDirectorID)
+	toolContext := agent.InteractiveStoryToolContext{
+		Store:      store,
+		StoryID:    storyID,
+		BranchID:   snapshot.BranchID,
+		TurnID:     snapshot.CurrentTurn.ID,
+		ActorState: director.ActorState,
+	}
+	generate := func(ctx context.Context, cfg *config.Config, instruction string) (string, error) {
+		if generateInteractiveStateForStoryMemory != nil {
+			return generateInteractiveStateForStoryMemory(ctx, cfg, instruction)
 		}
+		return agent.GenerateInteractiveStateWithTools(ctx, cfg, bookState, toolContext, instruction, emit)
 	}
 	var patchCount int
 	result, err := runInteractiveMemoryAgentWithRetry(runCtx, &runtimeCfg, instruction, sessionStore, generate, func(result interactiveMemoryAgentResult) error {
@@ -538,18 +548,8 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
 		return interactive.StoryMemoryState{}, 0, err
 	}
-	if len(result.StateOps) > 0 && snapshot.CurrentTurn.StateStatus == "pending" {
-		if _, err := store.AppendStateDelta(storyID, interactive.AppendStateDeltaRequest{
-			ParentID: snapshot.CurrentTurn.ID,
-			BranchID: snapshot.BranchID,
-			Ops:      result.StateOps,
-		}); err != nil {
-			if source == storyMemoryGenerateSourceAuto {
-				return skipAutoStoryMemoryGenerate(store, storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, err, emit)
-			}
-			_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
-			return interactive.StoryMemoryState{}, patchCount, err
-		}
+	if len(result.StateOps) > 0 {
+		log.Printf("[interactive-memory-agent] ignored legacy state_ops story_id=%s branch_id=%s turn_id=%s count=%d", storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, len(result.StateOps))
 	}
 	if err := store.MarkInteractiveMemoryReady(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID); err != nil {
 		return interactive.StoryMemoryState{}, patchCount, err
@@ -1308,6 +1308,66 @@ func (s *InteractiveAppService) DeleteRuleSystem(id string) error {
 		return ErrNoWorkspace
 	}
 	return interactive.NewRuleSystemLibrary(cfg.NovaDir).Delete(id)
+}
+
+func (a *App) ActorStates() ([]interactive.ActorStateModule, error) {
+	return a.interactiveService().ActorStates()
+}
+
+func (s *InteractiveAppService) ActorStates() ([]interactive.ActorStateModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return nil, ErrNoWorkspace
+	}
+	return interactive.NewActorStateLibrary(cfg.NovaDir).List()
+}
+
+func (a *App) ActorState(id string) (interactive.ActorStateModule, error) {
+	return a.interactiveService().ActorState(id)
+}
+
+func (s *InteractiveAppService) ActorState(id string) (interactive.ActorStateModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.ActorStateModule{}, ErrNoWorkspace
+	}
+	return interactive.NewActorStateLibrary(cfg.NovaDir).Get(id)
+}
+
+func (a *App) CreateActorState(item interactive.ActorStateModule) (interactive.ActorStateModule, error) {
+	return a.interactiveService().CreateActorState(item)
+}
+
+func (s *InteractiveAppService) CreateActorState(item interactive.ActorStateModule) (interactive.ActorStateModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.ActorStateModule{}, ErrNoWorkspace
+	}
+	return interactive.NewActorStateLibrary(cfg.NovaDir).Create(item)
+}
+
+func (a *App) UpdateActorState(id string, item interactive.ActorStateModule, baseRevision ...string) (interactive.ActorStateModule, error) {
+	return a.interactiveService().UpdateActorState(id, item, firstRevision(baseRevision))
+}
+
+func (s *InteractiveAppService) UpdateActorState(id string, item interactive.ActorStateModule, baseRevision string) (interactive.ActorStateModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.ActorStateModule{}, ErrNoWorkspace
+	}
+	return interactive.NewActorStateLibrary(cfg.NovaDir).Update(id, item, baseRevision)
+}
+
+func (a *App) DeleteActorState(id string) error {
+	return a.interactiveService().DeleteActorState(id)
+}
+
+func (s *InteractiveAppService) DeleteActorState(id string) error {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return ErrNoWorkspace
+	}
+	return interactive.NewActorStateLibrary(cfg.NovaDir).Delete(id)
 }
 
 func (a *App) OpeningSelectors() ([]interactive.OpeningSelectorModule, error) {

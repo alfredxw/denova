@@ -24,6 +24,8 @@ type InteractiveStoryToolContext struct {
 	Store                    *interactive.Store
 	StoryID                  string
 	BranchID                 string
+	TurnID                   string
+	ActorState               interactive.StoryDirectorActorStateSystem
 	DirectorPlanAllowedPaths []string
 	PrepareTurn              func(context.Context, interactive.TurnCheckRequest) (interactive.RuleResolution, error)
 }
@@ -39,6 +41,10 @@ type listInteractiveMemoriesInput struct {
 type readInteractiveMemoriesInput struct {
 	IDs   []string `json:"ids" jsonschema:"description=要读取正文的互动长期记忆 ID 列表；可按需一次读取多个相关记忆"`
 	Query string   `json:"query,omitempty" jsonschema:"description=可选，说明本次读取记忆是为了回答哪类当前行动或线索；用于记录最近召回"`
+}
+
+type applyActorStatePatchInput struct {
+	Patches []interactive.ActorStatePatch `json:"patches" jsonschema:"description=要写入的关键 Actor 结构化状态更新。每条 patch 必须包含 actor_id、template_id、state 和 reason；state 只能使用 Actor State schema 中声明的字段路径。"`
 }
 
 type interactiveMemoryToolOutput struct {
@@ -67,6 +73,13 @@ type interactiveMemoryIndexItem struct {
 	Importance int      `json:"importance"`
 	Manual     bool     `json:"manual,omitempty"`
 	UpdatedAt  string   `json:"updated_at,omitempty"`
+}
+
+type actorStatePatchToolOutput struct {
+	AppliedActors []string `json:"applied_actors"`
+	Ops           int      `json:"ops"`
+	BranchID      string   `json:"branch_id"`
+	TurnID        string   `json:"turn_id"`
 }
 
 func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
@@ -139,6 +152,46 @@ func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool
 		return nil, err
 	}
 	return []tool.BaseTool{listTool, readTool}, nil
+}
+
+func newInteractiveActorStateTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
+	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
+	ctx.BranchID = strings.TrimSpace(ctx.BranchID)
+	ctx.TurnID = strings.TrimSpace(ctx.TurnID)
+	if ctx.Store == nil || ctx.StoryID == "" || ctx.TurnID == "" {
+		return nil, nil
+	}
+	applyTool, err := utils.InferTool("apply_actor_state_patch", "创建或更新关键 Actor 的结构化状态。只用于主角、重要角色、反派、势力型 Actor 等会影响后续承接或规则检定的对象；路人和一次性 NPC 留在故事记忆，不写入 Actor State。后端会按 Actor State schema 校验 actor 类型、字段路径、值类型和可见性，并把变更写成可重放 StateOp。", func(callCtx context.Context, input applyActorStatePatchInput) (string, error) {
+		_ = callCtx
+		result, err := interactive.ValidateActorStatePatches(ctx.ActorState, input.Patches, ctx.TurnID)
+		if err != nil {
+			return "", err
+		}
+		if len(result.Ops) == 0 {
+			return "", fmt.Errorf("Actor 状态更新没有产生可写入操作")
+		}
+		if _, err := ctx.Store.AppendStateDelta(ctx.StoryID, interactive.AppendStateDeltaRequest{
+			ParentID: ctx.TurnID,
+			BranchID: ctx.BranchID,
+			Ops:      result.Ops,
+		}); err != nil {
+			return "", err
+		}
+		data, err := json.MarshalIndent(actorStatePatchToolOutput{
+			AppliedActors: result.AppliedActors,
+			Ops:           len(result.Ops),
+			BranchID:      ctx.BranchID,
+			TurnID:        ctx.TurnID,
+		}, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return []tool.BaseTool{applyTool}, nil
 }
 
 func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {

@@ -39,6 +39,11 @@ func TestConfigManagerResourceSkillNames(t *testing.T) {
 			want: []string{configManagerStoryDirectorSkill},
 		},
 		{
+			name: "actor state signal",
+			req:  ConfigManagerRequest{Origin: "actor_state", Context: map[string]string{"actor_state_count": "1", "selected_resource": "Actor State"}},
+			want: []string{configManagerTellerSkill, configManagerStoryDirectorSkill, configManagerImagePresetSkill},
+		},
+		{
 			name: "skills origin",
 			req:  ConfigManagerRequest{Origin: "skills", ResourceID: "beats"},
 			want: []string{configManagerSkillsSkill},

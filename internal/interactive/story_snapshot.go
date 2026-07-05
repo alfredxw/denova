@@ -104,6 +104,7 @@ func turnVersionKey(branchID, parentID string) string {
 func initialStoryState() map[string]any {
 	return map[string]any{
 		"on_stage":    []any{},
+		"actors":      map[string]any{},
 		"characters":  map[string]any{},
 		"events":      []any{},
 		"scene":       map[string]any{},

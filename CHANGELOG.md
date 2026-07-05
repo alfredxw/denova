@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式：新增导演子模块 Actor State，支持关键 Actor 类型模板、字段 schema、初始 Actor、`/api/actor-states` CRUD、配置页资源入口和配置管理 Agent 读写工具；记忆整理 Agent 新增 `apply_actor_state_patch` 工具，用于按 schema 校验并写入可重放结构化状态。
+- Game Mode: Added the Actor State director submodule with key-actor templates, field schemas, initial actors, `/api/actor-states` CRUD, Presets resource editing, and Config Manager Agent tools. The memory continuity agent now has `apply_actor_state_patch` for schema-validated replayable structured state updates.
 - 游戏模式：导演编排右栏在当前分支没有导演规划或规则审计时提供手动触发规划入口，并在规划中复用 Chat 消息列表展示后台导演状态与 director.md 进度。
 - Game Mode: The Director sidebar now offers a manual planning action when the current branch has no Director plan or rule audit, and reuses the chat message list to show background Director status and director.md progress while planning.
 - WebUI：创作 Agent 与游戏模式输入框支持 `/Skill`、`@文件`、`@资料` 和 `#场景` 的文本内联 token 展示；选中后以主题蓝灰色加粗显示并可作为整体删除，发送协议保持兼容纯文本与现有引用字段。
@@ -57,6 +59,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 不兼容变更：游戏模式结构化状态改为 Actor-centric 形态，旧 `resources.*`、`attributes.*`、`relations.*`、`conditions.*` 等全局状态路径会迁移到默认主角 Actor，例如 `actors.protagonist.state.resources.hp`；规则检定和数值计算以 Actor State 为真源，故事记忆中的 `current_state` 与 `rule_state_summary` 改为只读派生摘要，不再通过编辑记忆改变真实状态。
+- Breaking: Game Mode structured state is now actor-centric. Legacy global paths such as `resources.*`, `attributes.*`, `relations.*`, and `conditions.*` migrate to the default protagonist actor, for example `actors.protagonist.state.resources.hp`; rule checks and numeric calculations use Actor State as the source of truth, while story-memory `current_state` and `rule_state_summary` are read-only derived summaries and no longer mutate real state when edited.
 - 方案预设：进入页面时默认同时展开“故事导演”和“叙事风格”，目录标题与条目长文本会截断在侧栏内；内置事件包名称、事件卡展示文本和默认导演规划模板改为中文标题。
 - Presets: The directory now opens Story Directors and Narrative Styles by default, truncates long directory labels inside the sidebar, and defaults built-in event package names, event-card display text, and Director planning templates to Chinese headings.
 - 方案预设：默认“爽文核心事件包”的事件卡改为差异化预设内容，每类事件都有独立的背景融合、起承转合、回收、奖惩和约束说明。

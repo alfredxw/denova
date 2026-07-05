@@ -97,6 +97,30 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 		t.Fatalf("unexpected restored rule system: %#v", restoredRule)
 	}
 
+	actorLibrary := NewActorStateLibrary(novaDir)
+	actorState, err := actorLibrary.Get(DefaultActorStateModuleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actorState.Name = "我的 Actor 状态"
+	overriddenActorState, err := actorLibrary.Update(DefaultActorStateModuleID, actorState, actorState.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update built-in actor state should create override: %v", err)
+	}
+	if overriddenActorState.Custom || !overriddenActorState.BuiltinOverridden || overriddenActorState.Name != "我的 Actor 状态" {
+		t.Fatalf("unexpected actor state override: %#v", overriddenActorState)
+	}
+	if err := actorLibrary.Delete(DefaultActorStateModuleID); err != nil {
+		t.Fatalf("Delete actor state override should restore builtin: %v", err)
+	}
+	restoredActorState, err := actorLibrary.Get(DefaultActorStateModuleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredActorState.Custom || restoredActorState.BuiltinOverridden || restoredActorState.Name == "我的 Actor 状态" {
+		t.Fatalf("unexpected restored actor state: %#v", restoredActorState)
+	}
+
 	openingLibrary := NewOpeningSelectorLibrary(novaDir)
 	opening, err := openingLibrary.Get(DefaultOpeningSelectorID)
 	if err != nil {
@@ -157,6 +181,7 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	novaDir := t.TempDir()
 	eventLibrary := NewEventPackageLibrary(novaDir)
 	ruleLibrary := NewRuleSystemLibrary(novaDir)
+	actorStateLibrary := NewActorStateLibrary(novaDir)
 	openingLibrary := NewOpeningSelectorLibrary(novaDir)
 	directorLibrary := NewStoryDirectorLibrary(novaDir)
 
@@ -188,6 +213,33 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create rule system failed: %v", err)
 	}
+	actorModule, err := actorStateLibrary.Create(ActorStateModule{
+		ID:   "survival-actors",
+		Name: "生存 Actor 状态",
+		ActorState: StoryDirectorActorStateSystem{
+			Templates: []ActorStateTemplate{{
+				ID:   "protagonist",
+				Name: "主角",
+				Fields: []ActorStateField{{
+					ID:         "heat",
+					Path:       "resources.heat",
+					Name:       "热量",
+					Type:       "number",
+					Default:    float64(1),
+					Visibility: "visible",
+				}},
+			}},
+			InitialActors: []ActorStateInitialActor{{
+				ID:         DefaultActorID,
+				Name:       "主角",
+				TemplateID: "protagonist",
+				Role:       "protagonist",
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create actor state failed: %v", err)
+	}
 	openingModule, err := openingLibrary.Create(OpeningSelectorModule{
 		ID:   "wasteland-openings",
 		Name: "废土开局",
@@ -211,6 +263,7 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 			NarrativeStyleID:  "classic",
 			EventPackageIDs:   []string{eventModule.ID},
 			RuleSystemID:      ruleModule.ID,
+			ActorStateID:      actorModule.ID,
 			OpeningSelectorID: openingModule.ID,
 			ImagePresetID:     "game-cg",
 		},
@@ -224,6 +277,9 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	}
 	if len(director.StatSystem.Attributes) != 1 || director.StatSystem.Attributes[0].Path != "resources.heat" {
 		t.Fatalf("director should resolve rule module on create: %#v", director.StatSystem.Attributes)
+	}
+	if len(director.ActorState.Templates) != 1 || director.ActorState.Templates[0].ID != "protagonist" || len(director.ActorState.InitialActors) != 1 {
+		t.Fatalf("director should resolve actor state module on create: %#v", director.ActorState)
 	}
 	if !containsStateOp(director.OpeningSelector.InitialStateOps, "flags.wasteland", true) {
 		t.Fatalf("director should resolve opening module on create: %#v", director.OpeningSelector.InitialStateOps)
@@ -244,12 +300,18 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	if err := eventLibrary.Delete(eventModule.ID); err != nil {
 		t.Fatalf("delete event package failed: %v", err)
 	}
+	if err := actorStateLibrary.Delete(actorModule.ID); err != nil {
+		t.Fatalf("delete actor state failed: %v", err)
+	}
 	fallback, err := directorLibrary.Get("modular")
 	if err != nil {
 		t.Fatalf("get fallback director failed: %v", err)
 	}
 	if fallback.EventPackages[0].Events[0].DescriptionMarkdown != "v2" {
 		t.Fatalf("director should use last resolved snapshot after module deletion, got %#v", fallback.EventPackages[0].Events[0])
+	}
+	if len(fallback.ActorState.Templates) != 1 || fallback.ActorState.Templates[0].ID != "protagonist" {
+		t.Fatalf("director should use actor state snapshot after module deletion, got %#v", fallback.ActorState)
 	}
 	if fallback.ResolvedSnapshot.Status != "warning" || len(fallback.ResolvedSnapshot.Warnings) == 0 {
 		t.Fatalf("missing module should produce warning snapshot: %#v", fallback.ResolvedSnapshot)
@@ -270,6 +332,8 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 			EventPackagesDisabled:   true,
 			RuleSystemID:            "missing-rules",
 			RuleSystemDisabled:      true,
+			ActorStateID:            "missing-actors",
+			ActorStateDisabled:      true,
 			OpeningSelectorID:       "missing-opening",
 			OpeningSelectorDisabled: true,
 			ImagePresetID:           "missing-image",
@@ -301,6 +365,9 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 				Dice:       "1d20",
 				Difficulty: 10,
 			}}},
+			ActorState: StoryDirectorActorStateSystem{
+				Templates: []ActorStateTemplate{{ID: "snapshot-template", Name: "旧状态模板"}},
+			},
 			OpeningSelector: StoryDirectorOpeningSelector{
 				Enabled: true,
 				InitialStateOps: []StateOp{{
@@ -325,6 +392,9 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 	}
 	if len(director.StatSystem.Attributes) != 0 || len(director.TRPGSystem.RuleTemplates) != 0 {
 		t.Fatalf("disabled rule system should not use defaults or snapshot, got stats=%#v trpg=%#v", director.StatSystem, director.TRPGSystem)
+	}
+	if len(director.ActorState.Templates) != 0 || len(director.ActorState.InitialActors) != 0 {
+		t.Fatalf("disabled actor state should not use defaults or snapshot, got %#v", director.ActorState)
 	}
 	if director.OpeningSelector.Enabled || len(director.OpeningSelector.InitialStateOps) != 0 || len(director.OpeningSelector.TraitPools) != 0 {
 		t.Fatalf("disabled opening selector should stay off, got %#v", director.OpeningSelector)

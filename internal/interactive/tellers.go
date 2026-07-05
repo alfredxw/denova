@@ -700,7 +700,9 @@ func normalizeStateOps(ops []StateOp) []StateOp {
 	result := make([]StateOp, 0, len(ops))
 	for _, op := range ops {
 		op.Op = strings.TrimSpace(op.Op)
-		op.Path = strings.TrimSpace(op.Path)
+		op.Path = canonicalStatePath(op.Path)
+		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		op.SourceTurnID = trimBytes(op.SourceTurnID, 128)
 		if op.Op == "" || op.Path == "" {
 			continue
 		}

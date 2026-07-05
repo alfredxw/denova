@@ -852,6 +852,67 @@ func (h *Handlers) HandleRuleSystemDelete(ctx context.Context, c *app.RequestCon
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h *Handlers) HandleActorStates(ctx context.Context, c *app.RequestContext) {
+	items, err := h.app.ActorStates()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]any{"actor_states": items})
+}
+
+func (h *Handlers) HandleActorState(ctx context.Context, c *app.RequestContext) {
+	item, err := h.app.ActorState(c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleActorStateCreate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.ActorStateModule
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.CreateActorState(body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleActorStateUpdate(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		interactive.ActorStateModule
+		BaseRevision string `json:"base_revision"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.UpdateActorState(c.Param("id"), body.ActorStateModule, body.BaseRevision)
+	if err != nil {
+		if errors.Is(err, interactive.ErrActorStateRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleActorStateDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteActorState(c.Param("id")); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *Handlers) HandleOpeningSelectors(ctx context.Context, c *app.RequestContext) {
 	items, err := h.app.OpeningSelectors()
 	if err != nil {

@@ -40,6 +40,8 @@ type InteractiveStatePromptInput struct {
 	LoreItems         string
 	StoryMemorySchema string
 	StoryMemory       string
+	ActorStateSchema  string
+	ActorState        string
 	TurnHistory       string
 	UserAction        string
 	Narrative         string
@@ -323,10 +325,13 @@ func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) strin
 func BuildInteractiveStateSystemInstruction() string {
 	return strings.Join([]string{
 		"你是 Denova 游戏模式的互动记忆 Agent。",
-		"你只负责把已经生成完成的互动故事回合整理为故事记忆表格 patch JSON，不负责续写剧情。",
+		"你负责把已经生成完成的互动故事回合整理为回合连续性信息：叙事故事记忆 patch，以及必要时通过工具更新结构化 Actor State；不负责续写剧情。",
 		"必须只输出一个 JSON 对象，不要输出 Markdown、解释或代码块。",
 		"JSON 格式必须是 {\"story_memory_patches\":[...]}。",
 		"story_memory_patches 用于更新用户配置的故事记忆表；每条 patch 包含 op、structure_id、record_id、key、values 或 archived。",
+		"结构化数值、规则检定会读取 Actor State；如果主角、重要角色、反派或势力型 Actor 的结构化状态需要创建或更新，必须在同一轮内调用 apply_actor_state_patch 工具。",
+		"不要在最终 JSON 中输出 state_ops；裸 state_ops 不再是默认状态写入通道。",
+		"故事记忆里的 current_state、rule_state_summary 等状态类表是叙事性派生摘要，只用于阅读和承接；编辑或生成这些表不能改变真实 Actor State。",
 		"必须基于注入的“故事记忆结构与字段协议”输出 patch；structure_id、key_field_id、values 字段名和值的写法要求都只能来自该协议。",
 		"每次写入某张表时，values 必须按该表的字段列表逐字段填写：优先满足 required 字段，同时尽量补齐全部字段；字段值必须遵守表级 generation_instruction 和字段级 generation_instruction。",
 		"不能只填 required 字段或本回合变化字段；有既有记录时必须沿用并整合未变化字段，不得省略字段、写空字符串或 null。",
@@ -348,12 +353,18 @@ func InteractiveStateInstruction(in InteractiveStatePromptInput) string {
 	sb.WriteString("- singleton 结构维护当前状态类信息，必须表现为回合结束后的最新状态；keyed 结构按 key_field_id 对应字段 upsert，更新同一个人物、地点、物品或任务时要保留并整合原记录；append 结构只追加已经发生且后续需要承接的事实。\n")
 	sb.WriteString("- 资料库是稳定设定校准来源；故事记忆不得写入与资料库冲突的身份、规则、地点、物品或关系。若本回合正文和资料库疑似冲突，只记录已发生事实和待核对点，不要把矛盾扩写成新设定。\n")
 	sb.WriteString("- 不要记录下一步行动建议、快捷选择或可选择入口；这些由独立快捷选择 Agent 生成。\n")
+	sb.WriteString("- 结构化 Actor State 是规则和数值的真实来源；故事记忆里的状态表只是叙事摘要，可以总结 Actor State，但不能替代工具更新。\n")
+	sb.WriteString("- 当主角、重要角色、反派或势力型 Actor 的数值、枚举、布尔、对象或列表状态发生确认变化时，先调用 apply_actor_state_patch；路人和一次性 NPC 不写入 Actor State。\n")
+	sb.WriteString("- apply_actor_state_patch 的 state 字段只能使用 Actor State schema 中声明的字段路径；每条 patch 写明 reason，说明来自本回合哪一段已发生事实。\n")
+	sb.WriteString("- 最终 JSON 只包含 story_memory_patches，不要包含 state_ops 或工具结果。\n")
 	sb.WriteString("- 若本回合没有值得沉淀的信息，可以返回空数组。\n\n")
 	if strings.TrimSpace(in.LoreItems) != "" {
 		writeBlock(&sb, "资料库", in.LoreItems)
 	}
 	writeBlock(&sb, "故事记忆结构与字段协议", in.StoryMemorySchema)
 	writeBlock(&sb, "本回合前的故事记忆", in.StoryMemory)
+	writeBlock(&sb, "Actor State Schema（source: story director actor_state, bounded）", in.ActorStateSchema)
+	writeBlock(&sb, "当前 Actor State 快照（source: Snapshot.State.actors, bounded）", in.ActorState)
 	writeBlock(&sb, "历史回合上下文", in.TurnHistory)
 	writeBlock(&sb, "用户本回合行动", in.UserAction)
 	writeBlock(&sb, "已生成的本回合正文", in.Narrative)

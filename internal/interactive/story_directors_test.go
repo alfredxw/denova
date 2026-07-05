@@ -17,7 +17,7 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if len(directors) == 0 || directors[0].ID != DefaultStoryDirectorID || directors[0].Custom {
 		t.Fatalf("default story director should be materialized first: %#v", directors)
 	}
-	if directors[0].ModuleRefs.NarrativeStyleDisabled || directors[0].ModuleRefs.EventPackagesDisabled || directors[0].ModuleRefs.RuleSystemDisabled || directors[0].ModuleRefs.OpeningSelectorDisabled || directors[0].ModuleRefs.ImagePresetDisabled {
+	if directors[0].ModuleRefs.NarrativeStyleDisabled || directors[0].ModuleRefs.EventPackagesDisabled || directors[0].ModuleRefs.RuleSystemDisabled || directors[0].ModuleRefs.ActorStateDisabled || directors[0].ModuleRefs.OpeningSelectorDisabled || directors[0].ModuleRefs.ImagePresetDisabled {
 		t.Fatalf("default story director modules should start enabled: %#v", directors[0].ModuleRefs)
 	}
 	if directors[0].Strategy.DirectorAgentMode != DirectorAgentModeTriggered || directors[0].Strategy.BranchPlanningTurns != defaultBranchPlanningTurns {
@@ -39,12 +39,15 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 			{ID: "invalid", Path: ".bad", Name: "无效"},
 		}},
 		TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
-			ID:         "luck",
-			Label:      "幸运",
-			Kind:       "dice",
-			Mode:       "d100_under",
-			Dice:       "1d100",
-			Difficulty: 55,
+			ID:               "luck",
+			Label:            "幸运",
+			Kind:             "dice",
+			Mode:             "d100_under",
+			AttributePath:    "resources.mana",
+			Dice:             "1d100",
+			Difficulty:       55,
+			ResourceCostPath: "resources.mana",
+			ResourceCost:     1,
 		}}},
 		OpeningSelector: StoryDirectorOpeningSelector{
 			Enabled: true,
@@ -67,8 +70,11 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if len(created.StatSystem.Attributes) != 1 || created.StatSystem.Attributes[0].Visibility != "hidden" {
 		t.Fatalf("attributes should be validated and preserve visibility: %#v", created.StatSystem.Attributes)
 	}
+	if len(created.TRPGSystem.RuleTemplates) != 1 || created.TRPGSystem.RuleTemplates[0].AttributePath != "actors.protagonist.state.resources.mana" || created.TRPGSystem.RuleTemplates[0].ResourceCostPath != "actors.protagonist.state.resources.mana" {
+		t.Fatalf("legacy rule paths should migrate to protagonist actor state: %#v", created.TRPGSystem.RuleTemplates)
+	}
 	ops := StoryDirectorInitialStateOps(created)
-	if !containsStateOp(ops, "resources.mana", float64(3)) || !containsStateOp(ops, "resources.mana_max", float64(9)) || !containsStateOp(ops, "flags.opening", true) {
+	if !containsStateOp(ops, "actors.protagonist.state.resources.mana", float64(3)) || !containsStateOp(ops, "actors.protagonist.state.resources.mana_max", float64(9)) || !containsStateOp(ops, "flags.opening", true) {
 		t.Fatalf("initial state ops should include attribute defaults and opening ops: %#v", ops)
 	}
 
@@ -242,7 +248,7 @@ func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.
 	if len(migrated.TRPGSystem.RuleTemplates) != 1 || migrated.TRPGSystem.RuleTemplates[0].Mode != "d20_dc" {
 		t.Fatalf("rule templates should be copied: %#v", migrated.TRPGSystem.RuleTemplates)
 	}
-	if len(migrated.OpeningSelector.TraitPools) != 1 || !containsStateOp(migrated.OpeningSelector.InitialStateOps, "resources.hp", float64(12)) {
+	if len(migrated.OpeningSelector.TraitPools) != 1 || !containsStateOp(migrated.OpeningSelector.InitialStateOps, "actors.protagonist.state.resources.hp", float64(12)) {
 		t.Fatalf("opening selector should be copied: %#v", migrated.OpeningSelector)
 	}
 

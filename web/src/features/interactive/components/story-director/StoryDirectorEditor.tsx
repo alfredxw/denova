@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, Teller } from '../../types'
 import { PresetConfigSectionEditor } from '../preset-config/PresetConfigSectionEditor'
 import { OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from '../preset-config/visual-editors'
 import { DirectorModuleConsole } from './ModuleConsole'
@@ -18,6 +18,7 @@ export function StoryDirectorEditor({
   tellers,
   eventPackages,
   ruleSystems,
+  actorStates,
   openingSelectors,
   imagePresets,
   tagDraft,
@@ -30,6 +31,7 @@ export function StoryDirectorEditor({
   tellers: Teller[]
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
+  actorStates: ActorStateModule[]
   openingSelectors: OpeningSelectorModule[]
   imagePresets: ImagePreset[]
   tagDraft: string
@@ -116,6 +118,7 @@ export function StoryDirectorEditor({
   })
   const selectedEventCardCount = selectedEventPackages.reduce((total, item) => total + item.cards, 0)
   const selectedRuleSystem = findById(ruleSystems, refs.rule_system_id || 'default')
+  const selectedActorState = findById(actorStates, refs.actor_state_id || 'default')
   const selectedOpeningSelector = findById(openingSelectors, refs.opening_selector_id || 'default')
   const selectedImagePreset = findById(imagePresets, refs.image_preset_id || 'game-cg')
   const selectedTeller = findById(tellers, refs.narrative_style_id || 'classic')
@@ -150,6 +153,7 @@ export function StoryDirectorEditor({
           refs={refs}
           selectedTellerName={selectedTeller?.name || refs.narrative_style_id || 'classic'}
           selectedRuleName={selectedRuleSystem?.name || refs.rule_system_id || 'default'}
+          selectedActorStateName={selectedActorState?.name || refs.actor_state_id || 'default'}
           selectedOpeningName={selectedOpeningSelector?.name || refs.opening_selector_id || 'default'}
           selectedImageName={selectedImagePreset?.name || refs.image_preset_id || 'game-cg'}
           selectedEventPackages={selectedEventPackages}
@@ -157,6 +161,7 @@ export function StoryDirectorEditor({
           tellers={tellers}
           eventPackages={eventPackages}
           ruleSystems={ruleSystems}
+          actorStates={actorStates}
           openingSelectors={openingSelectors}
           imagePresets={imagePresets}
           onModuleRefChange={updateModuleRef}

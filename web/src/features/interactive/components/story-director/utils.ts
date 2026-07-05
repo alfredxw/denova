@@ -1,4 +1,4 @@
-import type { DirectorPlanDocs, StoryDirector, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, TellerEventPackage } from '../../types'
+import type { DirectorPlanDocs, StoryDirector, StoryDirectorActorStateSystem, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, TellerEventPackage } from '../../types'
 import { DIRECTOR_PLAN_REQUIRED_HEADINGS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT } from './constants'
 
 export function parseDecimalInput(value: string) {
@@ -57,6 +57,8 @@ export function normalizedStoryDirectorRefs(refs: StoryDirectorModuleRefs | unde
     event_packages_disabled: refs?.event_packages_disabled === true || refs?.event_system_disabled === true,
     rule_system_id: refs?.rule_system_id || 'default',
     rule_system_disabled: refs?.rule_system_disabled === true,
+    actor_state_id: refs?.actor_state_id || 'default',
+    actor_state_disabled: refs?.actor_state_disabled === true,
     opening_selector_id: refs?.opening_selector_id || 'default',
     opening_selector_disabled: refs?.opening_selector_disabled === true,
     image_preset_id: refs?.image_preset_id || 'game-cg',
@@ -87,11 +89,13 @@ export function directorResolvedEventPackages(director: StoryDirector): TellerEv
 export function newEmptyStoryDirectorSections(): {
   stat_system: StoryDirectorStatSystem
   trpg_system: StoryDirectorTRPGSystem
+  actor_state: StoryDirectorActorStateSystem
   opening_selector: StoryDirectorOpeningSelector
 } {
   return {
     stat_system: { attributes: [] },
     trpg_system: { rule_templates: [] },
+    actor_state: { templates: [], initial_actors: [] },
     opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },
   }
 }

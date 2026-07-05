@@ -86,6 +86,7 @@ export interface StoryDirector {
   event_packages?: TellerEventPackage[]
   stat_system: StoryDirectorStatSystem
   trpg_system: StoryDirectorTRPGSystem
+  actor_state?: StoryDirectorActorStateSystem
   opening_selector: StoryDirectorOpeningSelector
   resolved_snapshot?: StoryDirectorResolvedSnapshot
   tags: string[]
@@ -107,6 +108,8 @@ export interface StoryDirectorModuleRefs {
   event_system_disabled?: boolean
   rule_system_id?: string
   rule_system_disabled?: boolean
+  actor_state_id?: string
+  actor_state_disabled?: boolean
   opening_selector_id?: string
   opening_selector_disabled?: boolean
   image_preset_id?: string
@@ -131,6 +134,7 @@ export interface StoryDirectorResolvedSnapshot {
   event_system?: StoryDirectorEventSystem
   stat_system?: StoryDirectorStatSystem
   trpg_system?: StoryDirectorTRPGSystem
+  actor_state?: StoryDirectorActorStateSystem
   opening_selector?: StoryDirectorOpeningSelector
 }
 
@@ -157,6 +161,22 @@ export interface RuleSystemModule {
   description: string
   stat_system: StoryDirectorStatSystem
   trpg_system: StoryDirectorTRPGSystem
+  tags: string[]
+  path?: string
+  custom: boolean
+  builtin_overridden?: boolean
+  invalid?: boolean
+  error?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ActorStateModule {
+  version: number
+  id: string
+  name: string
+  description: string
+  actor_state: StoryDirectorActorStateSystem
   tags: string[]
   path?: string
   custom: boolean
@@ -218,6 +238,42 @@ export interface StoryDirectorAttribute {
 
 export interface StoryDirectorTRPGSystem {
   rule_templates?: RuleCheck[]
+}
+
+export interface StoryDirectorActorStateSystem {
+  templates?: ActorStateTemplate[]
+  initial_actors?: ActorStateInitialActor[]
+}
+
+export interface ActorStateTemplate {
+  id: string
+  name: string
+  description?: string
+  fields?: ActorStateField[]
+}
+
+export interface ActorStateField {
+  id?: string
+  path: string
+  name: string
+  type: 'number' | 'string' | 'bool' | 'enum' | 'object' | 'list' | string
+  default?: unknown
+  min?: number
+  max?: number
+  options?: string[]
+  visibility?: 'visible' | 'hidden' | 'spoiler'
+  description?: string
+  update_instruction?: string
+  order?: number
+}
+
+export interface ActorStateInitialActor {
+  id: string
+  name: string
+  template_id: string
+  role?: string
+  description?: string
+  state?: Record<string, unknown>
 }
 
 export interface StoryDirectorOpeningSelector {
@@ -411,6 +467,8 @@ export interface StateOp {
   op: string
   path: string
   value?: unknown
+  reason?: string
+  source_turn_id?: string
 }
 
 export interface HotState {
@@ -762,6 +820,8 @@ export interface StoryMemoryStructure {
   enabled?: boolean
   order: number
   built_in?: boolean
+  read_only?: boolean
+  derived?: boolean
   created_at?: string
   updated_at?: string
 }

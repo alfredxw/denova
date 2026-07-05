@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
-import { BookOpen, ChevronDown, CircleOff, Dice5, Image as ImageIcon, ScrollText, Sparkles } from 'lucide-react'
+import { BookOpen, ChevronDown, CircleOff, Database, Dice5, Image as ImageIcon, ScrollText, Sparkles } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirectorModuleRefs, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirectorModuleRefs, Teller } from '../../types'
 import { consoleSectionClassName, selectClassName } from './constants'
 import { SectionTitle } from './shared'
 import { normalizeIDList } from './utils'
@@ -15,6 +15,7 @@ export function DirectorModuleConsole({
   refs,
   selectedTellerName,
   selectedRuleName,
+  selectedActorStateName,
   selectedOpeningName,
   selectedImageName,
   selectedEventPackages,
@@ -22,6 +23,7 @@ export function DirectorModuleConsole({
   tellers,
   eventPackages,
   ruleSystems,
+  actorStates,
   openingSelectors,
   imagePresets,
   onModuleRefChange,
@@ -29,6 +31,7 @@ export function DirectorModuleConsole({
   refs: StoryDirectorModuleRefs
   selectedTellerName: string
   selectedRuleName: string
+  selectedActorStateName: string
   selectedOpeningName: string
   selectedImageName: string
   selectedEventPackages: Array<{ id: string; name: string; invalid?: boolean; cards: number }>
@@ -36,6 +39,7 @@ export function DirectorModuleConsole({
   tellers: Teller[]
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
+  actorStates: ActorStateModule[]
   openingSelectors: OpeningSelectorModule[]
   imagePresets: ImagePreset[]
   onModuleRefChange: <K extends keyof StoryDirectorModuleRefs>(key: K, value: StoryDirectorModuleRefs[K]) => void
@@ -45,7 +49,7 @@ export function DirectorModuleConsole({
   return (
     <section className={`${consoleSectionClassName} overflow-hidden p-4`}>
       <SectionTitle title={t('settingPanel.storyDirector.composer')} description={t('settingPanel.storyDirector.composerDesc')} badge={t('settingPanel.storyDirector.liveReference')} />
-      <div className="mt-4 grid gap-2 xl:grid-cols-5">
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-6">
         <DirectorModuleNode
           Icon={BookOpen}
           label={t('settingPanel.presetKind.teller')}
@@ -92,6 +96,22 @@ export function DirectorModuleConsole({
             enabled={!refs.rule_system_disabled}
             items={ruleSystems}
             onChange={(value) => onModuleRefChange('rule_system_id', value)}
+          />
+        </DirectorModuleNode>
+        <DirectorModuleNode
+          Icon={Database}
+          label={t('settingPanel.presetKind.actorState')}
+          title={selectedActorStateName}
+          summary={refs.actor_state_disabled ? t('settingPanel.storyDirector.moduleDisabled') : t('settingPanel.storyDirector.moduleEnabled')}
+          enabled={!refs.actor_state_disabled}
+          onEnabledChange={(enabled) => onModuleRefChange('actor_state_disabled', !enabled)}
+        >
+          <ModuleSelect
+            value={refs.actor_state_id || ''}
+            fallbackValue="default"
+            enabled={!refs.actor_state_disabled}
+            items={actorStates}
+            onChange={(value) => onModuleRefChange('actor_state_id', value)}
           />
         </DirectorModuleNode>
         <DirectorModuleNode

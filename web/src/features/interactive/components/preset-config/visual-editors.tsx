@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Copy, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import type { EventPackageModule, OpeningTrait, OpeningTraitPool, RuleCheck, StateOp, StoryDirectorAttribute, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, TellerEventCard } from '../../types'
+import type { EventPackageModule, OpeningTrait, OpeningTraitPool, RuleCheck, StateOp, StoryDirectorActorStateSystem, StoryDirectorAttribute, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, TellerEventCard } from '../../types'
 import { SortablePresetList } from './SortablePresetList'
 import { cloneWithNewId, formatPresetJSON, itemKey, joinListInput, nextPresetId, parseIntegerInput, parseNumberInput, splitListInput } from './utils'
 
@@ -198,6 +198,74 @@ export function StatSystemVisualEditor({
           </Field>
         </DetailPanel>
       ) : <EmptyDetail>{t('settingPanel.presetConfig.emptyAttributes')}</EmptyDetail>}
+    </div>
+  )
+}
+
+export function ActorStateVisualEditor({
+  value,
+  onChange,
+  onValidityChange,
+  resetKey,
+}: {
+  value: StoryDirectorActorStateSystem
+  onChange: (value: StoryDirectorActorStateSystem) => void
+  onValidityChange: (valid: boolean) => void
+  resetKey?: string
+}) {
+  const { t } = useTranslation()
+  const initialText = formatPresetJSON(value || { templates: [], initial_actors: [] })
+  const [text, setText] = useState(initialText)
+  const [error, setError] = useState('')
+  const lastAcceptedValueRef = useRef(initialText)
+
+  useEffect(() => {
+    const next = formatPresetJSON(value || { templates: [], initial_actors: [] })
+    lastAcceptedValueRef.current = next
+    setText(next)
+    setError('')
+  }, [resetKey])
+
+  useEffect(() => {
+    const next = formatPresetJSON(value || { templates: [], initial_actors: [] })
+    if (next !== lastAcceptedValueRef.current && (!error || text === lastAcceptedValueRef.current)) {
+      lastAcceptedValueRef.current = next
+      setText(next)
+      setError('')
+    }
+  }, [error, text, value])
+
+  useEffect(() => {
+    onValidityChange(!error)
+  }, [error, onValidityChange])
+
+  const updateText = (next: string) => {
+    setText(next)
+    try {
+      const parsed = JSON.parse(next || '{}') as StoryDirectorActorStateSystem
+      const accepted = {
+        templates: Array.isArray(parsed.templates) ? parsed.templates : [],
+        initial_actors: Array.isArray(parsed.initial_actors) ? parsed.initial_actors : [],
+      }
+      lastAcceptedValueRef.current = formatPresetJSON(accepted)
+      setError('')
+      onChange(accepted)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  return (
+    <div className="grid gap-2">
+      <Textarea
+        className="nova-field h-[clamp(360px,calc(100dvh-18rem),720px)] resize-none font-mono text-xs leading-5 shadow-none focus-visible:ring-0"
+        value={text}
+        onChange={(event) => updateText(event.target.value)}
+        spellCheck={false}
+      />
+      <p className={`text-[11px] ${error ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>
+        {error || t('settingPanel.actorState.jsonHint')}
+      </p>
     </div>
   )
 }

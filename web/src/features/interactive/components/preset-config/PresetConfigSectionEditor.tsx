@@ -31,6 +31,7 @@ export function PresetConfigSectionEditor<T extends object>({
     value: T
     onChange: (value: T) => void
     onValidityChange: (valid: boolean) => void
+    resetKey: string
   }) => ReactNode
 }) {
   const { t } = useTranslation()
@@ -153,7 +154,7 @@ export function PresetConfigSectionEditor<T extends object>({
 
       {viewMode === 'visual' ? (
         <div data-testid="preset-config-visual-editor">
-          {children({ value, onChange, onValidityChange: setVisualValid })}
+          {children({ value, onChange, onValidityChange: setVisualValid, resetKey })}
         </div>
       ) : (
         <div className="nova-field h-[320px] min-h-44 max-h-[65vh] resize-y overflow-hidden rounded-[var(--nova-radius)] p-0" data-testid="story-director-json-editor">
