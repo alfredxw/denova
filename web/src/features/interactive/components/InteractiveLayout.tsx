@@ -16,7 +16,7 @@ import { StoryStage } from './StoryStage'
 import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryImageSettings, StorySummary } from '../types'
+import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 
 interface InteractiveLayoutProps {
@@ -170,10 +170,15 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
     await reloadStories()
   }
 
-  const handleTellerChange = async (tellerId: string) => {
+  const handleDirectorChange = async (directorId: string) => {
     if (!currentStoryId) return
-    await updateInteractiveStory(currentStoryId, { story_teller_id: tellerId })
+    const director = storyDirectors.find((item) => item.id === directorId)
+    await updateInteractiveStory(currentStoryId, {
+      story_director_id: directorId,
+      story_teller_id: storyDirectorNarrativeStyleId(director, tellers, currentStory?.story_teller_id),
+    })
     await reloadStories()
+    await reloadSnapshot(undefined, currentStoryId, { silent: true })
   }
 
   const handleReplyTargetCharsChange = async (replyTargetChars: number) => {
@@ -251,10 +256,14 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
       onStorySelect={setCurrentStoryId}
       onStoryCreate={handleCreateStory}
       onStoryDelete={handleDeleteStory}
-      onTellerChange={handleTellerChange}
+      onDirectorChange={handleDirectorChange}
       onReplyTargetCharsChange={handleReplyTargetCharsChange}
       onImageSettingsChange={handleImageSettingsChange}
       onRequestLoreInit={onRequestLoreInit}
+      onOpenDirectorConfig={() => {
+        setSubmode('teller')
+        setMobileSnapshotOpen(false)
+      }}
       onToggleSceneMemory={isMobile ? () => setMobileSnapshotOpen((open) => !open) : onToggleRightPanel}
       onTurnPersisted={handleTurnPersisted}
       onDone={handleStoryStageDone}
@@ -320,6 +329,13 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
 function isGlobalStyleSceneName(scene: string) {
   const normalized = scene.trim().toLowerCase()
   return normalized === '全局' || normalized === 'global'
+}
+
+function storyDirectorNarrativeStyleId(director: StoryDirector | undefined, tellers: { id: string }[], fallbackTellerId = '') {
+  if (director?.module_refs?.narrative_style_disabled !== true && director?.module_refs?.narrative_style_id) {
+    return director.module_refs.narrative_style_id
+  }
+  return tellers[0]?.id || fallbackTellerId || 'classic'
 }
 
 function mergePreferredStory(stories: StorySummary[], preferredStory?: StorySummary) {

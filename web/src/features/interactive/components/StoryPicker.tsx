@@ -26,7 +26,6 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
   const [selectorOpen, setSelectorOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [origin, setOrigin] = useState('')
-  const [selectedTellerId, setSelectedTellerId] = useState('')
   const [selectedDirectorId, setSelectedDirectorId] = useState('')
   const [replyTargetChars, setReplyTargetChars] = useState(String(DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS))
   const [openingRoll, setOpeningRoll] = useState<OpeningRollResult | null>(null)
@@ -38,7 +37,8 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
   const directorNarrativeStyleEnabled = selectedDirector?.module_refs?.narrative_style_disabled !== true
   const directorImagePresetEnabled = selectedDirector?.module_refs?.image_preset_disabled !== true
   const directorOpeningEnabled = selectedDirector?.module_refs?.opening_selector_disabled !== true && selectedDirector?.opening_selector?.enabled !== false
-  const defaultTeller = selectedTellerId || (directorNarrativeStyleEnabled ? selectedDirector?.module_refs?.narrative_style_id : '') || tellers[0]?.id || 'classic'
+  const defaultTeller = (directorNarrativeStyleEnabled ? selectedDirector?.module_refs?.narrative_style_id : '') || tellers[0]?.id || 'classic'
+  const derivedTeller = tellers.find((teller) => teller.id === defaultTeller) || null
   const openingPools = directorOpeningEnabled ? selectedDirector?.opening_selector?.trait_pools || [] : []
   const sidebar = layout === 'sidebar'
   const suggestedTitle = defaultStoryTitle(stories, t)
@@ -49,7 +49,6 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
   const closeCreate = () => {
     setTitle('')
     setOrigin('')
-    setSelectedTellerId('')
     setSelectedDirectorId('')
     setReplyTargetChars(String(DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS))
     setOpeningRoll(null)
@@ -180,9 +179,7 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
         setCreating(true)
         setTitle((current) => (current.trim() ? current : suggestedTitle))
         const nextDirectorId = selectedDirectorId || storyDirectors[0]?.id || 'default'
-        const nextDirector = storyDirectors.find((director) => director.id === nextDirectorId) || storyDirectors[0] || null
         setSelectedDirectorId(nextDirectorId)
-        setSelectedTellerId((current) => current || (nextDirector?.module_refs?.narrative_style_disabled === true ? '' : nextDirector?.module_refs?.narrative_style_id) || tellers[0]?.id || 'classic')
       }}
     >
       <PopoverTrigger asChild>
@@ -195,22 +192,12 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
         <div className="mb-2 text-xs font-medium">{t('storyPicker.create')}</div>
         <Input className="nova-field mb-2 text-xs" placeholder={suggestedTitle} value={title} onChange={(event) => setTitle(event.target.value)} />
         <Textarea autoResize className="nova-field mb-3 min-h-20 resize-none text-xs" placeholder={t('storyPicker.originPlaceholder')} value={origin} onChange={(event) => setOrigin(event.target.value)} />
-        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="min-w-0 text-[11px] text-[var(--nova-text-faint)]">
-            <span className="mb-1 block truncate">{t('storyPicker.narrativeStyle')}</span>
-            <select className="nova-field h-8 w-full rounded-[var(--nova-radius)] px-2 text-xs text-[var(--nova-text)]" value={defaultTeller} onChange={(event) => setSelectedTellerId(event.target.value)}>
-              {(tellers.length ? tellers : [{ id: 'classic', name: t('storyPicker.defaultNarrativeStyle') } as Teller]).map((teller) => (
-                <option key={teller.id} value={teller.id}>{teller.name || teller.id}</option>
-              ))}
-            </select>
-          </label>
+        <div className="mb-3 grid grid-cols-1 gap-2">
           <label className="min-w-0 text-[11px] text-[var(--nova-text-faint)]">
             <span className="mb-1 block truncate">{t('storyPicker.storyDirector')}</span>
             <select className="nova-field h-8 w-full rounded-[var(--nova-radius)] px-2 text-xs text-[var(--nova-text)]" value={defaultDirector} onChange={(event) => {
               const nextDirectorId = event.target.value
-              const nextDirector = storyDirectors.find((director) => director.id === nextDirectorId) || null
               setSelectedDirectorId(nextDirectorId)
-              if (nextDirector?.module_refs?.narrative_style_disabled !== true && nextDirector?.module_refs?.narrative_style_id) setSelectedTellerId(nextDirector.module_refs.narrative_style_id)
               setOpeningRoll(null)
               setOpeningSelectedTraitIds([])
             }}>
@@ -219,6 +206,10 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
               ))}
             </select>
           </label>
+          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-[11px] text-[var(--nova-text-faint)]">
+            <span>{t('storyPicker.directorNarrativeStyle')}</span>
+            <span className="ml-1 font-medium text-[var(--nova-text-muted)]">{derivedTeller?.name || defaultTeller || t('storyPicker.defaultNarrativeStyle')}</span>
+          </div>
         </div>
         <div className="mb-3">
           <div className="mb-1.5 text-[11px] text-[var(--nova-text-faint)]">{t('storyPicker.replyTargetChars')}</div>

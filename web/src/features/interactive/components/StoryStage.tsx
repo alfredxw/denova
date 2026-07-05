@@ -30,7 +30,7 @@ import type { StoryStageRunState } from '../stores/interactive-store'
 import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
-import { TellerPicker } from './TellerPicker'
+import { StoryDirectorPicker } from './StoryDirectorPicker'
 import { TurnNavigator, type TurnNavigationItem } from './TurnNavigator'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
@@ -53,10 +53,11 @@ interface StoryStageProps {
   onStorySelect?: (storyId: string) => void
   onStoryCreate?: (input: StoryCreateInput) => void
   onStoryDelete?: (storyId: string) => void
-  onTellerChange?: (tellerId: string) => void
+  onDirectorChange?: (directorId: string) => void
   onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
   onImageSettingsChange?: (settings: StoryImageSettings) => void | Promise<void>
   onRequestLoreInit?: () => void
+  onOpenDirectorConfig?: () => void
   onToggleSceneMemory?: () => void
   onTurnPersisted?: (event: InteractiveTurnPersistedEvent) => Snapshot | void
   onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
@@ -86,7 +87,7 @@ type LiveTurnRenderKeys = {
   assistant: string
 }
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onTellerChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onToggleSceneMemory, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleSceneMemory, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const keyboardInset = useKeyboardInset()
@@ -1064,7 +1065,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const stageControls = (
     <>
       <StoryPicker stories={stories} currentStoryId={storyId} tellers={tellers} storyDirectors={storyDirectors} onSelect={onStorySelect} onCreate={onStoryCreate} onDelete={onStoryDelete} />
-      <TellerPicker story={story} tellers={tellers} onChange={onTellerChange} />
+      <StoryDirectorPicker story={story} storyDirectors={storyDirectors} onChange={onDirectorChange} />
       <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} />
       {onToggleSceneMemory && (
         <Button type="button" variant="outline" size="sm" className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${sceneMemoryVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} onClick={onToggleSceneMemory} aria-label={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')} title={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')}>
@@ -1142,6 +1143,12 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                         <Sparkles data-icon="inline-start" />
                         {t('storyStage.opening.startAI')}
                       </Button>
+                      {onOpenDirectorConfig ? (
+                        <Button type="button" variant="outline" size="sm" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onOpenDirectorConfig}>
+                          <SlidersHorizontal data-icon="inline-start" />
+                          {t('storyStage.opening.configureDirector')}
+                        </Button>
+                      ) : null}
                       <Button type="button" variant="outline" size="sm" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !customOpeningText.trim()} onClick={startOpening}>
                         <Pencil data-icon="inline-start" />
                         {t('storyStage.opening.startCustom')}

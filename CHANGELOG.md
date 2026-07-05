@@ -55,6 +55,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- WebUI：游戏模式顶部与新建故事线流程改为选择“故事导演”，叙事风格由导演方案自动决定；空开局页新增“配置导演”跳转入口。
+- WebUI: Game Mode now selects Story Directors in the top bar and new-story flow, with narrative style derived from the selected director; the empty opening screen adds a Configure Director jump entry.
+- WebUI：导演编排侧栏改为 Chat 式状态流展示后台导演进度和 `director.md` 文档状态；上下文分析弹窗的展开消息片段增加内缩层级与独立背景，避免和外层分组混淆。
+- WebUI: The Director sidebar now presents background director progress and `director.md` document status as a chat-style stream; expanded Context Analysis message parts now use nested indentation and distinct surfaces so they do not read as peer groups.
 - 不兼容变更：游戏模式后台导演规划从三份 Markdown 改为单份 `director.md`，`DirectorPlanDocs`、`visible_docs`、`StoryDirector.strategy.planning_templates` 和 `metadata.docs` 仅保留 `plan`；旧 `mainline/current_event/next_branches` API、配置和文件结构不再兼容。导演规划现在优先使用资料库中的重要角色、势力、规则和地点，并要求每个可玩回合保持更高信息密度、关系张力、节奏钩子、检定代价和失败推进；开局阻塞式规划仍在输入区上方展示，后续非阻塞规划状态只在右侧栏展示和重试。
 - Breaking: Game Mode background Director planning now uses a single `director.md` instead of three Markdown docs. `DirectorPlanDocs`, `visible_docs`, `StoryDirector.strategy.planning_templates`, and `metadata.docs` now keep only `plan`; legacy `mainline/current_event/next_branches` APIs, config, and files are no longer compatible. Director planning now prioritizes important lore-library characters, factions, rules, and locations, and each playable turn must maintain higher information density, relationship tension, hooks, checks/costs, and fail-forward progress. Opening blocking planning can still appear above the input, while later non-blocking planning status lives only in the right sidebar with retry controls.
 - 方案预设：故事导演配置页重构为紧凑导演控制台，首屏展示模块链路、策略状态和资源摘要；事件包选择改为弹出面板，数值系统、TRPG 检定、开局选择和事件引用收进同一资源 Tab 区。

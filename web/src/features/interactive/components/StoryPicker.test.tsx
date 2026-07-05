@@ -150,6 +150,35 @@ describe('StoryPicker', () => {
     }))
   })
 
+  it('uses the selected director narrative style when creating a story', () => {
+    const onCreate = vi.fn()
+
+    render(
+      <StoryPicker
+        stories={[]}
+        currentStoryId=""
+        tellers={[classicTeller(), { ...classicTeller(), id: 'alt-style', name: '强风格' }]}
+        storyDirectors={[classicStoryDirector(), { ...classicStoryDirector(), id: 'alt-director', name: '强导演', module_refs: { narrative_style_id: 'alt-style' } }]}
+        onSelect={vi.fn()}
+        onCreate={onCreate}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '新建' }))
+    fireEvent.change(screen.getByText('故事导演').parentElement?.querySelector('select') as HTMLSelectElement, { target: { value: 'alt-director' } })
+
+    expect(screen.getByText('叙事风格跟随导演：')).toBeInTheDocument()
+    expect(screen.getByText('强风格')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '创建' }))
+
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      story_teller_id: 'alt-style',
+      story_director_id: 'alt-director',
+    }))
+  })
+
   it('rolls opening traits and includes initial state ops in create input', async () => {
     const onCreate = vi.fn()
     rollInteractiveOpeningMock.mockResolvedValue({

@@ -293,10 +293,12 @@ function ContextAnalysisMessageGroupBlock({ group, compaction, removingCompactio
       </div>
       {removeCompactionError && <div className="border-t border-[var(--nova-border)] px-3 py-2 text-[11px] text-[var(--nova-danger)]">{removeCompactionError}</div>}
       {open && (
-        <div className="border-t border-[var(--nova-border)]">
-          {group.parts.map((part, index) => (
-            <ContextAnalysisInlinePart key={`${part.id || part.title}:${index}`} part={part} />
-          ))}
+        <div className="border-t border-[var(--nova-border)] bg-[var(--nova-bg)] px-2 py-2">
+          <div className="space-y-1.5 border-l border-[var(--nova-border)] pl-2">
+            {group.parts.map((part, index) => (
+              <ContextAnalysisInlinePart key={`${part.id || part.title}:${index}`} part={part} />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -308,7 +310,7 @@ function ContextAnalysisInlinePart({ part }: { part: ContextAnalysisPart }) {
   const [open, setOpen] = useState(false)
   const kind = contextAnalysisKindLabel(part, t)
   return (
-    <div className="border-b border-[var(--nova-border)] last:border-b-0">
+    <div className="overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] shadow-[inset_2px_0_0_var(--nova-border)]">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
