@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
-import { createImagePreset, createInteractiveTeller, createStoryDirector, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStyleReferences, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector } from '../api'
+import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector } from '../api'
 import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { SettingPanel } from './SettingPanel'
 
@@ -93,18 +93,21 @@ vi.mock('@/lib/api', () => ({
 }))
 
 vi.mock('../api', () => ({
+  createActorState: vi.fn(),
   createEventPackage: vi.fn(),
   createImagePreset: vi.fn(),
   createInteractiveTeller: vi.fn(),
   createOpeningSelector: vi.fn(),
   createRuleSystem: vi.fn(),
   createStoryDirector: vi.fn(),
+  deleteActorState: vi.fn(),
   deleteEventPackage: vi.fn(),
   deleteImagePreset: vi.fn(),
   deleteInteractiveTeller: vi.fn(),
   deleteOpeningSelector: vi.fn(),
   deleteRuleSystem: vi.fn(),
   deleteStoryDirector: vi.fn(),
+  getActorStates: vi.fn(),
   getEventPackages: vi.fn(),
   getImagePresets: vi.fn(),
   getInteractiveTellers: vi.fn(),
@@ -116,6 +119,7 @@ vi.mock('../api', () => ({
   updateEventPackage: vi.fn(),
   updateImagePreset: vi.fn(),
   updateInteractiveTeller: vi.fn(),
+  updateActorState: vi.fn(),
   updateOpeningSelector: vi.fn(),
   updateRuleSystem: vi.fn(),
   updateStoryDirector: vi.fn(),
@@ -141,6 +145,10 @@ describe('SettingPanel', () => {
     vi.mocked(createStoryDirector).mockReset()
     vi.mocked(updateStoryDirector).mockReset()
     vi.mocked(deleteStoryDirector).mockReset()
+    vi.mocked(getActorStates).mockReset()
+    vi.mocked(createActorState).mockReset()
+    vi.mocked(updateActorState).mockReset()
+    vi.mocked(deleteActorState).mockReset()
     vi.mocked(getEventPackages).mockReset()
     vi.mocked(updateEventPackage).mockReset()
     vi.mocked(getRuleSystems).mockReset()
@@ -158,6 +166,8 @@ describe('SettingPanel', () => {
     vi.mocked(createStoryDirector).mockResolvedValue(storyDirector('default-custom', '默认导演'))
     vi.mocked(updateStoryDirector).mockImplementation(async (id, input) => ({ ...storyDirector(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as StoryDirector)
     vi.mocked(deleteStoryDirector).mockResolvedValue(undefined)
+    vi.mocked(getActorStates).mockResolvedValue([])
+    vi.mocked(deleteActorState).mockResolvedValue(undefined)
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
     vi.mocked(updateImagePreset).mockImplementation(async (id, input) => ({ ...imagePreset(id, input.name || id), ...input, id, custom: id !== 'game-cg', builtin_overridden: id === 'game-cg', updated_at: '2026-01-01T00:00:01Z' }) as ImagePreset)
     vi.mocked(deleteImagePreset).mockResolvedValue(undefined)
@@ -534,10 +544,10 @@ describe('SettingPanel', () => {
 
     await selectDefaultDirector(user)
     await user.click(screen.getByRole('button', { name: /高级 Markdown 策略提示/ }))
-    fireEvent.change(screen.getByPlaceholderText(/优先制造可逆但有代价的选择/), { target: { value: 'a'.repeat(4001) } })
+    fireEvent.change(screen.getByPlaceholderText(/优先制造可逆但有代价的选择/), { target: { value: 'a'.repeat((64 * 1024) + 1) } })
 
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeDisabled())
-    expect(screen.getByText('策略提示已超过 4000 bytes（当前 4001 bytes），请缩短后再保存。')).toBeInTheDocument()
+    expect(screen.getByText('策略提示已超过 65536 bytes（当前 65537 bytes），请缩短后再保存。')).toBeInTheDocument()
     expect(updateStoryDirector).not.toHaveBeenCalled()
   })
 

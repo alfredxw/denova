@@ -117,12 +117,12 @@ func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorPlanVisibleSection
 		DirectorPlanVisible:         "## 正文Agent可读\n\n### 阶段钩子与阅读欲望\n外门逆袭\n\n### 信息揭示与线索密度\n学院比拼压力",
 		StoryDirectorStrategyPrompt: "- 避免连续两回合使用同类型突发事件。",
 	})
-	for _, want := range []string{"后台导演规划可读区", "source: director.md visible section", "limit: 12288 bytes", "外门逆袭", "学院比拼压力"} {
+	for _, want := range []string{"后台导演规划可读区", "source: director.md visible section", "bounded", "外门逆袭", "学院比拼压力"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("runtime context should include %q:\n%s", want, output)
 		}
 	}
-	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "limit: 4000 bytes", "结构化导演策略", "避免连续两回合"} {
+	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "bounded", "结构化导演策略", "避免连续两回合"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("runtime context should include strategy prompt %q:\n%s", want, output)
 		}
@@ -139,7 +139,7 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 		DirectorPlanPaths:           "/tmp/director.md",
 		DirectorPlanDocs:            `{"plan":"## 正文Agent可读"}`,
 		PlanningTemplates:           `{"plan":"# 导演规划"}`,
-		LoreContext:                 "## 资料库索引（source: lore index, limit: 6144 bytes）\n- 沈凝 / 重要角色\n- 青岚盟 / 重要势力",
+		LoreContext:                 "## 资料库索引（source: lore index, bounded）\n- 沈凝 / 重要角色\n- 青岚盟 / 重要势力",
 		BranchPlanningTurns:         5,
 		TurnAuditJSON:               `{"turn_brief":{"turn_goal":"公开比试"}}`,
 		TurnHistory:                 "第 1 回合剧情：主角报名。",
@@ -167,7 +167,7 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 			t.Fatalf("director instruction should not mention legacy doc %q:\n%s", forbidden, instruction)
 		}
 	}
-	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "limit: 4000 bytes", "结构化导演策略", "伏笔回收前"} {
+	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "bounded", "结构化导演策略", "伏笔回收前"} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("director instruction should include strategy prompt %q:\n%s", want, instruction)
 		}

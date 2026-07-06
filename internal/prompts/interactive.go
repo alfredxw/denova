@@ -137,13 +137,13 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 		writeBlock(&sb, "当前分支故事记忆", in.LongTermMemory)
 	}
 	if strings.TrimSpace(in.DirectorPlanVisible) != "" {
-		writeBlock(&sb, "后台导演规划可读区（source: director.md visible section, limit: 12288 bytes）", in.DirectorPlanVisible)
+		writeBlock(&sb, "后台导演规划可读区（source: director.md visible section, bounded）", in.DirectorPlanVisible)
 	}
 	if strings.TrimSpace(in.StoryDirectorRules) != "" {
 		writeBlock(&sb, "故事导演规则清单（source: StoryDirector, bounded）", in.StoryDirectorRules)
 	}
 	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {
-		writeBlock(&sb, "故事导演 Markdown 策略提示（source: StoryDirector.strategy.prompt_markdown, limit: 4000 bytes）", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))
+		writeBlock(&sb, "故事导演 Markdown 策略提示（source: StoryDirector.strategy.prompt_markdown, bounded）", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))
 	}
 	if strings.TrimSpace(in.PreviousTurnsSummary) != "" {
 		writeBlock(&sb, "较早剧情压缩记忆", in.PreviousTurnsSummary)
@@ -301,7 +301,7 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	writeBlock(&sb, "当前分支故事记忆摘要（source: story memory, bounded）", in.StoryMemorySummary)
 	writeBlock(&sb, "故事导演规划配置（source: StoryDirector, bounded）", in.StoryDirectorPlan)
 	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {
-		writeBlock(&sb, "故事导演 Markdown 策略提示（source: StoryDirector.strategy.prompt_markdown, limit: 4000 bytes）", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))
+		writeBlock(&sb, "故事导演 Markdown 策略提示（source: StoryDirector.strategy.prompt_markdown, bounded）", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))
 	}
 	writeBlock(&sb, "可用事件类型目录（source: built-in + story director, bounded）", in.DirectorEventCatalog)
 	sb.WriteString("\n请完成必要工具调用和文件编辑后，只输出一句中文摘要，不要输出故事正文、完整 Markdown 或 JSON patch。\n")

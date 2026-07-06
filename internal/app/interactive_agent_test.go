@@ -77,7 +77,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"当前分支故事记忆",
 		"后台导演规划可读区",
 		"source: director.md visible section",
-		"上限: 12288 bytes",
+		"bounded",
 	} {
 		if !strings.Contains(history[2].Content, want) {
 			t.Fatalf("history[2] should include %q: %#v", want, history[2])
@@ -272,13 +272,13 @@ func TestInteractiveConversationInjectsStoryDirectorStrategyPrompt(t *testing.T)
 		t.Fatal(err)
 	}
 	turnInstruction := history[len(history)-1].Content
-	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "limit: 4000 bytes", "避免连续两回合", "伏笔回收前"} {
+	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "bounded", "避免连续两回合", "伏笔回收前"} {
 		if !strings.Contains(turnInstruction, want) {
 			t.Fatalf("interactive turn instruction should include strategy prompt %q:\n%s", want, turnInstruction)
 		}
 	}
 	sources := conversation.ContextSourceSummary()
-	for _, want := range []string{"StoryDirector.strategy.prompt_markdown", "故事导演 Markdown 策略提示", "limit=4000"} {
+	for _, want := range []string{"StoryDirector.strategy.prompt_markdown", "故事导演 Markdown 策略提示", "bounded"} {
 		if !strings.Contains(sources, want) {
 			t.Fatalf("context sources should include strategy prompt %q:\n%s", want, sources)
 		}
@@ -287,7 +287,7 @@ func TestInteractiveConversationInjectsStoryDirectorStrategyPrompt(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "limit: 4000 bytes", "避免连续两回合", "伏笔回收前"} {
+	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "bounded", "避免连续两回合", "伏笔回收前"} {
 		if !strings.Contains(directorInstruction, want) {
 			t.Fatalf("director instruction should include strategy prompt %q:\n%s", want, directorInstruction)
 		}

@@ -25,7 +25,15 @@ const (
 	directorPlanMetadataFile = "metadata.json"
 
 	defaultBranchPlanningTurns = 5
-	maxDirectorPlanDocBytes    = 32 * 1024
+)
+
+// DirectorContextMinBytes is the floor for director.md and director-related
+// model context slices so callers do not accidentally reintroduce tiny caps.
+const DirectorContextMinBytes = 64 * 1024
+
+const (
+	maxDirectorPlanDocBytes  = DirectorContextMinBytes
+	directorPlanVisibleBytes = DirectorContextMinBytes
 )
 
 var requiredDirectorPlanHeadings = []string{
@@ -715,12 +723,12 @@ func ExtractDirectorPlanVisibleSection(content string) string {
 	if end := strings.Index(visible, "## 后台导演私密"); end >= 0 {
 		visible = visible[:end]
 	}
-	return strings.TrimSpace(trimBytes(visible, 12*1024))
+	return strings.TrimSpace(trimBytes(visible, directorPlanVisibleBytes))
 }
 
 func DirectorPlanVisibleContext(plan DirectorPlan, limitBytes int) string {
-	if limitBytes <= 0 {
-		limitBytes = 12 * 1024
+	if limitBytes < DirectorContextMinBytes {
+		limitBytes = DirectorContextMinBytes
 	}
 	var sb strings.Builder
 	writeDirectorPlanContextBlock(&sb, "导演规划", plan.VisibleDocs.Plan)
