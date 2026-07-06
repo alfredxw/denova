@@ -522,7 +522,7 @@ const settingPanel = {
   'settingPanel.target.turnContext.detail': 'Injected for every next-turn generation. Strongly constrains adjudication, NPC reactions, costs, hidden-thread progress, and available choices.',
   'settingPanel.target.stateMemory.label': 'Memory Rules',
   'settingPanel.target.stateMemory.summary': 'Affects only story-memory writes',
-  'settingPanel.target.stateMemory.detail': 'Injected into the interactive memory agent after prose generation to guide which crises, relationship changes, resources, hidden threads, and action entrances should be saved into story memory.',
+  'settingPanel.target.stateMemory.detail': 'Injected into the background Director Agent after prose generation to guide which crises, relationship changes, resources, hidden threads, and action entrances should be saved into story memory.',
 } as const
 
 export default settingPanel

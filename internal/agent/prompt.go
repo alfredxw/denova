@@ -452,7 +452,6 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 		IDE:                   config.AgentPromptOverride{SystemPrompt: BuildInstruction(promptCfg, state, ideTeller)},
 		InteractiveStory:      config.AgentPromptOverride{SystemPrompt: BuildInteractiveStoryInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})},
 		ConfigManager:         config.AgentPromptOverride{SystemPrompt: BuildConfigManagerInstruction(promptCfg, state)},
-		InteractiveState:      config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction())},
 		InteractiveDirector:   config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction())},
 		InteractiveHotChoices: config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())},
 		VersionSummary:        config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")},
@@ -477,7 +476,6 @@ func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller I
 		IDE:                   builtinPromptBlocks(promptCfg, config.AgentKindIDE, ideFlowInstruction(promptCfg, ideWorkspace)),
 		InteractiveStory:      builtinPromptBlocks(promptCfg, config.AgentKindInteractiveStory, interactiveStoryFlowInstruction(promptCfg, interactiveWorkspace)),
 		ConfigManager:         builtinPromptBlocks(promptCfg, config.AgentKindConfigManager, configManagerFlow),
-		InteractiveState:      builtinPromptBlocks(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
 		InteractiveDirector:   builtinPromptBlocks(promptCfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction()),
 		InteractiveHotChoices: builtinPromptBlocks(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
 		VersionSummary:        builtinPromptBlocks(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
@@ -511,7 +509,6 @@ func BuiltinAgentPromptSources(cfg *config.Config, state *book.State, ideTeller 
 			readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", interactiveCreator),
 		),
 		ConfigManager:         builtinPromptSourceList(promptCfg, config.AgentKindConfigManager, configManagerFlow, readonlyPromptSource("creator", "CREATOR.md", "CREATOR.md", configManagerCreator)),
-		InteractiveState:      builtinPromptSourceList(promptCfg, config.AgentKindInteractiveState, prompts.BuildInteractiveStateSystemInstruction()),
 		InteractiveDirector:   builtinPromptSourceList(promptCfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction()),
 		InteractiveHotChoices: builtinPromptSourceList(promptCfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction()),
 		VersionSummary:        builtinPromptSourceList(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"),
@@ -627,8 +624,6 @@ func interactiveStoryFlowInstruction(cfg *config.Config, workspace string) strin
 
 func editablePromptFlowForAgent(agentKind, flow string) string {
 	switch agentKind {
-	case config.AgentKindInteractiveState:
-		return ""
 	case config.AgentKindInteractiveDirector:
 		return ""
 	case config.AgentKindInteractiveHotChoices:

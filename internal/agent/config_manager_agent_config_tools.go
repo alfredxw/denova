@@ -388,8 +388,6 @@ func setAgentModelOverride(settings *config.Settings, agent string, value config
 		settings.AgentModels.InteractiveStory = value
 	case config.AgentKindConfigManager:
 		settings.AgentModels.ConfigManager = value
-	case config.AgentKindInteractiveState:
-		settings.AgentModels.InteractiveState = value
 	case config.AgentKindInteractiveDirector:
 		settings.AgentModels.InteractiveDirector = value
 	case config.AgentKindInteractiveHotChoices:
@@ -417,8 +415,6 @@ func setAgentToolOverride(settings *config.Settings, agent string, value config.
 		settings.AgentTools.InteractiveStory = value
 	case config.AgentKindConfigManager:
 		settings.AgentTools.ConfigManager = value
-	case config.AgentKindInteractiveState:
-		settings.AgentTools.InteractiveState = value
 	case config.AgentKindInteractiveDirector:
 		settings.AgentTools.InteractiveDirector = value
 	case config.AgentKindInteractiveHotChoices:
@@ -446,8 +442,6 @@ func setAgentPromptOverride(settings *config.Settings, agent string, value confi
 		settings.AgentPrompts.InteractiveStory = value
 	case config.AgentKindConfigManager:
 		settings.AgentPrompts.ConfigManager = value
-	case config.AgentKindInteractiveState:
-		settings.AgentPrompts.InteractiveState = value
 	case config.AgentKindInteractiveDirector:
 		settings.AgentPrompts.InteractiveDirector = value
 	case config.AgentKindInteractiveHotChoices:
@@ -475,8 +469,6 @@ func setAgentSkillOverride(settings *config.Settings, agent string, value config
 		settings.AgentSkills.InteractiveStory = value
 	case config.AgentKindConfigManager:
 		settings.AgentSkills.ConfigManager = value
-	case config.AgentKindInteractiveState:
-		settings.AgentSkills.InteractiveState = value
 	case config.AgentKindInteractiveDirector:
 		settings.AgentSkills.InteractiveDirector = value
 	case config.AgentKindInteractiveHotChoices:
@@ -504,8 +496,6 @@ func setAgentContextOverride(settings *config.Settings, agent string, value conf
 		settings.AgentContexts.InteractiveStory = value
 	case config.AgentKindConfigManager:
 		settings.AgentContexts.ConfigManager = value
-	case config.AgentKindInteractiveState:
-		settings.AgentContexts.InteractiveState = value
 	case config.AgentKindInteractiveDirector:
 		settings.AgentContexts.InteractiveDirector = value
 	case config.AgentKindInteractiveHotChoices:

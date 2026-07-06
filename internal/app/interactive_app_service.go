@@ -25,7 +25,6 @@ const (
 	storyMemoryGenerateSourceAuto   = "auto"
 )
 
-var generateInteractiveStateForStoryMemory interactiveMemoryOutputGenerator
 var generateInteractiveDirectorForPlan = func(ctx context.Context, cfg *config.Config, state *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
 	return agent.GenerateInteractiveDirectorWithTools(ctx, cfg, state, toolContext, instruction)
 }
@@ -436,11 +435,11 @@ func (a *App) StartStoryMemoryGenerateTask(storyID, branchID, source string) *Ta
 func (s *InteractiveAppService) StartStoryMemoryGenerateTask(storyID, branchID, source string) *Task {
 	source = normalizeStoryMemoryGenerateSource(source)
 	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
-		log.Printf("[interactive-memory-agent] stream begin task_id=%s story_id=%s branch_id=%s source=%s", task.ID(), storyID, branchID, source)
-		emit(agent.Event{Type: "thinking", Data: map[string]string{"content": "正在读取当前剧情线和历史回合，准备整理故事记忆。"}})
+		log.Printf("[interactive-director-agent] memory stream begin task_id=%s story_id=%s branch_id=%s source=%s", task.ID(), storyID, branchID, source)
+		emit(agent.Event{Type: "thinking", Data: map[string]string{"content": "后台导演正在读取当前剧情线和历史回合，准备整理故事记忆。"}})
 		state, patchCount, err := s.runStoryMemoryGenerate(ctx, storyID, branchID, source, emit)
 		if err != nil {
-			log.Printf("[interactive-memory-agent] stream failed task_id=%s story_id=%s branch_id=%s source=%s err=%v", task.ID(), storyID, branchID, source, err)
+			log.Printf("[interactive-director-agent] memory stream failed task_id=%s story_id=%s branch_id=%s source=%s err=%v", task.ID(), storyID, branchID, source, err)
 			emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 			return
 		}
@@ -454,7 +453,7 @@ func (s *InteractiveAppService) StartStoryMemoryGenerateTask(storyID, branchID, 
 			"next_auto_in": state.NextAutoInTurns,
 		}})
 		emit(agent.Event{Type: "done", Data: map[string]string{"status": "ok"}})
-		log.Printf("[interactive-memory-agent] stream done task_id=%s story_id=%s branch_id=%s source=%s patches=%d records=%d", task.ID(), storyID, state.BranchID, source, patchCount, len(state.Records))
+		log.Printf("[interactive-director-agent] memory stream done task_id=%s story_id=%s branch_id=%s source=%s patches=%d records=%d", task.ID(), storyID, state.BranchID, source, patchCount, len(state.Records))
 	})
 }
 
@@ -481,84 +480,28 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 	}
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = workspace
-	conversation := newInteractiveConversation(store, runtimeCfg.NovaDir, workspace, storyID, snapshot.BranchID, snapshot.CurrentTurn.User, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
-	instruction, err := conversation.BuildStateInstruction(*snapshot.CurrentTurn)
-	if err != nil {
-		return interactive.StoryMemoryState{}, 0, err
-	}
-	runCtx, cancel := context.WithTimeout(ctx, interactiveStateTimeout)
-	defer cancel()
+	conversation := newInteractiveConversation(store, runtimeCfg.NovaDir, workspace, storyID, snapshot.BranchID, snapshot.CurrentTurn.User, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg).withDirectorTask(interactiveDirectorTaskMemoryUpdate)
 	if emit != nil {
 		emit(agent.Event{Type: "tool_call", Data: map[string]string{
 			"id":   "story_memory_context",
-			"name": "build_story_memory_context",
+			"name": "build_director_memory_context",
 			"args": fmt.Sprintf("story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, snapshot.CurrentTurn.ID),
 		}})
 		emit(agent.Event{Type: "tool_result", Data: map[string]string{
 			"id":      "story_memory_context",
-			"name":    "build_story_memory_context",
-			"content": "已读取当前剧情线、当前回合和有界故事记忆上下文。",
+			"name":    "build_director_memory_context",
+			"content": "已读取当前剧情线、当前回合、故事记忆和结构化状态上下文。",
 		}})
 	}
-	director := loadStoryDirector(runtimeCfg.NovaDir, storyCtx.Meta.StoryDirectorID)
-	toolContext := agent.InteractiveStoryToolContext{
-		Store:      store,
-		StoryID:    storyID,
-		BranchID:   snapshot.BranchID,
-		TurnID:     snapshot.CurrentTurn.ID,
-		ActorState: director.ActorState,
-	}
-	generate := func(ctx context.Context, cfg *config.Config, instruction string) (string, error) {
-		if generateInteractiveStateForStoryMemory != nil {
-			return generateInteractiveStateForStoryMemory(ctx, cfg, instruction)
-		}
-		return agent.GenerateInteractiveStateWithTools(ctx, cfg, bookState, toolContext, instruction, emit)
-	}
-	var patchCount int
-	result, err := runInteractiveMemoryAgentWithRetry(runCtx, &runtimeCfg, instruction, sessionStore, generate, func(result interactiveMemoryAgentResult) error {
-		patchCount = len(result.StoryMemoryPatches)
-		if len(result.StoryMemoryPatches) == 0 {
-			return nil
-		}
-		if emit != nil {
-			emit(agent.Event{Type: "tool_call", Data: map[string]string{
-				"id":   "story_memory_apply",
-				"name": "apply_story_memory_patches",
-				"args": fmt.Sprintf("patches=%d branch_id=%s", patchCount, snapshot.BranchID),
-			}})
-		}
-		appliedRecords, err := store.ApplyStoryMemoryPatches(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, result.StoryMemoryPatches)
-		if err != nil {
-			return err
-		}
-		patchCount = len(appliedRecords)
-		if emit != nil {
-			emit(agent.Event{Type: "tool_result", Data: map[string]string{
-				"id":      "story_memory_apply",
-				"name":    "apply_story_memory_patches",
-				"content": fmt.Sprintf("已写入 %d 条故事记忆更新。", patchCount),
-			}})
-		}
-		return nil
-	})
+	result, err := runInteractiveDirectorMaintenance(ctx, &runtimeCfg, bookState, conversation, *snapshot.CurrentTurn, sessionStore, interactiveDirectorTaskMemoryUpdate)
 	if err != nil {
-		if source == storyMemoryGenerateSourceAuto {
-			return skipAutoStoryMemoryGenerate(store, storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, err, emit)
-		}
-		_ = store.MarkInteractiveMemoryFailed(storyID, interactive.MarkStateFailedRequest{ParentID: snapshot.CurrentTurn.ID, BranchID: snapshot.BranchID, Error: err.Error()})
 		return interactive.StoryMemoryState{}, 0, err
-	}
-	if len(result.StateOps) > 0 {
-		log.Printf("[interactive-memory-agent] ignored legacy state_ops story_id=%s branch_id=%s turn_id=%s count=%d", storyID, snapshot.BranchID, snapshot.CurrentTurn.ID, len(result.StateOps))
-	}
-	if err := store.MarkInteractiveMemoryReady(storyID, snapshot.BranchID, snapshot.CurrentTurn.ID); err != nil {
-		return interactive.StoryMemoryState{}, patchCount, err
 	}
 	state, err := store.StoryMemory(storyID, snapshot.BranchID, true)
 	if err != nil {
-		return interactive.StoryMemoryState{}, patchCount, err
+		return interactive.StoryMemoryState{}, result.AppliedStoryMemoryPatches, err
 	}
-	return state, patchCount, nil
+	return state, result.AppliedStoryMemoryPatches, nil
 }
 
 func normalizeStoryMemoryGenerateSource(source string) string {
@@ -996,32 +939,9 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 			SystemPromptLog:     agent.BuildInteractiveStoryInstructionComposition(&runtimeCfg, state, tellerSystemInput),
 			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
 		}, interactiveEmit)
-		if turn, stateReady, ok := conversation.LastTurnForState(); ok && ctx.Err() == nil {
-			director := loadStoryDirector(novaDir, storyCtx.Meta.StoryDirectorID)
-			decision := shouldRunInteractiveDirectorAgent(director.Strategy)
-			if decision.ShouldRun {
-				log.Printf("[interactive-director-agent] scheduled story_id=%s branch_id=%s turn_id=%s reason=%s", storyID, turn.BranchID, turn.ID, decision.Reason)
-				startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore)
-			} else {
-				log.Printf("[interactive-director-agent] skipped by schedule story_id=%s branch_id=%s turn_id=%s reason=%s", storyID, turn.BranchID, turn.ID, decision.Reason)
-				if err := store.MarkDirectorPlanRunSkipped(storyID, turn.BranchID, turn.ID, decision.Reason); err != nil {
-					log.Printf("[interactive-director-agent] mark skipped failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
-				}
-			}
-			if !stateReady {
-				shouldGenerate, nextAuto, err := store.ShouldGenerateStoryMemory(storyID, turn.BranchID)
-				if err != nil {
-					log.Printf("[interactive-memory-agent] auto decision failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
-					markInteractiveStateFailed(conversation, turn, err)
-				} else if shouldGenerate {
-					log.Printf("[interactive-memory-agent] auto pending for stream story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
-				} else if err := store.MarkInteractiveMemoryReady(storyID, turn.BranchID, turn.ID); err != nil {
-					log.Printf("[interactive-memory-agent] mark skipped turn ready failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
-					markInteractiveStateFailed(conversation, turn, err)
-				} else {
-					log.Printf("[interactive-memory-agent] auto skipped story_id=%s branch_id=%s turn_id=%s next_auto_in_turns=%d", storyID, turn.BranchID, turn.ID, nextAuto)
-				}
-			}
+		if turn, stateReady, ok := conversation.LastTurnForState(); ok && ctx.Err() == nil && !stateReady {
+			log.Printf("[interactive-director-agent] maintenance scheduled story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
+			startInteractiveDirectorMaintenanceTask(&runtimeCfg, state, conversation, turn, sessionStore)
 		}
 		log.Printf("[interactive-agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})

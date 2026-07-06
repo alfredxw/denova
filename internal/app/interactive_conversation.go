@@ -22,7 +22,6 @@ import (
 	"denova/internal/interactive"
 	"denova/internal/prompts"
 	"denova/internal/session"
-	"denova/internal/workspacepath"
 )
 
 type interactiveConversation struct {
@@ -34,6 +33,7 @@ type interactiveConversation struct {
 	branchID             string
 	user                 string
 	replyTargetChars     int
+	directorTask         string
 	mu                   sync.Mutex
 	lastTurn             *interactive.TurnEvent
 	lastStateReady       bool
@@ -45,6 +45,27 @@ type interactiveConversation struct {
 
 func newInteractiveConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int, cfg *config.Config) *interactiveConversation {
 	return &interactiveConversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
+}
+
+func (c *interactiveConversation) withDirectorTask(task string) *interactiveConversation {
+	if c != nil {
+		c.directorTask = strings.TrimSpace(task)
+	}
+	return c
+}
+
+func (c *interactiveConversation) directorTaskHint() string {
+	if c == nil {
+		return ""
+	}
+	switch strings.TrimSpace(c.directorTask) {
+	case "memory_update":
+		return "memory_update：只维护本回合 Story Memory 和必要的 Actor State；不要更新 director.md，除非工具上下文明确允许且本任务要求。"
+	case "director_plan_update":
+		return "director_plan_update：只更新当前分支 director.md；不要写 Story Memory 或 Actor State，除非本回合审计明确要求修正已成立事实。"
+	default:
+		return "turn_maintenance：按顺序维护 Actor State、Story Memory 和 director.md；先通过专用工具写状态与记忆，再更新导演规划文件。"
+	}
 }
 
 func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage string) ([]*schema.Message, error) {
@@ -743,61 +764,6 @@ func (c *interactiveConversation) LastTurnForState() (interactive.TurnEvent, boo
 	return *c.lastTurn, c.lastStateReady, true
 }
 
-func (c *interactiveConversation) BuildStateInstruction(turn interactive.TurnEvent) (string, error) {
-	if c == nil || c.store == nil {
-		return "", fmt.Errorf("互动故事不存在")
-	}
-	storyCtx, err := c.store.StoryContext(c.storyID, c.branchID)
-	if err != nil {
-		return "", err
-	}
-	storyMemory, err := c.store.StoryMemoryContextSummary(c.storyID, storyCtx.Snapshot.BranchID, 12*1024)
-	if err != nil {
-		log.Printf("[interactive-state-agent] load story memory failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
-		storyMemory = ""
-	}
-	storyMemorySchema, err := c.store.StoryMemorySchemaContext(c.storyID, interactiveStateMemorySchemaBytes)
-	if err != nil {
-		log.Printf("[interactive-state-agent] load story memory schema failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
-		storyMemorySchema = ""
-	}
-	teller := c.teller(storyCtx.Meta.StoryTellerID)
-	storyDirector := c.storyDirector(storyCtx.Meta.StoryDirectorID)
-	loreContext := c.stateLoreContext()
-	turnMemory := buildInteractiveModelVisibleTurnMemory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
-	turnHistory := formatInteractiveTurnMemoryHistory(turnMemory, storyCtx.Snapshot.ContextCompaction, "（暂无历史回合，请基于本回合行动、正文、资料库和既有故事记忆填表。）")
-	actorStateSnapshot := map[string]any{}
-	if actors, ok := storyCtx.Snapshot.State["actors"]; ok {
-		actorStateSnapshot = map[string]any{"actors": actors}
-	}
-	instruction := prompts.InteractiveStateInstruction(prompts.InteractiveStatePromptInput{
-		Title:             storyCtx.Meta.Title,
-		Origin:            storyCtx.Meta.Origin,
-		StoryTellerID:     storyCtx.Meta.StoryTellerID,
-		StoryTellerMemory: teller.PromptForTargets("state_memory"),
-		BranchID:          storyCtx.Snapshot.BranchID,
-		LoreItems:         loreContext,
-		StoryMemorySchema: storyMemorySchema,
-		StoryMemory:       storyMemory,
-		ActorStateSchema:  boundedJSON(storyDirector.ActorState, 24*1024),
-		ActorState:        boundedJSON(actorStateSnapshot, 16*1024),
-		TurnHistory:       turnHistory,
-		UserAction:        turn.User,
-		Narrative:         turn.Narrative,
-	})
-	log.Printf(
-		"[interactive-state-agent] context composition story_id=%s branch_id=%s turn_id=%s teller_id=%s teller_slots=%s sources=%s instruction=%s",
-		c.storyID,
-		storyCtx.Snapshot.BranchID,
-		turn.ID,
-		storyCtx.Meta.StoryTellerID,
-		interactiveTellerSlotSummary(teller, "state_memory"),
-		interactiveStateSourceSummary(c.workspace, storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, loreContext, storyMemorySchema, storyMemory, boundedJSON(storyDirector.ActorState, 24*1024), boundedJSON(actorStateSnapshot, 16*1024), turnHistory, turn.User, turn.Narrative),
-		interactivePartSummary(instruction),
-	)
-	return instruction, nil
-}
-
 func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.TurnEvent) (string, error) {
 	if c == nil || c.store == nil {
 		return "", fmt.Errorf("互动故事不存在")
@@ -811,7 +777,13 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		log.Printf("[interactive-director-agent] load story memory failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
 		storyMemory = ""
 	}
+	storyMemorySchema, err := c.store.StoryMemorySchemaContext(c.storyID, interactiveStoryMemorySchemaBytes)
+	if err != nil {
+		log.Printf("[interactive-director-agent] load story memory schema failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
+		storyMemorySchema = ""
+	}
 	storyDirector := c.storyDirector(storyCtx.Meta.StoryDirectorID)
+	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	strategyPrompt := interactive.StoryDirectorStrategyPromptMarkdown(storyDirector)
 	loreContext := c.directorLoreContext(turn)
 	turnMemory := buildInteractiveModelVisibleTurnMemory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
@@ -822,6 +794,10 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 	} else if plan, err := c.store.DirectorPlan(c.storyID, storyCtx.Snapshot.BranchID); err == nil {
 		directorPlan = plan
 	}
+	actorStateSnapshot := map[string]any{}
+	if actors, ok := storyCtx.Snapshot.State["actors"]; ok {
+		actorStateSnapshot = map[string]any{"actors": actors}
+	}
 	allowedPaths := c.store.DirectorPlanAllowedPaths(c.storyID, storyCtx.Snapshot.BranchID)
 	instruction := prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{
 		Title:                       storyCtx.Meta.Title,
@@ -829,20 +805,26 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		StoryTellerID:               storyCtx.Meta.StoryTellerID,
 		StoryDirectorID:             storyCtx.Meta.StoryDirectorID,
 		BranchID:                    storyCtx.Snapshot.BranchID,
+		TaskHint:                    c.directorTaskHint(),
 		DirectorPlanPaths:           strings.Join(allowedPaths, "\n"),
 		DirectorPlanDocs:            boundedJSON(directorPlan.Docs, 32*1024),
 		PlanningTemplates:           boundedJSON(storyDirector.Strategy.PlanningTemplates, 32*1024),
 		BranchPlanningTurns:         storyDirector.Strategy.BranchPlanningTurns,
+		StoryTellerMemoryRules:      boundedText(teller.PromptForTargets("state_memory"), 4*1024),
 		LoreContext:                 loreContext,
 		TurnAuditJSON:               boundedJSON(interactiveDirectorTurnAudit(turn), 10*1024),
 		TurnHistory:                 boundedText(turnHistory, 12*1024),
+		StoryMemorySchema:           storyMemorySchema,
+		StoryMemory:                 boundedText(storyMemory, 12*1024),
+		ActorStateSchema:            boundedJSON(storyDirector.ActorState, 24*1024),
+		ActorState:                  boundedJSON(actorStateSnapshot, 16*1024),
 		StoryMemorySummary:          boundedText(storyMemory, 8*1024),
 		StoryDirectorPlan:           interactive.StoryDirectorPlanningSummary(storyDirector, 16*1024),
 		StoryDirectorStrategyPrompt: strategyPrompt,
 		DirectorEventCatalog:        boundedJSON(interactiveDirectorEventCatalog(storyDirector), 12*1024),
 	})
 	log.Printf(
-		"[interactive-director-agent] context composition story_id=%s branch_id=%s turn_id=%s teller_id=%s story_director_id=%s director_plan=%s allowed_paths=%d lore=%s turn_audit=%s story_memory=%s history=%s instruction=%s",
+		"[interactive-director-agent] context composition story_id=%s branch_id=%s turn_id=%s teller_id=%s story_director_id=%s director_plan=%s allowed_paths=%d teller_memory_rules=%s lore=%s turn_audit=%s story_memory=%s story_memory_schema=%s actor_state=%s history=%s instruction=%s",
 		c.storyID,
 		storyCtx.Snapshot.BranchID,
 		turn.ID,
@@ -850,9 +832,12 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		storyCtx.Meta.StoryDirectorID,
 		interactivePartSummary(boundedJSON(directorPlan.Docs, 32*1024)),
 		len(allowedPaths),
+		interactivePartSummary(teller.PromptForTargets("state_memory")),
 		interactivePartSummary(loreContext),
 		interactivePartSummary(boundedJSON(interactiveDirectorTurnAudit(turn), 10*1024)),
 		interactivePartSummary(storyMemory),
+		interactivePartSummary(storyMemorySchema),
+		interactivePartSummary(boundedJSON(actorStateSnapshot, 16*1024)),
 		interactivePartSummary(turnHistory),
 		interactivePartSummary(instruction),
 	)
@@ -948,18 +933,6 @@ func interactiveStoryTellerSystemInput(teller interactive.Teller, styleRules ...
 		StoryTellerSystemPrompt: teller.PromptForTargets("system"),
 		StyleRules:              rules,
 	}
-}
-
-func (c *interactiveConversation) stateLoreContext() string {
-	if c.workspace == "" {
-		return ""
-	}
-	context, err := book.NewLoreStore(c.workspace).StoryMemoryContextMarkdown(interactiveStateLoreContextBytes)
-	if err != nil {
-		log.Printf("[interactive-state-agent] load lore context failed workspace=%s err=%v", c.workspace, err)
-		return ""
-	}
-	return context
 }
 
 func (c *interactiveConversation) directorLoreContext(turn interactive.TurnEvent) string {
@@ -1139,8 +1112,7 @@ type interactiveTurnMemory struct {
 }
 
 const (
-	interactiveStateMemorySchemaBytes   = 32 * 1024
-	interactiveStateLoreContextBytes    = 32 * 1024
+	interactiveStoryMemorySchemaBytes   = 32 * 1024
 	interactiveDirectorLoreContextBytes = 16 * 1024
 	interactiveDirectorLoreIndexBytes   = 6 * 1024
 	interactiveDirectorLoreItemsBytes   = 8 * 1024
@@ -1256,27 +1228,6 @@ func interactiveStorySourceSummary(title, origin string, teller interactive.Tell
 		)
 	}
 	parts = append(parts, interactiveContextSource{Source: "本轮行动", Title: "当前用户行动", Content: userAction})
-	return interactiveContextSourceListSummary(parts)
-}
-
-func interactiveStateSourceSummary(workspace, title, origin string, teller interactive.Teller, loreItems, storyMemorySchema, storyMemory, actorStateSchema, actorState, turnHistory, userAction, narrative string) string {
-	parts := []interactiveContextSource{
-		{Source: "互动故事", Title: "故事标题", Content: title},
-		{Source: "互动故事", Title: "开端", Content: origin},
-	}
-	parts = append(parts, interactiveTellerSlotSources(teller, "state_memory")...)
-	if strings.TrimSpace(loreItems) != "" {
-		parts = append(parts, interactiveContextSource{Source: "资料库", Title: workspacepath.Rel(workspace, "lore", "items.json"), Content: loreItems})
-	}
-	parts = append(parts,
-		interactiveContextSource{Source: "故事记忆结构", Title: "story memory schema", Content: storyMemorySchema},
-		interactiveContextSource{Source: "故事记忆", Title: "当前分支可见故事记忆", Content: storyMemory},
-		interactiveContextSource{Source: "故事导演", Title: "Actor State schema", Content: actorStateSchema},
-		interactiveContextSource{Source: "快照状态", Title: "Snapshot.State.actors", Content: actorState},
-		interactiveContextSource{Source: "历史回合", Title: "完整回合上下文", Content: turnHistory},
-		interactiveContextSource{Source: "本轮行动", Title: "用户行动", Content: userAction},
-		interactiveContextSource{Source: "本轮剧情", Title: "Agent 正文", Content: narrative},
-	)
 	return interactiveContextSourceListSummary(parts)
 }
 

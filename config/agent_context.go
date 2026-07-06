@@ -21,7 +21,6 @@ type AgentContextSettings struct {
 	IDE                   AgentContextOverride `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory      AgentContextOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager         AgentContextOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
-	InteractiveState      AgentContextOverride `toml:"interactive_state,omitempty" json:"interactive_state,omitempty"`
 	InteractiveDirector   AgentContextOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
 	InteractiveHotChoices AgentContextOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentContextOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
@@ -76,7 +75,6 @@ func MergeAgentContextSettings(parent, child AgentContextSettings) AgentContextS
 		IDE:                   mergeAgentContextOverride(parent.IDE, child.IDE),
 		InteractiveStory:      mergeAgentContextOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:         mergeAgentContextOverride(parent.ConfigManager, child.ConfigManager),
-		InteractiveState:      mergeAgentContextOverride(parent.InteractiveState, child.InteractiveState),
 		InteractiveDirector:   mergeAgentContextOverride(parent.InteractiveDirector, child.InteractiveDirector),
 		InteractiveHotChoices: mergeAgentContextOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentContextOverride(parent.VersionSummary, child.VersionSummary),
@@ -205,7 +203,6 @@ func sanitizeAgentContextSettings(settings AgentContextSettings) AgentContextSet
 	settings.IDE = sanitizeAgentContextOverride(settings.IDE)
 	settings.InteractiveStory = sanitizeAgentContextOverride(settings.InteractiveStory)
 	settings.ConfigManager = sanitizeAgentContextOverride(settings.ConfigManager)
-	settings.InteractiveState = sanitizeAgentContextOverride(settings.InteractiveState)
 	settings.InteractiveDirector = sanitizeAgentContextOverride(settings.InteractiveDirector)
 	settings.InteractiveHotChoices = sanitizeAgentContextOverride(settings.InteractiveHotChoices)
 	settings.VersionSummary = sanitizeAgentContextOverride(settings.VersionSummary)

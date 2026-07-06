@@ -22,17 +22,15 @@ func TestInteractivePromptsSkipLegacyCharacterAndWorldFallback(t *testing.T) {
 			BranchID:      "main",
 			TurnHistory:   "第 1 回合剧情：门后传来低沉的风声。",
 		}),
-		"state memory": InteractiveStateInstruction(InteractiveStatePromptInput{
+		"director maintenance": InteractiveDirectorInstruction(InteractiveDirectorPromptInput{
 			Title:             "末日开端",
 			Origin:            "主角醒来发现世界已末日",
 			StoryTellerID:     "classic",
-			StoryTellerMemory: "沉淀关键状态。",
 			BranchID:          "main",
 			StoryMemorySchema: "## important_character",
 			StoryMemory:       "林川仍在黄泉酒馆。",
 			TurnHistory:       "第 1 回合剧情：门后传来低沉的风声。",
-			UserAction:        "我点燃火把",
-			Narrative:         "火光照亮了墙上的新线索。",
+			TurnAuditJSON:     `{"user_action":"我点燃火把","narrative":"火光照亮了墙上的新线索。"}`,
 		}),
 	}
 

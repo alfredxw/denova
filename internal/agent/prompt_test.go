@@ -316,30 +316,28 @@ func TestBuiltinAgentPromptsExposeInteractiveMemoryToolsWithoutCustomPrompt(t *t
 	}
 }
 
-func TestBuiltinInteractiveMemoryPromptUsesStoryMemoryPatchContract(t *testing.T) {
+func TestBuiltinInteractiveDirectorPromptUsesMaintenanceToolContract(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	cfg := &config.Config{Workspace: state.Workspace()}
 
 	builtin := BuiltinAgentPrompts(cfg, state, IDEStoryTeller{})
-	got := builtin.InteractiveState.SystemPrompt
+	got := builtin.InteractiveDirector.SystemPrompt
 	for _, required := range []string{
-		"互动记忆 Agent",
-		"story_memory_patches",
-		"故事记忆结构与字段协议",
-		"历史回合上下文",
-		"资料库相关人物与设定",
-		"本回合前的既有故事记忆",
-		"按该表的字段列表逐字段填写",
-		"不能只填 required 字段或本回合变化字段",
-		"不得省略字段、写空字符串或 null",
+		"后台导演 Agent",
+		"Story Memory",
+		"结构化 Actor State",
+		"director.md",
+		"apply_actor_state_patch",
+		"apply_story_memory_patches",
+		"只能使用 read_file、write_file、edit_file",
 	} {
 		if !strings.Contains(got, required) {
-			t.Fatalf("builtin interactive memory prompt missing %q:\n%s", required, got)
+			t.Fatalf("builtin interactive director prompt missing %q:\n%s", required, got)
 		}
 	}
-	for _, legacy := range []string{"memory_entry", "字段包括 state_ops"} {
+	for _, legacy := range []string{"互动记忆 Agent", "字段包括 state_ops"} {
 		if strings.Contains(got, legacy) {
-			t.Fatalf("builtin interactive memory prompt should not contain legacy contract %q:\n%s", legacy, got)
+			t.Fatalf("builtin interactive director prompt should not contain legacy contract %q:\n%s", legacy, got)
 		}
 	}
 }

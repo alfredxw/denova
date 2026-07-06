@@ -19,7 +19,7 @@ Use this skill before calling `write_agent_configs`.
 ## Supported Operations
 
 - `set_agent_override`: replace one Agent override in the selected layer.
-  - `agent`: `default`, `ide`, `interactive_story`, `config_manager`, `interactive_state`, `interactive_hot_choices`, `version_summary`, `tool_agent`, `automation`, or `context_compaction`.
+  - `agent`: `default`, `ide`, `interactive_story`, `interactive_director`, `config_manager`, `interactive_hot_choices`, `version_summary`, `tool_agent`, `automation`, or `context_compaction`.
   - Optional replacement sections: `model`, `tools`, `prompt`, `skills`, `context`.
 - `set_general_sub_agent`: set or inherit the built-in General SubAgent switch.
   - `agent`: `default`, `ide`, `interactive_story`, `config_manager`, or `automation`.

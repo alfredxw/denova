@@ -8,7 +8,6 @@ type AgentPromptSettings struct {
 	IDE                   AgentPromptOverride `toml:"ide,omitempty" json:"ide,omitempty"`
 	InteractiveStory      AgentPromptOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
 	ConfigManager         AgentPromptOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
-	InteractiveState      AgentPromptOverride `toml:"interactive_state,omitempty" json:"interactive_state,omitempty"`
 	InteractiveDirector   AgentPromptOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
 	InteractiveHotChoices AgentPromptOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentPromptOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
@@ -28,7 +27,6 @@ type AgentPromptSourceSettings struct {
 	IDE                   AgentPromptSourceList `json:"ide,omitempty"`
 	InteractiveStory      AgentPromptSourceList `json:"interactive_story,omitempty"`
 	ConfigManager         AgentPromptSourceList `json:"config_manager,omitempty"`
-	InteractiveState      AgentPromptSourceList `json:"interactive_state,omitempty"`
 	InteractiveDirector   AgentPromptSourceList `json:"interactive_director,omitempty"`
 	InteractiveHotChoices AgentPromptSourceList `json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentPromptSourceList `json:"version_summary,omitempty"`
@@ -56,7 +54,6 @@ type AgentPromptBlockSettings struct {
 	IDE                   AgentPromptBlocks `json:"ide,omitempty"`
 	InteractiveStory      AgentPromptBlocks `json:"interactive_story,omitempty"`
 	ConfigManager         AgentPromptBlocks `json:"config_manager,omitempty"`
-	InteractiveState      AgentPromptBlocks `json:"interactive_state,omitempty"`
 	InteractiveDirector   AgentPromptBlocks `json:"interactive_director,omitempty"`
 	InteractiveHotChoices AgentPromptBlocks `json:"interactive_hot_choices,omitempty"`
 	VersionSummary        AgentPromptBlocks `json:"version_summary,omitempty"`
@@ -83,7 +80,6 @@ func MergeAgentPromptSettings(parent, child AgentPromptSettings) AgentPromptSett
 		IDE:                   mergeAgentPromptOverride(parent.IDE, child.IDE),
 		InteractiveStory:      mergeAgentPromptOverride(parent.InteractiveStory, child.InteractiveStory),
 		ConfigManager:         mergeAgentPromptOverride(parent.ConfigManager, child.ConfigManager),
-		InteractiveState:      mergeAgentPromptOverride(parent.InteractiveState, child.InteractiveState),
 		InteractiveDirector:   mergeAgentPromptOverride(parent.InteractiveDirector, child.InteractiveDirector),
 		InteractiveHotChoices: mergeAgentPromptOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
 		VersionSummary:        mergeAgentPromptOverride(parent.VersionSummary, child.VersionSummary),
@@ -128,7 +124,6 @@ func sanitizeAgentPromptSettings(settings AgentPromptSettings) AgentPromptSettin
 	settings.IDE = sanitizeAgentPromptOverride(settings.IDE)
 	settings.InteractiveStory = sanitizeAgentPromptOverride(settings.InteractiveStory)
 	settings.ConfigManager = sanitizeAgentPromptOverride(settings.ConfigManager)
-	settings.InteractiveState = sanitizeAgentPromptOverride(settings.InteractiveState)
 	settings.InteractiveDirector = sanitizeAgentPromptOverride(settings.InteractiveDirector)
 	settings.InteractiveHotChoices = sanitizeAgentPromptOverride(settings.InteractiveHotChoices)
 	settings.VersionSummary = sanitizeAgentPromptOverride(settings.VersionSummary)

@@ -522,7 +522,7 @@ const settingPanel = {
   'settingPanel.target.turnContext.detail': '每次生成下一回合时注入，强约束本轮裁定、NPC 主动反应、代价、暗线推进和可选择。',
   'settingPanel.target.stateMemory.label': '记忆沉淀规则',
   'settingPanel.target.stateMemory.summary': '只影响故事记忆写入',
-  'settingPanel.target.stateMemory.detail': '正文生成后注入互动记忆 Agent，用于指导哪些危机、关系变化、资源压力、暗线和行动入口需要沉淀到故事记忆。',
+  'settingPanel.target.stateMemory.detail': '正文生成后注入后台导演 Agent，用于指导哪些危机、关系变化、资源压力、暗线和行动入口需要沉淀到故事记忆。',
 } as const
 
 export default settingPanel

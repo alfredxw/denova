@@ -108,6 +108,177 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	}
 }
 
+func TestInteractiveDirectorMaintenanceWritesStateMemoryAndDirectorPlan(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:         "统一维护",
+		Origin:        "主角进入旧城",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{
+		BranchID:  "main",
+		User:      "我扶着林川避开钟楼射线",
+		Narrative: "林川肩头被擦伤，但确认钟楼上有人盯梢。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := generateInteractiveDirectorForPlan
+	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
+		for _, want := range []string{"turn_maintenance", "apply_actor_state_patch", "apply_story_memory_patches", "Actor State Schema", "故事记忆结构与字段协议", "director.md"} {
+			if !strings.Contains(instruction, want) {
+				t.Fatalf("maintenance instruction missing %q:\n%s", want, instruction)
+			}
+		}
+		if err := applyDirectorMaintenanceStateForTest(toolContext); err != nil {
+			return "", err
+		}
+		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
+		if err != nil {
+			return "", err
+		}
+		docs := plan.Docs
+		docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "钟楼盯梢者成为下一轮可调查压力点。", 1)
+		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
+			return "", err
+		}
+		return "已维护状态、记忆和导演规划", nil
+	}
+	defer func() { generateInteractiveDirectorForPlan = previous }()
+
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
+	result, err := runInteractiveDirectorMaintenance(context.Background(), &config.Config{}, book.NewState(workspace), conversation, turn, nil, interactiveDirectorTaskTurnMaintenance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AppliedStoryMemoryPatches != 1 {
+		t.Fatalf("applied memory patches = %d, want 1", result.AppliedStoryMemoryPatches)
+	}
+	if result.AppliedActorStateOps == 0 {
+		t.Fatalf("expected actor state ops to be applied")
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.MemoryStatus != "ready" || snapshot.CurrentTurn.StateStatus != "ready" {
+		t.Fatalf("turn memory/state should be ready: %#v", snapshot.CurrentTurn)
+	}
+	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady {
+		t.Fatalf("director plan should be ready: %#v", snapshot.DirectorPlanStatus)
+	}
+	if snapshot.DirectorPlan == nil || !strings.Contains(snapshot.DirectorPlan.Docs.Plan, "钟楼盯梢者") {
+		t.Fatalf("director plan should include updated file docs: %#v", snapshot.DirectorPlan)
+	}
+	if got := actorHPForTest(snapshot.State); got != 8 {
+		t.Fatalf("actor hp = %v, want 8 state=%#v", got, snapshot.State)
+	}
+	memory, err := store.StoryMemory(story.ID, "main", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(memory.Records) != 1 || memory.Records[0].StructureID != "important_character" || memory.Records[0].Key != "林川" {
+		t.Fatalf("story memory record mismatch: %#v", memory.Records)
+	}
+}
+
+func TestInteractiveDirectorMaintenanceKeepsDirectorReadyWhenMemoryToolFails(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "记忆失败", Origin: "主角进入旧城", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{
+		BranchID:  "main",
+		User:      "我观察钟楼",
+		Narrative: "钟楼上有反光一闪。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := generateInteractiveDirectorForPlan
+	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
+		toolContext.OnStateMaintenanceFailed(errors.New("story memory write failed"))
+		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
+		if err != nil {
+			return "", err
+		}
+		docs := plan.Docs
+		docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "钟楼反光作为下一轮调查入口。", 1)
+		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
+			return "", err
+		}
+		return "导演规划已更新，记忆写入失败", nil
+	}
+	defer func() { generateInteractiveDirectorForPlan = previous }()
+
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
+	if _, err := runInteractiveDirectorMaintenance(context.Background(), &config.Config{}, book.NewState(workspace), conversation, turn, nil, interactiveDirectorTaskTurnMaintenance); err == nil || !strings.Contains(err.Error(), "story memory write failed") {
+		t.Fatalf("maintenance should report memory failure, got %v", err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady || snapshot.DirectorPlan == nil || !strings.Contains(snapshot.DirectorPlan.Docs.Plan, "钟楼反光") {
+		t.Fatalf("director plan should stay ready after memory failure: status=%#v plan=%#v", snapshot.DirectorPlanStatus, snapshot.DirectorPlan)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.MemoryStatus != "failed" || !strings.Contains(snapshot.CurrentTurn.MemoryError, "story memory write failed") {
+		t.Fatalf("memory failure should be recorded without hiding director success: %#v", snapshot.CurrentTurn)
+	}
+}
+
+func TestInteractiveDirectorMaintenanceKeepsMemoryWhenDirectorPlanValidationFails(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "规划失败", Origin: "主角进入旧城", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{
+		BranchID:  "main",
+		User:      "我检查破损路标",
+		Narrative: "路标背面刻着林川留下的警告。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := generateInteractiveDirectorForPlan
+	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
+		if err := applyDirectorMaintenanceStateForTest(toolContext); err != nil {
+			return "", err
+		}
+		if len(toolContext.DirectorPlanAllowedPaths) != 1 {
+			return "", errors.New("missing director path")
+		}
+		if err := os.WriteFile(toolContext.DirectorPlanAllowedPaths[0], []byte("# 缺少固定标题\n\n这份规划不合法。\n"), 0o644); err != nil {
+			return "", err
+		}
+		return "记忆已写入，导演规划校验失败", nil
+	}
+	defer func() { generateInteractiveDirectorForPlan = previous }()
+
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
+	if _, err := runInteractiveDirectorMaintenance(context.Background(), &config.Config{}, book.NewState(workspace), conversation, turn, nil, interactiveDirectorTaskTurnMaintenance); err == nil || !strings.Contains(err.Error(), "完成导演规划运行失败") {
+		t.Fatalf("maintenance should report director validation failure, got %v", err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.MemoryStatus != "ready" || snapshot.CurrentTurn.StateStatus != "ready" {
+		t.Fatalf("memory/state should remain ready after director failure: %#v", snapshot.CurrentTurn)
+	}
+	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusFailed {
+		t.Fatalf("director plan should be failed: %#v", snapshot.DirectorPlanStatus)
+	}
+}
+
 func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)
@@ -247,6 +418,64 @@ func writeDirectorPlanDocsForTest(paths []string, docs interactive.DirectorPlanD
 		return err
 	}
 	return nil
+}
+
+func applyDirectorMaintenanceStateForTest(toolContext agent.InteractiveStoryToolContext) error {
+	result, err := interactive.ValidateActorStatePatches(toolContext.ActorState, []interactive.ActorStatePatch{{
+		ActorID:    interactive.DefaultActorID,
+		ActorName:  "主角",
+		TemplateID: "protagonist",
+		State: map[string]any{
+			"resources.hp": float64(8),
+		},
+		Reason: "本回合主角为了保护同伴受到轻伤。",
+	}}, toolContext.TurnID)
+	if err != nil {
+		return err
+	}
+	if _, err := toolContext.Store.AppendStateDelta(toolContext.StoryID, interactive.AppendStateDeltaRequest{
+		ParentID: toolContext.TurnID,
+		BranchID: toolContext.BranchID,
+		Ops:      result.Ops,
+	}); err != nil {
+		return err
+	}
+	if toolContext.OnActorStateApplied != nil {
+		toolContext.OnActorStateApplied(len(result.Ops))
+	}
+	records, err := toolContext.Store.ApplyStoryMemoryPatches(toolContext.StoryID, toolContext.BranchID, toolContext.TurnID, []interactive.StoryMemoryPatch{{
+		Op:          "upsert",
+		StructureID: "important_character",
+		Values: map[string]string{
+			"name":                        "林川",
+			"current_status":              "确认钟楼上有人盯梢",
+			"relationship_to_protagonist": "与主角共同戒备钟楼威胁",
+		},
+	}})
+	if err != nil {
+		return err
+	}
+	if toolContext.OnStoryMemoryApplied != nil {
+		toolContext.OnStoryMemoryApplied(len(records))
+	}
+	return nil
+}
+
+func actorHPForTest(state map[string]any) float64 {
+	actors, _ := state["actors"].(map[string]any)
+	protagonist, _ := actors[interactive.DefaultActorID].(map[string]any)
+	actorState, _ := protagonist["state"].(map[string]any)
+	resources, _ := actorState["resources"].(map[string]any)
+	switch value := resources["hp"].(type) {
+	case int:
+		return float64(value)
+	case int64:
+		return float64(value)
+	case float64:
+		return value
+	default:
+		return 0
+	}
 }
 
 func waitForDirectorPlanRunStatus(t *testing.T, store *interactive.Store, storyID, branchID, status string) interactive.Snapshot {

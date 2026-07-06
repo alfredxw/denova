@@ -90,10 +90,8 @@ func outputProtocolForAgent(agentKind string) string {
 			"- 必须只输出本回合可展示在故事舞台上的故事正文。",
 			"- 正文只写场景、动作、对白和后果；不要输出计划、解释、工具说明、Markdown 标题、XML 包装、隐藏状态块、快捷选择块或任何 JSON。",
 		}, "\n")
-	case config.AgentKindInteractiveState:
-		return "- 必须只输出符合互动记忆 schema 的 JSON object，格式为 {\"story_memory_patches\":[...]}；每条 patch 必须按目标表的字段协议填写完整 values，所有字段都必须出现且不能为空，不得输出 Markdown、解释或代码块。"
 	case config.AgentKindInteractiveDirector:
-		return "- 必须通过 read_file/write_file/edit_file 更新当前分支 director.md 导演规划；完成后只输出一句简短摘要，不得续写剧情或输出完整规划内容。"
+		return "- 必须通过专用工具维护 Story Memory 和 Actor State，并只通过受限文件工具更新当前分支 director.md；完成后只输出一句简短摘要，不得续写剧情或输出 JSON patch。"
 	case config.AgentKindInteractiveHotChoices:
 		return "- 必须只输出 JSON object，格式为 {\"choices\":[\"...\"]}；不得续写剧情或修改故事状态。"
 	case config.AgentKindVersionSummary:
@@ -135,12 +133,11 @@ func agentRuntimeContract(agentKind string) string {
 			"- 删除、隐藏、覆盖和大范围重写必须来自用户明确指令；不确定时先说明将如何修改并请求用户确认。",
 			"- 资料库只沉淀长期稳定设定；章节后的短期状态不默认写入资料库。",
 		}, "\n")
-	case config.AgentKindInteractiveState:
-		return "- 互动记忆 Agent 必须只输出符合内置 schema 的 story_memory_patches JSON object；structure_id、op、key、字段 ID 和内容边界仍由后端校验。"
 	case config.AgentKindInteractiveDirector:
 		return strings.Join([]string{
-			"- 互动导演 Agent 是后台叙事编排 Agent，只能根据调用方提供的有界回合审计、资料库导演上下文、导演规划文件、故事记忆摘要和事件目录编辑当前分支 director.md。",
-			"- 互动导演 Agent 不得续写故事正文，不得替用户选择行动，不得使用 shell、todo、资料库写入、故事记忆写入或任意 workspace 写入。",
+			"- 互动导演 Agent 是后台回合维护 Agent，根据调用方提供的有界回合审计、RuleResolution、故事记忆、Actor State、资料库导演上下文和导演规划文件维护后台状态。",
+			"- Story Memory 与 Actor State 的真实写入必须通过专用工具完成；director.md 只能通过受限文件工具编辑当前分支规划文件。",
+			"- 互动导演 Agent 不得续写故事正文，不得替用户选择行动，不得使用 shell、todo、资料库写入或任意 workspace 写入。",
 			"- 互动导演 Agent 必须优先复用资料库中的重要角色、势力、规则、地点和既有关系，并通过高信息密度的角色关系、势力压力、信息揭示、爽点危机、检定代价和分支安排规划后续互动；固定数值、骰子和资源结算结果必须以 RuleResolution 为准。",
 			"- 互动导演 Agent 必须把可给正文 Agent 读取的信息放在“正文Agent可读”区，把隐藏真相和未来反转放在“后台导演私密”区。",
 		}, "\n")

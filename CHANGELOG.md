@@ -65,6 +65,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 不兼容变更：游戏模式后台能力统一收敛到 `interactive_director`，移除独立 `interactive_state` Agent 配置、注册表和设置页入口；后台导演现在在同一次维护运行中通过工具写入 Actor State、Story Memory，并更新当前分支 `director.md`。
+- Breaking: Game Mode background maintenance is now unified under `interactive_director`; the standalone `interactive_state` Agent config, registry entry, and settings UI row have been removed. The background Director now writes Actor State, Story Memory, and the current branch `director.md` in one maintenance run through tools.
 - 不兼容变更：游戏模式结构化状态改为 Actor-centric 形态，旧 `resources.*`、`attributes.*`、`relations.*`、`conditions.*` 等全局状态路径会迁移到默认主角 Actor，例如 `actors.protagonist.state.resources.hp`；规则检定和数值计算以 Actor State 为真源，故事记忆中的 `current_state` 与 `rule_state_summary` 改为只读派生摘要，不再通过编辑记忆改变真实状态。
 - Breaking: Game Mode structured state is now actor-centric. Legacy global paths such as `resources.*`, `attributes.*`, `relations.*`, and `conditions.*` migrate to the default protagonist actor, for example `actors.protagonist.state.resources.hp`; rule checks and numeric calculations use Actor State as the source of truth, while story-memory `current_state` and `rule_state_summary` are read-only derived summaries and no longer mutate real state when edited.
 - 方案预设：进入页面时默认同时展开“故事导演”和“叙事风格”，目录标题与条目长文本会截断在侧栏内；内置事件包名称、事件卡展示文本和默认导演规划模板改为中文标题。

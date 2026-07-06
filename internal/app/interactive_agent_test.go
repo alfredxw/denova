@@ -145,23 +145,23 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatal(err)
 	}
 	last = snapshot.Turns[1]
-	stateInstruction, err := conversation.BuildStateInstruction(last)
+	directorInstruction, err := conversation.BuildDirectorInstruction(last)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"故事记忆建议",
-		"values 必须按目标表的字段逐项填写",
-		"信息来源优先级",
-		"资料库用于校准人物、设定、规则、地点、物品",
-		"不要记录下一步行动建议、快捷选择或可选择入口",
+		"apply_actor_state_patch",
+		"apply_story_memory_patches",
+		"Story Memory 的 current_state、rule_state_summary 只是叙事摘要",
+		"资料库优先",
+		"不负责替用户选择下一步行动",
 	} {
-		if !strings.Contains(stateInstruction, want) {
-			t.Fatalf("state instruction should include story memory guidance %q: %s", want, stateInstruction)
+		if !strings.Contains(directorInstruction, want) {
+			t.Fatalf("director instruction should include maintenance guidance %q: %s", want, directorInstruction)
 		}
 	}
-	if !strings.Contains(stateInstruction, "黄泉酒馆完整设定") {
-		t.Fatalf("state instruction should include bounded full lore for memory calibration: %s", stateInstruction)
+	if !strings.Contains(directorInstruction, "黄泉酒馆完整设定") {
+		t.Fatalf("director instruction should include bounded lore for maintenance: %s", directorInstruction)
 	}
 	for _, want := range []string{
 		"故事记忆结构与字段协议",
@@ -169,15 +169,19 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"key_field_id: name",
 		"name（姓名） required",
 		"plot_summary",
-		"历史回合上下文",
-		"第 2 回合用户行动：我点燃火把",
+		"近期剧情历史",
+		"本回合 RuleResolution / TerminalOutcome 审计 JSON",
+		"我点燃火把",
+		"Actor State Schema",
+		"当前 Actor State 快照",
+		"director.md",
 	} {
-		if !strings.Contains(stateInstruction, want) {
-			t.Fatalf("state instruction should include story memory schema %q: %s", want, stateInstruction)
+		if !strings.Contains(directorInstruction, want) {
+			t.Fatalf("director instruction should include maintenance context %q: %s", want, directorInstruction)
 		}
 	}
-	if strings.Contains(stateInstruction, "经典叙事者") || strings.Contains(stateInstruction, "导演本轮上下文规则") {
-		t.Fatalf("state instruction should not include story-only teller rules: %s", stateInstruction)
+	if strings.Contains(directorInstruction, "经典叙事者") || strings.Contains(directorInstruction, "导演本轮上下文规则") {
+		t.Fatalf("director instruction should not include story-only teller rules: %s", directorInstruction)
 	}
 	onStage := snapshot.State["on_stage"].([]any)
 	if len(onStage) != 1 || onStage[0] != "林川" {
@@ -666,7 +670,7 @@ func TestInteractiveConversationUsesDefaultCompactionRetainedTurns(t *testing.T)
 	}
 }
 
-func TestInteractiveStateInstructionUsesModelVisibleCompactedHistory(t *testing.T) {
+func TestInteractiveDirectorInstructionUsesModelVisibleCompactedHistory(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := t.TempDir()
 	store := interactive.NewStore(workspace)
@@ -696,18 +700,18 @@ func TestInteractiveStateInstructionUsesModelVisibleCompactedHistory(t *testing.
 	}
 
 	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, &config.Config{})
-	instruction, err := conversation.BuildStateInstruction(interactive.TurnEvent{User: "我继续探索", Narrative: "我发现新的石门"})
+	instruction, err := conversation.BuildDirectorInstruction(interactive.TurnEvent{User: "我继续探索", Narrative: "我发现新的石门"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(instruction, "[Denova Context Compaction]") || !strings.Contains(instruction, "压缩摘要：主角已进入旧城。") {
-		t.Fatalf("state instruction should include active compaction summary: %s", instruction)
+		t.Fatalf("director instruction should include active compaction summary: %s", instruction)
 	}
 	if strings.Contains(instruction, "第1次行动") || strings.Contains(instruction, "第9次行动") {
-		t.Fatalf("state instruction should not include turns omitted by compaction: %s", instruction)
+		t.Fatalf("director instruction should not include turns omitted by compaction: %s", instruction)
 	}
 	if !strings.Contains(instruction, "第10次行动") {
-		t.Fatalf("state instruction should include retained model-visible tail: %s", instruction)
+		t.Fatalf("director instruction should include retained model-visible tail: %s", instruction)
 	}
 }
 

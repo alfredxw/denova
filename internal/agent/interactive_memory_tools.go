@@ -27,6 +27,9 @@ type InteractiveStoryToolContext struct {
 	TurnID                   string
 	ActorState               interactive.StoryDirectorActorStateSystem
 	DirectorPlanAllowedPaths []string
+	OnActorStateApplied      func(appliedOps int)
+	OnStoryMemoryApplied     func(applied int)
+	OnStateMaintenanceFailed func(error)
 	// DisplayConversation receives display-only progress for background helper
 	// agents. It must not receive final assistant text as model-visible context.
 	DisplayConversation Conversation
@@ -48,6 +51,10 @@ type readInteractiveMemoriesInput struct {
 
 type applyActorStatePatchInput struct {
 	Patches []interactive.ActorStatePatch `json:"patches" jsonschema:"description=要写入的关键 Actor 结构化状态更新。每条 patch 必须包含 actor_id、template_id、state 和 reason；state 只能使用 Actor State schema 中声明的字段路径。"`
+}
+
+type applyStoryMemoryPatchesInput struct {
+	Patches []interactive.StoryMemoryPatch `json:"patches" jsonschema:"description=要写入的故事记忆 patch。每条 patch 必须遵守当前注入的 Story Memory schema；op 仅使用 upsert、append、archive、restore。"`
 }
 
 type interactiveMemoryToolOutput struct {
@@ -83,6 +90,12 @@ type actorStatePatchToolOutput struct {
 	Ops           int      `json:"ops"`
 	BranchID      string   `json:"branch_id"`
 	TurnID        string   `json:"turn_id"`
+}
+
+type storyMemoryPatchToolOutput struct {
+	AppliedRecords int    `json:"applied_records"`
+	BranchID       string `json:"branch_id"`
+	TurnID         string `json:"turn_id"`
 }
 
 func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
@@ -168,17 +181,24 @@ func newInteractiveActorStateTools(ctx InteractiveStoryToolContext) ([]tool.Base
 		_ = callCtx
 		result, err := interactive.ValidateActorStatePatches(ctx.ActorState, input.Patches, ctx.TurnID)
 		if err != nil {
+			reportStateMaintenanceFailure(ctx, err)
 			return "", err
 		}
 		if len(result.Ops) == 0 {
-			return "", fmt.Errorf("Actor 状态更新没有产生可写入操作")
+			err := fmt.Errorf("Actor 状态更新没有产生可写入操作")
+			reportStateMaintenanceFailure(ctx, err)
+			return "", err
 		}
 		if _, err := ctx.Store.AppendStateDelta(ctx.StoryID, interactive.AppendStateDeltaRequest{
 			ParentID: ctx.TurnID,
 			BranchID: ctx.BranchID,
 			Ops:      result.Ops,
 		}); err != nil {
+			reportStateMaintenanceFailure(ctx, err)
 			return "", err
+		}
+		if ctx.OnActorStateApplied != nil {
+			ctx.OnActorStateApplied(len(result.Ops))
 		}
 		data, err := json.MarshalIndent(actorStatePatchToolOutput{
 			AppliedActors: result.AppliedActors,
@@ -195,6 +215,50 @@ func newInteractiveActorStateTools(ctx InteractiveStoryToolContext) ([]tool.Base
 		return nil, err
 	}
 	return []tool.BaseTool{applyTool}, nil
+}
+
+func newInteractiveStoryMemoryPatchTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
+	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
+	ctx.BranchID = strings.TrimSpace(ctx.BranchID)
+	ctx.TurnID = strings.TrimSpace(ctx.TurnID)
+	if ctx.Store == nil || ctx.StoryID == "" || ctx.TurnID == "" {
+		return nil, nil
+	}
+	applyTool, err := utils.InferTool("apply_story_memory_patches", "写入当前互动故事分支的故事记忆 patch。只用于已经在本回合正文中成立、后续需要承接的信息；字段、结构、key 和 values 必须来自注入的 Story Memory schema。后端会按分支和结构校验，并写入 story memory 记录。", func(callCtx context.Context, input applyStoryMemoryPatchesInput) (string, error) {
+		_ = callCtx
+		if len(input.Patches) == 0 {
+			err := fmt.Errorf("故事记忆 patch 不能为空")
+			reportStateMaintenanceFailure(ctx, err)
+			return "", err
+		}
+		records, err := ctx.Store.ApplyStoryMemoryPatches(ctx.StoryID, ctx.BranchID, ctx.TurnID, input.Patches)
+		if err != nil {
+			reportStateMaintenanceFailure(ctx, err)
+			return "", err
+		}
+		if ctx.OnStoryMemoryApplied != nil {
+			ctx.OnStoryMemoryApplied(len(records))
+		}
+		data, err := json.MarshalIndent(storyMemoryPatchToolOutput{
+			AppliedRecords: len(records),
+			BranchID:       ctx.BranchID,
+			TurnID:         ctx.TurnID,
+		}, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return []tool.BaseTool{applyTool}, nil
+}
+
+func reportStateMaintenanceFailure(ctx InteractiveStoryToolContext, err error) {
+	if ctx.OnStateMaintenanceFailed != nil && err != nil {
+		ctx.OnStateMaintenanceFailed(err)
+	}
 }
 
 func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {

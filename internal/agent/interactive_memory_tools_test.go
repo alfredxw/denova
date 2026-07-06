@@ -120,6 +120,71 @@ func TestInteractiveMemoryToolsListReadAndRecordRecall(t *testing.T) {
 	}
 }
 
+func TestApplyStoryMemoryPatchesToolWritesValidatedCurrentBranchRecords(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "导演记忆工具", Origin: "主角进入旧城"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
+		BranchID:  "main",
+		User:      "我提醒林川小心钟楼",
+		Narrative: "林川点头，确认钟楼里有人盯着我们。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied := 0
+	tools, err := newInteractiveStoryMemoryPatchTools(InteractiveStoryToolContext{
+		Store:    store,
+		StoryID:  story.ID,
+		BranchID: "main",
+		TurnID:   turn.ID,
+		OnStoryMemoryApplied: func(count int) {
+			applied += count
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("tool count = %d, want 1", len(tools))
+	}
+	info, err := tools[0].Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != "apply_story_memory_patches" {
+		t.Fatalf("tool name = %s", info.Name)
+	}
+	output, err := tools[0].(tool.InvokableTool).InvokableRun(context.Background(), `{"patches":[{"op":"upsert","structure_id":"important_character","values":{"name":"林川","current_status":"确认钟楼有人盯梢","relationship_to_protagonist":"接受主角提醒并共同戒备","unexpected_field":"should be dropped"}}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed storyMemoryPatchToolOutput
+	if err := json.Unmarshal([]byte(output), &parsed); err != nil {
+		t.Fatalf("invalid tool output JSON: %v\n%s", err, output)
+	}
+	if parsed.AppliedRecords != 1 || parsed.BranchID != "main" || parsed.TurnID != turn.ID || applied != 1 {
+		t.Fatalf("unexpected tool output/callback: output=%#v applied=%d", parsed, applied)
+	}
+	memory, err := store.StoryMemory(story.ID, "main", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(memory.Records) != 1 {
+		t.Fatalf("record count = %d, want 1: %#v", len(memory.Records), memory.Records)
+	}
+	record := memory.Records[0]
+	if record.StructureID != "important_character" || record.BranchID != "main" || record.AnchorTurnID != turn.ID || record.Key != "林川" {
+		t.Fatalf("unexpected current-branch record: %#v", record)
+	}
+	if record.Values["current_status"] != "确认钟楼有人盯梢" || record.Values["unexpected_field"] != "" {
+		t.Fatalf("record values should be schema-filtered: %#v", record.Values)
+	}
+}
+
 func TestPrepareInteractiveTurnToolUsesRuleResolutionCallback(t *testing.T) {
 	expected := interactive.RuleResolution{
 		ID: "rr_test",

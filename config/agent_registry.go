@@ -4,7 +4,6 @@ const (
 	AgentKindIDE                   = "ide"
 	AgentKindInteractiveStory      = "interactive_story"
 	AgentKindConfigManager         = "config_manager"
-	AgentKindInteractiveState      = "interactive_state"
 	AgentKindInteractiveDirector   = "interactive_director"
 	AgentKindInteractiveHotChoices = "interactive_hot_choices"
 	AgentKindVersionSummary        = "version_summary"
@@ -52,15 +51,6 @@ var agentKindRegistry = []AgentKindDefinition{
 		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.ConfigManager },
 		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.ConfigManager },
 		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.ConfigManager },
-	},
-	{
-		Kind:            AgentKindInteractiveState,
-		SessionID:       "interactive-state-agent",
-		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveState },
-		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.InteractiveState },
-		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveState },
-		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveState },
-		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.InteractiveState },
 	},
 	{
 		Kind:            AgentKindInteractiveDirector,
