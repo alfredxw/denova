@@ -301,22 +301,20 @@ export function useChat(options: ChatOptions = {}) {
 
   /** 创建新会话，并刷新当前消息列表。 */
   const createChatSession = useCallback(async (title?: string) => {
-    resetStreamingState()
     const session = await createSession(title)
     setActiveSessionId(session.id)
     await Promise.all([loadSessions(), loadHistory(session.id)])
     await resumeActiveChat()
-  }, [loadHistory, loadSessions, resetStreamingState, resumeActiveChat])
+  }, [loadHistory, loadSessions, resumeActiveChat])
 
   /** 切换会话并读取该会话历史。 */
   const switchChatSession = useCallback(async (id: string) => {
     if (!id || id === activeSessionId) return
-    resetStreamingState()
     const session = await switchSession(id)
     setActiveSessionId(session.id)
     await Promise.all([loadSessions(), loadHistory(session.id)])
     await resumeActiveChat()
-  }, [activeSessionId, loadHistory, loadSessions, resetStreamingState, resumeActiveChat])
+  }, [activeSessionId, loadHistory, loadSessions, resumeActiveChat])
 
   /** 重命名会话。 */
   const renameChatSession = useCallback(async (id: string, title: string) => {
