@@ -1,0 +1,39 @@
+internal/agent/config_manager_tools.go
+  s_4a20c3af7f44ef::t_fced4fee563700 55,713,736
+internal/agent/middleware.go
+  s_4a20c3af7f44ef::t_91d93c7f354c1a 92-93,95
+internal/agent/middleware_test.go
+  s_4a20c3af7f44ef::t_e1757e1c714f61 81-131
+internal/app/interactive_agent_test.go
+  s_4a20c3af7f44ef::t_99be610e4d02f8 80,275,281,290
+internal/app/interactive_conversation.go
+  s_4a20c3af7f44ef::t_0c39a094fa57fc 84,91,93,775,810-811,813,815-816,818-822,824,833,837,840,951,966,1115-1121,1215,1218,1221
+internal/interactive/director_test.go
+  s_4a20c3af7f44ef::t_d0c9b2011e05e7 159-193
+internal/interactive/story_directors.go
+  s_4a20c3af7f44ef::t_f2f44af427137d 21
+internal/prompts/interactive.go
+  s_4a20c3af7f44ef::t_2ee901bd5f2481 140,146,304
+internal/prompts/interactive_test.go
+  s_4a20c3af7f44ef::t_b4dc2da7090b69 120,125,142,170
+web/src/features/interactive/components/story-director/constants.ts
+  s_4a20c3af7f44ef::t_1d7014d5584f72 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "faa570e9df4cbdc0d1e93a4fb784023f400c98d1",
+  "prompts": {},
+  "sessions": {
+    "s_4a20c3af7f44ef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f37b1-3d4f-7fc1-a5e9-ceeb74154659",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
