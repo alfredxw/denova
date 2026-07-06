@@ -144,6 +144,30 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	if restoredOpening.Custom || restoredOpening.BuiltinOverridden || restoredOpening.Name == "我的开局选择" {
 		t.Fatalf("unexpected restored opening selector: %#v", restoredOpening)
 	}
+
+	memoryLibrary := NewStoryMemoryStructureLibrary(novaDir)
+	memory, err := memoryLibrary.Get(DefaultStoryMemoryStructureModuleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memory.Name = "我的记忆结构"
+	overriddenMemory, err := memoryLibrary.Update(DefaultStoryMemoryStructureModuleID, memory, memory.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update built-in memory structure should create override: %v", err)
+	}
+	if overriddenMemory.Custom || !overriddenMemory.BuiltinOverridden || overriddenMemory.Name != "我的记忆结构" {
+		t.Fatalf("unexpected memory structure override: %#v", overriddenMemory)
+	}
+	if err := memoryLibrary.Delete(DefaultStoryMemoryStructureModuleID); err != nil {
+		t.Fatalf("Delete memory structure override should restore builtin: %v", err)
+	}
+	restoredMemory, err := memoryLibrary.Get(DefaultStoryMemoryStructureModuleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredMemory.Custom || restoredMemory.BuiltinOverridden || restoredMemory.Name == "我的记忆结构" {
+		t.Fatalf("unexpected restored memory structure: %#v", restoredMemory)
+	}
 }
 
 func TestDirectorEventCatalogPrioritizesConfiguredEventCardsBeforeDefaults(t *testing.T) {
@@ -182,6 +206,7 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	eventLibrary := NewEventPackageLibrary(novaDir)
 	ruleLibrary := NewRuleSystemLibrary(novaDir)
 	actorStateLibrary := NewActorStateLibrary(novaDir)
+	memoryLibrary := NewStoryMemoryStructureLibrary(novaDir)
 	openingLibrary := NewOpeningSelectorLibrary(novaDir)
 	directorLibrary := NewStoryDirectorLibrary(novaDir)
 
@@ -240,6 +265,20 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create actor state failed: %v", err)
 	}
+	memoryModule, err := memoryLibrary.Create(StoryMemoryStructureModule{
+		ID:   "survival-memory",
+		Name: "生存记忆结构",
+		Structures: []StoryMemoryStructure{{
+			ID:      "camp",
+			Name:    "营地状态",
+			Mode:    "singleton",
+			Enabled: boolPtr(true),
+			Fields:  []StoryMemoryField{{ID: "status", Name: "状态", Order: 10}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("create memory structure failed: %v", err)
+	}
 	openingModule, err := openingLibrary.Create(OpeningSelectorModule{
 		ID:   "wasteland-openings",
 		Name: "废土开局",
@@ -264,6 +303,7 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 			EventPackageIDs:   []string{eventModule.ID},
 			RuleSystemID:      ruleModule.ID,
 			ActorStateID:      actorModule.ID,
+			MemoryStructureID: memoryModule.ID,
 			OpeningSelectorID: openingModule.ID,
 			ImagePresetID:     "game-cg",
 		},
@@ -280,6 +320,9 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	}
 	if len(director.ActorState.Templates) != 1 || director.ActorState.Templates[0].ID != "protagonist" || len(director.ActorState.InitialActors) != 1 {
 		t.Fatalf("director should resolve actor state module on create: %#v", director.ActorState)
+	}
+	if len(director.ResolvedSnapshot.StoryMemoryStructures) != 1 || director.ResolvedSnapshot.StoryMemoryStructures[0].ID != "camp" {
+		t.Fatalf("director should resolve memory structure module on create: %#v", director.ResolvedSnapshot.StoryMemoryStructures)
 	}
 	if !containsStateOp(director.OpeningSelector.InitialStateOps, "flags.wasteland", true) {
 		t.Fatalf("director should resolve opening module on create: %#v", director.OpeningSelector.InitialStateOps)
@@ -303,6 +346,9 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	if err := actorStateLibrary.Delete(actorModule.ID); err != nil {
 		t.Fatalf("delete actor state failed: %v", err)
 	}
+	if err := memoryLibrary.Delete(memoryModule.ID); err != nil {
+		t.Fatalf("delete memory structure failed: %v", err)
+	}
 	fallback, err := directorLibrary.Get("modular")
 	if err != nil {
 		t.Fatalf("get fallback director failed: %v", err)
@@ -312,6 +358,9 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	}
 	if len(fallback.ActorState.Templates) != 1 || fallback.ActorState.Templates[0].ID != "protagonist" {
 		t.Fatalf("director should use actor state snapshot after module deletion, got %#v", fallback.ActorState)
+	}
+	if len(fallback.ResolvedSnapshot.StoryMemoryStructures) != 1 || fallback.ResolvedSnapshot.StoryMemoryStructures[0].ID != "camp" {
+		t.Fatalf("director should use memory structure snapshot after module deletion, got %#v", fallback.ResolvedSnapshot.StoryMemoryStructures)
 	}
 	if fallback.ResolvedSnapshot.Status != "warning" || len(fallback.ResolvedSnapshot.Warnings) == 0 {
 		t.Fatalf("missing module should produce warning snapshot: %#v", fallback.ResolvedSnapshot)
@@ -334,6 +383,8 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 			RuleSystemDisabled:      true,
 			ActorStateID:            "missing-actors",
 			ActorStateDisabled:      true,
+			MemoryStructureID:       "missing-memory",
+			MemoryStructureDisabled: true,
 			OpeningSelectorID:       "missing-opening",
 			OpeningSelectorDisabled: true,
 			ImagePresetID:           "missing-image",
@@ -368,6 +419,13 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 			ActorState: StoryDirectorActorStateSystem{
 				Templates: []ActorStateTemplate{{ID: "snapshot-template", Name: "旧状态模板"}},
 			},
+			StoryMemoryStructures: []StoryMemoryStructure{{
+				ID:      "snapshot-memory",
+				Name:    "旧记忆结构",
+				Mode:    "append",
+				Enabled: boolPtr(true),
+				Fields:  []StoryMemoryField{{ID: "value", Name: "内容", Order: 10}},
+			}},
 			OpeningSelector: StoryDirectorOpeningSelector{
 				Enabled: true,
 				InitialStateOps: []StateOp{{
@@ -395,6 +453,9 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 	}
 	if len(director.ActorState.Templates) != 0 || len(director.ActorState.InitialActors) != 0 {
 		t.Fatalf("disabled actor state should not use defaults or snapshot, got %#v", director.ActorState)
+	}
+	if len(director.ResolvedSnapshot.StoryMemoryStructures) != 0 || StoryDirectorMemoryStructureEnabled(director) {
+		t.Fatalf("disabled memory structure should stay detached, got refs=%#v snapshot=%#v", director.ModuleRefs, director.ResolvedSnapshot.StoryMemoryStructures)
 	}
 	if director.OpeningSelector.Enabled || len(director.OpeningSelector.InitialStateOps) != 0 || len(director.OpeningSelector.TraitPools) != 0 {
 		t.Fatalf("disabled opening selector should stay off, got %#v", director.OpeningSelector)

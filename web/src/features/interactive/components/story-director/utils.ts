@@ -59,6 +59,8 @@ export function normalizedStoryDirectorRefs(refs: StoryDirectorModuleRefs | unde
     rule_system_disabled: refs?.rule_system_disabled === true,
     actor_state_id: refs?.actor_state_id || 'default',
     actor_state_disabled: refs?.actor_state_disabled === true,
+    memory_structure_id: refs?.memory_structure_id || 'default',
+    memory_structure_disabled: refs?.memory_structure_disabled === true,
     opening_selector_id: refs?.opening_selector_id || 'default',
     opening_selector_disabled: refs?.opening_selector_disabled === true,
     image_preset_id: refs?.image_preset_id || 'game-cg',

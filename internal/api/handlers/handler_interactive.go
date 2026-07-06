@@ -938,6 +938,67 @@ func (h *Handlers) HandleActorStateDelete(ctx context.Context, c *app.RequestCon
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h *Handlers) HandleStoryMemoryStructures(ctx context.Context, c *app.RequestContext) {
+	items, err := h.app.StoryMemoryStructures()
+	if err != nil {
+		writeError(c, consts.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]any{"story_memory_structures": items})
+}
+
+func (h *Handlers) HandleStoryMemoryStructure(ctx context.Context, c *app.RequestContext) {
+	item, err := h.app.StoryMemoryStructure(c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleStoryMemoryStructureCreate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.StoryMemoryStructureModule
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.CreateStoryMemoryStructure(body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleStoryMemoryStructureUpdate(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		interactive.StoryMemoryStructureModule
+		BaseRevision string `json:"base_revision"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	item, err := h.app.UpdateStoryMemoryStructure(c.Param("id"), body.StoryMemoryStructureModule, body.BaseRevision)
+	if err != nil {
+		if errors.Is(err, interactive.ErrStoryMemoryStructureRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, item)
+}
+
+func (h *Handlers) HandleStoryMemoryStructurePresetDelete(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.DeleteStoryMemoryStructurePreset(c.Param("id")); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *Handlers) HandleOpeningSelectors(ctx context.Context, c *app.RequestContext) {
 	items, err := h.app.OpeningSelectors()
 	if err != nil {

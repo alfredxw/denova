@@ -1,6 +1,6 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
-import type { ActorStateModule, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
+import type { ActorStateModule, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StoryMemoryStructureModule, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
@@ -360,6 +360,33 @@ export function updateActorState(id: string, input: Partial<ActorStateModule>, b
 
 export function deleteActorState(id: string): Promise<void> {
   return requestJSON(`/api/actor-states/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function getStoryMemoryStructures(): Promise<StoryMemoryStructureModule[]> {
+  const data = await requestJSON<{ story_memory_structures: StoryMemoryStructureModule[] }>('/api/story-memory-structures')
+  return data.story_memory_structures || []
+}
+
+export function createStoryMemoryStructure(input: Partial<StoryMemoryStructureModule>): Promise<StoryMemoryStructureModule> {
+  return requestJSON('/api/story-memory-structures', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateStoryMemoryStructure(id: string, input: Partial<StoryMemoryStructureModule>, baseRevision?: string): Promise<StoryMemoryStructureModule> {
+  return requestJSON(`/api/story-memory-structures/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify(baseRevision ? { ...input, base_revision: baseRevision } : input),
+  })
+}
+
+export function deleteStoryMemoryStructurePreset(id: string): Promise<void> {
+  return requestJSON(`/api/story-memory-structures/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
 }

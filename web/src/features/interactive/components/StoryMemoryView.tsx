@@ -1,9 +1,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, Bot, Brain, ChevronDown, ChevronRight, Edit3, Loader2, PanelLeft, PanelRight, Plus, RefreshCw, RotateCcw, Save, Trash2, X } from 'lucide-react'
+import { Archive, Bot, Brain, ChevronDown, ChevronRight, Edit3, Loader2, PanelLeft, PanelRight, Plus, RefreshCw, RotateCcw, Save, SlidersHorizontal, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
-import { deleteStoryMemoryStructure, generateStoryMemory, getStoryMemory, saveStoryMemoryRecord, saveStoryMemoryStructure, setStoryMemoryRecordArchived, updateStoryMemorySettings } from '../api'
+import { generateStoryMemory, getStoryMemory, saveStoryMemoryRecord, setStoryMemoryRecordArchived, updateStoryMemorySettings } from '../api'
 import type { BranchSummary, StoryMemoryField, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure } from '../types'
 
 interface StoryMemoryViewProps {
@@ -12,24 +12,11 @@ interface StoryMemoryViewProps {
   branches?: BranchSummary[]
 }
 
-const emptyStructure: StoryMemoryStructure = {
-  id: '',
-  name: '',
-  description: '',
-  generation_instruction: '',
-  mode: 'append',
-  key_field_id: '',
-  enabled: true,
-  fields: [{ id: 'event', name: '事件', description: '', generation_instruction: '', enabled: true, required: true, order: 10 }],
-  order: 100,
-}
-
 export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemoryViewProps) {
   const { t } = useTranslation()
   const [state, setState] = useState<StoryMemoryState | null>(null)
   const [memoryBranchId, setMemoryBranchId] = useState(branchId || '')
   const [selectedStructureId, setSelectedStructureId] = useState('')
-  const [structureDraft, setStructureDraft] = useState<StoryMemoryStructure | null>(null)
   const [recordDraft, setRecordDraft] = useState<StoryMemoryRecord | null>(null)
   const [expandedRecordIds, setExpandedRecordIds] = useState<Set<string>>(() => new Set())
   const [showArchived, setShowArchived] = useState(false)
@@ -43,7 +30,6 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
     setMemoryBranchId(branchId || '')
     setExpandedRecordIds(new Set())
     setRecordDraft(null)
-    setStructureDraft(null)
   }, [branchId, storyId])
 
   const load = useCallback(async () => {
@@ -96,19 +82,9 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
   }, [selectedStructure, state?.records])
   const visibleBranchId = state?.branch_id || activeBranchId
   const visibleBranch = branchOptions.find((branch) => branch.id === visibleBranchId)
-  const editorVisible = Boolean(structureDraft || (recordDraft && selectedStructure))
+  const editorVisible = Boolean(recordDraft && selectedStructure)
   const recordColumnCount = tableFields.length + 4
   const columnWidths = useMemo(() => storyMemoryColumnWidths(tableFields.length), [tableFields.length])
-
-  const startNewStructure = () => {
-    setStructureDraft({ ...emptyStructure, fields: [...emptyStructure.fields] })
-    setRecordDraft(null)
-  }
-
-  const startEditStructure = (structure: StoryMemoryStructure) => {
-    setStructureDraft({ ...structure, fields: structure.fields.map((field) => ({ ...field })) })
-    setRecordDraft(null)
-  }
 
   const startNewRecord = () => {
     if (!selectedStructure) return
@@ -122,41 +98,16 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
       created_at: '',
       updated_at: '',
     })
-    setStructureDraft(null)
   }
 
   const startEditRecord = (record: StoryMemoryRecord) => {
     setRecordDraft({ ...record, values: { ...record.values } })
-    setStructureDraft(null)
   }
 
   const saveSettings = async (patch: { enabled?: boolean; auto_interval_turns?: number }) => {
     if (!storyId || !state) return
     const settings = await updateStoryMemorySettings(storyId, patch)
     setState({ ...state, settings })
-  }
-
-  const saveStructure = async () => {
-    if (!storyId || !structureDraft) return
-    setSaving(true)
-    setError('')
-    try {
-      const saved = await saveStoryMemoryStructure(storyId, structureDraft)
-      await load()
-      setSelectedStructureId(saved.id)
-      setStructureDraft(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('storyMemory.saveFailed'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const removeStructure = async (structure: StoryMemoryStructure) => {
-    if (!storyId || structure.built_in) return
-    await deleteStoryMemoryStructure(storyId, structure.id)
-    if (selectedStructureId === structure.id) setSelectedStructureId('')
-    await load()
   }
 
   const saveRecord = async () => {
@@ -206,7 +157,16 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
     setMemoryBranchId(nextBranchId)
     setExpandedRecordIds(new Set())
     setRecordDraft(null)
-    setStructureDraft(null)
+  }
+
+  const openMemoryStructurePreset = () => {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent('nova:interactive-open-preset', {
+      detail: {
+        kind: 'memory-structure',
+        id: state?.memory_structure_id || '',
+      },
+    }))
   }
 
   const structurePanel = (
@@ -216,15 +176,24 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
           <Bot className="h-3.5 w-3.5" />
           <span className="min-w-0 truncate">{t('storyMemory.configAgent')}</span>
         </button>
-        <button type="button" className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2" onClick={startNewStructure}>
-          <Plus className="h-3.5 w-3.5" />
-          <span className="min-w-0 truncate">{t('storyMemory.addStructure')}</span>
+        <button type="button" className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2" onClick={openMemoryStructurePreset}>
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          <span className="min-w-0 truncate">{t('storyMemory.openPreset')}</span>
         </button>
+      </div>
+      <div className="mb-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-xs">
+        <div className="font-medium text-[var(--nova-text)]">{t('storyMemory.structureSource')}</div>
+        <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">
+          {state?.memory_structure_disabled
+            ? t('storyMemory.structureSourceDisabled')
+            : t('storyMemory.structureSourcePreset', { name: state?.memory_structure_name || state?.memory_structure_id || t('storyMemory.noStructure') })}
+        </div>
+        <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyMemory.structureReadonlyHint')}</div>
       </div>
       <div className="mb-2 text-xs font-medium text-[var(--nova-text-muted)]">{t('storyMemory.structures')}</div>
       <div className="space-y-1">
         {structures.map((structure) => (
-          <button key={structure.id} type="button" onClick={() => { setSelectedStructureId(structure.id); setRecordDraft(null); setStructureDraft(null) }} className={`w-full rounded-[var(--nova-radius)] px-2 py-2 text-left text-xs ${selectedStructure?.id === structure.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)]'}`}>
+          <button key={structure.id} type="button" onClick={() => { setSelectedStructureId(structure.id); setRecordDraft(null) }} className={`w-full rounded-[var(--nova-radius)] px-2 py-2 text-left text-xs ${selectedStructure?.id === structure.id ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)]'}`}>
             <span className="flex min-w-0 items-center gap-1">
               <span className="min-w-0 truncate font-medium">{structure.name}</span>
               {!storyMemoryEnabled(structure.enabled) && <span className="shrink-0 rounded-full border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] opacity-75">{t('storyMemory.disabled')}</span>}
@@ -342,9 +311,6 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
                   )}
                   {selectedStructure && (
                     <>
-                      <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('storyMemory.editStructure')} onClick={() => startEditStructure(selectedStructure)}>
-                        <Edit3 className="h-4 w-4" />
-                      </button>
                       <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={showArchived ? t('storyMemory.hideArchived') : t('storyMemory.showArchived')} onClick={() => setShowArchived((value) => !value)}>
                         {showArchived ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
                       </button>
@@ -506,9 +472,7 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
             </div>
             {editorVisible && (
               <aside className="min-h-0 overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">
-                {structureDraft ? (
-                  <StructureEditor draft={structureDraft} saving={saving} onDraftChange={setStructureDraft} onSave={saveStructure} onCancel={() => setStructureDraft(null)} onDelete={structureDraft.id ? () => void removeStructure(structureDraft) : undefined} />
-                ) : recordDraft && selectedStructure ? (
+                {recordDraft && selectedStructure ? (
                   <RecordEditor structure={selectedStructure} draft={recordDraft} saving={saving} onDraftChange={setRecordDraft} onSave={saveRecord} onCancel={() => setRecordDraft(null)} />
                 ) : null}
               </aside>
@@ -518,49 +482,6 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
         )}
       </AdaptiveSurface>
     </section>
-  )
-}
-
-function StructureEditor({ draft, saving, onDraftChange, onSave, onCancel, onDelete }: { draft: StoryMemoryStructure; saving: boolean; onDraftChange: (draft: StoryMemoryStructure) => void; onSave: () => void; onCancel: () => void; onDelete?: () => void }) {
-  const { t } = useTranslation()
-  const updateField = (index: number, patch: Partial<StoryMemoryField>) => {
-    const fields = draft.fields.map((field, fieldIndex) => fieldIndex === index ? { ...field, ...patch } : field)
-    onDraftChange({ ...draft, fields })
-  }
-  return (
-    <div className="space-y-2">
-      <input value={draft.name} onChange={(event) => onDraftChange({ ...draft, name: event.target.value })} placeholder={t('storyMemory.structureName')} className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none" />
-      <label className="flex items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs text-[var(--nova-text-muted)]">
-        <input type="checkbox" checked={storyMemoryEnabled(draft.enabled)} onChange={(event) => onDraftChange({ ...draft, enabled: event.target.checked })} />
-        {t('storyMemory.enabled')}
-      </label>
-      <textarea value={draft.description || ''} onChange={(event) => onDraftChange({ ...draft, description: event.target.value })} placeholder={t('storyMemory.structureDescription')} rows={3} className="w-full resize-none rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none" />
-      <textarea value={draft.generation_instruction || ''} onChange={(event) => onDraftChange({ ...draft, generation_instruction: event.target.value })} placeholder={t('storyMemory.generationInstruction')} rows={3} className="w-full resize-y rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none" />
-      <select value={draft.mode} onChange={(event) => onDraftChange({ ...draft, mode: event.target.value as StoryMemoryStructure['mode'] })} className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none">
-        <option value="singleton">{t('storyMemory.mode.singleton')}</option>
-        <option value="keyed">{t('storyMemory.mode.keyed')}</option>
-        <option value="append">{t('storyMemory.mode.append')}</option>
-      </select>
-      {draft.mode === 'keyed' && <input value={draft.key_field_id || ''} onChange={(event) => onDraftChange({ ...draft, key_field_id: event.target.value })} placeholder={t('storyMemory.keyField')} className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1.5 text-xs outline-none" />}
-      <div className="space-y-2">
-        {draft.fields.map((field, index) => (
-          <div key={`${field.id}-${index}`} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] p-2">
-            <label className="mb-2 flex items-center gap-2 text-xs text-[var(--nova-text-muted)]">
-              <input type="checkbox" checked={storyMemoryEnabled(field.enabled)} onChange={(event) => updateField(index, { enabled: event.target.checked })} />
-              {t('storyMemory.fieldEnabled')}
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <input value={field.id} onChange={(event) => updateField(index, { id: event.target.value })} placeholder={t('storyMemory.fieldId')} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs outline-none" />
-              <input value={field.name} onChange={(event) => updateField(index, { name: event.target.value })} placeholder={t('storyMemory.fieldName')} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs outline-none" />
-            </div>
-            <textarea value={field.description || ''} onChange={(event) => updateField(index, { description: event.target.value })} placeholder={t('storyMemory.fieldDescription')} rows={2} className="mt-2 w-full resize-none rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs outline-none" />
-            <textarea value={field.generation_instruction || ''} onChange={(event) => updateField(index, { generation_instruction: event.target.value })} placeholder={t('storyMemory.fieldGenerationInstruction')} rows={2} className="mt-2 w-full resize-y rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs outline-none" />
-          </div>
-        ))}
-      </div>
-      <button type="button" className="w-full rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={() => onDraftChange({ ...draft, fields: [...draft.fields, { id: '', name: '', description: '', generation_instruction: '', enabled: true, order: (draft.fields.length + 1) * 10 }] })}>{t('storyMemory.addField')}</button>
-      <EditorActions saving={saving} onSave={onSave} onCancel={onCancel} onDelete={onDelete} />
-    </div>
   )
 }
 
@@ -581,11 +502,10 @@ function RecordEditor({ structure, draft, saving, onDraftChange, onSave, onCance
   )
 }
 
-function EditorActions({ saving, onSave, onCancel, onDelete }: { saving: boolean; onSave: () => void; onCancel: () => void; onDelete?: () => void }) {
+function EditorActions({ saving, onSave, onCancel }: { saving: boolean; onSave: () => void; onCancel: () => void }) {
   const { t } = useTranslation()
   return (
     <div className="flex items-center justify-end gap-1 pt-2">
-      {onDelete && <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-danger)]" aria-label={t('common.delete')} onClick={onDelete}><Trash2 className="h-4 w-4" /></button>}
       <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('common.cancel')} onClick={onCancel}><X className="h-4 w-4" /></button>
       <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('common.save')} onClick={onSave}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}</button>
     </div>

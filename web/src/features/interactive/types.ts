@@ -110,6 +110,8 @@ export interface StoryDirectorModuleRefs {
   rule_system_disabled?: boolean
   actor_state_id?: string
   actor_state_disabled?: boolean
+  memory_structure_id?: string
+  memory_structure_disabled?: boolean
   opening_selector_id?: string
   opening_selector_disabled?: boolean
   image_preset_id?: string
@@ -135,6 +137,7 @@ export interface StoryDirectorResolvedSnapshot {
   stat_system?: StoryDirectorStatSystem
   trpg_system?: StoryDirectorTRPGSystem
   actor_state?: StoryDirectorActorStateSystem
+  story_memory_structures?: StoryMemoryStructure[]
   opening_selector?: StoryDirectorOpeningSelector
 }
 
@@ -177,6 +180,22 @@ export interface ActorStateModule {
   name: string
   description: string
   actor_state: StoryDirectorActorStateSystem
+  tags: string[]
+  path?: string
+  custom: boolean
+  builtin_overridden?: boolean
+  invalid?: boolean
+  error?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface StoryMemoryStructureModule {
+  version: number
+  id: string
+  name: string
+  description: string
+  structures: StoryMemoryStructure[]
   tags: string[]
   path?: string
   custom: boolean
@@ -852,6 +871,9 @@ export interface StoryMemoryState {
   branch_id: string
   settings: StoryMemorySettings
   structures: StoryMemoryStructure[]
+  memory_structure_id?: string
+  memory_structure_name?: string
+  memory_structure_disabled?: boolean
   records: StoryMemoryRecord[]
   recent_recall?: InteractiveMemoryRecall
   sync_status?: 'pending' | 'ready' | 'failed' | ''

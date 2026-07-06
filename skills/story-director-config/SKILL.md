@@ -6,28 +6,30 @@ agent: config_manager
 
 # Story Director Config
 
-Use this skill before calling `write_story_directors` or `write_event_packages`.
+Use this skill before calling `write_story_directors`, `write_event_packages`, or `write_story_memory_structure_presets`.
 
 ## Workflow
 
 1. Call `list_story_directors` first. For updates, call `read_story_directors` for the exact director IDs.
 2. Call `list_event_packages` before changing a director's event package references. For event-card content updates, call `read_event_packages` for exact package IDs.
-3. Use `write_story_directors` for director create/update/delete and `write_event_packages` for event package create/update/delete. Do not edit JSON files directly.
-4. Built-in story directors and event packages can be read and copied as examples. Deleting built-ins restores their built-in version.
-5. For update, preserve sections the user did not ask to change.
-6. For delete, require an explicit user request.
-7. When grounding event cards in the current work, call `list_lore_items` first, then `read_lore_items` for only the small relevant set. Do not claim concrete world, faction, character, or relationship facts unless they came from read lore, read director/package data, or explicit user input.
-8. Story Directors, event packages, rule systems, and opening selectors are Game Mode-only module types. Do not add per-resource mode/scope fields.
+3. Call `list_story_memory_structure_presets` before changing a director's `memory_structure_id`; call `read_story_memory_structure_presets` before editing structure fields.
+4. Use `write_story_directors` for director create/update/delete, `write_event_packages` for event package create/update/delete, and `write_story_memory_structure_presets` for Story Memory Structure schema changes. Do not edit JSON files directly.
+5. Built-in story directors, event packages, and memory structure presets can be read and copied as examples. Deleting built-ins restores their built-in version.
+6. For update, preserve sections the user did not ask to change.
+7. For delete, require an explicit user request.
+8. When grounding event cards in the current work, call `list_lore_items` first, then `read_lore_items` for only the small relevant set. Do not claim concrete world, faction, character, or relationship facts unless they came from read lore, read director/package data, or explicit user input.
+9. Story Directors, event packages, rule systems, Actor State, Story Memory Structure, and opening selectors are Game Mode-only module types. Do not add per-resource mode/scope fields.
 
 ## Shape
 
 Story Directors are Game Mode modules independent from shared narrative styles and shared image presets. They combine reusable modules through `module_refs` and keep expanded resolved sections for inspection.
 
-- `module_refs`: referenced module IDs plus switches. Use `narrative_style_id`, `event_package_ids`, `rule_system_id`, `opening_selector_id`, and `image_preset_id`; set `narrative_style_disabled`, `event_packages_disabled`, `rule_system_disabled`, `opening_selector_disabled`, or `image_preset_disabled` to `true` to turn a module off. When disabling, preserve IDs so the user can re-enable without reselecting.
+- `module_refs`: referenced module IDs plus switches. Use `narrative_style_id`, `event_package_ids`, `rule_system_id`, `actor_state_id`, `memory_structure_id`, `opening_selector_id`, and `image_preset_id`; set `narrative_style_disabled`, `event_packages_disabled`, `rule_system_disabled`, `actor_state_disabled`, `memory_structure_disabled`, `opening_selector_disabled`, or `image_preset_disabled` to `true` to turn a module off. When disabling, preserve IDs so the user can re-enable without reselecting.
 - `strategy`: `enabled`, `mainline_strength`, `failure_policy`, `pacing_curve`, `random_event_rate`. Prefer the standard enum IDs used by the UI: `mainline_strength` is `soft_guidance`, `balanced`, or `strong_arc`; `failure_policy` is `reversible`, `consequence`, or `fail_forward`; `pacing_curve` is `progressive`, `wave`, or `goal-pressure-payoff`; `random_event_rate` is usually `0`, `0.08`, `0.15`, or `0.3`.
 - `event_packages`: resolved event packages; used only by the background director planner and empty when event packages are disabled.
 - `stat_system`: resolved attributes with `path`, `name`, `type`, `default`, optional `min`/`max`, and `visibility` (`visible`, `hidden`, or `spoiler`).
 - `trpg_system`: resolved rule templates for checks, including `mode` (`default`, `d20_dc`, or `d100_under`), dice, modifiers, difficulty, outcomes, StateOps, and terminal candidates.
+- `resolved_snapshot.story_memory_structures`: last known-good Story Memory schema resolved from `memory_structure_id`; records are still story/branch runtime data and must not be placed in the preset.
 - `opening_selector`: resolved opening selector with `enabled`, `trait_pools`, and `initial_state_ops`; this affects only new stories or explicit opening rolls and is empty/off when the opening module is disabled.
 
 Do not change `version`, `path`, `custom`, `invalid`, `error`, `created_at`, or `updated_at` unless preserving an existing complete object from `read_story_directors`.
@@ -86,4 +88,4 @@ Use `mode` intentionally:
 
 Keep `state_ops` explicit and reversible where possible. Avoid hidden state changes unless the user asked for hidden or spoiler attributes.
 
-When writing the director back, use `write_story_directors` with the complete updated director object, preserve unrelated `module_refs`, and include a concise change message. When writing event cards, use `write_event_packages` with the complete updated package object.
+When writing the director back, use `write_story_directors` with the complete updated director object, preserve unrelated `module_refs`, and include a concise change message. When writing event cards, use `write_event_packages` with the complete updated package object. When changing memory schema, use `write_story_memory_structure_presets`, then update the director's `module_refs.memory_structure_id` only if the user wants that director to use it.

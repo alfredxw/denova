@@ -515,15 +515,18 @@ type StoryMemoryRecord struct {
 }
 
 type StoryMemoryState struct {
-	StoryID         string                   `json:"story_id"`
-	BranchID        string                   `json:"branch_id"`
-	Settings        StoryMemorySettings      `json:"settings"`
-	Structures      []StoryMemoryStructure   `json:"structures"`
-	Records         []StoryMemoryRecord      `json:"records"`
-	RecentRecall    *InteractiveMemoryRecall `json:"recent_recall,omitempty"`
-	SyncStatus      string                   `json:"sync_status,omitempty"`
-	SyncError       string                   `json:"sync_error,omitempty"`
-	NextAutoInTurns int                      `json:"next_auto_in_turns,omitempty"`
+	StoryID                 string                   `json:"story_id"`
+	BranchID                string                   `json:"branch_id"`
+	Settings                StoryMemorySettings      `json:"settings"`
+	Structures              []StoryMemoryStructure   `json:"structures"`
+	MemoryStructureID       string                   `json:"memory_structure_id,omitempty"`
+	MemoryStructureName     string                   `json:"memory_structure_name,omitempty"`
+	MemoryStructureDisabled bool                     `json:"memory_structure_disabled,omitempty"`
+	Records                 []StoryMemoryRecord      `json:"records"`
+	RecentRecall            *InteractiveMemoryRecall `json:"recent_recall,omitempty"`
+	SyncStatus              string                   `json:"sync_status,omitempty"`
+	SyncError               string                   `json:"sync_error,omitempty"`
+	NextAutoInTurns         int                      `json:"next_auto_in_turns,omitempty"`
 }
 
 type StoryMemorySettingsUpdateRequest struct {

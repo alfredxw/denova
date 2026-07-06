@@ -14,7 +14,7 @@ import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { type LoreItem, workspaceAssetURL } from '@/lib/api'
 import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpeningPreset } from '../opening'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
-import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller, TellerEventPackage } from '../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller, TellerEventPackage } from '../types'
 import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
 import { ActorStateVisualEditor, EventPackageVisualEditor, OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
 
@@ -45,7 +45,7 @@ const LORE_RESIDENT_ITEM_WARNING_CHARS = 8000
 const LORE_RESIDENT_TOTAL_WARNING_CHARS = 40000
 const IMAGE_PRESET_PROMPT_LIMIT = 4000
 const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_request' }] as const
-const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state', 'opening']
+const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state', 'memory-structure', 'opening']
 type ImagePresetTarget = ImagePresetSlot['target']
 type LoreType = LoreItem['type']
 interface KnowledgeSection {
@@ -257,6 +257,7 @@ export function TellerDirectory({
   eventPackages,
   ruleSystems,
   actorStates,
+  memoryStructures,
   openingSelectors,
   activeTellerId,
   activeStoryDirectorId,
@@ -264,6 +265,7 @@ export function TellerDirectory({
   activeEventPackageId,
   activeRuleSystemId,
   activeActorStateId,
+  activeMemoryStructureId,
   activeOpeningSelectorId,
   saving,
   onSelectTeller,
@@ -272,6 +274,7 @@ export function TellerDirectory({
   onSelectEventPackage,
   onSelectRuleSystem,
   onSelectActorState,
+  onSelectMemoryStructure,
   onSelectOpeningSelector,
   onCreateTeller,
   onCreateStoryDirector,
@@ -279,6 +282,7 @@ export function TellerDirectory({
   onCreateEventPackage,
   onCreateRuleSystem,
   onCreateActorState,
+  onCreateMemoryStructure,
   onCreateOpeningSelector,
   usageMode,
 }: {
@@ -290,6 +294,7 @@ export function TellerDirectory({
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
+  memoryStructures: StoryMemoryStructureModule[]
   openingSelectors: OpeningSelectorModule[]
   activeTellerId: string
   activeStoryDirectorId: string
@@ -297,6 +302,7 @@ export function TellerDirectory({
   activeEventPackageId: string
   activeRuleSystemId: string
   activeActorStateId: string
+  activeMemoryStructureId: string
   activeOpeningSelectorId: string
   saving: boolean
   onSelectTeller: (id: string) => void
@@ -305,6 +311,7 @@ export function TellerDirectory({
   onSelectEventPackage: (id: string) => void
   onSelectRuleSystem: (id: string) => void
   onSelectActorState: (id: string) => void
+  onSelectMemoryStructure: (id: string) => void
   onSelectOpeningSelector: (id: string) => void
   onCreateTeller: () => void
   onCreateStoryDirector: () => void
@@ -312,6 +319,7 @@ export function TellerDirectory({
   onCreateEventPackage: () => void
   onCreateRuleSystem: () => void
   onCreateActorState: () => void
+  onCreateMemoryStructure: () => void
   onCreateOpeningSelector: () => void
 }) {
   const { t } = useTranslation()
@@ -371,10 +379,14 @@ export function TellerDirectory({
       onSelectActorState(actorStates[0].id)
       return
     }
+    if (presetResourceVisibleInMode('memory-structure', usageMode) && memoryStructures[0]) {
+      onSelectMemoryStructure(memoryStructures[0].id)
+      return
+    }
     if (presetResourceVisibleInMode('opening', usageMode) && openingSelectors[0]) {
       onSelectOpeningSelector(openingSelectors[0].id)
     }
-  }, [actorStates, eventPackages, imagePresets, isConfigAgentActive, onSelectActorState, onSelectEventPackage, onSelectImagePreset, onSelectOpeningSelector, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, openingSelectors, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
+  }, [actorStates, eventPackages, imagePresets, isConfigAgentActive, memoryStructures, onSelectActorState, onSelectEventPackage, onSelectImagePreset, onSelectMemoryStructure, onSelectOpeningSelector, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, openingSelectors, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
 
   return (
     <>
@@ -551,6 +563,31 @@ export function TellerDirectory({
                   title={item.name}
                   summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.actorState.summaryCount', { templates: item.actor_state?.templates?.length || 0, actors: item.actor_state?.initial_actors?.length || 0 })}`}
                   onSelect={() => onSelectActorState(item.id)}
+                />
+              ))}
+            </PresetDirectorySection>
+          ) : null}
+
+          {isVisible('memory-structure') ? (
+            <PresetDirectorySection
+              kind="memory-structure"
+              label={presetKindDirectoryLabel('memory-structure', t)}
+              Icon={Database}
+              count={memoryStructures.length}
+              createLabel={presetKindCreateLabel('memory-structure', t)}
+              saving={saving}
+              collapsed={isCollapsed('memory-structure')}
+              onToggle={() => toggleSection('memory-structure')}
+              onCreate={onCreateMemoryStructure}
+            >
+              {memoryStructures.map((item) => (
+                <PresetDirectoryItem
+                  key={item.id}
+                  active={!isConfigAgentActive && resourceKind === 'memory-structure' && activeMemoryStructureId === item.id}
+                  Icon={Database}
+                  title={item.name}
+                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.memoryStructure.summaryCount', { enabled: enabledMemoryStructureCount(item), total: item.structures?.length || 0 })}`}
+                  onSelect={() => onSelectMemoryStructure(item.id)}
                 />
               ))}
             </PresetDirectorySection>
@@ -820,6 +857,46 @@ export function ActorStateEditor({
   )
 }
 
+export function StoryMemoryStructureEditor({
+  draft,
+  tagDraft,
+  setDraft,
+  setTagDraft,
+  onSave,
+  onValidityChange,
+}: {
+  draft: StoryMemoryStructureModule | null
+  tagDraft: string
+  setDraft: (draft: StoryMemoryStructureModule | null) => void
+  setTagDraft: (value: string) => void
+  onSave: () => void
+  onValidityChange?: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+
+  if (!draft) {
+    return <EmptyState title={t('settingPanel.editor.noMemoryStructureSelected')} description={t('settingPanel.editor.noMemoryStructureSelectedDesc')} />
+  }
+
+  return (
+    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
+      <PresetConfigSectionEditor
+        sectionId="story-memory-structure.structures"
+        resetKey={`${draft.id}:structures`}
+        title={t('settingPanel.memoryStructure.title')}
+        description={t('settingPanel.memoryStructure.description')}
+        value={draft.structures || []}
+        summary={t('settingPanel.memoryStructure.summaryCount', { enabled: enabledMemoryStructureCount(draft), total: draft.structures?.length || 0 })}
+        onChange={(structures) => setDraft({ ...draft, structures })}
+        onSave={onSave}
+        onValidityChange={onValidityChange}
+      >
+        {({ value }) => <StoryMemoryStructureVisualSummary structures={value} />}
+      </PresetConfigSectionEditor>
+    </ModuleEditorShell>
+  )
+}
+
 export function OpeningSelectorEditor({
   draft,
   tagDraft,
@@ -857,6 +934,28 @@ export function OpeningSelectorEditor({
         {(props) => <OpeningSelectorVisualEditor {...props} />}
       </PresetConfigSectionEditor>
     </ModuleEditorShell>
+  )
+}
+
+function StoryMemoryStructureVisualSummary({ structures }: { structures: StoryMemoryStructureModule['structures'] }) {
+  const { t } = useTranslation()
+  if (!structures?.length) {
+    return <EmptyState title={t('settingPanel.memoryStructure.emptyTitle')} description={t('settingPanel.memoryStructure.emptyDesc')} />
+  }
+  return (
+    <div className="space-y-2">
+      {structures.map((structure) => (
+        <div key={structure.id} className="rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-1)] p-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--nova-text)]">{structure.name || structure.id}</div>
+            <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{structure.mode || 'append'}</span>
+            <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{structure.enabled === false ? t('settingPanel.memoryStructure.disabled') : t('settingPanel.memoryStructure.enabled')}</span>
+          </div>
+          <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">{structure.description || t('settingPanel.memoryStructure.noDescription')}</div>
+          <div className="mt-2 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.memoryStructure.fieldCount', { count: structure.fields?.length || 0 })}</div>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -923,12 +1022,17 @@ function eventPackageSummaryCount(item: EventPackageModule) {
   return item.events?.length || 0
 }
 
+function enabledMemoryStructureCount(item: Partial<StoryMemoryStructureModule>) {
+  return (item.structures || []).filter((structure) => structure.enabled !== false).length
+}
+
 function presetKindDirectoryLabel(kind: PresetResourceKind, t: (key: string) => string) {
   if (kind === 'image') return t('settingPanel.imagePresetDirectory')
   if (kind === 'director') return t('settingPanel.storyDirectorDirectory')
   if (kind === 'event') return t('settingPanel.eventPackageDirectory')
   if (kind === 'rule') return t('settingPanel.ruleSystemDirectory')
   if (kind === 'actor-state') return t('settingPanel.actorStateDirectory')
+  if (kind === 'memory-structure') return t('settingPanel.memoryStructureDirectory')
   if (kind === 'opening') return t('settingPanel.openingSelectorDirectory')
   return t('settingPanel.rulePackages')
 }
@@ -939,6 +1043,7 @@ function presetKindCreateLabel(kind: PresetResourceKind, t: (key: string) => str
   if (kind === 'event') return t('settingPanel.newEventPackage')
   if (kind === 'rule') return t('settingPanel.newRuleSystem')
   if (kind === 'actor-state') return t('settingPanel.newActorState')
+  if (kind === 'memory-structure') return t('settingPanel.newMemoryStructure')
   if (kind === 'opening') return t('settingPanel.newOpeningSelector')
   return t('settingPanel.newTeller')
 }

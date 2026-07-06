@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirectorModuleRefs, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
 import { consoleSectionClassName, selectClassName } from './constants'
 import { SectionTitle } from './shared'
 import { normalizeIDList } from './utils'
@@ -16,6 +16,9 @@ export function DirectorModuleConsole({
   selectedTellerName,
   selectedRuleName,
   selectedActorStateName,
+  selectedMemoryStructureName,
+  selectedMemoryStructureCount,
+  selectedMemoryStructureTotal,
   selectedOpeningName,
   selectedImageName,
   selectedEventPackages,
@@ -24,6 +27,7 @@ export function DirectorModuleConsole({
   eventPackages,
   ruleSystems,
   actorStates,
+  memoryStructures,
   openingSelectors,
   imagePresets,
   onModuleRefChange,
@@ -32,6 +36,9 @@ export function DirectorModuleConsole({
   selectedTellerName: string
   selectedRuleName: string
   selectedActorStateName: string
+  selectedMemoryStructureName: string
+  selectedMemoryStructureCount: number
+  selectedMemoryStructureTotal: number
   selectedOpeningName: string
   selectedImageName: string
   selectedEventPackages: Array<{ id: string; name: string; invalid?: boolean; cards: number }>
@@ -40,6 +47,7 @@ export function DirectorModuleConsole({
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
+  memoryStructures: StoryMemoryStructureModule[]
   openingSelectors: OpeningSelectorModule[]
   imagePresets: ImagePreset[]
   onModuleRefChange: <K extends keyof StoryDirectorModuleRefs>(key: K, value: StoryDirectorModuleRefs[K]) => void
@@ -49,7 +57,7 @@ export function DirectorModuleConsole({
   return (
     <section className={`${consoleSectionClassName} overflow-hidden p-4`}>
       <SectionTitle title={t('settingPanel.storyDirector.composer')} description={t('settingPanel.storyDirector.composerDesc')} badge={t('settingPanel.storyDirector.liveReference')} />
-      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-6">
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-7">
         <DirectorModuleNode
           Icon={BookOpen}
           label={t('settingPanel.presetKind.teller')}
@@ -112,6 +120,22 @@ export function DirectorModuleConsole({
             enabled={!refs.actor_state_disabled}
             items={actorStates}
             onChange={(value) => onModuleRefChange('actor_state_id', value)}
+          />
+        </DirectorModuleNode>
+        <DirectorModuleNode
+          Icon={Database}
+          label={t('settingPanel.presetKind.memoryStructure')}
+          title={selectedMemoryStructureName}
+          summary={refs.memory_structure_disabled ? t('settingPanel.storyDirector.moduleDisabled') : t('settingPanel.memoryStructure.summaryCount', { enabled: selectedMemoryStructureCount, total: selectedMemoryStructureTotal })}
+          enabled={!refs.memory_structure_disabled}
+          onEnabledChange={(enabled) => onModuleRefChange('memory_structure_disabled', !enabled)}
+        >
+          <ModuleSelect
+            value={refs.memory_structure_id || ''}
+            fallbackValue="default"
+            enabled={!refs.memory_structure_disabled}
+            items={memoryStructures}
+            onChange={(value) => onModuleRefChange('memory_structure_id', value)}
           />
         </DirectorModuleNode>
         <DirectorModuleNode

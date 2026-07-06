@@ -329,9 +329,16 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 		}
 		return store.DirectorPlanStatus(storyID, storyCtx.Snapshot.BranchID)
 	}
+	token, err := store.DirectorPlanRunToken(storyID, storyCtx.Snapshot.BranchID)
+	if err != nil {
+		return interactive.DirectorPlanStatus{}, fmt.Errorf("准备导演规划运行版本失败: %w", err)
+	}
+	if err := store.MarkDirectorPlanRunStarted(storyID, storyCtx.Snapshot.BranchID, token, turn.ID); err != nil {
+		return interactive.DirectorPlanStatus{}, fmt.Errorf("标记导演规划运行状态失败: %w", err)
+	}
 	log.Printf("[interactive-director-agent] manual run scheduled story_id=%s branch_id=%s turn_id=%s source=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, firstNonEmptyApp(req.Source, "manual_retry"))
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg)
-	startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore)
+	startInteractiveDirectorTask(&runtimeCfg, state, conversation, turn, sessionStore, token)
 	return store.DirectorPlanStatus(storyID, storyCtx.Snapshot.BranchID)
 }
 
@@ -1346,6 +1353,66 @@ func (s *InteractiveAppService) DeleteActorState(id string) error {
 		return ErrNoWorkspace
 	}
 	return interactive.NewActorStateLibrary(cfg.NovaDir).Delete(id)
+}
+
+func (a *App) StoryMemoryStructures() ([]interactive.StoryMemoryStructureModule, error) {
+	return a.interactiveService().StoryMemoryStructures()
+}
+
+func (s *InteractiveAppService) StoryMemoryStructures() ([]interactive.StoryMemoryStructureModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return nil, ErrNoWorkspace
+	}
+	return interactive.NewStoryMemoryStructureLibrary(cfg.NovaDir).List()
+}
+
+func (a *App) StoryMemoryStructure(id string) (interactive.StoryMemoryStructureModule, error) {
+	return a.interactiveService().StoryMemoryStructure(id)
+}
+
+func (s *InteractiveAppService) StoryMemoryStructure(id string) (interactive.StoryMemoryStructureModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.StoryMemoryStructureModule{}, ErrNoWorkspace
+	}
+	return interactive.NewStoryMemoryStructureLibrary(cfg.NovaDir).Get(id)
+}
+
+func (a *App) CreateStoryMemoryStructure(item interactive.StoryMemoryStructureModule) (interactive.StoryMemoryStructureModule, error) {
+	return a.interactiveService().CreateStoryMemoryStructure(item)
+}
+
+func (s *InteractiveAppService) CreateStoryMemoryStructure(item interactive.StoryMemoryStructureModule) (interactive.StoryMemoryStructureModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.StoryMemoryStructureModule{}, ErrNoWorkspace
+	}
+	return interactive.NewStoryMemoryStructureLibrary(cfg.NovaDir).Create(item)
+}
+
+func (a *App) UpdateStoryMemoryStructure(id string, item interactive.StoryMemoryStructureModule, baseRevision ...string) (interactive.StoryMemoryStructureModule, error) {
+	return a.interactiveService().UpdateStoryMemoryStructure(id, item, firstRevision(baseRevision))
+}
+
+func (s *InteractiveAppService) UpdateStoryMemoryStructure(id string, item interactive.StoryMemoryStructureModule, baseRevision string) (interactive.StoryMemoryStructureModule, error) {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return interactive.StoryMemoryStructureModule{}, ErrNoWorkspace
+	}
+	return interactive.NewStoryMemoryStructureLibrary(cfg.NovaDir).Update(id, item, baseRevision)
+}
+
+func (a *App) DeleteStoryMemoryStructurePreset(id string) error {
+	return a.interactiveService().DeleteStoryMemoryStructurePreset(id)
+}
+
+func (s *InteractiveAppService) DeleteStoryMemoryStructurePreset(id string) error {
+	cfg := s.cfg()
+	if cfg == nil || cfg.NovaDir == "" {
+		return ErrNoWorkspace
+	}
+	return interactive.NewStoryMemoryStructureLibrary(cfg.NovaDir).Delete(id)
 }
 
 func (a *App) OpeningSelectors() ([]interactive.OpeningSelectorModule, error) {
