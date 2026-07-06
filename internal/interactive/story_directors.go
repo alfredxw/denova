@@ -18,7 +18,7 @@ const (
 
 	maxStoryDirectorAttributes          = 64
 	maxStoryDirectorRules               = 64
-	MaxStoryDirectorStrategyPromptBytes = maxTurnBriefTextBytes
+	MaxStoryDirectorStrategyPromptBytes = DirectorContextMinBytes
 	DefaultDirectorAgentMode            = DirectorAgentModeTriggered
 	DirectorAgentModeTriggered          = "triggered"
 	DirectorAgentModeEveryTurn          = "every_turn"

@@ -15,8 +15,8 @@ import (
 const (
 	defaultMemoryImportance    = 3
 	defaultStoryMemoryInterval = 6
-	maxMemoryTextBytes         = 12 * 1024
-	maxStoryMemorySchemaBytes  = 32 * 1024
+	maxMemoryTextBytes         = DirectorContextMinBytes
+	maxStoryMemorySchemaBytes  = DirectorContextMinBytes
 	maxMemoryListItems         = 24
 	maxMemoryRecalls           = 20
 )
@@ -1635,9 +1635,9 @@ func formatStoryMemoryContext(structures []StoryMemoryStructure, records []Story
 	var sb strings.Builder
 	sb.WriteString("来源: interactive/memory/story-{story_id}.json 的当前分支可见故事记忆\n")
 	if bounded {
-		sb.WriteString(fmt.Sprintf("上限: %d bytes\n", limit))
+		sb.WriteString("边界: 已按调用方上下文预算裁剪\n")
 	} else {
-		sb.WriteString("上限: 不截断，用于上下文压缩 Agent\n")
+		sb.WriteString("边界: 不截断，用于上下文压缩 Agent\n")
 	}
 	count := 0
 	for _, structure := range structures {
@@ -1700,7 +1700,7 @@ func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int
 	structures = storyMemorySchemaContextOrder(structures)
 	var sb strings.Builder
 	sb.WriteString("来源: interactive/memory/story-{story_id}.json 的故事记忆结构定义\n")
-	sb.WriteString(fmt.Sprintf("上限: %d bytes\n", limit))
+	sb.WriteString("边界: 已按调用方上下文预算裁剪\n")
 	sb.WriteString("规则: story_memory_patches 只能使用下列 structure_id 和字段 ID；每条 patch 的 values 必须包含目标结构列出的所有字段，且字段值不能为空；keyed 结构必须提供 key，且 key 应等于 key_field_id 对应字段值；生成时必须遵守 structure 和 field 的 generation_instruction。\n")
 	for _, structure := range structures {
 		if !storyMemoryStructureEnabled(structure) {

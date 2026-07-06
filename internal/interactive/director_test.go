@@ -156,6 +156,41 @@ func TestDirectorPlanVisibleContextExcludesPrivateSections(t *testing.T) {
 	}
 }
 
+func TestDirectorPlanAcceptsLargeVisibleSections(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "大纲规划", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := store.DirectorPlan(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	visibleMarker := strings.Repeat("可见线索", 3600)
+	privateMarker := "隐藏真相不可泄露"
+	docs := plan.Docs
+	docs.Plan = strings.Replace(docs.Plan, "围绕主角当前最想解决的问题、可见收益、未解谜团和下一次反转建立推进动力。", visibleMarker, 1)
+	docs.Plan = strings.Replace(docs.Plan, "维护隐藏真相、阶段高潮、下一次反转和阅读钩子的投放顺序，保证节奏持续向前。", privateMarker, 1)
+	if len([]byte(docs.Plan)) <= 32*1024 || len([]byte(docs.Plan)) >= 64*1024 {
+		t.Fatalf("test plan size should sit between old and new limits, got %d", len([]byte(docs.Plan)))
+	}
+	updated, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{
+		BranchID:     "main",
+		Docs:         docs,
+		BaseRevision: plan.Metadata.Revision,
+		Source:       "test_large_plan",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(updated.VisibleDocs.Plan, visibleMarker) {
+		t.Fatalf("visible plan should keep large public section, visible bytes=%d", len([]byte(updated.VisibleDocs.Plan)))
+	}
+	if strings.Contains(updated.VisibleDocs.Plan, privateMarker) {
+		t.Fatalf("visible plan should still exclude private section")
+	}
+}
+
 func TestTerminalBranchRejectsFurtherTurnsUntilNewBranch(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "终局分支", StoryTellerID: "classic"})

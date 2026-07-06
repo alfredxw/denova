@@ -175,6 +175,17 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 	if DefaultStoryDirector().Strategy.PromptMarkdown != "" {
 		t.Fatalf("default story director should not set a custom prompt")
 	}
+	oversized := normalizeStoryDirector(StoryDirector{
+		ID:   "oversized-prompt-director",
+		Name: "超长提示导演",
+		Strategy: StoryDirectorStrategy{
+			Enabled:        true,
+			PromptMarkdown: strings.Repeat("a", MaxStoryDirectorStrategyPromptBytes+128),
+		},
+	})
+	if len([]byte(oversized.Strategy.PromptMarkdown)) != MaxStoryDirectorStrategyPromptBytes {
+		t.Fatalf("oversized prompt should be trimmed to %d bytes, got %d", MaxStoryDirectorStrategyPromptBytes, len([]byte(oversized.Strategy.PromptMarkdown)))
+	}
 	ruleSummary := StoryDirectorRuleSummary(director, 8*1024)
 	planningSummary := StoryDirectorPlanningSummary(director, 128*1024)
 	for name, summary := range map[string]string{"rule": ruleSummary, "planning": planningSummary} {

@@ -89,8 +89,10 @@ func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name,
 			return fmt.Sprintf("[tool error] interactive_director 只能访问当前分支导演规划文件，拒绝路径: %s", target)
 		}
 		return ""
+	case "apply_actor_state_patch", "apply_story_memory_patches":
+		return ""
 	default:
-		return fmt.Sprintf("[tool error] interactive_director 只能使用 read_file、write_file、edit_file 更新当前分支导演规划，拒绝工具: %s", name)
+		return fmt.Sprintf("[tool error] interactive_director 只能使用 read_file、write_file、edit_file、apply_actor_state_patch、apply_story_memory_patches 维护当前分支后台状态，拒绝工具: %s", name)
 	}
 }
 

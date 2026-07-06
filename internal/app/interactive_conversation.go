@@ -81,16 +81,16 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	storyDirector := c.storyDirector(storyCtx.Meta.StoryDirectorID)
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
 	turnMemory := buildInteractiveModelVisibleTurnMemory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
-	storyMemory, err := c.store.StoryMemoryContextSummary(c.storyID, storyCtx.Snapshot.BranchID, 12*1024)
+	storyMemory, err := c.store.StoryMemoryContextSummary(c.storyID, storyCtx.Snapshot.BranchID, interactiveStoryRuntimeContextBytes)
 	if err != nil {
 		log.Printf("[interactive-agent] load story memory failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
 		storyMemory = ""
 	}
 	directorPlanVisible := ""
 	if storyCtx.Snapshot.DirectorPlan != nil {
-		directorPlanVisible = interactive.DirectorPlanVisibleContext(*storyCtx.Snapshot.DirectorPlan, 12*1024)
+		directorPlanVisible = interactive.DirectorPlanVisibleContext(*storyCtx.Snapshot.DirectorPlan, interactiveStoryRuntimeContextBytes)
 	}
-	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, 8*1024)
+	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, interactiveStoryRuntimeContextBytes)
 	strategyPrompt := interactive.StoryDirectorStrategyPromptMarkdown(storyDirector)
 	runtimeContext := prompts.InteractiveStoryRuntimeContext(prompts.InteractiveStoryPromptInput{
 		Title:                       storyCtx.Meta.Title,
@@ -772,7 +772,7 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 	if err != nil {
 		return "", err
 	}
-	storyMemory, err := c.store.StoryMemoryContextSummary(c.storyID, storyCtx.Snapshot.BranchID, 8*1024)
+	storyMemory, err := c.store.StoryMemoryContextSummary(c.storyID, storyCtx.Snapshot.BranchID, interactiveDirectorContextBytes)
 	if err != nil {
 		log.Printf("[interactive-director-agent] load story memory failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
 		storyMemory = ""
@@ -807,21 +807,21 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		BranchID:                    storyCtx.Snapshot.BranchID,
 		TaskHint:                    c.directorTaskHint(),
 		DirectorPlanPaths:           strings.Join(allowedPaths, "\n"),
-		DirectorPlanDocs:            boundedJSON(directorPlan.Docs, 32*1024),
-		PlanningTemplates:           boundedJSON(storyDirector.Strategy.PlanningTemplates, 32*1024),
+		DirectorPlanDocs:            boundedJSON(directorPlan.Docs, interactiveDirectorContextBytes),
+		PlanningTemplates:           boundedJSON(storyDirector.Strategy.PlanningTemplates, interactiveDirectorContextBytes),
 		BranchPlanningTurns:         storyDirector.Strategy.BranchPlanningTurns,
-		StoryTellerMemoryRules:      boundedText(teller.PromptForTargets("state_memory"), 4*1024),
+		StoryTellerMemoryRules:      boundedText(teller.PromptForTargets("state_memory"), interactiveDirectorContextBytes),
 		LoreContext:                 loreContext,
-		TurnAuditJSON:               boundedJSON(interactiveDirectorTurnAudit(turn), 10*1024),
-		TurnHistory:                 boundedText(turnHistory, 12*1024),
+		TurnAuditJSON:               boundedJSON(interactiveDirectorTurnAudit(turn), interactiveDirectorContextBytes),
+		TurnHistory:                 boundedText(turnHistory, interactiveDirectorContextBytes),
 		StoryMemorySchema:           storyMemorySchema,
-		StoryMemory:                 boundedText(storyMemory, 12*1024),
-		ActorStateSchema:            boundedJSON(storyDirector.ActorState, 24*1024),
-		ActorState:                  boundedJSON(actorStateSnapshot, 16*1024),
-		StoryMemorySummary:          boundedText(storyMemory, 8*1024),
-		StoryDirectorPlan:           interactive.StoryDirectorPlanningSummary(storyDirector, 16*1024),
+		StoryMemory:                 boundedText(storyMemory, interactiveDirectorContextBytes),
+		ActorStateSchema:            boundedJSON(storyDirector.ActorState, interactiveDirectorContextBytes),
+		ActorState:                  boundedJSON(actorStateSnapshot, interactiveDirectorContextBytes),
+		StoryMemorySummary:          boundedText(storyMemory, interactiveDirectorContextBytes),
+		StoryDirectorPlan:           interactive.StoryDirectorPlanningSummary(storyDirector, interactiveDirectorContextBytes),
 		StoryDirectorStrategyPrompt: strategyPrompt,
-		DirectorEventCatalog:        boundedJSON(interactiveDirectorEventCatalog(storyDirector), 12*1024),
+		DirectorEventCatalog:        boundedJSON(interactiveDirectorEventCatalog(storyDirector), interactiveDirectorContextBytes),
 	})
 	log.Printf(
 		"[interactive-director-agent] context composition story_id=%s branch_id=%s turn_id=%s teller_id=%s story_director_id=%s director_plan=%s allowed_paths=%d teller_memory_rules=%s lore=%s turn_audit=%s story_memory=%s story_memory_schema=%s actor_state=%s history=%s instruction=%s",
@@ -830,14 +830,14 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		turn.ID,
 		storyCtx.Meta.StoryTellerID,
 		storyCtx.Meta.StoryDirectorID,
-		interactivePartSummary(boundedJSON(directorPlan.Docs, 32*1024)),
+		interactivePartSummary(boundedJSON(directorPlan.Docs, interactiveDirectorContextBytes)),
 		len(allowedPaths),
 		interactivePartSummary(teller.PromptForTargets("state_memory")),
 		interactivePartSummary(loreContext),
-		interactivePartSummary(boundedJSON(interactiveDirectorTurnAudit(turn), 10*1024)),
+		interactivePartSummary(boundedJSON(interactiveDirectorTurnAudit(turn), interactiveDirectorContextBytes)),
 		interactivePartSummary(storyMemory),
 		interactivePartSummary(storyMemorySchema),
-		interactivePartSummary(boundedJSON(actorStateSnapshot, 16*1024)),
+		interactivePartSummary(boundedJSON(actorStateSnapshot, interactiveDirectorContextBytes)),
 		interactivePartSummary(turnHistory),
 		interactivePartSummary(instruction),
 	)
@@ -948,7 +948,7 @@ func (c *interactiveConversation) directorLoreContext(turn interactive.TurnEvent
 	if err != nil {
 		log.Printf("[interactive-director-agent] load lore index failed workspace=%s err=%v", c.workspace, err)
 	} else {
-		appendDirectorLoreContextSection(&sb, "## 资料库索引（source: lore/items.json, limit: 6144 bytes）", index)
+		appendDirectorLoreContextSection(&sb, "## 资料库索引（source: lore/items.json, bounded）", index)
 	}
 	items, err := store.List()
 	if err != nil {
@@ -963,7 +963,7 @@ func (c *interactiveConversation) directorLoreContext(turn interactive.TurnEvent
 			full.WriteString(formatDirectorLoreItem(item))
 			full.WriteString("\n\n")
 		}
-		appendDirectorLoreContextSection(&sb, "## 重点资料正文（source: lore/items.json, limit: 8192 bytes）", boundedText(full.String(), interactiveDirectorLoreItemsBytes))
+		appendDirectorLoreContextSection(&sb, "## 重点资料正文（source: lore/items.json, bounded）", boundedText(full.String(), interactiveDirectorLoreItemsBytes))
 	}
 	return boundedText(sb.String(), interactiveDirectorLoreContextBytes)
 }
@@ -1112,11 +1112,13 @@ type interactiveTurnMemory struct {
 }
 
 const (
-	interactiveStoryMemorySchemaBytes   = 32 * 1024
-	interactiveDirectorLoreContextBytes = 16 * 1024
-	interactiveDirectorLoreIndexBytes   = 6 * 1024
-	interactiveDirectorLoreItemsBytes   = 8 * 1024
-	interactiveDirectorLoreItemBytes    = 1200
+	interactiveStoryRuntimeContextBytes = interactive.DirectorContextMinBytes
+	interactiveDirectorContextBytes     = interactive.DirectorContextMinBytes
+	interactiveStoryMemorySchemaBytes   = interactive.DirectorContextMinBytes
+	interactiveDirectorLoreContextBytes = interactive.DirectorContextMinBytes
+	interactiveDirectorLoreIndexBytes   = interactive.DirectorContextMinBytes
+	interactiveDirectorLoreItemsBytes   = interactive.DirectorContextMinBytes
+	interactiveDirectorLoreItemBytes    = interactive.DirectorContextMinBytes
 )
 
 func buildInteractiveTurnMemory(turns []interactive.TurnEvent) interactiveTurnMemory {
@@ -1210,13 +1212,13 @@ func interactiveStorySourceSummary(title, origin string, teller interactive.Tell
 		parts = append(parts, interactiveContextSource{Source: "故事记忆", Title: "当前分支可见故事记忆", Content: storyMemory})
 	}
 	if strings.TrimSpace(directorPlanVisible) != "" {
-		parts = append(parts, interactiveContextSource{Source: "DirectorPlan", Title: "后台导演规划可读区", Content: directorPlanVisible, Note: "limit=12288"})
+		parts = append(parts, interactiveContextSource{Source: "DirectorPlan", Title: "后台导演规划可读区", Content: directorPlanVisible, Note: "bounded"})
 	}
 	if strings.TrimSpace(ruleSummary) != "" {
-		parts = append(parts, interactiveContextSource{Source: "StoryDirector", Title: "故事导演规则清单", Content: ruleSummary, Note: "limit=8192"})
+		parts = append(parts, interactiveContextSource{Source: "StoryDirector", Title: "故事导演规则清单", Content: ruleSummary, Note: "bounded"})
 	}
 	if strings.TrimSpace(strategyPrompt) != "" {
-		parts = append(parts, interactiveContextSource{Source: "StoryDirector.strategy.prompt_markdown", Title: "故事导演 Markdown 策略提示", Content: strategyPrompt, Note: "limit=4000"})
+		parts = append(parts, interactiveContextSource{Source: "StoryDirector.strategy.prompt_markdown", Title: "故事导演 Markdown 策略提示", Content: strategyPrompt, Note: "bounded"})
 	}
 	if strings.TrimSpace(turnMemory.PreviousSummary) != "" {
 		parts = append(parts, interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("较早 %d 回合压缩摘要", turnMemory.PreviousCount), Content: turnMemory.PreviousSummary, Note: "compressed"})

@@ -65,6 +65,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 游戏模式：后台导演 `director.md`、正文 Agent 可读区、导演上下文拼装片段和故事导演高级 Markdown 策略提示的上限统一放宽到至少 64KB，并移除导演 Prompt 中旧的硬编码字节上限文案。
+- Game Mode: Raised the background Director `director.md`, prose-agent visible section, Director context slices, and Story Director advanced Markdown strategy prompt limits to at least 64KB, and removed old hard-coded byte-limit wording from Director prompts.
 - 不兼容变更：游戏模式后台能力统一收敛到 `interactive_director`，移除独立 `interactive_state` Agent 配置、注册表和设置页入口；后台导演现在在同一次维护运行中通过工具写入 Actor State、Story Memory，并更新当前分支 `director.md`。
 - Breaking: Game Mode background maintenance is now unified under `interactive_director`; the standalone `interactive_state` Agent config, registry entry, and settings UI row have been removed. The background Director now writes Actor State, Story Memory, and the current branch `director.md` in one maintenance run through tools.
 - 不兼容变更：游戏模式结构化状态改为 Actor-centric 形态，旧 `resources.*`、`attributes.*`、`relations.*`、`conditions.*` 等全局状态路径会迁移到默认主角 Actor，例如 `actors.protagonist.state.resources.hp`；规则检定和数值计算以 Actor State 为真源，故事记忆中的 `current_state` 与 `rule_state_summary` 改为只读派生摘要，不再通过编辑记忆改变真实状态。
@@ -128,6 +130,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Agent：修复 `interactive_director` 文件访问中间件误拦截 `apply_actor_state_patch` 和 `apply_story_memory_patches` 的问题；后台导演仍只允许读写当前分支 `director.md`，并继续拒绝 shell 等非授权工具。
+- Agent: Fixed the `interactive_director` file-access middleware incorrectly blocking `apply_actor_state_patch` and `apply_story_memory_patches`; the background Director still only reads/writes the current branch `director.md` and continues to reject shell and other unauthorized tools.
 - Agent：互动故事 `prepare_interactive_turn` 工具现在会在模型可见 schema 和提示词中明确 difficulty、rule.template、rule.roll_mode 等合法枚举，并将 `medium`、`moderate`、`very easy`、`d20_check` 等常见别名归一为标准值，减少互动回合因参数漂移导致的工具调用失败。
 - Agent: Interactive-story `prepare_interactive_turn` now exposes valid difficulty, rule.template, rule.roll_mode, and related enums in the model-visible schema and prompts, and normalizes common aliases such as `medium`, `moderate`, `very easy`, and `d20_check` to canonical values to reduce turn failures from argument drift.
 - WebUI：导演编排右栏的 Chat 状态流不再把 `director.md` 当作工具名展示；文件更新状态会显示为 `edit_file` 并把 `director.md` 放在 `file_path` 参数中，等待开局时不再伪造文件工具卡。
