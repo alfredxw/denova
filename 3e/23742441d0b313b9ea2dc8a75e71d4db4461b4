@@ -1,0 +1,89 @@
+internal/agent/config_manager_tools.go
+  s_0077cc1e375b51::t_171e23ec825c6a 55,80-90,194-196,208-212,669-766,768,789,802,809,827,850,1027-1028,1030,1034-1041,1045-1046,1048,1082,1085,1101,1104,1124,1127
+internal/api/handler_interactive_test.go
+  s_0077cc1e375b51::t_e65a59f43bef1f 441-527
+internal/api/handlers/handler_interactive.go
+  s_0077cc1e375b51::t_2b65c510d08e9a 939-999
+internal/api/routes.go
+  s_0077cc1e375b51::t_218967262aad99 139-143
+internal/app/config_manager_resource_skills.go
+  s_0077cc1e375b51::t_58280ef08d7360 104,142
+internal/app/interactive_app_service.go
+  s_0077cc1e375b51::t_59cf56269fcde1 332-338,341,1358-1417
+internal/app/interactive_director.go
+  s_0077cc1e375b51::t_1659ed80262d6f 53,70,78-79,83,111-120
+internal/app/runtime_builder.go
+  s_0077cc1e375b51::t_c760a1183f27fb 59-62,68
+internal/interactive/director_modules.go
+  s_0077cc1e375b51::t_6ac1adeb249782 46-47,64-77,770,790-791,805,812,833-836,851-855,857-858,866,910-922,945,949,955-967,1316-1320
+internal/interactive/director_modules_test.go
+  s_0077cc1e375b51::t_ddd827cc7aa1a6 147-170,209,268-281,306,324-326,349-351,362-364,386-387,422-428,457-459
+internal/interactive/memory.go
+  s_0077cc1e375b51::t_d57977b50bbd70 34-39,48-92,109,111,139,144-155,285-286,342-347,351,356,370,379,435-438,459-460,462,481-482,484,491-492,499-501,520-521,528,551,560,576,585-586,597,608,633-637,641,651,734,736,769-770,1332-1341,1579-1587,1651-1659,1748-1750,1817-1819
+internal/interactive/memory_test.go
+  s_0077cc1e375b51::t_da1885f8a79fee 436-644
+internal/interactive/story.go
+  s_0077cc1e375b51::t_9373ace735fca6 38-40,48-53
+internal/interactive/story_directors.go
+  s_0077cc1e375b51::t_bfa6c2ed2fe809 244-246
+internal/interactive/story_memory_migration.go
+  s_0077cc1e375b51::t_62256ecdaef3d1 1-136
+internal/interactive/story_memory_structure_modules.go
+  s_0077cc1e375b51::t_86fa64331fe820 1-320
+internal/interactive/story_types.go
+  s_0077cc1e375b51::t_76085f2b671be4 518-529
+skills/story-director-config/SKILL.md
+  s_0077cc1e375b51::t_ad0b51057d33c4 9,15-21,27,32,91
+skills/story-memory-config/SKILL.md
+  s_0077cc1e375b51::t_1e2bd8d3f39063 3,9,13,16,18-20,24-26
+web/src/features/interactive/api.ts
+  s_0077cc1e375b51::t_89056307ac9c78 3,367-393
+web/src/features/interactive/components/InteractiveLayout.tsx
+  s_0077cc1e375b51::t_19157507d357a6 48,61-72,298
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_0077cc1e375b51::t_d53f7c54b1d6d9 6-7,103,111,119,129,152-155,177-180,790-791,847-867
+web/src/features/interactive/components/SettingPanel.tsx
+  s_0077cc1e375b51::t_5bcdf902373b59 16,19-20,34,43,130,138,177-180,207,226-228,240,463-479,556-564,648-670,759-768,821-825,983-1001,1096-1106,1158-1161,1209-1215,1262,1293-1299,1373-1378,1597-1625,1700-1708,1733,1786-1793,1952,1955,1965,1979,2009-2010,2012,2057-2061,2104,2110,2124-2125,2135,2543,2550,2556,2563,2621,2709-2720,2784-2790,2799,2810,2818,2839-2842
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_0077cc1e375b51::t_0f37b24d63c1b7 17,48,260,268,277,285,297,305,314,322,382-385,389,571-595,860-899,940-961,1025-1028,1035,1046
+web/src/features/interactive/components/StoryMemoryView.tsx
+  s_0077cc1e375b51::t_a65f22d3e8a7cf 2,6,85,160-169,179-181,184-192,196,475,505
+web/src/features/interactive/components/story-director/ModuleConsole.tsx
+  s_0077cc1e375b51::t_67725575f9e478 9,19-21,30,39-41,50,60,125-140
+web/src/features/interactive/components/story-director/StoryDirectorEditor.tsx
+  s_0077cc1e375b51::t_f562daf52826a4 8,22,36,124,160-162,171
+web/src/features/interactive/components/story-director/utils.ts
+  s_0077cc1e375b51::t_cd7dbd4794ee9a 62-63
+web/src/features/interactive/preset-ownership.test.ts
+  s_0077cc1e375b51::t_1eaf0b6abf5264 7,13-14,20-21
+web/src/features/interactive/preset-ownership.ts
+  s_0077cc1e375b51::t_8bddcdee31748e 1,13,18
+web/src/features/interactive/types.ts
+  s_0077cc1e375b51::t_a1f48761e2c773 113-114,140,193-208,874-876
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_0077cc1e375b51::t_1c3edd6d237274 18,28,93,102,110,126,131-138,148,157,179-180
+web/src/i18n/locales/en-US/storyMemory.ts
+  s_0077cc1e375b51::t_72b094715771a4 17-21
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_0077cc1e375b51::t_4b32cbef6920c2 18,28,93,102,110,126,131-138,148,157,179-180
+web/src/i18n/locales/zh-CN/storyMemory.ts
+  s_0077cc1e375b51::t_1f25089ed5ab7b 17-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "3e23742441d0b313b9ea2dc8a75e71d4db4461b4",
+  "prompts": {},
+  "sessions": {
+    "s_0077cc1e375b51": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f37b3-d339-7260-b873-e8d75b209ad2",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
