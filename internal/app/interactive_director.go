@@ -50,7 +50,7 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 	}()
 }
 
-func startInteractiveDirectorTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) {
+func startInteractiveDirectorTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, prestartedTokens ...interactive.DirectorPlanRunToken) {
 	go func() {
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -67,7 +67,7 @@ func startInteractiveDirectorTask(cfg *config.Config, state *book.State, convers
 		if conversation == nil || conversation.store == nil || cfg == nil {
 			return
 		}
-		if _, err := runInteractiveDirectorPlan(context.Background(), cfg, state, conversation, turn, sessionStore); err != nil {
+		if _, err := runInteractiveDirectorPlan(context.Background(), cfg, state, conversation, turn, sessionStore, prestartedTokens...); err != nil {
 			log.Printf("[interactive-director-agent] run failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
 			markInteractiveDirectorFailed(conversation, turn, err)
 			return
@@ -75,12 +75,12 @@ func startInteractiveDirectorTask(cfg *config.Config, state *book.State, convers
 	}()
 }
 
-func runInteractiveDirectorPlan(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) (interactive.DirectorPlan, error) {
-	result, err := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation, turn, sessionStore, interactiveDirectorTaskDirectorPlanUpdate)
+func runInteractiveDirectorPlan(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, prestartedTokens ...interactive.DirectorPlanRunToken) (interactive.DirectorPlan, error) {
+	result, err := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation, turn, sessionStore, interactiveDirectorTaskDirectorPlanUpdate, prestartedTokens...)
 	return result.Plan, err
 }
 
-func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, task string) (interactiveDirectorMaintenanceResult, error) {
+func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, task string, prestartedTokens ...interactive.DirectorPlanRunToken) (interactiveDirectorMaintenanceResult, error) {
 	if conversation == nil || conversation.store == nil || cfg == nil {
 		return interactiveDirectorMaintenanceResult{}, fmt.Errorf("互动导演运行上下文不完整")
 	}
@@ -108,12 +108,16 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	var token interactive.DirectorPlanRunToken
 	var allowedPaths []string
 	if runPlan {
-		token, err = conversation.store.DirectorPlanRunToken(conversation.storyID, turn.BranchID)
-		if err != nil {
-			return interactiveDirectorMaintenanceResult{}, fmt.Errorf("准备导演规划运行版本失败: %w", err)
-		}
-		if err := conversation.store.MarkDirectorPlanRunStarted(conversation.storyID, turn.BranchID, token, turn.ID); err != nil {
-			return interactiveDirectorMaintenanceResult{}, fmt.Errorf("标记导演规划运行状态失败: %w", err)
+		if len(prestartedTokens) > 0 && prestartedTokens[0].Revision != "" {
+			token = prestartedTokens[0]
+		} else {
+			token, err = conversation.store.DirectorPlanRunToken(conversation.storyID, turn.BranchID)
+			if err != nil {
+				return interactiveDirectorMaintenanceResult{}, fmt.Errorf("准备导演规划运行版本失败: %w", err)
+			}
+			if err := conversation.store.MarkDirectorPlanRunStarted(conversation.storyID, turn.BranchID, token, turn.ID); err != nil {
+				return interactiveDirectorMaintenanceResult{}, fmt.Errorf("标记导演规划运行状态失败: %w", err)
+			}
 		}
 		allowedPaths = conversation.store.DirectorPlanAllowedPaths(conversation.storyID, turn.BranchID)
 	}

@@ -1,26 +1,29 @@
 ---
 name: story-memory-config
-description: Use when config_manager creates or updates Story Memory structures or records.
+description: Use when config_manager creates or updates Story Memory records or legacy story-local structures.
 agent: config_manager
 ---
 
 # Story Memory Config
 
-Use this skill before calling `write_story_memory_structures` or `write_story_memory_records`.
+Use this skill before calling `write_story_memory_records` or the legacy `write_story_memory_structures`.
 
 ## Workflow
 
-1. Use `list_story_memory_structures` for the target `story_id`; it returns the full structure definitions.
+1. Use `list_story_memory_structures` for the target `story_id`; it returns the currently effective structure definitions and their `memory_structure_id` source.
 2. Use `list_story_memory_records` before changing records. Use `read_story_memory_records` when exact `values` are needed.
 3. Keep structure and record changes separate:
-   - Structures define tables, fields, modes, and generation instructions.
+   - Structure definitions now belong to Story Memory Structure presets under the Story Director module system.
    - Records store concrete story facts for one branch.
-4. Always pass the active `story_id`. Pass `branch_id` for record writes when the user is working on a specific branch.
-5. Do not write story memory by editing story JSONL files directly.
+4. For new schema changes, switch to `story-director-config`: use `write_story_memory_structure_presets`, then update `story_director.module_refs.memory_structure_id` with `write_story_directors`.
+5. Always pass the active `story_id`. Pass `branch_id` for record writes when the user is working on a specific branch.
+6. Do not write story memory by editing story JSONL files directly.
 
 ## Structure Rules
 
-`write_story_memory_structures` operations use `structure`:
+`write_story_memory_structures` is a compatibility tool for old story-local structures only. Do not use it for normal configuration. New structure schema changes should use `write_story_memory_structure_presets` from `story-director-config`.
+
+Legacy `write_story_memory_structures` operations use `structure`:
 
 - `id`: stable snake_case ID. Required for update; optional for create only if the backend can generate one.
 - `name`: user visible table name.

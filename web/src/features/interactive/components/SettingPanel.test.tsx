@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
-import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector } from '../api'
-import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, Teller } from '../types'
+import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, createStoryMemoryStructure, deleteActorState, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, deleteStoryMemoryStructurePreset, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStoryMemoryStructures, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector, updateStoryMemoryStructure } from '../api'
+import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller } from '../types'
 import { SettingPanel } from './SettingPanel'
 
 const { configManagerChatProps, monacoEditorActions } = vi.hoisted(() => ({
@@ -100,6 +100,7 @@ vi.mock('../api', () => ({
   createOpeningSelector: vi.fn(),
   createRuleSystem: vi.fn(),
   createStoryDirector: vi.fn(),
+  createStoryMemoryStructure: vi.fn(),
   deleteActorState: vi.fn(),
   deleteEventPackage: vi.fn(),
   deleteImagePreset: vi.fn(),
@@ -107,6 +108,7 @@ vi.mock('../api', () => ({
   deleteOpeningSelector: vi.fn(),
   deleteRuleSystem: vi.fn(),
   deleteStoryDirector: vi.fn(),
+  deleteStoryMemoryStructurePreset: vi.fn(),
   getActorStates: vi.fn(),
   getEventPackages: vi.fn(),
   getImagePresets: vi.fn(),
@@ -114,6 +116,7 @@ vi.mock('../api', () => ({
   getOpeningSelectors: vi.fn(),
   getRuleSystems: vi.fn(),
   getStoryDirectors: vi.fn(),
+  getStoryMemoryStructures: vi.fn(),
   getStyleReferences: vi.fn(),
   saveStyleReference: vi.fn(),
   updateEventPackage: vi.fn(),
@@ -123,6 +126,7 @@ vi.mock('../api', () => ({
   updateOpeningSelector: vi.fn(),
   updateRuleSystem: vi.fn(),
   updateStoryDirector: vi.fn(),
+  updateStoryMemoryStructure: vi.fn(),
 }))
 
 describe('SettingPanel', () => {
@@ -145,6 +149,10 @@ describe('SettingPanel', () => {
     vi.mocked(createStoryDirector).mockReset()
     vi.mocked(updateStoryDirector).mockReset()
     vi.mocked(deleteStoryDirector).mockReset()
+    vi.mocked(getStoryMemoryStructures).mockReset()
+    vi.mocked(createStoryMemoryStructure).mockReset()
+    vi.mocked(updateStoryMemoryStructure).mockReset()
+    vi.mocked(deleteStoryMemoryStructurePreset).mockReset()
     vi.mocked(getActorStates).mockReset()
     vi.mocked(createActorState).mockReset()
     vi.mocked(updateActorState).mockReset()
@@ -166,6 +174,10 @@ describe('SettingPanel', () => {
     vi.mocked(createStoryDirector).mockResolvedValue(storyDirector('default-custom', '默认导演'))
     vi.mocked(updateStoryDirector).mockImplementation(async (id, input) => ({ ...storyDirector(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as StoryDirector)
     vi.mocked(deleteStoryDirector).mockResolvedValue(undefined)
+    vi.mocked(getStoryMemoryStructures).mockResolvedValue([memoryStructure('default', '默认记忆结构')])
+    vi.mocked(createStoryMemoryStructure).mockResolvedValue(memoryStructure('custom-memory', '自定义记忆结构'))
+    vi.mocked(updateStoryMemoryStructure).mockImplementation(async (id, input) => ({ ...memoryStructure(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as StoryMemoryStructureModule)
+    vi.mocked(deleteStoryMemoryStructurePreset).mockResolvedValue(undefined)
     vi.mocked(getActorStates).mockResolvedValue([])
     vi.mocked(deleteActorState).mockResolvedValue(undefined)
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
@@ -775,6 +787,8 @@ function storyDirector(id: string, name: string): StoryDirector {
       narrative_style_id: 'classic',
       event_package_ids: ['default'],
       rule_system_id: 'default-rules',
+      actor_state_id: 'default',
+      memory_structure_id: 'default',
       opening_selector_id: 'default-opening',
       image_preset_id: 'game-cg',
     },
@@ -827,6 +841,27 @@ function openingSelector(id: string, name: string): OpeningSelectorModule {
     opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },
     tags: [],
     custom: id !== 'default-opening',
+  }
+}
+
+function memoryStructure(id: string, name: string): StoryMemoryStructureModule {
+  return {
+    version: 1,
+    id,
+    name,
+    description: `${name} description`,
+    structures: [{
+      id: 'plot',
+      name: '剧情纪要',
+      description: '',
+      generation_instruction: '',
+      mode: 'append',
+      enabled: true,
+      fields: [{ id: 'event', name: '事件', enabled: true, order: 10 }],
+      order: 10,
+    }],
+    tags: [],
+    custom: id !== 'default',
   }
 }
 

@@ -35,13 +35,20 @@ const (
 
 // Store manages interactive story data inside a workspace.
 type Store struct {
-	root string
-	mu   sync.Mutex
+	root    string
+	novaDir string
+	mu      sync.Mutex
 }
 
 // NewStore creates an interactive store rooted at the workspace directory.
 func NewStore(root string) *Store {
 	return &Store{root: root}
+}
+
+// NewStoreWithNovaDir creates an interactive store that can resolve reusable
+// director modules from the workspace .denova directory.
+func NewStoreWithNovaDir(root, novaDir string) *Store {
+	return &Store{root: root, novaDir: strings.TrimSpace(novaDir)}
 }
 
 // Root returns the workspace root.

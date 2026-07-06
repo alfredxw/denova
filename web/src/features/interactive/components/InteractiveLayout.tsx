@@ -45,6 +45,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
   const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false)
   const [mobileSnapshotOpen, setMobileSnapshotOpen] = useState(false)
   const [bookOpeningPresets, setBookOpeningPresets] = useState<BookOpeningPreset[]>([])
+  const [presetFocus, setPresetFocus] = useState<{ nonce: number; kind: 'memory-structure'; id?: string } | undefined>()
 
   if (currentBranchSnapshot) {
     lastStableSnapshotRef.current = currentBranchSnapshot
@@ -56,6 +57,18 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
   useEffect(() => {
     snapshotStoryIdRef.current = snapshot?.story_id || ''
   }, [snapshot?.story_id])
+
+  useEffect(() => {
+    const openPresets = (event: Event) => {
+      const detail = (event as CustomEvent<{ kind?: 'memory-structure'; id?: string }>).detail
+      if (detail?.kind !== 'memory-structure') return
+      setPresetFocus({ nonce: Date.now(), kind: detail.kind, id: detail.id })
+      setSubmode('teller')
+      setMobileSnapshotOpen(false)
+    }
+    window.addEventListener('nova:interactive-open-preset', openPresets)
+    return () => window.removeEventListener('nova:interactive-open-preset', openPresets)
+  }, [setSubmode])
 
   const reloadStories = useCallback(async (preferredStory?: StorySummary) => {
     const requestSeq = storyIndexRequestSeqRef.current + 1
@@ -282,7 +295,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
               {submode === 'memory' ? (
                 <StoryMemoryView storyId={currentStoryId} branchId={currentBranchId} branches={branches} />
               ) : settingsWorkspaceVisible ? (
-                <SettingPanel mode={settingMode} workspace={workspace} presetUsageMode="game" tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} onTellersChange={setTellers} onStoryDirectorsChange={setStoryDirectors} onImagePresetsChange={onImagePresetsChange} />
+                <SettingPanel mode={settingMode} workspace={workspace} presetFocus={presetFocus} presetUsageMode="game" tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} onTellersChange={setTellers} onStoryDirectorsChange={setStoryDirectors} onImagePresetsChange={onImagePresetsChange} />
               ) : submode === 'timeline' ? (
                 <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} tellers={tellers} storyDirectors={storyDirectors} onSelect={setCurrentStoryId} onCreate={handleCreateStory} onDelete={handleDeleteStory} />} />
               ) : isMobile ? (

@@ -31,12 +31,63 @@ type interactiveMemoryBook struct {
 	Recalls    []InteractiveMemoryRecall `json:"recalls,omitempty"`
 }
 
+type storyMemoryStructureSource struct {
+	ID       string
+	Name     string
+	Disabled bool
+}
+
 func (s *Store) memoryDir() string {
 	return filepath.Join(s.root, "interactive", "memory")
 }
 
 func (s *Store) memoryPath(storyID string) string {
 	return filepath.Join(s.memoryDir(), "story-"+storyID+".json")
+}
+
+func (s *Store) storyMemoryStructuresForStoryLocked(meta StoryMeta, book interactiveMemoryBook) ([]StoryMemoryStructure, storyMemoryStructureSource) {
+	source := storyMemoryStructureSource{ID: "legacy", Name: "Story Memory"}
+	if strings.TrimSpace(s.novaDir) == "" {
+		return book.Structures, source
+	}
+	directorID := NormalizeStoryDirectorID(meta.StoryDirectorID)
+	if directorID == "" {
+		directorID = DefaultStoryDirectorID
+	}
+	director, err := NewStoryDirectorLibrary(s.novaDir).Get(directorID)
+	if err != nil {
+		log.Printf("[interactive-memory] fallback to story-local memory structures story_id=%s director_id=%s error=%v", meta.StoryID, directorID, err)
+		return book.Structures, source
+	}
+	refs := NormalizeStoryDirectorModuleRefs(director.ModuleRefs)
+	source = storyMemoryStructureSource{
+		ID:       firstNonEmptyString(refs.MemoryStructureID, DefaultStoryMemoryStructureModuleID),
+		Disabled: refs.MemoryStructureDisabled,
+	}
+	if module, err := NewStoryMemoryStructureLibrary(s.novaDir).Get(source.ID); err == nil {
+		source.Name = module.Name
+	} else {
+		source.Name = source.ID
+	}
+	structures := normalizeStoryMemoryStructuresForModule(director.ResolvedSnapshot.StoryMemoryStructures)
+	if len(structures) == 0 {
+		if module, err := NewStoryMemoryStructureLibrary(s.novaDir).Get(source.ID); err == nil {
+			structures = module.Structures
+			source.Name = module.Name
+		}
+	}
+	if len(structures) == 0 {
+		log.Printf("[interactive-memory] fallback to story-local memory structures story_id=%s director_id=%s memory_structure_id=%s", meta.StoryID, directorID, source.ID)
+		return book.Structures, source
+	}
+	return structures, source
+}
+
+func runtimeStoryMemoryStructures(structures []StoryMemoryStructure, source storyMemoryStructureSource) []StoryMemoryStructure {
+	if source.Disabled {
+		return []StoryMemoryStructure{}
+	}
+	return structures
 }
 
 func (s *Store) InteractiveMemory(storyID, branchID string, includeArchived bool) (InteractiveMemoryState, error) {
@@ -55,8 +106,9 @@ func (s *Store) InteractiveMemory(storyID, branchID string, includeArchived bool
 	if err != nil {
 		return InteractiveMemoryState{}, err
 	}
+	structures, _ := s.storyMemoryStructuresForStoryLocked(meta, book)
 	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), includeArchived)
-	entries := storyMemoryRecordsToInteractiveEntries(records, book.Structures)
+	entries := storyMemoryRecordsToInteractiveEntries(records, structures)
 	status, statusErr := latestMemorySyncStatus(lines, branchID, branch.Head)
 	return InteractiveMemoryState{
 		StoryID:      storyID,
@@ -84,19 +136,23 @@ func (s *Store) StoryMemory(storyID, branchID string, includeArchived bool) (Sto
 	if err != nil {
 		return StoryMemoryState{}, err
 	}
+	structures, structureSource := s.storyMemoryStructuresForStoryLocked(meta, book)
 	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), includeArchived)
 	status, statusErr := latestMemorySyncStatus(lines, branchID, branch.Head)
 	_, nextAuto := storyMemoryAutoDecisionLocked(book, lines, branchID, branch.Head)
 	return StoryMemoryState{
-		StoryID:         storyID,
-		BranchID:        branchID,
-		Settings:        book.Settings,
-		Structures:      book.Structures,
-		Records:         records,
-		RecentRecall:    latestMemoryRecall(book.Recalls, branchID),
-		SyncStatus:      status,
-		SyncError:       statusErr,
-		NextAutoInTurns: nextAuto,
+		StoryID:                 storyID,
+		BranchID:                branchID,
+		Settings:                book.Settings,
+		Structures:              structures,
+		MemoryStructureID:       structureSource.ID,
+		MemoryStructureName:     structureSource.Name,
+		MemoryStructureDisabled: structureSource.Disabled,
+		Records:                 records,
+		RecentRecall:            latestMemoryRecall(book.Recalls, branchID),
+		SyncStatus:              status,
+		SyncError:               statusErr,
+		NextAutoInTurns:         nextAuto,
 	}, nil
 }
 
@@ -226,7 +282,8 @@ func (s *Store) SaveStoryMemoryRecord(storyID string, req StoryMemoryRecordReque
 	if err != nil {
 		return StoryMemoryRecord{}, err
 	}
-	record, err := saveStoryMemoryRecordLocked(&book, branchID, branch.Head, req, true, eventPathSet(branch.Head, lines))
+	structures, _ := s.storyMemoryStructuresForStoryLocked(meta, book)
+	record, err := saveStoryMemoryRecordWithStructuresLocked(&book, structures, branchID, branch.Head, req, true, eventPathSet(branch.Head, lines))
 	if err != nil {
 		return StoryMemoryRecord{}, err
 	}
@@ -282,15 +339,21 @@ func (s *Store) ApplyStoryMemoryPatches(storyID, branchID, turnID string, patche
 	if err != nil {
 		return nil, err
 	}
+	structures, structureSource := s.storyMemoryStructuresForStoryLocked(meta, book)
+	runtimeStructures := runtimeStoryMemoryStructures(structures, structureSource)
+	if len(runtimeStructures) == 0 {
+		log.Printf("[interactive-memory] skip story memory patches because memory structure is disabled or empty story_id=%s branch_id=%s memory_structure_id=%s disabled=%t", storyID, branchID, structureSource.ID, structureSource.Disabled)
+		return []StoryMemoryRecord{}, nil
+	}
 	pathSet := eventPathSet(branch.Head, lines)
 	records := make([]StoryMemoryRecord, 0, len(patches))
 	for _, patch := range patches {
-		normalizedPatch, ok := normalizeStoryMemoryPatchForAgent(book, patch)
+		normalizedPatch, ok := normalizeStoryMemoryPatchForAgent(book, runtimeStructures, patch)
 		if !ok {
 			log.Printf("[interactive-memory] skip story memory patch with missing keyed key story_id=%s branch_id=%s structure_id=%s", storyID, branchID, patch.StructureID)
 			continue
 		}
-		record, err := applyStoryMemoryPatchLocked(&book, branchID, anchorTurnID, normalizedPatch, pathSet)
+		record, err := applyStoryMemoryPatchWithStructuresLocked(&book, runtimeStructures, branchID, anchorTurnID, normalizedPatch, pathSet)
 		if err != nil {
 			return nil, err
 		}
@@ -304,7 +367,7 @@ func (s *Store) ApplyStoryMemoryPatches(storyID, branchID, turnID string, patche
 	return records, nil
 }
 
-func normalizeStoryMemoryPatchForAgent(book interactiveMemoryBook, patch StoryMemoryPatch) (StoryMemoryPatch, bool) {
+func normalizeStoryMemoryPatchForAgent(book interactiveMemoryBook, structures []StoryMemoryStructure, patch StoryMemoryPatch) (StoryMemoryPatch, bool) {
 	op := strings.TrimSpace(patch.Op)
 	if op == "" {
 		op = "upsert"
@@ -313,7 +376,7 @@ func normalizeStoryMemoryPatchForAgent(book interactiveMemoryBook, patch StoryMe
 		return patch, true
 	}
 	structureID := sanitizeMemoryID(patch.StructureID)
-	structure := storyMemoryStructureByID(book.Structures, structureID)
+	structure := storyMemoryStructureByID(structures, structureID)
 	if structure.ID == "" || !storyMemoryStructureEnabled(structure) {
 		return patch, false
 	}
@@ -369,6 +432,10 @@ func (s *Store) ShouldGenerateStoryMemory(storyID, branchID string) (bool, int, 
 	if err != nil {
 		return false, 0, err
 	}
+	structures, source := s.storyMemoryStructuresForStoryLocked(meta, book)
+	if len(runtimeStoryMemoryStructures(structures, source)) == 0 {
+		return false, 0, nil
+	}
 	should, next := storyMemoryAutoDecisionLocked(book, lines, branchID, branch.Head)
 	return should, next, nil
 }
@@ -389,8 +456,10 @@ func (s *Store) StoryMemoryContextSummary(storyID, branchID string, limit int) (
 	if err != nil {
 		return "", err
 	}
+	structures, source := s.storyMemoryStructuresForStoryLocked(meta, book)
+	structures = runtimeStoryMemoryStructures(structures, source)
 	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), false)
-	return formatStoryMemoryContextSummary(book.Structures, records, limit), nil
+	return formatStoryMemoryContextSummary(structures, records, limit), nil
 }
 
 func (s *Store) StoryMemoryCompactionContext(storyID, branchID string) (string, error) {
@@ -409,22 +478,27 @@ func (s *Store) StoryMemoryCompactionContext(storyID, branchID string) (string, 
 	if err != nil {
 		return "", err
 	}
+	structures, source := s.storyMemoryStructuresForStoryLocked(meta, book)
+	structures = runtimeStoryMemoryStructures(structures, source)
 	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), false)
-	return formatStoryMemoryCompactionContext(book.Structures, records), nil
+	return formatStoryMemoryCompactionContext(structures, records), nil
 }
 
 func (s *Store) StoryMemorySchemaContext(storyID string, limit int) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, _, err := s.readStoryLocked(storyID); err != nil {
+	meta, _, err := s.readStoryLocked(storyID)
+	if err != nil {
 		return "", err
 	}
 	book, err := s.readMemoryBookLocked(storyID)
 	if err != nil {
 		return "", err
 	}
-	return formatStoryMemorySchemaContext(book.Structures, limit), nil
+	structures, source := s.storyMemoryStructuresForStoryLocked(meta, book)
+	structures = runtimeStoryMemoryStructures(structures, source)
+	return formatStoryMemorySchemaContext(structures, limit), nil
 }
 
 func (s *Store) CreateInteractiveMemory(storyID string, req InteractiveMemoryCreateRequest) (InteractiveMemoryEntry, error) {
@@ -443,14 +517,15 @@ func (s *Store) CreateInteractiveMemory(storyID string, req InteractiveMemoryCre
 	if err != nil {
 		return InteractiveMemoryEntry{}, err
 	}
-	record, err := saveStoryMemoryRecordLocked(&book, branchID, branch.Head, interactiveMemoryCreateToStoryRecord(req), true, eventPathSet(branch.Head, lines))
+	structures, _ := s.storyMemoryStructuresForStoryLocked(meta, book)
+	record, err := saveStoryMemoryRecordWithStructuresLocked(&book, structures, branchID, branch.Head, interactiveMemoryCreateToStoryRecord(req), true, eventPathSet(branch.Head, lines))
 	if err != nil {
 		return InteractiveMemoryEntry{}, err
 	}
 	if err := s.writeMemoryBookLocked(storyID, book); err != nil {
 		return InteractiveMemoryEntry{}, err
 	}
-	return storyMemoryRecordToInteractiveEntry(record, storyMemoryStructureByID(book.Structures, record.StructureID)), nil
+	return storyMemoryRecordToInteractiveEntry(record, storyMemoryStructureByID(structures, record.StructureID)), nil
 }
 
 func (s *Store) UpdateInteractiveMemory(storyID, memoryID string, req InteractiveMemoryUpdateRequest) (InteractiveMemoryEntry, error) {
@@ -473,6 +548,7 @@ func (s *Store) UpdateInteractiveMemory(storyID, memoryID string, req Interactiv
 	if err != nil {
 		return InteractiveMemoryEntry{}, err
 	}
+	structures, _ := s.storyMemoryStructuresForStoryLocked(meta, book)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	pathSet := eventPathSet(branch.Head, lines)
 	for i := range book.Records {
@@ -481,7 +557,7 @@ func (s *Store) UpdateInteractiveMemory(storyID, memoryID string, req Interactiv
 		}
 		next := book.Records[i]
 		applyInteractiveMemoryUpdateToRecord(&next, req)
-		record, err := saveStoryMemoryRecordLocked(&book, branchID, branch.Head, StoryMemoryRecordRequest{
+		record, err := saveStoryMemoryRecordWithStructuresLocked(&book, structures, branchID, branch.Head, StoryMemoryRecordRequest{
 			ID:          next.ID,
 			BranchID:    branchID,
 			StructureID: next.StructureID,
@@ -497,7 +573,7 @@ func (s *Store) UpdateInteractiveMemory(storyID, memoryID string, req Interactiv
 		if err := s.writeMemoryBookLocked(storyID, book); err != nil {
 			return InteractiveMemoryEntry{}, err
 		}
-		return storyMemoryRecordToInteractiveEntry(record, storyMemoryStructureByID(book.Structures, record.StructureID)), nil
+		return storyMemoryRecordToInteractiveEntry(record, storyMemoryStructureByID(structures, record.StructureID)), nil
 	}
 	return InteractiveMemoryEntry{}, fmt.Errorf("记忆不存在: %s", memoryID)
 }
@@ -506,7 +582,8 @@ func (s *Store) SetInteractiveMemoryArchived(storyID, memoryID string, archived 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, _, err := s.readStoryLocked(storyID); err != nil {
+	meta, _, err := s.readStoryLocked(storyID)
+	if err != nil {
 		return InteractiveMemoryEntry{}, err
 	}
 	memoryID = strings.TrimSpace(memoryID)
@@ -517,6 +594,7 @@ func (s *Store) SetInteractiveMemoryArchived(storyID, memoryID string, archived 
 	if err != nil {
 		return InteractiveMemoryEntry{}, err
 	}
+	structures, _ := s.storyMemoryStructuresForStoryLocked(meta, book)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for i := range book.Records {
 		if book.Records[i].ID != memoryID {
@@ -527,7 +605,7 @@ func (s *Store) SetInteractiveMemoryArchived(storyID, memoryID string, archived 
 		if err := s.writeMemoryBookLocked(storyID, book); err != nil {
 			return InteractiveMemoryEntry{}, err
 		}
-		return storyMemoryRecordToInteractiveEntry(book.Records[i], storyMemoryStructureByID(book.Structures, book.Records[i].StructureID)), nil
+		return storyMemoryRecordToInteractiveEntry(book.Records[i], storyMemoryStructureByID(structures, book.Records[i].StructureID)), nil
 	}
 	return InteractiveMemoryEntry{}, fmt.Errorf("记忆不存在: %s", memoryID)
 }
@@ -552,10 +630,15 @@ func (s *Store) AppendInteractiveMemory(storyID, branchID, turnID string, req In
 	if err != nil {
 		return InteractiveMemoryEntry{}, err
 	}
+	structures, source := s.storyMemoryStructuresForStoryLocked(meta, book)
+	runtimeStructures := runtimeStoryMemoryStructures(structures, source)
+	if len(runtimeStructures) == 0 {
+		return InteractiveMemoryEntry{}, fmt.Errorf("故事记忆结构已禁用或为空")
+	}
 	recordReq := interactiveMemoryCreateToStoryRecord(req)
 	recordReq.BranchID = branchID
 	recordReq.TurnID = turnID
-	record, err := saveStoryMemoryRecordLocked(&book, branchID, branch.Head, recordReq, false, eventPathSet(branch.Head, lines))
+	record, err := saveStoryMemoryRecordWithStructuresLocked(&book, runtimeStructures, branchID, branch.Head, recordReq, false, eventPathSet(branch.Head, lines))
 	if err != nil {
 		return InteractiveMemoryEntry{}, err
 	}
@@ -565,7 +648,7 @@ func (s *Store) AppendInteractiveMemory(storyID, branchID, turnID string, req In
 	if err := s.markTurnMemoryReadyLocked(storyID, meta, lines, branchID, turnID, record.ID); err != nil {
 		return InteractiveMemoryEntry{}, err
 	}
-	return storyMemoryRecordToInteractiveEntry(record, storyMemoryStructureByID(book.Structures, record.StructureID)), nil
+	return storyMemoryRecordToInteractiveEntry(record, storyMemoryStructureByID(runtimeStructures, record.StructureID)), nil
 }
 
 func (s *Store) MarkInteractiveMemoryReady(storyID, branchID, turnID string) error {
@@ -648,8 +731,9 @@ func (s *Store) VisibleInteractiveMemories(storyID, branchID string, limit int) 
 	if err != nil {
 		return nil, err
 	}
+	structures, _ := s.storyMemoryStructuresForStoryLocked(meta, book)
 	records := visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), false)
-	entries := storyMemoryRecordsToInteractiveEntries(records, book.Structures)
+	entries := storyMemoryRecordsToInteractiveEntries(records, structures)
 	if limit <= 0 || limit > maxMemoryListItems {
 		limit = maxMemoryListItems
 	}
@@ -682,7 +766,8 @@ func (s *Store) ReadVisibleInteractiveMemories(storyID, branchID string, ids []s
 	if err != nil {
 		return nil, err
 	}
-	visible := storyMemoryRecordsToInteractiveEntries(visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), false), book.Structures)
+	structures, _ := s.storyMemoryStructuresForStoryLocked(meta, book)
+	visible := storyMemoryRecordsToInteractiveEntries(visibleStoryMemoryRecords(book.Records, branchID, eventPathSet(branch.Head, lines), false), structures)
 	byID := make(map[string]InteractiveMemoryEntry, len(visible))
 	for _, entry := range visible {
 		byID[entry.ID] = entry
@@ -1244,6 +1329,16 @@ func storyMemoryStructureEnabled(structure StoryMemoryStructure) bool {
 	return structure.Enabled == nil || *structure.Enabled
 }
 
+func enabledStoryMemoryStructures(structures []StoryMemoryStructure) []StoryMemoryStructure {
+	out := make([]StoryMemoryStructure, 0, len(structures))
+	for _, structure := range structures {
+		if storyMemoryStructureEnabled(structure) {
+			out = append(out, structure)
+		}
+	}
+	return out
+}
+
 func storyMemoryFieldEnabled(field StoryMemoryField) bool {
 	return field.Enabled == nil || *field.Enabled
 }
@@ -1481,6 +1576,15 @@ func saveStoryMemoryRecordLocked(book *interactiveMemoryBook, branchID, anchorTu
 	return record, nil
 }
 
+func saveStoryMemoryRecordWithStructuresLocked(book *interactiveMemoryBook, structures []StoryMemoryStructure, branchID, anchorTurnID string, req StoryMemoryRecordRequest, manual bool, pathSet map[string]bool) (StoryMemoryRecord, error) {
+	originalStructures := book.Structures
+	book.Structures = structures
+	defer func() {
+		book.Structures = originalStructures
+	}()
+	return saveStoryMemoryRecordLocked(book, branchID, anchorTurnID, req, manual, pathSet)
+}
+
 func setStoryMemoryRecordArchivedLocked(book *interactiveMemoryBook, branchID, anchorTurnID, recordID string, archived bool, pathSet map[string]bool) (StoryMemoryRecord, error) {
 	recordID = sanitizeMemoryID(recordID)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -1542,6 +1646,15 @@ func applyStoryMemoryPatchLocked(book *interactiveMemoryBook, branchID, anchorTu
 	default:
 		return StoryMemoryRecord{}, fmt.Errorf("不支持的故事记忆操作: %s", op)
 	}
+}
+
+func applyStoryMemoryPatchWithStructuresLocked(book *interactiveMemoryBook, structures []StoryMemoryStructure, branchID, anchorTurnID string, patch StoryMemoryPatch, pathSet map[string]bool) (StoryMemoryRecord, error) {
+	originalStructures := book.Structures
+	book.Structures = structures
+	defer func() {
+		book.Structures = originalStructures
+	}()
+	return applyStoryMemoryPatchLocked(book, branchID, anchorTurnID, patch, pathSet)
 }
 
 func findStoryMemoryUpsertRecord(records []StoryMemoryRecord, structure StoryMemoryStructure, branchID, key string, pathSet map[string]bool) (StoryMemoryRecord, bool) {
@@ -1632,6 +1745,9 @@ func formatStoryMemoryCompactionContext(structures []StoryMemoryStructure, recor
 }
 
 func formatStoryMemoryContext(structures []StoryMemoryStructure, records []StoryMemoryRecord, limit, itemLimit int, bounded bool) string {
+	if len(enabledStoryMemoryStructures(structures)) == 0 {
+		return ""
+	}
 	var sb strings.Builder
 	sb.WriteString("来源: interactive/memory/story-{story_id}.json 的当前分支可见故事记忆\n")
 	if bounded {
@@ -1698,6 +1814,9 @@ func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int
 		limit = maxStoryMemorySchemaBytes
 	}
 	structures = storyMemorySchemaContextOrder(structures)
+	if len(structures) == 0 {
+		return ""
+	}
 	var sb strings.Builder
 	sb.WriteString("来源: interactive/memory/story-{story_id}.json 的故事记忆结构定义\n")
 	sb.WriteString("边界: 已按调用方上下文预算裁剪\n")
