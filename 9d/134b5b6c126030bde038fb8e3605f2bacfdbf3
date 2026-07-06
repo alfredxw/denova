@@ -1,0 +1,59 @@
+internal/agent/context_analysis.go
+  s_15e8bdfc039f0e::t_8cef2013e72d40 322-344,585-712
+internal/agent/context_analysis_test.go
+  s_15e8bdfc039f0e::t_3c1927926ef49e 103-152
+internal/api/handlers/handler_interactive.go
+  s_15e8bdfc039f0e::t_a53ff3b27ac4f0 172-196
+internal/app/book_cover.go
+  s_23c4dc2a2415f9::t_df1888c20f8107 51-61
+internal/app/interactive_app_service.go
+  s_15e8bdfc039f0e::t_a820f12dafea5a 759-816
+internal/app/interactive_director_test.go
+  s_15e8bdfc039f0e::t_200d5bd5b2dbcd 176-241
+internal/bookcover/service.go
+  s_23c4dc2a2415f9::t_7f3370052e4447 4,10-12,49-53,153,224-308,340-351
+internal/bookcover/service_test.go
+  s_15e8bdfc039f0e::t_afd478334e4edd 4,6-8,121-164,175-197
+web/src/components/Chat/ContextAnalysisDialog.tsx
+  s_15e8bdfc039f0e::t_50731154c1dacb 10,17-18,47,50,169-173,177,330
+web/src/components/Home/BookCoverThumbnail.tsx
+  s_23c4dc2a2415f9::t_26f66b1afb8abb 1-42
+web/src/components/Home/BookFormDialog.tsx
+  s_23c4dc2a2415f9::t_9767246a424021 1-395
+web/src/features/interactive/api.ts
+  s_15e8bdfc039f0e::t_0f1bb2a11b8033 96-103
+web/src/features/interactive/components/MemoryPanel.test.tsx
+  s_15e8bdfc039f0e::t_af151287c28d04 1,212-256,483-546
+web/src/features/interactive/components/MemoryPanel.tsx
+  s_15e8bdfc039f0e::t_55138a5dd665c1 2,4,7-8,351-354,371-372,464-490,509-519,523-534,548-550,625,630,640-659
+web/src/i18n/locales/en-US/memoryPanel.ts
+  s_15e8bdfc039f0e::t_3cb90951b01a1f 30-33
+web/src/i18n/locales/zh-CN/memoryPanel.ts
+  s_15e8bdfc039f0e::t_885cbb022dfeec 30-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "9d134b5b6c126030bde038fb8e3605f2bacfdbf3",
+  "prompts": {},
+  "sessions": {
+    "s_15e8bdfc039f0e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3331-4d4c-7de3-b370-acfee2beee9f",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_23c4dc2a2415f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f333a-118b-7c62-9eaa-32ae57f81f22",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
