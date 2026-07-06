@@ -1,0 +1,61 @@
+CHANGELOG.md
+  s_b2d5461fcff108::t_b9ef3b4c240457 68-69
+internal/agent/builder.go
+  s_b2d5461fcff108::t_2b4adcf5c64dc9 507-518
+internal/agent/interactive_memory_tools.go
+  s_b2d5461fcff108::t_8de664b27688e9 30-32,56-59,95-100,184,188-190,197,200-202,220-263
+internal/agent/interactive_memory_tools_test.go
+  s_b2d5461fcff108::t_4e4e7111be6754 123-187
+internal/agent/prompt_test.go
+  s_b2d5461fcff108::t_065dc9435cdb3d 319,324,326-332,335,338,340
+internal/agent/system_prompt.go
+  s_b2d5461fcff108::t_d1c29c076b0546 94,138-140
+internal/agent/system_prompt_test.go
+  s_b2d5461fcff108::t_80b41c58b34320 89
+internal/app/interactive_agent_test.go
+  s_b2d5461fcff108::t_95d06eeb00230c 148,153-157,159-160,163-164,172-177,179-180,183-184,673,703,708,711,714
+internal/app/interactive_app_service.go
+  s_b2d5461fcff108::t_1de7378ca16dc8 438-439,442,456,483,487,492-493,496,502,504,942-944
+internal/app/interactive_conversation.go
+  s_b2d5461fcff108::t_7c785766c9f7e5 36,50-70,780-784,786,797-800,808,813,817-820,827,835,839-840,1115
+internal/app/interactive_director.go
+  s_b2d5461fcff108::t_e13a74ef11876d 5,17-52,58-62,79-83,85-89,91-93,95,97-106,108-129,132,134-135,140-141,144-154,158-170,173-192,195-196,198-199,211-228
+internal/app/interactive_director_test.go
+  s_b2d5461fcff108::t_067d10753efac4 111-281,423-480
+internal/prompts/interactive.go
+  s_b2d5461fcff108::t_20385177464088 40,45,49-52,234-236,240-242,245,251-263,287,297-300,307,319-327
+internal/prompts/interactive_test.go
+  s_b2d5461fcff108::t_455b56f957bad9 25,33
+skills/agent-config/SKILL.md
+  s_b2d5461fcff108::t_1b6e05fbcee683 22
+web/src/features/agents/agent-registry.ts
+  s_b2d5461fcff108::t_3d1d221186ef41 2,32,74
+web/src/features/settings/types.ts
+  s_b2d5461fcff108::t_24394a65b4ca51 88,109,123,139,199,231,251
+web/src/i18n/locales/en-US/agents.ts
+  s_b2d5461fcff108::t_a264deddc90d71 20-21
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_b2d5461fcff108::t_bb8d7cfad93537 525
+web/src/i18n/locales/zh-CN/agents.ts
+  s_b2d5461fcff108::t_6d9685d7d1fc1d 20-21
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_b2d5461fcff108::t_29df4b1f0eb748 525
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "ea1edcf522d14241c084fe0e34233aef548ec62b",
+  "prompts": {},
+  "sessions": {
+    "s_b2d5461fcff108": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f374c-d87f-7663-ae79-61f18f696c3a",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
