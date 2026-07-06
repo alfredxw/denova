@@ -7,13 +7,15 @@ import { focusDialogContentOnOpen } from './dialog-focus'
 
 export const CONTEXT_ANALYSIS_SIMULATED_MESSAGE = '[Denova context analysis probe]'
 
-export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenChange, onRemoveCompaction }: {
+export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenChange, onRemoveCompaction, title, description }: {
   open: boolean
   loading: boolean
   error: string | null
   analysis: ContextAnalysis | null
   onOpenChange: (open: boolean) => void
   onRemoveCompaction?: () => void | Promise<void>
+  title?: string
+  description?: string
 }) {
   const { t } = useTranslation()
   const [removingCompaction, setRemovingCompaction] = useState(false)
@@ -42,10 +44,10 @@ export function ContextAnalysisDialog({ open, loading, error, analysis, onOpenCh
         <DialogHeader className="border-b border-[var(--nova-border)] px-4 py-3">
           <DialogTitle className="flex items-center gap-2 text-sm">
             <ScrollText className="h-4 w-4 text-[var(--nova-text-muted)]" />
-            {t('chat.contextAnalysis.title')}
+            {title || t('chat.contextAnalysis.title')}
           </DialogTitle>
           <DialogDescription className="text-xs text-[var(--nova-text-faint)]">
-            {t('chat.contextAnalysis.description')}
+            {description || t('chat.contextAnalysis.description')}
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
@@ -164,11 +166,15 @@ function isTurnStartPart(part: ContextAnalysisPart) {
 }
 
 function isStandaloneContextPart(part: ContextAnalysisPart) {
-  return isCompactionPart(part) || part.source === '稳定作品上下文' || part.source === '稳定上下文'
+  return isCompactionPart(part) || part.source === '稳定作品上下文' || part.source === '稳定上下文' || isDirectorInstructionPart(part)
+}
+
+function isDirectorInstructionPart(part: ContextAnalysisPart) {
+  return Boolean(part.id?.startsWith('director_instruction_part_'))
 }
 
 function turnGroupTitle(part: ContextAnalysisPart, index: number, t: ReturnType<typeof useTranslation>['t']) {
-  if (part.source === '本轮上下文' || part.source === '本轮互动指令') {
+  if (part.source === '本轮上下文' || part.source === '本轮互动指令' || part.source === '本轮导演指令') {
     return t('chat.contextAnalysis.currentTurnGroup')
   }
   return t('chat.contextAnalysis.turnGroup', { index })
@@ -321,7 +327,7 @@ function ContextAnalysisInlinePart({ part }: { part: ContextAnalysisPart }) {
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[11px] font-medium text-[var(--nova-text)]">{part.title || part.source}</span>
           <span className="block truncate text-[10px] text-[var(--nova-text-faint)]">
-            {kind}
+            {part.source ? `${part.source} · ` : ''}{kind}
             {part.tool_name ? ` · ${part.tool_name}` : ''}
             {part.role ? ` · ${part.role}` : ''}
             {part.note ? ` · ${part.note}` : ''}

@@ -319,6 +319,29 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 	}, nil
 }
 
+func BuildInteractiveDirectorContextAnalysis(cfg *config.Config, instruction string) (ContextAnalysis, error) {
+	systemPrompt, systemParts := buildInteractiveDirectorSystemPromptAnalysis(cfg)
+	messages := []*schema.Message{schema.UserMessage(instruction)}
+	contextMessages := buildInteractiveDirectorInstructionContextParts(instruction)
+	if len(contextMessages) == 0 {
+		contextMessages = append(contextMessages, contextAnalysisPartFromMessage("message_1", "本轮导演指令", "后台导演规划指令", messages[0]))
+	}
+	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveDirector, systemPrompt, messages)
+	return ContextAnalysis{
+		AgentKind:           config.AgentKindInteractiveDirector,
+		Mode:                "interactive_director",
+		SystemPrompt:        systemPrompt,
+		SystemPromptParts:   systemParts,
+		ContextParts:        contextMessages,
+		ContextMessages:     contextMessages,
+		MessageCount:        len(messages),
+		TokenEstimate:       usage.tokens,
+		ContextWindowTokens: usage.window,
+		ContextUsageRatio:   usage.ratio,
+		WouldCompact:        usage.wouldCompact,
+	}, nil
+}
+
 func interactiveCompactionEpoch(compaction *interactive.ContextCompactionEvent, fallback int) int {
 	if compaction == nil {
 		return fallback
@@ -557,6 +580,134 @@ func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.S
 		Content: interactiveStoryFlowInstruction(cfg, workspace),
 	}))
 	return systemPrompt, parts
+}
+
+func buildInteractiveDirectorSystemPromptAnalysis(cfg *config.Config) (string, []ContextAnalysisPart) {
+	builtIn := prompts.BuildInteractiveDirectorSystemInstruction()
+	systemPrompt := protectedSystemInstruction(cfg, config.AgentKindInteractiveDirector, builtIn)
+	resolved := config.ResolveAgentPrompt(cfg, config.AgentKindInteractiveDirector)
+	parts := []ContextAnalysisPart{
+		NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "runtime_contract",
+			Source:  "Denova runtime",
+			Title:   "运行契约",
+			Content: runtimeContractForAgent(cfg, config.AgentKindInteractiveDirector),
+		}),
+	}
+	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(config.AgentKindInteractiveDirector)); outputProtocol != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "output_protocol",
+			Source:  "Denova runtime",
+			Title:   "输出格式",
+			Content: outputProtocol,
+		}))
+	}
+	if flow := strings.TrimSpace(resolved.FlowPrompt); flow != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "custom_flow",
+			Source:  "user/workspace config",
+			Title:   "用户自定义流程规则",
+			Content: flow,
+		}))
+	}
+	if custom := strings.TrimSpace(resolved.SystemPrompt); custom != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "custom_system",
+			Source:  "user/workspace config",
+			Title:   "用户自定义系统提示",
+			Content: custom,
+		}))
+	}
+	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+		ID:      "flow",
+		Source:  "Denova built-in",
+		Title:   "后台导演系统规则",
+		Content: builtIn,
+	}))
+	return systemPrompt, parts
+}
+
+func buildInteractiveDirectorInstructionContextParts(instruction string) []ContextAnalysisPart {
+	instruction = strings.TrimSpace(instruction)
+	if instruction == "" {
+		return nil
+	}
+	segments := strings.Split("\n"+instruction, "\n## ")
+	parts := make([]ContextAnalysisPart, 0, len(segments))
+	if preamble := strings.TrimSpace(strings.TrimPrefix(segments[0], "\n")); preamble != "" {
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      "director_instruction_preamble",
+			Source:  "本轮导演指令",
+			Title:   "后台导演任务与约束",
+			Role:    "user",
+			Kind:    "body",
+			Content: preamble,
+			Note:    "final_user_message",
+		}))
+	}
+	for _, segment := range segments[1:] {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			continue
+		}
+		heading, content, _ := strings.Cut(segment, "\n")
+		title, source, note := directorInstructionHeadingMeta(heading)
+		role := ""
+		if len(parts) == 0 {
+			role = "user"
+		}
+		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+			ID:      fmt.Sprintf("director_instruction_part_%02d", len(parts)+1),
+			Source:  source,
+			Title:   title,
+			Role:    role,
+			Kind:    "body",
+			Content: strings.TrimSpace(content),
+			Note:    note,
+		}))
+	}
+	return parts
+}
+
+func directorInstructionHeadingMeta(heading string) (title, source, note string) {
+	title = strings.TrimSpace(heading)
+	source = "后台导演上下文"
+	if strings.Contains(title, "（source:") {
+		if before, after, ok := strings.Cut(title, "（source:"); ok {
+			title = strings.TrimSpace(before)
+			source = strings.TrimSpace(strings.TrimSuffix(after, "）"))
+		}
+	} else if strings.Contains(title, "(source:") {
+		if before, after, ok := strings.Cut(title, "(source:"); ok {
+			title = strings.TrimSpace(before)
+			source = strings.TrimSpace(strings.TrimSuffix(after, ")"))
+		}
+	}
+	if title == "" {
+		title = "导演上下文片段"
+	}
+	if source == "" {
+		source = "后台导演上下文"
+	}
+	if strings.Contains(source, "bounded") || strings.Contains(title, "上限") {
+		note = "bounded"
+	}
+	switch title {
+	case "文件操作要求", "固定标题", "更新原则":
+		source = "Denova built-in"
+		if note == "" {
+			note = "final_user_message"
+		} else {
+			note += " · final_user_message"
+		}
+	default:
+		if note == "" {
+			note = "final_user_message"
+		} else {
+			note += " · final_user_message"
+		}
+	}
+	return title, source, note
 }
 
 func styleRuleContextAnalysisParts(rules []StyleRule) []ContextAnalysisPart {

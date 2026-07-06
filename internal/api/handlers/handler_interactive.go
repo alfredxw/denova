@@ -169,6 +169,31 @@ func (h *Handlers) HandleInteractiveDirectorRun(ctx context.Context, c *app.Requ
 	writeJSON(c, consts.StatusOK, status)
 }
 
+func (h *Handlers) HandleInteractiveDirectorContextAnalysis(ctx context.Context, c *app.RequestContext) {
+	var body struct {
+		BranchID string `json:"branch_id"`
+		Branch   string `json:"branch"`
+		TurnID   string `json:"turn_id"`
+	}
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	branchID := body.BranchID
+	if strings.TrimSpace(branchID) == "" {
+		branchID = body.Branch
+	}
+	if strings.TrimSpace(branchID) == "" {
+		branchID = c.Query("branch")
+	}
+	analysis, err := h.app.AnalyzeInteractiveDirectorContext(c.Param("id"), branchID, body.TurnID, requestLocale(c))
+	if err != nil {
+		writeError(c, consts.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, analysis)
+}
+
 func (h *Handlers) HandleInteractiveMemory(ctx context.Context, c *app.RequestContext) {
 	includeArchived := strings.EqualFold(c.Query("archived"), "true") || strings.EqualFold(c.Query("include_archived"), "true")
 	state, err := h.app.InteractiveMemory(c.Param("id"), c.Query("branch"), includeArchived)

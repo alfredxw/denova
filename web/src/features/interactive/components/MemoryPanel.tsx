@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Activity, Archive, Brain, Edit3, Eye, Loader2, RefreshCw, RotateCcw, Save, Search, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { Activity, Archive, Brain, Edit3, Eye, Loader2, RefreshCw, RotateCcw, Save, ScrollText, Search, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import { MessageList } from '@/components/Chat/MessageList'
 import { useAgentEventStream } from '@/hooks/useAgentEventStream'
-import type { ChatMessage } from '@/lib/api'
-import { generateStoryMemoryStream, getInteractiveDirector, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution, runInteractiveDirector, updateInteractiveDirector } from '../api'
+import type { ChatMessage, ContextAnalysis } from '@/lib/api'
+import { analyzeInteractiveDirectorContext, generateStoryMemoryStream, getInteractiveDirector, getStoryMemory, rebuildInteractiveDirector, rerollInteractiveRuleResolution, runInteractiveDirector, updateInteractiveDirector } from '../api'
 import type { DirectorPlan, DirectorPlanDocs, DirectorPlanMetadata, DirectorPlanRunStatus, DirectorPlanStatus, Snapshot, StoryMemoryRecord, StoryMemoryState, StoryMemoryStructure, TurnDisplayEvent } from '../types'
 
 type MemoryPanelTab = 'memory' | 'director'
@@ -347,6 +348,10 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
   const [rerolling, setRerolling] = useState(false)
   const [directorError, setDirectorError] = useState('')
   const [ruleError, setRuleError] = useState('')
+  const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
+  const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
+  const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
+  const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
   const [directorPlan, setDirectorPlan] = useState<DirectorPlan | null>(snapshot?.director_plan || null)
   const [draftDocs, setDraftDocs] = useState<DirectorPlanDocs | null>(snapshot?.director_plan?.docs || null)
   const [manualDirectorStatus, setManualDirectorStatus] = useState<DirectorPlanStatus | null>(null)
@@ -363,6 +368,8 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
     () => extractDirectorDisplayEvents(snapshot, directorStatus),
     [directorStatus?.source_turn_id, snapshot?.current_turn?.display_events, snapshot?.turns],
   )
+  const currentTurnId = snapshot?.current_turn?.id || ''
+  const canAnalyzeDirectorContext = Boolean(storyId && currentTurnId)
 
   useEffect(() => {
     setDirectorPlan(snapshot?.director_plan || null)
@@ -454,6 +461,33 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
     }
   }
 
+  const analyzeDirectorContext = async () => {
+    if (!storyId || !currentTurnId) {
+      setContextAnalysis(null)
+      setContextAnalysisError(t('memoryPanel.directorContextAnalysisUnavailable'))
+      return
+    }
+    setContextAnalysisLoading(true)
+    setContextAnalysisError(null)
+    setContextAnalysis(null)
+    try {
+      setContextAnalysis(await analyzeInteractiveDirectorContext(storyId, {
+        branch_id: effectiveBranchId,
+        turn_id: currentTurnId,
+      }))
+    } catch (err) {
+      console.error('[interactive-memory-panel] analyze director context failed', err)
+      setContextAnalysisError(err instanceof Error ? err.message : t('memoryPanel.directorContextAnalysisFailed'))
+    } finally {
+      setContextAnalysisLoading(false)
+    }
+  }
+
+  const openDirectorContextAnalysis = () => {
+    setContextAnalysisOpen(true)
+    void analyzeDirectorContext()
+  }
+
   const rerollRules = async () => {
     const resolutionId = ruleResolution?.id
     const turnId = snapshot?.current_turn?.id
@@ -472,15 +506,32 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
   }
 
   const hasDirectorRunChat = Boolean(directorPlan || directorStatus || directorMetadata?.last_run || planLoading || retryingDirector)
+  const directorContextAnalysisDialog = (
+    <ContextAnalysisDialog
+      open={contextAnalysisOpen}
+      loading={contextAnalysisLoading}
+      error={contextAnalysisError}
+      analysis={contextAnalysis}
+      onOpenChange={setContextAnalysisOpen}
+      title={t('memoryPanel.directorContextAnalysis')}
+      description={t('memoryPanel.directorContextAnalysisDescription')}
+    />
+  )
 
   if (!hasDirectorRunChat && !hasRuleAudit) {
     return (
-      <DirectorEmptyState
-        error={directorError}
-        running={retryingDirector}
-        disabled={!storyId}
-        onRun={() => void runDirectorPlan()}
-      />
+      <>
+        <DirectorEmptyState
+          error={directorError}
+          running={retryingDirector}
+          disabled={!storyId}
+          analyzing={contextAnalysisLoading}
+          analyzeDisabled={!canAnalyzeDirectorContext}
+          onRun={() => void runDirectorPlan()}
+          onAnalyze={openDirectorContextAnalysis}
+        />
+        {directorContextAnalysisDialog}
+      </>
     )
   }
 
@@ -494,6 +545,9 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
               <span className="truncate">{t('snapshot.director.title')}</span>
             </div>
             <div className="flex shrink-0 items-center gap-1">
+              <button type="button" className="nova-icon-button flex h-6 w-6 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={contextAnalysisLoading ? t('chat.contextAnalysis.loading') : t('memoryPanel.directorContextAnalysis')} title={contextAnalysisLoading ? t('chat.contextAnalysis.loading') : t('memoryPanel.directorContextAnalysis')} onClick={openDirectorContextAnalysis} disabled={!canAnalyzeDirectorContext || contextAnalysisLoading}>
+                {contextAnalysisLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScrollText className="h-3.5 w-3.5" />}
+              </button>
               {directorStatus?.status === 'failed' ? (
                 <button type="button" className="nova-icon-button flex h-6 w-6 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60" aria-label={t('storyStage.director.retry')} title={t('storyStage.director.retry')} onClick={() => void runDirectorPlan()} disabled={!storyId || retryingDirector}>
                   {retryingDirector ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -568,11 +622,12 @@ function NarrativeOrchestrationSummary({ storyId, branchId, snapshot, onSnapshot
           ) : null}
         </section>
       ) : null}
+      {directorContextAnalysisDialog}
     </div>
   )
 }
 
-function DirectorEmptyState({ error, running, disabled, onRun }: { error?: string; running?: boolean; disabled?: boolean; onRun: () => void }) {
+function DirectorEmptyState({ error, running, disabled, analyzing, analyzeDisabled, onRun, onAnalyze }: { error?: string; running?: boolean; disabled?: boolean; analyzing?: boolean; analyzeDisabled?: boolean; onRun: () => void; onAnalyze: () => void }) {
   const { t } = useTranslation()
   return (
     <section className="flex min-h-[220px] flex-col items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-4 py-6 text-center">
@@ -582,15 +637,26 @@ function DirectorEmptyState({ error, running, disabled, onRun }: { error?: strin
       <h3 className="mt-3 text-sm font-semibold text-[var(--nova-text)]">{t('memoryPanel.directorEmpty')}</h3>
       <p className="mt-2 max-w-[24rem] text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.directorManualRunHint')}</p>
       {error ? <div className="mt-3 w-full rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{error}</div> : null}
-      <button
-        type="button"
-        className="mt-4 inline-flex h-8 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 text-xs font-medium text-[var(--nova-text)] transition-colors hover:border-[var(--nova-accent)] disabled:cursor-not-allowed disabled:opacity-60"
-        onClick={onRun}
-        disabled={disabled || running}
-      >
-        {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-        {running ? t('memoryPanel.directorManualRunning') : t('memoryPanel.directorManualRun')}
-      </button>
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <button
+          type="button"
+          className="inline-flex h-8 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 text-xs font-medium text-[var(--nova-text)] transition-colors hover:border-[var(--nova-accent)] disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={onRun}
+          disabled={disabled || running}
+        >
+          {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          {running ? t('memoryPanel.directorManualRunning') : t('memoryPanel.directorManualRun')}
+        </button>
+        <button
+          type="button"
+          className="inline-flex h-8 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-xs font-medium text-[var(--nova-text-muted)] transition-colors hover:border-[var(--nova-accent)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={onAnalyze}
+          disabled={analyzeDisabled || analyzing}
+        >
+          {analyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScrollText className="h-3.5 w-3.5" />}
+          {analyzing ? t('chat.contextAnalysis.loading') : t('memoryPanel.directorContextAnalysis')}
+        </button>
+      </div>
     </section>
   )
 }

@@ -173,6 +173,72 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 	}
 }
 
+func TestAnalyzeInteractiveDirectorContextUsesCurrentDirectorInputs(t *testing.T) {
+	workspace := t.TempDir()
+	novaDir := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:         "外门逆袭",
+		Origin:        "主角被同门轻视",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{
+		ID:               "shen-ning",
+		Type:             "character",
+		Name:             "沈凝",
+		Importance:       "major",
+		BriefDescription: "角色 沈凝。外门比试的关键见证者。上下文出现沈凝相关内容时，一定要参考本项详情。",
+		Content:          "沈凝是外门比试的关键见证者，会被公开证据触动。",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{
+		BranchID:  "main",
+		User:      "我邀请沈凝旁观公开比试",
+		Narrative: "沈凝停下脚步，示意我继续说。",
+		TurnBrief: &interactive.TurnBrief{
+			UserAction:   "邀请沈凝旁观公开比试",
+			EventIntents: []string{"face_slap"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := &App{
+		cfg:         &config.Config{Workspace: workspace, NovaDir: novaDir},
+		workspace:   workspace,
+		bookState:   book.NewState(workspace),
+		bookService: book.NewService(workspace),
+		interactive: store,
+	}
+
+	analysis, err := app.AnalyzeInteractiveDirectorContext(story.ID, "main", turn.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.AgentKind != config.AgentKindInteractiveDirector || analysis.Mode != "interactive_director" {
+		t.Fatalf("unexpected director analysis identity: %#v", analysis)
+	}
+	var sawLore, sawTurnAudit, sawDirectorPlan bool
+	for _, part := range analysis.ContextMessages {
+		if strings.Contains(part.Source, "lore") && strings.Contains(part.Content, "沈凝") {
+			sawLore = true
+		}
+		if part.Title == "本回合 RuleResolution / TerminalOutcome 审计 JSON" && strings.Contains(part.Content, turn.ID) {
+			sawTurnAudit = true
+		}
+		if part.Title == "当前导演规划文档快照" && strings.Contains(part.Content, "正文Agent可读") {
+			sawDirectorPlan = true
+		}
+	}
+	if !sawLore || !sawTurnAudit || !sawDirectorPlan {
+		t.Fatalf("director context should include lore, turn audit, and director.md snapshot: lore=%v audit=%v plan=%v parts=%#v", sawLore, sawTurnAudit, sawDirectorPlan, analysis.ContextMessages)
+	}
+}
+
 func writeDirectorPlanDocsForTest(paths []string, docs interactive.DirectorPlanDocs) error {
 	if len(paths) != 1 {
 		return errors.New("expected one director plan path")

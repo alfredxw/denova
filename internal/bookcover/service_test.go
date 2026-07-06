@@ -1,7 +1,11 @@
 package bookcover
 
 import (
+	"bytes"
 	"context"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -114,6 +118,50 @@ func TestGenerateWithoutExistingCoverSkipsBackup(t *testing.T) {
 	assertFileBytes(t, workspace, CoverPath, "cover")
 }
 
+func TestUploadWritesCoverSourceMetaAndBackup(t *testing.T) {
+	workspace := t.TempDir()
+	bookService := book.NewService(workspace)
+	if err := bookService.WriteBinaryFile(CoverPath, []byte("old-cover")); err != nil {
+		t.Fatalf("写入旧封面失败: %v", err)
+	}
+	service := NewServiceWithGenerator(nil)
+	service.now = func() time.Time { return time.Date(2026, 6, 28, 12, 0, 0, 0, time.UTC) }
+	service.suffix = func() string { return "upload01" }
+
+	result, err := service.Upload(bookService, UploadRequest{
+		Filename: "cover.png",
+		Data:     testPNG(t),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.CoverPath != CoverPath {
+		t.Fatalf("展示封面路径不符合预期: %s", result.CoverPath)
+	}
+	if result.SourcePath != "assets/image/covers/20260628-120000-upload01/upload.png" {
+		t.Fatalf("上传原图路径不符合预期: %s", result.SourcePath)
+	}
+	if result.MetaPath != "assets/image/covers/20260628-120000-upload01/meta.json" {
+		t.Fatalf("元数据路径不符合预期: %s", result.MetaPath)
+	}
+	if result.BackupPath != "assets/image/covers/backups/20260628-120000-previous.png" {
+		t.Fatalf("旧封面备份路径不符合预期: %s", result.BackupPath)
+	}
+	assertFileBytes(t, workspace, result.BackupPath, "old-cover")
+	assertPNGFile(t, workspace, CoverPath)
+	assertPNGFile(t, workspace, result.SourcePath)
+
+	meta, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(result.MetaPath)))
+	if err != nil {
+		t.Fatalf("读取元数据失败: %v", err)
+	}
+	for _, required := range []string{`"source": "book_cover_upload"`, `"provider": "user_upload"`, `"cover_path": "assets/image/cover.png"`} {
+		if !strings.Contains(string(meta), required) {
+			t.Fatalf("元数据缺少 %q:\n%s", required, string(meta))
+		}
+	}
+}
+
 func assertFileBytes(t *testing.T, workspace, relPath, want string) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(relPath)))
@@ -123,4 +171,27 @@ func assertFileBytes(t *testing.T, workspace, relPath, want string) {
 	if string(data) != want {
 		t.Fatalf("%s 内容不符合预期: %q", relPath, string(data))
 	}
+}
+
+func assertPNGFile(t *testing.T, workspace, relPath string) {
+	t.Helper()
+	file, err := os.Open(filepath.Join(workspace, filepath.FromSlash(relPath)))
+	if err != nil {
+		t.Fatalf("打开 %s 失败: %v", relPath, err)
+	}
+	defer file.Close()
+	if _, err := png.Decode(file); err != nil {
+		t.Fatalf("%s 不是有效 PNG: %v", relPath, err)
+	}
+}
+
+func testPNG(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
+	img.Set(0, 0, color.RGBA{R: 255, A: 255})
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("生成测试 PNG 失败: %v", err)
+	}
+	return buf.Bytes()
 }

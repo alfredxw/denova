@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryPanel } from './MemoryPanel'
@@ -207,6 +207,51 @@ describe('MemoryPanel', () => {
 
     expect(screen.queryByText('edit_file')).not.toBeInTheDocument()
     expect(screen.getByDisplayValue(/公开压力升高/)).toBeInTheDocument()
+  })
+
+  it('opens director context analysis from the director panel', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      if (url.includes('/director/context-analysis')) {
+        expect(init?.body).toBe(JSON.stringify({ branch_id: 'main', turn_id: 'turn-1' }))
+        return Response.json(contextAnalysisFixture())
+      }
+      if (url.includes('/director')) return Response.json(directorPlan())
+      if (url.includes('/story-memory')) return Response.json(storyMemoryState())
+      return Response.json({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<MemoryPanel storyId="story-1" branchId="main" snapshot={{
+      story_id: 'story-1',
+      branch_id: 'main',
+      turns: [],
+      state: {},
+      director_plan_status: directorStatus('ready'),
+      current_turn: {
+        id: 'turn-1',
+        parent_id: null,
+        branch_id: 'main',
+        ts: '2026-06-19T06:00:00Z',
+        user: '我邀请沈凝旁观公开比试',
+        narrative: '沈凝停下脚步。',
+      },
+    }} />)
+
+    await openDirectorPanel()
+    await userEvent.click(screen.getByRole('button', { name: '查看导演编排' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '分析导演上下文' })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole('button', { name: '分析导演上下文' }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/director/context-analysis', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ branch_id: 'main', turn_id: 'turn-1' }),
+    })))
+    const dialog = await screen.findByRole('dialog', { name: '分析导演上下文' })
+    expect(within(dialog).getByText(/后台导演 Agent 当前会收到/)).toBeInTheDocument()
+
+    expect(await within(dialog).findByText(/资料库导演上下文/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/lore index and bounded relevant entries/)).toBeInTheDocument()
   })
 
   it('rebuilds director plan from the summary action', async () => {
@@ -432,6 +477,70 @@ function storyMemoryState() {
       },
     ],
     sync_status: 'ready',
+  }
+}
+
+function contextAnalysisFixture() {
+  const systemPart = contextAnalysisPart({
+    id: 'output_protocol',
+    source: 'Denova runtime',
+    title: '输出格式',
+    content: '必须通过 read_file/write_file/edit_file 更新当前分支 director.md。',
+  })
+  const contextMessages = [
+    contextAnalysisPart({
+      id: 'director_instruction_preamble',
+      source: '本轮导演指令',
+      title: '后台导演任务与约束',
+      role: 'user',
+      kind: 'body',
+      content: '请根据本回合已落盘的审计数据，更新当前分支 director.md。',
+    }),
+    contextAnalysisPart({
+      id: 'director_instruction_part_02',
+      source: 'lore index and bounded relevant entries',
+      title: '资料库导演上下文',
+      kind: 'body',
+      content: '角色 沈凝。外门比试关键见证者。',
+      note: 'bounded · final_user_message',
+    }),
+  ]
+  return {
+    agent_kind: 'interactive_director',
+    mode: 'interactive_director',
+    system_prompt: '你是后台导演。',
+    system_prompt_parts: [systemPart],
+    context_parts: contextMessages,
+    context_messages: contextMessages,
+    message_count: 1,
+    token_estimate: 1200,
+    context_window_tokens: 128000,
+    context_usage_ratio: 0.01,
+    compaction_active: false,
+    would_compact: false,
+  }
+}
+
+function contextAnalysisPart(input: Partial<{
+  id: string
+  source: string
+  title: string
+  role: string
+  kind: string
+  content: string
+  note: string
+}>) {
+  const content = input.content || ''
+  return {
+    id: input.id || '',
+    source: input.source || '',
+    title: input.title || '',
+    role: input.role || '',
+    kind: input.kind || '',
+    content,
+    note: input.note || '',
+    bytes: content.length,
+    chars: content.length,
   }
 }
 

@@ -100,6 +100,56 @@ func TestInteractiveContextAnalysisShowsDirectNarrativeOutputProtocol(t *testing
 	}
 }
 
+func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T) {
+	instruction := prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{
+		Title:                "外门逆袭",
+		Origin:               "主角被同门轻视",
+		StoryTellerID:        "classic",
+		StoryDirectorID:      "default",
+		BranchID:             "main",
+		DirectorPlanPaths:    "/tmp/director.md",
+		DirectorPlanDocs:     `{"plan":"# 正文Agent可读"}`,
+		LoreContext:          "角色 沈凝。外门比试关键见证者。",
+		TurnAuditJSON:        `{"turn_id":"turn-1","user_action":"报名比试"}`,
+		TurnHistory:          "用户：我报名参加公开比试",
+		StoryMemorySummary:   "公开比试即将开始。",
+		StoryDirectorPlan:    "mainline_strength: soft_guidance",
+		DirectorEventCatalog: `{"events":[{"id":"face_slap"}]}`,
+	})
+	analysis, err := BuildInteractiveDirectorContextAnalysis(&config.Config{OpenAIContextWindowTokens: 128000}, instruction)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.AgentKind != config.AgentKindInteractiveDirector || analysis.Mode != "interactive_director" {
+		t.Fatalf("unexpected director analysis identity: %#v", analysis)
+	}
+	if analysis.ContextWindowTokens != 128000 {
+		t.Fatalf("context window tokens = %d, want 128000", analysis.ContextWindowTokens)
+	}
+	if analysis.MessageCount != 1 {
+		t.Fatalf("director analysis should estimate the single user instruction message, got %d", analysis.MessageCount)
+	}
+	var sawOutputProtocol, sawLore, sawTurnAudit, sawPlanPath bool
+	for _, part := range analysis.SystemPromptParts {
+		if part.ID == "output_protocol" && strings.Contains(part.Content, "director.md") {
+			sawOutputProtocol = true
+		}
+	}
+	for _, part := range analysis.ContextMessages {
+		switch {
+		case part.Title == "资料库导演上下文" && strings.Contains(part.Source, "lore index") && strings.Contains(part.Content, "沈凝"):
+			sawLore = true
+		case part.Title == "本回合 RuleResolution / TerminalOutcome 审计 JSON" && strings.Contains(part.Source, "turn audit") && strings.Contains(part.Content, "turn-1"):
+			sawTurnAudit = true
+		case part.Title == "允许读写的导演规划文件路径" && strings.Contains(part.Source, "backend guard") && strings.Contains(part.Content, "director.md"):
+			sawPlanPath = true
+		}
+	}
+	if !sawOutputProtocol || !sawLore || !sawTurnAudit || !sawPlanPath {
+		t.Fatalf("director analysis missing expected parts output=%v lore=%v audit=%v planPath=%v parts=%#v", sawOutputProtocol, sawLore, sawTurnAudit, sawPlanPath, analysis.ContextMessages)
+	}
+}
+
 func TestIDEContextAnalysisShowsToolContextWithoutDenovaMetadata(t *testing.T) {
 	analysis, err := BuildIDEContextAnalysis(
 		&config.Config{},

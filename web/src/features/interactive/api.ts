@@ -93,6 +93,14 @@ export function runInteractiveDirector(storyId: string, branchId?: string): Prom
   })
 }
 
+export function analyzeInteractiveDirectorContext(storyId: string, input: { branch_id?: string; turn_id?: string } = {}): Promise<ContextAnalysis> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/context-analysis`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
 export function getInteractiveMemory(storyId: string, branchId?: string, includeArchived = false): Promise<InteractiveMemoryState> {
   const params = new URLSearchParams()
   if (branchId) params.set('branch', branchId)

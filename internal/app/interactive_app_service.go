@@ -756,6 +756,64 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	return agent.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveStoryTellerSystemInput(teller, styleRules), bookService, req, storyCtx.Snapshot.ContextCompaction, conversation.PrepareMessages)
 }
 
+func (a *App) AnalyzeInteractiveDirectorContext(storyID, branchID, turnID string, locale string) (agent.ContextAnalysis, error) {
+	return a.interactiveService().AnalyzeInteractiveDirectorContext(storyID, branchID, turnID, locale)
+}
+
+func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branchID, turnID string, locale string) (agent.ContextAnalysis, error) {
+	a := s.app
+	a.mu.RLock()
+	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
+		a.mu.RUnlock()
+		return agent.ContextAnalysis{}, ErrNoWorkspace
+	}
+	store := a.interactive
+	runtimeCfg := *a.cfg
+	workspace := a.workspace
+	runtimeCfg.Workspace = workspace
+	novaDir := runtimeCfg.NovaDir
+	a.mu.RUnlock()
+
+	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
+		applyLayeredSettingsToConfig(&runtimeCfg, layered)
+	} else {
+		log.Printf("[interactive-director-analysis] load interactive settings failed workspace=%s err=%v", workspace, err)
+	}
+	applyRequestLocaleToConfig(&runtimeCfg, locale)
+
+	storyCtx, err := store.StoryContext(storyID, branchID)
+	if err != nil {
+		return agent.ContextAnalysis{}, err
+	}
+	turn, err := interactiveDirectorAnalysisTurn(storyCtx.Snapshot, turnID)
+	if err != nil {
+		return agent.ContextAnalysis{}, err
+	}
+	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg)
+	instruction, err := conversation.BuildDirectorInstruction(turn)
+	if err != nil {
+		return agent.ContextAnalysis{}, err
+	}
+	log.Printf("[interactive-director-analysis] built context story_id=%s branch_id=%s turn_id=%s instruction=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, interactivePartSummary(instruction))
+	return agent.BuildInteractiveDirectorContextAnalysis(&runtimeCfg, instruction)
+}
+
+func interactiveDirectorAnalysisTurn(snapshot interactive.Snapshot, turnID string) (interactive.TurnEvent, error) {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		if snapshot.CurrentTurn == nil {
+			return interactive.TurnEvent{}, fmt.Errorf("开局尚未完成，无法分析导演上下文")
+		}
+		return *snapshot.CurrentTurn, nil
+	}
+	for _, turn := range snapshot.Turns {
+		if turn.ID == turnID {
+			return turn, nil
+		}
+	}
+	return interactive.TurnEvent{}, fmt.Errorf("回合不存在: %s", turnID)
+}
+
 func (a *App) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agent.ContextCompactionResult, error) {
 	return a.interactiveService().CompactInteractiveContext(ctx, storyID, branchID)
 }

@@ -1,5 +1,12 @@
-import { fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from './client'
+import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
 import type { BookCoverResult, BookMeta, BookRecord, NovelImportPreview, NovelImportResult, SSEEvent } from './types'
+
+export type BookExportFormat = 'txt'
+
+export interface BookExportFile {
+  filename: string
+  blob: Blob
+}
 
 export async function getBooks(): Promise<BookRecord[]> {
   const data = await requestJSON<{ books: BookRecord[] }>('/api/books')
@@ -118,4 +125,51 @@ export async function generateBookCover(input: {
       profile_id: input.profileId || '',
     }),
   })
+}
+
+export async function uploadBookCover(path: string, file: File): Promise<BookCoverResult> {
+  const form = new FormData()
+  form.append('path', path)
+  form.append('file', file)
+  return requestJSON('/api/books/cover/upload', {
+    method: 'POST',
+    body: form,
+  })
+}
+
+export async function exportBook(input: { path: string; format: BookExportFormat }): Promise<BookExportFile> {
+  const params = new URLSearchParams({ path: input.path, format: input.format })
+  const res = await fetchAPI(`/api/books/export?${params.toString()}`)
+  if (!res.ok) {
+    throw new Error(await readErrorMessage(res))
+  }
+  const filename = filenameFromContentDisposition(res.headers.get('Content-Disposition')) || `book.${input.format}`
+  return { filename, blob: await res.blob() }
+}
+
+export function downloadBookExport(file: BookExportFile) {
+  const href = URL.createObjectURL(file.blob)
+  const link = document.createElement('a')
+  link.href = href
+  link.download = file.filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(href), 0)
+}
+
+function filenameFromContentDisposition(header: string | null): string {
+  if (!header) return ''
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(header)
+  if (encoded?.[1]) {
+    try {
+      return decodeURIComponent(encoded[1])
+    } catch {
+      return encoded[1]
+    }
+  }
+  const quoted = /filename="([^"]+)"/i.exec(header)
+  if (quoted?.[1]) return quoted[1]
+  const plain = /filename=([^;]+)/i.exec(header)
+  return plain?.[1]?.trim() || ''
 }

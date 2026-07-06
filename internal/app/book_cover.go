@@ -48,6 +48,17 @@ func (a *App) GenerateBookCover(ctx context.Context, request BookCoverGenerateRe
 	})
 }
 
+func (a *App) UploadBookCover(path, filename string, data []byte) (bookcover.Result, error) {
+	absPath, err := validateBookWorkspacePath(path)
+	if err != nil {
+		return bookcover.Result{}, err
+	}
+	return bookcover.NewService().Upload(book.NewService(absPath), bookcover.UploadRequest{
+		Filename: filename,
+		Data:     data,
+	})
+}
+
 func (a *App) ReadBookCover(path string) ([]byte, string, error) {
 	absPath, err := validateBookWorkspacePath(path)
 	if err != nil {

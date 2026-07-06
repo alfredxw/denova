@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"io"
+	"net/url"
 	"os"
 	"strings"
 
@@ -9,7 +12,10 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	novaApp "denova/internal/app"
+	"denova/internal/book"
 )
+
+const MaxBookCoverUploadBytes int64 = 16 * 1024 * 1024
 
 // handleBooks GET /api/books — 返回当前 Nova 数据目录下实际存在的书籍工作目录。
 func (h *Handlers) HandleBooks(ctx context.Context, c *app.RequestContext) {
@@ -93,6 +99,114 @@ func (h *Handlers) HandleBookCoverGenerate(ctx context.Context, c *app.RequestCo
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)
+}
+
+// HandleBookCoverUpload POST /api/books/cover/upload — 上传并应用指定书籍固定封面。
+func (h *Handlers) HandleBookCoverUpload(ctx context.Context, c *app.RequestContext) {
+	path := strings.TrimSpace(string(c.FormValue("path")))
+	if path == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.pathRequired")
+		return
+	}
+	filename, data, ok := readBookCoverUpload(c)
+	if !ok {
+		return
+	}
+	result, err := h.app.UploadBookCover(path, filename, data)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
+// HandleBookExport GET /api/books/export?path=...&format=txt — 导出指定书籍。
+func (h *Handlers) HandleBookExport(ctx context.Context, c *app.RequestContext) {
+	path := strings.TrimSpace(string(c.Query("path")))
+	format := strings.TrimSpace(string(c.Query("format")))
+	if path == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.pathQueryRequired")
+		return
+	}
+	if format == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.exportFormatRequired")
+		return
+	}
+
+	result, err := h.app.ExportBook(novaApp.BookExportRequest{
+		Path:   path,
+		Format: novaApp.BookExportFormat(format),
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, novaApp.ErrUnsupportedBookExportFormat):
+			writeErrorKey(c, consts.StatusBadRequest, "api.books.exportFormatUnsupported", "format", format)
+		case errors.Is(err, book.ErrNoExportableChapters):
+			writeErrorKey(c, consts.StatusBadRequest, "api.books.exportNoChapters")
+		default:
+			writeError(c, consts.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	c.Response.Header.Set("Content-Disposition", attachmentContentDisposition(result.Filename))
+	c.Response.Header.Set("Cache-Control", "no-store")
+	c.Data(consts.StatusOK, result.ContentType, result.Data)
+}
+
+func attachmentContentDisposition(filename string) string {
+	fallback := asciiDownloadFilename(filename)
+	encoded := strings.ReplaceAll(url.PathEscape(filename), "+", "%20")
+	return `attachment; filename="` + fallback + `"; filename*=UTF-8''` + encoded
+}
+
+func asciiDownloadFilename(filename string) string {
+	filename = strings.TrimSpace(filename)
+	if filename == "" {
+		return "book.txt"
+	}
+	var b strings.Builder
+	for _, r := range filename {
+		switch {
+		case r == '\\' || r == '"':
+			b.WriteByte('_')
+		case r >= 0x20 && r <= 0x7e:
+			b.WriteRune(r)
+		}
+	}
+	if strings.TrimSpace(b.String()) == "" {
+		return "book.txt"
+	}
+	return b.String()
+}
+
+func readBookCoverUpload(c *app.RequestContext) (string, []byte, bool) {
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.coverUploadRequired")
+		return "", nil, false
+	}
+	if fileHeader.Size > MaxBookCoverUploadBytes {
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.coverTooLarge")
+		return "", nil, false
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.coverReadFailed", "detail", err.Error())
+		return "", nil, false
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, MaxBookCoverUploadBytes+1))
+	if err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.coverReadFailed", "detail", err.Error())
+		return "", nil, false
+	}
+	if int64(len(data)) > MaxBookCoverUploadBytes {
+		writeErrorKey(c, consts.StatusBadRequest, "api.books.coverTooLarge")
+		return "", nil, false
+	}
+	return fileHeader.Filename, data, true
 }
 
 // handleBookRemove POST /api/books/remove — 移除书籍记录，不删除磁盘目录。

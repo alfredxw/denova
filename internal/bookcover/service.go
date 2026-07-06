@@ -1,11 +1,15 @@
 package bookcover
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,6 +44,11 @@ type GenerateRequest struct {
 	ImagePresetID     string
 	ImagePresetPrompt string
 	ProfileID         string
+}
+
+type UploadRequest struct {
+	Filename string
+	Data     []byte
 }
 
 type Result struct {
@@ -141,14 +150,7 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 	}
 
 	createdAt := s.now().UTC()
-	dir := filepath.ToSlash(filepath.Join(
-		"assets",
-		"image",
-		"covers",
-		fmt.Sprintf("%s-%s", createdAt.Format("20060102-150405"), s.suffix()),
-	))
-	sourcePath := filepath.ToSlash(filepath.Join(dir, "cover."+ext))
-	metaPath := filepath.ToSlash(filepath.Join(dir, "meta.json"))
+	sourcePath, metaPath := newCoverRunPaths(createdAt, s.suffix(), "cover", ext)
 
 	if err := bookService.WriteBinaryFile(sourcePath, image.Data); err != nil {
 		return Result{}, fmt.Errorf("保存封面原图失败: %w", err)
@@ -219,6 +221,91 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 	return result, nil
 }
 
+func (s *Service) Upload(bookService *book.Service, request UploadRequest) (Result, error) {
+	if s == nil {
+		s = NewService()
+	}
+	if bookService == nil || strings.TrimSpace(bookService.Workspace()) == "" {
+		return Result{}, fmt.Errorf("workspace 不可用")
+	}
+	if len(request.Data) == 0 {
+		return Result{}, fmt.Errorf("上传封面为空")
+	}
+
+	decoded, format, err := image.Decode(bytes.NewReader(request.Data))
+	if err != nil {
+		return Result{}, fmt.Errorf("无法解析封面图片: %w", err)
+	}
+	sourceExt := normalizeImageExtension(filepath.Ext(request.Filename), format)
+	if sourceExt == "" {
+		return Result{}, fmt.Errorf("仅支持 PNG 或 JPEG 封面")
+	}
+
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, decoded); err != nil {
+		return Result{}, fmt.Errorf("转换封面为 PNG 失败: %w", err)
+	}
+
+	createdAt := s.now().UTC()
+	sourcePath, metaPath := newCoverRunPaths(createdAt, s.suffix(), "upload", sourceExt)
+	if err := bookService.WriteBinaryFile(sourcePath, request.Data); err != nil {
+		return Result{}, fmt.Errorf("保存上传封面原图失败: %w", err)
+	}
+
+	backupPath, err := backupExistingCover(bookService, createdAt, defaultCoverFormat)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := bookService.WriteBinaryFile(CoverPath, pngData.Bytes()); err != nil {
+		return Result{}, fmt.Errorf("写入展示封面失败: %w", err)
+	}
+	coverUpdatedAt := createdAt.Format(time.RFC3339Nano)
+	if info, statErr := os.Stat(filepath.Join(bookService.Workspace(), filepath.FromSlash(CoverPath))); statErr == nil {
+		coverUpdatedAt = info.ModTime().UTC().Format(time.RFC3339Nano)
+	}
+
+	result := Result{
+		Schema:         ResultSchema,
+		CoverPath:      CoverPath,
+		SourcePath:     sourcePath,
+		MetaPath:       metaPath,
+		BackupPath:     backupPath,
+		CoverUpdatedAt: coverUpdatedAt,
+		ProfileID:      "manual",
+		Provider:       "user_upload",
+		Model:          "manual",
+		OutputFormat:   defaultCoverFormat,
+		CreatedAt:      createdAt.Format(time.RFC3339),
+		MIMEType:       "image/png",
+		SizeBytes:      pngData.Len(),
+	}
+	meta := Meta{
+		Schema:         ResultSchema,
+		Source:         "book_cover_upload",
+		Prompt:         "",
+		CoverPath:      result.CoverPath,
+		SourcePath:     result.SourcePath,
+		MetaPath:       result.MetaPath,
+		BackupPath:     result.BackupPath,
+		ProfileID:      result.ProfileID,
+		Provider:       result.Provider,
+		Model:          result.Model,
+		OutputFormat:   result.OutputFormat,
+		MIMEType:       result.MIMEType,
+		SizeBytes:      result.SizeBytes,
+		CoverUpdatedAt: result.CoverUpdatedAt,
+		CreatedAt:      result.CreatedAt,
+	}
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return Result{}, err
+	}
+	if err := bookService.WriteFile(metaPath, string(data)+"\n"); err != nil {
+		return Result{}, fmt.Errorf("保存封面元数据失败: %w", err)
+	}
+	return result, nil
+}
+
 func BuildPrompt(request GenerateRequest) string {
 	title := trimRunes(request.Title, 200)
 	description := trimRunes(request.Description, 2000)
@@ -248,6 +335,18 @@ func BuildPrompt(request GenerateRequest) string {
 		sb.WriteString("\n")
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+func newCoverRunPaths(createdAt time.Time, suffix, name, ext string) (string, string) {
+	dir := filepath.ToSlash(filepath.Join(
+		"assets",
+		"image",
+		"covers",
+		fmt.Sprintf("%s-%s", createdAt.Format("20060102-150405"), suffix),
+	))
+	sourcePath := filepath.ToSlash(filepath.Join(dir, name+"."+ext))
+	metaPath := filepath.ToSlash(filepath.Join(dir, "meta.json"))
+	return sourcePath, metaPath
 }
 
 func backupExistingCover(bookService *book.Service, createdAt time.Time, ext string) (string, error) {

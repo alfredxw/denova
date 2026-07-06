@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 书籍管理：新增通用书籍导出入口，当前支持一键导出整本小说为 UTF-8 TXT；导出会按章节/分卷顺序拼接全部非空章节，并保留后续扩展 EPUB 等格式的接口形态。
+- Books: Added a generic book export entry point, currently supporting one-click full-novel UTF-8 TXT export. Exports assemble all non-empty chapters in chapter/volume order and keep the API shape ready for future formats such as EPUB.
+- 书籍管理：新建和编辑改为复用同一个弹窗，移除内嵌展开式新建表单；弹窗内支持上传 PNG/JPEG 封面，也可在新建书籍时直接选择上传封面或触发“新建并生成封面”。
+- Books: Book creation and editing now share one modal instead of the inline expanded create form. The modal supports PNG/JPEG cover uploads, and new books can be created with an uploaded cover or via the Create and Generate Cover action.
+- 游戏模式：导演编排面板新增“分析导演上下文”入口，不调用 LLM 即可查看后台互动导演 Agent 当前会收到的 SystemPrompt、director.md 快照、资料库导演上下文、回合审计、故事记忆和事件目录等来源片段。
+- Game Mode: Added an “Analyze director context” action to the Director orchestration panel, showing the background Director Agent’s current SystemPrompt, director.md snapshot, lore context, turn audit, story memory, event catalog, and other source-bounded context without calling the LLM.
 - 游戏模式：新增导演子模块 Actor State，支持关键 Actor 类型模板、字段 schema、初始 Actor、`/api/actor-states` CRUD、配置页资源入口和配置管理 Agent 读写工具；记忆整理 Agent 新增 `apply_actor_state_patch` 工具，用于按 schema 校验并写入可重放结构化状态。
 - Game Mode: Added the Actor State director submodule with key-actor templates, field schemas, initial actors, `/api/actor-states` CRUD, Presets resource editing, and Config Manager Agent tools. The memory continuity agent now has `apply_actor_state_patch` for schema-validated replayable structured state updates.
 - 游戏模式：导演编排右栏在当前分支没有导演规划或规则审计时提供手动触发规划入口，并在规划中复用 Chat 消息列表展示后台导演状态与 director.md 进度。
