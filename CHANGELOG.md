@@ -75,6 +75,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 游戏模式：互动 Story Memory 运行时实现按 Director 子模块关系拆分为 `memory_*` 文件，并将记忆结构预设实现收敛到 `memory_structure_*` 命名；不改变存储路径、API 或用户可见行为。
+- Game Mode: Split the runtime Story Memory implementation into `memory_*` files aligned with the Director submodule model, and renamed memory-structure preset implementation files to `memory_structure_*`; storage paths, APIs, and user-visible behavior are unchanged.
 - Agent：普通 trace 继续只保存有界 preview、hash、bytes/chars、token、耗时和关联 ID；`debug` 模式只扩大预览和诊断字段，不等同于完整 prompt/output 采集。图像生成普通日志中的完整 prompt 改为摘要，完整输入仍只允许进入 dev-only `log/llm-inputs.jsonl`。
 - Agent: Normal traces continue to store only bounded previews, hashes, bytes/chars, token counts, timing, and correlation IDs; `debug` mode only expands previews and diagnostics, not full prompt/output capture. Image generation logs now summarize prompts in normal logs, with full inputs still restricted to the dev-only `log/llm-inputs.jsonl`.
 - WebUI：上下文分析弹窗减少最终消息的重复嵌套，单片段消息组直接展示为可展开片段；多片段组展开后内层片段默认展开，并使用更轻量的内层样式。
