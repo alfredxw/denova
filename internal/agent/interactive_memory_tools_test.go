@@ -267,6 +267,9 @@ func TestPrepareInteractiveTurnToolSchemaDocumentsEnums(t *testing.T) {
 		`"very_hard"`,
 		`"template"`,
 		`"dice_check"`,
+		`"1d20"`,
+		`"1d100"`,
+		`"modifier"`,
 		`"roll_mode"`,
 		`"advantage"`,
 		`"disadvantage"`,
@@ -277,7 +280,7 @@ func TestPrepareInteractiveTurnToolSchemaDocumentsEnums(t *testing.T) {
 			t.Fatalf("prepare_interactive_turn schema missing %q:\n%s", want, schemaText)
 		}
 	}
-	if !strings.Contains(info.Desc, "difficulty") || !strings.Contains(info.Desc, "very_easy/easy/normal/hard/very_hard") || !strings.Contains(info.Desc, "不要使用 medium/moderate") {
+	if !strings.Contains(info.Desc, "difficulty") || !strings.Contains(info.Desc, "very_easy/easy/normal/hard/very_hard") || !strings.Contains(info.Desc, "1d20 或 1d100") || !strings.Contains(info.Desc, "正数更难") || !strings.Contains(info.Desc, "difficulty_guidance") || !strings.Contains(info.Desc, "state_effect_guidance") {
 		t.Fatalf("prepare_interactive_turn description should spell out enum protocol:\n%s", info.Desc)
 	}
 }

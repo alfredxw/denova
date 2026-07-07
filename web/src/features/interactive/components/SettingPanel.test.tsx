@@ -620,29 +620,51 @@ describe('SettingPanel', () => {
     expect(screen.queryByText('规则 ID')).not.toBeInTheDocument()
     expect(screen.queryByText(/安全表达式/)).not.toBeInTheDocument()
     expect(screen.queryByText('成功 StateOps')).not.toBeInTheDocument()
-    expect(screen.getAllByRole('combobox')).toHaveLength(5)
+    expect(screen.queryByText('默认难度')).not.toBeInTheDocument()
+    expect(screen.queryByText('掷骰方式')).not.toBeInTheDocument()
+    expect(screen.queryByText('状态影响')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '难度判断标准' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '状态影响指引' })).toBeInTheDocument()
+    expect(screen.getAllByRole('combobox')).toHaveLength(2)
 
     await user.click(screen.getByRole('button', { name: '新增规则' }))
-    await user.click(screen.getByRole('menuitem', { name: '战斗攻防' }))
-    expect(screen.getAllByText('战斗攻防').length).toBeGreaterThan(1)
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    expect(screen.getByText('新规则')).toBeInTheDocument()
+
+    const diceField = screen.getByText('骰子类型').closest('label') as HTMLElement
+    await user.click(within(diceField).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: 'd100' }))
+
+    const modifierField = screen.getByText('修正值').closest('label') as HTMLElement
+    const modifierInput = within(modifierField).getByRole('textbox')
+    await user.clear(modifierInput)
+    await user.type(modifierInput, '7')
 
     const failureField = screen.getByText('失败处理').closest('label') as HTMLElement
     await user.click(within(failureField).getByRole('combobox'))
     await user.click(screen.getByRole('option', { name: '明确失败' }))
+
+    const difficultyGuidance = '目标警戒越高难度越高，主角准备充分时降低一档。'
+    const stateEffectGuidance = '失败时警戒 +1，代价成功时体力 -1。'
+    fireEvent.change(screen.getByRole('textbox', { name: '难度判断标准' }), { target: { value: difficultyGuidance } })
+    fireEvent.change(screen.getByRole('textbox', { name: '状态影响指引' }), { target: { value: stateEffectGuidance } })
 
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(updateRuleSystem).toHaveBeenCalled())
     const visualPayload = vi.mocked(updateRuleSystem).mock.calls.at(-1)?.[1] as Partial<RuleSystemModule>
     expect(visualPayload.trpg_system?.rule_templates).toHaveLength(7)
     expect(visualPayload.trpg_system?.rule_templates?.at(-1)).toMatchObject({
-      label: '战斗攻防',
-      category: 'combat',
-      default_difficulty: 'normal',
-      default_roll_mode: 'normal',
+      label: '新规则',
+      dice: '1d100',
+      modifier: 7,
       failure_policy: 'hard_failure',
-      impact: 'hp_damage',
+      difficulty_guidance: difficultyGuidance,
+      state_effect_guidance: stateEffectGuidance,
     })
-    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('dice')
+    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('impact')
+    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('category')
+    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('default_difficulty')
+    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('default_roll_mode')
     expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('success_state_ops')
 
     await user.click(screen.getByRole('button', { name: 'JSON' }))
@@ -655,6 +677,7 @@ describe('SettingPanel', () => {
             kind: 'dice',
             mode: 'd100_under',
             dice: '1d100',
+            modifier: 3,
             difficulty: 55,
             resource_cost_path: 'resources.hp',
             success_state_ops: [],
@@ -663,6 +686,8 @@ describe('SettingPanel', () => {
             default_roll_mode: 'advantage',
             failure_policy: 'success_at_cost',
             impact: 'relationship_change',
+            difficulty_guidance: '对方越抗拒越难。',
+            state_effect_guidance: '成功关系 +1，失败关系 -1。',
             trigger: '谈判触发',
           }],
         }, null, 2),
@@ -674,14 +699,18 @@ describe('SettingPanel', () => {
     expect(jsonPayload.trpg_system?.rule_templates).toEqual([expect.objectContaining({
       id: 'legacy',
       label: '旧规则',
-      category: 'social',
-      default_difficulty: 'hard',
-      default_roll_mode: 'advantage',
+      dice: '1d100',
+      modifier: 3,
       failure_policy: 'success_at_cost',
-      impact: 'relationship_change',
+      difficulty_guidance: '对方越抗拒越难。',
+      state_effect_guidance: '成功关系 +1，失败关系 -1。',
       trigger: '谈判触发',
     })])
+    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('impact')
     expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('kind')
+    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('category')
+    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_difficulty')
+    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_roll_mode')
     expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('resource_cost_path')
     expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('success_state_ops')
   })

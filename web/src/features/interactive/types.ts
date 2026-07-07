@@ -583,11 +583,11 @@ export interface UpdateDirectorPlanInput {
 export interface RuleCheck {
   id?: string
   label?: string
-  category?: string
-  default_difficulty?: 'very_easy' | 'easy' | 'normal' | 'hard' | 'very_hard' | string
-  default_roll_mode?: 'normal' | 'advantage' | 'disadvantage' | string
+  dice?: '1d20' | '1d100' | string
+  modifier?: number
   failure_policy?: 'fail_forward' | 'success_at_cost' | 'blocked' | 'hard_failure' | string
-  impact?: 'none' | 'hp_damage' | 'stamina_cost' | 'relationship_change' | 'clue_progress' | 'resource_change' | 'custom' | string
+  difficulty_guidance?: string
+  state_effect_guidance?: string
   trigger?: string
   success_hint?: string
   failure_hint?: string
@@ -619,6 +619,7 @@ interface TurnCheckRule {
   template?: string
   dice?: string
   roll_mode?: 'normal' | 'advantage' | 'disadvantage' | string
+  modifier?: number
 }
 
 interface TurnCheckBonus {

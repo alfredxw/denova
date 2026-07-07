@@ -276,7 +276,7 @@ export function newRuleSystemDraft(): Partial<RuleSystemModule> {
   return {
     id: `custom-rule-${Date.now()}`,
     name: '自定义 TRPG 检定',
-    description: '新的 TRPG 检定，基于开箱规则模板配置常见行动、战斗、潜行、调查和社交检定。',
+    description: '新的 TRPG 检定，基于开箱规则模板配置骰子类型、难度修正、失败处理、难度判断和状态影响指引。',
     trpg_system: {
       rule_templates: defaultRuleTemplates(),
     },

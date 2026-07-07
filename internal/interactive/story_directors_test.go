@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -46,13 +47,13 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 			InitialActors: []ActorStateInitialActor{{ID: DefaultActorID, Name: "主角", TemplateID: "protagonist", Role: "protagonist"}},
 		},
 		TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
-			ID:                "luck",
-			Label:             "幸运",
-			Category:          "generic_action",
-			DefaultDifficulty: "hard",
-			DefaultRollMode:   "advantage",
-			FailurePolicy:     "success_at_cost",
-			Impact:            "resource_change",
+			ID:                  "luck",
+			Label:               "幸运",
+			Dice:                "1d100",
+			Modifier:            10,
+			FailurePolicy:       "success_at_cost",
+			DifficultyGuidance:  "幸运耗尽时提高难度。",
+			StateEffectGuidance: "成功可增加机会，失败可消耗资源。",
 		}}},
 		OpeningSelector: StoryDirectorOpeningSelector{
 			Enabled: true,
@@ -75,8 +76,18 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if len(created.ActorState.Templates) != 1 || len(created.ActorState.Templates[0].Fields) != 1 || created.ActorState.Templates[0].Fields[0].Visibility != "hidden" {
 		t.Fatalf("state fields should be validated and preserve visibility: %#v", created.ActorState)
 	}
-	if len(created.TRPGSystem.RuleTemplates) != 1 || created.TRPGSystem.RuleTemplates[0].Category != "generic_action" || created.TRPGSystem.RuleTemplates[0].DefaultDifficulty != "hard" || created.TRPGSystem.RuleTemplates[0].DefaultRollMode != "advantage" {
+	if len(created.TRPGSystem.RuleTemplates) != 1 || created.TRPGSystem.RuleTemplates[0].Dice != "1d100" || created.TRPGSystem.RuleTemplates[0].Modifier != 10 {
 		t.Fatalf("rule templates should normalize to the simplified schema: %#v", created.TRPGSystem.RuleTemplates)
+	}
+	if created.TRPGSystem.RuleTemplates[0].DifficultyGuidance != "幸运耗尽时提高难度。" || created.TRPGSystem.RuleTemplates[0].StateEffectGuidance != "成功可增加机会，失败可消耗资源。" {
+		t.Fatalf("rule templates should preserve natural-language guidance: %#v", created.TRPGSystem.RuleTemplates[0])
+	}
+	ruleData, err := json.Marshal(created.TRPGSystem.RuleTemplates[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(ruleData), "impact") || strings.Contains(string(ruleData), "category") || strings.Contains(string(ruleData), "default_difficulty") || strings.Contains(string(ruleData), "default_roll_mode") {
+		t.Fatalf("rule template JSON should not keep removed fields: %s", string(ruleData))
 	}
 	ops := StoryDirectorInitialStateOps(created)
 	if !containsStateOp(ops, "actors.protagonist.state.resources.mana", float64(3)) || !containsStateOp(ops, "actors.protagonist.state.resources.mana_max", float64(9)) || !containsStateOp(ops, "flags.opening", true) {
@@ -161,6 +172,14 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 			Enabled:        true,
 			PromptMarkdown: longPrompt,
 		},
+		TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
+			ID:                  "guidance-rule",
+			Label:               "指引规则",
+			Dice:                "1d20",
+			FailurePolicy:       "fail_forward",
+			DifficultyGuidance:  "按状态数值判断难度。",
+			StateEffectGuidance: "按检定结果调整状态数值。",
+		}}},
 	})
 	if director.Strategy.PromptMarkdown == "" {
 		t.Fatalf("prompt markdown should be preserved")
@@ -202,6 +221,9 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 		}
 		if !strings.Contains(summary, `"director_agent_mode"`) || !strings.Contains(summary, `"branch_planning_turns"`) {
 			t.Fatalf("%s summary should retain background director schedule:\n%s", name, summary)
+		}
+		if !strings.Contains(summary, `"difficulty_guidance"`) || !strings.Contains(summary, `"state_effect_guidance"`) || strings.Contains(summary, `"impact"`) {
+			t.Fatalf("%s summary should expose natural-language rule guidance without legacy impact:\n%s", name, summary)
 		}
 	}
 }
@@ -261,7 +283,7 @@ func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.
 	if len(migrated.EventPackages) != 1 || len(migrated.EventPackages[0].Events) != 1 {
 		t.Fatalf("event packages should be copied: %#v", migrated.EventPackages)
 	}
-	if len(migrated.TRPGSystem.RuleTemplates) != 1 || migrated.TRPGSystem.RuleTemplates[0].DefaultDifficulty != "normal" {
+	if len(migrated.TRPGSystem.RuleTemplates) != 1 || migrated.TRPGSystem.RuleTemplates[0].Dice != "1d20" || migrated.TRPGSystem.RuleTemplates[0].Modifier != 0 {
 		t.Fatalf("rule templates should be copied: %#v", migrated.TRPGSystem.RuleTemplates)
 	}
 	if len(migrated.OpeningSelector.TraitPools) != 1 || !containsStateOp(migrated.OpeningSelector.InitialStateOps, "actors.protagonist.state.resources.hp", float64(12)) {
@@ -296,13 +318,12 @@ func legacyOrchestrationForTest() *TellerOrchestrationConfig {
 			}},
 		}},
 		RuleTemplates: []RuleCheck{{
-			ID:                "stealth",
-			Label:             "潜行",
-			Category:          "stealth",
-			DefaultDifficulty: "normal",
-			DefaultRollMode:   "normal",
-			FailurePolicy:     "blocked",
-			Impact:            "stamina_cost",
+			ID:                  "stealth",
+			Label:               "潜行",
+			Dice:                "1d20",
+			FailurePolicy:       "blocked",
+			DifficultyGuidance:  "守卫警觉时提高难度。",
+			StateEffectGuidance: "失败可消耗体力并增加警戒。",
 		}},
 		Opening: TellerOpeningConfig{
 			Enabled: true,

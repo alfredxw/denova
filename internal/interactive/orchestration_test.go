@@ -25,15 +25,19 @@ func sampleTurnCheckRequest() TurnCheckRequest {
 	}
 }
 
-func seedForTurnCheckOutcome(t *testing.T, mode, difficulty string, bonus float64, want string) int64 {
+func seedForTurnCheckOutcome(t *testing.T, dice, mode, difficulty string, modifier, bonus float64, want string) int64 {
 	t.Helper()
-	target := turnCheckDifficultyTargets[difficulty]
+	baseTarget, ok := turnCheckDifficultyTarget(dice, difficulty)
+	if !ok {
+		t.Fatalf("invalid difficulty %q for %s", difficulty, dice)
+	}
+	target := turnCheckTarget(dice, baseTarget, modifier, bonus)
 	for seed := int64(1); seed < 10000; seed++ {
-		_, keptRoll, err := rollTurnCheck(seed, mode)
+		_, keptRoll, err := rollTurnCheck(seed, dice, mode)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := resolveTurnCheckOutcome(keptRoll, float64(keptRoll)+bonus, target); got == want {
+		if got := resolveTurnCheckOutcome(dice, keptRoll, turnCheckTotal(dice, keptRoll, bonus), target); got == want {
 			return seed
 		}
 	}
@@ -66,7 +70,7 @@ func TestResolveTurnRulesSingleD20CheckSelectsOutcomeAndStateChanges(t *testing.
 	req.Difficulty = "normal"
 	req.Bonuses = []TurnCheckBonus{{Reason: "有开锁工具", Value: 2}, {Reason: "雨中手冷", Value: -1}}
 	req.Outcomes.Failure.StateChanges = []TurnStateChange{{Path: "resources.stamina", Change: -1}}
-	seed := seedForTurnCheckOutcome(t, "normal", "normal", 1, "failure")
+	seed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 0, 1, "failure")
 
 	resolution, err := resolveTurnRulesWithSeed("st_1", "main", initialStoryState(), req, seed)
 	if err != nil {
@@ -82,13 +86,13 @@ func TestResolveTurnRulesSingleD20CheckSelectsOutcomeAndStateChanges(t *testing.
 		t.Fatalf("state changes should come from selected outcome: %#v", resolution.Result.StateChanges)
 	}
 	output := resolution.ToolOutput()
-	if output.ResolutionID != resolution.ID || output.Result != req.Outcomes.Failure.Result || output.Target != 15 {
+	if output.ResolutionID != resolution.ID || output.Result != req.Outcomes.Failure.Result || output.Target != 10 {
 		t.Fatalf("unexpected tool output: %#v", output)
 	}
 }
 
 func TestResolveTurnRulesRollModesAndDifficultyTargets(t *testing.T) {
-	for difficulty, target := range turnCheckDifficultyTargets {
+	for difficulty, target := range turnCheckD20DifficultyTargets {
 		req := sampleTurnCheckRequest()
 		req.Difficulty = difficulty
 		resolution, err := resolveTurnRulesWithSeed("st_diff", "main", initialStoryState(), req, 7)
@@ -126,6 +130,51 @@ func TestResolveTurnRulesRollModesAndDifficultyTargets(t *testing.T) {
 		}
 		if mode == "disadvantage" && int(resolution.Result.KeptRoll) != minInt(resolution.Result.Rolls...) {
 			t.Fatalf("disadvantage should keep low roll: %#v", resolution.Result)
+		}
+	}
+}
+
+func TestResolveTurnRulesD100RollUnder(t *testing.T) {
+	req := sampleTurnCheckRequest()
+	req.Rule.Dice = "1d100"
+	req.Difficulty = "normal"
+
+	resolution, err := resolveTurnRulesWithSeed("st_d100", "main", initialStoryState(), req, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Result.Dice != "1d100" || resolution.Result.Mode != "d100_under" || resolution.Result.Target != 50 {
+		t.Fatalf("unexpected d100 baseline: %#v", resolution.Result)
+	}
+
+	req.Rule.Modifier = 10
+	resolution, err = resolveTurnRulesWithSeed("st_d100_modifier", "main", initialStoryState(), req, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Result.Target != 40 {
+		t.Fatalf("positive modifier should lower d100 target: %#v", resolution.Result)
+	}
+
+	for _, mode := range []string{"normal", "advantage", "disadvantage"} {
+		req := sampleTurnCheckRequest()
+		req.Rule.Dice = "1d100"
+		req.Rule.RollMode = mode
+		resolution, err := resolveTurnRulesWithSeed("st_d100_mode", "main", initialStoryState(), req, 11)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mode == "normal" && len(resolution.Result.Rolls) != 1 {
+			t.Fatalf("normal should roll once: %#v", resolution.Result.Rolls)
+		}
+		if mode != "normal" && len(resolution.Result.Rolls) != 2 {
+			t.Fatalf("%s should roll twice: %#v", mode, resolution.Result.Rolls)
+		}
+		if mode == "advantage" && int(resolution.Result.KeptRoll) != minInt(resolution.Result.Rolls...) {
+			t.Fatalf("d100 advantage should keep low roll: %#v", resolution.Result)
+		}
+		if mode == "disadvantage" && int(resolution.Result.KeptRoll) != maxInt(resolution.Result.Rolls...) {
+			t.Fatalf("d100 disadvantage should keep high roll: %#v", resolution.Result)
 		}
 	}
 }
@@ -203,7 +252,7 @@ func TestResolveTurnCheckOutcomeCriticalThresholds(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := resolveTurnCheckOutcome(tt.keptRoll, tt.total, tt.target); got != tt.want {
+			if got := resolveTurnCheckOutcome("1d20", tt.keptRoll, tt.total, tt.target); got != tt.want {
 				t.Fatalf("resolveTurnCheckOutcome() = %s, want %s", got, tt.want)
 			}
 		})
@@ -212,8 +261,8 @@ func TestResolveTurnCheckOutcomeCriticalThresholds(t *testing.T) {
 
 func TestResolveTurnRulesCriticalOutcomes(t *testing.T) {
 	req := sampleTurnCheckRequest()
-	criticalSuccessSeed := seedForTurnCheckOutcome(t, "normal", "normal", 0, "critical_success")
-	criticalFailureSeed := seedForTurnCheckOutcome(t, "normal", "normal", 0, "critical_failure")
+	criticalSuccessSeed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 0, 0, "critical_success")
+	criticalFailureSeed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 0, 0, "critical_failure")
 
 	success, err := resolveTurnRulesWithSeed("st_crit", "main", initialStoryState(), req, criticalSuccessSeed)
 	if err != nil {

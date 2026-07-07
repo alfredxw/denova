@@ -20,7 +20,7 @@ const (
 const (
 	turnCheckAllowedDifficulties = "very_easy/easy/normal/hard/very_hard"
 	turnCheckAllowedTemplates    = "dice_check"
-	turnCheckAllowedDice         = "1d20"
+	turnCheckAllowedDice         = "1d20/1d100"
 	turnCheckAllowedRollModes    = "normal/advantage/disadvantage"
 )
 
@@ -69,34 +69,35 @@ type TurnBrief struct {
 }
 
 type RuleCheck struct {
-	ID                string `json:"id,omitempty"`
-	Label             string `json:"label,omitempty"`
-	Category          string `json:"category,omitempty"`
-	DefaultDifficulty string `json:"default_difficulty,omitempty"`
-	DefaultRollMode   string `json:"default_roll_mode,omitempty"`
-	FailurePolicy     string `json:"failure_policy,omitempty"`
-	Impact            string `json:"impact,omitempty"`
-	Trigger           string `json:"trigger,omitempty"`
-	SuccessHint       string `json:"success_hint,omitempty"`
-	FailureHint       string `json:"failure_hint,omitempty"`
+	ID                  string  `json:"id,omitempty"`
+	Label               string  `json:"label,omitempty"`
+	Dice                string  `json:"dice,omitempty"`
+	Modifier            float64 `json:"modifier,omitempty"`
+	FailurePolicy       string  `json:"failure_policy,omitempty"`
+	DifficultyGuidance  string  `json:"difficulty_guidance,omitempty"`
+	StateEffectGuidance string  `json:"state_effect_guidance,omitempty"`
+	Trigger             string  `json:"trigger,omitempty"`
+	SuccessHint         string  `json:"success_hint,omitempty"`
+	FailureHint         string  `json:"failure_hint,omitempty"`
 }
 
 type TurnCheckRequest struct {
 	Action     string            `json:"action" jsonschema_description:"用户行为：本回合玩家实际尝试做什么。"`
 	Intent     string            `json:"intent" jsonschema_description:"行动意图：玩家希望通过本行动达成的目标。"`
-	Challenge  string            `json:"challenge" jsonschema_description:"检定挑战：需要 1d20 固定裁定的风险、阻碍或冲突。"`
+	Challenge  string            `json:"challenge" jsonschema_description:"检定挑战：需要 d20 或 d100 固定裁定的风险、阻碍或冲突。"`
 	Cost       string            `json:"cost" jsonschema_description:"潜在代价：失败、暴露、资源消耗或关系损失等后果。"`
 	State      string            `json:"state" jsonschema_description:"当前状态说明：只写与本次检定直接相关的可见状态、资源、位置、关系或限制。"`
-	Rule       TurnCheckRule     `json:"rule,omitempty" jsonschema_description:"可选规则设置；省略时默认 template=dice_check、dice=1d20、roll_mode=normal。"`
-	Bonuses    []TurnCheckBonus  `json:"bonuses,omitempty" jsonschema_description:"加成或减值列表。正数表示优势条件，负数表示不利条件；后端会求和加入 1d20。"`
+	Rule       TurnCheckRule     `json:"rule,omitempty" jsonschema_description:"可选规则设置；省略时默认 template=dice_check、dice=1d20、roll_mode=normal、modifier=0。"`
+	Bonuses    []TurnCheckBonus  `json:"bonuses,omitempty" jsonschema_description:"运行时加成或减值列表。正数表示有利条件，负数表示不利条件；d20 会加入检定总值，d100 会调整成功目标。"`
 	Difficulty string            `json:"difficulty" jsonschema:"enum=very_easy,enum=easy,enum=normal,enum=hard,enum=very_hard" jsonschema_description:"五档难度枚举，只能使用 very_easy/easy/normal/hard/very_hard；普通难度用 normal，不要写 medium 或 moderate。"`
 	Outcomes   TurnCheckOutcomes `json:"outcomes" jsonschema_description:"四档后果定义。必须分别提供 critical_success、success、failure、critical_failure 的 result；可选 state_changes 会从命中的后果返回。"`
 }
 
 type TurnCheckRule struct {
-	Template string `json:"template,omitempty" jsonschema:"enum=dice_check" jsonschema_description:"规则模板，可省略；如填写只能是 dice_check。"`
-	Dice     string `json:"dice,omitempty" jsonschema:"enum=1d20" jsonschema_description:"骰子表达式，可省略；如填写只能是 1d20。"`
-	RollMode string `json:"roll_mode,omitempty" jsonschema:"enum=normal,enum=advantage,enum=disadvantage" jsonschema_description:"投骰模式，可省略；normal 掷一次，advantage/disadvantage 掷两次取高/取低。"`
+	Template string  `json:"template,omitempty" jsonschema:"enum=dice_check" jsonschema_description:"规则模板，可省略；如填写只能是 dice_check。"`
+	Dice     string  `json:"dice,omitempty" jsonschema:"enum=1d20,enum=1d100" jsonschema_description:"骰子表达式，可省略；可用 1d20 或 1d100。"`
+	RollMode string  `json:"roll_mode,omitempty" jsonschema:"enum=normal,enum=advantage,enum=disadvantage" jsonschema_description:"投骰模式，可省略；normal 掷一次。d20 的 advantage/disadvantage 取高/取低，d100 的 advantage/disadvantage 取低/取高。"`
+	Modifier float64 `json:"modifier,omitempty" jsonschema_description:"模板难度修正值，正数更难、负数更容易；d20 会提高目标值，d100 会降低成功率目标。"`
 }
 
 type TurnCheckBonus struct {
@@ -105,10 +106,10 @@ type TurnCheckBonus struct {
 }
 
 type TurnCheckOutcomes struct {
-	CriticalSuccess TurnCheckOutcome `json:"critical_success" jsonschema_description:"大成功后果：自然 20 或总值超过目标 10 以上时命中。"`
-	Success         TurnCheckOutcome `json:"success" jsonschema_description:"成功后果：总值达到目标但未达到大成功时命中。"`
-	Failure         TurnCheckOutcome `json:"failure" jsonschema_description:"失败后果：总值低于目标但未达到大失败时命中。"`
-	CriticalFailure TurnCheckOutcome `json:"critical_failure" jsonschema_description:"大失败后果：自然 1 或总值低于目标 10 以上时命中。"`
+	CriticalSuccess TurnCheckOutcome `json:"critical_success" jsonschema_description:"大成功后果：d20 自然 20 或总值超过目标 10 以上、d100 自然 1-5 时命中。"`
+	Success         TurnCheckOutcome `json:"success" jsonschema_description:"成功后果：d20 总值达到目标、d100 骰值不高于目标时命中。"`
+	Failure         TurnCheckOutcome `json:"failure" jsonschema_description:"失败后果：未达到成功且未达到大失败时命中。"`
+	CriticalFailure TurnCheckOutcome `json:"critical_failure" jsonschema_description:"大失败后果：d20 自然 1 或总值低于目标 10 以上、d100 自然 96-100 时命中。"`
 }
 
 type TurnCheckOutcome struct {
@@ -262,7 +263,7 @@ func NormalizeTurnCheckRequest(req TurnCheckRequest) TurnCheckRequest {
 	req.Cost = trimBytes(req.Cost, maxTurnBriefTextBytes)
 	req.State = trimBytes(req.State, maxTurnBriefTextBytes)
 	req.Rule.Template = normalizeTurnCheckTemplate(req.Rule.Template)
-	req.Rule.Dice = strings.TrimSpace(firstNonEmptyString(req.Rule.Dice, "1d20"))
+	req.Rule.Dice = normalizeTurnCheckDice(req.Rule.Dice)
 	req.Rule.RollMode = normalizeTurnCheckRollMode(req.Rule.RollMode)
 	req.Difficulty = normalizeTurnCheckDifficulty(req.Difficulty)
 	if len(req.Bonuses) > maxTurnBriefListItems {
@@ -297,10 +298,10 @@ func ValidateTurnCheckRequest(req TurnCheckRequest) error {
 	if req.Rule.Template != "" && normalizeTurnCheckTemplate(req.Rule.Template) != "dice_check" {
 		return fmt.Errorf("prepare_interactive_turn rule.template 无效: %s，合法值: %s", req.Rule.Template, turnCheckAllowedTemplates)
 	}
-	if req.Rule.Dice != "" && req.Rule.Dice != "1d20" {
+	if req.Rule.Dice != "" && !validTurnCheckDice(req.Rule.Dice) {
 		return fmt.Errorf("prepare_interactive_turn rule.dice 无效: %s，合法值: %s", req.Rule.Dice, turnCheckAllowedDice)
 	}
-	if _, ok := turnCheckDifficultyTargets[normalizeTurnCheckDifficulty(req.Difficulty)]; !ok {
+	if _, ok := turnCheckDifficultyTarget(req.Rule.Dice, req.Difficulty); !ok {
 		return fmt.Errorf("prepare_interactive_turn difficulty 无效: %s，合法值: %s", req.Difficulty, turnCheckAllowedDifficulties)
 	}
 	for name, outcome := range map[string]TurnCheckOutcome{
@@ -334,25 +335,27 @@ func resolveTurnRulesWithSeed(storyID, branchID string, state map[string]any, re
 	if seed == 0 {
 		seed = newRuleSeed(storyID, branchID, req.Action, req.Challenge)
 	}
-	rolls, keptRoll, err := rollTurnCheck(seed, req.Rule.RollMode)
+	dice := normalizeTurnCheckDice(req.Rule.Dice)
+	rolls, keptRoll, err := rollTurnCheck(seed, dice, req.Rule.RollMode)
 	if err != nil {
 		return RuleResolution{}, err
 	}
 	bonusTotal := turnCheckBonusTotal(req.Bonuses)
-	target := turnCheckDifficultyTargets[req.Difficulty]
-	total := float64(keptRoll) + bonusTotal
-	outcomeName := resolveTurnCheckOutcome(keptRoll, total, target)
+	baseTarget, _ := turnCheckDifficultyTarget(dice, req.Difficulty)
+	target := turnCheckTarget(dice, baseTarget, req.Rule.Modifier, bonusTotal)
+	total := turnCheckTotal(dice, keptRoll, bonusTotal)
+	outcomeName := resolveTurnCheckOutcome(dice, keptRoll, total, target)
 	outcome := req.outcomeByName(outcomeName)
-	constraint := fmt.Sprintf("%s：%s，总值 %.0f / 难度 %.0f。", firstNonEmptyString(req.Challenge, req.Action), turnCheckOutcomeText(outcomeName), total, target)
+	constraint := turnCheckConstraint(firstNonEmptyString(req.Challenge, req.Action), dice, outcomeName, total, target)
 	result := RuleResult{
 		ID:           "check_1",
 		Label:        firstNonEmptyString(req.Challenge, req.Action),
 		Kind:         "dice_check",
-		Mode:         "d20_dc",
-		Dice:         "1d20",
+		Mode:         turnCheckMode(dice),
+		Dice:         dice,
 		Rolls:        rolls,
 		RollTotal:    float64(keptRoll),
-		Modifier:     bonusTotal,
+		Modifier:     req.Rule.Modifier,
 		Difficulty:   target,
 		Total:        total,
 		Outcome:      outcomeName,
@@ -376,12 +379,20 @@ func resolveTurnRulesWithSeed(storyID, branchID string, state map[string]any, re
 	return resolution, nil
 }
 
-var turnCheckDifficultyTargets = map[string]float64{
-	"very_easy": 5,
-	"easy":      10,
-	"normal":    15,
-	"hard":      20,
-	"very_hard": 25,
+var turnCheckD20DifficultyTargets = map[string]float64{
+	"very_easy": 2,
+	"easy":      5,
+	"normal":    10,
+	"hard":      15,
+	"very_hard": 20,
+}
+
+var turnCheckD100DifficultyTargets = map[string]float64{
+	"very_easy": 90,
+	"easy":      70,
+	"normal":    50,
+	"hard":      30,
+	"very_hard": 10,
 }
 
 func (req TurnCheckRequest) outcomeByName(name string) TurnCheckOutcome {
@@ -460,13 +471,34 @@ func normalizeTurnCheckTemplate(value string) string {
 	}
 }
 
+func normalizeTurnCheckDice(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "", "d20", "1d20":
+		return "1d20"
+	case "d100", "1d100":
+		return "1d100"
+	default:
+		return value
+	}
+}
+
+func validTurnCheckDice(value string) bool {
+	switch normalizeTurnCheckDice(value) {
+	case "1d20", "1d100":
+		return true
+	default:
+		return false
+	}
+}
+
 func normalizeTurnCheckEnumToken(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	value = strings.ReplaceAll(value, "-", " ")
 	return strings.Join(strings.Fields(value), "_")
 }
 
-func rollTurnCheck(seed int64, rollMode string) ([]int, int, error) {
+func rollTurnCheck(seed int64, dice string, rollMode string) ([]int, int, error) {
 	count := 1
 	switch normalizeTurnCheckRollMode(rollMode) {
 	case "normal":
@@ -476,21 +508,26 @@ func rollTurnCheck(seed int64, rollMode string) ([]int, int, error) {
 	default:
 		return nil, 0, fmt.Errorf("prepare_interactive_turn rule.roll_mode 无效: %s，合法值: %s", rollMode, turnCheckAllowedRollModes)
 	}
-	rolls, _, err := rollDice(seed, fmt.Sprintf("%dd20", count))
+	sides := 20
+	if normalizeTurnCheckDice(dice) == "1d100" {
+		sides = 100
+	}
+	rolls, _, err := rollDice(seed, fmt.Sprintf("%dd%d", count, sides))
 	if err != nil {
 		return nil, 0, err
 	}
 	kept := rolls[0]
-	if rollMode == "advantage" {
+	normalizedRollMode := normalizeTurnCheckRollMode(rollMode)
+	if normalizedRollMode == "advantage" {
 		for _, roll := range rolls[1:] {
-			if roll > kept {
+			if (sides == 20 && roll > kept) || (sides == 100 && roll < kept) {
 				kept = roll
 			}
 		}
 	}
-	if rollMode == "disadvantage" {
+	if normalizedRollMode == "disadvantage" {
 		for _, roll := range rolls[1:] {
-			if roll < kept {
+			if (sides == 20 && roll < kept) || (sides == 100 && roll > kept) {
 				kept = roll
 			}
 		}
@@ -506,7 +543,57 @@ func turnCheckBonusTotal(bonuses []TurnCheckBonus) float64 {
 	return total
 }
 
-func resolveTurnCheckOutcome(keptRoll int, total, target float64) string {
+func turnCheckDifficultyTarget(dice string, difficulty string) (float64, bool) {
+	normalizedDifficulty := normalizeTurnCheckDifficulty(difficulty)
+	if normalizeTurnCheckDice(dice) == "1d100" {
+		target, ok := turnCheckD100DifficultyTargets[normalizedDifficulty]
+		return target, ok
+	}
+	target, ok := turnCheckD20DifficultyTargets[normalizedDifficulty]
+	return target, ok
+}
+
+func turnCheckTarget(dice string, baseTarget, modifier, bonusTotal float64) float64 {
+	if normalizeTurnCheckDice(dice) == "1d100" {
+		return baseTarget - modifier + bonusTotal
+	}
+	return baseTarget + modifier
+}
+
+func turnCheckTotal(dice string, keptRoll int, bonusTotal float64) float64 {
+	if normalizeTurnCheckDice(dice) == "1d100" {
+		return float64(keptRoll)
+	}
+	return float64(keptRoll) + bonusTotal
+}
+
+func turnCheckMode(dice string) string {
+	if normalizeTurnCheckDice(dice) == "1d100" {
+		return "d100_under"
+	}
+	return "d20_dc"
+}
+
+func turnCheckConstraint(challenge, dice, outcome string, total, target float64) string {
+	if normalizeTurnCheckDice(dice) == "1d100" {
+		return fmt.Sprintf("%s：%s，骰值 %.0f / 目标 %.0f。", challenge, turnCheckOutcomeText(outcome), total, target)
+	}
+	return fmt.Sprintf("%s：%s，总值 %.0f / 目标 %.0f。", challenge, turnCheckOutcomeText(outcome), total, target)
+}
+
+func resolveTurnCheckOutcome(dice string, keptRoll int, total, target float64) string {
+	if normalizeTurnCheckDice(dice) == "1d100" {
+		if keptRoll <= 5 {
+			return "critical_success"
+		}
+		if keptRoll >= 96 {
+			return "critical_failure"
+		}
+		if total <= target {
+			return "success"
+		}
+		return "failure"
+	}
 	if keptRoll == 20 {
 		return "critical_success"
 	}
@@ -544,11 +631,10 @@ func normalizeRuleCheck(check RuleCheck, index int) RuleCheck {
 		check.ID = fmt.Sprintf("check_%d", index+1)
 	}
 	check.Label = trimBytes(firstNonEmptyString(check.Label, check.ID), 256)
-	check.Category = normalizeRuleCheckCategory(check.Category)
-	check.DefaultDifficulty = normalizeTurnCheckDifficulty(check.DefaultDifficulty)
-	check.DefaultRollMode = normalizeTurnCheckRollMode(check.DefaultRollMode)
+	check.Dice = normalizeTurnCheckDice(check.Dice)
 	check.FailurePolicy = normalizeRuleCheckFailurePolicy(check.FailurePolicy)
-	check.Impact = normalizeRuleCheckImpact(check.Impact)
+	check.DifficultyGuidance = trimBytes(check.DifficultyGuidance, maxTurnBriefTextBytes)
+	check.StateEffectGuidance = trimBytes(check.StateEffectGuidance, maxTurnBriefTextBytes)
 	check.Trigger = trimBytes(check.Trigger, maxTurnBriefTextBytes)
 	check.SuccessHint = trimBytes(check.SuccessHint, maxTurnBriefTextBytes)
 	check.FailureHint = trimBytes(check.FailureHint, maxTurnBriefTextBytes)
@@ -556,54 +642,13 @@ func normalizeRuleCheck(check RuleCheck, index int) RuleCheck {
 }
 
 func validateRuleCheck(check RuleCheck) error {
-	if !validRuleCheckCategory(check.Category) {
-		return fmt.Errorf("规则检定 category 无效: %s", check.Category)
-	}
-	if _, ok := turnCheckDifficultyTargets[normalizeTurnCheckDifficulty(check.DefaultDifficulty)]; !ok {
-		return fmt.Errorf("规则检定 default_difficulty 无效: %s，合法值: %s", check.DefaultDifficulty, turnCheckAllowedDifficulties)
-	}
-	switch normalizeTurnCheckRollMode(check.DefaultRollMode) {
-	case "normal", "advantage", "disadvantage":
-	default:
-		return fmt.Errorf("规则检定 default_roll_mode 无效: %s，合法值: %s", check.DefaultRollMode, turnCheckAllowedRollModes)
+	if !validTurnCheckDice(check.Dice) {
+		return fmt.Errorf("规则检定 dice 无效: %s，合法值: %s", check.Dice, turnCheckAllowedDice)
 	}
 	if !validRuleCheckFailurePolicy(check.FailurePolicy) {
 		return fmt.Errorf("规则检定 failure_policy 无效: %s", check.FailurePolicy)
 	}
-	if !validRuleCheckImpact(check.Impact) {
-		return fmt.Errorf("规则检定 impact 无效: %s", check.Impact)
-	}
 	return nil
-}
-
-func normalizeRuleCheckCategory(value string) string {
-	switch normalizeTurnCheckEnumToken(value) {
-	case "", "generic", "general", "generic_action", "general_action":
-		return "generic_action"
-	case "combat", "combat_exchange", "battle":
-		return "combat"
-	case "stealth", "stealth_operation", "operation":
-		return "stealth"
-	case "exploration", "investigation", "explore":
-		return "exploration"
-	case "social", "negotiation", "social_negotiation":
-		return "social"
-	case "endurance", "will", "endurance_will", "stamina":
-		return "endurance"
-	case "magic", "spell", "magic_power":
-		return "magic"
-	default:
-		return normalizeTurnCheckEnumToken(value)
-	}
-}
-
-func validRuleCheckCategory(value string) bool {
-	switch value {
-	case "generic_action", "combat", "stealth", "exploration", "social", "endurance", "magic":
-		return true
-	default:
-		return false
-	}
 }
 
 func normalizeRuleCheckFailurePolicy(value string) string {
@@ -624,36 +669,6 @@ func normalizeRuleCheckFailurePolicy(value string) string {
 func validRuleCheckFailurePolicy(value string) bool {
 	switch value {
 	case "fail_forward", "success_at_cost", "blocked", "hard_failure":
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeRuleCheckImpact(value string) string {
-	switch normalizeTurnCheckEnumToken(value) {
-	case "", "none", "no_state_change":
-		return "none"
-	case "hp_damage", "health_damage", "life_damage":
-		return "hp_damage"
-	case "stamina_cost", "stamina", "energy_cost":
-		return "stamina_cost"
-	case "relationship_change", "relation_change", "relationship":
-		return "relationship_change"
-	case "clue_progress", "clue", "progress":
-		return "clue_progress"
-	case "resource_change", "resources", "resource":
-		return "resource_change"
-	case "custom", "custom_hint":
-		return "custom"
-	default:
-		return normalizeTurnCheckEnumToken(value)
-	}
-}
-
-func validRuleCheckImpact(value string) bool {
-	switch value {
-	case "none", "hp_damage", "stamina_cost", "relationship_change", "clue_progress", "resource_change", "custom":
 		return true
 	default:
 		return false

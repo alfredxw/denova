@@ -203,7 +203,7 @@ func TestTerminalBranchRejectsFurtherTurnsUntilNewBranch(t *testing.T) {
 	request.Challenge = "穿过即将崩塌的主线入口"
 	request.Cost = "失败会导致主线入口崩塌"
 	request.State = "禁制已经濒临失控。"
-	seed := seedForTurnCheckOutcome(t, "normal", "normal", 0, "critical_failure")
+	seed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 0, 0, "critical_failure")
 	resolution, err := resolveTurnRulesWithSeed(story.ID, "main", initialStoryState(), request, seed)
 	if err != nil {
 		t.Fatal(err)

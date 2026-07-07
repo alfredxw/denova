@@ -5,13 +5,12 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, EventPackageModule, OpeningTrait, OpeningTraitPool, RuleCheck, StateOp, StoryDirectorActorStateSystem, StoryDirectorOpeningSelector, StoryDirectorTRPGSystem, StoryMemoryField, StoryMemoryStructure, TellerEventCard } from '../../types'
-import { defaultRuleTemplates, normalizeRuleTemplate, normalizeTRPGSystem, RULE_CATEGORY_OPTIONS, RULE_DIFFICULTY_OPTIONS, RULE_FAILURE_POLICY_OPTIONS, RULE_IMPACT_OPTIONS, RULE_ROLL_MODE_OPTIONS } from './ruleTemplates'
+import { normalizeRuleTemplate, normalizeTRPGSystem, RULE_DICE_OPTIONS, RULE_FAILURE_POLICY_OPTIONS } from './ruleTemplates'
 import { SortablePresetList } from './SortablePresetList'
 import { cloneWithNewId, formatPresetJSON, itemKey, joinListInput, nextPresetId, parseIntegerInput, parseNumberInput, splitListInput } from './utils'
 
@@ -542,9 +541,19 @@ export function TRPGSystemVisualEditor({
     if (!active) return
     setRules(rules.map((item, index) => (index === activeIndex ? normalizeRuleTemplate({ ...item, ...patch }, index) : item)))
   }
-  const addRule = (template?: RuleCheck) => {
-    const base = template || defaultRuleTemplates()[0]
-    const item = normalizeRuleTemplate({ ...base, id: nextPresetId(base.id || 'rule') }, rules.length)
+  const addRule = () => {
+    const item = normalizeRuleTemplate({
+      id: nextPresetId('rule'),
+      label: t('settingPanel.trpgRule.newRule'),
+      dice: '1d20',
+      modifier: 0,
+      failure_policy: 'fail_forward',
+      difficulty_guidance: t('settingPanel.trpgRule.defaultDifficultyGuidance'),
+      state_effect_guidance: t('settingPanel.trpgRule.defaultStateEffectGuidance'),
+      trigger: t('settingPanel.trpgRule.defaultTrigger'),
+      success_hint: t('settingPanel.trpgRule.defaultSuccessHint'),
+      failure_hint: t('settingPanel.trpgRule.defaultFailureHint'),
+    }, rules.length)
     setRules([...rules, item])
     setActiveId(item.id || '')
   }
@@ -567,11 +576,10 @@ export function TRPGSystemVisualEditor({
         activeId={activeId}
         getId={(item, index) => itemKey(item, index, 'rule')}
         getTitle={(item, index) => item.label || item.id || `${t('settingPanel.orchestration.ruleTemplates')} ${index + 1}`}
-        getSubtitle={(item) => [ruleCategoryLabel(item.category, t), ruleDifficultyLabel(item.default_difficulty, t), ruleFailurePolicyLabel(item.failure_policy, t)].filter(Boolean).join(' · ')}
+        getSubtitle={(item) => [ruleDiceLabel(item.dice, t), ruleTargetLabel(item, t), ruleModifierLabel(item.modifier, t), ruleFailurePolicyLabel(item.failure_policy, t)].filter(Boolean).join(' · ')}
         addLabel={t('settingPanel.orchestration.addRuleTemplate')}
-        addControl={<RuleTemplateAddMenu onAdd={addRule} />}
         emptyLabel={t('settingPanel.orchestration.ruleTemplates')}
-        onAdd={() => addRule()}
+        onAdd={addRule}
         onActiveIdChange={setActiveId}
         onItemsChange={setRules}
       />
@@ -580,11 +588,13 @@ export function TRPGSystemVisualEditor({
           <DetailActions onCopy={copyRule} onDelete={deleteRule} />
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <Field label={t('settingPanel.orchestration.ruleLabel')}><Input className={inputClassName} value={active.label || ''} onChange={(event) => patchActive({ label: event.target.value })} /></Field>
-            <RuleSelectField label={t('settingPanel.trpgRule.category')} value={active.category || 'generic_action'} options={RULE_CATEGORY_OPTIONS} labelFor={(value) => ruleCategoryLabel(value, t)} onChange={(category) => patchActive({ category })} />
-            <RuleSelectField label={t('settingPanel.trpgRule.defaultDifficulty')} value={active.default_difficulty || 'normal'} options={RULE_DIFFICULTY_OPTIONS} labelFor={(value) => ruleDifficultyLabel(value, t)} onChange={(default_difficulty) => patchActive({ default_difficulty })} />
-            <RuleSelectField label={t('settingPanel.trpgRule.defaultRollMode')} value={active.default_roll_mode || 'normal'} options={RULE_ROLL_MODE_OPTIONS} labelFor={(value) => ruleRollModeLabel(value, t)} onChange={(default_roll_mode) => patchActive({ default_roll_mode })} />
+            <RuleSelectField label={t('settingPanel.trpgRule.dice')} value={active.dice || '1d20'} options={RULE_DICE_OPTIONS} labelFor={(value) => ruleDiceLabel(value, t)} onChange={(dice) => patchActive({ dice })} />
+            <Field label={t('settingPanel.trpgRule.modifier')}><Input className={inputClassName} inputMode="decimal" value={String(active.modifier ?? 0)} onChange={(event) => patchActive({ modifier: parseNumberInput(event.target.value) })} /></Field>
             <RuleSelectField label={t('settingPanel.trpgRule.failurePolicy')} value={active.failure_policy || 'fail_forward'} options={RULE_FAILURE_POLICY_OPTIONS} labelFor={(value) => ruleFailurePolicyLabel(value, t)} onChange={(failure_policy) => patchActive({ failure_policy })} />
-            <RuleSelectField label={t('settingPanel.trpgRule.impact')} value={active.impact || 'none'} options={RULE_IMPACT_OPTIONS} labelFor={(value) => ruleImpactLabel(value, t)} onChange={(impact) => patchActive({ impact })} />
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label={t('settingPanel.trpgRule.difficultyGuidance')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.difficulty_guidance || ''} onChange={(event) => patchActive({ difficulty_guidance: event.target.value })} /></Field>
+            <Field label={t('settingPanel.trpgRule.stateEffectGuidance')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.state_effect_guidance || ''} onChange={(event) => patchActive({ state_effect_guidance: event.target.value })} /></Field>
           </div>
           <Field label={t('settingPanel.trpgRule.trigger')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
           <div className="grid gap-3 md:grid-cols-2">
@@ -594,26 +604,6 @@ export function TRPGSystemVisualEditor({
         </DetailPanel>
       ) : <EmptyDetail>{t('settingPanel.orchestration.noRuleTemplates')}</EmptyDetail>}
     </div>
-  )
-}
-
-function RuleTemplateAddMenu({ onAdd }: { onAdd: (template: RuleCheck) => void }) {
-  const { t } = useTranslation()
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button className={iconActionClassName} variant="outline" size="icon-sm" aria-label={t('settingPanel.orchestration.addRuleTemplate')} title={t('settingPanel.orchestration.addRuleTemplate')}>
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={6} className="nova-panel min-w-44 border border-[var(--nova-border)] text-[var(--nova-text)]">
-        {defaultRuleTemplates().map((template) => (
-          <DropdownMenuItem key={template.id} className="text-xs" onSelect={() => onAdd(template)}>
-            {template.label}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }
 
@@ -642,24 +632,25 @@ function RuleSelectField<T extends readonly string[]>({
   )
 }
 
-function ruleCategoryLabel(value: string | undefined, t: ReturnType<typeof useTranslation>['t']) {
-  return t(`settingPanel.trpgRule.category.${value || 'generic_action'}`)
+function ruleDiceLabel(value: string | undefined, t: ReturnType<typeof useTranslation>['t']) {
+  return t(`settingPanel.trpgRule.dice.${value || '1d20'}`)
 }
 
-function ruleDifficultyLabel(value: string | undefined, t: ReturnType<typeof useTranslation>['t']) {
-  return t(`settingPanel.trpgRule.difficulty.${value || 'normal'}`)
+function ruleTargetLabel(rule: RuleCheck, t: ReturnType<typeof useTranslation>['t']) {
+  return t('settingPanel.trpgRule.targetValue', { value: rule.dice === '1d100' ? 50 : 10 })
 }
 
-function ruleRollModeLabel(value: string | undefined, t: ReturnType<typeof useTranslation>['t']) {
-  return t(`settingPanel.trpgRule.rollMode.${value || 'normal'}`)
+function ruleModifierLabel(value: number | undefined, t: ReturnType<typeof useTranslation>['t']) {
+  return t('settingPanel.trpgRule.modifierValue', { value: formatSignedNumber(value ?? 0) })
+}
+
+function formatSignedNumber(value: number) {
+  if (!Number.isFinite(value) || value === 0) return '+0'
+  return value > 0 ? `+${value}` : String(value)
 }
 
 function ruleFailurePolicyLabel(value: string | undefined, t: ReturnType<typeof useTranslation>['t']) {
   return t(`settingPanel.trpgRule.failurePolicy.${value || 'fail_forward'}`)
-}
-
-function ruleImpactLabel(value: string | undefined, t: ReturnType<typeof useTranslation>['t']) {
-  return t(`settingPanel.trpgRule.impact.${value || 'none'}`)
 }
 
 export function OpeningSelectorVisualEditor({
