@@ -1,0 +1,39 @@
+CHANGELOG.md
+  s_ac721b39bdd227::t_3f8d124d56bb7e 78-79
+internal/interactive/memory_context.go
+  s_a03a59b7e53034::t_daff56567e48bb 1-272
+internal/interactive/memory_patch.go
+  s_a03a59b7e53034::t_ba8bc1d368723f 1-578
+internal/interactive/memory_schema.go
+  s_a03a59b7e53034::t_12fbbdd0ea5ad6 48-52,54,57,61,64-66,72-79,82,84-85,87-92,94
+internal/interactive/memory_store.go
+  s_a03a59b7e53034::t_7ec12ce49083d4 1-370
+internal/interactive/memory_visibility.go
+  s_a03a59b7e53034::t_25bd64b0fa5d53 1-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d033a656ab06607a5b10e8049d2ebf9847a54256",
+  "prompts": {},
+  "sessions": {
+    "s_a03a59b7e53034": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c78-2dcd-7013-8da9-669dad2e9fcf",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_ac721b39bdd227": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c6d-8216-7b02-bd7a-8711a7e5e410",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
