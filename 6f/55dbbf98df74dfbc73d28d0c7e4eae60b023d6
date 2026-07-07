@@ -1,0 +1,23 @@
+web/src/features/interactive/components/preset-config/PresetConfigSectionEditor.tsx
+  s_d5109e2bee55c4::t_1f1a1e8e298b34 108
+web/src/features/interactive/components/preset-config/SortablePresetList.tsx
+  s_d5109e2bee55c4::t_3c5f2f8a7c69a3 49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "6f55dbbf98df74dfbc73d28d0c7e4eae60b023d6",
+  "prompts": {},
+  "sessions": {
+    "s_d5109e2bee55c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f0a54c1-33e6-44b1-8e73-bd1ede3ab308",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
