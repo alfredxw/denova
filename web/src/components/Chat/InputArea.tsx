@@ -91,6 +91,7 @@ interface InputAreaProps {
   disabledPlaceholder?: string
   onContextAnalyze?: (message: string) => void | Promise<void>
   tokenUsageMessages?: ChatMessage[]
+  onOpenTrace?: (runID: string) => void
   agentKey?: VisibleAgentKey
   workspace?: string
   writingSkillControl?: ReactNode
@@ -131,6 +132,7 @@ export function InputArea({
   disabledPlaceholder,
   onContextAnalyze,
   tokenUsageMessages = [],
+  onOpenTrace,
   agentKey,
   workspace,
   writingSkillControl,
@@ -629,7 +631,7 @@ export function InputArea({
                 {t('chat.plan.short')}
               </span>
             ) : null}
-            <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} />
+            <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
           </>
         }
         submitControl={

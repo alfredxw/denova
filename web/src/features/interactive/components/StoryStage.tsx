@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Archive, BarChart3, BookOpen, Check, ChevronDown, ChevronUp, Command as CommandIcon, Compass, ImagePlus, List, Loader2, PanelRight, Pencil, Plus, RefreshCw, ScrollText, Send, SlidersHorizontal, Sparkles, Square, X } from 'lucide-react'
+import { Activity, Archive, BarChart3, BookOpen, Check, ChevronDown, ChevronUp, Command as CommandIcon, Compass, ImagePlus, List, Loader2, PanelRight, Pencil, Plus, RefreshCw, ScrollText, Send, SlidersHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,6 +15,7 @@ import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageLi
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
+import { AgentTracePanel } from '@/components/Chat/AgentTracePanel'
 import { SubAgentSessionPanel } from '@/components/Chat/SubAgentSessionPanel'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from '@/components/Chat/composer-token-input'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
@@ -34,6 +35,7 @@ import { StoryDirectorPicker } from './StoryDirectorPicker'
 import { TurnNavigator, type TurnNavigationItem } from './TurnNavigator'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 interface StoryStageProps {
   workspace?: string
@@ -137,6 +139,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [directorRetryError, setDirectorRetryError] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false)
+  const [traceOpen, setTraceOpen] = useState(false)
+  const [selectedTraceRunId, setSelectedTraceRunId] = useState('')
   const [contextAnalysisLoading, setContextAnalysisLoading] = useState(false)
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
@@ -195,6 +199,13 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     },
     [updateStageRun],
   )
+
+  const openTraceRun = useCallback((runID: string) => {
+    if (!runID) return
+    setSelectedTraceRunId(runID)
+    setTokenUsageOpen(false)
+    setTraceOpen(true)
+  }, [])
 
   const setStageLiveMessages = useCallback(
     (updater: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => {
@@ -1204,6 +1215,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 generatingInteractiveImageTurnId={generatingImageTurnId || undefined}
                 onOpenSubAgentSession={openSubAgentSession}
                 activeSubAgentSessionKey={activeSubAgentSessionKey}
+                onOpenTrace={openTraceRun}
               />
             )}
             {activeSubAgentSessionKey && (
@@ -1532,7 +1544,20 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             onOpenChange={setContextAnalysisOpen}
             onRemoveCompaction={removeContextCompaction}
           />
-          <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} />
+          <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={openTraceRun} />
+          <Dialog open={traceOpen} onOpenChange={setTraceOpen}>
+            <DialogContent className="flex h-[min(88vh,760px)] max-w-[min(96vw,1120px)] flex-col gap-0 overflow-hidden border-[var(--nova-border)] bg-[var(--nova-bg)] p-0 text-[var(--nova-text)]">
+              <DialogHeader className="border-b border-[var(--nova-border)] px-4 py-3">
+                <DialogTitle className="flex items-center gap-2 text-sm">
+                  <Activity className="h-4 w-4 text-[var(--nova-text-muted)]" />
+                  {t('chat.tracePanel.title')}
+                </DialogTitle>
+              </DialogHeader>
+              <div className="min-h-0 flex-1">
+                <AgentTracePanel selectedRunId={selectedTraceRunId} />
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
     </main>

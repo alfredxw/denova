@@ -2,11 +2,13 @@ package agent
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -35,7 +37,15 @@ type runLedgerRecord struct {
 type textSummary struct {
 	Bytes   int    `json:"bytes"`
 	Chars   int    `json:"chars"`
+	Hash    string `json:"hash,omitempty"`
 	Preview string `json:"preview"`
+}
+
+// TraceSink is the durable destination for structured Agent trace spans.
+// The default implementation is the local run ledger; external exporters can
+// adapt this interface without changing Agent execution.
+type TraceSink interface {
+	RecordTraceSpan(span TraceSpanRecord) error
 }
 
 func newRunLedger(workspace string, policy RunLedgerPolicy) (*RunLedger, error) {
@@ -43,7 +53,8 @@ func newRunLedger(workspace string, policy RunLedgerPolicy) (*RunLedger, error) 
 }
 
 func newRunLedgerWithOptions(workspace string, policy RunLedgerPolicy, options RunOptions) (*RunLedger, error) {
-	if !policy.Enabled || strings.TrimSpace(workspace) == "" {
+	traceCfg := traceRuntimeConfigSnapshot()
+	if !policy.Enabled || traceCfg.CaptureLevel == TraceCaptureOff || strings.TrimSpace(workspace) == "" {
 		return nil, nil
 	}
 	options = options.normalized(workspace)
@@ -52,6 +63,9 @@ func newRunLedgerWithOptions(workspace string, policy RunLedgerPolicy, options R
 	}
 	if policy.PreviewChars <= 0 {
 		policy.PreviewChars = defaultRunLedgerPreviewChars
+	}
+	if traceCfg.CaptureLevel == TraceCaptureDebug && policy.PreviewChars < defaultDebugRunLedgerPreviewChars {
+		policy.PreviewChars = defaultDebugRunLedgerPreviewChars
 	}
 	id := newRunLedgerID()
 	dir := filepath.Join(workspace, filepath.FromSlash(policy.Directory))
@@ -78,6 +92,7 @@ func newRunLedgerWithOptions(workspace string, policy RunLedgerPolicy, options R
 		_ = file.Close()
 		return nil, err
 	}
+	pruneRunTraceFiles(dir, traceCfg.RetentionRuns, path)
 	return ledger, nil
 }
 
@@ -151,6 +166,17 @@ func (l *RunLedger) RecordVerification(verification PostRunVerification) error {
 	return l.Record("post_run_verification", map[string]any{
 		"verification": verification,
 	})
+}
+
+func (l *RunLedger) RecordTraceSpan(span TraceSpanRecord) error {
+	if l == nil {
+		return nil
+	}
+	span.Name = strings.TrimSpace(span.Name)
+	if span.Name == "" {
+		span.Name = "trace_span"
+	}
+	return l.Record(span.Name, l.traceSpanData(span))
 }
 
 func (l *RunLedger) RecordFinish(status, reason string, generatedBytes int) error {
@@ -244,10 +270,52 @@ func (l *RunLedger) summarizeText(content string) textSummary {
 	if limit <= 0 {
 		limit = defaultRunLedgerPreviewChars
 	}
+	sum := sha256.Sum256([]byte(content))
 	return textSummary{
 		Bytes:   len(content),
 		Chars:   utf8.RuneCountInString(content),
+		Hash:    fmt.Sprintf("sha256:%x", sum[:8]),
 		Preview: safeLogPreview(content, limit),
+	}
+}
+
+func (l *RunLedger) traceSpanData(span TraceSpanRecord) map[string]any {
+	attrs := make(map[string]any, len(span.Attrs))
+	for key, value := range span.Attrs {
+		attrs[key] = l.summarizeTraceAttr(key, value)
+	}
+	data := map[string]any{
+		"trace_id":       strings.TrimSpace(span.TraceID),
+		"span_id":        strings.TrimSpace(span.SpanID),
+		"parent_span_id": strings.TrimSpace(span.ParentSpanID),
+		"name":           strings.TrimSpace(span.Name),
+		"status":         strings.TrimSpace(span.Status),
+		"started_at":     span.StartedAt,
+		"ended_at":       span.EndedAt,
+		"duration_ms":    span.DurationMS,
+		"attrs":          attrs,
+	}
+	if span.Error != "" {
+		data["error"] = l.summarizeText(span.Error)
+	}
+	return data
+}
+
+func (l *RunLedger) summarizeTraceAttr(key string, value any) any {
+	switch typed := value.(type) {
+	case string:
+		if shouldSummarizeRunLedgerField(key) || shouldSummarizeTraceAttrKey(key) {
+			return l.summarizeText(typed)
+		}
+		return typed
+	case map[string]any:
+		out := make(map[string]any, len(typed))
+		for childKey, childValue := range typed {
+			out[childKey] = l.summarizeTraceAttr(childKey, childValue)
+		}
+		return out
+	default:
+		return typed
 	}
 }
 
@@ -258,6 +326,16 @@ func shouldSummarizeRunLedgerField(key string) bool {
 	default:
 		return false
 	}
+}
+
+func shouldSummarizeTraceAttrKey(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	return strings.Contains(key, "prompt") ||
+		strings.Contains(key, "content") ||
+		strings.Contains(key, "message") ||
+		strings.Contains(key, "args") ||
+		strings.Contains(key, "result") ||
+		strings.Contains(key, "thinking")
 }
 
 func shouldRecordRunLedgerEvent(eventType string) bool {
@@ -275,4 +353,45 @@ func newRunLedgerID() string {
 		return "run-" + time.Now().UTC().Format("20060102T150405.000000000") + "-" + hex.EncodeToString(b[:])
 	}
 	return fmt.Sprintf("run-%d", time.Now().UTC().UnixNano())
+}
+
+func pruneRunTraceFiles(dir string, retention int, keepPath string) {
+	if retention <= 0 {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	type traceFile struct {
+		path    string
+		modTime time.Time
+	}
+	files := make([]traceFile, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".jsonl" {
+			continue
+		}
+		path := filepath.Join(dir, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		files = append(files, traceFile{path: path, modTime: info.ModTime()})
+	}
+	if len(files) <= retention {
+		return
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].modTime.After(files[j].modTime)
+	})
+	keepPath = filepath.Clean(keepPath)
+	kept := 0
+	for _, file := range files {
+		if kept < retention || filepath.Clean(file.path) == keepPath {
+			kept++
+			continue
+		}
+		_ = os.Remove(file.path)
+	}
 }

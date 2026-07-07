@@ -28,21 +28,17 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 		schema.SystemMessage(systemInstruction),
 		schema.UserMessage(instruction),
 	}
-	callID := logFullModelInput(modelInputLogOptions{
-		AgentKind: config.AgentKindVersionSummary,
-		Source:    "version_summary",
-		Mode:      "generate",
-		Config:    modelCfg,
-		Messages:  messages,
-	})
-	msg, err := cm.Generate(ctx, messages)
+	span, callID, traceCtx := beginLLMCallTrace(ctx, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg, messages, nil, false)
+	msg, err := cm.Generate(traceCtx, messages)
 	if err != nil {
+		finishLLMCallTrace(span, callID, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg.Model, 0, nil, err, nil)
 		return "", fmt.Errorf("生成版本说明失败: %w", err)
 	}
 	if msg == nil {
+		finishLLMCallTrace(span, callID, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg.Model, 0, nil, fmt.Errorf("版本说明模型返回为空"), nil)
 		return "", fmt.Errorf("版本说明模型返回为空")
 	}
-	logModelProviderRequestIDForCall(callID, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg.Model, "", 0, msg)
+	finishLLMCallTrace(span, callID, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg.Model, 0, msg, nil, nil)
 	summary := sanitizeVersionSummary(msg.Content)
 	if summary == "" {
 		return "", fmt.Errorf("版本说明为空")

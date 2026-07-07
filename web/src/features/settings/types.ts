@@ -48,6 +48,9 @@ export interface Settings {
   agent_idle_timeout_seconds?: number | null
   agent_tool_result_limit_kb?: number | null
   llm_input_log_enabled?: boolean | null
+  trace_capture_level?: string
+  trace_exporter?: string
+  trace_retention_runs?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
   ide_image_preset_id?: string

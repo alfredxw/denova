@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Agent：`.nova/runs` 运行记录升级为本地优先的结构化 trace，新增 `agent_run`、`llm_call`、`tool_call`、`context_build`、`context_compaction` 等 span 记录，并在记录中增量写入 `span_id`、`parent_span_id`、`duration_ms`、`status`、`attrs`、token usage、provider request id 和工具执行摘要；旧记录仍可通过 `/api/agent-runs` 读取。
+- Agent: Upgraded `.nova/runs` from event logs to local-first structured traces with `agent_run`, `llm_call`, `tool_call`, `context_build`, `context_compaction`, and related span records. Records now incrementally include `span_id`, `parent_span_id`, `duration_ms`, `status`, `attrs`, token usage, provider request IDs, and tool execution summaries while keeping old `/api/agent-runs` records readable.
+- WebUI：Agent Trace Tab 升级为 timeline 面板，支持 All / LLM / Tools / Context / Errors 筛选；IDE token usage、工具/失败消息和游戏模式 token usage 可按 run_id 跳转到对应 trace。
+- WebUI: Upgraded the Agent Trace tab into a timeline with All / LLM / Tools / Context / Errors filters. IDE token usage, tool/error cards, and Game Mode token usage can now jump to the matching trace by run ID.
+- 设置：新增用户级 trace 调试配置 `trace_capture_level`、`trace_exporter` 和 `trace_retention_runs`，默认本地 summary trace 并保留最近 100 个 run。
+- Settings: Added user-level trace diagnostics settings `trace_capture_level`, `trace_exporter`, and `trace_retention_runs`, defaulting to local summary traces with the latest 100 runs retained.
 - 游戏模式：右侧面板重设计为更克制的“导演控制台”，围绕单后台 Director Agent 提供运行、状态、记忆与规划视图；后台规划、上下文分析、记忆整理和工具调用过程统一收进“运行”页的剧透门，记忆页只展示记忆内容，规划页默认以 Markdown 阅读视图展示 `director.md` 并保留显式编辑入口。
 - Game Mode: Redesigned the right sidebar as a more restrained Director Console with Run, State, Memory, and Plan views around the single background Director Agent. Background planning, context analysis, memory generation, and tool-call process logs now live behind the Run view spoiler gate; Memory shows memory content only, and Plan renders `director.md` as Markdown by default with an explicit edit action.
 - 书籍管理：新增通用书籍导出入口，当前支持一键导出整本小说为 UTF-8 TXT；导出会按章节/分卷顺序拼接全部非空章节，并保留后续扩展 EPUB 等格式的接口形态。
@@ -69,6 +75,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Agent：普通 trace 继续只保存有界 preview、hash、bytes/chars、token、耗时和关联 ID；`debug` 模式只扩大预览和诊断字段，不等同于完整 prompt/output 采集。图像生成普通日志中的完整 prompt 改为摘要，完整输入仍只允许进入 dev-only `log/llm-inputs.jsonl`。
+- Agent: Normal traces continue to store only bounded previews, hashes, bytes/chars, token counts, timing, and correlation IDs; `debug` mode only expands previews and diagnostics, not full prompt/output capture. Image generation logs now summarize prompts in normal logs, with full inputs still restricted to the dev-only `log/llm-inputs.jsonl`.
 - WebUI：上下文分析弹窗减少最终消息的重复嵌套，单片段消息组直接展示为可展开片段；多片段组展开后内层片段默认展开，并使用更轻量的内层样式。
 - WebUI: Reduced duplicate nesting in the Context Analysis dialog. Single-part final-message groups now render directly as expandable parts, while multi-part groups open with inner parts expanded by default and lighter nested styling.
 - 游戏模式：后台导演 `director.md`、正文 Agent 可读区、导演上下文拼装片段和故事导演高级 Markdown 策略提示的上限统一放宽到至少 64KB，并移除导演 Prompt 中旧的硬编码字节上限文案。
@@ -138,6 +146,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Agent：provider request id 关联不再依赖 `agentKind+source` pending 队列推断，改为通过 `call_id` / `span_id` / `run_id` 在模型 wrapper 内闭环传递，避免同类 Agent 并发模型调用时错配。
+- Agent: Provider request ID attribution no longer relies on an `agentKind+source` pending queue. The model wrapper now carries `call_id`, `span_id`, and `run_id` explicitly to avoid mismatches during concurrent same-kind Agent model calls.
 - Agent：修复 `interactive_director` 文件访问中间件误拦截 `apply_actor_state_patch` 和 `apply_story_memory_patches` 的问题；后台导演仍只允许读写当前分支 `director.md`，并继续拒绝 shell 等非授权工具。
 - Agent: Fixed the `interactive_director` file-access middleware incorrectly blocking `apply_actor_state_patch` and `apply_story_memory_patches`; the background Director still only reads/writes the current branch `director.md` and continues to reject shell and other unauthorized tools.
 - Agent：互动故事 `prepare_interactive_turn` 工具现在会在模型可见 schema 和提示词中明确 difficulty、rule.template、rule.roll_mode 等合法枚举，并将 `medium`、`moderate`、`very easy`、`d20_check` 等常见别名归一为标准值，减少互动回合因参数漂移导致的工具调用失败。

@@ -81,6 +81,9 @@ type Settings struct {
 	AgentIdleTimeoutSeconds *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
 	AgentToolResultLimitKB  *int   `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
 	LLMInputLogEnabled      *bool  `toml:"llm_input_log_enabled,omitempty" json:"llm_input_log_enabled,omitempty"`
+	TraceCaptureLevel       string `toml:"trace_capture_level,omitempty" json:"trace_capture_level,omitempty"`
+	TraceExporter           string `toml:"trace_exporter,omitempty" json:"trace_exporter,omitempty"`
+	TraceRetentionRuns      *int   `toml:"trace_retention_runs,omitempty" json:"trace_retention_runs,omitempty"`
 	PlanModeDefault         *bool  `toml:"plan_mode_default,omitempty" json:"plan_mode_default,omitempty"`
 	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
 	IDEImagePresetID        string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
@@ -101,6 +104,9 @@ const (
 	DefaultWritingSkillName        = "novel-lite"
 	DefaultAgentIdleTimeoutSeconds = 0
 	DefaultAgentToolResultLimitKB  = 0
+	DefaultTraceCaptureLevel       = "summary"
+	DefaultTraceExporter           = "local"
+	DefaultTraceRetentionRuns      = 100
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -142,6 +148,9 @@ func DefaultSettings() Settings {
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
 		LLMInputLogEnabled:          boolPtr(false),
+		TraceCaptureLevel:           DefaultTraceCaptureLevel,
+		TraceExporter:               DefaultTraceExporter,
+		TraceRetentionRuns:          intPtr(DefaultTraceRetentionRuns),
 		AgentModels: AgentModelSettings{
 			IDE:                   AgentModelOverride{EnableThinking: boolPtr(true)},
 			ConfigManager:         AgentModelOverride{EnableThinking: boolPtr(true)},
@@ -302,6 +311,15 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.LLMInputLogEnabled != nil {
 		out.LLMInputLogEnabled = child.LLMInputLogEnabled
+	}
+	if child.TraceCaptureLevel != "" {
+		out.TraceCaptureLevel = child.TraceCaptureLevel
+	}
+	if child.TraceExporter != "" {
+		out.TraceExporter = child.TraceExporter
+	}
+	if child.TraceRetentionRuns != nil {
+		out.TraceRetentionRuns = child.TraceRetentionRuns
 	}
 	if child.PlanModeDefault != nil {
 		out.PlanModeDefault = child.PlanModeDefault
@@ -488,6 +506,9 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		ws.RemoteAccessPassword = ""
 		ws.RemoteAccessPasswordSet = false
 		ws.LLMInputLogEnabled = nil
+		ws.TraceCaptureLevel = ""
+		ws.TraceExporter = ""
+		ws.TraceRetentionRuns = nil
 	}
 	def := DefaultSettings()
 	def.DenovaDir = novaDir

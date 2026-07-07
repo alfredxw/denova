@@ -363,18 +363,14 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 			schema.SystemMessage(systemPrompt),
 			schema.UserMessage(buildContextCompactionTranscript(source, existingMemory, referenceContext, sourceTokens, inputChars, retryReason, policy)),
 		}
-		callID := logFullModelInput(modelInputLogOptions{
-			AgentKind: config.AgentKindContextCompaction,
-			Source:    "context_compaction",
-			Mode:      fmt.Sprintf("stream_attempt_%d", attempt),
-			Config:    modelCfg,
-			Messages:  input,
-		})
-		msg, err := streamContextCompactionAttempt(ctx, cm, input, attempt, emitDelta)
+		mode := fmt.Sprintf("stream_attempt_%d", attempt)
+		span, callID, traceCtx := beginLLMCallTrace(ctx, config.AgentKindContextCompaction, "context_compaction", mode, modelCfg, input, nil, true)
+		msg, err := streamContextCompactionAttempt(traceCtx, cm, input, attempt, emitDelta)
 		if err != nil {
+			finishLLMCallTrace(span, callID, config.AgentKindContextCompaction, "context_compaction", mode, modelCfg.Model, attempt, nil, err, nil)
 			return "", inputChars, fmt.Errorf("上下文压缩失败: %w", err)
 		}
-		logModelProviderRequestIDForCall(callID, config.AgentKindContextCompaction, "context_compaction", fmt.Sprintf("stream_attempt_%d", attempt), modelCfg.Model, "", 0, msg)
+		finishLLMCallTrace(span, callID, config.AgentKindContextCompaction, "context_compaction", mode, modelCfg.Model, attempt, msg, nil, nil)
 		summary = strings.TrimSpace(msg.Content)
 		if summary == "" {
 			return "", inputChars, fmt.Errorf("上下文压缩结果为空")

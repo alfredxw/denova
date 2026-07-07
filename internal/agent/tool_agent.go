@@ -64,23 +64,20 @@ func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg
 		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction())),
 		schema.UserMessage(instruction),
 	}
-	callID := logFullModelInput(modelInputLogOptions{
-		AgentKind: config.AgentKindToolAgent,
-		Source:    "tool_agent_chapter_split_regex",
-		Mode:      "generate_" + attempt,
-		Config:    modelCfg,
-		Messages:  messages,
-	})
-	msg, err := cm.Generate(ctx, messages)
+	mode := "generate_" + attempt
+	span, callID, traceCtx := beginLLMCallTrace(ctx, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg, messages, nil, false)
+	msg, err := cm.Generate(traceCtx, messages)
 	if err != nil {
+		finishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg.Model, 0, nil, err, nil)
 		log.Printf("[tool-agent] infer chapter split regex generate failed attempt=%s err=%v", attempt, err)
 		return "", fmt.Errorf("工具 Agent 推断章节正则失败: %w", err)
 	}
 	if msg == nil {
+		finishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg.Model, 0, nil, fmt.Errorf("工具 Agent 返回为空"), nil)
 		log.Printf("[tool-agent] infer chapter split regex nil response attempt=%s", attempt)
 		return "", fmt.Errorf("工具 Agent 返回为空")
 	}
-	logModelProviderRequestIDForCall(callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", "generate_"+attempt, modelCfg.Model, "", 0, msg)
+	finishLLMCallTrace(span, callID, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg.Model, 0, msg, nil, nil)
 	log.Printf("[tool-agent] infer chapter split regex raw output attempt=%s content=%s reasoning=%s", attempt, promptPartSummary(msg.Content), promptPartSummary(msg.ReasoningContent))
 	regex, reason, err := parseChapterSplitRegexContent(msg.Content)
 	if err != nil && strings.TrimSpace(msg.Content) == "" && strings.TrimSpace(msg.ReasoningContent) != "" {

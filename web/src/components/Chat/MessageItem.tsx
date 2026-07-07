@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Clock3, Copy, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, Send, X } from 'lucide-react'
+import { Activity, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Clock3, Copy, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, Send, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { workspaceAssetURL, type ChapterIllustration, type ChatMessage, type InteractiveImage, type InteractiveImageError } from '@/lib/api'
@@ -35,6 +35,7 @@ interface MessageItemProps {
   onApprovePlan?: (message: ChatMessage) => void
   onContinuePlan?: (message: ChatMessage) => void
   onExitPlanMode?: () => void
+  onOpenTrace?: (runID: string) => void
   onPlanCardLayoutChange?: () => void
 }
 
@@ -45,7 +46,7 @@ const messageActionTooltipSideOffset = 3
 const planThinkingPreviewStaleMs = 3500
 
 /** 单条消息组件，根据 role 渲染不同样式 */
-export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onPlanCardLayoutChange }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, highlightDialogue = false, messageStyle, onEdit, onRegenerate, onSwitchVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, subAgentPresentation = 'card', onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange }: MessageItemProps) {
   const { role, content = '' } = message
   const canEdit = role === 'user' && Boolean(message.turn_id) && Boolean(onEdit)
   const canRegenerate = role === 'assistant' && Boolean(message.turn_id) && Boolean(onRegenerate) && !message.streaming
@@ -131,7 +132,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       if ((message.name || '') === 'write_todos') {
         return <TodoListBlock message={message} />
       }
-      return <ToolExecutionBlock message={message} />
+      return <ToolExecutionBlock message={message} onOpenTrace={onOpenTrace} />
 
     case 'tool_result':
       if ((message.name || '') === 'generate_interactive_image' || message.interactive_image) {
@@ -140,7 +141,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       if (message.illustration) {
         return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
       }
-      return <ToolResultBlock content={content} />
+      return <ToolResultBlock message={message} content={content} onOpenTrace={onOpenTrace} />
 
     case 'context_compaction':
       return <ContextCompactionBlock message={message} />
@@ -163,9 +164,10 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
     case 'error':
       return (
         <div className="flex justify-center">
-          <span className="rounded-full border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-1 text-xs text-[var(--nova-danger)]">
-            {content}
-          </span>
+          <div className="inline-flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-1 text-xs text-[var(--nova-danger)]">
+            <span className="min-w-0 truncate">{content}</span>
+            <TraceLinkButton runID={message.run_id} onOpenTrace={onOpenTrace} />
+          </div>
         </div>
       )
 
@@ -173,6 +175,21 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return null
   }
 })
+
+function TraceLinkButton({ runID, onOpenTrace }: { runID?: string; onOpenTrace?: (runID: string) => void }) {
+  const { t } = useTranslation()
+  if (!runID || !onOpenTrace) return null
+  return (
+    <button
+      type="button"
+      onClick={() => onOpenTrace(runID)}
+      className="nova-nav-item inline-flex h-6 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] px-1.5 text-[10px] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
+    >
+      <Activity className="h-3 w-3" />
+      {t('chat.tracePanel.viewTrace')}
+    </button>
+  )
+}
 
 function MessageInlineMeta({ message, content, align, onEdit, onGenerateInteractiveImage, generatingInteractiveImage = false, onRegenerate, onSwitchVersion, versionIndex = -1, versionCount = 0 }: { message: ChatMessage; content: string; align: 'left' | 'right'; onEdit?: (message: ChatMessage) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; generatingInteractiveImage?: boolean; onRegenerate?: (message: ChatMessage) => void; onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void; versionIndex?: number; versionCount?: number }) {
   const { t } = useTranslation()
@@ -813,7 +830,7 @@ function PlanShell({ icon, title, badge, children }: { icon: ReactNode; title: s
 }
 
 /** 工具执行卡片，默认以单行展示运行态和结果态。 */
-export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
+export function ToolExecutionBlock({ message, onOpenTrace }: { message: ChatMessage; onOpenTrace?: (runID: string) => void }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const info = parseToolCallContent(message.content || '')
@@ -867,6 +884,7 @@ export function ToolExecutionBlock({ message }: { message: ChatMessage }) {
           <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
             {displaySummary}
           </span>
+          <TraceLinkButton runID={message.run_id} onOpenTrace={onOpenTrace} />
           {hasDetail && !isStreamingContent && (
             <button
               type="button"
@@ -1259,7 +1277,7 @@ function ToolStatusIcon({ status }: { status: ChatMessage['status'] }) {
 }
 
 /** 工具结果卡片，默认展示摘要，避免大段结果挤占对话区 */
-function ToolResultBlock({ content }: { content: string }) {
+function ToolResultBlock({ message, content, onOpenTrace }: { message: ChatMessage; content: string; onOpenTrace?: (runID: string) => void }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const preview = buildPreview(content, 160)
@@ -1282,6 +1300,7 @@ function ToolResultBlock({ content }: { content: string }) {
             <div className="mt-1 flex min-w-0 items-center gap-2 text-[var(--nova-text-faint)]">
               <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
               <span className="truncate">{preview || t('chat.tool.noReturn')}</span>
+              <TraceLinkButton runID={message.run_id} onOpenTrace={onOpenTrace} />
               {canExpand && (
                 <button
                   type="button"

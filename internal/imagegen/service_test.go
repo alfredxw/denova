@@ -1,6 +1,9 @@
 package imagegen
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNormalizeRequestOptionsAcceptsConfiguredResolutionList(t *testing.T) {
 	request, err := normalizeRequestOptions(GenerateRequest{
@@ -31,5 +34,16 @@ func TestNormalizeRequestOptionsTreatsAutoSizeAsUnset(t *testing.T) {
 	}
 	if request.Size != "" {
 		t.Fatalf("auto size should be unset, got %q", request.Size)
+	}
+}
+
+func TestPromptSummaryDoesNotExposeFullPrompt(t *testing.T) {
+	prompt := strings.Repeat("private prompt content ", 20)
+	summary := promptSummary(prompt)
+	if strings.Contains(summary, prompt) {
+		t.Fatalf("prompt summary should not include full prompt: %s", summary)
+	}
+	if !strings.Contains(summary, "hash=sha256:") || !strings.Contains(summary, "chars=") || !strings.Contains(summary, "preview=") {
+		t.Fatalf("prompt summary should include bounded diagnostics: %s", summary)
 	}
 }

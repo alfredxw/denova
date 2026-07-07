@@ -45,6 +45,7 @@ func main() {
 
 	cfg.DevMode = dev || devMode
 	agent.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
+	agent.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
 
 	logPath, closeLog := setupLogging("./log")
 	defer closeLog()

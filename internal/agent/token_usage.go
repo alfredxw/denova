@@ -58,8 +58,6 @@ func (c *runTokenUsageCollector) AddMessage(msg *schema.Message) {
 	if c == nil || msg == nil {
 		return
 	}
-	nextIndex := c.stats.ModelCalls + 1
-	logModelProviderRequestID(c.agentKind, "adk", "response", "", c.runID, nextIndex, msg)
 	if msg.ResponseMeta == nil || msg.ResponseMeta.Usage == nil {
 		return
 	}

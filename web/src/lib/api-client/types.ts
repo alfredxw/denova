@@ -143,6 +143,8 @@ export interface AgentRunTraceSummary {
   reason?: string
   events: number
   context_parts: number
+  llm_calls?: number
+  duration_ms?: number
   task_id?: string
   agent_kind?: string
   session_id?: string

@@ -123,6 +123,7 @@ export function AgentPanel({
   const [contextAnalysisError, setContextAnalysisError] = useState<string | null>(null)
   const [contextAnalysis, setContextAnalysis] = useState<ContextAnalysis | null>(null)
   const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
+  const [selectedTraceRunId, setSelectedTraceRunId] = useState('')
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const [ideTellerId, setIdeTellerId] = useState('classic')
   const [imagePresetId, setImagePresetId] = useState('game-cg')
@@ -218,6 +219,12 @@ export function AgentPanel({
   const openSubAgentSession = (message: ChatMessage) => {
     const key = subAgentSessionKey(message)
     if (key) setActiveSubAgentSessionKey(key)
+  }
+
+  const openTraceRun = (runID: string) => {
+    if (!runID) return
+    setSelectedTraceRunId(runID)
+    setView('traces')
   }
 
   const continuePlanDiscussion = (message: ChatMessage) => {
@@ -317,6 +324,7 @@ export function AgentPanel({
                 onApprovePlan={onApproveProposedPlan}
                 onContinuePlan={continuePlanDiscussion}
                 onExitPlanMode={onExitPlanMode}
+                onOpenTrace={openTraceRun}
               />
               <InputArea
                 onSend={sendWithWritingSkill}
@@ -344,6 +352,7 @@ export function AgentPanel({
                 skills={skillCommands}
                 onContextAnalyze={openContextAnalysis}
                 tokenUsageMessages={tokenUsageMessages}
+                onOpenTrace={openTraceRun}
                 agentKey="ide"
                 workspace={workspace}
                 writingSkillControl={(
@@ -389,6 +398,7 @@ export function AgentPanel({
                         onApprovePlan={onApproveProposedPlan}
                         onContinuePlan={continuePlanDiscussion}
                         onExitPlanMode={onExitPlanMode}
+                        onOpenTrace={openTraceRun}
                       />
                       <InputArea
                         onSend={sendWithWritingSkill}
@@ -416,6 +426,7 @@ export function AgentPanel({
                         skills={skillCommands}
                         onContextAnalyze={openContextAnalysis}
                         tokenUsageMessages={tokenUsageMessages}
+                        onOpenTrace={openTraceRun}
                         agentKey="ide"
                         workspace={workspace}
                         writingSkillControl={(
@@ -471,7 +482,7 @@ export function AgentPanel({
           onEnterChat={() => setView('chat')}
         />
       ) : (
-        <AgentTracePanel disabled={isStreaming} />
+        <AgentTracePanel disabled={isStreaming} selectedRunId={selectedTraceRunId} />
       )}
     </aside>
   )

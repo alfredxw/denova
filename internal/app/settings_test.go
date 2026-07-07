@@ -124,7 +124,13 @@ func TestAppUpdateWorkspaceSettingsFiltersLLMInputLogSetting(t *testing.T) {
 		workspace: ws,
 	}
 	enabled := true
-	if _, err := a.UpdateWorkspaceSettings(config.Settings{LLMInputLogEnabled: &enabled}); err != nil {
+	retention := 1
+	if _, err := a.UpdateWorkspaceSettings(config.Settings{
+		LLMInputLogEnabled: &enabled,
+		TraceCaptureLevel:  "debug",
+		TraceExporter:      "otlp",
+		TraceRetentionRuns: &retention,
+	}); err != nil {
 		t.Fatal(err)
 	}
 	out, err := config.ReadSettingsFile(config.WorkspaceConfigPath(ws))
@@ -133,6 +139,9 @@ func TestAppUpdateWorkspaceSettingsFiltersLLMInputLogSetting(t *testing.T) {
 	}
 	if out.LLMInputLogEnabled != nil {
 		t.Fatalf("workspace llm input log setting should not be persisted: %#v", out.LLMInputLogEnabled)
+	}
+	if out.TraceCaptureLevel != "" || out.TraceExporter != "" || out.TraceRetentionRuns != nil {
+		t.Fatalf("workspace trace debug settings should not be persisted: %#v", out)
 	}
 }
 

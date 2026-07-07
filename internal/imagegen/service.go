@@ -2,10 +2,12 @@ package imagegen
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log"
 	"strings"
+	"unicode/utf8"
 
 	"denova/config"
 )
@@ -70,7 +72,7 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, request Gene
 	if adapter == nil {
 		return Result{}, fmt.Errorf("%w: %s", ErrUnsupportedProvider, profile.Provider)
 	}
-	log.Printf("[imagegen] generate begin provider=%s profile_id=%s model=%q size=%q quality=%q format=%q n=%d prompt_chars=%d, prompt: %s", profile.Provider, profile.ProfileID, profile.OpenAIModel, request.Size, request.Quality, request.OutputFormat, request.N, len([]rune(request.Prompt)), request.Prompt)
+	log.Printf("[imagegen] generate begin provider=%s profile_id=%s model=%q size=%q quality=%q format=%q n=%d prompt=%s", profile.Provider, profile.ProfileID, profile.OpenAIModel, request.Size, request.Quality, request.OutputFormat, request.N, promptSummary(request.Prompt))
 	result, err := adapter.Generate(ctx, profile, request)
 	if err != nil {
 		log.Printf("[imagegen] generate failed provider=%s profile_id=%s model=%q err=%v", profile.Provider, profile.ProfileID, profile.OpenAIModel, err)
@@ -103,6 +105,28 @@ func normalizeRequestOptions(request GenerateRequest) (GenerateRequest, error) {
 		request.OutputFormat = format
 	}
 	return request, nil
+}
+
+func promptSummary(prompt string) string {
+	prompt = strings.TrimSpace(prompt)
+	sum := sha256.Sum256([]byte(prompt))
+	preview := prompt
+	const limit = 160
+	if len(preview) > limit {
+		preview, _ = truncateUTF8Bytes(preview, limit)
+	}
+	return fmt.Sprintf("chars=%d bytes=%d hash=sha256:%x preview=%q", utf8.RuneCountInString(prompt), len(prompt), sum[:8], preview)
+}
+
+func truncateUTF8Bytes(value string, limit int) (string, bool) {
+	if limit <= 0 || len(value) <= limit {
+		return value, false
+	}
+	out := value[:limit]
+	for !utf8.ValidString(out) && len(out) > 0 {
+		out = out[:len(out)-1]
+	}
+	return out + "...", true
 }
 
 func normalizeSize(size string) (string, bool) {

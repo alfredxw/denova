@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -29,9 +30,6 @@ var (
 	modelInputLogJobs    chan modelInputLogJob
 	modelInputLogOnce    sync.Once
 	modelInputLogWG      sync.WaitGroup
-
-	modelInputLogPendingMu sync.Mutex
-	modelInputLogPending   = map[modelInputLogPendingKey][]string{}
 )
 
 const (
@@ -39,12 +37,10 @@ const (
 	modelInputLogQueueSize = 32
 )
 
-type modelInputLogPendingKey struct {
-	AgentKind string
-	Source    string
-}
-
 type modelInputLogOptions struct {
+	CallID    string
+	RunID     string
+	SpanID    string
 	AgentKind string
 	Source    string
 	Mode      string
@@ -57,6 +53,8 @@ type modelInputLogRecord struct {
 	Type         string                   `json:"type"`
 	Timestamp    string                   `json:"timestamp"`
 	CallID       string                   `json:"call_id"`
+	RunID        string                   `json:"run_id,omitempty"`
+	SpanID       string                   `json:"span_id,omitempty"`
 	AgentKind    string                   `json:"agent_kind,omitempty"`
 	Source       string                   `json:"source,omitempty"`
 	Mode         string                   `json:"mode,omitempty"`
@@ -72,6 +70,8 @@ type modelInputLogRecord struct {
 type modelInputLogInputJob struct {
 	Timestamp    string
 	CallID       string
+	RunID        string
+	SpanID       string
 	AgentKind    string
 	Source       string
 	Mode         string
@@ -142,16 +142,25 @@ func SetModelInputLoggingEnabled(enabled bool) {
 	modelInputLogEnabled.Store(enabled)
 }
 
+func newModelInputCallID() string {
+	callSeq := modelInputLogSeq.Add(1)
+	return fmt.Sprintf("llm-%d", callSeq)
+}
+
 func logFullModelInput(opts modelInputLogOptions) string {
 	if !modelInputLogEnabled.Load() {
 		return ""
 	}
+	callID := strings.TrimSpace(opts.CallID)
+	if callID == "" {
+		callID = newModelInputCallID()
+	}
 
-	callSeq := modelInputLogSeq.Add(1)
-	callID := fmt.Sprintf("llm-%d", callSeq)
 	input := modelInputLogInputJob{
 		Timestamp:    time.Now().UTC().Format(time.RFC3339Nano),
 		CallID:       callID,
+		RunID:        strings.TrimSpace(opts.RunID),
+		SpanID:       strings.TrimSpace(opts.SpanID),
 		AgentKind:    opts.AgentKind,
 		Source:       opts.Source,
 		Mode:         opts.Mode,
@@ -166,7 +175,6 @@ func logFullModelInput(opts modelInputLogOptions) string {
 		log.Printf("[llm-input-log] dropped agent=%s source=%s mode=%s call_id=%s reason=queue_full", opts.AgentKind, opts.Source, opts.Mode, callID)
 		return ""
 	}
-	rememberPendingModelInputLogCall(opts.AgentKind, opts.Source, callID)
 	log.Printf("[llm-input-log] queued agent=%s source=%s mode=%s call_id=%s path=%s messages=%d tools=%d", opts.AgentKind, opts.Source, opts.Mode, callID, modelInputLogPath, input.MessageCount, input.ToolCount)
 	return callID
 }
@@ -178,7 +186,6 @@ func logModelProviderRequestID(agentKind, source, mode, modelName, runID string,
 func logModelProviderRequestIDForCall(callID, agentKind, source, mode, modelName, runID string, callIndex int, msg *schema.Message) string {
 	requestID := providerRequestIDFromMessage(msg)
 	if requestID == "" {
-		forgetModelInputLogResponseCall(callID, agentKind, source)
 		return ""
 	}
 	log.Printf(
@@ -294,6 +301,8 @@ func writeModelInputLogJob(job modelInputLogJob) error {
 			Type:         "llm_input",
 			Timestamp:    input.Timestamp,
 			CallID:       input.CallID,
+			RunID:        input.RunID,
+			SpanID:       input.SpanID,
 			AgentKind:    input.AgentKind,
 			Source:       input.Source,
 			Mode:         input.Mode,
@@ -327,12 +336,8 @@ func attachProviderRequestIDToModelInputLog(callID, agentKind, source, mode, mod
 	}
 	callID = strings.TrimSpace(callID)
 	if callID == "" {
-		callID = takePendingModelInputLogCall(agentKind, source)
-	}
-	if callID == "" {
 		return
 	}
-	forgetPendingModelInputLogCall(callID)
 	record := &modelInputLogProviderRequestIDRecord{
 		Type:       "llm_provider_request_id",
 		Timestamp:  time.Now().UTC().Format(time.RFC3339Nano),
@@ -347,74 +352,6 @@ func attachProviderRequestIDToModelInputLog(callID, agentKind, source, mode, mod
 	}
 	if !enqueueModelInputLogJob(modelInputLogJob{providerRequestID: record}) {
 		log.Printf("[llm-input-log] provider_request_id dropped call_id=%s reason=queue_full", callID)
-	}
-}
-
-func forgetModelInputLogResponseCall(callID, agentKind, source string) {
-	callID = strings.TrimSpace(callID)
-	if callID != "" {
-		forgetPendingModelInputLogCall(callID)
-		return
-	}
-	if strings.TrimSpace(source) != "adk" {
-		return
-	}
-	_ = takePendingModelInputLogCall(agentKind, source)
-}
-
-func rememberPendingModelInputLogCall(agentKind, source, callID string) {
-	agentKind = strings.TrimSpace(agentKind)
-	source = strings.TrimSpace(source)
-	callID = strings.TrimSpace(callID)
-	if agentKind == "" || source != "adk" || callID == "" {
-		return
-	}
-	modelInputLogPendingMu.Lock()
-	defer modelInputLogPendingMu.Unlock()
-	key := modelInputLogPendingKey{AgentKind: agentKind, Source: source}
-	modelInputLogPending[key] = append(modelInputLogPending[key], callID)
-}
-
-func takePendingModelInputLogCall(agentKind, source string) string {
-	key := modelInputLogPendingKey{AgentKind: strings.TrimSpace(agentKind), Source: strings.TrimSpace(source)}
-	if key.AgentKind == "" || key.Source == "" {
-		return ""
-	}
-	modelInputLogPendingMu.Lock()
-	defer modelInputLogPendingMu.Unlock()
-	queue := modelInputLogPending[key]
-	if len(queue) == 0 {
-		return ""
-	}
-	callID := queue[0]
-	if len(queue) == 1 {
-		delete(modelInputLogPending, key)
-	} else {
-		modelInputLogPending[key] = append([]string(nil), queue[1:]...)
-	}
-	return callID
-}
-
-func forgetPendingModelInputLogCall(callID string) {
-	callID = strings.TrimSpace(callID)
-	if callID == "" {
-		return
-	}
-	modelInputLogPendingMu.Lock()
-	defer modelInputLogPendingMu.Unlock()
-	for key, queue := range modelInputLogPending {
-		for i, existing := range queue {
-			if existing != callID {
-				continue
-			}
-			queue = append(queue[:i], queue[i+1:]...)
-			if len(queue) == 0 {
-				delete(modelInputLogPending, key)
-			} else {
-				modelInputLogPending[key] = queue
-			}
-			return
-		}
 	}
 }
 
@@ -619,27 +556,42 @@ type modelInputLoggingChatModel struct {
 }
 
 func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
-	logFullModelInput(modelInputLogOptions{
-		AgentKind: m.agentKind,
-		Source:    "adk",
-		Mode:      "generate",
-		Config:    m.config,
-		Messages:  input,
-		Tools:     m.tools,
-	})
-	return m.inner.Generate(ctx, input, opts...)
+	span, callID, spanCtx := beginLLMCallTrace(ctx, m.agentKind, "adk", "generate", m.config, input, m.tools, false)
+	msg, err := m.inner.Generate(spanCtx, input, opts...)
+	finishLLMCallTrace(span, callID, m.agentKind, "adk", "generate", m.config.Model, 0, msg, err, nil)
+	return msg, err
 }
 
 func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
-	logFullModelInput(modelInputLogOptions{
-		AgentKind: m.agentKind,
-		Source:    "adk",
-		Mode:      "stream",
-		Config:    m.config,
-		Messages:  input,
-		Tools:     m.tools,
-	})
-	return m.inner.Stream(ctx, input, opts...)
+	span, callID, spanCtx := beginLLMCallTrace(ctx, m.agentKind, "adk", "stream", m.config, input, m.tools, true)
+	started := time.Now()
+	var firstChunk time.Time
+	var chunks []*schema.Message
+	stream, err := m.inner.Stream(spanCtx, input, opts...)
+	if err != nil {
+		finishLLMCallTrace(span, callID, m.agentKind, "adk", "stream", m.config.Model, 0, nil, err, nil)
+		return nil, err
+	}
+	return schema.StreamReaderWithConvert(stream, func(msg *schema.Message) (*schema.Message, error) {
+		if msg != nil {
+			if firstChunk.IsZero() {
+				firstChunk = time.Now()
+			}
+			chunks = append(chunks, msg)
+		}
+		return msg, nil
+	}, schema.WithErrWrapper(func(err error) error {
+		finishLLMCallTrace(span, callID, m.agentKind, "adk", "stream", m.config.Model, 0, nil, err, map[string]any{
+			"ttft_ms": durationMilliseconds(started, firstChunk),
+		})
+		return err
+	}), schema.WithOnEOF(func() (any, error) {
+		msg, concatErr := schema.ConcatMessages(chunks)
+		finishLLMCallTrace(span, callID, m.agentKind, "adk", "stream", m.config.Model, 0, msg, concatErr, map[string]any{
+			"ttft_ms": durationMilliseconds(started, firstChunk),
+		})
+		return nil, io.EOF
+	})), nil
 }
 
 func modelInputToolsFromContext(mc *adk.ModelContext) []*schema.ToolInfo {

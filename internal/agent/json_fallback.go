@@ -52,22 +52,18 @@ func generateContentOnce(ctx context.Context, modelCfg openai.ChatModelConfig, m
 		return "", fmt.Errorf("创建模型失败: %w", err)
 	}
 	mode := "generate_" + attempt
-	callID := logFullModelInput(modelInputLogOptions{
-		AgentKind: agentKind,
-		Source:    source,
-		Mode:      mode,
-		Config:    modelCfg,
-		Messages:  messages,
-	})
-	msg, err := cm.Generate(ctx, messages)
+	span, callID, traceCtx := beginLLMCallTrace(ctx, agentKind, source, mode, modelCfg, messages, nil, false)
+	msg, err := cm.Generate(traceCtx, messages)
 	if err != nil {
+		finishLLMCallTrace(span, callID, agentKind, source, mode, modelCfg.Model, 0, nil, err, nil)
 		return "", describeModelError(agentLabel, attempt, err)
 	}
 	if msg == nil {
+		finishLLMCallTrace(span, callID, agentKind, source, mode, modelCfg.Model, 0, nil, fmt.Errorf("模型返回为空"), nil)
 		log.Printf("[%s] nil response attempt=%s", agentLabel, attempt)
 		return "", fmt.Errorf("模型返回为空")
 	}
-	logModelProviderRequestIDForCall(callID, agentKind, source, mode, modelCfg.Model, "", 0, msg)
+	finishLLMCallTrace(span, callID, agentKind, source, mode, modelCfg.Model, 0, msg, nil, nil)
 	log.Printf("[%s] generate done attempt=%s content=%s", agentLabel, attempt, promptPartSummary(msg.Content))
 	return msg.Content, nil
 }
@@ -88,14 +84,14 @@ func streamWithJSONFallback(
 		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 	}
 	attempt := "json_mode"
-	stream, callID, err := openStreamOnce(ctx, jsonCfg, messages, agentKind, source, agentLabel, attempt)
+	stream, traceCall, err := openStreamOnce(ctx, jsonCfg, messages, agentKind, source, agentLabel, attempt)
 	if err != nil {
 		if ctx.Err() != nil {
 			return "", err
 		}
 		log.Printf("[%s] json_mode stream init failed, retry without response_format err=%v", agentLabel, err)
 		attempt = "plain_text_retry"
-		stream, callID, err = openStreamOnce(ctx, baseCfg, messages, agentKind, source, agentLabel, attempt)
+		stream, traceCall, err = openStreamOnce(ctx, baseCfg, messages, agentKind, source, agentLabel, attempt)
 		if err != nil {
 			return "", err
 		}
@@ -110,6 +106,7 @@ func streamWithJSONFallback(
 			break
 		}
 		if err != nil {
+			finishLLMCallTrace(traceCall.span, traceCall.callID, agentKind, source, traceCall.mode, traceCall.modelName, 0, nil, err, nil)
 			return "", fmt.Errorf("接收模型输出失败: %w", err)
 		}
 		if msg == nil {
@@ -126,12 +123,14 @@ func streamWithJSONFallback(
 	}
 	output := strings.TrimSpace(content.String())
 	if output == "" {
+		finishLLMCallTrace(traceCall.span, traceCall.callID, agentKind, source, traceCall.mode, traceCall.modelName, 0, nil, fmt.Errorf("模型返回为空"), nil)
 		return "", fmt.Errorf("模型返回为空")
 	}
 	if len(chunks) > 0 {
 		if msg, err := schema.ConcatMessages(chunks); err == nil {
-			logModelProviderRequestIDForCall(callID, agentKind, source, "stream_"+attempt, baseCfg.Model, "", 0, msg)
+			finishLLMCallTrace(traceCall.span, traceCall.callID, agentKind, source, traceCall.mode, traceCall.modelName, 0, msg, nil, nil)
 		} else {
+			finishLLMCallTrace(traceCall.span, traceCall.callID, agentKind, source, traceCall.mode, traceCall.modelName, 0, nil, err, nil)
 			log.Printf("[%s] concat stream response failed attempt=%s err=%v", agentLabel, attempt, err)
 		}
 	}
@@ -139,26 +138,29 @@ func streamWithJSONFallback(
 	return output, nil
 }
 
-func openStreamOnce(ctx context.Context, modelCfg openai.ChatModelConfig, messages []*schema.Message, agentKind, source, agentLabel, attempt string) (*schema.StreamReader[*schema.Message], string, error) {
+type manualLLMStreamTrace struct {
+	callID    string
+	mode      string
+	modelName string
+	span      *traceSpanHandle
+}
+
+func openStreamOnce(ctx context.Context, modelCfg openai.ChatModelConfig, messages []*schema.Message, agentKind, source, agentLabel, attempt string) (*schema.StreamReader[*schema.Message], manualLLMStreamTrace, error) {
 	log.Printf("[%s] stream begin attempt=%s model=%q base_url=%q json_mode=%t",
 		agentLabel, attempt, modelCfg.Model, modelCfg.BaseURL, modelCfg.ResponseFormat != nil)
 	cm, err := openai.NewChatModel(ctx, &modelCfg)
 	if err != nil {
 		log.Printf("[%s] create stream model failed attempt=%s err=%v", agentLabel, attempt, err)
-		return nil, "", fmt.Errorf("创建模型失败: %w", err)
+		return nil, manualLLMStreamTrace{}, fmt.Errorf("创建模型失败: %w", err)
 	}
-	callID := logFullModelInput(modelInputLogOptions{
-		AgentKind: agentKind,
-		Source:    source,
-		Mode:      "stream_" + attempt,
-		Config:    modelCfg,
-		Messages:  messages,
-	})
-	stream, err := cm.Stream(ctx, messages)
+	mode := "stream_" + attempt
+	span, callID, traceCtx := beginLLMCallTrace(ctx, agentKind, source, mode, modelCfg, messages, nil, true)
+	stream, err := cm.Stream(traceCtx, messages)
 	if err != nil {
-		return nil, callID, describeModelError(agentLabel, attempt, err)
+		finishLLMCallTrace(span, callID, agentKind, source, mode, modelCfg.Model, 0, nil, err, nil)
+		return nil, manualLLMStreamTrace{}, describeModelError(agentLabel, attempt, err)
 	}
-	return stream, callID, nil
+	return stream, manualLLMStreamTrace{callID: callID, mode: mode, modelName: modelCfg.Model, span: span}, nil
 }
 
 // describeModelError 处理本地 LM 返回空错误消息的情况，补充可读的错误描述。

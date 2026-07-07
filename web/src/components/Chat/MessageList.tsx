@@ -34,6 +34,7 @@ interface MessageListProps {
   onApprovePlan?: (message: ChatMessage) => void
   onContinuePlan?: (message: ChatMessage) => void
   onExitPlanMode?: () => void
+  onOpenTrace?: (runID: string) => void
   turnScrollRequest?: TurnScrollRequest
   onVisibleTurnAnchorChange?: (anchorId: string) => void
 }
@@ -64,7 +65,7 @@ interface MessageListVirtuosoContext {
 }
 
 /** 消息列表组件，支持流式内容实时展示和自动滚动 */
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const lastVisibleTurnAnchorRef = useRef('')
@@ -183,10 +184,11 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         onApprovePlan={onApprovePlan}
         onContinuePlan={onContinuePlan}
         onExitPlanMode={onExitPlanMode}
+        onOpenTrace={onOpenTrace}
         onPlanCardLayoutChange={anchorLatestPlanCardBottom}
       />
     )
-  }, [activeSubAgentSessionKey, anchorLatestPlanCardBottom, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onRegenerateMessage, onSubmitPlanQuestion, onSwitchMessageVersion])
+  }, [activeSubAgentSessionKey, anchorLatestPlanCardBottom, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onSubmitPlanQuestion, onSwitchMessageVersion])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -238,7 +240,7 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function ChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onPlanCardLayoutChange }: {
+function ChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange }: {
   item: ChatListItem
   isStreaming: boolean
   highlightDialogue: boolean
@@ -255,6 +257,7 @@ function ChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onEdi
   onApprovePlan?: (message: ChatMessage) => void
   onContinuePlan?: (message: ChatMessage) => void
   onExitPlanMode?: () => void
+  onOpenTrace?: (runID: string) => void
   onPlanCardLayoutChange?: () => void
 }) {
   const { t } = useTranslation()
@@ -294,6 +297,7 @@ function ChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onEdi
           messageStyle={messageStyle}
           onInsertIllustration={onInsertIllustration}
           onGenerateInteractiveImage={onGenerateInteractiveImage}
+          onOpenTrace={onOpenTrace}
         />
       ) : (
         <MessageItem
@@ -312,6 +316,7 @@ function ChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onEdi
           onApprovePlan={isStreaming ? undefined : onApprovePlan}
           onContinuePlan={isStreaming ? undefined : onContinuePlan}
           onExitPlanMode={isStreaming ? undefined : onExitPlanMode}
+          onOpenTrace={onOpenTrace}
           onPlanCardLayoutChange={onPlanCardLayoutChange}
         />
       )}
@@ -566,7 +571,7 @@ function isTraceMessage(message: ChatMessage) {
   return message.role === 'thinking' || message.role === 'tool_call' || message.role === 'tool_result'
 }
 
-function TraceGroup({ messages, highlightDialogue, messageStyle, onInsertIllustration, onGenerateInteractiveImage }: { messages: ChatMessage[]; highlightDialogue: boolean; messageStyle?: CSSProperties; onInsertIllustration?: (illustration: ChapterIllustration) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void }) {
+function TraceGroup({ messages, highlightDialogue, messageStyle, onInsertIllustration, onGenerateInteractiveImage, onOpenTrace }: { messages: ChatMessage[]; highlightDialogue: boolean; messageStyle?: CSSProperties; onInsertIllustration?: (illustration: ChapterIllustration) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; onOpenTrace?: (runID: string) => void }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const toolCount = messages.filter((message) => message.role === 'tool_call').length
@@ -606,6 +611,7 @@ function TraceGroup({ messages, highlightDialogue, messageStyle, onInsertIllustr
                     messageStyle={messageStyle}
                     onInsertIllustration={onInsertIllustration}
                     onGenerateInteractiveImage={onGenerateInteractiveImage}
+                    onOpenTrace={onOpenTrace}
                   />
                 )
             ))}

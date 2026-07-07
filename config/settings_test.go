@@ -34,6 +34,12 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AgentToolResultLimitKB == nil || *s.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
 		t.Fatalf("AgentToolResultLimitKB default")
 	}
+	if s.TraceCaptureLevel != DefaultTraceCaptureLevel || s.TraceExporter != DefaultTraceExporter {
+		t.Fatalf("trace defaults: capture=%q exporter=%q", s.TraceCaptureLevel, s.TraceExporter)
+	}
+	if s.TraceRetentionRuns == nil || *s.TraceRetentionRuns != DefaultTraceRetentionRuns {
+		t.Fatalf("TraceRetentionRuns default")
+	}
 	if s.InteractiveStageFontSize == nil || *s.InteractiveStageFontSize != 16 {
 		t.Fatalf("InteractiveStageFontSize default")
 	}
@@ -662,5 +668,30 @@ func TestLoadLayeredIgnoresLLMInputLogFromWorkspaceLayer(t *testing.T) {
 	}
 	if layered.Effective.LLMInputLogEnabled == nil || *layered.Effective.LLMInputLogEnabled {
 		t.Fatalf("workspace llm input log should not become effective: %#v", layered.Effective.LLMInputLogEnabled)
+	}
+}
+
+func TestLoadLayeredIgnoresTraceDebugSettingsFromWorkspaceLayer(t *testing.T) {
+	home := t.TempDir()
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".nova"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("trace_capture_level = \"debug\"\ntrace_exporter = \"local\"\ntrace_retention_runs = 7\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, ".nova", "config.toml"), []byte("trace_capture_level = \"off\"\ntrace_exporter = \"otlp\"\ntrace_retention_runs = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	layered, err := LoadLayered(home, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layered.Workspace.TraceCaptureLevel != "" || layered.Workspace.TraceExporter != "" || layered.Workspace.TraceRetentionRuns != nil {
+		t.Fatalf("workspace trace debug settings should be filtered: %#v", layered.Workspace)
+	}
+	if layered.Effective.TraceCaptureLevel != "debug" || layered.Effective.TraceExporter != "local" || layered.Effective.TraceRetentionRuns == nil || *layered.Effective.TraceRetentionRuns != 7 {
+		t.Fatalf("user trace debug settings should remain effective: %#v", layered.Effective)
 	}
 }

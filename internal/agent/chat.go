@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
@@ -163,9 +164,25 @@ func (r *Runtime) Run(
 	if ledgerErr != nil {
 		runLogger.Warn("run_ledger_unavailable", slog.String("workspace", workspace), slog.Any("error", ledgerErr))
 	}
-	checkpointID := options.checkpointID(runLedger.ID())
-	observer := newRunObserver(runLedger)
-	usageCollector := newRunTokenUsageCollector(runLedger.ID(), options.AgentKind)
+	rootSpan := StartRootTraceSpan(runLedger, map[string]any{
+		"workspace":  workspace,
+		"task_id":    options.TaskID,
+		"agent_kind": options.AgentKind,
+		"session_id": options.SessionID,
+		"mode":       options.Mode,
+	})
+	rootSpanID := ""
+	if rootSpan != nil {
+		rootSpanID = rootSpan.SpanID()
+	}
+	runID := ""
+	if runLedger != nil {
+		runID = runLedger.ID()
+	}
+	traceCtx := ContextWithRunTrace(ctx, runID, runLedger, rootSpanID)
+	checkpointID := options.checkpointID(runID)
+	observer := newRunObserver(runLedger, rootSpanID)
+	usageCollector := newRunTokenUsageCollector(runID, options.AgentKind)
 	if runLedger != nil {
 		defer func() {
 			if err := runLedger.Close(); err != nil {
@@ -180,12 +197,17 @@ func (r *Runtime) Run(
 		}
 		finished = true
 		usageCollector.EmitIfAny(emit, generatedBytes)
+		if rootSpan != nil {
+			rootSpan.Finish(status, map[string]any{
+				"reason":          strings.TrimSpace(reason),
+				"generated_bytes": generatedBytes,
+			})
+		}
 		if err := runLedger.RecordFinish(status, reason, generatedBytes); err != nil {
 			runLogger.Warn("run_ledger_finish_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
 		}
 	}
 
-	runID := runLedger.ID()
 	if runID == "" {
 		runID = options.TaskID
 	}
@@ -232,6 +254,7 @@ func (r *Runtime) Run(
 	if shouldResumeInterruptedRequest(req.Message) {
 		pendingInterruption = conversation.PendingInterruption()
 	}
+	contextBuildStarted := time.Now()
 	composition := composeAgentInput(req, pendingInterruption, bookService, policy)
 	req = composition.Request
 	originalMessage = composition.OriginalMessage
@@ -256,7 +279,8 @@ func (r *Runtime) Run(
 		return
 	}
 	if compactor, ok := conversation.(ContextCompactionConversation); ok {
-		compactedHistory, compactionResult, compactErr := compactor.CompactContextIfNeeded(ctx, ContextCompactionInput{
+		compactionStarted := time.Now()
+		compactedHistory, compactionResult, compactErr := compactor.CompactContextIfNeeded(ContextWithRunObserver(traceCtx, observer), ContextCompactionInput{
 			Messages:     history,
 			AgentMessage: agentMessage,
 			Phase:        contextCompactionPhasePreRun,
@@ -281,11 +305,27 @@ func (r *Runtime) Run(
 			}); err != nil {
 				runLogger.Warn("run_ledger_context_compaction_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
 			}
+			RecordCompletedTraceSpan(traceCtx, "context_compaction", compactionStarted, "success", map[string]any{
+				"phase":                 compactionResult.Phase,
+				"epoch":                 compactionResult.Epoch,
+				"tokens_before":         compactionResult.TokensBefore,
+				"tokens_after":          compactionResult.TokensAfter,
+				"context_window_tokens": compactionResult.ContextWindowTokens,
+				"threshold":             compactionResult.Threshold,
+			})
 		}
 	}
 	if err := runLedger.RecordContext(contextLog.Audit()); err != nil {
 		runLogger.Warn("run_ledger_context_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
 	}
+	RecordCompletedTraceSpan(traceCtx, "context_build", contextBuildStarted, "success", map[string]any{
+		"history_messages":    len(history),
+		"context_parts":       len(contextLog.Audit()),
+		"message_chars":       len([]rune(originalMessage)),
+		"agent_message_chars": len([]rune(agentMessage)),
+		"plan_mode":           req.PlanMode,
+		"writing_skill":       req.WritingSkill,
+	})
 	runLogger.Info(
 		"context_composition",
 		slog.String("history", messageListSummary(history)),
@@ -307,7 +347,7 @@ func (r *Runtime) Run(
 		}
 	}
 
-	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(ContextWithRunObserver(ctx, observer), conversation))
+	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(ContextWithRunObserver(traceCtx, observer), conversation))
 	defer cancelRun()
 	runOptions := []adk.AgentRunOption{}
 	if checkpointID != "" {

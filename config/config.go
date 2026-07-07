@@ -43,6 +43,9 @@ type Config struct {
 	RuntimeWebPort              int                          `toml:"-"`
 	DevMode                     bool                         `toml:"-"`
 	LLMInputLogEnabled          bool                         `toml:"llm_input_log_enabled"`
+	TraceCaptureLevel           string                       `toml:"trace_capture_level"`
+	TraceExporter               string                       `toml:"trace_exporter"`
+	TraceRetentionRuns          int                          `toml:"trace_retention_runs"`
 	IDEStoryTellerID            string                       `toml:"-"`
 	IDEImagePresetID            string                       `toml:"-"`
 	ImagePresetToolPrompt       string                       `toml:"-"`
@@ -111,6 +114,9 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
 		LLMInputLogEnabled:          settingsBool(s.LLMInputLogEnabled, false),
+		TraceCaptureLevel:           settingsString(s.TraceCaptureLevel, DefaultTraceCaptureLevel),
+		TraceExporter:               settingsString(s.TraceExporter, DefaultTraceExporter),
+		TraceRetentionRuns:          settingsInt(s.TraceRetentionRuns, DefaultTraceRetentionRuns),
 		ChapterFilenameFormat:       s.ChapterFilenameFormat,
 		VolumeDirFormat:             s.VolumeDirFormat,
 		HideChapterBodyLiveOutput:   settingsBool(s.HideChapterBodyLiveOutput, false),
@@ -242,6 +248,15 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.LLMInputLogEnabled {
 		settings.LLMInputLogEnabled = &cfg.LLMInputLogEnabled
 	}
+	if cfg.TraceCaptureLevel != "" {
+		settings.TraceCaptureLevel = cfg.TraceCaptureLevel
+	}
+	if cfg.TraceExporter != "" {
+		settings.TraceExporter = cfg.TraceExporter
+	}
+	if cfg.TraceRetentionRuns > 0 {
+		settings.TraceRetentionRuns = &cfg.TraceRetentionRuns
+	}
 	if cfg.OpenAIContextWindowTokens > 0 {
 		settings.OpenAIContextWindowTokens = &cfg.OpenAIContextWindowTokens
 	}
@@ -296,6 +311,9 @@ func Load() *Config {
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
 			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
 			LLMInputLogEnabled:          settingsBool(d.LLMInputLogEnabled, false),
+			TraceCaptureLevel:           settingsString(d.TraceCaptureLevel, DefaultTraceCaptureLevel),
+			TraceExporter:               settingsString(d.TraceExporter, DefaultTraceExporter),
+			TraceRetentionRuns:          settingsInt(d.TraceRetentionRuns, DefaultTraceRetentionRuns),
 			ChapterFilenameFormat:       d.ChapterFilenameFormat,
 			VolumeDirFormat:             d.VolumeDirFormat,
 			HideChapterBodyLiveOutput:   settingsBool(d.HideChapterBodyLiveOutput, false),
@@ -350,6 +368,13 @@ func settingsBool(v *bool, fallback bool) bool {
 		return fallback
 	}
 	return *v
+}
+
+func settingsString(v, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return v
 }
 
 // LoadForWorkspace 加载配置并明确指定 workspace，用于 CLI 参数场景。

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -199,6 +200,112 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	}
 	if len(trace.Records) != 10 || trace.Summary.ID != summaries[0].ID {
 		t.Fatalf("unexpected trace detail: %#v", trace)
+	}
+}
+
+func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
+	oldTraceConfig := traceRuntimeConfigSnapshot()
+	SetTraceRuntimeConfig(TraceCaptureSummary, TraceExporterLocal, 100)
+	t.Cleanup(func() {
+		SetTraceRuntimeConfig(oldTraceConfig.CaptureLevel, oldTraceConfig.Exporter, oldTraceConfig.RetentionRuns)
+	})
+
+	workspace := t.TempDir()
+	ledger, err := newRunLedgerWithOptions(workspace, RunLedgerPolicy{Enabled: true, Directory: ".denova/runs", PreviewChars: 8}, RunOptions{
+		AgentKind: AgentKindIDE,
+		TaskID:    "task-structured-trace",
+		Workspace: workspace,
+		Mode:      "ide",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := StartRootTraceSpan(ledger, map[string]any{"agent_kind": AgentKindIDE})
+	if root == nil || root.SpanID() == "" {
+		t.Fatal("expected root trace span")
+	}
+	ctx := ContextWithRunObserver(ContextWithRunTrace(context.Background(), ledger.ID(), ledger, root.SpanID()), newRunObserver(ledger, root.SpanID()))
+	llm, _ := StartTraceSpan(ctx, "llm_call", map[string]any{
+		"call_id":    "call-1",
+		"model":      "test-model",
+		"mode":       "generate",
+		"prompt":     strings.Repeat("secret prompt ", 20),
+		"tool_count": 1,
+	})
+	if llm == nil || llm.SpanID() == "" {
+		t.Fatal("expected llm trace span")
+	}
+	RunObserverFromContext(ctx).RecordLLMSpan(llm.SpanID())
+	llm.Finish("success", map[string]any{
+		"provider_request_id":  "provider-1",
+		"finish_reason":        "tool_calls",
+		"prompt_tokens":        12,
+		"cached_prompt_tokens": 4,
+		"completion_tokens":    6,
+		"total_tokens":         18,
+	})
+	RunObserverFromContext(ctx).RecordToolDecision(ToolDecision{
+		ToolName:   "read_file",
+		ToolCallID: "tool-1",
+		Source:     ToolSourceRead,
+		Capability: "file_read",
+		Action:     "allowed",
+		Target:     "chapters/ch01.md",
+	})
+	RunObserverFromContext(ctx).RecordToolExecution(ToolExecutionRecord{
+		ToolName:      "read_file",
+		ToolCallID:    "tool-1",
+		Status:        "success",
+		Capability:    "file_read",
+		OriginalBytes: 4096,
+		ReturnedBytes: 512,
+		Truncated:     true,
+		Target:        "chapters/ch01.md",
+	})
+	root.Finish("success", map[string]any{"generated_bytes": 32})
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	trace, err := ReadRunTrace(workspace, ledger.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trace.Summary.LLMCalls != 1 {
+		t.Fatalf("expected one llm call in summary: %#v", trace.Summary)
+	}
+	var rootData, llmData, toolData map[string]any
+	for _, record := range readRunLedgerRecords(t, ledger.Path()) {
+		data, _ := record["data"].(map[string]any)
+		switch record["type"] {
+		case "agent_run":
+			rootData = data
+		case "llm_call":
+			llmData = data
+		case "tool_call":
+			toolData = data
+		}
+	}
+	if rootData == nil || llmData == nil || toolData == nil {
+		t.Fatalf("expected root, llm, and tool span records: root=%#v llm=%#v tool=%#v", rootData, llmData, toolData)
+	}
+	if llmData["parent_span_id"] != rootData["span_id"] {
+		t.Fatalf("llm parent span mismatch: llm=%#v root=%#v", llmData, rootData)
+	}
+	if toolData["parent_span_id"] != llmData["span_id"] {
+		t.Fatalf("tool parent span should point at llm span: tool=%#v llm=%#v", toolData, llmData)
+	}
+	llmAttrs := llmData["attrs"].(map[string]any)
+	if llmAttrs["provider_request_id"] != "provider-1" || llmAttrs["total_tokens"].(float64) != 18 {
+		t.Fatalf("llm attrs should include provider id and tokens: %#v", llmAttrs)
+	}
+	promptSummary, ok := llmAttrs["prompt"].(map[string]any)
+	if !ok || promptSummary["hash"] == "" || promptSummary["preview"] == "" {
+		t.Fatalf("prompt should be summarized with hash and preview: %#v", llmAttrs["prompt"])
+	}
+	encoded, _ := json.Marshal(llmData)
+	if strings.Contains(string(encoded), strings.Repeat("secret prompt ", 20)) {
+		t.Fatalf("trace span should not persist full prompt: %s", string(encoded))
 	}
 }
 

@@ -37,6 +37,8 @@ type RunTraceSummary struct {
 	ToolErrors         int       `json:"tool_errors,omitempty"`
 	ToolTruncated      int       `json:"tool_truncated,omitempty"`
 	InvalidToolArgs    int       `json:"invalid_tool_args,omitempty"`
+	LLMCalls           int       `json:"llm_calls,omitempty"`
+	DurationMS         int64     `json:"duration_ms,omitempty"`
 	Mutations          int       `json:"mutations,omitempty"`
 	VerificationStatus string    `json:"verification_status,omitempty"`
 	Recoverable        bool      `json:"recoverable,omitempty"`
@@ -163,6 +165,11 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 	case "context_ledger":
 		summary.ContextParts += runTraceContextPartCount(record.Data)
 		summary.Phase = "context_ready"
+	case "context_build":
+		summary.Phase = "context_ready"
+	case "llm_call":
+		summary.LLMCalls++
+		summary.Phase = "model_running"
 	case "tool_decision":
 		summary.ToolCalls++
 		if runTraceToolDecisionInvalidArgs(record.Data) {
@@ -196,6 +203,13 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 			summary.Reason = reason
 		}
 		summary.Phase = "finished"
+	case "agent_run":
+		if status, _ := record.Data["status"].(string); status != "" {
+			summary.Status = status
+		}
+		if duration, ok := numericInt64Field(record.Data, "duration_ms"); ok {
+			summary.DurationMS = duration
+		}
 	}
 	if summary.Status == "" {
 		summary.Status = "running"
@@ -246,6 +260,22 @@ func runTraceVerificationStatus(data map[string]any) string {
 		return ""
 	}
 	return stringField(verification, "status")
+}
+
+func numericInt64Field(data map[string]any, key string) (int64, bool) {
+	if data == nil {
+		return 0, false
+	}
+	switch value := data[key].(type) {
+	case int:
+		return int64(value), true
+	case int64:
+		return value, true
+	case float64:
+		return int64(value), true
+	default:
+		return 0, false
+	}
 }
 
 func stringField(data map[string]any, key string) string {

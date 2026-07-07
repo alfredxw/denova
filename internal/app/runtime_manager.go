@@ -531,6 +531,9 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 		return config.LayeredSettings{}, fmt.Errorf("当前没有打开的工作区")
 	}
 	settings.LLMInputLogEnabled = nil
+	settings.TraceCaptureLevel = ""
+	settings.TraceExporter = ""
+	settings.TraceRetentionRuns = nil
 	path := config.WorkspaceConfigPath(workspace)
 	if err := config.WriteSettingsFileIfRevision(path, settings, baseRevision); err != nil {
 		return config.LayeredSettings{}, err
@@ -630,6 +633,15 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	}
 	if effective.LLMInputLogEnabled != nil {
 		cfg.LLMInputLogEnabled = *effective.LLMInputLogEnabled
+	}
+	if effective.TraceCaptureLevel != "" {
+		cfg.TraceCaptureLevel = effective.TraceCaptureLevel
+	}
+	if effective.TraceExporter != "" {
+		cfg.TraceExporter = effective.TraceExporter
+	}
+	if effective.TraceRetentionRuns != nil {
+		cfg.TraceRetentionRuns = appSettingsInt(effective.TraceRetentionRuns, config.DefaultTraceRetentionRuns)
 	}
 	if effective.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = effective.ChapterFilenameFormat
@@ -737,6 +749,15 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.LLMInputLogEnabled != nil {
 		cfg.LLMInputLogEnabled = *settings.LLMInputLogEnabled
 	}
+	if settings.TraceCaptureLevel != "" {
+		cfg.TraceCaptureLevel = settings.TraceCaptureLevel
+	}
+	if settings.TraceExporter != "" {
+		cfg.TraceExporter = settings.TraceExporter
+	}
+	if settings.TraceRetentionRuns != nil {
+		cfg.TraceRetentionRuns = appSettingsInt(settings.TraceRetentionRuns, config.DefaultTraceRetentionRuns)
+	}
 	if settings.ChapterFilenameFormat != "" {
 		cfg.ChapterFilenameFormat = settings.ChapterFilenameFormat
 	}
@@ -775,6 +796,7 @@ func syncRuntimeDiagnostics(cfg *config.Config) {
 		return
 	}
 	agent.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
+	agent.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
 }
 
 func (s *WorkspaceRuntimeManager) versionService() *book.VersionService {
