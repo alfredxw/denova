@@ -1,0 +1,91 @@
+CHANGELOG.md
+  s_4fb055ed281a11::t_cd9417d82fb399 11-16,78-79,149-150
+cmd/denova/main.go
+  s_4fb055ed281a11::t_2f660708e74c94 48
+config/config.go
+  s_4fb055ed281a11::t_91c0de615bc347 46-48,117-119,251-259,314-316,373-379
+config/settings.go
+  s_4fb055ed281a11::t_78bfafbb4eef38 84-86,107-109,151-153,315-323,509-511
+config/settings_test.go
+  s_4fb055ed281a11::t_32f556d7feb8d6 37-42,673-697
+internal/agent/automation_trigger.go
+  s_4fb055ed281a11::t_71aaa1e92265de 33-34,36,40,43
+internal/agent/chat.go
+  s_4fb055ed281a11::t_89015288db8fae 8,167-185,200-205,257,282-283,308-315,321-328,350
+internal/agent/context_compaction.go
+  s_4fb055ed281a11::t_23a949e29a3703 366-368,370,373
+internal/agent/json_fallback.go
+  s_4fb055ed281a11::t_72de1fc8b6734b 55-56,58,62,66,87,94,109,126,131,133,141-148,154,156-158,160-161,163
+internal/agent/loop_ledger_test.go
+  s_4fb055ed281a11::t_07905d8ebf53fd 5,206-311
+internal/agent/model_input_log.go
+  s_4fb055ed281a11::t_7088da862011bb 9,41-43,56-57,73-74,145-149,154-157,162-163,304-305,559-562,566-594
+internal/agent/model_input_log_test.go
+  s_4fb055ed281a11::t_a6b485a19c9923 189,203,218,238,242,256,267,279-281,284,292-293,303-312,314-315
+internal/agent/run_ledger.go
+  s_4fb055ed281a11::t_7b6be3633257af 5,11,40,44-50,56-57,67-69,95,171-181,273,277,282-321,331-340,357-397
+internal/agent/run_observer.go
+  s_4fb055ed281a11::t_00fb1c0da2b431 6,13-17,20-21,39-47,55-65,75-99,119-132
+internal/agent/run_trace.go
+  s_4fb055ed281a11::t_a4d371ac375238 40-41,168-172,206-212,265-280
+internal/agent/tool_agent.go
+  s_4fb055ed281a11::t_641a6750099f66 67-69,71,76,80
+internal/agent/trace.go
+  s_4fb055ed281a11::t_bbae8f51dc5ec2 1-343
+internal/agent/version_summary.go
+  s_4fb055ed281a11::t_12355864694bd1 31-32,34,38,41
+internal/app/runtime_manager.go
+  s_4fb055ed281a11::t_bcfabee8550831 534-536,637-645,752-760,799
+internal/app/settings_test.go
+  s_4fb055ed281a11::t_4bb904f1a84bf7 127-133,143-145
+internal/imagegen/service.go
+  s_4fb055ed281a11::t_3ae0cfb3d30b1e 5,10,75,110-131
+internal/imagegen/service_test.go
+  s_4fb055ed281a11::t_76ec606ab33555 3-6,39-49
+web/src/components/Chat/AgentPanel.tsx
+  s_4fb055ed281a11::t_eb59d5ed56b0dc 126,224-229,327,355,401,429,485
+web/src/components/Chat/AgentTracePanel.tsx
+  s_4fb055ed281a11::t_e8c3dbf24056ac 2,7-9,12,15-24,27,29,33,39,41,50,53-58,80-92,97-100,104,112,127,129,132-133,144-168,180-190,192-239,241-247,249-260,264-441,454-464
+web/src/components/Chat/InputArea.tsx
+  s_4fb055ed281a11::t_5ea02051032ae6 94,135,634
+web/src/components/Chat/MessageItem.tsx
+  s_4fb055ed281a11::t_ddbe75166d9ade 6,38,49,135,144,167-170,179-193,833,887,1280,1303
+web/src/components/Chat/MessageList.tsx
+  s_4fb055ed281a11::t_ddb0f738327780 37,68,187,191,243,260,300,319,574,614
+web/src/components/Chat/TokenUsagePanel.tsx
+  s_4fb055ed281a11::t_545fd51d490061 1,109,113,121-125,161,240,257,262-271
+web/src/features/interactive/components/StoryStage.tsx
+  s_4fb055ed281a11::t_356378a5ab8a75 3,18,38,142-143,203-209,1218,1547-1560
+web/src/features/settings/SettingsView.tsx
+  s_4fb055ed281a11::t_4518fc821f8f52 50-58,462-471,475-477,1128-1177
+web/src/features/settings/types.ts
+  s_4fb055ed281a11::t_e67319f9e67aa6 51-53
+web/src/i18n/locales/en-US/chat.ts
+  s_4fb055ed281a11::t_effdd6d2d587d4 64,68,74,76-108,234
+web/src/i18n/locales/en-US/settings.ts
+  s_4fb055ed281a11::t_0dae37b7eb8b70 73-81
+web/src/i18n/locales/zh-CN/chat.ts
+  s_4fb055ed281a11::t_8b9aa228e3252f 64,68,74,76-108,234
+web/src/i18n/locales/zh-CN/settings.ts
+  s_4fb055ed281a11::t_9c1c7c8a663c7b 73-81
+web/src/lib/api-client/types.ts
+  s_4fb055ed281a11::t_d2f27e667d8dd7 146-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "d480ef505cee67530cdef1c9e37e60b5da20af5a",
+  "prompts": {},
+  "sessions": {
+    "s_4fb055ed281a11": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3ac5-156b-7d92-aae5-1a9c8385e562",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
