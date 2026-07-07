@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Copy, Trash2 } from 'lucide-react'
+import { Copy, GripVertical, Plus, Trash2, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -13,8 +16,8 @@ import { cloneWithNewId, formatPresetJSON, itemKey, joinListInput, nextPresetId,
 const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
 const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
 const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-const visualEditorShellClassName = 'grid h-[clamp(360px,calc(100dvh-15rem),720px)] min-h-0 gap-3 overflow-hidden lg:grid-cols-[260px_minmax(0,1fr)]'
-const detailScrollPaneClassName = 'min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]'
+const visualEditorShellClassName = 'grid min-h-0 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]'
+const detailScrollPaneClassName = 'min-w-0'
 
 export function EventPackageVisualEditor({
   value,
@@ -862,7 +865,7 @@ function actorStateActorKey(item: ActorStateInitialActor, index: number) {
 }
 
 function DetailPanel({ children, dense = false, className = '' }: { children: ReactNode; dense?: boolean; className?: string }) {
-  return <section className={`min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] ${dense ? 'p-3' : 'p-4'} grid gap-3 ${className}`}>{children}</section>
+  return <section className={`min-w-0 rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] ${dense ? 'p-3' : 'p-4'} grid gap-3 ${className}`}>{children}</section>
 }
 
 function EmptyDetail({ children }: { children: ReactNode }) {
@@ -1215,79 +1218,210 @@ function StructureDetails({
         <Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={structure.generation_instruction || ''} disabled={readOnly} onChange={(e) => onPatch({ generation_instruction: e.target.value })} />
       </Field>
 
-      {/* Fields sub-editor */}
-      <div className="grid min-h-[280px] gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <SortablePresetList
-          items={fields}
-          activeId={activeFieldId}
-          getId={(f, i) => itemKey(f, i, 'field')}
-          getTitle={(f) => f.name || f.id}
-          getSubtitle={(f) => {
-            const parts: string[] = [f.id]
-            if (f.required) parts.push(t('settingPanel.presetConfig.required'))
-            if (f.enabled === false) parts.push(t('settingPanel.disabled'))
-            return parts.join(' · ')
-          }}
-          addLabel={t('settingPanel.presetConfig.addField')}
-          emptyLabel={t('settingPanel.presetConfig.fields')}
-          onAdd={onAddField}
-          onActiveIdChange={onActiveFieldIdChange}
-          onItemsChange={onFieldsChange}
-        />
-        <FieldDetails
-          field={fields.find((f, i) => itemKey(f, i, 'field') === activeFieldId) || null}
-          defsReadOnly={fieldDefsReadOnly}
-          onPatch={onPatchField}
-          onCopy={onCopyField}
-          onDelete={readOnly ? undefined : onDeleteField}
-        />
-      </div>
+      {/* Fields accordion editor */}
+      <FieldAccordionList
+        fields={fields}
+        activeFieldId={activeFieldId}
+        readOnly={fieldDefsReadOnly}
+        onActiveFieldIdChange={onActiveFieldIdChange}
+        onFieldsChange={onFieldsChange}
+        onPatchField={onPatchField}
+        onAddField={onAddField}
+        onCopyField={onCopyField}
+        onDeleteField={readOnly ? undefined : onDeleteField}
+      />
     </DetailPanel>
   )
 }
 
-function FieldDetails({
+function FieldAccordionList({
+  fields,
+  activeFieldId,
+  readOnly,
+  onActiveFieldIdChange,
+  onFieldsChange,
+  onPatchField,
+  onAddField,
+  onCopyField,
+  onDeleteField,
+}: {
+  fields: StoryMemoryField[]
+  activeFieldId: string
+  readOnly: boolean
+  onActiveFieldIdChange: (id: string) => void
+  onFieldsChange: (fields: StoryMemoryField[]) => void
+  onPatchField: (patch: Partial<StoryMemoryField>) => void
+  onAddField: () => void
+  onCopyField: () => void
+  onDeleteField?: () => void
+}) {
+  const { t } = useTranslation()
+  const [expandedId, setExpandedId] = useState<string>(activeFieldId || '')
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  // Sync expanded with active
+  useEffect(() => {
+    if (activeFieldId && !expandedId) {
+      setExpandedId(activeFieldId)
+    }
+  }, [activeFieldId, expandedId])
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const ids = fields.map((f, i) => itemKey(f, i, 'field'))
+    const oldIndex = ids.indexOf(String(active.id))
+    const newIndex = ids.indexOf(String(over.id))
+    if (oldIndex < 0 || newIndex < 0) return
+    onFieldsChange(arrayMove(fields, oldIndex, newIndex))
+  }
+
+  const toggleExpand = (id: string) => {
+    setExpandedId((prev) => (prev === id ? '' : id))
+    onActiveFieldIdChange(id)
+  }
+
+  return (
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium text-[var(--nova-text-faint)]">
+          {t('settingPanel.presetConfig.fields')} ({fields.length})
+        </span>
+        {!readOnly ? (
+          <Button className={iconActionClassName} variant="outline" size="icon-sm" onClick={onAddField} aria-label={t('settingPanel.presetConfig.addField')} title={t('settingPanel.presetConfig.addField')}>
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
+      </div>
+      {fields.length === 0 ? (
+        <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-3 py-4 text-xs text-[var(--nova-text-faint)]">
+          {t('settingPanel.presetConfig.emptyFields')}
+        </div>
+      ) : (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={fields.map((f, i) => itemKey(f, i, 'field'))} strategy={verticalListSortingStrategy}>
+            <div className="space-y-1">
+              {fields.map((field, index) => {
+                const id = itemKey(field, index, 'field')
+                const isExpanded = expandedId === id
+                return (
+                  <FieldAccordionItem
+                    key={id}
+                    id={id}
+                    field={field}
+                    index={index}
+                    expanded={isExpanded}
+                    readOnly={readOnly}
+                    onToggle={() => toggleExpand(id)}
+                    onPatch={onPatchField}
+                    onCopy={onCopyField}
+                    onDelete={onDeleteField}
+                  />
+                )
+              })}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
+    </div>
+  )
+}
+
+function FieldAccordionItem({
+  id,
   field,
-  defsReadOnly,
+  index,
+  expanded,
+  readOnly,
+  onToggle,
   onPatch,
   onCopy,
   onDelete,
 }: {
-  field: StoryMemoryField | null
-  defsReadOnly: boolean
+  id: string
+  field: StoryMemoryField
+  index: number
+  expanded: boolean
+  readOnly: boolean
+  onToggle: () => void
   onPatch: (patch: Partial<StoryMemoryField>) => void
   onCopy: () => void
   onDelete?: () => void
 }) {
   const { t } = useTranslation()
-  if (!field) {
-    return <EmptyDetail>{t('settingPanel.presetConfig.emptyFields')}</EmptyDetail>
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
   }
 
   return (
-    <DetailPanel dense>
-      <div className="flex justify-end">
-        <DetailActions onCopy={onCopy} onDelete={onDelete} />
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] ${isDragging ? 'opacity-60' : ''}`}
+    >
+      {/* Collapsed header row */}
+      <div className="flex items-center gap-1 px-1.5 py-1.5">
+        {!readOnly ? (
+          <button
+            type="button"
+            className="nova-nav-item flex h-7 w-6 shrink-0 items-center justify-center rounded text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+            aria-label={`${t('settingPanel.presetConfig.field')} ${index + 1}`}
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        <button type="button" onClick={onToggle} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
+          <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform ${expanded ? 'rotate-90' : ''}`} />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-medium text-[var(--nova-text)]">{field.name || field.id}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-1">
+            {field.required ? (
+              <span className="rounded bg-[var(--nova-accent)]/15 px-1.5 py-0.5 text-[10px] text-[var(--nova-accent)]">{t('settingPanel.presetConfig.required')}</span>
+            ) : (
+              <span className="rounded bg-[var(--nova-surface)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.presetConfig.optional')}</span>
+            )}
+            {field.enabled === false ? (
+              <span className="rounded bg-[var(--nova-surface)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.disabled')}</span>
+            ) : null}
+          </span>
+        </button>
       </div>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <Field label={t('settingPanel.presetConfig.id')}>
-          <Input className={inputClassName} value={field.id} disabled={defsReadOnly} onChange={(e) => onPatch({ id: e.target.value.replace(/[-\s]/g, '_') })} />
-        </Field>
-        <Field label={t('settingPanel.field.name')}>
-          <Input className={inputClassName} value={field.name || ''} disabled={defsReadOnly} onChange={(e) => onPatch({ name: e.target.value })} />
-        </Field>
-        <Field label={t('settingPanel.presetConfig.order')}>
-          <Input className={inputClassName} inputMode="numeric" value={String(field.order || '')} disabled={defsReadOnly} onChange={(e) => onPatch({ order: parseIntegerInput(e.target.value) || 0 })} />
-        </Field>
-        <SwitchField label={t('settingPanel.presetConfig.required')} checked={field.required === true} onChange={(required) => onPatch({ required })} />
-        <SwitchField label={t('settingPanel.field.enabled')} checked={field.enabled !== false} onChange={(enabled) => onPatch({ enabled })} />
-      </div>
-      <Field label={t('common.description')}>
-        <Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={field.description || ''} disabled={defsReadOnly} onChange={(e) => onPatch({ description: e.target.value })} />
-      </Field>
-      <Field label={t('settingPanel.presetConfig.generationInstruction')}>
-        <Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={field.generation_instruction || ''} disabled={defsReadOnly} onChange={(e) => onPatch({ generation_instruction: e.target.value })} />
-      </Field>
-    </DetailPanel>
+
+      {/* Expanded edit form */}
+      {expanded ? (
+        <div className="grid gap-3 border-t border-[var(--nova-border)]/50 px-3 py-3">
+          <div className="flex justify-end">
+            <DetailActions onCopy={onCopy} onDelete={onDelete} />
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <Field label={t('settingPanel.presetConfig.id')}>
+              <Input className={inputClassName} value={field.id} disabled={readOnly} onChange={(e) => onPatch({ id: e.target.value.replace(/[-\s]/g, '_') })} />
+            </Field>
+            <Field label={t('settingPanel.field.name')}>
+              <Input className={inputClassName} value={field.name || ''} disabled={readOnly} onChange={(e) => onPatch({ name: e.target.value })} />
+            </Field>
+            <Field label={t('settingPanel.presetConfig.order')}>
+              <Input className={inputClassName} inputMode="numeric" value={String(field.order || '')} disabled={readOnly} onChange={(e) => onPatch({ order: parseIntegerInput(e.target.value) || 0 })} />
+            </Field>
+            <SwitchField label={t('settingPanel.presetConfig.required')} checked={field.required === true} onChange={(required) => onPatch({ required })} />
+            <SwitchField label={t('settingPanel.field.enabled')} checked={field.enabled !== false} onChange={(enabled) => onPatch({ enabled })} />
+          </div>
+          <Field label={t('common.description')}>
+            <Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={field.description || ''} disabled={readOnly} onChange={(e) => onPatch({ description: e.target.value })} />
+          </Field>
+          <Field label={t('settingPanel.presetConfig.generationInstruction')}>
+            <Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={field.generation_instruction || ''} disabled={readOnly} onChange={(e) => onPatch({ generation_instruction: e.target.value })} />
+          </Field>
+        </div>
+      ) : null}
+    </div>
   )
 }

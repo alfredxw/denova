@@ -411,10 +411,9 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '事件包' }))
     await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
     await user.click(await screen.findByRole('button', { name: '新增事件卡' }))
-    expect(screen.getByTestId('event-package-card-editor').className).toContain('h-[clamp(360px,calc(100dvh-15rem),720px)]')
-    expect(screen.getByTestId('event-package-card-editor')).toHaveClass('min-h-0', 'overflow-hidden')
-    expect(screen.getByTestId('event-package-card-detail-scroll')).toHaveClass('overflow-y-auto')
-    expect(screen.getByTestId('event-package-card-detail-scroll').className).toContain('[scrollbar-gutter:stable]')
+    expect(screen.getByTestId('event-package-card-editor')).toHaveClass('min-h-0')
+    expect(screen.getByTestId('event-package-card-editor')).not.toHaveClass('overflow-hidden')
+    expect(screen.getByTestId('event-package-card-detail-scroll')).not.toHaveClass('overflow-y-auto')
     await user.type(screen.getByLabelText('事件类型名'), '伏笔回收')
     await user.click(screen.getByRole('button', { name: '保存' }))
 
@@ -487,7 +486,9 @@ describe('SettingPanel', () => {
     render(<PresetModeHarness />)
 
     await selectDefaultDirector(user)
-    expect(screen.getByText('回合后规划')).toBeInTheDocument()
+    // Open advanced settings to access agent mode and branch planning fields
+    await user.click(screen.getByRole('button', { name: /高级设置/ }))
+    expect(screen.getByText('分支规划回合')).toBeInTheDocument()
     const branchTurnsField = screen.getByText('分支规划回合').closest('label') as HTMLElement
     const branchTurnsInput = within(branchTurnsField).getByRole('spinbutton')
     expect(branchTurnsInput).toHaveValue(5)

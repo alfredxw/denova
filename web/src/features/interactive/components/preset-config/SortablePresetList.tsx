@@ -46,7 +46,7 @@ export function SortablePresetList<T>({
   }
 
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
+    <aside className="flex min-h-0 max-h-[60vh] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
       <div className="flex h-10 items-center justify-between border-b border-[var(--nova-border)] px-2">
         <span className="text-[11px] font-medium text-[var(--nova-text-muted)]">{emptyLabel}</span>
         <Button className={iconActionClassName} variant="outline" size="icon-sm" onClick={onAdd} aria-label={addLabel} title={addLabel}>

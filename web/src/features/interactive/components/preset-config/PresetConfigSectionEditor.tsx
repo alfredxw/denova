@@ -105,7 +105,7 @@ export function PresetConfigSectionEditor<T extends object>({
   }
 
   return (
-    <section className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
+    <section className="rounded-[var(--nova-radius)] bg-[var(--nova-surface)] p-4">
       <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-xs font-medium text-[var(--nova-text)]">{title}</div>

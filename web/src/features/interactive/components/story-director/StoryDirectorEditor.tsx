@@ -47,6 +47,7 @@ export function StoryDirectorEditor({
   const setSectionValid = usePresetSectionValidity(draft?.id || '', onValidityChange)
   const [strategyPromptOpen, setStrategyPromptOpen] = useState(false)
   const [planningTemplatesOpen, setPlanningTemplatesOpen] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [activeEditorTab, setActiveEditorTab] = useState<StoryDirectorEditorTab>('trpg')
   const strategyPrompt = draft?.strategy?.prompt_markdown || ''
   const strategyPromptBytes = utf8ByteLength(strategyPrompt)
@@ -59,6 +60,7 @@ export function StoryDirectorEditor({
   useEffect(() => {
     setStrategyPromptOpen(false)
     setPlanningTemplatesOpen(false)
+    setAdvancedOpen(false)
     setActiveEditorTab('trpg')
     const scrollElement = scrollRef.current
     if (scrollElement) {
@@ -228,24 +230,38 @@ export function StoryDirectorEditor({
               fallbackValue="0.15"
               onChange={(random_event_rate) => updateStrategy({ random_event_rate })}
             />
-            <StrategySelect
-              label={t('settingPanel.storyDirector.agentMode')}
-              value={draft.strategy?.director_agent_mode || ''}
-              fallbackValue="triggered"
-              options={STORY_DIRECTOR_AGENT_MODE_OPTIONS}
-              onChange={(director_agent_mode) => updateStrategy({ director_agent_mode })}
+          </div>
+
+          <div className="mt-3 grid gap-2">
+            <DisclosureButton
+              open={advancedOpen}
+              title={t('settingPanel.storyDirector.advancedSettings')}
+              description={t('settingPanel.storyDirector.advancedSettingsDesc')}
+              meta=""
+              onClick={() => setAdvancedOpen((open) => !open)}
             />
-            <Field label={t('settingPanel.storyDirector.branchPlanningTurns')}>
-              <Input
-                className={inputClassName}
-                type="number"
-                min={1}
-                max={12}
-                value={draft.strategy?.branch_planning_turns || STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK}
-                onChange={(event) => updateStrategy({ branch_planning_turns: normalizeBranchPlanningTurns(event.target.value) })}
-              />
-              <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.branchPlanningTurnsDesc')}</span>
-            </Field>
+            {advancedOpen ? (
+              <div className="grid gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3 md:grid-cols-2">
+                <StrategySelect
+                  label={t('settingPanel.storyDirector.agentMode')}
+                  value={draft.strategy?.director_agent_mode || ''}
+                  fallbackValue="triggered"
+                  options={STORY_DIRECTOR_AGENT_MODE_OPTIONS}
+                  onChange={(director_agent_mode) => updateStrategy({ director_agent_mode })}
+                />
+                <Field label={t('settingPanel.storyDirector.branchPlanningTurns')}>
+                  <Input
+                    className={inputClassName}
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={draft.strategy?.branch_planning_turns || STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK}
+                    onChange={(event) => updateStrategy({ branch_planning_turns: normalizeBranchPlanningTurns(event.target.value) })}
+                  />
+                  <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.branchPlanningTurnsDesc')}</span>
+                </Field>
+              </div>
+            ) : null}
           </div>
 
           <div className="mt-3 grid gap-2">
