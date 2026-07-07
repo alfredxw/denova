@@ -1,0 +1,55 @@
+CHANGELOG.md
+  s_15b367c7ba142b::t_8bc6c7b1e128e8 11-12,72-73
+web/src/components/Chat/ContextAnalysisDialog.test.tsx
+  s_15b367c7ba142b::t_7f9510ab5d8035 1-113
+web/src/components/Chat/ContextAnalysisDialog.tsx
+  s_15b367c7ba142b::t_95d6888c0b5f0b 238-258,269-272,319-320,333,336,340,343,356,358,360,390,393,402,417-418
+web/src/features/interactive/components/MemoryPanel.test.tsx
+  s_15b367c7ba142b::t_f568d836f7fcee 70-72,76-77,80-87,94-125,193-195,197-201,207-215,246-247,250-253,324,357,359-361,409,454-457,461-463
+web/src/features/interactive/components/MemoryPanel.tsx
+  s_15b367c7ba142b::t_11540a8546274a 1,4-8,27,37,49,61,104-106,132-159
+web/src/features/interactive/components/director-console/ConsoleTabs.tsx
+  s_15b367c7ba142b::t_819c814c333797 1-32
+web/src/features/interactive/components/director-console/DirectorConsole.tsx
+  s_15b367c7ba142b::t_b32c3d923f34c5 1-326
+web/src/features/interactive/components/director-console/DirectorConsoleHeader.tsx
+  s_15b367c7ba142b::t_7f1f3f5c3879f6 1-18
+web/src/features/interactive/components/director-console/DirectorRunView.tsx
+  s_15b367c7ba142b::t_7ed06818faa376 1-377
+web/src/features/interactive/components/director-console/MemoryView.tsx
+  s_15b367c7ba142b::t_fac4944fdae816 1-151
+web/src/features/interactive/components/director-console/PlanView.tsx
+  s_15b367c7ba142b::t_cf58480deed845 1-214
+web/src/features/interactive/components/director-console/RuleAuditCard.tsx
+  s_15b367c7ba142b::t_0baafb55fbf6bb 1-58
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_15b367c7ba142b::t_ea6c3cf988aa8f 1-50
+web/src/features/interactive/components/director-console/shared.tsx
+  s_15b367c7ba142b::t_dfd200572e04fc 1-39
+web/src/features/interactive/components/director-console/types.ts
+  s_15b367c7ba142b::t_d3001367c219f7 1-6
+web/src/features/interactive/components/director-console/utils.ts
+  s_15b367c7ba142b::t_a3468d8d9b6df1 1-159
+web/src/i18n/locales/en-US/memoryPanel.ts
+  s_15b367c7ba142b::t_9cfeb6907326da 5-44
+web/src/i18n/locales/zh-CN/memoryPanel.ts
+  s_15b367c7ba142b::t_b71898ba247393 5-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "e2ad6fe41a8a9796ec1424eb14ef0d06cae9a29d",
+  "prompts": {},
+  "sessions": {
+    "s_15b367c7ba142b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f37e9-8de4-77e1-9797-2f279f937774",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
