@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式：右侧面板重设计为更克制的“导演控制台”，围绕单后台 Director Agent 提供运行、状态、记忆与规划视图；后台规划、上下文分析、记忆整理和工具调用过程统一收进“运行”页的剧透门，记忆页只展示记忆内容，规划页默认以 Markdown 阅读视图展示 `director.md` 并保留显式编辑入口。
+- Game Mode: Redesigned the right sidebar as a more restrained Director Console with Run, State, Memory, and Plan views around the single background Director Agent. Background planning, context analysis, memory generation, and tool-call process logs now live behind the Run view spoiler gate; Memory shows memory content only, and Plan renders `director.md` as Markdown by default with an explicit edit action.
 - 书籍管理：新增通用书籍导出入口，当前支持一键导出整本小说为 UTF-8 TXT；导出会按章节/分卷顺序拼接全部非空章节，并保留后续扩展 EPUB 等格式的接口形态。
 - Books: Added a generic book export entry point, currently supporting one-click full-novel UTF-8 TXT export. Exports assemble all non-empty chapters in chapter/volume order and keep the API shape ready for future formats such as EPUB.
 - 书籍管理：新建和编辑改为复用同一个弹窗，移除内嵌展开式新建表单；弹窗内支持上传 PNG/JPEG 封面，也可在新建书籍时直接选择上传封面或触发“新建并生成封面”。
@@ -67,6 +69,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- WebUI：上下文分析弹窗减少最终消息的重复嵌套，单片段消息组直接展示为可展开片段；多片段组展开后内层片段默认展开，并使用更轻量的内层样式。
+- WebUI: Reduced duplicate nesting in the Context Analysis dialog. Single-part final-message groups now render directly as expandable parts, while multi-part groups open with inner parts expanded by default and lighter nested styling.
 - 游戏模式：后台导演 `director.md`、正文 Agent 可读区、导演上下文拼装片段和故事导演高级 Markdown 策略提示的上限统一放宽到至少 64KB，并移除导演 Prompt 中旧的硬编码字节上限文案。
 - Game Mode: Raised the background Director `director.md`, prose-agent visible section, Director context slices, and Story Director advanced Markdown strategy prompt limits to at least 64KB, and removed old hard-coded byte-limit wording from Director prompts.
 - 不兼容变更：游戏模式后台能力统一收敛到 `interactive_director`，移除独立 `interactive_state` Agent 配置、注册表和设置页入口；后台导演现在在同一次维护运行中通过工具写入 Actor State、Story Memory，并更新当前分支 `director.md`。
