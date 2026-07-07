@@ -583,21 +583,14 @@ export interface UpdateDirectorPlanInput {
 export interface RuleCheck {
   id?: string
   label?: string
-  kind?: string
-  mode?: 'default' | 'd20_dc' | 'd100_under'
-  attribute_path?: string
-  expression?: string
-  dice?: string
-  modifier?: number
-  difficulty?: number
-  resource_cost_path?: string
-  resource_cost?: number
-  success_state_ops?: StateOp[]
-  failure_state_ops?: StateOp[]
-  terminal_on_failure?: boolean
-  terminal_type?: string
-  terminal_reason?: string
-  seed?: number
+  category?: string
+  default_difficulty?: 'very_easy' | 'easy' | 'normal' | 'hard' | 'very_hard' | string
+  default_roll_mode?: 'normal' | 'advantage' | 'disadvantage' | string
+  failure_policy?: 'fail_forward' | 'success_at_cost' | 'blocked' | 'hard_failure' | string
+  impact?: 'none' | 'hp_damage' | 'stamina_cost' | 'relationship_change' | 'clue_progress' | 'resource_change' | 'custom' | string
+  trigger?: string
+  success_hint?: string
+  failure_hint?: string
 }
 
 export interface RuleResolution {

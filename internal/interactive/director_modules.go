@@ -830,7 +830,7 @@ func DefaultRuleSystemModule() RuleSystemModule {
 		Version:     storyDirectorModuleVersion,
 		ID:          DefaultRuleSystemID,
 		Name:        "默认 TRPG 检定",
-		Description: "提供可扩展的 TRPG 检定模板，数值字段统一从状态系统读取。",
+		Description: "提供开箱即用的 1d20 检定规则模板，覆盖高风险行动、战斗、潜行、调查、社交和抗压。",
 		TRPGSystem:  StoryDirectorTRPGSystem{RuleTemplates: config.RuleTemplates},
 		Tags:        []string{"内置", "TRPG"},
 	})

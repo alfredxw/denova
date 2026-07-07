@@ -1,5 +1,6 @@
 import type { PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller } from '../../types'
+import { defaultRuleTemplates, normalizeTRPGSystem } from '../preset-config/ruleTemplates'
 
 export const TELLER_CONFIG_AGENT_ENTRY_ID = '__config_manager_teller__'
 
@@ -147,6 +148,7 @@ export function makeRuleSystemPayload(draft: RuleSystemModule, tagDraft: string)
   return {
     ...draft,
     id: draft.id,
+    trpg_system: normalizeTRPGSystem(draft.trpg_system),
     tags: splitTags(tagDraft),
   }
 }
@@ -274,9 +276,9 @@ export function newRuleSystemDraft(): Partial<RuleSystemModule> {
   return {
     id: `custom-rule-${Date.now()}`,
     name: '自定义 TRPG 检定',
-    description: '新的 TRPG 检定，配置检定模板、骰子、难度、资源消耗和结果状态变更。',
+    description: '新的 TRPG 检定，基于开箱规则模板配置常见行动、战斗、潜行、调查和社交检定。',
     trpg_system: {
-      rule_templates: [],
+      rule_templates: defaultRuleTemplates(),
     },
     tags: ['自定义'],
     version: 1,
