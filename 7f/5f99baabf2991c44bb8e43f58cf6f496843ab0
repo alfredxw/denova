@@ -1,0 +1,21 @@
+web/src/features/interactive/components/story-director/ModuleConsole.tsx
+  s_df008b35092ff2::t_63e90093e1d450 55,174,176,202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "7f5f99baabf2991c44bb8e43f58cf6f496843ab0",
+  "prompts": {},
+  "sessions": {
+    "s_df008b35092ff2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3ce4-2a20-74c1-bce5-61582c324c1c",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
