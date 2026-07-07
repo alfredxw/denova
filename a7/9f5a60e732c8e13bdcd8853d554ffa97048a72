@@ -1,0 +1,81 @@
+CHANGELOG.md
+  s_df008b35092ff2::t_049fec6cd78450 82-83
+README.en.md
+  s_df008b35092ff2::t_cc8d2a47bb4ee8 69
+README.md
+  s_df008b35092ff2::t_5391e060f16234 69
+internal/agent/interactive_memory_tools.go
+  s_df008b35092ff2::t_d8d0e855e2cd9f 269-272
+internal/agent/interactive_memory_tools_test.go
+  s_df008b35092ff2::t_7814861f2634fa 270-272,283
+internal/agent/prompt.go
+  s_df008b35092ff2::t_966a1e781e6788 718
+internal/interactive/director_modules.go
+  s_df008b35092ff2::t_ac511267c26eda 833
+internal/interactive/director_modules_test.go
+  s_df008b35092ff2::t_0c1bc111a803ca 230-236,407-412
+internal/interactive/director_test.go
+  s_df008b35092ff2::t_167e19f22016bc 206
+internal/interactive/orchestration.go
+  s_df008b35092ff2::t_a5d03894f1c5cb 23,72-81,87,90-91,97-100,109-112,266,301,304,338-339,344-347,349,354-355,358,382-395,474-494,501,511-515,520-521,523,528,530,546-596,634,636-637,645-646
+internal/interactive/orchestration_test.go
+  s_df008b35092ff2::t_b70b884569597d 28,30-34,36,40,73,89,95,137-181,255,264-265
+internal/interactive/story_directors_test.go
+  s_4abebabaf2e7d0::t_f8a9e75ab257e0 4,50-56,79,82-91,175-182,225-227,286,321-326
+internal/interactive/tellers.go
+  s_bdd66c7d5adffe::t_46dd40d6f4e10a 469-477,480-488,491-499,502-510,513-521,524-532
+internal/prompts/interactive.go
+  s_df008b35092ff2::t_4bbb7af1299078 107,111-112,203-204
+internal/prompts/interactive_test.go
+  s_df008b35092ff2::t_17b0510a3a7642 66,76
+skills/story-director-config/SKILL.md
+  s_df008b35092ff2::t_7083b85c741ca9 32,84,86
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_df008b35092ff2::t_1a22fe4ed6c544 623-628,631-641,647-651,657-659,661-662,664-667,680,689-690,702-703,705-706,709,711-713
+web/src/features/interactive/components/preset-config/ruleTemplates.ts
+  s_df008b35092ff2::t_993e84d10be4ff 3,10-11,13-14,22-23,25-26,34-35,37-38,46-47,49-50,58-59,61-62,70-71,73-74,90-91,93-94,108-112
+web/src/features/interactive/components/preset-config/visual-editors.tsx
+  s_df008b35092ff2::t_b99c34670f1593 13,544-556,579,582,591-592,594-597,635-636,639-640,643-644,647-649,652-653
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_bdd66c7d5adffe::t_17e4cb2c116e3a 279
+web/src/features/interactive/types.ts
+  s_df008b35092ff2::t_b46411c047e7b6 586-587,589-590,622
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_df008b35092ff2::t_e8f6159e33a2fd 177,337-341,343-344,348-354,448
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_df008b35092ff2::t_b8479b200f0014 177,337-341,343-344,348-354,448
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a79f5a60e732c8e13bdcd8853d554ffa97048a72",
+  "prompts": {},
+  "sessions": {
+    "s_4abebabaf2e7d0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3d8e-0178-72e3-8f46-18469082af66",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_bdd66c7d5adffe": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3d85-4f84-74b1-a729-587c48380ab8",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_df008b35092ff2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3ce4-2a20-74c1-bce5-61582c324c1c",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
