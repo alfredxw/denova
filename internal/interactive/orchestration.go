@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
-	"math"
 	mathrand "math/rand"
 	"regexp"
 	"strconv"
@@ -261,24 +260,6 @@ func DefaultTerminalRestartSuggestions() []string {
 		"从上一安全回合创建新分支，改用更稳妥的行动。",
 		"从关键选择前创建新分支，先收集情报、资源或盟友。",
 	}
-}
-
-func ValidateTurnBrief(brief TurnBrief) error {
-	if strings.TrimSpace(brief.UserAction) == "" {
-		return fmt.Errorf("TurnBrief 缺少 user_action")
-	}
-	if strings.TrimSpace(brief.Intent) == "" {
-		return fmt.Errorf("TurnBrief 缺少 intent")
-	}
-	if strings.TrimSpace(brief.TurnGoal) == "" {
-		return fmt.Errorf("TurnBrief 缺少 turn_goal")
-	}
-	for _, check := range brief.RuleChecks {
-		if err := validateRuleCheck(check); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func NormalizeTurnCheckRequest(req TurnCheckRequest) TurnCheckRequest {
@@ -564,95 +545,6 @@ func turnCheckOutcomeText(outcome string) string {
 	}
 }
 
-func resolveRuleCheck(storyID, branchID string, state map[string]any, check RuleCheck) (RuleResult, []StateOp, *TerminalCandidate) {
-	seed := check.Seed
-	if seed == 0 {
-		seed = newRuleSeed(storyID, branchID, check.ID)
-	}
-	result := RuleResult{
-		ID:            check.ID,
-		Label:         check.Label,
-		Kind:          firstNonEmptyString(check.Kind, "check"),
-		Mode:          normalizeRuleCheckMode(check.Mode),
-		AttributePath: check.AttributePath,
-		Expression:    check.Expression,
-		Dice:          check.Dice,
-		Modifier:      check.Modifier,
-		Difficulty:    check.Difficulty,
-		Seed:          seed,
-		Outcome:       "success",
-	}
-	if check.AttributePath != "" {
-		result.AttributeValue = numberFromAny(getPath(state, check.AttributePath))
-	}
-	if check.Expression != "" {
-		value, err := EvalRuleExpression(check.Expression, state)
-		if err != nil {
-			result.Outcome = "error"
-			result.Error = err.Error()
-			result.Constraints = []string{fmt.Sprintf("%s 表达式无法执行：%s", firstNonEmptyString(check.Label, check.ID), err.Error())}
-			return result, nil, nil
-		}
-		result.ExpressionValue = value
-	}
-	if check.Dice != "" {
-		rolls, total, err := rollDice(seed, check.Dice)
-		if err != nil {
-			result.Outcome = "error"
-			result.Error = err.Error()
-			result.Constraints = []string{fmt.Sprintf("%s 检定无法执行：%s", firstNonEmptyString(check.Label, check.ID), err.Error())}
-			return result, nil, nil
-		}
-		result.Rolls = rolls
-		result.RollTotal = total
-	}
-	if result.Mode == "d100_under" {
-		target := check.Difficulty
-		if target <= 0 {
-			target = result.AttributeValue + result.ExpressionValue + result.Modifier
-		}
-		result.Difficulty = target
-		result.Total = result.RollTotal
-		if result.RollTotal <= target {
-			result.Outcome = d100UnderSuccessOutcome(result.RollTotal, target)
-			result.Constraints = []string{fmt.Sprintf("%s 成功，d100 掷骰 %.0f / 目标 %.0f。", firstNonEmptyString(check.Label, check.ID), result.RollTotal, target)}
-			return result, appendResourceCostOp(check, append([]StateOp(nil), check.SuccessStateOps...)), nil
-		}
-		result.Outcome = d100UnderFailureOutcome(result.RollTotal, target)
-		result.Constraints = []string{fmt.Sprintf("%s 失败，d100 掷骰 %.0f / 目标 %.0f。", firstNonEmptyString(check.Label, check.ID), result.RollTotal, target)}
-		ops := appendResourceCostOp(check, append([]StateOp(nil), check.FailureStateOps...))
-		if check.TerminalOnFailure {
-			return result, ops, &TerminalCandidate{
-				Type:    firstNonEmptyString(check.TerminalType, "bad_end"),
-				Reason:  firstNonEmptyString(check.TerminalReason, result.Constraints[0]),
-				CheckID: check.ID,
-			}
-		}
-		return result, ops, nil
-	}
-	result.Total = result.AttributeValue + result.ExpressionValue + result.RollTotal + result.Modifier
-	success := true
-	if check.Difficulty > 0 {
-		success = result.Total >= check.Difficulty
-	}
-	if success {
-		result.Outcome = ruleSuccessOutcome(result.Total, check.Difficulty)
-		result.Constraints = []string{fmt.Sprintf("%s 成功，总值 %.0f / 难度 %.0f。", firstNonEmptyString(check.Label, check.ID), result.Total, check.Difficulty)}
-		return result, appendResourceCostOp(check, append([]StateOp(nil), check.SuccessStateOps...)), nil
-	}
-	result.Outcome = ruleFailureOutcome(result.Total, check.Difficulty)
-	result.Constraints = []string{fmt.Sprintf("%s 失败，总值 %.0f / 难度 %.0f。", firstNonEmptyString(check.Label, check.ID), result.Total, check.Difficulty)}
-	ops := appendResourceCostOp(check, append([]StateOp(nil), check.FailureStateOps...))
-	if check.TerminalOnFailure {
-		return result, ops, &TerminalCandidate{
-			Type:    firstNonEmptyString(check.TerminalType, "bad_end"),
-			Reason:  firstNonEmptyString(check.TerminalReason, result.Constraints[0]),
-			CheckID: check.ID,
-		}
-	}
-	return result, ops, nil
-}
-
 func normalizeRuleCheck(check RuleCheck, index int) RuleCheck {
 	check.ID = strings.TrimSpace(check.ID)
 	if check.ID == "" {
@@ -743,13 +635,6 @@ func parseDice(expr string) (int, int, error) {
 	return count, sides, nil
 }
 
-func appendResourceCostOp(check RuleCheck, ops []StateOp) []StateOp {
-	if check.ResourceCostPath == "" || check.ResourceCost == 0 {
-		return ops
-	}
-	return append(ops, StateOp{Op: "inc", Path: check.ResourceCostPath, Value: -math.Abs(check.ResourceCost)})
-}
-
 func newRuleSeed(parts ...string) int64 {
 	var buf [8]byte
 	if _, err := rand.Read(buf[:]); err == nil {
@@ -776,20 +661,6 @@ func numberFromAny(value any) float64 {
 	}
 }
 
-func ruleSuccessOutcome(total, difficulty float64) string {
-	if difficulty > 0 && total >= difficulty+10 {
-		return "critical_success"
-	}
-	return "success"
-}
-
-func ruleFailureOutcome(total, difficulty float64) string {
-	if difficulty > 0 && total <= difficulty-10 {
-		return "critical_failure"
-	}
-	return "failure"
-}
-
 func normalizeRuleCheckMode(value string) string {
 	switch strings.TrimSpace(value) {
 	case "", "default":
@@ -799,27 +670,6 @@ func normalizeRuleCheckMode(value string) string {
 	default:
 		return strings.TrimSpace(value)
 	}
-}
-
-func d100UnderSuccessOutcome(roll, target float64) string {
-	if target > 0 && roll <= maxFloat(1, target/5) {
-		return "critical_success"
-	}
-	return "success"
-}
-
-func d100UnderFailureOutcome(roll, target float64) string {
-	if roll >= 96 || (target > 0 && roll >= target+50) {
-		return "critical_failure"
-	}
-	return "failure"
-}
-
-func maxFloat(a, b float64) float64 {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func normalizeDirectorEvents(values []DirectorEvent) []DirectorEvent {

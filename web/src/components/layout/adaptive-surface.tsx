@@ -16,7 +16,7 @@ export interface AdaptiveSurfacePane {
   onClose?: () => void
 }
 
-export interface AdaptiveSurfaceControls extends MobilePaneControls {
+interface AdaptiveSurfaceControls extends MobilePaneControls {
   isMobile: boolean
   openLeft: () => void
   openRight: () => void

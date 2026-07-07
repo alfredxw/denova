@@ -17,7 +17,7 @@ export interface StorySummary {
   events: number
 }
 
-export type StoryImageMode = 'manual' | 'interval'
+type StoryImageMode = 'manual' | 'interval'
 
 export interface StoryImageSettings {
   mode: StoryImageMode
@@ -25,7 +25,7 @@ export interface StoryImageSettings {
   preset_id?: string
 }
 
-export type StoryOpeningMode = 'ai' | 'preset' | 'custom'
+type StoryOpeningMode = 'ai' | 'preset' | 'custom'
 
 export interface StoryOpeningConfig {
   mode: StoryOpeningMode
@@ -118,13 +118,13 @@ export interface StoryDirectorModuleRefs {
   image_preset_disabled?: boolean
 }
 
-export interface StoryDirectorModuleWarning {
+interface StoryDirectorModuleWarning {
   module: string
   id?: string
   message: string
 }
 
-export interface StoryDirectorResolvedSnapshot {
+interface StoryDirectorResolvedSnapshot {
   version: number
   resolved_at?: string
   status?: string
@@ -222,7 +222,7 @@ export interface OpeningSelectorModule {
   updated_at?: string
 }
 
-export interface StoryDirectorStrategy {
+interface StoryDirectorStrategy {
   enabled: boolean
   mainline_strength?: string
   failure_policy?: string
@@ -234,7 +234,7 @@ export interface StoryDirectorStrategy {
   prompt_markdown?: string
 }
 
-export interface StoryDirectorEventSystem {
+interface StoryDirectorEventSystem {
   event_packages?: TellerEventPackage[]
   custom_events?: DirectorEvent[]
 }
@@ -264,14 +264,14 @@ export interface StoryDirectorActorStateSystem {
   initial_actors?: ActorStateInitialActor[]
 }
 
-export interface ActorStateTemplate {
+interface ActorStateTemplate {
   id: string
   name: string
   description?: string
   fields?: ActorStateField[]
 }
 
-export interface ActorStateField {
+interface ActorStateField {
   id?: string
   path: string
   name: string
@@ -286,7 +286,7 @@ export interface ActorStateField {
   order?: number
 }
 
-export interface ActorStateInitialActor {
+interface ActorStateInitialActor {
   id: string
   name: string
   template_id: string
@@ -332,7 +332,7 @@ export interface StyleReferenceFileDocument {
   revision: string
 }
 
-export interface TellerOrchestrationConfig {
+interface TellerOrchestrationConfig {
   enabled: boolean
   mainline_strength?: string
   failure_policy?: string
@@ -362,7 +362,7 @@ export interface TellerEventCard {
   intensity?: string
 }
 
-export interface TellerOpeningConfig {
+interface TellerOpeningConfig {
   enabled: boolean
   trait_pools?: OpeningTraitPool[]
   initial_state_ops?: StateOp[]
@@ -383,7 +383,7 @@ export interface OpeningTrait {
   ops?: StateOp[]
 }
 
-export interface TellerContextPolicy {
+interface TellerContextPolicy {
   creator: string
   lore: string
   runtime_state: string
@@ -462,7 +462,7 @@ export interface TokenUsageEvent {
   usage_calls?: TokenUsageCall[]
 }
 
-export interface TokenUsageCall {
+interface TokenUsageCall {
   index?: number
   created_at?: string
   finish_reason?: string
@@ -477,13 +477,13 @@ export interface TokenUsageCall {
   total_tokens?: number
 }
 
-export interface TurnVersion {
+interface TurnVersion {
   turn_id: string
   ts: string
   current?: boolean
 }
 
-export interface StateDelta {
+interface StateDelta {
   ops: StateOp[]
 }
 
@@ -495,11 +495,11 @@ export interface StateOp {
   source_turn_id?: string
 }
 
-export interface HotState {
+interface HotState {
   choices: string[]
 }
 
-export interface DirectorEvent {
+interface DirectorEvent {
   id?: string
   name?: string
   category?: string
@@ -530,11 +530,11 @@ export interface DirectorPlanDocs {
   plan: string
 }
 
-export interface DirectorPlanVisibleDocs {
+interface DirectorPlanVisibleDocs {
   plan?: string
 }
 
-export interface DirectorPlanDocInfo {
+interface DirectorPlanDocInfo {
   path: string
   bytes: number
   hash: string
@@ -629,7 +629,7 @@ export interface RuleResolution {
   seed?: number
 }
 
-export interface TurnCheckRequest {
+interface TurnCheckRequest {
   action: string
   intent: string
   challenge: string
@@ -641,35 +641,35 @@ export interface TurnCheckRequest {
   outcomes: TurnCheckOutcomes
 }
 
-export interface TurnCheckRule {
+interface TurnCheckRule {
   template?: string
   dice?: string
   roll_mode?: 'normal' | 'advantage' | 'disadvantage' | string
 }
 
-export interface TurnCheckBonus {
+interface TurnCheckBonus {
   reason: string
   value: number
 }
 
-export interface TurnCheckOutcomes {
+interface TurnCheckOutcomes {
   critical_success: TurnCheckOutcome
   success: TurnCheckOutcome
   failure: TurnCheckOutcome
   critical_failure: TurnCheckOutcome
 }
 
-export interface TurnCheckOutcome {
+interface TurnCheckOutcome {
   result: string
   state_changes?: TurnStateChange[]
 }
 
-export interface TurnStateChange {
+interface TurnStateChange {
   path: string
   change: number
 }
 
-export interface RuleResult {
+interface RuleResult {
   id?: string
   label?: string
   kind?: string
@@ -696,7 +696,7 @@ export interface RuleResult {
   state_changes?: TurnStateChange[]
 }
 
-export interface TerminalCandidate {
+interface TerminalCandidate {
   type?: string
   reason?: string
   check_id?: string
@@ -733,7 +733,7 @@ export interface OpeningRollResult {
   state_ops: StateOp[]
 }
 
-export interface OpeningRolledTrait {
+interface OpeningRolledTrait {
   pool_id: string
   id: string
   name: string
@@ -759,7 +759,7 @@ export interface Snapshot {
   graph?: StoryGraph
 }
 
-export interface ContextCompactionEvent {
+interface ContextCompactionEvent {
   id?: string
   agent_kind?: string
   epoch: number
@@ -776,46 +776,12 @@ export interface ContextCompactionEvent {
   phase?: string
 }
 
-export interface ContextCompactionRemovalEvent {
+interface ContextCompactionRemovalEvent {
   id?: string
   agent_kind?: string
   compaction_id?: string
   source_turn_count?: number
   reason?: string
-}
-
-export interface InteractiveMemoryEntry {
-  id: string
-  branch_id: string
-  turn_id?: string
-  title: string
-  summary: string
-  content: string
-  people?: string[]
-  places?: string[]
-  tags?: string[]
-  importance: number
-  archived: boolean
-  manual: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface InteractiveMemoryRecall {
-  branch_id: string
-  turn_id?: string
-  query?: string
-  memory_ids: string[]
-  created_at: string
-}
-
-export interface InteractiveMemoryState {
-  story_id: string
-  branch_id: string
-  entries: InteractiveMemoryEntry[]
-  recent_recall?: InteractiveMemoryRecall
-  sync_status?: 'pending' | 'ready' | 'failed' | ''
-  sync_error?: string
 }
 
 export interface StoryMemorySettings {
@@ -866,6 +832,14 @@ export interface StoryMemoryRecord {
   updated_at: string
 }
 
+interface InteractiveMemoryRecall {
+  branch_id: string
+  turn_id?: string
+  query?: string
+  memory_ids: string[]
+  created_at: string
+}
+
 export interface StoryMemoryState {
   story_id: string
   branch_id: string
@@ -904,7 +878,7 @@ export interface PlotNode {
   terminal_type?: string
 }
 
-export interface StoryGraph {
+interface StoryGraph {
   nodes: PlotNode[]
   branches: BranchSummary[]
 }

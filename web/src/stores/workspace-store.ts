@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 export type RightPanel = 'ai' | 'lore' | 'creator' | 'teller' | 'outline' | 'characters' | 'versions' | null
-export type BottomPanel = 'versions' | 'problems' | null
+type BottomPanel = 'versions' | 'problems' | null
 export type WorkspaceMode = 'ide' | 'interactive' | 'books' | 'skills' | 'agents' | 'automations'
 
 const MODE_STORAGE_KEY = 'nova:mode'

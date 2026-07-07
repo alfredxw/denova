@@ -695,20 +695,6 @@ type contextCompactionUsage struct {
 	EstimatedContextTokens int `json:"estimated_context_tokens,omitempty"`
 }
 
-func usageFromMessage(msg *schema.Message, estimated, contextWindow int) (contextCompactionUsage, bool) {
-	usage := contextCompactionUsage{EstimatedContextTokens: estimated, ContextWindowTokens: contextWindow}
-	if msg == nil || msg.ResponseMeta == nil || msg.ResponseMeta.Usage == nil {
-		return usage, estimated > 0 || contextWindow > 0
-	}
-	tokenUsage := msg.ResponseMeta.Usage
-	usage.PromptTokens = tokenUsage.PromptTokens
-	usage.CachedPromptTokens = tokenUsage.PromptTokenDetails.CachedTokens
-	usage.CompletionTokens = tokenUsage.CompletionTokens
-	usage.ReasoningTokens = tokenUsage.CompletionTokensDetails.ReasoningTokens
-	usage.TotalTokens = tokenUsage.TotalTokens
-	return usage, true
-}
-
 func contextCompactionRecordFromResult(result ContextCompactionResult, agentKind string, sourceStart, sourceEnd, retainedTurns int, summary string) session.ContextCompaction {
 	return session.ContextCompaction{
 		Type:                "context_compaction",

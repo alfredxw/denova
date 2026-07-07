@@ -107,14 +107,6 @@ func newDefaultWebSearchAggregator() *webSearchAggregator {
 	return &webSearchAggregator{engines: engines, maxTotal: webSearchMaxTotal}
 }
 
-func joinEngineNames(engines []webSearchEngine) string {
-	names := make([]string, 0, len(engines))
-	for _, e := range engines {
-		names = append(names, e.Name())
-	}
-	return strings.Join(names, ", ")
-}
-
 func (a *webSearchAggregator) fanOut(ctx context.Context, req webSearchRequest) []webSearchOutcome {
 	outcomes := make([]webSearchOutcome, len(a.engines))
 	var wg sync.WaitGroup

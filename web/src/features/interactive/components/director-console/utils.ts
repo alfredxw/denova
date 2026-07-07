@@ -100,12 +100,6 @@ export function stateEntries(state?: Record<string, unknown>) {
   return Object.entries(state).filter(([, value]) => value !== undefined && value !== null)
 }
 
-export function stateValuePreview(entry: [string, unknown]) {
-  const [key, value] = entry
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return `${key}: ${String(value)}`
-  return `${key}: ${safeJSONString(value, 160)}`
-}
-
 export function safeJSONString(value: unknown, limit = 1200) {
   try {
     const text = JSON.stringify(value, null, 2)

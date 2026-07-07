@@ -169,23 +169,6 @@ func writeJSONL(path string, lines []any) error {
 	return os.Rename(tmp, path)
 }
 
-func appendJSONL(path string, line any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return err
-	}
-	enc := json.NewEncoder(file)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(line); err != nil {
-		_ = file.Close()
-		return err
-	}
-	return file.Close()
-}
-
 func mapToStruct(raw map[string]any, out any) error {
 	data, err := json.Marshal(raw)
 	if err != nil {

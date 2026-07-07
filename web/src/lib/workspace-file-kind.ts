@@ -15,10 +15,6 @@ export function isWorkspaceImagePath(path?: string | null): boolean {
   return workspaceFileKind(path) === 'image'
 }
 
-export function isWorkspaceMarkdownPath(path?: string | null): boolean {
-  return workspaceFileKind(path) === 'markdown'
-}
-
 function fileExtension(path?: string | null): string {
   const name = (path || '').trim().split(/[?#]/, 1)[0]
   const slashIndex = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'))

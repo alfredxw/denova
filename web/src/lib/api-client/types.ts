@@ -106,7 +106,7 @@ export interface InteractiveImageError {
   created_at?: string
 }
 
-export interface TokenUsageCall {
+interface TokenUsageCall {
   index?: number
   created_at?: string
   finish_reason?: string
@@ -331,13 +331,13 @@ export interface CharacterCardPreview {
   compatibility: CharacterCardCompatibilityReport
 }
 
-export interface CharacterCardCompatibilityReport {
+interface CharacterCardCompatibilityReport {
   imported_fields: string[]
   downgraded_fields: string[]
   unsupported_fields: string[]
 }
 
-export interface NovelImportChapter {
+interface NovelImportChapter {
   index: number
   title: string
   chars: number
@@ -382,7 +382,7 @@ export interface BookMeta {
   updated_at: string
 }
 
-export type VersionSource = 'manual' | 'timer' | 'agent' | 'rollback_backup'
+type VersionSource = 'manual' | 'timer' | 'agent' | 'rollback_backup'
 
 export interface VersionChange {
   path: string
@@ -399,7 +399,7 @@ export interface VersionEntry {
   changed_paths: string[]
 }
 
-export interface VersionAutoInfo {
+interface VersionAutoInfo {
   timed_enabled: boolean
   timed_interval_minutes: number
   agent_enabled: boolean
@@ -422,9 +422,9 @@ export interface VersionCommandResult {
   status?: VersionStatus
 }
 
-export type VersionRestoreScope = 'workspace' | 'paths'
+type VersionRestoreScope = 'workspace' | 'paths'
 
-export interface VersionRestoreChange {
+interface VersionRestoreChange {
   path: string
   status: 'added' | 'modified' | 'deleted'
   text: boolean
@@ -482,7 +482,7 @@ export interface LoreItem {
   image?: LoreItemImage
 }
 
-export interface LoreItemImage {
+interface LoreItemImage {
   schema: 'lore_item_image.v1' | string
   image_path: string
   meta_path: string
@@ -584,20 +584,20 @@ export interface SkillInstallResult {
 
 export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at'>
 
-export type AutomationScope = 'user' | 'workspace'
-export type AutomationTemplate = 'memory_consolidation' | 'review' | 'continue_writing' | 'custom_prompt'
-export type AutomationWritePolicy = 'read_only' | 'allow_lore_write' | 'allow_file_write' | 'allow_lore_and_file_write'
-export type AutomationWriteMode = 'read_only' | 'confirm_write' | 'auto_write'
-export type AutomationWriteScope = 'none' | 'lore' | 'file' | 'lore_and_file'
-export type AutomationOutputPolicy = 'run_record_only' | 'optional_file'
-export type AutomationScheduleKind = 'manual' | 'daily' | 'weekly' | 'monthly' | 'every_hours'
+type AutomationScope = 'user' | 'workspace'
+type AutomationTemplate = 'memory_consolidation' | 'review' | 'continue_writing' | 'custom_prompt'
+type AutomationWritePolicy = 'read_only' | 'allow_lore_write' | 'allow_file_write' | 'allow_lore_and_file_write'
+type AutomationWriteMode = 'read_only' | 'confirm_write' | 'auto_write'
+type AutomationWriteScope = 'none' | 'lore' | 'file' | 'lore_and_file'
+type AutomationOutputPolicy = 'run_record_only' | 'optional_file'
+type AutomationScheduleKind = 'manual' | 'daily' | 'weekly' | 'monthly' | 'every_hours'
 export type AutomationTriggerType = 'manual' | 'schedule' | 'semantic' | 'chapter_batch'
-export type AutomationActionPolicy = 'confirm' | 'auto_run' | 'notify_only'
+type AutomationActionPolicy = 'confirm' | 'auto_run' | 'notify_only'
 export type AutomationNotifyPolicy = 'inbox' | 'silent'
-export type AutomationInboxStatus = 'pending' | 'dismissed' | 'confirmed' | 'auto_run'
-export type AutomationInboxPurpose = 'trigger' | 'write_confirmation'
+type AutomationInboxStatus = 'pending' | 'dismissed' | 'confirmed' | 'auto_run'
+type AutomationInboxPurpose = 'trigger' | 'write_confirmation'
 
-export interface AutomationSchedule {
+interface AutomationSchedule {
   kind: AutomationScheduleKind
   every_hours?: number
   weekday?: number
@@ -619,7 +619,7 @@ export interface AutomationTriggerDefinition {
   chapter_batch_size?: number
 }
 
-export interface AutomationTriggerState {
+interface AutomationTriggerState {
   last_checked_at?: string
   last_matched_at?: string
   last_evidence_fingerprint?: string
@@ -665,11 +665,6 @@ export interface AutomationTask {
   recent_runs: AutomationRunRecord[]
   created_at?: string
   updated_at?: string
-}
-
-export interface AutomationRunResult {
-  task: AutomationTask
-  run: AutomationRunRecord
 }
 
 export interface AutomationActiveRun {

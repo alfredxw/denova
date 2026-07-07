@@ -1,7 +1,7 @@
 const RUNTIME_LOG_KEY = 'nova.runtime.logs'
 const MAX_LOGS = 80
 
-export type RuntimeLogType = 'react_error' | 'window_error' | 'unhandled_rejection' | 'white_screen' | 'startup'
+type RuntimeLogType = 'react_error' | 'window_error' | 'unhandled_rejection' | 'white_screen' | 'startup'
 
 export interface RuntimeLogEntry {
   type: RuntimeLogType
@@ -33,7 +33,7 @@ export function recordRuntimeLog(entry: Omit<RuntimeLogEntry, 'url' | 'userAgent
 }
 
 /** 读取最近的前端运行时日志。 */
-export function readRuntimeLogs(): RuntimeLogEntry[] {
+function readRuntimeLogs(): RuntimeLogEntry[] {
   try {
     const raw = window.localStorage.getItem(RUNTIME_LOG_KEY)
     if (!raw) return []

@@ -217,10 +217,6 @@ func (c *SessionConversation) modelMessages(agentMessage string) []*schema.Messa
 	return history
 }
 
-func prependRuntimeContextToAgentMessage(agentMessage, title, content string) string {
-	return agentcontext.PrependFinalUserSource(agentMessage, title, content)
-}
-
 func standaloneRuntimeContextMessage(title, content, note string) string {
 	return agentcontext.StandaloneMessage(title, content, note)
 }

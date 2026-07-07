@@ -24,7 +24,6 @@ const (
 
 var (
 	ErrEventPackageRevisionConflict    = errors.New("事件包已被其他操作更新，请重新加载后再保存")
-	ErrEventSystemRevisionConflict     = errors.New("事件系统已被其他操作更新，请重新加载后再保存")
 	ErrRuleSystemRevisionConflict      = errors.New("数值规则系统已被其他操作更新，请重新加载后再保存")
 	ErrOpeningSelectorRevisionConflict = errors.New("开局选择器已被其他操作更新，请重新加载后再保存")
 	ErrActorStateRevisionConflict      = errors.New("Actor 状态系统已被其他操作更新，请重新加载后再保存")
@@ -162,10 +161,6 @@ type EventPackageLibrary struct {
 	novaDir string
 }
 
-type EventSystemLibrary struct {
-	novaDir string
-}
-
 type RuleSystemLibrary struct {
 	novaDir string
 }
@@ -180,10 +175,6 @@ type OpeningSelectorLibrary struct {
 
 func NewEventPackageLibrary(novaDir string) *EventPackageLibrary {
 	return &EventPackageLibrary{novaDir: novaDir}
-}
-
-func NewEventSystemLibrary(novaDir string) *EventSystemLibrary {
-	return &EventSystemLibrary{novaDir: novaDir}
 }
 
 func NewRuleSystemLibrary(novaDir string) *RuleSystemLibrary {
@@ -360,144 +351,6 @@ func (l *EventPackageLibrary) migrateLegacyEventSystems() error {
 			if err := writeEventPackageFile(path, item); err != nil {
 				return err
 			}
-		}
-	}
-	return nil
-}
-
-func (l *EventSystemLibrary) List() ([]EventSystemModule, error) {
-	if err := l.ensureBuiltins(); err != nil {
-		return nil, err
-	}
-	files, err := filepath.Glob(filepath.Join(l.dir(), "*.json"))
-	if err != nil {
-		return nil, err
-	}
-	items := make([]EventSystemModule, 0, len(files))
-	for _, file := range files {
-		item, err := parseEventSystemFile(file)
-		if err != nil {
-			items = append(items, EventSystemModule{ID: strings.TrimSuffix(filepath.Base(file), ".json"), Path: file, Invalid: true, Error: err.Error(), Custom: !IsBuiltinEventSystemID(strings.TrimSuffix(filepath.Base(file), ".json"))})
-			continue
-		}
-		item.Path = file
-		item = applyEventSystemOwnership(item)
-		items = append(items, item)
-	}
-	sortEventSystems(items)
-	return items, nil
-}
-
-func (l *EventSystemLibrary) Get(id string) (EventSystemModule, error) {
-	if err := l.ensureBuiltins(); err != nil {
-		return EventSystemModule{}, err
-	}
-	id = normalizeDirectorModuleID(id)
-	if id == "" {
-		id = DefaultEventSystemID
-	}
-	if err := validateDirectorModuleID(id, "事件系统"); err != nil {
-		return EventSystemModule{}, err
-	}
-	item, err := parseEventSystemFile(filepath.Join(l.dir(), id+".json"))
-	if err != nil {
-		return EventSystemModule{}, err
-	}
-	return applyEventSystemOwnership(item), nil
-}
-
-func (l *EventSystemLibrary) Create(item EventSystemModule) (EventSystemModule, error) {
-	if err := l.ensureBuiltins(); err != nil {
-		return EventSystemModule{}, err
-	}
-	item = normalizeEventSystemModule(item)
-	if item.ID == "" {
-		item.ID = newDirectorModuleID("event-system")
-	}
-	item.BuiltinOverridden = false
-	if err := validateEventSystemModule(item); err != nil {
-		return EventSystemModule{}, err
-	}
-	path := filepath.Join(l.dir(), item.ID+".json")
-	if _, err := os.Stat(path); err == nil {
-		return EventSystemModule{}, fmt.Errorf("事件系统已存在: %s", item.ID)
-	} else if !os.IsNotExist(err) {
-		return EventSystemModule{}, err
-	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	item.CreatedAt = now
-	item.UpdatedAt = now
-	if err := writeEventSystemFile(path, item); err != nil {
-		return EventSystemModule{}, err
-	}
-	item.Path = path
-	return applyEventSystemOwnership(item), nil
-}
-
-func (l *EventSystemLibrary) Update(id string, item EventSystemModule, baseRevision string) (EventSystemModule, error) {
-	if err := l.ensureBuiltins(); err != nil {
-		return EventSystemModule{}, err
-	}
-	id = normalizeDirectorModuleID(id)
-	if err := validateDirectorModuleID(id, "事件系统"); err != nil {
-		return EventSystemModule{}, err
-	}
-	isBuiltin := IsBuiltinEventSystemID(id)
-	current, err := l.Get(id)
-	if err != nil {
-		return EventSystemModule{}, err
-	}
-	if strings.TrimSpace(baseRevision) != "" && strings.TrimSpace(current.UpdatedAt) != strings.TrimSpace(baseRevision) {
-		return EventSystemModule{}, ErrEventSystemRevisionConflict
-	}
-	item = normalizeEventSystemModule(item)
-	item.ID = id
-	item.CreatedAt = firstNonEmptyString(current.CreatedAt, item.CreatedAt)
-	item.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	item.BuiltinOverridden = isBuiltin
-	if err := validateEventSystemModule(item); err != nil {
-		return EventSystemModule{}, err
-	}
-	path := filepath.Join(l.dir(), id+".json")
-	if err := writeEventSystemFile(path, item); err != nil {
-		return EventSystemModule{}, err
-	}
-	item.Path = path
-	return applyEventSystemOwnership(item), nil
-}
-
-func (l *EventSystemLibrary) Delete(id string) error {
-	id = normalizeDirectorModuleID(id)
-	if err := validateDirectorModuleID(id, "事件系统"); err != nil {
-		return err
-	}
-	if IsBuiltinEventSystemID(id) {
-		item, ok := builtinEventSystemModuleByID(id)
-		if !ok {
-			return fmt.Errorf("内置事件系统不存在: %s", id)
-		}
-		return writeEventSystemFile(filepath.Join(l.dir(), id+".json"), item)
-	}
-	return os.Remove(filepath.Join(l.dir(), id+".json"))
-}
-
-func (l *EventSystemLibrary) dir() string {
-	return filepath.Join(l.novaDir, "story-director-modules", "event-systems")
-}
-
-func (l *EventSystemLibrary) ensureBuiltins() error {
-	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
-		return err
-	}
-	for _, item := range builtinEventSystemModules() {
-		path := filepath.Join(l.dir(), item.ID+".json")
-		if current, err := parseEventSystemFile(path); err == nil && current.BuiltinOverridden {
-			continue
-		} else if err == nil && current.Version == item.Version {
-			continue
-		}
-		if err := writeEventSystemFile(path, item); err != nil {
-			return err
 		}
 	}
 	return nil
@@ -822,20 +675,8 @@ func StoryDirectorEventSystemEnabled(director StoryDirector) bool {
 	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).EventPackagesDisabled
 }
 
-func StoryDirectorRuleSystemEnabled(director StoryDirector) bool {
-	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).RuleSystemDisabled
-}
-
-func StoryDirectorActorStateEnabled(director StoryDirector) bool {
-	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).ActorStateDisabled
-}
-
 func StoryDirectorMemoryStructureEnabled(director StoryDirector) bool {
 	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).MemoryStructureDisabled
-}
-
-func StoryDirectorOpeningSelectorEnabled(director StoryDirector) bool {
-	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).OpeningSelectorDisabled
 }
 
 func StoryDirectorImagePresetEnabled(director StoryDirector) bool {
@@ -989,18 +830,6 @@ func DefaultEventPackageModule() EventPackageModule {
 	})
 }
 
-func DefaultEventSystemModule() EventSystemModule {
-	config := DefaultTellerOrchestrationConfig()
-	return normalizeEventSystemModule(EventSystemModule{
-		Version:     storyDirectorModuleVersion,
-		ID:          DefaultEventSystemID,
-		Name:        "默认事件系统",
-		Description: "通用爽文与互动叙事事件包，覆盖打脸、奇遇、冲突、恋爱、伏笔回收等基础事件。",
-		EventSystem: StoryDirectorEventSystem{EventPackages: config.EventPackages, CustomEvents: config.CustomEvents},
-		Tags:        []string{"内置", "事件"},
-	})
-}
-
 func DefaultRuleSystemModule() RuleSystemModule {
 	config := DefaultTellerOrchestrationConfig()
 	return normalizeRuleSystemModule(RuleSystemModule{
@@ -1042,21 +871,6 @@ func IsBuiltinEventPackageID(id string) bool {
 	return ok
 }
 
-func IsBuiltinEventSystemID(id string) bool {
-	switch normalizeDirectorModuleID(id) {
-	case DefaultEventSystemID,
-		GenreXuanhuanEventSystemID,
-		GenreXiuxianEventSystemID,
-		GenreApocalypseEventSystemID,
-		GenreWesternEventSystemID,
-		GenreUrbanEventSystemID,
-		GenreTRPGEventSystemID:
-		return true
-	default:
-		return false
-	}
-}
-
 func IsBuiltinRuleSystemID(id string) bool {
 	return normalizeDirectorModuleID(id) == DefaultRuleSystemID
 }
@@ -1077,16 +891,6 @@ func builtinEventPackageModuleByID(id string) (EventPackageModule, bool) {
 		}
 	}
 	return EventPackageModule{}, false
-}
-
-func builtinEventSystemModuleByID(id string) (EventSystemModule, bool) {
-	id = normalizeDirectorModuleID(id)
-	for _, item := range builtinEventSystemModules() {
-		if item.ID == id {
-			return item, true
-		}
-	}
-	return EventSystemModule{}, false
 }
 
 func applyEventPackageOwnership(item EventPackageModule) EventPackageModule {
@@ -1110,37 +914,6 @@ func eventPackageDiffersFromBuiltin(item EventPackageModule) bool {
 
 func eventPackageComparable(item EventPackageModule) EventPackageModule {
 	item = normalizeEventPackageModule(item)
-	item.Path = ""
-	item.Custom = false
-	item.BuiltinOverridden = false
-	item.Invalid = false
-	item.Error = ""
-	item.CreatedAt = ""
-	item.UpdatedAt = ""
-	return item
-}
-
-func applyEventSystemOwnership(item EventSystemModule) EventSystemModule {
-	if !IsBuiltinEventSystemID(item.ID) {
-		item.Custom = true
-		item.BuiltinOverridden = false
-		return item
-	}
-	item.Custom = false
-	item.BuiltinOverridden = item.BuiltinOverridden || eventSystemDiffersFromBuiltin(item)
-	return item
-}
-
-func eventSystemDiffersFromBuiltin(item EventSystemModule) bool {
-	builtin, ok := builtinEventSystemModuleByID(item.ID)
-	if !ok {
-		return false
-	}
-	return !reflect.DeepEqual(eventSystemComparable(item), eventSystemComparable(builtin))
-}
-
-func eventSystemComparable(item EventSystemModule) EventSystemModule {
-	item = normalizeEventSystemModule(item)
 	item.Path = ""
 	item.Custom = false
 	item.BuiltinOverridden = false
@@ -1504,18 +1277,6 @@ func writeEventPackageFile(path string, item EventPackageModule) error {
 	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
-func writeEventSystemFile(path string, item EventSystemModule) error {
-	item = normalizeEventSystemModule(item)
-	data, err := json.MarshalIndent(item, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
-}
-
 func writeRuleSystemFile(path string, item RuleSystemModule) error {
 	item = normalizeRuleSystemModule(item)
 	data, err := json.MarshalIndent(item, "", "  ")
@@ -1571,15 +1332,6 @@ func newDirectorModuleID(prefix string) string {
 }
 
 func sortEventPackages(items []EventPackageModule) {
-	sort.Slice(items, func(i, j int) bool {
-		if items[i].Custom != items[j].Custom {
-			return !items[i].Custom
-		}
-		return items[i].ID < items[j].ID
-	})
-}
-
-func sortEventSystems(items []EventSystemModule) {
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].Custom != items[j].Custom {
 			return !items[i].Custom

@@ -40,7 +40,7 @@ interface MarkdownEditorProps {
   illustrationInsertSignal?: { illustration: ChapterIllustration; nonce: number } | null
 }
 
-export interface EditorSearchIntent {
+interface EditorSearchIntent {
   query: string
   line: number
   nonce: number

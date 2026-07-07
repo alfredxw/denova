@@ -16,7 +16,7 @@ export interface ConfigManagerToolPayload {
   subagent_type?: string
 }
 
-export type ConfigManagerChatEventMetadata = Pick<ChatMessage, 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_session_id' | 'subagent_type'>
+type ConfigManagerChatEventMetadata = Pick<ChatMessage, 'run_id' | 'agent_name' | 'root_agent_name' | 'run_path' | 'subagent' | 'subagent_session_id' | 'subagent_type'>
 
 interface ConfigManagerMessageOptions {
   idPrefix?: string
@@ -60,7 +60,7 @@ export function appendConfigManagerMessage(messages: ChatMessage[], message: Cha
   return [...messages, { ...message, id: message.id || `${idPrefix}-${Date.now()}-${messages.length}` }]
 }
 
-export function appendConfigManagerStreamingMessage(messages: ChatMessage[], role: ChatMessage['role'], content: string, metadata: ConfigManagerChatEventMetadata = {}, idPrefix = 'config-manager') {
+function appendConfigManagerStreamingMessage(messages: ChatMessage[], role: ChatMessage['role'], content: string, metadata: ConfigManagerChatEventMetadata = {}, idPrefix = 'config-manager') {
   if (!content) return messages
   const last = messages[messages.length - 1]
   if (last?.role === role && last.status !== 'success' && sameConfigManagerChatEventSource(last, metadata)) {
@@ -77,7 +77,7 @@ export function parseConfigManagerPayload<T>(data: string): T | null {
   }
 }
 
-export function metadataFromConfigManagerPayload(payload?: ConfigManagerToolPayload | null): ConfigManagerChatEventMetadata {
+function metadataFromConfigManagerPayload(payload?: ConfigManagerToolPayload | null): ConfigManagerChatEventMetadata {
   if (!payload) return {}
   return {
     run_id: payload.run_id,

@@ -6,8 +6,8 @@ import { TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 
-export type ComposerTokenKind = 'skill' | 'file' | 'lore' | 'style'
-export type ComposerTriggerKind = 'slash' | 'reference' | 'style'
+type ComposerTokenKind = 'skill' | 'file' | 'lore' | 'style'
+type ComposerTriggerKind = 'slash' | 'reference' | 'style'
 
 export interface ComposerTokenSpec {
   kind: ComposerTokenKind
@@ -453,7 +453,7 @@ interface ComposerParseOptions {
   styleScenes: string[]
 }
 
-export function serializeComposerDoc(doc: ProseMirrorNode): string {
+function serializeComposerDoc(doc: ProseMirrorNode): string {
   const blocks: string[] = []
   doc.forEach((block) => {
     let text = ''

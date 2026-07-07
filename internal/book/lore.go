@@ -591,23 +591,6 @@ func (s *LoreStore) ProgressiveContextMarkdown() (string, error) {
 	return strings.TrimSpace(sb.String()), nil
 }
 
-func (s *LoreStore) ContextMarkdown() (string, error) {
-	items, err := s.List()
-	if err != nil {
-		return "", err
-	}
-	var sb strings.Builder
-	for _, item := range items {
-		content := strings.TrimSpace(item.Content)
-		if content == "" {
-			continue
-		}
-		sb.WriteString(formatLoreItemMarkdown(item, true))
-		sb.WriteString("\n\n")
-	}
-	return strings.TrimSpace(sb.String()), nil
-}
-
 // StoryMemoryContextMarkdown returns bounded lore context for interactive story-memory consolidation.
 // It prefers full entries within maxBytes and keeps an index for entries that cannot be expanded.
 func (s *LoreStore) StoryMemoryContextMarkdown(maxBytes int) (string, error) {

@@ -13,7 +13,7 @@ export function imageAPIProfileLabel(profile?: ImageAPIProfileSettings): string 
   return profile?.name?.trim() || profile?.openai_model?.trim() || imageAPIProfileID(profile)
 }
 
-export function defaultImageAPIProfileFromSettings(settings?: {
+function defaultImageAPIProfileFromSettings(settings?: {
   image_api_key?: string
   image_api_base_url?: string
   image_api_model?: string

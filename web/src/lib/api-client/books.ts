@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
-import type { BookCoverResult, BookMeta, BookRecord, NovelImportPreview, NovelImportResult, SSEEvent } from './types'
+import type { BookCoverResult, BookMeta, BookRecord, NovelImportResult, SSEEvent } from './types'
 
 export type BookExportFormat = 'txt'
 
@@ -26,21 +26,6 @@ export async function reorderBooks(paths: string[]): Promise<{ message: string }
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ paths }),
-  })
-}
-
-export async function previewNovelImport(
-  file: File,
-  options: { sampleChars?: number; splitRegex?: string; splitStrategy?: string } = {},
-): Promise<NovelImportPreview> {
-  const form = new FormData()
-  form.append('file', file)
-  if (options.sampleChars !== undefined) form.append('sample_chars', String(options.sampleChars))
-  if (options.splitRegex !== undefined) form.append('split_regex', options.splitRegex)
-  if (options.splitStrategy) form.append('split_strategy', options.splitStrategy)
-  return requestJSON('/api/books/import-novel/preview', {
-    method: 'POST',
-    body: form,
   })
 }
 

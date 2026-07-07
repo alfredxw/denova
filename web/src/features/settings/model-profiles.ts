@@ -10,7 +10,7 @@ export function modelProfileLabel(profile?: ModelProfileSettings): string {
   return profile?.name?.trim() || profile?.openai_model?.trim() || modelProfileID(profile)
 }
 
-export function defaultModelProfileFromSettings(settings?: {
+function defaultModelProfileFromSettings(settings?: {
   openai_api_key?: string
   openai_base_url?: string
   openai_model?: string

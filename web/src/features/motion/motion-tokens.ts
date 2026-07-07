@@ -21,15 +21,6 @@ export const subtlePresence: Variants = {
   exit: { opacity: 0 },
 }
 
-export const listContainer: Variants = {
-  animate: {
-    transition: {
-      staggerChildren: 0.018,
-      delayChildren: 0.015,
-    },
-  },
-}
-
 export const listItem: Variants = {
   initial: { opacity: 0, y: 5 },
   animate: { opacity: 1, y: 0 },

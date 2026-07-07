@@ -895,89 +895,6 @@ func (s *Store) markTurnMemoryReadyLocked(storyID string, meta StoryMeta, lines 
 	return s.touchIndexLocked(storyID, now, 0)
 }
 
-func newInteractiveMemoryEntry(branchID, turnID string, manual bool, req InteractiveMemoryCreateRequest) (InteractiveMemoryEntry, error) {
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	entry := InteractiveMemoryEntry{
-		ID:         newID("mem"),
-		BranchID:   strings.TrimSpace(branchID),
-		TurnID:     strings.TrimSpace(turnID),
-		Title:      trimMemoryText(req.Title),
-		Summary:    trimMemoryText(req.Summary),
-		Content:    trimMemoryText(req.Content),
-		People:     sanitizeStringList(req.People),
-		Places:     sanitizeStringList(req.Places),
-		Tags:       sanitizeStringList(req.Tags),
-		Importance: normalizeMemoryImportance(req.Importance),
-		Manual:     manual,
-		CreatedAt:  now,
-		UpdatedAt:  now,
-	}
-	if entry.Title == "" && entry.Summary != "" {
-		entry.Title = memoryPreview(entry.Summary, 24)
-	}
-	if err := validateMemoryEntry(entry); err != nil {
-		return InteractiveMemoryEntry{}, err
-	}
-	return entry, nil
-}
-
-func applyMemoryUpdate(entry *InteractiveMemoryEntry, req InteractiveMemoryUpdateRequest) {
-	if req.Title != nil {
-		entry.Title = trimMemoryText(*req.Title)
-	}
-	if req.Summary != nil {
-		entry.Summary = trimMemoryText(*req.Summary)
-	}
-	if req.Content != nil {
-		entry.Content = trimMemoryText(*req.Content)
-	}
-	if req.People != nil {
-		entry.People = sanitizeStringList(req.People)
-	}
-	if req.Places != nil {
-		entry.Places = sanitizeStringList(req.Places)
-	}
-	if req.Tags != nil {
-		entry.Tags = sanitizeStringList(req.Tags)
-	}
-	if req.Importance != nil {
-		entry.Importance = normalizeMemoryImportance(*req.Importance)
-	}
-}
-
-func validateMemoryEntry(entry InteractiveMemoryEntry) error {
-	if strings.TrimSpace(entry.BranchID) == "" {
-		return fmt.Errorf("记忆缺少分支")
-	}
-	if strings.TrimSpace(entry.Title) == "" {
-		return fmt.Errorf("记忆标题不能为空")
-	}
-	if strings.TrimSpace(entry.Summary) == "" && strings.TrimSpace(entry.Content) == "" {
-		return fmt.Errorf("记忆摘要或正文至少需要一项")
-	}
-	return nil
-}
-
-func filterMemoryEntries(entries []InteractiveMemoryEntry, branchID string, includeArchived bool) []InteractiveMemoryEntry {
-	out := make([]InteractiveMemoryEntry, 0, len(entries))
-	for _, entry := range entries {
-		if entry.BranchID != branchID {
-			continue
-		}
-		if entry.Archived && !includeArchived {
-			continue
-		}
-		out = append(out, entry)
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].UpdatedAt == out[j].UpdatedAt {
-			return out[i].CreatedAt > out[j].CreatedAt
-		}
-		return out[i].UpdatedAt > out[j].UpdatedAt
-	})
-	return out
-}
-
 func normalizeMemoryBook(book interactiveMemoryBook) interactiveMemoryBook {
 	if book.V <= 0 {
 		book.V = 1
@@ -2018,16 +1935,6 @@ func memoryTruncationSuffix(value string) string {
 	return ""
 }
 
-func normalizeMemoryImportance(value int) int {
-	if value <= 0 {
-		return defaultMemoryImportance
-	}
-	if value > 5 {
-		return 5
-	}
-	return value
-}
-
 func sanitizeStringList(values []string) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(values))
@@ -2043,12 +1950,4 @@ func sanitizeStringList(values []string) []string {
 		}
 	}
 	return out
-}
-
-func memoryPreview(value string, limit int) string {
-	runes := []rune(strings.TrimSpace(value))
-	if limit <= 0 || len(runes) <= limit {
-		return string(runes)
-	}
-	return string(runes[:limit])
 }

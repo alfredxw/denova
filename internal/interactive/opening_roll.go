@@ -163,11 +163,3 @@ func weightedOpeningTraitIndex(traits []OpeningTrait, rng *mathrand.Rand) int {
 	}
 	return len(traits) - 1
 }
-
-func openingTraitNames(traits []OpeningRolledTrait) string {
-	names := make([]string, 0, len(traits))
-	for _, trait := range traits {
-		names = append(names, trait.Name)
-	}
-	return strings.Join(names, "、")
-}

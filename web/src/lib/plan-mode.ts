@@ -1,13 +1,13 @@
-export type PlanQuestionType = 'single' | 'multi'
+type PlanQuestionType = 'single' | 'multi'
 
-export interface PlanQuestionOption {
+interface PlanQuestionOption {
   id: string
   label: string
   description?: string
   recommended?: boolean
 }
 
-export interface PlanQuestion {
+interface PlanQuestion {
   id: string
   type: PlanQuestionType
   question: string
@@ -27,7 +27,7 @@ export interface PlanQuestionAnswer {
   customAnswer?: string
 }
 
-export const PLAN_CARD_DISPLAY_CHARS = 12_000
+const PLAN_CARD_DISPLAY_CHARS = 12_000
 const MAX_APPROVED_PLAN_CHARS = 16_000
 
 export function parsePlanQuestionSet(content: string): PlanQuestionSet | null {

@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from './client'
-import type { AutomationActiveRun, AutomationInboxActionResult, AutomationInboxItem, AutomationRunResult, AutomationTask, AutomationTriggerEvidence, ChatMessage, SSEEvent } from './types'
+import type { AutomationActiveRun, AutomationInboxActionResult, AutomationInboxItem, AutomationTask, AutomationTriggerEvidence, ChatMessage, SSEEvent } from './types'
 
 export async function getAutomations(): Promise<AutomationTask[]> {
   const data = await requestJSON<{ tasks: AutomationTask[] }>('/api/automations')
@@ -46,10 +46,6 @@ export async function updateAutomation(id: string, task: AutomationTask): Promis
 
 export async function deleteAutomation(id: string): Promise<void> {
   await requestJSON(`/api/automations/${encodeURIComponent(id)}`, { method: 'DELETE' })
-}
-
-export async function runAutomation(id: string): Promise<AutomationRunResult> {
-  return requestJSON(`/api/automations/${encodeURIComponent(id)}/run`, { method: 'POST' })
 }
 
 export async function streamAutomationRun(id: string, signal?: AbortSignal, triggerEvidence: AutomationTriggerEvidence[] = []): Promise<ReadableStream<SSEEvent>> {

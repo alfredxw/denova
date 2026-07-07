@@ -86,10 +86,6 @@ function normalizeIDEContext(context?: IDEContext) {
   }
 }
 
-export async function compactChatContext(): Promise<void> {
-  await requestJSON('/api/chat/context-compaction', { method: 'POST' })
-}
-
 export async function removeChatContextCompaction(): Promise<boolean> {
   const data = await requestJSON<{ removed?: boolean }>('/api/chat/context-compaction/active', { method: 'DELETE' })
   return Boolean(data.removed)

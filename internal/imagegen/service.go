@@ -34,14 +34,6 @@ func NewService() *Service {
 	}}
 }
 
-func NewServiceWithAdapters(adapters map[string]Adapter) *Service {
-	out := make(map[string]Adapter, len(adapters))
-	for key, adapter := range adapters {
-		out[strings.TrimSpace(key)] = adapter
-	}
-	return &Service{adapters: out}
-}
-
 func (s *Service) Generate(ctx context.Context, cfg *config.Config, request GenerateRequest) (Result, error) {
 	if strings.TrimSpace(request.Prompt) == "" {
 		return Result{}, ErrPromptRequired

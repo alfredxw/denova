@@ -16,10 +16,6 @@ interface ComposingKeyboardEvent {
   }
 }
 
-interface PropagatingKeyboardShortcutEvent extends KeyboardShortcutEvent {
-  stopPropagation: () => void
-}
-
 /** 判断快捷键事件是否来自用户正在编辑文本的区域。 */
 export function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -37,13 +33,6 @@ export function isNativeTextEditingShortcut(event: KeyboardShortcutEvent): boole
   if (event.altKey || (!event.metaKey && !event.ctrlKey)) return false
   const key = event.key.toLowerCase()
   return ['a', 'c', 'x', 'v', 'z', 'y'].includes(key)
-}
-
-/** 让输入控件保留原生文本快捷键，同时不冒泡到工作台级快捷键。 */
-export function preserveNativeTextEditingShortcut(event: PropagatingKeyboardShortcutEvent): void {
-  if (isNativeTextEditingShortcut(event)) {
-    event.stopPropagation()
-  }
 }
 
 /** 判断当前事件是否为应用级保存快捷键。 */

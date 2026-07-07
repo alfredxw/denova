@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next'
-import type { StateOp, StoryImageSettings, StoryOpeningConfig, StoryOpeningMode, StorySummary } from './types'
+import type { StateOp, StoryImageSettings, StoryOpeningConfig, StorySummary } from './types'
 
 export interface StoryCreateInput {
   title: string
@@ -12,7 +12,7 @@ export interface StoryCreateInput {
   initial_state_ops?: StateOp[]
 }
 
-export const STORY_OPENING_TEXT_LIMIT = 4000
+const STORY_OPENING_TEXT_LIMIT = 4000
 export const DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS = 2000
 export const INTERACTIVE_OPENING_PRESET_PATH = 'setting/interactive-openings.json'
 export const LEGACY_INTERACTIVE_OPENING_PRESET_PATH = 'setting/interactive-opening.md'
@@ -30,7 +30,7 @@ interface BookOpeningPresetFile {
   presets: BookOpeningPreset[]
 }
 
-export const STORY_OPENING_PRESETS = [
+const STORY_OPENING_PRESETS = [
   {
     id: 'arrival',
     zh: '夜雨把旧城的招牌洗得发亮。你在一间还未打烊的小店门前停下，掌心里那枚陌生的钥匙正变得滚烫。',
@@ -48,11 +48,11 @@ export const STORY_OPENING_PRESETS = [
   },
 ] as const
 
-export function defaultStoryOpening(): StoryOpeningConfig {
+function defaultStoryOpening(): StoryOpeningConfig {
   return { mode: 'ai' }
 }
 
-export function normalizeStoryOpening(opening?: Partial<StoryOpeningConfig> | null): StoryOpeningConfig {
+function normalizeStoryOpening(opening?: Partial<StoryOpeningConfig> | null): StoryOpeningConfig {
   const mode = opening?.mode === 'preset' || opening?.mode === 'custom' ? opening.mode : 'ai'
   if (mode === 'preset') {
     return {
@@ -70,14 +70,7 @@ export function normalizeStoryOpening(opening?: Partial<StoryOpeningConfig> | nu
   return defaultStoryOpening()
 }
 
-export function storyOpeningDisplayLabel(opening: StoryOpeningConfig | undefined, t: TFunction) {
-  const normalized = normalizeStoryOpening(opening)
-  if (normalized.mode === 'preset') return t('storyStage.opening.modePreset')
-  if (normalized.mode === 'custom') return t('storyStage.opening.modeCustom')
-  return t('storyStage.opening.startAI')
-}
-
-export function storyOpeningSourceText(opening: StoryOpeningConfig | undefined) {
+function storyOpeningSourceText(opening: StoryOpeningConfig | undefined) {
   const normalized = normalizeStoryOpening(opening)
   if (normalized.mode === 'preset') return normalized.preset_text?.trim() || ''
   if (normalized.mode === 'custom') return normalized.custom_text?.trim() || ''
@@ -118,7 +111,7 @@ export function serializeBookOpeningPresets(presets: BookOpeningPreset[]) {
   return `${JSON.stringify({ version: 1, presets: normalizeBookOpeningPresets(presets) }, null, 2)}\n`
 }
 
-export function normalizeBookOpeningPresets(presets: Array<Partial<BookOpeningPreset>>): BookOpeningPreset[] {
+function normalizeBookOpeningPresets(presets: Array<Partial<BookOpeningPreset>>): BookOpeningPreset[] {
   const seen = new Set<string>()
   return presets
     .map((preset, index) => {
@@ -158,9 +151,4 @@ function truncateStoryOpeningTitle(text: string) {
 function createOpeningPresetId() {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
   return `opening-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
-
-export function openingModeFromValue(value: string): StoryOpeningMode {
-  if (value === 'preset' || value === 'custom') return value
-  return 'ai'
 }

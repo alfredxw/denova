@@ -830,7 +830,7 @@ function PlanShell({ icon, title, badge, children }: { icon: ReactNode; title: s
 }
 
 /** 工具执行卡片，默认以单行展示运行态和结果态。 */
-export function ToolExecutionBlock({ message, onOpenTrace }: { message: ChatMessage; onOpenTrace?: (runID: string) => void }) {
+function ToolExecutionBlock({ message, onOpenTrace }: { message: ChatMessage; onOpenTrace?: (runID: string) => void }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const info = parseToolCallContent(message.content || '')
@@ -1148,7 +1148,7 @@ interface TodoItem {
 }
 
 /** Agentic Loop write_todos 工具卡片：渲染为可读的待办列表，兼容流式不完整 args */
-export function TodoListBlock({ message }: { message: ChatMessage }) {
+function TodoListBlock({ message }: { message: ChatMessage }) {
   const { t } = useTranslation()
   const args = message.args || ''
   const todos = parseTodosFromArgs(args)

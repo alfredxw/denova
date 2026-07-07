@@ -786,16 +786,6 @@ func volumeDirFormatForLanguage(_ string) string {
 	return "v{order:05}-{volume}"
 }
 
-func isChineseChapterLikeTitle(title string) bool {
-	title = strings.TrimSpace(title)
-	return cnChapterRe.MatchString(title) || cnVolumeRe.MatchString(title) || prefaceTitleRe.MatchString(title)
-}
-
-func isEnglishChapterLikeTitle(title string) bool {
-	title = strings.TrimSpace(title)
-	return enChapterRe.MatchString(title) || enVolumeRe.MatchString(title) || enSpecialTitleRe.MatchString(title)
-}
-
 func safeFilenamePart(input string) string {
 	input = strings.TrimSpace(input)
 	var out []rune

@@ -78,14 +78,6 @@ func LegacyRel(elem ...string) string {
 	return filepath.ToSlash(filepath.Join(parts...))
 }
 
-// IsInternalRel reports whether rel points inside either workspace-private data
-// directory name. It is intended for workspace file APIs and version filters.
-func IsInternalRel(rel string) bool {
-	clean := filepath.ToSlash(filepath.Clean(strings.TrimSpace(rel)))
-	return clean == DataDirName || strings.HasPrefix(clean, DataDirName+"/") ||
-		clean == LegacyDataDirName || strings.HasPrefix(clean, LegacyDataDirName+"/")
-}
-
 func isDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()

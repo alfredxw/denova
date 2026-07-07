@@ -1,4 +1,4 @@
-import type { DirectorPlanDocs, StoryDirector, StoryDirectorActorStateSystem, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, TellerEventPackage } from '../../types'
+import type { StoryDirector, StoryDirectorActorStateSystem, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, TellerEventPackage } from '../../types'
 import { DIRECTOR_PLAN_REQUIRED_HEADINGS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT } from './constants'
 
 export function parseDecimalInput(value: string) {
@@ -23,10 +23,6 @@ export function validateDirectorPlanningTemplate(value: string) {
     missingHeadings,
     valid: bytes <= STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT && missingHeadings.length === 0,
   }
-}
-
-export function planningTemplateLabelKey(key: keyof DirectorPlanDocs) {
-  return key === 'plan' ? 'plan' : 'plan'
 }
 
 export function strategyRateValue(value: number | undefined, fallbackValue: string): string {

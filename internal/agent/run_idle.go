@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
@@ -17,57 +18,61 @@ func waitForRunnerEvent(ctx context.Context, events *adk.AsyncIterator[*adk.Agen
 	if events == nil {
 		return nil, false, nil
 	}
-	if idle <= 0 {
+	return waitForAsyncResult(ctx, idle, "主循环", nil, func() (*adk.AgentEvent, bool, error) {
 		event, ok := events.Next()
 		return event, ok, nil
-	}
-	type result struct {
-		event *adk.AgentEvent
-		ok    bool
-	}
-	ch := make(chan result, 1)
-	go func() {
-		event, ok := events.Next()
-		ch <- result{event: event, ok: ok}
-	}()
-	timer := time.NewTimer(idle)
-	defer timer.Stop()
-	select {
-	case res := <-ch:
-		return res.event, res.ok, nil
-	case <-ctx.Done():
-		return nil, false, ctx.Err()
-	case <-timer.C:
-		return nil, false, agentIdleTimeoutError("主循环", idle)
-	}
+	})
 }
 
 func recvMessageFrame(ctx context.Context, stream *schema.StreamReader[*schema.Message], idle time.Duration) (*schema.Message, error) {
 	if stream == nil {
 		return nil, nil
 	}
-	if idle <= 0 {
-		return stream.Recv()
-	}
-	type result struct {
-		frame *schema.Message
-		err   error
-	}
-	ch := make(chan result, 1)
-	go func() {
+	frame, _, err := waitForAsyncResult(ctx, idle, "流式响应", stream.Close, func() (*schema.Message, bool, error) {
 		frame, err := stream.Recv()
-		ch <- result{frame: frame, err: err}
+		return frame, true, err
+	})
+	return frame, err
+}
+
+type asyncWaitResult[T any] struct {
+	value T
+	ok    bool
+	err   error
+}
+
+func waitForAsyncResult[T any](ctx context.Context, idle time.Duration, scope string, cancel func(), receive func() (T, bool, error)) (T, bool, error) {
+	var zero T
+	if receive == nil {
+		return zero, false, nil
+	}
+	if idle <= 0 {
+		return receive()
+	}
+	ch := make(chan asyncWaitResult[T], 1)
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				ch <- asyncWaitResult[T]{err: fmt.Errorf("Agent %s等待异步结果 panic: %v\n%s", scope, recovered, string(debug.Stack()))}
+			}
+		}()
+		value, ok, err := receive()
+		ch <- asyncWaitResult[T]{value: value, ok: ok, err: err}
 	}()
 	timer := time.NewTimer(idle)
 	defer timer.Stop()
 	select {
 	case res := <-ch:
-		return res.frame, res.err
+		return res.value, res.ok, res.err
 	case <-ctx.Done():
-		stream.Close()
-		return nil, ctx.Err()
+		if cancel != nil {
+			cancel()
+		}
+		return zero, false, ctx.Err()
 	case <-timer.C:
-		stream.Close()
-		return nil, agentIdleTimeoutError("流式响应", idle)
+		if cancel != nil {
+			cancel()
+		}
+		return zero, false, agentIdleTimeoutError(scope, idle)
 	}
 }

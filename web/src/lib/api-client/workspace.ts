@@ -10,10 +10,6 @@ import type {
   WorkspaceSummary,
 } from './types'
 
-export async function getStatus(): Promise<{ has_state: boolean; context: string }> {
-  return requestJSON('/api/status')
-}
-
 export async function switchWorkspace(path: string): Promise<{ workspace: string; message: string }> {
   return requestJSON('/api/workspace/switch', {
     method: 'POST',

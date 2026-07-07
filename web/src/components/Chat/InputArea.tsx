@@ -42,7 +42,7 @@ const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: Luc
   { cmd: '/rewrite', descKey: 'chat.command.rewrite.desc', hintKey: 'chat.command.rewrite.hint', icon: WandSparkles },
 ]
 
-export interface SkillCommand {
+interface SkillCommand {
   name: string
   description: string
 }

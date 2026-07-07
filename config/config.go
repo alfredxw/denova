@@ -377,21 +377,6 @@ func settingsString(v, fallback string) string {
 	return v
 }
 
-// LoadForWorkspace 加载配置并明确指定 workspace，用于 CLI 参数场景。
-func LoadForWorkspace(workspace string) *Config {
-	cfg, _, err := LoadWithWorkspace(workspace)
-	if err != nil || cfg == nil {
-		cfg = Load()
-		cfg.Workspace = workspace
-	}
-	if cfg.Workspace != "" {
-		if abs, err := filepath.Abs(cfg.Workspace); err == nil {
-			cfg.Workspace = abs
-		}
-	}
-	return cfg
-}
-
 // overrideFromEnv 用环境变量覆盖配置
 func overrideFromEnv(cfg *Config) {
 	if v := os.Getenv("OPENAI_API_KEY"); v != "" {

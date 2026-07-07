@@ -103,14 +103,6 @@ func (s *AutomationAppService) Run(ctx context.Context, id, trigger string) (res
 	return s.runAutomation(ctx, task, run, conversation, nil)
 }
 
-func (a *App) StartAutomationTask(ctx context.Context, id, trigger string) (*Task, automation.RunRecord, error) {
-	return a.automation().StartTask(ctx, id, trigger)
-}
-
-func (s *AutomationAppService) StartTask(ctx context.Context, id, trigger string) (*Task, automation.RunRecord, error) {
-	return s.startTaskWithSourceRun(ctx, id, trigger, "", nil)
-}
-
 func (a *App) StartAutomationTaskWithEvidence(ctx context.Context, id, trigger string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
 	return a.automation().StartTaskWithEvidence(ctx, id, trigger, evidence)
 }

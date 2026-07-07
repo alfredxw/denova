@@ -8,10 +8,6 @@ import { focusDialogContentOnOpen } from './dialog-focus'
 
 const MAX_TOKEN_USAGE_MESSAGES = 10
 
-interface TokenUsagePanelProps {
-  messages: ChatMessage[]
-}
-
 type TokenUsageSummary = {
   count: number
   recent: ChatMessage[]
@@ -50,60 +46,6 @@ type TokenUsageGroup = {
   id: string
   message: ChatMessage
   rows: TokenUsageRow[]
-}
-
-export function TokenUsagePanel({ messages }: TokenUsagePanelProps) {
-  const { t } = useTranslation()
-  const stats = useMemo(() => summarizeTokenUsage(messages), [messages])
-  const hasUsage = stats.count > 0
-
-  return (
-    <div className="rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2.5 text-xs">
-      <div className="flex items-center gap-2">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
-          <BarChart3 className="h-3.5 w-3.5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="font-medium text-[var(--nova-text)]">{t('chat.tokenUsage.title')}</div>
-          <div className="truncate text-[11px] text-[var(--nova-text-faint)]">
-            {hasUsage ? t('chat.tokenUsage.subtitle', { count: stats.count }) : t('chat.tokenUsage.empty')}
-          </div>
-        </div>
-      </div>
-      <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-        <MetricCell label={t('chat.tokenUsage.cacheHit')} value={hasUsage ? formatPercent(stats.cacheHitRate) : '-'} />
-        <MetricCell label={t('chat.tokenUsage.uncachedTokens')} value={hasUsage ? formatCompactNumber(stats.uncachedPromptTokens) : '-'} />
-        <MetricCell label={t('chat.tokenUsage.totalTokens')} value={hasUsage ? formatCompactNumber(stats.totalTokens) : '-'} />
-        <MetricCell label={t('chat.tokenUsage.modelCalls')} value={hasUsage ? formatCompactNumber(stats.modelCalls) : '-'} />
-      </div>
-      {hasUsage ? (
-        <>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--nova-surface-2)]">
-            <div className="h-full rounded-full bg-[var(--nova-accent-green)]" style={{ width: `${Math.round(stats.cacheHitRate * 100)}%` }} />
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-[var(--nova-text-faint)]">
-            <span>{t('chat.tokenUsage.promptTokens', { count: formatCompactNumber(stats.promptTokens) })}</span>
-            <span>{t('chat.tokenUsage.cachedTokens', { count: formatCompactNumber(stats.cachedPromptTokens) })}</span>
-            <span>{t('chat.tokenUsage.uncachedTokensWithCount', { count: formatCompactNumber(stats.uncachedPromptTokens) })}</span>
-            <span>{t('chat.tokenUsage.outputTokens', { count: formatCompactNumber(stats.completionTokens) })}</span>
-            <span>{t('chat.tokenUsage.reasoningTokens', { count: formatCompactNumber(stats.reasoningTokens) })}</span>
-          </div>
-          <div className="mt-2 space-y-1 border-t border-[var(--nova-border-soft)] pt-2">
-            {stats.recent.map((message, index) => (
-              <div key={message.run_id || message.id || index} className="flex items-center justify-between gap-2 text-[11px]">
-                <span className="min-w-0 truncate text-[var(--nova-text-faint)]">
-                  {t('chat.tokenUsage.recentRun', { count: index + 1 })}
-                </span>
-                <span className="shrink-0 font-mono text-[var(--nova-text-muted)]">
-                  {formatPercent(numberOrZero(message.cache_hit_rate))} · {t('chat.tokenUsage.uncachedTokensWithCount', { count: formatCompactNumber(messageUncachedPromptTokens(message)) })} · {formatCompactNumber(numberOrZero(message.total_tokens))}
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      ) : null}
-    </div>
-  )
 }
 
 export function TokenUsageDialog({ open, messages, onOpenChange, onOpenTrace }: {
@@ -442,15 +384,6 @@ function buildTokenUsageGroups(messages: ChatMessage[]): TokenUsageGroup[] {
   })
 }
 
-function MetricCell({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 rounded-md border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] px-2 py-1.5">
-      <div className="truncate text-[10px] text-[var(--nova-text-faint)]">{label}</div>
-      <div className="truncate font-mono text-[12px] text-[var(--nova-text)]">{value}</div>
-    </div>
-  )
-}
-
 function numberOrZero(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }
@@ -482,11 +415,6 @@ function promptCacheMissTokens(value: PromptCacheUsageValue) {
 function formatPercent(value: number) {
   if (!Number.isFinite(value) || value <= 0) return '0%'
   return `${Math.round(value * 1000) / 10}%`
-}
-
-function formatCompactNumber(value: number) {
-  if (!Number.isFinite(value)) return '0'
-  return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 }
 
 function formatNumber(value: number) {

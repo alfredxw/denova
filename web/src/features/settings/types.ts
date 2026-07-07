@@ -133,7 +133,7 @@ export interface AgentSkillSettings {
 
 export type AgentSkillOverride = Record<string, boolean>
 
-export interface AgentContextSettings {
+interface AgentContextSettings {
   default?: AgentContextOverride
   ide?: AgentContextOverride
   interactive_story?: AgentContextOverride
@@ -160,7 +160,7 @@ export interface AgentContextOverride {
   tool_result_preview_chars?: number | null
 }
 
-export interface AgentGeneralSubAgentSettings {
+interface AgentGeneralSubAgentSettings {
   default?: boolean | null
   ide?: boolean | null
   interactive_story?: boolean | null
@@ -193,7 +193,7 @@ export interface SubAgentConfig {
   tools?: AgentToolOverride
 }
 
-export interface AgentPromptSettings {
+interface AgentPromptSettings {
   default?: AgentPromptOverride
   ide?: AgentPromptOverride
   interactive_story?: AgentPromptOverride
@@ -221,11 +221,11 @@ export interface AgentPromptSource {
   field?: 'flow_prompt' | 'system_prompt'
 }
 
-export interface AgentPromptSourceList {
+interface AgentPromptSourceList {
   sources?: AgentPromptSource[]
 }
 
-export interface AgentPromptSourceSettings {
+interface AgentPromptSourceSettings {
   default?: AgentPromptSourceList
   ide?: AgentPromptSourceList
   interactive_story?: AgentPromptSourceList
@@ -245,7 +245,7 @@ export interface AgentPromptBlocks {
   editable_system_prompt?: string
 }
 
-export interface AgentPromptBlockSettings {
+interface AgentPromptBlockSettings {
   default?: AgentPromptBlocks
   ide?: AgentPromptBlocks
   interactive_story?: AgentPromptBlocks
@@ -259,24 +259,24 @@ export interface AgentPromptBlockSettings {
   context_compaction?: AgentPromptBlocks
 }
 
-export interface SettingsPaths {
+interface SettingsPaths {
   denova_dir: string
   nova_dir: string
   user_config: string
   workspace_config: string
 }
 
-export interface SettingsAccess {
+interface SettingsAccess {
   local_url: string
   lan_url: string
 }
 
-export interface SettingsRuntime {
+interface SettingsRuntime {
   goos: string
   dev_mode?: boolean
 }
 
-export interface SettingsRevisions {
+interface SettingsRevisions {
   user?: string
   workspace?: string
 }
@@ -298,7 +298,7 @@ export interface LayeredSettings {
 
 export type SettingsLayer = 'user' | 'workspace'
 
-export interface UpdateAsset {
+interface UpdateAsset {
   name: string
   size: number
   download_url: string

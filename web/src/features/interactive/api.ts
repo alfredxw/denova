@@ -1,6 +1,6 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from '@/lib/api-client'
 import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
-import type { ActorStateModule, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, HotChoicesResponse, ImagePreset, InteractiveMemoryEntry, InteractiveMemoryState, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StoryMemoryStructureModule, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryMemoryStructure, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
+import type { ActorStateModule, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, HotChoicesResponse, ImagePreset, InteractiveSSEEvent, OpeningRollRequest, OpeningRollResult, OpeningSelectorModule, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StateOp, StoryDirector, StoryMemoryStructureModule, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryMemoryRecord, StoryMemorySettings, StoryMemoryState, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput } from './types'
 
 export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
@@ -64,11 +64,6 @@ export function getInteractiveDirector(storyId: string, branchId?: string): Prom
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director${query}`)
 }
 
-export function getInteractiveDirectorStatus(storyId: string, branchId?: string): Promise<DirectorPlanStatus> {
-  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/status${query}`)
-}
-
 export function updateInteractiveDirector(storyId: string, input: UpdateDirectorPlanInput): Promise<DirectorPlan> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director`, {
     method: 'PATCH',
@@ -101,38 +96,6 @@ export function analyzeInteractiveDirectorContext(storyId: string, input: { bran
   })
 }
 
-export function getInteractiveMemory(storyId: string, branchId?: string, includeArchived = false): Promise<InteractiveMemoryState> {
-  const params = new URLSearchParams()
-  if (branchId) params.set('branch', branchId)
-  if (includeArchived) params.set('include_archived', 'true')
-  const query = params.toString()
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory${query ? `?${query}` : ''}`)
-}
-
-export function createInteractiveMemory(storyId: string, input: Partial<InteractiveMemoryEntry> & { branch_id: string }): Promise<InteractiveMemoryEntry> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(input),
-  })
-}
-
-export function updateInteractiveMemory(storyId: string, memoryId: string, input: Partial<InteractiveMemoryEntry>): Promise<InteractiveMemoryEntry> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory/${encodeURIComponent(memoryId)}`, {
-    method: 'PATCH',
-    headers: jsonHeaders,
-    body: JSON.stringify(input),
-  })
-}
-
-export function setInteractiveMemoryArchived(storyId: string, memoryId: string, archived: boolean): Promise<InteractiveMemoryEntry> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/memory/${encodeURIComponent(memoryId)}/archive`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ archived }),
-  })
-}
-
 export function getStoryMemory(storyId: string, branchId?: string, includeArchived = false): Promise<StoryMemoryState> {
   const params = new URLSearchParams()
   if (branchId) params.set('branch', branchId)
@@ -147,19 +110,6 @@ export function updateStoryMemorySettings(storyId: string, input: Partial<StoryM
     headers: jsonHeaders,
     body: JSON.stringify(input),
   })
-}
-
-export function saveStoryMemoryStructure(storyId: string, input: Partial<StoryMemoryStructure>): Promise<StoryMemoryStructure> {
-  const id = input.id?.trim()
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/structures${id ? `/${encodeURIComponent(id)}` : ''}`, {
-    method: id ? 'PATCH' : 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify(input),
-  })
-}
-
-export function deleteStoryMemoryStructure(storyId: string, structureId: string): Promise<void> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/story-memory/structures/${encodeURIComponent(structureId)}`, { method: 'DELETE' })
 }
 
 export function saveStoryMemoryRecord(storyId: string, input: Partial<StoryMemoryRecord> & { structure_id: string; branch_id?: string; values: Record<string, string> }): Promise<StoryMemoryRecord> {
@@ -250,10 +200,6 @@ export function updateStyleReferenceFile(input: { path: string; content: string;
     headers: jsonHeaders,
     body: JSON.stringify(input),
   })
-}
-
-export function deleteStyleReference(path: string): Promise<void> {
-  return requestJSON(`/api/styles?path=${encodeURIComponent(path)}`, { method: 'DELETE' })
 }
 
 export async function getStoryDirectors(): Promise<StoryDirector[]> {

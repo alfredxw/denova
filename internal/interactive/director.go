@@ -55,41 +55,6 @@ func directorEventTemplate(id, name, category, summary string) DirectorEvent {
 	}
 }
 
-func directorEventForAction(eventID string, override *DirectorEvent) DirectorEvent {
-	if override != nil {
-		event := *override
-		if strings.TrimSpace(event.ID) == "" {
-			event.ID = eventID
-		}
-		if strings.TrimSpace(event.Name) == "" {
-			event.Name = event.ID
-		}
-		if event.Weight == 0 {
-			event.Weight = 1
-		}
-		return event
-	}
-	for _, event := range DefaultDirectorEventTemplates() {
-		if event.ID == eventID || event.Category == eventID || event.Name == eventID {
-			return event
-		}
-	}
-	return DirectorEvent{
-		ID:                eventID,
-		Name:              eventID,
-		Category:          "custom",
-		Status:            "available",
-		Enabled:           true,
-		Summary:           "自定义导演事件。",
-		PublicSummary:     "自定义导演事件。",
-		Template:          "根据当前剧情合理安排该自定义事件。",
-		NormalizedTrigger: eventID,
-		Weight:            1,
-		Intensity:         "medium",
-		UserConfigured:    true,
-	}
-}
-
 func upsertDirectorEvent(events []DirectorEvent, next DirectorEvent) []DirectorEvent {
 	normalized := normalizeDirectorEvents([]DirectorEvent{next})
 	if len(normalized) == 0 {
@@ -145,39 +110,6 @@ func latestTurnForBranchHead(lines []StoryEventRecord, head string) *TurnEvent {
 		return &turn
 	}
 	return nil
-}
-
-func appendUniqueString(values []string, value string) []string {
-	value = strings.TrimSpace(value)
-	if value == "" || stringInList(value, values) {
-		return values
-	}
-	if len(values) >= maxTurnBriefListItems {
-		return values
-	}
-	return append(values, value)
-}
-
-func removeString(values []string, value string) []string {
-	value = strings.TrimSpace(value)
-	out := values[:0]
-	for _, existing := range values {
-		if strings.TrimSpace(existing) == "" || existing == value {
-			continue
-		}
-		out = append(out, existing)
-	}
-	return out
-}
-
-func stringInList(value string, values []string) bool {
-	value = strings.TrimSpace(value)
-	for _, existing := range values {
-		if strings.TrimSpace(existing) == value {
-			return true
-		}
-	}
-	return false
 }
 
 func firstNonEmpty(values ...string) string {

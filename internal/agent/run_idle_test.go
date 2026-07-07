@@ -38,3 +38,18 @@ func TestRecvMessageFrameTimesOutAndClosesStream(t *testing.T) {
 		t.Fatalf("unexpected timeout error: %v", err)
 	}
 }
+
+func TestWaitForAsyncResultRecoversPanic(t *testing.T) {
+	_, ok, err := waitForAsyncResult(context.Background(), time.Second, "测试", nil, func() (int, bool, error) {
+		panic("boom")
+	})
+	if err == nil {
+		t.Fatal("panic should be returned as an error")
+	}
+	if ok {
+		t.Fatal("panic should not report a successful result")
+	}
+	if !strings.Contains(err.Error(), "panic") || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("unexpected panic error: %v", err)
+	}
+}

@@ -3,10 +3,10 @@ import { Archive, Clock, Database, FileText, FolderOpen, Globe2, ImagePlus, List
 import type { AgentModelSettings, AgentSkillSettings, AgentToolOverride } from '@/features/settings/types'
 import type { SkillSummary } from '@/lib/api'
 
-export type AgentKey = keyof AgentModelSettings
+type AgentKey = keyof AgentModelSettings
 export type VisibleAgentKey = Exclude<AgentKey, 'default'>
 export type ToolKey = keyof AgentToolOverride
-export type AgentCapabilityMode = 'tools' | 'built_in' | 'model_only'
+type AgentCapabilityMode = 'tools' | 'built_in' | 'model_only'
 export type DeepAgentParentKey = Extract<VisibleAgentKey, 'ide' | 'interactive_story' | 'config_manager' | 'automation'>
 
 export interface AgentViewDefinition {
@@ -54,7 +54,7 @@ export const TOOL_ROWS: AgentToolDefinition[] = [
   { key: 'agent_config_write', titleKey: 'agents.tool.agentConfigWrite.title', subtitleKey: 'agents.tool.agentConfigWrite.subtitle', icon: Settings2 },
 ]
 
-export const BASE_TOOL_VALUES: Required<AgentToolOverride> = {
+const BASE_TOOL_VALUES: Required<AgentToolOverride> = {
   file_read: true,
   web_search: true,
   file_write: true,
@@ -97,7 +97,7 @@ export function skillAgentFieldMatches(agentField: string | undefined, agentKey:
     .some((part) => part === '*' || part.toLowerCase() === 'all' || part === agentKey)
 }
 
-export function disabledTools(): Required<AgentToolOverride> {
+function disabledTools(): Required<AgentToolOverride> {
   return { file_read: false, web_search: false, file_write: false, image_generation: false, shell_execute: false, skills: false, lore_read: false, lore_write: false, todo: false, agent_config_read: false, agent_config_write: false }
 }
 

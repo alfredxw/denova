@@ -12,7 +12,6 @@ import (
 	"denova/internal/book"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 // InteractiveAppService 负责互动故事、剧情分支、导演和互动 Agent 任务。
@@ -516,21 +515,6 @@ func normalizeStoryMemoryGenerateSource(source string) string {
 		return storyMemoryGenerateSourceAuto
 	}
 	return storyMemoryGenerateSourceManual
-}
-
-func skipAutoStoryMemoryGenerate(store *interactive.Store, storyID, branchID, turnID string, cause error, emit func(agent.Event)) (interactive.StoryMemoryState, int, error) {
-	log.Printf("[interactive-memory-agent] auto generate skipped story_id=%s branch_id=%s turn_id=%s err=%v", storyID, branchID, turnID, cause)
-	if emit != nil {
-		emit(agent.Event{Type: "thinking", Data: map[string]string{"content": "故事记忆自动整理暂时不可用，本回合已先跳过；你可以稍后手动重新整理。"}})
-	}
-	if err := store.MarkInteractiveMemoryReady(storyID, branchID, turnID); err != nil {
-		return interactive.StoryMemoryState{}, 0, err
-	}
-	state, err := store.StoryMemory(storyID, branchID, true)
-	if err != nil {
-		return interactive.StoryMemoryState{}, 0, err
-	}
-	return state, 0, nil
 }
 
 func (a *App) CreateInteractiveMemory(storyID string, req interactive.InteractiveMemoryCreateRequest) (interactive.InteractiveMemoryEntry, error) {
@@ -1175,66 +1159,6 @@ func (s *InteractiveAppService) DeleteEventPackage(id string) error {
 	return interactive.NewEventPackageLibrary(cfg.NovaDir).Delete(id)
 }
 
-func (a *App) EventSystems() ([]interactive.EventSystemModule, error) {
-	return a.interactiveService().EventSystems()
-}
-
-func (s *InteractiveAppService) EventSystems() ([]interactive.EventSystemModule, error) {
-	cfg := s.cfg()
-	if cfg == nil || cfg.NovaDir == "" {
-		return nil, ErrNoWorkspace
-	}
-	return interactive.NewEventSystemLibrary(cfg.NovaDir).List()
-}
-
-func (a *App) EventSystem(id string) (interactive.EventSystemModule, error) {
-	return a.interactiveService().EventSystem(id)
-}
-
-func (s *InteractiveAppService) EventSystem(id string) (interactive.EventSystemModule, error) {
-	cfg := s.cfg()
-	if cfg == nil || cfg.NovaDir == "" {
-		return interactive.EventSystemModule{}, ErrNoWorkspace
-	}
-	return interactive.NewEventSystemLibrary(cfg.NovaDir).Get(id)
-}
-
-func (a *App) CreateEventSystem(item interactive.EventSystemModule) (interactive.EventSystemModule, error) {
-	return a.interactiveService().CreateEventSystem(item)
-}
-
-func (s *InteractiveAppService) CreateEventSystem(item interactive.EventSystemModule) (interactive.EventSystemModule, error) {
-	cfg := s.cfg()
-	if cfg == nil || cfg.NovaDir == "" {
-		return interactive.EventSystemModule{}, ErrNoWorkspace
-	}
-	return interactive.NewEventSystemLibrary(cfg.NovaDir).Create(item)
-}
-
-func (a *App) UpdateEventSystem(id string, item interactive.EventSystemModule, baseRevision ...string) (interactive.EventSystemModule, error) {
-	return a.interactiveService().UpdateEventSystem(id, item, firstRevision(baseRevision))
-}
-
-func (s *InteractiveAppService) UpdateEventSystem(id string, item interactive.EventSystemModule, baseRevision string) (interactive.EventSystemModule, error) {
-	cfg := s.cfg()
-	if cfg == nil || cfg.NovaDir == "" {
-		return interactive.EventSystemModule{}, ErrNoWorkspace
-	}
-	return interactive.NewEventSystemLibrary(cfg.NovaDir).Update(id, item, baseRevision)
-}
-
-func (a *App) DeleteEventSystem(id string) error {
-	return a.interactiveService().DeleteEventSystem(id)
-}
-
-func (s *InteractiveAppService) DeleteEventSystem(id string) error {
-	cfg := s.cfg()
-	if cfg == nil || cfg.NovaDir == "" {
-		return ErrNoWorkspace
-	}
-	return interactive.NewEventSystemLibrary(cfg.NovaDir).Delete(id)
-}
-
 func (a *App) RuleSystems() ([]interactive.RuleSystemModule, error) {
 	return a.interactiveService().RuleSystems()
 }
@@ -1596,11 +1520,4 @@ func (s *InteractiveAppService) cfg() *config.Config {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.cfg
-}
-
-func (s *InteractiveAppService) sessionStore() *session.Store {
-	a := s.app
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.sessionStore
 }

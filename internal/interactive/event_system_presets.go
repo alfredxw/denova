@@ -36,66 +36,6 @@ type genreEventCardPreset struct {
 	Cooldown   int
 }
 
-func builtinEventSystemModules() []EventSystemModule {
-	return []EventSystemModule{
-		DefaultEventSystemModule(),
-		builtinGenreEventSystem(
-			GenreXuanhuanEventSystemID,
-			"玄幻事件系统",
-			"面向东方玄幻、热血升级、家族宗门冲突和大世界奇遇的事件卡包。",
-			[]string{"内置", "事件", "玄幻"},
-			GenreXuanhuanEventPackageID,
-			"玄幻核心事件包",
-			xuanhuanEventCards(),
-		),
-		builtinGenreEventSystem(
-			GenreXiuxianEventSystemID,
-			"修仙事件系统",
-			"面向修仙、问道、宗门任务、心魔天劫和因果机缘的事件卡包。",
-			[]string{"内置", "事件", "修仙"},
-			GenreXiuxianEventPackageID,
-			"修仙核心事件包",
-			xiuxianEventCards(),
-		),
-		builtinGenreEventSystem(
-			GenreApocalypseEventSystemID,
-			"末世事件系统",
-			"面向末世求生、基地建设、感染异变、资源稀缺和幸存者冲突的事件卡包。",
-			[]string{"内置", "事件", "末世"},
-			GenreApocalypseEventPackageID,
-			"末世核心事件包",
-			apocalypseEventCards(),
-		),
-		builtinGenreEventSystem(
-			GenreWesternEventSystemID,
-			"西幻事件系统",
-			"面向剑与魔法、王国纷争、地下城、神谕教会和异族盟约的事件卡包。",
-			[]string{"内置", "事件", "西幻"},
-			GenreWesternEventPackageID,
-			"西幻核心事件包",
-			westernFantasyEventCards(),
-		),
-		builtinGenreEventSystem(
-			GenreUrbanEventSystemID,
-			"都市事件系统",
-			"面向都市成长、职场商业、家庭关系、舆论案件和情感拉扯的事件卡包。",
-			[]string{"内置", "事件", "都市"},
-			GenreUrbanEventPackageID,
-			"都市核心事件包",
-			urbanEventCards(),
-		),
-		builtinGenreEventSystem(
-			GenreTRPGEventSystemID,
-			"TRPG事件系统",
-			"面向桌面角色扮演式互动叙事，强调任务钩子、线索、检定、遭遇和失败前进。",
-			[]string{"内置", "事件", "TRPG"},
-			GenreTRPGEventPackageID,
-			"TRPG核心事件包",
-			trpgEventCards(),
-		),
-	}
-}
-
 func builtinEventPackageModules() []EventPackageModule {
 	return []EventPackageModule{
 		DefaultEventPackageModule(),
@@ -153,19 +93,6 @@ func builtinGenreEventPackageModule(id, name, description string, tags []string,
 		Description: description,
 		Events:      pkg.Events,
 		Tags:        tags,
-	})
-}
-
-func builtinGenreEventSystem(id, name, description string, tags []string, packageID, packageName string, cards []genreEventCardPreset) EventSystemModule {
-	return normalizeEventSystemModule(EventSystemModule{
-		Version:     storyDirectorModuleVersion,
-		ID:          id,
-		Name:        name,
-		Description: description,
-		EventSystem: StoryDirectorEventSystem{
-			EventPackages: []TellerEventPackage{builtinGenreEventPackage(packageID, packageName, cards)},
-		},
-		Tags: tags,
 	})
 }
 

@@ -42,7 +42,7 @@ export function getResolvedLocale(): ResolvedLocale {
   return resolveLocale(configuredLocale)
 }
 
-export function localeRequestHeader(): string {
+function localeRequestHeader(): string {
   return getResolvedLocale()
 }
 
@@ -62,7 +62,7 @@ export function formatLocaleNumber(value: number): string {
   return new Intl.NumberFormat(getResolvedLocale()).format(value)
 }
 
-export function installLocaleFetchHeaders() {
+function installLocaleFetchHeaders() {
   if (fetchHeadersInstalled || typeof window === 'undefined') return
   const nativeFetch = window.fetch.bind(window)
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {

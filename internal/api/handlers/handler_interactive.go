@@ -755,67 +755,6 @@ func (h *Handlers) HandleEventPackageDelete(ctx context.Context, c *app.RequestC
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handlers) HandleEventSystems(ctx context.Context, c *app.RequestContext) {
-	items, err := h.app.EventSystems()
-	if err != nil {
-		writeError(c, consts.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]any{"event_systems": items})
-}
-
-func (h *Handlers) HandleEventSystem(ctx context.Context, c *app.RequestContext) {
-	item, err := h.app.EventSystem(c.Param("id"))
-	if err != nil {
-		writeError(c, consts.StatusNotFound, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, item)
-}
-
-func (h *Handlers) HandleEventSystemCreate(ctx context.Context, c *app.RequestContext) {
-	var body interactive.EventSystemModule
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	item, err := h.app.CreateEventSystem(body)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, item)
-}
-
-func (h *Handlers) HandleEventSystemUpdate(ctx context.Context, c *app.RequestContext) {
-	var body struct {
-		interactive.EventSystemModule
-		BaseRevision string `json:"base_revision"`
-	}
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	item, err := h.app.UpdateEventSystem(c.Param("id"), body.EventSystemModule, body.BaseRevision)
-	if err != nil {
-		if errors.Is(err, interactive.ErrEventSystemRevisionConflict) {
-			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
-			return
-		}
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, item)
-}
-
-func (h *Handlers) HandleEventSystemDelete(ctx context.Context, c *app.RequestContext) {
-	if err := h.app.DeleteEventSystem(c.Param("id")); err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
-}
-
 func (h *Handlers) HandleRuleSystems(ctx context.Context, c *app.RequestContext) {
 	items, err := h.app.RuleSystems()
 	if err != nil {

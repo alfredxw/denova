@@ -98,7 +98,7 @@ export function TriggerEditor({ task, onChange }: { task: AutomationTask; onChan
   )
 }
 
-export function ScheduleEditor({ schedule, onChange }: { schedule: AutomationTask['schedule']; onChange: (schedule: AutomationTask['schedule']) => void }) {
+function ScheduleEditor({ schedule, onChange }: { schedule: AutomationTask['schedule']; onChange: (schedule: AutomationTask['schedule']) => void }) {
   const { t } = useTranslation()
   const patch = (next: Partial<AutomationTask['schedule']>) => onChange({ ...schedule, ...next })
   return (

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -489,59 +488,6 @@ func (s *AutomationAppService) processTriggerMatch(ctx context.Context, now time
 		}
 	}
 	return item, automation.RunResult{Task: task, Run: run}, true, nil
-}
-
-func (s *AutomationAppService) triggerContext(source string) automation.TriggerContext {
-	ctx := automation.TriggerContext{Source: source}
-	if bookService := s.app.BookService(); bookService != nil {
-		if summary, err := bookService.Summary(); err == nil {
-			ctx.Summary = fmt.Sprintf("Book %s has %d chapters and %d words.", summary.Title, summary.ChapterCount, summary.TotalWords)
-			ctx.Evidence = append(ctx.Evidence, s.recentChapterEvidence(bookService, summary.Chapters)...)
-		}
-	}
-	s.app.mu.RLock()
-	interactiveStore := s.app.interactive
-	s.app.mu.RUnlock()
-	if interactiveStore != nil {
-		if index, err := interactiveStore.Index(); err == nil && index.CurrentStoryID != "" {
-			if snapshot, err := interactiveStore.Snapshot(index.CurrentStoryID, ""); err == nil {
-				statePayload, _ := json.Marshal(snapshot.State)
-				ctx.Evidence = append(ctx.Evidence, automation.TriggerEvidence{
-					Source:  "interactive",
-					Title:   index.CurrentStoryID,
-					Ref:     snapshot.BranchID,
-					Snippet: trimForTriggerSnippet(string(statePayload), 900),
-				})
-			}
-		}
-	}
-	return ctx
-}
-
-func (s *AutomationAppService) recentChapterEvidence(bookService *book.Service, chapters []book.ChapterSummary) []automation.TriggerEvidence {
-	candidates := append([]book.ChapterSummary(nil), chapters...)
-	sort.SliceStable(candidates, func(i, j int) bool {
-		return candidates[i].UpdatedAt > candidates[j].UpdatedAt
-	})
-	if len(candidates) > 4 {
-		candidates = candidates[:4]
-	}
-	evidence := make([]automation.TriggerEvidence, 0, len(candidates))
-	for _, chapter := range candidates {
-		snippet := fmt.Sprintf("words=%d status=%s updated=%s", chapter.Words, chapter.Status, chapter.UpdatedAt)
-		if content, err := bookService.ReadFile(chapter.Path); err == nil {
-			snippet = fmt.Sprintf("%s\ncontent_excerpt=%s", snippet, trimForTriggerSnippet(content, 1400))
-		} else {
-			log.Printf("[automation-trigger] read chapter evidence failed path=%s err=%v", chapter.Path, err)
-		}
-		evidence = append(evidence, automation.TriggerEvidence{
-			Source:  "chapter",
-			Title:   chapter.DisplayTitle,
-			Ref:     chapter.Path,
-			Snippet: snippet,
-		})
-	}
-	return evidence
 }
 
 func buildSemanticTriggerInstruction(task automation.Task, trigger automation.TriggerDefinition, ctx automation.TriggerContext) string {

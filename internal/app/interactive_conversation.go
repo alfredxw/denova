@@ -1351,13 +1351,6 @@ func interactiveShortSHA256(s string) string {
 	return hex.EncodeToString(sum[:])[:12]
 }
 
-func interactiveMinInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
 		if strings.TrimSpace(value) != "" {

@@ -3,7 +3,7 @@ import type { KeyboardEvent, UIEvent, WheelEvent } from 'react'
 import type { VirtuosoHandle } from 'react-virtuoso'
 
 export const VIRTUOSO_BOTTOM_THRESHOLD = 12
-export const VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD = 160
+const VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD = 160
 
 const UPWARD_SCROLL_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
 

@@ -105,18 +105,6 @@ func NewRuntime(policy LoopPolicy) *Runtime {
 	return &Runtime{policy: policy.normalized()}
 }
 
-// Run 运行一次聊天请求，并通过 emit 输出流式事件。
-func (s *ChatService) Run(
-	ctx context.Context,
-	runner *adk.Runner,
-	conversation Conversation,
-	bookService *book.Service,
-	req ChatRequest,
-	emit func(Event),
-) {
-	s.RunWithOptions(ctx, runner, conversation, bookService, req, RunOptions{}, emit)
-}
-
 func (s *ChatService) RunWithOptions(
 	ctx context.Context,
 	runner *adk.Runner,
