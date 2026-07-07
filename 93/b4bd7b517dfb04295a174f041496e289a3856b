@@ -1,0 +1,59 @@
+internal/interactive/actor_state_modules.go
+  s_836517aa8f2b5d::t_de54a68e791e1f 42,66,85,114
+internal/interactive/director_modules.go
+  s_836517aa8f2b5d::t_f65d8dd9de42f1 27,29,388,412,431,460,727,832-833,835,843,1025,1035,1119,1123,1134,1138,1141,1211,1228,1564,1573-1574
+internal/interactive/director_modules_test.go
+  s_836517aa8f2b5d::t_2f671c000a5744 81,86,96,105,110,120,228-235,318-319,445-446
+internal/interactive/story_directors_test.go
+  s_836517aa8f2b5d::t_885a849f9b77d3 37-47,77-78,92
+web/src/features/interactive/components/SettingPanel.tsx
+  s_a03a59b7e53034::t_1cd69ff691b867 2,16,19-22,111-123,125-158,306,311-320,322-326,328,330-333,336-339,341-343,345-354,357-366,369-386,389-391,394-405,408-431,434-447,449-452,457,471,492,592,595-598,600-601,603,606,624-652,655-675,677,679,1035,1040
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_836517aa8f2b5d::t_abbf1414e8a287 19,539,881
+web/src/features/interactive/components/setting-panel/PresetSettingsPanel.tsx
+  s_836517aa8f2b5d::t_58750d5948f9c5 1-1286
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_836517aa8f2b5d::t_441e1c1bfeb417 1-390
+web/src/features/interactive/components/setting-panel/usePresetResourceAutosave.test.tsx
+  s_a03a59b7e53034::t_57411a32e88cce 1-154
+web/src/features/interactive/components/setting-panel/usePresetResourceAutosave.ts
+  s_a03a59b7e53034::t_ed68784b7ddd62 1-120
+web/src/features/interactive/components/story-director/StoryDirectorEditor.tsx
+  s_836517aa8f2b5d::t_c16969c41d20e2 10,50,62,539
+web/src/features/interactive/components/story-director/constants.ts
+  s_836517aa8f2b5d::t_235b7fc07c1a7b 48
+web/src/features/interactive/components/story-director/utils.ts
+  s_836517aa8f2b5d::t_534aa5ce12bad2 1
+web/src/features/interactive/types.ts
+  s_836517aa8f2b5d::t_754cf33ed1cf34 248,255,270
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_836517aa8f2b5d::t_eb0a6d90e6b499 16-17,26-27,91-92,100-101,108-109,124,128-129,131-148,164-165,170,174,177,193-196,403,417-419,421,469,491-511
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_836517aa8f2b5d::t_e029b1da97798e 16-17,26-27,91-92,100-101,108-109,124,128-129,131-148,164-165,170,174,177,193-196,403,417-419,421,469,491-511
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "93b4bd7b517dfb04295a174f041496e289a3856b",
+  "prompts": {},
+  "sessions": {
+    "s_836517aa8f2b5d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c80-b178-7323-be30-56e5b38c763b",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_a03a59b7e53034": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3c78-2dcd-7013-8da9-669dad2e9fcf",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
