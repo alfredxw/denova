@@ -1,0 +1,62 @@
+CHANGELOG.md
+  s_df008b35092ff2::t_1d178abe35de57 82-83
+README.en.md
+  s_df008b35092ff2::t_4e039df9f04210 69
+README.md
+  s_df008b35092ff2::t_bd3d9ec342cca9 69
+internal/agent/prompt.go
+  s_df008b35092ff2::t_38829f34190fcf 718
+internal/interactive/director_modules.go
+  s_df008b35092ff2::t_ae96df3f853fbe 833
+internal/interactive/director_modules_test.go
+  s_df008b35092ff2::t_eaa417e2e2e9c0 230-236,407-413
+internal/interactive/orchestration.go
+  s_df008b35092ff2::t_6652d5de116796 72-81,547-554,559-560,562-563,565-568,570-571,573-574,579-662
+internal/interactive/story_directors_test.go
+  s_df008b35092ff2::t_fd8002aa651939 49-55,78-79,264,299-305
+internal/interactive/tellers.go
+  s_df008b35092ff2::t_0b28ba1219146a 461-540
+skills/story-director-config/SKILL.md
+  s_df008b35092ff2::t_5dcd50e055ddbd 32,84,86
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_df008b35092ff2::t_49c7a98a2e0ec8 8-9,609-694,968
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_df008b35092ff2::t_8507ca5c1bf2bb 19,797,799
+web/src/features/interactive/components/preset-config/SortablePresetList.tsx
+  s_df008b35092ff2::t_f87de580e116eb 5,18,30,55-59
+web/src/features/interactive/components/preset-config/ruleTemplates.ts
+  s_df008b35092ff2::t_28a863d7bd000b 1-110
+web/src/features/interactive/components/preset-config/visual-editors.tsx
+  s_df008b35092ff2::t_c66e86f88cec0a 8,14,531-532,538,543,545-547,553,570,572,574,583-587,589,591-592,600-664
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_df008b35092ff2::t_9176a9133989d4 3,151,279,281
+web/src/features/interactive/types.ts
+  s_df008b35092ff2::t_51034af1089bbe 586-593
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_df008b35092ff2::t_282562946e06a9 337-370,460
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_df008b35092ff2::t_5027801d0bef6c 337-370,460
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d4226909b7e83b7ddcba1630215d322d1c8c8272",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_df008b35092ff2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3ce4-2a20-74c1-bce5-61582c324c1c",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
