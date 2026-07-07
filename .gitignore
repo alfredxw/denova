@@ -24,3 +24,4 @@ docs/
 .denova
 .nova
 prd
+.playwright-cli/
