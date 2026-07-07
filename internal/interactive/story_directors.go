@@ -16,7 +16,6 @@ const (
 	storyDirectorVersion   = 2
 	DefaultStoryDirectorID = "default"
 
-	maxStoryDirectorAttributes          = 64
 	maxStoryDirectorRules               = 64
 	MaxStoryDirectorStrategyPromptBytes = DirectorContextMinBytes
 	DefaultDirectorAgentMode            = DirectorAgentModeTriggered
@@ -40,7 +39,6 @@ type StoryDirector struct {
 	Strategy          StoryDirectorStrategy         `json:"strategy"`
 	EventPackages     []TellerEventPackage          `json:"event_packages,omitempty"`
 	EventSystem       StoryDirectorEventSystem      `json:"-"`
-	StatSystem        StoryDirectorStatSystem       `json:"stat_system"`
 	TRPGSystem        StoryDirectorTRPGSystem       `json:"trpg_system"`
 	ActorState        StoryDirectorActorStateSystem `json:"actor_state,omitempty"`
 	OpeningSelector   StoryDirectorOpeningSelector  `json:"opening_selector"`
@@ -70,22 +68,6 @@ type StoryDirectorStrategy struct {
 type StoryDirectorEventSystem struct {
 	EventPackages []TellerEventPackage `json:"event_packages,omitempty"`
 	CustomEvents  []DirectorEvent      `json:"custom_events,omitempty"`
-}
-
-type StoryDirectorStatSystem struct {
-	Attributes []StoryDirectorAttribute `json:"attributes,omitempty"`
-}
-
-type StoryDirectorAttribute struct {
-	ID          string  `json:"id,omitempty"`
-	Path        string  `json:"path"`
-	Name        string  `json:"name"`
-	Type        string  `json:"type,omitempty"`
-	Default     float64 `json:"default,omitempty"`
-	Min         float64 `json:"min,omitempty"`
-	Max         float64 `json:"max,omitempty"`
-	Visibility  string  `json:"visibility,omitempty"`
-	Description string  `json:"description,omitempty"`
 }
 
 type StoryDirectorTRPGSystem struct {
@@ -360,14 +342,14 @@ func (l *StoryDirectorLibrary) migrateEmbeddedStoryDirectorModules() error {
 			}
 			refs.EventPackageIDs = ids
 		}
-		if !ruleSystemEmpty(raw.StatSystem, raw.TRPGSystem) {
+		if !ruleSystemEmpty(raw.TRPGSystem) {
 			id, err := ensureMigratedRuleSystem(ruleLibrary, director)
 			if err != nil {
 				return err
 			}
 			refs.RuleSystemID = id
 		}
-		if !actorStateEmpty(raw.ActorState) || len(raw.StatSystem.Attributes) > 0 {
+		if !actorStateEmpty(raw.ActorState) {
 			id, err := ensureMigratedActorState(actorStateLibrary, director)
 			if err != nil {
 				return err
@@ -504,9 +486,8 @@ func ensureMigratedRuleSystem(library *RuleSystemLibrary, director StoryDirector
 	}
 	module, err := library.Create(RuleSystemModule{
 		ID:          id,
-		Name:        director.Name + " 数值与TRPG系统",
-		Description: "由旧故事导演内嵌 stat_system/trpg_system 迁移生成。",
-		StatSystem:  director.StatSystem,
+		Name:        director.Name + " TRPG 检定",
+		Description: "由旧故事导演内嵌 trpg_system 迁移生成。",
 		TRPGSystem:  director.TRPGSystem,
 		Tags:        migratedDirectorModuleTags(director.Tags),
 	})
@@ -521,15 +502,11 @@ func ensureMigratedActorState(library *ActorStateLibrary, director StoryDirector
 	if _, err := library.Get(id); err == nil {
 		return id, nil
 	}
-	actorState := director.ActorState
-	if actorStateEmpty(actorState) {
-		actorState = actorStateSystemFromAttributes(director.StatSystem.Attributes)
-	}
 	module, err := library.Create(ActorStateModule{
 		ID:          id,
-		Name:        director.Name + " Actor 状态系统",
-		Description: "由旧故事导演内嵌 stat_system/actor_state 迁移生成。",
-		ActorState:  actorState,
+		Name:        director.Name + " 状态系统",
+		Description: "由旧故事导演内嵌 actor_state 迁移生成。",
+		ActorState:  director.ActorState,
 		Tags:        migratedDirectorModuleTags(director.Tags),
 	})
 	if err != nil {
@@ -601,7 +578,7 @@ func DefaultStoryDirector() StoryDirector {
 		Version:     storyDirectorVersion,
 		ID:          DefaultStoryDirectorID,
 		Name:        "默认故事导演",
-		Description: "通用互动故事导演，提供软主线、可逆失败、递进节奏、事件包、基础数值和开局选择器。",
+		Description: "通用互动故事导演，提供软主线、可逆失败、递进节奏、事件包、状态系统和开局选择器。",
 		ModuleRefs:  refs,
 		Strategy: StoryDirectorStrategy{
 			Enabled:             true,
@@ -614,7 +591,6 @@ func DefaultStoryDirector() StoryDirector {
 			PlanningTemplates:   DefaultStoryDirectorPlanningTemplates(),
 		},
 		EventPackages:   []TellerEventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
-		StatSystem:      DefaultRuleSystemModule().StatSystem,
 		TRPGSystem:      DefaultRuleSystemModule().TRPGSystem,
 		ActorState:      DefaultActorStateModule().ActorState,
 		OpeningSelector: DefaultOpeningSelectorModule().OpeningSelector,
@@ -640,13 +616,10 @@ func StoryDirectorFromTellerOrchestration(id, name, description string, randomEv
 			PlanningTemplates:   DefaultStoryDirectorPlanningTemplates(),
 		},
 		EventPackages: eventPackagesFromLegacyEventSystem(StoryDirectorEventSystem{EventPackages: config.EventPackages, CustomEvents: config.CustomEvents}, id),
-		StatSystem: StoryDirectorStatSystem{
-			Attributes: defaultStoryDirectorAttributes(),
-		},
 		TRPGSystem: StoryDirectorTRPGSystem{
 			RuleTemplates: config.RuleTemplates,
 		},
-		ActorState: actorStateSystemFromAttributes(defaultStoryDirectorAttributes()),
+		ActorState: defaultActorStateSystem(),
 		OpeningSelector: StoryDirectorOpeningSelector{
 			Enabled:         config.Opening.Enabled,
 			TraitPools:      config.Opening.TraitPools,
@@ -675,16 +648,9 @@ func normalizeStoryDirector(director StoryDirector) StoryDirector {
 		director.EventPackages = normalizeTellerEventPackagesNoDefault(director.EventPackages)
 	}
 	director.EventSystem = StoryDirectorEventSystem{}
-	if director.ModuleRefs.RuleSystemDisabled {
-		director.StatSystem.Attributes = normalizeStoryDirectorAttributesNoDefault(director.StatSystem.Attributes)
-	} else {
-		director.StatSystem.Attributes = normalizeStoryDirectorAttributes(director.StatSystem.Attributes)
-	}
 	director.TRPGSystem.RuleTemplates = normalizeRuleChecks(director.TRPGSystem.RuleTemplates)
 	if director.ModuleRefs.ActorStateDisabled {
 		director.ActorState = normalizeActorStateSystem(StoryDirectorActorStateSystem{})
-	} else if actorStateEmpty(director.ActorState) && len(director.StatSystem.Attributes) > 0 {
-		director.ActorState = actorStateSystemFromAttributes(director.StatSystem.Attributes)
 	} else {
 		director.ActorState = normalizeActorStateSystem(director.ActorState)
 	}
@@ -728,44 +694,6 @@ func normalizeDirectorAgentMode(mode string) string {
 	}
 }
 
-func normalizeStoryDirectorAttributes(attributes []StoryDirectorAttribute) []StoryDirectorAttribute {
-	if attributes == nil {
-		return defaultStoryDirectorAttributes()
-	}
-	return normalizeStoryDirectorAttributesNoDefault(attributes)
-}
-
-func normalizeStoryDirectorAttributesNoDefault(attributes []StoryDirectorAttribute) []StoryDirectorAttribute {
-	if attributes == nil {
-		return []StoryDirectorAttribute{}
-	}
-	if len(attributes) > maxStoryDirectorAttributes {
-		attributes = attributes[:maxStoryDirectorAttributes]
-	}
-	out := make([]StoryDirectorAttribute, 0, len(attributes))
-	seen := map[string]bool{}
-	for i, attribute := range attributes {
-		attribute.ID = trimBytes(attribute.ID, 128)
-		attribute.Path = strings.TrimSpace(attribute.Path)
-		if attribute.Path == "" || !validStatePathSyntax(attribute.Path) {
-			continue
-		}
-		if attribute.ID == "" {
-			attribute.ID = fmt.Sprintf("attr_%d", i+1)
-		}
-		if seen[attribute.ID] {
-			continue
-		}
-		seen[attribute.ID] = true
-		attribute.Name = trimBytes(firstNonEmptyString(attribute.Name, attribute.ID), 128)
-		attribute.Type = trimBytes(firstNonEmptyString(attribute.Type, "resource"), 64)
-		attribute.Visibility = normalizeStoryDirectorVisibility(attribute.Visibility)
-		attribute.Description = trimBytes(attribute.Description, maxTurnBriefTextBytes)
-		out = append(out, attribute)
-	}
-	return out
-}
-
 func normalizeStoryDirectorVisibility(value string) string {
 	switch strings.TrimSpace(value) {
 	case "visible", "hidden", "spoiler":
@@ -781,21 +709,9 @@ func normalizeStoryDirectorOpeningSelector(config StoryDirectorOpeningSelector) 
 	return config
 }
 
-func defaultStoryDirectorAttributes() []StoryDirectorAttribute {
-	return []StoryDirectorAttribute{
-		{ID: "hp", Path: "resources.hp", Name: "生命", Type: "resource", Default: 10, Min: 0, Max: 10, Visibility: "visible", Description: "主角当前生命或伤势承受能力。"},
-		{ID: "stamina", Path: "resources.stamina", Name: "体力", Type: "resource", Default: 5, Min: 0, Max: 5, Visibility: "visible", Description: "奔跑、战斗、潜入等高消耗行动的资源。"},
-		{ID: "affection", Path: "relations.affection", Name: "好感", Type: "relation", Default: 0, Min: -100, Max: 100, Visibility: "spoiler", Description: "重要角色或势力对主角的亲近度，可按对象拆分。"},
-	}
-}
-
 func StoryDirectorInitialStateOps(director StoryDirector) []StateOp {
 	director = normalizeStoryDirector(director)
-	actorState := director.ActorState
-	if actorStateEmpty(actorState) && len(director.StatSystem.Attributes) > 0 {
-		actorState = actorStateSystemFromAttributes(director.StatSystem.Attributes)
-	}
-	ops := actorStateInitialOps(actorState)
+	ops := actorStateInitialOps(director.ActorState)
 	ops = append(ops, director.OpeningSelector.InitialStateOps...)
 	return normalizeStateOps(ops)
 }
@@ -824,36 +740,16 @@ func DirectorEventCatalogFromStoryDirector(director StoryDirector) []DirectorEve
 
 func StoryDirectorRuleSummary(director StoryDirector, limitBytes int) string {
 	director = normalizeStoryDirector(director)
-	type attribute struct {
-		ID          string  `json:"id,omitempty"`
-		Path        string  `json:"path"`
-		Name        string  `json:"name"`
-		Type        string  `json:"type,omitempty"`
-		Default     float64 `json:"default,omitempty"`
-		Min         float64 `json:"min,omitempty"`
-		Max         float64 `json:"max,omitempty"`
-		Visibility  string  `json:"visibility,omitempty"`
-		Description string  `json:"description,omitempty"`
-	}
-	attrs := make([]attribute, 0, len(director.StatSystem.Attributes))
-	for _, item := range director.StatSystem.Attributes {
-		if item.Visibility == "hidden" {
-			continue
-		}
-		attrs = append(attrs, attribute{
-			ID: item.ID, Path: item.Path, Name: item.Name, Type: item.Type, Default: item.Default, Min: item.Min, Max: item.Max, Visibility: item.Visibility, Description: item.Description,
-		})
-	}
 	payload := map[string]any{
 		"source": map[string]string{
 			"kind":              "story_director_rule_summary",
 			"story_director_id": director.ID,
 			"name":              director.Name,
 		},
-		"limits":      map[string]int{"max_bytes": limitBytes},
-		"strategy":    storyDirectorStructuredStrategySummary(director.Strategy),
-		"stat_system": map[string]any{"attributes": attrs},
-		"trpg_system": director.TRPGSystem,
+		"limits":       map[string]int{"max_bytes": limitBytes},
+		"strategy":     storyDirectorStructuredStrategySummary(director.Strategy),
+		"state_system": storyDirectorActorStateSchemaSummary(director.ActorState),
+		"trpg_system":  director.TRPGSystem,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
@@ -873,7 +769,7 @@ func StoryDirectorPlanningSummary(director StoryDirector, limitBytes int) string
 		"limits":         map[string]int{"max_bytes": limitBytes},
 		"strategy":       storyDirectorStructuredStrategySummary(director.Strategy),
 		"event_packages": director.EventPackages,
-		"stat_system":    director.StatSystem,
+		"state_system":   storyDirectorActorStateSchemaSummary(director.ActorState),
 		"trpg_system":    director.TRPGSystem,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
@@ -881,6 +777,22 @@ func StoryDirectorPlanningSummary(director StoryDirector, limitBytes int) string
 		return ""
 	}
 	return trimBytes(string(data), limitBytes)
+}
+
+func storyDirectorActorStateSchemaSummary(system StoryDirectorActorStateSystem) StoryDirectorActorStateSystem {
+	system = normalizeActorStateSystem(system)
+	for templateIndex := range system.Templates {
+		fields := system.Templates[templateIndex].Fields
+		visibleFields := make([]ActorStateField, 0, len(fields))
+		for _, field := range fields {
+			if field.Visibility == "hidden" {
+				continue
+			}
+			visibleFields = append(visibleFields, field)
+		}
+		system.Templates[templateIndex].Fields = visibleFields
+	}
+	return system
 }
 
 type storyDirectorStructuredStrategy struct {

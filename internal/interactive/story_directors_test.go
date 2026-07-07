@@ -34,10 +34,17 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 			DirectorAgentMode:   "unknown",
 			BranchPlanningTurns: 99,
 		},
-		StatSystem: StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{
-			{ID: "mana", Path: "resources.mana", Name: "法力", Default: 3, Max: 9, Visibility: "hidden"},
-			{ID: "invalid", Path: ".bad", Name: "无效"},
-		}},
+		ActorState: StoryDirectorActorStateSystem{
+			Templates: []ActorStateTemplate{{
+				ID:   "protagonist",
+				Name: "主角",
+				Fields: []ActorStateField{
+					{ID: "mana", Path: "resources.mana", Name: "法力", Type: "number", Default: float64(3), Max: floatPtr(9), Visibility: "hidden"},
+					{ID: "invalid", Path: ".bad", Name: "无效", Type: "number"},
+				},
+			}},
+			InitialActors: []ActorStateInitialActor{{ID: DefaultActorID, Name: "主角", TemplateID: "protagonist", Role: "protagonist"}},
+		},
 		TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
 			ID:               "luck",
 			Label:            "幸运",
@@ -67,8 +74,8 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if created.ModuleRefs.EventPackagesDisabled || created.ModuleRefs.RuleSystemDisabled || created.ModuleRefs.OpeningSelectorDisabled {
 		t.Fatalf("legacy-style directors without disabled refs should keep modules enabled: %#v", created.ModuleRefs)
 	}
-	if len(created.StatSystem.Attributes) != 1 || created.StatSystem.Attributes[0].Visibility != "hidden" {
-		t.Fatalf("attributes should be validated and preserve visibility: %#v", created.StatSystem.Attributes)
+	if len(created.ActorState.Templates) != 1 || len(created.ActorState.Templates[0].Fields) != 1 || created.ActorState.Templates[0].Fields[0].Visibility != "hidden" {
+		t.Fatalf("state fields should be validated and preserve visibility: %#v", created.ActorState)
 	}
 	if len(created.TRPGSystem.RuleTemplates) != 1 || created.TRPGSystem.RuleTemplates[0].AttributePath != "actors.protagonist.state.resources.mana" || created.TRPGSystem.RuleTemplates[0].ResourceCostPath != "actors.protagonist.state.resources.mana" {
 		t.Fatalf("legacy rule paths should migrate to protagonist actor state: %#v", created.TRPGSystem.RuleTemplates)
@@ -81,8 +88,8 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	updated, err := library.Update(created.ID, StoryDirector{
 		Name:          "Agent 更新",
 		Strategy:      StoryDirectorStrategy{Enabled: true},
-		StatSystem:    StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{}},
 		TRPGSystem:    created.TRPGSystem,
+		ActorState:    created.ActorState,
 		EventPackages: created.EventPackages,
 		OpeningSelector: StoryDirectorOpeningSelector{
 			Enabled: true,

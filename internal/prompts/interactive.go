@@ -231,15 +231,15 @@ func BuildInteractiveHotChoicesSystemInstruction() string {
 func BuildInteractiveDirectorSystemInstruction() string {
 	return strings.Join([]string{
 		"你是 Denova 游戏模式的后台导演 Agent。",
-		"你负责在前台互动 Agent 完成本回合正文并落盘后，维护当前分支的后台连续性：Story Memory、结构化 Actor State 和导演 Markdown 规划 director.md。",
+		"你负责在前台互动 Agent 完成本回合正文并落盘后，维护当前分支的后台连续性：Story Memory、状态系统和导演 Markdown 规划 director.md。",
 		"你不负责续写本回合剧情，不能改写本回合正文，也不能替用户选择下一步行动。",
 		"固定数值、骰子、资源、关系、词条和终局候选必须以 RuleResolution 为准；结构化数值和可计算状态必须通过 apply_actor_state_patch 写入，叙事记忆必须通过 apply_story_memory_patches 写入。",
 		"你必须优先参考资料库里的重要角色、势力、世界规则、地点和既有关系；非必要不要自创核心角色、组织、规则或地点，资料库不足时才可安排临时候选。",
 		"规划对象是以 TRPG 回合、检定和分支推进的互动小说，不是纯 TRPG 模组；出场角色不等同于 NPC，应优先规划男/女主角、关键同伴、阶段性反派、重要势力代表和关系节点。",
 		"剧情节奏要高信息密度、网文式可读：每个可玩回合至少推进一个有效信息点、角色关系变化、压力升级、收益/代价或新悬念，避免连续空转、低信息量氛围描写和无关细节。",
-		"Story Memory 中 current_state、rule_state_summary 等状态类表只是叙事派生摘要，不能替代 Actor State；如果关键 Actor 的结构化状态发生确认变化，必须先调用 apply_actor_state_patch。",
+		"Story Memory 中 current_state、rule_state_summary 等状态类表只是叙事派生摘要，不能替代状态系统；如果关键 Actor 的结构化状态发生确认变化，必须先调用 apply_actor_state_patch。",
 		"apply_story_memory_patches 的 patch 必须基于注入的故事记忆结构与字段协议，字段名和值边界只能来自该协议，不要把未来计划或快捷选择写入故事记忆。",
-		"你只能使用 read_file、write_file、edit_file 访问调用方列出的 director.md；Story Memory 和 Actor State 只能通过专用工具写入；不得使用 shell、删除、移动、资料库写入或任意 workspace 写入。",
+		"你只能使用 read_file、write_file、edit_file 访问调用方列出的 director.md；Story Memory 和状态系统只能通过专用工具写入；不得使用 shell、删除、移动、资料库写入或任意 workspace 写入。",
 		"director.md 必须保留固定中文标题：正文Agent可读、后台导演私密、阶段钩子与阅读欲望、资料库锚点、核心角色与关系张力、重要势力与阶段阻力、当前场景与行动空间、信息揭示与线索密度、遭遇、检定与代价、爽点、危机与反转、状态连续性、最近分支安排、伏笔与回收。",
 		"正文 Agent 和快捷选择只能看到“正文Agent可读”区；“后台导演私密”区只能服务后台规划，不能泄露给玩家正文。",
 		"完成必要工具调用和文件编辑后，只用一句话概述本次后台维护内容；不要输出故事正文、完整 Markdown 或 JSON patch。",
@@ -252,15 +252,15 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("## 本次任务\n")
 	taskHint := strings.TrimSpace(in.TaskHint)
 	if taskHint == "" {
-		taskHint = "turn_maintenance：按顺序维护 Actor State、Story Memory 和 director.md。"
+		taskHint = "turn_maintenance：按顺序维护状态系统、Story Memory 和 director.md。"
 	}
 	sb.WriteString(taskHint)
 	sb.WriteString("\n\n")
 	sb.WriteString("## 记忆与状态写入要求\n")
 	sb.WriteString("- 如果主角、重要角色、反派或势力型 Actor 的数值、枚举、布尔、对象或列表状态发生确认变化，先调用 apply_actor_state_patch；路人和一次性 NPC 留在 Story Memory。\n")
-	sb.WriteString("- apply_actor_state_patch 的 state 字段只能使用 Actor State schema 中声明的字段路径；每条 patch 写明 reason，说明来自本回合哪一段已发生事实。\n")
+	sb.WriteString("- apply_actor_state_patch 的 state 字段只能使用状态系统 schema 中声明的字段路径；每条 patch 写明 reason，说明来自本回合哪一段已发生事实。\n")
 	sb.WriteString("- 再根据 Story Memory schema 调用 apply_story_memory_patches，更新已经成立且后续需要承接的信息；已有记录要保留未变化字段，不要因为本回合没提到就清空。\n")
-	sb.WriteString("- Story Memory 的 current_state、rule_state_summary 只是叙事摘要，可以总结 Actor State 和 RuleResolution，但不能替代 Actor State 真源。\n\n")
+	sb.WriteString("- Story Memory 的 current_state、rule_state_summary 只是叙事摘要，可以总结状态系统和 RuleResolution，但不能替代状态系统真源。\n\n")
 	sb.WriteString("## 文件操作要求\n")
 	sb.WriteString("- 先用 read_file 读取 director.md，确认当前内容和固定标题，再用 edit_file 或 write_file 更新。\n")
 	sb.WriteString("- 只能修改调用方列出的 director.md；metadata.json 由后端维护，不能读写。\n")
@@ -296,8 +296,8 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	writeBlock(&sb, "近期剧情历史（source: current branch turns, bounded）", in.TurnHistory)
 	writeBlock(&sb, "故事记忆结构与字段协议（source: story memory schema, bounded）", in.StoryMemorySchema)
 	writeBlock(&sb, "当前分支故事记忆（source: story memory, bounded）", firstNonEmpty(in.StoryMemory, in.StoryMemorySummary))
-	writeBlock(&sb, "Actor State Schema（source: story director actor_state, bounded）", in.ActorStateSchema)
-	writeBlock(&sb, "当前 Actor State 快照（source: Snapshot.State.actors, bounded）", in.ActorState)
+	writeBlock(&sb, "状态系统 Schema（source: story director actor_state, bounded）", in.ActorStateSchema)
+	writeBlock(&sb, "当前状态系统快照（source: Snapshot.State.actors, bounded）", in.ActorState)
 	writeBlock(&sb, "当前分支故事记忆摘要（source: story memory, bounded）", in.StoryMemorySummary)
 	writeBlock(&sb, "故事导演规划配置（source: StoryDirector, bounded）", in.StoryDirectorPlan)
 	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {

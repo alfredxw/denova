@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussions / 讨论区
+    url: https://github.com/alfredxw/denova/discussions
+    about: Ask open-ended questions, share workflows, or discuss ideas before filing a focused issue. / 提出开放问题、分享工作流，或在提交明确 issue 前讨论想法。

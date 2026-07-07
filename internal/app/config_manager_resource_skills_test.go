@@ -40,7 +40,7 @@ func TestConfigManagerResourceSkillNames(t *testing.T) {
 		},
 		{
 			name: "actor state signal",
-			req:  ConfigManagerRequest{Origin: "actor_state", Context: map[string]string{"actor_state_count": "1", "selected_resource": "Actor State"}},
+			req:  ConfigManagerRequest{Origin: "actor_state", Context: map[string]string{"actor_state_count": "1", "selected_resource": "状态系统"}},
 			want: []string{configManagerTellerSkill, configManagerStoryDirectorSkill, configManagerImagePresetSkill},
 		},
 		{

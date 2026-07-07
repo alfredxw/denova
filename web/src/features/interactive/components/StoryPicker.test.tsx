@@ -284,7 +284,6 @@ function classicStoryDirector() {
     description: '',
     strategy: { enabled: true },
     event_system: {},
-    stat_system: {},
     trpg_system: {},
     opening_selector: {
       enabled: true,

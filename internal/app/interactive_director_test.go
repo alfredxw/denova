@@ -129,7 +129,7 @@ func TestInteractiveDirectorMaintenanceWritesStateMemoryAndDirectorPlan(t *testi
 	}
 	previous := generateInteractiveDirectorForPlan
 	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
-		for _, want := range []string{"turn_maintenance", "apply_actor_state_patch", "apply_story_memory_patches", "Actor State Schema", "故事记忆结构与字段协议", "director.md"} {
+		for _, want := range []string{"turn_maintenance", "apply_actor_state_patch", "apply_story_memory_patches", "状态系统 Schema", "故事记忆结构与字段协议", "director.md"} {
 			if !strings.Contains(instruction, want) {
 				t.Fatalf("maintenance instruction missing %q:\n%s", want, instruction)
 			}

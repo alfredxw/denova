@@ -60,11 +60,11 @@ func (c *interactiveConversation) directorTaskHint() string {
 	}
 	switch strings.TrimSpace(c.directorTask) {
 	case "memory_update":
-		return "memory_update：只维护本回合 Story Memory 和必要的 Actor State；不要更新 director.md，除非工具上下文明确允许且本任务要求。"
+		return "memory_update：只维护本回合 Story Memory 和必要的状态系统；不要更新 director.md，除非工具上下文明确允许且本任务要求。"
 	case "director_plan_update":
-		return "director_plan_update：只更新当前分支 director.md；不要写 Story Memory 或 Actor State，除非本回合审计明确要求修正已成立事实。"
+		return "director_plan_update：只更新当前分支 director.md；不要写 Story Memory 或状态系统，除非本回合审计明确要求修正已成立事实。"
 	default:
-		return "turn_maintenance：按顺序维护 Actor State、Story Memory 和 director.md；先通过专用工具写状态与记忆，再更新导演规划文件。"
+		return "turn_maintenance：按顺序维护状态系统、Story Memory 和 director.md；先通过专用工具写状态与记忆，再更新导演规划文件。"
 	}
 }
 

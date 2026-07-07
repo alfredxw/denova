@@ -139,7 +139,7 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 		add(configManagerTellerSkill)
 	}
 	switch {
-	case strings.Contains(text, "story_director") || strings.Contains(text, "write_story_directors") || strings.Contains(text, "event_package") || strings.Contains(text, "event-packages") || strings.Contains(text, "actor_state") || strings.Contains(text, "actor_states") || strings.Contains(text, "memory_structure") || strings.Contains(text, "memory-structure") || strings.Contains(text, "story_memory_structure") || strings.Contains(text, "story-memory-structure") || strings.Contains(text, "故事导演") || strings.Contains(text, "导演策略") || strings.Contains(text, "事件包") || strings.Contains(text, "事件系统") || strings.Contains(text, "数值系统") || strings.Contains(text, "结构化状态") || strings.Contains(text, "记忆结构") || strings.Contains(text, "trpg"):
+	case strings.Contains(text, "story_director") || strings.Contains(text, "write_story_directors") || strings.Contains(text, "event_package") || strings.Contains(text, "event-packages") || strings.Contains(text, "actor_state") || strings.Contains(text, "actor_states") || strings.Contains(text, "memory_structure") || strings.Contains(text, "memory-structure") || strings.Contains(text, "story_memory_structure") || strings.Contains(text, "story-memory-structure") || strings.Contains(text, "故事导演") || strings.Contains(text, "导演策略") || strings.Contains(text, "事件包") || strings.Contains(text, "事件系统") || strings.Contains(text, "状态系统") || strings.Contains(text, "结构化状态") || strings.Contains(text, "记忆结构") || strings.Contains(text, "trpg"):
 		add(configManagerStoryDirectorSkill)
 	}
 	switch {

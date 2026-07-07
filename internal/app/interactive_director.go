@@ -186,7 +186,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	if runMemory {
 		if memoryMaintenanceErr != nil {
 			markInteractiveMemoryFailed(conversation, turn, memoryMaintenanceErr)
-			errs = append(errs, fmt.Errorf("故事记忆或 Actor State 工具失败: %w", memoryMaintenanceErr))
+			errs = append(errs, fmt.Errorf("故事记忆或状态系统工具失败: %w", memoryMaintenanceErr))
 		} else if err := conversation.store.MarkInteractiveMemoryReady(conversation.storyID, turn.BranchID, turn.ID); err != nil {
 			markInteractiveMemoryFailed(conversation, turn, err)
 			errs = append(errs, fmt.Errorf("标记故事记忆完成失败: %w", err))

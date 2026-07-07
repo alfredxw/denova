@@ -1,4 +1,4 @@
-import type { StoryDirector, StoryDirectorActorStateSystem, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, TellerEventPackage } from '../../types'
+import type { StoryDirector, StoryDirectorActorStateSystem, StoryDirectorModuleRefs, StoryDirectorOpeningSelector, StoryDirectorTRPGSystem, TellerEventPackage } from '../../types'
 import { DIRECTOR_PLAN_REQUIRED_HEADINGS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT } from './constants'
 
 export function parseDecimalInput(value: string) {
@@ -85,13 +85,11 @@ export function directorResolvedEventPackages(director: StoryDirector): TellerEv
 }
 
 export function newEmptyStoryDirectorSections(): {
-  stat_system: StoryDirectorStatSystem
   trpg_system: StoryDirectorTRPGSystem
   actor_state: StoryDirectorActorStateSystem
   opening_selector: StoryDirectorOpeningSelector
 } {
   return {
-    stat_system: { attributes: [] },
     trpg_system: { rule_templates: [] },
     actor_state: { templates: [], initial_actors: [] },
     opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },

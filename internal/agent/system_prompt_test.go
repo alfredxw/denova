@@ -86,7 +86,7 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		config.AgentKindInteractiveStory:      "只输出本回合可展示在故事舞台上的故事正文",
 		config.AgentKindImage:                 "图像 Agent",
 		config.AgentKindConfigManager:         "配置管理 Agent",
-		config.AgentKindInteractiveDirector:   "Story Memory 与 Actor State",
+		config.AgentKindInteractiveDirector:   "Story Memory 与状态系统",
 		config.AgentKindInteractiveHotChoices: "快捷选项 Agent",
 		config.AgentKindVersionSummary:        "版本说明 Agent",
 		config.AgentKindToolAgent:             "model-only",

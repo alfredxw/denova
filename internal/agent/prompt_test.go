@@ -325,7 +325,7 @@ func TestBuiltinInteractiveDirectorPromptUsesMaintenanceToolContract(t *testing.
 	for _, required := range []string{
 		"后台导演 Agent",
 		"Story Memory",
-		"结构化 Actor State",
+		"状态系统",
 		"director.md",
 		"apply_actor_state_patch",
 		"apply_story_memory_patches",

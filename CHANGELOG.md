@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- GitHub：新增 Bug Report、Feature Request 和 Question 的 Issue Forms，并关闭普通空白 issue 入口以提升反馈信息完整度。
+- GitHub: Added Issue Forms for Bug Report, Feature Request, and Question, and disabled the regular blank issue entry to improve report completeness.
+- GitHub：新增轻量 PR Title 检查，要求 PR 标题使用英文/ASCII 字符并至少包含一个英文字母。
+- GitHub: Added a lightweight PR title check requiring English/ASCII characters and at least one English letter.
 - Agent：`.nova/runs` 运行记录升级为本地优先的结构化 trace，新增 `agent_run`、`llm_call`、`tool_call`、`context_build`、`context_compaction` 等 span 记录，并在记录中增量写入 `span_id`、`parent_span_id`、`duration_ms`、`status`、`attrs`、token usage、provider request id 和工具执行摘要；旧记录仍可通过 `/api/agent-runs` 读取。
 - Agent: Upgraded `.nova/runs` from event logs to local-first structured traces with `agent_run`, `llm_call`, `tool_call`, `context_build`, `context_compaction`, and related span records. Records now incrementally include `span_id`, `parent_span_id`, `duration_ms`, `status`, `attrs`, token usage, provider request IDs, and tool execution summaries while keeping old `/api/agent-runs` records readable.
 - WebUI：Agent Trace Tab 升级为 timeline 面板，支持 All / LLM / Tools / Context / Errors 筛选；IDE token usage、工具/失败消息和游戏模式 token usage 可按 run_id 跳转到对应 trace。
@@ -75,6 +79,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 不兼容变更：游戏模式删除独立 `stat_system` 配置，状态字段、资源、关系值和可计算状态统一由状态系统（`actor_state`）管理；`RuleSystemModule` 只保留 `trpg_system.rule_templates`，用户可见名称从“数值与TRPG系统/规则系统”收敛为“TRPG 检定”，原“Actor 状态系统”收敛为“状态系统”。
+- Breaking: Game Mode removed standalone `stat_system` config. State fields, resources, relationship values, and computable state are now managed only by the State System (`actor_state`); `RuleSystemModule` now keeps only `trpg_system.rule_templates`. User-visible labels changed from “Stat/TRPG System / Rule System” to “TRPG Checks” and from “Actor State System” to “State System”.
+- 方案预设：状态系统资源页改为模板、字段 schema、字段类型、默认值、上下限、可见性、更新说明和初始 Actor 的可视化编辑器，并保留 JSON View；故事导演编辑区移除“数值系统”Tab，状态系统只通过组合器引用并在独立资源页维护。
+- Presets: The State System resource page now has a visual editor for templates, field schemas, field types, defaults, bounds, visibility, update instructions, and initial Actors, while keeping JSON View. The Story Director editor removed the Stat System tab; State Systems are referenced through the composer and edited on their own resource page.
+- WebUI：互动设置面板将方案预设资源状态、自动保存和编辑区拆分为独立组件与通用 autosave hook，降低 `SettingPanel` 职责耦合；用户可见行为、API 与存储格式不变。
+- WebUI: Refactored Interactive Settings preset resource state, autosave, and editor panes into dedicated components plus a shared autosave hook, reducing `SettingPanel` coupling without changing user-visible behavior, APIs, or storage formats.
 - 游戏模式：互动 Story Memory 运行时实现按 Director 子模块关系拆分为 `memory_*` 文件，并将记忆结构预设实现收敛到 `memory_structure_*` 命名；不改变存储路径、API 或用户可见行为。
 - Game Mode: Split the runtime Story Memory implementation into `memory_*` files aligned with the Director submodule model, and renamed memory-structure preset implementation files to `memory_structure_*`; storage paths, APIs, and user-visible behavior are unchanged.
 - Agent：普通 trace 继续只保存有界 preview、hash、bytes/chars、token、耗时和关联 ID；`debug` 模式只扩大预览和诊断字段，不等同于完整 prompt/output 采集。图像生成普通日志中的完整 prompt 改为摘要，完整输入仍只允许进入 dev-only `log/llm-inputs.jsonl`。

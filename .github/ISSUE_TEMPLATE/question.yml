@@ -1,0 +1,54 @@
+name: Question / 使用问题
+description: Ask a usage question or request clarification. / 提出使用问题或请求说明。
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for Denova usage questions, setup confusion, or documentation gaps. For reproducible bugs, please use the Bug Report form.
+
+        这个表单适合 Denova 使用问题、安装配置疑问或文档缺口。可复现缺陷请使用缺陷反馈表单。
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: Topic / 主题
+      description: Which topic is your question about? / 你的问题主要关于哪个主题？
+      options:
+        - Getting started / 快速开始
+        - Writing Mode / 写作模式
+        - Game Mode / 游戏模式
+        - Agent / Tools / Skills
+        - Models and providers / 模型与供应商
+        - Lore / Presets / 资料库与方案预设
+        - Version Management / 版本管理
+        - Deployment / Remote access / 部署与远程访问
+        - Documentation / 文档
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question / 问题
+      description: What would you like to know? / 你想了解什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / 背景信息
+      description: Share your setup, goal, or what you have already tried. / 补充你的环境、目标或已尝试的操作。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist / 检查清单
+      options:
+        - label: I have checked the README and existing issues before opening this question. / 我已查看 README 和现有 issue。
+          required: true

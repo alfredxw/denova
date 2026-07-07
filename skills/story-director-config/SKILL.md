@@ -6,19 +6,20 @@ agent: config_manager
 
 # Story Director Config
 
-Use this skill before calling `write_story_directors`, `write_event_packages`, or `write_story_memory_structure_presets`.
+Use this skill before calling `write_story_directors`, `write_event_packages`, `write_actor_states`, or `write_story_memory_structure_presets`.
 
 ## Workflow
 
 1. Call `list_story_directors` first. For updates, call `read_story_directors` for the exact director IDs.
 2. Call `list_event_packages` before changing a director's event package references. For event-card content updates, call `read_event_packages` for exact package IDs.
 3. Call `list_story_memory_structure_presets` before changing a director's `memory_structure_id`; call `read_story_memory_structure_presets` before editing structure fields.
-4. Use `write_story_directors` for director create/update/delete, `write_event_packages` for event package create/update/delete, and `write_story_memory_structure_presets` for Story Memory Structure schema changes. Do not edit JSON files directly.
-5. Built-in story directors, event packages, and memory structure presets can be read and copied as examples. Deleting built-ins restores their built-in version.
-6. For update, preserve sections the user did not ask to change.
-7. For delete, require an explicit user request.
-8. When grounding event cards in the current work, call `list_lore_items` first, then `read_lore_items` for only the small relevant set. Do not claim concrete world, faction, character, or relationship facts unless they came from read lore, read director/package data, or explicit user input.
-9. Story Directors, event packages, rule systems, Actor State, Story Memory Structure, and opening selectors are Game Mode-only module types. Do not add per-resource mode/scope fields.
+4. Call `list_actor_states` before changing a director's `actor_state_id`; call `read_actor_states` before editing state templates or fields.
+5. Use `write_story_directors` for director create/update/delete, `write_event_packages` for event package create/update/delete, `write_actor_states` for State System schema changes, and `write_story_memory_structure_presets` for Story Memory Structure schema changes. Do not edit JSON files directly.
+6. Built-in story directors, event packages, State Systems, and memory structure presets can be read and copied as examples. Deleting built-ins restores their built-in version.
+7. For update, preserve sections the user did not ask to change.
+8. For delete, require an explicit user request.
+9. When grounding event cards in the current work, call `list_lore_items` first, then `read_lore_items` for only the small relevant set. Do not claim concrete world, faction, character, or relationship facts unless they came from read lore, read director/package data, or explicit user input.
+10. Story Directors, event packages, TRPG Checks, State Systems, Story Memory Structure, and opening selectors are Game Mode-only module types. Do not add per-resource mode/scope fields.
 
 ## Shape
 
@@ -27,8 +28,8 @@ Story Directors are Game Mode modules independent from shared narrative styles a
 - `module_refs`: referenced module IDs plus switches. Use `narrative_style_id`, `event_package_ids`, `rule_system_id`, `actor_state_id`, `memory_structure_id`, `opening_selector_id`, and `image_preset_id`; set `narrative_style_disabled`, `event_packages_disabled`, `rule_system_disabled`, `actor_state_disabled`, `memory_structure_disabled`, `opening_selector_disabled`, or `image_preset_disabled` to `true` to turn a module off. When disabling, preserve IDs so the user can re-enable without reselecting.
 - `strategy`: `enabled`, `mainline_strength`, `failure_policy`, `pacing_curve`, `random_event_rate`. Prefer the standard enum IDs used by the UI: `mainline_strength` is `soft_guidance`, `balanced`, or `strong_arc`; `failure_policy` is `reversible`, `consequence`, or `fail_forward`; `pacing_curve` is `progressive`, `wave`, or `goal-pressure-payoff`; `random_event_rate` is usually `0`, `0.08`, `0.15`, or `0.3`.
 - `event_packages`: resolved event packages; used only by the background director planner and empty when event packages are disabled.
-- `stat_system`: resolved attributes with `path`, `name`, `type`, `default`, optional `min`/`max`, and `visibility` (`visible`, `hidden`, or `spoiler`).
-- `trpg_system`: resolved rule templates for checks, including `mode` (`default`, `d20_dc`, or `d100_under`), dice, modifiers, difficulty, outcomes, StateOps, and terminal candidates.
+- `actor_state`: resolved State System schema with `templates[].fields[]`; fields define `path`, `name`, `type`, `default`, optional `min`/`max`, `options`, `visibility` (`visible`, `hidden`, or `spoiler`), and `update_instruction`.
+- `trpg_system`: resolved rule templates for checks only, including `mode` (`default`, `d20_dc`, or `d100_under`), dice, modifiers, difficulty, outcomes, StateOps, and terminal candidates. Check `attribute_path` and resource paths must reference State System paths such as `actors.<actor_id>.state.<field_path>`.
 - `resolved_snapshot.story_memory_structures`: last known-good Story Memory schema resolved from `memory_structure_id`; records are still story/branch runtime data and must not be placed in the preset.
 - `opening_selector`: resolved opening selector with `enabled`, `trait_pools`, and `initial_state_ops`; this affects only new stories or explicit opening rolls and is empty/off when the opening module is disabled.
 

@@ -172,8 +172,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"近期剧情历史",
 		"本回合 RuleResolution / TerminalOutcome 审计 JSON",
 		"我点燃火把",
-		"Actor State Schema",
-		"当前 Actor State 快照",
+		"状态系统 Schema",
+		"当前状态系统快照",
 		"director.md",
 	} {
 		if !strings.Contains(directorInstruction, want) {

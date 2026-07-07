@@ -11,7 +11,8 @@ const (
 	DefaultActorStateModuleID = "default"
 	DefaultActorID            = "protagonist"
 
-	actorStateRoot = "actors"
+	actorStateRoot      = "actors"
+	maxActorStateFields = 64
 )
 
 type StoryDirectorActorStateSystem struct {
@@ -124,8 +125,8 @@ func normalizeActorStateFields(fields []ActorStateField) []ActorStateField {
 	if fields == nil {
 		return []ActorStateField{}
 	}
-	if len(fields) > maxStoryDirectorAttributes {
-		fields = fields[:maxStoryDirectorAttributes]
+	if len(fields) > maxActorStateFields {
+		fields = fields[:maxActorStateFields]
 	}
 	out := make([]ActorStateField, 0, len(fields))
 	seen := map[string]bool{}
@@ -224,38 +225,52 @@ func actorStateEmpty(system StoryDirectorActorStateSystem) bool {
 }
 
 func defaultActorStateSystem() StoryDirectorActorStateSystem {
-	return actorStateSystemFromAttributes(defaultStoryDirectorAttributes())
-}
-
-func actorStateSystemFromAttributes(attributes []StoryDirectorAttribute) StoryDirectorActorStateSystem {
-	fields := make([]ActorStateField, 0, len(attributes))
-	for i, attribute := range normalizeStoryDirectorAttributes(attributes) {
-		field := ActorStateField{
-			ID:          attribute.ID,
-			Path:        attribute.Path,
-			Name:        attribute.Name,
-			Type:        "number",
-			Default:     attribute.Default,
-			Visibility:  attribute.Visibility,
-			Description: attribute.Description,
-			Order:       (i + 1) * 10,
-		}
-		if attribute.Min != 0 {
-			min := attribute.Min
-			field.Min = &min
-		}
-		if attribute.Max != 0 {
-			max := attribute.Max
-			field.Max = &max
-		}
-		fields = append(fields, field)
-	}
+	hpMin, hpMax := 0.0, 10.0
+	staminaMin, staminaMax := 0.0, 5.0
+	affectionMin, affectionMax := -100.0, 100.0
 	return normalizeActorStateSystem(StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{{
 			ID:          "protagonist",
 			Name:        "主角",
 			Description: "主角可计算状态模板，用于规则检定、资源消耗和长期承接。",
-			Fields:      fields,
+			Fields: []ActorStateField{
+				{
+					ID:          "hp",
+					Path:        "resources.hp",
+					Name:        "生命",
+					Type:        "number",
+					Default:     10.0,
+					Min:         &hpMin,
+					Max:         &hpMax,
+					Visibility:  "visible",
+					Description: "主角当前生命或伤势承受能力。",
+					Order:       10,
+				},
+				{
+					ID:          "stamina",
+					Path:        "resources.stamina",
+					Name:        "体力",
+					Type:        "number",
+					Default:     5.0,
+					Min:         &staminaMin,
+					Max:         &staminaMax,
+					Visibility:  "visible",
+					Description: "奔跑、战斗、潜入等高消耗行动的资源。",
+					Order:       20,
+				},
+				{
+					ID:          "affection",
+					Path:        "relations.affection",
+					Name:        "好感",
+					Type:        "number",
+					Default:     0.0,
+					Min:         &affectionMin,
+					Max:         &affectionMax,
+					Visibility:  "spoiler",
+					Description: "重要角色或势力对主角的亲近度，可按对象拆分。",
+					Order:       30,
+				},
+			},
 		}},
 		InitialActors: []ActorStateInitialActor{{
 			ID:         DefaultActorID,

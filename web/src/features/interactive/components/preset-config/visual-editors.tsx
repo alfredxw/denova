@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Copy, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import type { EventPackageModule, OpeningTrait, OpeningTraitPool, RuleCheck, StateOp, StoryDirectorActorStateSystem, StoryDirectorAttribute, StoryDirectorOpeningSelector, StoryDirectorStatSystem, StoryDirectorTRPGSystem, TellerEventCard } from '../../types'
+import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, EventPackageModule, OpeningTrait, OpeningTraitPool, RuleCheck, StateOp, StoryDirectorActorStateSystem, StoryDirectorOpeningSelector, StoryDirectorTRPGSystem, StoryMemoryField, StoryMemoryStructure, TellerEventCard } from '../../types'
 import { SortablePresetList } from './SortablePresetList'
 import { cloneWithNewId, formatPresetJSON, itemKey, joinListInput, nextPresetId, parseIntegerInput, parseNumberInput, splitListInput } from './utils'
 
@@ -114,99 +114,10 @@ function EventCardDetails({
   )
 }
 
-export function StatSystemVisualEditor({
-  value,
-  onChange,
-  onValidityChange,
-}: {
-  value: StoryDirectorStatSystem
-  onChange: (value: StoryDirectorStatSystem) => void
-  onValidityChange: (valid: boolean) => void
-}) {
-  const { t } = useTranslation()
-  const [activeId, setActiveId] = useState('')
-  const attributes = value.attributes || []
-  useEffect(() => onValidityChange(true), [onValidityChange])
-  useEffect(() => {
-    if (!attributes.some((item, index) => statAttributeId(item, index) === activeId)) {
-      setActiveId(attributes[0] ? statAttributeId(attributes[0], 0) : '')
-    }
-  }, [activeId, attributes])
-  const setAttributes = (next: StoryDirectorAttribute[]) => onChange({ ...value, attributes: next })
-  const activeIndex = attributes.findIndex((item, index) => statAttributeId(item, index) === activeId)
-  const active = activeIndex >= 0 ? attributes[activeIndex] : null
-  const patchActive = (patch: Partial<StoryDirectorAttribute>) => {
-    if (!active) return
-    setAttributes(attributes.map((item, index) => (index === activeIndex ? { ...item, ...patch } : item)))
-  }
-  const addAttribute = () => {
-    const id = nextPresetId('attribute')
-    const item: StoryDirectorAttribute = { id, path: `state.${id.replace(/-/g, '_')}`, name: '', visibility: 'visible' }
-    setAttributes([...attributes, item])
-    setActiveId(id)
-  }
-  const copyAttribute = () => {
-    if (!active) return
-    const item = cloneWithNewId(active, 'attribute')
-    setAttributes([...attributes, item])
-    setActiveId(statAttributeId(item, attributes.length))
-  }
-  const deleteAttribute = () => {
-    if (!active) return
-    const next = attributes.filter((_, index) => index !== activeIndex)
-    setAttributes(next)
-    setActiveId(next[0] ? statAttributeId(next[0], 0) : '')
-  }
-  return (
-    <div className="grid min-h-[360px] gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <SortablePresetList
-        items={attributes}
-        activeId={activeId}
-        getId={statAttributeId}
-        getTitle={(item, index) => item.name || item.path || `${t('settingPanel.presetConfig.attribute')} ${index + 1}`}
-        getSubtitle={(item) => [item.type, item.visibility].filter(Boolean).join(' · ')}
-        addLabel={t('settingPanel.presetConfig.addAttribute')}
-        emptyLabel={t('settingPanel.storyDirector.statSystem')}
-        onAdd={addAttribute}
-        onActiveIdChange={setActiveId}
-        onItemsChange={setAttributes}
-      />
-      {active ? (
-        <DetailPanel>
-          <DetailActions onCopy={copyAttribute} onDelete={deleteAttribute} />
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={active.id || ''} onChange={(event) => patchActive({ id: event.target.value })} /></Field>
-            <Field label={t('settingPanel.presetConfig.path')}><Input className={inputClassName} value={active.path || ''} onChange={(event) => patchActive({ path: event.target.value })} /></Field>
-            <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={active.name || ''} onChange={(event) => patchActive({ name: event.target.value })} /></Field>
-            <Field label={t('settingPanel.presetConfig.type')}><Input className={inputClassName} value={active.type || ''} onChange={(event) => patchActive({ type: event.target.value })} /></Field>
-            <Field label={t('settingPanel.presetConfig.defaultValue')}><Input className={inputClassName} inputMode="decimal" value={String(active.default ?? '')} onChange={(event) => patchActive({ default: parseNumberInput(event.target.value) })} /></Field>
-            <Field label={t('settingPanel.presetConfig.min')}><Input className={inputClassName} inputMode="decimal" value={String(active.min ?? '')} onChange={(event) => patchActive({ min: parseNumberInput(event.target.value) })} /></Field>
-            <Field label={t('settingPanel.presetConfig.max')}><Input className={inputClassName} inputMode="decimal" value={String(active.max ?? '')} onChange={(event) => patchActive({ max: parseNumberInput(event.target.value) })} /></Field>
-            <Field label={t('settingPanel.presetConfig.visibility')}>
-              <Select value={active.visibility || 'visible'} onValueChange={(visibility) => patchActive({ visibility: visibility as StoryDirectorAttribute['visibility'] })}>
-                <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
-                <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                  <SelectItem value="visible">visible</SelectItem>
-                  <SelectItem value="hidden">hidden</SelectItem>
-                  <SelectItem value="spoiler">spoiler</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-          </div>
-          <Field label={t('common.description')}>
-            <Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.description || ''} onChange={(event) => patchActive({ description: event.target.value })} />
-          </Field>
-        </DetailPanel>
-      ) : <EmptyDetail>{t('settingPanel.presetConfig.emptyAttributes')}</EmptyDetail>}
-    </div>
-  )
-}
-
 export function ActorStateVisualEditor({
   value,
   onChange,
   onValidityChange,
-  resetKey,
 }: {
   value: StoryDirectorActorStateSystem
   onChange: (value: StoryDirectorActorStateSystem) => void
@@ -214,58 +125,389 @@ export function ActorStateVisualEditor({
   resetKey?: string
 }) {
   const { t } = useTranslation()
-  const initialText = formatPresetJSON(value || { templates: [], initial_actors: [] })
-  const [text, setText] = useState(initialText)
-  const [error, setError] = useState('')
-  const lastAcceptedValueRef = useRef(initialText)
-
+  const [activeTemplateId, setActiveTemplateId] = useState('')
+  const [activeFieldId, setActiveFieldId] = useState('')
+  const [detailValid, setDetailValid] = useState(true)
+  const templates = value.templates || []
+  const initialActors = value.initial_actors || []
   useEffect(() => {
-    const next = formatPresetJSON(value || { templates: [], initial_actors: [] })
-    lastAcceptedValueRef.current = next
-    setText(next)
-    setError('')
-  }, [resetKey])
-
-  useEffect(() => {
-    const next = formatPresetJSON(value || { templates: [], initial_actors: [] })
-    if (next !== lastAcceptedValueRef.current && (!error || text === lastAcceptedValueRef.current)) {
-      lastAcceptedValueRef.current = next
-      setText(next)
-      setError('')
+    if (!templates.some((template, index) => actorStateTemplateKey(template, index) === activeTemplateId)) {
+      setActiveTemplateId(templates[0] ? actorStateTemplateKey(templates[0], 0) : '')
     }
-  }, [error, text, value])
-
+  }, [activeTemplateId, templates])
   useEffect(() => {
-    onValidityChange(!error)
-  }, [error, onValidityChange])
+    setDetailValid(true)
+  }, [activeTemplateId])
+  useEffect(() => {
+    onValidityChange(detailValid)
+  }, [detailValid, onValidityChange])
 
-  const updateText = (next: string) => {
-    setText(next)
-    try {
-      const parsed = JSON.parse(next || '{}') as StoryDirectorActorStateSystem
-      const accepted = {
-        templates: Array.isArray(parsed.templates) ? parsed.templates : [],
-        initial_actors: Array.isArray(parsed.initial_actors) ? parsed.initial_actors : [],
-      }
-      lastAcceptedValueRef.current = formatPresetJSON(accepted)
-      setError('')
-      onChange(accepted)
-    } catch (err) {
-      setError((err as Error).message)
-    }
+  const setTemplates = (nextTemplates: ActorStateTemplate[]) => onChange({ ...value, templates: nextTemplates })
+  const setInitialActors = (nextActors: ActorStateInitialActor[]) => onChange({ ...value, initial_actors: nextActors })
+  const activeTemplateIndex = templates.findIndex((template, index) => actorStateTemplateKey(template, index) === activeTemplateId)
+  const activeTemplate = activeTemplateIndex >= 0 ? templates[activeTemplateIndex] : null
+  const patchTemplate = (patch: Partial<ActorStateTemplate>) => {
+    if (!activeTemplate) return
+    setTemplates(templates.map((template, index) => (index === activeTemplateIndex ? { ...template, ...patch } : template)))
+  }
+  const addTemplate = () => {
+    const id = nextPresetId('state-template').replace(/-/g, '_')
+    const template: ActorStateTemplate = { id, name: '', description: '', fields: [] }
+    setTemplates([...templates, template])
+    setActiveTemplateId(id)
+  }
+  const copyTemplate = () => {
+    if (!activeTemplate) return
+    const template = cloneWithNewId(activeTemplate, 'state-template') as ActorStateTemplate
+    template.id = (template.id || nextPresetId('state-template')).replace(/-/g, '_')
+    setTemplates([...templates, template])
+    setActiveTemplateId(actorStateTemplateKey(template, templates.length))
+  }
+  const deleteTemplate = () => {
+    if (!activeTemplate) return
+    const removedId = activeTemplate.id
+    const nextTemplates = templates.filter((_, index) => index !== activeTemplateIndex)
+    onChange({ ...value, templates: nextTemplates, initial_actors: initialActors.filter((actor) => actor.template_id !== removedId) })
+    setActiveTemplateId(nextTemplates[0] ? actorStateTemplateKey(nextTemplates[0], 0) : '')
   }
 
   return (
-    <div className="grid gap-2">
-      <Textarea
-        className="nova-field h-[clamp(360px,calc(100dvh-18rem),720px)] resize-none font-mono text-xs leading-5 shadow-none focus-visible:ring-0"
-        value={text}
-        onChange={(event) => updateText(event.target.value)}
-        spellCheck={false}
+    <div className={visualEditorShellClassName} data-testid="actor-state-visual-editor">
+      <SortablePresetList
+        items={templates}
+        activeId={activeTemplateId}
+        getId={actorStateTemplateKey}
+        getTitle={(template, index) => template.name || template.id || `${t('settingPanel.actorState.template')} ${index + 1}`}
+        getSubtitle={(template) => t('settingPanel.actorState.fieldSummary', { count: template.fields?.length || 0 })}
+        addLabel={t('settingPanel.actorState.addTemplate')}
+        emptyLabel={t('settingPanel.actorState.templates')}
+        onAdd={addTemplate}
+        onActiveIdChange={setActiveTemplateId}
+        onItemsChange={setTemplates}
       />
-      <p className={`text-[11px] ${error ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>
-        {error || t('settingPanel.actorState.jsonHint')}
-      </p>
+      <div className={detailScrollPaneClassName} data-testid="actor-state-detail-scroll">
+        {activeTemplate ? (
+          <ActorStateTemplateDetails
+            item={activeTemplate}
+            initialActors={initialActors}
+            activeFieldId={activeFieldId}
+            setActiveFieldId={setActiveFieldId}
+            onPatch={patchTemplate}
+            onCopy={copyTemplate}
+            onDelete={deleteTemplate}
+            onInitialActorsChange={setInitialActors}
+            onValidChange={setDetailValid}
+          />
+        ) : <EmptyDetail>{t('settingPanel.actorState.emptyTemplates')}</EmptyDetail>}
+      </div>
+    </div>
+  )
+}
+
+function ActorStateTemplateDetails({
+  item,
+  initialActors,
+  activeFieldId,
+  setActiveFieldId,
+  onPatch,
+  onCopy,
+  onDelete,
+  onInitialActorsChange,
+  onValidChange,
+}: {
+  item: ActorStateTemplate
+  initialActors: ActorStateInitialActor[]
+  activeFieldId: string
+  setActiveFieldId: (id: string) => void
+  onPatch: (patch: Partial<ActorStateTemplate>) => void
+  onCopy: () => void
+  onDelete: () => void
+  onInitialActorsChange: (actors: ActorStateInitialActor[]) => void
+  onValidChange: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const [defaultValid, setDefaultValid] = useState(true)
+  const [initialActorValid, setInitialActorValid] = useState(true)
+  const fields = item.fields || []
+  const activeIndex = fields.findIndex((field, index) => actorStateFieldKey(field, index) === activeFieldId)
+  const activeField = activeIndex >= 0 ? fields[activeIndex] : null
+
+  useEffect(() => {
+    if (!fields.some((field, index) => actorStateFieldKey(field, index) === activeFieldId)) {
+      setActiveFieldId(fields[0] ? actorStateFieldKey(fields[0], 0) : '')
+    }
+  }, [activeFieldId, fields, setActiveFieldId])
+  useEffect(() => {
+    if (!activeField) setDefaultValid(true)
+  }, [activeField])
+  useEffect(() => {
+    onValidChange(defaultValid && initialActorValid)
+  }, [defaultValid, initialActorValid, onValidChange])
+
+  const setFields = (nextFields: ActorStateField[]) => onPatch({ fields: nextFields })
+  const patchField = (patch: Partial<ActorStateField>) => {
+    if (!activeField) return
+    setFields(fields.map((field, index) => (index === activeIndex ? { ...field, ...patch } : field)))
+  }
+  const addField = () => {
+    const id = nextPresetId('field').replace(/-/g, '_')
+    const field: ActorStateField = { id, path: id, name: '', type: 'number', visibility: 'visible', order: (fields.length + 1) * 10 }
+    setFields([...fields, field])
+    setActiveFieldId(id)
+  }
+  const copyField = () => {
+    if (!activeField) return
+    const field = cloneWithNewId(activeField, 'field') as ActorStateField
+    field.id = (field.id || nextPresetId('field')).replace(/-/g, '_')
+    setFields([...fields, field])
+    setActiveFieldId(actorStateFieldKey(field, fields.length))
+  }
+  const deleteField = () => {
+    if (!activeField) return
+    const next = fields.filter((_, index) => index !== activeIndex)
+    setFields(next)
+    setActiveFieldId(next[0] ? actorStateFieldKey(next[0], 0) : '')
+  }
+
+  return (
+    <DetailPanel>
+      <DetailActions onCopy={onCopy} onDelete={onDelete} />
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={item.id || ''} onChange={(event) => onPatch({ id: event.target.value })} /></Field>
+        <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={item.name || ''} onChange={(event) => onPatch({ name: event.target.value })} /></Field>
+        <Field label={t('common.description')}><Input className={inputClassName} value={item.description || ''} onChange={(event) => onPatch({ description: event.target.value })} /></Field>
+      </div>
+      <div className="grid min-h-[320px] gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <SortablePresetList
+          items={fields}
+          activeId={activeFieldId}
+          getId={actorStateFieldKey}
+          getTitle={(field, index) => field.name || field.path || field.id || `${t('settingPanel.actorState.field')} ${index + 1}`}
+          getSubtitle={(field) => [field.type, field.visibility].filter(Boolean).join(' · ')}
+          addLabel={t('settingPanel.actorState.addField')}
+          emptyLabel={t('settingPanel.actorState.fields')}
+          onAdd={addField}
+          onActiveIdChange={setActiveFieldId}
+          onItemsChange={setFields}
+        />
+        {activeField ? (
+          <ActorStateFieldDetails
+            field={activeField}
+            onPatch={patchField}
+            onCopy={copyField}
+            onDelete={deleteField}
+            onValidChange={setDefaultValid}
+          />
+        ) : <EmptyDetail>{t('settingPanel.actorState.emptyFields')}</EmptyDetail>}
+      </div>
+      <InitialActorsEditor
+        templateId={item.id}
+        templateName={item.name || item.id}
+        actors={initialActors}
+        onChange={onInitialActorsChange}
+        onValidChange={setInitialActorValid}
+      />
+    </DetailPanel>
+  )
+}
+
+function ActorStateFieldDetails({
+  field,
+  onPatch,
+  onCopy,
+  onDelete,
+  onValidChange,
+}: {
+  field: ActorStateField
+  onPatch: (patch: Partial<ActorStateField>) => void
+  onCopy: () => void
+  onDelete: () => void
+  onValidChange: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <DetailPanel dense>
+      <DetailActions onCopy={onCopy} onDelete={onDelete} />
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={field.id || ''} onChange={(event) => onPatch({ id: event.target.value })} /></Field>
+        <Field label={t('settingPanel.presetConfig.path')}><Input className={inputClassName} value={field.path || ''} onChange={(event) => onPatch({ path: event.target.value })} /></Field>
+        <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={field.name || ''} onChange={(event) => onPatch({ name: event.target.value })} /></Field>
+        <Field label={t('settingPanel.presetConfig.type')}>
+          <Select value={field.type || 'number'} onValueChange={(type) => onPatch({ type })}>
+            <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
+            <SelectContent className="nova-panel border text-[var(--nova-text)]">
+              <SelectItem value="number">number</SelectItem>
+              <SelectItem value="string">string</SelectItem>
+              <SelectItem value="bool">bool</SelectItem>
+              <SelectItem value="enum">enum</SelectItem>
+              <SelectItem value="object">object</SelectItem>
+              <SelectItem value="list">list</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label={t('settingPanel.presetConfig.min')}><Input className={inputClassName} inputMode="decimal" value={String(field.min ?? '')} onChange={(event) => onPatch({ min: parseNumberInput(event.target.value) })} /></Field>
+        <Field label={t('settingPanel.presetConfig.max')}><Input className={inputClassName} inputMode="decimal" value={String(field.max ?? '')} onChange={(event) => onPatch({ max: parseNumberInput(event.target.value) })} /></Field>
+        <Field label={t('settingPanel.presetConfig.visibility')}>
+          <Select value={field.visibility || 'visible'} onValueChange={(visibility) => onPatch({ visibility: visibility as ActorStateField['visibility'] })}>
+            <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
+            <SelectContent className="nova-panel border text-[var(--nova-text)]">
+              <SelectItem value="visible">visible</SelectItem>
+              <SelectItem value="hidden">hidden</SelectItem>
+              <SelectItem value="spoiler">spoiler</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label={t('settingPanel.presetConfig.order')}><Input className={inputClassName} inputMode="numeric" value={String(field.order ?? '')} onChange={(event) => onPatch({ order: parseIntegerInput(event.target.value) })} /></Field>
+        <Field label={t('settingPanel.actorState.options')}><Input className={inputClassName} value={joinListInput(field.options)} onChange={(event) => onPatch({ options: splitListInput(event.target.value) })} /></Field>
+      </div>
+      <ActorStateDefaultValueField field={field} onPatch={onPatch} onValidChange={onValidChange} />
+      <Field label={t('common.description')}>
+        <Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={field.description || ''} onChange={(event) => onPatch({ description: event.target.value })} />
+      </Field>
+      <Field label={t('settingPanel.actorState.updateInstruction')}>
+        <Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={field.update_instruction || ''} onChange={(event) => onPatch({ update_instruction: event.target.value })} />
+      </Field>
+    </DetailPanel>
+  )
+}
+
+function ActorStateDefaultValueField({
+  field,
+  onPatch,
+  onValidChange,
+}: {
+  field: ActorStateField
+  onPatch: (patch: Partial<ActorStateField>) => void
+  onValidChange: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const type = field.type || 'number'
+  useEffect(() => {
+    if (type !== 'object' && type !== 'list') onValidChange(true)
+  }, [onValidChange, type])
+  if (type === 'object' || type === 'list') {
+    return (
+      <JSONFragmentEditor
+        label={t('settingPanel.presetConfig.defaultValue')}
+        value={field.default ?? (type === 'list' ? [] : {})}
+        expected={type === 'list' ? 'array' : 'object'}
+        onChange={(defaultValue) => onPatch({ default: defaultValue })}
+        onValidChange={onValidChange}
+      />
+    )
+  }
+  if (type === 'bool') {
+    return (
+      <Field label={t('settingPanel.presetConfig.defaultValue')}>
+        <Select value={String(field.default === true)} onValueChange={(value) => onPatch({ default: value === 'true' })}>
+          <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
+          <SelectContent className="nova-panel border text-[var(--nova-text)]">
+            <SelectItem value="true">true</SelectItem>
+            <SelectItem value="false">false</SelectItem>
+          </SelectContent>
+        </Select>
+      </Field>
+    )
+  }
+  return (
+    <Field label={t('settingPanel.presetConfig.defaultValue')}>
+      <Input
+        className={inputClassName}
+        inputMode={type === 'number' ? 'decimal' : undefined}
+        value={String(field.default ?? '')}
+        onChange={(event) => onPatch({ default: type === 'number' ? parseNumberInput(event.target.value) : event.target.value })}
+      />
+    </Field>
+  )
+}
+
+function InitialActorsEditor({
+  templateId,
+  templateName,
+  actors,
+  onChange,
+  onValidChange,
+}: {
+  templateId: string
+  templateName: string
+  actors: ActorStateInitialActor[]
+  onChange: (actors: ActorStateInitialActor[]) => void
+  onValidChange: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const [activeActorId, setActiveActorId] = useState('')
+  const templateActors = actors.filter((actor) => actor.template_id === templateId)
+  const activeIndex = templateActors.findIndex((actor, index) => actorStateActorKey(actor, index) === activeActorId)
+  const activeActor = activeIndex >= 0 ? templateActors[activeIndex] : null
+  useEffect(() => {
+    if (!templateActors.some((actor, index) => actorStateActorKey(actor, index) === activeActorId)) {
+      setActiveActorId(templateActors[0] ? actorStateActorKey(templateActors[0], 0) : '')
+    }
+  }, [activeActorId, templateActors])
+  useEffect(() => {
+    if (!activeActor) onValidChange(true)
+  }, [activeActor, onValidChange])
+  const setTemplateActors = (nextTemplateActors: ActorStateInitialActor[]) => onChange([
+    ...actors.filter((actor) => actor.template_id !== templateId),
+    ...nextTemplateActors,
+  ])
+  const patchActor = (patch: Partial<ActorStateInitialActor>) => {
+    if (!activeActor) return
+    setTemplateActors(templateActors.map((actor, index) => (index === activeIndex ? { ...actor, ...patch, template_id: templateId } : actor)))
+  }
+  const addActor = () => {
+    const id = nextPresetId('actor').replace(/-/g, '_')
+    const actor: ActorStateInitialActor = { id, name: '', template_id: templateId, role: '', state: {} }
+    setTemplateActors([...templateActors, actor])
+    setActiveActorId(id)
+  }
+  const copyActor = () => {
+    if (!activeActor) return
+    const actor = cloneWithNewId(activeActor, 'actor') as ActorStateInitialActor
+    actor.id = (actor.id || nextPresetId('actor')).replace(/-/g, '_')
+    actor.template_id = templateId
+    setTemplateActors([...templateActors, actor])
+    setActiveActorId(actorStateActorKey(actor, templateActors.length))
+  }
+  const deleteActor = () => {
+    if (!activeActor) return
+    const next = templateActors.filter((_, index) => index !== activeIndex)
+    setTemplateActors(next)
+    setActiveActorId(next[0] ? actorStateActorKey(next[0], 0) : '')
+  }
+  return (
+    <div className="grid min-h-[280px] gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
+      <SortablePresetList
+        items={templateActors}
+        activeId={activeActorId}
+        getId={actorStateActorKey}
+        getTitle={(actor, index) => actor.name || actor.id || `${t('settingPanel.actorState.initialActor')} ${index + 1}`}
+        getSubtitle={(actor) => [templateName, actor.role].filter(Boolean).join(' · ')}
+        addLabel={t('settingPanel.actorState.addInitialActor')}
+        emptyLabel={t('settingPanel.actorState.initialActors')}
+        onAdd={addActor}
+        onActiveIdChange={setActiveActorId}
+        onItemsChange={setTemplateActors}
+      />
+      {activeActor ? (
+        <DetailPanel dense>
+          <DetailActions onCopy={copyActor} onDelete={deleteActor} />
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={activeActor.id || ''} onChange={(event) => patchActor({ id: event.target.value })} /></Field>
+            <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={activeActor.name || ''} onChange={(event) => patchActor({ name: event.target.value })} /></Field>
+            <Field label={t('settingPanel.actorState.templateID')}><Input className={inputClassName} value={templateId} disabled /></Field>
+            <Field label={t('settingPanel.actorState.role')}><Input className={inputClassName} value={activeActor.role || ''} onChange={(event) => patchActor({ role: event.target.value })} /></Field>
+            <Field label={t('common.description')}><Input className={inputClassName} value={activeActor.description || ''} onChange={(event) => patchActor({ description: event.target.value })} /></Field>
+          </div>
+          <JSONFragmentEditor
+            label={t('settingPanel.actorState.initialState')}
+            value={activeActor.state || {}}
+            expected="object"
+            onChange={(state) => patchActor({ state: state as Record<string, unknown> })}
+            onValidChange={onValidChange}
+          />
+        </DetailPanel>
+      ) : <EmptyDetail>{t('settingPanel.actorState.emptyInitialActors')}</EmptyDetail>}
     </div>
   )
 }
@@ -607,8 +849,16 @@ function JSONFragmentEditor({
   )
 }
 
-function statAttributeId(item: StoryDirectorAttribute, index: number) {
-  return item.id || item.path || `attribute-${index}`
+function actorStateTemplateKey(item: ActorStateTemplate, index: number) {
+  return item.id || `template-${index}`
+}
+
+function actorStateFieldKey(item: ActorStateField, index: number) {
+  return item.id || item.path || `field-${index}`
+}
+
+function actorStateActorKey(item: ActorStateInitialActor, index: number) {
+  return item.id || `${item.template_id || 'actor'}-${index}`
 }
 
 function DetailPanel({ children, dense = false, className = '' }: { children: ReactNode; dense?: boolean; className?: string }) {
@@ -619,14 +869,14 @@ function EmptyDetail({ children }: { children: ReactNode }) {
   return <div className="flex min-h-40 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-6 text-xs text-[var(--nova-text-faint)]">{children}</div>
 }
 
-function DetailActions({ onCopy, onDelete }: { onCopy: () => void; onDelete: () => void }) {
+function DetailActions({ onCopy, onDelete }: { onCopy?: () => void; onDelete?: () => void }) {
   const { t } = useTranslation()
   return (
     <div className="flex justify-end gap-2">
-      <Button className={iconActionClassName} variant="outline" size="icon-sm" onClick={onCopy} aria-label={t('settingPanel.presetConfig.copy')} title={t('settingPanel.presetConfig.copy')}>
+      <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={!onCopy} onClick={onCopy} aria-label={t('settingPanel.presetConfig.copy')} title={t('settingPanel.presetConfig.copy')}>
         <Copy className="h-3.5 w-3.5" />
       </Button>
-      <Button className={iconActionClassName} variant="outline" size="icon-sm" onClick={onDelete} aria-label={t('common.delete')} title={t('common.delete')}>
+      <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={!onDelete} onClick={onDelete} aria-label={t('common.delete')} title={t('common.delete')}>
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
     </div>
@@ -650,5 +900,394 @@ function SwitchField({ label, checked, onChange }: { label: string; checked: boo
         <Switch checked={checked} onCheckedChange={onChange} />
       </div>
     </div>
+  )
+}
+
+// ─── Memory Structure Visual Editor ───────────────────────────────────────────
+
+const DERIVED_STRUCTURE_IDS = new Set(['current_state', 'rule_state_summary'])
+
+function isReadOnlyStructure(s: StoryMemoryStructure): boolean {
+  return s.read_only === true || s.derived === true || DERIVED_STRUCTURE_IDS.has(s.id)
+}
+
+function isBuiltInNonDerived(s: StoryMemoryStructure): boolean {
+  return s.built_in === true && !isReadOnlyStructure(s)
+}
+
+export function MemoryStructureVisualEditor({
+  value,
+  onChange,
+  onValidityChange,
+  resetKey,
+}: {
+  value: StoryMemoryStructure[]
+  onChange: (value: StoryMemoryStructure[]) => void
+  onValidityChange: (valid: boolean) => void
+  resetKey: string
+}) {
+  const { t } = useTranslation()
+  const [activeStructureId, setActiveStructureId] = useState('')
+  const [activeFieldId, setActiveFieldId] = useState('')
+  const structures = value || []
+
+  // Validate: keyed structures need a valid key_field_id
+  useEffect(() => {
+    const valid = structures.every((s) => {
+      if (s.mode !== 'keyed') return true
+      if (!s.key_field_id) return false
+      return (s.fields || []).some((f) => f.id === s.key_field_id)
+    })
+    onValidityChange(valid)
+  }, [structures, onValidityChange])
+
+  // Sync active structure when structures change
+  useEffect(() => {
+    if (!structures.some((s) => s.id === activeStructureId)) {
+      setActiveStructureId(structures[0]?.id || '')
+      setActiveFieldId('')
+    }
+  }, [structures, activeStructureId])
+
+  // Reset on resetKey change
+  useEffect(() => {
+    setActiveStructureId(structures[0]?.id || '')
+    setActiveFieldId('')
+  }, [resetKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activeStructure = structures.find((s) => s.id === activeStructureId) || null
+  const structureReadOnly = activeStructure ? isReadOnlyStructure(activeStructure) : false
+  const structureBuiltIn = activeStructure ? isBuiltInNonDerived(activeStructure) : false
+
+  const setStructures = (next: StoryMemoryStructure[]) => onChange(next)
+
+  const patchStructure = (id: string, patch: Partial<StoryMemoryStructure>) => {
+    setStructures(structures.map((s) => (s.id === id ? { ...s, ...patch } : s)))
+  }
+
+  const addStructure = () => {
+    const id = nextPresetId('structure').replace(/-/g, '_')
+    const s: StoryMemoryStructure = {
+      id,
+      name: t('settingPanel.presetConfig.structure'),
+      description: '',
+      generation_instruction: '',
+      mode: 'append',
+      fields: [
+        { id: 'content', name: t('settingPanel.presetConfig.field'), description: '', required: false, order: 10 },
+      ],
+      enabled: true,
+      order: (structures.length + 1) * 10,
+    }
+    setStructures([...structures, s])
+    setActiveStructureId(id)
+    setActiveFieldId('content')
+  }
+
+  const copyStructure = () => {
+    if (!activeStructure) return
+    const cloned = cloneWithNewId(activeStructure, 'structure')
+    cloned.id = (cloned.id || `structure_${Date.now()}`).replace(/-/g, '_')
+    cloned.built_in = false
+    cloned.read_only = false
+    cloned.derived = false
+    cloned.fields = (activeStructure.fields || []).map((f) => ({ ...f }))
+    setStructures([...structures, cloned])
+    setActiveStructureId(cloned.id || '')
+  }
+
+  const deleteStructure = () => {
+    if (!activeStructure || structureReadOnly) return
+    const next = structures.filter((s) => s.id !== activeStructure.id)
+    setStructures(next)
+    setActiveStructureId(next[0]?.id || '')
+    setActiveFieldId('')
+  }
+
+  // Field operations
+  const setFields = (fields: StoryMemoryField[]) => {
+    if (!activeStructure) return
+    patchStructure(activeStructure.id, { fields })
+  }
+
+  const fields = activeStructure?.fields || []
+
+  useEffect(() => {
+    if (!fields.some((f, i) => itemKey(f, i, 'field') === activeFieldId)) {
+      setActiveFieldId(fields[0] ? itemKey(fields[0], 0, 'field') : '')
+    }
+  }, [fields, activeFieldId])
+
+  const activeFieldIndex = fields.findIndex((f, i) => itemKey(f, i, 'field') === activeFieldId)
+  const activeField = activeFieldIndex >= 0 ? fields[activeFieldIndex] : null
+
+  const patchField = (patch: Partial<StoryMemoryField>) => {
+    if (!activeField || activeFieldIndex < 0) return
+    const next = [...fields]
+    next[activeFieldIndex] = { ...fields[activeFieldIndex], ...patch }
+    setFields(next)
+  }
+
+  const addField = () => {
+    if (!activeStructure || structureReadOnly) return
+    const fid = `field_${fields.length + 1}`
+    const f: StoryMemoryField = {
+      id: fid,
+      name: t('settingPanel.presetConfig.field'),
+      description: '',
+      required: false,
+      order: (fields.length + 1) * 10,
+    }
+    setFields([...fields, f])
+    setActiveFieldId(fid)
+  }
+
+  const copyField = () => {
+    if (!activeField || structureReadOnly) return
+    const cloned: StoryMemoryField = { ...activeField, id: `${activeField.id || 'field'}_copy` }
+    setFields([...fields, cloned])
+    setActiveFieldId(itemKey(cloned, fields.length, 'field'))
+  }
+
+  const deleteField = () => {
+    if (!activeField || activeFieldIndex < 0 || structureReadOnly) return
+    const next = fields.filter((_, i) => i !== activeFieldIndex)
+    setFields(next)
+    setActiveFieldId(next[0] ? itemKey(next[0], 0, 'field') : '')
+  }
+
+  return (
+    <div className={visualEditorShellClassName} data-testid="memory-structure-editor">
+      <SortablePresetList
+        items={structures}
+        activeId={activeStructureId}
+        getId={(s) => s.id}
+        getTitle={(s) => s.name || s.id}
+        getSubtitle={(s) => {
+          const parts: string[] = [s.mode || 'append']
+          const fieldCount = (s.fields || []).length
+          parts.push(t('settingPanel.memoryStructure.fieldCount', { count: fieldCount }))
+          if (s.enabled === false) parts.push(t('settingPanel.disabled'))
+          if (isReadOnlyStructure(s)) parts.push(t('settingPanel.presetConfig.derived'))
+          return parts.join(' · ')
+        }}
+        addLabel={t('settingPanel.presetConfig.addStructure')}
+        emptyLabel={t('settingPanel.presetConfig.structures')}
+        onAdd={addStructure}
+        onActiveIdChange={setActiveStructureId}
+        onItemsChange={setStructures}
+      />
+      <div className={detailScrollPaneClassName} data-testid="memory-structure-detail-scroll">
+        {activeStructure ? (
+          <StructureDetails
+            structure={activeStructure}
+            readOnly={structureReadOnly}
+            builtIn={structureBuiltIn}
+            activeFieldId={activeFieldId}
+            fields={fields}
+            onPatch={(patch) => patchStructure(activeStructure.id, patch)}
+            onCopyStructure={copyStructure}
+            onDeleteStructure={deleteStructure}
+            onActiveFieldIdChange={setActiveFieldId}
+            onFieldsChange={setFields}
+            onPatchField={patchField}
+            onAddField={addField}
+            onCopyField={copyField}
+            onDeleteField={deleteField}
+          />
+        ) : (
+          <EmptyDetail>{t('settingPanel.presetConfig.emptyStructures')}</EmptyDetail>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function StructureDetails({
+  structure,
+  readOnly,
+  builtIn,
+  activeFieldId,
+  fields,
+  onPatch,
+  onCopyStructure,
+  onDeleteStructure,
+  onActiveFieldIdChange,
+  onFieldsChange,
+  onPatchField,
+  onAddField,
+  onCopyField,
+  onDeleteField,
+}: {
+  structure: StoryMemoryStructure
+  readOnly: boolean
+  builtIn: boolean
+  activeFieldId: string
+  fields: StoryMemoryField[]
+  onPatch: (patch: Partial<StoryMemoryStructure>) => void
+  onCopyStructure: () => void
+  onDeleteStructure: () => void
+  onActiveFieldIdChange: (id: string) => void
+  onFieldsChange: (fields: StoryMemoryField[]) => void
+  onPatchField: (patch: Partial<StoryMemoryField>) => void
+  onAddField: () => void
+  onCopyField: () => void
+  onDeleteField: () => void
+}) {
+  const { t } = useTranslation()
+  const mode = structure.mode || 'append'
+  const keyed = mode === 'keyed'
+  // Fields whose definitions cannot be edited (built-in non-derived structures)
+  const fieldDefsReadOnly = readOnly || builtIn
+
+  return (
+    <DetailPanel>
+      {/* Structure header actions */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {builtIn ? (
+            <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">
+              {t('settingPanel.presetConfig.builtIn')}
+            </span>
+          ) : null}
+          {readOnly ? (
+            <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">
+              {t('settingPanel.presetConfig.derived')}
+            </span>
+          ) : null}
+        </div>
+        <DetailActions onCopy={onCopyStructure} onDelete={readOnly ? undefined : onDeleteStructure} />
+      </div>
+
+      {readOnly ? (
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] text-[var(--nova-text-faint)]">
+          {t('settingPanel.presetConfig.readOnlyStructureHint')}
+        </div>
+      ) : null}
+
+      {builtIn ? (
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] text-[var(--nova-text-faint)]">
+          {t('settingPanel.presetConfig.builtInFieldHint')}
+        </div>
+      ) : null}
+
+      {/* Structure basic info */}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <Field label={t('settingPanel.presetConfig.id')}>
+          <Input className={inputClassName} value={structure.id} disabled={readOnly} onChange={(e) => onPatch({ id: e.target.value.replace(/[-\s]/g, '_') })} />
+        </Field>
+        <Field label={t('settingPanel.field.name')}>
+          <Input className={inputClassName} value={structure.name || ''} disabled={readOnly} onChange={(e) => onPatch({ name: e.target.value })} />
+        </Field>
+        <Field label={t('settingPanel.presetConfig.structureMode')}>
+          <Select value={mode} disabled={readOnly} onValueChange={(m) => onPatch({ mode: m as StoryMemoryStructure['mode'] })}>
+            <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
+            <SelectContent className="nova-panel border text-[var(--nova-text)]">
+              <SelectItem value="singleton">{t('settingPanel.presetConfig.modeSingleton')}</SelectItem>
+              <SelectItem value="keyed">{t('settingPanel.presetConfig.modeKeyed')}</SelectItem>
+              <SelectItem value="append">{t('settingPanel.presetConfig.modeAppend')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        {keyed ? (
+          <Field label={t('settingPanel.presetConfig.keyField')}>
+            <Select value={structure.key_field_id || ''} disabled={readOnly} onValueChange={(v) => onPatch({ key_field_id: v })}>
+              <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
+              <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                {fields.map((f) => (
+                  <SelectItem key={f.id} value={f.id}>{f.name || f.id}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        ) : null}
+        <Field label={t('settingPanel.presetConfig.order')}>
+          <Input className={inputClassName} inputMode="numeric" value={String(structure.order || '')} disabled={readOnly} onChange={(e) => onPatch({ order: parseIntegerInput(e.target.value) || 0 })} />
+        </Field>
+        <SwitchField label={t('settingPanel.field.enabled')} checked={structure.enabled !== false} onChange={(enabled) => onPatch({ enabled })} />
+      </div>
+
+      <Field label={t('common.description')}>
+        <Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={structure.description || ''} disabled={readOnly} onChange={(e) => onPatch({ description: e.target.value })} />
+      </Field>
+
+      <Field label={t('settingPanel.presetConfig.generationInstruction')}>
+        <Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={structure.generation_instruction || ''} disabled={readOnly} onChange={(e) => onPatch({ generation_instruction: e.target.value })} />
+      </Field>
+
+      {/* Fields sub-editor */}
+      <div className="grid min-h-[280px] gap-3 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <SortablePresetList
+          items={fields}
+          activeId={activeFieldId}
+          getId={(f, i) => itemKey(f, i, 'field')}
+          getTitle={(f) => f.name || f.id}
+          getSubtitle={(f) => {
+            const parts: string[] = [f.id]
+            if (f.required) parts.push(t('settingPanel.presetConfig.required'))
+            if (f.enabled === false) parts.push(t('settingPanel.disabled'))
+            return parts.join(' · ')
+          }}
+          addLabel={t('settingPanel.presetConfig.addField')}
+          emptyLabel={t('settingPanel.presetConfig.fields')}
+          onAdd={onAddField}
+          onActiveIdChange={onActiveFieldIdChange}
+          onItemsChange={onFieldsChange}
+        />
+        <FieldDetails
+          field={fields.find((f, i) => itemKey(f, i, 'field') === activeFieldId) || null}
+          defsReadOnly={fieldDefsReadOnly}
+          onPatch={onPatchField}
+          onCopy={onCopyField}
+          onDelete={readOnly ? undefined : onDeleteField}
+        />
+      </div>
+    </DetailPanel>
+  )
+}
+
+function FieldDetails({
+  field,
+  defsReadOnly,
+  onPatch,
+  onCopy,
+  onDelete,
+}: {
+  field: StoryMemoryField | null
+  defsReadOnly: boolean
+  onPatch: (patch: Partial<StoryMemoryField>) => void
+  onCopy: () => void
+  onDelete?: () => void
+}) {
+  const { t } = useTranslation()
+  if (!field) {
+    return <EmptyDetail>{t('settingPanel.presetConfig.emptyFields')}</EmptyDetail>
+  }
+
+  return (
+    <DetailPanel dense>
+      <div className="flex justify-end">
+        <DetailActions onCopy={onCopy} onDelete={onDelete} />
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <Field label={t('settingPanel.presetConfig.id')}>
+          <Input className={inputClassName} value={field.id} disabled={defsReadOnly} onChange={(e) => onPatch({ id: e.target.value.replace(/[-\s]/g, '_') })} />
+        </Field>
+        <Field label={t('settingPanel.field.name')}>
+          <Input className={inputClassName} value={field.name || ''} disabled={defsReadOnly} onChange={(e) => onPatch({ name: e.target.value })} />
+        </Field>
+        <Field label={t('settingPanel.presetConfig.order')}>
+          <Input className={inputClassName} inputMode="numeric" value={String(field.order || '')} disabled={defsReadOnly} onChange={(e) => onPatch({ order: parseIntegerInput(e.target.value) || 0 })} />
+        </Field>
+        <SwitchField label={t('settingPanel.presetConfig.required')} checked={field.required === true} onChange={(required) => onPatch({ required })} />
+        <SwitchField label={t('settingPanel.field.enabled')} checked={field.enabled !== false} onChange={(enabled) => onPatch({ enabled })} />
+      </div>
+      <Field label={t('common.description')}>
+        <Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={field.description || ''} disabled={defsReadOnly} onChange={(e) => onPatch({ description: e.target.value })} />
+      </Field>
+      <Field label={t('settingPanel.presetConfig.generationInstruction')}>
+        <Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={field.generation_instruction || ''} disabled={defsReadOnly} onChange={(e) => onPatch({ generation_instruction: e.target.value })} />
+      </Field>
+    </DetailPanel>
   )
 }

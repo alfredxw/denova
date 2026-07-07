@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
 import { PresetConfigSectionEditor } from '../preset-config/PresetConfigSectionEditor'
-import { OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from '../preset-config/visual-editors'
+import { OpeningSelectorVisualEditor, TRPGSystemVisualEditor } from '../preset-config/visual-editors'
 import { DirectorModuleConsole } from './ModuleConsole'
 import { consoleSectionClassName, EDITOR_TABS, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RANDOM_RATE_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StoryDirectorEditorTab, type StrategySelectOption } from './constants'
 import { EmptyState, Field, SectionTitle } from './shared'
@@ -47,7 +47,7 @@ export function StoryDirectorEditor({
   const setSectionValid = usePresetSectionValidity(draft?.id || '', onValidityChange)
   const [strategyPromptOpen, setStrategyPromptOpen] = useState(false)
   const [planningTemplatesOpen, setPlanningTemplatesOpen] = useState(false)
-  const [activeEditorTab, setActiveEditorTab] = useState<StoryDirectorEditorTab>('stats')
+  const [activeEditorTab, setActiveEditorTab] = useState<StoryDirectorEditorTab>('trpg')
   const strategyPrompt = draft?.strategy?.prompt_markdown || ''
   const strategyPromptBytes = utf8ByteLength(strategyPrompt)
   const strategyPromptValid = strategyPromptBytes <= STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT
@@ -59,7 +59,7 @@ export function StoryDirectorEditor({
   useEffect(() => {
     setStrategyPromptOpen(false)
     setPlanningTemplatesOpen(false)
-    setActiveEditorTab('stats')
+    setActiveEditorTab('trpg')
     const scrollElement = scrollRef.current
     if (scrollElement) {
       if (typeof scrollElement.scrollTo === 'function') {
@@ -126,7 +126,6 @@ export function StoryDirectorEditor({
   const selectedImagePreset = findById(imagePresets, refs.image_preset_id || 'game-cg')
   const selectedTeller = findById(tellers, refs.narrative_style_id || 'classic')
   const editorTabSummaries = {
-    stats: t('settingPanel.storyDirector.statSystemSummary', { count: draft.stat_system?.attributes?.length || 0 }),
     trpg: t('settingPanel.storyDirector.trpgSystemSummary', { count: draft.trpg_system?.rule_templates?.length || 0 }),
     opening: t('settingPanel.storyDirector.openingSelectorSummary', { pools: draft.opening_selector?.trait_pools?.length || 0, ops: draft.opening_selector?.initial_state_ops?.length || 0 }),
     events: t('settingPanel.storyDirector.eventPackagesSummary', { packages: selectedEventPackageIDs.length, cards: selectedEventCardCount }),
@@ -304,21 +303,6 @@ export function StoryDirectorEditor({
                 </TabsTrigger>
               ))}
             </TabsList>
-            <TabsContent value="stats" className="mt-0">
-              <PresetConfigSectionEditor
-                sectionId="story-director.stat-system"
-                resetKey={`${draft.id}:stat_system`}
-                title={t('settingPanel.storyDirector.statSystem')}
-                description={t('settingPanel.storyDirector.statSystemDesc')}
-                value={draft.stat_system || emptySections.stat_system}
-                summary={editorTabSummaries.stats}
-                onChange={(stat_system) => setDraft({ ...draft, stat_system })}
-                onSave={onSave}
-                onValidityChange={(valid) => setSectionValid('stat_system', valid)}
-              >
-                {(props) => <StatSystemVisualEditor {...props} />}
-              </PresetConfigSectionEditor>
-            </TabsContent>
             <TabsContent value="trpg" className="mt-0">
               <PresetConfigSectionEditor
                 sectionId="story-director.trpg-system"
@@ -552,6 +536,5 @@ function usePresetSectionValidity(resetKey: string, onValidityChange?: (valid: b
 function editorTabLabel(tab: StoryDirectorEditorTab, t: (key: string) => string) {
   if (tab === 'events') return t('settingPanel.storyDirector.editorTab.events')
   if (tab === 'trpg') return t('settingPanel.storyDirector.editorTab.trpg')
-  if (tab === 'opening') return t('settingPanel.storyDirector.editorTab.opening')
-  return t('settingPanel.storyDirector.editorTab.stats')
+  return t('settingPanel.storyDirector.editorTab.opening')
 }

@@ -16,7 +16,7 @@ Use this skill before calling `write_tellers`.
 4. Updating a built-in narrative-style ID creates a user-space override of that same ID. Deleting a built-in ID is only for restoring the code-defined default and requires an explicit restore request.
 5. For update, preserve slots and policy fields the user did not ask to change.
 6. For delete, require an explicit user request.
-7. Do not create or update `orchestration` here. Events, stats, TRPG checks, and opening trait rolls belong in `story-director-config` and `write_story_directors`.
+7. Do not create or update `orchestration` here. Events, State Systems, TRPG checks, and opening trait rolls belong in `story-director-config` and the corresponding story-director tools.
 8. Narrative styles are shared modules for Writing Mode and Game Mode. Do not add a per-style mode/scope field.
 
 ## Teller Shape

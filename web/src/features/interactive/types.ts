@@ -84,7 +84,6 @@ export interface StoryDirector {
   module_refs?: StoryDirectorModuleRefs
   strategy: StoryDirectorStrategy
   event_packages?: TellerEventPackage[]
-  stat_system: StoryDirectorStatSystem
   trpg_system: StoryDirectorTRPGSystem
   actor_state?: StoryDirectorActorStateSystem
   opening_selector: StoryDirectorOpeningSelector
@@ -134,7 +133,6 @@ interface StoryDirectorResolvedSnapshot {
   image_preset_id?: string
   event_packages?: TellerEventPackage[]
   event_system?: StoryDirectorEventSystem
-  stat_system?: StoryDirectorStatSystem
   trpg_system?: StoryDirectorTRPGSystem
   actor_state?: StoryDirectorActorStateSystem
   story_memory_structures?: StoryMemoryStructure[]
@@ -162,7 +160,6 @@ export interface RuleSystemModule {
   id: string
   name: string
   description: string
-  stat_system: StoryDirectorStatSystem
   trpg_system: StoryDirectorTRPGSystem
   tags: string[]
   path?: string
@@ -239,22 +236,6 @@ interface StoryDirectorEventSystem {
   custom_events?: DirectorEvent[]
 }
 
-export interface StoryDirectorStatSystem {
-  attributes?: StoryDirectorAttribute[]
-}
-
-export interface StoryDirectorAttribute {
-  id?: string
-  path: string
-  name: string
-  type?: string
-  default?: number
-  min?: number
-  max?: number
-  visibility?: 'visible' | 'hidden' | 'spoiler'
-  description?: string
-}
-
 export interface StoryDirectorTRPGSystem {
   rule_templates?: RuleCheck[]
 }
@@ -264,14 +245,14 @@ export interface StoryDirectorActorStateSystem {
   initial_actors?: ActorStateInitialActor[]
 }
 
-interface ActorStateTemplate {
+export interface ActorStateTemplate {
   id: string
   name: string
   description?: string
   fields?: ActorStateField[]
 }
 
-interface ActorStateField {
+export interface ActorStateField {
   id?: string
   path: string
   name: string
@@ -286,7 +267,7 @@ interface ActorStateField {
   order?: number
 }
 
-interface ActorStateInitialActor {
+export interface ActorStateInitialActor {
   id: string
   name: string
   template_id: string

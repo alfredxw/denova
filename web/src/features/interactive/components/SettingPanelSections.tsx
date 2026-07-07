@@ -16,7 +16,7 @@ import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpe
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller, TellerEventPackage } from '../types'
 import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
-import { ActorStateVisualEditor, EventPackageVisualEditor, OpeningSelectorVisualEditor, StatSystemVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
+import { ActorStateVisualEditor, EventPackageVisualEditor, MemoryStructureVisualEditor, OpeningSelectorVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -536,7 +536,7 @@ export function TellerDirectory({
                   active={!isConfigAgentActive && resourceKind === 'rule' && activeRuleSystemId === item.id}
                   Icon={Dice5}
                   title={item.name}
-                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.ruleSystem.summaryCount', { attributes: item.stat_system?.attributes?.length || 0, rules: item.trpg_system?.rule_templates?.length || 0 })}`}
+                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.ruleSystem.summaryCount', { rules: item.trpg_system?.rule_templates?.length || 0 })}`}
                   onSelect={() => onSelectRuleSystem(item.id)}
                 />
               ))}
@@ -788,19 +788,6 @@ export function RuleSystemEditor({
   return (
     <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
       <PresetConfigSectionEditor
-        sectionId="rule-system.stat-system"
-        resetKey={`${draft.id}:stat_system`}
-        title={t('settingPanel.storyDirector.statSystem')}
-        description={t('settingPanel.storyDirector.statSystemDesc')}
-        value={draft.stat_system || { attributes: [] }}
-        summary={t('settingPanel.storyDirector.statSystemSummary', { count: draft.stat_system?.attributes?.length || 0 })}
-        onChange={(stat_system) => setDraft({ ...draft, stat_system })}
-        onSave={onSave}
-        onValidityChange={(valid) => setSectionValid('stat_system', valid)}
-      >
-        {(props) => <StatSystemVisualEditor {...props} />}
-      </PresetConfigSectionEditor>
-      <PresetConfigSectionEditor
         sectionId="rule-system.trpg-system"
         resetKey={`${draft.id}:trpg_system`}
         title={t('settingPanel.storyDirector.trpgSystem')}
@@ -891,7 +878,7 @@ export function StoryMemoryStructureEditor({
         onSave={onSave}
         onValidityChange={onValidityChange}
       >
-        {({ value }) => <StoryMemoryStructureVisualSummary structures={value} />}
+        {(props) => <MemoryStructureVisualEditor {...props} />}
       </PresetConfigSectionEditor>
     </ModuleEditorShell>
   )
@@ -937,28 +924,6 @@ export function OpeningSelectorEditor({
   )
 }
 
-function StoryMemoryStructureVisualSummary({ structures }: { structures: StoryMemoryStructureModule['structures'] }) {
-  const { t } = useTranslation()
-  if (!structures?.length) {
-    return <EmptyState title={t('settingPanel.memoryStructure.emptyTitle')} description={t('settingPanel.memoryStructure.emptyDesc')} />
-  }
-  return (
-    <div className="space-y-2">
-      {structures.map((structure) => (
-        <div key={structure.id} className="rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-1)] p-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--nova-text)]">{structure.name || structure.id}</div>
-            <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{structure.mode || 'append'}</span>
-            <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{structure.enabled === false ? t('settingPanel.memoryStructure.disabled') : t('settingPanel.memoryStructure.enabled')}</span>
-          </div>
-          <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">{structure.description || t('settingPanel.memoryStructure.noDescription')}</div>
-          <div className="mt-2 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.memoryStructure.fieldCount', { count: structure.fields?.length || 0 })}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function ModuleEditorShell<T extends { name: string; description: string; custom: boolean; builtin_overridden?: boolean }>({
   draft,
   tagDraft,
@@ -1001,7 +966,6 @@ function ModuleEditorShell<T extends { name: string; description: string; custom
 
 function storyDirectorSummaryCount(director: StoryDirector) {
   return directorEventCardCount(directorResolvedEventPackages(director))
-    + (director.stat_system?.attributes?.length || 0)
     + (director.trpg_system?.rule_templates?.length || 0)
     + (director.opening_selector?.trait_pools?.length || 0)
 }

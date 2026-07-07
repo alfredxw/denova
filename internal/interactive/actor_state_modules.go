@@ -39,7 +39,7 @@ func (l *ActorStateLibrary) Get(id string) (ActorStateModule, error) {
 	if id == "" {
 		id = DefaultActorStateModuleID
 	}
-	if err := validateDirectorModuleID(id, "Actor 状态系统"); err != nil {
+	if err := validateDirectorModuleID(id, "状态系统"); err != nil {
 		return ActorStateModule{}, err
 	}
 	item, err := parseActorStateFile(filepath.Join(l.dir(), id+".json"))
@@ -63,7 +63,7 @@ func (l *ActorStateLibrary) Create(item ActorStateModule) (ActorStateModule, err
 	}
 	path := filepath.Join(l.dir(), item.ID+".json")
 	if _, err := os.Stat(path); err == nil {
-		return ActorStateModule{}, fmt.Errorf("Actor 状态系统已存在: %s", item.ID)
+		return ActorStateModule{}, fmt.Errorf("状态系统已存在: %s", item.ID)
 	} else if !os.IsNotExist(err) {
 		return ActorStateModule{}, err
 	}
@@ -82,7 +82,7 @@ func (l *ActorStateLibrary) Update(id string, item ActorStateModule, baseRevisio
 		return ActorStateModule{}, err
 	}
 	id = normalizeDirectorModuleID(id)
-	if err := validateDirectorModuleID(id, "Actor 状态系统"); err != nil {
+	if err := validateDirectorModuleID(id, "状态系统"); err != nil {
 		return ActorStateModule{}, err
 	}
 	isBuiltin := IsBuiltinActorStateID(id)
@@ -111,7 +111,7 @@ func (l *ActorStateLibrary) Update(id string, item ActorStateModule, baseRevisio
 
 func (l *ActorStateLibrary) Delete(id string) error {
 	id = normalizeDirectorModuleID(id)
-	if err := validateDirectorModuleID(id, "Actor 状态系统"); err != nil {
+	if err := validateDirectorModuleID(id, "状态系统"); err != nil {
 		return err
 	}
 	if IsBuiltinActorStateID(id) {

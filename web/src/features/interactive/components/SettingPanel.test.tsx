@@ -185,7 +185,7 @@ describe('SettingPanel', () => {
     vi.mocked(deleteImagePreset).mockResolvedValue(undefined)
     vi.mocked(getEventPackages).mockResolvedValue([eventPackage('default', '默认事件包')])
     vi.mocked(updateEventPackage).mockImplementation(async (id, input) => ({ ...eventPackage(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as EventPackageModule)
-    vi.mocked(getRuleSystems).mockResolvedValue([ruleSystem('default-rules', '默认数值规则')])
+    vi.mocked(getRuleSystems).mockResolvedValue([ruleSystem('default-rules', '默认 TRPG 检定')])
     vi.mocked(updateRuleSystem).mockImplementation(async (id, input) => ({ ...ruleSystem(id, input.name || id), ...input, id, custom: id !== 'default-rules', builtin_overridden: id === 'default-rules', updated_at: '2026-01-01T00:00:01Z' }) as RuleSystemModule)
     vi.mocked(getOpeningSelectors).mockResolvedValue([openingSelector('default-opening', '默认开局选择')])
     vi.mocked(updateOpeningSelector).mockImplementation(async (id, input) => ({ ...openingSelector(id, input.name || id), ...input, id, custom: id !== 'default-opening', builtin_overridden: id === 'default-opening', updated_at: '2026-01-01T00:00:01Z' }) as OpeningSelectorModule)
@@ -231,6 +231,27 @@ describe('SettingPanel', () => {
       '',
     )
     expect(createInteractiveTeller).not.toHaveBeenCalled()
+  })
+
+  it('flushes a pending preset autosave before switching resource types', async () => {
+    const user = userEvent.setup()
+    render(<PresetPanelHarness />)
+
+    await user.click(screen.getByRole('button', { name: /经典叙事/ }))
+    fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '切换前自动保存' } })
+    await user.click(screen.getByRole('button', { name: '图像方案' }))
+    await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
+
+    await waitFor(() => expect(updateInteractiveTeller).toHaveBeenCalled())
+    expect(updateInteractiveTeller).toHaveBeenCalledWith(
+      'classic',
+      expect.objectContaining({
+        id: 'classic',
+        name: '切换前自动保存',
+      }),
+      '',
+    )
+    expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
   })
 
   it('restores an overridden built-in narrative style from the top-right action', async () => {
@@ -327,7 +348,7 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '展开全部目录' }))
     expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /默认数值规则/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /默认 TRPG 检定/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '折叠全部目录' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '折叠全部目录' }))
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
@@ -341,18 +362,18 @@ describe('SettingPanel', () => {
     expect(directorResourceTabs).toHaveClass('grid', 'group-data-horizontal/tabs:h-auto')
     expect(directorResourceTabs.className).toContain('grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]')
     expect(screen.getByRole('tab', { name: /事件引用/ })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /数值系统/ })).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /数值系统/ })).not.toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /TRPG 检定/ })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /开局选择/ })).toBeInTheDocument()
     expect(screen.getAllByTestId('preset-config-visual-editor')).toHaveLength(1)
     expect(screen.queryByTestId('monaco-json-editor')).not.toBeInTheDocument()
     await user.click(screen.getAllByRole('button', { name: 'JSON' })[0])
-    expect(window.localStorage.getItem('nova.settingPanel.presetConfigView.v1')).toContain('story-director.stat-system')
+    expect(window.localStorage.getItem('nova.settingPanel.presetConfigView.v1')).toContain('story-director.trpg-system')
     const jsonEditors = screen.getAllByTestId('story-director-json-editor')
     expect(jsonEditors).toHaveLength(1)
     expect(jsonEditors[0]).toHaveClass('overflow-hidden')
     expect(screen.getByTestId('monaco-json-editor')).toHaveAttribute('data-word-wrap', 'on')
-    expect(screen.getByDisplayValue(/attributes/)).toBeInTheDocument()
+    expect(screen.getByDisplayValue(/rule_templates/)).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: '折叠全部' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '折叠全部' }))
@@ -377,7 +398,7 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('button', { name: '图像方案' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '故事导演' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '事件包' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '数值与TRPG系统' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'TRPG 检定' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '开局选择器' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '默认事件包' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '经典叙事' })).toBeInTheDocument()
@@ -799,7 +820,6 @@ function storyDirector(id: string, name: string): StoryDirector {
       enabled: true,
       events: [],
     }],
-    stat_system: { attributes: [] },
     trpg_system: { rule_templates: [] },
     opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },
     tags: [],
@@ -825,7 +845,6 @@ function ruleSystem(id: string, name: string): RuleSystemModule {
     id,
     name,
     description: `${name} description`,
-    stat_system: { attributes: [] },
     trpg_system: { rule_templates: [] },
     tags: [],
     custom: id !== 'default-rules',

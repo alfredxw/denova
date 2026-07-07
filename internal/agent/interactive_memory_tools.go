@@ -50,7 +50,7 @@ type readInteractiveMemoriesInput struct {
 }
 
 type applyActorStatePatchInput struct {
-	Patches []interactive.ActorStatePatch `json:"patches" jsonschema:"description=要写入的关键 Actor 结构化状态更新。每条 patch 必须包含 actor_id、template_id、state 和 reason；state 只能使用 Actor State schema 中声明的字段路径。"`
+	Patches []interactive.ActorStatePatch `json:"patches" jsonschema:"description=要写入的关键 Actor 结构化状态更新。每条 patch 必须包含 actor_id、template_id、state 和 reason；state 只能使用状态系统 schema 中声明的字段路径。"`
 }
 
 type applyStoryMemoryPatchesInput struct {
@@ -177,7 +177,7 @@ func newInteractiveActorStateTools(ctx InteractiveStoryToolContext) ([]tool.Base
 	if ctx.Store == nil || ctx.StoryID == "" || ctx.TurnID == "" {
 		return nil, nil
 	}
-	applyTool, err := utils.InferTool("apply_actor_state_patch", "创建或更新关键 Actor 的结构化状态。只用于主角、重要角色、反派、势力型 Actor 等会影响后续承接或规则检定的对象；路人和一次性 NPC 留在故事记忆，不写入 Actor State。后端会按 Actor State schema 校验 actor 类型、字段路径、值类型和可见性，并把变更写成可重放 StateOp。", func(callCtx context.Context, input applyActorStatePatchInput) (string, error) {
+	applyTool, err := utils.InferTool("apply_actor_state_patch", "创建或更新关键 Actor 的结构化状态。只用于主角、重要角色、反派、势力型 Actor 等会影响后续承接或规则检定的对象；路人和一次性 NPC 留在故事记忆，不写入状态系统。后端会按状态系统 schema 校验 actor 类型、字段路径、值类型和可见性，并把变更写成可重放 StateOp。", func(callCtx context.Context, input applyActorStatePatchInput) (string, error) {
 		_ = callCtx
 		result, err := interactive.ValidateActorStatePatches(ctx.ActorState, input.Patches, ctx.TurnID)
 		if err != nil {

@@ -45,7 +45,7 @@ export const STORY_DIRECTOR_AGENT_MODE_OPTIONS = [
   { value: 'every_turn', labelKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurn', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurnDesc' },
   { value: 'off', labelKey: 'settingPanel.storyDirector.strategy.agentMode.off', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.offDesc' },
 ] as const
-export const EDITOR_TABS = ['stats', 'trpg', 'opening', 'events'] as const
+export const EDITOR_TABS = ['trpg', 'opening', 'events'] as const
 
 export type StoryDirectorEditorTab = typeof EDITOR_TABS[number]
 export type StrategySelectOption = {

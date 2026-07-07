@@ -24,9 +24,9 @@ const (
 
 var (
 	ErrEventPackageRevisionConflict    = errors.New("事件包已被其他操作更新，请重新加载后再保存")
-	ErrRuleSystemRevisionConflict      = errors.New("数值规则系统已被其他操作更新，请重新加载后再保存")
+	ErrRuleSystemRevisionConflict      = errors.New("TRPG 检定已被其他操作更新，请重新加载后再保存")
 	ErrOpeningSelectorRevisionConflict = errors.New("开局选择器已被其他操作更新，请重新加载后再保存")
-	ErrActorStateRevisionConflict      = errors.New("Actor 状态系统已被其他操作更新，请重新加载后再保存")
+	ErrActorStateRevisionConflict      = errors.New("状态系统已被其他操作更新，请重新加载后再保存")
 )
 
 // StoryDirectorModuleRefs declares the reusable resources a story director
@@ -69,7 +69,6 @@ type StoryDirectorResolvedSnapshot struct {
 	ImagePresetID         string                        `json:"image_preset_id,omitempty"`
 	EventPackages         []TellerEventPackage          `json:"event_packages,omitempty"`
 	EventSystem           StoryDirectorEventSystem      `json:"-"`
-	StatSystem            StoryDirectorStatSystem       `json:"stat_system,omitempty"`
 	TRPGSystem            StoryDirectorTRPGSystem       `json:"trpg_system,omitempty"`
 	ActorState            StoryDirectorActorStateSystem `json:"actor_state,omitempty"`
 	StoryMemoryStructures []StoryMemoryStructure        `json:"story_memory_structures,omitempty"`
@@ -113,7 +112,6 @@ type RuleSystemModule struct {
 	ID                string                  `json:"id"`
 	Name              string                  `json:"name"`
 	Description       string                  `json:"description"`
-	StatSystem        StoryDirectorStatSystem `json:"stat_system"`
 	TRPGSystem        StoryDirectorTRPGSystem `json:"trpg_system"`
 	Tags              []string                `json:"tags"`
 	Path              string                  `json:"path,omitempty"`
@@ -387,7 +385,7 @@ func (l *RuleSystemLibrary) Get(id string) (RuleSystemModule, error) {
 	if id == "" {
 		id = DefaultRuleSystemID
 	}
-	if err := validateDirectorModuleID(id, "数值规则系统"); err != nil {
+	if err := validateDirectorModuleID(id, "TRPG 检定"); err != nil {
 		return RuleSystemModule{}, err
 	}
 	item, err := parseRuleSystemFile(filepath.Join(l.dir(), id+".json"))
@@ -411,7 +409,7 @@ func (l *RuleSystemLibrary) Create(item RuleSystemModule) (RuleSystemModule, err
 	}
 	path := filepath.Join(l.dir(), item.ID+".json")
 	if _, err := os.Stat(path); err == nil {
-		return RuleSystemModule{}, fmt.Errorf("数值规则系统已存在: %s", item.ID)
+		return RuleSystemModule{}, fmt.Errorf("TRPG 检定已存在: %s", item.ID)
 	} else if !os.IsNotExist(err) {
 		return RuleSystemModule{}, err
 	}
@@ -430,7 +428,7 @@ func (l *RuleSystemLibrary) Update(id string, item RuleSystemModule, baseRevisio
 		return RuleSystemModule{}, err
 	}
 	id = normalizeDirectorModuleID(id)
-	if err := validateDirectorModuleID(id, "数值规则系统"); err != nil {
+	if err := validateDirectorModuleID(id, "TRPG 检定"); err != nil {
 		return RuleSystemModule{}, err
 	}
 	isBuiltin := IsBuiltinRuleSystemID(id)
@@ -459,7 +457,7 @@ func (l *RuleSystemLibrary) Update(id string, item RuleSystemModule, baseRevisio
 
 func (l *RuleSystemLibrary) Delete(id string) error {
 	id = normalizeDirectorModuleID(id)
-	if err := validateDirectorModuleID(id, "数值规则系统"); err != nil {
+	if err := validateDirectorModuleID(id, "TRPG 检定"); err != nil {
 		return err
 	}
 	if IsBuiltinRuleSystemID(id) {
@@ -722,14 +720,11 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 		}
 	}
 	if refs.RuleSystemDisabled {
-		effective.StatSystem = StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{}}
 		effective.TRPGSystem = StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{}}
 	} else if refs.RuleSystemID != "" {
 		if module, err := NewRuleSystemLibrary(novaDir).Get(refs.RuleSystemID); err == nil {
-			effective.StatSystem = module.StatSystem
 			effective.TRPGSystem = module.TRPGSystem
-		} else if !ruleSystemEmpty(snapshot.StatSystem, snapshot.TRPGSystem) {
-			effective.StatSystem = snapshot.StatSystem
+		} else if !ruleSystemEmpty(snapshot.TRPGSystem) {
 			effective.TRPGSystem = snapshot.TRPGSystem
 			warnings = append(warnings, moduleWarning("rule_system", refs.RuleSystemID, err))
 		} else {
@@ -801,7 +796,6 @@ func snapshotFromEffectiveDirector(director StoryDirector, refs StoryDirectorMod
 		NarrativeStyleID:      refs.NarrativeStyleID,
 		ImagePresetID:         refs.ImagePresetID,
 		EventPackages:         director.EventPackages,
-		StatSystem:            director.StatSystem,
 		TRPGSystem:            director.TRPGSystem,
 		ActorState:            director.ActorState,
 		StoryMemoryStructures: storyMemoryStructures,
@@ -835,11 +829,10 @@ func DefaultRuleSystemModule() RuleSystemModule {
 	return normalizeRuleSystemModule(RuleSystemModule{
 		Version:     storyDirectorModuleVersion,
 		ID:          DefaultRuleSystemID,
-		Name:        "默认数值与TRPG系统",
-		Description: "提供生命、体力、好感等基础属性和可扩展 TRPG 检定模板。",
-		StatSystem:  StoryDirectorStatSystem{Attributes: defaultStoryDirectorAttributes()},
+		Name:        "默认 TRPG 检定",
+		Description: "提供可扩展的 TRPG 检定模板，数值字段统一从状态系统读取。",
 		TRPGSystem:  StoryDirectorTRPGSystem{RuleTemplates: config.RuleTemplates},
-		Tags:        []string{"内置", "规则"},
+		Tags:        []string{"内置", "TRPG"},
 	})
 }
 
@@ -847,7 +840,7 @@ func DefaultActorStateModule() ActorStateModule {
 	return normalizeActorStateModule(ActorStateModule{
 		Version:     storyDirectorModuleVersion,
 		ID:          DefaultActorStateModuleID,
-		Name:        "默认 Actor 状态系统",
+		Name:        "默认状态系统",
 		Description: "以主角等关键 Actor 为中心维护结构化状态，供规则检定、资源消耗和长期承接读取。",
 		ActorState:  defaultActorStateSystem(),
 		Tags:        []string{"内置", "状态"},
@@ -1029,9 +1022,8 @@ func normalizeEventSystemModule(item EventSystemModule) EventSystemModule {
 func normalizeRuleSystemModule(item RuleSystemModule) RuleSystemModule {
 	item.Version = storyDirectorModuleVersion
 	item.ID = normalizeDirectorModuleID(item.ID)
-	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "数值规则系统"), 256)
+	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "TRPG 检定"), 256)
 	item.Description = trimBytes(item.Description, 1024)
-	item.StatSystem.Attributes = normalizeStoryDirectorAttributes(item.StatSystem.Attributes)
 	item.TRPGSystem.RuleTemplates = normalizeRuleChecks(item.TRPGSystem.RuleTemplates)
 	item.Tags = normalizeStringListLimit(item.Tags, maxTurnBriefListItems)
 	return item
@@ -1040,7 +1032,7 @@ func normalizeRuleSystemModule(item RuleSystemModule) RuleSystemModule {
 func normalizeActorStateModule(item ActorStateModule) ActorStateModule {
 	item.Version = storyDirectorModuleVersion
 	item.ID = normalizeDirectorModuleID(item.ID)
-	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "Actor 状态系统"), 256)
+	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "状态系统"), 256)
 	item.Description = trimBytes(item.Description, 1024)
 	item.ActorState = normalizeActorStateSystem(item.ActorState)
 	item.Tags = normalizeStringListLimit(item.Tags, maxTurnBriefListItems)
@@ -1075,11 +1067,6 @@ func normalizeStoryDirectorResolvedSnapshot(snapshot StoryDirectorResolvedSnapsh
 		snapshot.EventPackages = normalizeTellerEventPackagesNoDefault(snapshot.EventPackages)
 	}
 	snapshot.EventSystem = StoryDirectorEventSystem{}
-	if snapshot.ModuleRefs.RuleSystemDisabled {
-		snapshot.StatSystem.Attributes = normalizeStoryDirectorAttributesNoDefault(snapshot.StatSystem.Attributes)
-	} else {
-		snapshot.StatSystem.Attributes = normalizeStoryDirectorAttributes(snapshot.StatSystem.Attributes)
-	}
 	snapshot.TRPGSystem.RuleTemplates = normalizeRuleChecks(snapshot.TRPGSystem.RuleTemplates)
 	if snapshot.ModuleRefs.ActorStateDisabled {
 		snapshot.ActorState = normalizeActorStateSystem(StoryDirectorActorStateSystem{})
@@ -1129,11 +1116,11 @@ func validateEventSystemModule(item EventSystemModule) error {
 }
 
 func validateRuleSystemModule(item RuleSystemModule) error {
-	if err := validateDirectorModuleID(item.ID, "数值规则系统"); err != nil {
+	if err := validateDirectorModuleID(item.ID, "TRPG 检定"); err != nil {
 		return err
 	}
 	if strings.TrimSpace(item.Name) == "" {
-		return errors.New("数值规则系统名称不能为空")
+		return errors.New("TRPG 检定名称不能为空")
 	}
 	for _, check := range item.TRPGSystem.RuleTemplates {
 		if err := validateRuleCheck(check); err != nil {
@@ -1144,14 +1131,14 @@ func validateRuleSystemModule(item RuleSystemModule) error {
 }
 
 func validateActorStateModule(item ActorStateModule) error {
-	if err := validateDirectorModuleID(item.ID, "Actor 状态系统"); err != nil {
+	if err := validateDirectorModuleID(item.ID, "状态系统"); err != nil {
 		return err
 	}
 	if strings.TrimSpace(item.Name) == "" {
-		return errors.New("Actor 状态系统名称不能为空")
+		return errors.New("状态系统名称不能为空")
 	}
 	if len(item.ActorState.Templates) == 0 {
-		return errors.New("Actor 状态系统至少需要一个 actor 类型模板")
+		return errors.New("状态系统至少需要一个 actor 类型模板")
 	}
 	return nil
 }
@@ -1221,7 +1208,7 @@ func parseRuleSystemFile(path string) (RuleSystemModule, error) {
 	}
 	var item RuleSystemModule
 	if err := json.Unmarshal(data, &item); err != nil {
-		return RuleSystemModule{}, fmt.Errorf("解析数值规则系统 JSON 失败: %w", err)
+		return RuleSystemModule{}, fmt.Errorf("解析 TRPG 检定 JSON 失败: %w", err)
 	}
 	item = normalizeRuleSystemModule(item)
 	if err := validateRuleSystemModule(item); err != nil {
@@ -1238,7 +1225,7 @@ func parseActorStateFile(path string) (ActorStateModule, error) {
 	}
 	var item ActorStateModule
 	if err := json.Unmarshal(data, &item); err != nil {
-		return ActorStateModule{}, fmt.Errorf("解析 Actor 状态系统 JSON 失败: %w", err)
+		return ActorStateModule{}, fmt.Errorf("解析状态系统 JSON 失败: %w", err)
 	}
 	item = normalizeActorStateModule(item)
 	if err := validateActorStateModule(item); err != nil {
@@ -1574,7 +1561,7 @@ func eventCardFromDirectorEvent(event DirectorEvent, fallbackID string) TellerEv
 func storyDirectorHasEmbeddedModules(director StoryDirector) bool {
 	return len(director.EventPackages) > 0 ||
 		!eventSystemEmpty(director.EventSystem) ||
-		!ruleSystemEmpty(director.StatSystem, director.TRPGSystem) ||
+		!ruleSystemEmpty(director.TRPGSystem) ||
 		!actorStateEmpty(director.ActorState) ||
 		!openingSelectorEmpty(director.OpeningSelector)
 }
@@ -1583,8 +1570,8 @@ func eventSystemEmpty(system StoryDirectorEventSystem) bool {
 	return len(system.EventPackages) == 0 && len(system.CustomEvents) == 0
 }
 
-func ruleSystemEmpty(stat StoryDirectorStatSystem, trpg StoryDirectorTRPGSystem) bool {
-	return len(stat.Attributes) == 0 && len(trpg.RuleTemplates) == 0
+func ruleSystemEmpty(trpg StoryDirectorTRPGSystem) bool {
+	return len(trpg.RuleTemplates) == 0
 }
 
 func openingSelectorEmpty(selector StoryDirectorOpeningSelector) bool {

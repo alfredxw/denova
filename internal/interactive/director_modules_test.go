@@ -78,12 +78,12 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rule.Name = "我的数值规则"
+	rule.Name = "我的 TRPG 检定"
 	overriddenRule, err := ruleLibrary.Update(DefaultRuleSystemID, rule, rule.UpdatedAt)
 	if err != nil {
 		t.Fatalf("Update built-in rule system should create override: %v", err)
 	}
-	if overriddenRule.Custom || !overriddenRule.BuiltinOverridden || overriddenRule.Name != "我的数值规则" {
+	if overriddenRule.Custom || !overriddenRule.BuiltinOverridden || overriddenRule.Name != "我的 TRPG 检定" {
 		t.Fatalf("unexpected rule override: %#v", overriddenRule)
 	}
 	if err := ruleLibrary.Delete(DefaultRuleSystemID); err != nil {
@@ -93,7 +93,7 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restoredRule.Custom || restoredRule.BuiltinOverridden || restoredRule.Name == "我的数值规则" {
+	if restoredRule.Custom || restoredRule.BuiltinOverridden || restoredRule.Name == "我的 TRPG 检定" {
 		t.Fatalf("unexpected restored rule system: %#v", restoredRule)
 	}
 
@@ -102,12 +102,12 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	actorState.Name = "我的 Actor 状态"
+	actorState.Name = "我的状态系统"
 	overriddenActorState, err := actorLibrary.Update(DefaultActorStateModuleID, actorState, actorState.UpdatedAt)
 	if err != nil {
 		t.Fatalf("Update built-in actor state should create override: %v", err)
 	}
-	if overriddenActorState.Custom || !overriddenActorState.BuiltinOverridden || overriddenActorState.Name != "我的 Actor 状态" {
+	if overriddenActorState.Custom || !overriddenActorState.BuiltinOverridden || overriddenActorState.Name != "我的状态系统" {
 		t.Fatalf("unexpected actor state override: %#v", overriddenActorState)
 	}
 	if err := actorLibrary.Delete(DefaultActorStateModuleID); err != nil {
@@ -117,7 +117,7 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restoredActorState.Custom || restoredActorState.BuiltinOverridden || restoredActorState.Name == "我的 Actor 状态" {
+	if restoredActorState.Custom || restoredActorState.BuiltinOverridden || restoredActorState.Name == "我的状态系统" {
 		t.Fatalf("unexpected restored actor state: %#v", restoredActorState)
 	}
 
@@ -225,14 +225,14 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	}
 	ruleModule, err := ruleLibrary.Create(RuleSystemModule{
 		ID:   "survival-rules",
-		Name: "生存规则",
-		StatSystem: StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{{
-			ID:         "heat",
-			Path:       "resources.heat",
-			Name:       "热量",
-			Default:    1,
-			Max:        5,
-			Visibility: "visible",
+		Name: "生存 TRPG 检定",
+		TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
+			ID:         "heat-check",
+			Label:      "耐热检定",
+			Kind:       "dice",
+			Mode:       "d20_dc",
+			Dice:       "1d20",
+			Difficulty: 12,
 		}}},
 	})
 	if err != nil {
@@ -315,8 +315,8 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	if len(director.EventPackages) != 1 || len(director.EventPackages[0].Events) != 1 || director.EventPackages[0].Events[0].DescriptionMarkdown != "v1" {
 		t.Fatalf("director should resolve event package on create: %#v", director.EventPackages)
 	}
-	if len(director.StatSystem.Attributes) != 1 || director.StatSystem.Attributes[0].Path != "resources.heat" {
-		t.Fatalf("director should resolve rule module on create: %#v", director.StatSystem.Attributes)
+	if len(director.TRPGSystem.RuleTemplates) != 1 || director.TRPGSystem.RuleTemplates[0].ID != "heat-check" {
+		t.Fatalf("director should resolve TRPG module on create: %#v", director.TRPGSystem.RuleTemplates)
 	}
 	if len(director.ActorState.Templates) != 1 || director.ActorState.Templates[0].ID != "protagonist" || len(director.ActorState.InitialActors) != 1 {
 		t.Fatalf("director should resolve actor state module on create: %#v", director.ActorState)
@@ -402,12 +402,6 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 					Enabled:  true,
 				}},
 			}},
-			StatSystem: StoryDirectorStatSystem{Attributes: []StoryDirectorAttribute{{
-				ID:         "snapshot-stat",
-				Path:       "resources.snapshot",
-				Name:       "旧快照属性",
-				Visibility: "visible",
-			}}},
 			TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
 				ID:         "snapshot-rule",
 				Label:      "旧快照规则",
@@ -448,8 +442,8 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 	if len(director.EventPackages) != 0 {
 		t.Fatalf("disabled event packages should stay empty, got %#v", director.EventPackages)
 	}
-	if len(director.StatSystem.Attributes) != 0 || len(director.TRPGSystem.RuleTemplates) != 0 {
-		t.Fatalf("disabled rule system should not use defaults or snapshot, got stats=%#v trpg=%#v", director.StatSystem, director.TRPGSystem)
+	if len(director.TRPGSystem.RuleTemplates) != 0 {
+		t.Fatalf("disabled TRPG checks should not use defaults or snapshot, got %#v", director.TRPGSystem)
 	}
 	if len(director.ActorState.Templates) != 0 || len(director.ActorState.InitialActors) != 0 {
 		t.Fatalf("disabled actor state should not use defaults or snapshot, got %#v", director.ActorState)

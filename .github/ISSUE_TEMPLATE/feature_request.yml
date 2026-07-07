@@ -1,0 +1,103 @@
+name: Feature Request / 功能请求
+description: Suggest a new Denova feature or improvement. / 建议新的 Denova 功能或改进。
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please focus on the creative workflow problem and the user-visible outcome. Denova prefers reusable abstractions over one-off features when possible.
+
+        请重点说明创作流程中的问题和用户可感知结果。Denova 会优先考虑可复用抽象，而不是一次性的零散功能。
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Area / 影响范围
+      description: Which area would this feature affect? / 这个功能主要影响哪个范围？
+      options:
+        - Writing Mode / 写作模式
+        - Game Mode / 游戏模式
+        - Agent / Tools / Skills
+        - Lore / Presets / 资料库与方案预设
+        - Image Generation / 图像生成
+        - Version Management / 版本管理
+        - Settings / Configuration / 设置与配置
+        - Web UI / 前端界面
+        - Backend API / 后端接口
+        - Packaging / Release / 安装包与发布
+        - Documentation / 文档
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / 问题
+      description: What creative or workflow problem are you trying to solve? / 你想解决什么创作或流程问题？
+      placeholder: "Describe the pain point, not only the requested UI or API."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution / 期望方案
+      description: Describe the behavior you would like Denova to support. / 描述你希望 Denova 支持的行为。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode-coverage
+    attributes:
+      label: Mode coverage / 模式覆盖
+      description: Which workbench should this support? / 这个能力应该支持哪些工作台？
+      options:
+        - Both Writing Mode and Game Mode / 写作模式和游戏模式都需要
+        - Writing Mode only / 仅写作模式
+        - Game Mode only / 仅游戏模式
+        - Shared settings or infrastructure / 共享设置或基础能力
+        - Not sure / 不确定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: extensibility
+    attributes:
+      label: Could this be handled by existing extensibility? / 是否可由现有扩展能力承载？
+      description: Many prompt or tool-call needs may be better implemented as Skills, Tools, or configuration. / 很多提示词或工具调用需求可能更适合作为 Skills、Tools 或配置项实现。
+      options:
+        - Needs a product feature / 需要产品功能
+        - Could be a Skill / 可以是 Skill
+        - Could be a Tool or Bash workflow / 可以是 Tool 或 Bash 工作流
+        - Could be a configuration option / 可以是配置项
+        - Not sure / 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered / 已考虑的替代方案
+      description: What have you tried, and why is it not enough? / 你尝试过什么方案，为什么仍然不够？
+    validations:
+      required: false
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Configuration needs / 配置需求
+      description: Should users be able to configure this behavior? If yes, what defaults would make sense? / 这个行为是否需要用户可配置？如果需要，默认值应是什么？
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist / 检查清单
+      options:
+        - label: I have searched existing issues and discussions for similar requests. / 我已搜索现有 issue 和讨论，确认没有相同请求。
+          required: true
+        - label: I have described the user-visible workflow or outcome. / 我已说明用户可感知的流程或结果。
+          required: true

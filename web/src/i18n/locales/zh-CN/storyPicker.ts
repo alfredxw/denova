@@ -25,7 +25,7 @@ const storyPicker = {
   'storyPicker.openingBuilder.reroll': '重抽',
   'storyPicker.openingBuilder.applySelection': '应用选择',
   'storyPicker.openingBuilder.rollFailed': '抽取开局词条失败',
-  'storyPicker.openingBuilder.empty': '可跳过；抽取后会把初始词条、属性和导演计划写入新故事。',
+  'storyPicker.openingBuilder.empty': '可跳过；抽取后会把初始词条、状态变更和导演计划写入新故事。',
   'storyPicker.openingBuilder.disabled': '当前故事导演已关闭开局选择器；新故事不会从导演抽取开局词条。',
   'storyPicker.openingBuilder.availableTraits': '可选词条',
   'storyPicker.openingBuilder.selected': '已选择 {{count}} 个词条',

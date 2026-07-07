@@ -1,0 +1,131 @@
+name: Bug Report / 缺陷反馈
+description: Report a reproducible bug or unexpected Denova behavior. / 反馈可复现的缺陷或异常行为。
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please provide enough detail for maintainers to reproduce and triage it.
+
+        感谢反馈缺陷。请尽量提供可复现信息，方便维护者定位和处理。
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / 版本
+      description: Which Denova version are you using? / 你正在使用哪个 Denova 版本？
+      placeholder: "Example: v0.1.18 or commit SHA"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component / 影响模块
+      description: Which part of Denova is affected? / 问题主要影响 Denova 的哪个部分？
+      options:
+        - Writing Mode / 写作模式
+        - Game Mode / 游戏模式
+        - Agent / Tools / Skills
+        - Lore / Presets / 资料库与方案预设
+        - Image Generation / 图像生成
+        - Version Management / 版本管理
+        - Settings / Configuration / 设置与配置
+        - Web UI / 前端界面
+        - Backend API / 后端接口
+        - Packaging / Release / 安装包与发布
+        - Documentation / 文档
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating System / 操作系统
+      description: Which operating system are you using? / 你正在使用哪个操作系统？
+      multiple: true
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Other / 其他
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser / 浏览器
+      description: If this is a Web UI issue, which browser and version are you using? / 如果是前端问题，请填写浏览器及版本。
+      placeholder: "Example: Chrome 126, Safari 18, Edge 126"
+    validations:
+      required: false
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: What happened? / 实际发生了什么？
+      description: Describe the issue clearly, including visible error messages. / 请清楚描述问题现象，包括可见错误提示。
+      placeholder: "Tell us what happened. / 描述你看到的问题。"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior / 预期行为
+      description: What did you expect to happen instead? / 你预期应该发生什么？
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce / 复现步骤
+      description: Please provide detailed, ordered steps. / 请按顺序提供尽量详细的复现步骤。
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workspace-impact
+    attributes:
+      label: Workspace or data impact / 工作区或数据影响
+      description: Did this affect project files, versions, generated images, lore, story branches, or settings? / 是否影响项目文件、版本、生成图片、资料库、故事分支或设置？
+      placeholder: "Example: no data loss; one story branch cannot be opened; settings were reset."
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / 日志
+      description: Paste relevant frontend or backend logs. Remove secrets before submitting. / 粘贴相关前端或后端日志，提交前请移除密钥等敏感信息。
+      render: shell
+    validations:
+      required: false
+
+  - type: upload
+    id: screenshots
+    attributes:
+      label: Screenshots or recordings / 截图或录屏
+      description: Attach screenshots or recordings if they help explain the issue. / 如有助于说明问题，请上传截图或录屏。
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist / 检查清单
+      options:
+        - label: I have searched existing issues and confirmed this is not a duplicate. / 我已搜索现有 issue，确认不是重复反馈。
+          required: true
+        - label: I have provided the Denova version and affected component. / 我已提供 Denova 版本和受影响模块。
+          required: true
+        - label: I have removed secrets from logs, screenshots, and attachments. / 我已从日志、截图和附件中移除密钥等敏感信息。
+          required: true

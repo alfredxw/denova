@@ -198,11 +198,11 @@ func defaultStoryMemoryStructures() []StoryMemoryStructure {
 			defaultStoryMemoryField("stakes", "风险/收益", "事项成功、失败或拖延的后果。", "没有明确风险收益时填“暂无明确风险收益”。", false, 70),
 			defaultStoryMemoryField("result", "后续结果", "事项完结或状态变更后的结果。", "未完结时留空；完结时写具体结果，不写“已解决”等空泛收束。", false, 80),
 		}, now),
-		defaultStoryMemoryStructure("rule_state_summary", "规则与数值状态", "记录规则引擎和数值系统需要长期承接的资源、属性、状态和最近检定。此表有且仅有一行。", "只记录已经由剧情、工具或规则结算确认的状态；数值变化必须能追溯到最近事件或规则检定，不自行臆造。", "singleton", "", true, 60, []StoryMemoryField{
+		defaultStoryMemoryStructure("rule_state_summary", "规则与状态摘要", "记录 TRPG 检定和状态系统需要长期承接的资源、属性、状态和最近检定。此表有且仅有一行。", "只记录已经由剧情、工具或规则结算确认的状态；状态变化必须能追溯到最近事件或规则检定，不自行臆造。", "singleton", "", true, 60, []StoryMemoryField{
 			defaultStoryMemoryField("resources", "资源数值", "生命、体力、灵力、金钱、声望等资源状态。", "按“资源：当前值/上限｜变化原因”维护；未知上限时写当前状态和来源。", false, 10),
 			defaultStoryMemoryField("attributes", "属性/境界", "力量、敏捷、修为、经营等级等稳定属性。", "按“属性：数值或阶段｜来源”维护；只写已确认属性。", false, 20),
 			defaultStoryMemoryField("conditions", "持续状态", "伤势、中毒、疲劳、增益、诅咒、通缉等会跨回合影响行动的状态。", "每项写清持续条件、影响和解除方式；过期状态应移除或标记已结束。", false, 30),
-			defaultStoryMemoryField("relationship_scores", "关系数值", "好感、信任、敌意、债务等可数值化关系。", "按“角色/势力：指标=值｜变化原因”维护；没有数值系统时可留空。", false, 40),
+			defaultStoryMemoryField("relationship_scores", "关系值", "好感、信任、敌意、债务等可量化关系。", "按“角色/势力：指标=值｜变化原因”维护；没有已确认关系值时可留空。", false, 40),
 			defaultStoryMemoryField("flags", "规则标记", "会影响后续检定或分支的布尔/枚举标记。", "按“标记：值｜来源”维护，例如“已暴露身份：否”。", false, 50),
 			defaultStoryMemoryField("last_rule_checks", "最近规则检定", "最近关键规则检定及结果。", "记录 3-5 个影响后续叙事的检定，格式建议“回合/检定：成功等级｜代价｜影响”。", false, 60),
 		}, now),
