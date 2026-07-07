@@ -1,0 +1,233 @@
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - img "Denova" [ref=e7]
+        - generic "模式切换" [ref=e8]:
+          - button "写作模式" [ref=e9]: 写作模式
+          - button "游戏模式" [ref=e11]
+      - generic "/Users/bytedance/Code/github/denova/.nova/《道渊》v5.1" [ref=e12]:
+        - img [ref=e13]
+        - generic [ref=e15]: 《道渊》v5.1
+      - generic [ref=e16]:
+        - button "打开消息中心" [ref=e17]:
+          - img [ref=e18]
+        - generic [ref=e21]: 写作工作台
+    - generic [ref=e22]:
+      - complementary [ref=e23]:
+        - button "写作" [ref=e25]:
+          - generic [ref=e27]:
+            - img
+          - generic [ref=e28]: 写作
+        - button "资料库" [ref=e30]:
+          - generic [ref=e31]:
+            - img
+          - generic [ref=e32]: 资料库
+        - button "方案预设" [active] [ref=e34]:
+          - generic [ref=e35]:
+            - img
+          - generic [ref=e36]: 方案预设
+        - button "版本管理" [ref=e38]:
+          - generic [ref=e39]:
+            - img
+          - generic [ref=e40]: 版本管理
+        - button "书籍管理" [ref=e42]:
+          - generic [ref=e43]:
+            - img
+          - generic [ref=e44]: 书籍管理
+        - button "Skills" [ref=e46]:
+          - generic [ref=e47]:
+            - img
+          - generic [ref=e48]: Skills
+        - button "Agents" [ref=e50]:
+          - generic [ref=e51]:
+            - img
+          - generic [ref=e52]: Agents
+        - button "自动化" [ref=e54]:
+          - generic [ref=e56]:
+            - img
+          - generic [ref=e57]: 自动化
+        - generic [ref=e58]:
+          - button "收起" [ref=e59]:
+            - generic [ref=e60]:
+              - img
+            - generic [ref=e61]: 收起
+          - button "设置" [ref=e62]:
+            - generic [ref=e63]:
+              - img
+            - generic [ref=e64]: 设置
+        - separator "调整一级菜单宽度" [ref=e65]
+      - status [ref=e66]
+      - main [ref=e106]:
+        - generic [ref=e451]:
+          - generic [ref=e452]:
+            - generic [ref=e453]:
+              - img [ref=e454]
+              - text: 方案预设
+            - button "关闭 方案预设" [ref=e455]: ×
+          - generic [ref=e458]:
+            - generic [ref=e460]:
+              - generic [ref=e462]:
+                - button "配置管理 Agent" [ref=e463]:
+                  - img [ref=e464]
+                  - generic [ref=e467]: 配置管理 Agent
+                - button "展开全部目录" [ref=e468]:
+                  - img [ref=e469]
+              - generic [ref=e475]:
+                - generic [ref=e476]:
+                  - generic [ref=e477]:
+                    - button "收起叙事风格" [ref=e478]:
+                      - img [ref=e479]
+                    - img [ref=e481]
+                    - button "叙事风格" [ref=e482]
+                    - generic [ref=e483]: "4"
+                    - button "新建叙事风格" [ref=e484]:
+                      - img [ref=e485]
+                  - generic [ref=e486]:
+                    - button "经典叙事 内置覆盖 · 3 条启用规则" [ref=e487]:
+                      - img [ref=e488]
+                      - generic [ref=e489]:
+                        - generic [ref=e490]: 经典叙事
+                        - generic [ref=e491]: 内置覆盖 · 3 条启用规则
+                    - button "直白情色 内置覆盖 · 3 条启用规则" [ref=e492]:
+                      - img [ref=e493]
+                      - generic [ref=e494]:
+                        - generic [ref=e495]: 直白情色
+                        - generic [ref=e496]: 内置覆盖 · 3 条启用规则
+                    - button "黑暗低魔 内置覆盖 · 3 条启用规则" [ref=e497]:
+                      - img [ref=e498]
+                      - generic [ref=e499]:
+                        - generic [ref=e500]: 黑暗低魔
+                        - generic [ref=e501]: 内置覆盖 · 3 条启用规则
+                    - button "编剧风格 内置覆盖 · 3 条启用规则" [ref=e502]:
+                      - img [ref=e503]
+                      - generic [ref=e504]:
+                        - generic [ref=e505]: 编剧风格
+                        - generic [ref=e506]: 内置覆盖 · 3 条启用规则
+                - generic [ref=e508]:
+                  - button "展开图像方案" [ref=e509]:
+                    - img [ref=e510]
+                  - img [ref=e512]
+                  - button "图像方案" [ref=e515]
+                  - generic [ref=e516]: "10"
+                  - button "新建图像方案" [ref=e517]:
+                    - img [ref=e518]
+            - main [ref=e520]:
+              - generic [ref=e521]:
+                - generic [ref=e523]:
+                  - generic [ref=e524]:
+                    - img [ref=e525]
+                    - heading "经典叙事" [level=2] [ref=e526]
+                  - paragraph [ref=e527]: 平衡叙事，节奏稳定，清晰裁定行动后果
+                - generic [ref=e528]:
+                  - button "恢复内置" [ref=e529]:
+                    - img
+                    - generic [ref=e530]: 恢复内置
+                  - button "删除叙事风格" [disabled]:
+                    - img
+                  - button "保存" [ref=e531]:
+                    - img
+                    - text: 保存
+              - generic [ref=e532]:
+                - generic [ref=e533]:
+                  - generic [ref=e534]:
+                    - generic [ref=e535]: 名称
+                    - textbox "名称" [ref=e536]: 经典叙事
+                  - generic [ref=e537]:
+                    - generic [ref=e538]: 描述
+                    - textbox "描述" [ref=e539]:
+                      - /placeholder: 选择时显示的简介
+                      - text: 平衡叙事，节奏稳定，清晰裁定行动后果
+                  - generic [ref=e540]:
+                    - generic [ref=e541]: 随机事件率
+                    - textbox "随机事件率" [ref=e542]: "0.15"
+                  - generic [ref=e543]:
+                    - generic [ref=e544]: 标签
+                    - textbox "标签" [ref=e545]:
+                      - /placeholder: 用逗号分隔
+                      - text: 通用，平衡
+                  - generic [ref=e547]: 内置覆盖
+                - generic [ref=e548]:
+                  - generic [ref=e549]:
+                    - generic [ref=e550]: 文风参考
+                    - generic [ref=e551]: "每条文风参考选择一个适用范围；默认“全局”对所有正文生成生效，新增规则可填写具体场景并由本轮 # 场景选择。"
+                  - generic [ref=e552]:
+                    - generic [ref=e554]:
+                      - generic [ref=e555]:
+                        - textbox "适用范围" [ref=e556]: 全局
+                        - button "选择参考" [ref=e557]:
+                          - img
+                          - text: 选择参考
+                        - button "上传/粘贴" [ref=e558]:
+                          - img
+                          - text: 上传/粘贴
+                      - generic [ref=e559]: → 文风参考 1 条
+                      - generic [ref=e561]:
+                        - button "编辑 《仙子的修行》" [ref=e562]:
+                          - img [ref=e563]
+                          - generic ".denova/styles/仙子的修行.md" [ref=e566]: 《仙子的修行》
+                          - generic [ref=e567]: .denova/styles/仙子的修行.md
+                        - button "删除" [ref=e568]:
+                          - img
+                    - button "新增规则" [ref=e571]:
+                      - img
+                      - text: 新增规则
+                - generic [ref=e572]:
+                  - complementary [ref=e573]:
+                    - generic [ref=e574]:
+                      - generic [ref=e575]: 注入规则
+                      - button "新增注入规则" [ref=e576]:
+                        - img
+                    - generic [ref=e580]:
+                      - generic [ref=e581]:
+                        - button "系统提示 系统提示 启用" [ref=e582]:
+                          - img [ref=e583]
+                          - generic [ref=e586]:
+                            - generic [ref=e587]: 系统提示
+                            - generic [ref=e588]:
+                              - generic [ref=e589]: 系统提示
+                              - generic [ref=e591]: 启用
+                        - switch "停用规则" [checked] [ref=e592]
+                      - generic [ref=e593]:
+                        - button "本轮上下文 本轮上下文 启用" [ref=e594]:
+                          - img [ref=e595]
+                          - generic [ref=e598]:
+                            - generic [ref=e599]: 本轮上下文
+                            - generic [ref=e600]:
+                              - generic [ref=e601]: 本轮上下文
+                              - generic [ref=e603]: 启用
+                        - switch "停用规则" [checked] [ref=e604]
+                      - generic [ref=e605]:
+                        - button "记忆沉淀规则 记忆沉淀规则 启用" [ref=e606]:
+                          - img [ref=e607]
+                          - generic [ref=e610]:
+                            - generic [ref=e611]: 记忆沉淀规则
+                            - generic [ref=e612]:
+                              - generic [ref=e613]: 记忆沉淀规则
+                              - generic [ref=e615]: 启用
+                        - switch "停用规则" [checked] [ref=e616]
+                  - generic [ref=e617]:
+                    - generic [ref=e619]:
+                      - generic [ref=e620]:
+                        - generic [ref=e621]: 规则名称
+                        - textbox "规则名称" [ref=e622]: 系统提示
+                      - generic [ref=e623]:
+                        - generic [ref=e624]: 注入位置
+                        - button "注入位置" [ref=e625]:
+                          - generic [ref=e626]: 系统提示 · Agent 初始化时注入
+                          - img [ref=e627]
+                      - button "删除注入规则" [ref=e630]:
+                        - img
+                      - generic [ref=e632]:
+                        - generic [ref=e633]:
+                          - generic [ref=e634]: 系统提示
+                          - generic [ref=e636]: Agent 初始化时注入
+                        - generic [ref=e637]: 和 CREATOR.md 同处系统提示层，定义叙事定位、题材倾向和长期叙事原则。
+                    - textbox [ref=e639]: 你是一位经典故事导演，负责稳定推进文字小说 RPG 的剧情。你的核心职责不是单纯续写，而是裁定用户行动如何影响世界：让行动带来清晰后果，让角色保持主动性，让场景持续打开新的行动空间。整体风格平衡、可读、因果明确，避免为了戏剧性而破坏已确认设定。
+    - generic [ref=e443]:
+      - generic [ref=e444]: Denova v0.1.18
+      - generic [ref=e445]: 《《道渊》v5.1》 · 0 章 · 0 字
+  - generic [ref=e446]:
+    - heading "命令面板" [level=2] [ref=e447]
+    - paragraph [ref=e448]: 搜索并执行工作台命令
+  - region "Notifications alt+T"

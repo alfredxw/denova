@@ -356,24 +356,27 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '故事导演' }))
 
     await selectDefaultDirector(user)
-    const directorResourceTabs = screen.getByRole('tablist', { name: '导演资源' })
-    expect(directorResourceTabs).toBeInTheDocument()
-    expect(directorResourceTabs).toHaveAttribute('data-slot', 'tabs-list')
-    expect(directorResourceTabs).toHaveClass('grid', 'group-data-horizontal/tabs:h-auto')
-    expect(directorResourceTabs.className).toContain('grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]')
-    expect(screen.getByRole('tab', { name: /事件引用/ })).toBeInTheDocument()
-    expect(screen.queryByRole('tab', { name: /数值系统/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /TRPG 检定/ })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /开局选择/ })).toBeInTheDocument()
-    expect(screen.getAllByTestId('preset-config-visual-editor')).toHaveLength(1)
+    expect(screen.queryByRole('tablist', { name: '导演资源' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /事件引用/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /TRPG 检定/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /开局选择/ })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('preset-config-visual-editor')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '事件包' }))
+
+    expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新建事件包' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /默认事件包/ }))
+    expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
+    expect(screen.getByTestId('preset-config-visual-editor')).toBeInTheDocument()
     expect(screen.queryByTestId('monaco-json-editor')).not.toBeInTheDocument()
-    await user.click(screen.getAllByRole('button', { name: 'JSON' })[0])
-    expect(window.localStorage.getItem('nova.settingPanel.presetConfigView.v1')).toContain('story-director.trpg-system')
+    await user.click(screen.getByRole('button', { name: 'JSON' }))
+    expect(window.localStorage.getItem('nova.settingPanel.presetConfigView.v1')).toContain('event-package.events')
     const jsonEditors = screen.getAllByTestId('story-director-json-editor')
     expect(jsonEditors).toHaveLength(1)
     expect(jsonEditors[0]).toHaveClass('overflow-hidden')
     expect(screen.getByTestId('monaco-json-editor')).toHaveAttribute('data-word-wrap', 'on')
-    expect(screen.getByDisplayValue(/rule_templates/)).toBeInTheDocument()
+    expect(screen.getByDisplayValue(/events/)).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: '折叠全部' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '折叠全部' }))
@@ -383,14 +386,6 @@ describe('SettingPanel', () => {
     expect(monacoEditorActions).toEqual(['editor.foldAll', 'editor.unfoldAll'])
     expect(screen.getAllByRole('button', { name: '折叠全部' })).toHaveLength(1)
     expect(screen.queryByRole('button', { name: '展开全部' })).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: '事件包' }))
-
-    expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '新建事件包' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /默认事件包/ }))
-    expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
-    expect(screen.getByTestId('preset-config-visual-editor')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '写作模式' }))
 
@@ -486,9 +481,13 @@ describe('SettingPanel', () => {
     render(<PresetModeHarness />)
 
     await selectDefaultDirector(user)
-    // Open advanced settings to access agent mode and branch planning fields
-    await user.click(screen.getByRole('button', { name: /高级设置/ }))
     expect(screen.getByText('分支规划回合')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /高级设置/ })).not.toBeInTheDocument()
+    const statusSwitch = screen.getByRole('switch', { name: '停用状态' })
+    expect(statusSwitch).toBeChecked()
+    await user.click(statusSwitch)
+    expect(screen.getByRole('switch', { name: '启用状态' })).not.toBeChecked()
+
     const branchTurnsField = screen.getByText('分支规划回合').closest('label') as HTMLElement
     const branchTurnsInput = within(branchTurnsField).getByRole('spinbutton')
     expect(branchTurnsInput).toHaveValue(5)
@@ -502,6 +501,7 @@ describe('SettingPanel', () => {
     await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
     const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.strategy).toMatchObject({
+      enabled: false,
       director_agent_mode: 'every_turn',
       branch_planning_turns: 7,
     })
@@ -589,17 +589,19 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await selectDefaultDirector(user)
-    await user.click(screen.getAllByRole('button', { name: 'JSON' })[0])
+    await user.click(screen.getByRole('button', { name: '事件包' }))
+    await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
+    await user.click(screen.getByRole('button', { name: 'JSON' }))
     fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
 
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeDisabled())
     expect(screen.getByText('请先修复 JSON，再切回可视化视图。')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '事件包' }))
-    expect(screen.getByRole('heading', { name: '默认导演' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '默认事件包' })).not.toBeInTheDocument()
-    expect(updateStoryDirector).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'TRPG 检定' }))
+    await user.click(await screen.findByRole('button', { name: /默认 TRPG 检定/ }))
+    expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '默认 TRPG 检定' })).not.toBeInTheDocument()
+    expect(updateEventPackage).not.toHaveBeenCalled()
   })
 
   it('generates a current image for one lore item from the editor', async () => {
@@ -638,6 +640,35 @@ describe('SettingPanel', () => {
 
     const previewDialog = screen.getByRole('dialog', { name: '林川' })
     expect(within(previewDialog).getByTestId('image-preview-viewport')).toBeInTheDocument()
+  })
+
+  it('saves lore item enabled status from a switch', async () => {
+    const user = userEvent.setup()
+    const item = loreItem('lin-chuan', '林川')
+    vi.mocked(getLoreItems).mockResolvedValue([item])
+    vi.mocked(updateLoreItem).mockImplementation(async (id, input) => ({
+      ...item,
+      ...input,
+      id,
+      updated_at: '2026-01-01T00:00:01Z',
+    }) as LoreItem)
+
+    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+
+    await user.click(await screen.findByRole('button', { name: /林川/ }))
+    const statusSwitch = screen.getByRole('switch', { name: '停用状态' })
+    expect(statusSwitch).toBeChecked()
+    await user.click(statusSwitch)
+    expect(screen.getByRole('switch', { name: '启用状态' })).not.toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(updateLoreItem).toHaveBeenCalled())
+    expect(updateLoreItem).toHaveBeenCalledWith(
+      'lin-chuan',
+      expect.objectContaining({ enabled: false }),
+      '2026-01-01T00:00:00Z',
+    )
   })
 
   it('confirms lore deletion with an in-app dialog', async () => {

@@ -79,6 +79,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 方案预设：故事导演策略和资料库条目的启用/停用状态统一改为 Switch 控件，避免二元开关继续使用下拉菜单。
+- Presets: Story Director strategy and Lore item enabled/disabled status controls now use Switch controls instead of dropdowns for binary toggles.
+- 方案预设：故事导演编辑页移除重复的“导演资源”内嵌 Tab，TRPG 检定、开局选择器和事件包统一回到左侧独立资源页维护；组合概览改为自适应列宽，并将后台导演运行方式和分支规划回合数直接展示在导演策略中。
+- Presets: Removed the duplicate inline “Director Resources” tabs from the Story Director editor. TRPG Checks, Opening Selectors, and Event Packages are now maintained through their dedicated resource pages; the composer uses adaptive columns, and background director mode plus branch planning turns are shown directly in Director Strategy.
 - 不兼容变更：游戏模式删除独立 `stat_system` 配置，状态字段、资源、关系值和可计算状态统一由状态系统（`actor_state`）管理；`RuleSystemModule` 只保留 `trpg_system.rule_templates`，用户可见名称从“数值与TRPG系统/规则系统”收敛为“TRPG 检定”，原“Actor 状态系统”收敛为“状态系统”。
 - Breaking: Game Mode removed standalone `stat_system` config. State fields, resources, relationship values, and computable state are now managed only by the State System (`actor_state`); `RuleSystemModule` now keeps only `trpg_system.rule_templates`. User-visible labels changed from “Stat/TRPG System / Rule System” to “TRPG Checks” and from “Actor State System” to “State System”.
 - 方案预设：状态系统资源页改为模板、字段 schema、字段类型、默认值、上下限、可见性、更新说明和初始 Actor 的可视化编辑器，并保留 JSON View；故事导演编辑区移除“数值系统”Tab，状态系统只通过组合器引用并在独立资源页维护。

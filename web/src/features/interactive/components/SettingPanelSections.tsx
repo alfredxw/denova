@@ -17,6 +17,7 @@ import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageM
 import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller, TellerEventPackage } from '../types'
 import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
 import { ActorStateVisualEditor, EventPackageVisualEditor, MemoryStructureVisualEditor, OpeningSelectorVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
+import { BooleanSwitchField } from './setting-panel/BooleanSwitchField'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -1335,17 +1336,7 @@ export function LoreEditor({
             <Field label={t('settingPanel.field.name')}>
               <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
             </Field>
-            <Field label={t('settingPanel.field.enabled')}>
-              <Select value={String(draft.enabled ?? true)} onValueChange={(value) => setDraft({ ...draft, enabled: value === 'true' })}>
-                <SelectTrigger size="sm" className={selectClassName}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                  <SelectItem value="true">{t('settingPanel.enabled')}</SelectItem>
-                  <SelectItem value="false">{t('settingPanel.disabled')}</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
+            <BooleanSwitchField label={t('settingPanel.field.enabled')} checked={draft.enabled ?? true} onCheckedChange={(enabled) => setDraft({ ...draft, enabled })} />
             <Field label={t('settingPanel.field.type')}>
               <Select value={draft.type} onValueChange={(value) => setDraft({ ...draft, type: value as LoreItem['type'] })}>
                 <SelectTrigger size="sm" className={selectClassName}>

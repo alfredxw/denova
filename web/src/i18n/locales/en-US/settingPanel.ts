@@ -573,6 +573,8 @@ const settingPanel = {
   'settingPanel.style.extractProgress.saved': 'Markdown saved',
   'settingPanel.style.extractProgress.failed': 'Extraction failed',
   'settingPanel.style.legacyInline': 'Legacy',
+  'settingPanel.switch.enableStatus': 'Enable status',
+  'settingPanel.switch.disableStatus': 'Disable status',
   'settingPanel.switch.enableRule': 'Enable rule',
   'settingPanel.switch.disableRule': 'Disable rule',
   'settingPanel.target.system.label': 'System Prompt',

@@ -14,12 +14,10 @@ export function DirectorModuleConsole({
   selectedTellerName,
   selectedRuleName,
   selectedActorStateName,
-  selectedMemoryStructureName,
   selectedMemoryStructureCount,
   selectedMemoryStructureTotal,
   selectedOpeningName,
   selectedImageName,
-  selectedEventPackages,
   selectedEventCardCount,
   tellers,
   eventPackages,
@@ -34,12 +32,10 @@ export function DirectorModuleConsole({
   selectedTellerName: string
   selectedRuleName: string
   selectedActorStateName: string
-  selectedMemoryStructureName: string
   selectedMemoryStructureCount: number
   selectedMemoryStructureTotal: number
   selectedOpeningName: string
   selectedImageName: string
-  selectedEventPackages: Array<{ id: string; name: string; invalid?: boolean; cards: number }>
   selectedEventCardCount: number
   tellers: Teller[]
   eventPackages: EventPackageModule[]
@@ -56,7 +52,7 @@ export function DirectorModuleConsole({
   return (
     <section className={`${consoleSectionClassName} p-4`}>
       <SectionTitle title={t('settingPanel.storyDirector.composer')} description={t('settingPanel.storyDirector.composerDesc')} badge={t('settingPanel.storyDirector.liveReference')} />
-      <div className="mt-3 grid gap-4 lg:grid-cols-3">
+      <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] gap-3">
         {/* 核心叙事 */}
         <ModuleGroup label={t('settingPanel.storyDirector.group.core')}>
           <ModuleRefRow
@@ -175,9 +171,9 @@ export function DirectorModuleConsole({
 
 function ModuleGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="grid gap-1.5">
+    <div className="grid content-start gap-1.5 self-start">
       <div className="px-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--nova-text-faint)]">{label}</div>
-      <div className="grid gap-1 rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)]/60 p-1.5">
+      <div className="grid content-start gap-1 rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)]/60 p-1.5">
         {children}
       </div>
     </div>
@@ -203,7 +199,7 @@ function ModuleRefRow({
     : t('settingPanel.storyDirector.enableModule', { module: label })
   return (
     <div className={`flex items-center gap-2 rounded px-1.5 py-1 ${enabled ? '' : 'opacity-60'}`}>
-      <span className="w-20 shrink-0 text-[11px] text-[var(--nova-text-faint)]">{label}</span>
+      <span className="w-24 shrink-0 text-[11px] text-[var(--nova-text-faint)]">{label}</span>
       <span className="min-w-0 flex-1">
         {children}
         {summary ? <span className="mt-0.5 block truncate text-[10px] text-[var(--nova-text-faint)]" title={summary}>{summary}</span> : null}

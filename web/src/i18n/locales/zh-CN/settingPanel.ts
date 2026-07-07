@@ -573,6 +573,8 @@ const settingPanel = {
   'settingPanel.style.extractProgress.saved': 'Markdown 已保存',
   'settingPanel.style.extractProgress.failed': '提炼失败',
   'settingPanel.style.legacyInline': '旧内联',
+  'settingPanel.switch.enableStatus': '启用状态',
+  'settingPanel.switch.disableStatus': '停用状态',
   'settingPanel.switch.enableRule': '启用规则',
   'settingPanel.switch.disableRule': '停用规则',
   'settingPanel.target.system.label': '系统提示',

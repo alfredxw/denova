@@ -3,15 +3,13 @@ import { ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
-import { PresetConfigSectionEditor } from '../preset-config/PresetConfigSectionEditor'
-import { OpeningSelectorVisualEditor, TRPGSystemVisualEditor } from '../preset-config/visual-editors'
+import { BooleanSwitchField } from '../setting-panel/BooleanSwitchField'
 import { DirectorModuleConsole } from './ModuleConsole'
-import { consoleSectionClassName, EDITOR_TABS, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RANDOM_RATE_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StoryDirectorEditorTab, type StrategySelectOption } from './constants'
+import { consoleSectionClassName, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RANDOM_RATE_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
 import { EmptyState, Field, SectionTitle } from './shared'
-import { directorResolvedEventPackages, findById, newEmptyStoryDirectorSections, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, parseDecimalInput, presetStatusLabel, strategyOptionText, strategyRateValue, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
+import { directorResolvedEventPackages, findById, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, parseDecimalInput, presetStatusLabel, strategyOptionText, strategyRateValue, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
 
 export function StoryDirectorEditor({
   draft,
@@ -25,7 +23,6 @@ export function StoryDirectorEditor({
   tagDraft,
   setDraft,
   setTagDraft,
-  onSave,
   onValidityChange,
 }: {
   draft: StoryDirector | null
@@ -39,7 +36,6 @@ export function StoryDirectorEditor({
   tagDraft: string
   setDraft: (draft: StoryDirector | null) => void
   setTagDraft: (value: string) => void
-  onSave: () => void
   onValidityChange?: (valid: boolean) => void
 }) {
   const { t } = useTranslation()
@@ -47,8 +43,6 @@ export function StoryDirectorEditor({
   const setSectionValid = usePresetSectionValidity(draft?.id || '', onValidityChange)
   const [strategyPromptOpen, setStrategyPromptOpen] = useState(false)
   const [planningTemplatesOpen, setPlanningTemplatesOpen] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
-  const [activeEditorTab, setActiveEditorTab] = useState<StoryDirectorEditorTab>('trpg')
   const strategyPrompt = draft?.strategy?.prompt_markdown || ''
   const strategyPromptBytes = utf8ByteLength(strategyPrompt)
   const strategyPromptValid = strategyPromptBytes <= STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT
@@ -60,8 +54,6 @@ export function StoryDirectorEditor({
   useEffect(() => {
     setStrategyPromptOpen(false)
     setPlanningTemplatesOpen(false)
-    setAdvancedOpen(false)
-    setActiveEditorTab('trpg')
     const scrollElement = scrollRef.current
     if (scrollElement) {
       if (typeof scrollElement.scrollTo === 'function') {
@@ -107,7 +99,6 @@ export function StoryDirectorEditor({
       },
     })
   }
-  const emptySections = newEmptyStoryDirectorSections()
   const resolvedEventPackages = directorResolvedEventPackages(draft)
   const selectedEventPackageIDs = refs.event_package_ids?.length ? refs.event_package_ids : ['default']
   const selectedEventPackages = selectedEventPackageIDs.map((id) => {
@@ -127,11 +118,6 @@ export function StoryDirectorEditor({
   const selectedOpeningSelector = findById(openingSelectors, refs.opening_selector_id || 'default')
   const selectedImagePreset = findById(imagePresets, refs.image_preset_id || 'game-cg')
   const selectedTeller = findById(tellers, refs.narrative_style_id || 'classic')
-  const editorTabSummaries = {
-    trpg: t('settingPanel.storyDirector.trpgSystemSummary', { count: draft.trpg_system?.rule_templates?.length || 0 }),
-    opening: t('settingPanel.storyDirector.openingSelectorSummary', { pools: draft.opening_selector?.trait_pools?.length || 0, ops: draft.opening_selector?.initial_state_ops?.length || 0 }),
-    events: t('settingPanel.storyDirector.eventPackagesSummary', { packages: selectedEventPackageIDs.length, cards: selectedEventCardCount }),
-  }
 
   return (
     <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
@@ -158,12 +144,10 @@ export function StoryDirectorEditor({
           selectedTellerName={selectedTeller?.name || refs.narrative_style_id || 'classic'}
           selectedRuleName={selectedRuleSystem?.name || refs.rule_system_id || 'default'}
           selectedActorStateName={selectedActorState?.name || refs.actor_state_id || 'default'}
-          selectedMemoryStructureName={selectedMemoryStructure?.name || refs.memory_structure_id || 'default'}
           selectedMemoryStructureCount={selectedMemoryStructure?.structures?.filter((structure) => structure.enabled !== false).length ?? draft.resolved_snapshot?.story_memory_structures?.filter((structure) => structure.enabled !== false).length ?? 0}
           selectedMemoryStructureTotal={selectedMemoryStructure?.structures?.length ?? draft.resolved_snapshot?.story_memory_structures?.length ?? 0}
           selectedOpeningName={selectedOpeningSelector?.name || refs.opening_selector_id || 'default'}
           selectedImageName={selectedImagePreset?.name || refs.image_preset_id || 'game-cg'}
-          selectedEventPackages={selectedEventPackages}
           selectedEventCardCount={selectedEventCardCount}
           tellers={tellers}
           eventPackages={eventPackages}
@@ -192,16 +176,24 @@ export function StoryDirectorEditor({
             badge={strategyPrompt.trim() ? t('settingPanel.storyDirector.strategyPromptEnabled') : undefined}
           />
           <div className="mt-3 grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-            <Field label={t('settingPanel.field.enabled')}>
-              <Select value={String(draft.strategy?.enabled !== false)} onValueChange={(value) => updateStrategy({ enabled: value === 'true' })}>
-                <SelectTrigger size="sm" className={selectClassName}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                  <SelectItem value="true">{t('settingPanel.enabled')}</SelectItem>
-                  <SelectItem value="false">{t('settingPanel.disabled')}</SelectItem>
-                </SelectContent>
-              </Select>
+            <BooleanSwitchField label={t('settingPanel.field.enabled')} checked={draft.strategy?.enabled !== false} onCheckedChange={(enabled) => updateStrategy({ enabled })} />
+            <StrategySelect
+              label={t('settingPanel.storyDirector.agentMode')}
+              value={draft.strategy?.director_agent_mode || ''}
+              fallbackValue="triggered"
+              options={STORY_DIRECTOR_AGENT_MODE_OPTIONS}
+              onChange={(director_agent_mode) => updateStrategy({ director_agent_mode })}
+            />
+            <Field label={t('settingPanel.storyDirector.branchPlanningTurns')}>
+              <Input
+                className={inputClassName}
+                type="number"
+                min={1}
+                max={12}
+                value={draft.strategy?.branch_planning_turns || STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK}
+                onChange={(event) => updateStrategy({ branch_planning_turns: normalizeBranchPlanningTurns(event.target.value) })}
+              />
+              <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.branchPlanningTurnsDesc')}</span>
             </Field>
             <StrategySelect
               label={t('settingPanel.orchestration.mainlineStrength')}
@@ -230,38 +222,6 @@ export function StoryDirectorEditor({
               fallbackValue="0.15"
               onChange={(random_event_rate) => updateStrategy({ random_event_rate })}
             />
-          </div>
-
-          <div className="mt-3 grid gap-2">
-            <DisclosureButton
-              open={advancedOpen}
-              title={t('settingPanel.storyDirector.advancedSettings')}
-              description={t('settingPanel.storyDirector.advancedSettingsDesc')}
-              meta=""
-              onClick={() => setAdvancedOpen((open) => !open)}
-            />
-            {advancedOpen ? (
-              <div className="grid gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3 md:grid-cols-2">
-                <StrategySelect
-                  label={t('settingPanel.storyDirector.agentMode')}
-                  value={draft.strategy?.director_agent_mode || ''}
-                  fallbackValue="triggered"
-                  options={STORY_DIRECTOR_AGENT_MODE_OPTIONS}
-                  onChange={(director_agent_mode) => updateStrategy({ director_agent_mode })}
-                />
-                <Field label={t('settingPanel.storyDirector.branchPlanningTurns')}>
-                  <Input
-                    className={inputClassName}
-                    type="number"
-                    min={1}
-                    max={12}
-                    value={draft.strategy?.branch_planning_turns || STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK}
-                    onChange={(event) => updateStrategy({ branch_planning_turns: normalizeBranchPlanningTurns(event.target.value) })}
-                  />
-                  <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.branchPlanningTurnsDesc')}</span>
-                </Field>
-              </div>
-            ) : null}
           </div>
 
           <div className="mt-3 grid gap-2">
@@ -306,53 +266,6 @@ export function StoryDirectorEditor({
               </div>
             ) : null}
           </div>
-        </section>
-
-        <section className={`${consoleSectionClassName} p-4`}>
-          <SectionTitle title={t('settingPanel.storyDirector.editorDeck')} description={t('settingPanel.storyDirector.editorDeckDesc')} />
-          <Tabs value={activeEditorTab} onValueChange={(value) => setActiveEditorTab(value as StoryDirectorEditorTab)} className="mt-3 gap-3">
-            <TabsList aria-label={t('settingPanel.storyDirector.editorDeck')} className="grid h-auto w-full grid-cols-[repeat(auto-fit,minmax(12rem,1fr))] items-stretch justify-stretch gap-1 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 group-data-horizontal/tabs:h-auto">
-              {EDITOR_TABS.map((tab) => (
-                <TabsTrigger key={tab} value={tab} className="h-auto min-h-11 min-w-0 flex-col items-start justify-center gap-0.5 whitespace-normal px-3 py-2 text-left text-xs">
-                  <span className="w-full truncate">{editorTabLabel(tab, t)}</span>
-                  <span className="hidden w-full truncate text-[10px] text-[var(--nova-text-faint)] md:block">{editorTabSummaries[tab]}</span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            <TabsContent value="trpg" className="mt-0">
-              <PresetConfigSectionEditor
-                sectionId="story-director.trpg-system"
-                resetKey={`${draft.id}:trpg_system`}
-                title={t('settingPanel.storyDirector.trpgSystem')}
-                description={t('settingPanel.storyDirector.trpgSystemDesc')}
-                value={draft.trpg_system || emptySections.trpg_system}
-                summary={editorTabSummaries.trpg}
-                onChange={(trpg_system) => setDraft({ ...draft, trpg_system })}
-                onSave={onSave}
-                onValidityChange={(valid) => setSectionValid('trpg_system', valid)}
-              >
-                {(props) => <TRPGSystemVisualEditor {...props} />}
-              </PresetConfigSectionEditor>
-            </TabsContent>
-            <TabsContent value="opening" className="mt-0">
-              <PresetConfigSectionEditor
-                sectionId="story-director.opening-selector"
-                resetKey={`${draft.id}:opening_selector`}
-                title={t('settingPanel.storyDirector.openingSelector')}
-                description={t('settingPanel.storyDirector.openingSelectorDesc')}
-                value={draft.opening_selector || emptySections.opening_selector}
-                summary={editorTabSummaries.opening}
-                onChange={(opening_selector) => setDraft({ ...draft, opening_selector })}
-                onSave={onSave}
-                onValidityChange={(valid) => setSectionValid('opening_selector', valid)}
-              >
-                {(props) => <OpeningSelectorVisualEditor {...props} />}
-              </PresetConfigSectionEditor>
-            </TabsContent>
-            <TabsContent value="events" className="mt-0">
-              <EventPackageReferencePanel disabled={refs.event_packages_disabled === true} selectedPackages={selectedEventPackages} summary={editorTabSummaries.events} />
-            </TabsContent>
-          </Tabs>
         </section>
       </div>
     </div>
@@ -469,36 +382,6 @@ function DisclosureButton({
   )
 }
 
-function EventPackageReferencePanel({
-  disabled,
-  selectedPackages,
-  summary,
-}: {
-  disabled: boolean
-  selectedPackages: Array<{ id: string; name: string; invalid?: boolean; cards: number }>
-  summary: string
-}) {
-  const { t } = useTranslation()
-  return (
-    <div className="grid gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
-      <SectionTitle title={t('settingPanel.storyDirector.eventPackages')} description={t('settingPanel.storyDirector.eventPackagesDesc')} badge={summary} />
-      {disabled ? (
-        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.eventPackagesDisabled')}</div>
-      ) : null}
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-        {selectedPackages.map((item) => (
-          <div key={item.id} className="min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2">
-            <div className="truncate text-xs text-[var(--nova-text)]">{item.name}</div>
-            <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">
-              {item.invalid ? `${t('settingPanel.invalid')} · ` : ''}{t('settingPanel.eventPackage.summaryCount', { count: item.cards })}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function PlanningTemplateTextarea({ label, value, validity, onChange }: {
   label: string
   value: string
@@ -547,10 +430,4 @@ function usePresetSectionValidity(resetKey: string, onValidityChange?: (valid: b
       return { ...current, [section]: valid }
     })
   }, [])
-}
-
-function editorTabLabel(tab: StoryDirectorEditorTab, t: (key: string) => string) {
-  if (tab === 'events') return t('settingPanel.storyDirector.editorTab.events')
-  if (tab === 'trpg') return t('settingPanel.storyDirector.editorTab.trpg')
-  return t('settingPanel.storyDirector.editorTab.opening')
 }
