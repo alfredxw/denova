@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
 import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, createStoryMemoryStructure, deleteActorState, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, deleteStoryMemoryStructurePreset, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStoryMemoryStructures, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector, updateStoryMemoryStructure } from '../api'
 import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller } from '../types'
+import { defaultRuleTemplates } from './preset-config/ruleTemplates'
+import { newRuleSystemDraft } from './setting-panel/presetResources'
 import { SettingPanel } from './SettingPanel'
 
 const { configManagerChatProps, monacoEditorActions } = vi.hoisted(() => ({
@@ -604,6 +606,92 @@ describe('SettingPanel', () => {
     expect(updateEventPackage).not.toHaveBeenCalled()
   })
 
+  it('edits TRPG checks as ready-to-use rule templates', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: '展开全部目录' }))
+    await user.click(screen.getByRole('button', { name: /默认 TRPG 检定/ }))
+
+    expect(screen.getByRole('heading', { name: '默认 TRPG 检定' })).toBeInTheDocument()
+    for (const ruleName of ['高风险行动', '战斗攻防', '潜行与开锁', '探索调查', '社交谈判', '体力/意志抗压']) {
+      expect(screen.getByText(ruleName)).toBeInTheDocument()
+    }
+    expect(screen.queryByText('规则 ID')).not.toBeInTheDocument()
+    expect(screen.queryByText(/安全表达式/)).not.toBeInTheDocument()
+    expect(screen.queryByText('成功 StateOps')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('combobox')).toHaveLength(5)
+
+    await user.click(screen.getByRole('button', { name: '新增规则' }))
+    await user.click(screen.getByRole('menuitem', { name: '战斗攻防' }))
+    expect(screen.getAllByText('战斗攻防').length).toBeGreaterThan(1)
+
+    const failureField = screen.getByText('失败处理').closest('label') as HTMLElement
+    await user.click(within(failureField).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: '明确失败' }))
+
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(updateRuleSystem).toHaveBeenCalled())
+    const visualPayload = vi.mocked(updateRuleSystem).mock.calls.at(-1)?.[1] as Partial<RuleSystemModule>
+    expect(visualPayload.trpg_system?.rule_templates).toHaveLength(7)
+    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).toMatchObject({
+      label: '战斗攻防',
+      category: 'combat',
+      default_difficulty: 'normal',
+      default_roll_mode: 'normal',
+      failure_policy: 'hard_failure',
+      impact: 'hp_damage',
+    })
+    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('dice')
+    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('success_state_ops')
+
+    await user.click(screen.getByRole('button', { name: 'JSON' }))
+    fireEvent.change(screen.getByTestId('monaco-json-editor'), {
+      target: {
+        value: JSON.stringify({
+          rule_templates: [{
+            id: 'legacy',
+            label: '旧规则',
+            kind: 'dice',
+            mode: 'd100_under',
+            dice: '1d100',
+            difficulty: 55,
+            resource_cost_path: 'resources.hp',
+            success_state_ops: [],
+            category: 'social',
+            default_difficulty: 'hard',
+            default_roll_mode: 'advantage',
+            failure_policy: 'success_at_cost',
+            impact: 'relationship_change',
+            trigger: '谈判触发',
+          }],
+        }, null, 2),
+      },
+    })
+    await user.click(screen.getByRole('button', { name: '保存' }))
+    await waitFor(() => expect(updateRuleSystem).toHaveBeenCalledTimes(2))
+    const jsonPayload = vi.mocked(updateRuleSystem).mock.calls.at(-1)?.[1] as Partial<RuleSystemModule>
+    expect(jsonPayload.trpg_system?.rule_templates).toEqual([expect.objectContaining({
+      id: 'legacy',
+      label: '旧规则',
+      category: 'social',
+      default_difficulty: 'hard',
+      default_roll_mode: 'advantage',
+      failure_policy: 'success_at_cost',
+      impact: 'relationship_change',
+      trigger: '谈判触发',
+    })])
+    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('kind')
+    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('resource_cost_path')
+    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('success_state_ops')
+  })
+
+  it('starts custom TRPG check modules from built-in rule templates', () => {
+    const draft = newRuleSystemDraft()
+
+    expect(draft.trpg_system?.rule_templates).toEqual(defaultRuleTemplates())
+  })
+
   it('generates a current image for one lore item from the editor', async () => {
     const user = userEvent.setup()
     const item = loreItem('lin-chuan', '林川')
@@ -877,7 +965,7 @@ function ruleSystem(id: string, name: string): RuleSystemModule {
     id,
     name,
     description: `${name} description`,
-    trpg_system: { rule_templates: [] },
+    trpg_system: { rule_templates: defaultRuleTemplates() },
     tags: [],
     custom: id !== 'default-rules',
   }

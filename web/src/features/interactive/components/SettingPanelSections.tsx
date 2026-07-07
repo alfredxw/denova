@@ -16,6 +16,7 @@ import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpe
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller, TellerEventPackage } from '../types'
 import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
+import { normalizeTRPGSystem } from './preset-config/ruleTemplates'
 import { ActorStateVisualEditor, EventPackageVisualEditor, MemoryStructureVisualEditor, OpeningSelectorVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
 import { BooleanSwitchField } from './setting-panel/BooleanSwitchField'
 
@@ -793,9 +794,9 @@ export function RuleSystemEditor({
         resetKey={`${draft.id}:trpg_system`}
         title={t('settingPanel.storyDirector.trpgSystem')}
         description={t('settingPanel.storyDirector.trpgSystemDesc')}
-        value={draft.trpg_system || { rule_templates: [] }}
+        value={normalizeTRPGSystem(draft.trpg_system || { rule_templates: [] })}
         summary={t('settingPanel.storyDirector.trpgSystemSummary', { count: draft.trpg_system?.rule_templates?.length || 0 })}
-        onChange={(trpg_system) => setDraft({ ...draft, trpg_system })}
+        onChange={(trpg_system) => setDraft({ ...draft, trpg_system: normalizeTRPGSystem(trpg_system) })}
         onSave={onSave}
         onValidityChange={(valid) => setSectionValid('trpg_system', valid)}
       >

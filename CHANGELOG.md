@@ -79,6 +79,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 不兼容变更：TRPG 检定从底层 `RuleCheck` 脚本字段收敛为开箱即用的 1d20 规则模板，只保留类型、默认难度、掷骰方式、失败处理、状态影响和成功/失败写法；默认模块和新建自定义模块都会预置 6 条常用规则。
+- Breaking: TRPG Checks now use ready-to-use 1d20 rule templates instead of low-level `RuleCheck` script fields, keeping only type, default difficulty, roll mode, failure handling, state impact, and success/failure guidance. The default module and new custom modules now start with six common rules.
 - 方案预设：故事导演策略和资料库条目的启用/停用状态统一改为 Switch 控件，避免二元开关继续使用下拉菜单。
 - Presets: Story Director strategy and Lore item enabled/disabled status controls now use Switch controls instead of dropdowns for binary toggles.
 - 方案预设：故事导演编辑页移除重复的“导演资源”内嵌 Tab，TRPG 检定、开局选择器和事件包统一回到左侧独立资源页维护；组合概览改为自适应列宽，并将后台导演运行方式和分支规划回合数直接展示在导演策略中。

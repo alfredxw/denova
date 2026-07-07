@@ -29,7 +29,7 @@ Story Directors are Game Mode modules independent from shared narrative styles a
 - `strategy`: `enabled`, `mainline_strength`, `failure_policy`, `pacing_curve`, `random_event_rate`. Prefer the standard enum IDs used by the UI: `mainline_strength` is `soft_guidance`, `balanced`, or `strong_arc`; `failure_policy` is `reversible`, `consequence`, or `fail_forward`; `pacing_curve` is `progressive`, `wave`, or `goal-pressure-payoff`; `random_event_rate` is usually `0`, `0.08`, `0.15`, or `0.3`.
 - `event_packages`: resolved event packages; used only by the background director planner and empty when event packages are disabled.
 - `actor_state`: resolved State System schema with `templates[].fields[]`; fields define `path`, `name`, `type`, `default`, optional `min`/`max`, `options`, `visibility` (`visible`, `hidden`, or `spoiler`), and `update_instruction`.
-- `trpg_system`: resolved rule templates for checks only, including `mode` (`default`, `d20_dc`, or `d100_under`), dice, modifiers, difficulty, outcomes, StateOps, and terminal candidates. Check `attribute_path` and resource paths must reference State System paths such as `actors.<actor_id>.state.<field_path>`.
+- `trpg_system`: resolved 1d20 rule templates for checks only. Each rule should use `label`, `category`, `default_difficulty`, `default_roll_mode`, `failure_policy`, `impact`, `trigger`, `success_hint`, and `failure_hint`. Do not write legacy dice, expression, resource-cost, StateOps, or terminal-candidate fields.
 - `resolved_snapshot.story_memory_structures`: last known-good Story Memory schema resolved from `memory_structure_id`; records are still story/branch runtime data and must not be placed in the preset.
 - `opening_selector`: resolved opening selector with `enabled`, `trait_pools`, and `initial_state_ops`; this affects only new stories or explicit opening rolls and is empty/off when the opening module is disabled.
 
@@ -81,12 +81,8 @@ Default generation strategy:
 
 ## Rule Checks
 
-Use `mode` intentionally:
+Use the simplified rule-template schema. `category` should be one of `generic_action`, `combat`, `stealth`, `exploration`, `social`, `endurance`, or `magic`. `default_difficulty` must be one of `very_easy`, `easy`, `normal`, `hard`, or `very_hard`; `default_roll_mode` must be `normal`, `advantage`, or `disadvantage`. `failure_policy` must be `fail_forward`, `success_at_cost`, `blocked`, or `hard_failure`; `impact` must be `none`, `hp_damage`, `stamina_cost`, `relationship_change`, `clue_progress`, `resource_change`, or `custom`.
 
-- `default` or omitted: compatible `total >= difficulty`.
-- `d20_dc`: d20-style DC check using the same success condition as default, with success/failure tiers.
-- `d100_under`: success when the d100 roll is less than or equal to the target value.
-
-Keep `state_ops` explicit and reversible where possible. Avoid hidden state changes unless the user asked for hidden or spoiler attributes.
+Rules are guidance for the Interactive Agent when it decides whether to call `prepare_interactive_turn`; the actual tool still performs one 1d20 check per turn. Put concrete state mutation details in the turn outcome or state-system tools, not in the rule template.
 
 When writing the director back, use `write_story_directors` with the complete updated director object, preserve unrelated `module_refs`, and include a concise change message. When writing event cards, use `write_event_packages` with the complete updated package object. When changing memory schema, use `write_story_memory_structure_presets`, then update the director's `module_refs.memory_structure_id` only if the user wants that director to use it.

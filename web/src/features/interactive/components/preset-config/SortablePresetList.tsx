@@ -2,6 +2,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Plus } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
@@ -14,6 +15,7 @@ export function SortablePresetList<T>({
   getTitle,
   getSubtitle,
   addLabel,
+  addControl,
   emptyLabel,
   onAdd,
   onActiveIdChange,
@@ -25,6 +27,7 @@ export function SortablePresetList<T>({
   getTitle: (item: T, index: number) => string
   getSubtitle?: (item: T, index: number) => string
   addLabel: string
+  addControl?: ReactNode
   emptyLabel: string
   onAdd: () => void
   onActiveIdChange: (id: string) => void
@@ -49,9 +52,11 @@ export function SortablePresetList<T>({
     <aside className="flex min-h-0 max-h-[60vh] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
       <div className="flex h-10 items-center justify-between border-b border-[var(--nova-border)] px-2">
         <span className="text-[11px] font-medium text-[var(--nova-text-muted)]">{emptyLabel}</span>
-        <Button className={iconActionClassName} variant="outline" size="icon-sm" onClick={onAdd} aria-label={addLabel} title={addLabel}>
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
+        {addControl || (
+          <Button className={iconActionClassName} variant="outline" size="icon-sm" onClick={onAdd} aria-label={addLabel} title={addLabel}>
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        )}
       </div>
       <ScrollArea className="min-h-0 flex-1">
         {items.length === 0 ? (

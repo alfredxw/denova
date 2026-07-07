@@ -46,15 +46,13 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 			InitialActors: []ActorStateInitialActor{{ID: DefaultActorID, Name: "主角", TemplateID: "protagonist", Role: "protagonist"}},
 		},
 		TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
-			ID:               "luck",
-			Label:            "幸运",
-			Kind:             "dice",
-			Mode:             "d100_under",
-			AttributePath:    "resources.mana",
-			Dice:             "1d100",
-			Difficulty:       55,
-			ResourceCostPath: "resources.mana",
-			ResourceCost:     1,
+			ID:                "luck",
+			Label:             "幸运",
+			Category:          "generic_action",
+			DefaultDifficulty: "hard",
+			DefaultRollMode:   "advantage",
+			FailurePolicy:     "success_at_cost",
+			Impact:            "resource_change",
 		}}},
 		OpeningSelector: StoryDirectorOpeningSelector{
 			Enabled: true,
@@ -77,8 +75,8 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if len(created.ActorState.Templates) != 1 || len(created.ActorState.Templates[0].Fields) != 1 || created.ActorState.Templates[0].Fields[0].Visibility != "hidden" {
 		t.Fatalf("state fields should be validated and preserve visibility: %#v", created.ActorState)
 	}
-	if len(created.TRPGSystem.RuleTemplates) != 1 || created.TRPGSystem.RuleTemplates[0].AttributePath != "actors.protagonist.state.resources.mana" || created.TRPGSystem.RuleTemplates[0].ResourceCostPath != "actors.protagonist.state.resources.mana" {
-		t.Fatalf("legacy rule paths should migrate to protagonist actor state: %#v", created.TRPGSystem.RuleTemplates)
+	if len(created.TRPGSystem.RuleTemplates) != 1 || created.TRPGSystem.RuleTemplates[0].Category != "generic_action" || created.TRPGSystem.RuleTemplates[0].DefaultDifficulty != "hard" || created.TRPGSystem.RuleTemplates[0].DefaultRollMode != "advantage" {
+		t.Fatalf("rule templates should normalize to the simplified schema: %#v", created.TRPGSystem.RuleTemplates)
 	}
 	ops := StoryDirectorInitialStateOps(created)
 	if !containsStateOp(ops, "actors.protagonist.state.resources.mana", float64(3)) || !containsStateOp(ops, "actors.protagonist.state.resources.mana_max", float64(9)) || !containsStateOp(ops, "flags.opening", true) {
@@ -263,7 +261,7 @@ func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.
 	if len(migrated.EventPackages) != 1 || len(migrated.EventPackages[0].Events) != 1 {
 		t.Fatalf("event packages should be copied: %#v", migrated.EventPackages)
 	}
-	if len(migrated.TRPGSystem.RuleTemplates) != 1 || migrated.TRPGSystem.RuleTemplates[0].Mode != "d20_dc" {
+	if len(migrated.TRPGSystem.RuleTemplates) != 1 || migrated.TRPGSystem.RuleTemplates[0].DefaultDifficulty != "normal" {
 		t.Fatalf("rule templates should be copied: %#v", migrated.TRPGSystem.RuleTemplates)
 	}
 	if len(migrated.OpeningSelector.TraitPools) != 1 || !containsStateOp(migrated.OpeningSelector.InitialStateOps, "actors.protagonist.state.resources.hp", float64(12)) {
@@ -298,12 +296,13 @@ func legacyOrchestrationForTest() *TellerOrchestrationConfig {
 			}},
 		}},
 		RuleTemplates: []RuleCheck{{
-			ID:         "stealth",
-			Label:      "潜行",
-			Kind:       "dice",
-			Mode:       "d20_dc",
-			Dice:       "1d20",
-			Difficulty: 15,
+			ID:                "stealth",
+			Label:             "潜行",
+			Category:          "stealth",
+			DefaultDifficulty: "normal",
+			DefaultRollMode:   "normal",
+			FailurePolicy:     "blocked",
+			Impact:            "stamina_cost",
 		}},
 		Opening: TellerOpeningConfig{
 			Enabled: true,

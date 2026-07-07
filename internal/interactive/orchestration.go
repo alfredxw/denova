@@ -69,23 +69,16 @@ type TurnBrief struct {
 }
 
 type RuleCheck struct {
-	ID                string    `json:"id,omitempty"`
-	Label             string    `json:"label,omitempty"`
-	Kind              string    `json:"kind,omitempty"`
-	Mode              string    `json:"mode,omitempty"`
-	AttributePath     string    `json:"attribute_path,omitempty"`
-	Expression        string    `json:"expression,omitempty"`
-	Dice              string    `json:"dice,omitempty"`
-	Modifier          float64   `json:"modifier,omitempty"`
-	Difficulty        float64   `json:"difficulty,omitempty"`
-	ResourceCostPath  string    `json:"resource_cost_path,omitempty"`
-	ResourceCost      float64   `json:"resource_cost,omitempty"`
-	SuccessStateOps   []StateOp `json:"success_state_ops,omitempty"`
-	FailureStateOps   []StateOp `json:"failure_state_ops,omitempty"`
-	TerminalOnFailure bool      `json:"terminal_on_failure,omitempty"`
-	TerminalType      string    `json:"terminal_type,omitempty"`
-	TerminalReason    string    `json:"terminal_reason,omitempty"`
-	Seed              int64     `json:"seed,omitempty"`
+	ID                string `json:"id,omitempty"`
+	Label             string `json:"label,omitempty"`
+	Category          string `json:"category,omitempty"`
+	DefaultDifficulty string `json:"default_difficulty,omitempty"`
+	DefaultRollMode   string `json:"default_roll_mode,omitempty"`
+	FailurePolicy     string `json:"failure_policy,omitempty"`
+	Impact            string `json:"impact,omitempty"`
+	Trigger           string `json:"trigger,omitempty"`
+	SuccessHint       string `json:"success_hint,omitempty"`
+	FailureHint       string `json:"failure_hint,omitempty"`
 }
 
 type TurnCheckRequest struct {
@@ -551,46 +544,120 @@ func normalizeRuleCheck(check RuleCheck, index int) RuleCheck {
 		check.ID = fmt.Sprintf("check_%d", index+1)
 	}
 	check.Label = trimBytes(firstNonEmptyString(check.Label, check.ID), 256)
-	check.Kind = trimBytes(firstNonEmptyString(check.Kind, "check"), 128)
-	check.Mode = normalizeRuleCheckMode(check.Mode)
-	check.AttributePath = canonicalStatePath(strings.TrimSpace(check.AttributePath))
-	check.Expression = trimBytes(check.Expression, 1024)
-	check.Dice = strings.TrimSpace(check.Dice)
-	check.ResourceCostPath = canonicalStatePath(strings.TrimSpace(check.ResourceCostPath))
-	check.TerminalType = trimBytes(check.TerminalType, 128)
-	check.TerminalReason = trimBytes(check.TerminalReason, maxTurnBriefTextBytes)
-	check.SuccessStateOps = normalizeStateOpsForRule(check.SuccessStateOps)
-	check.FailureStateOps = normalizeStateOpsForRule(check.FailureStateOps)
+	check.Category = normalizeRuleCheckCategory(check.Category)
+	check.DefaultDifficulty = normalizeTurnCheckDifficulty(check.DefaultDifficulty)
+	check.DefaultRollMode = normalizeTurnCheckRollMode(check.DefaultRollMode)
+	check.FailurePolicy = normalizeRuleCheckFailurePolicy(check.FailurePolicy)
+	check.Impact = normalizeRuleCheckImpact(check.Impact)
+	check.Trigger = trimBytes(check.Trigger, maxTurnBriefTextBytes)
+	check.SuccessHint = trimBytes(check.SuccessHint, maxTurnBriefTextBytes)
+	check.FailureHint = trimBytes(check.FailureHint, maxTurnBriefTextBytes)
 	return check
 }
 
 func validateRuleCheck(check RuleCheck) error {
-	if check.AttributePath != "" && !validStatePathSyntax(check.AttributePath) {
-		return fmt.Errorf("规则检定 attribute_path 无效: %s", check.AttributePath)
+	if !validRuleCheckCategory(check.Category) {
+		return fmt.Errorf("规则检定 category 无效: %s", check.Category)
 	}
-	if check.ResourceCostPath != "" && !validStatePathSyntax(check.ResourceCostPath) {
-		return fmt.Errorf("规则检定 resource_cost_path 无效: %s", check.ResourceCostPath)
+	if _, ok := turnCheckDifficultyTargets[normalizeTurnCheckDifficulty(check.DefaultDifficulty)]; !ok {
+		return fmt.Errorf("规则检定 default_difficulty 无效: %s，合法值: %s", check.DefaultDifficulty, turnCheckAllowedDifficulties)
 	}
-	for _, op := range append(append([]StateOp(nil), check.SuccessStateOps...), check.FailureStateOps...) {
-		if err := validateStateOp(op); err != nil {
-			return err
-		}
-	}
-	if check.Dice != "" {
-		if _, _, err := parseDice(check.Dice); err != nil {
-			return err
-		}
-	}
-	switch normalizeRuleCheckMode(check.Mode) {
-	case "", "default", "d20_dc":
-	case "d100_under":
-		if check.Dice == "" {
-			return fmt.Errorf("d100_under 检定必须提供骰子表达式，通常为 1d100")
-		}
+	switch normalizeTurnCheckRollMode(check.DefaultRollMode) {
+	case "normal", "advantage", "disadvantage":
 	default:
-		return fmt.Errorf("规则检定 mode 无效: %s", check.Mode)
+		return fmt.Errorf("规则检定 default_roll_mode 无效: %s，合法值: %s", check.DefaultRollMode, turnCheckAllowedRollModes)
+	}
+	if !validRuleCheckFailurePolicy(check.FailurePolicy) {
+		return fmt.Errorf("规则检定 failure_policy 无效: %s", check.FailurePolicy)
+	}
+	if !validRuleCheckImpact(check.Impact) {
+		return fmt.Errorf("规则检定 impact 无效: %s", check.Impact)
 	}
 	return nil
+}
+
+func normalizeRuleCheckCategory(value string) string {
+	switch normalizeTurnCheckEnumToken(value) {
+	case "", "generic", "general", "generic_action", "general_action":
+		return "generic_action"
+	case "combat", "combat_exchange", "battle":
+		return "combat"
+	case "stealth", "stealth_operation", "operation":
+		return "stealth"
+	case "exploration", "investigation", "explore":
+		return "exploration"
+	case "social", "negotiation", "social_negotiation":
+		return "social"
+	case "endurance", "will", "endurance_will", "stamina":
+		return "endurance"
+	case "magic", "spell", "magic_power":
+		return "magic"
+	default:
+		return normalizeTurnCheckEnumToken(value)
+	}
+}
+
+func validRuleCheckCategory(value string) bool {
+	switch value {
+	case "generic_action", "combat", "stealth", "exploration", "social", "endurance", "magic":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeRuleCheckFailurePolicy(value string) string {
+	switch normalizeTurnCheckEnumToken(value) {
+	case "", "fail_forward", "failure_forward":
+		return "fail_forward"
+	case "success_at_cost", "cost_success", "costly_success":
+		return "success_at_cost"
+	case "blocked", "temporary_blocked", "temporarily_blocked":
+		return "blocked"
+	case "hard_failure", "clear_failure", "failure":
+		return "hard_failure"
+	default:
+		return normalizeTurnCheckEnumToken(value)
+	}
+}
+
+func validRuleCheckFailurePolicy(value string) bool {
+	switch value {
+	case "fail_forward", "success_at_cost", "blocked", "hard_failure":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeRuleCheckImpact(value string) string {
+	switch normalizeTurnCheckEnumToken(value) {
+	case "", "none", "no_state_change":
+		return "none"
+	case "hp_damage", "health_damage", "life_damage":
+		return "hp_damage"
+	case "stamina_cost", "stamina", "energy_cost":
+		return "stamina_cost"
+	case "relationship_change", "relation_change", "relationship":
+		return "relationship_change"
+	case "clue_progress", "clue", "progress":
+		return "clue_progress"
+	case "resource_change", "resources", "resource":
+		return "resource_change"
+	case "custom", "custom_hint":
+		return "custom"
+	default:
+		return normalizeTurnCheckEnumToken(value)
+	}
+}
+
+func validRuleCheckImpact(value string) bool {
+	switch value {
+	case "none", "hp_damage", "stamina_cost", "relationship_change", "clue_progress", "resource_change", "custom":
+		return true
+	default:
+		return false
+	}
 }
 
 func rollDice(seed int64, expr string) ([]int, float64, error) {
@@ -658,17 +725,6 @@ func numberFromAny(value any) float64 {
 		return out
 	default:
 		return 0
-	}
-}
-
-func normalizeRuleCheckMode(value string) string {
-	switch strings.TrimSpace(value) {
-	case "", "default":
-		return "default"
-	case "d20_dc", "d100_under":
-		return strings.TrimSpace(value)
-	default:
-		return strings.TrimSpace(value)
 	}
 }
 
