@@ -1,0 +1,61 @@
+internal/api/agentui/message.go
+  s_a1373ac3c98b9a::t_cd262b097fd857 1-317
+internal/api/agentui/message_test.go
+  s_a1373ac3c98b9a::t_31e573d3c3fd09 1-68
+internal/api/agentui/stream.go
+  s_a1373ac3c98b9a::t_984ea3d63b342c 1-476
+internal/api/agentui/stream_test.go
+  s_a1373ac3c98b9a::t_f5ed0d86b749d1 1-129
+web/src/components/Chat/MessageItem.tsx
+  s_a1373ac3c98b9a::t_b0c317ee2be062 20-23,66,68,70,73,96,99,107,122,884-885,891-892,894-895,939,979-980,1000,1002,1677-1683,1685-1686
+web/src/components/ai-elements/attachments.tsx
+  s_a1373ac3c98b9a::t_65781deca30125 1-426
+web/src/components/ai-elements/code-block.tsx
+  s_a1373ac3c98b9a::t_9d013dfd4e80b9 1-562
+web/src/components/ai-elements/message.tsx
+  s_a1373ac3c98b9a::t_34ea1cb10feca5 1-354
+web/src/components/ai-elements/plan.tsx
+  s_a1373ac3c98b9a::t_5650eb14caf63b 1-147
+web/src/components/ai-elements/prompt-input.tsx
+  s_a1373ac3c98b9a::t_d416a0c57645aa 1-1463
+web/src/components/ai-elements/reasoning.tsx
+  s_a1373ac3c98b9a::t_f41b68e8b86e15 1-219
+web/src/components/ai-elements/shimmer.tsx
+  s_a1373ac3c98b9a::t_8803d3e84efc59 1-77
+web/src/components/ai-elements/tool.tsx
+  s_a1373ac3c98b9a::t_44cc6fb5757ce2 1-173
+web/src/components/ui/button-group.tsx
+  s_a1373ac3c98b9a::t_d13ee2b5ba3056 1-83
+web/src/components/ui/card.tsx
+  s_a1373ac3c98b9a::t_128dc2dfbe6b34 1-103
+web/src/components/ui/collapsible.tsx
+  s_a1373ac3c98b9a::t_50bfb8b92a9c88 1-31
+web/src/components/ui/hover-card.tsx
+  s_a1373ac3c98b9a::t_78e800cc513051 1-42
+web/src/components/ui/spinner.tsx
+  s_a1373ac3c98b9a::t_bd75484d0587d4 1-10
+web/src/hooks/useAgentChat.ts
+  s_a1373ac3c98b9a::t_d89ab34f5b5be5 1-501
+web/src/lib/agent-ui.test.ts
+  s_a1373ac3c98b9a::t_3de789d112c60b 1-156
+web/src/lib/agent-ui.ts
+  s_a1373ac3c98b9a::t_d0a0a689866d64 1-473
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "87a79a8b08ba6341fb0357ff00d75f856005f1b3",
+  "prompts": {},
+  "sessions": {
+    "s_a1373ac3c98b9a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4202-339f-7b43-bedf-e3933b862557",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
