@@ -657,6 +657,7 @@ func ruleCheckBlank(check RuleCheck) bool {
 		strings.TrimSpace(check.Trigger) == "" &&
 		len(check.MustCheckExamples) == 0 &&
 		len(check.SkipCheckExamples) == 0 &&
+		len(check.StateBindings) == 0 &&
 		strings.TrimSpace(check.SuccessHint) == "" &&
 		strings.TrimSpace(check.FailureHint) == "" &&
 		check.Modifier == 0

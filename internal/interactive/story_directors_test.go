@@ -76,7 +76,7 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if len(created.ActorState.Templates) != 1 || len(created.ActorState.Templates[0].Fields) != 1 || created.ActorState.Templates[0].Fields[0].Visibility != "hidden" {
 		t.Fatalf("state fields should be validated and preserve visibility: %#v", created.ActorState)
 	}
-	if len(created.TRPGSystem.RuleTemplates) != 1 || created.TRPGSystem.RuleTemplates[0].Dice != "1d100" || created.TRPGSystem.RuleTemplates[0].Modifier != 10 {
+	if len(created.TRPGSystem.RuleTemplates) != 1 || created.TRPGSystem.RuleTemplates[0].Dice != "1d20" || created.TRPGSystem.RuleTemplates[0].Modifier != 10 {
 		t.Fatalf("rule templates should normalize to the simplified schema: %#v", created.TRPGSystem.RuleTemplates)
 	}
 	if created.TRPGSystem.RuleTemplates[0].DifficultyGuidance != "幸运耗尽时提高难度。" || created.TRPGSystem.RuleTemplates[0].StateEffectGuidance != "成功可增加机会，失败可消耗资源。" {

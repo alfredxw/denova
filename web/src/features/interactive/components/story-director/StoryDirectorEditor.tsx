@@ -91,12 +91,20 @@ export function StoryDirectorEditor({
   }
   const refs = normalizedStoryDirectorRefs(draft.module_refs)
   const updateModuleRef = <K extends keyof StoryDirectorModuleRefs>(key: K, value: StoryDirectorModuleRefs[K]) => {
+    const nextRefs: StoryDirectorModuleRefs = {
+      ...refs,
+      [key]: value,
+    }
+    if (key === 'rule_system_id') {
+      const selected = ruleSystems.find((item) => item.id === value)
+      if (selected?.actor_state_id) {
+        nextRefs.actor_state_id = selected.actor_state_id
+        nextRefs.actor_state_disabled = false
+      }
+    }
     setDraft({
       ...draft,
-      module_refs: {
-        ...refs,
-        [key]: value,
-      },
+      module_refs: nextRefs,
     })
   }
   const resolvedEventPackages = directorResolvedEventPackages(draft)

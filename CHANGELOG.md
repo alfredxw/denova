@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式：TRPG 检定与状态系统新增 State Binding 联动。TRPG 检定资源可绑定状态系统并配置 `state_bindings`，`prepare_interactive_turn` 会按 `binding_id`、`actor_id` 和 `target_actor_id` 自动读取 number 状态、计算 d20 修正、合并配置状态变化与 DM 临场状态变化，并把非数值状态作为 Agent 设计四档结果的提示词上下文。
+- Game Mode: Added State Binding between TRPG Checks and the State System. TRPG Check resources can bind an Actor State module and define `state_bindings`; `prepare_interactive_turn` now uses `binding_id`, `actor_id`, and `target_actor_id` to read numeric state, compute fixed-d20 modifiers, merge configured and DM-authored state changes, and expose non-numeric state as prompt context for outcome design.
 - 游戏模式：TRPG 检定配置新增“必须检定/不要检定”触发示例，Story Director 策略新增规则可见性开关；默认仍只在侧栏审计，开启公开掷骰后会在玩家行动与故事正文之间展示玩家友好的骰卡。
 - Game Mode: TRPG check configurations now include must-check and skip-check trigger examples, and Story Director strategy adds rule-visibility control. Audit-only remains the default, while public-roll mode shows a player-friendly dice card between the player action and story prose.
 - 游戏模式：TRPG 检定新增 DM 闭环审计，`prepare_interactive_turn` 现在记录投前裁定依据、修正来源、目标值拆解和状态消费结果；命中结果中的数值型 Actor 状态变化默认会按状态系统 schema 自动校验、clamp 并落地，非数值或未声明字段会保留 warning 交给后台导演处理。
@@ -85,8 +87,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - 方案预设：TRPG 检定目录新增多份内置 DM 检定风格资源（均衡、推进型、OSR、电影英雄、硬核生存、悬疑线索、戏剧赌注）；故事导演继续通过 `module_refs.rule_system_id` 选择其中一个资源来决定本轮 DM 裁定风格。
 - Presets: The TRPG Checks directory now includes multiple built-in DM adjudication style resources (balanced, fail-forward, OSR, cinematic heroic, gritty survival, clue-forward mystery, and dramatic stakes). Story Directors still choose one through `module_refs.rule_system_id`.
-- 不兼容变更：TRPG 检定资源语义收敛为“一种 DM 检定风格 + 单条 d20/d100 骰子配置”；`trpg_system.rule_templates` 暂时保留兼容旧 JSON，但 normalize 后只使用第一条。新建自定义模块也只预置一条可编辑检定配置。
-- Breaking: Each TRPG Check resource now means one DM adjudication style plus one d20/d100 dice configuration. `trpg_system.rule_templates` remains for legacy JSON compatibility, but normalization only keeps the first entry. New custom modules also start with one editable check configuration.
+- 不兼容变更：TRPG 检定资源语义收敛为“一种 DM 检定风格 + 固定 d20 检定配置”；`trpg_system.rule_templates` 暂时保留兼容旧 JSON，但 normalize 后只使用第一条。新建自定义模块也只预置一条可编辑检定配置。
+- Breaking: Each TRPG Check resource now means one DM adjudication style plus fixed-d20 check configuration. `trpg_system.rule_templates` remains for legacy JSON compatibility, but normalization only keeps the first entry. New custom modules also start with one editable check configuration.
 - 方案预设：故事导演策略和资料库条目的启用/停用状态统一改为 Switch 控件，避免二元开关继续使用下拉菜单。
 - Presets: Story Director strategy and Lore item enabled/disabled status controls now use Switch controls instead of dropdowns for binary toggles.
 - 方案预设：故事导演编辑页移除重复的“导演资源”内嵌 Tab，TRPG 检定、开局选择器和事件包统一回到左侧独立资源页维护；组合概览改为自适应列宽，并将后台导演运行方式和分支规划回合数直接展示在导演策略中。

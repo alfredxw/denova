@@ -643,7 +643,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: /均衡 DM 检定/ }))
 
     expect(screen.getByRole('heading', { name: '均衡 DM 检定' })).toBeInTheDocument()
-    expect(screen.getByDisplayValue('均衡骰子检定')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('均衡 d20 检定')).toBeInTheDocument()
     expect(screen.queryByText('规则 ID')).not.toBeInTheDocument()
     expect(screen.queryByText(/安全表达式/)).not.toBeInTheDocument()
     expect(screen.queryByText('成功 StateOps')).not.toBeInTheDocument()
@@ -657,9 +657,7 @@ describe('SettingPanel', () => {
     expect(screen.getAllByRole('combobox')).toHaveLength(2)
     expect(screen.queryByRole('button', { name: '新增规则' })).not.toBeInTheDocument()
 
-    const diceField = screen.getByText('骰子类型').closest('label') as HTMLElement
-    await user.click(within(diceField).getByRole('combobox'))
-    await user.click(screen.getByRole('option', { name: 'd100' }))
+    expect(screen.getByDisplayValue('固定 d20')).toBeDisabled()
 
     const ruleLabelInput = screen.getByRole('textbox', { name: '规则名称' })
     await user.clear(ruleLabelInput)
@@ -689,7 +687,7 @@ describe('SettingPanel', () => {
     expect(visualPayload.trpg_system?.rule_templates).toHaveLength(1)
     expect(visualPayload.trpg_system?.rule_templates?.[0]).toMatchObject({
       label: '自定义 DM 检定',
-      dice: '1d100',
+      dice: '1d20',
       modifier: 7,
       failure_policy: 'hard_failure',
       difficulty_guidance: difficultyGuidance,
@@ -742,7 +740,7 @@ describe('SettingPanel', () => {
     expect(jsonPayload.trpg_system?.rule_templates).toEqual([expect.objectContaining({
       id: 'legacy',
       label: '旧规则',
-      dice: '1d100',
+      dice: '1d20',
       modifier: 3,
       failure_policy: 'success_at_cost',
       difficulty_guidance: '对方越抗拒越难。',

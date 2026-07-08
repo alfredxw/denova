@@ -63,7 +63,7 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 			t.Fatalf("system prompt should include DM-style check rule %q:\n%s", want, system)
 		}
 	}
-	for _, want := range []string{"very_easy/easy/normal/hard/very_hard", "rule 可省略", "dice_check", "1d20", "1d100", "difficulty_guidance", "state_effect_guidance"} {
+	for _, want := range []string{"very_easy/easy/normal/hard/very_hard", "rule 可省略", "dice_check", "固定 d20", "difficulty_guidance", "state_effect_guidance", "state_bindings", "binding_id"} {
 		if !strings.Contains(system, want) {
 			t.Fatalf("system prompt should include prepare_interactive_turn enum protocol %q:\n%s", want, system)
 		}
@@ -73,7 +73,7 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 			t.Fatalf("turn prompt should include DM-style check rule %q:\n%s", want, turn)
 		}
 	}
-	for _, want := range []string{"very_easy/easy/normal/hard/very_hard", "不要使用 medium 或 moderate", "difficulty_guidance", "state_effect_guidance", "1d100"} {
+	for _, want := range []string{"very_easy/easy/normal/hard/very_hard", "不要使用 medium 或 moderate", "difficulty_guidance", "state_effect_guidance", "固定 d20", "state_bindings"} {
 		if !strings.Contains(turn, want) {
 			t.Fatalf("turn prompt should include prepare_interactive_turn enum protocol %q:\n%s", want, turn)
 		}

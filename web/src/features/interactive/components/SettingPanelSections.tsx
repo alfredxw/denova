@@ -767,6 +767,7 @@ export function EventPackageEditor({
 
 export function RuleSystemEditor({
   draft,
+  actorStates = [],
   tagDraft,
   setDraft,
   setTagDraft,
@@ -774,6 +775,7 @@ export function RuleSystemEditor({
   onValidityChange,
 }: {
   draft: RuleSystemModule | null
+  actorStates?: ActorStateModule[]
   tagDraft: string
   setDraft: (draft: RuleSystemModule | null) => void
   setTagDraft: (value: string) => void
@@ -789,6 +791,22 @@ export function RuleSystemEditor({
 
   return (
     <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
+      <section className="rounded-[var(--nova-radius)] bg-[var(--nova-surface)] p-4">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+          <Field label={t('settingPanel.trpgRule.actorStateBinding')}>
+            <Select value={draft.actor_state_id || '__none__'} onValueChange={(value) => setDraft({ ...draft, actor_state_id: value === '__none__' ? '' : value })}>
+              <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
+              <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                <SelectItem value="__none__">{t('settingPanel.trpgRule.noActorStateBinding')}</SelectItem>
+                {actorStates.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.id}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <div className="self-end rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
+            {t('settingPanel.trpgRule.actorStateBindingDesc')}
+          </div>
+        </div>
+      </section>
       <PresetConfigSectionEditor
         sectionId="rule-system.trpg-system"
         resetKey={`${draft.id}:trpg_system`}
@@ -800,7 +818,7 @@ export function RuleSystemEditor({
         onSave={onSave}
         onValidityChange={(valid) => setSectionValid('trpg_system', valid)}
       >
-        {(props) => <TRPGSystemVisualEditor {...props} />}
+        {(props) => <TRPGSystemVisualEditor {...props} actorState={actorStates.find((item) => item.id === draft.actor_state_id)?.actor_state} />}
       </PresetConfigSectionEditor>
     </ModuleEditorShell>
   )

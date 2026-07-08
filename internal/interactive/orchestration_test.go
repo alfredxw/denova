@@ -150,33 +150,33 @@ func TestResolveTurnRulesRollModesAndDifficultyTargets(t *testing.T) {
 	}
 }
 
-func TestResolveTurnRulesD100RollUnder(t *testing.T) {
+func TestResolveTurnRulesLegacyD100InputsUseFixedD20(t *testing.T) {
 	req := sampleTurnCheckRequest()
 	req.Rule.Dice = "1d100"
 	req.Difficulty = "normal"
 
-	resolution, err := resolveTurnRulesWithSeed("st_d100", "main", initialStoryState(), req, 7)
+	resolution, err := resolveTurnRulesWithSeed("st_legacy_d100", "main", initialStoryState(), req, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolution.Result.Dice != "1d100" || resolution.Result.Mode != "d100_under" || resolution.Result.Target != 50 {
-		t.Fatalf("unexpected d100 baseline: %#v", resolution.Result)
+	if resolution.Result.Dice != "1d20" || resolution.Result.Mode != "d20_dc" || resolution.Result.Target != 10 {
+		t.Fatalf("legacy d100 should resolve as fixed d20: %#v", resolution.Result)
 	}
 
 	req.Rule.Modifier = 10
-	resolution, err = resolveTurnRulesWithSeed("st_d100_modifier", "main", initialStoryState(), req, 7)
+	resolution, err = resolveTurnRulesWithSeed("st_legacy_d100_modifier", "main", initialStoryState(), req, 7)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolution.Result.Target != 40 {
-		t.Fatalf("positive modifier should lower d100 target: %#v", resolution.Result)
+	if resolution.Result.Target != 20 {
+		t.Fatalf("positive modifier should raise d20 target: %#v", resolution.Result)
 	}
 
 	for _, mode := range []string{"normal", "advantage", "disadvantage"} {
 		req := sampleTurnCheckRequest()
 		req.Rule.Dice = "1d100"
 		req.Rule.RollMode = mode
-		resolution, err := resolveTurnRulesWithSeed("st_d100_mode", "main", initialStoryState(), req, 11)
+		resolution, err := resolveTurnRulesWithSeed("st_legacy_d100_mode", "main", initialStoryState(), req, 11)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -186,13 +186,88 @@ func TestResolveTurnRulesD100RollUnder(t *testing.T) {
 		if mode != "normal" && len(resolution.Result.Rolls) != 2 {
 			t.Fatalf("%s should roll twice: %#v", mode, resolution.Result.Rolls)
 		}
-		if mode == "advantage" && int(resolution.Result.KeptRoll) != minInt(resolution.Result.Rolls...) {
-			t.Fatalf("d100 advantage should keep low roll: %#v", resolution.Result)
+		if mode == "advantage" && int(resolution.Result.KeptRoll) != maxInt(resolution.Result.Rolls...) {
+			t.Fatalf("fixed d20 advantage should keep high roll: %#v", resolution.Result)
 		}
-		if mode == "disadvantage" && int(resolution.Result.KeptRoll) != maxInt(resolution.Result.Rolls...) {
-			t.Fatalf("d100 disadvantage should keep high roll: %#v", resolution.Result)
+		if mode == "disadvantage" && int(resolution.Result.KeptRoll) != minInt(resolution.Result.Rolls...) {
+			t.Fatalf("fixed d20 disadvantage should keep low roll: %#v", resolution.Result)
 		}
 	}
+}
+
+func TestResolveTurnRulesAppliesStateBindingModifiersAndOutcomeChanges(t *testing.T) {
+	director, state := stateBindingTestDirectorAndState()
+	req := sampleTurnCheckRequest()
+	req.Rule.TemplateID = "combat"
+	req.Rule.BindingID = "melee_attack"
+	req.Rule.ActorID = "protagonist"
+	req.Rule.TargetActorID = "wolf_1"
+	req.Difficulty = "normal"
+	req.Outcomes.Success.StateChanges = []TurnStateChange{{Path: "actors.wolf_1.state.resources.guard", Change: -1, Reason: "临场追击继续削弱护体。"}}
+	seed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 2, 3, "success")
+
+	resolution, err := resolveTurnRulesWithSeedAndDirector("st_binding", "main", state, director, req, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution.Result.Outcome != "success" {
+		t.Fatalf("expected success, got %#v", resolution.Result)
+	}
+	if resolution.Result.BonusTotal != 3 || resolution.Result.Target != 12 || resolution.Result.Modifier != 2 {
+		t.Fatalf("binding modifiers should affect total and target: %#v", resolution.Result)
+	}
+	if resolution.StateBinding == nil || resolution.StateBinding.BindingBonusTotal != 3 || resolution.StateBinding.BindingResistanceTotal != 2 {
+		t.Fatalf("missing binding audit: %#v", resolution.StateBinding)
+	}
+	if len(resolution.StateBinding.StateInputs) != 2 || resolution.StateBinding.StateInputs[0].Path != "actors.protagonist.state.attributes.strength" || resolution.StateBinding.StateInputs[1].Path != "actors.wolf_1.state.attributes.defense" {
+		t.Fatalf("unexpected state inputs: %#v", resolution.StateBinding.StateInputs)
+	}
+	if len(resolution.Result.StateChanges) != 2 {
+		t.Fatalf("expected binding state change plus manual state change: %#v", resolution.Result.StateChanges)
+	}
+	if resolution.Result.StateChanges[0].Path != "actors.wolf_1.state.resources.guard" || resolution.Result.StateChanges[0].Change != -4 {
+		t.Fatalf("binding outcome state change should be computed from attack-defense: %#v", resolution.Result.StateChanges)
+	}
+	if len(resolution.StateBinding.Warnings) != 1 || !strings.Contains(resolution.StateBinding.Warnings[0].Reason, "同一路径") {
+		t.Fatalf("duplicate state changes should produce warning: %#v", resolution.StateBinding.Warnings)
+	}
+
+	ops := applyRuleStateConsumption(state, director.ActorState, "turn_1", &resolution, RuleStateConsumptionModeHybridAuto)
+	if len(ops) != 2 {
+		t.Fatalf("expected both state changes to be consumed in order: %#v", ops)
+	}
+	if got := numberFromAny(getPath(state, "actors.wolf_1.state.resources.guard")); got != 0 {
+		t.Fatalf("guard should be clamped after configured and manual changes, got %v", got)
+	}
+}
+
+func TestResolveTurnRulesStateBindingValidationErrors(t *testing.T) {
+	director, state := stateBindingTestDirectorAndState()
+	t.Run("missing target", func(t *testing.T) {
+		req := stateBindingTestRequest()
+		req.Rule.TargetActorID = ""
+		_, err := resolveTurnRulesWithSeedAndDirector("st_binding", "main", state, director, req, 7)
+		if err == nil || !strings.Contains(err.Error(), "target_actor_id") {
+			t.Fatalf("expected target_actor_id error, got %v", err)
+		}
+	})
+	t.Run("template mismatch", func(t *testing.T) {
+		req := stateBindingTestRequest()
+		req.Rule.ActorID = "wolf_1"
+		_, err := resolveTurnRulesWithSeedAndDirector("st_binding", "main", state, director, req, 7)
+		if err == nil || !strings.Contains(err.Error(), "模板不匹配") {
+			t.Fatalf("expected template mismatch, got %v", err)
+		}
+	})
+	t.Run("non number modifier", func(t *testing.T) {
+		next := director
+		next.TRPGSystem.RuleTemplates[0].StateBindings[0].Modifiers[0].FieldPath = "conditions.realm"
+		req := stateBindingTestRequest()
+		_, err := resolveTurnRulesWithSeedAndDirector("st_binding", "main", state, next, req, 7)
+		if err == nil || !strings.Contains(err.Error(), "不是 number") {
+			t.Fatalf("expected non-number field error, got %v", err)
+		}
+	})
 }
 
 func TestResolveTurnRulesNormalizesTurnCheckAliases(t *testing.T) {
@@ -227,6 +302,98 @@ func TestResolveTurnRulesNormalizesTurnCheckAliases(t *testing.T) {
 			}
 		})
 	}
+}
+
+func stateBindingTestRequest() TurnCheckRequest {
+	req := sampleTurnCheckRequest()
+	req.Rule.TemplateID = "combat"
+	req.Rule.BindingID = "melee_attack"
+	req.Rule.ActorID = "protagonist"
+	req.Rule.TargetActorID = "wolf_1"
+	req.Difficulty = "normal"
+	return req
+}
+
+func stateBindingTestDirectorAndState() (StoryDirector, map[string]any) {
+	guardMin, guardMax := 0.0, 10.0
+	staminaMin, staminaMax := 0.0, 5.0
+	system := normalizeActorStateSystem(StoryDirectorActorStateSystem{
+		Templates: []ActorStateTemplate{
+			{
+				ID:   "protagonist",
+				Name: "主角",
+				Fields: []ActorStateField{
+					{ID: "strength", Path: "attributes.strength", Name: "力量", Type: "number", Default: 0.0},
+					{ID: "attack", Path: "attributes.attack", Name: "攻击", Type: "number", Default: 0.0},
+					{ID: "stamina", Path: "resources.stamina", Name: "体力", Type: "number", Default: 5.0, Min: &staminaMin, Max: &staminaMax},
+					{ID: "realm", Path: "conditions.realm", Name: "境界", Type: "string", Default: "炼气"},
+				},
+			},
+			{
+				ID:   "monster",
+				Name: "妖兽",
+				Fields: []ActorStateField{
+					{ID: "defense", Path: "attributes.defense", Name: "防御", Type: "number", Default: 0.0},
+					{ID: "guard", Path: "resources.guard", Name: "护体", Type: "number", Default: 5.0, Min: &guardMin, Max: &guardMax},
+					{ID: "guard_style", Path: "conditions.guard_style", Name: "护体方式", Type: "string", Default: "护体灵光"},
+				},
+			},
+		},
+		InitialActors: []ActorStateInitialActor{
+			{ID: "protagonist", Name: "主角", TemplateID: "protagonist", Role: "protagonist"},
+			{ID: "wolf_1", Name: "妖狼", TemplateID: "monster", Role: "enemy"},
+		},
+	})
+	director := normalizeStoryDirector(StoryDirector{
+		ID:         "binding-director",
+		Name:       "Binding Director",
+		ActorState: system,
+		TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
+			ID:            "combat",
+			Label:         "战斗",
+			Dice:          "1d20",
+			FailurePolicy: "fail_forward",
+			StateBindings: []RuleStateBinding{{
+				ID:               "melee_attack",
+				Label:            "近战攻击",
+				ActorTemplateID:  "protagonist",
+				TargetTemplateID: "monster",
+				Modifiers: []RuleStateBindingModifier{
+					{Source: "actor", FieldPath: "attributes.strength", Effect: "advantage", Scale: 1},
+					{Source: "target", FieldPath: "attributes.defense", Effect: "resistance", Scale: 1},
+				},
+				NarrativeStateRefs: []RuleNarrativeStateRef{
+					{Source: "actor", FieldPath: "conditions.realm", Usage: "outcome_design", Guidance: "境界只影响四档结果写法。"},
+				},
+				OutcomeStateChanges: []RuleOutcomeStateChangeBinding{{
+					Outcome: "success",
+					StateChanges: []RuleComputedStateChange{{
+						Source:    "target",
+						FieldPath: "resources.guard",
+						ChangeFormula: RuleStateChangeFormula{
+							Terms: []RuleStateFormulaTerm{
+								{Source: "actor", FieldPath: "attributes.attack", Scale: -1},
+								{Source: "target", FieldPath: "attributes.defense", Scale: 1},
+							},
+							Min:      floatPtr(-8),
+							Max:      floatPtr(-1),
+							Rounding: "nearest",
+						},
+						Reason: "攻击命中后削弱护体。",
+					}},
+				}},
+			}},
+		}}},
+	})
+	state := initialStoryState()
+	for _, op := range actorStateInitialOps(system) {
+		applyStateOp(state, op)
+	}
+	setPath(state, "actors.protagonist.state.attributes.strength", 3.0)
+	setPath(state, "actors.protagonist.state.attributes.attack", 6.0)
+	setPath(state, "actors.wolf_1.state.attributes.defense", 2.0)
+	setPath(state, "actors.wolf_1.state.resources.guard", 5.0)
+	return director, state
 }
 
 func TestValidateTurnCheckRequestListsAllowedEnums(t *testing.T) {

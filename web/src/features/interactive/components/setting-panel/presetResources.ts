@@ -278,7 +278,7 @@ export function newRuleSystemDraft(): Partial<RuleSystemModule> {
   return {
     id: `custom-rule-${Date.now()}`,
     name: '自定义 TRPG 检定',
-    description: '新的 TRPG 检定，代表一种 DM 检定风格，并配置一条骰子类型、难度修正、失败处理、难度判断和状态影响指引。',
+    description: '新的 TRPG 检定，代表一种 DM 检定风格，并配置固定 d20、难度修正、失败处理、难度判断、状态影响指引和可选 State Binding。',
     trpg_system: {
       rule_templates: defaultRuleTemplates(),
     },

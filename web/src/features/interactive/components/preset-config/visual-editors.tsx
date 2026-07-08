@@ -9,14 +9,15 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, EventPackageModule, OpeningTrait, OpeningTraitPool, RuleCheck, StateOp, StoryDirectorActorStateSystem, StoryDirectorOpeningSelector, StoryDirectorTRPGSystem, StoryMemoryField, StoryMemoryStructure, TellerEventCard } from '../../types'
-import { defaultRuleTemplates, normalizeRuleTemplate, normalizeTRPGSystem, RULE_DICE_OPTIONS, RULE_FAILURE_POLICY_OPTIONS } from './ruleTemplates'
+import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, EventPackageModule, OpeningTrait, OpeningTraitPool, RuleCheck, RuleStateBinding, StateOp, StoryDirectorActorStateSystem, StoryDirectorOpeningSelector, StoryDirectorTRPGSystem, StoryMemoryField, StoryMemoryStructure, TellerEventCard } from '../../types'
+import { defaultRuleTemplates, normalizeRuleTemplate, normalizeTRPGSystem, RULE_FAILURE_POLICY_OPTIONS } from './ruleTemplates'
 import { SortablePresetList } from './SortablePresetList'
 import { cloneWithNewId, formatPresetJSON, itemKey, joinListInput, nextPresetId, parseIntegerInput, parseNumberInput, splitListInput } from './utils'
 
 const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
 const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
 const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+const actionButtonClassName = 'nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const visualEditorShellClassName = 'grid min-h-0 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]'
 const detailScrollPaneClassName = 'min-w-0'
 
@@ -518,19 +519,23 @@ function InitialActorsEditor({
 
 export function TRPGSystemVisualEditor({
   value,
+  actorState,
   onChange,
   onValidityChange,
 }: {
   value: StoryDirectorTRPGSystem
+  actorState?: StoryDirectorActorStateSystem
   onChange: (value: StoryDirectorTRPGSystem) => void
   onValidityChange: (valid: boolean) => void
 }) {
   const { t } = useTranslation()
-  useEffect(() => onValidityChange(true), [onValidityChange])
+  const [bindingsValid, setBindingsValid] = useState(true)
+  useEffect(() => onValidityChange(bindingsValid), [bindingsValid, onValidityChange])
   const active = normalizeTRPGSystem(value).rule_templates?.[0] || defaultRuleTemplates()[0]
   const patchActive = (patch: Partial<RuleCheck>) => {
     onChange({ ...value, rule_templates: [normalizeRuleTemplate({ ...active, ...patch }, 0)] })
   }
+  const setBindings = (state_bindings: RuleStateBinding[]) => patchActive({ state_bindings })
   return (
     <div className="grid min-h-[360px] gap-3">
       <DetailPanel>
@@ -539,7 +544,7 @@ export function TRPGSystemVisualEditor({
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <Field label={t('settingPanel.orchestration.ruleLabel')}><Input className={inputClassName} value={active.label || ''} onChange={(event) => patchActive({ label: event.target.value })} /></Field>
-          <RuleSelectField label={t('settingPanel.trpgRule.dice')} value={active.dice || '1d20'} options={RULE_DICE_OPTIONS} labelFor={(next) => ruleDiceLabel(next, t)} onChange={(dice) => patchActive({ dice })} />
+          <Field label={t('settingPanel.trpgRule.dice')}><Input className={inputClassName} value={t('settingPanel.trpgRule.fixedD20')} disabled /></Field>
           <Field label={t('settingPanel.trpgRule.modifier')}><Input className={inputClassName} inputMode="decimal" value={String(active.modifier ?? 0)} onChange={(event) => patchActive({ modifier: parseNumberInput(event.target.value) })} /></Field>
           <RuleSelectField label={t('settingPanel.trpgRule.failurePolicy')} value={active.failure_policy || 'fail_forward'} options={RULE_FAILURE_POLICY_OPTIONS} labelFor={(next) => ruleFailurePolicyLabel(next, t)} onChange={(failure_policy) => patchActive({ failure_policy })} />
         </div>
@@ -557,7 +562,169 @@ export function TRPGSystemVisualEditor({
           <Field label={t('settingPanel.trpgRule.failureHint')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.failure_hint || ''} onChange={(event) => patchActive({ failure_hint: event.target.value })} /></Field>
         </div>
       </DetailPanel>
+      <StateBindingEditor
+        value={active.state_bindings || []}
+        actorState={actorState}
+        onChange={setBindings}
+        onValidChange={setBindingsValid}
+      />
     </div>
+  )
+}
+
+function StateBindingEditor({
+  value,
+  actorState,
+  onChange,
+  onValidChange,
+}: {
+  value: RuleStateBinding[]
+  actorState?: StoryDirectorActorStateSystem
+  onChange: (value: RuleStateBinding[]) => void
+  onValidChange: (valid: boolean) => void
+}) {
+  const { t } = useTranslation()
+  const [activeId, setActiveId] = useState('')
+  const [modifiersValid, setModifiersValid] = useState(true)
+  const [refsValid, setRefsValid] = useState(true)
+  const [changesValid, setChangesValid] = useState(true)
+  const templates = actorState?.templates || []
+  useEffect(() => onValidChange(modifiersValid && refsValid && changesValid), [changesValid, modifiersValid, onValidChange, refsValid])
+  useEffect(() => {
+    if (!value.some((item, index) => itemKey(item, index, 'binding') === activeId)) {
+      setActiveId(value[0] ? itemKey(value[0], 0, 'binding') : '')
+    }
+  }, [activeId, value])
+  const activeIndex = value.findIndex((item, index) => itemKey(item, index, 'binding') === activeId)
+  const active = activeIndex >= 0 ? value[activeIndex] : null
+  const setItems = (items: RuleStateBinding[]) => onChange(items.slice(0, 12))
+  const patchActive = (patch: Partial<RuleStateBinding>) => {
+    if (!active) return
+    setItems(value.map((item, index) => (index === activeIndex ? { ...item, ...patch } : item)))
+  }
+  const addBinding = () => {
+    const item: RuleStateBinding = {
+      id: nextPresetId('binding'),
+      label: '',
+      trigger: '',
+      actor_template_id: templates[0]?.id || '',
+      modifiers: [],
+      narrative_state_refs: [],
+      outcome_state_changes: [],
+    }
+    setItems([...value, item])
+    setActiveId(item.id || '')
+  }
+  const copyBinding = () => {
+    if (!active) return
+    const item = cloneWithNewId(active, 'binding')
+    setItems([...value, item])
+    setActiveId(item.id || '')
+  }
+  const deleteBinding = () => {
+    if (!active) return
+    const next = value.filter((_, index) => index !== activeIndex)
+    setItems(next)
+    setActiveId(next[0] ? itemKey(next[0], 0, 'binding') : '')
+  }
+  return (
+    <DetailPanel>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.trpgRule.stateBindings')}</div>
+          <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.trpgRule.stateBindingsDesc')}</div>
+        </div>
+        <Button type="button" className={actionButtonClassName} variant="outline" size="sm" onClick={addBinding} disabled={value.length >= 12}>
+          <Plus className="h-3.5 w-3.5" />
+          {t('settingPanel.trpgRule.addBinding')}
+        </Button>
+      </div>
+      <div className="grid min-h-52 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <SortablePresetList
+          items={value}
+          activeId={activeId}
+          getId={(item, index) => itemKey(item, index, 'binding')}
+          getTitle={(item, index) => item.label || item.id || `${t('settingPanel.trpgRule.binding')} ${index + 1}`}
+          getSubtitle={(item) => `${item.actor_template_id || '-'}${item.target_template_id ? ` -> ${item.target_template_id}` : ''}`}
+          addLabel={t('settingPanel.trpgRule.addBinding')}
+          emptyLabel={t('settingPanel.trpgRule.emptyBindings')}
+          onAdd={addBinding}
+          onActiveIdChange={setActiveId}
+          onItemsChange={setItems}
+        />
+        {active ? (
+          <div className="grid gap-3">
+            <div className="flex justify-end gap-2">
+              <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={copyBinding} aria-label={t('settingPanel.presetConfig.copy')}>
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+              <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={deleteBinding} aria-label={t('common.delete')}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={active.id || ''} onChange={(event) => patchActive({ id: event.target.value })} /></Field>
+              <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={active.label || ''} onChange={(event) => patchActive({ label: event.target.value })} /></Field>
+              <TemplateSelectField label={t('settingPanel.trpgRule.actorTemplate')} value={active.actor_template_id || ''} templates={templates} onChange={(actor_template_id) => patchActive({ actor_template_id })} />
+              <TemplateSelectField label={t('settingPanel.trpgRule.targetTemplate')} value={active.target_template_id || ''} templates={templates} allowEmpty onChange={(target_template_id) => patchActive({ target_template_id })} />
+            </div>
+            <Field label={t('settingPanel.trpgRule.trigger')}><Textarea className="nova-field min-h-16 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
+            <JSONFragmentEditor
+              label={t('settingPanel.trpgRule.modifiers')}
+              value={active.modifiers || []}
+              expected="array"
+              onChange={(modifiers) => patchActive({ modifiers: modifiers as RuleStateBinding['modifiers'] })}
+              onValidChange={setModifiersValid}
+            />
+            <JSONFragmentEditor
+              label={t('settingPanel.trpgRule.narrativeStateRefs')}
+              value={active.narrative_state_refs || []}
+              expected="array"
+              onChange={(narrative_state_refs) => patchActive({ narrative_state_refs: narrative_state_refs as RuleStateBinding['narrative_state_refs'] })}
+              onValidChange={setRefsValid}
+            />
+            <JSONFragmentEditor
+              label={t('settingPanel.trpgRule.outcomeStateChanges')}
+              value={active.outcome_state_changes || []}
+              expected="array"
+              onChange={(outcome_state_changes) => patchActive({ outcome_state_changes: outcome_state_changes as RuleStateBinding['outcome_state_changes'] })}
+              onValidChange={setChangesValid}
+            />
+          </div>
+        ) : <EmptyDetail>{t('settingPanel.trpgRule.emptyBindings')}</EmptyDetail>}
+      </div>
+    </DetailPanel>
+  )
+}
+
+function TemplateSelectField({
+  label,
+  value,
+  templates,
+  allowEmpty = false,
+  onChange,
+}: {
+  label: string
+  value: string
+  templates: ActorStateTemplate[]
+  allowEmpty?: boolean
+  onChange: (value: string) => void
+}) {
+  const { t } = useTranslation()
+  if (!templates.length) {
+    return <Field label={label}><Input className={inputClassName} value={value} onChange={(event) => onChange(event.target.value)} /></Field>
+  }
+  const selectValue = value || (allowEmpty ? '__none__' : templates[0]?.id || '__none__')
+  return (
+    <Field label={label}>
+      <Select value={selectValue} onValueChange={(next) => onChange(next === '__none__' ? '' : next)}>
+        <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
+        <SelectContent className="nova-panel border text-[var(--nova-text)]">
+          {allowEmpty ? <SelectItem value="__none__">{t('settingPanel.trpgRule.noTargetTemplate')}</SelectItem> : null}
+          {templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name || template.id}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </Field>
   )
 }
 
@@ -584,10 +751,6 @@ function RuleSelectField<T extends readonly string[]>({
       </Select>
     </Field>
   )
-}
-
-function ruleDiceLabel(value: string | undefined, t: ReturnType<typeof useTranslation>['t']) {
-  return t(`settingPanel.trpgRule.dice.${value || '1d20'}`)
 }
 
 function ruleFailurePolicyLabel(value: string | undefined, t: ReturnType<typeof useTranslation>['t']) {

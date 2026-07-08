@@ -1227,7 +1227,7 @@ interface PresetResourcePaneProps {
 function PresetResourcePane(props: PresetResourcePaneProps) {
   if (props.kind === 'image') return <ImagePresetPane draft={props.imagePresetDraft} setDraft={props.setImagePresetDraft} tagDraft={props.imagePresetTagDraft} setTagDraft={props.setImagePresetTagDraft} onSave={props.onSave} />
   if (props.kind === 'event') return <EventPackagePane draft={props.eventPackageDraft} setDraft={props.setEventPackageDraft} tagDraft={props.eventPackageTagDraft} setTagDraft={props.setEventPackageTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
-  if (props.kind === 'rule') return <RuleSystemPane draft={props.ruleSystemDraft} setDraft={props.setRuleSystemDraft} tagDraft={props.ruleSystemTagDraft} setTagDraft={props.setRuleSystemTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
+  if (props.kind === 'rule') return <RuleSystemPane draft={props.ruleSystemDraft} actorStates={props.actorStates} setDraft={props.setRuleSystemDraft} tagDraft={props.ruleSystemTagDraft} setTagDraft={props.setRuleSystemTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'actor-state') return <ActorStatePane draft={props.actorStateDraft} setDraft={props.setActorStateDraft} tagDraft={props.actorStateTagDraft} setTagDraft={props.setActorStateTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'memory-structure') return <MemoryStructurePane draft={props.memoryStructureDraft} setDraft={props.setMemoryStructureDraft} tagDraft={props.memoryStructureTagDraft} setTagDraft={props.setMemoryStructureTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'opening') return <OpeningSelectorPane draft={props.openingSelectorDraft} setDraft={props.setOpeningSelectorDraft} tagDraft={props.openingSelectorTagDraft} setTagDraft={props.setOpeningSelectorTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
@@ -1265,7 +1265,7 @@ function EventPackagePane(props: { draft: EventPackageModule | null; setDraft: (
   return <EventPackageEditor {...props} />
 }
 
-function RuleSystemPane(props: { draft: RuleSystemModule | null; setDraft: (draft: RuleSystemModule | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
+function RuleSystemPane(props: { draft: RuleSystemModule | null; actorStates: ActorStateModule[]; setDraft: (draft: RuleSystemModule | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
   return <RuleSystemEditor {...props} />
 }
 

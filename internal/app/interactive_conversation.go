@@ -165,7 +165,8 @@ func (c *interactiveConversation) PrepareInteractiveTurn(ctx context.Context, re
 		return interactive.RuleResolution{}, ctx.Err()
 	default:
 	}
-	resolution, err := interactive.ResolveTurnRules(c.storyID, storyCtx.Snapshot.BranchID, storyCtx.Snapshot.State, request)
+	storyDirector := c.storyDirector(storyCtx.Meta.StoryDirectorID)
+	resolution, err := interactive.ResolveTurnRulesWithDirector(c.storyID, storyCtx.Snapshot.BranchID, storyCtx.Snapshot.State, storyDirector, request)
 	if err != nil {
 		return interactive.RuleResolution{}, err
 	}

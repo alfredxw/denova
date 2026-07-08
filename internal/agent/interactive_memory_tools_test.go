@@ -268,8 +268,10 @@ func TestPrepareInteractiveTurnToolSchemaDocumentsEnums(t *testing.T) {
 		`"template"`,
 		`"dice_check"`,
 		`"1d20"`,
-		`"1d100"`,
 		`"modifier"`,
+		`"binding_id"`,
+		`"actor_id"`,
+		`"target_actor_id"`,
 		`"roll_mode"`,
 		`"advantage"`,
 		`"disadvantage"`,
@@ -280,7 +282,7 @@ func TestPrepareInteractiveTurnToolSchemaDocumentsEnums(t *testing.T) {
 			t.Fatalf("prepare_interactive_turn schema missing %q:\n%s", want, schemaText)
 		}
 	}
-	if !strings.Contains(info.Desc, "difficulty") || !strings.Contains(info.Desc, "very_easy/easy/normal/hard/very_hard") || !strings.Contains(info.Desc, "1d20 或 1d100") || !strings.Contains(info.Desc, "正数更难") || !strings.Contains(info.Desc, "difficulty_guidance") || !strings.Contains(info.Desc, "state_effect_guidance") || !strings.Contains(info.Desc, "must_check_examples") || !strings.Contains(info.Desc, "skip_check_examples") {
+	if !strings.Contains(info.Desc, "difficulty") || !strings.Contains(info.Desc, "very_easy/easy/normal/hard/very_hard") || !strings.Contains(info.Desc, "固定 d20") || !strings.Contains(info.Desc, "正数更难") || !strings.Contains(info.Desc, "difficulty_guidance") || !strings.Contains(info.Desc, "state_effect_guidance") || !strings.Contains(info.Desc, "must_check_examples") || !strings.Contains(info.Desc, "skip_check_examples") || !strings.Contains(info.Desc, "state_bindings") {
 		t.Fatalf("prepare_interactive_turn description should spell out enum protocol:\n%s", info.Desc)
 	}
 }

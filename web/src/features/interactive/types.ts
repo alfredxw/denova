@@ -160,6 +160,7 @@ export interface RuleSystemModule {
   id: string
   name: string
   description: string
+  actor_state_id?: string
   trpg_system: StoryDirectorTRPGSystem
   tags: string[]
   path?: string
@@ -587,7 +588,7 @@ export interface UpdateDirectorPlanInput {
 export interface RuleCheck {
   id?: string
   label?: string
-  dice?: '1d20' | '1d100' | string
+  dice?: '1d20' | string
   modifier?: number
   failure_policy?: 'fail_forward' | 'success_at_cost' | 'blocked' | 'hard_failure' | string
   difficulty_guidance?: string
@@ -597,6 +598,64 @@ export interface RuleCheck {
   skip_check_examples?: string[]
   success_hint?: string
   failure_hint?: string
+  state_bindings?: RuleStateBinding[]
+}
+
+export interface RuleStateBinding {
+  id?: string
+  label?: string
+  trigger?: string
+  actor_template_id?: string
+  target_template_id?: string
+  modifiers?: RuleStateBindingModifier[]
+  narrative_state_refs?: RuleNarrativeStateRef[]
+  outcome_state_changes?: RuleOutcomeStateChangeBinding[]
+}
+
+export interface RuleStateBindingModifier {
+  source?: 'actor' | 'target' | string
+  field_path?: string
+  effect?: 'advantage' | 'resistance' | string
+  scale?: number
+  offset?: number
+  min?: number
+  max?: number
+  rounding?: 'none' | 'floor' | 'ceil' | 'nearest' | string
+  required?: boolean
+}
+
+export interface RuleNarrativeStateRef {
+  source?: 'actor' | 'target' | 'scene' | string
+  field_path?: string
+  usage?: 'check_decision' | 'difficulty' | 'outcome_design' | 'prose' | 'memory' | string
+  guidance?: string
+}
+
+export interface RuleOutcomeStateChangeBinding {
+  outcome?: 'critical_success' | 'success' | 'failure' | 'critical_failure' | string
+  state_changes?: RuleComputedStateChange[]
+}
+
+export interface RuleComputedStateChange {
+  source?: 'actor' | 'target' | string
+  field_path?: string
+  change_formula?: RuleStateChangeFormula
+  reason?: string
+}
+
+export interface RuleStateChangeFormula {
+  base?: number
+  terms?: RuleStateFormulaTerm[]
+  min?: number
+  max?: number
+  rounding?: 'none' | 'floor' | 'ceil' | 'nearest' | string
+}
+
+export interface RuleStateFormulaTerm {
+  source?: 'actor' | 'target' | string
+  field_path?: string
+  scale?: number
+  offset?: number
 }
 
 export interface RuleResolution {
@@ -631,6 +690,9 @@ interface TurnCheckRule {
   dice?: string
   roll_mode?: 'normal' | 'advantage' | 'disadvantage' | string
   modifier?: number
+  binding_id?: string
+  actor_id?: string
+  target_actor_id?: string
 }
 
 interface TurnCheckBonus {

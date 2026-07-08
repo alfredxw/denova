@@ -118,6 +118,7 @@ type RuleSystemModule struct {
 	ID                string                  `json:"id"`
 	Name              string                  `json:"name"`
 	Description       string                  `json:"description"`
+	ActorStateID      string                  `json:"actor_state_id,omitempty"`
 	TRPGSystem        StoryDirectorTRPGSystem `json:"trpg_system"`
 	Tags              []string                `json:"tags"`
 	Path              string                  `json:"path,omitempty"`
@@ -735,6 +736,11 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	} else if refs.RuleSystemID != "" {
 		if module, err := NewRuleSystemLibrary(novaDir).Get(refs.RuleSystemID); err == nil {
 			effective.TRPGSystem = module.TRPGSystem
+			if module.ActorStateID != "" {
+				refs.ActorStateID = module.ActorStateID
+				refs.ActorStateDisabled = false
+				effective.ModuleRefs = refs
+			}
 		} else if !ruleSystemEmpty(snapshot.TRPGSystem) {
 			effective.TRPGSystem = snapshot.TRPGSystem
 			warnings = append(warnings, moduleWarning("rule_system", refs.RuleSystemID, err))
@@ -1175,6 +1181,7 @@ func normalizeRuleSystemModule(item RuleSystemModule) RuleSystemModule {
 	item.ID = normalizeDirectorModuleID(item.ID)
 	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "TRPG 检定"), 256)
 	item.Description = trimBytes(item.Description, 1024)
+	item.ActorStateID = normalizeDirectorModuleID(item.ActorStateID)
 	item.TRPGSystem.RuleTemplates = normalizeRuleChecks(item.TRPGSystem.RuleTemplates)
 	if len(item.TRPGSystem.RuleTemplates) == 0 {
 		item.TRPGSystem.RuleTemplates = DefaultRuleCheckTemplates()
@@ -1275,6 +1282,9 @@ func validateRuleSystemModule(item RuleSystemModule) error {
 	}
 	if strings.TrimSpace(item.Name) == "" {
 		return errors.New("TRPG 检定名称不能为空")
+	}
+	if ruleChecksHaveStateBindings(item.TRPGSystem.RuleTemplates) && item.ActorStateID == "" {
+		return errors.New("配置 state_bindings 的 TRPG 检定必须绑定状态系统 actor_state_id")
 	}
 	for _, check := range item.TRPGSystem.RuleTemplates {
 		if err := validateRuleCheck(check); err != nil {

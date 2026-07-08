@@ -882,14 +882,14 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 	}
 	request := NormalizeTurnCheckRequest(target.RuleResolution.Request)
 	state := stateBeforeTurn(path, target.ID)
-	next, err := ResolveTurnRules(storyID, branchID, state, request)
+	director := s.storyDirectorForMeta(meta)
+	next, err := ResolveTurnRulesWithDirector(storyID, branchID, state, director, request)
 	if err != nil {
 		return RuleResolution{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	next.CreatedAt = now
 	next.ID = newID("rr")
-	director := s.storyDirectorForMeta(meta)
 	ruleOps := applyRuleStateConsumption(state, director.ActorState, target.ID, &next, director.Strategy.RuleStateConsumptionMode)
 	terminalOutcome := terminalOutcomeFromRuleResolution(next, target.ID, target.Narrative)
 	updated := false
