@@ -9,6 +9,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"denova/internal/api/agentui"
 	"denova/internal/restart"
 	"denova/internal/session"
 )
@@ -81,6 +82,22 @@ func (h *Handlers) HandleSessionMessages(ctx context.Context, c *app.RequestCont
 		return
 	}
 	writeJSON(c, consts.StatusOK, historyEntriesToMessageDTOs(entries))
+}
+
+// HandleSessionMessagesUI returns current or selected session history as AI SDK
+// UI messages without mutating stored session records.
+func (h *Handlers) HandleSessionMessagesUI(ctx context.Context, c *app.RequestContext) {
+	if !h.app.HasWorkspace() {
+		writeJSON(c, consts.StatusOK, []agentui.Message{})
+		return
+	}
+	id := strings.TrimSpace(c.Query("session_id"))
+	entries, err := h.app.SessionMessages(id)
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, agentui.MessagesFromHistory(entries))
 }
 
 // handleSessions GET /api/sessions — 返回当前 workspace 下的会话列表。

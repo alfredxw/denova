@@ -1,0 +1,501 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useChat as useAIChat } from '@ai-sdk/react'
+import { useTranslation } from 'react-i18next'
+import {
+  abortChat,
+  analyzeChatContext,
+  createSession,
+  deleteSession,
+  executeCommand,
+  getActiveChatTask,
+  getAgentUIMessages,
+  getSessions,
+  renameSession,
+  switchSession,
+} from '@/lib/api'
+import type { ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
+import { fetchSettings } from '@/features/settings/api'
+import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
+import type { ChatMessage } from '@/lib/api'
+import {
+  AgentChatTransport,
+  agentUIMessagesToChatMessages,
+  buildAgentChatRequestBody,
+  type AgentUIMessage,
+} from '@/lib/agent-ui'
+import { isPlanProtocolToolName, normalizeRepeatedMessages } from './useAgentEventStream'
+
+interface ChatOptions {
+  onAgentFileChange?: (path?: string) => void | Promise<void>
+}
+
+export interface ChatSendOptions {
+  writingSkill?: string
+  ideContext?: IDEContext
+  imagePresetId?: string
+  tellerId?: string
+  planMode?: boolean
+  displayMessage?: string
+  hideUserMessage?: boolean
+}
+
+export function useAgentChat(options: ChatOptions = {}) {
+  const { t } = useTranslation()
+  const { onAgentFileChange } = options
+  const transport = useMemo(() => new AgentChatTransport(), [])
+  const {
+    messages: uiMessages,
+    setMessages: setUIMessages,
+    sendMessage,
+    resumeStream,
+    stop: stopAIStream,
+    status,
+  } = useAIChat<AgentUIMessage>({
+    transport,
+    throttle: 60,
+    onFinish: () => {
+      clearInputState()
+      void onAgentFileChange?.()
+    },
+  })
+  const messages = useMemo(
+    () => normalizeRepeatedMessages(agentUIMessagesToChatMessages(uiMessages)),
+    [uiMessages],
+  )
+  const isStreaming = status === 'submitted' || status === 'streaming'
+  const activityContent = status === 'submitted' ? t('chat.activity.connecting') : ''
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [activeSessionId, setActiveSessionId] = useState('')
+  const [references, setReferences] = useState<string[]>([])
+  const [loreReferences, setLoreReferences] = useState<string[]>([])
+  const [styleScenes, setStyleScenes] = useState<string[]>([])
+  const [textSelections, setTextSelections] = useState<TextSelection[]>([])
+  const [defaultPlanMode, setDefaultPlanMode] = useState(false)
+  const [planModes, setPlanModes] = useState<Record<string, boolean>>(() => readChatPlanModes())
+  const activePlanMode = planModeForSession(planModes, activeSessionId, defaultPlanMode)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchSettings()
+      .then((data) => {
+        if (!cancelled) setDefaultPlanMode(data.effective?.plan_mode_default === true)
+      })
+      .catch((e) => console.warn('加载 Plan Mode 默认配置失败', e))
+    return () => { cancelled = true }
+  }, [])
+
+  const setSessionPlanMode = useCallback((sessionId: string, value: boolean) => {
+    const id = sessionId || 'default'
+    setPlanModes((current) => {
+      const next = { ...current, [id]: value }
+      writeChatPlanModes(next)
+      return next
+    })
+  }, [])
+
+  const setActivePlanMode = useCallback((value: boolean) => {
+    setSessionPlanMode(activeSessionId || 'default', value)
+  }, [activeSessionId, setSessionPlanMode])
+
+  const togglePlanMode = useCallback(() => {
+    setActivePlanMode(!activePlanMode)
+  }, [activePlanMode, setActivePlanMode])
+
+  const loadSessions = useCallback(async () => {
+    try {
+      const list = await getSessions()
+      setSessions(list)
+      setActiveSessionId(list.find(item => item.active)?.id || list[0]?.id || '')
+      return list
+    } catch (e) {
+      console.error('加载会话列表失败', e)
+      return []
+    }
+  }, [])
+
+  const loadHistory = useCallback(async (sessionId?: string) => {
+    try {
+      const nextMessages = await getAgentUIMessages(sessionId)
+      setUIMessages(filterInternalPlanUIMessages(nextMessages))
+    } catch (e) {
+      console.error('加载历史失败', e)
+    }
+  }, [setUIMessages])
+
+  const addReference = useCallback((path: string) => {
+    setReferences(prev => Array.from(new Set([...prev, path])))
+  }, [])
+  const addLoreReference = useCallback((id: string) => {
+    setLoreReferences(prev => Array.from(new Set([...prev, id])))
+  }, [])
+  const removeReference = useCallback((path: string) => {
+    setReferences(prev => prev.filter(item => item !== path))
+  }, [])
+  const removeLoreReference = useCallback((id: string) => {
+    setLoreReferences(prev => prev.filter(item => item !== id))
+  }, [])
+  const addStyleScene = useCallback((scene: string) => {
+    setStyleScenes(prev => Array.from(new Set([...prev, scene])))
+  }, [])
+  const removeStyleScene = useCallback((scene: string) => {
+    setStyleScenes(prev => prev.filter(item => item !== scene))
+  }, [])
+  const clearReferences = useCallback(() => setReferences([]), [])
+  const clearLoreReferences = useCallback(() => setLoreReferences([]), [])
+  const clearStyleScenes = useCallback(() => setStyleScenes([]), [])
+  const addTextSelection = useCallback((sel: TextSelection) => {
+    setTextSelections(prev => [...prev, sel])
+  }, [])
+  const removeTextSelection = useCallback((index: number) => {
+    setTextSelections(prev => prev.filter((_, i) => i !== index))
+  }, [])
+  const clearTextSelections = useCallback(() => setTextSelections([]), [])
+
+  const clearInputState = useCallback(() => {
+    clearReferences()
+    clearLoreReferences()
+    clearStyleScenes()
+    clearTextSelections()
+  }, [clearLoreReferences, clearReferences, clearStyleScenes, clearTextSelections])
+
+  const prepareAgentRequest = useCallback((input: string, forcedPlanMode?: boolean) => {
+    if (input.startsWith('/')) {
+      const cmd = input.slice(1).split(' ')[0]
+      if (['clear', 'compact', 'status', 'help'].includes(cmd)) {
+        throw new Error(t('chat.contextAnalysis.commandUnavailable'))
+      }
+    }
+
+    let planMode = forcedPlanMode ?? activePlanMode
+    let userMessage = input
+    if (input.startsWith('/plan')) {
+      planMode = true
+      userMessage = input.replace(/^\/plan\s*/, '').trim()
+      if (!userMessage) throw new Error(t('chat.planUsage'))
+    }
+
+    const inlineReferences = parseInlineReferences(userMessage)
+    const inlineStyleScenes = parseInlineStyleScenes(userMessage)
+    return {
+      message: userMessage,
+      references: Array.from(new Set([...references, ...inlineReferences])),
+      loreReferences: Array.from(new Set(loreReferences)),
+      styleScenes: Array.from(new Set([...styleScenes, ...inlineStyleScenes])),
+      textSelections,
+      planMode,
+    }
+  }, [activePlanMode, loreReferences, references, styleScenes, t, textSelections])
+
+  const send = useCallback(async (input: string, sendOptions: ChatSendOptions = {}) => {
+    if (isStreaming) return
+    const command = agentBypassCommand(input)
+    if (command) {
+      const result = await executeCommand(command)
+      if (command === 'clear') {
+        await loadHistory()
+        await loadSessions()
+        return
+      }
+      appendDataMessage(setUIMessages, 'data-agent-system', { content: result })
+      return
+    }
+
+    let prepared: ReturnType<typeof prepareAgentRequest>
+    try {
+      prepared = prepareAgentRequest(input, sendOptions.planMode)
+    } catch (e) {
+      appendDataMessage(setUIMessages, 'data-agent-system', { content: (e as Error).message })
+      return
+    }
+    if (prepared.planMode !== activePlanMode || sendOptions.planMode !== undefined) {
+      setActivePlanMode(prepared.planMode)
+    }
+
+    const body = buildAgentChatRequestBody({
+      message: prepared.message,
+      references: prepared.references,
+      lore_references: prepared.loreReferences,
+      style_scenes: prepared.styleScenes,
+      selections: prepared.textSelections.map(s => ({
+        file_name: s.fileName,
+        start_line: s.startLine,
+        end_line: s.endLine,
+        content: s.content,
+      })),
+      ide_context: normalizeIDEContext(sendOptions.ideContext),
+      plan_mode: prepared.planMode,
+      writing_skill: sendOptions.writingSkill,
+      image_preset_id: sendOptions.imagePresetId,
+      teller_id: sendOptions.tellerId,
+    } as Parameters<typeof buildAgentChatRequestBody>[0] & { message: string }) as Record<string, unknown>
+    body.message = prepared.message
+
+    try {
+      await sendMessage({
+        role: 'user',
+        metadata: sendOptions.hideUserMessage ? { display_hidden: true } : undefined,
+        parts: [{ type: 'text', text: sendOptions.displayMessage || input }],
+      }, { body })
+    } catch (e) {
+      appendDataMessage(setUIMessages, 'data-agent-error', { content: t('chat.activity.requestFailed', { error: String(e) }) })
+    }
+  }, [activePlanMode, isStreaming, loadHistory, loadSessions, prepareAgentRequest, sendMessage, setActivePlanMode, setUIMessages, t])
+
+  const analyzeContext = useCallback(async (input: string, sendOptions: ChatSendOptions = {}): Promise<ContextAnalysis> => {
+    if (isStreaming) throw new Error(t('chat.contextAnalysis.streamingUnavailable'))
+    const prepared = prepareAgentRequest(input)
+    return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, prepared.planMode, sendOptions.writingSkill, sendOptions.ideContext, sendOptions.imagePresetId, sendOptions.tellerId)
+  }, [isStreaming, prepareAgentRequest, t])
+
+  const submitPlanQuestion = useCallback((message: ChatMessage, content: string, _preview: string) => {
+    setUIMessages(prev => markPlanUIMessageAction(prev, message, 'answered'))
+    void send(content, { planMode: true, hideUserMessage: true })
+  }, [send, setUIMessages])
+
+  const approveProposedPlan = useCallback((message: ChatMessage) => {
+    const plan = message.content || ''
+    if (!plan.trim()) return
+    const planIndex = findMessageIndex(messages, message)
+    const userContext = collectPlanUserContext(messages, planIndex)
+    setUIMessages(prev => markPlanUIMessageAction(prev, message, 'approved'))
+    void send(formatApprovedPlanExecutionMessage(plan, userContext), {
+      planMode: false,
+      hideUserMessage: true,
+    })
+  }, [messages, send, setUIMessages])
+
+  const exitPlanMode = useCallback(() => {
+    setActivePlanMode(false)
+  }, [setActivePlanMode])
+
+  const resumeActiveChat = useCallback(async () => {
+    if (isStreaming) return
+    try {
+      const activeTask = await getActiveChatTask()
+      if (!activeTask.active) return
+      await resumeStream()
+    } catch (e) {
+      if (!isAbortError(e)) console.error('恢复聊天流失败', e)
+    }
+  }, [isStreaming, resumeStream])
+
+  const stop = useCallback(() => {
+    void abortChat()
+    stopAIStream()
+  }, [stopAIStream])
+
+  const createChatSession = useCallback(async (title?: string) => {
+    const session = await createSession(title)
+    setActiveSessionId(session.id)
+    await Promise.all([loadSessions(), loadHistory(session.id)])
+    await resumeActiveChat()
+  }, [loadHistory, loadSessions, resumeActiveChat])
+
+  const switchChatSession = useCallback(async (id: string) => {
+    if (!id || id === activeSessionId) return
+    const session = await switchSession(id)
+    setActiveSessionId(session.id)
+    await Promise.all([loadSessions(), loadHistory(session.id)])
+    await resumeActiveChat()
+  }, [activeSessionId, loadHistory, loadSessions, resumeActiveChat])
+
+  const renameChatSession = useCallback(async (id: string, title: string) => {
+    await renameSession(id, title)
+    await loadSessions()
+  }, [loadSessions])
+
+  const deleteChatSession = useCallback(async (id: string) => {
+    stopAIStream()
+    const session = await deleteSession(id)
+    setActiveSessionId(session.id)
+    await Promise.all([loadSessions(), loadHistory(session.id)])
+    await resumeActiveChat()
+  }, [loadHistory, loadSessions, resumeActiveChat, stopAIStream])
+
+  return {
+    messages,
+    sessions,
+    activeSessionId,
+    isStreaming,
+    activityContent,
+    references,
+    loreReferences,
+    styleScenes,
+    textSelections,
+    planMode: activePlanMode,
+    setPlanMode: setActivePlanMode,
+    togglePlanMode,
+    send,
+    analyzeContext,
+    submitPlanQuestion,
+    approveProposedPlan,
+    exitPlanMode,
+    stop,
+    loadSessions,
+    loadHistory,
+    resumeActiveChat,
+    createChatSession,
+    switchChatSession,
+    renameChatSession,
+    deleteChatSession,
+    addReference,
+    removeReference,
+    addLoreReference,
+    removeLoreReference,
+    addStyleScene,
+    removeStyleScene,
+    addTextSelection,
+    removeTextSelection,
+    clearReferences,
+    clearStyleScenes,
+  }
+}
+
+function normalizeIDEContext(context?: IDEContext) {
+  if (!context?.currentFile && !context?.openFiles?.length) return undefined
+  return {
+    current_file: context.currentFile || undefined,
+    open_files: context.openFiles?.length ? context.openFiles : undefined,
+  }
+}
+
+function appendDataMessage(setUIMessages: (updater: (messages: AgentUIMessage[]) => AgentUIMessage[]) => void, type: `data-agent-${string}`, data: Record<string, unknown>) {
+  setUIMessages(messages => [
+    ...messages,
+    {
+      id: `${type}-${Date.now()}-${messages.length}`,
+      role: 'assistant',
+      parts: [{ type, data, id: `${type}-${Date.now()}` } as AgentUIMessage['parts'][number]],
+    } as AgentUIMessage,
+  ])
+}
+
+function agentBypassCommand(input: string): string | null {
+  if (!input.startsWith('/')) return null
+  const cmd = input.slice(1).split(' ')[0]
+  return ['clear', 'compact', 'status', 'help'].includes(cmd) ? cmd : null
+}
+
+function parseInlineReferences(input: string): string[] {
+  const result = new Set<string>()
+  const regex = /(?:^|\s)@([^\s@]+)/g
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(input)) !== null) {
+    const value = match[1]
+    if (value.startsWith('资料:')) continue
+    result.add(value)
+  }
+  return Array.from(result)
+}
+
+function parseInlineStyleScenes(input: string): string[] {
+  const result = new Set<string>()
+  const regex = /(?:^|\s)#([^\s#]+)/g
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(input)) !== null) result.add(match[1])
+  return Array.from(result)
+}
+
+const CHAT_PLAN_MODES_STORAGE_KEY = 'nova.chat.plan_modes.v1'
+
+function readChatPlanModes(): Record<string, boolean> {
+  if (typeof window === 'undefined') return {}
+  const raw = window.localStorage.getItem(CHAT_PLAN_MODES_STORAGE_KEY)
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const result: Record<string, boolean> = {}
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof key === 'string' && typeof value === 'boolean') result[key] = value
+    }
+    return result
+  } catch {
+    return {}
+  }
+}
+
+function writeChatPlanModes(value: Record<string, boolean>) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(CHAT_PLAN_MODES_STORAGE_KEY, JSON.stringify(value))
+}
+
+function planModeForSession(planModes: Record<string, boolean>, sessionId: string, defaultValue: boolean) {
+  const id = sessionId || 'default'
+  return planModes[id] ?? defaultValue
+}
+
+function findMessageIndex(messages: ChatMessage[], target: ChatMessage) {
+  if (target.id) {
+    const byID = messages.findIndex((message) => message.id === target.id)
+    if (byID >= 0) return byID
+  }
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (message.role === 'proposed_plan' && message.content === target.content) return i
+  }
+  return -1
+}
+
+function collectPlanUserContext(messages: ChatMessage[], planIndex: number) {
+  const end = planIndex >= 0 ? planIndex : messages.length
+  let start = 0
+  for (let i = end - 1; i >= 0; i -= 1) {
+    if (messages[i].role === 'proposed_plan') {
+      start = i + 1
+      break
+    }
+  }
+  const userMessages = messages
+    .slice(start, end)
+    .filter((message) => message.role === 'user')
+    .map((message) => (message.content || '').trim())
+    .filter(Boolean)
+  if (userMessages.length <= 1) return userMessages[0] || ''
+  return [
+    `原始请求：\n${userMessages[0]}`,
+    `用户补充：\n${userMessages.slice(1).join('\n\n')}`,
+  ].join('\n\n')
+}
+
+function filterInternalPlanUIMessages(messages: AgentUIMessage[]) {
+  return messages.filter((message) => {
+    const text = message.parts.map(part => part.type === 'text' ? part.text : '').join('')
+    if (message.role === 'user' && isPlanQuestionAnswerProtocol(text)) return false
+    return !message.parts.some(part => isPlanProtocolToolPart(part))
+  })
+}
+
+function isPlanQuestionAnswerProtocol(content: string) {
+  return content.includes('<plan_question_answers>') || content.includes('</plan_question_answers>')
+}
+
+function isPlanProtocolToolPart(part: AgentUIMessage['parts'][number]) {
+  if (part.type === 'dynamic-tool') return isPlanProtocolToolName(part.toolName)
+  if (part.type.startsWith('tool-')) return isPlanProtocolToolName(part.type.replace(/^tool-/, ''))
+  return false
+}
+
+function markPlanUIMessageAction(
+  messages: AgentUIMessage[],
+  target: ChatMessage,
+  action: NonNullable<ChatMessage['plan_action']>,
+) {
+  return messages.map(message => ({
+    ...message,
+    parts: message.parts.map((part, index) => {
+      if (!part.type.startsWith('data-agent-plan-')) return part
+      const data = 'data' in part && part.data && typeof part.data === 'object' && !Array.isArray(part.data)
+        ? part.data as Record<string, unknown>
+        : {}
+      const partID = 'id' in part && typeof part.id === 'string' ? part.id : `${message.id}:${index}`
+      if (target.id && target.id !== partID && target.id !== `${message.id}:${index}`) return part
+      if (!target.id && data.content !== target.content) return part
+      return { ...part, data: { ...data, plan_action: action, status: 'success' } } as AgentUIMessage['parts'][number]
+    }),
+  }))
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError'
+}

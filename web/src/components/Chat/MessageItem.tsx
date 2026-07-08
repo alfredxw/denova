@@ -17,6 +17,10 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { boundedPlanDisplay, formatPlanQuestionAnswerMessage, formatPlanQuestionAnswerPreview, parsePlanQuestionSet, recommendedAnswerSet } from '@/lib/plan-mode'
 import type { PlanQuestionAnswer } from '@/lib/plan-mode'
+import { Message as AIMessage, MessageContent as AIMessageContent } from '@/components/ai-elements/message'
+import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
+import { Plan, PlanContent, PlanHeader } from '@/components/ai-elements/plan'
+import { Tool, ToolContent } from '@/components/ai-elements/tool'
 
 interface MessageItemProps {
   message: ChatMessage
@@ -59,14 +63,14 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
   switch (role) {
     case 'user':
       return (
-        <div className="group flex justify-end gap-2">
+        <AIMessage from="user" className="max-w-none items-end">
           <div className="nova-message-body-with-meta nova-message-body-with-meta-user max-w-[88%]">
-            <div className="nova-user-message rounded-lg px-3.5 py-2.5 text-sm text-[var(--nova-user-message-text)] whitespace-pre-wrap" style={messageStyle}>
+            <AIMessageContent className="nova-user-message rounded-lg bg-[var(--nova-user-message-bg-to)] px-3 py-2 text-sm leading-5 text-[var(--nova-user-message-text)] whitespace-pre-wrap group-[.is-user]:px-3 group-[.is-user]:py-2" style={messageStyle}>
               {content}
-            </div>
+            </AIMessageContent>
             <MessageInlineMeta message={message} content={content} align="right" onEdit={canEdit ? onEdit : undefined} />
           </div>
-        </div>
+        </AIMessage>
       )
 
     case 'assistant': {
@@ -89,10 +93,10 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
         : undefined
       const visibleContent = sanitizeThinkTags(streamingTargetContent || content).trim()
       return (
-        <div className="group flex justify-start">
+        <AIMessage from="assistant" className="max-w-none">
           <div className="w-full">
             <div className="nova-message-body-with-meta nova-message-body-with-meta-assistant">
-              <div className="chat-agent-message w-full px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
+              <AIMessageContent className="chat-agent-message block w-full gap-0 px-1 text-sm text-[var(--nova-text)]" style={messageStyle}>
                 {message.streaming && !visibleContent ? (
                   <StreamingPlaceholder />
                 ) : message.streaming ? (
@@ -100,7 +104,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                 ) : (
                   <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
                 )}
-              </div>
+              </AIMessageContent>
               <InteractiveImageStrip message={message} />
               <MessageInlineMeta
                 message={message}
@@ -115,7 +119,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
               />
             </div>
           </div>
-        </div>
+        </AIMessage>
       )
     }
 
@@ -877,18 +881,18 @@ function planActionStatusText(t: ReturnType<typeof useTranslation>['t'], action:
 function PlanShell({ icon, title, badge, children }: { icon: ReactNode; title: string; badge?: string; children: ReactNode }) {
   return (
     <div className="flex justify-start">
-      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)] backdrop-blur">
-        <div className="flex items-center gap-2 border-b border-[var(--nova-border)] px-3 py-2.5">
+      <Plan defaultOpen className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)] backdrop-blur">
+        <PlanHeader className="flex-row items-center gap-2 border-b border-[var(--nova-border)] px-3 py-2.5">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
             {icon}
           </span>
           <span className="min-w-0 flex-1 text-sm font-medium text-[var(--nova-text)]">{title}</span>
           {badge && <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{badge}</span>}
-        </div>
-        <div className="px-3 py-3">
+        </PlanHeader>
+        <PlanContent className="px-3 py-3">
           {children}
-        </div>
-      </div>
+        </PlanContent>
+      </Plan>
     </div>
   )
 }
@@ -932,7 +936,7 @@ function ToolExecutionBlock({ message, onOpenTrace }: { message: ChatMessage; on
 
   return (
     <div className="flex justify-start">
-      <div className="w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
+      <Tool open={expanded} onOpenChange={setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
         <div className="flex min-h-10 min-w-0 items-center gap-2 px-3 py-2">
           <ToolStatusIcon status={status} />
           <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('chat.tool.calling')}</span>
@@ -972,8 +976,8 @@ function ToolExecutionBlock({ message, onOpenTrace }: { message: ChatMessage; on
             {streamPreview}
           </div>
         )}
-        {expanded && !isStreamingContent && (
-          <div className="grid max-h-48 gap-2 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
+        {!isStreamingContent && (
+          <ToolContent className="grid max-h-48 gap-2 overflow-auto border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[var(--nova-text-muted)]">
             {isChapterBodyHidden && (
               <div className="grid gap-1 font-sans">
                 {chapterBodyHiddenPath && (
@@ -993,9 +997,9 @@ function ToolExecutionBlock({ message, onOpenTrace }: { message: ChatMessage; on
             {detailArgs && <pre className="whitespace-pre-wrap">{detailArgs}</pre>}
             {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
             {result && <pre className="whitespace-pre-wrap text-[var(--nova-accent-green)]">{result}</pre>}
-          </div>
+          </ToolContent>
         )}
-      </div>
+      </Tool>
     </div>
   )
 }
@@ -1670,20 +1674,16 @@ function ThinkingBlock({ message, content, streaming }: { message: ChatMessage; 
   return (
     <div className="flex justify-start">
       <div className="w-full">
-        <button
-          type="button"
-          className="flex items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
-          onClick={() => setExpanded(!expanded)}
-        >
-          {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-          💭 {t('chat.trace.thinking')}
-          {message.subagent && <AgentSourceBadge message={message} compact />}
-        </button>
-        {expanded && (
-          <div className="border-l border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] whitespace-pre-wrap">
+        <Reasoning isStreaming={streaming} open={expanded} onOpenChange={setExpanded} className="mb-0">
+          <ReasoningTrigger className="flex items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]">
+            {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <span>{t('chat.trace.thinking')}</span>
+            {message.subagent && <AgentSourceBadge message={message} compact />}
+          </ReasoningTrigger>
+          <ReasoningContent className="mt-0 border-l border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] whitespace-pre-wrap">
             {content}
-          </div>
-        )}
+          </ReasoningContent>
+        </Reasoning>
       </div>
     </div>
   )

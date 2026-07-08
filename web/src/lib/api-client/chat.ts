@@ -1,5 +1,6 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from './client'
 import type { AgentRunTrace, AgentRunTraceSummary, ChatMessage, ContextAnalysis, IDEContext, SSEEvent, SessionSummary, TextSelection } from './types'
+import type { AgentUIMessage } from '@/lib/agent-ui'
 
 export async function sendMessage(
   message: string,
@@ -118,6 +119,11 @@ export async function executeCommand(command: string): Promise<string> {
 export async function getMessages(sessionId?: string): Promise<ChatMessage[]> {
   const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''
   return requestJSON(`/api/session/messages${query}`)
+}
+
+export async function getAgentUIMessages(sessionId?: string): Promise<AgentUIMessage[]> {
+  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  return requestJSON(`/api/session/messages/ui${query}`)
 }
 
 export async function getSessions(): Promise<SessionSummary[]> {

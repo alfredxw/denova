@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- WebUI：Chat UI 迁移到 AI SDK `useChat` / `UIMessage` 状态模型，并新增 AI SDK 兼容流式接口 `/api/chat/ui`、`/api/chat/ui/stream` 和 `/api/session/messages/ui`；旧会话历史在读取时即时转换为 `AgentUIMessage[]`，旧接口暂时保留。消息、思考、工具、Plan 和输入相关渲染开始接入 AI Elements primitives，专属协议状态统一使用 `data-agent-*` part 命名。
+- WebUI: Migrated Chat UI state to AI SDK `useChat` / `UIMessage` and added AI SDK-compatible stream endpoints `/api/chat/ui`, `/api/chat/ui/stream`, and `/api/session/messages/ui`; existing session history is converted to `AgentUIMessage[]` at read time while legacy endpoints remain available. Message, reasoning, tool, Plan, and prompt surfaces now start using AI Elements primitives, with app-specific protocol state carried by `data-agent-*` parts.
 - 游戏模式：TRPG 检定与状态系统新增 State Binding 联动。TRPG 检定资源可绑定状态系统并配置 `state_bindings`，`prepare_interactive_turn` 会按 `binding_id`、`actor_id` 和 `target_actor_id` 自动读取 number 状态、计算 d20 修正、合并配置状态变化与 DM 临场状态变化，并把非数值状态作为 Agent 设计四档结果的提示词上下文。
 - Game Mode: Added State Binding between TRPG Checks and the State System. TRPG Check resources can bind an Actor State module and define `state_bindings`; `prepare_interactive_turn` now uses `binding_id`, `actor_id`, and `target_actor_id` to read numeric state, compute fixed-d20 modifiers, merge configured and DM-authored state changes, and expose non-numeric state as prompt context for outcome design.
 - 游戏模式：TRPG 检定配置新增“必须检定/不要检定”触发示例，Story Director 策略新增规则可见性开关；默认仍只在侧栏审计，开启公开掷骰后会在玩家行动与故事正文之间展示玩家友好的骰卡。

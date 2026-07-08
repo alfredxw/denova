@@ -5,6 +5,7 @@ import {
   deleteSession,
   executeCommand,
   getActiveChatTask,
+  getAgentUIMessages,
   getMessages,
   getSessions,
   getWorkspaceSummary,
@@ -82,6 +83,23 @@ describe('api', () => {
       { path: '/api/sessions/delete', body: { id: 'session-b' } },
       { path: '/api/session/messages?session_id=session-a' },
     ])
+  })
+
+  it('读取 AI SDK UI 消息历史时使用新接口且不迁移旧历史', async () => {
+    const requests: string[] = []
+    server.use(
+      http.get('/api/session/messages/ui', ({ request }) => {
+        requests.push(new URL(request.url).pathname + new URL(request.url).search)
+        return HttpResponse.json([
+          { id: 'message-1', role: 'assistant', parts: [{ type: 'text', text: '你好', state: 'done' }] },
+        ])
+      }),
+    )
+
+    await expect(getAgentUIMessages('session-ui')).resolves.toEqual([
+      { id: 'message-1', role: 'assistant', parts: [{ type: 'text', text: '你好', state: 'done' }] },
+    ])
+    expect(requests).toEqual(['/api/session/messages/ui?session_id=session-ui'])
   })
 
   it('发送命令时返回后端结果', async () => {

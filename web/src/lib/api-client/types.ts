@@ -132,7 +132,7 @@ export interface InteractiveImageError {
   created_at?: string
 }
 
-interface TokenUsageCall {
+export interface TokenUsageCall {
   index?: number
   created_at?: string
   finish_reason?: string

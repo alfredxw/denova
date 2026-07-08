@@ -38,6 +38,32 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 	sse.StreamTask(c, task, h.chatSSEStreamOptions()...)
 }
 
+// HandleChatUI starts a chat task and streams updates using the AI SDK UI
+// message stream protocol.
+func (h *Handlers) HandleChatUI(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	var req agent.ChatRequest
+	if err := c.BindJSON(&req); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
+		return
+	}
+	if strings.TrimSpace(req.Message) == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
+		return
+	}
+	req.Locale = requestLocale(c)
+
+	task := h.app.StartTask(req)
+	if task == nil {
+		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
+		return
+	}
+	log.Printf("[agent-ui-sse] attach new chat task_id=%s", task.ID())
+	sse.StreamTaskUI(c, task, h.chatSSEStreamOptions()...)
+}
+
 // HandleChatContextAnalysis 模拟一次聊天请求，返回真实 SystemPrompt 和上下文组成，不启动 LLM。
 func (h *Handlers) HandleChatContextAnalysis(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
@@ -94,6 +120,18 @@ func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) 
 	}
 	log.Printf("[agent-sse] attach active chat task_id=%s status=%s", task.ID(), task.Status())
 	sse.StreamTask(c, task, h.chatSSEStreamOptions()...)
+}
+
+// HandleChatUIStream reconnects to the current task using the AI SDK UI
+// message stream protocol.
+func (h *Handlers) HandleChatUIStream(ctx context.Context, c *app.RequestContext) {
+	task := h.app.ActiveTask()
+	if task == nil {
+		writeErrorKey(c, consts.StatusNotFound, "api.chat.noActiveTask")
+		return
+	}
+	log.Printf("[agent-ui-sse] attach active chat task_id=%s status=%s", task.ID(), task.Status())
+	sse.StreamTaskUI(c, task, h.chatSSEStreamOptions()...)
 }
 
 // handleChatActive 查询当前是否有活跃任务。

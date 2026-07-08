@@ -10,6 +10,7 @@ import (
 
 	"denova/internal/agent"
 	agentmiddleware "denova/internal/agent/middleware"
+	"denova/internal/api/agentui"
 	novaApp "denova/internal/app"
 )
 
@@ -71,6 +72,53 @@ func StreamTask(c *app.RequestContext, task *novaApp.Task, options ...StreamOpti
 	c.Response.SetBodyStream(pr, -1)
 }
 
+// StreamTaskUI writes a Task snapshot and live updates using the AI SDK UI
+// message stream protocol consumed by @ai-sdk/react.
+func StreamTaskUI(c *app.RequestContext, task *novaApp.Task, options ...StreamOption) {
+	c.Response.Header.Set("Content-Type", "text/event-stream")
+	c.Response.Header.Set("Cache-Control", "no-cache")
+	c.Response.Header.Set("Connection", "keep-alive")
+	c.Response.Header.Set("x-vercel-ai-ui-message-stream", "v1")
+	c.Response.ImmediateHeaderFlush = true
+
+	pr, pw := io.Pipe()
+
+	go func() {
+		var ch <-chan agent.Event
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				log.Printf("[agent-ui-sse] stream panic recovered task_id=%s err=%v", task.ID(), recovered)
+			}
+			if ch != nil {
+				task.Unsubscribe(ch)
+			}
+			_ = pw.Close()
+		}()
+		var snapshot []agent.Event
+		snapshot, ch = task.Subscribe()
+		log.Printf("[agent-ui-sse] stream start task_id=%s replay=%d", task.ID(), len(snapshot))
+		writeUI := newUIWriteHandler(pw, options...)
+
+		for _, ev := range snapshot {
+			if err := writeUI.Handle(ev); err != nil {
+				log.Printf("[agent-ui-sse] stream interrupted task_id=%s phase=replay event=%s err=%v", task.ID(), ev.Type, err)
+				return
+			}
+		}
+
+		for ev := range ch {
+			if err := writeUI.Handle(ev); err != nil {
+				log.Printf("[agent-ui-sse] stream interrupted task_id=%s phase=live event=%s err=%v", task.ID(), ev.Type, err)
+				return
+			}
+		}
+		_ = writeUI.Finish("stop")
+		log.Printf("[agent-ui-sse] stream end task_id=%s status=%s", task.ID(), task.Status())
+	}()
+
+	c.Response.SetBodyStream(pr, -1)
+}
+
 func newSSEWriteHandler(w io.Writer, options ...StreamOption) agentmiddleware.SSEEventHandler {
 	opts := applyStreamOptions(options...)
 	chain := agentmiddleware.NewSSEEventMiddlewareChain(
@@ -79,6 +127,33 @@ func newSSEWriteHandler(w io.Writer, options ...StreamOption) agentmiddleware.SS
 	return chain.Next(func(ev agent.Event) error {
 		return writeEvent(w, ev.Type, ev.Data)
 	})
+}
+
+type uiWriteHandler struct {
+	encoder *agentui.StreamEncoder
+	handler agentmiddleware.SSEEventHandler
+}
+
+func newUIWriteHandler(w io.Writer, options ...StreamOption) *uiWriteHandler {
+	opts := applyStreamOptions(options...)
+	encoder := agentui.NewStreamEncoder(w)
+	chain := agentmiddleware.NewSSEEventMiddlewareChain(
+		agentmiddleware.WithHideChapterBodyLiveOutput(opts.HideChapterBodyLiveOutput),
+	)
+	return &uiWriteHandler{
+		encoder: encoder,
+		handler: chain.Next(func(ev agent.Event) error {
+			return encoder.WriteEvent(ev)
+		}),
+	}
+}
+
+func (h *uiWriteHandler) Handle(ev agent.Event) error {
+	return h.handler(ev)
+}
+
+func (h *uiWriteHandler) Finish(reason string) error {
+	return h.encoder.Finish(reason)
 }
 
 func applyStreamOptions(options ...StreamOption) StreamOptions {
