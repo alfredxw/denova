@@ -239,6 +239,8 @@ export function newStoryDirectorDraft(): Partial<StoryDirector> {
       pacing_curve: 'goal-pressure-payoff',
       random_event_rate: 0.15,
       director_agent_mode: 'triggered',
+      rule_state_consumption_mode: 'hybrid_auto',
+      rule_visibility_mode: 'audit_only',
       branch_planning_turns: 5,
     },
     event_packages: [],
@@ -276,7 +278,7 @@ export function newRuleSystemDraft(): Partial<RuleSystemModule> {
   return {
     id: `custom-rule-${Date.now()}`,
     name: '自定义 TRPG 检定',
-    description: '新的 TRPG 检定，基于开箱规则模板配置骰子类型、难度修正、失败处理、难度判断和状态影响指引。',
+    description: '新的 TRPG 检定，代表一种 DM 检定风格，并配置一条骰子类型、难度修正、失败处理、难度判断和状态影响指引。',
     trpg_system: {
       rule_templates: defaultRuleTemplates(),
     },

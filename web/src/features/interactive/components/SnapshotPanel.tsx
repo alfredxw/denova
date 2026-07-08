@@ -39,6 +39,7 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
   const ruleRequest = ruleResolution?.request
   const ruleResult = ruleResolution?.result
   const stateChanges = ruleResult?.state_changes || []
+  const stateConsumption = ruleResolution?.state_consumption
   const terminalCandidate = ruleResolution?.terminal_candidate
   const terminalOutcome = snapshot?.current_turn?.terminal_outcome
   const hasRuleAudit = !!ruleResolution || !!terminalOutcome
@@ -137,6 +138,18 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
                 })} />
               </div>
             ) : null}
+            {ruleRequest?.adjudication ? (
+              <div className={`${panelCardClass} mt-3 p-2 text-xs text-[var(--nova-text-muted)]`}>
+                <div className="mb-1 font-medium text-[var(--nova-text)]">{t('snapshot.ruleAudit.adjudication')}</div>
+                <StateValue value={compactRecord({
+                  reason: ruleRequest.adjudication.reason,
+                  stakes: ruleRequest.adjudication.stakes,
+                  difficulty_reason: ruleRequest.adjudication.difficulty_reason,
+                  roll_mode_reason: ruleRequest.adjudication.roll_mode_reason,
+                  state_paths: ruleRequest.adjudication.state_paths,
+                })} />
+              </div>
+            ) : null}
             <div className="mt-3 space-y-2 text-xs text-[var(--nova-text-muted)]">
               {ruleResult ? (
                 <article className={`${panelCardClass} p-2`}>
@@ -151,7 +164,9 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
                     roll_mode: ruleResult.roll_mode,
                     rolls: ruleResult.rolls,
                     kept_roll: ruleResult.kept_roll,
+                    base_target: ruleResult.base_target,
                     bonus_total: ruleResult.bonus_total,
+                    bonus_details: ruleResult.bonus_details,
                     target: ruleResult.target,
                     total: ruleResult.total,
                     result: ruleResult.result,
@@ -168,6 +183,17 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
             {stateChanges.length ? (
               <div className="mt-3 text-xs text-[var(--nova-text-muted)]">
                 <LabeledList label={t('snapshot.ruleAudit.stateChanges')} items={stateChanges} empty={t('snapshot.ruleAudit.noStateOps')} />
+              </div>
+            ) : null}
+            {stateConsumption ? (
+              <div className={`${panelCardClass} mt-3 p-2 text-xs text-[var(--nova-text-muted)]`}>
+                <div className="mb-1 font-medium text-[var(--nova-text)]">{t('snapshot.ruleAudit.stateConsumption')}</div>
+                <StateValue value={compactRecord({
+                  status: stateConsumption.status,
+                  mode: stateConsumption.mode,
+                  applied_ops: stateConsumption.applied_ops,
+                  warnings: stateConsumption.warnings,
+                })} />
               </div>
             ) : null}
             {terminalCandidate || terminalOutcome ? (

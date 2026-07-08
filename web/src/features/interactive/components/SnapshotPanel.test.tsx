@@ -40,13 +40,20 @@ describe('SnapshotPanel', () => {
                 challenge: '潜入检定',
                 cost: '失败会损失体力并暴露行踪',
                 state: '守阁长老正在靠近',
-                rule: { template: 'dice_check', dice: '1d20', roll_mode: 'normal' },
-                bonuses: [{ reason: '熟悉地形', value: 2 }],
+                adjudication: {
+                  reason: '强闯会改变守阁长老的警戒状态。',
+                  stakes: '失败会暴露行踪。',
+                  difficulty_reason: '守阁长老靠近，难度提高。',
+                  roll_mode_reason: '熟悉地形但没有掩护，正常投骰。',
+                  state_paths: ['actors.protagonist.state.resources.hp'],
+                },
+                rule: { template: 'dice_check', template_id: 'stealth-lock', label: '潜行与开锁', failure_policy: 'blocked', dice: '1d20', roll_mode: 'normal' },
+                bonuses: [{ kind: 'environment', source_path: 'scene.familiarity', reason: '熟悉地形', value: 2 }],
                 difficulty: 'hard',
                 outcomes: {
                   critical_success: { result: '无声潜入。' },
                   success: { result: '成功潜入。' },
-                  failure: { result: '强闯失败导致主线中断', state_changes: [{ path: 'resources.hp', change: -10 }] },
+                  failure: { result: '强闯失败导致主线中断', state_changes: [{ path: 'resources.hp', change: -10, reason: '被禁制反震' }] },
                   critical_failure: { result: '被当场抓住。' },
                 },
               },
@@ -59,15 +66,23 @@ describe('SnapshotPanel', () => {
                 rolls: [4],
                 roll_total: 4,
                 kept_roll: 4,
+                base_target: 15,
                 bonus_total: 2,
+                bonus_details: [{ kind: 'environment', source_path: 'scene.familiarity', reason: '熟悉地形', value: 2 }],
                 modifier: 2,
                 difficulty: 18,
                 target: 18,
                 total: 6,
                 outcome: 'failure',
                 result: '强闯失败导致主线中断',
-                state_changes: [{ path: 'resources.hp', change: -10 }],
+                state_changes: [{ path: 'actors.protagonist.state.resources.hp', change: -10, reason: '被禁制反震' }],
                 constraints: ['潜入检定失败，总值 6 / 难度 18。'],
+              },
+              state_consumption: {
+                status: 'partial',
+                mode: 'hybrid_auto',
+                applied_ops: [{ op: 'set', path: 'actors.protagonist.state.resources.hp', value: 0, reason: '被禁制反震', source_kind: 'rule_resolution', source_id: 'rr_1' }],
+                warnings: [{ path: 'actors.protagonist.state.conditions.poisoned', reason: '字段不在状态系统中' }],
               },
               terminal_candidate: { type: 'bad_end', reason: '强闯失败导致主线中断', check_id: 'check_1' },
               rule_constraints: ['潜入检定失败，总值 6 / 难度 18。'],
@@ -161,6 +176,12 @@ describe('SnapshotPanel', () => {
     expect(screen.queryByText('外门比拼前夜，制造排名压力。')).not.toBeInTheDocument()
     expect(screen.getByText('规则审计')).toBeInTheDocument()
     expect(screen.getByText('本次检定')).toBeInTheDocument()
+    expect(screen.getByText('投前裁定')).toBeInTheDocument()
+    expect(screen.getByText('强闯会改变守阁长老的警戒状态。')).toBeInTheDocument()
+    expect(screen.getByText('基础目标')).toBeInTheDocument()
+    expect(screen.getByText('状态消费')).toBeInTheDocument()
+    expect(screen.getByText('hybrid_auto')).toBeInTheDocument()
+    expect(screen.getByText('字段不在状态系统中')).toBeInTheDocument()
     expect(screen.getByText('强行闯入藏书阁')).toBeInTheDocument()
     expect(screen.getAllByText('潜入检定').length).toBeGreaterThan(0)
     expect(screen.getAllByText('failure').length).toBeGreaterThan(0)

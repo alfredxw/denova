@@ -179,6 +179,92 @@ describe('StoryStage composer', () => {
     expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
   })
 
+  it('keeps rule rolls hidden on the stage when visibility is audit-only', () => {
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        storyDirectors={[storyDirector('audit_only')]}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={snapshotWithRuleResolution()}
+        onDone={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('守阁长老拦在门前。')).toBeInTheDocument()
+    expect(screen.queryByText('总值 6 / 目标 18')).not.toBeInTheDocument()
+  })
+
+  it('shows a public rule roll card before the prose when enabled by the story director', () => {
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        storyDirectors={[storyDirector('public_roll')]}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={snapshotWithRuleResolution()}
+        onDone={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('潜入检定')).toBeInTheDocument()
+    expect(screen.getByText('总值 6 / 目标 18')).toBeInTheDocument()
+    expect(screen.getByText(/失败会损失体力并暴露行踪/)).toBeInTheDocument()
+    expect(screen.getByText('actors.protagonist.state.resources.hp -10')).toBeInTheDocument()
+    expect(screen.getByText('守阁长老拦在门前。')).toBeInTheDocument()
+  })
+
+  it('shows a temporary public rule roll card from the streaming tool result', async () => {
+    const user = userEvent.setup()
+    sendInteractiveMessageMock.mockResolvedValue(interactiveStream([
+      { event: 'tool_call', data: JSON.stringify({ id: 'call-1', name: 'prepare_interactive_turn', args: '{}' }) },
+      { event: 'tool_result', data: JSON.stringify({ id: 'call-1', name: 'prepare_interactive_turn', content: JSON.stringify({
+        resolution_id: 'rr_live',
+        label: '潜入检定',
+        dice: '1d20',
+        roll_mode: 'normal',
+        rolls: [4],
+        kept_roll: 4,
+        bonus_total: 2,
+        total: 6,
+        target: 18,
+        difficulty: 'hard',
+        outcome: 'failure',
+        result: '强闯失败导致主线中断',
+        cost: '失败会损失体力并暴露行踪',
+      }) }) },
+      { event: 'chunk', data: JSON.stringify({ content: '守阁长老拦在门前。' }) },
+      { event: 'done', data: '{}' },
+    ]))
+
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        storyDirectors={[storyDirector('public_roll')]}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {} }}
+        onDone={() => {}}
+      />,
+    )
+
+    await user.type(screen.getByPlaceholderText('你要做什么？'), '强行闯入藏书阁')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(await screen.findByText('潜入检定')).toBeInTheDocument()
+    expect(screen.getByText('总值 6 / 目标 18')).toBeInTheDocument()
+    expect(screen.getByText('强闯失败导致主线中断')).toBeInTheDocument()
+  })
+
   it('keeps forward actions available while the initial director plan runs in the background', async () => {
     const user = userEvent.setup()
     generateInteractiveHotChoicesMock.mockResolvedValue({ enabled: true, choices: ['继续观察'] })
@@ -853,5 +939,73 @@ function story(): StorySummary {
     updated_at: '2026-06-27T00:00:00Z',
     branches: 1,
     events: 0,
+  }
+}
+
+function storyDirector(ruleVisibilityMode: string) {
+  return {
+    version: 3,
+    id: 'default',
+    name: '默认故事导演',
+    description: '',
+    strategy: {
+      enabled: true,
+      rule_visibility_mode: ruleVisibilityMode,
+    },
+    trpg_system: { rule_templates: [] },
+    opening_selector: { enabled: true },
+    tags: [],
+    custom: false,
+  }
+}
+
+function snapshotWithRuleResolution(): Snapshot {
+  return {
+    story_id: 'story-1',
+    branch_id: 'main',
+    state: {},
+    turns: [{
+      id: 'turn-1',
+      parent_id: null,
+      branch_id: 'main',
+      ts: '2026-06-28T00:00:00Z',
+      user: '强行闯入藏书阁',
+      narrative: '守阁长老拦在门前。',
+      rule_resolution: {
+        id: 'rr_1',
+        request: {
+          action: '强行闯入藏书阁',
+          intent: '冒险',
+          challenge: '潜入检定',
+          cost: '失败会损失体力并暴露行踪',
+          state: '守阁长老正在靠近',
+          adjudication: {
+            stakes: '失败会暴露行踪。',
+          },
+          difficulty: 'hard',
+          outcomes: {
+            critical_success: { result: '无声潜入。' },
+            success: { result: '成功潜入。' },
+            failure: { result: '强闯失败导致主线中断', state_changes: [{ path: 'actors.protagonist.state.resources.hp', change: -10, reason: '被禁制反震' }] },
+            critical_failure: { result: '被当场抓住。' },
+          },
+        },
+        result: {
+          id: 'check_1',
+          label: '潜入检定',
+          dice: '1d20',
+          roll_mode: 'normal',
+          rolls: [4],
+          kept_roll: 4,
+          base_target: 15,
+          bonus_total: 2,
+          target: 18,
+          total: 6,
+          outcome: 'failure',
+          result: '强闯失败导致主线中断',
+          state_changes: [{ path: 'actors.protagonist.state.resources.hp', change: -10, reason: '被禁制反震' }],
+        },
+      },
+    }],
   }
 }

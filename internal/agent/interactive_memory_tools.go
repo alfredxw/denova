@@ -266,10 +266,10 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 		return nil, nil
 	}
 	desc := strings.Join([]string{
-		"执行本回合一次 d20 或 d100 规则检定。Interactive Agent 负责填写用户行为、意图、挑战、消耗、当前状态说明、运行时加成原因和值、难度等级，以及大成功/成功/失败/大失败四档后果；本工具负责掷骰、应用优势或劣势、计算目标、判定结果，并返回命中的最终后果。",
-		"参数协议：difficulty 必须是 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium/moderate。rule 可省略；如提供，template 只能是 dice_check，dice 只能是 1d20 或 1d100，roll_mode 只能是 normal/advantage/disadvantage，modifier 是模板难度修正值且正数更难。",
-		"若本轮上下文提供了 TRPG 规则模板，请先用模板里的 difficulty_guidance 判断运行时 difficulty 和 bonuses，用 state_effect_guidance 设计 outcomes.state_changes；不要把这些自然语言指引原样塞进工具参数。",
-		`最小示例：{"action":"撬锁","intent":"潜入仓库","challenge":"巡逻逼近时开锁","cost":"失败会消耗体力并暴露","state":"主角有简易工具，体力尚可。","rule":{"dice":"1d20","modifier":0},"difficulty":"normal","outcomes":{"critical_success":{"result":"无声开锁并发现额外线索。"},"success":{"result":"开锁成功但耗时。"},"failure":{"result":"没能打开，巡逻更近。"},"critical_failure":{"result":"工具折断并惊动巡逻。"}}}`,
+		"执行本回合一次 d20 或 d100 规则检定。Interactive Agent 负责填写用户行为、意图、挑战、消耗、当前状态说明、投前裁定依据、运行时加成来源和值、难度等级，以及大成功/成功/失败/大失败四档后果；本工具负责掷骰、应用优势或劣势、计算目标、判定结果，并返回命中的最终后果。",
+		"参数协议：difficulty 必须是 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium/moderate。adjudication 必须说明为什么需要检定、stakes、难度依据、优势/劣势依据和使用到的状态路径。rule 可省略；如提供，template 只能是 dice_check，dice 只能是 1d20 或 1d100，roll_mode 只能是 normal/advantage/disadvantage，modifier 是模板难度修正值且正数更难；来自 TRPG 模板时填写 template_id、label、failure_policy。",
+		"若本轮上下文提供了 TRPG 检定配置，请先用配置里的 trigger、must_check_examples、skip_check_examples 判断是否检定，用 difficulty_guidance 判断 difficulty/bonuses，用 state_effect_guidance 设计 outcomes.state_changes；state_changes 只写本次检定直接导致的可计算数值变化，叙事线索和短期事实留给后台导演维护。",
+		`最小示例：{"action":"撬锁","intent":"潜入仓库","challenge":"巡逻逼近时开锁","cost":"失败会消耗体力并暴露","state":"主角有简易工具，体力尚可。","adjudication":{"reason":"开锁有时间压力且失败会改变警戒状态。","stakes":"失败会消耗体力并让巡逻靠近。","difficulty_reason":"旧锁简单但附近有人巡逻，维持普通难度。","roll_mode_reason":"工具合适但环境紧张，正常投骰。","state_paths":["actors.protagonist.state.resources.stamina"]},"rule":{"template_id":"dm-osr-player-skill","label":"OSR 型 DM：玩家技巧优先","failure_policy":"blocked","dice":"1d20","modifier":0},"bonuses":[{"kind":"equipment","reason":"有简易开锁工具","value":2}],"difficulty":"normal","outcomes":{"critical_success":{"result":"无声开锁并发现额外线索。"},"success":{"result":"开锁成功但耗时。"},"failure":{"result":"没能打开，巡逻更近。","state_changes":[{"path":"actors.protagonist.state.resources.stamina","change":-1,"reason":"紧张尝试消耗体力。"}]},"critical_failure":{"result":"工具折断并惊动巡逻。","state_changes":[{"path":"actors.protagonist.state.resources.stamina","change":-2,"reason":"强行操作导致明显体力消耗。"}]}}}`,
 	}, "\n")
 	prepareTool, err := utils.InferTool("prepare_interactive_turn", desc, func(callCtx context.Context, input interactive.TurnCheckRequest) (string, error) {
 		resolution, err := ctx.PrepareTurn(callCtx, input)

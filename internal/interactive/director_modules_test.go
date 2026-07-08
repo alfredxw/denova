@@ -1,6 +1,8 @@
 package interactive
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -78,6 +80,18 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ruleSystems, err := ruleLibrary.List()
+	if err != nil {
+		t.Fatalf("List built-in rule systems failed: %v", err)
+	}
+	if len(ruleSystems) < 7 {
+		t.Fatalf("expected multiple built-in DM style rule systems, got %#v", ruleSystems)
+	}
+	for _, item := range ruleSystems {
+		if IsBuiltinRuleSystemID(item.ID) && (item.Custom || item.BuiltinOverridden || len(item.TRPGSystem.RuleTemplates) != 1) {
+			t.Fatalf("built-in rule system should be a single non-overridden config: %#v", item)
+		}
+	}
 	rule.Name = "我的 TRPG 检定"
 	overriddenRule, err := ruleLibrary.Update(DefaultRuleSystemID, rule, rule.UpdatedAt)
 	if err != nil {
@@ -95,6 +109,28 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	}
 	if restoredRule.Custom || restoredRule.BuiltinOverridden || restoredRule.Name == "我的 TRPG 检定" {
 		t.Fatalf("unexpected restored rule system: %#v", restoredRule)
+	}
+	styleRule, err := ruleLibrary.Get(RuleSystemOSRPlayerSkillID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	styleRule.Name = "我的 OSR 检定"
+	overriddenStyleRule, err := ruleLibrary.Update(RuleSystemOSRPlayerSkillID, styleRule, styleRule.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update built-in style rule system should create override: %v", err)
+	}
+	if overriddenStyleRule.Custom || !overriddenStyleRule.BuiltinOverridden || overriddenStyleRule.Name != "我的 OSR 检定" {
+		t.Fatalf("unexpected style rule override: %#v", overriddenStyleRule)
+	}
+	if err := ruleLibrary.Delete(RuleSystemOSRPlayerSkillID); err != nil {
+		t.Fatalf("Delete style rule override should restore builtin: %v", err)
+	}
+	restoredStyleRule, err := ruleLibrary.Get(RuleSystemOSRPlayerSkillID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredStyleRule.Custom || restoredStyleRule.BuiltinOverridden || restoredStyleRule.Name == "我的 OSR 检定" || len(restoredStyleRule.TRPGSystem.RuleTemplates) != 1 {
+		t.Fatalf("unexpected restored style rule system: %#v", restoredStyleRule)
 	}
 
 	actorLibrary := NewActorStateLibrary(novaDir)
@@ -167,6 +203,40 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	}
 	if restoredMemory.Custom || restoredMemory.BuiltinOverridden || restoredMemory.Name == "我的记忆结构" {
 		t.Fatalf("unexpected restored memory structure: %#v", restoredMemory)
+	}
+}
+
+func TestParseLegacyRuleSystemKeepsSingleCheck(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.json")
+	if err := os.WriteFile(path, []byte(`{
+  "id": "legacy-rules",
+  "name": "旧 TRPG 检定",
+  "trpg_system": {
+    "rule_templates": [
+      {
+        "id": "first-rule",
+        "label": "第一条旧规则",
+        "dice": "1d20",
+        "failure_policy": "fail_forward"
+      },
+      {
+        "id": "second-rule",
+        "label": "第二条旧规则",
+        "dice": "1d100",
+        "failure_policy": "hard_failure"
+      }
+    ]
+  }
+}`), 0o644); err != nil {
+		t.Fatalf("write legacy rule system failed: %v", err)
+	}
+
+	item, err := parseRuleSystemFile(path)
+	if err != nil {
+		t.Fatalf("parse legacy rule system failed: %v", err)
+	}
+	if len(item.TRPGSystem.RuleTemplates) != 1 || item.TRPGSystem.RuleTemplates[0].ID != "first-rule" {
+		t.Fatalf("legacy rule system should keep one check config: %#v", item.TRPGSystem.RuleTemplates)
 	}
 }
 

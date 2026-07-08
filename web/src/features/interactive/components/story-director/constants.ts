@@ -45,6 +45,14 @@ export const STORY_DIRECTOR_AGENT_MODE_OPTIONS = [
   { value: 'every_turn', labelKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurn', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurnDesc' },
   { value: 'off', labelKey: 'settingPanel.storyDirector.strategy.agentMode.off', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.offDesc' },
 ] as const
+export const STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS = [
+  { value: 'hybrid_auto', labelKey: 'settingPanel.storyDirector.strategy.ruleState.hybridAuto', descriptionKey: 'settingPanel.storyDirector.strategy.ruleState.hybridAutoDesc' },
+  { value: 'director_only', labelKey: 'settingPanel.storyDirector.strategy.ruleState.directorOnly', descriptionKey: 'settingPanel.storyDirector.strategy.ruleState.directorOnlyDesc' },
+] as const
+export const STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS = [
+  { value: 'audit_only', labelKey: 'settingPanel.storyDirector.strategy.ruleVisibility.auditOnly', descriptionKey: 'settingPanel.storyDirector.strategy.ruleVisibility.auditOnlyDesc' },
+  { value: 'public_roll', labelKey: 'settingPanel.storyDirector.strategy.ruleVisibility.publicRoll', descriptionKey: 'settingPanel.storyDirector.strategy.ruleVisibility.publicRollDesc' },
+] as const
 export const EDITOR_TABS = ['trpg', 'opening', 'events'] as const
 
 export type StoryDirectorEditorTab = typeof EDITOR_TABS[number]

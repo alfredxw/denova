@@ -68,8 +68,18 @@ func minInt(values ...int) int {
 func TestResolveTurnRulesSingleD20CheckSelectsOutcomeAndStateChanges(t *testing.T) {
 	req := sampleTurnCheckRequest()
 	req.Difficulty = "normal"
-	req.Bonuses = []TurnCheckBonus{{Reason: "有开锁工具", Value: 2}, {Reason: "雨中手冷", Value: -1}}
-	req.Outcomes.Failure.StateChanges = []TurnStateChange{{Path: "resources.stamina", Change: -1}}
+	req.Adjudication = TurnCheckAdjudication{
+		Reason:           "巡逻靠近，开锁失败会改变局势。",
+		Stakes:           "失败会消耗体力并提高警戒。",
+		DifficultyReason: "旧锁简单但有时间压力。",
+		RollModeReason:   "有工具也有雨水干扰，正常投骰。",
+		StatePaths:       []string{"resources.stamina"},
+	}
+	req.Rule.TemplateID = "stealth-lock"
+	req.Rule.Label = "潜行与开锁"
+	req.Rule.FailurePolicy = "blocked"
+	req.Bonuses = []TurnCheckBonus{{Kind: "equipment", SourcePath: "inventory.lockpick", Reason: "有开锁工具", Value: 2}, {Kind: "environment", Reason: "雨中手冷", Value: -1}}
+	req.Outcomes.Failure.StateChanges = []TurnStateChange{{Path: "resources.stamina", Change: -1, Reason: "紧张尝试消耗体力"}}
 	seed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 0, 1, "failure")
 
 	resolution, err := resolveTurnRulesWithSeed("st_1", "main", initialStoryState(), req, seed)
@@ -82,11 +92,17 @@ func TestResolveTurnRulesSingleD20CheckSelectsOutcomeAndStateChanges(t *testing.
 	if resolution.Result.BonusTotal != 1 || resolution.Result.Total != resolution.Result.KeptRoll+1 {
 		t.Fatalf("bonus should contribute to total: %#v", resolution.Result)
 	}
+	if resolution.Result.BaseTarget != 10 || len(resolution.Result.BonusDetails) != 2 || resolution.Result.BonusDetails[0].Kind != "equipment" {
+		t.Fatalf("expected auditable target and bonus details: %#v", resolution.Result)
+	}
+	if resolution.Request.Adjudication.StatePaths[0] != "actors.protagonist.state.resources.stamina" || resolution.Request.Rule.TemplateID != "stealth-lock" {
+		t.Fatalf("expected normalized adjudication and rule audit: %#v", resolution.Request)
+	}
 	if len(resolution.Result.StateChanges) != 1 || resolution.Result.StateChanges[0].Change != -1 {
 		t.Fatalf("state changes should come from selected outcome: %#v", resolution.Result.StateChanges)
 	}
 	output := resolution.ToolOutput()
-	if output.ResolutionID != resolution.ID || output.Result != req.Outcomes.Failure.Result || output.Target != 10 {
+	if output.ResolutionID != resolution.ID || output.Result != req.Outcomes.Failure.Result || output.Target != 10 || output.BaseTarget != 10 || len(output.BonusDetails) != 2 {
 		t.Fatalf("unexpected tool output: %#v", output)
 	}
 }
@@ -232,6 +248,50 @@ func TestValidateTurnCheckRequestListsAllowedEnums(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "合法值") || !strings.Contains(err.Error(), "dice_check") {
 		t.Fatalf("template error should list allowed values, got: %v", err)
+	}
+}
+
+func TestNormalizeRuleCheckKeepsTriggerExamples(t *testing.T) {
+	checks := normalizeRuleChecks([]RuleCheck{
+		{
+			ID:                "example-rule",
+			Label:             "示例规则",
+			Dice:              "1d20",
+			FailurePolicy:     "fail_forward",
+			MustCheckExamples: []string{"  强行撬锁  ", "强行撬锁", "", "攻击守卫"},
+			SkipCheckExamples: []string{"观察空房间", "  观察空房间  ", "", "闲聊"},
+		},
+		{
+			ID:            "extra-rule",
+			Label:         "多余规则",
+			Dice:          "1d100",
+			FailurePolicy: "hard_failure",
+		},
+	})
+	if len(checks) != 1 {
+		t.Fatalf("check count = %d", len(checks))
+	}
+	if checks[0].ID != "example-rule" {
+		t.Fatalf("normalize should keep only the first TRPG check config, got: %#v", checks)
+	}
+	if got := checks[0].MustCheckExamples; len(got) != 2 || got[0] != "强行撬锁" || got[1] != "攻击守卫" {
+		t.Fatalf("must examples not normalized: %#v", got)
+	}
+	if got := checks[0].SkipCheckExamples; len(got) != 2 || got[0] != "观察空房间" || got[1] != "闲聊" {
+		t.Fatalf("skip examples not normalized: %#v", got)
+	}
+
+	checks = normalizeRuleChecks([]RuleCheck{
+		{},
+		{
+			ID:            "legacy-valid-rule",
+			Label:         "旧有效规则",
+			Dice:          "1d20",
+			FailurePolicy: "fail_forward",
+		},
+	})
+	if len(checks) != 1 || checks[0].ID != "legacy-valid-rule" {
+		t.Fatalf("normalize should keep the first valid TRPG check config: %#v", checks)
 	}
 }
 

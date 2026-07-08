@@ -578,6 +578,145 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	}
 }
 
+func TestAppendTurnWithStateConsumesRuleStateChanges(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:           "规则状态",
+		InitialStateOps: StoryDirectorInitialStateOps(DefaultStoryDirector()),
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+	req := sampleTurnCheckRequest()
+	req.Outcomes.Failure.StateChanges = []TurnStateChange{{Path: "resources.stamina", Change: -10, Reason: "强行开锁透支体力"}}
+	seed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 0, 0, "failure")
+	resolution, err := resolveTurnRulesWithSeed(story.ID, "main", initialStoryState(), req, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		BranchID:       "main",
+		User:           "我撬锁",
+		Narrative:      "锁芯卡住，主角不得不后退喘息。",
+		RuleResolution: &resolution,
+	})
+	if err != nil {
+		t.Fatalf("AppendTurnWithState failed: %v", err)
+	}
+	if turn.RuleResolution == nil || turn.RuleResolution.StateConsumption == nil {
+		t.Fatalf("expected state consumption audit: %#v", turn.RuleResolution)
+	}
+	if turn.RuleResolution.StateConsumption.Status != "applied" {
+		t.Fatalf("state consumption status = %s", turn.RuleResolution.StateConsumption.Status)
+	}
+	if len(turn.RuleResolution.StateConsumption.AppliedOps) != 1 {
+		t.Fatalf("expected one applied op: %#v", turn.RuleResolution.StateConsumption)
+	}
+	op := turn.RuleResolution.StateConsumption.AppliedOps[0]
+	if op.Path != "actors.protagonist.state.resources.stamina" || op.SourceKind != StateOpSourceRuleResolution || op.SourceID != resolution.ID {
+		t.Fatalf("unexpected applied op: %#v", op)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := getPath(snapshot.State, "actors.protagonist.state.resources.stamina")
+	if got := numberFromAny(value); got != 0 {
+		t.Fatalf("stamina should clamp to 0, got %#v in state %#v", value, snapshot.State)
+	}
+}
+
+func TestAppendTurnWithStateSkipsUnknownRuleStateChanges(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:           "规则状态跳过",
+		InitialStateOps: StoryDirectorInitialStateOps(DefaultStoryDirector()),
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+	req := sampleTurnCheckRequest()
+	req.Outcomes.Failure.StateChanges = []TurnStateChange{{Path: "actors.protagonist.state.conditions.poisoned", Change: 1, Reason: "中毒"}}
+	seed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 0, 0, "failure")
+	resolution, err := resolveTurnRulesWithSeed(story.ID, "main", initialStoryState(), req, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		BranchID:       "main",
+		User:           "我撬锁",
+		Narrative:      "锁芯卡住。",
+		RuleResolution: &resolution,
+	})
+	if err != nil {
+		t.Fatalf("AppendTurnWithState failed: %v", err)
+	}
+	if turn.RuleResolution == nil || turn.RuleResolution.StateConsumption == nil {
+		t.Fatalf("expected state consumption audit: %#v", turn.RuleResolution)
+	}
+	if turn.RuleResolution.StateConsumption.Status != "skipped" || len(turn.RuleResolution.StateConsumption.Warnings) != 1 {
+		t.Fatalf("expected skipped warning: %#v", turn.RuleResolution.StateConsumption)
+	}
+	if turn.StateDelta != nil {
+		t.Fatalf("skipped state changes should not create delta: %#v", turn.StateDelta)
+	}
+}
+
+func TestRerollRuleResolutionReplacesAutomaticRuleStateOps(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:           "规则重抽",
+		InitialStateOps: StoryDirectorInitialStateOps(DefaultStoryDirector()),
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+	req := sampleTurnCheckRequest()
+	stateChange := []TurnStateChange{{Path: "resources.stamina", Change: -1, Reason: "本次检定消耗体力"}}
+	req.Outcomes.CriticalSuccess.StateChanges = stateChange
+	req.Outcomes.Success.StateChanges = stateChange
+	req.Outcomes.Failure.StateChanges = stateChange
+	req.Outcomes.CriticalFailure.StateChanges = stateChange
+	resolution, err := resolveTurnRulesWithSeed(story.ID, "main", initialStoryState(), req, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		BranchID:       "main",
+		User:           "我撬锁",
+		Narrative:      "锁芯发出轻响。",
+		RuleResolution: &resolution,
+	})
+	if err != nil {
+		t.Fatalf("AppendTurnWithState failed: %v", err)
+	}
+	reroll, err := store.RerollRuleResolution(story.ID, resolution.ID, RuleResolutionRerollRequest{TurnID: turn.ID})
+	if err != nil {
+		t.Fatalf("RerollRuleResolution failed: %v", err)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := numberFromAny(getPath(snapshot.State, "actors.protagonist.state.resources.stamina")); got != 4 {
+		t.Fatalf("reroll should replace old automatic op instead of stacking, stamina=%v state=%#v", got, snapshot.State)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.StateDelta == nil || len(snapshot.CurrentTurn.StateDelta.Ops) != 1 {
+		t.Fatalf("expected exactly one rule state op after reroll: %#v", snapshot.CurrentTurn)
+	}
+	op := snapshot.CurrentTurn.StateDelta.Ops[0]
+	if op.SourceKind != StateOpSourceRuleResolution || op.SourceID != reroll.ID {
+		t.Fatalf("expected reroll op to point at new resolution: %#v", op)
+	}
+	if snapshot.CurrentTurn.RuleResolution == nil || snapshot.CurrentTurn.RuleResolution.StateConsumption == nil || snapshot.CurrentTurn.RuleResolution.StateConsumption.Status != "applied" {
+		t.Fatalf("expected reroll state consumption audit: %#v", snapshot.CurrentTurn.RuleResolution)
+	}
+}
+
 func TestAppendTurnWithStatePersistsDisplayEventTimelineDetails(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{

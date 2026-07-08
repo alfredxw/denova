@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
 import { BooleanSwitchField } from '../setting-panel/BooleanSwitchField'
 import { DirectorModuleConsole } from './ModuleConsole'
-import { consoleSectionClassName, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RANDOM_RATE_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
+import { consoleSectionClassName, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RANDOM_RATE_OPTIONS, STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS, STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
 import { EmptyState, Field, SectionTitle } from './shared'
 import { directorResolvedEventPackages, findById, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, parseDecimalInput, presetStatusLabel, strategyOptionText, strategyRateValue, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
 
@@ -183,6 +183,20 @@ export function StoryDirectorEditor({
               fallbackValue="triggered"
               options={STORY_DIRECTOR_AGENT_MODE_OPTIONS}
               onChange={(director_agent_mode) => updateStrategy({ director_agent_mode })}
+            />
+            <StrategySelect
+              label={t('settingPanel.storyDirector.ruleStateConsumption')}
+              value={draft.strategy?.rule_state_consumption_mode || ''}
+              fallbackValue="hybrid_auto"
+              options={STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS}
+              onChange={(rule_state_consumption_mode) => updateStrategy({ rule_state_consumption_mode })}
+            />
+            <StrategySelect
+              label={t('settingPanel.storyDirector.ruleVisibility')}
+              value={draft.strategy?.rule_visibility_mode || ''}
+              fallbackValue="audit_only"
+              options={STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS}
+              onChange={(rule_visibility_mode) => updateStrategy({ rule_visibility_mode })}
             />
             <Field label={t('settingPanel.storyDirector.branchPlanningTurns')}>
               <Input

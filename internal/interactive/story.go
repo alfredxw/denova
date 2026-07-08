@@ -482,6 +482,9 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	if branch.Head != "" {
 		parentID = branch.Head
 	}
+	path, _ := eventPath(branch.Head, eventsByID(lines))
+	state := stateFromPath(path)
+	director := s.storyDirectorForMeta(meta)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	turn := TurnEvent{
 		V:                    schemaVersion,
@@ -502,14 +505,23 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		MemoryStatus:         "pending",
 		Flags:                map[string]bool{"pinned": false, "locked": false},
 	}
+	ops := normalizeStateOps(req.Ops)
+	if turn.RuleResolution != nil {
+		ops = append(ops, applyRuleStateConsumption(state, director.ActorState, turn.ID, turn.RuleResolution, director.Strategy.RuleStateConsumptionMode)...)
+	}
 	branch.Head = turn.ID
 
 	var delta *StateDeltaEvent
-	if len(req.Ops) > 0 {
-		stateDelta := newStateDelta(req.Ops)
+	if len(ops) > 0 {
+		for _, op := range ops {
+			if err := validateStateOp(op); err != nil {
+				return TurnEvent{}, nil, err
+			}
+		}
+		stateDelta := newStateDelta(ops)
 		turn.StateDelta = &stateDelta
 		turn.StateStatus = "ready"
-		stateDeltaEvent := newStateDeltaEvent(turn.ID, parentIDString(parentID), branchID, now, req.Ops)
+		stateDeltaEvent := newStateDeltaEvent(turn.ID, parentIDString(parentID), branchID, now, ops)
 		delta = &stateDeltaEvent
 	} else {
 		turn.StateStatus = "pending"
@@ -877,6 +889,8 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	next.CreatedAt = now
 	next.ID = newID("rr")
+	director := s.storyDirectorForMeta(meta)
+	ruleOps := applyRuleStateConsumption(state, director.ActorState, target.ID, &next, director.Strategy.RuleStateConsumptionMode)
 	terminalOutcome := terminalOutcomeFromRuleResolution(next, target.ID, target.Narrative)
 	updated := false
 	for i := range lines {
@@ -885,6 +899,25 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 		}
 		lines[i].Raw["rule_resolution"] = next
 		delete(lines[i].Raw, "turn_brief")
+		existingOps := []StateOp{}
+		if target.StateDelta != nil {
+			existingOps = append(existingOps, target.StateDelta.Ops...)
+		}
+		nextOps := append(removeRuleResolutionStateOps(existingOps, target.RuleResolution.ID), ruleOps...)
+		if len(nextOps) > 0 {
+			for _, op := range nextOps {
+				if err := validateStateOp(op); err != nil {
+					return RuleResolution{}, err
+				}
+			}
+			lines[i].Raw["state_delta"] = newStateDelta(nextOps)
+			lines[i].Raw["state_status"] = "ready"
+			delete(lines[i].Raw, "state_error")
+		} else {
+			delete(lines[i].Raw, "state_delta")
+			lines[i].Raw["state_status"] = "pending"
+			delete(lines[i].Raw, "state_error")
+		}
 		if terminalOutcome != nil {
 			lines[i].Raw["terminal_outcome"] = terminalOutcome
 		} else {
@@ -1083,6 +1116,29 @@ func branchIsTerminal(lines []StoryEventRecord, head string) bool {
 	return turn != nil && turn.TerminalOutcome != nil && turn.TerminalOutcome.Terminal
 }
 
+func stateFromPath(path []StoryEventRecord) map[string]any {
+	state := initialStoryState()
+	for _, record := range path {
+		switch record.Envelope.Type {
+		case StoryEventTypeStateDelta:
+			var delta StateDeltaEvent
+			if err := mapToStruct(record.Raw, &delta); err == nil {
+				for _, op := range delta.Ops {
+					applyStateOp(state, op)
+				}
+			}
+		case StoryEventTypeTurn:
+			var turn TurnEvent
+			if err := mapToStruct(record.Raw, &turn); err == nil && turn.StateDelta != nil {
+				for _, op := range turn.StateDelta.Ops {
+					applyStateOp(state, op)
+				}
+			}
+		}
+	}
+	return state
+}
+
 func stateBeforeTurn(path []StoryEventRecord, turnID string) map[string]any {
 	state := initialStoryState()
 	for _, record := range path {
@@ -1107,6 +1163,22 @@ func stateBeforeTurn(path []StoryEventRecord, turnID string) map[string]any {
 		}
 	}
 	return state
+}
+
+func (s *Store) storyDirectorForMeta(meta StoryMeta) StoryDirector {
+	if strings.TrimSpace(s.novaDir) == "" {
+		return DefaultStoryDirector()
+	}
+	directorID := normalizedStoryDirectorID(meta.StoryDirectorID)
+	director, err := NewStoryDirectorLibrary(s.novaDir).Get(directorID)
+	if err == nil {
+		return director
+	}
+	fallback, fallbackErr := NewStoryDirectorLibrary(s.novaDir).Get(DefaultStoryDirectorID)
+	if fallbackErr == nil {
+		return fallback
+	}
+	return DefaultStoryDirector()
 }
 
 func terminalOutcomeFromRuleResolution(resolution RuleResolution, turnID, narrative string) *TerminalOutcome {

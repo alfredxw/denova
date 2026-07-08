@@ -163,6 +163,14 @@ describe('MemoryPanel', () => {
             challenge: '潜入检定',
             cost: '失败会损失体力并暴露行踪',
             state: '守阁长老正在靠近',
+            adjudication: {
+              reason: '强闯会触发守阁长老反制。',
+              stakes: '失败会暴露行踪。',
+              difficulty_reason: '守阁长老靠近，难度提高。',
+              roll_mode_reason: '没有明显优势或劣势。',
+              state_paths: ['actors.protagonist.state.resources.hp'],
+            },
+            bonuses: [{ kind: 'environment', source_path: 'scene.familiarity', reason: '熟悉地形', value: 2 }],
             difficulty: 'hard',
             outcomes: {
               critical_success: { result: '无声潜入。' },
@@ -178,10 +186,19 @@ describe('MemoryPanel', () => {
             roll_mode: 'normal',
             rolls: [4],
             kept_roll: 4,
+            base_target: 15,
             bonus_total: 2,
+            bonus_details: [{ kind: 'environment', source_path: 'scene.familiarity', reason: '熟悉地形', value: 2 }],
+            target: 18,
             total: 6,
             outcome: 'failure',
             result: '强闯失败导致主线中断',
+          },
+          state_consumption: {
+            status: 'partial',
+            mode: 'hybrid_auto',
+            applied_ops: [{ op: 'set', path: 'actors.protagonist.state.resources.hp', value: 0, source_kind: 'rule_resolution', source_id: 'rr_1' }],
+            warnings: [{ path: 'actors.protagonist.state.conditions.poisoned', reason: '字段不在状态系统中' }],
           },
           terminal_candidate: { type: 'bad_end', reason: '强闯失败导致主线中断', check_id: 'check_1' },
         },
@@ -201,6 +218,10 @@ describe('MemoryPanel', () => {
     expect(screen.getByText('导演编排可能涉及剧透')).toBeInTheDocument()
     expect(screen.getByText('规则审计')).toBeInTheDocument()
     expect(screen.getByText('失败会损失体力并暴露行踪')).toBeInTheDocument()
+    expect(screen.getByText('投前裁定')).toBeInTheDocument()
+    expect(screen.getByText('强闯会触发守阁长老反制。')).toBeInTheDocument()
+    expect(screen.getByText('状态消费')).toBeInTheDocument()
+    expect(screen.getByText('字段不在状态系统中')).toBeInTheDocument()
     expect(screen.getAllByText('潜入检定').length).toBeGreaterThan(0)
     expect(screen.getByText('failure')).toBeInTheDocument()
     expect(screen.getAllByText('强闯失败导致主线中断').length).toBeGreaterThan(0)

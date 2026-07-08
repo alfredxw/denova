@@ -187,8 +187,12 @@ describe('SettingPanel', () => {
     vi.mocked(deleteImagePreset).mockResolvedValue(undefined)
     vi.mocked(getEventPackages).mockResolvedValue([eventPackage('default', '默认事件包')])
     vi.mocked(updateEventPackage).mockImplementation(async (id, input) => ({ ...eventPackage(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as EventPackageModule)
-    vi.mocked(getRuleSystems).mockResolvedValue([ruleSystem('default-rules', '默认 TRPG 检定')])
-    vi.mocked(updateRuleSystem).mockImplementation(async (id, input) => ({ ...ruleSystem(id, input.name || id), ...input, id, custom: id !== 'default-rules', builtin_overridden: id === 'default-rules', updated_at: '2026-01-01T00:00:01Z' }) as RuleSystemModule)
+    vi.mocked(getRuleSystems).mockResolvedValue([
+      ruleSystem('default', '均衡 DM 检定'),
+      ruleSystem('dm-fail-forward', '推进型 DM：失败也前进'),
+      ruleSystem('dm-osr-player-skill', 'OSR 型 DM：玩家技巧优先'),
+    ])
+    vi.mocked(updateRuleSystem).mockImplementation(async (id, input) => ({ ...ruleSystem(id, input.name || id), ...input, id, custom: !isBuiltinRuleSystemID(id), builtin_overridden: isBuiltinRuleSystemID(id), updated_at: '2026-01-01T00:00:01Z' }) as RuleSystemModule)
     vi.mocked(getOpeningSelectors).mockResolvedValue([openingSelector('default-opening', '默认开局选择')])
     vi.mocked(updateOpeningSelector).mockImplementation(async (id, input) => ({ ...openingSelector(id, input.name || id), ...input, id, custom: id !== 'default-opening', builtin_overridden: id === 'default-opening', updated_at: '2026-01-01T00:00:01Z' }) as OpeningSelectorModule)
     vi.mocked(getStyleReferences).mockResolvedValue([])
@@ -350,7 +354,9 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '展开全部目录' }))
     expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /默认 TRPG 检定/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /均衡 DM 检定/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /推进型 DM：失败也前进/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /OSR 型 DM：玩家技巧优先/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '折叠全部目录' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '折叠全部目录' }))
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
@@ -440,6 +446,24 @@ describe('SettingPanel', () => {
     })
   })
 
+  it('selects a DM check style through the story director TRPG resource ref', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await selectDefaultDirector(user)
+    const ruleRow = screen.getAllByText('TRPG 检定')
+      .map((node) => node.closest('div') as HTMLElement | null)
+      .find((node): node is HTMLElement => Boolean(node && within(node).queryByRole('combobox'))) as HTMLElement
+    await user.click(within(ruleRow).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /推进型 DM：失败也前进/ }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
+    const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
+    expect(payload.module_refs).toMatchObject({ rule_system_id: 'dm-fail-forward' })
+    expect(payload.module_refs as Record<string, unknown>).not.toHaveProperty('dm_adjudication_style')
+  })
+
   it('uses localized enum controls for story director strategy values', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
@@ -499,12 +523,17 @@ describe('SettingPanel', () => {
     await user.click(within(modeField).getByRole('combobox'))
     await user.click(screen.getByRole('option', { name: /每回合/ }))
 
+    const visibilityField = screen.getByText('规则可见性').closest('label') as HTMLElement
+    await user.click(within(visibilityField).getByRole('combobox'))
+    await user.click(screen.getByRole('option', { name: /公开掷骰/ }))
+
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
     const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.strategy).toMatchObject({
       enabled: false,
       director_agent_mode: 'every_turn',
+      rule_visibility_mode: 'public_roll',
       branch_planning_turns: 7,
     })
   })
@@ -600,23 +629,21 @@ describe('SettingPanel', () => {
     expect(screen.getByText('请先修复 JSON，再切回可视化视图。')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'TRPG 检定' }))
-    await user.click(await screen.findByRole('button', { name: /默认 TRPG 检定/ }))
+    await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
     expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '默认 TRPG 检定' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '均衡 DM 检定' })).not.toBeInTheDocument()
     expect(updateEventPackage).not.toHaveBeenCalled()
   })
 
-  it('edits TRPG checks as ready-to-use rule templates', async () => {
+  it('edits TRPG checks as a single DM-style dice config', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
     await user.click(screen.getByRole('button', { name: '展开全部目录' }))
-    await user.click(screen.getByRole('button', { name: /默认 TRPG 检定/ }))
+    await user.click(screen.getByRole('button', { name: /均衡 DM 检定/ }))
 
-    expect(screen.getByRole('heading', { name: '默认 TRPG 检定' })).toBeInTheDocument()
-    for (const ruleName of ['高风险行动', '战斗攻防', '潜行与开锁', '探索调查', '社交谈判', '体力/意志抗压']) {
-      expect(screen.getByText(ruleName)).toBeInTheDocument()
-    }
+    expect(screen.getByRole('heading', { name: '均衡 DM 检定' })).toBeInTheDocument()
+    expect(screen.getByDisplayValue('均衡骰子检定')).toBeInTheDocument()
     expect(screen.queryByText('规则 ID')).not.toBeInTheDocument()
     expect(screen.queryByText(/安全表达式/)).not.toBeInTheDocument()
     expect(screen.queryByText('成功 StateOps')).not.toBeInTheDocument()
@@ -625,15 +652,18 @@ describe('SettingPanel', () => {
     expect(screen.queryByText('状态影响')).not.toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: '难度判断标准' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: '状态影响指引' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '必须检定例子' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '不要检定例子' })).toBeInTheDocument()
     expect(screen.getAllByRole('combobox')).toHaveLength(2)
-
-    await user.click(screen.getByRole('button', { name: '新增规则' }))
-    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
-    expect(screen.getByText('新规则')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '新增规则' })).not.toBeInTheDocument()
 
     const diceField = screen.getByText('骰子类型').closest('label') as HTMLElement
     await user.click(within(diceField).getByRole('combobox'))
     await user.click(screen.getByRole('option', { name: 'd100' }))
+
+    const ruleLabelInput = screen.getByRole('textbox', { name: '规则名称' })
+    await user.clear(ruleLabelInput)
+    await user.type(ruleLabelInput, '自定义 DM 检定')
 
     const modifierField = screen.getByText('修正值').closest('label') as HTMLElement
     const modifierInput = within(modifierField).getByRole('textbox')
@@ -646,26 +676,32 @@ describe('SettingPanel', () => {
 
     const difficultyGuidance = '目标警戒越高难度越高，主角准备充分时降低一档。'
     const stateEffectGuidance = '失败时警戒 +1，代价成功时体力 -1。'
+    const mustCheckExamples = '守卫逼近时强行撬锁\n攻击警戒守卫'
+    const skipCheckExamples = '观察空房间\n和友善同伴闲聊'
     fireEvent.change(screen.getByRole('textbox', { name: '难度判断标准' }), { target: { value: difficultyGuidance } })
     fireEvent.change(screen.getByRole('textbox', { name: '状态影响指引' }), { target: { value: stateEffectGuidance } })
+    fireEvent.change(screen.getByRole('textbox', { name: '必须检定例子' }), { target: { value: mustCheckExamples } })
+    fireEvent.change(screen.getByRole('textbox', { name: '不要检定例子' }), { target: { value: skipCheckExamples } })
 
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(updateRuleSystem).toHaveBeenCalled())
     const visualPayload = vi.mocked(updateRuleSystem).mock.calls.at(-1)?.[1] as Partial<RuleSystemModule>
-    expect(visualPayload.trpg_system?.rule_templates).toHaveLength(7)
-    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).toMatchObject({
-      label: '新规则',
+    expect(visualPayload.trpg_system?.rule_templates).toHaveLength(1)
+    expect(visualPayload.trpg_system?.rule_templates?.[0]).toMatchObject({
+      label: '自定义 DM 检定',
       dice: '1d100',
       modifier: 7,
       failure_policy: 'hard_failure',
       difficulty_guidance: difficultyGuidance,
       state_effect_guidance: stateEffectGuidance,
+      must_check_examples: ['守卫逼近时强行撬锁', '攻击警戒守卫'],
+      skip_check_examples: ['观察空房间', '和友善同伴闲聊'],
     })
-    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('impact')
-    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('category')
-    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('default_difficulty')
-    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('default_roll_mode')
-    expect(visualPayload.trpg_system?.rule_templates?.at(-1)).not.toHaveProperty('success_state_ops')
+    expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('impact')
+    expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('category')
+    expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_difficulty')
+    expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_roll_mode')
+    expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('success_state_ops')
 
     await user.click(screen.getByRole('button', { name: 'JSON' }))
     fireEvent.change(screen.getByTestId('monaco-json-editor'), {
@@ -689,6 +725,13 @@ describe('SettingPanel', () => {
             difficulty_guidance: '对方越抗拒越难。',
             state_effect_guidance: '成功关系 +1，失败关系 -1。',
             trigger: '谈判触发',
+            must_check_examples: ['逼迫敌对 NPC 让步'],
+            skip_check_examples: ['普通寒暄'],
+          }, {
+            id: 'legacy-extra',
+            label: '旧规则 2',
+            dice: '1d20',
+            failure_policy: 'hard_failure',
           }],
         }, null, 2),
       },
@@ -705,7 +748,10 @@ describe('SettingPanel', () => {
       difficulty_guidance: '对方越抗拒越难。',
       state_effect_guidance: '成功关系 +1，失败关系 -1。',
       trigger: '谈判触发',
+      must_check_examples: ['逼迫敌对 NPC 让步'],
+      skip_check_examples: ['普通寒暄'],
     })])
+    expect(jsonPayload.trpg_system?.rule_templates).toHaveLength(1)
     expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('impact')
     expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('kind')
     expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('category')
@@ -956,7 +1002,7 @@ function storyDirector(id: string, name: string): StoryDirector {
     module_refs: {
       narrative_style_id: 'classic',
       event_package_ids: ['default'],
-      rule_system_id: 'default-rules',
+      rule_system_id: 'default',
       actor_state_id: 'default',
       memory_structure_id: 'default',
       opening_selector_id: 'default-opening',
@@ -996,8 +1042,14 @@ function ruleSystem(id: string, name: string): RuleSystemModule {
     description: `${name} description`,
     trpg_system: { rule_templates: defaultRuleTemplates() },
     tags: [],
-    custom: id !== 'default-rules',
+    custom: !isBuiltinRuleSystemID(id),
   }
+}
+
+const BUILTIN_RULE_SYSTEM_IDS = new Set(['default', 'dm-fail-forward', 'dm-osr-player-skill'])
+
+function isBuiltinRuleSystemID(id: string) {
+  return BUILTIN_RULE_SYSTEM_IDS.has(id)
 }
 
 function openingSelector(id: string, name: string): OpeningSelectorModule {

@@ -440,10 +440,10 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 			State:      "主角站在秘境入口，禁制正在收束。",
 			Difficulty: "very_hard",
 			Outcomes: interactive.TurnCheckOutcomes{
-				CriticalSuccess: interactive.TurnCheckOutcome{Result: "强闯成功。"},
-				Success:         interactive.TurnCheckOutcome{Result: "勉强闯入。"},
-				Failure:         interactive.TurnCheckOutcome{Result: "被禁制震回。"},
-				CriticalFailure: interactive.TurnCheckOutcome{Result: "禁制彻底反噬。"},
+				CriticalSuccess: interactive.TurnCheckOutcome{Result: "强闯成功。", StateChanges: []interactive.TurnStateChange{{Path: "resources.hp", Change: -1, Reason: "禁制擦伤。"}}},
+				Success:         interactive.TurnCheckOutcome{Result: "勉强闯入。", StateChanges: []interactive.TurnStateChange{{Path: "resources.hp", Change: -1, Reason: "硬闯消耗生命。"}}},
+				Failure:         interactive.TurnCheckOutcome{Result: "被禁制震回。", StateChanges: []interactive.TurnStateChange{{Path: "resources.hp", Change: -1, Reason: "禁制反震。"}}},
+				CriticalFailure: interactive.TurnCheckOutcome{Result: "禁制彻底反噬。", StateChanges: []interactive.TurnStateChange{{Path: "resources.hp", Change: -1, Reason: "禁制严重反噬。"}}},
 			},
 		},
 	)
@@ -462,6 +462,12 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 	}
 	if snapshot.CurrentTurn.RuleResolution.ID != resolution.ID {
 		t.Fatalf("rule resolution id mismatch: %#v", snapshot.CurrentTurn.RuleResolution)
+	}
+	if snapshot.CurrentTurn.RuleResolution.StateConsumption == nil || snapshot.CurrentTurn.RuleResolution.StateConsumption.Status != "applied" {
+		t.Fatalf("state consumption audit missing: %#v", snapshot.CurrentTurn.RuleResolution)
+	}
+	if snapshot.CurrentTurn.StateDelta == nil || len(snapshot.CurrentTurn.StateDelta.Ops) != 1 || snapshot.CurrentTurn.StateDelta.Ops[0].SourceKind != interactive.StateOpSourceRuleResolution {
+		t.Fatalf("rule state op missing: %#v", snapshot.CurrentTurn.StateDelta)
 	}
 }
 

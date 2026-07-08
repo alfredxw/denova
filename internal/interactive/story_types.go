@@ -367,6 +367,8 @@ type StateOp struct {
 	Value        any    `json:"value,omitempty"`
 	Reason       string `json:"reason,omitempty"`
 	SourceTurnID string `json:"source_turn_id,omitempty"`
+	SourceKind   string `json:"source_kind,omitempty"`
+	SourceID     string `json:"source_id,omitempty"`
 }
 
 type Snapshot struct {

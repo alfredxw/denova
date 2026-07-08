@@ -226,6 +226,8 @@ interface StoryDirectorStrategy {
   pacing_curve?: string
   random_event_rate?: number
   director_agent_mode?: 'triggered' | 'every_turn' | 'off' | string
+  rule_state_consumption_mode?: 'hybrid_auto' | 'director_only' | string
+  rule_visibility_mode?: 'audit_only' | 'public_roll' | string
   branch_planning_turns?: number
   planning_templates?: DirectorPlanDocs
   prompt_markdown?: string
@@ -474,6 +476,8 @@ export interface StateOp {
   value?: unknown
   reason?: string
   source_turn_id?: string
+  source_kind?: string
+  source_id?: string
 }
 
 interface HotState {
@@ -589,6 +593,8 @@ export interface RuleCheck {
   difficulty_guidance?: string
   state_effect_guidance?: string
   trigger?: string
+  must_check_examples?: string[]
+  skip_check_examples?: string[]
   success_hint?: string
   failure_hint?: string
 }
@@ -597,6 +603,7 @@ export interface RuleResolution {
   id?: string
   request: TurnCheckRequest
   result: RuleResult
+  state_consumption?: RuleStateConsumption
   terminal_candidate?: TerminalCandidate
   rule_constraints?: string[]
   created_at?: string
@@ -609,6 +616,7 @@ interface TurnCheckRequest {
   challenge: string
   cost: string
   state: string
+  adjudication?: TurnCheckAdjudication
   rule?: TurnCheckRule
   bonuses?: TurnCheckBonus[]
   difficulty: 'very_easy' | 'easy' | 'normal' | 'hard' | 'very_hard' | string
@@ -617,12 +625,17 @@ interface TurnCheckRequest {
 
 interface TurnCheckRule {
   template?: string
+  template_id?: string
+  label?: string
+  failure_policy?: string
   dice?: string
   roll_mode?: 'normal' | 'advantage' | 'disadvantage' | string
   modifier?: number
 }
 
 interface TurnCheckBonus {
+  kind?: string
+  source_path?: string
   reason: string
   value: number
 }
@@ -642,6 +655,15 @@ interface TurnCheckOutcome {
 interface TurnStateChange {
   path: string
   change: number
+  reason?: string
+}
+
+interface TurnCheckAdjudication {
+  reason?: string
+  stakes?: string
+  difficulty_reason?: string
+  roll_mode_reason?: string
+  state_paths?: string[]
 }
 
 interface RuleResult {
@@ -666,9 +688,23 @@ interface RuleResult {
   roll_mode?: string
   kept_roll?: number
   bonus_total?: number
+  bonus_details?: TurnCheckBonus[]
+  base_target?: number
   target?: number
   result?: string
   state_changes?: TurnStateChange[]
+}
+
+interface RuleStateConsumption {
+  status: 'none' | 'disabled' | 'applied' | 'partial' | 'skipped' | string
+  mode?: 'hybrid_auto' | 'director_only' | string
+  applied_ops?: StateOp[]
+  warnings?: RuleStateConsumptionWarning[]
+}
+
+interface RuleStateConsumptionWarning {
+  path?: string
+  reason: string
 }
 
 interface TerminalCandidate {

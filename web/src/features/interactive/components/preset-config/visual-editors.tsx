@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, EventPackageModule, OpeningTrait, OpeningTraitPool, RuleCheck, StateOp, StoryDirectorActorStateSystem, StoryDirectorOpeningSelector, StoryDirectorTRPGSystem, StoryMemoryField, StoryMemoryStructure, TellerEventCard } from '../../types'
-import { normalizeRuleTemplate, normalizeTRPGSystem, RULE_DICE_OPTIONS, RULE_FAILURE_POLICY_OPTIONS } from './ruleTemplates'
+import { defaultRuleTemplates, normalizeRuleTemplate, normalizeTRPGSystem, RULE_DICE_OPTIONS, RULE_FAILURE_POLICY_OPTIONS } from './ruleTemplates'
 import { SortablePresetList } from './SortablePresetList'
 import { cloneWithNewId, formatPresetJSON, itemKey, joinListInput, nextPresetId, parseIntegerInput, parseNumberInput, splitListInput } from './utils'
 
@@ -526,83 +526,37 @@ export function TRPGSystemVisualEditor({
   onValidityChange: (valid: boolean) => void
 }) {
   const { t } = useTranslation()
-  const [activeId, setActiveId] = useState('')
-  const rules = normalizeTRPGSystem(value).rule_templates || []
   useEffect(() => onValidityChange(true), [onValidityChange])
-  useEffect(() => {
-    if (!rules.some((item, index) => itemKey(item, index, 'rule') === activeId)) {
-      setActiveId(rules[0] ? itemKey(rules[0], 0, 'rule') : '')
-    }
-  }, [activeId, rules])
-  const setRules = (rule_templates: RuleCheck[]) => onChange({ ...value, rule_templates: rule_templates.map(normalizeRuleTemplate) })
-  const activeIndex = rules.findIndex((item, index) => itemKey(item, index, 'rule') === activeId)
-  const active = activeIndex >= 0 ? rules[activeIndex] : null
+  const active = normalizeTRPGSystem(value).rule_templates?.[0] || defaultRuleTemplates()[0]
   const patchActive = (patch: Partial<RuleCheck>) => {
-    if (!active) return
-    setRules(rules.map((item, index) => (index === activeIndex ? normalizeRuleTemplate({ ...item, ...patch }, index) : item)))
-  }
-  const addRule = () => {
-    const item = normalizeRuleTemplate({
-      id: nextPresetId('rule'),
-      label: t('settingPanel.trpgRule.newRule'),
-      dice: '1d20',
-      modifier: 0,
-      failure_policy: 'fail_forward',
-      difficulty_guidance: t('settingPanel.trpgRule.defaultDifficultyGuidance'),
-      state_effect_guidance: t('settingPanel.trpgRule.defaultStateEffectGuidance'),
-      trigger: t('settingPanel.trpgRule.defaultTrigger'),
-      success_hint: t('settingPanel.trpgRule.defaultSuccessHint'),
-      failure_hint: t('settingPanel.trpgRule.defaultFailureHint'),
-    }, rules.length)
-    setRules([...rules, item])
-    setActiveId(item.id || '')
-  }
-  const copyRule = () => {
-    if (!active) return
-    const item = normalizeRuleTemplate(cloneWithNewId(active, 'rule'), rules.length)
-    setRules([...rules, item])
-    setActiveId(item.id || '')
-  }
-  const deleteRule = () => {
-    if (!active) return
-    const next = rules.filter((_, index) => index !== activeIndex)
-    setRules(next)
-    setActiveId(next[0] ? itemKey(next[0], 0, 'rule') : '')
+    onChange({ ...value, rule_templates: [normalizeRuleTemplate({ ...active, ...patch }, 0)] })
   }
   return (
-    <div className="grid min-h-[360px] gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <SortablePresetList
-        items={rules}
-        activeId={activeId}
-        getId={(item, index) => itemKey(item, index, 'rule')}
-        getTitle={(item, index) => item.label || item.id || `${t('settingPanel.orchestration.ruleTemplates')} ${index + 1}`}
-        getSubtitle={(item) => [ruleDiceLabel(item.dice, t), ruleTargetLabel(item, t), ruleModifierLabel(item.modifier, t), ruleFailurePolicyLabel(item.failure_policy, t)].filter(Boolean).join(' · ')}
-        addLabel={t('settingPanel.orchestration.addRuleTemplate')}
-        emptyLabel={t('settingPanel.orchestration.ruleTemplates')}
-        onAdd={addRule}
-        onActiveIdChange={setActiveId}
-        onItemsChange={setRules}
-      />
-      {active ? (
-        <DetailPanel>
-          <DetailActions onCopy={copyRule} onDelete={deleteRule} />
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <Field label={t('settingPanel.orchestration.ruleLabel')}><Input className={inputClassName} value={active.label || ''} onChange={(event) => patchActive({ label: event.target.value })} /></Field>
-            <RuleSelectField label={t('settingPanel.trpgRule.dice')} value={active.dice || '1d20'} options={RULE_DICE_OPTIONS} labelFor={(value) => ruleDiceLabel(value, t)} onChange={(dice) => patchActive({ dice })} />
-            <Field label={t('settingPanel.trpgRule.modifier')}><Input className={inputClassName} inputMode="decimal" value={String(active.modifier ?? 0)} onChange={(event) => patchActive({ modifier: parseNumberInput(event.target.value) })} /></Field>
-            <RuleSelectField label={t('settingPanel.trpgRule.failurePolicy')} value={active.failure_policy || 'fail_forward'} options={RULE_FAILURE_POLICY_OPTIONS} labelFor={(value) => ruleFailurePolicyLabel(value, t)} onChange={(failure_policy) => patchActive({ failure_policy })} />
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label={t('settingPanel.trpgRule.difficultyGuidance')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.difficulty_guidance || ''} onChange={(event) => patchActive({ difficulty_guidance: event.target.value })} /></Field>
-            <Field label={t('settingPanel.trpgRule.stateEffectGuidance')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.state_effect_guidance || ''} onChange={(event) => patchActive({ state_effect_guidance: event.target.value })} /></Field>
-          </div>
-          <Field label={t('settingPanel.trpgRule.trigger')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label={t('settingPanel.trpgRule.successHint')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.success_hint || ''} onChange={(event) => patchActive({ success_hint: event.target.value })} /></Field>
-            <Field label={t('settingPanel.trpgRule.failureHint')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.failure_hint || ''} onChange={(event) => patchActive({ failure_hint: event.target.value })} /></Field>
-          </div>
-        </DetailPanel>
-      ) : <EmptyDetail>{t('settingPanel.orchestration.noRuleTemplates')}</EmptyDetail>}
+    <div className="grid min-h-[360px] gap-3">
+      <DetailPanel>
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-muted)]">
+          {t('settingPanel.trpgRule.singleConfigDesc')}
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <Field label={t('settingPanel.orchestration.ruleLabel')}><Input className={inputClassName} value={active.label || ''} onChange={(event) => patchActive({ label: event.target.value })} /></Field>
+          <RuleSelectField label={t('settingPanel.trpgRule.dice')} value={active.dice || '1d20'} options={RULE_DICE_OPTIONS} labelFor={(next) => ruleDiceLabel(next, t)} onChange={(dice) => patchActive({ dice })} />
+          <Field label={t('settingPanel.trpgRule.modifier')}><Input className={inputClassName} inputMode="decimal" value={String(active.modifier ?? 0)} onChange={(event) => patchActive({ modifier: parseNumberInput(event.target.value) })} /></Field>
+          <RuleSelectField label={t('settingPanel.trpgRule.failurePolicy')} value={active.failure_policy || 'fail_forward'} options={RULE_FAILURE_POLICY_OPTIONS} labelFor={(next) => ruleFailurePolicyLabel(next, t)} onChange={(failure_policy) => patchActive({ failure_policy })} />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label={t('settingPanel.trpgRule.difficultyGuidance')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.difficulty_guidance || ''} onChange={(event) => patchActive({ difficulty_guidance: event.target.value })} /></Field>
+          <Field label={t('settingPanel.trpgRule.stateEffectGuidance')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.state_effect_guidance || ''} onChange={(event) => patchActive({ state_effect_guidance: event.target.value })} /></Field>
+        </div>
+        <Field label={t('settingPanel.trpgRule.trigger')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label={t('settingPanel.trpgRule.mustCheckExamples')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={joinExampleLines(active.must_check_examples)} onChange={(event) => patchActive({ must_check_examples: splitExampleLines(event.target.value) })} placeholder={t('settingPanel.trpgRule.examplesPlaceholder')} /></Field>
+          <Field label={t('settingPanel.trpgRule.skipCheckExamples')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={joinExampleLines(active.skip_check_examples)} onChange={(event) => patchActive({ skip_check_examples: splitExampleLines(event.target.value) })} placeholder={t('settingPanel.trpgRule.examplesPlaceholder')} /></Field>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <Field label={t('settingPanel.trpgRule.successHint')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.success_hint || ''} onChange={(event) => patchActive({ success_hint: event.target.value })} /></Field>
+          <Field label={t('settingPanel.trpgRule.failureHint')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.failure_hint || ''} onChange={(event) => patchActive({ failure_hint: event.target.value })} /></Field>
+        </div>
+      </DetailPanel>
     </div>
   )
 }
@@ -636,21 +590,16 @@ function ruleDiceLabel(value: string | undefined, t: ReturnType<typeof useTransl
   return t(`settingPanel.trpgRule.dice.${value || '1d20'}`)
 }
 
-function ruleTargetLabel(rule: RuleCheck, t: ReturnType<typeof useTranslation>['t']) {
-  return t('settingPanel.trpgRule.targetValue', { value: rule.dice === '1d100' ? 50 : 10 })
-}
-
-function ruleModifierLabel(value: number | undefined, t: ReturnType<typeof useTranslation>['t']) {
-  return t('settingPanel.trpgRule.modifierValue', { value: formatSignedNumber(value ?? 0) })
-}
-
-function formatSignedNumber(value: number) {
-  if (!Number.isFinite(value) || value === 0) return '+0'
-  return value > 0 ? `+${value}` : String(value)
-}
-
 function ruleFailurePolicyLabel(value: string | undefined, t: ReturnType<typeof useTranslation>['t']) {
   return t(`settingPanel.trpgRule.failurePolicy.${value || 'fail_forward'}`)
+}
+
+function joinExampleLines(values: string[] | undefined) {
+  return (values || []).join('\n')
+}
+
+function splitExampleLines(value: string) {
+  return Array.from(new Set(value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))).slice(0, 8)
 }
 
 export function OpeningSelectorVisualEditor({

@@ -139,6 +139,7 @@ func agentRuntimeContract(agentKind string) string {
 			"- Story Memory 与状态系统的真实写入必须通过专用工具完成；director.md 只能通过受限文件工具编辑当前分支规划文件。",
 			"- 互动导演 Agent 不得续写故事正文，不得替用户选择行动，不得使用 shell、todo、资料库写入或任意 workspace 写入。",
 			"- 互动导演 Agent 必须优先复用资料库中的重要角色、势力、规则、地点和既有关系，并通过高信息密度的角色关系、势力压力、信息揭示、爽点危机、检定代价和分支安排规划后续互动；固定数值、骰子和资源结算结果必须以 RuleResolution 为准。",
+			"- 如果 RuleResolution.state_consumption 显示 applied 或 partial，已应用的数值型 Actor 状态不得通过 apply_actor_state_patch 重复写入；只补充长期记忆、叙事后果，或处理 state_consumption.warnings 中确实成立但未自动消费的状态。",
 			"- 互动导演 Agent 必须把可给正文 Agent 读取的信息放在“正文Agent可读”区，把隐藏真相和未来反转放在“后台导演私密”区。",
 		}, "\n")
 	case config.AgentKindInteractiveHotChoices:

@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Activity, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Clock3, Copy, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, Send, X } from 'lucide-react'
+import { Activity, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Clock3, Copy, Dice5, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, Send, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { workspaceAssetURL, type ChapterIllustration, type ChatMessage, type InteractiveImage, type InteractiveImageError } from '@/lib/api'
@@ -134,6 +134,9 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       }
       return <ToolExecutionBlock message={message} onOpenTrace={onOpenTrace} />
 
+    case 'rule_roll':
+      return <RuleRollBlock message={message} />
+
     case 'tool_result':
       if ((message.name || '') === 'generate_interactive_image' || message.interactive_image) {
         return <InteractiveImageBlock message={message} onRegenerate={onGenerateInteractiveImage} />
@@ -189,6 +192,67 @@ function TraceLinkButton({ runID, onOpenTrace }: { runID?: string; onOpenTrace?:
       {t('chat.tracePanel.viewTrace')}
     </button>
   )
+}
+
+function RuleRollBlock({ message }: { message: ChatMessage }) {
+  const { t } = useTranslation()
+  const roll = message.rule_roll
+  if (!roll) return null
+  const rolls = roll.rolls?.length ? roll.rolls.join(', ') : '-'
+  const kept = Number.isFinite(roll.kept_roll) ? roll.kept_roll : undefined
+  const bonus = Number.isFinite(roll.bonus_total) ? roll.bonus_total : undefined
+  const total = Number.isFinite(roll.total) ? roll.total : undefined
+  const target = Number.isFinite(roll.target) ? roll.target : undefined
+  const cost = roll.cost || roll.stakes || ''
+  const stateChanges = roll.state_changes || []
+  return (
+    <div className="flex justify-start">
+      <div className="w-full rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs shadow-[var(--nova-shadow)]">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Dice5 className="h-4 w-4 shrink-0 text-[var(--nova-text-faint)]" />
+          <span className="min-w-0 truncate font-semibold text-[var(--nova-text)]">{roll.label || t('snapshot.ruleRoll.title')}</span>
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{roll.difficulty || t('snapshot.noRecord')}</span>
+          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{[roll.dice, roll.roll_mode].filter(Boolean).join(' ') || t('snapshot.noRecord')}</span>
+          {roll.outcome ? <span className={`ml-auto shrink-0 font-semibold ${ruleRollOutcomeClass(roll.outcome)}`}>{roll.outcome}</span> : null}
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--nova-text-muted)]">
+          <span>{t('snapshot.field.rolls')}: {rolls}</span>
+          {kept !== undefined ? <span>{t('snapshot.field.kept_roll')}: {formatRuleRollNumber(kept)}</span> : null}
+          {bonus !== undefined ? <span>{t('snapshot.field.bonus_total')}: {formatSignedRuleRollNumber(bonus)}</span> : null}
+          {total !== undefined || target !== undefined ? <span>{t('snapshot.ruleRoll.totalTarget', { total: total !== undefined ? formatRuleRollNumber(total) : '-', target: target !== undefined ? formatRuleRollNumber(target) : '-' })}</span> : null}
+          {Number.isFinite(roll.base_target) ? <span>{t('snapshot.field.base_target')}: {formatRuleRollNumber(roll.base_target || 0)}</span> : null}
+        </div>
+        {roll.result ? <div className="mt-1.5 text-[var(--nova-text)]">{roll.result}</div> : null}
+        {cost ? <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('snapshot.ruleRoll.cost')}: {cost}</div> : null}
+        {stateChanges.length ? (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {stateChanges.map((change, index) => (
+              <span key={`${change.path}-${index}`} className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
+                {change.path} {formatSignedRuleRollNumber(change.change)}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ruleRollOutcomeClass(outcome: string) {
+  if (outcome.includes('success')) return 'text-[var(--nova-success)]'
+  if (outcome.includes('failure')) return 'text-[var(--nova-danger)]'
+  return 'text-[var(--nova-text-muted)]'
+}
+
+function formatRuleRollNumber(value: number) {
+  if (!Number.isFinite(value)) return '-'
+  return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
+function formatSignedRuleRollNumber(value: number) {
+  if (!Number.isFinite(value)) return '-'
+  const formatted = formatRuleRollNumber(value)
+  return value > 0 ? `+${formatted}` : formatted
 }
 
 function MessageInlineMeta({ message, content, align, onEdit, onGenerateInteractiveImage, generatingInteractiveImage = false, onRegenerate, onSwitchVersion, versionIndex = -1, versionCount = 0 }: { message: ChatMessage; content: string; align: 'left' | 'right'; onEdit?: (message: ChatMessage) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; generatingInteractiveImage?: boolean; onRegenerate?: (message: ChatMessage) => void; onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void; versionIndex?: number; versionCount?: number }) {

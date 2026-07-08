@@ -169,8 +169,9 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 		ID:   "prompt-director",
 		Name: "提示导演",
 		Strategy: StoryDirectorStrategy{
-			Enabled:        true,
-			PromptMarkdown: longPrompt,
+			Enabled:            true,
+			RuleVisibilityMode: "bad-value",
+			PromptMarkdown:     longPrompt,
 		},
 		TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
 			ID:                  "guidance-rule",
@@ -179,6 +180,8 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 			FailurePolicy:       "fail_forward",
 			DifficultyGuidance:  "按状态数值判断难度。",
 			StateEffectGuidance: "按检定结果调整状态数值。",
+			MustCheckExamples:   []string{"在守卫逼近时撬锁。"},
+			SkipCheckExamples:   []string{"观察空房间。"},
 		}}},
 	})
 	if director.Strategy.PromptMarkdown == "" {
@@ -196,8 +199,14 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 	if got := StoryDirectorStrategyPromptMarkdown(director); got != director.Strategy.PromptMarkdown {
 		t.Fatalf("strategy prompt helper mismatch: %q vs %q", got, director.Strategy.PromptMarkdown)
 	}
+	if director.Strategy.RuleVisibilityMode != RuleVisibilityModeAuditOnly {
+		t.Fatalf("invalid rule visibility should fall back to audit_only: %#v", director.Strategy)
+	}
 	if DefaultStoryDirector().Strategy.PromptMarkdown != "" {
 		t.Fatalf("default story director should not set a custom prompt")
+	}
+	if DefaultStoryDirector().Strategy.RuleVisibilityMode != RuleVisibilityModeAuditOnly {
+		t.Fatalf("default story director should keep rule audit sidebar only: %#v", DefaultStoryDirector().Strategy)
 	}
 	oversized := normalizeStoryDirector(StoryDirector{
 		ID:   "oversized-prompt-director",
@@ -219,10 +228,10 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 		if !strings.Contains(summary, `"strategy"`) || !strings.Contains(summary, `"mainline_strength"`) {
 			t.Fatalf("%s summary should retain structured strategy fields:\n%s", name, summary)
 		}
-		if !strings.Contains(summary, `"director_agent_mode"`) || !strings.Contains(summary, `"branch_planning_turns"`) {
+		if !strings.Contains(summary, `"director_agent_mode"`) || !strings.Contains(summary, `"branch_planning_turns"`) || !strings.Contains(summary, `"rule_visibility_mode"`) {
 			t.Fatalf("%s summary should retain background director schedule:\n%s", name, summary)
 		}
-		if !strings.Contains(summary, `"difficulty_guidance"`) || !strings.Contains(summary, `"state_effect_guidance"`) || strings.Contains(summary, `"impact"`) {
+		if !strings.Contains(summary, `"difficulty_guidance"`) || !strings.Contains(summary, `"state_effect_guidance"`) || !strings.Contains(summary, `"must_check_examples"`) || !strings.Contains(summary, `"skip_check_examples"`) || strings.Contains(summary, `"impact"`) {
 			t.Fatalf("%s summary should expose natural-language rule guidance without legacy impact:\n%s", name, summary)
 		}
 	}

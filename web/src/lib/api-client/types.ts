@@ -1,6 +1,6 @@
 export interface ChatMessage {
   type?: 'message' | 'clear'
-  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'
+  role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'
   content?: string
   id?: string
   render_key?: string
@@ -16,6 +16,7 @@ export interface ChatMessage {
   interactive_images?: InteractiveImage[]
   interactive_image_error?: InteractiveImageError
   interactive_image_status?: 'running' | 'success' | 'error'
+  rule_roll?: PublicRuleRoll
   phase?: string
   attempt?: number
   tokens_before?: number
@@ -56,6 +57,31 @@ export interface ChatMessage {
   created_at?: string
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number
+}
+
+export interface PublicRuleRoll {
+  resolution_id?: string
+  label?: string
+  difficulty?: string
+  dice?: string
+  roll_mode?: string
+  rolls?: number[]
+  kept_roll?: number
+  base_target?: number
+  target?: number
+  bonus_total?: number
+  total?: number
+  outcome?: string
+  result?: string
+  cost?: string
+  stakes?: string
+  state_changes?: PublicRuleStateChange[]
+}
+
+export interface PublicRuleStateChange {
+  path: string
+  change: number
+  reason?: string
 }
 
 export interface ChapterIllustration {

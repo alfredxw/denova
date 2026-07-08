@@ -21,7 +21,7 @@ import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSp
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 import { subAgentSessionKey } from '@/components/Chat/subagent-session'
 import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobile-layout'
-import type { ChatMessage, ContextAnalysis, InteractiveImage, InteractiveImageError } from '@/lib/api'
+import type { ChatMessage, ContextAnalysis, InteractiveImage, InteractiveImageError, PublicRuleRoll } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveHotChoices, generateInteractiveImage, removeInteractiveContextCompaction, runInteractiveDirector, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
@@ -29,7 +29,7 @@ import { createInteractiveNarrativeFilter, sanitizeStoredNarrative } from '../st
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
+import type { ImagePreset, InteractiveTurnPersistedEvent, RuleResolution, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { StoryDirectorPicker } from './StoryDirectorPicker'
 import { TurnNavigator, type TurnNavigationItem } from './TurnNavigator'
@@ -311,6 +311,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     const rewindIndex = rewindTurnId ? turns.findIndex((turn) => turn.id === rewindTurnId) : -1
     return rewindIndex >= 0 ? turns.slice(0, rewindIndex) : turns
   }, [rewindTurnId, snapshot?.turns])
+  const publicRuleRollVisible = useMemo(
+    () => storyRuleVisibilityMode(story, storyDirectors) === 'public_roll',
+    [story, storyDirectors],
+  )
 
   const historyMessages = useMemo<ChatMessage[]>(() => {
     return storyPathTurns.flatMap((turn) => {
@@ -406,6 +410,16 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           })
         }
       }
+      const ruleRoll = publicRuleRollVisible ? publicRuleRollFromResolution(turn.rule_resolution) : null
+      if (ruleRoll) {
+        messages.push({
+          id: `${turn.id}-rule-roll`,
+          turn_id: turn.id,
+          navigation_turn_id: turn.id,
+          role: 'rule_roll',
+          rule_roll: ruleRoll,
+        })
+      }
       const mergedImages = mergeInteractiveImages(interactiveImages(deferredImageMessages), optimisticInteractiveImages[turn.id])
       messages.push({
         id: `${turn.id}-assistant`,
@@ -423,7 +437,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       })
       return messages
     })
-  }, [optimisticInteractiveImages, storyPathTurns])
+  }, [optimisticInteractiveImages, publicRuleRollVisible, storyPathTurns])
 
   const displayLiveMessages = hasPersistedLiveTurn ? [] : liveMessages.filter((message) => message.role !== 'token_usage')
   const messages = useMemo(() => [...historyMessages, ...displayLiveMessages], [displayLiveMessages, historyMessages])
@@ -690,6 +704,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             const data = JSON.parse(value.data)
             flushLiveMessageBuffer()
             updateToolCallMessage(data, 'success', data.content || '')
+            appendLiveRuleRollMessage(data)
             setStageActivityContent('')
             break
           }
@@ -1682,6 +1697,25 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     })
   }
 
+  function appendLiveRuleRollMessage(payload: Record<string, unknown> & { id?: string; name?: string; content?: string }) {
+    if (!publicRuleRollVisible || payload.name !== 'prepare_interactive_turn') return
+    const ruleRoll = publicRuleRollFromToolOutput(payload.content || '')
+    if (!ruleRoll) return
+    setStageLiveMessages((prev) => {
+      const id = ruleRoll.resolution_id ? `live-rule-roll-${ruleRoll.resolution_id}` : `live-rule-roll-${Date.now()}`
+      if (prev.some((message) => message.role === 'rule_roll' && message.id === id)) return prev
+      return [
+        ...prev,
+        {
+          id,
+          role: 'rule_roll',
+          rule_roll: ruleRoll,
+          streaming: false,
+        },
+      ]
+    })
+  }
+
   function findToolMessageIndex(messages: ChatMessage[], id?: string, name?: string) {
     if (id) {
       for (let i = messages.length - 1; i >= 0; i--) {
@@ -2128,6 +2162,91 @@ function noop() {}
 
 function noopTurnPersisted() {
   return undefined
+}
+
+function storyRuleVisibilityMode(story: StorySummary | undefined, directors: StoryDirector[]) {
+  const directorID = story?.story_director_id || 'default'
+  const director = directors.find((item) => item.id === directorID) || directors.find((item) => item.id === 'default')
+  return director?.strategy?.rule_visibility_mode || 'audit_only'
+}
+
+function publicRuleRollFromResolution(resolution?: RuleResolution): PublicRuleRoll | null {
+  if (!resolution?.result) return null
+  const result = resolution.result
+  return {
+    resolution_id: resolution.id,
+    label: result.label || resolution.request?.rule?.label || resolution.request?.challenge || resolution.request?.action,
+    difficulty: resolution.request?.difficulty,
+    dice: result.dice || resolution.request?.rule?.dice,
+    roll_mode: result.roll_mode || resolution.request?.rule?.roll_mode,
+    rolls: result.rolls,
+    kept_roll: result.kept_roll,
+    base_target: result.base_target,
+    target: result.target,
+    bonus_total: result.bonus_total,
+    total: result.total,
+    outcome: result.outcome,
+    result: result.result,
+    cost: resolution.request?.cost,
+    stakes: resolution.request?.adjudication?.stakes,
+    state_changes: result.state_changes,
+  }
+}
+
+function publicRuleRollFromToolOutput(content: string): PublicRuleRoll | null {
+  const parsed = parseJSONRecord(content)
+  if (!parsed) return null
+  const rolls = Array.isArray(parsed.rolls) ? parsed.rolls.map(Number).filter(Number.isFinite) : undefined
+  const stateChanges = Array.isArray(parsed.state_changes)
+    ? parsed.state_changes
+      .map((item) => isPlainRecord(item) ? {
+        path: String(item.path || '').trim(),
+        change: Number(item.change),
+        reason: typeof item.reason === 'string' ? item.reason : undefined,
+      } : null)
+      .filter((item): item is NonNullable<typeof item> => Boolean(item && item.path && Number.isFinite(item.change)))
+    : undefined
+  return {
+    resolution_id: stringFromRecord(parsed, 'resolution_id'),
+    label: stringFromRecord(parsed, 'label') || stringFromRecord(parsed, 'challenge'),
+    difficulty: stringFromRecord(parsed, 'difficulty'),
+    dice: stringFromRecord(parsed, 'dice'),
+    roll_mode: stringFromRecord(parsed, 'roll_mode'),
+    rolls,
+    kept_roll: numberFromRecord(parsed, 'kept_roll'),
+    base_target: numberFromRecord(parsed, 'base_target'),
+    target: numberFromRecord(parsed, 'target'),
+    bonus_total: numberFromRecord(parsed, 'bonus_total'),
+    total: numberFromRecord(parsed, 'total'),
+    outcome: stringFromRecord(parsed, 'outcome'),
+    result: stringFromRecord(parsed, 'result'),
+    cost: stringFromRecord(parsed, 'cost'),
+    stakes: stringFromRecord(parsed, 'stakes'),
+    state_changes: stateChanges,
+  }
+}
+
+function parseJSONRecord(content: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(content)
+    return isPlainRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function stringFromRecord(record: Record<string, unknown>, key: string) {
+  const value = record[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function numberFromRecord(record: Record<string, unknown>, key: string) {
+  const value = Number(record[key])
+  return Number.isFinite(value) ? value : undefined
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
 function createLiveTurnRenderKeys(): LiveTurnRenderKeys {

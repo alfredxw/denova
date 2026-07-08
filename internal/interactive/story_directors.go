@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	storyDirectorVersion   = 2
+	storyDirectorVersion   = 3
 	DefaultStoryDirectorID = "default"
 
 	maxStoryDirectorRules               = 64
@@ -22,6 +22,9 @@ const (
 	DirectorAgentModeTriggered          = "triggered"
 	DirectorAgentModeEveryTurn          = "every_turn"
 	DirectorAgentModeOff                = "off"
+	DefaultRuleVisibilityMode           = RuleVisibilityModeAuditOnly
+	RuleVisibilityModeAuditOnly         = "audit_only"
+	RuleVisibilityModePublicRoll        = "public_roll"
 )
 
 var ErrStoryDirectorRevisionConflict = errors.New("故事导演已被其他操作更新，请重新加载后再保存")
@@ -54,15 +57,17 @@ type StoryDirector struct {
 }
 
 type StoryDirectorStrategy struct {
-	Enabled             bool                           `json:"enabled"`
-	MainlineStrength    string                         `json:"mainline_strength,omitempty"`
-	FailurePolicy       string                         `json:"failure_policy,omitempty"`
-	PacingCurve         string                         `json:"pacing_curve,omitempty"`
-	RandomEventRate     float64                        `json:"random_event_rate,omitempty"`
-	DirectorAgentMode   string                         `json:"director_agent_mode,omitempty"`
-	PromptMarkdown      string                         `json:"prompt_markdown,omitempty"`
-	BranchPlanningTurns int                            `json:"branch_planning_turns,omitempty"`
-	PlanningTemplates   StoryDirectorPlanningTemplates `json:"planning_templates,omitempty"`
+	Enabled                  bool                           `json:"enabled"`
+	MainlineStrength         string                         `json:"mainline_strength,omitempty"`
+	FailurePolicy            string                         `json:"failure_policy,omitempty"`
+	PacingCurve              string                         `json:"pacing_curve,omitempty"`
+	RandomEventRate          float64                        `json:"random_event_rate,omitempty"`
+	DirectorAgentMode        string                         `json:"director_agent_mode,omitempty"`
+	RuleStateConsumptionMode string                         `json:"rule_state_consumption_mode,omitempty"`
+	RuleVisibilityMode       string                         `json:"rule_visibility_mode,omitempty"`
+	PromptMarkdown           string                         `json:"prompt_markdown,omitempty"`
+	BranchPlanningTurns      int                            `json:"branch_planning_turns,omitempty"`
+	PlanningTemplates        StoryDirectorPlanningTemplates `json:"planning_templates,omitempty"`
 }
 
 type StoryDirectorEventSystem struct {
@@ -581,14 +586,16 @@ func DefaultStoryDirector() StoryDirector {
 		Description: "通用互动故事导演，提供软主线、可逆失败、递进节奏、事件包、状态系统和开局选择器。",
 		ModuleRefs:  refs,
 		Strategy: StoryDirectorStrategy{
-			Enabled:             true,
-			MainlineStrength:    "soft_guidance",
-			FailurePolicy:       "reversible",
-			PacingCurve:         "progressive",
-			RandomEventRate:     0.15,
-			DirectorAgentMode:   DefaultDirectorAgentMode,
-			BranchPlanningTurns: defaultBranchPlanningTurns,
-			PlanningTemplates:   DefaultStoryDirectorPlanningTemplates(),
+			Enabled:                  true,
+			MainlineStrength:         "soft_guidance",
+			FailurePolicy:            "reversible",
+			PacingCurve:              "progressive",
+			RandomEventRate:          0.15,
+			DirectorAgentMode:        DefaultDirectorAgentMode,
+			RuleStateConsumptionMode: DefaultRuleStateConsumptionMode,
+			RuleVisibilityMode:       DefaultRuleVisibilityMode,
+			BranchPlanningTurns:      defaultBranchPlanningTurns,
+			PlanningTemplates:        DefaultStoryDirectorPlanningTemplates(),
 		},
 		EventPackages:   []TellerEventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
 		TRPGSystem:      DefaultRuleSystemModule().TRPGSystem,
@@ -606,14 +613,16 @@ func StoryDirectorFromTellerOrchestration(id, name, description string, randomEv
 		Description: description,
 		ModuleRefs:  StoryDirectorModuleRefs{},
 		Strategy: StoryDirectorStrategy{
-			Enabled:             config.Enabled,
-			MainlineStrength:    config.MainlineStrength,
-			FailurePolicy:       config.FailurePolicy,
-			PacingCurve:         config.PacingCurve,
-			RandomEventRate:     randomEventRate,
-			DirectorAgentMode:   DefaultDirectorAgentMode,
-			BranchPlanningTurns: defaultBranchPlanningTurns,
-			PlanningTemplates:   DefaultStoryDirectorPlanningTemplates(),
+			Enabled:                  config.Enabled,
+			MainlineStrength:         config.MainlineStrength,
+			FailurePolicy:            config.FailurePolicy,
+			PacingCurve:              config.PacingCurve,
+			RandomEventRate:          randomEventRate,
+			DirectorAgentMode:        DefaultDirectorAgentMode,
+			RuleStateConsumptionMode: DefaultRuleStateConsumptionMode,
+			RuleVisibilityMode:       DefaultRuleVisibilityMode,
+			BranchPlanningTurns:      defaultBranchPlanningTurns,
+			PlanningTemplates:        DefaultStoryDirectorPlanningTemplates(),
 		},
 		EventPackages: eventPackagesFromLegacyEventSystem(StoryDirectorEventSystem{EventPackages: config.EventPackages, CustomEvents: config.CustomEvents}, id),
 		TRPGSystem: StoryDirectorTRPGSystem{
@@ -669,6 +678,8 @@ func normalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirecto
 	strategy.FailurePolicy = normalizeOrchestrationOption(strategy.FailurePolicy, "reversible")
 	strategy.PacingCurve = normalizeOrchestrationOption(strategy.PacingCurve, "progressive")
 	strategy.DirectorAgentMode = normalizeDirectorAgentMode(strategy.DirectorAgentMode)
+	strategy.RuleStateConsumptionMode = normalizeRuleStateConsumptionMode(strategy.RuleStateConsumptionMode)
+	strategy.RuleVisibilityMode = normalizeRuleVisibilityMode(strategy.RuleVisibilityMode)
 	strategy.PromptMarkdown = trimBytes(strategy.PromptMarkdown, MaxStoryDirectorStrategyPromptBytes)
 	strategy.BranchPlanningTurns = NormalizeBranchPlanningTurns(strategy.BranchPlanningTurns)
 	strategy.PlanningTemplates = NormalizeStoryDirectorPlanningTemplates(strategy.PlanningTemplates)
@@ -679,6 +690,17 @@ func normalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirecto
 		strategy.RandomEventRate = 1
 	}
 	return strategy
+}
+
+func normalizeRuleVisibilityMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case "", RuleVisibilityModeAuditOnly:
+		return RuleVisibilityModeAuditOnly
+	case RuleVisibilityModePublicRoll:
+		return RuleVisibilityModePublicRoll
+	default:
+		return RuleVisibilityModeAuditOnly
+	}
 }
 
 func normalizeDirectorAgentMode(mode string) string {
@@ -796,24 +818,28 @@ func storyDirectorActorStateSchemaSummary(system StoryDirectorActorStateSystem) 
 }
 
 type storyDirectorStructuredStrategy struct {
-	Enabled             bool    `json:"enabled"`
-	MainlineStrength    string  `json:"mainline_strength,omitempty"`
-	FailurePolicy       string  `json:"failure_policy,omitempty"`
-	PacingCurve         string  `json:"pacing_curve,omitempty"`
-	RandomEventRate     float64 `json:"random_event_rate,omitempty"`
-	DirectorAgentMode   string  `json:"director_agent_mode,omitempty"`
-	BranchPlanningTurns int     `json:"branch_planning_turns,omitempty"`
+	Enabled                  bool    `json:"enabled"`
+	MainlineStrength         string  `json:"mainline_strength,omitempty"`
+	FailurePolicy            string  `json:"failure_policy,omitempty"`
+	PacingCurve              string  `json:"pacing_curve,omitempty"`
+	RandomEventRate          float64 `json:"random_event_rate,omitempty"`
+	DirectorAgentMode        string  `json:"director_agent_mode,omitempty"`
+	RuleStateConsumptionMode string  `json:"rule_state_consumption_mode,omitempty"`
+	RuleVisibilityMode       string  `json:"rule_visibility_mode,omitempty"`
+	BranchPlanningTurns      int     `json:"branch_planning_turns,omitempty"`
 }
 
 func storyDirectorStructuredStrategySummary(strategy StoryDirectorStrategy) storyDirectorStructuredStrategy {
 	return storyDirectorStructuredStrategy{
-		Enabled:             strategy.Enabled,
-		MainlineStrength:    strategy.MainlineStrength,
-		FailurePolicy:       strategy.FailurePolicy,
-		PacingCurve:         strategy.PacingCurve,
-		RandomEventRate:     strategy.RandomEventRate,
-		DirectorAgentMode:   strategy.DirectorAgentMode,
-		BranchPlanningTurns: strategy.BranchPlanningTurns,
+		Enabled:                  strategy.Enabled,
+		MainlineStrength:         strategy.MainlineStrength,
+		FailurePolicy:            strategy.FailurePolicy,
+		PacingCurve:              strategy.PacingCurve,
+		RandomEventRate:          strategy.RandomEventRate,
+		DirectorAgentMode:        strategy.DirectorAgentMode,
+		RuleStateConsumptionMode: strategy.RuleStateConsumptionMode,
+		RuleVisibilityMode:       strategy.RuleVisibilityMode,
+		BranchPlanningTurns:      strategy.BranchPlanningTurns,
 	}
 }
 
