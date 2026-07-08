@@ -1,0 +1,73 @@
+CHANGELOG.md
+  s_111a630a2911af::t_11276cb92cded7 11-12,90-91
+README.en.md
+  s_111a630a2911af::t_8dbb3ec3350fff 69
+README.md
+  s_111a630a2911af::t_a547ec6f405e9d 69
+internal/agent/config_manager_tools.go
+  s_111a630a2911af::t_3d2ca323be00d5 55,826,849
+internal/agent/interactive_memory_tools.go
+  s_111a630a2911af::t_3f2bd349cf0ac5 269-270,272-273
+internal/agent/interactive_memory_tools_test.go
+  s_111a630a2911af::t_60e60252a2c4bd 272-274,285
+internal/agent/prompt.go
+  s_111a630a2911af::t_54e3e46a07f6a7 718
+internal/app/interactive_conversation.go
+  s_111a630a2911af::t_7ce94ce1cdc68e 168-169
+internal/interactive/director_modules.go
+  s_111a630a2911af::t_06c619332d5209 121,739-743,1184,1286-1288
+internal/interactive/orchestration.go
+  s_111a630a2911af::t_48d8f20abe74b4 18,24,73-85,91,95-96,114-119,130-131,133,148-156,265,307-309,370-377,382-385,394-404,406,410-421,431,440,444,450,617,626,658,665,750,761-763
+internal/interactive/orchestration_test.go
+  s_111a630a2911af::t_ca839c6e2fc62d 153,158,162-163,167,171-172,179,189-190,192-193,198-272,307-398
+internal/interactive/rule_state_binding.go
+  s_111a630a2911af::t_0081b7adfe3b95 1-683
+internal/interactive/story.go
+  s_111a630a2911af::t_ac697937600837 885-886
+internal/interactive/story_directors_test.go
+  s_111a630a2911af::t_aa0acbd3012c9b 79
+internal/interactive/tellers.go
+  s_111a630a2911af::t_bbf2bc793cfa06 660
+internal/prompts/interactive.go
+  s_111a630a2911af::t_b8e5659e1e8636 107,113,116,207-208
+internal/prompts/interactive_test.go
+  s_111a630a2911af::t_6618dcbbde1d3c 66,76
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_111a630a2911af::t_df925f7acc5a63 646,660,690,743
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_111a630a2911af::t_b68fe57f6a2d8c 770,778,794-809,821
+web/src/features/interactive/components/preset-config/ruleTemplates.ts
+  s_111a630a2911af::t_15be69eb531cb5 1,8,35,45,59-63,68-188,190-195
+web/src/features/interactive/components/preset-config/visual-editors.tsx
+  s_111a630a2911af::t_547d2ead3470f7 12-13,20,522,527,532-533,538,547,565-570,575-730
+web/src/features/interactive/components/setting-panel/PresetSettingsPanel.tsx
+  s_111a630a2911af::t_861fbac0e1397e 1230,1268
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_111a630a2911af::t_e5cbdda7347c36 281
+web/src/features/interactive/components/story-director/StoryDirectorEditor.tsx
+  s_111a630a2911af::t_4b18472b80d84b 94-104,107
+web/src/features/interactive/types.ts
+  s_111a630a2911af::t_359ffd3ad03498 163,591,601-658,693-695
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_111a630a2911af::t_cd7f4da460d864 177,338-339,344,361-374,478
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_111a630a2911af::t_0bd7e29971dc7e 177,338-339,344,361-374,478
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "04adf29bbcd762db3632f9af6aedef7c796252ba",
+  "prompts": {},
+  "sessions": {
+    "s_111a630a2911af": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4124-ac70-70d3-85c3-e8ca43c899d6",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
