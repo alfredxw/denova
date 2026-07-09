@@ -1,0 +1,69 @@
+CHANGELOG.md
+  s_ae875ca8db85f9::t_c7d99b182e8e05 11-16,79-80
+internal/agent/loop_ledger_test.go
+  s_ae875ca8db85f9::t_d4927f66781760 312-337
+internal/agent/model_input_log.go
+  s_ae875ca8db85f9::t_9e6b0b1f56740d 131-142,177,499,534-551,585,595,626-696
+internal/agent/model_input_log_test.go
+  s_ae875ca8db85f9::t_edff8aeb861303 5,8,16,84-86,118-127,151-215
+internal/agent/run_trace.go
+  s_ae875ca8db85f9::t_7b207049d6886f 23-48,224,275-309,369-373
+internal/api/handlers/handler_skills.go
+  s_9979f8d16822e3::t_5d2d973db05f3b 40,193,208,222-251
+internal/api/routes.go
+  s_9979f8d16822e3::t_07cdc4a9848ab1 170-171
+internal/app/skills_app_service.go
+  s_9979f8d16822e3::t_a5217532f2863b 51-58,127-139
+internal/skills/github.go
+  s_9979f8d16822e3::t_610e9de01e3bf1 99-101,173
+internal/skills/install.go
+  s_9979f8d16822e3::t_5e6a8d848f8ce9 301
+internal/skills/install_test.go
+  s_9979f8d16822e3::t_5361665547b526 7-8,11-12,38-42,78-243,434-444
+internal/skills/remote.go
+  s_9979f8d16822e3::t_dedbac98dfedcc 1-191
+web/src/components/Chat/AgentTracePanel.tsx
+  s_ae875ca8db85f9::t_69f8422f1d351f 187,193,467-479
+web/src/features/skills/SkillsView.test.tsx
+  s_9979f8d16822e3::t_2bb6a3a747e1cb 4,18,20,33,35,198,200,206,213,217,228
+web/src/features/skills/SkillsView.tsx
+  s_9979f8d16822e3::t_99b639e7fdbb64 3,9,26,47,50-52,184-187,210-213,603-605,629-631,901-903,911-913,922-924,932-934,942,994-995,997-998,1012,1014,1016-1019,1025-1026,1034-1035
+web/src/i18n/locales/en-US/chat.ts
+  s_ae875ca8db85f9::t_c7b292ee168814 84
+web/src/i18n/locales/en-US/skills.ts
+  s_9979f8d16822e3::t_9497fa4779a366 39,43-44
+web/src/i18n/locales/zh-CN/chat.ts
+  s_ae875ca8db85f9::t_a5fe45f6820463 84
+web/src/i18n/locales/zh-CN/skills.ts
+  s_9979f8d16822e3::t_473c04a32ae419 39,43-44
+web/src/lib/api-client/skills.ts
+  s_9979f8d16822e3::t_eab4e6a273bdb4 9-15,94-123,137
+web/src/lib/api-client/types.ts
+  s_ae875ca8db85f9::t_e1c1cec04bbd74 181-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0c121dfba4ff99d99d524aec9ed25a6de8c5a89f",
+  "prompts": {},
+  "sessions": {
+    "s_9979f8d16822e3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f45b8-437d-7cd0-bdbd-d6318d88b3a5",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_ae875ca8db85f9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4596-f5cf-7fd3-9f78-e64118a600d4",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
