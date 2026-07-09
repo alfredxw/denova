@@ -12,38 +12,11 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/api/agentui"
 	runtimeapp "denova/internal/app"
 	"denova/internal/book"
 	"denova/internal/session"
 )
-
-type testMessageDTO struct {
-	Type                 string                   `json:"type"`
-	ID                   string                   `json:"id,omitempty"`
-	Role                 string                   `json:"role,omitempty"`
-	Content              string                   `json:"content,omitempty"`
-	Name                 string                   `json:"name,omitempty"`
-	Status               string                   `json:"status,omitempty"`
-	CreatedAt            string                   `json:"created_at,omitempty"`
-	RunID                string                   `json:"run_id,omitempty"`
-	AgentKind            string                   `json:"agent_kind,omitempty"`
-	AgentName            string                   `json:"agent_name,omitempty"`
-	RootAgentName        string                   `json:"root_agent_name,omitempty"`
-	RunPath              []string                 `json:"run_path,omitempty"`
-	SubAgent             bool                     `json:"subagent,omitempty"`
-	SubAgentSessionID    string                   `json:"subagent_session_id,omitempty"`
-	SubAgentType         string                   `json:"subagent_type,omitempty"`
-	PromptTokens         int                      `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens   int                      `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens int                      `json:"uncached_prompt_tokens,omitempty"`
-	CacheHitRate         float64                  `json:"cache_hit_rate,omitempty"`
-	CompletionTokens     int                      `json:"completion_tokens,omitempty"`
-	ReasoningTokens      int                      `json:"reasoning_tokens,omitempty"`
-	TotalTokens          int                      `json:"total_tokens,omitempty"`
-	ModelCalls           int                      `json:"model_calls,omitempty"`
-	GeneratedBytes       int                      `json:"generated_bytes,omitempty"`
-	UsageCalls           []session.TokenUsageCall `json:"usage_calls,omitempty"`
-}
 
 type testSessionDTO struct {
 	ID           string `json:"id"`
@@ -89,9 +62,8 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 	}
 
 	currentMessages := performJSONRequest(t, server, http.MethodGet, "/api/session/messages", nil)
-	var current []testMessageDTO
-	decodeResponse(t, currentMessages.Body.Bytes(), &current)
-	if len(current) != 1 || current[0].Content != "会话 B 消息" {
+	current := decodeAgentUIMessages(t, currentMessages.Body.Bytes())
+	if len(current) != 1 || current[0].Role != "user" || testTextPartContent(t, current[0]) != "会话 B 消息" {
 		t.Fatalf("当前会话消息应来自新会话: %#v", current)
 	}
 
@@ -100,9 +72,8 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 		t.Fatalf("switch status = %d body=%s", switchResp.Code, switchResp.Body.String())
 	}
 	defaultMessages := performJSONRequest(t, server, http.MethodGet, "/api/session/messages?session_id="+defaultID, nil)
-	var defaultHistory []testMessageDTO
-	decodeResponse(t, defaultMessages.Body.Bytes(), &defaultHistory)
-	if len(defaultHistory) != 1 || defaultHistory[0].Content != "默认会话消息" {
+	defaultHistory := decodeAgentUIMessages(t, defaultMessages.Body.Bytes())
+	if len(defaultHistory) != 1 || defaultHistory[0].Role != "user" || testTextPartContent(t, defaultHistory[0]) != "默认会话消息" {
 		t.Fatalf("指定会话消息读取不符合预期: %#v", defaultHistory)
 	}
 
@@ -121,9 +92,8 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 		t.Fatalf("clear status = %d body=%s", clearResp.Code, clearResp.Body.String())
 	}
 	clearedResp := performJSONRequest(t, server, http.MethodGet, "/api/session/messages", nil)
-	var cleared []testMessageDTO
-	decodeResponse(t, clearedResp.Body.Bytes(), &cleared)
-	if len(cleared) != 2 || cleared[1].Type != "clear" {
+	cleared := decodeAgentUIMessages(t, clearedResp.Body.Bytes())
+	if len(cleared) != 2 || testPartType(t, cleared[1]) != agentui.DataTypeClear {
 		t.Fatalf("/clear 后应保留历史并追加 clear 标记: %#v", cleared)
 	}
 
@@ -150,9 +120,8 @@ func TestAgentSessionAPIClearsBackgroundAgentContext(t *testing.T) {
 	if messagesResp.Code != http.StatusOK {
 		t.Fatalf("messages status = %d body=%s", messagesResp.Code, messagesResp.Body.String())
 	}
-	var messages []testMessageDTO
-	decodeResponse(t, messagesResp.Body.Bytes(), &messages)
-	if len(messages) != 1 || messages[0].Type != "clear" {
+	messages := decodeAgentUIMessages(t, messagesResp.Body.Bytes())
+	if len(messages) != 1 || testPartType(t, messages[0]) != agentui.DataTypeClear {
 		t.Fatalf("background agent session should expose clear marker: %#v", messages)
 	}
 
@@ -184,16 +153,17 @@ func TestSessionAPIReturnsSubAgentDisplayMetadata(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("messages status = %d body=%s", resp.Code, resp.Body.String())
 	}
-	var messages []testMessageDTO
-	decodeResponse(t, resp.Body.Bytes(), &messages)
+	messages := decodeAgentUIMessages(t, resp.Body.Bytes())
 	if len(messages) != 1 {
 		t.Fatalf("expected one display message, got %#v", messages)
 	}
 	got := messages[0]
-	if got.Role != "assistant" || !got.SubAgent || got.SubAgentSessionID != "run-1-subagent-01-researcher" || got.SubAgentType != "researcher" {
+	if got.Role != "assistant" || testMetadataString(got, "display_role") != "assistant" || !testMetadataBool(got, "subagent") ||
+		testMetadataString(got, "subagent_session_id") != "run-1-subagent-01-researcher" || testMetadataString(got, "subagent_type") != "researcher" {
 		t.Fatalf("SubAgent metadata missing from API response: %#v", got)
 	}
-	if got.RunID != "run-1" || got.AgentName != "researcher" || len(got.RunPath) != 2 {
+	if testTextPartContent(t, got) != "SubAgent 调研结果" || testMetadataString(got, "run_id") != "run-1" ||
+		testMetadataString(got, "agent_name") != "researcher" || len(testMetadataStringSlice(got, "run_path")) != 2 {
 		t.Fatalf("Agent path metadata missing from API response: %#v", got)
 	}
 }
@@ -234,21 +204,109 @@ func TestSessionAPIReturnsTokenUsageFields(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("messages status = %d body=%s", resp.Code, resp.Body.String())
 	}
-	var messages []testMessageDTO
-	decodeResponse(t, resp.Body.Bytes(), &messages)
+	messages := decodeAgentUIMessages(t, resp.Body.Bytes())
 	if len(messages) != 1 {
 		t.Fatalf("expected one usage message, got %#v", messages)
 	}
 	got := messages[0]
-	if got.Role != "token_usage" || got.AgentKind != config.AgentKindIDE || got.ModelCalls != 1 {
+	data := testDataPart(t, got, agentui.DataTypeTokenUsage)
+	if got.Role != "assistant" || testMetadataString(got, "display_role") != "token_usage" ||
+		testMetadataString(got, "agent_kind") != config.AgentKindIDE || testDataInt(data, "model_calls") != 1 {
 		t.Fatalf("token usage metadata missing from API response: %#v", got)
 	}
-	if got.PromptTokens != 2000 || got.CachedPromptTokens != 1000 || got.UncachedPromptTokens != 1000 || got.TotalTokens != 2300 {
+	if testDataInt(data, "prompt_tokens") != 2000 || testDataInt(data, "cached_prompt_tokens") != 1000 ||
+		testDataInt(data, "uncached_prompt_tokens") != 1000 || testDataInt(data, "total_tokens") != 2300 {
 		t.Fatalf("token usage counts missing from API response: %#v", got)
 	}
-	if got.CacheHitRate != 0.5 || got.GeneratedBytes != 128 || len(got.UsageCalls) != 1 || got.UsageCalls[0].ReasoningTokens != 20 {
+	usageCalls, _ := data["usage_calls"].([]any)
+	if testDataFloat(data, "cache_hit_rate") != 0.5 || testDataInt(data, "generated_bytes") != 128 ||
+		len(usageCalls) != 1 || testDataInt(testMap(usageCalls[0]), "reasoning_tokens") != 20 {
 		t.Fatalf("token usage details missing from API response: %#v", got)
 	}
+}
+
+func decodeAgentUIMessages(t *testing.T, data []byte) []agentui.Message {
+	t.Helper()
+	var messages []agentui.Message
+	decodeResponse(t, data, &messages)
+	return messages
+}
+
+func testPartType(t *testing.T, message agentui.Message) string {
+	t.Helper()
+	if len(message.Parts) == 0 {
+		t.Fatalf("message has no parts: %#v", message)
+	}
+	partType, _ := message.Parts[0]["type"].(string)
+	return partType
+}
+
+func testTextPartContent(t *testing.T, message agentui.Message) string {
+	t.Helper()
+	if partType := testPartType(t, message); partType != "text" {
+		t.Fatalf("expected text part, got %s in %#v", partType, message)
+	}
+	text, _ := message.Parts[0]["text"].(string)
+	return text
+}
+
+func testDataPart(t *testing.T, message agentui.Message, expectedType string) map[string]any {
+	t.Helper()
+	if partType := testPartType(t, message); partType != expectedType {
+		t.Fatalf("expected %s part, got %s in %#v", expectedType, partType, message)
+	}
+	return testMap(message.Parts[0]["data"])
+}
+
+func testMetadataString(message agentui.Message, key string) string {
+	value, _ := message.Metadata[key].(string)
+	return value
+}
+
+func testMetadataBool(message agentui.Message, key string) bool {
+	value, _ := message.Metadata[key].(bool)
+	return value
+}
+
+func testMetadataStringSlice(message agentui.Message, key string) []string {
+	values, ok := message.Metadata[key].([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if text, ok := value.(string); ok {
+			result = append(result, text)
+		}
+	}
+	return result
+}
+
+func testDataInt(data map[string]any, key string) int {
+	switch value := data[key].(type) {
+	case float64:
+		return int(value)
+	case int:
+		return value
+	default:
+		return 0
+	}
+}
+
+func testDataFloat(data map[string]any, key string) float64 {
+	switch value := data[key].(type) {
+	case float64:
+		return value
+	case int:
+		return float64(value)
+	default:
+		return 0
+	}
+}
+
+func testMap(value any) map[string]any {
+	data, _ := value.(map[string]any)
+	return data
 }
 
 func newTestApplication(t *testing.T) *runtimeapp.App {

@@ -38,6 +38,7 @@ type interactiveConversation struct {
 	lastTurn             *interactive.TurnEvent
 	lastStateReady       bool
 	lastSources          string
+	assistantMetadata    session.MessageMetadata
 	displayEvents        []interactive.DisplayEvent
 	modelContextMessages []interactive.ModelContextMessage
 	ruleResolution       *interactive.RuleResolution
@@ -396,8 +397,17 @@ func (c *interactiveConversation) ToolResultContextPolicy() agent.ToolResultCont
 }
 
 func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking string) error {
+	return c.AppendAssistantWithMetadata(content, thinking, session.MessageMetadata{})
+}
+
+func (c *interactiveConversation) AppendAssistantWithMetadata(content, thinking string, metadata session.MessageMetadata) error {
 	if c == nil || c.store == nil {
 		return fmt.Errorf("互动故事不存在")
+	}
+	if strings.TrimSpace(metadata.RunID) != "" {
+		c.mu.Lock()
+		c.assistantMetadata = metadata
+		c.mu.Unlock()
 	}
 	log.Printf("[interactive-agent] parse assistant output content story_id=%s branch_id=%s content=%q", c.storyID, c.branchID, content)
 	narrative, parseErr := parseInteractiveAssistantOutput(content)
@@ -406,11 +416,14 @@ func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking 
 		return parseErr
 	}
 	log.Printf("[interactive-agent] parse assistant output result story_id=%s branch_id=%s narrative=%q", c.storyID, c.branchID, narrative)
+	assistantMetadata := c.assistantMetadataSnapshot()
 	turn, _, err := c.store.AppendTurnWithState(c.storyID, interactive.AppendTurnWithStateRequest{
 		BranchID:             c.branchID,
 		User:                 c.user,
 		Narrative:            narrative,
 		Thinking:             thinking,
+		RunID:                assistantMetadata.RunID,
+		AgentKind:            assistantMetadata.AgentKind,
 		DisplayEvents:        c.displayEventsSnapshot(),
 		ModelContextMessages: c.modelContextMessagesSnapshot(),
 		RuleResolution:       c.ruleResolutionSnapshot(),
@@ -714,6 +727,14 @@ func (c *interactiveConversation) displayEventsSnapshot() []interactive.DisplayE
 	result := make([]interactive.DisplayEvent, len(c.displayEvents))
 	copy(result, c.displayEvents)
 	return result
+}
+
+func (c *interactiveConversation) assistantMetadataSnapshot() session.MessageMetadata {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	metadata := c.assistantMetadata
+	metadata.RunPath = append([]string(nil), metadata.RunPath...)
+	return metadata
 }
 
 func (c *interactiveConversation) modelContextMessagesSnapshot() []interactive.ModelContextMessage {

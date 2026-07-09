@@ -349,10 +349,18 @@ func BuildCompactedModelMessages(messages []*schema.Message, summary string, epo
 }
 
 func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, agentKind string, existingMemory string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error) {
+	var runErr error
+	traceCtx, finishTrace := withStandaloneRunTrace(ctx, cfg, config.AgentKindContextCompaction, "context_compaction", "generate", map[string]any{
+		"source_agent_kind": strings.TrimSpace(agentKind),
+		"source_messages":   len(source),
+		"source_tokens":     sourceTokens,
+	})
+	defer func() { finishTrace(runErr) }()
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindContextCompaction)
 	inputChars := contextCompactionInputChars(existingMemory, source, referenceContext)
-	cm, err := openai.NewChatModel(ctx, &modelCfg)
+	cm, err := openai.NewChatModel(traceCtx, &modelCfg)
 	if err != nil {
+		runErr = err
 		return "", inputChars, fmt.Errorf("创建上下文压缩模型失败: %w", err)
 	}
 	systemPrompt := protectedSystemInstruction(cfg, config.AgentKindContextCompaction, contextCompactionSystemInstruction())
@@ -364,16 +372,18 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 			schema.UserMessage(buildContextCompactionTranscript(source, existingMemory, referenceContext, sourceTokens, inputChars, retryReason, policy)),
 		}
 		mode := fmt.Sprintf("stream_attempt_%d", attempt)
-		span, callID, traceCtx := beginLLMCallTrace(ctx, config.AgentKindContextCompaction, "context_compaction", mode, modelCfg, input, nil, true)
-		msg, err := streamContextCompactionAttempt(traceCtx, cm, input, attempt, emitDelta)
+		span, callID, llmTraceCtx := beginLLMCallTrace(traceCtx, config.AgentKindContextCompaction, "context_compaction", mode, modelCfg, input, nil, true)
+		msg, err := streamContextCompactionAttempt(llmTraceCtx, cm, input, attempt, emitDelta)
 		if err != nil {
 			finishLLMCallTrace(span, callID, config.AgentKindContextCompaction, "context_compaction", mode, modelCfg.Model, attempt, nil, err, nil)
+			runErr = err
 			return "", inputChars, fmt.Errorf("上下文压缩失败: %w", err)
 		}
 		finishLLMCallTrace(span, callID, config.AgentKindContextCompaction, "context_compaction", mode, modelCfg.Model, attempt, msg, nil, nil)
 		summary = strings.TrimSpace(msg.Content)
 		if summary == "" {
-			return "", inputChars, fmt.Errorf("上下文压缩结果为空")
+			runErr = fmt.Errorf("上下文压缩结果为空")
+			return "", inputChars, runErr
 		}
 		summaryChars := countRunes(summary)
 		minChars, maxChars := compactionTargetCharRange(inputChars, policy)

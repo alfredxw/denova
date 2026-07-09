@@ -597,6 +597,11 @@ func (c *automationConversation) AppendAssistantWithThinking(content, _ string) 
 	return nil
 }
 
+func (c *automationConversation) AppendAssistantWithMetadata(content, _ string, _ session.MessageMetadata) error {
+	c.output = content
+	return nil
+}
+
 func (c *automationConversation) MarkInterrupted(_, _, _ string) error {
 	return nil
 }
@@ -633,6 +638,11 @@ func (c *automationRunConversation) AppendAssistant(content string) error {
 func (c *automationRunConversation) AppendAssistantWithThinking(content, _ string) error {
 	c.output = content
 	return c.base.AppendAssistant(content)
+}
+
+func (c *automationRunConversation) AppendAssistantWithMetadata(content, thinking string, metadata session.MessageMetadata) error {
+	c.output = content
+	return c.base.AppendAssistantWithMetadata(content, thinking, metadata)
 }
 
 func (c *automationRunConversation) AppendDisplayEvent(event session.DisplayEvent) error {

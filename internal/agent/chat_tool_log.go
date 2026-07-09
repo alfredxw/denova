@@ -32,7 +32,7 @@ func toolPathFromArgs(args string) string {
 	}
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(args), &payload); err != nil {
-		return ""
+		return toolPathFromPartialArgs(args)
 	}
 	for _, key := range []string{"path", "file_path", "filename", "file", "pattern"} {
 		value, _ := payload[key].(string)
@@ -41,6 +41,67 @@ func toolPathFromArgs(args string) string {
 		}
 	}
 	return ""
+}
+
+func toolPathFromPartialArgs(args string) string {
+	const scanLimit = 8 * 1024
+	if len(args) > scanLimit {
+		args = args[:scanLimit]
+	}
+	for _, key := range []string{"path", "file_path", "filename", "file", "pattern"} {
+		value, ok := partialToolStringField(args, key)
+		value = strings.TrimSpace(value)
+		if ok && value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func partialToolStringField(args, key string) (string, bool) {
+	needle := `"` + key + `"`
+	searchFrom := 0
+	for {
+		index := strings.Index(args[searchFrom:], needle)
+		if index < 0 {
+			return "", false
+		}
+		index += searchFrom
+		afterKey := strings.TrimLeft(args[index+len(needle):], " \n\r\t")
+		if !strings.HasPrefix(afterKey, ":") {
+			searchFrom = index + len(needle)
+			continue
+		}
+		afterColon := strings.TrimLeft(afterKey[1:], " \n\r\t")
+		if !strings.HasPrefix(afterColon, `"`) {
+			searchFrom = index + len(needle)
+			continue
+		}
+		end := partialJSONStringLiteralEnd(afterColon)
+		if end < 0 {
+			return "", false
+		}
+		var value string
+		if err := json.Unmarshal([]byte(afterColon[:end+1]), &value); err != nil {
+			return "", false
+		}
+		return value, true
+	}
+}
+
+func partialJSONStringLiteralEnd(input string) int {
+	escaped := false
+	for i := 1; i < len(input); i++ {
+		switch {
+		case escaped:
+			escaped = false
+		case input[i] == '\\':
+			escaped = true
+		case input[i] == '"':
+			return i
+		}
+	}
+	return -1
 }
 
 func looksLikeToolFailure(content string) bool {

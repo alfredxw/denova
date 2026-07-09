@@ -11,17 +11,19 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
-import { ChatMessageList as MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
+import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
 import { AgentTracePanel } from '@/components/Chat/AgentTracePanel'
-import { SubAgentSessionPanel } from '@/components/Chat/SubAgentSessionPanel'
+import { AgentSubAgentSessionPanel } from '@/components/Chat/AgentSubAgentSessionPanel'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from '@/components/Chat/composer-token-input'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
 import { subAgentSessionKey } from '@/components/Chat/subagent-session'
 import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobile-layout'
 import type { ChatMessage, ContextAnalysis, InteractiveImage, InteractiveImageError, PublicRuleRoll } from '@/lib/api'
+import { chatMessagesToAgentUIMessages } from '@/lib/agent-legacy-message'
+import { agentSubAgentSessionKey, agentViewToRenderMessage, type AgentMessageView } from '@/lib/agent-message-view'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveHotChoices, generateInteractiveImage, removeInteractiveContextCompaction, runInteractiveDirector, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
@@ -428,6 +430,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         navigation_turn_id: turn.id,
         role: 'assistant',
         content: sanitizeStoredNarrative(turn.narrative),
+        run_id: turn.run_id,
+        agent_kind: turn.agent_kind,
         turn_versions: turn.versions,
         turn_version_index: turn.version_idx,
         interactive_image: latestMergedInteractiveImage(mergedImages),
@@ -441,6 +445,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   const displayLiveMessages = hasPersistedLiveTurn ? [] : liveMessages.filter((message) => message.role !== 'token_usage')
   const messages = useMemo(() => [...historyMessages, ...displayLiveMessages], [displayLiveMessages, historyMessages])
+  const agentMessages = useMemo(() => chatMessagesToAgentUIMessages(messages), [messages])
   const turnNavigationItems = useMemo<TurnNavigationItem[]>(() => {
     const items: TurnNavigationItem[] = storyPathTurns.map((turn) => ({
       anchorId: turn.id,
@@ -474,8 +479,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       return turnNavigationItems.some((item) => item.anchorId === current) ? current : fallbackAnchorId
     })
   }, [turnNavigationItems])
-  const openSubAgentSession = useCallback((message: ChatMessage) => {
-    const key = subAgentSessionKey(message)
+  const openSubAgentSession = useCallback((view: AgentMessageView) => {
+    const key = agentSubAgentSessionKey(view)
     if (key) setActiveSubAgentSessionKey(key)
   }, [])
   const persistedTokenUsageMessages = useMemo(
@@ -1043,6 +1048,26 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     }
   }
 
+  const startEditingView = (view: AgentMessageView) => {
+    const message = agentViewToRenderMessage(view)
+    if (message) startEditingMessage(message)
+  }
+
+  const regenerateView = (view: AgentMessageView) => {
+    const message = agentViewToRenderMessage(view)
+    if (message) regenerateMessage(message)
+  }
+
+  const switchViewVersion = (view: AgentMessageView, direction: -1 | 1) => {
+    const message = agentViewToRenderMessage(view)
+    if (message) void switchMessageVersion(message, direction)
+  }
+
+  const generateImageForView = (view: AgentMessageView) => {
+    const message = agentViewToRenderMessage(view)
+    if (message) void generateImageForMessage(message, 'manual', true)
+  }
+
   const cancelEditing = () => {
     setEditingTurn(null)
     setInput('')
@@ -1214,7 +1239,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               </div>
             ) : (
               <MessageList
-                messages={messages}
+                messages={agentMessages}
                 isStreaming={streaming}
                 activityContent={activityContent}
                 highlightDialogue
@@ -1225,10 +1250,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 collapseTraceBeforeAssistant
                 turnScrollRequest={turnScrollRequest}
                 onVisibleTurnAnchorChange={handleVisibleTurnAnchorChange}
-                onEditMessage={startEditingMessage}
-                onRegenerateMessage={regenerateMessage}
-                onSwitchMessageVersion={switchMessageVersion}
-                onGenerateInteractiveImage={(message) => void generateImageForMessage(message, 'manual', true)}
+                onEditMessage={startEditingView}
+                onRegenerateMessage={regenerateView}
+                onSwitchMessageVersion={switchViewVersion}
+                onGenerateInteractiveImage={generateImageForView}
                 generatingInteractiveImageTurnId={generatingImageTurnId || undefined}
                 onOpenSubAgentSession={openSubAgentSession}
                 activeSubAgentSessionKey={activeSubAgentSessionKey}
@@ -1237,8 +1262,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             )}
             {activeSubAgentSessionKey && (
               <div className="absolute inset-y-0 right-0 z-30 w-[min(420px,92vw)] border-l border-[var(--nova-border)] shadow-[var(--nova-shadow)]">
-                <SubAgentSessionPanel
-                  messages={messages}
+                <AgentSubAgentSessionPanel
+                  messages={agentMessages}
                   sessionKey={activeSubAgentSessionKey}
                   onClose={() => setActiveSubAgentSessionKey('')}
                   highlightDialogue

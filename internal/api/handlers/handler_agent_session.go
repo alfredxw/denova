@@ -6,11 +6,13 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
+
+	"denova/internal/api/agentui"
 )
 
 func (h *Handlers) HandleAgentSessionMessages(ctx context.Context, c *app.RequestContext) {
 	if !h.app.HasWorkspace() {
-		writeJSON(c, consts.StatusOK, []messageDTO{})
+		writeJSON(c, consts.StatusOK, []agentui.Message{})
 		return
 	}
 	agentKind := strings.TrimSpace(c.Param("agent"))
@@ -19,7 +21,7 @@ func (h *Handlers) HandleAgentSessionMessages(ctx context.Context, c *app.Reques
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, historyEntriesToMessageDTOs(entries))
+	writeJSON(c, consts.StatusOK, agentui.MessagesFromHistory(entries))
 }
 
 func (h *Handlers) HandleAgentSessionClear(ctx context.Context, c *app.RequestContext) {

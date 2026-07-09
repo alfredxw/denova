@@ -7,18 +7,17 @@ import {
   streamAutomationRunMessage,
   type AutomationRunRecord,
   type AutomationTriggerEvidence,
-  type SSEEvent,
 } from '@/lib/api'
-import { normalizeRepeatedMessages, useAgentEventStream } from '@/hooks/useAgentEventStream'
+import type { AgentMessageView } from '@/lib/agent-message-view'
+import { createAgentTextMessage, useAgentUIMessageStream } from '@/hooks/useAgentUIMessageStream'
 
 export function useAutomationRunStream(options: { onFinished?: () => void | Promise<void> } = {}) {
   const { onFinished } = options
   const [activeRun, setActiveRun] = useState<AutomationRunRecord | null>(null)
 
-  const handleStreamEvent = useCallback((event: SSEEvent, data: Record<string, unknown>) => {
-    if (event.event === 'automation_run') {
-      setActiveRun(data as unknown as AutomationRunRecord)
-    }
+  const handleStreamView = useCallback((view: AgentMessageView) => {
+    if (view.kind !== 'activity' || view.data.event !== 'automation_run') return
+    setActiveRun(view.data as unknown as AutomationRunRecord)
   }, [])
 
   const {
@@ -26,10 +25,10 @@ export function useAutomationRunStream(options: { onFinished?: () => void | Prom
     setMessages,
     isStreaming,
     activityContent,
-    consumeAgentStream,
+    consumeAgentUIStream,
     resetStreamingState,
     setAbortController,
-  } = useAgentEventStream({ onEvent: handleStreamEvent })
+  } = useAgentUIMessageStream({ onView: handleStreamView })
 
   const reset = useCallback(() => {
     resetStreamingState()
@@ -37,14 +36,14 @@ export function useAutomationRunStream(options: { onFinished?: () => void | Prom
     setActiveRun(null)
   }, [resetStreamingState, setMessages])
 
-  const consumeRunStream = useCallback(async (stream: ReadableStream<SSEEvent>) => {
-    await consumeAgentStream(stream)
+  const consumeRunStream = useCallback(async (stream: Awaited<ReturnType<typeof streamAutomationRun>>) => {
+    await consumeAgentUIStream(stream)
     await onFinished?.()
-  }, [consumeAgentStream, onFinished])
+  }, [consumeAgentUIStream, onFinished])
 
   const start = useCallback(async (taskId: string, userMessage: string, triggerEvidence: AutomationTriggerEvidence[] = []) => {
     reset()
-    setMessages(userMessage ? [{ role: 'user', content: userMessage }] : [])
+    setMessages(userMessage ? [createAgentTextMessage('user', userMessage)] : [])
     const abortController = new AbortController()
     setAbortController(abortController)
     const stream = await streamAutomationRun(taskId, abortController.signal, triggerEvidence)
@@ -54,7 +53,7 @@ export function useAutomationRunStream(options: { onFinished?: () => void | Prom
   const resume = useCallback(async (run: AutomationRunRecord, intro?: string) => {
     reset()
     setActiveRun(run)
-    setMessages(intro ? [{ role: 'system', content: intro }] : [])
+    setMessages(intro ? [createAgentTextMessage('system', intro)] : [])
     const abortController = new AbortController()
     setAbortController(abortController)
     const stream = await streamAutomationRunByID(run.id, abortController.signal)
@@ -65,14 +64,14 @@ export function useAutomationRunStream(options: { onFinished?: () => void | Prom
     reset()
     setActiveRun(run)
     const history = await getAutomationRunMessages(run.id)
-    setMessages(normalizeRepeatedMessages(history))
+    setMessages(history)
   }, [reset, setMessages])
 
   const send = useCallback(async (message: string) => {
     const trimmed = message.trim()
     const runId = activeRun?.id
     if (!trimmed || !runId || isStreaming) return
-    setMessages(prev => [...prev, { role: 'user', content: trimmed }])
+    setMessages(prev => [...prev, createAgentTextMessage('user', trimmed)])
     const abortController = new AbortController()
     setAbortController(abortController)
     const stream = await streamAutomationRunMessage(runId, trimmed, abortController.signal)

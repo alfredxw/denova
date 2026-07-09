@@ -256,6 +256,94 @@ func TestToolOrchestratorBlocksMalformedJSONArguments(t *testing.T) {
 		!strings.Contains(result, "Tool arguments must be a complete JSON object") {
 		t.Fatalf("unexpected malformed-arguments result: %s", result)
 	}
+	if strings.Contains(result, "重新发起同一个工具调用") {
+		t.Fatalf("malformed-arguments result should not force a same-tool retry: %s", result)
+	}
+}
+
+func TestToolOrchestratorReturnsContentFilterContextForIncompleteWriteArguments(t *testing.T) {
+	workspace := t.TempDir()
+	ledger, err := newRunLedger(workspace, RunLedgerPolicy{Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ledger.Close()
+	observer := newRunObserver(ledger, "root-span")
+	observer.RecordLLMOutcome(LLMOutcome{
+		FinishReason:      "content_filter",
+		RequestedTools:    []string{"write_file"},
+		ProviderRequestID: "provider-1",
+	})
+	ctx := ContextWithRunObserver(context.Background(), observer)
+	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
+	called := false
+	endpoint, err := middleware.WrapInvokableToolCall(
+		context.Background(),
+		func(context.Context, string, ...tool.Option) (string, error) {
+			called = true
+			return "ok", nil
+		},
+		&adk.ToolContext{Name: "write_file", CallID: "call-content-filter"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := `{"file_path":"chapters/ch01.md","content":"正文被过滤中断`
+	result, err := endpoint(ctx, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("content-filter interrupted arguments should be blocked before endpoint is called")
+	}
+	for _, want := range []string{
+		"reason: model_output_interrupted_by_content_filter",
+		"retryable: false",
+		"workspace_mutated: false",
+		"args_complete: false",
+		"model_finish_reason: content_filter",
+		"target: chapters/ch01.md",
+		"文件未写入",
+		"do not retry the same write tool",
+	} {
+		if !strings.Contains(result, want) {
+			t.Fatalf("content-filter context missing %q:\n%s", want, result)
+		}
+	}
+	if strings.Contains(result, "重新发起同一个工具调用") {
+		t.Fatalf("content-filter context should not force a same-tool retry: %s", result)
+	}
+	records := readRunLedgerRecords(t, ledger.Path())
+	var decision map[string]any
+	var toolAttrs map[string]any
+	for _, record := range records {
+		data, _ := record["data"].(map[string]any)
+		switch record["type"] {
+		case "tool_decision":
+			decision, _ = data["decision"].(map[string]any)
+		case "tool_call":
+			toolAttrs, _ = data["attrs"].(map[string]any)
+		}
+	}
+	if decision == nil || toolAttrs == nil {
+		t.Fatalf("expected tool decision and trace span records: %#v", records)
+	}
+	if decision["model_finish_reason"] != "content_filter" || decision["args_complete"] != false {
+		t.Fatalf("decision should record incomplete content-filter args: %#v", decision)
+	}
+	if got, _ := decision["args_bytes"].(float64); int(got) != len(args) {
+		t.Fatalf("decision args_bytes = %v, want %d", decision["args_bytes"], len(args))
+	}
+	if toolAttrs["model_finish_reason"] != "content_filter" || toolAttrs["args_complete"] != false {
+		t.Fatalf("tool span should record incomplete content-filter args: %#v", toolAttrs)
+	}
+}
+
+func TestToolPathFromArgsExtractsPartialFilePath(t *testing.T) {
+	args := `{"file_path":"chapters/ch01.md","content":"正文还没闭合`
+	if got := toolPathFromArgs(args); got != "chapters/ch01.md" {
+		t.Fatalf("partial file_path = %q, want chapters/ch01.md", got)
+	}
 }
 
 func TestToolOrchestratorAllowsEscapedSpecialCharactersInJSONArguments(t *testing.T) {

@@ -5,7 +5,6 @@ import {
   deleteSession,
   executeCommand,
   getActiveChatTask,
-  getAgentUIMessages,
   getMessages,
   getSessions,
   getWorkspaceSummary,
@@ -42,7 +41,7 @@ describe('api', () => {
     server.use(
       http.get('/api/session/messages', ({ request }) => {
         requests.push({ path: new URL(request.url).pathname + new URL(request.url).search })
-        return HttpResponse.json([{ type: 'message', role: 'user', content: '会话消息' }])
+        return HttpResponse.json([{ id: 'message-1', role: 'user', parts: [{ type: 'text', text: '会话消息' }] }])
       }),
       http.get('/api/sessions', () => HttpResponse.json({
         sessions: [{ id: 'session-a', title: '会话 A', active: true, message_count: 1, created_at: '', updated_at: '' }],
@@ -74,7 +73,7 @@ describe('api', () => {
     await expect(switchSession('session-a')).resolves.toMatchObject({ id: 'session-a' })
     await expect(renameSession('session-a', '新标题')).resolves.toBeUndefined()
     await expect(deleteSession('session-b')).resolves.toMatchObject({ id: 'session-a' })
-    await expect(getMessages('session-a')).resolves.toEqual([{ type: 'message', role: 'user', content: '会话消息' }])
+    await expect(getMessages('session-a')).resolves.toEqual([{ id: 'message-1', role: 'user', parts: [{ type: 'text', text: '会话消息' }] }])
 
     expect(requests).toEqual([
       { path: '/api/sessions', body: { title: '会话 B' } },
@@ -85,10 +84,10 @@ describe('api', () => {
     ])
   })
 
-  it('读取 AI SDK UI 消息历史时使用新接口且不迁移旧历史', async () => {
+  it('读取 AI SDK UI 消息历史时使用 canonical 消息接口', async () => {
     const requests: string[] = []
     server.use(
-      http.get('/api/session/messages/ui', ({ request }) => {
+      http.get('/api/session/messages', ({ request }) => {
         requests.push(new URL(request.url).pathname + new URL(request.url).search)
         return HttpResponse.json([
           { id: 'message-1', role: 'assistant', parts: [{ type: 'text', text: '你好', state: 'done' }] },
@@ -96,10 +95,10 @@ describe('api', () => {
       }),
     )
 
-    await expect(getAgentUIMessages('session-ui')).resolves.toEqual([
+    await expect(getMessages('session-ui')).resolves.toEqual([
       { id: 'message-1', role: 'assistant', parts: [{ type: 'text', text: '你好', state: 'done' }] },
     ])
-    expect(requests).toEqual(['/api/session/messages/ui?session_id=session-ui'])
+    expect(requests).toEqual(['/api/session/messages?session_id=session-ui'])
   })
 
   it('发送命令时返回后端结果', async () => {
@@ -142,8 +141,12 @@ describe('api', () => {
       http.post('/api/chat', async ({ request }) => {
         requestBody = await request.json()
         return new Response(
-          'event: chunk\ndata: {"content":"你好"}\n\n' +
-          'event: done\ndata: {}\n\n',
+          'data: {"type":"start","messageId":"assistant-1"}\n\n' +
+          'data: {"type":"text-start","id":"text-1"}\n\n' +
+          'data: {"type":"text-delta","id":"text-1","delta":"你好"}\n\n' +
+          'data: {"type":"text-end","id":"text-1"}\n\n' +
+          'data: {"type":"finish","finishReason":"stop"}\n\n' +
+          'data: [DONE]\n\n',
           { headers: { 'Content-Type': 'text/event-stream' } },
         )
       }),
@@ -166,11 +169,11 @@ describe('api', () => {
 
     await expect(reader.read()).resolves.toEqual({
       done: false,
-      value: { event: 'chunk', data: '{"content":"你好"}' },
+      value: { type: 'start', messageId: 'assistant-1' },
     })
     await expect(reader.read()).resolves.toEqual({
       done: false,
-      value: { event: 'done', data: '{}' },
+      value: { type: 'text-start', id: 'text-1' },
     })
 
     expect(requestBody).toEqual({

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
-import { ChatMessageList as MessageList } from '@/components/Chat/MessageList'
+import { MessageList } from '@/components/Chat/MessageList'
 import { InputArea } from '@/components/Chat/InputArea'
 import { Textarea } from '@/components/ui/textarea'
 import {

@@ -120,6 +120,8 @@ func readRunTraceFile(path string, recordCap int) (RunTrace, error) {
 	}
 	defer file.Close()
 	trace := RunTrace{}
+	var tail []RunTraceRecord
+	totalRecords := 0
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -127,15 +129,54 @@ func readRunTraceFile(path string, recordCap int) (RunTrace, error) {
 		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
 			continue
 		}
+		totalRecords++
 		updateRunTraceSummary(&trace.Summary, record, path)
-		if recordCap <= 0 || len(trace.Records) < recordCap {
+		if recordCap <= 0 {
 			trace.Records = append(trace.Records, record)
-		} else {
-			trace.Truncated = true
+			continue
+		}
+		if trace.Truncated {
+			tail = append(tail, record)
+			if tailCap := traceTailRecordCap(recordCap); len(tail) > tailCap {
+				tail = tail[len(tail)-tailCap:]
+			}
+			continue
+		}
+		if len(trace.Records) < recordCap {
+			trace.Records = append(trace.Records, record)
+			continue
+		}
+		trace.Truncated = true
+		headCap := recordCap / 2
+		tailCap := traceTailRecordCap(recordCap)
+		tail = append(tail, trace.Records[headCap:]...)
+		if len(tail) > tailCap {
+			tail = tail[len(tail)-tailCap:]
+		}
+		trace.Records = trace.Records[:headCap]
+		tail = append(tail, record)
+		if tailCap := traceTailRecordCap(recordCap); len(tail) > tailCap {
+			tail = tail[len(tail)-tailCap:]
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return RunTrace{}, err
+	}
+	if trace.Truncated {
+		omitted := totalRecords - len(trace.Records) - len(tail)
+		if omitted < 0 {
+			omitted = 0
+		}
+		trace.Records = append(trace.Records, RunTraceRecord{
+			Type:      "trace_truncated_gap",
+			RunID:     trace.Summary.ID,
+			CreatedAt: trace.Summary.CreatedAt,
+			Data: map[string]any{
+				"omitted_records": omitted,
+				"record_cap":      recordCap,
+			},
+		})
+		trace.Records = append(trace.Records, tail...)
 	}
 	if trace.Summary.ID == "" {
 		trace.Summary.ID = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
@@ -144,6 +185,13 @@ func readRunTraceFile(path string, recordCap int) (RunTrace, error) {
 		trace.Summary.Path = path
 	}
 	return trace, nil
+}
+
+func traceTailRecordCap(recordCap int) int {
+	if recordCap <= 2 {
+		return 0
+	}
+	return recordCap - recordCap/2 - 1
 }
 
 func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path string) {

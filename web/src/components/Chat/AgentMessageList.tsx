@@ -9,6 +9,7 @@ import type { ChapterIllustration, ChatMessage } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import {
   agentSubAgentSessionKey,
+  agentViewToRenderMessage,
   agentViewContent,
   agentViewNavigationAnchor,
   agentViewStableKey,
@@ -22,7 +23,7 @@ import { listItem, novaEase } from '@/features/motion/motion-tokens'
 import { buildSubAgentProgressMessage } from './subagent-session'
 import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock, type ScrollElementBottomIntoViewOptions } from './useVirtuosoBottomLock'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
-import { AgentMessageItem, agentViewToChatMessage } from './AgentMessageItem'
+import { AgentMessageItem } from './AgentMessageItem'
 import { MessageItem, ToolActivityBlock } from './MessageItem'
 
 interface MessageListProps {
@@ -35,6 +36,9 @@ interface MessageListProps {
   bottomPaddingPx?: number
   messageStyle?: CSSProperties
   collapseTraceBeforeAssistant?: boolean
+  onEditMessage?: (view: AgentMessageView) => void
+  onRegenerateMessage?: (view: AgentMessageView) => void
+  onSwitchMessageVersion?: (view: AgentMessageView, direction: -1 | 1) => void
   onOpenSubAgentSession?: (view: AgentMessageView) => void
   onInsertIllustration?: (illustration: ChapterIllustration) => void
   onGenerateInteractiveImage?: (view: AgentMessageView) => void
@@ -61,7 +65,7 @@ type AgentChatListItem =
   | { kind: 'clear'; key: string; createdAt?: string }
   | { kind: 'message'; key: string; view: AgentMessageView; sourceIndex: number }
   | { kind: 'legacy-message'; key: string; message: ChatMessage; sourceIndex: number; openView?: AgentMessageView }
-  | { kind: 'trace'; key: string; views: AgentMessageView[] }
+  | { kind: 'trace'; key: string; views: AgentMessageView[]; activeStreamingTrace: boolean }
 
 const MESSAGE_LIST_OVERSCAN = { main: 520, reverse: 260 }
 const MESSAGE_LIST_INCREASE_VIEWPORT_BY = { top: 420, bottom: 900 }
@@ -75,7 +79,7 @@ interface MessageListVirtuosoContext {
   bottomPaddingPx?: number
 }
 
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const lastVisibleTurnAnchorRef = useRef('')
@@ -183,6 +187,9 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         isStreaming={isStreaming}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
+        onEditMessage={onEditMessage}
+        onRegenerateMessage={onRegenerateMessage}
+        onSwitchMessageVersion={onSwitchMessageVersion}
         onOpenSubAgentSession={onOpenSubAgentSession}
         onInsertIllustration={onInsertIllustration}
         onGenerateInteractiveImage={onGenerateInteractiveImage}
@@ -196,7 +203,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         onPlanCardLayoutChange={anchorLatestPlanCardBottom}
       />
     )
-  }, [activeSubAgentSessionKey, anchorLatestPlanCardBottom, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onSubmitPlanQuestion])
+  }, [activeSubAgentSessionKey, anchorLatestPlanCardBottom, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onSubmitPlanQuestion, onSwitchMessageVersion])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -248,11 +255,14 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange }: {
+function AgentChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange }: {
   item: AgentChatListItem
   isStreaming: boolean
   highlightDialogue: boolean
   messageStyle?: CSSProperties
+  onEditMessage?: (view: AgentMessageView) => void
+  onRegenerateMessage?: (view: AgentMessageView) => void
+  onSwitchMessageVersion?: (view: AgentMessageView, direction: -1 | 1) => void
   onOpenSubAgentSession?: (view: AgentMessageView) => void
   onInsertIllustration?: (illustration: ChapterIllustration) => void
   onGenerateInteractiveImage?: (view: AgentMessageView) => void
@@ -298,6 +308,7 @@ function AgentChatListRow({ item, isStreaming, highlightDialogue, messageStyle, 
       ) : item.kind === 'trace' ? (
         <TraceGroup
           views={item.views}
+          activeStreamingTrace={item.activeStreamingTrace}
           highlightDialogue={highlightDialogue}
           messageStyle={messageStyle}
           onInsertIllustration={onInsertIllustration}
@@ -318,6 +329,9 @@ function AgentChatListRow({ item, isStreaming, highlightDialogue, messageStyle, 
           view={item.view}
           highlightDialogue={highlightDialogue}
           messageStyle={messageStyle}
+          onEditMessage={isStreaming ? undefined : onEditMessage}
+          onRegenerateMessage={isStreaming ? undefined : onRegenerateMessage}
+          onSwitchMessageVersion={isStreaming ? undefined : onSwitchMessageVersion}
           onOpenSubAgentSession={onOpenSubAgentSession}
           onInsertIllustration={onInsertIllustration}
           onGenerateInteractiveImage={isStreaming ? undefined : onGenerateInteractiveImage}
@@ -353,7 +367,7 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
         group.push(views[nextIndex])
         nextIndex += 1
       }
-      const progress = buildSubAgentProgressMessage(group.map(item => agentViewToChatMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
+      const progress = buildSubAgentProgressMessage(group.map(item => agentViewToRenderMessage(item)).filter((item): item is ChatMessage => Boolean(item)))
       if (progress) {
         items.push({ kind: 'legacy-message', key: `subagent-${key || index}`, message: progress, sourceIndex: index, openView: group[0] })
         index = nextIndex - 1
@@ -369,8 +383,9 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
       }
       const nextView = views[nextIndex]
       const hasAssistantAfterTrace = nextView?.kind === 'assistant' && agentViewContent(nextView).trim()
-      if (traceViews.length > 0 && (hasAssistantAfterTrace || isStreaming)) {
-        items.push({ kind: 'trace', key: `trace-${traceViews[0].partId || index}`, views: traceViews })
+      const activeStreamingTrace = isActiveStreamingTrace(views, nextIndex, isStreaming)
+      if (traceViews.length > 0 && (hasAssistantAfterTrace || activeStreamingTrace)) {
+        items.push({ kind: 'trace', key: `trace-${traceViews[0].partId || index}`, views: traceViews, activeStreamingTrace })
         index = nextIndex - 1
         continue
       }
@@ -416,7 +431,7 @@ function buildMessageListScrollKey(items: AgentChatListItem[], bottomPaddingPx?:
       return `${item.key}:${message.role || ''}:${message.status || ''}:${(message.streaming_target_content || message.content || '').length}:${(message.result || '').length}`
     }
     if (item.kind === 'trace') {
-      return `${item.key}:${item.views.length}:${item.views.map((view) => `${view.partId}:${view.kind}:${view.status || ''}:${agentViewContent(view).length}:${stringifyLength(view.output)}`).join(',')}`
+      return `${item.key}:${item.activeStreamingTrace ? 'active' : 'idle'}:${item.views.length}:${item.views.map((view) => `${view.partId}:${view.kind}:${view.status || ''}:${agentViewContent(view).length}:${stringifyLength(view.output)}`).join(',')}`
     }
     if (item.kind === 'activity') return `${item.key}:${item.content.length}`
     return item.key
@@ -461,10 +476,23 @@ function chatListItemNavigationAnchor(item?: AgentChatListItem) {
   return ''
 }
 
-function TraceGroup({ views, highlightDialogue, messageStyle, onInsertIllustration, onGenerateInteractiveImage, onOpenTrace }: { views: AgentMessageView[]; highlightDialogue: boolean; messageStyle?: CSSProperties; onInsertIllustration?: (illustration: ChapterIllustration) => void; onGenerateInteractiveImage?: (view: AgentMessageView) => void; onOpenTrace?: (runID: string) => void }) {
+function isActiveStreamingTrace(views: AgentMessageView[], afterTraceIndex: number, isStreaming: boolean) {
+  if (!isStreaming) return false
+  for (let index = afterTraceIndex; index < views.length; index += 1) {
+    const view = views[index]
+    if (view.kind === 'token-usage') continue
+    if (view.kind === 'user') return false
+    if (view.kind === 'assistant' && agentViewContent(view).trim()) {
+      return view.streaming
+    }
+  }
+  return true
+}
+
+function TraceGroup({ views, activeStreamingTrace, highlightDialogue, messageStyle, onInsertIllustration, onGenerateInteractiveImage, onOpenTrace }: { views: AgentMessageView[]; activeStreamingTrace: boolean; highlightDialogue: boolean; messageStyle?: CSSProperties; onInsertIllustration?: (illustration: ChapterIllustration) => void; onGenerateInteractiveImage?: (view: AgentMessageView) => void; onOpenTrace?: (runID: string) => void }) {
   const { t } = useTranslation()
-  const running = views.some((view) => view.streaming || view.status === 'running')
-  const [expanded, setExpanded] = useState(running)
+  const active = activeStreamingTrace || views.some((view) => view.streaming || view.status === 'running')
+  const [expanded, setExpanded] = useState(active)
   const userToggledRef = useRef(false)
   const toolCount = views.filter((view) => view.kind === 'tool').length
   const thinkingCount = views.filter((view) => view.kind === 'reasoning').length
@@ -476,13 +504,13 @@ function TraceGroup({ views, highlightDialogue, messageStyle, onInsertIllustrati
   ].filter(Boolean).join(' · ') || t('chat.trace.execution')
 
   useEffect(() => {
-    if (running) {
+    if (active) {
       userToggledRef.current = false
       setExpanded(true)
       return
     }
     if (!userToggledRef.current) setExpanded(false)
-  }, [running])
+  }, [active])
 
   return (
     <div className="flex justify-start">

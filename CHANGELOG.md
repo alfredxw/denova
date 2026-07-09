@@ -8,10 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- WebUI：Chat UI 迁移到 AI SDK `useChat` / `UIMessage` 状态模型，并新增 AI SDK 兼容流式接口 `/api/chat/ui`、`/api/chat/ui/stream` 和 `/api/session/messages/ui`；旧会话历史在读取时即时转换为 `AgentUIMessage[]`，旧接口暂时保留。消息、思考、工具、Plan 和输入相关渲染开始接入 AI Elements primitives，专属协议状态统一使用 `data-agent-*` part 命名。
-- WebUI: Migrated Chat UI state to AI SDK `useChat` / `UIMessage` and added AI SDK-compatible stream endpoints `/api/chat/ui`, `/api/chat/ui/stream`, and `/api/session/messages/ui`; existing session history is converted to `AgentUIMessage[]` at read time while legacy endpoints remain available. Message, reasoning, tool, Plan, and prompt surfaces now start using AI Elements primitives, with app-specific protocol state carried by `data-agent-*` parts.
-- WebUI：主创作 Agent 消息列表改为直接消费 `AgentUIMessage.parts`，新增 parts 渲染 view 选择器和 Agent 专用消息列表；旧 `ChatMessageList` 保留给互动故事、自动化、配置管理和导演后台等未迁移面，降低回归风险。
-- WebUI: The main writing Agent message list now consumes `AgentUIMessage.parts` directly through a typed parts-view selector and Agent-specific list, while the legacy `ChatMessageList` remains for interactive stories, automations, config manager chat, and director background views.
+- Agent：最终 assistant 消息和游戏回合正文现在持久化 `run_id` / `agent_kind`，刷新后也可从最终输出跳转到对应 Trace；纯模型辅助 Agent（快捷选项、版本说明、章节正则、自动化触发、独立上下文压缩等）在没有父 run 时会创建独立本地 trace。
+- Agent: Final assistant messages and Game Mode turn prose now persist `run_id` / `agent_kind`, so the final output can jump back to its Trace after refresh. Model-only helper agents such as hot choices, version summaries, chapter-regex inference, automation trigger checks, and standalone context compaction now create their own local trace when no parent run exists.
+- WebUI：Agent Trace 明细超过展示上限时改为保留首尾记录并插入省略标记，长任务也能看到最终收尾；Trace 摘要中的工具调用数改用后端真实计数，并移除尚未实现的 OTLP exporter 选项。
+- WebUI: Agent Trace details now keep both head and tail records with an omitted-record marker when capped, so long runs still show their final lifecycle records. Tool-call counts use backend summary counters, and the unimplemented OTLP exporter option was removed.
+- WebUI：Agent/Chat 类时间线统一到 AI SDK `UIMessage` 协议；`/api/chat`、`/api/chat/stream`、`/api/session/messages`、配置管理和自动化运行消息接口现在直接返回或流式输出 `AgentUIMessage`，并移除临时 `/api/chat/ui`、`/api/chat/ui/stream`、`/api/session/messages/ui` 并行入口。该 beta 变更不兼容旧 `ChatMessage[]` response/stream shape。
+- WebUI: Unified Agent/Chat timelines on the AI SDK `UIMessage` protocol. `/api/chat`, `/api/chat/stream`, `/api/session/messages`, config-manager, and automation run message APIs now return or stream `AgentUIMessage` directly, and the temporary `/api/chat/ui`, `/api/chat/ui/stream`, and `/api/session/messages/ui` parallel endpoints were removed. This beta change is incompatible with the old `ChatMessage[]` response/stream shape.
+- WebUI：删除旧 `ChatMessageList` 和旧配置管理 SSE reducer，所有 Agent/Chat 时间线改用同一个 `AgentUIMessage -> AgentMessageView -> MessageItem render model` 转换入口；互动故事和导演后台的本地旧展示状态仅在进入新列表时做边界转换。
+- WebUI: Removed the legacy `ChatMessageList` and config-manager SSE reducer. Agent/Chat timelines now use a single `AgentUIMessage -> AgentMessageView -> MessageItem render model` conversion path; interactive story and director-console local legacy display state is converted only at the new-list boundary.
 - 游戏模式：TRPG 检定与状态系统新增 State Binding 联动。TRPG 检定资源可绑定状态系统并配置 `state_bindings`，`prepare_interactive_turn` 会按 `binding_id`、`actor_id` 和 `target_actor_id` 自动读取 number 状态、计算 d20 修正、合并配置状态变化与 DM 临场状态变化，并把非数值状态作为 Agent 设计四档结果的提示词上下文。
 - Game Mode: Added State Binding between TRPG Checks and the State System. TRPG Check resources can bind an Actor State module and define `state_bindings`; `prepare_interactive_turn` now uses `binding_id`, `actor_id`, and `target_actor_id` to read numeric state, compute fixed-d20 modifiers, merge configured and DM-authored state changes, and expose non-numeric state as prompt context for outcome design.
 - 游戏模式：TRPG 检定配置新增“必须检定/不要检定”触发示例，Story Director 策略新增规则可见性开关；默认仍只在侧栏审计，开启公开掷骰后会在玩家行动与故事正文之间展示玩家友好的骰卡。
@@ -176,6 +180,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Agent：`write_file` 等写工具参数被 provider `content_filter` 截断时，Denova 现在会把 `finish_reason`、`args_complete=false`、目标路径、`retryable=false` 和“文件未写入”作为 tool result 上下文返回给 Agent，由 Agent 告知用户原因，不再提示反复重试同一个工具调用。
+- Agent: When provider `content_filter` interrupts `write_file` and other write-tool arguments, Denova now returns `finish_reason`, `args_complete=false`, target path, `retryable=false`, and “no file was written” as model-visible tool-result context so the Agent can explain the failure instead of repeatedly retrying the same tool call.
+- WebUI：修复 Agent trace 在单个工具调用结束后立刻自动折叠的问题；当前轮仍在 streaming 时，thinking 和工具调用会保持展开，直到本轮输出结束后再自动收起。
+- WebUI: Fixed Agent traces auto-collapsing immediately after an individual tool call finishes. Reasoning and tool calls now stay expanded while the current turn is still streaming, then collapse after the turn output finishes.
 - WebUI：修复刷新页面并恢复活跃 Agent 流时，历史中的思考/工具/Token 卡片会被恢复流 replay 再追加到底部的问题；前端现在按 `AgentUIMessage.parts` 的稳定身份合并同一 run 的重复 part，并保留更新后的完成态。
 - WebUI: Fixed duplicated reasoning/tool/token cards being appended at the bottom after refreshing while an Agent run is active. The frontend now merges replayed `AgentUIMessage.parts` by stable part identity within the same run and preserves the latest completed state.
 - 游戏模式：修复主舞台输出正文时 thinking 被折叠进追踪摘要或提前收起的问题，并为消息底部操作区预留稳定高度，减少流式输出完成前后的布局抖动。

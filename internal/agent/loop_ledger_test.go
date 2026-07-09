@@ -309,6 +309,54 @@ func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
 	}
 }
 
+func TestReadRunTraceKeepsHeadAndTailWhenTruncated(t *testing.T) {
+	workspace := t.TempDir()
+	ledger, err := newRunLedgerWithOptions(workspace, RunLedgerPolicy{Enabled: true, Directory: ".denova/runs", PreviewChars: 8}, RunOptions{
+		AgentKind: AgentKindIDE,
+		TaskID:    "task-long-trace",
+		Workspace: workspace,
+		Mode:      "ide",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 620; i++ {
+		if err := ledger.Record("event", map[string]any{
+			"event_type": "test_event",
+			"index":      i,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := ledger.RecordFinish("success", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	trace, err := ReadRunTrace(workspace, ledger.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !trace.Truncated {
+		t.Fatalf("expected trace to be marked truncated")
+	}
+	if len(trace.Records) != defaultRunTraceRecordCap {
+		t.Fatalf("records = %d, want %d", len(trace.Records), defaultRunTraceRecordCap)
+	}
+	gap := trace.Records[defaultRunTraceRecordCap/2]
+	if gap.Type != "trace_truncated_gap" {
+		t.Fatalf("expected gap marker in middle, got %#v", gap)
+	}
+	if trace.Records[len(trace.Records)-1].Type != "run_finished" {
+		t.Fatalf("tail should include run_finished, got %#v", trace.Records[len(trace.Records)-1])
+	}
+	if omitted, ok := numericInt64Field(gap.Data, "omitted_records"); !ok || omitted <= 0 {
+		t.Fatalf("gap should report omitted records: %#v", gap.Data)
+	}
+}
+
 func TestLoopPolicyZeroValueUsesDefaults(t *testing.T) {
 	policy := (LoopPolicy{}).normalized()
 	if !policy.ContextLedger.Enabled || !policy.RunLedger.Enabled {

@@ -169,19 +169,25 @@ type ToolDecision struct {
 	MutatesWorkspace  bool       `json:"mutates_workspace"`
 	RequiresPostCheck bool       `json:"requires_post_check"`
 	Target            string     `json:"target,omitempty"`
+	ArgsBytes         int        `json:"args_bytes,omitempty"`
+	ArgsComplete      *bool      `json:"args_complete,omitempty"`
+	ModelFinishReason string     `json:"model_finish_reason,omitempty"`
 }
 
 type ToolExecutionRecord struct {
-	ToolName       string `json:"tool_name"`
-	ToolCallID     string `json:"tool_call_id,omitempty"`
-	Status         string `json:"status"`
-	Capability     string `json:"capability,omitempty"`
-	OriginalBytes  int    `json:"original_bytes,omitempty"`
-	ReturnedBytes  int    `json:"returned_bytes,omitempty"`
-	Truncated      bool   `json:"truncated,omitempty"`
-	Target         string `json:"target,omitempty"`
-	IdempotencyKey string `json:"idempotency_key,omitempty"`
-	Error          string `json:"error,omitempty"`
+	ToolName          string `json:"tool_name"`
+	ToolCallID        string `json:"tool_call_id,omitempty"`
+	Status            string `json:"status"`
+	Capability        string `json:"capability,omitempty"`
+	OriginalBytes     int    `json:"original_bytes,omitempty"`
+	ReturnedBytes     int    `json:"returned_bytes,omitempty"`
+	Truncated         bool   `json:"truncated,omitempty"`
+	Target            string `json:"target,omitempty"`
+	IdempotencyKey    string `json:"idempotency_key,omitempty"`
+	Error             string `json:"error,omitempty"`
+	ArgsBytes         int    `json:"args_bytes,omitempty"`
+	ArgsComplete      *bool  `json:"args_complete,omitempty"`
+	ModelFinishReason string `json:"model_finish_reason,omitempty"`
 }
 
 func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
@@ -191,22 +197,19 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 ) (adk.InvokableToolCallEndpoint, error) {
 	return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
 		decision := m.buildToolDecision(toolCtx, args)
-		decision = applyToolArgumentValidation(decision, args)
 		observer := RunObserverFromContext(ctx)
+		outcome := LLMOutcome{}
+		if observer != nil {
+			outcome = observer.LastLLMOutcome()
+		}
+		decision = applyToolArgumentValidation(decision, args, outcome)
 		observer.RecordToolDecision(decision)
 		if decision.Action == "blocked" {
 			msg := decision.Reason
 			if msg == "" {
 				msg = fmt.Sprintf("[tool error] 工具 %q 被当前 Agent 策略阻止。", decision.ToolName)
 			}
-			observer.RecordToolExecution(ToolExecutionRecord{
-				ToolName:   decision.ToolName,
-				ToolCallID: decision.ToolCallID,
-				Status:     "blocked",
-				Capability: decision.Capability,
-				Target:     decision.Target,
-				Error:      msg,
-			})
+			observer.RecordToolExecution(blockedToolExecutionRecord(decision, msg))
 			return msg, nil
 		}
 		result, err := endpoint(ctx, args, opts...)
@@ -248,22 +251,19 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 ) (adk.StreamableToolCallEndpoint, error) {
 	return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
 		decision := m.buildToolDecision(toolCtx, args)
-		decision = applyToolArgumentValidation(decision, args)
 		observer := RunObserverFromContext(ctx)
+		outcome := LLMOutcome{}
+		if observer != nil {
+			outcome = observer.LastLLMOutcome()
+		}
+		decision = applyToolArgumentValidation(decision, args, outcome)
 		observer.RecordToolDecision(decision)
 		if decision.Action == "blocked" {
 			msg := decision.Reason
 			if msg == "" {
 				msg = fmt.Sprintf("[tool error] 工具 %q 被当前 Agent 策略阻止。", decision.ToolName)
 			}
-			observer.RecordToolExecution(ToolExecutionRecord{
-				ToolName:   decision.ToolName,
-				ToolCallID: decision.ToolCallID,
-				Status:     "blocked",
-				Capability: decision.Capability,
-				Target:     decision.Target,
-				Error:      msg,
-			})
+			observer.RecordToolExecution(blockedToolExecutionRecord(decision, msg))
 			return singleChunkReader(msg), nil
 		}
 		sr, err := endpoint(ctx, args, opts...)
@@ -352,6 +352,20 @@ func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string]
 	return r
 }
 
+func blockedToolExecutionRecord(decision ToolDecision, msg string) ToolExecutionRecord {
+	return ToolExecutionRecord{
+		ToolName:          decision.ToolName,
+		ToolCallID:        decision.ToolCallID,
+		Status:            "blocked",
+		Capability:        decision.Capability,
+		Target:            decision.Target,
+		Error:             msg,
+		ArgsBytes:         decision.ArgsBytes,
+		ArgsComplete:      decision.ArgsComplete,
+		ModelFinishReason: decision.ModelFinishReason,
+	}
+}
+
 func (m *toolOrchestratorMiddleware) toolResultLimitBytes() int {
 	if m == nil {
 		return 0
@@ -371,6 +385,7 @@ func (m *toolOrchestratorMiddleware) buildToolDecision(toolCtx *adk.ToolContext,
 		MutatesWorkspace:  manifest.MutatesWorkspace,
 		RequiresPostCheck: manifest.RequiresPostCheck,
 		Target:            toolPathFromArgs(args),
+		ArgsBytes:         len(args),
 	}
 	if m != nil && m.effectivePolicyKind() == AgentKindInteractiveStory && isInteractiveStoryWriteTool(name) {
 		decision.Action = "blocked"
@@ -388,22 +403,66 @@ func disabledToolCapabilityMessage(name, capability string) string {
 	return fmt.Sprintf("[tool error] 工具 %q 需要当前 Agent 启用 %s 能力，但该能力已关闭。请改用已授权工具，或请用户在 Agent Tools 中开启该能力。 / Tool %q requires capability %s, which is disabled for this Agent.", name, capability, name, capability)
 }
 
-func applyToolArgumentValidation(decision ToolDecision, args string) ToolDecision {
+func applyToolArgumentValidation(decision ToolDecision, args string, outcome LLMOutcome) ToolDecision {
 	if decision.Action == "blocked" {
 		return decision
 	}
-	if msg := invalidToolArgumentsMessage(decision.ToolName, args); msg != "" {
+	if err := validateToolArgumentsJSON(args); err != nil {
+		argsComplete := false
+		decision.ArgsComplete = &argsComplete
+		decision.ModelFinishReason = strings.TrimSpace(outcome.FinishReason)
 		decision.Action = "blocked"
-		decision.Reason = msg
+		decision.Reason = invalidToolArgumentsMessage(decision, args, err, outcome)
 	}
 	return decision
 }
 
-func invalidToolArgumentsMessage(toolName, args string) string {
-	if err := validateToolArgumentsJSON(args); err != nil {
-		return fmt.Sprintf("[tool error] 工具 %q 的参数不是完整 JSON 对象：%v。请重新发起同一个工具调用，并保证 arguments 是完整、合法的 JSON object；字符串里的换行、引号和反斜杠必须正确转义。 / Tool arguments must be a complete JSON object; escape newlines, quotes, and backslashes inside strings.", toolName, err)
+func invalidToolArgumentsMessage(decision ToolDecision, args string, err error, outcome LLMOutcome) string {
+	if isContentFilterInterruptedArguments(err, decision, outcome) {
+		target := strings.TrimSpace(decision.Target)
+		if target == "" {
+			target = "(unknown)"
+		}
+		return fmt.Sprintf(`[tool error]
+type: invalid_tool_arguments
+tool: %s
+reason: model_output_interrupted_by_content_filter
+retryable: false
+workspace_mutated: false
+args_complete: false
+args_bytes: %d
+model_finish_reason: %s
+target: %s
+
+中文：模型在生成工具参数时被内容过滤中断，arguments 不是完整 JSON 对象：%v。Denova 已阻止工具执行，文件未写入。请直接告知用户本次写入失败的原因，不要重试同一个写入工具。
+English: The model output was stopped by content filtering while producing tool arguments, so arguments are not a complete JSON object: %v. Denova blocked tool execution and no file was written. Tell the user what happened; do not retry the same write tool.`, decision.ToolName, len(args), strings.TrimSpace(outcome.FinishReason), target, err, err)
 	}
-	return ""
+	return fmt.Sprintf(`[tool error]
+type: invalid_tool_arguments
+tool: %s
+retryable: true
+workspace_mutated: false
+args_complete: false
+args_bytes: %d
+
+中文：工具 %q 的参数不是完整 JSON 对象：%v。请修正 arguments，确保它是完整、合法的 JSON object；字符串里的换行、引号和反斜杠必须正确转义。
+English: Tool %q arguments are not a complete JSON object: %v. Tool arguments must be a complete JSON object; fix arguments and escape newlines, quotes, and backslashes inside strings.`, decision.ToolName, len(args), decision.ToolName, err, decision.ToolName, err)
+}
+
+func isContentFilterInterruptedArguments(err error, decision ToolDecision, outcome LLMOutcome) bool {
+	if !isIncompleteJSONArgumentsError(err) {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(outcome.FinishReason), "content_filter") {
+		return false
+	}
+	return decision.MutatesWorkspace || decision.Source == ToolSourceWrite
+}
+
+func isIncompleteJSONArgumentsError(err error) bool {
+	return errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, io.EOF) ||
+		strings.Contains(strings.ToLower(err.Error()), "unexpected eof")
 }
 
 func validateToolArgumentsJSON(args string) error {

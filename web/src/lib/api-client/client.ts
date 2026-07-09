@@ -1,3 +1,4 @@
+import { parseJsonEventStream, uiMessageChunkSchema, type UIMessageChunk } from 'ai'
 import type { SSEEvent } from './types'
 import i18next from '@/i18n'
 import { toast } from 'sonner'
@@ -89,6 +90,18 @@ export function parseSSEStream<T extends SSEEvent = SSEEvent>(body: ReadableStre
       }
     },
   })
+}
+
+export function parseUIMessageStream(body: ReadableStream<Uint8Array>): ReadableStream<UIMessageChunk> {
+  return parseJsonEventStream({
+    stream: body,
+    schema: uiMessageChunkSchema,
+  }).pipeThrough(new TransformStream({
+    transform(chunk, controller) {
+      if (!chunk.success) throw chunk.error
+      controller.enqueue(chunk.value)
+    },
+  }))
 }
 
 export function setRemoteAccessCredentials(username: string, password: string) {

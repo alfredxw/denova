@@ -85,6 +85,51 @@ func TestLoadLegacyJSONLWithoutClearMarkerUsesFullHistory(t *testing.T) {
 	}
 }
 
+func TestAssistantMessageMetadataPersistsRunID(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(schema.UserMessage("写一段")); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendWithMetadata(schema.AssistantMessage("已完成", nil), MessageMetadata{
+		RunID:         "run-1",
+		AgentKind:     "ide",
+		AgentName:     "DenovaAgent",
+		RootAgentName: "DenovaAgent",
+		RunPath:       []string{"DenovaAgent"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := reloaded.History()
+	if len(history) != 2 {
+		t.Fatalf("history entries = %d, want 2: %#v", len(history), history)
+	}
+	assistant := history[1]
+	if assistant.Role != "assistant" || assistant.RunID != "run-1" || assistant.AgentKind != "ide" || assistant.AgentName != "DenovaAgent" || len(assistant.RunPath) != 1 {
+		t.Fatalf("assistant metadata was not persisted: %#v", assistant)
+	}
+	effective := reloaded.GetEffectiveMessages()
+	if len(effective) != 2 || effective[1].Content != "已完成" {
+		t.Fatalf("metadata should not change model-visible messages: %#v", effective)
+	}
+}
+
 func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

@@ -8,7 +8,7 @@ import {
   deleteSession,
   executeCommand,
   getActiveChatTask,
-  getAgentUIMessages,
+  getMessages,
   getSessions,
   renameSession,
   switchSession,
@@ -22,8 +22,7 @@ import {
   normalizeAgentUIMessages,
   type AgentUIMessage,
 } from '@/lib/agent-ui'
-import { agentViewContent, buildAgentMessageViews, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
-import { isPlanProtocolToolName } from './useAgentEventStream'
+import { agentViewContent, buildAgentMessageViews, isPlanProtocolToolName, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
 
 interface ChatOptions {
   onAgentFileChange?: (path?: string) => void | Promise<void>
@@ -112,7 +111,7 @@ export function useAgentChat(options: ChatOptions = {}) {
 
   const loadHistory = useCallback(async (sessionId?: string) => {
     try {
-      const nextMessages = await getAgentUIMessages(sessionId)
+      const nextMessages = await getMessages(sessionId)
       setUIMessages(filterInternalPlanUIMessages(nextMessages))
     } catch (e) {
       console.error('加载历史失败', e)

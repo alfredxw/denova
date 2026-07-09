@@ -11,7 +11,7 @@ import (
 )
 
 // appendAssistantIfAny 将已生成的正文持久化，避免异常中断后刷新丢失输出。
-func appendAssistantIfAny(conversation Conversation, content, thinking *strings.Builder) string {
+func appendAssistantIfAny(conversation Conversation, content, thinking *strings.Builder, metadata session.MessageMetadata) string {
 	if content == nil || content.Len() == 0 {
 		return ""
 	}
@@ -21,6 +21,12 @@ func appendAssistantIfAny(conversation Conversation, content, thinking *strings.
 		reasoning = thinking.String()
 	}
 	if appender, ok := conversation.(interface {
+		AppendAssistantWithMetadata(content, thinking string, metadata session.MessageMetadata) error
+	}); ok {
+		if err := appender.AppendAssistantWithMetadata(generated, reasoning, metadata); err != nil {
+			log.Printf("[agent-run] persist assistant message failed err=%v", err)
+		}
+	} else if appender, ok := conversation.(interface {
 		AppendAssistantWithThinking(content, thinking string) error
 	}); ok {
 		if err := appender.AppendAssistantWithThinking(generated, reasoning); err != nil {

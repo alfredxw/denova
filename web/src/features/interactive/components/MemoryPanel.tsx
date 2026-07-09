@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAgentEventStream } from '@/hooks/useAgentEventStream'
+import { useAgentSSEUIMessageStream } from '@/hooks/useAgentSSEUIMessageStream'
+import { createAgentDataMessage, createAgentTextMessage } from '@/hooks/useAgentUIMessageStream'
 import { generateStoryMemoryStream, getStoryMemory } from '../api'
 import type { Snapshot, StoryMemoryState } from '../types'
 import { DirectorConsole } from './director-console/DirectorConsole'
@@ -60,16 +61,15 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
     }
   }, [effectiveBranchId, storyId, t])
 
-  const { messages: generateMessages, setMessages: setGenerateMessages, isStreaming: generating, activityContent: generateActivity, consumeAgentStream, resetStreamingState, setAbortController, abortLocalStream } = useAgentEventStream({
+  const { messages: generateMessages, setMessages: setGenerateMessages, isStreaming: generating, activityContent: generateActivity, consumeAgentSSEStream, resetStreamingState, setAbortController, abortLocalStream } = useAgentSSEUIMessageStream({
     onEvent: (event, data) => {
       if (event.event !== 'story_memory_result') return
-      setGenerateMessages(prev => [...prev, {
-        role: 'system',
+      setGenerateMessages(prev => [...prev, createAgentDataMessage('agent-system', {
         content: t('memoryPanel.generateDone', {
           patches: readNumber(data.patches),
           records: readNumber(data.records),
         }),
-      }])
+      })])
       void loadMemory()
     },
   })
@@ -105,19 +105,19 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
       setActiveTab('run')
     }
     resetStreamingState()
-    setGenerateMessages([{ role: 'user', content: source === 'auto' ? t('memoryPanel.autoGenerateRequest') : t('memoryPanel.generateRequest') }])
+    setGenerateMessages([createAgentTextMessage('user', source === 'auto' ? t('memoryPanel.autoGenerateRequest') : t('memoryPanel.generateRequest'))])
     const controller = new AbortController()
     setAbortController(controller)
     try {
       const stream = await generateStoryMemoryStream(storyId, effectiveBranchId, source, controller.signal)
-      await consumeAgentStream(stream)
+      await consumeAgentSSEStream(stream)
       await loadMemory()
     } catch (err) {
       console.error('[interactive-memory-panel] generate stream failed', err)
-      setGenerateMessages(prev => [...prev, { role: 'error', content: err instanceof Error ? err.message : t('memoryPanel.generateFailed') }])
+      setGenerateMessages(prev => [...prev, createAgentDataMessage('agent-error', { content: err instanceof Error ? err.message : t('memoryPanel.generateFailed') })])
       resetStreamingState()
     }
-  }, [consumeAgentStream, effectiveBranchId, generating, loadMemory, resetStreamingState, setAbortController, setGenerateMessages, storyId, t])
+  }, [consumeAgentSSEStream, effectiveBranchId, generating, loadMemory, resetStreamingState, setAbortController, setGenerateMessages, storyId, t])
 
   useEffect(() => {
     const turn = snapshot?.current_turn

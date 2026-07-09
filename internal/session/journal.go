@@ -63,7 +63,7 @@ func (s *Session) persistLocked() error {
 			if record.message == nil {
 				continue
 			}
-			message := messageRecord{Type: historyTypeMessage, CreatedAt: record.createdAt, Message: *record.message}
+			message := messageRecord{Type: historyTypeMessage, CreatedAt: record.createdAt, Message: *record.message, MessageMetadata: record.messageMetadata}
 			if err := writeJSONLine(&sb, message); err != nil {
 				return err
 			}
@@ -322,7 +322,7 @@ func appendMessageRecordLine(sess *Session, line string, kind string) error {
 	}
 	msg := record.Message
 	sess.messages = append(sess.messages, &msg)
-	sess.records = append(sess.records, historyRecord{kind: kind, message: &msg, createdAt: createdAt})
+	sess.records = append(sess.records, historyRecord{kind: kind, message: &msg, messageMetadata: sanitizeMessageMetadata(record.MessageMetadata), createdAt: createdAt})
 	if createdAt.After(sess.UpdatedAt) {
 		sess.UpdatedAt = createdAt
 	}

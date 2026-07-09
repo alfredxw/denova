@@ -64,9 +64,21 @@ type HistoryEntry struct {
 	SSEGeneratedChars    int              `json:"sse_generated_chars,omitempty"`
 }
 
+type MessageMetadata struct {
+	RunID             string   `json:"run_id,omitempty"`
+	AgentKind         string   `json:"agent_kind,omitempty"`
+	AgentName         string   `json:"agent_name,omitempty"`
+	RootAgentName     string   `json:"root_agent_name,omitempty"`
+	RunPath           []string `json:"run_path,omitempty"`
+	SubAgent          bool     `json:"subagent,omitempty"`
+	SubAgentSessionID string   `json:"subagent_session_id,omitempty"`
+	SubAgentType      string   `json:"subagent_type,omitempty"`
+}
+
 type historyRecord struct {
 	kind              string
 	message           *schema.Message
+	messageMetadata   MessageMetadata
 	display           *DisplayEvent
 	interruption      *Interruption
 	compaction        *ContextCompaction
@@ -80,6 +92,7 @@ type messageRecord struct {
 	Type      string         `json:"type"`
 	CreatedAt time.Time      `json:"created_at,omitempty"`
 	Message   schema.Message `json:"message"`
+	MessageMetadata
 }
 
 // DisplayEvent 表示只用于前端展示的非上下文事件，例如 thinking 和工具卡片。

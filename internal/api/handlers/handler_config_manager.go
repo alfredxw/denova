@@ -7,6 +7,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"denova/internal/api/agentui"
 	"denova/internal/api/sse"
 	appsvc "denova/internal/app"
 )
@@ -30,12 +31,12 @@ func (h *Handlers) HandleConfigManagerStream(ctx context.Context, c *app.Request
 		writeError(c, consts.StatusInternalServerError, "config manager agent is unavailable")
 		return
 	}
-	sse.StreamTask(c, task)
+	sse.StreamTaskUI(c, task)
 }
 
 func (h *Handlers) HandleConfigManagerMessages(ctx context.Context, c *app.RequestContext) {
 	if !h.app.HasWorkspace() {
-		writeJSON(c, consts.StatusOK, []messageDTO{})
+		writeJSON(c, consts.StatusOK, []agentui.Message{})
 		return
 	}
 	entries, err := h.app.ConfigManagerMessages(configManagerRequestFromQuery(c))
@@ -43,7 +44,7 @@ func (h *Handlers) HandleConfigManagerMessages(ctx context.Context, c *app.Reque
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, historyEntriesToMessageDTOs(entries))
+	writeJSON(c, consts.StatusOK, agentui.MessagesFromHistory(entries))
 }
 
 func (h *Handlers) HandleConfigManagerClear(ctx context.Context, c *app.RequestContext) {

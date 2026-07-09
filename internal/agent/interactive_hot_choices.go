@@ -23,19 +23,26 @@ func GenerateInteractiveHotChoices(ctx context.Context, cfg *config.Config, inst
 	if cfg == nil {
 		return nil, fmt.Errorf("配置不存在")
 	}
+	var runErr error
+	traceCtx, finishTrace := withStandaloneRunTrace(ctx, cfg, config.AgentKindInteractiveHotChoices, "interactive_hot_choices", "generate", map[string]any{
+		"instruction_chars": len([]rune(instruction)),
+	})
+	defer func() { finishTrace(runErr) }()
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindInteractiveHotChoices)
 	log.Printf("[%s] generate begin instruction=%s", interactiveHotChoicesAgentLabel, promptPartSummary(instruction))
 	messages := []*schema.Message{
 		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindInteractiveHotChoices, prompts.BuildInteractiveHotChoicesSystemInstruction())),
 		schema.UserMessage(instruction),
 	}
-	content, err := generateWithJSONFallback(ctx, modelCfg, messages, config.AgentKindInteractiveHotChoices, "interactive_hot_choices", interactiveHotChoicesAgentLabel)
+	content, err := generateWithJSONFallback(traceCtx, modelCfg, messages, config.AgentKindInteractiveHotChoices, "interactive_hot_choices", interactiveHotChoicesAgentLabel)
 	if err != nil {
+		runErr = err
 		return nil, fmt.Errorf("生成互动快捷选择失败: %w", err)
 	}
 	choices, err := parseInteractiveHotChoices(content)
 	if err != nil {
 		log.Printf("[%s] parse failed err=%v output=%q", interactiveHotChoicesAgentLabel, err, content)
+		runErr = err
 		return nil, err
 	}
 	log.Printf("[%s] generate done choices=%d output=%s", interactiveHotChoicesAgentLabel, len(choices), promptPartSummary(content))

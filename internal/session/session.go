@@ -10,18 +10,43 @@ import (
 
 // Append 追加消息并持久化到磁盘。
 func (s *Session) Append(msg *schema.Message) error {
+	return s.AppendWithMetadata(msg, MessageMetadata{})
+}
+
+func (s *Session) AppendWithMetadata(msg *schema.Message, metadata MessageMetadata) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now().UTC()
+	metadata = sanitizeMessageMetadata(metadata)
 	s.messages = append(s.messages, msg)
-	s.records = append(s.records, historyRecord{kind: historyTypeMessage, message: msg, createdAt: now})
+	s.records = append(s.records, historyRecord{kind: historyTypeMessage, message: msg, messageMetadata: metadata, createdAt: now})
 	s.UpdatedAt = now
 	if s.title == defaultSessionTitle && msg.Role == schema.User && strings.TrimSpace(msg.Content) != "" {
 		s.title = deriveTitle(msg.Content)
 	}
 
 	return s.persistLocked()
+}
+
+func sanitizeMessageMetadata(metadata MessageMetadata) MessageMetadata {
+	metadata.RunID = strings.TrimSpace(metadata.RunID)
+	metadata.AgentKind = strings.TrimSpace(metadata.AgentKind)
+	metadata.AgentName = strings.TrimSpace(metadata.AgentName)
+	metadata.RootAgentName = strings.TrimSpace(metadata.RootAgentName)
+	metadata.SubAgentSessionID = strings.TrimSpace(metadata.SubAgentSessionID)
+	metadata.SubAgentType = strings.TrimSpace(metadata.SubAgentType)
+	if len(metadata.RunPath) > 0 {
+		out := make([]string, 0, len(metadata.RunPath))
+		for _, step := range metadata.RunPath {
+			step = strings.TrimSpace(step)
+			if step != "" {
+				out = append(out, step)
+			}
+		}
+		metadata.RunPath = out
+	}
+	return metadata
 }
 
 // AppendContextMessage appends a model-visible message that is hidden from UI history.
@@ -101,11 +126,19 @@ func (s *Session) History() []HistoryEntry {
 				continue
 			}
 			result = append(result, HistoryEntry{
-				Type:      historyTypeMessage,
-				Role:      string(record.message.Role),
-				Content:   record.message.Content,
-				Message:   record.message,
-				CreatedAt: record.createdAt,
+				Type:              historyTypeMessage,
+				Role:              string(record.message.Role),
+				Content:           record.message.Content,
+				Message:           record.message,
+				CreatedAt:         record.createdAt,
+				RunID:             record.messageMetadata.RunID,
+				AgentKind:         record.messageMetadata.AgentKind,
+				AgentName:         record.messageMetadata.AgentName,
+				RootAgentName:     record.messageMetadata.RootAgentName,
+				RunPath:           append([]string(nil), record.messageMetadata.RunPath...),
+				SubAgent:          record.messageMetadata.SubAgent,
+				SubAgentSessionID: record.messageMetadata.SubAgentSessionID,
+				SubAgentType:      record.messageMetadata.SubAgentType,
 			})
 		case historyTypeDisplay:
 			if record.display == nil {
