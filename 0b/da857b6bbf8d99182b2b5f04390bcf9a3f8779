@@ -1,0 +1,87 @@
+CHANGELOG.md
+  s_cc0ef902e865ce::t_83094f20226541 11-12,51-52,106-107,118-119
+README.en.md
+  s_cc0ef902e865ce::t_de5488974baa87 58,69
+README.md
+  s_cc0ef902e865ce::t_4894ad8adcef50 58,69
+internal/agent/config_manager_tools.go
+  s_cc0ef902e865ce::t_59f005839db6f0 55,77,430,580,596,610,633,768,789,825,848
+internal/agent/interactive_memory_tools.go
+  s_f03efd51b9e201::t_1101cced38ce8d 180
+internal/agent/prompt.go
+  s_cc0ef902e865ce::t_0edd70661bc2ed 718
+internal/interactive/actor_state.go
+  s_f03efd51b9e201::t_271a4e8d7d25d9 235
+internal/interactive/actor_state_modules.go
+  s_f03efd51b9e201::t_5f59285158b3da 118-122,135-144,146
+internal/interactive/actor_state_presets.go
+  s_cc0ef902e865ce::t_3b252842fd09fd 1-244
+internal/interactive/actor_state_test.go
+  s_f03efd51b9e201::t_4a83c65fde9b56 84-199
+internal/interactive/director_modules.go
+  s_cc0ef902e865ce::t_ba1595683f34e2 139,712-715,757,761,764,785,989,991-997,1024-1025,1126-1130,1213,1322-1324,1335-1339,1344,1547-1553,1558-1567,1800-1803
+internal/interactive/director_modules_test.go
+  s_cc0ef902e865ce::t_978fbc40dba5b5 76-262,396-433
+internal/interactive/story_directors.go
+  s_cc0ef902e865ce::t_9b1249943f0f81 353,496-503,506-508,510,512-514,565,570,586-587
+internal/interactive/story_directors_test.go
+  s_cc0ef902e865ce::t_77d90af37f1909 279,301-310
+internal/prompts/interactive.go
+  s_f03efd51b9e201::t_80d4e971826a8e 245,265-266
+internal/prompts/interactive_test.go
+  s_f03efd51b9e201::t_6f1475858d64cb 91-127
+skills/story-director-config/SKILL.md
+  s_cc0ef902e865ce::t_55c8be95acd662 22,28,32
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_cc0ef902e865ce::t_7de329613bcb36 50,380,808,825,829-841
+web/src/features/interactive/components/StoryPicker.test.tsx
+  s_cc0ef902e865ce::t_c5d57295d258ff 138
+web/src/features/interactive/components/setting-panel/PresetSettingsPanel.tsx
+  s_cc0ef902e865ce::t_3b6692c8fb8ffe 9,16,1268
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_cc0ef902e865ce::t_6b34d12c7d803f 122,133-134,228,292,297-298,300,306-310,333
+web/src/features/interactive/components/story-director/ModuleConsole.tsx
+  s_cc0ef902e865ce::t_e866f1c56b90c9 7
+web/src/features/interactive/components/story-director/StoryDirectorEditor.tsx
+  s_cc0ef902e865ce::t_77168ef8c54e60 7
+web/src/features/interactive/components/story-director/utils.ts
+  s_cc0ef902e865ce::t_e32d3eebe0bb6d 60
+web/src/features/interactive/preset-ownership.ts
+  s_cc0ef902e865ce::t_44cfd420912c88 18,25
+web/src/features/interactive/types.ts
+  s_cc0ef902e865ce::t_ace5b5a3928b86 181
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_cc0ef902e865ce::t_37f71ff05d2bd7 125,129,131-134,142-145,147,149-150,172,176,180,482-483
+web/src/i18n/locales/en-US/storyPicker.ts
+  s_cc0ef902e865ce::t_322722602bc82b 29
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_cc0ef902e865ce::t_336502db5ba62b 125,129,131-134,142-145,147,149-150,172,176,180,326,482-483
+web/src/i18n/locales/zh-CN/storyPicker.ts
+  s_cc0ef902e865ce::t_0b7185fe976cc3 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0bda857b6bbf8d99182b2b5f04390bcf9a3f8779",
+  "prompts": {},
+  "sessions": {
+    "s_cc0ef902e865ce": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f46d5-9d73-7a30-be93-a5f8dc703c22",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_f03efd51b9e201": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f46b1-8546-7122-8fc3-2ed4211f65f5",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
