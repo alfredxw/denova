@@ -31,23 +31,30 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 	if sample == "" {
 		return "", fmt.Errorf("样本为空")
 	}
+	var runErr error
+	traceCtx, finishTrace := withStandaloneRunTrace(ctx, cfg, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", "generate", map[string]any{
+		"sample_chars": len([]rune(sample)),
+	})
+	defer func() { finishTrace(runErr) }()
 	jsonModelCfg := chatModelConfigForAgent(cfg, config.AgentKindToolAgent)
 	jsonModelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
 		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 	}
 	instruction := buildChapterSplitRegexInstruction(sample)
 	log.Printf("[tool-agent] infer chapter split regex begin sample_chars=%d", len([]rune(sample)))
-	regex, err := generateChapterSplitRegex(ctx, cfg, jsonModelCfg, instruction, "json_mode")
+	regex, err := generateChapterSplitRegex(traceCtx, cfg, jsonModelCfg, instruction, "json_mode")
 	if err == nil {
 		return regex, nil
 	}
-	if ctx.Err() != nil {
+	if traceCtx.Err() != nil {
+		runErr = err
 		return "", err
 	}
 	log.Printf("[tool-agent] json_mode failed, retry without response_format err=%v", err)
 	plainModelCfg := chatModelConfigForAgent(cfg, config.AgentKindToolAgent)
-	regex, retryErr := generateChapterSplitRegex(ctx, cfg, plainModelCfg, instruction, "plain_text_retry")
+	regex, retryErr := generateChapterSplitRegex(traceCtx, cfg, plainModelCfg, instruction, "plain_text_retry")
 	if retryErr != nil {
+		runErr = retryErr
 		return "", retryErr
 	}
 	return regex, nil

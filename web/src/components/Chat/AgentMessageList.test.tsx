@@ -56,7 +56,7 @@ describe('Agent MessageList', () => {
     expect(screen.getByText('可见正文')).toBeInTheDocument()
   })
 
-  it('运行中的 trace 统一展开，结束后和工具调用一起折叠', async () => {
+  it('运行中的 trace 在工具结果返回后保持展开，结束后和工具调用一起折叠', async () => {
     const { rerender } = renderMessageList(
       <MessageList
         isStreaming
@@ -82,6 +82,29 @@ describe('Agent MessageList', () => {
     rerender(
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
         <MessageList
+          isStreaming
+          activityContent=""
+          collapseTraceBeforeAssistant
+          messages={[
+            {
+              id: 'assistant-running',
+              role: 'assistant',
+              parts: [
+                { type: 'reasoning', id: 'reason-running', text: '正在检查资料' },
+                { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-running', state: 'output-available', input: { path: 'a.md' }, output: 'ok' },
+              ],
+            },
+          ] as AgentUIMessage[]}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    expect(screen.getByText('正在检查资料')).toBeInTheDocument()
+    expect(screen.getByText('read_file')).toBeInTheDocument()
+
+    rerender(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
           isStreaming={false}
           activityContent=""
           collapseTraceBeforeAssistant
@@ -100,12 +123,40 @@ describe('Agent MessageList', () => {
       </VirtuosoMockContext.Provider>,
     )
 
-    expect(screen.queryByText('正在检查资料')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('正在检查资料')).not.toBeInTheDocument())
     expect(screen.getByText('资料检查完成。')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ }))
     expect(screen.getByText('正在检查资料')).toBeInTheDocument()
     expect(screen.getByText('read_file')).toBeInTheDocument()
+  })
+
+  it('新一轮 streaming 不会重新展开历史 trace', async () => {
+    const { rerender } = renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        collapseTraceBeforeAssistant
+        messages={traceHistoryMessages(false)}
+      />,
+    )
+
+    expect(screen.queryByText('上一轮思考')).not.toBeInTheDocument()
+    expect(screen.getByText('上一轮正文。')).toBeInTheDocument()
+
+    rerender(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming
+          activityContent=""
+          collapseTraceBeforeAssistant
+          messages={traceHistoryMessages(true)}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    await waitFor(() => expect(screen.queryByText('上一轮思考')).not.toBeInTheDocument())
+    expect(screen.getByText('新的问题')).toBeInTheDocument()
   })
 })
 
@@ -130,4 +181,26 @@ function agentTurnMessages(): AgentUIMessage[] {
       parts: [{ type: 'text', text: '第二轮用户' }],
     },
   ] as AgentUIMessage[]
+}
+
+function traceHistoryMessages(withNewUser: boolean): AgentUIMessage[] {
+  const messages: AgentUIMessage[] = [
+    {
+      id: 'assistant-old',
+      role: 'assistant',
+      parts: [
+        { type: 'reasoning', id: 'reason-old', text: '上一轮思考' },
+        { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-old', state: 'output-available', input: { path: 'old.md' }, output: 'ok' },
+        { type: 'text', id: 'text-old', text: '上一轮正文。' },
+      ],
+    },
+  ] as AgentUIMessage[]
+  if (withNewUser) {
+    messages.push({
+      id: 'user-new',
+      role: 'user',
+      parts: [{ type: 'text', text: '新的问题' }],
+    } as AgentUIMessage)
+  }
+  return messages
 }

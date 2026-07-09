@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { InputArea } from './InputArea'
-import { ChatMessageList as MessageList } from './MessageList'
+import { MessageList } from './MessageList'
 import { clearConfigManagerSession, getConfigManagerMessages, runConfigManagerStream } from '@/lib/api'
-import type { ChatMessage, ConfigManagerRunRequest, SSEEvent } from '@/lib/api'
+import type { ConfigManagerRunRequest } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { appendConfigManagerMessage, parseConfigManagerPayload, reduceConfigManagerMessages, type ConfigManagerToolPayload } from './config-manager-events'
+import { selectAgentTokenUsageRecords, type AgentMessageView } from '@/lib/agent-message-view'
+import { createAgentDataMessage, createAgentTextMessage, useAgentUIMessageStream } from '@/hooks/useAgentUIMessageStream'
 
 interface ConfigManagerChatProps {
   workspace?: string
@@ -21,8 +22,7 @@ interface ConfigManagerChatProps {
 export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId, branchId, context, onMutated, className = '' }: ConfigManagerChatProps) {
   const { t } = useTranslation()
   const activeKeyRef = useRef('')
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [running, setRunning] = useState(false)
+  const handledToolViewsRef = useRef(new Set<string>())
   const [error, setError] = useState<string | null>(null)
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const skills = useSkillCommands({ agentKey: 'config_manager', workspace, fallbackEnabled: true })
@@ -40,8 +40,21 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     storyId || '',
     branchId || '',
   ].join(':'), [branchId, origin, resourceId, storyId, workspace])
+  const handleStreamView = useCallback((view: AgentMessageView) => {
+    if (view.kind !== 'tool' || view.status !== 'success') return
+    const key = `${view.messageId}:${view.partId}:${view.status}`
+    if (handledToolViewsRef.current.has(key)) return
+    handledToolViewsRef.current.add(key)
+    onMutated?.()
+  }, [onMutated])
+  const {
+    messages,
+    setMessages,
+    isStreaming: running,
+    consumeAgentUIStream,
+  } = useAgentUIMessageStream({ onView: handleStreamView })
   const tokenUsageMessages = useMemo(
-    () => messages.filter((message) => message.role === 'token_usage'),
+    () => selectAgentTokenUsageRecords(messages),
     [messages],
   )
   const messageListBottomPadding = inputAreaHeight > 0 ? inputAreaHeight + 20 : undefined
@@ -58,41 +71,29 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
 
   useEffect(() => {
     activeKeyRef.current = chatKey
-    setRunning(false)
     setError(null)
+    handledToolViewsRef.current = new Set()
     loadMessages()
   }, [chatKey, loadMessages])
 
-  const appendMessage = (message: ChatMessage) => {
-    setMessages((current) => appendConfigManagerMessage(current, message, 'config-manager'))
-  }
-
-  const handleEvent = (event: SSEEvent) => {
-    setMessages((current) => reduceConfigManagerMessages(current, event, {
-      idPrefix: 'config-manager',
-      toolLabel: t('configManager.tool'),
-      failureMessage: t('configManager.runFailed'),
-    }))
-    if (event.event === 'tool_result' && parseConfigManagerPayload<ConfigManagerToolPayload>(event.data)) onMutated?.()
+  const appendErrorMessage = (content: string) => {
+    setMessages((current) => [...current, createAgentDataMessage('agent-error', { content })])
   }
 
   const send = async (message: string) => {
     const instruction = message.trim()
     if (!instruction || running) return
     if (instruction === '/clear') {
-      setRunning(true)
+      setError(null)
       try {
         await clearConfigManagerSession(scope)
-        setMessages([{ id: `clear-${Date.now()}`, type: 'clear', created_at: new Date().toISOString() }])
+        setMessages([createAgentDataMessage('agent-clear', { created_at: new Date().toISOString() })])
       } catch (err) {
-        appendMessage({ role: 'error', content: err instanceof Error ? err.message : t('configManager.clearFailed') })
-      } finally {
-        setRunning(false)
+        appendErrorMessage(err instanceof Error ? err.message : t('configManager.clearFailed'))
       }
       return
     }
-    appendMessage({ role: 'user', content: instruction })
-    setRunning(true)
+    setMessages((current) => [...current, createAgentTextMessage('user', instruction)])
     setError(null)
     const activeChatKey = chatKey
     try {
@@ -102,17 +103,9 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         context,
       }
       const stream = await runConfigManagerStream(req)
-      const reader = stream.getReader()
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        if (activeKeyRef.current !== activeChatKey) break
-        handleEvent(value)
-      }
+      await consumeAgentUIStream(stream, { shouldContinue: () => activeKeyRef.current === activeChatKey })
     } catch (err) {
-      if (activeKeyRef.current === activeChatKey) appendMessage({ role: 'error', content: err instanceof Error ? err.message : t('configManager.runFailed') })
-    } finally {
-      if (activeKeyRef.current === activeChatKey) setRunning(false)
+      if (activeKeyRef.current === activeChatKey) appendErrorMessage(err instanceof Error ? err.message : t('configManager.runFailed'))
     }
   }
 

@@ -380,10 +380,14 @@ func retainTailByUserTurns(messages []*schema.Message, retainedTurns int) []*sch
 }
 
 func (c *SessionConversation) AppendAssistant(content string) error {
+	return c.AppendAssistantWithMetadata(content, "", session.MessageMetadata{})
+}
+
+func (c *SessionConversation) AppendAssistantWithMetadata(content, _ string, metadata session.MessageMetadata) error {
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")
 	}
-	return c.session.Append(schema.AssistantMessage(content, nil))
+	return c.session.AppendWithMetadata(schema.AssistantMessage(content, nil), metadata)
 }
 
 func (c *SessionConversation) AppendContextMessage(msg *schema.Message) error {

@@ -54,7 +54,6 @@ const TRACE_CAPTURE_OPTIONS = [
 ] as const
 const TRACE_EXPORTER_OPTIONS = [
   { value: 'local', labelKey: 'settings.debug.traceExporterLocal' },
-  { value: 'otlp', labelKey: 'settings.debug.traceExporterOTLP' },
 ] as const
 let nextSettingsEventSourceID = 1
 
@@ -1157,12 +1156,13 @@ function TraceExporterSelect({ label, value, effective, onChange }: {
   onChange: (v: string) => void
 }) {
   const { t } = useTranslation()
-  const effectiveValue = effective || 'local'
+  const effectiveValue = TRACE_EXPORTER_OPTIONS.some((option) => option.value === effective) ? effective || 'local' : 'local'
+  const selectedValue = TRACE_EXPORTER_OPTIONS.some((option) => option.value === value) ? value || '' : ''
   const effectiveLabel = t(TRACE_EXPORTER_OPTIONS.find((option) => option.value === effectiveValue)?.labelKey || 'settings.debug.traceExporterLocal')
   return (
     <FieldRow label={label}>
       <select
-        value={value ?? ''}
+        value={selectedValue}
         onChange={(e) => onChange(e.target.value)}
         className={fieldCls}
       >

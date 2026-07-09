@@ -1,9 +1,11 @@
 import { useMemo, type ReactNode } from 'react'
 import { Activity, AlertCircle, Brain, CheckCircle2, Clock3, Eye, FileText, Loader2, RefreshCw, ScrollText, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { ChatMessageList as MessageList } from '@/components/Chat/MessageList'
+import { MessageList } from '@/components/Chat/MessageList'
 import { Button } from '@/components/ui/button'
 import type { ChatMessage } from '@/lib/api'
+import { chatMessagesToAgentUIMessages } from '@/lib/agent-legacy-message'
+import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { DirectorPlanMetadata, TurnDisplayEvent } from '../../types'
 import type { DirectorStatusLike } from './types'
 import { directorPlanTotals, directorStatusFallback, directorStatusLabel, displayEventToChatMessage, formatBytes, formatShortDate } from './utils'
@@ -40,7 +42,7 @@ export function DirectorRunView({
   canAnalyzeDirectorContext: boolean
   directorError: string
   processRevealed: boolean
-  generateMessages: ChatMessage[]
+  generateMessages: AgentUIMessage[]
   generating: boolean
   generateActivity: string
   onRevealProcess: () => void
@@ -156,7 +158,7 @@ function DirectorProcessPanel({
   canAnalyzeDirectorContext: boolean
   displayEvents: TurnDisplayEvent[]
   revealed: boolean
-  generateMessages: ChatMessage[]
+  generateMessages: AgentUIMessage[]
   generating: boolean
   generateActivity: string
   onReveal: () => void
@@ -236,7 +238,7 @@ function useDirectorProcessMessages({
   metadata?: DirectorPlanMetadata
   loading: boolean
   displayEvents: TurnDisplayEvent[]
-  generateMessages: ChatMessage[]
+  generateMessages: AgentUIMessage[]
   generating: boolean
   generateActivity: string
 }) {
@@ -294,18 +296,13 @@ function useDirectorProcessMessages({
         created_at: updatedAt,
       },
     ] : []
-    const memoryMessages: ChatMessage[] = generateMessages.map((message, index) => ({
-      ...message,
-      id: message.id || message.render_key || `memory-generation-${index}`,
-      render_key: message.render_key || `memory-generation-${index}`,
-    }))
-    const messages: ChatMessage[] = memoryMessages.length > 0
+    const messages = generateMessages.length > 0
       ? [
-          ...directorMessages,
-          { id: 'memory-generation-section', role: 'system', content: t('memoryPanel.process.memorySection') },
-          ...memoryMessages,
+          ...chatMessagesToAgentUIMessages(directorMessages),
+          ...chatMessagesToAgentUIMessages([{ id: 'memory-generation-section', role: 'system', content: t('memoryPanel.process.memorySection') }]),
+          ...generateMessages,
         ]
-      : directorMessages
+      : chatMessagesToAgentUIMessages(directorMessages)
     return {
       messages,
       streaming: running || generating,

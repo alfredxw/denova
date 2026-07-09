@@ -30,14 +30,20 @@ func GenerateInteractiveDirector(ctx context.Context, cfg *config.Config, instru
 	if cfg == nil {
 		return "", fmt.Errorf("配置不存在")
 	}
+	var runErr error
+	traceCtx, finishTrace := withStandaloneRunTrace(ctx, cfg, config.AgentKindInteractiveDirector, "interactive_director", "generate", map[string]any{
+		"instruction_chars": len([]rune(instruction)),
+	})
+	defer func() { finishTrace(runErr) }()
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindInteractiveDirector)
 	log.Printf("[%s] generate begin instruction=%s", interactiveDirectorAgentLabel, promptPartSummary(instruction))
 	messages := []*schema.Message{
 		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction())),
 		schema.UserMessage(instruction),
 	}
-	content, err := generateWithJSONFallback(ctx, modelCfg, messages, config.AgentKindInteractiveDirector, "interactive_director", interactiveDirectorAgentLabel)
+	content, err := generateWithJSONFallback(traceCtx, modelCfg, messages, config.AgentKindInteractiveDirector, "interactive_director", interactiveDirectorAgentLabel)
 	if err != nil {
+		runErr = err
 		return "", fmt.Errorf("生成互动导演状态失败: %w", err)
 	}
 	log.Printf("[%s] generate done output=%s", interactiveDirectorAgentLabel, promptPartSummary(content))

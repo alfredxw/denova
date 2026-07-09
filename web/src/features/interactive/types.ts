@@ -389,6 +389,8 @@ export interface TurnEvent {
   user: string
   narrative: string
   thinking?: string
+  run_id?: string
+  agent_kind?: string
   display_events?: TurnDisplayEvent[]
   state_delta?: StateDelta
   hot_state?: HotState

@@ -496,6 +496,8 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		User:                 req.User,
 		Narrative:            req.Narrative,
 		Thinking:             strings.TrimSpace(req.Thinking),
+		RunID:                strings.TrimSpace(req.RunID),
+		AgentKind:            strings.TrimSpace(req.AgentKind),
 		DisplayEvents:        sanitizeDisplayEvents(req.DisplayEvents),
 		ModelContextMessages: sanitizeModelContextMessages(req.ModelContextMessages),
 		HotState:             normalizeHotState(req.HotState),

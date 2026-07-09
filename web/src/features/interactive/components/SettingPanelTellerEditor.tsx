@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Edit3, FileText, Loader2, Plus, Save, Sparkles, Trash2, Upload } from 'lucide-react'
+import { readUIMessageStream } from 'ai'
 import { useTranslation } from 'react-i18next'
 import { runConfigManagerStream } from '@/lib/api'
-import type { ChatMessage } from '@/lib/api'
 import { isSaveShortcut } from '@/lib/keyboard'
 import { readTextFile } from '@/lib/text-file'
-import { ChatMessageList as MessageList } from '@/components/Chat/MessageList'
-import { appendConfigManagerMessage, configManagerToolKey, parseConfigManagerPayload, reduceConfigManagerMessages, type ConfigManagerToolPayload } from '@/components/Chat/config-manager-events'
+import { MessageList } from '@/components/Chat/MessageList'
+import { agentViewContent, buildAgentMessageViews } from '@/lib/agent-message-view'
+import { normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
+import { createAgentDataMessage, createAgentTextMessage } from '@/hooks/useAgentUIMessageStream'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -359,7 +361,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
   const [uploading, setUploading] = useState<'extract' | 'direct' | null>(null)
   const [uploadError, setUploadError] = useState('')
   const [uploadNotice, setUploadNotice] = useState('')
-  const [extractMessages, setExtractMessages] = useState<ChatMessage[]>([])
+  const [extractMessages, setExtractMessages] = useState<AgentUIMessage[]>([])
   const [uploadDocument, setUploadDocument] = useState<StyleReferenceFileDocument | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
@@ -507,16 +509,8 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
       const request = normalizeStyleUploadDraft(uploadDraft)
       const targetPath = styleReferenceTargetPath(request)
       setExtractMessages([
-        {
-          id: `style-extract-user-${Date.now()}`,
-          role: 'user',
-          content: `${t('settingPanel.style.extractSave')}: ${request.name}`,
-        },
-        {
-          id: `style-extract-connect-${Date.now()}`,
-          role: 'system',
-          content: t('settingPanel.style.extractProgress.connecting'),
-        },
+        createAgentTextMessage('user', `${t('settingPanel.style.extractSave')}: ${request.name}`),
+        createAgentTextMessage('system', t('settingPanel.style.extractProgress.connecting')),
       ])
       const stream = await runConfigManagerStream({
         origin: 'teller',
@@ -530,42 +524,17 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
       })
       const toolArgsByKey: Record<string, { name: string; args: string }> = {}
       let generated = ''
-      const reader = stream.getReader()
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const payload = parseConfigManagerPayload<ConfigManagerToolPayload>(value.data)
-        setExtractMessages((current) => reduceConfigManagerMessages(current, value, {
-          idPrefix: 'style-extract',
-          toolLabel: t('configManager.tool'),
-          failureMessage: t('settingPanel.style.extractFailed'),
-        }))
-        if (value.event === 'chunk') {
-          generated += readString(payload?.content)
-          continue
-        }
-        if (value.event === 'tool_call') {
-          const key = configManagerToolKey(payload)
-          const name = readString(payload?.name)
-          if (key && name) toolArgsByKey[key] = { name, args: readString(payload?.args) }
-          continue
-        }
-        if (value.event === 'tool_args_delta') {
-          const key = configManagerToolKey(payload)
-          if (key) {
-            const current = toolArgsByKey[key] || { name: readString(payload?.name), args: '' }
-            toolArgsByKey[key] = { ...current, name: current.name || readString(payload?.name), args: `${current.args}${readString(payload?.delta)}` }
+      for await (const message of readUIMessageStream<AgentUIMessage>({ stream, terminateOnError: true })) {
+        const normalized = normalizeAgentUIMessages([message])[0] || message
+        setExtractMessages(current => normalizeAgentUIMessages(upsertAgentUIMessage(current, normalized)))
+        for (const view of buildAgentMessageViews([normalized])) {
+          if (view.kind === 'assistant') {
+            generated = agentViewContent(view)
+          } else if (view.kind === 'tool' && view.toolName) {
+            toolArgsByKey[view.partId] = { name: view.toolName, args: stringifyToolInput(view.input) }
+          } else if (view.kind === 'error') {
+            throw new Error(agentViewContent(view) || t('settingPanel.style.extractFailed'))
           }
-          continue
-        }
-        if (value.event === 'tool_result') {
-          const key = configManagerToolKey(payload)
-          const name = readString(payload?.name)
-          if (key && toolArgsByKey[key]) toolArgsByKey[key] = { ...toolArgsByKey[key], name: toolArgsByKey[key].name || name }
-          continue
-        }
-        if (value.event === 'error') {
-          throw new Error(readString((payload as { message?: string } | null)?.message) || t('settingPanel.style.extractFailed'))
         }
       }
       const markdownFromTool = extractStyleReferenceMarkdownFromToolArgs(toolArgsByKey)
@@ -583,16 +552,14 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
         content: limitStyleSource(doc.content),
       })
       setUploadNotice(t('settingPanel.style.extractSaved', { path: created.display_path }))
-      setExtractMessages((current) => appendConfigManagerMessage(current, {
-        role: 'system',
+      setExtractMessages((current) => [...current, createAgentDataMessage('agent-system', {
         content: `${t('settingPanel.style.extractProgress.saved')}: ${created.display_path}`,
-      }, 'style-extract'))
+      })])
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : t('settingPanel.style.extractFailed'))
-      setExtractMessages((current) => appendConfigManagerMessage(current, {
-        role: 'error',
+      setExtractMessages((current) => [...current, createAgentDataMessage('agent-error', {
         content: err instanceof Error ? err.message : t('settingPanel.style.extractFailed'),
-      }, 'style-extract'))
+      })])
     } finally {
       setUploading(null)
     }
@@ -802,7 +769,7 @@ interface StyleUploadDraft {
   content: string
 }
 
-function StyleExtractionChatPanel({ messages, active }: { messages: ChatMessage[]; active: boolean }) {
+function StyleExtractionChatPanel({ messages, active }: { messages: AgentUIMessage[]; active: boolean }) {
   const { t } = useTranslation()
   return (
     <aside className="flex min-h-[220px] min-w-0 flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]/75">
@@ -829,6 +796,22 @@ function StyleExtractionChatPanel({ messages, active }: { messages: ChatMessage[
       </div>
     </aside>
   )
+}
+
+function upsertAgentUIMessage(messages: AgentUIMessage[], next: AgentUIMessage) {
+  const index = messages.findIndex(message => message.id === next.id)
+  if (index < 0) return [...messages, next]
+  return messages.map((message, messageIndex) => messageIndex === index ? next : message)
+}
+
+function stringifyToolInput(input: unknown) {
+  if (input === undefined || input === null) return ''
+  if (typeof input === 'string') return input
+  try {
+    return JSON.stringify(input)
+  } catch {
+    return String(input)
+  }
 }
 
 function limitStyleSource(value: string) {

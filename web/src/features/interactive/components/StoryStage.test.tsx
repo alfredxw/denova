@@ -566,6 +566,12 @@ describe('StoryStage streaming rendering', () => {
 
       act(() => {
         stream.enqueue({ event: 'tool_result', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', content: '找到 3 条资料' }) })
+      })
+
+      await waitFor(() => expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument())
+      expect(screen.getByText('list_lore_items')).toBeInTheDocument()
+
+      act(() => {
         stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '门外有灯。' }) })
         stream.enqueue({ event: 'done', data: '{}' })
         stream.close()

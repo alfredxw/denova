@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   AgentChatTransport,
-  agentUIMessagesToChatMessages,
   buildAgentChatRequestBody,
   normalizeAgentUIMessages,
   type AgentUIMessage,
 } from './agent-ui'
+import { agentViewToRenderMessage, buildAgentMessageViews } from './agent-message-view'
 
 describe('agent-ui', () => {
   it('保留单轮请求 extras，不回传完整 UI 历史', () => {
@@ -32,7 +32,7 @@ describe('agent-ui', () => {
     })
   })
 
-  it('将 AgentUIMessage parts 转为现有 ChatMessage 展示模型', () => {
+  it('通过唯一 view 模块将 AgentUIMessage parts 转为展示模型', () => {
     const messages: AgentUIMessage[] = [
       {
         id: 'hidden-user',
@@ -76,7 +76,9 @@ describe('agent-ui', () => {
       },
     ] as AgentUIMessage[]
 
-    const converted = agentUIMessagesToChatMessages(messages)
+    const converted = buildAgentMessageViews(messages)
+      .map(view => agentViewToRenderMessage(view))
+      .filter((message): message is NonNullable<typeof message> => Boolean(message))
     expect(converted.map(message => message.role)).toEqual([
       'user',
       'thinking',
@@ -87,7 +89,7 @@ describe('agent-ui', () => {
       'rule_roll',
       'tool_result',
     ])
-    expect(converted[0]).toMatchObject({ id: 'user-1', content: '写下一章' })
+    expect(converted[0]).toMatchObject({ id: 'user-1:0', content: '写下一章' })
     expect(converted[1]).toMatchObject({ content: '先分析', streaming: true, run_id: 'run-1' })
     expect(converted[3]).toMatchObject({ id: 'tool-1', name: 'read_file', status: 'success', result: 'ok' })
     expect(converted[4]).toMatchObject({ id: 'question-1', status: 'running', streaming: true })

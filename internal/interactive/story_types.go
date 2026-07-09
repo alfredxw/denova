@@ -32,6 +32,8 @@ type AppendTurnWithStateRequest struct {
 	User                 string                `json:"user"`
 	Narrative            string                `json:"narrative"`
 	Thinking             string                `json:"thinking,omitempty"`
+	RunID                string                `json:"run_id,omitempty"`
+	AgentKind            string                `json:"agent_kind,omitempty"`
 	DisplayEvents        []DisplayEvent        `json:"display_events,omitempty"`
 	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
 	Ops                  []StateOp             `json:"ops,omitempty"`
@@ -168,6 +170,8 @@ type TurnEvent struct {
 	User                 string                `json:"user"`
 	Narrative            string                `json:"narrative"`
 	Thinking             string                `json:"thinking,omitempty"`
+	RunID                string                `json:"run_id,omitempty"`
+	AgentKind            string                `json:"agent_kind,omitempty"`
 	DisplayEvents        []DisplayEvent        `json:"display_events,omitempty"`
 	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
 	StateDelta           *StateDelta           `json:"state_delta,omitempty"`

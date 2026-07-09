@@ -184,7 +184,7 @@ function TraceSummaryGrid({ trace, stats }: { trace: AgentRunTrace; stats: Trace
     { label: t('chat.tracePanel.summaryStatus'), value: summary.status || '-' },
     { label: t('chat.tracePanel.summaryDuration'), value: formatDuration(numberOrZero(summary.duration_ms)) },
     { label: t('chat.tracePanel.summaryLLM'), value: formatNumber(numberOrZero(summary.llm_calls) || stats.llm) },
-    { label: t('chat.tracePanel.summaryTools'), value: formatNumber(stats.tools) },
+    { label: t('chat.tracePanel.summaryTools'), value: formatToolSummary(summary, stats, t) },
     { label: t('chat.tracePanel.summaryContext'), value: formatNumber(numberOrZero(summary.context_parts) || stats.context) },
     { label: t('chat.tracePanel.summaryErrors'), value: formatNumber(stats.errors) },
   ]
@@ -461,4 +461,18 @@ function formatDuration(value: number) {
 function formatNumber(value: number) {
   if (!Number.isFinite(value)) return '0'
   return new Intl.NumberFormat().format(value)
+}
+
+function formatToolSummary(summary: AgentRunTraceSummary, stats: TraceStats, t: ReturnType<typeof useTranslation>['t']) {
+  const calls = numberOrZero(summary.tool_calls)
+  if (calls <= 0) return formatNumber(stats.tools)
+  const errors = numberOrZero(summary.tool_errors)
+  const blocked = numberOrZero(summary.tool_blocked)
+  const truncated = numberOrZero(summary.tool_truncated)
+  const details = [
+    errors > 0 ? t('chat.tracePanel.toolErrorsShort', { count: formatNumber(errors) }) : '',
+    blocked > 0 ? t('chat.tracePanel.toolBlockedShort', { count: formatNumber(blocked) }) : '',
+    truncated > 0 ? t('chat.tracePanel.toolTruncatedShort', { count: formatNumber(truncated) }) : '',
+  ].filter(Boolean)
+  return details.length > 0 ? `${formatNumber(calls)} (${details.join(', ')})` : formatNumber(calls)
 }

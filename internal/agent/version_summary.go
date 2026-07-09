@@ -17,9 +17,15 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 	if cfg == nil {
 		return "", fmt.Errorf("配置不存在")
 	}
+	var runErr error
+	traceCtx, finishTrace := withStandaloneRunTrace(ctx, cfg, config.AgentKindVersionSummary, "version_summary", "generate", map[string]any{
+		"instruction_chars": len([]rune(instruction)),
+	})
+	defer func() { finishTrace(runErr) }()
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindVersionSummary)
-	cm, err := openai.NewChatModel(ctx, &modelCfg)
+	cm, err := openai.NewChatModel(traceCtx, &modelCfg)
 	if err != nil {
+		runErr = err
 		return "", fmt.Errorf("创建版本说明模型失败: %w", err)
 	}
 	log.Printf("[version-summary-agent] generate begin instruction=%s", promptPartSummary(instruction))
@@ -28,20 +34,23 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 		schema.SystemMessage(systemInstruction),
 		schema.UserMessage(instruction),
 	}
-	span, callID, traceCtx := beginLLMCallTrace(ctx, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg, messages, nil, false)
-	msg, err := cm.Generate(traceCtx, messages)
+	span, callID, llmTraceCtx := beginLLMCallTrace(traceCtx, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg, messages, nil, false)
+	msg, err := cm.Generate(llmTraceCtx, messages)
 	if err != nil {
 		finishLLMCallTrace(span, callID, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg.Model, 0, nil, err, nil)
+		runErr = err
 		return "", fmt.Errorf("生成版本说明失败: %w", err)
 	}
 	if msg == nil {
-		finishLLMCallTrace(span, callID, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg.Model, 0, nil, fmt.Errorf("版本说明模型返回为空"), nil)
-		return "", fmt.Errorf("版本说明模型返回为空")
+		runErr = fmt.Errorf("版本说明模型返回为空")
+		finishLLMCallTrace(span, callID, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg.Model, 0, nil, runErr, nil)
+		return "", runErr
 	}
 	finishLLMCallTrace(span, callID, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg.Model, 0, msg, nil, nil)
 	summary := sanitizeVersionSummary(msg.Content)
 	if summary == "" {
-		return "", fmt.Errorf("版本说明为空")
+		runErr = fmt.Errorf("版本说明为空")
+		return "", runErr
 	}
 	log.Printf("[version-summary-agent] generate done summary=%q", summary)
 	return summary, nil

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
-import type { ChatMessage, ContextAnalysis } from '@/lib/api'
+import type { ContextAnalysis } from '@/lib/api'
+import type { AgentUIMessage } from '@/lib/agent-ui'
 import { analyzeInteractiveDirectorContext, getInteractiveDirector, rebuildInteractiveDirector, rerollInteractiveRuleResolution, runInteractiveDirector, updateInteractiveDirector } from '../../api'
 import type { DirectorPlan, DirectorPlanDocs, DirectorPlanStatus, Snapshot, StoryMemoryRecord, StoryMemoryStructure } from '../../types'
 import { ConsoleTabs } from './ConsoleTabs'
@@ -34,7 +35,7 @@ export interface DirectorConsoleProps {
   onSelectStructure: (structureId: string) => void
   query: string
   onQueryChange: (value: string) => void
-  generateMessages: ChatMessage[]
+  generateMessages: AgentUIMessage[]
   generating: boolean
   generateActivity: string
   onGenerateMemory: () => void

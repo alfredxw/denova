@@ -2,19 +2,28 @@ package agent
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 )
 
 type runObserverKey struct{}
 
+// LLMOutcome captures bounded metadata from the latest model response in one run.
+type LLMOutcome struct {
+	FinishReason      string
+	RequestedTools    []string
+	ProviderRequestID string
+}
+
 // RunObserver records durable state for one Agent run without changing model-visible behavior.
 type RunObserver struct {
-	ledger       *RunLedger
-	rootSpanID   string
-	llmSpanID    string
-	pendingTools map[string]*traceSpanHandle
-	mu           sync.Mutex
+	ledger         *RunLedger
+	rootSpanID     string
+	llmSpanID      string
+	lastLLMOutcome LLMOutcome
+	pendingTools   map[string]*traceSpanHandle
+	mu             sync.Mutex
 }
 
 func newRunObserver(ledger *RunLedger, rootSpanID string) *RunObserver {
@@ -45,6 +54,29 @@ func (o *RunObserver) RecordLLMSpan(spanID string) {
 	o.mu.Unlock()
 }
 
+func (o *RunObserver) RecordLLMOutcome(outcome LLMOutcome) {
+	if o == nil {
+		return
+	}
+	outcome.FinishReason = strings.TrimSpace(outcome.FinishReason)
+	outcome.ProviderRequestID = strings.TrimSpace(outcome.ProviderRequestID)
+	outcome.RequestedTools = append([]string(nil), outcome.RequestedTools...)
+	o.mu.Lock()
+	o.lastLLMOutcome = outcome
+	o.mu.Unlock()
+}
+
+func (o *RunObserver) LastLLMOutcome() LLMOutcome {
+	if o == nil {
+		return LLMOutcome{}
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	outcome := o.lastLLMOutcome
+	outcome.RequestedTools = append([]string(nil), outcome.RequestedTools...)
+	return outcome
+}
+
 func (o *RunObserver) RecordToolDecision(decision ToolDecision) {
 	if o == nil || o.ledger == nil {
 		return
@@ -52,7 +84,7 @@ func (o *RunObserver) RecordToolDecision(decision ToolDecision) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	_ = o.ledger.RecordToolDecision(decision)
-	o.pendingTools[o.toolKey(decision.ToolCallID, decision.ToolName)] = newTraceSpanHandle(o.ledger.ID(), o.ledger, o.parentSpanID(), "tool_call", map[string]any{
+	attrs := map[string]any{
 		"tool_name":           decision.ToolName,
 		"tool_call_id":        decision.ToolCallID,
 		"source":              decision.Source,
@@ -62,7 +94,17 @@ func (o *RunObserver) RecordToolDecision(decision ToolDecision) {
 		"mutates_workspace":   decision.MutatesWorkspace,
 		"requires_post_check": decision.RequiresPostCheck,
 		"target":              decision.Target,
-	})
+	}
+	if decision.ArgsBytes > 0 {
+		attrs["args_bytes"] = decision.ArgsBytes
+	}
+	if decision.ArgsComplete != nil {
+		attrs["args_complete"] = *decision.ArgsComplete
+	}
+	if decision.ModelFinishReason != "" {
+		attrs["model_finish_reason"] = decision.ModelFinishReason
+	}
+	o.pendingTools[o.toolKey(decision.ToolCallID, decision.ToolName)] = newTraceSpanHandle(o.ledger.ID(), o.ledger, o.parentSpanID(), "tool_call", attrs)
 }
 
 func (o *RunObserver) RecordToolExecution(result ToolExecutionRecord) {
@@ -85,7 +127,7 @@ func (o *RunObserver) RecordToolExecution(result ToolExecutionRecord) {
 	if status == "" {
 		status = "success"
 	}
-	span.Finish(status, map[string]any{
+	attrs := map[string]any{
 		"tool_name":       result.ToolName,
 		"tool_call_id":    result.ToolCallID,
 		"capability":      result.Capability,
@@ -96,7 +138,17 @@ func (o *RunObserver) RecordToolExecution(result ToolExecutionRecord) {
 		"idempotency_key": result.IdempotencyKey,
 		"error":           result.Error,
 		"recorded_at":     time.Now().UTC().Format(time.RFC3339Nano),
-	})
+	}
+	if result.ArgsBytes > 0 {
+		attrs["args_bytes"] = result.ArgsBytes
+	}
+	if result.ArgsComplete != nil {
+		attrs["args_complete"] = *result.ArgsComplete
+	}
+	if result.ModelFinishReason != "" {
+		attrs["model_finish_reason"] = result.ModelFinishReason
+	}
+	span.Finish(status, attrs)
 }
 
 func (o *RunObserver) RecordMutations(mutations []ToolMutation) {

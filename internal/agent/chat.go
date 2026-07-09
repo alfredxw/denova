@@ -199,6 +199,15 @@ func (r *Runtime) Run(
 	if runID == "" {
 		runID = options.TaskID
 	}
+	assistantMetadata := session.MessageMetadata{
+		RunID:         runID,
+		AgentKind:     options.AgentKind,
+		AgentName:     options.RootAgentName,
+		RootAgentName: options.RootAgentName,
+	}
+	if options.RootAgentName != "" {
+		assistantMetadata.RunPath = []string{options.RootAgentName}
+	}
 	subAgentSessions := newSubAgentSessionTracker(runID)
 	recorder := newDisplayEventRecorder(conversation)
 	toolContextRecorder := newToolResultContextRecorder(conversation)
@@ -365,7 +374,7 @@ func (r *Runtime) Run(
 			flushPlanProtocolParser(planParser, &fullContent, emit)
 			discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
 			generatedBytes := fullContent.Len()
-			appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+			appendAssistantIfAny(conversation, &fullContent, &fullThinking, assistantMetadata)
 			finishRun("aborted", err.Error(), generatedBytes)
 			emit(Event{Type: "aborted", Data: map[string]string{}})
 			return
@@ -374,7 +383,7 @@ func (r *Runtime) Run(
 		if waitErr != nil {
 			flushPlanProtocolParser(planParser, &fullContent, emit)
 			discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
-			generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+			generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking, assistantMetadata)
 			if ctx.Err() != nil {
 				runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", ctx.Err()), slog.Int("generated_bytes", len(generated)))
 				finishRun("aborted", ctx.Err().Error(), len(generated))
@@ -395,7 +404,7 @@ func (r *Runtime) Run(
 			runLogger.Error("run_interrupted", slog.String("reason", "runner_error"), slog.Any("error", event.Err), slog.Int("generated_bytes", fullContent.Len()))
 			flushPlanProtocolParser(planParser, &fullContent, emit)
 			discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
-			generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+			generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking, assistantMetadata)
 			markInterruptionIfNeeded(conversation, resumeInterruption, originalMessage, generated, event.Err.Error())
 			finishRun("error", event.Err.Error(), len(generated))
 			emit(Event{Type: "error", Data: map[string]string{"message": event.Err.Error()}})
@@ -417,7 +426,7 @@ func (r *Runtime) Run(
 			content, drainErr := drainContent(runCtx, mv, options.IdleTimeout)
 			if drainErr != nil {
 				discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
-				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking, assistantMetadata)
 				if ctx.Err() != nil {
 					runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", ctx.Err()), slog.Int("generated_bytes", len(generated)))
 					finishRun("aborted", ctx.Err().Error(), len(generated))
@@ -472,7 +481,7 @@ func (r *Runtime) Run(
 			if streamErr != nil {
 				flushPlanProtocolParser(planParser, &fullContent, emit)
 				discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
-				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+				generated := appendAssistantIfAny(conversation, &fullContent, &fullThinking, assistantMetadata)
 				if ctx.Err() != nil {
 					runLogger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", ctx.Err()), slog.Int("generated_bytes", len(generated)))
 					finishRun("aborted", ctx.Err().Error(), len(generated))
@@ -506,7 +515,7 @@ func (r *Runtime) Run(
 	flushPlanProtocolParser(planParser, &fullContent, emit)
 	discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
 	generatedBytes := fullContent.Len()
-	appendAssistantIfAny(conversation, &fullContent, &fullThinking)
+	appendAssistantIfAny(conversation, &fullContent, &fullThinking, assistantMetadata)
 	if resumeInterruption != nil {
 		if err := conversation.ResolveInterruption(resumeInterruption.ID); err != nil {
 			runLogger.Error("resolve_interruption_failed", slog.String("interruption_id", resumeInterruption.ID), slog.Any("error", err))

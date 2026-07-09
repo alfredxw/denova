@@ -1,5 +1,6 @@
-import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
-import type { ChatMessage, SSEEvent } from './types'
+import type { UIMessageChunk } from 'ai'
+import { fetchAPI, jsonHeaders, parseUIMessageStream, readErrorMessage, requestJSON } from './client'
+import type { AgentUIMessage } from '@/lib/agent-ui'
 
 export interface ConfigManagerRunRequest {
   instruction: string
@@ -13,7 +14,7 @@ export interface ConfigManagerRunRequest {
 
 export type ConfigManagerScope = Omit<ConfigManagerRunRequest, 'instruction' | 'references' | 'context'>
 
-export async function runConfigManagerStream(req: ConfigManagerRunRequest): Promise<ReadableStream<SSEEvent>> {
+export async function runConfigManagerStream(req: ConfigManagerRunRequest): Promise<ReadableStream<UIMessageChunk>> {
   const res = await fetchAPI('/api/config-manager/stream', {
     method: 'POST',
     headers: jsonHeaders,
@@ -23,10 +24,10 @@ export async function runConfigManagerStream(req: ConfigManagerRunRequest): Prom
     throw new Error(await readErrorMessage(res))
   }
   if (!res.body) throw new Error('No response body')
-  return parseSSEStream(res.body)
+  return parseUIMessageStream(res.body)
 }
 
-export function getConfigManagerMessages(scope: ConfigManagerScope = {}): Promise<ChatMessage[]> {
+export function getConfigManagerMessages(scope: ConfigManagerScope = {}): Promise<AgentUIMessage[]> {
   return requestJSON(`/api/config-manager/messages${configManagerScopeQuery(scope)}`)
 }
 

@@ -5,12 +5,15 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/schema"
+
+	"denova/config"
 )
 
 const (
@@ -67,8 +70,6 @@ func normalizeTraceCaptureLevel(value string) string {
 
 func normalizeTraceExporter(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "otlp":
-		return "otlp"
 	default:
 		return TraceExporterLocal
 	}
@@ -106,9 +107,10 @@ type TraceSpanRecord struct {
 }
 
 type traceSpanHandle struct {
-	sink TraceSink
-	span TraceSpanRecord
-	once sync.Once
+	sink     TraceSink
+	span     TraceSpanRecord
+	observer *RunObserver
+	once     sync.Once
 }
 
 func ContextWithRunTrace(ctx context.Context, traceID string, sink TraceSink, parentSpanID string) context.Context {
@@ -120,6 +122,64 @@ func ContextWithRunTrace(ctx context.Context, traceID string, sink TraceSink, pa
 		parentSpanID: strings.TrimSpace(parentSpanID),
 		sink:         sink,
 	})
+}
+
+func withStandaloneRunTrace(ctx context.Context, cfg *config.Config, agentKind, source, mode string, attrs map[string]any) (context.Context, func(error)) {
+	if traceContextFromContext(ctx).sink != nil {
+		return ctx, func(error) {}
+	}
+	if cfg == nil || strings.TrimSpace(cfg.Workspace) == "" {
+		return ctx, func(error) {}
+	}
+	options := RunOptions{
+		AgentKind: strings.TrimSpace(agentKind),
+		Workspace: cfg.Workspace,
+		Mode:      strings.TrimSpace(mode),
+	}
+	ledger, err := newRunLedgerWithOptions(cfg.Workspace, DefaultLoopPolicy().RunLedger, options)
+	if err != nil {
+		log.Printf("[agent-trace] standalone trace unavailable agent_kind=%s source=%s workspace=%s err=%v", agentKind, source, cfg.Workspace, err)
+		return ctx, func(error) {}
+	}
+	if ledger == nil {
+		return ctx, func(error) {}
+	}
+	rootAttrs := map[string]any{
+		"workspace":  cfg.Workspace,
+		"agent_kind": options.AgentKind,
+		"source":     strings.TrimSpace(source),
+		"mode":       options.Mode,
+	}
+	for key, value := range attrs {
+		rootAttrs[key] = value
+	}
+	root := StartRootTraceSpan(ledger, rootAttrs)
+	rootSpanID := ""
+	if root != nil {
+		rootSpanID = root.SpanID()
+	}
+	traceCtx := ContextWithRunObserver(ContextWithRunTrace(ctx, ledger.ID(), ledger, rootSpanID), newRunObserver(ledger, rootSpanID))
+	_ = ledger.Record("run_started", rootAttrs)
+	finished := false
+	return traceCtx, func(runErr error) {
+		if finished {
+			return
+		}
+		finished = true
+		status := "success"
+		reason := ""
+		if runErr != nil {
+			status = "error"
+			reason = runErr.Error()
+		}
+		if root != nil {
+			root.Finish(status, map[string]any{"reason": reason})
+		}
+		_ = ledger.RecordFinish(status, reason, 0)
+		if err := ledger.Close(); err != nil {
+			log.Printf("[agent-trace] standalone trace close failed run_id=%s err=%v", ledger.ID(), err)
+		}
+	}
 }
 
 func traceContextFromContext(ctx context.Context) traceContext {
@@ -146,6 +206,7 @@ func StartTraceSpan(ctx context.Context, name string, attrs map[string]any) (*tr
 	if span == nil {
 		return nil, ctx
 	}
+	span.observer = RunObserverFromContext(ctx)
 	return span, ContextWithRunTrace(ctx, tc.traceID, tc.sink, span.SpanID())
 }
 
@@ -263,12 +324,16 @@ func beginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg 
 	if cache := modelInputLogCacheAttribution(messages, modelInputLogTools(tools)); cache.MessageFingerprint != "" || cache.ToolSchemaFingerprint != "" {
 		attrs["cache_attribution"] = cache
 	}
+	observer := RunObserverFromContext(ctx)
 	span, spanCtx := StartTraceSpan(ctx, "llm_call", attrs)
+	if span == nil && observer != nil {
+		span = &traceSpanHandle{observer: observer}
+	}
 	spanID := ""
 	traceID := ""
-	if span != nil {
+	if span != nil && span.SpanID() != "" {
 		spanID = span.SpanID()
-		RunObserverFromContext(ctx).RecordLLMSpan(spanID)
+		observer.RecordLLMSpan(spanID)
 		traceID = traceContextFromContext(spanCtx).traceID
 	}
 	logFullModelInput(modelInputLogOptions{
@@ -291,17 +356,24 @@ func finishLLMCallTrace(span *traceSpanHandle, callID, agentKind, source, mode, 
 	if span != nil {
 		runID = span.span.TraceID
 	}
+	outcome := LLMOutcome{}
 	if msg != nil {
 		if requestID := logModelProviderRequestIDForCall(callID, agentKind, source, mode, modelName, runID, callIndex, msg); requestID != "" {
 			attrs["provider_request_id"] = requestID
+			outcome.ProviderRequestID = requestID
 		}
 		if msg.ResponseMeta != nil {
-			attrs["finish_reason"] = strings.TrimSpace(msg.ResponseMeta.FinishReason)
+			outcome.FinishReason = strings.TrimSpace(msg.ResponseMeta.FinishReason)
+			attrs["finish_reason"] = outcome.FinishReason
 			addTokenUsageAttrs(attrs, msg.ResponseMeta.Usage)
 		}
 		if tools := toolNamesFromCalls(msg.ToolCalls); len(tools) > 0 {
 			attrs["requested_tools"] = tools
+			outcome.RequestedTools = tools
 		}
+	}
+	if span != nil && span.observer != nil && (outcome.FinishReason != "" || len(outcome.RequestedTools) > 0 || outcome.ProviderRequestID != "") {
+		span.observer.RecordLLMOutcome(outcome)
 	}
 	if err != nil {
 		attrs["error"] = err.Error()

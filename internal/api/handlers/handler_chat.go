@@ -13,34 +13,8 @@ import (
 	novaApp "denova/internal/app"
 )
 
-// handleChat 处理聊天请求：启动后台 Task，然后以 SSE 流订阅事件。
+// handleChat 处理聊天请求：启动后台 Task，然后以 AI SDK UIMessage stream 订阅事件。
 func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	var req agent.ChatRequest
-	if err := c.BindJSON(&req); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
-		return
-	}
-	if strings.TrimSpace(req.Message) == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
-		return
-	}
-	req.Locale = requestLocale(c)
-
-	task := h.app.StartTask(req)
-	if task == nil {
-		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
-		return
-	}
-	log.Printf("[agent-sse] attach new chat task_id=%s", task.ID())
-	sse.StreamTask(c, task, h.chatSSEStreamOptions()...)
-}
-
-// HandleChatUI starts a chat task and streams updates using the AI SDK UI
-// message stream protocol.
-func (h *Handlers) HandleChatUI(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return
 	}
@@ -111,20 +85,8 @@ func (h *Handlers) HandleChatContextCompactionRemove(ctx context.Context, c *app
 	writeJSON(c, consts.StatusOK, map[string]bool{"removed": removed})
 }
 
-// handleChatStream 重连到当前活跃任务的事件流（回放已有事件 + 继续接收新事件）。
+// handleChatStream 重连到当前活跃任务的 UIMessage 事件流（回放已有事件 + 继续接收新事件）。
 func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) {
-	task := h.app.ActiveTask()
-	if task == nil {
-		writeErrorKey(c, consts.StatusNotFound, "api.chat.noActiveTask")
-		return
-	}
-	log.Printf("[agent-sse] attach active chat task_id=%s status=%s", task.ID(), task.Status())
-	sse.StreamTask(c, task, h.chatSSEStreamOptions()...)
-}
-
-// HandleChatUIStream reconnects to the current task using the AI SDK UI
-// message stream protocol.
-func (h *Handlers) HandleChatUIStream(ctx context.Context, c *app.RequestContext) {
 	task := h.app.ActiveTask()
 	if task == nil {
 		writeErrorKey(c, consts.StatusNotFound, "api.chat.noActiveTask")
