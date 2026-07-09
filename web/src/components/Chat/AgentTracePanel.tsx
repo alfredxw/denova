@@ -184,12 +184,13 @@ function TraceSummaryGrid({ trace, stats }: { trace: AgentRunTrace; stats: Trace
     { label: t('chat.tracePanel.summaryStatus'), value: summary.status || '-' },
     { label: t('chat.tracePanel.summaryDuration'), value: formatDuration(numberOrZero(summary.duration_ms)) },
     { label: t('chat.tracePanel.summaryLLM'), value: formatNumber(numberOrZero(summary.llm_calls) || stats.llm) },
+    { label: t('chat.tracePanel.summaryCache'), value: formatCacheSummary(summary) },
     { label: t('chat.tracePanel.summaryTools'), value: formatToolSummary(summary, stats, t) },
     { label: t('chat.tracePanel.summaryContext'), value: formatNumber(numberOrZero(summary.context_parts) || stats.context) },
     { label: t('chat.tracePanel.summaryErrors'), value: formatNumber(stats.errors) },
   ]
   return (
-    <div className="grid gap-2 rounded-[6px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[11px] sm:grid-cols-3">
+    <div className="grid gap-2 rounded-[6px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[11px] sm:grid-cols-4">
       {items.map((item) => (
         <div key={item.label} className="min-w-0">
           <div className="truncate text-[var(--nova-text-faint)]">{item.label}</div>
@@ -461,6 +462,19 @@ function formatDuration(value: number) {
 function formatNumber(value: number) {
   if (!Number.isFinite(value)) return '0'
   return new Intl.NumberFormat().format(value)
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0%'
+  return `${(value * 100).toFixed(1)}%`
+}
+
+function formatCacheSummary(summary: AgentRunTraceSummary) {
+  const prompt = numberOrZero(summary.prompt_tokens)
+  const cached = numberOrZero(summary.cached_prompt_tokens)
+  if (prompt <= 0 && cached <= 0) return '-'
+  const rate = numberOrZero(summary.cache_hit_rate) || (prompt > 0 ? cached / prompt : 0)
+  return `${formatPercent(rate)} · ${formatNumber(cached)} / ${formatNumber(prompt)}`
 }
 
 function formatToolSummary(summary: AgentRunTraceSummary, stats: TraceStats, t: ReturnType<typeof useTranslation>['t']) {

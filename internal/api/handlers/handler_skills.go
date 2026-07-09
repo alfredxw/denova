@@ -37,7 +37,7 @@ type skillFileSaveRequest struct {
 	Content string           `json:"content"`
 }
 
-type skillInstallGitHubRequest struct {
+type skillInstallRemoteRequest struct {
 	URL          string           `json:"url"`
 	Ref          string           `json:"ref"`
 	Subdir       string           `json:"subdir"`
@@ -190,7 +190,7 @@ func (h *Handlers) HandleSkillInstallZip(ctx context.Context, c *app.RequestCont
 }
 
 func (h *Handlers) HandleSkillInstallGitHubPreview(ctx context.Context, c *app.RequestContext) {
-	var body skillInstallGitHubRequest
+	var body skillInstallRemoteRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
@@ -205,13 +205,43 @@ func (h *Handlers) HandleSkillInstallGitHubPreview(ctx context.Context, c *app.R
 }
 
 func (h *Handlers) HandleSkillInstallGitHub(ctx context.Context, c *app.RequestContext) {
-	var body skillInstallGitHubRequest
+	var body skillInstallRemoteRequest
 	if err := c.BindJSON(&body); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
 	source := novaskills.GitHubSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
 	result, err := h.app.InstallSkillGitHub(ctx, normalizeSkillInstallScope(string(body.Scope)), source, body.CandidateIDs)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
+func (h *Handlers) HandleSkillInstallRemotePreview(ctx context.Context, c *app.RequestContext) {
+	var body skillInstallRemoteRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	source := novaskills.RemoteArchiveSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
+	preview, err := h.app.PreviewSkillRemoteArchive(ctx, normalizeSkillInstallScope(string(body.Scope)), source)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, preview)
+}
+
+func (h *Handlers) HandleSkillInstallRemote(ctx context.Context, c *app.RequestContext) {
+	var body skillInstallRemoteRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	source := novaskills.RemoteArchiveSource{URL: body.URL, Ref: body.Ref, Subdir: body.Subdir}
+	result, err := h.app.InstallSkillRemoteArchive(ctx, normalizeSkillInstallScope(string(body.Scope)), source, body.CandidateIDs)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return

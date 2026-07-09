@@ -167,6 +167,8 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.DELETE("/skills/document", apiHandlers.HandleSkillDelete)
 		api.POST("/skills/install/zip/preview", apiHandlers.HandleSkillInstallZipPreview)
 		api.POST("/skills/install/zip", apiHandlers.HandleSkillInstallZip)
+		api.POST("/skills/install/remote/preview", apiHandlers.HandleSkillInstallRemotePreview)
+		api.POST("/skills/install/remote", apiHandlers.HandleSkillInstallRemote)
 		api.POST("/skills/install/github/preview", apiHandlers.HandleSkillInstallGitHubPreview)
 		api.POST("/skills/install/github", apiHandlers.HandleSkillInstallGitHub)
 		api.GET("/automations", apiHandlers.HandleAutomations)

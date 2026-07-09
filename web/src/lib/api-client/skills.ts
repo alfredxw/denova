@@ -6,6 +6,13 @@ export interface SkillSaveTarget {
   name: string
 }
 
+interface SkillRemoteInstallInput {
+  url: string
+  ref?: string
+  subdir?: string
+  scope: SkillScope
+}
+
 export async function getSkills(): Promise<SkillSnapshot> {
   const data = await requestJSON<SkillSnapshot>('/api/skills')
   return {
@@ -84,12 +91,36 @@ export async function installSkillZip(file: File, scope: SkillScope, candidateId
   return { installed: data.installed || [] }
 }
 
-export async function previewSkillGitHubInstall(input: {
-  url: string
-  ref?: string
-  subdir?: string
-  scope: SkillScope
-}): Promise<SkillInstallPreview> {
+export async function previewSkillRemoteInstall(input: SkillRemoteInstallInput): Promise<SkillInstallPreview> {
+  const data = await requestJSON<SkillInstallPreview>('/api/skills/install/remote/preview', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      url: input.url,
+      ref: input.ref || '',
+      subdir: input.subdir || '',
+      scope: input.scope,
+    }),
+  })
+  return { candidates: data.candidates || [] }
+}
+
+export async function installSkillRemote(input: SkillRemoteInstallInput & { candidateIds: string[] }): Promise<SkillInstallResult> {
+  const data = await requestJSON<SkillInstallResult>('/api/skills/install/remote', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      url: input.url,
+      ref: input.ref || '',
+      subdir: input.subdir || '',
+      scope: input.scope,
+      candidate_ids: input.candidateIds,
+    }),
+  })
+  return { installed: data.installed || [] }
+}
+
+export async function previewSkillGitHubInstall(input: SkillRemoteInstallInput): Promise<SkillInstallPreview> {
   const data = await requestJSON<SkillInstallPreview>('/api/skills/install/github/preview', {
     method: 'POST',
     headers: jsonHeaders,
@@ -103,13 +134,7 @@ export async function previewSkillGitHubInstall(input: {
   return { candidates: data.candidates || [] }
 }
 
-export async function installSkillGitHub(input: {
-  url: string
-  ref?: string
-  subdir?: string
-  scope: SkillScope
-  candidateIds: string[]
-}): Promise<SkillInstallResult> {
+export async function installSkillGitHub(input: SkillRemoteInstallInput & { candidateIds: string[] }): Promise<SkillInstallResult> {
   const data = await requestJSON<SkillInstallResult>('/api/skills/install/github', {
     method: 'POST',
     headers: jsonHeaders,

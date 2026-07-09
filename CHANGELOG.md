@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Agent：Prompt cache 诊断增强，run trace 摘要现在聚合 `prompt_tokens`、`cached_prompt_tokens`、`uncached_prompt_tokens` 和 `cache_hit_rate`；`cache_attribution` 新增 per-tool fingerprint，便于定位具体工具 schema 变动而不暴露完整 schema。
+- Agent: Improved prompt-cache diagnostics. Run trace summaries now aggregate `prompt_tokens`, `cached_prompt_tokens`, `uncached_prompt_tokens`, and `cache_hit_rate`; `cache_attribution` adds per-tool fingerprints so schema drift can be traced without exposing full schemas.
+- Agent：模型调用前会冻结最终工具 schema 快照，并把快照副本传给 provider，避免 provider adapter 或中间件污染后续调用的工具 schema，提升 prompt cache 前缀稳定性。
+- Agent: Model calls now freeze the final tool schema snapshot and pass a detached copy to the provider, preventing provider adapters or middleware from mutating schemas used by later calls and improving prompt-cache prefix stability.
+- WebUI：Agent Trace 摘要面板新增 run 级缓存命中展示，直接显示命中率和 cached/prompt token 汇总。
+- WebUI: Agent Trace summaries now show run-level cache hits with cached/prompt token totals.
 - Agent：最终 assistant 消息和游戏回合正文现在持久化 `run_id` / `agent_kind`，刷新后也可从最终输出跳转到对应 Trace；纯模型辅助 Agent（快捷选项、版本说明、章节正则、自动化触发、独立上下文压缩等）在没有父 run 时会创建独立本地 trace。
 - Agent: Final assistant messages and Game Mode turn prose now persist `run_id` / `agent_kind`, so the final output can jump back to its Trace after refresh. Model-only helper agents such as hot choices, version summaries, chapter-regex inference, automation trigger checks, and standalone context compaction now create their own local trace when no parent run exists.
 - WebUI：Agent Trace 明细超过展示上限时改为保留首尾记录并插入省略标记，长任务也能看到最终收尾；Trace 摘要中的工具调用数改用后端真实计数，并移除尚未实现的 OTLP exporter 选项。
@@ -70,6 +76,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Game Mode: Added six built-in Event Package presets for xuanhuan, cultivation, apocalypse, western fantasy, urban, and TRPG stories, each with structured Markdown event cards; Director event catalogs now prioritize selected package cards before filling remaining background-planning slots with generic event templates.
 - Skills：管理页现在按 Skill 目录展示文件，除入口 `SKILL.md` 外可查看并编辑目录内的 reference 文档；重命名、迁移或创建内置 Skill 覆盖时会保留原 Skill 目录下的附属文件。
 - Skills: The management page now exposes files inside each Skill directory, so reference documents alongside `SKILL.md` can be viewed and edited; renaming, moving, or creating built-in Skill overrides preserves supporting files in the Skill directory.
+- Skills：导入来源扩展为 Remote URL 或 ZIP；Remote URL 继续支持 GitHub 仓库 shorthand/tree 地址，也支持其他 registry 提供的 HTTPS ZIP/archive 直链，并复用候选扫描、大小限制和 ZIP 安全校验。
+- Skills: Import sources now support Remote URL or ZIP. Remote URL keeps GitHub repository shorthand/tree support, accepts HTTPS ZIP/archive links from other registries, and reuses candidate scanning, archive size limits, and ZIP safety checks.
 - Skills：支持从 ZIP 上传或公开 GitHub 仓库扫描并选择安装 Skill；GitHub/ZIP 来源都会先列出候选项，用户只安装勾选的条目，同名目标默认拒绝覆盖。
 - Skills: Added selectable Skill installation from ZIP uploads or public GitHub repositories. GitHub and ZIP sources are scanned first, users install only checked candidates, and same-name targets are rejected by default.
 - 游戏模式：故事导演策略新增高级 Markdown 提示，作为结构化主线、失败、节奏和随机扰动策略的补充；该提示会以独立来源和 4000 bytes 上限注入互动正文 Agent 与后台 Director Agent。

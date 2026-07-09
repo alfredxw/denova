@@ -298,7 +298,7 @@ func zipSearchRoot(root, subdir string) (string, error) {
 	if fi, err := os.Stat(target); err != nil {
 		return "", err
 	} else if !fi.IsDir() {
-		return "", fmt.Errorf("GitHub Skill subdir is not a directory: %s", subdir)
+		return "", fmt.Errorf("Skill archive subdir is not a directory: %s", subdir)
 	}
 	return target, nil
 }

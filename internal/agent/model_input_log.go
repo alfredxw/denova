@@ -128,12 +128,18 @@ type modelInputLogTool struct {
 }
 
 type modelInputLogCache struct {
-	MessageFingerprint      string   `json:"message_fingerprint,omitempty"`
-	SystemPromptFingerprint string   `json:"system_prompt_fingerprint,omitempty"`
-	ToolSchemaFingerprint   string   `json:"tool_schema_fingerprint,omitempty"`
-	ToolNames               []string `json:"tool_names,omitempty"`
-	MessageCount            int      `json:"message_count"`
-	ToolCount               int      `json:"tool_count"`
+	MessageFingerprint      string                         `json:"message_fingerprint,omitempty"`
+	SystemPromptFingerprint string                         `json:"system_prompt_fingerprint,omitempty"`
+	ToolSchemaFingerprint   string                         `json:"tool_schema_fingerprint,omitempty"`
+	ToolNames               []string                       `json:"tool_names,omitempty"`
+	ToolFingerprints        []modelInputLogToolFingerprint `json:"tool_fingerprints,omitempty"`
+	MessageCount            int                            `json:"message_count"`
+	ToolCount               int                            `json:"tool_count"`
+}
+
+type modelInputLogToolFingerprint struct {
+	Name        string `json:"name"`
+	Fingerprint string `json:"fingerprint"`
 }
 
 // SetModelInputLoggingEnabled controls full model input logging.
@@ -168,7 +174,7 @@ func logFullModelInput(opts modelInputLogOptions) string {
 		MessageCount: len(opts.Messages),
 		ToolCount:    len(opts.Tools),
 		Messages:     append([]*schema.Message(nil), opts.Messages...),
-		Tools:        append([]*schema.ToolInfo(nil), opts.Tools...),
+		Tools:        cloneToolInfos(opts.Tools),
 	}
 
 	if !enqueueModelInputLogJob(modelInputLogJob{input: &input}) {
@@ -490,6 +496,7 @@ func modelInputLogCacheAttribution(messages []*schema.Message, tools []modelInpu
 		SystemPromptFingerprint: modelInputLogFingerprint(modelInputLogSystemMessages(messages)),
 		ToolSchemaFingerprint:   modelInputLogFingerprint(tools),
 		ToolNames:               modelInputLogToolNames(tools),
+		ToolFingerprints:        modelInputLogToolFingerprints(tools),
 		MessageCount:            len(messages),
 		ToolCount:               len(tools),
 	}
@@ -522,6 +529,24 @@ func modelInputLogToolNames(tools []modelInputLogTool) []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+func modelInputLogToolFingerprints(tools []modelInputLogTool) []modelInputLogToolFingerprint {
+	if len(tools) == 0 {
+		return nil
+	}
+	result := make([]modelInputLogToolFingerprint, 0, len(tools))
+	for _, item := range tools {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		result = append(result, modelInputLogToolFingerprint{
+			Name:        name,
+			Fingerprint: modelInputLogFingerprint(item),
+		})
+	}
+	return result
 }
 
 func modelInputLogFingerprint(value any) string {
@@ -557,7 +582,7 @@ type modelInputLoggingChatModel struct {
 
 func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	span, callID, spanCtx := beginLLMCallTrace(ctx, m.agentKind, "adk", "generate", m.config, input, m.tools, false)
-	msg, err := m.inner.Generate(spanCtx, input, opts...)
+	msg, err := m.inner.Generate(spanCtx, input, stableToolModelOptions(opts, m.tools)...)
 	finishLLMCallTrace(span, callID, m.agentKind, "adk", "generate", m.config.Model, 0, msg, err, nil)
 	return msg, err
 }
@@ -567,7 +592,7 @@ func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*schema
 	started := time.Now()
 	var firstChunk time.Time
 	var chunks []*schema.Message
-	stream, err := m.inner.Stream(spanCtx, input, opts...)
+	stream, err := m.inner.Stream(spanCtx, input, stableToolModelOptions(opts, m.tools)...)
 	if err != nil {
 		finishLLMCallTrace(span, callID, m.agentKind, "adk", "stream", m.config.Model, 0, nil, err, nil)
 		return nil, err
@@ -598,5 +623,75 @@ func modelInputToolsFromContext(mc *adk.ModelContext) []*schema.ToolInfo {
 	if mc == nil || len(mc.Tools) == 0 {
 		return nil
 	}
-	return append([]*schema.ToolInfo(nil), mc.Tools...)
+	return cloneToolInfos(mc.Tools)
+}
+
+func stableToolModelOptions(opts []model.Option, tools []*schema.ToolInfo) []model.Option {
+	if len(tools) == 0 {
+		return opts
+	}
+	next := make([]model.Option, 0, len(opts)+1)
+	next = append(next, opts...)
+	next = append(next, model.WithTools(cloneToolInfos(tools)))
+	return next
+}
+
+func cloneToolInfos(tools []*schema.ToolInfo) []*schema.ToolInfo {
+	if len(tools) == 0 {
+		return nil
+	}
+	result := make([]*schema.ToolInfo, 0, len(tools))
+	for _, item := range tools {
+		if item == nil {
+			continue
+		}
+		result = append(result, cloneToolInfo(item))
+	}
+	return result
+}
+
+func cloneToolInfo(item *schema.ToolInfo) *schema.ToolInfo {
+	if item == nil {
+		return nil
+	}
+	data, err := json.Marshal(item)
+	if err == nil {
+		var cloned schema.ToolInfo
+		if unmarshalErr := json.Unmarshal(data, &cloned); unmarshalErr == nil {
+			return &cloned
+		}
+	}
+	cloned := &schema.ToolInfo{
+		Name:        item.Name,
+		Desc:        item.Desc,
+		Extra:       cloneStringAnyMap(item.Extra),
+		ParamsOneOf: cloneParamsOneOf(item.ParamsOneOf),
+	}
+	return cloned
+}
+
+func cloneParamsOneOf(params *schema.ParamsOneOf) *schema.ParamsOneOf {
+	if params == nil {
+		return nil
+	}
+	data, err := json.Marshal(&schema.ToolInfo{ParamsOneOf: params})
+	if err != nil {
+		return params
+	}
+	var cloned schema.ToolInfo
+	if err := json.Unmarshal(data, &cloned); err != nil {
+		return params
+	}
+	return cloned.ParamsOneOf
+}
+
+func cloneStringAnyMap(input map[string]any) map[string]any {
+	if len(input) == 0 {
+		return nil
+	}
+	output := make(map[string]any, len(input))
+	for key, value := range input {
+		output[key] = value
+	}
+	return output
 }
