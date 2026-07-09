@@ -1,0 +1,93 @@
+CHANGELOG.md
+  s_a1373ac3c98b9a::t_377776bf033a92 13-14,179-182
+internal/api/agentui/message.go
+  s_a1373ac3c98b9a::t_036452b00a4e92 22,91
+internal/api/agentui/message_test.go
+  s_a1373ac3c98b9a::t_43b7327e688393 38
+internal/api/agentui/stream.go
+  s_a1373ac3c98b9a::t_9291b267369012 387-389,402-405
+internal/api/agentui/stream_test.go
+  s_a1373ac3c98b9a::t_5b001e9ddb3e8c 17-26,94,140-164
+web/src/components/Chat/AgentMessageItem.tsx
+  s_a1373ac3c98b9a::t_8aa0772fa02a34 1-380
+web/src/components/Chat/AgentMessageList.test.tsx
+  s_986e4a7b688ce9::t_b67342adcb20a2 1-133
+web/src/components/Chat/AgentMessageList.tsx
+  s_986e4a7b688ce9::t_b554a1b11dbbd4 1-676
+web/src/components/Chat/AgentPanel.test.tsx
+  s_986e4a7b688ce9::t_c9a7f0a841311e 74-97,106-112,136
+web/src/components/Chat/AgentPanel.tsx
+  s_986e4a7b688ce9::t_9f18bb68e66924 8-10,17,39,69-70,135,220-221,231,235,321,396,450,458
+web/src/components/Chat/AgentSubAgentSessionPanel.tsx
+  s_a1373ac3c98b9a::t_e888142f4412a9 1-129
+web/src/components/Chat/ConfigManagerChat.tsx
+  s_986e4a7b688ce9::t_b31a5f547d1c78 4,129
+web/src/components/Chat/InputArea.tsx
+  s_a1373ac3c98b9a::t_4908129dfdcae8 6-7,93,216
+web/src/components/Chat/MessageItem.test.tsx
+  s_986e4a7b688ce9::t_f4a41d19ea2db0 81-123
+web/src/components/Chat/MessageItem.tsx
+  s_986e4a7b688ce9::t_9e14d3882e8f42 71,95,114-115,142,154,166,266,271-272,278-285,290-304,916,1362
+web/src/components/Chat/MessageList.test.tsx
+  s_a1373ac3c98b9a::t_bf6d1111320953 5
+web/src/components/Chat/MessageList.tsx
+  s_986e4a7b688ce9::t_c785c19b8281dc 15-17,70,364-365,579-581,591-599,606-609
+web/src/components/Chat/SessionManager.test.tsx
+  s_a1373ac3c98b9a::t_5280721c59d6da 6
+web/src/components/Chat/TokenUsagePanel.tsx
+  s_a1373ac3c98b9a::t_d2f8495d39c944 7,14,48,52-53,56,289,317,319,325
+web/src/components/workbench/ModeRouter.tsx
+  s_a1373ac3c98b9a::t_149712073cc9f7 22-24,74,124-125
+web/src/features/automations/AutomationsView.tsx
+  s_a1373ac3c98b9a::t_22d2091a98aafb 7
+web/src/features/interactive/components/SettingPanelTellerEditor.tsx
+  s_a1373ac3c98b9a::t_60229f6670799d 8
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_986e4a7b688ce9::t_fd1f78aea1c3e3 503-587
+web/src/features/interactive/components/StoryStage.tsx
+  s_986e4a7b688ce9::t_3b5e87e727f104 14,741,790,1225,1770,1773
+web/src/features/interactive/components/director-console/DirectorRunView.tsx
+  s_a1373ac3c98b9a::t_ffa343340e4d18 4
+web/src/features/onboarding/OnboardingGuide.tsx
+  s_a1373ac3c98b9a::t_2a5288211309f7 6-7,43,92-94
+web/src/hooks/useAgentChat.ts
+  s_a1373ac3c98b9a::t_ba4602e688f552 22,25-26,61,247-248,252-254,256-257,425-426,429-432,435,440,442-443,472-473,478-480,485-486,492-500
+web/src/index.css
+  s_a1373ac3c98b9a::t_930d134bba5361 987-996
+web/src/lib/agent-message-view.test.ts
+  s_a1373ac3c98b9a::t_00a2252ce43662 1-91
+web/src/lib/agent-message-view.ts
+  s_a1373ac3c98b9a::t_97798fa732d1d6 1-356
+web/src/lib/agent-ui.test.ts
+  s_a1373ac3c98b9a::t_fb2555627b03c0 6,147-245
+web/src/lib/agent-ui.ts
+  s_a1373ac3c98b9a::t_fc5970e60edaf0 23-26,113-116,155-315,400-403
+web/src/lib/api-client/types.ts
+  s_a1373ac3c98b9a::t_02dc78f8b622f4 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "783f28230463a9039b31ffe93c9f6f3ba1490c6a",
+  "prompts": {},
+  "sessions": {
+    "s_986e4a7b688ce9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f42a0-e1ae-7c53-a787-c9a37c957858",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_a1373ac3c98b9a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4202-339f-7b43-bedf-e3933b862557",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
