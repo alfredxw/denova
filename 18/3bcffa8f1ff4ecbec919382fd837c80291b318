@@ -1,0 +1,49 @@
+CHANGELOG.md
+  s_e29c839262532b::t_91bdc7c7e552af 11-12,108-113
+internal/interactive/actor_state.go
+  s_e29c839262532b::t_c16af32c8a5c48 229-233
+internal/interactive/director_modules_test.go
+  s_e29c839262532b::t_33ab21c9437158 107,112-121
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_cc0ef902e865ce::t_3ef8d99f3a94cc 417-419
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_cc0ef902e865ce::t_768a5aa3ada237 6,941,943-964,967
+web/src/features/interactive/components/preset-config/PresetConfigSectionEditor.tsx
+  s_cc0ef902e865ce::t_e12142f6e648bc 6,8,108-113,116-164,168-210
+web/src/features/interactive/components/preset-config/PresetTabsList.test.tsx
+  s_cc0ef902e865ce::t_53b946c0a00e5d 1-92
+web/src/features/interactive/components/preset-config/PresetTabsList.tsx
+  s_cc0ef902e865ce::t_3c3afd1ce690a8 1,5,8-9,11,13-20,22-25,27-37,41,43-44,48-53,56,62,64-75,82-90,95-96,98,100,107-109,111-113,117-147
+web/src/features/interactive/components/preset-config/visual-editors.tsx
+  s_cc0ef902e865ce::t_6fadafedff21af 7,13,16,21-25,74,82-83,186,194-195,285-315,317-329,337,356-362,511-558,684-685,693-694,699-737,739-740,862-876,878-913,974-975,983-984,989-1008,1073-1097,1101-1155,1174,1184,1347,1362-1363
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_cc0ef902e865ce::t_4694e8cd52e66a 146
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_cc0ef902e865ce::t_3c5a3d55453418 146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "183bcffa8f1ff4ecbec919382fd837c80291b318",
+  "prompts": {},
+  "sessions": {
+    "s_cc0ef902e865ce": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f46d5-9d73-7a30-be93-a5f8dc703c22",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_e29c839262532b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f476d-6b0c-78c0-81cf-f71423d8c14e",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
