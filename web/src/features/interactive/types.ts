@@ -178,6 +178,7 @@ export interface ActorStateModule {
   name: string
   description: string
   actor_state: StoryDirectorActorStateSystem
+  opening_selector?: StoryDirectorOpeningSelector
   tags: string[]
   path?: string
   custom: boolean

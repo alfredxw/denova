@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
 import { BooleanSwitchField } from '../setting-panel/BooleanSwitchField'
 import { DirectorModuleConsole } from './ModuleConsole'
 import { consoleSectionClassName, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RANDOM_RATE_OPTIONS, STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS, STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
@@ -18,7 +18,6 @@ export function StoryDirectorEditor({
   ruleSystems,
   actorStates,
   memoryStructures,
-  openingSelectors,
   imagePresets,
   tagDraft,
   setDraft,
@@ -31,7 +30,6 @@ export function StoryDirectorEditor({
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
   memoryStructures: StoryMemoryStructureModule[]
-  openingSelectors: OpeningSelectorModule[]
   imagePresets: ImagePreset[]
   tagDraft: string
   setDraft: (draft: StoryDirector | null) => void
@@ -123,7 +121,6 @@ export function StoryDirectorEditor({
   const selectedRuleSystem = findById(ruleSystems, refs.rule_system_id || 'default')
   const selectedActorState = findById(actorStates, refs.actor_state_id || 'default')
   const selectedMemoryStructure = findById(memoryStructures, refs.memory_structure_id || 'default')
-  const selectedOpeningSelector = findById(openingSelectors, refs.opening_selector_id || 'default')
   const selectedImagePreset = findById(imagePresets, refs.image_preset_id || 'game-cg')
   const selectedTeller = findById(tellers, refs.narrative_style_id || 'classic')
 
@@ -154,7 +151,6 @@ export function StoryDirectorEditor({
           selectedActorStateName={selectedActorState?.name || refs.actor_state_id || 'default'}
           selectedMemoryStructureCount={selectedMemoryStructure?.structures?.filter((structure) => structure.enabled !== false).length ?? draft.resolved_snapshot?.story_memory_structures?.filter((structure) => structure.enabled !== false).length ?? 0}
           selectedMemoryStructureTotal={selectedMemoryStructure?.structures?.length ?? draft.resolved_snapshot?.story_memory_structures?.length ?? 0}
-          selectedOpeningName={selectedOpeningSelector?.name || refs.opening_selector_id || 'default'}
           selectedImageName={selectedImagePreset?.name || refs.image_preset_id || 'game-cg'}
           selectedEventCardCount={selectedEventCardCount}
           tellers={tellers}
@@ -162,7 +158,6 @@ export function StoryDirectorEditor({
           ruleSystems={ruleSystems}
           actorStates={actorStates}
           memoryStructures={memoryStructures}
-          openingSelectors={openingSelectors}
           imagePresets={imagePresets}
           onModuleRefChange={updateModuleRef}
         />

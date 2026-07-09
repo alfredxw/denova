@@ -119,6 +119,7 @@ export function makeStoryDirectorPayload(draft: StoryDirector, tagDraft: string)
     tags: splitTags(tagDraft),
   })
   delete (payload as unknown as Record<string, unknown>).event_system
+  delete (payload as unknown as Record<string, unknown>).opening_selector
   const refs = payload.module_refs
   if (refs) {
     if (!refs.event_package_ids?.length && refs.event_system_id) {
@@ -129,6 +130,8 @@ export function makeStoryDirectorPayload(draft: StoryDirector, tagDraft: string)
     }
     delete (refs as Record<string, unknown>).event_system_id
     delete (refs as Record<string, unknown>).event_system_disabled
+    delete (refs as Record<string, unknown>).opening_selector_id
+    delete (refs as Record<string, unknown>).opening_selector_disabled
   }
   return payload
 }
@@ -222,14 +225,13 @@ export function newStoryDirectorDraft(): Partial<StoryDirector> {
   return {
     id: `custom-director-${Date.now()}`,
     name: '自定义故事导演',
-    description: '新的故事导演，组合叙事风格、事件包、TRPG 检定、状态系统、开局选择器和图像方案。',
+    description: '新的故事导演，组合叙事风格、事件包、TRPG 检定、状态系统、记忆结构和图像方案。',
     module_refs: {
       narrative_style_id: 'classic',
       event_package_ids: ['default'],
       rule_system_id: 'default',
       actor_state_id: 'default',
       memory_structure_id: 'default',
-      opening_selector_id: 'default',
       image_preset_id: 'game-cg',
     },
     strategy: {
@@ -250,11 +252,6 @@ export function newStoryDirectorDraft(): Partial<StoryDirector> {
     actor_state: {
       templates: [],
       initial_actors: [],
-    },
-    opening_selector: {
-      enabled: true,
-      trait_pools: [],
-      initial_state_ops: [],
     },
     tags: ['自定义'],
     version: 2,
@@ -292,19 +289,24 @@ export function newActorStateDraft(): Partial<ActorStateModule> {
   return {
     id: `custom-actor-state-${Date.now()}`,
     name: '自定义状态系统',
-    description: '新的状态系统，配置关键角色模板、字段 schema 和初始 Actor。',
+    description: '新的状态系统，配置状态表模板、字段 schema 和初始状态对象。',
     actor_state: {
       templates: [
         {
           id: 'protagonist',
-          name: '主角',
-          description: '主角可计算状态模板。',
+          name: '默认主角状态表',
+          description: '示例主角状态表，可替换或新增世界、故事、势力、基地、特定角色等状态表。',
           fields: [
-            { id: 'hp', path: 'resources.hp', name: '生命', type: 'number', default: 10, min: 0, max: 10, visibility: 'visible' },
+            { id: 'current_status', path: 'current.status', name: '当前状态', type: 'string', default: '状态稳定，等待剧情确定。', visibility: 'visible' },
           ],
         },
       ],
       initial_actors: [{ id: 'protagonist', name: '主角', template_id: 'protagonist', role: 'protagonist' }],
+    },
+    opening_selector: {
+      enabled: true,
+      trait_pools: [],
+      initial_state_ops: [],
     },
     tags: ['自定义'],
     version: 1,
@@ -328,7 +330,7 @@ export function newOpeningSelectorDraft(): Partial<OpeningSelectorModule> {
   return {
     id: `custom-opening-${Date.now()}`,
     name: '自定义开局选择器',
-    description: '新的开局选择器，配置词条池、初始状态变更和抽取规则。',
+    description: '兼容旧配置的开局词条配置；新配置请优先写入状态系统。',
     opening_selector: {
       enabled: true,
       trait_pools: [],

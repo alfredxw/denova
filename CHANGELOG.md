@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式：状态系统新增修仙、西幻、末世和无限流 4 个题材内置预设；每个预设提供 `protagonist`、`important_character`、`opponent` 作为默认示例状态表模板，不预设数值范围，并允许用户继续扩展世界、故事倒计时、特定角色、势力、基地、副本等任意状态对象模板，供不同故事导演通过 `actor_state_id` 引用。
+- Game Mode: Added four built-in genre State System presets for xianxia, western fantasy, apocalypse, and infinite-flow stories. Each preset ships `protagonist`, `important_character`, and `opponent` as default example state-table templates without fixed numeric bounds, while allowing users to add arbitrary state-object templates such as world state, story clocks, specific character routes, factions, bases, or instances. Story Directors continue to reference them through `actor_state_id`.
 - Agent：Prompt cache 诊断增强，run trace 摘要现在聚合 `prompt_tokens`、`cached_prompt_tokens`、`uncached_prompt_tokens` 和 `cache_hit_rate`；`cache_attribution` 新增 per-tool fingerprint，便于定位具体工具 schema 变动而不暴露完整 schema。
 - Agent: Improved prompt-cache diagnostics. Run trace summaries now aggregate `prompt_tokens`, `cached_prompt_tokens`, `uncached_prompt_tokens`, and `cache_hit_rate`; `cache_attribution` adds per-tool fingerprints so schema drift can be traced without exposing full schemas.
 - Agent：模型调用前会冻结最终工具 schema 快照，并把快照副本传给 provider，避免 provider adapter 或中间件污染后续调用的工具 schema，提升 prompt cache 前缀稳定性。
@@ -46,8 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Books: Book creation and editing now share one modal instead of the inline expanded create form. The modal supports PNG/JPEG cover uploads, and new books can be created with an uploaded cover or via the Create and Generate Cover action.
 - 游戏模式：导演编排面板新增“分析导演上下文”入口，不调用 LLM 即可查看后台互动导演 Agent 当前会收到的 SystemPrompt、director.md 快照、资料库导演上下文、回合审计、故事记忆和事件目录等来源片段。
 - Game Mode: Added an “Analyze director context” action to the Director orchestration panel, showing the background Director Agent’s current SystemPrompt, director.md snapshot, lore context, turn audit, story memory, event catalog, and other source-bounded context without calling the LLM.
-- 游戏模式：新增导演子模块 Actor State，支持关键 Actor 类型模板、字段 schema、初始 Actor、`/api/actor-states` CRUD、配置页资源入口和配置管理 Agent 读写工具；记忆整理 Agent 新增 `apply_actor_state_patch` 工具，用于按 schema 校验并写入可重放结构化状态。
-- Game Mode: Added the Actor State director submodule with key-actor templates, field schemas, initial actors, `/api/actor-states` CRUD, Presets resource editing, and Config Manager Agent tools. The memory continuity agent now has `apply_actor_state_patch` for schema-validated replayable structured state updates.
+- 游戏模式：新增导演子模块状态系统，支持状态表模板、字段 schema、初始状态对象、`/api/actor-states` CRUD、配置页资源入口和配置管理 Agent 读写工具；后台导演新增 `apply_actor_state_patch` 工具，用于按 schema 校验并写入可重放结构化状态。
+- Game Mode: Added the State System director submodule with state-table templates, field schemas, initial state objects, `/api/actor-states` CRUD, Presets resource editing, and Config Manager Agent tools. The background Director now has `apply_actor_state_patch` for schema-validated replayable structured state updates.
 - 游戏模式：新增故事导演子模块 Story Memory Structure，记忆结构定义进入方案预设并通过 `StoryDirector.module_refs.memory_structure_id` 统一引用/启停；新增 `/api/story-memory-structures` CRUD、内置恢复、revision conflict 校验、配置管理 Agent 读写工具和导演组合器节点。
 - Game Mode: Added the Story Memory Structure director submodule. Memory structure definitions now live in Presets and are referenced/toggled through `StoryDirector.module_refs.memory_structure_id`; added `/api/story-memory-structures` CRUD, built-in restore, revision-conflict checks, Config Manager Agent tools, and a Story Director composer node.
 - 游戏模式：导演编排右栏在当前分支没有导演规划或规则审计时提供手动触发规划入口，并在规划中复用 Chat 消息列表展示后台导演状态与 director.md 进度。
@@ -101,6 +103,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 不兼容变更：游戏模式开局词条并入状态系统；新建故事导演不再引用独立 `opening_selector_id`，状态系统模块新增 `opening_selector` 用于维护词条池和 `initial_state_ops`，抽取结果继续以 `StateOp` 写入故事状态。旧开局选择器模块仍保留兼容读取/迁移路径，但不再作为新配置入口。
+- Breaking: Game Mode opening traits are now part of the State System. Newly created Story Directors no longer reference standalone `opening_selector_id`; State System modules now include `opening_selector` for trait pools and `initial_state_ops`, and rolled results still persist as `StateOp`s. Legacy Opening Selector modules remain readable for compatibility and migration, but are no longer the new configuration entry point.
 - 方案预设：TRPG 检定目录新增多份内置 DM 检定风格资源（均衡、推进型、OSR、电影英雄、硬核生存、悬疑线索、戏剧赌注）；故事导演继续通过 `module_refs.rule_system_id` 选择其中一个资源来决定本轮 DM 裁定风格。
 - Presets: The TRPG Checks directory now includes multiple built-in DM adjudication style resources (balanced, fail-forward, OSR, cinematic heroic, gritty survival, clue-forward mystery, and dramatic stakes). Story Directors still choose one through `module_refs.rule_system_id`.
 - 不兼容变更：TRPG 检定资源语义收敛为“一种 DM 检定风格 + 固定 d20 检定配置”；`trpg_system.rule_templates` 暂时保留兼容旧 JSON，但 normalize 后只使用第一条。新建自定义模块也只预置一条可编辑检定配置。
@@ -111,8 +115,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Presets: Removed the duplicate inline “Director Resources” tabs from the Story Director editor. TRPG Checks, Opening Selectors, and Event Packages are now maintained through their dedicated resource pages; the composer uses adaptive columns, and background director mode plus branch planning turns are shown directly in Director Strategy.
 - 不兼容变更：游戏模式删除独立 `stat_system` 配置，状态字段、资源、关系值和可计算状态统一由状态系统（`actor_state`）管理；`RuleSystemModule` 只保留 `trpg_system.rule_templates`，用户可见名称从“数值与TRPG系统/规则系统”收敛为“TRPG 检定”，原“Actor 状态系统”收敛为“状态系统”。
 - Breaking: Game Mode removed standalone `stat_system` config. State fields, resources, relationship values, and computable state are now managed only by the State System (`actor_state`); `RuleSystemModule` now keeps only `trpg_system.rule_templates`. User-visible labels changed from “Stat/TRPG System / Rule System” to “TRPG Checks” and from “Actor State System” to “State System”.
-- 方案预设：状态系统资源页改为模板、字段 schema、字段类型、默认值、上下限、可见性、更新说明和初始 Actor 的可视化编辑器，并保留 JSON View；故事导演编辑区移除“数值系统”Tab，状态系统只通过组合器引用并在独立资源页维护。
-- Presets: The State System resource page now has a visual editor for templates, field schemas, field types, defaults, bounds, visibility, update instructions, and initial Actors, while keeping JSON View. The Story Director editor removed the Stat System tab; State Systems are referenced through the composer and edited on their own resource page.
+- 方案预设：状态系统资源页改为状态表模板、字段 schema、字段类型、默认值、上下限、可见性、更新说明和初始状态对象的可视化编辑器，并保留 JSON View；故事导演编辑区移除“数值系统”Tab，状态系统只通过组合器引用并在独立资源页维护。
+- Presets: The State System resource page now has a visual editor for state-table templates, field schemas, field types, defaults, bounds, visibility, update instructions, and initial state objects, while keeping JSON View. The Story Director editor removed the Stat System tab; State Systems are referenced through the composer and edited on their own resource page.
 - WebUI：互动设置面板将方案预设资源状态、自动保存和编辑区拆分为独立组件与通用 autosave hook，降低 `SettingPanel` 职责耦合；用户可见行为、API 与存储格式不变。
 - WebUI: Refactored Interactive Settings preset resource state, autosave, and editor panes into dedicated components plus a shared autosave hook, reducing `SettingPanel` coupling without changing user-visible behavior, APIs, or storage formats.
 - 游戏模式：互动 Story Memory 运行时实现按 Director 子模块关系拆分为 `memory_*` 文件，并将记忆结构预设实现收敛到 `memory_structure_*` 命名；不改变存储路径、API 或用户可见行为。

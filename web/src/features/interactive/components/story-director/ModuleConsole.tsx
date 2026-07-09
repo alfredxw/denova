@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
 import { consoleSectionClassName, selectClassName } from './constants'
 import { SectionTitle } from './shared'
 import { normalizeIDList } from './utils'
@@ -16,7 +16,6 @@ export function DirectorModuleConsole({
   selectedActorStateName,
   selectedMemoryStructureCount,
   selectedMemoryStructureTotal,
-  selectedOpeningName,
   selectedImageName,
   selectedEventCardCount,
   tellers,
@@ -24,7 +23,6 @@ export function DirectorModuleConsole({
   ruleSystems,
   actorStates,
   memoryStructures,
-  openingSelectors,
   imagePresets,
   onModuleRefChange,
 }: {
@@ -34,7 +32,6 @@ export function DirectorModuleConsole({
   selectedActorStateName: string
   selectedMemoryStructureCount: number
   selectedMemoryStructureTotal: number
-  selectedOpeningName: string
   selectedImageName: string
   selectedEventCardCount: number
   tellers: Teller[]
@@ -42,7 +39,6 @@ export function DirectorModuleConsole({
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
   memoryStructures: StoryMemoryStructureModule[]
-  openingSelectors: OpeningSelectorModule[]
   imagePresets: ImagePreset[]
   onModuleRefChange: <K extends keyof StoryDirectorModuleRefs>(key: K, value: StoryDirectorModuleRefs[K]) => void
 }) {
@@ -133,20 +129,6 @@ export function DirectorModuleConsole({
               enabled={!refs.event_packages_disabled}
               items={eventPackages}
               onChange={(value) => onModuleRefChange('event_package_ids', value)}
-            />
-          </ModuleRefRow>
-          <ModuleRefRow
-            label={t('settingPanel.presetKind.opening')}
-            summary={selectedOpeningName}
-            enabled={!refs.opening_selector_disabled}
-            onEnabledChange={(enabled) => onModuleRefChange('opening_selector_disabled', !enabled)}
-          >
-            <ModuleSelect
-              value={refs.opening_selector_id || ''}
-              fallbackValue="default"
-              enabled={!refs.opening_selector_disabled}
-              items={openingSelectors}
-              onChange={(value) => onModuleRefChange('opening_selector_id', value)}
             />
           </ModuleRefRow>
           <ModuleRefRow

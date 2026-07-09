@@ -19,19 +19,19 @@ Use this skill before calling `write_story_directors`, `write_event_packages`, `
 7. For update, preserve sections the user did not ask to change.
 8. For delete, require an explicit user request.
 9. When grounding event cards in the current work, call `list_lore_items` first, then `read_lore_items` for only the small relevant set. Do not claim concrete world, faction, character, or relationship facts unless they came from read lore, read director/package data, or explicit user input.
-10. Story Directors, event packages, TRPG Checks, State Systems, Story Memory Structure, and opening selectors are Game Mode-only module types. Do not add per-resource mode/scope fields.
+10. Story Directors, event packages, TRPG Checks, State Systems, and Story Memory Structure are Game Mode-only module types. Opening traits belong inside State Systems as initialization config; do not add per-resource mode/scope fields.
 
 ## Shape
 
 Story Directors are Game Mode modules independent from shared narrative styles and shared image presets. They combine reusable modules through `module_refs` and keep expanded resolved sections for inspection.
 
-- `module_refs`: referenced module IDs plus switches. Use `narrative_style_id`, `event_package_ids`, `rule_system_id`, `actor_state_id`, `memory_structure_id`, `opening_selector_id`, and `image_preset_id`; set `narrative_style_disabled`, `event_packages_disabled`, `rule_system_disabled`, `actor_state_disabled`, `memory_structure_disabled`, `opening_selector_disabled`, or `image_preset_disabled` to `true` to turn a module off. When disabling, preserve IDs so the user can re-enable without reselecting.
+- `module_refs`: referenced module IDs plus switches. Use `narrative_style_id`, `event_package_ids`, `rule_system_id`, `actor_state_id`, `memory_structure_id`, and `image_preset_id`; set `narrative_style_disabled`, `event_packages_disabled`, `rule_system_disabled`, `actor_state_disabled`, `memory_structure_disabled`, or `image_preset_disabled` to `true` to turn a module off. When disabling, preserve IDs so the user can re-enable without reselecting. Do not write new `opening_selector_id`; opening traits now live in the referenced State System.
 - `strategy`: `enabled`, `mainline_strength`, `failure_policy`, `pacing_curve`, `random_event_rate`. Prefer the standard enum IDs used by the UI: `mainline_strength` is `soft_guidance`, `balanced`, or `strong_arc`; `failure_policy` is `reversible`, `consequence`, or `fail_forward`; `pacing_curve` is `progressive`, `wave`, or `goal-pressure-payoff`; `random_event_rate` is usually `0`, `0.08`, `0.15`, or `0.3`.
 - `event_packages`: resolved event packages; used only by the background director planner and empty when event packages are disabled.
 - `actor_state`: resolved State System schema with `templates[].fields[]`; fields define `path`, `name`, `type`, `default`, optional `min`/`max`, `options`, `visibility` (`visible`, `hidden`, or `spoiler`), and `update_instruction`.
+- `opening_selector`: resolved from the State System with `enabled`, `trait_pools`, and `initial_state_ops`; it affects only new stories or explicit opening rolls and should be configured through `write_actor_states`.
 - `trpg_system`: resolved d20/d100 rule templates for checks only. Each rule should use `label`, `dice`, `modifier`, `failure_policy`, `difficulty_guidance`, `state_effect_guidance`, `trigger`, `success_hint`, and `failure_hint`. Do not write legacy category, default difficulty, roll-mode, impact enum, expression, resource-cost, StateOps, or terminal-candidate fields.
 - `resolved_snapshot.story_memory_structures`: last known-good Story Memory schema resolved from `memory_structure_id`; records are still story/branch runtime data and must not be placed in the preset.
-- `opening_selector`: resolved opening selector with `enabled`, `trait_pools`, and `initial_state_ops`; this affects only new stories or explicit opening rolls and is empty/off when the opening module is disabled.
 
 Do not change `version`, `path`, `custom`, `invalid`, `error`, `created_at`, or `updated_at` unless preserving an existing complete object from `read_story_directors`.
 Do not use empty IDs to mean disabled; use the explicit `*_disabled` switches. Do not write `event_system`, `event_system_id`, `event_system_disabled`, or `custom_events` in new data.

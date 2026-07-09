@@ -232,7 +232,7 @@ func defaultActorStateSystem() StoryDirectorActorStateSystem {
 		Templates: []ActorStateTemplate{{
 			ID:          "protagonist",
 			Name:        "主角",
-			Description: "主角可计算状态模板，用于规则检定、资源消耗和长期承接。",
+			Description: "默认主角状态表模板，用于规则检定、资源消耗和长期承接；可按作品需要新增其他状态对象模板。",
 			Fields: []ActorStateField{
 				{
 					ID:          "hp",

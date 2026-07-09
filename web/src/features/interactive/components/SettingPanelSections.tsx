@@ -47,7 +47,7 @@ const LORE_RESIDENT_ITEM_WARNING_CHARS = 8000
 const LORE_RESIDENT_TOTAL_WARNING_CHARS = 40000
 const IMAGE_PRESET_PROMPT_LIMIT = 4000
 const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_request' }] as const
-const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state', 'memory-structure', 'opening']
+const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state', 'memory-structure']
 type ImagePresetTarget = ImagePresetSlot['target']
 type LoreType = LoreItem['type']
 interface KnowledgeSection {
@@ -260,7 +260,6 @@ export function TellerDirectory({
   ruleSystems,
   actorStates,
   memoryStructures,
-  openingSelectors,
   activeTellerId,
   activeStoryDirectorId,
   activeImagePresetId,
@@ -268,7 +267,6 @@ export function TellerDirectory({
   activeRuleSystemId,
   activeActorStateId,
   activeMemoryStructureId,
-  activeOpeningSelectorId,
   saving,
   onSelectTeller,
   onSelectStoryDirector,
@@ -277,7 +275,6 @@ export function TellerDirectory({
   onSelectRuleSystem,
   onSelectActorState,
   onSelectMemoryStructure,
-  onSelectOpeningSelector,
   onCreateTeller,
   onCreateStoryDirector,
   onCreateImagePreset,
@@ -285,7 +282,6 @@ export function TellerDirectory({
   onCreateRuleSystem,
   onCreateActorState,
   onCreateMemoryStructure,
-  onCreateOpeningSelector,
   usageMode,
 }: {
   resourceKind: PresetResourceKind
@@ -297,7 +293,6 @@ export function TellerDirectory({
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
   memoryStructures: StoryMemoryStructureModule[]
-  openingSelectors: OpeningSelectorModule[]
   activeTellerId: string
   activeStoryDirectorId: string
   activeImagePresetId: string
@@ -305,7 +300,6 @@ export function TellerDirectory({
   activeRuleSystemId: string
   activeActorStateId: string
   activeMemoryStructureId: string
-  activeOpeningSelectorId: string
   saving: boolean
   onSelectTeller: (id: string) => void
   onSelectStoryDirector: (id: string) => void
@@ -314,7 +308,6 @@ export function TellerDirectory({
   onSelectRuleSystem: (id: string) => void
   onSelectActorState: (id: string) => void
   onSelectMemoryStructure: (id: string) => void
-  onSelectOpeningSelector: (id: string) => void
   onCreateTeller: () => void
   onCreateStoryDirector: () => void
   onCreateImagePreset: () => void
@@ -322,7 +315,6 @@ export function TellerDirectory({
   onCreateRuleSystem: () => void
   onCreateActorState: () => void
   onCreateMemoryStructure: () => void
-  onCreateOpeningSelector: () => void
 }) {
   const { t } = useTranslation()
   const [collapsedSections, setCollapsedSections] = useState<Partial<Record<PresetResourceKind, boolean>>>({})
@@ -385,10 +377,7 @@ export function TellerDirectory({
       onSelectMemoryStructure(memoryStructures[0].id)
       return
     }
-    if (presetResourceVisibleInMode('opening', usageMode) && openingSelectors[0]) {
-      onSelectOpeningSelector(openingSelectors[0].id)
-    }
-  }, [actorStates, eventPackages, imagePresets, isConfigAgentActive, memoryStructures, onSelectActorState, onSelectEventPackage, onSelectImagePreset, onSelectMemoryStructure, onSelectOpeningSelector, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, openingSelectors, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
+  }, [actorStates, eventPackages, imagePresets, isConfigAgentActive, memoryStructures, onSelectActorState, onSelectEventPackage, onSelectImagePreset, onSelectMemoryStructure, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
 
   return (
     <>
@@ -595,30 +584,6 @@ export function TellerDirectory({
             </PresetDirectorySection>
           ) : null}
 
-          {isVisible('opening') ? (
-            <PresetDirectorySection
-              kind="opening"
-              label={presetKindDirectoryLabel('opening', t)}
-              Icon={Sparkles}
-              count={openingSelectors.length}
-              createLabel={presetKindCreateLabel('opening', t)}
-              saving={saving}
-              collapsed={isCollapsed('opening')}
-              onToggle={() => toggleSection('opening')}
-              onCreate={onCreateOpeningSelector}
-            >
-              {openingSelectors.map((item) => (
-                <PresetDirectoryItem
-                  key={item.id}
-                  active={!isConfigAgentActive && resourceKind === 'opening' && activeOpeningSelectorId === item.id}
-                  Icon={Sparkles}
-                  title={item.name}
-                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.openingSelector.summaryCount', { pools: item.opening_selector?.trait_pools?.length || 0, ops: item.opening_selector?.initial_state_ops?.length || 0 })}`}
-                  onSelect={() => onSelectOpeningSelector(item.id)}
-                />
-              ))}
-            </PresetDirectorySection>
-          ) : null}
         </div>
       </ScrollArea>
     </>
@@ -840,6 +805,7 @@ export function ActorStateEditor({
   onValidityChange?: (valid: boolean) => void
 }) {
   const { t } = useTranslation()
+  const setSectionValid = usePresetSectionValidity(draft?.id || '', onValidityChange)
 
   if (!draft) {
     return <EmptyState title={t('settingPanel.editor.noActorStateSelected')} description={t('settingPanel.editor.noActorStateSelectedDesc')} />
@@ -856,9 +822,22 @@ export function ActorStateEditor({
         summary={t('settingPanel.actorState.summaryCount', { templates: draft.actor_state?.templates?.length || 0, actors: draft.actor_state?.initial_actors?.length || 0 })}
         onChange={(actor_state) => setDraft({ ...draft, actor_state })}
         onSave={onSave}
-        onValidityChange={onValidityChange}
+        onValidityChange={(valid) => setSectionValid('actor_state', valid)}
       >
         {(props) => <ActorStateVisualEditor {...props} />}
+      </PresetConfigSectionEditor>
+      <PresetConfigSectionEditor
+        sectionId="actor-state.opening-selector"
+        resetKey={`${draft.id}:opening_selector`}
+        title={t('settingPanel.actorState.openingTitle')}
+        description={t('settingPanel.actorState.openingDescription')}
+        value={draft.opening_selector || { enabled: true, trait_pools: [], initial_state_ops: [] }}
+        summary={t('settingPanel.storyDirector.openingSelectorSummary', { pools: draft.opening_selector?.trait_pools?.length || 0, ops: draft.opening_selector?.initial_state_ops?.length || 0 })}
+        onChange={(opening_selector) => setDraft({ ...draft, opening_selector })}
+        onSave={onSave}
+        onValidityChange={(valid) => setSectionValid('opening_selector', valid)}
+      >
+        {(props) => <OpeningSelectorVisualEditor {...props} />}
       </PresetConfigSectionEditor>
     </ModuleEditorShell>
   )
@@ -987,7 +966,6 @@ function ModuleEditorShell<T extends { name: string; description: string; custom
 function storyDirectorSummaryCount(director: StoryDirector) {
   return directorEventCardCount(directorResolvedEventPackages(director))
     + (director.trpg_system?.rule_templates?.length || 0)
-    + (director.opening_selector?.trait_pools?.length || 0)
 }
 
 function directorResolvedEventPackages(director: StoryDirector): TellerEventPackage[] {

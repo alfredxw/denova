@@ -135,7 +135,7 @@ describe('StoryPicker', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '新建' }))
 
-    expect(screen.getByText('当前故事导演已关闭开局选择器；新故事不会从导演抽取开局词条。')).toBeInTheDocument()
+    expect(screen.getByText('当前状态系统未启用开局词条；新故事不会抽取开局词条。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '抽取词条' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: '抽取词条' }))
     expect(rollInteractiveOpeningMock).not.toHaveBeenCalled()

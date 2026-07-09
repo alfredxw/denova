@@ -177,7 +177,7 @@ func newInteractiveActorStateTools(ctx InteractiveStoryToolContext) ([]tool.Base
 	if ctx.Store == nil || ctx.StoryID == "" || ctx.TurnID == "" {
 		return nil, nil
 	}
-	applyTool, err := utils.InferTool("apply_actor_state_patch", "创建或更新关键 Actor 的结构化状态。只用于主角、重要角色、反派、势力型 Actor 等会影响后续承接或规则检定的对象；路人和一次性 NPC 留在故事记忆，不写入状态系统。后端会按状态系统 schema 校验 actor 类型、字段路径、值类型和可见性，并把变更写成可重放 StateOp。", func(callCtx context.Context, input applyActorStatePatchInput) (string, error) {
+	applyTool, err := utils.InferTool("apply_actor_state_patch", "创建或更新关键状态对象的结构化状态。状态对象可以是主角、重要角色、反派、怪物、Boss、规则实体、世界、故事倒计时、特定角色、势力、基地或副本等；protagonist、important_character、opponent 只是常见默认模板，若当前状态系统定义了更具体的 template_id，应优先使用该 schema。只能写入状态系统 schema 中已声明的字段；需要新增状态表或字段时交给配置管理或用户显式配置。普通叙事记录、一次性 NPC、场景流水和任务细节留在故事记忆。后端会按状态系统 schema 校验状态对象类型、字段路径、值类型和可见性，并把变更写成可重放 StateOp。", func(callCtx context.Context, input applyActorStatePatchInput) (string, error) {
 		_ = callCtx
 		result, err := interactive.ValidateActorStatePatches(ctx.ActorState, input.Patches, ctx.TurnID)
 		if err != nil {

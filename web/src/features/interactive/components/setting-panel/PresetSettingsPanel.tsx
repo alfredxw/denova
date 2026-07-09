@@ -6,14 +6,14 @@ import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createOpeningSelector, createRuleSystem, createStoryDirector, createStoryMemoryStructure, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteOpeningSelector, deleteRuleSystem, deleteStoryDirector, deleteStoryMemoryStructurePreset, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStoryMemoryStructures, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector, updateStoryMemoryStructure } from '../../api'
+import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, createStoryMemoryStructure, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteOpeningSelector, deleteRuleSystem, deleteStoryDirector, deleteStoryMemoryStructurePreset, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStoryMemoryStructures, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector, updateStoryMemoryStructure } from '../../api'
 import type { PresetResourceKind, PresetUsageMode } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller } from '../../types'
 import { ActorStateEditor, EventPackageEditor, ImagePresetEditor, OpeningSelectorEditor, RuleSystemEditor, StoryMemoryStructureEditor, TellerDirectory } from '../SettingPanelSections'
 import { TellerEditor } from '../SettingPanelTellerEditor'
 import { StoryDirectorEditor } from '../story-director/StoryDirectorEditor'
 import { usePresetResourceAutosave } from './usePresetResourceAutosave'
-import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneMemoryStructure, cloneOpeningSelector, cloneRuleSystem, cloneStoryDirector, cloneTeller, currentPresetBuiltinOverridden, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_MEMORY_STRUCTURES, EMPTY_OPENING_SELECTORS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeMemoryStructurePayload, makeOpeningSelectorPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newMemoryStructureDraft, newOpeningSelectorDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget, type PresetDrafts } from './presetResources'
+import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneMemoryStructure, cloneOpeningSelector, cloneRuleSystem, cloneStoryDirector, cloneTeller, currentPresetBuiltinOverridden, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_MEMORY_STRUCTURES, EMPTY_OPENING_SELECTORS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeMemoryStructurePayload, makeOpeningSelectorPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newMemoryStructureDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget, type PresetDrafts } from './presetResources'
 
 interface PresetSettingsPanelProps {
   workspace: string
@@ -826,17 +826,6 @@ export function PresetSettingsPanel({
     }
   }
 
-  const handleCreateOpeningSelector = async () => {
-    setSaving(true)
-    try {
-      const item = await createOpeningSelector(newOpeningSelectorDraft())
-      setPresetResourceKind('opening')
-      await refreshOpeningSelectors(item.id)
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const handleCreateImagePreset = async () => {
     setSaving(true)
     try {
@@ -982,7 +971,6 @@ export function PresetSettingsPanel({
         ruleSystems={ruleSystems}
         actorStates={actorStates}
         memoryStructures={memoryStructures}
-        openingSelectors={openingSelectors}
         activeTellerId={activeTellerId}
         activeStoryDirectorId={activeStoryDirectorId}
         activeImagePresetId={activeImagePresetId}
@@ -990,7 +978,6 @@ export function PresetSettingsPanel({
         activeRuleSystemId={activeRuleSystemId}
         activeActorStateId={activeActorStateId}
         activeMemoryStructureId={activeMemoryStructureId}
-        activeOpeningSelectorId={activeOpeningSelectorId}
         saving={saving}
         onSelectTeller={handleSelectTeller}
         onSelectStoryDirector={(id) => selectPresetResource('director', id)}
@@ -999,7 +986,6 @@ export function PresetSettingsPanel({
         onSelectRuleSystem={(id) => selectPresetResource('rule', id)}
         onSelectActorState={(id) => selectPresetResource('actor-state', id)}
         onSelectMemoryStructure={(id) => selectPresetResource('memory-structure', id)}
-        onSelectOpeningSelector={(id) => selectPresetResource('opening', id)}
         onCreateTeller={() => void handleCreateTeller()}
         onCreateStoryDirector={() => void handleCreateStoryDirector()}
         onCreateImagePreset={() => void handleCreateImagePreset()}
@@ -1007,7 +993,6 @@ export function PresetSettingsPanel({
         onCreateRuleSystem={() => void handleCreateRuleSystem()}
         onCreateActorState={() => void handleCreateActorState()}
         onCreateMemoryStructure={() => void handleCreateMemoryStructure()}
-        onCreateOpeningSelector={() => void handleCreateOpeningSelector()}
       />
     </div>
   )
@@ -1240,7 +1225,6 @@ function PresetResourcePane(props: PresetResourcePaneProps) {
         ruleSystems={props.ruleSystems}
         actorStates={props.actorStates}
         memoryStructures={props.memoryStructures}
-        openingSelectors={props.openingSelectors}
         imagePresets={props.imagePresets}
         setDraft={props.setStoryDirectorDraft}
         tagDraft={props.storyDirectorTagDraft}
@@ -1281,6 +1265,6 @@ function OpeningSelectorPane(props: { draft: OpeningSelectorModule | null; setDr
   return <OpeningSelectorEditor {...props} />
 }
 
-function StoryDirectorPane(props: { draft: StoryDirector | null; tellers: Teller[]; eventPackages: EventPackageModule[]; ruleSystems: RuleSystemModule[]; actorStates: ActorStateModule[]; memoryStructures: StoryMemoryStructureModule[]; openingSelectors: OpeningSelectorModule[]; imagePresets: ImagePreset[]; setDraft: (draft: StoryDirector | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
+function StoryDirectorPane(props: { draft: StoryDirector | null; tellers: Teller[]; eventPackages: EventPackageModule[]; ruleSystems: RuleSystemModule[]; actorStates: ActorStateModule[]; memoryStructures: StoryMemoryStructureModule[]; imagePresets: ImagePreset[]; setDraft: (draft: StoryDirector | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
   return <StoryDirectorEditor {...props} />
 }

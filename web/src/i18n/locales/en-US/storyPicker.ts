@@ -26,7 +26,7 @@ const storyPicker = {
   'storyPicker.openingBuilder.applySelection': 'Apply Selection',
   'storyPicker.openingBuilder.rollFailed': 'Failed to roll opening traits',
   'storyPicker.openingBuilder.empty': 'Optional. Rolling writes initial traits, state changes, and director plan into the new story.',
-  'storyPicker.openingBuilder.disabled': 'The selected Story Director has disabled the opening selector. New stories will not roll director opening traits.',
+  'storyPicker.openingBuilder.disabled': 'The current State System has no enabled opening traits. New stories will not roll opening traits.',
   'storyPicker.openingBuilder.availableTraits': 'Available Traits',
   'storyPicker.openingBuilder.selected': '{{count}} traits selected',
   'storyPicker.openingBuilder.noTraits': 'No rollable traits in this story director',

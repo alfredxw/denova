@@ -115,7 +115,11 @@ func (l *ActorStateLibrary) Delete(id string) error {
 		return err
 	}
 	if IsBuiltinActorStateID(id) {
-		return writeActorStateFile(filepath.Join(l.dir(), id+".json"), DefaultActorStateModule())
+		item, ok := builtinActorStateModuleByID(id)
+		if !ok {
+			return fmt.Errorf("内置状态系统不存在: %s", id)
+		}
+		return writeActorStateFile(filepath.Join(l.dir(), id+".json"), item)
 	}
 	return os.Remove(filepath.Join(l.dir(), id+".json"))
 }
@@ -128,11 +132,16 @@ func (l *ActorStateLibrary) ensureBuiltins() error {
 	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
 		return err
 	}
-	path := filepath.Join(l.dir(), DefaultActorStateModuleID+".json")
-	if current, err := parseActorStateFile(path); err == nil && current.BuiltinOverridden {
-		return nil
-	} else if err == nil && current.Version == storyDirectorModuleVersion {
-		return nil
+	for _, builtin := range builtinActorStateModules() {
+		path := filepath.Join(l.dir(), builtin.ID+".json")
+		if current, err := parseActorStateFile(path); err == nil && current.BuiltinOverridden {
+			continue
+		} else if err == nil && current.ID == builtin.ID && current.Version == storyDirectorModuleVersion && !actorStateDiffersFromBuiltin(current) {
+			continue
+		}
+		if err := writeActorStateFile(path, builtin); err != nil {
+			return err
+		}
 	}
-	return writeActorStateFile(path, DefaultActorStateModule())
+	return nil
 }

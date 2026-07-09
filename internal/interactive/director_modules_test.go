@@ -73,6 +73,193 @@ func TestEventPackageLibraryMaterializesGenreBuiltins(t *testing.T) {
 	}
 }
 
+func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
+	novaDir := t.TempDir()
+	library := NewActorStateLibrary(novaDir)
+	items, err := library.List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	wantIDs := []string{
+		DefaultActorStateModuleID,
+		ActorStateXiuxianID,
+		ActorStateWesternFantasyID,
+		ActorStateApocalypseID,
+		ActorStateInfiniteFlowID,
+	}
+	byID := map[string]ActorStateModule{}
+	for _, item := range items {
+		byID[item.ID] = item
+	}
+	for index, id := range wantIDs {
+		item, ok := byID[id]
+		if !ok {
+			t.Fatalf("missing built-in actor state %s in %#v", id, items)
+		}
+		if item.Custom || !IsBuiltinActorStateID(id) {
+			t.Fatalf("actor state %s should be built-in: %#v", id, item)
+		}
+		if items[index].ID != id {
+			t.Fatalf("built-in actor state order mismatch at %d: got %s want %s; items=%#v", index, items[index].ID, id, items)
+		}
+		if id == DefaultActorStateModuleID {
+			continue
+		}
+		requireActorStateTemplates(t, item, "protagonist", ActorStateImportantCharacterTemplateID, ActorStateOpponentTemplateID)
+		if len(item.ActorState.InitialActors) != 1 || item.ActorState.InitialActors[0].ID != DefaultActorID || item.ActorState.InitialActors[0].TemplateID != "protagonist" {
+			t.Fatalf("genre actor state %s should ship one starter protagonist state object: %#v", id, item.ActorState.InitialActors)
+		}
+		requireNoActorStateFieldBounds(t, item)
+	}
+
+	xiuxian, err := library.Get(ActorStateXiuxianID)
+	if err != nil {
+		t.Fatalf("Get xiuxian preset failed: %v", err)
+	}
+	if xiuxian.Name != "修仙状态系统" || !actorStateTemplateHasField(xiuxian, "protagonist", "cultivation.realm") {
+		t.Fatalf("xiuxian actor state should expose cultivation protagonist fields: %#v", xiuxian)
+	}
+	xiuxian.Name = "我的修仙状态系统"
+	overridden, err := library.Update(ActorStateXiuxianID, xiuxian, xiuxian.UpdatedAt)
+	if err != nil {
+		t.Fatalf("Update built-in xiuxian actor state should create override: %v", err)
+	}
+	if overridden.Custom || !overridden.BuiltinOverridden || overridden.Name != "我的修仙状态系统" {
+		t.Fatalf("unexpected xiuxian actor state override: %#v", overridden)
+	}
+	if err := library.Delete(ActorStateXiuxianID); err != nil {
+		t.Fatalf("Delete built-in xiuxian actor state should restore builtin: %v", err)
+	}
+	restored, err := library.Get(ActorStateXiuxianID)
+	if err != nil {
+		t.Fatalf("Get restored xiuxian preset failed: %v", err)
+	}
+	if restored.Custom || restored.BuiltinOverridden || restored.Name == "我的修仙状态系统" || !actorStateTemplateHasField(restored, ActorStateOpponentTemplateID, "cultivation.realm_pressure") {
+		t.Fatalf("unexpected restored xiuxian actor state: %#v", restored)
+	}
+
+	resolved := ResolveStoryDirectorModules(novaDir, StoryDirector{
+		ID:   "genre-director",
+		Name: "题材导演",
+		ModuleRefs: StoryDirectorModuleRefs{
+			NarrativeStyleDisabled:  true,
+			EventPackagesDisabled:   true,
+			RuleSystemDisabled:      true,
+			ActorStateID:            ActorStateInfiniteFlowID,
+			MemoryStructureDisabled: true,
+			OpeningSelectorDisabled: true,
+			ImagePresetDisabled:     true,
+		},
+	})
+	if !actorStateTemplateHasField(ActorStateModule{ActorState: resolved.ActorState}, ActorStateOpponentTemplateID, "rules.triggers") {
+		t.Fatalf("director should resolve infinite-flow actor state templates: %#v", resolved.ActorState)
+	}
+}
+
+func TestActorStateModuleOwnsOpeningSelector(t *testing.T) {
+	novaDir := t.TempDir()
+	actorStateLibrary := NewActorStateLibrary(novaDir)
+	module, err := actorStateLibrary.Create(ActorStateModule{
+		ID:          "state-with-opening",
+		Name:        "带开局词条的状态系统",
+		Description: "验证开局词条归属状态系统。",
+		ActorState:  defaultActorStateSystem(),
+		OpeningSelector: StoryDirectorOpeningSelector{
+			Enabled: true,
+			InitialStateOps: []StateOp{{
+				Op:    "set",
+				Path:  "rules.opening_origin",
+				Value: "state-system",
+			}},
+			TraitPools: []OpeningTraitPool{{
+				ID:        "talent",
+				Name:      "天赋",
+				DrawCount: 1,
+				Traits: []OpeningTrait{{
+					ID:      "clear-mind",
+					Name:    "澄心",
+					Summary: "开局精神状态更稳定。",
+					Weight:  1,
+					Ops: []StateOp{{
+						Op:    "set",
+						Path:  "actors.protagonist.state.current.mental_status",
+						Value: "澄明稳定",
+					}},
+				}},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create actor state with opening failed: %v", err)
+	}
+	if len(module.OpeningSelector.TraitPools) != 1 || len(module.OpeningSelector.InitialStateOps) != 1 {
+		t.Fatalf("actor state should persist opening selector: %#v", module.OpeningSelector)
+	}
+
+	director := ResolveStoryDirectorModules(novaDir, StoryDirector{
+		ID:   "opening-from-state",
+		Name: "开局归属状态系统",
+		ModuleRefs: StoryDirectorModuleRefs{
+			NarrativeStyleDisabled:  true,
+			EventPackagesDisabled:   true,
+			RuleSystemDisabled:      true,
+			ActorStateID:            module.ID,
+			MemoryStructureDisabled: true,
+			ImagePresetDisabled:     true,
+		},
+	})
+	if len(director.OpeningSelector.TraitPools) != 1 || director.OpeningSelector.TraitPools[0].ID != "talent" {
+		t.Fatalf("director should resolve opening selector from actor state module: %#v", director.OpeningSelector)
+	}
+	if director.ModuleRefs.OpeningSelectorID != "" {
+		t.Fatalf("new director refs should not need opening_selector_id: %#v", director.ModuleRefs)
+	}
+	disabledDirector := ResolveStoryDirectorModules(novaDir, StoryDirector{
+		ID:   "opening-disabled",
+		Name: "旧开局关闭标志",
+		ModuleRefs: StoryDirectorModuleRefs{
+			NarrativeStyleDisabled:  true,
+			EventPackagesDisabled:   true,
+			RuleSystemDisabled:      true,
+			ActorStateID:            module.ID,
+			OpeningSelectorDisabled: true,
+			MemoryStructureDisabled: true,
+			ImagePresetDisabled:     true,
+		},
+	})
+	if disabledDirector.OpeningSelector.Enabled || len(disabledDirector.OpeningSelector.TraitPools) != 0 || len(disabledDirector.OpeningSelector.InitialStateOps) != 0 {
+		t.Fatalf("legacy opening_selector_disabled should disable state-system opening traits: %#v", disabledDirector.OpeningSelector)
+	}
+
+	roll, err := RollOpeningWithStoryDirector(director, OpeningRollRequest{Seed: 7})
+	if err != nil {
+		t.Fatalf("roll opening failed: %v", err)
+	}
+	if len(roll.Traits) != 1 || roll.Traits[0].ID != "clear-mind" {
+		t.Fatalf("opening roll should use state-system traits: %#v", roll.Traits)
+	}
+	if !containsStateOp(roll.StateOps, "rules.opening_origin", "state-system") || !containsStateOp(roll.StateOps, "actors.protagonist.state.current.mental_status", "澄明稳定") {
+		t.Fatalf("opening roll should include initial and trait ops: %#v", roll.StateOps)
+	}
+
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:           "状态系统开局",
+		StoryTellerID:   "classic",
+		InitialStateOps: roll.StateOps,
+	})
+	if err != nil {
+		t.Fatalf("CreateStory failed: %v", err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := getPath(snapshot.State, "actors.protagonist.state.current.mental_status"); got != "澄明稳定" {
+		t.Fatalf("opening trait op should apply to story state, got %#v state=%#v", got, snapshot.State)
+	}
+}
+
 func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	novaDir := t.TempDir()
 	ruleLibrary := NewRuleSystemLibrary(novaDir)
@@ -204,6 +391,44 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	if restoredMemory.Custom || restoredMemory.BuiltinOverridden || restoredMemory.Name == "我的记忆结构" {
 		t.Fatalf("unexpected restored memory structure: %#v", restoredMemory)
 	}
+}
+
+func requireActorStateTemplates(t *testing.T, item ActorStateModule, ids ...string) {
+	t.Helper()
+	templates := map[string]bool{}
+	for _, template := range item.ActorState.Templates {
+		templates[template.ID] = true
+	}
+	for _, id := range ids {
+		if !templates[id] {
+			t.Fatalf("actor state %s missing template %s: %#v", item.ID, id, item.ActorState.Templates)
+		}
+	}
+}
+
+func requireNoActorStateFieldBounds(t *testing.T, item ActorStateModule) {
+	t.Helper()
+	for _, template := range item.ActorState.Templates {
+		for _, field := range template.Fields {
+			if field.Min != nil || field.Max != nil {
+				t.Fatalf("genre actor state %s field %s should not define min/max: %#v", item.ID, field.Path, field)
+			}
+		}
+	}
+}
+
+func actorStateTemplateHasField(item ActorStateModule, templateID, fieldPath string) bool {
+	for _, template := range item.ActorState.Templates {
+		if template.ID != templateID {
+			continue
+		}
+		for _, field := range template.Fields {
+			if field.Path == fieldPath {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestParseLegacyRuleSystemKeepsSingleCheck(t *testing.T) {

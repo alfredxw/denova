@@ -276,7 +276,7 @@ func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.
 	if migrated.Name != "旧风格 故事导演" || migrated.Strategy.RandomEventRate != 0.42 {
 		t.Fatalf("unexpected migrated metadata: %#v", migrated)
 	}
-	if len(migrated.ModuleRefs.EventPackageIDs) == 0 || migrated.ModuleRefs.RuleSystemID == "" || migrated.ModuleRefs.OpeningSelectorID == "" {
+	if len(migrated.ModuleRefs.EventPackageIDs) == 0 || migrated.ModuleRefs.RuleSystemID == "" || migrated.ModuleRefs.ActorStateID == "" {
 		t.Fatalf("legacy embedded orchestration should be split into module refs: %#v", migrated.ModuleRefs)
 	}
 	eventModule, err := NewEventPackageLibrary(novaDir).Get(migrated.ModuleRefs.EventPackageIDs[0])
@@ -297,6 +297,16 @@ func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.
 	}
 	if len(migrated.OpeningSelector.TraitPools) != 1 || !containsStateOp(migrated.OpeningSelector.InitialStateOps, "actors.protagonist.state.resources.hp", float64(12)) {
 		t.Fatalf("opening selector should be copied: %#v", migrated.OpeningSelector)
+	}
+	if migrated.ModuleRefs.OpeningSelectorID != "" {
+		t.Fatalf("opening selector should migrate into actor state module instead of a standalone ref: %#v", migrated.ModuleRefs)
+	}
+	actorStateModule, err := NewActorStateLibrary(novaDir).Get(migrated.ModuleRefs.ActorStateID)
+	if err != nil {
+		t.Fatalf("migrated actor state module should be readable: %v", err)
+	}
+	if len(actorStateModule.OpeningSelector.TraitPools) != 1 || !containsStateOp(actorStateModule.OpeningSelector.InitialStateOps, "actors.protagonist.state.resources.hp", float64(12)) {
+		t.Fatalf("migrated actor state should own opening selector: %#v", actorStateModule.OpeningSelector)
 	}
 
 	preexisting, err := directors.Get("preexisting")

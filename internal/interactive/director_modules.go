@@ -136,6 +136,7 @@ type ActorStateModule struct {
 	Name              string                        `json:"name"`
 	Description       string                        `json:"description"`
 	ActorState        StoryDirectorActorStateSystem `json:"actor_state"`
+	OpeningSelector   StoryDirectorOpeningSelector  `json:"opening_selector,omitempty"`
 	Tags              []string                      `json:"tags"`
 	Path              string                        `json:"path,omitempty"`
 	Custom            bool                          `json:"custom"`
@@ -631,7 +632,6 @@ func DefaultStoryDirectorModuleRefs() StoryDirectorModuleRefs {
 		RuleSystemID:      DefaultRuleSystemID,
 		ActorStateID:      DefaultActorStateModuleID,
 		MemoryStructureID: DefaultStoryMemoryStructureModuleID,
-		OpeningSelectorID: DefaultOpeningSelectorID,
 		ImagePresetID:     imagepreset.DefaultID,
 	}
 }
@@ -709,6 +709,10 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 		refs.MemoryStructureID = DefaultStoryMemoryStructureModuleID
 		director.ModuleRefs = refs
 	}
+	if refs.ActorStateID == "" && !refs.ActorStateDisabled && actorStateEmpty(director.ActorState) && openingSelectorEmpty(director.OpeningSelector) {
+		refs.ActorStateID = DefaultActorStateModuleID
+		director.ModuleRefs = refs
+	}
 
 	warnings := []StoryDirectorModuleWarning{}
 	snapshot := normalizeStoryDirectorResolvedSnapshot(director.ResolvedSnapshot)
@@ -750,11 +754,14 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	}
 	if refs.ActorStateDisabled {
 		effective.ActorState = StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{}, InitialActors: []ActorStateInitialActor{}}
+		effective.OpeningSelector = StoryDirectorOpeningSelector{Enabled: false, TraitPools: []OpeningTraitPool{}, InitialStateOps: []StateOp{}}
 	} else if refs.ActorStateID != "" {
 		if module, err := NewActorStateLibrary(novaDir).Get(refs.ActorStateID); err == nil {
 			effective.ActorState = module.ActorState
+			effective.OpeningSelector = module.OpeningSelector
 		} else if !actorStateEmpty(snapshot.ActorState) {
 			effective.ActorState = snapshot.ActorState
+			effective.OpeningSelector = snapshot.OpeningSelector
 			warnings = append(warnings, moduleWarning("actor_state", refs.ActorStateID, err))
 		} else {
 			warnings = append(warnings, moduleWarning("actor_state", refs.ActorStateID, err))
@@ -775,7 +782,7 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	}
 	if refs.OpeningSelectorDisabled {
 		effective.OpeningSelector = StoryDirectorOpeningSelector{Enabled: false, TraitPools: []OpeningTraitPool{}, InitialStateOps: []StateOp{}}
-	} else if refs.OpeningSelectorID != "" {
+	} else if !refs.ActorStateDisabled && refs.OpeningSelectorID != "" && !openingSelectorHasContent(effective.OpeningSelector) {
 		if module, err := NewOpeningSelectorLibrary(novaDir).Get(refs.OpeningSelectorID); err == nil {
 			effective.OpeningSelector = module.OpeningSelector
 		} else if !openingSelectorEmpty(snapshot.OpeningSelector) {
@@ -979,13 +986,15 @@ func builtinRuleSystemModule(id, name, description string, check RuleCheck) Rule
 }
 
 func DefaultActorStateModule() ActorStateModule {
+	config := DefaultTellerOrchestrationConfig()
 	return normalizeActorStateModule(ActorStateModule{
-		Version:     storyDirectorModuleVersion,
-		ID:          DefaultActorStateModuleID,
-		Name:        "默认状态系统",
-		Description: "以主角等关键 Actor 为中心维护结构化状态，供规则检定、资源消耗和长期承接读取。",
-		ActorState:  defaultActorStateSystem(),
-		Tags:        []string{"内置", "状态"},
+		Version:         storyDirectorModuleVersion,
+		ID:              DefaultActorStateModuleID,
+		Name:            "默认状态系统",
+		Description:     "以主角等关键状态对象为起点维护结构化状态，供规则检定、资源消耗、开局词条和长期承接读取；可按作品需要扩展其他状态表模板。",
+		ActorState:      defaultActorStateSystem(),
+		OpeningSelector: StoryDirectorOpeningSelector{Enabled: config.Opening.Enabled, TraitPools: config.Opening.TraitPools, InitialStateOps: config.Opening.InitialStateOps},
+		Tags:            []string{"内置", "状态"},
 	})
 }
 
@@ -1012,7 +1021,8 @@ func IsBuiltinRuleSystemID(id string) bool {
 }
 
 func IsBuiltinActorStateID(id string) bool {
-	return normalizeDirectorModuleID(id) == DefaultActorStateModuleID
+	_, ok := builtinActorStateModuleByID(id)
+	return ok
 }
 
 func IsBuiltinOpeningSelectorID(id string) bool {
@@ -1113,7 +1123,11 @@ func applyActorStateOwnership(item ActorStateModule) ActorStateModule {
 }
 
 func actorStateDiffersFromBuiltin(item ActorStateModule) bool {
-	return !reflect.DeepEqual(actorStateComparable(item), actorStateComparable(DefaultActorStateModule()))
+	builtin, ok := builtinActorStateModuleByID(item.ID)
+	if !ok {
+		return false
+	}
+	return !reflect.DeepEqual(actorStateComparable(item), actorStateComparable(builtin))
 }
 
 func actorStateComparable(item ActorStateModule) ActorStateModule {
@@ -1196,6 +1210,7 @@ func normalizeActorStateModule(item ActorStateModule) ActorStateModule {
 	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "状态系统"), 256)
 	item.Description = trimBytes(item.Description, 1024)
 	item.ActorState = normalizeActorStateSystem(item.ActorState)
+	item.OpeningSelector = normalizeStoryDirectorOpeningSelector(item.OpeningSelector)
 	item.Tags = normalizeStringListLimit(item.Tags, maxTurnBriefListItems)
 	return item
 }
@@ -1304,6 +1319,9 @@ func validateActorStateModule(item ActorStateModule) error {
 	if len(item.ActorState.Templates) == 0 {
 		return errors.New("状态系统至少需要一个 actor 类型模板")
 	}
+	if err := validateOpeningSelectorConfig(item.OpeningSelector); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -1314,12 +1332,16 @@ func validateOpeningSelectorModule(item OpeningSelectorModule) error {
 	if strings.TrimSpace(item.Name) == "" {
 		return errors.New("开局选择器名称不能为空")
 	}
-	for _, op := range item.OpeningSelector.InitialStateOps {
+	return validateOpeningSelectorConfig(item.OpeningSelector)
+}
+
+func validateOpeningSelectorConfig(selector StoryDirectorOpeningSelector) error {
+	for _, op := range selector.InitialStateOps {
 		if err := validateStateOp(op); err != nil {
 			return err
 		}
 	}
-	for _, pool := range item.OpeningSelector.TraitPools {
+	for _, pool := range selector.TraitPools {
 		for _, trait := range pool.Traits {
 			for _, op := range trait.Ops {
 				if err := validateStateOp(op); err != nil {
@@ -1522,8 +1544,25 @@ func sortActorStates(items []ActorStateModule) {
 		if items[i].Custom != items[j].Custom {
 			return !items[i].Custom
 		}
+		if !items[i].Custom {
+			leftRank := actorStateBuiltinSortRank(items[i].ID)
+			rightRank := actorStateBuiltinSortRank(items[j].ID)
+			if leftRank != rightRank {
+				return leftRank < rightRank
+			}
+		}
 		return items[i].ID < items[j].ID
 	})
+}
+
+func actorStateBuiltinSortRank(id string) int {
+	id = normalizeDirectorModuleID(id)
+	for index, item := range builtinActorStateModules() {
+		if item.ID == id {
+			return index
+		}
+	}
+	return len(builtinActorStateModules())
 }
 
 func sortOpeningSelectors(items []OpeningSelectorModule) {
@@ -1757,4 +1796,8 @@ func ruleSystemEmpty(trpg StoryDirectorTRPGSystem) bool {
 
 func openingSelectorEmpty(selector StoryDirectorOpeningSelector) bool {
 	return !selector.Enabled && len(selector.TraitPools) == 0 && len(selector.InitialStateOps) == 0
+}
+
+func openingSelectorHasContent(selector StoryDirectorOpeningSelector) bool {
+	return len(selector.TraitPools) > 0 || len(selector.InitialStateOps) > 0
 }

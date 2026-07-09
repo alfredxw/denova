@@ -231,9 +231,6 @@ func (l *StoryDirectorLibrary) ensureBuiltins() error {
 	if err := NewStoryMemoryStructureLibrary(l.novaDir).ensureBuiltins(); err != nil {
 		return err
 	}
-	if err := NewOpeningSelectorLibrary(l.novaDir).ensureBuiltins(); err != nil {
-		return err
-	}
 	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
 		return err
 	}
@@ -320,7 +317,6 @@ func (l *StoryDirectorLibrary) migrateEmbeddedStoryDirectorModules() error {
 	eventLibrary := NewEventPackageLibrary(l.novaDir)
 	ruleLibrary := NewRuleSystemLibrary(l.novaDir)
 	actorStateLibrary := NewActorStateLibrary(l.novaDir)
-	openingLibrary := NewOpeningSelectorLibrary(l.novaDir)
 	for _, file := range files {
 		if isBuiltinStoryDirectorFile(file) {
 			continue
@@ -354,19 +350,12 @@ func (l *StoryDirectorLibrary) migrateEmbeddedStoryDirectorModules() error {
 			}
 			refs.RuleSystemID = id
 		}
-		if !actorStateEmpty(raw.ActorState) {
+		if !actorStateEmpty(raw.ActorState) || !openingSelectorEmpty(raw.OpeningSelector) {
 			id, err := ensureMigratedActorState(actorStateLibrary, director)
 			if err != nil {
 				return err
 			}
 			refs.ActorStateID = id
-		}
-		if !openingSelectorEmpty(raw.OpeningSelector) {
-			id, err := ensureMigratedOpeningSelector(openingLibrary, director)
-			if err != nil {
-				return err
-			}
-			refs.OpeningSelectorID = id
 		}
 		director.ModuleRefs = refs
 		director = ResolveStoryDirectorModules(l.novaDir, director)
@@ -504,31 +493,25 @@ func ensureMigratedRuleSystem(library *RuleSystemLibrary, director StoryDirector
 
 func ensureMigratedActorState(library *ActorStateLibrary, director StoryDirector) (string, error) {
 	id := normalizeDirectorModuleID(director.ID + "-actor-state")
-	if _, err := library.Get(id); err == nil {
+	if existing, err := library.Get(id); err == nil {
+		if !openingSelectorHasContent(existing.OpeningSelector) && openingSelectorHasContent(director.OpeningSelector) {
+			existing.OpeningSelector = director.OpeningSelector
+			existing.Description = firstNonEmptyString(existing.Description, "由旧故事导演内嵌 actor_state 和 opening_selector 迁移生成。")
+			if _, updateErr := library.Update(id, existing, existing.UpdatedAt); updateErr != nil {
+				return "", updateErr
+			}
+		}
 		return id, nil
+	}
+	actorState := director.ActorState
+	if actorStateEmpty(actorState) {
+		actorState = defaultActorStateSystem()
 	}
 	module, err := library.Create(ActorStateModule{
-		ID:          id,
-		Name:        director.Name + " 状态系统",
-		Description: "由旧故事导演内嵌 actor_state 迁移生成。",
-		ActorState:  director.ActorState,
-		Tags:        migratedDirectorModuleTags(director.Tags),
-	})
-	if err != nil {
-		return "", err
-	}
-	return module.ID, nil
-}
-
-func ensureMigratedOpeningSelector(library *OpeningSelectorLibrary, director StoryDirector) (string, error) {
-	id := normalizeDirectorModuleID(director.ID + "-opening")
-	if _, err := library.Get(id); err == nil {
-		return id, nil
-	}
-	module, err := library.Create(OpeningSelectorModule{
 		ID:              id,
-		Name:            director.Name + " 开局选择器",
-		Description:     "由旧故事导演内嵌 opening_selector 迁移生成。",
+		Name:            director.Name + " 状态系统",
+		Description:     "由旧故事导演内嵌 actor_state 和 opening_selector 迁移生成。",
+		ActorState:      actorState,
 		OpeningSelector: director.OpeningSelector,
 		Tags:            migratedDirectorModuleTags(director.Tags),
 	})
@@ -579,11 +562,12 @@ func storyDirectorComparable(director StoryDirector) StoryDirector {
 
 func DefaultStoryDirector() StoryDirector {
 	refs := DefaultStoryDirectorModuleRefs()
+	defaultActorState := DefaultActorStateModule()
 	return normalizeStoryDirector(StoryDirector{
 		Version:     storyDirectorVersion,
 		ID:          DefaultStoryDirectorID,
 		Name:        "默认故事导演",
-		Description: "通用互动故事导演，提供软主线、可逆失败、递进节奏、事件包、状态系统和开局选择器。",
+		Description: "通用互动故事导演，提供软主线、可逆失败、递进节奏、事件包、状态系统和图像方案。",
 		ModuleRefs:  refs,
 		Strategy: StoryDirectorStrategy{
 			Enabled:                  true,
@@ -599,8 +583,8 @@ func DefaultStoryDirector() StoryDirector {
 		},
 		EventPackages:   []TellerEventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
 		TRPGSystem:      DefaultRuleSystemModule().TRPGSystem,
-		ActorState:      DefaultActorStateModule().ActorState,
-		OpeningSelector: DefaultOpeningSelectorModule().OpeningSelector,
+		ActorState:      defaultActorState.ActorState,
+		OpeningSelector: defaultActorState.OpeningSelector,
 		Tags:            []string{"内置", "导演"},
 	})
 }
