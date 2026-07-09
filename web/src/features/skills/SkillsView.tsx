@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ElementType, ReactNode } from 'react'
-import { Bot, CheckCircle2, Copy, Download, FileCode2, FileText, GitBranch, Loader2, Lock, PanelLeft, PanelRight, Plus, RefreshCw, Save, Search, Settings2, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { Bot, CheckCircle2, Copy, Download, FileCode2, FileText, Link2, Loader2, Lock, PanelLeft, PanelRight, Plus, RefreshCw, Save, Search, Settings2, Sparkles, Trash2, Upload, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { Textarea } from '@/components/ui/textarea'
-import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillGitHub, installSkillZip, previewSkillGitHubInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
+import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillRemote, installSkillZip, previewSkillRemoteInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
 import type { SkillDocument, SkillFile, SkillFileDocument, SkillInstallCandidate, SkillInstallResult, SkillScope, SkillScopeInfo, SkillSnapshot, SkillSummary } from '@/lib/api'
 import { AGENTS } from '@/features/agents/agent-registry'
 import type { AgentViewDefinition, VisibleAgentKey } from '@/features/agents/agent-registry'
@@ -23,7 +23,7 @@ interface SkillsViewProps {
 }
 
 type SkillsMode = 'editor' | 'create' | 'config' | 'install'
-type SkillInstallSource = 'github' | 'zip'
+type SkillInstallSource = 'remote' | 'zip'
 
 export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewProps) {
   void onRequestAgent
@@ -44,12 +44,12 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
   const [newName, setNewName] = useState('')
   const [newDescription, setNewDescription] = useState('')
   const [newAgents, setNewAgents] = useState<VisibleAgentKey[]>(['ide'])
-  const [installSource, setInstallSource] = useState<SkillInstallSource>('github')
+  const [installSource, setInstallSource] = useState<SkillInstallSource>('remote')
   const [installScope, setInstallScope] = useState<SkillScope>('user')
   const [installFile, setInstallFile] = useState<File | null>(null)
-  const [installGitHubURL, setInstallGitHubURL] = useState('')
-  const [installGitHubRef, setInstallGitHubRef] = useState('')
-  const [installGitHubSubdir, setInstallGitHubSubdir] = useState('')
+  const [installRemoteURL, setInstallRemoteURL] = useState('')
+  const [installRemoteRef, setInstallRemoteRef] = useState('')
+  const [installRemoteSubdir, setInstallRemoteSubdir] = useState('')
   const [installCandidates, setInstallCandidates] = useState<SkillInstallCandidate[]>([])
   const [selectedInstallIds, setSelectedInstallIds] = useState<string[]>([])
   const [installMessage, setInstallMessage] = useState<string | null>(null)
@@ -181,10 +181,10 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
     try {
       const preview = installSource === 'zip'
         ? await previewSkillZipInstall(requireInstallFile(installFile, t), installScope)
-        : await previewSkillGitHubInstall({
-            url: installGitHubURL.trim(),
-            ref: installGitHubRef.trim(),
-            subdir: installGitHubSubdir.trim(),
+        : await previewSkillRemoteInstall({
+            url: installRemoteURL.trim(),
+            ref: installRemoteRef.trim(),
+            subdir: installRemoteSubdir.trim(),
             scope: installScope,
           })
       applyInstallPreview(preview.candidates || [])
@@ -207,10 +207,10 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
     try {
       const result = installSource === 'zip'
         ? await installSkillZip(requireInstallFile(installFile, t), installScope, candidateIds)
-        : await installSkillGitHub({
-            url: installGitHubURL.trim(),
-            ref: installGitHubRef.trim(),
-            subdir: installGitHubSubdir.trim(),
+        : await installSkillRemote({
+            url: installRemoteURL.trim(),
+            ref: installRemoteRef.trim(),
+            subdir: installRemoteSubdir.trim(),
             scope: installScope,
             candidateIds,
           })
@@ -600,9 +600,9 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
                 scope={installScope}
                 scopes={writableScopes}
                 file={installFile}
-                githubURL={installGitHubURL}
-                githubRef={installGitHubRef}
-                githubSubdir={installGitHubSubdir}
+                remoteURL={installRemoteURL}
+                remoteRef={installRemoteRef}
+                remoteSubdir={installRemoteSubdir}
                 candidates={installCandidates}
                 selectedIds={selectedInstallIds}
                 saving={saving}
@@ -626,9 +626,9 @@ export function SkillsView({ workspace, onClose, onRequestAgent }: SkillsViewPro
                   setSelectedInstallIds([])
                   setInstallMessage(null)
                 }}
-                onGithubURLChange={setInstallGitHubURL}
-                onGithubRefChange={setInstallGitHubRef}
-                onGithubSubdirChange={setInstallGitHubSubdir}
+                onRemoteURLChange={setInstallRemoteURL}
+                onRemoteRefChange={setInstallRemoteRef}
+                onRemoteSubdirChange={setInstallRemoteSubdir}
                 onPreview={() => void onPreviewInstall()}
                 onInstall={() => void onInstallSelected()}
                 onSelectedIdsChange={setSelectedInstallIds}
@@ -898,9 +898,9 @@ function InstallSkillPanel({
   scope,
   scopes,
   file,
-  githubURL,
-  githubRef,
-  githubSubdir,
+  remoteURL,
+  remoteRef,
+  remoteSubdir,
   candidates,
   selectedIds,
   saving,
@@ -908,9 +908,9 @@ function InstallSkillPanel({
   onSourceChange,
   onScopeChange,
   onFileChange,
-  onGithubURLChange,
-  onGithubRefChange,
-  onGithubSubdirChange,
+  onRemoteURLChange,
+  onRemoteRefChange,
+  onRemoteSubdirChange,
   onPreview,
   onInstall,
   onSelectedIdsChange,
@@ -919,9 +919,9 @@ function InstallSkillPanel({
   scope: SkillScope
   scopes: SkillScopeInfo[]
   file: File | null
-  githubURL: string
-  githubRef: string
-  githubSubdir: string
+  remoteURL: string
+  remoteRef: string
+  remoteSubdir: string
   candidates: SkillInstallCandidate[]
   selectedIds: string[]
   saving: boolean
@@ -929,9 +929,9 @@ function InstallSkillPanel({
   onSourceChange: (value: SkillInstallSource) => void
   onScopeChange: (value: SkillScope) => void
   onFileChange: (value: File | null) => void
-  onGithubURLChange: (value: string) => void
-  onGithubRefChange: (value: string) => void
-  onGithubSubdirChange: (value: string) => void
+  onRemoteURLChange: (value: string) => void
+  onRemoteRefChange: (value: string) => void
+  onRemoteSubdirChange: (value: string) => void
   onPreview: () => void
   onInstall: () => void
   onSelectedIdsChange: (value: string[]) => void
@@ -939,7 +939,7 @@ function InstallSkillPanel({
   const { t } = useTranslation()
   const installable = candidates.filter(isInstallableCandidate)
   const selectedInstallable = selectedIds.filter((id) => installable.some((candidate) => candidate.id === id))
-  const canPreview = source === 'zip' ? Boolean(file) : githubURL.trim() !== ''
+  const canPreview = source === 'zip' ? Boolean(file) : remoteURL.trim() !== ''
   const toggleSelected = (id: string, checked: boolean) => {
     if (checked) {
       onSelectedIdsChange(selectedIds.includes(id) ? selectedIds : [...selectedIds, id])
@@ -991,11 +991,11 @@ function InstallSkillPanel({
                   <div className="grid grid-cols-2 gap-1">
                     <button
                       type="button"
-                      onClick={() => onSourceChange('github')}
-                      className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] px-2 ${source === 'github' ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
+                      onClick={() => onSourceChange('remote')}
+                      className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] px-2 ${source === 'remote' ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
                     >
-                      <GitBranch className="h-3.5 w-3.5" />
-                      {t('skills.install.github')}
+                      <Link2 className="h-3.5 w-3.5" />
+                      {t('skills.install.remote')}
                     </button>
                     <button
                       type="button"
@@ -1009,21 +1009,21 @@ function InstallSkillPanel({
                 </Field>
               </div>
 
-              {source === 'github' ? (
+              {source === 'remote' ? (
                 <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.7fr)_minmax(0,0.9fr)]">
-                  <Field label={t('skills.install.githubUrl')}>
+                  <Field label={t('skills.install.remoteUrl')}>
                     <input
-                      value={githubURL}
-                      onChange={(event) => onGithubURLChange(event.target.value)}
-                      aria-label={t('skills.install.githubUrl')}
-                      placeholder="owner/repo"
+                      value={remoteURL}
+                      onChange={(event) => onRemoteURLChange(event.target.value)}
+                      aria-label={t('skills.install.remoteUrl')}
+                      placeholder="owner/repo or https://github.com/owner/repo/tree/main/skills"
                       className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 font-mono outline-none"
                     />
                   </Field>
                   <Field label={t('skills.install.ref')}>
                     <input
-                      value={githubRef}
-                      onChange={(event) => onGithubRefChange(event.target.value)}
+                      value={remoteRef}
+                      onChange={(event) => onRemoteRefChange(event.target.value)}
                       aria-label={t('skills.install.ref')}
                       placeholder="main"
                       className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 font-mono outline-none"
@@ -1031,8 +1031,8 @@ function InstallSkillPanel({
                   </Field>
                   <Field label={t('skills.install.subdir')}>
                     <input
-                      value={githubSubdir}
-                      onChange={(event) => onGithubSubdirChange(event.target.value)}
+                      value={remoteSubdir}
+                      onChange={(event) => onRemoteSubdirChange(event.target.value)}
                       aria-label={t('skills.install.subdir')}
                       placeholder="skills/foo"
                       className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 font-mono outline-none"

@@ -81,6 +81,7 @@ const chat = {
   'chat.tracePanel.summaryStatus': '状态',
   'chat.tracePanel.summaryDuration': '耗时',
   'chat.tracePanel.summaryLLM': 'LLM 调用',
+  'chat.tracePanel.summaryCache': '缓存命中',
   'chat.tracePanel.summaryTools': '工具调用',
   'chat.tracePanel.toolErrorsShort': '错 {{count}}',
   'chat.tracePanel.toolBlockedShort': '拦 {{count}}',

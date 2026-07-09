@@ -178,6 +178,10 @@ export interface AgentRunTraceSummary {
   tool_truncated?: number
   invalid_tool_args?: number
   llm_calls?: number
+  prompt_tokens?: number
+  cached_prompt_tokens?: number
+  uncached_prompt_tokens?: number
+  cache_hit_rate?: number
   duration_ms?: number
   task_id?: string
   agent_kind?: string

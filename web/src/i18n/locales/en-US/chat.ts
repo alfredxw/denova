@@ -81,6 +81,7 @@ const chat = {
   'chat.tracePanel.summaryStatus': 'Status',
   'chat.tracePanel.summaryDuration': 'Duration',
   'chat.tracePanel.summaryLLM': 'LLM Calls',
+  'chat.tracePanel.summaryCache': 'Cache Hit',
   'chat.tracePanel.summaryTools': 'Tool Calls',
   'chat.tracePanel.toolErrorsShort': 'err {{count}}',
   'chat.tracePanel.toolBlockedShort': 'blocked {{count}}',

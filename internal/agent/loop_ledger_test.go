@@ -309,6 +309,32 @@ func TestRunLedgerRecordsStructuredTraceSpans(t *testing.T) {
 	}
 }
 
+func TestRunTraceSummaryAggregatesLLMCacheUsage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "run-cache.jsonl")
+	content := strings.Join([]string{
+		`{"type":"run_created","run_id":"run-cache","created_at":"2026-07-09T00:00:00Z","data":{"agent_kind":"ide"}}`,
+		`{"type":"llm_call","run_id":"run-cache","created_at":"2026-07-09T00:00:01Z","data":{"attrs":{"prompt_tokens":1000,"cached_prompt_tokens":400,"uncached_prompt_tokens":600,"total_tokens":1200}}}`,
+		`{"type":"llm_call","run_id":"run-cache","created_at":"2026-07-09T00:00:02Z","data":{"attrs":{"prompt_tokens":500,"cached_prompt_tokens":500,"total_tokens":650}}}`,
+		`{"type":"run_finished","run_id":"run-cache","created_at":"2026-07-09T00:00:03Z","data":{"status":"success"}}`,
+	}, "\n")
+	if err := os.WriteFile(path, []byte(content+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	trace, err := readRunTraceFile(path, defaultRunTraceRecordCap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trace.Summary.LLMCalls != 2 {
+		t.Fatalf("llm calls = %d, want 2", trace.Summary.LLMCalls)
+	}
+	if trace.Summary.PromptTokens != 1500 || trace.Summary.CachedPromptTokens != 900 || trace.Summary.UncachedPromptTokens != 600 {
+		t.Fatalf("cache token summary mismatch: %#v", trace.Summary)
+	}
+	if trace.Summary.CacheHitRate != 0.6 {
+		t.Fatalf("cache hit rate = %.4f, want 0.6", trace.Summary.CacheHitRate)
+	}
+}
+
 func TestReadRunTraceKeepsHeadAndTailWhenTruncated(t *testing.T) {
 	workspace := t.TempDir()
 	ledger, err := newRunLedgerWithOptions(workspace, RunLedgerPolicy{Enabled: true, Directory: ".denova/runs", PreviewChars: 8}, RunOptions{

@@ -2,8 +2,10 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -78,6 +81,9 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 	if len(record.Cache.ToolNames) != 1 || record.Cache.ToolNames[0] != "read_file" {
 		t.Fatalf("cache attribution tool names = %#v", record.Cache.ToolNames)
 	}
+	if len(record.Cache.ToolFingerprints) != 1 || record.Cache.ToolFingerprints[0].Name != "read_file" || record.Cache.ToolFingerprints[0].Fingerprint == "" {
+		t.Fatalf("cache attribution tool fingerprints = %#v", record.Cache.ToolFingerprints)
+	}
 	if record.Tools[0].Parameters == nil {
 		t.Fatal("tool parameters schema was not logged")
 	}
@@ -109,6 +115,16 @@ func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
 	if first.MessageFingerprint == "" || first.ToolSchemaFingerprint == "" {
 		t.Fatalf("fingerprints should be populated: %#v", first)
 	}
+	if len(first.ToolFingerprints) != 1 || first.ToolFingerprints[0].Name != "read_file" || first.ToolFingerprints[0].Fingerprint == "" {
+		t.Fatalf("per-tool fingerprints should be populated without schema details: %#v", first.ToolFingerprints)
+	}
+	cachePayload, err := json.Marshal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(cachePayload), "File path") || strings.Contains(string(cachePayload), "parameters") {
+		t.Fatalf("cache attribution must not expose full tool schema: %s", string(cachePayload))
+	}
 	if !reflect.DeepEqual(first, second) {
 		t.Fatalf("same input should produce stable attribution: first=%#v second=%#v", first, second)
 	}
@@ -130,6 +146,71 @@ func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
 	if changed.MessageFingerprint != first.MessageFingerprint || changed.SystemPromptFingerprint != first.SystemPromptFingerprint {
 		t.Fatalf("tool-only changes should not alter message/system fingerprints: before=%#v after=%#v", first, changed)
 	}
+}
+
+func TestModelInputLoggingUsesStableToolSnapshot(t *testing.T) {
+	originalTools := []*schema.ToolInfo{
+		{
+			Name:  "read_file",
+			Desc:  "Read a file",
+			Extra: map[string]any{"capability": "file_read"},
+			ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+				"path": {Type: schema.String, Desc: "File path", Required: true},
+			}),
+		},
+	}
+	stableTools := cloneToolInfos(originalTools)
+	originalTools[0].Desc = "mutated before provider call"
+	originalTools[0].Extra["capability"] = "mutated"
+	originalTools[0].ParamsOneOf = schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+		"path":   {Type: schema.String, Desc: "File path", Required: true},
+		"offset": {Type: schema.Number, Desc: "Line offset"},
+	})
+
+	capture := &toolCaptureChatModel{}
+	wrapper := &modelInputLoggingChatModel{
+		inner:     capture,
+		agentKind: "test_agent",
+		config:    openai.ChatModelConfig{Model: "test-model"},
+		tools:     stableTools,
+	}
+	if _, err := wrapper.Generate(context.Background(), []*schema.Message{schema.UserMessage("hello")}); err != nil {
+		t.Fatal(err)
+	}
+	if len(capture.tools) != 1 {
+		t.Fatalf("provider tools = %#v", capture.tools)
+	}
+	if capture.tools[0] == stableTools[0] {
+		t.Fatal("provider should receive a detached tool snapshot")
+	}
+	if capture.tools[0].Desc != "Read a file" || capture.tools[0].Extra["capability"] != "file_read" {
+		t.Fatalf("provider should receive the stable pre-mutation tool schema: %#v", capture.tools[0])
+	}
+	if params, _ := capture.tools[0].ParamsOneOf.ToJSONSchema(); params == nil || params.Properties.Len() != 1 {
+		t.Fatalf("provider tool schema should not include later mutations: %#v", params)
+	}
+
+	capture.tools[0].Desc = "provider mutated schema"
+	if _, err := wrapper.Generate(context.Background(), []*schema.Message{schema.UserMessage("again")}); err != nil {
+		t.Fatal(err)
+	}
+	if capture.tools[0].Desc != "Read a file" {
+		t.Fatalf("provider mutation should not leak into subsequent calls: %#v", capture.tools[0])
+	}
+}
+
+type toolCaptureChatModel struct {
+	tools []*schema.ToolInfo
+}
+
+func (m *toolCaptureChatModel) Generate(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	common := model.GetCommonOptions(&model.Options{}, opts...)
+	m.tools = common.Tools
+	return schema.AssistantMessage("ok", nil), nil
+}
+
+func (m *toolCaptureChatModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	return nil, io.EOF
 }
 
 func TestLogModelProviderRequestIDUpdatesModelInputRecord(t *testing.T) {

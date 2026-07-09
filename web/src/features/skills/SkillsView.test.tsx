@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillGitHub, installSkillZip, previewSkillGitHubInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
+import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillRemote, installSkillZip, previewSkillRemoteInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
 import type { SkillDocument, SkillFileDocument, SkillSnapshot } from '@/lib/api'
 import { SkillsView } from './SkillsView'
 
@@ -15,9 +15,9 @@ vi.mock('@/lib/api', () => ({
   getSkillDocument: vi.fn(),
   getSkillFileDocument: vi.fn(),
   getSkills: vi.fn(),
-  installSkillGitHub: vi.fn(),
+  installSkillRemote: vi.fn(),
   installSkillZip: vi.fn(),
-  previewSkillGitHubInstall: vi.fn(),
+  previewSkillRemoteInstall: vi.fn(),
   previewSkillZipInstall: vi.fn(),
   saveSkillDocument: vi.fn(),
   saveSkillFileDocument: vi.fn(),
@@ -30,9 +30,9 @@ describe('SkillsView', () => {
     vi.mocked(getSkillDocument).mockReset()
     vi.mocked(getSkillFileDocument).mockReset()
     vi.mocked(getSkills).mockReset()
-    vi.mocked(installSkillGitHub).mockReset()
+    vi.mocked(installSkillRemote).mockReset()
     vi.mocked(installSkillZip).mockReset()
-    vi.mocked(previewSkillGitHubInstall).mockReset()
+    vi.mocked(previewSkillRemoteInstall).mockReset()
     vi.mocked(previewSkillZipInstall).mockReset()
     vi.mocked(saveSkillDocument).mockReset()
     vi.mocked(saveSkillFileDocument).mockReset()
@@ -195,26 +195,26 @@ describe('SkillsView', () => {
     expect(vi.mocked(saveSkillDocument)).not.toHaveBeenCalled()
   })
 
-  it('scans GitHub sources and installs only selected Skills', async () => {
+  it('scans Remote URL sources and installs only selected Skills', async () => {
     const user = userEvent.setup()
-    vi.mocked(previewSkillGitHubInstall).mockResolvedValue({
+    vi.mocked(previewSkillRemoteInstall).mockResolvedValue({
       candidates: [
         { id: 'id-one', name: 'one', description: 'One skill', source_path: 'skills/one', conflict: false },
         { id: 'id-two', name: 'two', description: 'Two skill', source_path: 'skills/two', conflict: false },
       ],
     })
-    vi.mocked(installSkillGitHub).mockResolvedValue({
+    vi.mocked(installSkillRemote).mockResolvedValue({
       installed: [skillDocument({ name: 'one', description: 'One skill', scope: 'user' })],
     })
 
     render(<SkillsView workspace="/books/demo" />)
 
     await user.click(await screen.findByRole('button', { name: '导入' }))
-    await user.type(screen.getByLabelText('GitHub 地址'), 'owner/repo')
+    await user.type(screen.getByLabelText('远程 URL'), 'owner/repo')
     await user.click(screen.getByRole('button', { name: '扫描' }))
 
     await waitFor(() => {
-      expect(vi.mocked(previewSkillGitHubInstall)).toHaveBeenCalledWith({
+      expect(vi.mocked(previewSkillRemoteInstall)).toHaveBeenCalledWith({
         url: 'owner/repo',
         ref: '',
         subdir: '',
@@ -225,7 +225,7 @@ describe('SkillsView', () => {
     await user.click(screen.getByRole('button', { name: '安装 1 个' }))
 
     await waitFor(() => {
-      expect(vi.mocked(installSkillGitHub)).toHaveBeenCalledWith({
+      expect(vi.mocked(installSkillRemote)).toHaveBeenCalledWith({
         url: 'owner/repo',
         ref: '',
         subdir: '',

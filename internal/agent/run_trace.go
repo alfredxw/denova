@@ -20,28 +20,32 @@ const (
 )
 
 type RunTraceSummary struct {
-	ID                 string    `json:"id"`
-	CreatedAt          time.Time `json:"created_at"`
-	Path               string    `json:"path"`
-	Status             string    `json:"status"`
-	Reason             string    `json:"reason,omitempty"`
-	Events             int       `json:"events"`
-	ContextParts       int       `json:"context_parts"`
-	TaskID             string    `json:"task_id,omitempty"`
-	AgentKind          string    `json:"agent_kind,omitempty"`
-	SessionID          string    `json:"session_id,omitempty"`
-	Phase              string    `json:"phase,omitempty"`
-	ToolCalls          int       `json:"tool_calls,omitempty"`
-	ToolSuccesses      int       `json:"tool_successes,omitempty"`
-	ToolBlocked        int       `json:"tool_blocked,omitempty"`
-	ToolErrors         int       `json:"tool_errors,omitempty"`
-	ToolTruncated      int       `json:"tool_truncated,omitempty"`
-	InvalidToolArgs    int       `json:"invalid_tool_args,omitempty"`
-	LLMCalls           int       `json:"llm_calls,omitempty"`
-	DurationMS         int64     `json:"duration_ms,omitempty"`
-	Mutations          int       `json:"mutations,omitempty"`
-	VerificationStatus string    `json:"verification_status,omitempty"`
-	Recoverable        bool      `json:"recoverable,omitempty"`
+	ID                   string    `json:"id"`
+	CreatedAt            time.Time `json:"created_at"`
+	Path                 string    `json:"path"`
+	Status               string    `json:"status"`
+	Reason               string    `json:"reason,omitempty"`
+	Events               int       `json:"events"`
+	ContextParts         int       `json:"context_parts"`
+	TaskID               string    `json:"task_id,omitempty"`
+	AgentKind            string    `json:"agent_kind,omitempty"`
+	SessionID            string    `json:"session_id,omitempty"`
+	Phase                string    `json:"phase,omitempty"`
+	ToolCalls            int       `json:"tool_calls,omitempty"`
+	ToolSuccesses        int       `json:"tool_successes,omitempty"`
+	ToolBlocked          int       `json:"tool_blocked,omitempty"`
+	ToolErrors           int       `json:"tool_errors,omitempty"`
+	ToolTruncated        int       `json:"tool_truncated,omitempty"`
+	InvalidToolArgs      int       `json:"invalid_tool_args,omitempty"`
+	LLMCalls             int       `json:"llm_calls,omitempty"`
+	PromptTokens         int       `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens   int       `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens int       `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate         float64   `json:"cache_hit_rate,omitempty"`
+	DurationMS           int64     `json:"duration_ms,omitempty"`
+	Mutations            int       `json:"mutations,omitempty"`
+	VerificationStatus   string    `json:"verification_status,omitempty"`
+	Recoverable          bool      `json:"recoverable,omitempty"`
 }
 
 type RunTrace struct {
@@ -217,6 +221,7 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 		summary.Phase = "context_ready"
 	case "llm_call":
 		summary.LLMCalls++
+		runTraceAddLLMTokenUsage(summary, record.Data)
 		summary.Phase = "model_running"
 	case "tool_decision":
 		summary.ToolCalls++
@@ -265,6 +270,41 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 	if summary.Status == "running" {
 		summary.Recoverable = true
 	}
+}
+
+func runTraceAddLLMTokenUsage(summary *RunTraceSummary, data map[string]any) {
+	if summary == nil {
+		return
+	}
+	attrs := runTraceAttrs(data)
+	prompt, _ := numericIntField(attrs, "prompt_tokens")
+	cached, _ := numericIntField(attrs, "cached_prompt_tokens")
+	uncached, hasUncached := numericIntField(attrs, "uncached_prompt_tokens")
+	if prompt == 0 && cached == 0 && !hasUncached {
+		prompt, _ = numericIntField(data, "prompt_tokens")
+		cached, _ = numericIntField(data, "cached_prompt_tokens")
+		uncached, hasUncached = numericIntField(data, "uncached_prompt_tokens")
+	}
+	if prompt <= 0 && cached <= 0 && uncached <= 0 {
+		return
+	}
+	if !hasUncached && prompt > 0 {
+		uncached = uncachedPromptTokens(prompt, cached)
+	}
+	summary.PromptTokens += prompt
+	summary.CachedPromptTokens += cached
+	summary.UncachedPromptTokens += uncached
+	if summary.PromptTokens > 0 {
+		summary.CacheHitRate = roundRatio(float64(summary.CachedPromptTokens) / float64(summary.PromptTokens))
+	}
+}
+
+func runTraceAttrs(data map[string]any) map[string]any {
+	if data == nil {
+		return nil
+	}
+	attrs, _ := data["attrs"].(map[string]any)
+	return attrs
 }
 
 func runTraceContextPartCount(data map[string]any) int {
@@ -324,6 +364,11 @@ func numericInt64Field(data map[string]any, key string) (int64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func numericIntField(data map[string]any, key string) (int, bool) {
+	value, ok := numericInt64Field(data, key)
+	return int(value), ok
 }
 
 func stringField(data map[string]any, key string) string {
