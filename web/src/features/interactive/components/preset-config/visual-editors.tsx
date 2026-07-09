@@ -4,22 +4,25 @@ import { useTranslation } from 'react-i18next'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, EventPackageModule, OpeningTrait, OpeningTraitPool, RuleCheck, RuleStateBinding, StateOp, StoryDirectorActorStateSystem, StoryDirectorOpeningSelector, StoryDirectorTRPGSystem, StoryMemoryField, StoryMemoryStructure, TellerEventCard } from '../../types'
 import { defaultRuleTemplates, normalizeRuleTemplate, normalizeTRPGSystem, RULE_FAILURE_POLICY_OPTIONS } from './ruleTemplates'
-import { SortablePresetList } from './SortablePresetList'
+import { PresetTabsList } from './PresetTabsList'
 import { cloneWithNewId, formatPresetJSON, itemKey, joinListInput, nextPresetId, parseIntegerInput, parseNumberInput, splitListInput } from './utils'
 
 const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
 const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
-const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-const actionButtonClassName = 'nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-const visualEditorShellClassName = 'grid min-h-0 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]'
-const detailScrollPaneClassName = 'min-w-0'
+const iconActionClassName = 'nova-nav-item rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] transition-[background-color,color,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] active:scale-[0.96]'
+const actionButtonClassName = 'nova-nav-item gap-1.5 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] transition-[background-color,color,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] active:scale-[0.98]'
+const visualEditorShellClassName = 'grid min-h-[540px] gap-3 overflow-visible lg:grid-cols-[300px_minmax(0,1fr)]'
+const nestedEditorShellClassName = 'grid min-h-[340px] gap-2 overflow-visible 2xl:grid-cols-[260px_minmax(0,1fr)]'
+const detailScrollPaneClassName = 'min-w-0 overflow-hidden rounded-[20px] bg-[var(--nova-surface)] p-3 lg:p-4'
 
 export function EventPackageVisualEditor({
   value,
@@ -68,7 +71,7 @@ export function EventPackageVisualEditor({
 
   return (
     <div className={visualEditorShellClassName} data-testid="event-package-card-editor">
-      <SortablePresetList
+      <PresetTabsList
         items={cards}
         activeId={activeCardId}
         getId={(card, index) => itemKey(card, index, 'card')}
@@ -76,6 +79,8 @@ export function EventPackageVisualEditor({
         getSubtitle={(card) => [card.category, card.intensity].filter(Boolean).join(' · ')}
         addLabel={t('settingPanel.presetConfig.addEventCard')}
         emptyLabel={t('settingPanel.presetConfig.eventCards')}
+        layout="rail"
+        testIdPrefix="event-package-cards"
         onAdd={addCard}
         onActiveIdChange={setActiveCardId}
         onItemsChange={setCards}
@@ -178,7 +183,7 @@ export function ActorStateVisualEditor({
 
   return (
     <div className={visualEditorShellClassName} data-testid="actor-state-visual-editor">
-      <SortablePresetList
+      <PresetTabsList
         items={templates}
         activeId={activeTemplateId}
         getId={actorStateTemplateKey}
@@ -186,6 +191,8 @@ export function ActorStateVisualEditor({
         getSubtitle={(template) => t('settingPanel.actorState.fieldSummary', { count: template.fields?.length || 0 })}
         addLabel={t('settingPanel.actorState.addTemplate')}
         emptyLabel={t('settingPanel.actorState.templates')}
+        layout="rail"
+        testIdPrefix="actor-state-templates"
         onAdd={addTemplate}
         onActiveIdChange={setActiveTemplateId}
         onItemsChange={setTemplates}
@@ -275,36 +282,51 @@ function ActorStateTemplateDetails({
   }
 
   return (
-    <DetailPanel>
-      <DetailActions onCopy={onCopy} onDelete={onDelete} />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={item.id || ''} onChange={(event) => onPatch({ id: event.target.value })} /></Field>
-        <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={item.name || ''} onChange={(event) => onPatch({ name: event.target.value })} /></Field>
-        <Field label={t('common.description')}><Input className={inputClassName} value={item.description || ''} onChange={(event) => onPatch({ description: event.target.value })} /></Field>
-      </div>
-      <div className="grid min-h-[320px] gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <SortablePresetList
-          items={fields}
-          activeId={activeFieldId}
-          getId={actorStateFieldKey}
-          getTitle={(field, index) => field.name || field.path || field.id || `${t('settingPanel.actorState.field')} ${index + 1}`}
-          getSubtitle={(field) => [field.type, field.visibility].filter(Boolean).join(' · ')}
-          addLabel={t('settingPanel.actorState.addField')}
-          emptyLabel={t('settingPanel.actorState.fields')}
-          onAdd={addField}
-          onActiveIdChange={setActiveFieldId}
-          onItemsChange={setFields}
-        />
-        {activeField ? (
-          <ActorStateFieldDetails
-            field={activeField}
-            onPatch={patchField}
-            onCopy={copyField}
-            onDelete={deleteField}
-            onValidChange={setDefaultValid}
+    <div className="grid gap-4">
+      <DetailPanel
+        title={item.name || item.id || t('settingPanel.actorState.template')}
+        description={item.description || t('settingPanel.actorState.description')}
+        meta={t('settingPanel.actorState.fieldSummary', { count: fields.length })}
+        actions={<DetailActions onCopy={onCopy} onDelete={onDelete} />}
+      >
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={item.id || ''} onChange={(event) => onPatch({ id: event.target.value })} /></Field>
+          <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={item.name || ''} onChange={(event) => onPatch({ name: event.target.value })} /></Field>
+          <Field label={t('common.description')}><Input className={inputClassName} value={item.description || ''} onChange={(event) => onPatch({ description: event.target.value })} /></Field>
+        </div>
+      </DetailPanel>
+      <EditorSection
+        title={t('settingPanel.actorState.fields')}
+        meta={t('settingPanel.actorState.fieldSummary', { count: fields.length })}
+      >
+        <div className={nestedEditorShellClassName}>
+          <PresetTabsList
+            items={fields}
+            activeId={activeFieldId}
+            getId={actorStateFieldKey}
+            getTitle={(field, index) => field.name || field.path || field.id || `${t('settingPanel.actorState.field')} ${index + 1}`}
+            getSubtitle={(field) => [field.type, field.visibility].filter(Boolean).join(' · ')}
+            addLabel={t('settingPanel.actorState.addField')}
+            emptyLabel={t('settingPanel.actorState.fields')}
+            layout="rail"
+            testIdPrefix="actor-state-fields"
+            onAdd={addField}
+            onActiveIdChange={setActiveFieldId}
+            onItemsChange={setFields}
           />
-        ) : <EmptyDetail>{t('settingPanel.actorState.emptyFields')}</EmptyDetail>}
-      </div>
+          <div className={detailScrollPaneClassName}>
+            {activeField ? (
+              <ActorStateFieldDetails
+                field={activeField}
+                onPatch={patchField}
+                onCopy={copyField}
+                onDelete={deleteField}
+                onValidChange={setDefaultValid}
+              />
+            ) : <EmptyDetail>{t('settingPanel.actorState.emptyFields')}</EmptyDetail>}
+          </div>
+        </div>
+      </EditorSection>
       <InitialActorsEditor
         templateId={item.id}
         templateName={item.name || item.id}
@@ -312,7 +334,7 @@ function ActorStateTemplateDetails({
         onChange={onInitialActorsChange}
         onValidChange={setInitialActorValid}
       />
-    </DetailPanel>
+    </div>
   )
 }
 
@@ -331,8 +353,13 @@ function ActorStateFieldDetails({
 }) {
   const { t } = useTranslation()
   return (
-    <DetailPanel dense>
-      <DetailActions onCopy={onCopy} onDelete={onDelete} />
+    <DetailPanel
+      dense
+      title={field.name || field.path || field.id || t('settingPanel.actorState.field')}
+      description={field.path || field.id || ''}
+      meta={field.type || 'number'}
+      actions={<DetailActions onCopy={onCopy} onDelete={onDelete} />}
+    >
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={field.id || ''} onChange={(event) => onPatch({ id: event.target.value })} /></Field>
         <Field label={t('settingPanel.presetConfig.path')}><Input className={inputClassName} value={field.path || ''} onChange={(event) => onPatch({ path: event.target.value })} /></Field>
@@ -481,39 +508,54 @@ function InitialActorsEditor({
     setActiveActorId(next[0] ? actorStateActorKey(next[0], 0) : '')
   }
   return (
-    <div className="grid min-h-[280px] gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
-      <SortablePresetList
-        items={templateActors}
-        activeId={activeActorId}
-        getId={actorStateActorKey}
-        getTitle={(actor, index) => actor.name || actor.id || `${t('settingPanel.actorState.initialActor')} ${index + 1}`}
-        getSubtitle={(actor) => [templateName, actor.role].filter(Boolean).join(' · ')}
-        addLabel={t('settingPanel.actorState.addInitialActor')}
-        emptyLabel={t('settingPanel.actorState.initialActors')}
-        onAdd={addActor}
-        onActiveIdChange={setActiveActorId}
-        onItemsChange={setTemplateActors}
-      />
-      {activeActor ? (
-        <DetailPanel dense>
-          <DetailActions onCopy={copyActor} onDelete={deleteActor} />
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={activeActor.id || ''} onChange={(event) => patchActor({ id: event.target.value })} /></Field>
-            <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={activeActor.name || ''} onChange={(event) => patchActor({ name: event.target.value })} /></Field>
-            <Field label={t('settingPanel.actorState.templateID')}><Input className={inputClassName} value={templateId} disabled /></Field>
-            <Field label={t('settingPanel.actorState.role')}><Input className={inputClassName} value={activeActor.role || ''} onChange={(event) => patchActor({ role: event.target.value })} /></Field>
-            <Field label={t('common.description')}><Input className={inputClassName} value={activeActor.description || ''} onChange={(event) => patchActor({ description: event.target.value })} /></Field>
-          </div>
-          <JSONFragmentEditor
-            label={t('settingPanel.actorState.initialState')}
-            value={activeActor.state || {}}
-            expected="object"
-            onChange={(state) => patchActor({ state: state as Record<string, unknown> })}
-            onValidChange={onValidChange}
-          />
-        </DetailPanel>
-      ) : <EmptyDetail>{t('settingPanel.actorState.emptyInitialActors')}</EmptyDetail>}
-    </div>
+    <EditorSection
+      title={t('settingPanel.actorState.initialActors')}
+      description={templateName}
+      meta={t('settingPanel.actorState.initialActorSummary', { count: templateActors.length })}
+    >
+      <div className={nestedEditorShellClassName}>
+        <PresetTabsList
+          items={templateActors}
+          activeId={activeActorId}
+          getId={actorStateActorKey}
+          getTitle={(actor, index) => actor.name || actor.id || `${t('settingPanel.actorState.initialActor')} ${index + 1}`}
+          getSubtitle={(actor) => [templateName, actor.role].filter(Boolean).join(' · ')}
+          addLabel={t('settingPanel.actorState.addInitialActor')}
+          emptyLabel={t('settingPanel.actorState.initialActors')}
+          layout="rail"
+          testIdPrefix="actor-state-initial-actors"
+          onAdd={addActor}
+          onActiveIdChange={setActiveActorId}
+          onItemsChange={setTemplateActors}
+        />
+        <div className={detailScrollPaneClassName}>
+          {activeActor ? (
+            <DetailPanel
+              dense
+              title={activeActor.name || activeActor.id || t('settingPanel.actorState.initialActor')}
+              description={activeActor.role || templateName}
+              meta={templateId}
+              actions={<DetailActions onCopy={copyActor} onDelete={deleteActor} />}
+            >
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={activeActor.id || ''} onChange={(event) => patchActor({ id: event.target.value })} /></Field>
+                <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={activeActor.name || ''} onChange={(event) => patchActor({ name: event.target.value })} /></Field>
+                <Field label={t('settingPanel.actorState.templateID')}><Input className={inputClassName} value={templateId} disabled /></Field>
+                <Field label={t('settingPanel.actorState.role')}><Input className={inputClassName} value={activeActor.role || ''} onChange={(event) => patchActor({ role: event.target.value })} /></Field>
+                <Field label={t('common.description')}><Input className={inputClassName} value={activeActor.description || ''} onChange={(event) => patchActor({ description: event.target.value })} /></Field>
+              </div>
+              <JSONFragmentEditor
+                label={t('settingPanel.actorState.initialState')}
+                value={activeActor.state || {}}
+                expected="object"
+                onChange={(state) => patchActor({ state: state as Record<string, unknown> })}
+                onValidChange={onValidChange}
+              />
+            </DetailPanel>
+          ) : <EmptyDetail>{t('settingPanel.actorState.emptyInitialActors')}</EmptyDetail>}
+        </div>
+      </div>
+    </EditorSection>
   )
 }
 
@@ -639,8 +681,8 @@ function StateBindingEditor({
           {t('settingPanel.trpgRule.addBinding')}
         </Button>
       </div>
-      <div className="grid min-h-52 gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <SortablePresetList
+      <div className={nestedEditorShellClassName}>
+        <PresetTabsList
           items={value}
           activeId={activeId}
           getId={(item, index) => itemKey(item, index, 'binding')}
@@ -648,50 +690,54 @@ function StateBindingEditor({
           getSubtitle={(item) => `${item.actor_template_id || '-'}${item.target_template_id ? ` -> ${item.target_template_id}` : ''}`}
           addLabel={t('settingPanel.trpgRule.addBinding')}
           emptyLabel={t('settingPanel.trpgRule.emptyBindings')}
+          layout="rail"
+          testIdPrefix="trpg-state-bindings"
           onAdd={addBinding}
           onActiveIdChange={setActiveId}
           onItemsChange={setItems}
         />
-        {active ? (
-          <div className="grid gap-3">
-            <div className="flex justify-end gap-2">
-              <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={copyBinding} aria-label={t('settingPanel.presetConfig.copy')}>
-                <Copy className="h-3.5 w-3.5" />
-              </Button>
-              <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={deleteBinding} aria-label={t('common.delete')}>
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
+        <div className={detailScrollPaneClassName}>
+          {active ? (
+            <div className="grid gap-3">
+              <div className="flex justify-end gap-2">
+                <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={copyBinding} aria-label={t('settingPanel.presetConfig.copy')}>
+                  <Copy className="h-3.5 w-3.5" />
+                </Button>
+                <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={deleteBinding} aria-label={t('common.delete')}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={active.id || ''} onChange={(event) => patchActive({ id: event.target.value })} /></Field>
+                <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={active.label || ''} onChange={(event) => patchActive({ label: event.target.value })} /></Field>
+                <TemplateSelectField label={t('settingPanel.trpgRule.actorTemplate')} value={active.actor_template_id || ''} templates={templates} onChange={(actor_template_id) => patchActive({ actor_template_id })} />
+                <TemplateSelectField label={t('settingPanel.trpgRule.targetTemplate')} value={active.target_template_id || ''} templates={templates} allowEmpty onChange={(target_template_id) => patchActive({ target_template_id })} />
+              </div>
+              <Field label={t('settingPanel.trpgRule.trigger')}><Textarea className="nova-field min-h-16 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
+              <JSONFragmentEditor
+                label={t('settingPanel.trpgRule.modifiers')}
+                value={active.modifiers || []}
+                expected="array"
+                onChange={(modifiers) => patchActive({ modifiers: modifiers as RuleStateBinding['modifiers'] })}
+                onValidChange={setModifiersValid}
+              />
+              <JSONFragmentEditor
+                label={t('settingPanel.trpgRule.narrativeStateRefs')}
+                value={active.narrative_state_refs || []}
+                expected="array"
+                onChange={(narrative_state_refs) => patchActive({ narrative_state_refs: narrative_state_refs as RuleStateBinding['narrative_state_refs'] })}
+                onValidChange={setRefsValid}
+              />
+              <JSONFragmentEditor
+                label={t('settingPanel.trpgRule.outcomeStateChanges')}
+                value={active.outcome_state_changes || []}
+                expected="array"
+                onChange={(outcome_state_changes) => patchActive({ outcome_state_changes: outcome_state_changes as RuleStateBinding['outcome_state_changes'] })}
+                onValidChange={setChangesValid}
+              />
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={active.id || ''} onChange={(event) => patchActive({ id: event.target.value })} /></Field>
-              <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={active.label || ''} onChange={(event) => patchActive({ label: event.target.value })} /></Field>
-              <TemplateSelectField label={t('settingPanel.trpgRule.actorTemplate')} value={active.actor_template_id || ''} templates={templates} onChange={(actor_template_id) => patchActive({ actor_template_id })} />
-              <TemplateSelectField label={t('settingPanel.trpgRule.targetTemplate')} value={active.target_template_id || ''} templates={templates} allowEmpty onChange={(target_template_id) => patchActive({ target_template_id })} />
-            </div>
-            <Field label={t('settingPanel.trpgRule.trigger')}><Textarea className="nova-field min-h-16 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
-            <JSONFragmentEditor
-              label={t('settingPanel.trpgRule.modifiers')}
-              value={active.modifiers || []}
-              expected="array"
-              onChange={(modifiers) => patchActive({ modifiers: modifiers as RuleStateBinding['modifiers'] })}
-              onValidChange={setModifiersValid}
-            />
-            <JSONFragmentEditor
-              label={t('settingPanel.trpgRule.narrativeStateRefs')}
-              value={active.narrative_state_refs || []}
-              expected="array"
-              onChange={(narrative_state_refs) => patchActive({ narrative_state_refs: narrative_state_refs as RuleStateBinding['narrative_state_refs'] })}
-              onValidChange={setRefsValid}
-            />
-            <JSONFragmentEditor
-              label={t('settingPanel.trpgRule.outcomeStateChanges')}
-              value={active.outcome_state_changes || []}
-              expected="array"
-              onChange={(outcome_state_changes) => patchActive({ outcome_state_changes: outcome_state_changes as RuleStateBinding['outcome_state_changes'] })}
-              onValidChange={setChangesValid}
-            />
-          </div>
-        ) : <EmptyDetail>{t('settingPanel.trpgRule.emptyBindings')}</EmptyDetail>}
+          ) : <EmptyDetail>{t('settingPanel.trpgRule.emptyBindings')}</EmptyDetail>}
+        </div>
       </div>
     </DetailPanel>
   )
@@ -813,42 +859,58 @@ export function OpeningSelectorVisualEditor({
   }
 
   return (
-    <div className="grid gap-3">
-      <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-        <SwitchField label={t('settingPanel.field.enabled')} checked={value.enabled !== false} onChange={(enabled) => onChange({ ...value, enabled })} />
-        <JSONFragmentEditor
-          label={t('settingPanel.presetConfig.initialStateOps')}
-          value={value.initial_state_ops || []}
-          expected="array"
-          onChange={(initial_state_ops) => onChange({ ...value, initial_state_ops: initial_state_ops as StateOp[] })}
-          onValidChange={setInitialOpsValid}
-        />
-      </div>
-      <div className="grid min-h-[360px] gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <SortablePresetList
-          items={pools}
-          activeId={activePoolId}
-          getId={(item, index) => itemKey(item, index, 'pool')}
-          getTitle={(item, index) => item.name || item.id || `${t('settingPanel.presetConfig.traitPool')} ${index + 1}`}
-          getSubtitle={(item) => `${t('settingPanel.presetConfig.drawCount')}: ${item.draw_count ?? 1} · ${(item.traits || []).length}`}
-          addLabel={t('settingPanel.presetConfig.addTraitPool')}
-          emptyLabel={t('settingPanel.presetConfig.traitPools')}
-          onAdd={addPool}
-          onActiveIdChange={setActivePoolId}
-          onItemsChange={setPools}
-        />
-        {activePool ? (
-          <TraitPoolDetails
-            item={activePool}
-            activeTraitId={activeTraitId}
-            setActiveTraitId={setActiveTraitId}
-            onPatch={patchPool}
-            onCopy={copyPool}
-            onDelete={deletePool}
-            onValidChange={setTraitOpsValid}
+    <div className="grid gap-4">
+      <DetailPanel
+        dense
+        title={t('settingPanel.presetConfig.initialStateOps')}
+        description={t('settingPanel.actorState.openingDescription')}
+        meta={t('settingPanel.storyDirector.openingSelectorSummary', { pools: pools.length, ops: value.initial_state_ops?.length || 0 })}
+      >
+        <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+          <SwitchField label={t('settingPanel.field.enabled')} checked={value.enabled !== false} onChange={(enabled) => onChange({ ...value, enabled })} />
+          <JSONFragmentEditor
+            label={t('settingPanel.presetConfig.initialStateOps')}
+            value={value.initial_state_ops || []}
+            expected="array"
+            onChange={(initial_state_ops) => onChange({ ...value, initial_state_ops: initial_state_ops as StateOp[] })}
+            onValidChange={setInitialOpsValid}
           />
-        ) : <EmptyDetail>{t('settingPanel.presetConfig.emptyTraitPools')}</EmptyDetail>}
-      </div>
+        </div>
+      </DetailPanel>
+      <EditorSection
+        title={t('settingPanel.presetConfig.traitPools')}
+        meta={`${pools.length}`}
+      >
+        <div className={nestedEditorShellClassName}>
+          <PresetTabsList
+            items={pools}
+            activeId={activePoolId}
+            getId={(item, index) => itemKey(item, index, 'pool')}
+            getTitle={(item, index) => item.name || item.id || `${t('settingPanel.presetConfig.traitPool')} ${index + 1}`}
+            getSubtitle={(item) => `${t('settingPanel.presetConfig.drawCount')}: ${item.draw_count ?? 1} · ${(item.traits || []).length}`}
+            addLabel={t('settingPanel.presetConfig.addTraitPool')}
+            emptyLabel={t('settingPanel.presetConfig.traitPools')}
+            layout="rail"
+            testIdPrefix="opening-trait-pools"
+            onAdd={addPool}
+            onActiveIdChange={setActivePoolId}
+            onItemsChange={setPools}
+          />
+          <div className={detailScrollPaneClassName}>
+            {activePool ? (
+              <TraitPoolDetails
+                item={activePool}
+                activeTraitId={activeTraitId}
+                setActiveTraitId={setActiveTraitId}
+                onPatch={patchPool}
+                onCopy={copyPool}
+                onDelete={deletePool}
+                onValidChange={setTraitOpsValid}
+              />
+            ) : <EmptyDetail>{t('settingPanel.presetConfig.emptyTraitPools')}</EmptyDetail>}
+          </div>
+        </div>
+      </EditorSection>
     </div>
   )
 }
@@ -909,8 +971,8 @@ function TraitPoolDetails({
         <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={item.name || ''} onChange={(event) => onPatch({ name: event.target.value })} /></Field>
         <Field label={t('settingPanel.presetConfig.drawCount')}><Input className={inputClassName} inputMode="numeric" value={String(item.draw_count ?? '')} onChange={(event) => onPatch({ draw_count: parseIntegerInput(event.target.value) })} /></Field>
       </div>
-      <div className="grid min-h-[300px] gap-3 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <SortablePresetList
+      <div className={nestedEditorShellClassName}>
+        <PresetTabsList
           items={traits}
           activeId={activeTraitId}
           getId={(trait, index) => itemKey(trait, index, 'trait')}
@@ -918,28 +980,32 @@ function TraitPoolDetails({
           getSubtitle={(trait) => trait.summary || ''}
           addLabel={t('settingPanel.presetConfig.addTrait')}
           emptyLabel={t('settingPanel.presetConfig.traits')}
+          layout="rail"
+          testIdPrefix="opening-traits"
           onAdd={addTrait}
           onActiveIdChange={setActiveTraitId}
           onItemsChange={setTraits}
         />
-        {activeTrait ? (
-          <DetailPanel dense>
-            <DetailActions onCopy={copyTrait} onDelete={deleteTrait} />
-            <div className="grid gap-3 md:grid-cols-3">
-              <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={activeTrait.id || ''} onChange={(event) => patchTrait({ id: event.target.value })} /></Field>
-              <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={activeTrait.name || ''} onChange={(event) => patchTrait({ name: event.target.value })} /></Field>
-              <Field label={t('settingPanel.presetConfig.weight')}><Input className={inputClassName} inputMode="decimal" value={String(activeTrait.weight ?? '')} onChange={(event) => patchTrait({ weight: parseNumberInput(event.target.value) })} /></Field>
-            </div>
-            <Field label={t('settingPanel.presetConfig.summary')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={activeTrait.summary || ''} onChange={(event) => patchTrait({ summary: event.target.value })} /></Field>
-            <JSONFragmentEditor
-              label={t('settingPanel.presetConfig.traitOps')}
-              value={activeTrait.ops || []}
-              expected="array"
-              onChange={(ops) => patchTrait({ ops: ops as StateOp[] })}
-              onValidChange={onValidChange}
-            />
-          </DetailPanel>
-        ) : <EmptyDetail>{t('settingPanel.presetConfig.emptyTraits')}</EmptyDetail>}
+        <div className={detailScrollPaneClassName}>
+          {activeTrait ? (
+            <DetailPanel dense>
+              <DetailActions onCopy={copyTrait} onDelete={deleteTrait} />
+              <div className="grid gap-3 md:grid-cols-3">
+                <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={activeTrait.id || ''} onChange={(event) => patchTrait({ id: event.target.value })} /></Field>
+                <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={activeTrait.name || ''} onChange={(event) => patchTrait({ name: event.target.value })} /></Field>
+                <Field label={t('settingPanel.presetConfig.weight')}><Input className={inputClassName} inputMode="decimal" value={String(activeTrait.weight ?? '')} onChange={(event) => patchTrait({ weight: parseNumberInput(event.target.value) })} /></Field>
+              </div>
+              <Field label={t('settingPanel.presetConfig.summary')}><Textarea className="nova-field min-h-20 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={activeTrait.summary || ''} onChange={(event) => patchTrait({ summary: event.target.value })} /></Field>
+              <JSONFragmentEditor
+                label={t('settingPanel.presetConfig.traitOps')}
+                value={activeTrait.ops || []}
+                expected="array"
+                onChange={(ops) => patchTrait({ ops: ops as StateOp[] })}
+                onValidChange={onValidChange}
+              />
+            </DetailPanel>
+          ) : <EmptyDetail>{t('settingPanel.presetConfig.emptyTraits')}</EmptyDetail>}
+        </div>
       </div>
     </DetailPanel>
   )
@@ -1004,12 +1070,89 @@ function actorStateActorKey(item: ActorStateInitialActor, index: number) {
   return item.id || `${item.template_id || 'actor'}-${index}`
 }
 
-function DetailPanel({ children, dense = false, className = '' }: { children: ReactNode; dense?: boolean; className?: string }) {
-  return <section className={`min-w-0 rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] ${dense ? 'p-3' : 'p-4'} grid gap-3 ${className}`}>{children}</section>
+function DetailPanel({
+  children,
+  dense = false,
+  className = '',
+  title,
+  description,
+  meta,
+  actions,
+}: {
+  children: ReactNode
+  dense?: boolean
+  className?: string
+  title?: string
+  description?: string
+  meta?: string
+  actions?: ReactNode
+}) {
+  return (
+    <section className={cn('grid min-w-0 gap-3 rounded-[20px] bg-[var(--nova-surface-2)]', dense ? 'p-3' : 'p-4', className)}>
+      {title || description || meta || actions ? (
+        <EditorSectionHeader title={title} description={description} meta={meta} actions={actions} />
+      ) : null}
+      {children}
+    </section>
+  )
 }
 
 function EmptyDetail({ children }: { children: ReactNode }) {
-  return <div className="flex min-h-40 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-6 text-xs text-[var(--nova-text-faint)]">{children}</div>
+  return <div className="flex min-h-48 items-center justify-center rounded-[18px] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-8 text-center text-xs text-[var(--nova-text-faint)]">{children}</div>
+}
+
+function EditorSection({
+  title,
+  description,
+  meta,
+  actions,
+  children,
+  className,
+}: {
+  title: string
+  description?: string
+  meta?: string
+  actions?: ReactNode
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <section className={cn('grid gap-3 rounded-[20px] bg-[var(--nova-surface-2)] p-3', className)}>
+      <EditorSectionHeader title={title} description={description} meta={meta} actions={actions} />
+      {children}
+    </section>
+  )
+}
+
+function EditorSectionHeader({
+  title,
+  description,
+  meta,
+  actions,
+}: {
+  title?: string
+  description?: string
+  meta?: string
+  actions?: ReactNode
+}) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        {title ? <div className="truncate text-sm font-semibold text-[var(--nova-text)]">{title}</div> : null}
+        {description ? <div className="mt-1 line-clamp-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{description}</div> : null}
+      </div>
+      {meta || actions ? (
+        <div className="flex shrink-0 items-center gap-2">
+          {meta ? (
+            <Badge variant="outline" className="h-6 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 text-[10px] font-normal text-[var(--nova-text-faint)]">
+              {meta}
+            </Badge>
+          ) : null}
+          {actions}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function DetailActions({ onCopy, onDelete }: { onCopy?: () => void; onDelete?: () => void }) {
@@ -1028,7 +1171,7 @@ function DetailActions({ onCopy, onDelete }: { onCopy?: () => void; onDelete?: (
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="grid min-w-0 gap-1 text-xs text-[var(--nova-text-muted)]">
+    <label className="grid min-w-0 gap-1.5 text-xs text-[var(--nova-text-muted)]">
       <span className="truncate text-[11px] text-[var(--nova-text-faint)]">{label}</span>
       {children}
     </label>
@@ -1038,7 +1181,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function SwitchField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
     <div className="flex items-end">
-      <div className="flex h-8 w-full items-center justify-between gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2">
+      <div className="flex h-9 w-full items-center justify-between gap-2 rounded-[14px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
         <span className="truncate text-[11px] text-[var(--nova-text-faint)]">{label}</span>
         <Switch checked={checked} onCheckedChange={onChange} />
       </div>
@@ -1201,7 +1344,7 @@ export function MemoryStructureVisualEditor({
 
   return (
     <div className={visualEditorShellClassName} data-testid="memory-structure-editor">
-      <SortablePresetList
+      <PresetTabsList
         items={structures}
         activeId={activeStructureId}
         getId={(s) => s.id}
@@ -1216,6 +1359,8 @@ export function MemoryStructureVisualEditor({
         }}
         addLabel={t('settingPanel.presetConfig.addStructure')}
         emptyLabel={t('settingPanel.presetConfig.structures')}
+        layout="rail"
+        testIdPrefix="memory-structures"
         onAdd={addStructure}
         onActiveIdChange={setActiveStructureId}
         onItemsChange={setStructures}

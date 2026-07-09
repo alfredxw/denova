@@ -579,10 +579,11 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 }
 
 func TestAppendTurnWithStateConsumesRuleStateChanges(t *testing.T) {
-	store := NewStore(t.TempDir())
+	store, director := newStoreWithStaminaTestDirector(t)
 	story, err := store.CreateStory(CreateStoryRequest{
+		StoryDirectorID: director.ID,
 		Title:           "规则状态",
-		InitialStateOps: StoryDirectorInitialStateOps(DefaultStoryDirector()),
+		InitialStateOps: StoryDirectorInitialStateOps(director),
 	})
 	if err != nil {
 		t.Fatalf("CreateStory failed: %v", err)
@@ -666,10 +667,11 @@ func TestAppendTurnWithStateSkipsUnknownRuleStateChanges(t *testing.T) {
 }
 
 func TestRerollRuleResolutionReplacesAutomaticRuleStateOps(t *testing.T) {
-	store := NewStore(t.TempDir())
+	store, director := newStoreWithStaminaTestDirector(t)
 	story, err := store.CreateStory(CreateStoryRequest{
+		StoryDirectorID: director.ID,
 		Title:           "规则重抽",
-		InitialStateOps: StoryDirectorInitialStateOps(DefaultStoryDirector()),
+		InitialStateOps: StoryDirectorInitialStateOps(director),
 	})
 	if err != nil {
 		t.Fatalf("CreateStory failed: %v", err)
@@ -715,6 +717,52 @@ func TestRerollRuleResolutionReplacesAutomaticRuleStateOps(t *testing.T) {
 	if snapshot.CurrentTurn.RuleResolution == nil || snapshot.CurrentTurn.RuleResolution.StateConsumption == nil || snapshot.CurrentTurn.RuleResolution.StateConsumption.Status != "applied" {
 		t.Fatalf("expected reroll state consumption audit: %#v", snapshot.CurrentTurn.RuleResolution)
 	}
+}
+
+func newStoreWithStaminaTestDirector(t *testing.T) (*Store, StoryDirector) {
+	t.Helper()
+	root := t.TempDir()
+	novaDir := filepath.Join(root, ".nova")
+	staminaMin, staminaMax := 0.0, 5.0
+	director, err := NewStoryDirectorLibrary(novaDir).Create(StoryDirector{
+		ID:   "stamina-test-director",
+		Name: "体力测试导演",
+		ModuleRefs: StoryDirectorModuleRefs{
+			NarrativeStyleDisabled:  true,
+			EventPackagesDisabled:   true,
+			RuleSystemDisabled:      true,
+			MemoryStructureDisabled: true,
+			OpeningSelectorDisabled: true,
+			ImagePresetDisabled:     true,
+		},
+		Strategy: StoryDirectorStrategy{Enabled: true},
+		ActorState: StoryDirectorActorStateSystem{
+			Templates: []ActorStateTemplate{{
+				ID:   "protagonist",
+				Name: "主角",
+				Fields: []ActorStateField{{
+					ID:         "stamina",
+					Path:       "resources.stamina",
+					Name:       "体力",
+					Type:       "number",
+					Default:    5.0,
+					Min:        &staminaMin,
+					Max:        &staminaMax,
+					Visibility: "visible",
+				}},
+			}},
+			InitialActors: []ActorStateInitialActor{{
+				ID:         DefaultActorID,
+				Name:       "主角",
+				TemplateID: "protagonist",
+				Role:       "protagonist",
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create stamina test director failed: %v", err)
+	}
+	return NewStoreWithNovaDir(root, novaDir), director
 }
 
 func TestAppendTurnWithStatePersistsDisplayEventTimelineDetails(t *testing.T) {

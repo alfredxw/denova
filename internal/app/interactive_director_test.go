@@ -174,8 +174,8 @@ func TestInteractiveDirectorMaintenanceWritesStateMemoryAndDirectorPlan(t *testi
 	if snapshot.DirectorPlan == nil || !strings.Contains(snapshot.DirectorPlan.Docs.Plan, "钟楼盯梢者") {
 		t.Fatalf("director plan should include updated file docs: %#v", snapshot.DirectorPlan)
 	}
-	if got := actorHPForTest(snapshot.State); got != 8 {
-		t.Fatalf("actor hp = %v, want 8 state=%#v", got, snapshot.State)
+	if got := actorBodyStatusForTest(snapshot.State); got != "肩头擦伤但能行动" {
+		t.Fatalf("actor body status = %q, want 肩头擦伤但能行动 state=%#v", got, snapshot.State)
 	}
 	memory, err := store.StoryMemory(story.ID, "main", true)
 	if err != nil {
@@ -426,7 +426,7 @@ func applyDirectorMaintenanceStateForTest(toolContext agent.InteractiveStoryTool
 		ActorName:  "主角",
 		TemplateID: "protagonist",
 		State: map[string]any{
-			"resources.hp": float64(8),
+			"current.body_status": "肩头擦伤但能行动",
 		},
 		Reason: "本回合主角为了保护同伴受到轻伤。",
 	}}, toolContext.TurnID)
@@ -461,21 +461,13 @@ func applyDirectorMaintenanceStateForTest(toolContext agent.InteractiveStoryTool
 	return nil
 }
 
-func actorHPForTest(state map[string]any) float64 {
+func actorBodyStatusForTest(state map[string]any) string {
 	actors, _ := state["actors"].(map[string]any)
 	protagonist, _ := actors[interactive.DefaultActorID].(map[string]any)
 	actorState, _ := protagonist["state"].(map[string]any)
-	resources, _ := actorState["resources"].(map[string]any)
-	switch value := resources["hp"].(type) {
-	case int:
-		return float64(value)
-	case int64:
-		return float64(value)
-	case float64:
-		return value
-	default:
-		return 0
-	}
+	current, _ := actorState["current"].(map[string]any)
+	value, _ := current["body_status"].(string)
+	return value
 }
 
 func waitForDirectorPlanRunStatus(t *testing.T, store *interactive.Store, storyID, branchID, status string) interactive.Snapshot {

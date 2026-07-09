@@ -420,16 +420,19 @@ func TestInteractiveDirectorEventCatalogIncludesTellerEventCards(t *testing.T) {
 
 func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 	workspace := t.TempDir()
-	store := interactive.NewStore(workspace)
+	novaDir := filepath.Join(workspace, ".nova")
+	store, director := newInteractiveStoreWithHPTestDirector(t, workspace, novaDir)
 	story, err := store.CreateStory(interactive.CreateStoryRequest{
-		Title:         "规则审计",
-		Origin:        "主角站在秘境入口",
-		StoryTellerID: "classic",
+		Title:           "规则审计",
+		Origin:          "主角站在秘境入口",
+		StoryTellerID:   "classic",
+		StoryDirectorID: director.ID,
+		InitialStateOps: interactive.StoryDirectorInitialStateOps(director),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "我强闯秘境入口", story.ReplyTargetChars, &config.Config{})
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "main", "我强闯秘境入口", story.ReplyTargetChars, &config.Config{})
 	resolution, err := conversation.PrepareInteractiveTurn(
 		context.Background(),
 		interactive.TurnCheckRequest{
@@ -469,6 +472,50 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 	if snapshot.CurrentTurn.StateDelta == nil || len(snapshot.CurrentTurn.StateDelta.Ops) != 1 || snapshot.CurrentTurn.StateDelta.Ops[0].SourceKind != interactive.StateOpSourceRuleResolution {
 		t.Fatalf("rule state op missing: %#v", snapshot.CurrentTurn.StateDelta)
 	}
+}
+
+func newInteractiveStoreWithHPTestDirector(t *testing.T, workspace, novaDir string) (*interactive.Store, interactive.StoryDirector) {
+	t.Helper()
+	hpMin, hpMax := 0.0, 10.0
+	director, err := interactive.NewStoryDirectorLibrary(novaDir).Create(interactive.StoryDirector{
+		ID:   "hp-test-director",
+		Name: "生命测试导演",
+		ModuleRefs: interactive.StoryDirectorModuleRefs{
+			NarrativeStyleDisabled:  true,
+			EventPackagesDisabled:   true,
+			RuleSystemDisabled:      true,
+			MemoryStructureDisabled: true,
+			OpeningSelectorDisabled: true,
+			ImagePresetDisabled:     true,
+		},
+		Strategy: interactive.StoryDirectorStrategy{Enabled: true},
+		ActorState: interactive.StoryDirectorActorStateSystem{
+			Templates: []interactive.ActorStateTemplate{{
+				ID:   "protagonist",
+				Name: "主角",
+				Fields: []interactive.ActorStateField{{
+					ID:         "hp",
+					Path:       "resources.hp",
+					Name:       "生命",
+					Type:       "number",
+					Default:    10.0,
+					Min:        &hpMin,
+					Max:        &hpMax,
+					Visibility: "visible",
+				}},
+			}},
+			InitialActors: []interactive.ActorStateInitialActor{{
+				ID:         interactive.DefaultActorID,
+				Name:       "主角",
+				TemplateID: "protagonist",
+				Role:       "protagonist",
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create hp test director failed: %v", err)
+	}
+	return interactive.NewStoreWithNovaDir(workspace, novaDir), director
 }
 
 func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {

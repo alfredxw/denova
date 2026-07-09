@@ -143,6 +143,7 @@ const settingPanel = {
   'settingPanel.actorState.initialActors': 'Initial State Objects',
   'settingPanel.actorState.addInitialActor': 'Add Initial State Object',
   'settingPanel.actorState.emptyInitialActors': 'No initial state objects',
+  'settingPanel.actorState.initialActorSummary': '{{count}} objects',
   'settingPanel.actorState.templateID': 'Template ID',
   'settingPanel.actorState.role': 'Object Role',
   'settingPanel.actorState.initialState': 'Initial State',

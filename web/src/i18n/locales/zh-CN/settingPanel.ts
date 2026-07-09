@@ -143,6 +143,7 @@ const settingPanel = {
   'settingPanel.actorState.initialActors': '初始状态对象',
   'settingPanel.actorState.addInitialActor': '新增初始状态对象',
   'settingPanel.actorState.emptyInitialActors': '暂无初始状态对象',
+  'settingPanel.actorState.initialActorSummary': '{{count}} 个对象',
   'settingPanel.actorState.templateID': '模板 ID',
   'settingPanel.actorState.role': '对象定位',
   'settingPanel.actorState.initialState': '初始状态',

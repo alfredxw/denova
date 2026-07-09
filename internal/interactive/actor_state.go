@@ -225,53 +225,12 @@ func actorStateEmpty(system StoryDirectorActorStateSystem) bool {
 }
 
 func defaultActorStateSystem() StoryDirectorActorStateSystem {
-	hpMin, hpMax := 0.0, 10.0
-	staminaMin, staminaMax := 0.0, 5.0
-	affectionMin, affectionMax := -100.0, 100.0
 	return normalizeActorStateSystem(StoryDirectorActorStateSystem{
-		Templates: []ActorStateTemplate{{
-			ID:          "protagonist",
-			Name:        "主角",
-			Description: "默认主角状态表模板，用于规则检定、资源消耗和长期承接；可按作品需要新增其他状态对象模板。",
-			Fields: []ActorStateField{
-				{
-					ID:          "hp",
-					Path:        "resources.hp",
-					Name:        "生命",
-					Type:        "number",
-					Default:     10.0,
-					Min:         &hpMin,
-					Max:         &hpMax,
-					Visibility:  "visible",
-					Description: "主角当前生命或伤势承受能力。",
-					Order:       10,
-				},
-				{
-					ID:          "stamina",
-					Path:        "resources.stamina",
-					Name:        "体力",
-					Type:        "number",
-					Default:     5.0,
-					Min:         &staminaMin,
-					Max:         &staminaMax,
-					Visibility:  "visible",
-					Description: "奔跑、战斗、潜入等高消耗行动的资源。",
-					Order:       20,
-				},
-				{
-					ID:          "affection",
-					Path:        "relations.affection",
-					Name:        "好感",
-					Type:        "number",
-					Default:     0.0,
-					Min:         &affectionMin,
-					Max:         &affectionMax,
-					Visibility:  "spoiler",
-					Description: "重要角色或势力对主角的亲近度，可按对象拆分。",
-					Order:       30,
-				},
-			},
-		}},
+		Templates: []ActorStateTemplate{
+			actorStateTemplate(DefaultActorID, "默认主角状态表", "记录主角当前可行动、可检定、可结算的通用互动状态；用户可按作品需要新增世界、故事倒计时、特定角色、势力、基地、副本等自定义状态表。", commonProtagonistStateFields()),
+			actorStateTemplate(ActorStateImportantCharacterTemplateID, "默认重要角色状态表", "记录反复登场且会影响互动承接的重要角色状态；特定角色线可以另建独立状态表。", commonImportantCharacterStateFields()),
+			actorStateTemplate(ActorStateOpponentTemplateID, "默认敌人/怪物状态表", "记录敌人、怪物、反派、Boss 或异常实体的当前对抗状态；危机、势力或副本也可另建状态表。", commonOpponentStateFields()),
+		},
 		InitialActors: []ActorStateInitialActor{{
 			ID:         DefaultActorID,
 			Name:       "主角",

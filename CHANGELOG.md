@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式：默认状态系统预设改为更通用的 `protagonist`、`important_character`、`opponent` 三类状态表模板，不再默认写入固定 `hp`、`stamina`、`affection` 数值字段；新建故事仍只预创建主角状态对象，重要角色和敌人/怪物按剧情需要再创建。
+- Game Mode: Generalized the default State System preset to `protagonist`, `important_character`, and `opponent` state-table templates instead of fixed `hp`, `stamina`, and `affection` numeric fields. New stories still create only the protagonist state object up front, with important characters and enemies/monsters added when the story needs them.
 - 游戏模式：状态系统新增修仙、西幻、末世和无限流 4 个题材内置预设；每个预设提供 `protagonist`、`important_character`、`opponent` 作为默认示例状态表模板，不预设数值范围，并允许用户继续扩展世界、故事倒计时、特定角色、势力、基地、副本等任意状态对象模板，供不同故事导演通过 `actor_state_id` 引用。
 - Game Mode: Added four built-in genre State System presets for xianxia, western fantasy, apocalypse, and infinite-flow stories. Each preset ships `protagonist`, `important_character`, and `opponent` as default example state-table templates without fixed numeric bounds, while allowing users to add arbitrary state-object templates such as world state, story clocks, specific character routes, factions, bases, or instances. Story Directors continue to reference them through `actor_state_id`.
 - Agent：Prompt cache 诊断增强，run trace 摘要现在聚合 `prompt_tokens`、`cached_prompt_tokens`、`uncached_prompt_tokens` 和 `cache_hit_rate`；`cache_attribution` 新增 per-tool fingerprint，便于定位具体工具 schema 变动而不暴露完整 schema。
@@ -103,6 +105,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 方案预设：资源编辑区重设计为高端控制台式布局，资源元信息、可视化/JSON 切换、主从列表和二级编辑面板统一采用双层 bezel 与胶囊控制，降低状态系统、开局词条等配置页的视觉噪音。
+- Presets: Redesigned the resource editor area into a higher-end console layout. Resource metadata, Visual/JSON switching, master-detail lists, and nested editor panes now share double-bezel surfaces and pill controls, reducing visual noise in State System, opening-trait, and related configuration pages.
+- 方案预设：状态系统可视化编辑器重构为更清晰的 master-detail 工作区，模板、字段 schema 和初始状态对象分区显示；配置段标题、统计和视图切换也收敛到统一 header，减少卡片嵌套和误导性的选中态。
+- Presets: Refactored the State System visual editor into a clearer master-detail workspace with separate sections for templates, field schema, and initial state objects. Config section titles, summaries, and view switches now share a unified header, reducing nested panels and misleading selection states.
+- 方案预设：状态系统、事件包、TRPG 检定、开局词条和记忆结构等可视化编辑器的左侧可排序列表改用 shadcn/Radix Tabs 承载选中项切换，拖拽只保留在手柄上，避免点击列表项时被拖拽事件抢占。
+- Presets: The sortable side lists in visual editors for State Systems, Event Packages, TRPG Checks, opening traits, and Memory Structures now use shadcn/Radix Tabs for selection, with dragging limited to the handle so item clicks are not intercepted by drag handling.
 - 不兼容变更：游戏模式开局词条并入状态系统；新建故事导演不再引用独立 `opening_selector_id`，状态系统模块新增 `opening_selector` 用于维护词条池和 `initial_state_ops`，抽取结果继续以 `StateOp` 写入故事状态。旧开局选择器模块仍保留兼容读取/迁移路径，但不再作为新配置入口。
 - Breaking: Game Mode opening traits are now part of the State System. Newly created Story Directors no longer reference standalone `opening_selector_id`; State System modules now include `opening_selector` for trait pools and `initial_state_ops`, and rolled results still persist as `StateOp`s. Legacy Opening Selector modules remain readable for compatibility and migration, but are no longer the new configuration entry point.
 - 方案预设：TRPG 检定目录新增多份内置 DM 检定风格资源（均衡、推进型、OSR、电影英雄、硬核生存、悬疑线索、戏剧赌注）；故事导演继续通过 `module_refs.rule_system_id` 选择其中一个资源来决定本轮 DM 裁定风格。

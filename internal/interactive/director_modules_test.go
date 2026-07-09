@@ -102,14 +102,21 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		if items[index].ID != id {
 			t.Fatalf("built-in actor state order mismatch at %d: got %s want %s; items=%#v", index, items[index].ID, id, items)
 		}
-		if id == DefaultActorStateModuleID {
-			continue
-		}
 		requireActorStateTemplates(t, item, "protagonist", ActorStateImportantCharacterTemplateID, ActorStateOpponentTemplateID)
 		if len(item.ActorState.InitialActors) != 1 || item.ActorState.InitialActors[0].ID != DefaultActorID || item.ActorState.InitialActors[0].TemplateID != "protagonist" {
-			t.Fatalf("genre actor state %s should ship one starter protagonist state object: %#v", id, item.ActorState.InitialActors)
+			t.Fatalf("actor state %s should ship one starter protagonist state object: %#v", id, item.ActorState.InitialActors)
 		}
 		requireNoActorStateFieldBounds(t, item)
+	}
+
+	defaultActorState, err := library.Get(DefaultActorStateModuleID)
+	if err != nil {
+		t.Fatalf("Get default actor state failed: %v", err)
+	}
+	if !actorStateTemplateHasField(defaultActorState, "protagonist", "current.body_status") ||
+		!actorStateTemplateHasField(defaultActorState, ActorStateImportantCharacterTemplateID, "relationship.attitude_to_protagonist") ||
+		!actorStateTemplateHasField(defaultActorState, ActorStateOpponentTemplateID, "threat.status") {
+		t.Fatalf("default actor state should expose generic protagonist, important-character, and opponent fields: %#v", defaultActorState.ActorState.Templates)
 	}
 
 	xiuxian, err := library.Get(ActorStateXiuxianID)

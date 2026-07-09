@@ -3,6 +3,7 @@ import { BookMarked, Bot, Building2, ChevronDown, ChevronsDownUp, ChevronsUpDown
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isSaveShortcut } from '@/lib/keyboard'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -937,26 +938,33 @@ function ModuleEditorShell<T extends { name: string; description: string; custom
   children: ReactNode
 }) {
   const { t } = useTranslation()
+  const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-      <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_180px_120px]">
-        <Field label={t('settingPanel.field.name')}>
-          <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-        </Field>
-        <Field label={t('settingPanel.field.description')}>
-          <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
-        </Field>
-        <Field label={t('settingPanel.field.tags')}>
-          <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
-        </Field>
-        <div className="flex items-end">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{presetStatusLabel(draft, t)}</span>
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-[var(--nova-bg)]">
+      <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-4">
+        <div className="rounded-[26px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <div className="grid gap-3 rounded-[21px] bg-[var(--nova-surface)] p-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1.4fr)_190px_auto]">
+            <Field label={t('settingPanel.field.name')}>
+              <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+            </Field>
+            <Field label={t('settingPanel.field.description')}>
+              <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
+            </Field>
+            <Field label={t('settingPanel.field.tags')}>
+              <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
+            </Field>
+            <div className="flex min-w-0 items-end lg:justify-end">
+              <Badge variant="outline" className="h-8 max-w-full rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[11px] font-normal text-[var(--nova-text-faint)]">
+                <span className="truncate">{presetStatusLabel(draft, t)}</span>
+              </Badge>
+            </div>
+            <div className="rounded-[16px] border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)] lg:col-span-full">
+              {editHint}
+            </div>
+          </div>
         </div>
       </div>
-      <div className="grid gap-4 p-4">
-        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-          {draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')}
-        </div>
+      <div className="grid gap-5 p-4 lg:p-5">
         {children}
       </div>
     </div>
