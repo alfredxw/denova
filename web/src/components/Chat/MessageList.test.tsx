@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { describe, expect, it, vi } from 'vitest'
-import { MessageList } from './MessageList'
+import { ChatMessageList as MessageList } from './MessageList'
 import type { ChatMessage } from '@/lib/api'
 
 function renderMessageList(ui: ReactElement) {

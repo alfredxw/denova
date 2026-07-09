@@ -984,6 +984,16 @@ html[data-nova-motion="off"] *::after {
   transition: opacity var(--nova-motion-fast) var(--nova-ease);
 }
 
+.nova-message-meta:empty {
+  display: none;
+}
+
+.nova-message-meta-spacer {
+  min-height: 1.25rem;
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .nova-message-body-with-meta:hover .nova-message-meta,
 .nova-message-body-with-meta:focus-within .nova-message-meta {
   opacity: 1;

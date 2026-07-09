@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from 'react'
 import { Activity, AlertCircle, Brain, CheckCircle2, Clock3, Eye, FileText, Loader2, RefreshCw, ScrollText, ShieldAlert, Sparkles, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { MessageList } from '@/components/Chat/MessageList'
+import { ChatMessageList as MessageList } from '@/components/Chat/MessageList'
 import { Button } from '@/components/ui/button'
 import type { ChatMessage } from '@/lib/api'
 import type { DirectorPlanMetadata, TurnDisplayEvent } from '../../types'

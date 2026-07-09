@@ -500,6 +500,91 @@ describe('StoryStage streaming rendering', () => {
     }
   })
 
+  it('keeps live thinking visible while narrative output starts', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+
+    try {
+      sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+      render(<StoryStageHarness />)
+
+      await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
+      await user.click(screen.getByRole('button', { name: '发送' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+
+      act(() => {
+        stream.enqueue({ event: 'thinking', data: JSON.stringify({ content: '正在判断门后的声响。' }) })
+      })
+      expect(await screen.findByText('正在判断门后的声响。')).toBeInTheDocument()
+
+      act(() => {
+        stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '门后传来脚步声。' }) })
+      })
+
+      await waitFor(() => expect(screen.getByText('门后传来脚步声。')).toBeInTheDocument())
+      expect(screen.getByText('正在判断门后的声响。')).toBeInTheDocument()
+    } finally {
+      stream.close()
+    }
+  })
+
+  it('groups live thinking and tool calls into one trace block and collapses them after completion', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+    const refresh = deferred<Snapshot | void>()
+    const handleDone = vi.fn(() => refresh.promise)
+
+    try {
+      sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+      render(
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+          <StoryStage
+            workspace="/tmp/book"
+            stories={[story()]}
+            story={story()}
+            tellers={[]}
+            storyId="story-1"
+            branchId="main"
+            snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {} }}
+            onDone={handleDone}
+          />
+        </VirtuosoMockContext.Provider>,
+      )
+
+      await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
+      await user.click(screen.getByRole('button', { name: '发送' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+
+      act(() => {
+        stream.enqueue({ event: 'thinking', data: JSON.stringify({ content: '正在检查开场资料。' }) })
+        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', args: '{}' }) })
+      })
+
+      expect(await screen.findByRole('button', { name: /思考过程.*1 次工具调用/ })).toBeInTheDocument()
+      expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument()
+      expect(screen.getByText('list_lore_items')).toBeInTheDocument()
+
+      act(() => {
+        stream.enqueue({ event: 'tool_result', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', content: '找到 3 条资料' }) })
+        stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '门外有灯。' }) })
+        stream.enqueue({ event: 'done', data: '{}' })
+        stream.close()
+      })
+
+      expect(await screen.findByText('门外有灯。')).toBeInTheDocument()
+      await waitFor(() => expect(handleDone).toHaveBeenCalled())
+      await waitFor(() => expect(screen.queryByText('正在检查开场资料。')).not.toBeInTheDocument())
+      expect(screen.queryByText('list_lore_items')).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ }))
+      expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument()
+      expect(screen.getByText('list_lore_items')).toBeInTheDocument()
+    } finally {
+      refresh.resolve(undefined)
+      stream.close()
+    }
+  })
+
   it('updates a live tool card when an index-based call later receives an id', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()

@@ -68,7 +68,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
             <AIMessageContent className="nova-user-message rounded-lg bg-[var(--nova-user-message-bg-to)] px-3 py-2 text-sm leading-5 text-[var(--nova-user-message-text)] whitespace-pre-wrap group-[.is-user]:px-3 group-[.is-user]:py-2" style={messageStyle}>
               {content}
             </AIMessageContent>
-            <MessageInlineMeta message={message} content={content} align="right" onEdit={canEdit ? onEdit : undefined} />
+            <MessageInlineMeta message={message} content={content} align="right" reserveSpace={Boolean(onEdit)} onEdit={canEdit ? onEdit : undefined} />
           </div>
         </AIMessage>
       )
@@ -92,6 +92,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
         ? message.streaming_target_content
         : undefined
       const visibleContent = sanitizeThinkTags(streamingTargetContent || content).trim()
+      const reserveMetaSpace = message.streaming === true || Boolean(onGenerateInteractiveImage || onRegenerate || onSwitchVersion)
       return (
         <AIMessage from="assistant" className="max-w-none">
           <div className="w-full">
@@ -110,6 +111,8 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                 message={message}
                 content={content}
                 align="left"
+                reserveSpace={reserveMetaSpace}
+                hideActions={message.streaming === true}
                 onGenerateInteractiveImage={canGenerateInteractiveImage ? onGenerateInteractiveImage : undefined}
                 generatingInteractiveImage={Boolean(message.turn_id && generatingInteractiveImageTurnId === message.turn_id)}
                 onRegenerate={canRegenerate ? onRegenerate : undefined}
@@ -136,7 +139,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       if ((message.name || '') === 'write_todos') {
         return <TodoListBlock message={message} />
       }
-      return <ToolExecutionBlock message={message} onOpenTrace={onOpenTrace} />
+      return <ToolExecutionBlock message={message} />
 
     case 'rule_roll':
       return <RuleRollBlock message={message} />
@@ -148,7 +151,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       if (message.illustration) {
         return <ChapterIllustrationBlock message={message} onInsert={onInsertIllustration} />
       }
-      return <ToolResultBlock message={message} content={content} onOpenTrace={onOpenTrace} />
+      return <ToolResultBlock content={content} />
 
     case 'context_compaction':
       return <ContextCompactionBlock message={message} />
@@ -160,6 +163,7 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return <ProposedPlanBlock message={message} highlightDialogue={highlightDialogue} onApprove={onApprovePlan} onContinue={onContinuePlan} onExit={onExitPlanMode} onLayoutChange={onPlanCardLayoutChange} />
 
     case 'system':
+      if (!content.trim()) return null
       return (
         <div className="flex justify-center">
           <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1 text-xs text-[var(--nova-text-muted)]">
@@ -259,34 +263,45 @@ function formatSignedRuleRollNumber(value: number) {
   return value > 0 ? `+${formatted}` : formatted
 }
 
-function MessageInlineMeta({ message, content, align, onEdit, onGenerateInteractiveImage, generatingInteractiveImage = false, onRegenerate, onSwitchVersion, versionIndex = -1, versionCount = 0 }: { message: ChatMessage; content: string; align: 'left' | 'right'; onEdit?: (message: ChatMessage) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; generatingInteractiveImage?: boolean; onRegenerate?: (message: ChatMessage) => void; onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void; versionIndex?: number; versionCount?: number }) {
+function MessageInlineMeta({ message, content, align, reserveSpace = false, hideActions = false, onEdit, onGenerateInteractiveImage, generatingInteractiveImage = false, onRegenerate, onSwitchVersion, versionIndex = -1, versionCount = 0 }: { message: ChatMessage; content: string; align: 'left' | 'right'; reserveSpace?: boolean; hideActions?: boolean; onEdit?: (message: ChatMessage) => void; onGenerateInteractiveImage?: (message: ChatMessage) => void; generatingInteractiveImage?: boolean; onRegenerate?: (message: ChatMessage) => void; onSwitchVersion?: (message: ChatMessage, direction: -1 | 1) => void; versionIndex?: number; versionCount?: number }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const formatted = formatMessageHoverTime(message.created_at)
   const canSwitchVersion = Boolean(onSwitchVersion && versionCount > 1 && versionIndex >= 0)
+  const hasMessageAction = !hideActions && Boolean(onEdit || onGenerateInteractiveImage || onRegenerate || canSwitchVersion)
+  const showCopyAction = !hideActions && Boolean(content.trim())
   const metaTooltip = {
     tooltipSide: 'top' as const,
     tooltipSideOffset: messageActionTooltipSideOffset,
     useTooltipProvider: false,
   }
-  if (!formatted && !content && !onEdit && !onGenerateInteractiveImage && !onRegenerate && !canSwitchVersion) return null
+  if (!formatted && !showCopyAction && !hasMessageAction) {
+    if (!reserveSpace) return null
+    return (
+      <div className={`nova-message-meta nova-message-meta-${align} nova-message-meta-spacer`} aria-hidden="true">
+        <span />
+      </div>
+    )
+  }
   return (
     <TooltipProvider delayDuration={messageActionTooltipDelayMs} skipDelayDuration={messageActionTooltipSkipDelayMs} disableHoverableContent>
       <div className={`nova-message-meta nova-message-meta-${align}`} aria-label={formatted}>
         {formatted ? <span className="nova-message-time">{formatted}</span> : null}
-        <TooltipIconButton
-          label={copied ? t('chat.action.copyMessageDone') : t('chat.action.copyMessage')}
-          {...metaTooltip}
-          className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
-          onClick={(event) => {
-            event.stopPropagation()
-            setCopied(true)
-            window.setTimeout(() => setCopied(false), copyFeedbackDurationMs)
-            void copyText(content)
-          }}
-        >
-          {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-        </TooltipIconButton>
+        {showCopyAction && (
+          <TooltipIconButton
+            label={copied ? t('chat.action.copyMessageDone') : t('chat.action.copyMessage')}
+            {...metaTooltip}
+            className="h-5 w-5 border border-transparent bg-transparent text-[var(--nova-text-faint)] shadow-none hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text-muted)]"
+            onClick={(event) => {
+              event.stopPropagation()
+              setCopied(true)
+              window.setTimeout(() => setCopied(false), copyFeedbackDurationMs)
+              void copyText(content)
+            }}
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          </TooltipIconButton>
+        )}
         {onGenerateInteractiveImage && (
           <TooltipIconButton
             label={message.interactive_images?.length || message.interactive_image ? t('chat.interactiveImage.regenerate') : t('chat.action.generateInteractiveImage')}
@@ -898,7 +913,7 @@ function PlanShell({ icon, title, badge, children }: { icon: ReactNode; title: s
 }
 
 /** 工具执行卡片，默认以单行展示运行态和结果态。 */
-function ToolExecutionBlock({ message, onOpenTrace }: { message: ChatMessage; onOpenTrace?: (runID: string) => void }) {
+function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const info = parseToolCallContent(message.content || '')
@@ -952,7 +967,6 @@ function ToolExecutionBlock({ message, onOpenTrace }: { message: ChatMessage; on
           <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
             {displaySummary}
           </span>
-          <TraceLinkButton runID={message.run_id} onOpenTrace={onOpenTrace} />
           {hasDetail && !isStreamingContent && (
             <button
               type="button"
@@ -1345,7 +1359,7 @@ function ToolStatusIcon({ status }: { status: ChatMessage['status'] }) {
 }
 
 /** 工具结果卡片，默认展示摘要，避免大段结果挤占对话区 */
-function ToolResultBlock({ message, content, onOpenTrace }: { message: ChatMessage; content: string; onOpenTrace?: (runID: string) => void }) {
+function ToolResultBlock({ content }: { content: string }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const preview = buildPreview(content, 160)
@@ -1368,7 +1382,6 @@ function ToolResultBlock({ message, content, onOpenTrace }: { message: ChatMessa
             <div className="mt-1 flex min-w-0 items-center gap-2 text-[var(--nova-text-faint)]">
               <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
               <span className="truncate">{preview || t('chat.tool.noReturn')}</span>
-              <TraceLinkButton runID={message.run_id} onOpenTrace={onOpenTrace} />
               {canExpand && (
                 <button
                   type="button"

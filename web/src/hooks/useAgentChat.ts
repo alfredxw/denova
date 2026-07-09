@@ -16,14 +16,14 @@ import {
 import type { ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import { fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
-import type { ChatMessage } from '@/lib/api'
 import {
   AgentChatTransport,
-  agentUIMessagesToChatMessages,
   buildAgentChatRequestBody,
+  normalizeAgentUIMessages,
   type AgentUIMessage,
 } from '@/lib/agent-ui'
-import { isPlanProtocolToolName, normalizeRepeatedMessages } from './useAgentEventStream'
+import { agentViewContent, buildAgentMessageViews, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
+import { isPlanProtocolToolName } from './useAgentEventStream'
 
 interface ChatOptions {
   onAgentFileChange?: (path?: string) => void | Promise<void>
@@ -58,10 +58,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       void onAgentFileChange?.()
     },
   })
-  const messages = useMemo(
-    () => normalizeRepeatedMessages(agentUIMessagesToChatMessages(uiMessages)),
-    [uiMessages],
-  )
+  const messages = useMemo(() => normalizeAgentUIMessages(uiMessages), [uiMessages])
   const isStreaming = status === 'submitted' || status === 'streaming'
   const activityContent = status === 'submitted' ? t('chat.activity.connecting') : ''
   const [sessions, setSessions] = useState<SessionSummary[]>([])
@@ -247,17 +244,17 @@ export function useAgentChat(options: ChatOptions = {}) {
     return analyzeChatContext(prepared.message, prepared.references, prepared.loreReferences, prepared.styleScenes, prepared.textSelections, prepared.planMode, sendOptions.writingSkill, sendOptions.ideContext, sendOptions.imagePresetId, sendOptions.tellerId)
   }, [isStreaming, prepareAgentRequest, t])
 
-  const submitPlanQuestion = useCallback((message: ChatMessage, content: string, _preview: string) => {
-    setUIMessages(prev => markPlanUIMessageAction(prev, message, 'answered'))
+  const submitPlanQuestion = useCallback((ref: AgentPartRef, content: string, _preview: string) => {
+    setUIMessages(prev => markPlanUIMessageAction(prev, ref, 'answered'))
     void send(content, { planMode: true, hideUserMessage: true })
   }, [send, setUIMessages])
 
-  const approveProposedPlan = useCallback((message: ChatMessage) => {
-    const plan = message.content || ''
+  const approveProposedPlan = useCallback((ref: AgentPartRef) => {
+    const planView = findAgentMessageView(messages, ref)
+    const plan = planView ? agentViewContent(planView) : ''
     if (!plan.trim()) return
-    const planIndex = findMessageIndex(messages, message)
-    const userContext = collectPlanUserContext(messages, planIndex)
-    setUIMessages(prev => markPlanUIMessageAction(prev, message, 'approved'))
+    const userContext = collectPlanUserContext(messages, ref)
+    setUIMessages(prev => markPlanUIMessageAction(prev, ref, 'approved'))
     void send(formatApprovedPlanExecutionMessage(plan, userContext), {
       planMode: false,
       hideUserMessage: true,
@@ -425,31 +422,25 @@ function planModeForSession(planModes: Record<string, boolean>, sessionId: strin
   return planModes[id] ?? defaultValue
 }
 
-function findMessageIndex(messages: ChatMessage[], target: ChatMessage) {
-  if (target.id) {
-    const byID = messages.findIndex((message) => message.id === target.id)
-    if (byID >= 0) return byID
-  }
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    const message = messages[i]
-    if (message.role === 'proposed_plan' && message.content === target.content) return i
-  }
-  return -1
+function findAgentMessageView(messages: AgentUIMessage[], ref: AgentPartRef): AgentMessageView | undefined {
+  return buildAgentMessageViews(messages).find((view) => sameAgentPartRef(view.ref, ref))
 }
 
-function collectPlanUserContext(messages: ChatMessage[], planIndex: number) {
-  const end = planIndex >= 0 ? planIndex : messages.length
+function collectPlanUserContext(messages: AgentUIMessage[], target: AgentPartRef) {
+  const views = buildAgentMessageViews(messages)
+  const planIndex = views.findIndex((view) => sameAgentPartRef(view.ref, target))
+  const end = planIndex >= 0 ? planIndex : views.length
   let start = 0
   for (let i = end - 1; i >= 0; i -= 1) {
-    if (messages[i].role === 'proposed_plan') {
+    if (views[i].kind === 'proposed-plan') {
       start = i + 1
       break
     }
   }
-  const userMessages = messages
+  const userMessages = views
     .slice(start, end)
-    .filter((message) => message.role === 'user')
-    .map((message) => (message.content || '').trim())
+    .filter((view) => view.kind === 'user')
+    .map((view) => agentViewContent(view).trim())
     .filter(Boolean)
   if (userMessages.length <= 1) return userMessages[0] || ''
   return [
@@ -478,22 +469,33 @@ function isPlanProtocolToolPart(part: AgentUIMessage['parts'][number]) {
 
 function markPlanUIMessageAction(
   messages: AgentUIMessage[],
-  target: ChatMessage,
-  action: NonNullable<ChatMessage['plan_action']>,
+  target: AgentPartRef,
+  action: AgentPlanAction,
 ) {
   return messages.map(message => ({
     ...message,
     parts: message.parts.map((part, index) => {
-      if (!part.type.startsWith('data-agent-plan-')) return part
+      const raw = part as Record<string, unknown>
+      const type = typeof raw.type === 'string' ? raw.type : ''
+      if (!type.startsWith('data-agent-plan-')) return part
       const data = 'data' in part && part.data && typeof part.data === 'object' && !Array.isArray(part.data)
         ? part.data as Record<string, unknown>
         : {}
       const partID = 'id' in part && typeof part.id === 'string' ? part.id : `${message.id}:${index}`
-      if (target.id && target.id !== partID && target.id !== `${message.id}:${index}`) return part
-      if (!target.id && data.content !== target.content) return part
+      const candidate = { messageId: message.id, partId: partID, partIndex: index, type }
+      if (!sameAgentPartRef(candidate, target)) return part
       return { ...part, data: { ...data, plan_action: action, status: 'success' } } as AgentUIMessage['parts'][number]
     }),
   }))
+}
+
+type AgentPlanAction = 'answered' | 'approved' | 'continue' | 'exited'
+
+function sameAgentPartRef(left: AgentPartRef, right: AgentPartRef) {
+  return left.messageId === right.messageId
+    && left.partIndex === right.partIndex
+    && left.partId === right.partId
+    && left.type === right.type
 }
 
 function isAbortError(error: unknown) {

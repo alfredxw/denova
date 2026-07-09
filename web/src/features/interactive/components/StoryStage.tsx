@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { FileReferencePicker } from '@/components/Chat/FileReferencePicker'
 import { CONTEXT_ANALYSIS_SIMULATED_MESSAGE, ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
-import { MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
+import { ChatMessageList as MessageList, type TurnScrollRequest } from '@/components/Chat/MessageList'
 import { AgentComposerShell } from '@/components/Chat/AgentComposerShell'
 import { ModelProfileSwitcher } from '@/components/Chat/ModelProfileSwitcher'
 import { TokenUsageDialog } from '@/components/Chat/TokenUsagePanel'
@@ -738,6 +738,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           case 'error': {
             const data = JSON.parse(value.data)
             flushLiveMessageBuffer()
+            finishLiveMessages()
             setStageActivityContent('')
             setStageLiveMessages((prev) => [
               ...prev,
@@ -786,6 +787,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     } catch (error) {
       if (!isAbortError(error)) {
         flushLiveMessageBuffer()
+        finishLiveMessages()
         setStageActivityContent('')
         setStageLiveMessages((prev) => [
           ...prev,
@@ -1216,11 +1218,11 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 isStreaming={streaming}
                 activityContent={activityContent}
                 highlightDialogue
-                collapseTraceBeforeAssistant
                 scrollResetKey={scrollResetKey}
                 bottomPaddingClassName="pb-36"
                 bottomPaddingPx={messageListBottomPadding}
                 messageStyle={stageTextStyle}
+                collapseTraceBeforeAssistant
                 turnScrollRequest={turnScrollRequest}
                 onVisibleTurnAnchorChange={handleVisibleTurnAnchorChange}
                 onEditMessage={startEditingMessage}
@@ -1765,11 +1767,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     nonNarrativeLiveMessageStreamingRef.current = false
     setStageLiveMessages((prev) =>
       prev.map((msg) =>
-        msg.role === 'thinking' || msg.role === 'tool_call' || msg.role === 'context_compaction'
+        msg.role === 'tool_call' || msg.role === 'context_compaction'
           ? {
               ...msg,
-              streaming: false,
-              status: msg.role === 'tool_call' || msg.role === 'context_compaction' ? (msg.status === 'running' ? 'success' : msg.status) : msg.status,
+              status: msg.status === 'running' ? 'success' : msg.status,
             }
           : msg,
       ),

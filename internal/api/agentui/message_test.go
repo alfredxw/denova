@@ -35,7 +35,7 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	assertMessagePartType(t, messages[1], "assistant", "text")
 	assertMessagePartType(t, messages[2], "assistant", "reasoning")
 	assertMessagePartType(t, messages[3], "assistant", "dynamic-tool")
-	assertMessagePartType(t, messages[4], "assistant", "data-agent-tool-result")
+	assertMessagePartType(t, messages[4], "assistant", DataTypeToolResult)
 	assertMessagePartType(t, messages[5], "assistant", DataTypeContextCompaction)
 	assertMessagePartType(t, messages[6], "assistant", DataTypeTokenUsage)
 	assertMessagePartType(t, messages[7], "assistant", DataTypePlanQuestion)

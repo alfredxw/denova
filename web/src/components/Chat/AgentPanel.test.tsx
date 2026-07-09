@@ -71,6 +71,30 @@ describe('AgentPanel', () => {
     expect(handleCreateSession).toHaveBeenCalledTimes(1)
   })
 
+  it('创作 Agent 将思考和工具调用折叠到同一个思考过程', async () => {
+    const user = userEvent.setup()
+    renderAgentPanel({
+      messages: [{
+        id: 'assistant-trace',
+        role: 'assistant',
+        parts: [
+          { type: 'reasoning', text: '读取章节上下文' },
+          { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-1', state: 'output-available', input: { path: 'chapters/ch01.md' }, output: 'ok' },
+          { type: 'text', text: '已完成续写。' },
+        ],
+      }],
+    })
+
+    expect(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ })).toBeInTheDocument()
+    expect(screen.queryByText('读取章节上下文')).not.toBeInTheDocument()
+    expect(screen.queryByText('read_file')).not.toBeInTheDocument()
+    expect(screen.getByText('已完成续写。')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ }))
+    expect(screen.getByText('读取章节上下文')).toBeInTheDocument()
+    expect(screen.getByText('read_file')).toBeInTheDocument()
+  })
+
   it('打开 SubAgent 详情时通知外层扩展右栏', async () => {
     const user = userEvent.setup()
     const handleDetailsChange = vi.fn()
@@ -79,11 +103,13 @@ describe('AgentPanel', () => {
       messages: [{
         id: 'subagent-output-1',
         role: 'assistant',
-        content: '调研摘要',
-        agent_name: 'researcher',
-        subagent: true,
-        subagent_session_id: 'run-1-subagent-01-researcher',
-      } as any],
+        metadata: {
+          agent_name: 'researcher',
+          subagent: true,
+          subagent_session_id: 'run-1-subagent-01-researcher',
+        },
+        parts: [{ type: 'text', text: '调研摘要' }],
+      }],
       onSubAgentDetailsChange: handleDetailsChange,
     })
 
@@ -107,7 +133,7 @@ describe('AgentPanel', () => {
 
     try {
       const { container } = renderAgentPanel({
-        messages: [{ id: 'assistant-1', role: 'assistant', content: '最后一行内容' } as any],
+        messages: [{ id: 'assistant-1', role: 'assistant', parts: [{ type: 'text', text: '最后一行内容' }] }],
       })
 
       await waitFor(() => {

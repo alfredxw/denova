@@ -4,13 +4,14 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { ChatMessage } from '@/lib/api'
+import type { AgentTokenUsageRecord } from '@/lib/agent-message-view'
 import { focusDialogContentOnOpen } from './dialog-focus'
 
 const MAX_TOKEN_USAGE_MESSAGES = 10
 
 type TokenUsageSummary = {
   count: number
-  recent: ChatMessage[]
+  recent: TokenUsageRecord[]
   promptTokens: number
   cachedPromptTokens: number
   uncachedPromptTokens: number
@@ -44,13 +45,15 @@ type TokenUsageRow = {
 
 type TokenUsageGroup = {
   id: string
-  message: ChatMessage
+  message: TokenUsageRecord
   rows: TokenUsageRow[]
 }
 
+export type TokenUsageRecord = AgentTokenUsageRecord | ChatMessage
+
 export function TokenUsageDialog({ open, messages, onOpenChange, onOpenTrace }: {
   open: boolean
-  messages: ChatMessage[]
+  messages: TokenUsageRecord[]
   onOpenChange: (open: boolean) => void
   onOpenTrace?: (runID: string) => void
 }) {
@@ -283,7 +286,7 @@ function TokenBreakdown({ row }: { row: TokenUsageRow }) {
   )
 }
 
-function summarizeTokenUsage(messages: ChatMessage[]): TokenUsageSummary {
+function summarizeTokenUsage(messages: TokenUsageRecord[]): TokenUsageSummary {
   const usageMessages = normalizeTokenUsageMessages(messages)
   const summary = usageMessages.reduce<TokenUsageSummary>((acc, message) => {
     acc.count += 1
@@ -311,15 +314,15 @@ function summarizeTokenUsage(messages: ChatMessage[]): TokenUsageSummary {
   return summary
 }
 
-function normalizeTokenUsageMessages(messages: ChatMessage[]) {
+function normalizeTokenUsageMessages(messages: TokenUsageRecord[]) {
   return messages
-    .filter((message) => message.role === 'token_usage' && numberOrZero(message.model_calls) > 0)
+    .filter((message) => (!message.role || message.role === 'token_usage') && numberOrZero(message.model_calls) > 0)
     .slice()
     .sort((a, b) => timestampValue(a.created_at) - timestampValue(b.created_at))
     .slice(-MAX_TOKEN_USAGE_MESSAGES)
 }
 
-function buildTokenUsageGroups(messages: ChatMessage[]): TokenUsageGroup[] {
+function buildTokenUsageGroups(messages: TokenUsageRecord[]): TokenUsageGroup[] {
   return messages.map((message) => {
     const runID = message.run_id || message.id || ''
     const agentKind = message.agent_kind || ''

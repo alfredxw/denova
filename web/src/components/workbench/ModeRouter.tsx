@@ -19,7 +19,9 @@ import { SkillsView } from '@/features/skills/SkillsView'
 import { SettingsView } from '@/features/settings/SettingsView'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { BookRecord, ChapterIllustration, ChapterSummary, ChatMessage, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
+import type { BookRecord, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
+import type { AgentUIMessage } from '@/lib/agent-ui'
+import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import type { Tab } from './TabController'
@@ -69,7 +71,7 @@ interface ModeRouterProps {
   editorAutoSaveEnabled: boolean
   editorAutoSaveDelayMs: number
   versionRefreshSignal: number
-  messages: ChatMessage[]
+  messages: AgentUIMessage[]
   sessions: SessionSummary[]
   activeSessionId: string
   activityContent: string
@@ -119,8 +121,8 @@ interface ModeRouterProps {
   onTextSelectionRemove: (index: number) => void
   onChatPlanModeChange: (value: boolean) => void
   onChatPlanModeToggle: () => void
-  onSubmitPlanQuestion: (message: ChatMessage, content: string, preview: string) => void
-  onApproveProposedPlan: (message: ChatMessage) => void
+  onSubmitPlanQuestion: (ref: AgentPartRef, content: string, preview: string) => void
+  onApproveProposedPlan: (ref: AgentPartRef) => void
   onExitChatPlanMode: () => void
   onDismissUpdateNotice?: () => void
 }

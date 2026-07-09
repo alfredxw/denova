@@ -19,6 +19,7 @@ const (
 	DataTypeRuleRoll          = "data-agent-rule-roll"
 	DataTypeSystem            = "data-agent-system"
 	DataTypeTokenUsage        = "data-agent-token-usage"
+	DataTypeToolResult        = "data-agent-tool-result"
 )
 
 // Message is the backend JSON shape for AI SDK UI messages used by the web app.
@@ -87,7 +88,7 @@ func messageFromHistoryEntry(entry session.HistoryEntry, index int) (Message, bo
 			Parts:    []map[string]any{toolPartFromHistory(entry)},
 		}, true
 	case "tool_result":
-		return assistantDataMessage(entry, index, "data-agent-tool-result", entryPayload(entry)), true
+		return assistantDataMessage(entry, index, DataTypeToolResult, entryPayload(entry)), true
 	case "rule_roll":
 		return assistantDataMessage(entry, index, DataTypeRuleRoll, entryPayload(entry)), true
 	case "interactive_image":

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { InputArea } from './InputArea'
-import { MessageList } from './MessageList'
+import { ChatMessageList as MessageList } from './MessageList'
 import { clearConfigManagerSession, getConfigManagerMessages, runConfigManagerStream } from '@/lib/api'
 import type { ChatMessage, ConfigManagerRunRequest, SSEEvent } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
@@ -126,6 +126,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         scrollResetKey={chatKey}
         bottomPaddingClassName="pb-36"
         bottomPaddingPx={messageListBottomPadding}
+        collapseTraceBeforeAssistant
       />
       <InputArea
         onSend={(value) => void send(value)}

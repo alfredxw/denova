@@ -14,7 +14,16 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	encoder := NewStreamEncoder(&out)
 
 	events := []agent.Event{
-		{Type: "thinking", Data: map[string]any{"content": "分析", "run_id": "run-1"}},
+		{Type: "thinking", Data: map[string]any{
+			"content":            "分析",
+			"run_id":             "run-1",
+			"created_at":         "2026-07-08T12:00:00Z",
+			"display_role":       "thinking",
+			"turn_id":            "turn-1",
+			"navigation_turn_id": "turn-1",
+			"turn_versions":      []map[string]any{{"turn_id": "turn-1", "ts": "2026-07-08T12:00:00Z", "current": true}},
+			"turn_version_index": 0,
+		}},
 		{Type: "chunk", Data: map[string]any{"content": "正文", "run_id": "run-1"}},
 		{Type: "tool_call", Data: map[string]any{"id": "tool-1", "name": "read_file", "args": `{"path"`}},
 		{Type: "tool_args_delta", Data: map[string]any{"id": "tool-1", "delta": `:"a.md"}`}},
@@ -82,6 +91,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertChunk(t, chunks, DataTypeInteractiveImage, "id", "tool-2")
 	assertChunk(t, chunks, DataTypeRuleRoll, "id", "roll-1")
 	assertChunk(t, chunks, "tool-input-available", "toolCallId", "tool-1")
+	assertStartMetadata(t, chunks[0])
 }
 
 func parseUIStreamChunks(t *testing.T, raw string) ([]map[string]any, bool) {
@@ -126,4 +136,29 @@ func assertChunk(t *testing.T, chunks []map[string]any, chunkType, key, value st
 		}
 	}
 	t.Fatalf("missing chunk type=%s %s=%s in %#v", chunkType, key, value, chunks)
+}
+
+func assertStartMetadata(t *testing.T, chunk map[string]any) {
+	t.Helper()
+	metadata, ok := chunk["messageMetadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected start metadata, got %#v", chunk)
+	}
+	for key, want := range map[string]any{
+		"run_id":             "run-1",
+		"created_at":         "2026-07-08T12:00:00Z",
+		"display_role":       "thinking",
+		"turn_id":            "turn-1",
+		"navigation_turn_id": "turn-1",
+	} {
+		if metadata[key] != want {
+			t.Fatalf("metadata %s mismatch: want %v got %#v", key, want, metadata[key])
+		}
+	}
+	if metadata["turn_version_index"] != float64(0) {
+		t.Fatalf("expected turn_version_index metadata, got %#v", metadata)
+	}
+	if _, ok := metadata["turn_versions"].([]any); !ok {
+		t.Fatalf("expected turn_versions metadata, got %#v", metadata["turn_versions"])
+	}
 }

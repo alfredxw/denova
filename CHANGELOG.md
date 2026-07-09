@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - WebUI：Chat UI 迁移到 AI SDK `useChat` / `UIMessage` 状态模型，并新增 AI SDK 兼容流式接口 `/api/chat/ui`、`/api/chat/ui/stream` 和 `/api/session/messages/ui`；旧会话历史在读取时即时转换为 `AgentUIMessage[]`，旧接口暂时保留。消息、思考、工具、Plan 和输入相关渲染开始接入 AI Elements primitives，专属协议状态统一使用 `data-agent-*` part 命名。
 - WebUI: Migrated Chat UI state to AI SDK `useChat` / `UIMessage` and added AI SDK-compatible stream endpoints `/api/chat/ui`, `/api/chat/ui/stream`, and `/api/session/messages/ui`; existing session history is converted to `AgentUIMessage[]` at read time while legacy endpoints remain available. Message, reasoning, tool, Plan, and prompt surfaces now start using AI Elements primitives, with app-specific protocol state carried by `data-agent-*` parts.
+- WebUI：主创作 Agent 消息列表改为直接消费 `AgentUIMessage.parts`，新增 parts 渲染 view 选择器和 Agent 专用消息列表；旧 `ChatMessageList` 保留给互动故事、自动化、配置管理和导演后台等未迁移面，降低回归风险。
+- WebUI: The main writing Agent message list now consumes `AgentUIMessage.parts` directly through a typed parts-view selector and Agent-specific list, while the legacy `ChatMessageList` remains for interactive stories, automations, config manager chat, and director background views.
 - 游戏模式：TRPG 检定与状态系统新增 State Binding 联动。TRPG 检定资源可绑定状态系统并配置 `state_bindings`，`prepare_interactive_turn` 会按 `binding_id`、`actor_id` 和 `target_actor_id` 自动读取 number 状态、计算 d20 修正、合并配置状态变化与 DM 临场状态变化，并把非数值状态作为 Agent 设计四档结果的提示词上下文。
 - Game Mode: Added State Binding between TRPG Checks and the State System. TRPG Check resources can bind an Actor State module and define `state_bindings`; `prepare_interactive_turn` now uses `binding_id`, `actor_id`, and `target_actor_id` to read numeric state, compute fixed-d20 modifiers, merge configured and DM-authored state changes, and expose non-numeric state as prompt context for outcome design.
 - 游戏模式：TRPG 检定配置新增“必须检定/不要检定”触发示例，Story Director 策略新增规则可见性开关；默认仍只在侧栏审计，开启公开掷骰后会在玩家行动与故事正文之间展示玩家友好的骰卡。
@@ -174,6 +176,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- WebUI：修复刷新页面并恢复活跃 Agent 流时，历史中的思考/工具/Token 卡片会被恢复流 replay 再追加到底部的问题；前端现在按 `AgentUIMessage.parts` 的稳定身份合并同一 run 的重复 part，并保留更新后的完成态。
+- WebUI: Fixed duplicated reasoning/tool/token cards being appended at the bottom after refreshing while an Agent run is active. The frontend now merges replayed `AgentUIMessage.parts` by stable part identity within the same run and preserves the latest completed state.
+- 游戏模式：修复主舞台输出正文时 thinking 被折叠进追踪摘要或提前收起的问题，并为消息底部操作区预留稳定高度，减少流式输出完成前后的布局抖动。
+- Game Mode: Fixed live thinking being folded into the trace summary or collapsed too early while story prose streams, and reserved stable space for message actions to reduce layout shifts between streaming and completed messages.
 - Agent：provider request id 关联不再依赖 `agentKind+source` pending 队列推断，改为通过 `call_id` / `span_id` / `run_id` 在模型 wrapper 内闭环传递，避免同类 Agent 并发模型调用时错配。
 - Agent: Provider request ID attribution no longer relies on an `agentKind+source` pending queue. The model wrapper now carries `call_id`, `span_id`, and `run_id` explicitly to avoid mismatches during concurrent same-kind Agent model calls.
 - Agent：修复 `interactive_director` 文件访问中间件误拦截 `apply_actor_state_patch` 和 `apply_story_memory_patches` 的问题；后台导演仍只允许读写当前分支 `director.md`，并继续拒绝 shell 等非授权工具。

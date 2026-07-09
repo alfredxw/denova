@@ -3,8 +3,8 @@ import type { LucideIcon } from 'lucide-react'
 import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
-import { TokenUsageDialog } from './TokenUsagePanel'
-import type { ChatMessage, TextSelection } from '@/lib/api'
+import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
+import type { TextSelection } from '@/lib/api'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { Button } from '@/components/ui/button'
 import { AgentComposerShell } from './AgentComposerShell'
@@ -90,7 +90,7 @@ interface InputAreaProps {
   placeholder?: string
   disabledPlaceholder?: string
   onContextAnalyze?: (message: string) => void | Promise<void>
-  tokenUsageMessages?: ChatMessage[]
+  tokenUsageMessages?: TokenUsageRecord[]
   onOpenTrace?: (runID: string) => void
   agentKey?: VisibleAgentKey
   workspace?: string
@@ -213,7 +213,7 @@ export function InputArea({
     ...styleScenes.map((scene) => ({ kind: 'style' as const, value: scene, label: scene })),
   ], [knownLoreTokens, loreReferenceLabels, loreReferences, referencedFiles, styleScenes])
   const tokenUsageCount = useMemo(
-    () => Math.min(MAX_TOKEN_USAGE_MENU_COUNT, tokenUsageMessages.filter((message) => message.role === 'token_usage' && Number(message.model_calls || 0) > 0).length),
+    () => Math.min(MAX_TOKEN_USAGE_MENU_COUNT, tokenUsageMessages.filter((message) => (!message.role || message.role === 'token_usage') && Number(message.model_calls || 0) > 0).length),
     [tokenUsageMessages],
   )
 

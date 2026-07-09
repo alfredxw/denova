@@ -20,6 +20,10 @@ export interface AgentMessageMetadata {
   sse_display_notice?: string
   sse_generated_chars?: number
   display_hidden?: boolean
+  turn_id?: string
+  navigation_turn_id?: string
+  turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
+  turn_version_index?: number
 }
 
 type AgentDataPayload = Record<string, unknown>
@@ -106,6 +110,10 @@ export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChat
   }
 }
 
+export function normalizeAgentUIMessages(messages: AgentUIMessage[]): AgentUIMessage[] {
+  return normalizeRepeatedAgentUIParts(normalizeRepeatedAgentUIMessageIDs(messages))
+}
+
 export function agentUIMessagesToChatMessages(messages: AgentUIMessage[]): ChatMessage[] {
   const result: ChatMessage[] = []
   for (const message of messages) {
@@ -142,6 +150,167 @@ export function agentUIMessagesToChatMessages(messages: AgentUIMessage[]): ChatM
     })
   }
   return result
+}
+
+function normalizeRepeatedAgentUIMessageIDs(messages: AgentUIMessage[]) {
+  const indexByKey = new Map<string, number>()
+  const normalized: AgentUIMessage[] = []
+  for (const message of messages) {
+    const key = message.id || `${message.role}:${normalized.length}`
+    const existingIndex = indexByKey.get(key)
+    if (existingIndex !== undefined) {
+      normalized[existingIndex] = message
+      continue
+    }
+    indexByKey.set(key, normalized.length)
+    normalized.push(message)
+  }
+  return normalized
+}
+
+function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
+  const normalized = messages.map(message => ({ ...message, parts: [...message.parts] })) as AgentUIMessage[]
+  const locationByKey = new Map<string, { messageIndex: number; partIndex: number }>()
+  const removed = new Set<string>()
+
+  normalized.forEach((message, messageIndex) => {
+    message.parts.forEach((part, partIndex) => {
+      const key = agentUIPartDedupeKey(message, part)
+      if (!key) return
+      const existing = locationByKey.get(key)
+      if (!existing) {
+        locationByKey.set(key, { messageIndex, partIndex })
+        return
+      }
+      const existingMessage = normalized[existing.messageIndex]
+      existingMessage.parts[existing.partIndex] = mergeDuplicateAgentUIPart(existingMessage.parts[existing.partIndex], part)
+      existingMessage.metadata = mergeAgentMessageMetadata(existingMessage.metadata, message.metadata)
+      removed.add(`${messageIndex}:${partIndex}`)
+    })
+  })
+
+  return normalized
+    .map((message, messageIndex) => ({
+      ...message,
+      parts: message.parts.filter((_part, partIndex) => !removed.has(`${messageIndex}:${partIndex}`)),
+    }) as AgentUIMessage)
+    .filter(message => message.parts.length > 0)
+}
+
+function agentUIPartDedupeKey(message: AgentUIMessage, part: AgentUIMessage['parts'][number]) {
+  const raw = part as Record<string, unknown>
+  const type = readString(raw.type)
+  if (!type) return ''
+  const metadata = agentPartMetadata(message, raw)
+  const runID = firstNonEmpty(metadata.run_id || '', readString(objectData(raw.data).run_id))
+
+  if (type === 'dynamic-tool' || type.startsWith('tool-')) {
+    const toolCallID = readString(raw.toolCallId)
+    if (!toolCallID) return ''
+    return scopedAgentPartKey(runID, `tool:${toolCallID}`)
+  }
+
+  if (isAgentDataPartType(type)) {
+    const data = objectData(raw.data)
+    const id = firstNonEmpty(readString(raw.id), readString(data.id))
+    if (id) return scopedAgentPartKey(runID, `data:${type}:${id}`)
+    if (runID && (type === 'data-agent-token-usage' || type === 'data-agent-context-compaction')) {
+      return `run:${runID}:data:${type}`
+    }
+    return ''
+  }
+
+  if ((type === 'text' || type === 'reasoning') && runID) {
+    const text = readString(raw.text).trim()
+    if (!text) return ''
+    const fingerprint = type === 'reasoning'
+      ? contentPrefixFingerprint(text)
+      : textFingerprint(text)
+    return `run:${runID}:content:${type}:${fingerprint}`
+  }
+
+  return ''
+}
+
+function agentPartMetadata(message: AgentUIMessage, raw: Record<string, unknown>): AgentMessageMetadata {
+  return {
+    ...(message.metadata || {}),
+    ...agentMetadataFromProvider(raw.providerMetadata),
+    ...agentMetadataFromProvider(raw.callProviderMetadata),
+  }
+}
+
+function agentMetadataFromProvider(metadata: unknown): AgentMessageMetadata {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {}
+  const agent = (metadata as Record<string, unknown>).agent
+  const raw = agent && typeof agent === 'object' && !Array.isArray(agent)
+    ? agent as Record<string, unknown>
+    : metadata as Record<string, unknown>
+  return {
+    run_id: readString(raw.run_id) || undefined,
+    agent_kind: readString(raw.agent_kind) || undefined,
+    agent_name: readString(raw.agent_name) || undefined,
+    root_agent_name: readString(raw.root_agent_name) || undefined,
+    subagent: typeof raw.subagent === 'boolean' ? raw.subagent : undefined,
+    subagent_session_id: readString(raw.subagent_session_id) || undefined,
+    subagent_type: readString(raw.subagent_type) || undefined,
+  }
+}
+
+function scopedAgentPartKey(runID: string, key: string) {
+  return runID ? `run:${runID}:${key}` : key
+}
+
+function mergeDuplicateAgentUIPart(existing: AgentUIMessage['parts'][number], incoming: AgentUIMessage['parts'][number]) {
+  const existingRaw = existing as Record<string, unknown>
+  const incomingRaw = incoming as Record<string, unknown>
+  const type = readString(incomingRaw.type)
+  if (type === 'dynamic-tool' || type.startsWith('tool-')) {
+    return toolPartStateRank(readString(incomingRaw.state)) >= toolPartStateRank(readString(existingRaw.state))
+      ? incoming
+      : existing
+  }
+  if (isAgentDataPartType(type)) {
+    const incomingStatus = readString(objectData(incomingRaw.data).status)
+    const existingStatus = readString(objectData(existingRaw.data).status)
+    return dataPartStatusRank(incomingStatus) >= dataPartStatusRank(existingStatus)
+      ? incoming
+      : existing
+  }
+  return incoming
+}
+
+function mergeAgentMessageMetadata(left?: AgentMessageMetadata, right?: AgentMessageMetadata): AgentMessageMetadata | undefined {
+  if (!left) return right
+  if (!right) return left
+  return { ...left, ...right }
+}
+
+function toolPartStateRank(state: string) {
+  if (state === 'output-available' || state === 'output-error' || state === 'output-denied') return 4
+  if (state === 'approval-responded') return 3
+  if (state === 'input-available') return 2
+  if (state === 'approval-requested' || state === 'input-streaming') return 1
+  return 0
+}
+
+function dataPartStatusRank(status: string) {
+  if (status === 'success' || status === 'error') return 2
+  if (status === 'running') return 1
+  return 0
+}
+
+function textFingerprint(value: string) {
+  let hash = 0
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash * 31) + value.charCodeAt(index)) | 0
+  }
+  return `${value.length}:${(hash >>> 0).toString(36)}`
+}
+
+function contentPrefixFingerprint(value: string) {
+  const prefix = value.length > 24 ? value.slice(0, 24) : value
+  return textFingerprint(prefix)
 }
 
 function bodyMessage(body: Record<string, any> | undefined) {
@@ -228,6 +397,10 @@ function metadataToChatFields(metadata?: AgentMessageMetadata): Partial<ChatMess
     sse_hidden_reason: metadata.sse_hidden_reason,
     sse_display_notice: metadata.sse_display_notice,
     sse_generated_chars: metadata.sse_generated_chars,
+    turn_id: metadata.turn_id,
+    navigation_turn_id: metadata.navigation_turn_id,
+    turn_versions: metadata.turn_versions,
+    turn_version_index: metadata.turn_version_index,
   }
 }
 

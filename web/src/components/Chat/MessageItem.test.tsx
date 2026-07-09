@@ -78,6 +78,49 @@ describe('MessageItem', () => {
     expect(persistedTags).toEqual(streamedTags)
   })
 
+  it('流式 assistant 不展示操作按钮但预留底部操作区，完成后再展示复制', () => {
+    const { container, rerender } = render(
+      <MessageItem
+        message={{ role: 'assistant', content: '故事继续。', streaming: true }}
+      />,
+    )
+
+    expect(container.querySelector('.nova-message-meta-spacer')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '复制消息' })).not.toBeInTheDocument()
+
+    rerender(
+      <MessageItem
+        message={{ role: 'assistant', content: '故事继续。', turn_id: 'turn-1', streaming: false }}
+      />,
+    )
+
+    expect(container.querySelector('.nova-message-meta-spacer')).toBeNull()
+    expect(container.querySelector('.nova-message-meta')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '复制消息' })).toBeInTheDocument()
+  })
+
+  it('流式 assistant 即使存在完成后操作，也要等输出结束才显示按钮', () => {
+    render(
+      <MessageItem
+        message={{ role: 'assistant', content: '故事继续。', turn_id: 'turn-1', streaming: true }}
+        onGenerateInteractiveImage={vi.fn()}
+        onRegenerate={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: '复制消息' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '生成互动图像' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '重新生成这一轮' })).not.toBeInTheDocument()
+  })
+
+  it('流式 user 消息没有编辑权限时也能复制并保留与后续内容的间隔', () => {
+    const { container } = render(<MessageItem message={{ role: 'user', content: '继续', streaming: false }} />)
+
+    expect(container.querySelector('.nova-message-meta-spacer')).toBeNull()
+    expect(container.querySelector('.nova-message-meta')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '复制消息' })).toBeInTheDocument()
+  })
+
   it('游戏模式 assistant 消息高亮常见对白引号', () => {
     const { container } = render(
       <MessageItem

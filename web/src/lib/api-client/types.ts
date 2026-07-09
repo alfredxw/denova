@@ -1,3 +1,6 @@
+// Legacy display model used by old SSE chat surfaces, interactive story UI,
+// automation run chat, and config manager chat. Main Agent chat uses
+// AgentUIMessage parts directly.
 export interface ChatMessage {
   type?: 'message' | 'clear'
   role?: 'user' | 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'rule_roll' | 'context_compaction' | 'token_usage' | 'plan_question' | 'proposed_plan' | 'system' | 'error'

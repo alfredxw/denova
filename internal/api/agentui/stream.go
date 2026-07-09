@@ -384,6 +384,9 @@ func providerMetadataFromData(data map[string]any) map[string]any {
 
 func messageMetadataFromData(data map[string]any) map[string]any {
 	keys := []string{
+		"created_at",
+		"display_role",
+		"history_type",
 		"run_id",
 		"agent_kind",
 		"agent_name",
@@ -396,6 +399,10 @@ func messageMetadataFromData(data map[string]any) map[string]any {
 		"sse_hidden_reason",
 		"sse_display_notice",
 		"sse_generated_chars",
+		"turn_id",
+		"navigation_turn_id",
+		"turn_versions",
+		"turn_version_index",
 	}
 	meta := map[string]any{}
 	for _, key := range keys {

@@ -3,7 +3,8 @@ import { Check, ChevronRight, Compass, Loader2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { fetchSettings } from '@/features/settings/api'
-import type { ChatMessage } from '@/lib/api'
+import type { AgentUIMessage } from '@/lib/agent-ui'
+import { agentViewContent, buildAgentMessageViews } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { ONBOARDING_OPEN_EVENT } from './events'
 import { hasUsableLanguageModel } from './model-status'
@@ -39,7 +40,7 @@ interface OnboardingGuideProps {
   workspace: string
   booksCount: number
   currentBookName: string
-  messages: ChatMessage[]
+  messages: AgentUIMessage[]
   isStreaming: boolean
   onNavigate: (target: OnboardingNavigationTarget, prompt?: string) => void
 }
@@ -88,9 +89,9 @@ export function OnboardingGuide({
 
   const completedAgentTurn = useMemo(() => {
     if (isStreaming) return false
-    return messages.some((message) =>
-      (message.role === 'assistant' || message.role === 'tool_result') &&
-      (Boolean(message.content?.trim()) || message.status === 'success'),
+    return buildAgentMessageViews(messages).some((view) =>
+      (view.kind === 'assistant' || view.kind === 'tool-result' || view.kind === 'tool') &&
+      (Boolean(agentViewContent(view).trim()) || view.status === 'success'),
     )
   }, [isStreaming, messages])
 

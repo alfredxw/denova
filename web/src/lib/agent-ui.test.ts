@@ -3,6 +3,7 @@ import {
   AgentChatTransport,
   agentUIMessagesToChatMessages,
   buildAgentChatRequestBody,
+  normalizeAgentUIMessages,
   type AgentUIMessage,
 } from './agent-ui'
 
@@ -142,6 +143,105 @@ describe('agent-ui', () => {
     } finally {
       fetchSpy.mockRestore()
     }
+  })
+
+  it('恢复活跃流时按 part 稳定身份合并历史和 replay，避免卡片在底部重复', () => {
+    const messages = normalizeAgentUIMessages([
+      {
+        id: 'history-tool',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [
+          { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-1', state: 'output-available', input: { path: 'a.md' }, output: 'persisted' },
+        ],
+      },
+      {
+        id: 'history-thinking',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [{ type: 'reasoning', text: '先分析' }],
+      },
+      {
+        id: 'history-usage',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [{ type: 'data-agent-token-usage', id: 'run-1', data: { run_id: 'run-1', total_tokens: 10 } }],
+      },
+      {
+        id: 'replay-assistant',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [
+          { type: 'reasoning', id: 'reasoning-1', text: '先分析', providerMetadata: { agent: { run_id: 'run-1' } } },
+          { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-1', state: 'input-streaming', input: { path: 'a.md' } },
+          { type: 'data-agent-token-usage', id: 'run-1', data: { run_id: 'run-1', total_tokens: 20 } },
+          { type: 'text', id: 'text-1', text: '继续生成', providerMetadata: { agent: { run_id: 'run-1' } } },
+        ],
+      },
+    ] as AgentUIMessage[])
+
+    expect(messages).toHaveLength(4)
+    expect(messages[0].parts).toEqual([
+      expect.objectContaining({ type: 'dynamic-tool', toolCallId: 'tool-1', state: 'output-available', output: 'persisted' }),
+    ])
+    expect(messages[1].parts).toEqual([
+      expect.objectContaining({ type: 'reasoning', text: '先分析' }),
+    ])
+    expect(messages[2].parts).toEqual([
+      expect.objectContaining({ type: 'data-agent-token-usage', data: expect.objectContaining({ total_tokens: 20 }) }),
+    ])
+    expect(messages[3].parts).toEqual([
+      expect.objectContaining({ type: 'text', text: '继续生成' }),
+    ])
+  })
+
+  it('恢复流 replay 到完成态时用最新 tool part 更新历史卡片', () => {
+    const messages = normalizeAgentUIMessages([
+      {
+        id: 'history-tool',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [
+          { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-1', state: 'input-available', input: { path: 'a.md' } },
+        ],
+      },
+      {
+        id: 'replay-tool',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [
+          { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-1', state: 'output-available', input: { path: 'a.md' }, output: 'fresh' },
+        ],
+      },
+    ] as AgentUIMessage[])
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0].parts).toEqual([
+      expect.objectContaining({ type: 'dynamic-tool', toolCallId: 'tool-1', state: 'output-available', output: 'fresh' }),
+    ])
+  })
+
+  it('恢复流中的同一段 reasoning 继续增长时仍更新历史 part 而不是追加新卡片', () => {
+    const base = '这是一段已经持久化的思考内容，用来模拟刷新前已经落入历史的推理文本。'
+    const messages = normalizeAgentUIMessages([
+      {
+        id: 'history-thinking',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [{ type: 'reasoning', text: base }],
+      },
+      {
+        id: 'replay-thinking',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [{ type: 'reasoning', id: 'reasoning-1', text: `${base}继续补充。` }],
+      },
+    ] as AgentUIMessage[])
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0].parts).toEqual([
+      expect.objectContaining({ type: 'reasoning', text: `${base}继续补充。` }),
+    ])
   })
 })
 
