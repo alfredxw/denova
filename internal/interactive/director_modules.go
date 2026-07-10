@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	storyDirectorModuleVersion     = 4
+	storyDirectorModuleVersion     = 5
 	DefaultEventPackageID          = "default"
 	DefaultEventSystemID           = "default"
 	DefaultRuleSystemID            = "default"
@@ -137,6 +137,7 @@ type ActorStateModule struct {
 	Description       string                        `json:"description"`
 	ActorState        StoryDirectorActorStateSystem `json:"actor_state"`
 	OpeningSelector   StoryDirectorOpeningSelector  `json:"opening_selector,omitempty"`
+	MigrationWarnings []string                      `json:"migration_warnings,omitempty"`
 	Tags              []string                      `json:"tags"`
 	Path              string                        `json:"path,omitempty"`
 	Custom            bool                          `json:"custom"`
@@ -145,6 +146,8 @@ type ActorStateModule struct {
 	Error             string                        `json:"error,omitempty"`
 	CreatedAt         string                        `json:"created_at,omitempty"`
 	UpdatedAt         string                        `json:"updated_at,omitempty"`
+	NeedsMigration    bool                          `json:"-"`
+	SourceVersion     int                           `json:"-"`
 }
 
 type OpeningSelectorModule struct {
@@ -652,8 +655,6 @@ func NormalizeStoryDirectorModuleRefs(refs StoryDirectorModuleRefs) StoryDirecto
 		ActorStateDisabled:      refs.ActorStateDisabled,
 		MemoryStructureID:       normalizeDirectorModuleID(refs.MemoryStructureID),
 		MemoryStructureDisabled: refs.MemoryStructureDisabled,
-		OpeningSelectorID:       normalizeDirectorModuleID(refs.OpeningSelectorID),
-		OpeningSelectorDisabled: refs.OpeningSelectorDisabled,
 		ImagePresetID:           imagepreset.NormalizeID(refs.ImagePresetID),
 		ImagePresetDisabled:     refs.ImagePresetDisabled,
 	}
@@ -666,14 +667,12 @@ func StoryDirectorModuleRefsEmpty(refs StoryDirectorModuleRefs) bool {
 		refs.RuleSystemID == "" &&
 		refs.ActorStateID == "" &&
 		refs.MemoryStructureID == "" &&
-		refs.OpeningSelectorID == "" &&
 		refs.ImagePresetID == "" &&
 		!refs.NarrativeStyleDisabled &&
 		!refs.EventPackagesDisabled &&
 		!refs.RuleSystemDisabled &&
 		!refs.ActorStateDisabled &&
 		!refs.MemoryStructureDisabled &&
-		!refs.OpeningSelectorDisabled &&
 		!refs.ImagePresetDisabled
 }
 
@@ -754,14 +753,11 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	}
 	if refs.ActorStateDisabled {
 		effective.ActorState = StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{}, InitialActors: []ActorStateInitialActor{}}
-		effective.OpeningSelector = StoryDirectorOpeningSelector{Enabled: false, TraitPools: []OpeningTraitPool{}, InitialStateOps: []StateOp{}}
 	} else if refs.ActorStateID != "" {
 		if module, err := NewActorStateLibrary(novaDir).Get(refs.ActorStateID); err == nil {
 			effective.ActorState = module.ActorState
-			effective.OpeningSelector = module.OpeningSelector
 		} else if !actorStateEmpty(snapshot.ActorState) {
 			effective.ActorState = snapshot.ActorState
-			effective.OpeningSelector = snapshot.OpeningSelector
 			warnings = append(warnings, moduleWarning("actor_state", refs.ActorStateID, err))
 		} else {
 			warnings = append(warnings, moduleWarning("actor_state", refs.ActorStateID, err))
@@ -780,18 +776,7 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 			warnings = append(warnings, moduleWarning("story_memory_structure", refs.MemoryStructureID, err))
 		}
 	}
-	if refs.OpeningSelectorDisabled {
-		effective.OpeningSelector = StoryDirectorOpeningSelector{Enabled: false, TraitPools: []OpeningTraitPool{}, InitialStateOps: []StateOp{}}
-	} else if !refs.ActorStateDisabled && refs.OpeningSelectorID != "" && !openingSelectorHasContent(effective.OpeningSelector) {
-		if module, err := NewOpeningSelectorLibrary(novaDir).Get(refs.OpeningSelectorID); err == nil {
-			effective.OpeningSelector = module.OpeningSelector
-		} else if !openingSelectorEmpty(snapshot.OpeningSelector) {
-			effective.OpeningSelector = snapshot.OpeningSelector
-			warnings = append(warnings, moduleWarning("opening_selector", refs.OpeningSelectorID, err))
-		} else {
-			warnings = append(warnings, moduleWarning("opening_selector", refs.OpeningSelectorID, err))
-		}
-	}
+	effective.OpeningSelector = StoryDirectorOpeningSelector{}
 	if !refs.NarrativeStyleDisabled && refs.NarrativeStyleID != "" {
 		if _, err := NewTellerLibrary(novaDir).Get(refs.NarrativeStyleID); err != nil {
 			warnings = append(warnings, moduleWarning("narrative_style", refs.NarrativeStyleID, err))
@@ -986,15 +971,13 @@ func builtinRuleSystemModule(id, name, description string, check RuleCheck) Rule
 }
 
 func DefaultActorStateModule() ActorStateModule {
-	config := DefaultTellerOrchestrationConfig()
 	return normalizeActorStateModule(ActorStateModule{
-		Version:         storyDirectorModuleVersion,
-		ID:              DefaultActorStateModuleID,
-		Name:            "默认状态系统",
-		Description:     "以主角等关键状态对象为起点维护结构化状态，供规则检定、资源消耗、开局词条和长期承接读取；可按作品需要扩展其他状态表模板。",
-		ActorState:      defaultActorStateSystem(),
-		OpeningSelector: StoryDirectorOpeningSelector{Enabled: config.Opening.Enabled, TraitPools: config.Opening.TraitPools, InitialStateOps: config.Opening.InitialStateOps},
-		Tags:            []string{"内置", "状态"},
+		Version:     storyDirectorModuleVersion,
+		ID:          DefaultActorStateModuleID,
+		Name:        "默认状态系统",
+		Description: "以主角等关键状态对象为起点维护结构化字段和可复用词条库，供规则检定、资源消耗和长期承接读取；可按作品需要扩展其他状态表模板。",
+		ActorState:  defaultActorStateSystem(),
+		Tags:        []string{"内置", "状态"},
 	})
 }
 
@@ -1139,6 +1122,8 @@ func actorStateComparable(item ActorStateModule) ActorStateModule {
 	item.Error = ""
 	item.CreatedAt = ""
 	item.UpdatedAt = ""
+	item.NeedsMigration = false
+	item.SourceVersion = 0
 	return item
 }
 
@@ -1211,6 +1196,13 @@ func normalizeActorStateModule(item ActorStateModule) ActorStateModule {
 	item.Description = trimBytes(item.Description, 1024)
 	item.ActorState = normalizeActorStateSystem(item.ActorState)
 	item.OpeningSelector = normalizeStoryDirectorOpeningSelector(item.OpeningSelector)
+	if openingSelectorHasContent(item.OpeningSelector) {
+		var warnings []string
+		item.ActorState, warnings = migrateLegacyOpeningTraits(item.ActorState, item.OpeningSelector)
+		item.MigrationWarnings = normalizeStringListLimit(append(item.MigrationWarnings, warnings...), maxTurnBriefListItems)
+		item.OpeningSelector = StoryDirectorOpeningSelector{}
+		item.NeedsMigration = true
+	}
 	item.Tags = normalizeStringListLimit(item.Tags, maxTurnBriefListItems)
 	return item
 }
@@ -1319,7 +1311,7 @@ func validateActorStateModule(item ActorStateModule) error {
 	if len(item.ActorState.Templates) == 0 {
 		return errors.New("状态系统至少需要一个 actor 类型模板")
 	}
-	if err := validateOpeningSelectorConfig(item.OpeningSelector); err != nil {
+	if err := validateActorTraitSystem(item.ActorState); err != nil {
 		return err
 	}
 	return nil
@@ -1413,7 +1405,11 @@ func parseActorStateFile(path string) (ActorStateModule, error) {
 	if err := json.Unmarshal(data, &item); err != nil {
 		return ActorStateModule{}, fmt.Errorf("解析状态系统 JSON 失败: %w", err)
 	}
+	sourceVersion := item.Version
+	hadLegacyOpening := openingSelectorHasContent(item.OpeningSelector)
 	item = normalizeActorStateModule(item)
+	item.SourceVersion = sourceVersion
+	item.NeedsMigration = item.NeedsMigration || sourceVersion < storyDirectorModuleVersion || hadLegacyOpening
 	if err := validateActorStateModule(item); err != nil {
 		return ActorStateModule{}, err
 	}
@@ -1464,7 +1460,9 @@ func writeRuleSystemFile(path string, item RuleSystemModule) error {
 
 func writeActorStateFile(path string, item ActorStateModule) error {
 	item = normalizeActorStateModule(item)
-	data, err := json.MarshalIndent(item, "", "  ")
+	item.NeedsMigration = false
+	item.SourceVersion = 0
+	data, err := marshalJSONWithoutFields(item, "opening_selector")
 	if err != nil {
 		return err
 	}
@@ -1472,6 +1470,21 @@ func writeActorStateFile(path string, item ActorStateModule) error {
 		return err
 	}
 	return os.WriteFile(path, append(data, '\n'), 0o644)
+}
+
+func marshalJSONWithoutFields(value any, fields ...string) ([]byte, error) {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	payload := map[string]any{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	for _, field := range fields {
+		delete(payload, field)
+	}
+	return json.MarshalIndent(payload, "", "  ")
 }
 
 func writeOpeningSelectorFile(path string, item OpeningSelectorModule) error {

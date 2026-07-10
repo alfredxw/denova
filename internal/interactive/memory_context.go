@@ -154,6 +154,38 @@ func formatStoryMemorySchemaContext(structures []StoryMemoryStructure, limit int
 	sb.WriteString("来源: interactive/memory/story-{story_id}.json 的故事记忆结构定义\n")
 	sb.WriteString("边界: 已按调用方上下文预算裁剪\n")
 	sb.WriteString("规则: story_memory_patches 只能使用下列 structure_id 和字段 ID；每条 patch 的 values 必须包含目标结构列出的所有字段，且字段值不能为空；keyed 结构必须提供 key，且 key 应等于 key_field_id 对应字段值；生成时必须遵守 structure 和 field 的 generation_instruction。\n")
+	sb.WriteString("\n结构与字段 ID 索引（完整 ID 优先于详细说明）:\n")
+	for _, structure := range structures {
+		if !storyMemoryStructureEnabled(structure) {
+			continue
+		}
+		sb.WriteString("\n## ")
+		sb.WriteString(structure.ID)
+		sb.WriteString("\n- mode: ")
+		sb.WriteString(firstMemoryText(structure.Mode, "append"))
+		if strings.TrimSpace(structure.KeyFieldID) != "" {
+			sb.WriteString("; key_field_id: ")
+			sb.WriteString(structure.KeyFieldID)
+		}
+		sb.WriteString("\n- field_ids: ")
+		fieldIDs := make([]string, 0, len(structure.Fields))
+		for _, field := range structure.Fields {
+			if !storyMemoryFieldEnabled(field) {
+				continue
+			}
+			fieldID := field.ID
+			if strings.TrimSpace(field.Name) != "" {
+				fieldID += "（" + field.Name + "）"
+			}
+			if field.Required {
+				fieldID += " required"
+			}
+			fieldIDs = append(fieldIDs, fieldID)
+		}
+		sb.WriteString(strings.Join(fieldIDs, ", "))
+		sb.WriteString("\n")
+	}
+	sb.WriteString("\n详细生成说明（按优先级在剩余预算内保留）:\n")
 	for _, structure := range structures {
 		if !storyMemoryStructureEnabled(structure) {
 			continue

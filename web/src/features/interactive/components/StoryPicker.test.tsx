@@ -1,17 +1,18 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoryPicker } from './StoryPicker'
+import type { StoryDirector } from '../types'
 
-const { rollInteractiveOpeningMock } = vi.hoisted(() => ({
-  rollInteractiveOpeningMock: vi.fn(),
+const { rollInteractiveActorTraitsMock } = vi.hoisted(() => ({
+  rollInteractiveActorTraitsMock: vi.fn(),
 }))
 
 vi.mock('../api', () => ({
-  rollInteractiveOpening: rollInteractiveOpeningMock,
+  rollInteractiveActorTraits: rollInteractiveActorTraitsMock,
 }))
 
 beforeEach(() => {
-  rollInteractiveOpeningMock.mockReset()
+  rollInteractiveActorTraitsMock.mockReset()
 })
 
 describe('StoryPicker', () => {
@@ -135,10 +136,10 @@ describe('StoryPicker', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '新建' }))
 
-    expect(screen.getByText('当前状态系统未启用开局词条；新故事不会抽取开局词条。')).toBeInTheDocument()
+    expect(screen.getByText('当前主角模板没有绑定可用词条池；故事仍会正常创建。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '抽取词条' })).toBeDisabled()
     fireEvent.click(screen.getByRole('button', { name: '抽取词条' }))
-    expect(rollInteractiveOpeningMock).not.toHaveBeenCalled()
+    expect(rollInteractiveActorTraitsMock).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '创建' }))
 
@@ -146,7 +147,7 @@ describe('StoryPicker', () => {
       story_teller_id: 'classic',
       story_director_id: 'detached',
       image_settings: expect.objectContaining({ preset_id: 'game-cg' }),
-      initial_state_ops: undefined,
+      initial_trait_rolls: undefined,
     }))
   })
 
@@ -179,13 +180,14 @@ describe('StoryPicker', () => {
     }))
   })
 
-  it('rolls opening traits and includes initial state ops in create input', async () => {
+  it('previews protagonist traits and sends a validated initial trait roll', async () => {
     const onCreate = vi.fn()
-    rollInteractiveOpeningMock.mockResolvedValue({
-      teller_id: 'classic',
+    rollInteractiveActorTraitsMock.mockResolvedValue({
+      story_director_id: 'default',
+      actor_id: 'protagonist',
+      template_id: 'protagonist',
       seed: 42,
-      traits: [{ pool_id: 'talent', id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' }],
-      state_ops: [{ op: 'set', path: 'resources.hp', value: 18 }],
+      traits: [{ pool_id: 'talent', trait_id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' }],
     })
 
     render(
@@ -203,22 +205,28 @@ describe('StoryPicker', () => {
     fireEvent.click(screen.getByRole('button', { name: '新建' }))
     fireEvent.click(screen.getByRole('button', { name: '抽取词条' }))
 
-    await waitFor(() => expect(rollInteractiveOpeningMock).toHaveBeenCalledWith({ story_director_id: 'default', selected_trait_ids: [] }))
+    await waitFor(() => expect(rollInteractiveActorTraitsMock).toHaveBeenCalledWith({
+      story_director_id: 'default',
+      actor_id: 'protagonist',
+      template_id: 'protagonist',
+      selections: [],
+    }))
     await waitFor(() => expect(screen.getAllByText('隐脉').length).toBeGreaterThan(0))
 
     fireEvent.click(screen.getByRole('button', { name: '创建' }))
 
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
-      initial_state_ops: [{ op: 'set', path: 'resources.hp', value: 18 }],
+      initial_trait_rolls: [{ actor_id: 'protagonist', seed: 42, selections: [] }],
     }))
   })
 
-  it('applies manually selected opening traits', async () => {
-    rollInteractiveOpeningMock.mockResolvedValue({
-      teller_id: 'classic',
+  it('applies manually selected protagonist traits by pool', async () => {
+    rollInteractiveActorTraitsMock.mockResolvedValue({
+      story_director_id: 'default',
+      actor_id: 'protagonist',
+      template_id: 'protagonist',
       seed: 42,
-      traits: [{ pool_id: 'talent', id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' }],
-      state_ops: [],
+      traits: [{ pool_id: 'talent', trait_id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' }],
     })
 
     render(
@@ -238,7 +246,40 @@ describe('StoryPicker', () => {
     expect(screen.getByText('已选择 1 个词条')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '应用选择' }))
 
-    await waitFor(() => expect(rollInteractiveOpeningMock).toHaveBeenCalledWith({ story_director_id: 'default', selected_trait_ids: ['hidden-bloodline'] }))
+    await waitFor(() => expect(rollInteractiveActorTraitsMock).toHaveBeenCalledWith({
+      story_director_id: 'default',
+      actor_id: 'protagonist',
+      template_id: 'protagonist',
+      selections: [{ pool_id: 'talent', trait_ids: ['hidden-bloodline'] }],
+    }))
+  })
+
+  it('persists fixed protagonist selections even when creation skips preview', () => {
+    const onCreate = vi.fn()
+    render(
+      <StoryPicker
+        stories={[]}
+        currentStoryId=""
+        tellers={[classicTeller()]}
+        storyDirectors={[classicStoryDirector()]}
+        onSelect={vi.fn()}
+        onCreate={onCreate}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '新建' }))
+    fireEvent.click(screen.getByRole('button', { name: '隐脉' }))
+    fireEvent.click(screen.getByRole('button', { name: '创建' }))
+
+    expect(rollInteractiveActorTraitsMock).not.toHaveBeenCalled()
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      initial_trait_rolls: [{
+        actor_id: 'protagonist',
+        seed: 0,
+        selections: [{ pool_id: 'talent', trait_ids: ['hidden-bloodline'] }],
+      }],
+    }))
   })
 })
 
@@ -276,34 +317,32 @@ function classicTeller() {
   }
 }
 
-function classicStoryDirector() {
+function classicStoryDirector(): StoryDirector {
   return {
     version: 1,
     id: 'default',
     name: '默认导演',
     description: '',
     strategy: { enabled: true },
-    event_system: {},
     trpg_system: {},
-    opening_selector: {
-      enabled: true,
+    actor_state: {
+      templates: [{ id: 'protagonist', name: '主角', trait_rules: [{ pool_id: 'talent', draw_count: 1 }] }],
+      initial_actors: [{ id: 'protagonist', name: '主角', template_id: 'protagonist' }],
       trait_pools: [{
         id: 'talent',
         name: '天赋',
-        draw_count: 1,
         traits: [
-          { id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' },
-          { id: 'poor-family', name: '寒门', summary: '初始资源更少' },
+          { id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高', weight: 1, visibility: 'visible' },
+          { id: 'poor-family', name: '寒门', summary: '初始资源更少', weight: 1, visibility: 'visible' },
         ],
       }],
-      initial_state_ops: [],
     },
     tags: [],
     custom: false,
   }
 }
 
-function detachedStoryDirector() {
+function detachedStoryDirector(): StoryDirector {
   return {
     ...classicStoryDirector(),
     id: 'detached',
@@ -315,20 +354,19 @@ function detachedStoryDirector() {
       event_system_disabled: true,
       rule_system_id: 'default',
       rule_system_disabled: true,
-      opening_selector_id: 'default',
-      opening_selector_disabled: true,
+      actor_state_id: 'default',
+      actor_state_disabled: true,
       image_preset_id: 'ink-wash',
       image_preset_disabled: true,
     },
-    opening_selector: {
-      enabled: true,
+    actor_state: {
+      templates: [{ id: 'protagonist', name: '主角', trait_rules: [{ pool_id: 'talent', draw_count: 1 }] }],
       trait_pools: [{
         id: 'talent',
         name: '天赋',
-        draw_count: 1,
-        traits: [{ id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高' }],
+        traits: [{ id: 'hidden-bloodline', name: '隐脉', summary: '灵力上限更高', weight: 1, visibility: 'visible' }],
       }],
-      initial_state_ops: [],
+      initial_actors: [],
     },
   }
 }

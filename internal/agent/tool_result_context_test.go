@@ -20,7 +20,7 @@ func TestApplyToolResultContextPolicyKeepsRecentAndPlaceholdersOldResults(t *tes
 	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{
 		Enabled:      true,
 		KeepRecent:   1,
-		BudgetBytes:  10,
+		BudgetBytes:  20,
 		PreviewChars: 100,
 	})
 
@@ -35,6 +35,25 @@ func TestApplyToolResultContextPolicyKeepsRecentAndPlaceholdersOldResults(t *tes
 	}
 	if filtered[1].Role != schema.Assistant || len(filtered[1].ToolCalls) != 1 {
 		t.Fatalf("assistant tool call should remain paired: %#v", filtered[1])
+	}
+}
+
+func TestApplyToolResultContextPolicyCountsRecentResultsAgainstBudget(t *testing.T) {
+	messages := []*schema.Message{
+		schema.ToolMessage("older-recent", "call-1", schema.WithToolName("read_file")),
+		schema.ToolMessage("newer-recent", "call-2", schema.WithToolName("read_file")),
+	}
+	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{
+		Enabled:      true,
+		KeepRecent:   2,
+		BudgetBytes:  len("newer-recent"),
+		PreviewChars: 100,
+	})
+	if filtered[1].Content != "newer-recent" {
+		t.Fatalf("newest result should receive budget first: %#v", filtered[1])
+	}
+	if !strings.Contains(filtered[0].Content, "tool_result.placeholder.v1") {
+		t.Fatalf("recent results must still respect the aggregate budget: %#v", filtered[0])
 	}
 }
 

@@ -72,8 +72,9 @@ export function TemplateStateEditor({ template, state, onChange }: TemplateState
         <div className="mt-3">
           <button
             type="button"
-            className="flex items-center gap-1 text-[11px] text-[var(--nova-text-faint)] transition-colors hover:text-[var(--nova-text)]"
+            className="flex min-h-7 items-center gap-1 rounded-[8px] px-1 text-[11px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
             onClick={() => setShowCustom(!showCustom)}
+            aria-expanded={showCustom}
           >
             {showCustom ? (
               <ChevronDown className="h-3 w-3" />
@@ -175,7 +176,7 @@ function CustomFieldRow({
         </span>
         <button
           type="button"
-          className="text-[10px] text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:text-[var(--nova-danger)] group-hover:opacity-100"
+          className="min-h-7 rounded-[8px] px-2 text-[10px] text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
           onClick={onRemove}
         >
           {t('settingPanel.actorState.explorer.remove')}

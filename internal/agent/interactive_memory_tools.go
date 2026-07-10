@@ -50,7 +50,7 @@ type readInteractiveMemoriesInput struct {
 }
 
 type applyActorStatePatchInput struct {
-	Patches []interactive.ActorStatePatch `json:"patches" jsonschema:"description=要写入的关键 Actor 结构化状态更新。每条 patch 必须包含 actor_id、template_id、state 和 reason；state 只能使用状态系统 schema 中声明的字段路径。"`
+	Patches []interactive.ActorStatePatch `json:"patches" jsonschema:"description=要写入的关键 Actor 结构化状态更新。新 Actor 必须包含 actor_id、template_id 和 reason，并会按模板自动抽取词条；已有 Actor 可省略 template_id。state 只能使用状态系统 schema 中声明的字段路径；trait_changes 支持 draw/reroll/set/remove。"`
 }
 
 type applyStoryMemoryPatchesInput struct {
@@ -86,10 +86,12 @@ type interactiveMemoryIndexItem struct {
 }
 
 type actorStatePatchToolOutput struct {
-	AppliedActors []string `json:"applied_actors"`
-	Ops           int      `json:"ops"`
-	BranchID      string   `json:"branch_id"`
-	TurnID        string   `json:"turn_id"`
+	AppliedActors  []string                                    `json:"applied_actors"`
+	CreatedActors  []string                                    `json:"created_actors,omitempty"`
+	AssignedTraits map[string][]interactive.ActorTraitInstance `json:"assigned_traits,omitempty"`
+	Ops            int                                         `json:"ops"`
+	BranchID       string                                      `json:"branch_id"`
+	TurnID         string                                      `json:"turn_id"`
 }
 
 type storyMemoryPatchToolOutput struct {
@@ -177,9 +179,14 @@ func newInteractiveActorStateTools(ctx InteractiveStoryToolContext) ([]tool.Base
 	if ctx.Store == nil || ctx.StoryID == "" || ctx.TurnID == "" {
 		return nil, nil
 	}
-	applyTool, err := utils.InferTool("apply_actor_state_patch", "创建或更新关键状态对象的结构化状态。状态对象可以是主角、重要角色、反派、怪物、Boss、规则实体、世界、故事倒计时、特定角色、势力、基地或副本等；protagonist、important_character、opponent 只是常见默认模板，若当前状态系统定义了更具体的 template_id，应优先使用该 schema。只能写入状态系统 schema 中已声明的字段；需要新增状态表或字段时交给配置管理或用户显式配置。普通叙事记录、一次性 NPC、场景流水和任务细节留在故事记忆。后端会按状态系统 schema 校验状态对象类型、字段路径、值类型和可见性，并把变更写成可重放 StateOp。", func(callCtx context.Context, input applyActorStatePatchInput) (string, error) {
+	applyTool, err := utils.InferTool("apply_actor_state_patch", "创建或更新关键状态对象的结构化状态。状态对象可以是主角、重要角色、反派、怪物、Boss、规则实体、世界、故事倒计时、特定角色、势力、基地或副本等；protagonist、important_character、opponent 只是常见默认模板。创建新 Actor 时后端会写入模板默认值并按 trait_rules 自动从词条库抽取词条；已有 Actor 不会重复抽取，可用 trait_changes 执行 draw、reroll、set 或 remove。只能写入 schema 中已声明的字段，且已有 Actor 的 template_id 不可隐式更换。后端会把最终结果写成可重放 StateOp。", func(callCtx context.Context, input applyActorStatePatchInput) (string, error) {
 		_ = callCtx
-		result, err := interactive.ValidateActorStatePatches(ctx.ActorState, input.Patches, ctx.TurnID)
+		snapshot, err := ctx.Store.Snapshot(ctx.StoryID, ctx.BranchID)
+		if err != nil {
+			reportStateMaintenanceFailure(ctx, err)
+			return "", err
+		}
+		result, err := interactive.ValidateActorStatePatchesAgainstState(ctx.ActorState, snapshot.State, input.Patches, ctx.TurnID)
 		if err != nil {
 			reportStateMaintenanceFailure(ctx, err)
 			return "", err
@@ -201,10 +208,12 @@ func newInteractiveActorStateTools(ctx InteractiveStoryToolContext) ([]tool.Base
 			ctx.OnActorStateApplied(len(result.Ops))
 		}
 		data, err := json.MarshalIndent(actorStatePatchToolOutput{
-			AppliedActors: result.AppliedActors,
-			Ops:           len(result.Ops),
-			BranchID:      ctx.BranchID,
-			TurnID:        ctx.TurnID,
+			AppliedActors:  result.AppliedActors,
+			CreatedActors:  result.CreatedActors,
+			AssignedTraits: result.AssignedTraits,
+			Ops:            len(result.Ops),
+			BranchID:       ctx.BranchID,
+			TurnID:         ctx.TurnID,
 		}, "", "  ")
 		if err != nil {
 			return "", err

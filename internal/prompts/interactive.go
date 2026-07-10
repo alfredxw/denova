@@ -27,6 +27,7 @@ type InteractiveStoryPromptInput struct {
 	LongTermMemory              string
 	DirectorPlanVisible         string
 	StoryDirectorRules          string
+	ActorState                  string
 	StoryDirectorStrategyPrompt string
 	PreviousTurnsSummary        string
 }
@@ -146,6 +147,9 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	}
 	if strings.TrimSpace(in.StoryDirectorRules) != "" {
 		writeBlock(&sb, "故事导演规则清单（source: StoryDirector, bounded）", in.StoryDirectorRules)
+	}
+	if strings.TrimSpace(in.ActorState) != "" {
+		writeBlock(&sb, "当前 Actor 状态与词条（source: Snapshot.State.actors, bounded）", in.ActorState)
 	}
 	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {
 		writeBlock(&sb, "故事导演 Markdown 策略提示（source: StoryDirector.strategy.prompt_markdown, bounded）", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))

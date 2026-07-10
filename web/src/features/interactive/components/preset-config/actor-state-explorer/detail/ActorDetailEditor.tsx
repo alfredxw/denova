@@ -6,6 +6,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { novaEase } from '@/features/motion/motion-tokens'
 import type { ActorStateInitialActor, ActorStateTemplate } from '../../../../types'
 import type { ExplorerProps } from '../types'
+import { actorNodeId } from '../build-tree'
 import { TemplateStateEditor } from '../shared/TemplateStateEditor'
 import { DetailResponsiveGrid } from './DetailLayout'
 
@@ -15,6 +16,7 @@ interface ActorDetailEditorProps {
   template?: ActorStateTemplate
   value: ExplorerProps['value']
   onChange: (value: ExplorerProps['value']) => void
+  onIdChange: (nextId: string) => void
 }
 
 export function ActorDetailEditor({
@@ -23,13 +25,17 @@ export function ActorDetailEditor({
   template,
   value,
   onChange,
+  onIdChange,
 }: ActorDetailEditorProps) {
   const { t } = useTranslation()
   const templates = value.templates || []
 
   const updateActor = (patch: Partial<ActorStateInitialActor>) => {
     const actors = [...(value.initial_actors || [])]
-    actors[actorIndex] = { ...actor, ...patch }
+    const nextActor = { ...actor, ...patch }
+    actors[actorIndex] = nextActor
+    const nextNodeId = actorNodeId(nextActor, actorIndex)
+    if (nextNodeId !== actorNodeId(actor, actorIndex)) onIdChange(nextNodeId)
     onChange({ ...value, initial_actors: actors })
   }
 

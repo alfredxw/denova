@@ -4,14 +4,115 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	urlpkg "net/url"
 	"strings"
 )
 
-var skillInstallHTTPClient = http.DefaultClient
+var skillInstallHTTPClient = newSkillInstallHTTPClient()
+
+var nonPublicSkillArchiveNetworks = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.0.2.0/24"),
+	netip.MustParsePrefix("192.88.99.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("198.51.100.0/24"),
+	netip.MustParsePrefix("203.0.113.0/24"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("2001:db8::/32"),
+}
+
+func newSkillInstallHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Skill archives are fetched directly so an environment proxy cannot turn
+	// a public-looking URL into access to a private network.
+	transport.Proxy = nil
+	transport.DialContext = restrictedSkillArchiveDialContext
+	return &http.Client{
+		Transport:     transport,
+		CheckRedirect: skillInstallRedirectPolicy,
+	}
+}
+
+func skillInstallRedirectPolicy(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("remote Skill archive redirect limit exceeded")
+	}
+	return validateSkillArchiveURL(req.URL)
+}
+
+func validateSkillArchiveURL(parsed *urlpkg.URL) error {
+	if parsed == nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return fmt.Errorf("remote Skill archive URL must be an absolute https:// URL")
+	}
+	if parsed.User != nil {
+		return fmt.Errorf("remote Skill archive URL must not contain user credentials")
+	}
+	return nil
+}
+
+func restrictedSkillArchiveDialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, fmt.Errorf("invalid remote Skill archive address %q: %w", address, err)
+	}
+	addresses, err := resolveSkillArchiveHost(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	var dialErr error
+	dialer := net.Dialer{}
+	for _, addr := range addresses {
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		dialErr = errors.Join(dialErr, err)
+	}
+	return nil, fmt.Errorf("download remote Skill archive failed to connect to %s: %w", host, dialErr)
+}
+
+func resolveSkillArchiveHost(ctx context.Context, host string) ([]netip.Addr, error) {
+	if addr, err := netip.ParseAddr(host); err == nil {
+		if err := validatePublicSkillArchiveAddr(addr); err != nil {
+			return nil, err
+		}
+		return []netip.Addr{addr}, nil
+	}
+	addresses, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	if err != nil {
+		return nil, fmt.Errorf("resolve remote Skill archive host %q: %w", host, err)
+	}
+	if len(addresses) == 0 {
+		return nil, fmt.Errorf("remote Skill archive host %q resolved to no addresses", host)
+	}
+	for _, addr := range addresses {
+		if err := validatePublicSkillArchiveAddr(addr); err != nil {
+			return nil, fmt.Errorf("remote Skill archive host %q: %w", host, err)
+		}
+	}
+	return addresses, nil
+}
+
+func validatePublicSkillArchiveAddr(addr netip.Addr) error {
+	addr = addr.Unmap()
+	if !addr.IsValid() || !addr.IsGlobalUnicast() || addr.IsPrivate() || addr.IsLoopback() || addr.IsUnspecified() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsMulticast() {
+		return fmt.Errorf("non-public remote Skill archive destination is not allowed: %s", addr)
+	}
+	for _, prefix := range nonPublicSkillArchiveNetworks {
+		if prefix.Contains(addr) {
+			return fmt.Errorf("non-public remote Skill archive destination is not allowed: %s", addr)
+		}
+	}
+	return nil
+}
 
 // RemoteArchiveSource is the user-provided source for a remote Skill archive.
 // GitHub repository references are resolved through the GitHub archive API;
@@ -132,8 +233,8 @@ func DownloadRemoteArchive(ctx context.Context, archiveURL string) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	if parsed.Scheme != "https" || parsed.Hostname() == "" {
-		return nil, fmt.Errorf("remote Skill archive URL must be an absolute https:// URL")
+	if err := validateSkillArchiveURL(parsed); err != nil {
+		return nil, err
 	}
 	return downloadSkillArchive(ctx, parsed.String(), "Remote", map[string]string{
 		"Accept": "application/zip, application/octet-stream, */*",
@@ -141,7 +242,14 @@ func DownloadRemoteArchive(ctx context.Context, archiveURL string) ([]byte, erro
 }
 
 func downloadSkillArchive(ctx context.Context, archiveURL, sourceLabel string, headers map[string]string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, archiveURL, nil)
+	parsed, err := urlpkg.Parse(strings.TrimSpace(archiveURL))
+	if err != nil {
+		return nil, err
+	}
+	if err := validateSkillArchiveURL(parsed); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		return nil, err
 	}

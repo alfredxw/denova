@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
@@ -121,6 +122,7 @@ export function WorkbenchShell({
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
   const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
   const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
+  const [mainContentHost] = useState(createWorkbenchMainHost)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -421,9 +423,10 @@ export function WorkbenchShell({
       <div className="flex items-center gap-3">
         <NovaBrandIcon />
         <LayoutGroup id="workbench-mode-switch">
-        <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
+        <div role="group" className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
           <button
             type="button"
+            aria-pressed={navigationMode === 'ide'}
             onClick={() => switchNavigationMode('ide')}
             data-onboarding-anchor="mode-ide"
             className={`relative overflow-hidden rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
@@ -433,6 +436,7 @@ export function WorkbenchShell({
           </button>
           <button
             type="button"
+            aria-pressed={navigationMode === 'interactive'}
             onClick={() => switchNavigationMode('interactive')}
             data-onboarding-anchor="mode-interactive"
             className={`relative overflow-hidden rounded-[6px] px-2.5 py-0.5 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
@@ -538,6 +542,12 @@ export function WorkbenchShell({
     </div>
   )
 
+  // Keep business content on one React subtree while its DOM host moves between
+  // the desktop resizable workspace and the mobile shell. This preserves local
+  // editor state when the viewport crosses the mobile breakpoint.
+  const mainContentPortal = mainContentHost ? createPortal(main, mainContentHost, 'workbench-main-content') : null
+  const mainContentSlot = <WorkbenchMainSlot host={mainContentHost} fallback={main} />
+
   if (isMobile) {
     const compactMobileNavigation = mode === 'interactive' && interactiveSubmode === 'story' && !sharedMenuActive
     const mobileTopBar = (
@@ -562,9 +572,10 @@ export function WorkbenchShell({
               <Search className="h-4 w-4" />
             </button>
             <LayoutGroup id="workbench-mobile-mode-switch">
-            <div className="flex h-8 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
+            <div role="group" className="flex h-8 shrink-0 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
               <button
                 type="button"
+                aria-pressed={navigationMode === 'ide'}
                 onClick={() => switchNavigationMode('ide')}
                 data-onboarding-anchor="mode-ide"
                 className={`relative min-w-0 overflow-hidden rounded-[6px] px-2 py-1 text-[11px] transition-colors ${navigationMode === 'ide' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
@@ -574,6 +585,7 @@ export function WorkbenchShell({
               </button>
               <button
                 type="button"
+                aria-pressed={navigationMode === 'interactive'}
                 onClick={() => switchNavigationMode('interactive')}
                 data-onboarding-anchor="mode-interactive"
                 className={`relative min-w-0 overflow-hidden rounded-[6px] px-2 py-1 text-[11px] transition-colors ${navigationMode === 'interactive' ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text-muted)]'}`}
@@ -629,14 +641,14 @@ export function WorkbenchShell({
             className="flex min-h-0 flex-1 flex-col"
           >
             <Panel id="nova-mobile-editor" minSize="30%" className="min-h-0">
-              {main}
+              {mainContentSlot}
             </Panel>
             <Separator aria-label={t('layout.resize.bottom')} className="nova-resize-handle h-2.5 shrink-0 cursor-row-resize border-y border-[var(--nova-border)] bg-[var(--nova-surface-2)] transition-colors" />
             <Panel id="nova-mobile-agent" defaultSize="38%" minSize="20%" className="min-h-0">
               {rightPanelContent}
             </Panel>
           </Group>
-        ) : main}
+        ) : mainContentSlot}
         {/* Floating button to reopen the Agent dock when it's hidden */}
         {mode === 'ide' && !fullWorkspacePanelVisible && !mobileAgentDocked && (
           <button
@@ -652,39 +664,69 @@ export function WorkbenchShell({
     )
 
     return (
-      <WorkspaceMobileLayout
-        topBar={mobileTopBar}
-        main={mobileMain}
-        activityItems={mobileActivityItems}
-        projectDrawer={mobileProjectDrawer}
-        settingsItem={{
-          id: 'settings',
-          label: t('workbench.activity.settings'),
-          icon: <Settings className="h-4 w-4" />,
-          active: settingsOpen,
-          onClick: onToggleSettings,
-        }}
-        closeLabel={t('common.close')}
-        navigationLabel={t('workbench.mobile.navigation')}
-        compactNavigation={compactMobileNavigation}
-        compactNavigationLabel={t('workbench.mobile.navigationMenu')}
-      />
+      <>
+        <WorkspaceMobileLayout
+          topBar={mobileTopBar}
+          main={mobileMain}
+          activityItems={mobileActivityItems}
+          projectDrawer={mobileProjectDrawer}
+          settingsItem={{
+            id: 'settings',
+            label: t('workbench.activity.settings'),
+            icon: <Settings className="h-4 w-4" />,
+            active: settingsOpen,
+            onClick: onToggleSettings,
+          }}
+          closeLabel={t('common.close')}
+          navigationLabel={t('workbench.mobile.navigation')}
+          compactNavigation={compactMobileNavigation}
+          compactNavigationLabel={t('workbench.mobile.navigationMenu')}
+        />
+        {mainContentPortal}
+      </>
     )
   }
 
   return (
-    <WorkspaceLayout
-      topBar={topBar}
-      activityBar={activityBar}
-      sidebar={sidebar}
-      sidebarVisible={mode === 'ide' && projectVisible && !fullWorkspacePanelVisible}
-      main={main}
-      rightPanel={rightPanelContent}
-      rightPanelVisible={mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)}
-      rightPanelWide={rightPanelWide && mode === 'ide' && rightPanel === 'ai' && !fullWorkspacePanelVisible}
-      statusBar={statusBar}
-    />
+    <>
+      <WorkspaceLayout
+        topBar={topBar}
+        activityBar={activityBar}
+        sidebar={sidebar}
+        sidebarVisible={mode === 'ide' && projectVisible && !fullWorkspacePanelVisible}
+        main={mainContentSlot}
+        rightPanel={rightPanelContent}
+        rightPanelVisible={mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)}
+        rightPanelWide={rightPanelWide && mode === 'ide' && rightPanel === 'ai' && !fullWorkspacePanelVisible}
+        statusBar={statusBar}
+      />
+      {mainContentPortal}
+    </>
   )
+}
+
+function createWorkbenchMainHost() {
+  if (typeof document === 'undefined') return null
+  const host = document.createElement('div')
+  host.dataset.novaWorkbenchMainHost = 'true'
+  host.className = 'h-full min-h-0 w-full min-w-0 overflow-hidden'
+  return host
+}
+
+function WorkbenchMainSlot({ host, fallback }: { host: HTMLDivElement | null; fallback: ReactNode }) {
+  const slotRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const slot = slotRef.current
+    if (!host || !slot) return
+    slot.appendChild(host)
+    return () => {
+      if (host.parentNode === slot) host.remove()
+    }
+  }, [host])
+
+  if (!host) return fallback
+  return <div ref={slotRef} data-nova-workbench-main-slot="true" className="h-full min-h-0 w-full min-w-0 overflow-hidden" />
 }
 
 function SortableActivityButton({

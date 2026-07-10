@@ -168,7 +168,7 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 	}
 }
 
-func TestActorStateModuleOwnsOpeningSelector(t *testing.T) {
+func TestActorStateModuleMigratesOpeningSelectorIntoTraitLibrary(t *testing.T) {
 	novaDir := t.TempDir()
 	actorStateLibrary := NewActorStateLibrary(novaDir)
 	module, err := actorStateLibrary.Create(ActorStateModule{
@@ -204,8 +204,18 @@ func TestActorStateModuleOwnsOpeningSelector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create actor state with opening failed: %v", err)
 	}
-	if len(module.OpeningSelector.TraitPools) != 1 || len(module.OpeningSelector.InitialStateOps) != 1 {
-		t.Fatalf("actor state should persist opening selector: %#v", module.OpeningSelector)
+	if len(module.OpeningSelector.TraitPools) != 0 || len(module.OpeningSelector.InitialStateOps) != 0 {
+		t.Fatalf("opening selector should be cleared after migration: %#v", module.OpeningSelector)
+	}
+	if len(module.ActorState.TraitPools) != 1 || module.ActorState.TraitPools[0].ID != "talent" {
+		t.Fatalf("legacy traits should migrate into actor state trait pools: %#v", module.ActorState.TraitPools)
+	}
+	protagonist := actorStateTemplateByID(module.ActorState, DefaultActorID)
+	if len(protagonist.TraitRules) != 1 || protagonist.TraitRules[0].PoolID != "talent" || protagonist.TraitRules[0].DrawCount != 1 {
+		t.Fatalf("legacy draw count should become protagonist template rule: %#v", protagonist.TraitRules)
+	}
+	if len(module.MigrationWarnings) < 2 {
+		t.Fatalf("discarded legacy StateOps should be reported: %#v", module.MigrationWarnings)
 	}
 
 	director := ResolveStoryDirectorModules(novaDir, StoryDirector{
@@ -220,55 +230,25 @@ func TestActorStateModuleOwnsOpeningSelector(t *testing.T) {
 			ImagePresetDisabled:     true,
 		},
 	})
-	if len(director.OpeningSelector.TraitPools) != 1 || director.OpeningSelector.TraitPools[0].ID != "talent" {
-		t.Fatalf("director should resolve opening selector from actor state module: %#v", director.OpeningSelector)
+	if len(director.ActorState.TraitPools) != 1 || director.ActorState.TraitPools[0].ID != "talent" {
+		t.Fatalf("director should resolve the trait library from actor state module: %#v", director.ActorState)
 	}
 	if director.ModuleRefs.OpeningSelectorID != "" {
 		t.Fatalf("new director refs should not need opening_selector_id: %#v", director.ModuleRefs)
 	}
-	disabledDirector := ResolveStoryDirectorModules(novaDir, StoryDirector{
-		ID:   "opening-disabled",
-		Name: "旧开局关闭标志",
-		ModuleRefs: StoryDirectorModuleRefs{
-			NarrativeStyleDisabled:  true,
-			EventPackagesDisabled:   true,
-			RuleSystemDisabled:      true,
-			ActorStateID:            module.ID,
-			OpeningSelectorDisabled: true,
-			MemoryStructureDisabled: true,
-			ImagePresetDisabled:     true,
-		},
-	})
-	if disabledDirector.OpeningSelector.Enabled || len(disabledDirector.OpeningSelector.TraitPools) != 0 || len(disabledDirector.OpeningSelector.InitialStateOps) != 0 {
-		t.Fatalf("legacy opening_selector_disabled should disable state-system opening traits: %#v", disabledDirector.OpeningSelector)
-	}
-
-	roll, err := RollOpeningWithStoryDirector(director, OpeningRollRequest{Seed: 7})
-	if err != nil {
-		t.Fatalf("roll opening failed: %v", err)
-	}
-	if len(roll.Traits) != 1 || roll.Traits[0].ID != "clear-mind" {
-		t.Fatalf("opening roll should use state-system traits: %#v", roll.Traits)
-	}
-	if !containsStateOp(roll.StateOps, "rules.opening_origin", "state-system") || !containsStateOp(roll.StateOps, "actors.protagonist.state.current.mental_status", "澄明稳定") {
-		t.Fatalf("opening roll should include initial and trait ops: %#v", roll.StateOps)
-	}
-
-	store := NewStore(t.TempDir())
-	story, err := store.CreateStory(CreateStoryRequest{
-		Title:           "状态系统开局",
-		StoryTellerID:   "classic",
-		InitialStateOps: roll.StateOps,
+	roll, err := RollActorTraits(director.ActorState, ActorTraitRollRequest{
+		ActorID:    DefaultActorID,
+		TemplateID: DefaultActorID,
+		Seed:       7,
 	})
 	if err != nil {
-		t.Fatalf("CreateStory failed: %v", err)
+		t.Fatalf("roll actor traits failed: %v", err)
 	}
-	snapshot, err := store.Snapshot(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
+	if len(roll.Traits) != 1 || roll.Traits[0].TraitID != "clear-mind" {
+		t.Fatalf("actor roll should use state-system traits: %#v", roll.Traits)
 	}
-	if got := getPath(snapshot.State, "actors.protagonist.state.current.mental_status"); got != "澄明稳定" {
-		t.Fatalf("opening trait op should apply to story state, got %#v state=%#v", got, snapshot.State)
+	if containsStateOp(StoryDirectorInitialStateOps(director), "rules.opening_origin", "state-system") || containsStateOp(StoryDirectorInitialStateOps(director), "actors.protagonist.state.current.mental_status", "澄明稳定") {
+		t.Fatalf("legacy arbitrary StateOps must not execute: %#v", StoryDirectorInitialStateOps(director))
 	}
 }
 
@@ -637,22 +617,15 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create memory structure failed: %v", err)
 	}
-	openingModule, err := openingLibrary.Create(OpeningSelectorModule{
+	if _, err := openingLibrary.Create(OpeningSelectorModule{
 		ID:   "wasteland-openings",
-		Name: "废土开局",
-		OpeningSelector: StoryDirectorOpeningSelector{
-			Enabled: true,
-			InitialStateOps: []StateOp{{
-				Op:    "set",
-				Path:  "flags.wasteland",
-				Value: true,
-			}},
-		},
-	})
-	if err != nil {
-		t.Fatalf("create opening selector failed: %v", err)
+		Name: "旧废土开局",
+		OpeningSelector: StoryDirectorOpeningSelector{Enabled: true, InitialStateOps: []StateOp{{
+			Op: "set", Path: "flags.wasteland", Value: true,
+		}}},
+	}); err != nil {
+		t.Fatalf("create legacy opening selector file failed: %v", err)
 	}
-
 	director, err := directorLibrary.Create(StoryDirector{
 		ID:   "modular",
 		Name: "模块化导演",
@@ -662,7 +635,7 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 			RuleSystemID:      ruleModule.ID,
 			ActorStateID:      actorModule.ID,
 			MemoryStructureID: memoryModule.ID,
-			OpeningSelectorID: openingModule.ID,
+			OpeningSelectorID: "wasteland-openings",
 			ImagePresetID:     "game-cg",
 		},
 		Strategy: StoryDirectorStrategy{Enabled: true},
@@ -682,8 +655,11 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	if len(director.ResolvedSnapshot.StoryMemoryStructures) != 1 || director.ResolvedSnapshot.StoryMemoryStructures[0].ID != "camp" {
 		t.Fatalf("director should resolve memory structure module on create: %#v", director.ResolvedSnapshot.StoryMemoryStructures)
 	}
-	if !containsStateOp(director.OpeningSelector.InitialStateOps, "flags.wasteland", true) {
-		t.Fatalf("director should resolve opening module on create: %#v", director.OpeningSelector.InitialStateOps)
+	if len(director.OpeningSelector.InitialStateOps) != 0 || len(director.OpeningSelector.TraitPools) != 0 {
+		t.Fatalf("standalone opening selectors must not be loaded: %#v", director.OpeningSelector)
+	}
+	if director.ModuleRefs.OpeningSelectorID != "" {
+		t.Fatalf("legacy standalone opening selector refs should be discarded: %#v", director.ModuleRefs)
 	}
 
 	eventModule.Events[0].DescriptionMarkdown = "v2"

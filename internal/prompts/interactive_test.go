@@ -152,6 +152,7 @@ func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorPlanVisibleSection
 	output := InteractiveStoryRuntimeContext(InteractiveStoryPromptInput{
 		ReplyTargetChars:            800,
 		DirectorPlanVisible:         "## 正文Agent可读\n\n### 阶段钩子与阅读欲望\n外门逆袭\n\n### 信息揭示与线索密度\n学院比拼压力",
+		ActorState:                  `{"source":{"path":"Snapshot.State.actors"},"actors":{"protagonist":{"traits":[{"name":"隐脉"}]}}}`,
 		StoryDirectorStrategyPrompt: "- 避免连续两回合使用同类型突发事件。",
 	})
 	for _, want := range []string{"后台导演规划可读区", "source: director.md visible section", "bounded", "外门逆袭", "学院比拼压力"} {
@@ -162,6 +163,11 @@ func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorPlanVisibleSection
 	for _, want := range []string{"故事导演 Markdown 策略提示", "source: StoryDirector.strategy.prompt_markdown", "bounded", "结构化导演策略", "避免连续两回合"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("runtime context should include strategy prompt %q:\n%s", want, output)
+		}
+	}
+	for _, want := range []string{"当前 Actor 状态与词条", "source: Snapshot.State.actors", "bounded", "隐脉"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("runtime context should include Actor state %q:\n%s", want, output)
 		}
 	}
 }

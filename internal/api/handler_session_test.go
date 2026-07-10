@@ -321,7 +321,8 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restoreDirector := runtimeapp.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	t.Cleanup(application.Close)
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
 		return "测试初始化导演规划完成。", nil
 	})
 	t.Cleanup(restoreDirector)

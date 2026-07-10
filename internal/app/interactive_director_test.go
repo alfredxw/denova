@@ -7,7 +7,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"denova/config"
 	"denova/internal/agent"
@@ -61,8 +60,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	release := make(chan struct{})
 	var releaseOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
-	previous := generateInteractiveDirectorForPlan
-	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
+	directorGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
 		close(started)
 		<-release
 		if !strings.Contains(instruction, "director.md") || strings.Contains(instruction, "mainline.md") || len(toolContext.DirectorPlanAllowedPaths) != 1 {
@@ -85,18 +83,27 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 		}
 		return "导演安排公开反转", nil
 	}
-	defer func() { generateInteractiveDirectorForPlan = previous }()
-
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
-	startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
+	conversation.directorGenerator = directorGenerator
+	done := startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
 
-	waitForDirectorGoroutineStart(t, started)
-	runningStatus := waitForDirectorPlanPublicStatus(t, store, story.ID, "main", interactive.DirectorPlanStatusRunning)
+	<-started
+	runningStatus, err := store.DirectorPlanStatus(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if runningStatus.Blocking || runningStatus.StartReady || runningStatus.CompletedDocs != 0 || runningStatus.PlannedDocs != 1 {
 		t.Fatalf("initial director run should expose non-blocking progress: %#v", runningStatus)
 	}
 	releaseOnce.Do(func() { close(release) })
-	snapshot := waitForDirectorPlanRunSummary(t, store, story.ID, "main", "导演安排公开反转")
+	<-done
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.DirectorPlan == nil || snapshot.DirectorPlan.Metadata.LastRun == nil || snapshot.DirectorPlan.Metadata.LastRun.Summary != "导演安排公开反转" {
+		t.Fatalf("director summary was not persisted: %#v", snapshot.DirectorPlan)
+	}
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turn.ID {
 		t.Fatalf("turn should remain current after director update: %#v", snapshot.CurrentTurn)
 	}
@@ -127,8 +134,7 @@ func TestInteractiveDirectorMaintenanceWritesStateMemoryAndDirectorPlan(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	previous := generateInteractiveDirectorForPlan
-	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
+	directorGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
 		for _, want := range []string{"turn_maintenance", "apply_actor_state_patch", "apply_story_memory_patches", "状态系统 Schema", "故事记忆结构与字段协议", "director.md"} {
 			if !strings.Contains(instruction, want) {
 				t.Fatalf("maintenance instruction missing %q:\n%s", want, instruction)
@@ -148,9 +154,8 @@ func TestInteractiveDirectorMaintenanceWritesStateMemoryAndDirectorPlan(t *testi
 		}
 		return "已维护状态、记忆和导演规划", nil
 	}
-	defer func() { generateInteractiveDirectorForPlan = previous }()
-
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
+	conversation.directorGenerator = directorGenerator
 	result, err := runInteractiveDirectorMaintenance(context.Background(), &config.Config{}, book.NewState(workspace), conversation, turn, nil, interactiveDirectorTaskTurnMaintenance)
 	if err != nil {
 		t.Fatal(err)
@@ -201,8 +206,7 @@ func TestInteractiveDirectorMaintenanceKeepsDirectorReadyWhenMemoryToolFails(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	previous := generateInteractiveDirectorForPlan
-	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
+	directorGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
 		toolContext.OnStateMaintenanceFailed(errors.New("story memory write failed"))
 		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
 		if err != nil {
@@ -215,9 +219,8 @@ func TestInteractiveDirectorMaintenanceKeepsDirectorReadyWhenMemoryToolFails(t *
 		}
 		return "导演规划已更新，记忆写入失败", nil
 	}
-	defer func() { generateInteractiveDirectorForPlan = previous }()
-
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
+	conversation.directorGenerator = directorGenerator
 	if _, err := runInteractiveDirectorMaintenance(context.Background(), &config.Config{}, book.NewState(workspace), conversation, turn, nil, interactiveDirectorTaskTurnMaintenance); err == nil || !strings.Contains(err.Error(), "story memory write failed") {
 		t.Fatalf("maintenance should report memory failure, got %v", err)
 	}
@@ -248,8 +251,7 @@ func TestInteractiveDirectorMaintenanceKeepsMemoryWhenDirectorPlanValidationFail
 	if err != nil {
 		t.Fatal(err)
 	}
-	previous := generateInteractiveDirectorForPlan
-	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
+	directorGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
 		if err := applyDirectorMaintenanceStateForTest(toolContext); err != nil {
 			return "", err
 		}
@@ -261,9 +263,8 @@ func TestInteractiveDirectorMaintenanceKeepsMemoryWhenDirectorPlanValidationFail
 		}
 		return "记忆已写入，导演规划校验失败", nil
 	}
-	defer func() { generateInteractiveDirectorForPlan = previous }()
-
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
+	conversation.directorGenerator = directorGenerator
 	if _, err := runInteractiveDirectorMaintenance(context.Background(), &config.Config{}, book.NewState(workspace), conversation, turn, nil, interactiveDirectorTaskTurnMaintenance); err == nil || !strings.Contains(err.Error(), "完成导演规划运行失败") {
 		t.Fatalf("maintenance should report director validation failure, got %v", err)
 	}
@@ -302,16 +303,19 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	previous := generateInteractiveDirectorForPlan
-	generateInteractiveDirectorForPlan = func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	directorGenerator := func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
 		return "", errors.New("director unavailable")
 	}
-	defer func() { generateInteractiveDirectorForPlan = previous }()
 
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
-	startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
+	conversation.directorGenerator = directorGenerator
+	done := startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
+	<-done
 
-	snapshot := waitForDirectorPlanRunStatus(t, store, story.ID, "main", "failed")
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turn.ID {
 		t.Fatalf("turn should remain current after director failure: %#v", snapshot.CurrentTurn)
 	}
@@ -322,8 +326,7 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 		t.Fatalf("initial director failure should be recorded without blocking retry: %#v", snapshot.DirectorPlanStatus)
 	}
 
-	previous = generateInteractiveDirectorForPlan
-	generateInteractiveDirectorForPlan = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
+	conversation.directorGenerator = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
 		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
 		if err != nil {
 			return "", err
@@ -335,10 +338,12 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 		}
 		return "失败后重试成功", nil
 	}
-	defer func() { generateInteractiveDirectorForPlan = previous }()
-
-	startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
-	retried := waitForDirectorPlanRunSummary(t, store, story.ID, "main", "失败后重试成功")
+	done = startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
+	<-done
+	retried, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if retried.DirectorPlanStatus == nil || retried.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady || !retried.DirectorPlanStatus.StartReady || retried.DirectorPlanStatus.Blocking {
 		t.Fatalf("retry should mark initial director plan ready: %#v", retried.DirectorPlanStatus)
 	}
@@ -468,67 +473,4 @@ func actorBodyStatusForTest(state map[string]any) string {
 	current, _ := actorState["current"].(map[string]any)
 	value, _ := current["body_status"].(string)
 	return value
-}
-
-func waitForDirectorPlanRunStatus(t *testing.T, store *interactive.Store, storyID, branchID, status string) interactive.Snapshot {
-	t.Helper()
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for {
-		snapshot, err := store.Snapshot(storyID, branchID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if snapshot.DirectorPlan != nil && snapshot.DirectorPlan.Metadata.LastRun != nil && snapshot.DirectorPlan.Metadata.LastRun.Status == status {
-			return snapshot
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("director run did not reach status %q: %#v", status, snapshot.DirectorPlan)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-}
-
-func waitForDirectorPlanPublicStatus(t *testing.T, store *interactive.Store, storyID, branchID, status string) interactive.DirectorPlanStatus {
-	t.Helper()
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for {
-		current, err := store.DirectorPlanStatus(storyID, branchID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if current.Status == status {
-			return current
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("director public status did not reach %q: %#v", status, current)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-}
-
-func waitForDirectorPlanRunSummary(t *testing.T, store *interactive.Store, storyID, branchID, summary string) interactive.Snapshot {
-	t.Helper()
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for {
-		snapshot, err := store.Snapshot(storyID, branchID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if snapshot.DirectorPlan != nil && snapshot.DirectorPlan.Metadata.LastRun != nil && snapshot.DirectorPlan.Metadata.LastRun.Summary == summary {
-			return snapshot
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("director run did not reach summary %q: %#v", summary, snapshot.DirectorPlan)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-}
-
-func waitForDirectorGoroutineStart(t *testing.T, started <-chan struct{}) {
-	t.Helper()
-	select {
-	case <-started:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("director goroutine did not start")
-	}
 }

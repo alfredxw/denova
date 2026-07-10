@@ -36,6 +36,8 @@ type App struct {
 	activeLoreImageTask    *Task
 	activeAutomationTasks  map[string]*Task
 	activeAutomationRuns   map[string]automationRunState
+	workspaceDirectorTasks *workspaceDirectorTaskGroup
+	directorGenerator      interactiveDirectorGenerator
 
 	runtimeManager *WorkspaceRuntimeManager
 	chatApp        *ChatAppService
@@ -48,6 +50,32 @@ type App struct {
 	servicesOnce   sync.Once
 
 	mu sync.RWMutex
+}
+
+// SetInteractiveDirectorGeneratorForTest installs an App-scoped Director
+// generator so tests do not share mutable package-level state.
+func (a *App) SetInteractiveDirectorGeneratorForTest(generator interactiveDirectorGenerator) func() {
+	if a == nil {
+		return func() {}
+	}
+	a.mu.Lock()
+	previous := a.directorGenerator
+	a.directorGenerator = generator
+	a.mu.Unlock()
+	return func() {
+		a.mu.Lock()
+		a.directorGenerator = previous
+		a.mu.Unlock()
+	}
+}
+
+func (a *App) interactiveDirectorGenerator() interactiveDirectorGenerator {
+	if a == nil {
+		return nil
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.directorGenerator
 }
 
 // New 创建应用运行时。当 workspace 为空且没有上次打开的 workspace 时，App 进入“无书籍”状态，
@@ -154,6 +182,7 @@ func (a *App) applyRuntime(runtime *runtimeState) {
 	a.agentRunner = runtime.agentRunner
 	a.interactiveStoryRunner = runtime.interactiveStoryRunner
 	a.versionService = runtime.versionService
+	a.workspaceDirectorTasks = newWorkspaceDirectorTaskGroup()
 }
 
 func (a *App) clearRuntime() {
@@ -167,6 +196,28 @@ func (a *App) clearRuntime() {
 	a.agentRunner = nil
 	a.interactiveStoryRunner = nil
 	a.versionService = nil
+}
+
+func (a *App) stopWorkspaceDirectorTasks() {
+	a.mu.Lock()
+	tasks := a.workspaceDirectorTasks
+	a.workspaceDirectorTasks = nil
+	a.mu.Unlock()
+	tasks.Close()
+}
+
+func (a *App) directorTasksForWorkspace(workspace string) *workspaceDirectorTaskGroup {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.workspace != workspace {
+		return nil
+	}
+	return a.workspaceDirectorTasks
+}
+
+// Close stops background work owned by the current workspace runtime.
+func (a *App) Close() {
+	a.stopWorkspaceDirectorTasks()
 }
 
 // RemoteAccessConfig returns the current process-level access policy used by

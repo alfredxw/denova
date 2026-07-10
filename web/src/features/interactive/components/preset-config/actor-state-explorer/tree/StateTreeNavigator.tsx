@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import type { KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -12,6 +13,7 @@ interface StateTreeNavigatorProps {
   selectedId: string
   expandedIds: Set<string>
   onSelect: (id: string) => void
+  onKeyboardSelect?: (id: string) => void
   onClose?: () => void
   onToggleExpanded: (id: string) => void
   onAddTemplate?: () => void
@@ -27,6 +29,7 @@ export function StateTreeNavigator({
   selectedId,
   expandedIds,
   onSelect,
+  onKeyboardSelect = onSelect,
   onClose,
   onToggleExpanded,
   onAddTemplate,
@@ -48,13 +51,19 @@ export function StateTreeNavigator({
           {t('settingPanel.actorState.explorer.structure')}
         </span>
         {onClose ? (
-          <Button type="button" variant="ghost" size="icon-sm" className="actor-state-navigation-close rounded-full" onClick={onClose} aria-label={t('settingPanel.actorState.explorer.closeStructure')}>
+          <Button type="button" variant="ghost" size="icon-sm" className="actor-state-navigation-close size-8 rounded-full" onClick={onClose} aria-label={t('settingPanel.actorState.explorer.closeStructure')}>
             <X />
           </Button>
         ) : null}
       </div>
       <ScrollArea className="actor-state-tree-scroll min-h-0 flex-1 overflow-hidden" data-testid="actor-state-tree-scroll">
-        <div className="w-full min-w-0 max-w-full overflow-hidden p-1.5 pr-2">
+        <div
+          role="tree"
+          aria-label={t('settingPanel.actorState.explorer.structure')}
+          aria-orientation="vertical"
+          className="w-full min-w-0 max-w-full overflow-hidden p-1.5 pr-2"
+          onKeyDown={(event) => handleTreeArrowKey(event, onKeyboardSelect)}
+        >
           {tree.map((node) => (
             <StateTreeNode
               key={node.id}
@@ -75,4 +84,23 @@ export function StateTreeNavigator({
       </ScrollArea>
     </aside>
   )
+}
+
+function handleTreeArrowKey(event: KeyboardEvent<HTMLDivElement>, onSelect: (id: string) => void) {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+  const target = event.target instanceof Element
+    ? event.target.closest<HTMLElement>('[role="treeitem"][data-node-id]')
+    : null
+  if (!target) return
+
+  const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="treeitem"][data-node-id]'))
+  const currentIndex = items.indexOf(target)
+  const offset = event.key === 'ArrowDown' ? 1 : -1
+  const nextItem = items[currentIndex + offset]
+  const nextId = nextItem?.dataset.nodeId
+  if (!nextItem || !nextId) return
+
+  event.preventDefault()
+  onSelect(nextId)
+  nextItem.focus()
 }

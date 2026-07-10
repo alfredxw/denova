@@ -105,7 +105,7 @@ export function StateOpCard({
         <button
           ref={setActivatorNodeRef}
           type="button"
-          className="mt-0.5 flex h-6 w-5 shrink-0 items-center justify-center text-[var(--nova-text-faint)] opacity-0 transition-opacity group-hover:opacity-100"
+          className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
           aria-label={t('settingPanel.actorState.explorer.drag')}
           {...attributes}
           {...listeners}
@@ -179,7 +179,7 @@ export function StateOpCard({
         {/* Delete button */}
         <button
           type="button"
-          className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)] group-hover:opacity-100"
+          className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
           onClick={onRemove}
           aria-label={t('settingPanel.actorState.explorer.deleteOperation')}
         >
@@ -214,8 +214,9 @@ export function StateOpCard({
       <div className="mt-1 pl-7">
         <button
           type="button"
-          className="flex items-center gap-1 text-[10px] text-[var(--nova-text-faint)] transition-colors hover:text-[var(--nova-text)]"
+          className="flex min-h-7 items-center gap-1 rounded-[8px] px-1 text-[10px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           onClick={() => setShowReason(!showReason)}
+          aria-expanded={showReason}
         >
           {showReason ? (
             <ChevronDown className="h-3 w-3" />

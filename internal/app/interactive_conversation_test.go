@@ -1,7 +1,9 @@
 package app
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/schema"
 
@@ -9,6 +11,21 @@ import (
 	"denova/internal/interactive"
 	"denova/internal/session"
 )
+
+func TestBoundedDirectorInstructionPreservesOutputProtocol(t *testing.T) {
+	suffix := "\n请完成必要工具调用和文件编辑后，只输出一句中文摘要，不要输出故事正文、完整 Markdown 或 JSON patch。\n"
+	instruction := strings.Repeat("超长导演上下文。", interactiveDirectorInstructionMaxBytes) + suffix
+	bounded := boundedDirectorInstruction(instruction)
+	if len(bounded) > interactiveDirectorInstructionMaxBytes {
+		t.Fatalf("director instruction exceeded hard budget: %d", len(bounded))
+	}
+	if !utf8.ValidString(bounded) {
+		t.Fatal("director instruction was truncated across a UTF-8 boundary")
+	}
+	if !strings.Contains(bounded, strings.TrimSpace(suffix)) {
+		t.Fatalf("director output protocol was lost after truncation: %q", bounded[len(bounded)-256:])
+	}
+}
 
 func TestInteractiveConversationToolResultFallsBackToNameWhenIDMissing(t *testing.T) {
 	conversation := &interactiveConversation{}

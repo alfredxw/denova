@@ -150,7 +150,7 @@ function KeyValRow({ id, entry, mode, placeholder, onChange, onRemove }: KeyValR
       <button
         ref={setActivatorNodeRef}
         type="button"
-        className="flex h-6 w-5 shrink-0 items-center justify-center text-[var(--nova-text-faint)] opacity-0 transition-opacity group-hover:opacity-100"
+        className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
         aria-label={t('settingPanel.actorState.explorer.drag')}
         {...attributes}
         {...listeners}
@@ -179,7 +179,7 @@ function KeyValRow({ id, entry, mode, placeholder, onChange, onRemove }: KeyValR
 
       <button
         type="button"
-        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] hover:text-[var(--nova-danger)] group-hover:opacity-100"
+        className="flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] hover:text-[var(--nova-danger)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
         onClick={onRemove}
         aria-label={t('common.delete')}
       >

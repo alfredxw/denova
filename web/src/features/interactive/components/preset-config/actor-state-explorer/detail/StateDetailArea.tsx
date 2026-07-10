@@ -11,7 +11,6 @@ import type { ExplorerProps } from '../types'
 import { TemplateDetailEditor } from './TemplateDetailEditor'
 import { FieldDetailEditor } from './FieldDetailEditor'
 import { ActorDetailEditor } from './ActorDetailEditor'
-import { OpeningOpsEditor } from './OpeningOpsEditor'
 import { PoolDetailEditor } from './PoolDetailEditor'
 import { TraitDetailEditor } from './TraitDetailEditor'
 import { DetailContentFrame } from './DetailLayout'
@@ -23,6 +22,7 @@ interface StateDetailAreaProps {
   selectedId: string
   value: ExplorerProps['value']
   onChange: (value: ExplorerProps['value']) => void
+  onNodeIdChange: (previousId: string, nextId: string) => void
   onOpenNavigation?: () => void
   onSelect: (id: string) => void
   onDuplicateNode?: (node: TreeNode) => void
@@ -36,6 +36,7 @@ export function StateDetailArea({
   selectedId,
   value,
   onChange,
+  onNodeIdChange,
   onOpenNavigation,
   onSelect,
   onDuplicateNode,
@@ -114,7 +115,7 @@ export function StateDetailArea({
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="actor-state-detail-scroll">
         <AnimatePresence mode="wait">
           <motion.div
-            key={selectedNode?.id || 'empty'}
+            key={detailNodeKey(selectedNode)}
             variants={subtlePresence}
             initial="initial"
             animate="animate"
@@ -128,6 +129,7 @@ export function StateDetailArea({
                 tree={tree}
                 value={value}
                 onChange={onChange}
+                onNodeIdChange={onNodeIdChange}
                 onSelect={onSelect}
               />
             </DetailContentFrame>
@@ -144,6 +146,7 @@ function DetailContent({
   tree,
   value,
   onChange,
+  onNodeIdChange,
   onSelect,
 }: {
   node: TreeNode | null
@@ -151,6 +154,7 @@ function DetailContent({
   tree: TreeNode[]
   value: ExplorerProps['value']
   onChange: (value: ExplorerProps['value']) => void
+  onNodeIdChange: (previousId: string, nextId: string) => void
   onSelect: (id: string) => void
 }) {
   const { t } = useTranslation()
@@ -179,6 +183,7 @@ function DetailContent({
           tree={tree}
           value={value}
           onChange={onChange}
+          onIdChange={(nextId) => onNodeIdChange(node.id, nextId)}
           onSelect={onSelect}
         />
       )
@@ -192,6 +197,7 @@ function DetailContent({
           templateIndex={node.data.templateIndex}
           value={value}
           onChange={onChange}
+          onIdChange={(nextId) => onNodeIdChange(node.id, nextId)}
         />
       )
 
@@ -203,14 +209,7 @@ function DetailContent({
           template={node.data.template}
           value={value}
           onChange={onChange}
-        />
-      )
-
-    case 'opening-ops':
-      return (
-        <OpeningOpsEditor
-          value={value}
-          onChange={onChange}
+          onIdChange={(nextId) => onNodeIdChange(node.id, nextId)}
         />
       )
 
@@ -223,6 +222,7 @@ function DetailContent({
           tree={tree}
           value={value}
           onChange={onChange}
+          onIdChange={(nextId) => onNodeIdChange(node.id, nextId)}
           onSelect={onSelect}
         />
       )
@@ -236,6 +236,7 @@ function DetailContent({
           poolIndex={node.data.poolIndex}
           value={value}
           onChange={onChange}
+          onIdChange={(nextId) => onNodeIdChange(node.id, nextId)}
         />
       )
 
@@ -245,5 +246,17 @@ function DetailContent({
           {t('settingPanel.actorState.explorer.unavailable')}
         </div>
       )
+  }
+}
+
+function detailNodeKey(node: TreeNode | null): string {
+  const data = node?.data
+  if (!data) return 'empty'
+  switch (data.kind) {
+    case 'template': return `template:${data.index}`
+    case 'field': return `field:${data.templateIndex}:${data.fieldIndex}`
+    case 'actor': return `actor:${data.actorIndex}`
+    case 'pool': return `pool:${data.poolIndex}`
+    case 'trait': return `trait:${data.poolIndex}:${data.traitIndex}`
   }
 }

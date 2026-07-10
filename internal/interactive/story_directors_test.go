@@ -39,11 +39,15 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 			Templates: []ActorStateTemplate{{
 				ID:   "protagonist",
 				Name: "主角",
+				TraitRules: []ActorTraitRule{{
+					PoolID: "origins", DrawCount: 1,
+				}},
 				Fields: []ActorStateField{
 					{ID: "mana", Path: "resources.mana", Name: "法力", Type: "number", Default: float64(3), Max: floatPtr(9), Visibility: "hidden"},
 					{ID: "invalid", Path: ".bad", Name: "无效", Type: "number"},
 				},
 			}},
+			TraitPools:    []ActorTraitPool{{ID: "origins", Name: "出身", Traits: []ActorTraitDefinition{{ID: "wanderer", Name: "旅人", Weight: 1, Visibility: "visible"}}}},
 			InitialActors: []ActorStateInitialActor{{ID: DefaultActorID, Name: "主角", TemplateID: "protagonist", Role: "protagonist"}},
 		},
 		TRPGSystem: StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
@@ -55,14 +59,6 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 			DifficultyGuidance:  "幸运耗尽时提高难度。",
 			StateEffectGuidance: "成功可增加机会，失败可消耗资源。",
 		}}},
-		OpeningSelector: StoryDirectorOpeningSelector{
-			Enabled: true,
-			InitialStateOps: []StateOp{{
-				Op:    "set",
-				Path:  "flags.opening",
-				Value: true,
-			}},
-		},
 	})
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
@@ -90,8 +86,8 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 		t.Fatalf("rule template JSON should not keep removed fields: %s", string(ruleData))
 	}
 	ops := StoryDirectorInitialStateOps(created)
-	if !containsStateOp(ops, "actors.protagonist.state.resources.mana", float64(3)) || !containsStateOp(ops, "actors.protagonist.state.resources.mana_max", float64(9)) || !containsStateOp(ops, "flags.opening", true) {
-		t.Fatalf("initial state ops should include attribute defaults and opening ops: %#v", ops)
+	if !containsStateOp(ops, "actors.protagonist.state.resources.mana", float64(3)) || !containsStateOp(ops, "actors.protagonist.state.resources.mana_max", float64(9)) || !containsStateOpPath(ops, "actors.protagonist.traits") {
+		t.Fatalf("initial state ops should include attribute defaults and actor trait snapshots: %#v", ops)
 	}
 
 	updated, err := library.Update(created.ID, StoryDirector{
@@ -100,9 +96,6 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 		TRPGSystem:    created.TRPGSystem,
 		ActorState:    created.ActorState,
 		EventPackages: created.EventPackages,
-		OpeningSelector: StoryDirectorOpeningSelector{
-			Enabled: true,
-		},
 	}, created.UpdatedAt)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
@@ -295,8 +288,8 @@ func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.
 	if len(migrated.TRPGSystem.RuleTemplates) != 1 || migrated.TRPGSystem.RuleTemplates[0].Dice != "1d20" || migrated.TRPGSystem.RuleTemplates[0].Modifier != 0 {
 		t.Fatalf("rule templates should be copied: %#v", migrated.TRPGSystem.RuleTemplates)
 	}
-	if len(migrated.OpeningSelector.TraitPools) != 1 || !containsStateOp(migrated.OpeningSelector.InitialStateOps, "actors.protagonist.state.resources.hp", float64(12)) {
-		t.Fatalf("opening selector should be copied: %#v", migrated.OpeningSelector)
+	if len(migrated.ActorState.TraitPools) != 1 || migrated.ActorState.TraitPools[0].ID != "talent" {
+		t.Fatalf("legacy traits should migrate into the actor state library: %#v", migrated.ActorState)
 	}
 	if migrated.ModuleRefs.OpeningSelectorID != "" {
 		t.Fatalf("opening selector should migrate into actor state module instead of a standalone ref: %#v", migrated.ModuleRefs)
@@ -305,8 +298,8 @@ func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.
 	if err != nil {
 		t.Fatalf("migrated actor state module should be readable: %v", err)
 	}
-	if len(actorStateModule.OpeningSelector.TraitPools) != 1 || !containsStateOp(actorStateModule.OpeningSelector.InitialStateOps, "actors.protagonist.state.resources.hp", float64(12)) {
-		t.Fatalf("migrated actor state should own opening selector: %#v", actorStateModule.OpeningSelector)
+	if len(actorStateModule.ActorState.TraitPools) != 1 || actorStateModule.ActorState.TraitPools[0].ID != "talent" || len(actorStateModule.MigrationWarnings) == 0 {
+		t.Fatalf("migrated actor state should own trait pools and warn about discarded ops: %#v", actorStateModule)
 	}
 
 	preexisting, err := directors.Get("preexisting")
@@ -374,6 +367,15 @@ func testTellerSlot() TellerPromptSlot {
 func containsStateOp(ops []StateOp, path string, value any) bool {
 	for _, op := range ops {
 		if op.Path == path && op.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
+func containsStateOpPath(ops []StateOp, path string) bool {
+	for _, op := range ops {
+		if op.Path == path {
 			return true
 		}
 	}

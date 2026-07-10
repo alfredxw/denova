@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"denova/config"
 	"denova/internal/agent"
-	runtimeapp "denova/internal/app"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -273,7 +273,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 func TestInteractiveStoryCreateDoesNotRunInitialDirector(t *testing.T) {
 	application := newTestApplication(t)
 	calls := 0
-	restoreDirector := runtimeapp.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
 		calls++
 		return "", errors.New("director unavailable")
 	})
@@ -316,33 +316,77 @@ func TestInteractiveStoryCreateDoesNotRunInitialDirector(t *testing.T) {
 	}
 }
 
-func TestInteractiveOpeningRollAndInitialStateAPI(t *testing.T) {
+func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 	application := newTestApplication(t)
+	actorState, err := application.CreateActorState(interactive.ActorStateModule{
+		ID:   "trait-api-state",
+		Name: "词条 API 状态",
+		ActorState: interactive.StoryDirectorActorStateSystem{
+			Templates: []interactive.ActorStateTemplate{{
+				ID: "protagonist", Name: "主角", TraitRules: []interactive.ActorTraitRule{{PoolID: "origin", DrawCount: 1}},
+			}},
+			TraitPools: []interactive.ActorTraitPool{{
+				ID: "origin", Name: "出身", Traits: []interactive.ActorTraitDefinition{
+					{ID: "wanderer", Name: "旅人", Weight: 1, Visibility: "visible"},
+					{ID: "scholar", Name: "学者", Weight: 1, Visibility: "visible"},
+				},
+			}},
+			InitialActors: []interactive.ActorStateInitialActor{{ID: "protagonist", Name: "主角", TemplateID: "protagonist", Role: "protagonist"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	director, err := application.CreateStoryDirector(interactive.StoryDirector{
+		ID:   "trait-api-director",
+		Name: "词条 API 导演",
+		ModuleRefs: interactive.StoryDirectorModuleRefs{
+			NarrativeStyleID: "classic", ActorStateID: actorState.ID,
+			EventPackagesDisabled: true, RuleSystemDisabled: true, MemoryStructureDisabled: true, ImagePresetDisabled: true,
+		},
+		Strategy: interactive.StoryDirectorStrategy{Enabled: false},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	server := NewServer(application, "0")
 
-	rollResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/opening/roll", map[string]any{
-		"story_director_id": "default",
+	rollResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/actor-traits/roll", map[string]any{
+		"story_director_id": director.ID,
+		"actor_id":          "protagonist",
+		"template_id":       "protagonist",
 		"seed":              42,
+		"selections": []map[string]any{{
+			"pool_id": "origin", "trait_ids": []string{"scholar"},
+		}},
 	})
 	if rollResp.Code != http.StatusOK {
-		t.Fatalf("opening roll status = %d body=%s", rollResp.Code, rollResp.Body.String())
+		t.Fatalf("actor trait roll status = %d body=%s", rollResp.Code, rollResp.Body.String())
 	}
 	var rolled struct {
-		StoryDirectorID string `json:"story_director_id"`
-		Seed            int64  `json:"seed"`
-		StateOps        []any  `json:"state_ops"`
+		StoryDirectorID string                           `json:"story_director_id"`
+		Seed            int64                            `json:"seed"`
+		Traits          []interactive.ActorTraitInstance `json:"traits"`
 	}
 	decodeResponse(t, rollResp.Body.Bytes(), &rolled)
-	if rolled.StoryDirectorID != "default" || rolled.Seed != 42 || len(rolled.StateOps) == 0 {
-		t.Fatalf("opening roll mismatch: %#v", rolled)
+	if rolled.StoryDirectorID != director.ID || rolled.Seed != 42 || len(rolled.Traits) != 1 || rolled.Traits[0].TraitID != "scholar" {
+		t.Fatalf("actor trait roll mismatch: %#v", rolled)
+	}
+	if strings.Contains(rollResp.Body.String(), "state_ops") {
+		t.Fatalf("trait roll API must not expose StateOps: %s", rollResp.Body.String())
 	}
 
 	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]any{
-		"title":           "带开局状态",
-		"story_teller_id": "classic",
+		"title":             "带主角词条",
+		"story_teller_id":   "classic",
+		"story_director_id": director.ID,
+		"initial_trait_rolls": []map[string]any{{
+			"actor_id": "protagonist", "seed": 42,
+			"selections": []map[string]any{{"pool_id": "origin", "trait_ids": []string{"scholar"}}},
+		}},
 		"initial_state_ops": []map[string]any{{
 			"op":    "set",
-			"path":  "resources.hp",
+			"path":  "flags.client_injected",
 			"value": 18,
 		}},
 	})
@@ -367,10 +411,66 @@ func TestInteractiveOpeningRollAndInitialStateAPI(t *testing.T) {
 	decodeResponse(t, snapshotResp.Body.Bytes(), &snapshot)
 	actors, _ := snapshot.State["actors"].(map[string]any)
 	protagonist, _ := actors["protagonist"].(map[string]any)
-	actorState, _ := protagonist["state"].(map[string]any)
-	resources, _ := actorState["resources"].(map[string]any)
-	if resources["hp"] != float64(18) {
-		t.Fatalf("initial state should be visible in snapshot: %#v", snapshot.State)
+	traits, _ := protagonist["traits"].([]any)
+	if len(traits) != 1 || traits[0].(map[string]any)["trait_id"] != "scholar" {
+		t.Fatalf("preview and formal creation should preserve the fixed trait: %#v", snapshot.State)
+	}
+	if _, injected := snapshot.State["flags"]; injected {
+		t.Fatalf("clients must not inject arbitrary StateOps: %#v", snapshot.State)
+	}
+
+	autoCreateResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]any{
+		"title": "后端自动抽取", "story_teller_id": "classic", "story_director_id": director.ID,
+	})
+	if autoCreateResp.Code != http.StatusOK {
+		t.Fatalf("automatic trait creation status=%d body=%s", autoCreateResp.Code, autoCreateResp.Body.String())
+	}
+	var autoCreated struct {
+		ID string `json:"id"`
+	}
+	decodeResponse(t, autoCreateResp.Body.Bytes(), &autoCreated)
+	autoSnapshotResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+autoCreated.ID+"/snapshot", nil)
+	var autoSnapshot struct {
+		State map[string]any `json:"state"`
+	}
+	decodeResponse(t, autoSnapshotResp.Body.Bytes(), &autoSnapshot)
+	autoActors, _ := autoSnapshot.State["actors"].(map[string]any)
+	autoProtagonist, _ := autoActors["protagonist"].(map[string]any)
+	if autoTraits, _ := autoProtagonist["traits"].([]any); len(autoTraits) != 1 {
+		t.Fatalf("backend should draw traits when the client makes no selection: %#v", autoSnapshot.State)
+	}
+
+	invalidResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/actor-traits/roll", map[string]any{
+		"story_director_id": director.ID,
+		"actor_id":          "protagonist",
+		"template_id":       "missing",
+	})
+	if invalidResp.Code != http.StatusBadRequest {
+		t.Fatalf("invalid template should be rejected status=%d body=%s", invalidResp.Code, invalidResp.Body.String())
+	}
+	invalidPoolResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/actor-traits/roll", map[string]any{
+		"story_director_id": director.ID,
+		"actor_id":          "protagonist",
+		"template_id":       "protagonist",
+		"selections":        []map[string]any{{"pool_id": "forbidden", "trait_ids": []string{"scholar"}}},
+	})
+	if invalidPoolResp.Code != http.StatusBadRequest {
+		t.Fatalf("invalid trait pool should be rejected status=%d body=%s", invalidPoolResp.Code, invalidPoolResp.Body.String())
+	}
+	invalidTraitResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/actor-traits/roll", map[string]any{
+		"story_director_id": director.ID,
+		"actor_id":          "protagonist",
+		"template_id":       "protagonist",
+		"selections":        []map[string]any{{"pool_id": "origin", "trait_ids": []string{"missing"}}},
+	})
+	if invalidTraitResp.Code != http.StatusBadRequest {
+		t.Fatalf("invalid trait should be rejected status=%d body=%s", invalidTraitResp.Code, invalidTraitResp.Body.String())
+	}
+	if legacyResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/opening/roll", map[string]any{}); legacyResp.Code != http.StatusNotFound {
+		t.Fatalf("legacy opening roll route should be removed status=%d body=%s", legacyResp.Code, legacyResp.Body.String())
+	}
+	if legacyResp := performJSONRequest(t, server, http.MethodGet, "/api/opening-selectors", nil); legacyResp.Code != http.StatusNotFound {
+		t.Fatalf("standalone opening selector API should be removed status=%d body=%s", legacyResp.Code, legacyResp.Body.String())
 	}
 }
 
@@ -435,6 +535,17 @@ func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 	decodeResponse(t, rebuildResp.Body.Bytes(), &rebuilt)
 	if !strings.Contains(rebuilt.Docs.Plan, "正文Agent可读") {
 		t.Fatalf("rebuilt detached director should return plan docs: %#v", rebuilt)
+	}
+}
+
+func TestPresetUpdateRejectsStaleWorkspaceIdentity(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	resp := performJSONRequest(t, server, http.MethodPatch, "/api/actor-states/default", map[string]any{
+		"workspace": filepath.Join(t.TempDir(), "different-workspace"),
+	})
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("stale workspace update status=%d body=%s", resp.Code, resp.Body.String())
 	}
 }
 
@@ -543,7 +654,8 @@ func TestInteractiveChatRequiresStoryID(t *testing.T) {
 
 func waitForDirectorStatusAPI(t *testing.T, server *Server, storyID, status string) interactive.DirectorPlanStatus {
 	t.Helper()
-	deadline := time.Now().Add(500 * time.Millisecond)
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
 	var current interactive.DirectorPlanStatus
 	for {
 		resp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+storyID+"/director/status?branch=main", nil)
@@ -554,9 +666,10 @@ func waitForDirectorStatusAPI(t *testing.T, server *Server, storyID, status stri
 		if current.Status == status {
 			return current
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("director status did not reach %q: %#v", status, current)
+		select {
+		case <-t.Context().Done():
+			t.Fatalf("director status did not reach %q before test cancellation: %#v", status, current)
+		case <-ticker.C:
 		}
-		time.Sleep(5 * time.Millisecond)
 	}
 }

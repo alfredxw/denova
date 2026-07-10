@@ -30,11 +30,12 @@ import {
 } from './utils'
 
 const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
-const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
-const iconActionClassName = 'nova-nav-item rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] transition-[background-color,color,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] active:scale-[0.96]'
-const actionButtonClassName = 'nova-nav-item gap-1.5 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] transition-[background-color,color,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] active:scale-[0.98]'
-const nestedEditorShellClassName = 'grid min-h-[340px] gap-2 overflow-visible 2xl:grid-cols-[260px_minmax(0,1fr)]'
-const detailScrollPaneClassName = 'min-w-0 overflow-hidden rounded-[20px] bg-[var(--nova-surface)] p-3 lg:p-4'
+const selectClassName = 'nova-field h-8 w-full text-xs focus:ring-0'
+const iconActionClassName = 'nova-nav-item rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+const actionButtonClassName = 'nova-nav-item gap-1.5 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3'
+const nestedEditorShellClassName = 'grid min-h-0 grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-2'
+const detailScrollPaneClassName = 'min-w-0 overflow-hidden rounded-[14px] bg-[var(--nova-surface)] p-3'
 
 /** Edits one d20 adjudication style through its operational decision flow. */
 export function TRPGSystemVisualEditor({
@@ -67,7 +68,7 @@ export function TRPGSystemVisualEditor({
   }
 
   return (
-    <Tabs value={activeSection} onValueChange={setActiveSection} className="trpg-system-workspace min-h-[360px] gap-3">
+    <Tabs value={activeSection} onValueChange={setActiveSection} className="trpg-system-workspace min-h-0 gap-3">
       <div className="flex flex-col gap-3 px-1 pt-1">
         <p className="max-w-[76ch] text-xs leading-5 text-[var(--nova-text-faint)]">
           {t('settingPanel.trpgRule.singleConfigDesc')}
@@ -82,35 +83,35 @@ export function TRPGSystemVisualEditor({
       <TabsContent value="when" className="mt-0">
         <DetailPanel>
           <Field label={t('settingPanel.orchestration.ruleLabel')}><Input className={inputClassName} value={active.label || ''} onChange={(event) => patchActive({ label: event.target.value })} /></Field>
-          <Field label={t('settingPanel.trpgRule.trigger')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
-          <div className="grid gap-3 xl:grid-cols-2">
-            <Field label={t('settingPanel.trpgRule.mustCheckExamples')}><Textarea className="nova-field min-h-32 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={joinExampleLines(active.must_check_examples)} onChange={(event) => patchActive({ must_check_examples: splitExampleLines(event.target.value) })} placeholder={t('settingPanel.trpgRule.examplesPlaceholder')} /></Field>
-            <Field label={t('settingPanel.trpgRule.skipCheckExamples')}><Textarea className="nova-field min-h-32 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={joinExampleLines(active.skip_check_examples)} onChange={(event) => patchActive({ skip_check_examples: splitExampleLines(event.target.value) })} placeholder={t('settingPanel.trpgRule.examplesPlaceholder')} /></Field>
+          <Field label={t('settingPanel.trpgRule.trigger')}><Textarea autoResize={false} className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
+          <div className={fieldGridClassName}>
+            <Field label={t('settingPanel.trpgRule.mustCheckExamples')}><Textarea autoResize={false} className="nova-field min-h-32 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={joinExampleLines(active.must_check_examples)} onChange={(event) => patchActive({ must_check_examples: splitExampleLines(event.target.value) })} placeholder={t('settingPanel.trpgRule.examplesPlaceholder')} /></Field>
+            <Field label={t('settingPanel.trpgRule.skipCheckExamples')}><Textarea autoResize={false} className="nova-field min-h-32 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={joinExampleLines(active.skip_check_examples)} onChange={(event) => patchActive({ skip_check_examples: splitExampleLines(event.target.value) })} placeholder={t('settingPanel.trpgRule.examplesPlaceholder')} /></Field>
           </div>
         </DetailPanel>
       </TabsContent>
 
       <TabsContent value="outcome" className="mt-0">
         <DetailPanel>
-          <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-4">
+          <div className={fieldGridClassName}>
             <Field label={t('settingPanel.trpgRule.dice')}><Input className={inputClassName} value={t('settingPanel.trpgRule.fixedD20')} disabled /></Field>
             <Field label={t('settingPanel.trpgRule.modifier')}><Input className={inputClassName} inputMode="decimal" value={String(active.modifier ?? 0)} onChange={(event) => patchActive({ modifier: parseNumberInput(event.target.value) })} /></Field>
             <RuleSelectField label={t('settingPanel.trpgRule.failurePolicy')} value={active.failure_policy || 'fail_forward'} options={RULE_FAILURE_POLICY_OPTIONS} labelFor={(next) => ruleFailurePolicyLabel(next, t)} onChange={(failure_policy) => patchActive({ failure_policy })} />
           </div>
-          <div className="grid gap-3 xl:grid-cols-2">
-            <Field label={t('settingPanel.trpgRule.difficultyGuidance')}><Textarea className="nova-field min-h-28 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.difficulty_guidance || ''} onChange={(event) => patchActive({ difficulty_guidance: event.target.value })} /></Field>
-            <Field label={t('settingPanel.trpgRule.stateEffectGuidance')}><Textarea className="nova-field min-h-28 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.state_effect_guidance || ''} onChange={(event) => patchActive({ state_effect_guidance: event.target.value })} /></Field>
+          <div className={fieldGridClassName}>
+            <Field label={t('settingPanel.trpgRule.difficultyGuidance')}><Textarea autoResize={false} className="nova-field min-h-28 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.difficulty_guidance || ''} onChange={(event) => patchActive({ difficulty_guidance: event.target.value })} /></Field>
+            <Field label={t('settingPanel.trpgRule.stateEffectGuidance')}><Textarea autoResize={false} className="nova-field min-h-28 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.state_effect_guidance || ''} onChange={(event) => patchActive({ state_effect_guidance: event.target.value })} /></Field>
           </div>
-          <div className="grid gap-3 xl:grid-cols-2">
-            <Field label={t('settingPanel.trpgRule.successHint')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.success_hint || ''} onChange={(event) => patchActive({ success_hint: event.target.value })} /></Field>
-            <Field label={t('settingPanel.trpgRule.failureHint')}><Textarea className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.failure_hint || ''} onChange={(event) => patchActive({ failure_hint: event.target.value })} /></Field>
+          <div className={fieldGridClassName}>
+            <Field label={t('settingPanel.trpgRule.successHint')}><Textarea autoResize={false} className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.success_hint || ''} onChange={(event) => patchActive({ success_hint: event.target.value })} /></Field>
+            <Field label={t('settingPanel.trpgRule.failureHint')}><Textarea autoResize={false} className="nova-field min-h-24 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.failure_hint || ''} onChange={(event) => patchActive({ failure_hint: event.target.value })} /></Field>
           </div>
         </DetailPanel>
       </TabsContent>
 
       <TabsContent value="state" forceMount hidden={activeSection !== 'state'} className="mt-0">
         <DetailPanel>
-          <div className="grid items-end gap-3 xl:grid-cols-[minmax(0,1fr)_auto]">
+          <div className={`${fieldGridClassName} items-end`}>
             <Field label={t('settingPanel.trpgRule.actorStateBinding')}>
               <Select value={actorStateId || '__none__'} onValueChange={(next) => onActorStateChange?.(next === '__none__' ? '' : next)}>
                 <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
@@ -141,7 +142,7 @@ export function TRPGSystemVisualEditor({
             onValidChange={setBindingsValid}
           />
         ) : (
-          <div className="flex min-h-48 flex-col items-center justify-center gap-2 rounded-[20px] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 py-8 text-center">
+          <div className="flex min-h-48 flex-col items-center justify-center gap-2 rounded-[14px] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 py-8 text-center">
             <Database className="size-5 text-[var(--nova-text-faint)]" />
             <div className="text-sm font-medium text-[var(--nova-text)]">{t('settingPanel.trpgRule.flow.noStateTitle')}</div>
             <div className="max-w-[52ch] text-xs leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.trpgRule.flow.noStateDesc')}</div>
@@ -158,7 +159,7 @@ function WorkflowTab({ value, icon: Icon, label, description }: { value: string;
       <Icon data-icon="inline-start" />
       <span className="flex min-w-0 flex-col items-start">
         <span className="text-xs font-semibold">{label}</span>
-        <span className="hidden max-w-64 truncate text-[10px] font-normal text-[var(--nova-text-faint)] 2xl:block">{description}</span>
+        <span className="max-w-64 truncate text-[10px] font-normal text-[var(--nova-text-faint)]">{description}</span>
       </span>
     </TabsTrigger>
   )
@@ -194,7 +195,9 @@ function StateBindingEditor({
   const setItems = (items: RuleStateBinding[]) => onChange(items.slice(0, 12))
   const patchActive = (patch: Partial<RuleStateBinding>) => {
     if (!active) return
-    setItems(value.map((item, index) => (index === activeIndex ? { ...item, ...patch } : item)))
+    const nextBinding = { ...active, ...patch }
+    if (patch.id !== undefined) setActiveId(itemKey(nextBinding, activeIndex, 'binding'))
+    setItems(value.map((item, index) => (index === activeIndex ? nextBinding : item)))
   }
   const addBinding = () => {
     const item: RuleStateBinding = {
@@ -256,13 +259,13 @@ function StateBindingEditor({
                 <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={copyBinding} aria-label={t('settingPanel.presetConfig.copy')}><Copy className="h-3.5 w-3.5" /></Button>
                 <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={deleteBinding} aria-label={t('common.delete')}><Trash2 className="h-3.5 w-3.5" /></Button>
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className={fieldGridClassName}>
                 <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={active.id || ''} onChange={(event) => patchActive({ id: event.target.value })} /></Field>
                 <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={active.label || ''} onChange={(event) => patchActive({ label: event.target.value })} /></Field>
                 <TemplateSelectField label={t('settingPanel.trpgRule.actorTemplate')} value={active.actor_template_id || ''} templates={templates} onChange={(actor_template_id) => patchActive({ actor_template_id })} />
                 <TemplateSelectField label={t('settingPanel.trpgRule.targetTemplate')} value={active.target_template_id || ''} templates={templates} allowEmpty onChange={(target_template_id) => patchActive({ target_template_id })} />
               </div>
-              <Field label={t('settingPanel.trpgRule.trigger')}><Textarea className="nova-field min-h-16 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
+              <Field label={t('settingPanel.trpgRule.trigger')}><Textarea autoResize={false} className="nova-field min-h-16 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
               <JSONFragmentEditor label={t('settingPanel.trpgRule.modifiers')} value={active.modifiers || []} onChange={(modifiers) => patchActive({ modifiers: modifiers as RuleStateBinding['modifiers'] })} onValidChange={setModifiersValid} />
               <JSONFragmentEditor label={t('settingPanel.trpgRule.narrativeStateRefs')} value={active.narrative_state_refs || []} onChange={(narrative_state_refs) => patchActive({ narrative_state_refs: narrative_state_refs as RuleStateBinding['narrative_state_refs'] })} onValidChange={setRefsValid} />
               <JSONFragmentEditor label={t('settingPanel.trpgRule.outcomeStateChanges')} value={active.outcome_state_changes || []} onChange={(outcome_state_changes) => patchActive({ outcome_state_changes: outcome_state_changes as RuleStateBinding['outcome_state_changes'] })} onValidChange={setChangesValid} />
@@ -298,7 +301,7 @@ function TemplateSelectField({
         <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
           {allowEmpty ? <SelectItem value="__none__">{t('settingPanel.trpgRule.noTargetTemplate')}</SelectItem> : null}
-          {templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name || template.id}</SelectItem>)}
+          {templates.filter((template) => template.id).map((template) => <SelectItem key={template.id} value={template.id}>{template.name || template.id}</SelectItem>)}
         </SelectContent>
       </Select>
     </Field>
@@ -357,18 +360,18 @@ function JSONFragmentEditor({ label, value, onChange, onValidChange }: {
 
   return (
     <Field label={label}>
-      <Textarea className="nova-field min-h-28 resize-y font-mono text-xs leading-5 shadow-none focus-visible:ring-0" value={text} onChange={(event) => update(event.target.value)} />
+      <Textarea autoResize={false} className="nova-field min-h-28 resize-y font-mono text-xs leading-5 shadow-none focus-visible:ring-0" value={text} onChange={(event) => update(event.target.value)} />
       {error ? <div className="mt-1 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1 text-[11px] text-[var(--nova-danger)]">{error}</div> : null}
     </Field>
   )
 }
 
 function DetailPanel({ children }: { children: ReactNode }) {
-  return <section className="grid min-w-0 gap-3 rounded-[20px] bg-[var(--nova-surface-2)] p-4">{children}</section>
+  return <section className="grid min-w-0 gap-3 rounded-[14px] bg-[var(--nova-surface-2)] p-3">{children}</section>
 }
 
 function EmptyDetail({ children }: { children: ReactNode }) {
-  return <div className="flex min-h-48 items-center justify-center rounded-[18px] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-8 text-center text-xs text-[var(--nova-text-faint)]">{children}</div>
+  return <div className="flex min-h-48 items-center justify-center rounded-[12px] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-8 text-center text-xs text-[var(--nova-text-faint)]">{children}</div>
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

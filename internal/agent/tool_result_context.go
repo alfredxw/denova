@@ -191,15 +191,15 @@ func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultC
 		msg = sanitizedToolContextMessage(msg)
 		result[i] = msg
 		size := len(msg.Content)
-		if keepFull[i] {
-			used += size
-			continue
-		}
 		if used+size <= policy.BudgetBytes {
 			used += size
 			continue
 		}
-		result[i] = toolResultPlaceholderMessage(msg, "tool_result_context_budget_exceeded")
+		reason := "tool_result_context_budget_exceeded"
+		if keepFull[i] {
+			reason = "recent_tool_result_context_budget_exceeded"
+		}
+		result[i] = toolResultPlaceholderMessage(msg, reason)
 	}
 	return result
 }

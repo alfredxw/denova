@@ -5,7 +5,339 @@
 
 @custom-variant dark (&:is([data-theme="dark"] *));
 
-/* Preset editors respond to the space inside the workbench, not the browser viewport. */
+/* Preset Studio: a container-driven workbench nested inside either product mode. */
+.preset-workspace {
+  --preset-canvas: #000000;
+  --preset-surface: #0a0a0a;
+  --preset-raised: #141413;
+  --preset-line: #2b2b29;
+  --preset-ink: #f4f4f0;
+  --preset-signal: #d8d8d2;
+  --preset-signal-soft: rgba(255, 255, 250, 0.065);
+  --preset-success: #64836f;
+  --preset-warning: #a17b43;
+  --preset-danger: #a85852;
+  --preset-primary-bg: #ecece7;
+  --preset-primary-ink: #151513;
+  --preset-display-font: "Inter Variable", "SF Pro Display", "PingFang SC", sans-serif;
+  --preset-code-font: "SFMono-Regular", "Cascadia Code", "Roboto Mono", ui-monospace, monospace;
+  --nova-bg: var(--preset-canvas);
+  --nova-surface: var(--preset-surface);
+  --nova-surface-2: var(--preset-raised);
+  --nova-surface-3: #1b1b19;
+  --nova-hover: #1e1e1c;
+  --nova-active: #242421;
+  --nova-border: var(--preset-line);
+  --nova-border-soft: #222220;
+  --nova-text: var(--preset-ink);
+  --nova-text-muted: #bdbdb7;
+  --nova-text-faint: #96968f;
+  --nova-accent: var(--preset-signal);
+  --nova-accent-blue: #aaa9a3;
+  --nova-accent-green: var(--preset-success);
+  --nova-switch-checked: #405f4c;
+  --nova-switch-checked-border: #527660;
+  --nova-danger: #d37a73;
+  --nova-danger-bg: rgba(168, 88, 82, 0.13);
+  --nova-danger-border: rgba(190, 101, 94, 0.38);
+  --nova-warning: #c49a58;
+  --nova-warning-bg: rgba(161, 123, 67, 0.14);
+  --nova-success: #8eae98;
+  --nova-success-muted: #759681;
+  --nova-success-bg: rgba(100, 131, 111, 0.15);
+  --nova-field-focus-border: color-mix(in srgb, var(--preset-signal) 68%, var(--preset-line));
+  --nova-style-chip-bg: rgba(255, 255, 250, 0.07);
+  --nova-style-chip-hover-bg: rgba(255, 255, 250, 0.1);
+  --nova-style-chip-text: #d8d8d2;
+  container-name: preset-workspace;
+  container-type: inline-size;
+  background: var(--preset-canvas);
+}
+
+[data-theme="light"] .preset-workspace {
+  --preset-canvas: #ffffff;
+  --preset-surface: #ffffff;
+  --preset-raised: #f6f6f3;
+  --preset-line: #d9d9d4;
+  --preset-ink: #181816;
+  --preset-signal: #242421;
+  --preset-signal-soft: rgba(24, 24, 22, 0.055);
+  --preset-success: #396a4b;
+  --preset-warning: #8a611f;
+  --preset-danger: #963f39;
+  --preset-primary-bg: #1d1d1b;
+  --preset-primary-ink: #ffffff;
+  --nova-surface-3: #ecece8;
+  --nova-hover: #f0f0ec;
+  --nova-active: #e8e8e3;
+  --nova-border-soft: #e6e6e1;
+  --nova-text-muted: #595954;
+  --nova-text-faint: #777770;
+  --nova-accent-blue: #595954;
+  --nova-accent-green: var(--preset-success);
+  --nova-switch-checked: #3f684c;
+  --nova-switch-checked-border: #3f684c;
+  --nova-danger: #963f39;
+  --nova-danger-bg: rgba(150, 63, 57, 0.09);
+  --nova-danger-border: rgba(150, 63, 57, 0.28);
+  --nova-warning: #8a611f;
+  --nova-warning-bg: rgba(138, 97, 31, 0.1);
+  --nova-success: #2f6944;
+  --nova-success-muted: #487858;
+  --nova-success-bg: rgba(57, 106, 75, 0.1);
+  --nova-style-chip-bg: rgba(24, 24, 22, 0.055);
+  --nova-style-chip-hover-bg: rgba(24, 24, 22, 0.085);
+  --nova-style-chip-text: #3c3c38;
+}
+
+.preset-workspace .nova-nav-item {
+  border-radius: 10px;
+  transition-duration: var(--nova-motion-fast);
+}
+
+.preset-workspace .nova-field {
+  border-color: var(--preset-line);
+  border-radius: 10px;
+  background: var(--preset-raised);
+}
+
+.preset-workspace .nova-field:focus,
+.preset-workspace .nova-field:focus-visible,
+.preset-workspace .nova-field:focus-within {
+  border-color: var(--nova-field-focus-border);
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--preset-signal) 20%, transparent);
+}
+
+.preset-workspace .font-mono {
+  font-family: var(--preset-code-font);
+}
+
+.preset-workspace-main {
+  container-name: preset-main;
+  container-type: inline-size;
+  background: var(--preset-canvas);
+}
+
+.preset-workspace-toolbar {
+  min-height: 58px;
+  border-color: var(--preset-line);
+  background: var(--preset-surface);
+  box-shadow: inset 0 -1px 0 var(--preset-line);
+}
+
+.preset-workspace-title {
+  font-family: var(--preset-display-font);
+  letter-spacing: -0.012em;
+}
+
+.preset-title-icon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--preset-line);
+  border-radius: 10px;
+  background: var(--preset-raised);
+  color: var(--preset-ink);
+}
+
+.preset-primary-action {
+  border-color: var(--preset-primary-bg);
+  background: var(--preset-primary-bg);
+  color: var(--preset-primary-ink);
+  box-shadow: none;
+}
+
+.preset-primary-action:hover {
+  border-color: var(--preset-primary-bg);
+  background: color-mix(in srgb, var(--preset-primary-bg) 88%, var(--preset-surface));
+  color: var(--preset-primary-ink);
+}
+
+@container preset-main (max-width: 560px) {
+  .preset-workspace-toolbar {
+    min-height: 52px;
+    gap: 0.5rem;
+    padding-inline: 0.625rem;
+  }
+
+  .preset-title-subtitle,
+  .preset-action-label {
+    display: none;
+  }
+
+  .preset-title-icon {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+}
+
+.preset-directory {
+  background: var(--preset-surface);
+}
+
+.preset-directory-header {
+  border-color: var(--preset-line);
+  background: var(--preset-surface);
+}
+
+.preset-directory-section {
+  border-radius: 12px;
+}
+
+.preset-directory-section-header {
+  min-height: 38px;
+  border-radius: 10px;
+}
+
+.preset-directory-section-header:hover,
+.preset-directory-section:focus-within > .preset-directory-section-header {
+  background: color-mix(in srgb, var(--preset-raised) 72%, transparent);
+}
+
+.preset-directory-item {
+  position: relative;
+  min-height: 48px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+}
+
+.preset-directory-item::before {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: var(--preset-signal);
+  content: '';
+  opacity: 0;
+  transform: scaleY(0.55);
+  transition: opacity var(--nova-motion-fast) var(--nova-ease), transform var(--nova-motion-normal) var(--nova-ease);
+}
+
+.preset-directory-item.is-active {
+  border-color: var(--preset-line);
+  background: var(--nova-active);
+  box-shadow: none;
+}
+
+.preset-directory-item.is-active::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+.preset-directory-item-icon {
+  display: inline-flex;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--preset-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--preset-raised) 82%, transparent);
+}
+
+.preset-directory-item.is-active .preset-directory-item-icon {
+  border-color: var(--preset-line);
+  background: var(--preset-raised);
+  color: var(--preset-ink);
+}
+
+.preset-metadata-shell {
+  container-name: preset-metadata;
+  container-type: inline-size;
+  border-bottom: 1px solid var(--preset-line);
+  background: var(--preset-surface);
+  padding: 12px 16px;
+}
+
+.preset-metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 176px), 1fr));
+  align-items: end;
+  gap: 12px;
+}
+
+.preset-field-label {
+  overflow: hidden;
+  color: var(--nova-text-muted);
+  font-size: var(--nova-ui-micro-font-size);
+  line-height: var(--nova-ui-micro-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-status-badge {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  height: 36px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--preset-line);
+  border-radius: 10px;
+  background: var(--preset-raised);
+  padding: 0 11px;
+  color: var(--nova-text-muted);
+  font-size: var(--nova-ui-micro-font-size);
+}
+
+.preset-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 999px;
+  background: var(--preset-success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--preset-success) 14%, transparent);
+}
+
+.preset-metadata-hint {
+  margin-top: 10px;
+  border-left: 2px solid var(--preset-warning);
+  padding: 2px 0 2px 10px;
+  color: var(--nova-text-muted);
+  font-size: var(--nova-ui-micro-font-size);
+  line-height: 1.55;
+}
+
+@container preset-metadata (min-width: 680px) {
+  .preset-metadata-description {
+    grid-column: span 2;
+  }
+}
+
+.preset-empty-state {
+  display: flex;
+  width: min(100%, 440px);
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border: 1px dashed var(--preset-line);
+  border-radius: 14px;
+  background: var(--preset-surface);
+  padding: 30px 24px;
+  text-align: center;
+}
+
+.preset-empty-state-icon {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--preset-line);
+  border-radius: 13px;
+  background: var(--preset-raised);
+  color: var(--preset-ink);
+}
+
+/* Every list/detail editor responds to the space left inside the workbench. */
 .preset-config-visual-container {
   container-name: preset-config-editor;
   container-type: inline-size;
@@ -13,86 +345,46 @@
 
 .preset-visual-editor-shell {
   grid-template-columns: minmax(0, 1fr);
+  min-height: 320px;
 }
 
-@container preset-config-editor (min-width: 760px) {
+@container preset-config-editor (min-width: 620px) {
   .preset-visual-editor-shell {
-    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
   }
 }
 
-/* Image presets also live beside the persistent directory, so viewport breakpoints are misleading. */
-.image-preset-editor {
-  container-name: image-preset-editor;
+:is(.image-preset-editor, .teller-editor) {
+  container-name: preset-rule-editor;
   container-type: inline-size;
 }
 
-.image-preset-metadata-grid,
-.image-preset-layout,
-.image-preset-rule-grid {
+:is(.image-preset-layout, .teller-injection-layout),
+:is(.image-preset-rule-grid, .teller-rule-grid) {
   grid-template-columns: minmax(0, 1fr);
 }
 
-@container image-preset-editor (min-width: 820px) {
-  .image-preset-metadata-grid {
-    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) 180px 120px;
+@container preset-rule-editor (min-width: 720px) {
+  :is(.image-preset-layout, .teller-injection-layout) {
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   }
 
-  .image-preset-layout {
-    grid-template-columns: 280px minmax(0, 1fr);
-  }
-
-  .image-preset-rules {
+  :is(.image-preset-rules, .teller-injection-rules) {
     max-height: none;
     border-right-width: 1px;
     border-bottom-width: 0;
   }
 
-  .image-preset-rule-grid {
-    grid-template-columns: minmax(220px, 1fr) minmax(240px, 320px) 32px;
+  :is(.image-preset-rule-grid, .teller-rule-grid) {
+    grid-template-columns: minmax(180px, 1fr) minmax(220px, 300px) 36px;
   }
 
-  .image-preset-rule-summary {
+  :is(.image-preset-rule-summary, .teller-rule-summary) {
     grid-column: 1 / -1;
   }
 }
 
-.teller-editor {
-  container-name: teller-editor;
-  container-type: inline-size;
-}
-
-.teller-metadata-grid,
-.teller-injection-layout,
-.teller-rule-grid {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-@container teller-editor (min-width: 820px) {
-  .teller-metadata-grid {
-    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) 150px 150px;
-  }
-
-  .teller-injection-layout {
-    grid-template-columns: 280px minmax(0, 1fr);
-  }
-
-  .teller-injection-rules {
-    max-height: none;
-    border-right-width: 1px;
-    border-bottom-width: 0;
-  }
-
-  .teller-rule-grid {
-    grid-template-columns: minmax(220px, 1fr) minmax(240px, 320px) 32px;
-  }
-
-  .teller-rule-summary {
-    grid-column: 1 / -1;
-  }
-}
-
-/* Radix uses an inline display:table wrapper. Override it where horizontal growth is never valid. */
+/* Radix uses an inline display:table wrapper. Horizontal growth is invalid here. */
 :is(.actor-state-tree-scroll, .preset-directory-scroll) [data-slot="scroll-area-viewport"] > div {
   display: block !important;
   width: 100%;
@@ -100,7 +392,6 @@
   max-width: 100%;
 }
 
-/* The state editor responds to its own pane width, not the browser viewport. */
 .actor-state-explorer {
   container-name: actor-state-editor;
   container-type: inline-size;
@@ -155,9 +446,9 @@
   pointer-events: auto;
 }
 
-@container actor-state-editor (min-width: 780px) {
+@container actor-state-editor (min-width: 720px) {
   .actor-state-explorer-layout {
-    grid-template-columns: minmax(260px, 30%) minmax(0, 1fr);
+    grid-template-columns: minmax(230px, 30%) minmax(0, 1fr);
   }
 
   .actor-state-navigation {
@@ -177,80 +468,87 @@
   }
 }
 
+@media (hover: none), (pointer: coarse) {
+  .actor-state-explorer .group :is([class*="group-hover:opacity-100"], [class*="group-focus-within:opacity-100"]) {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .actor-state-navigation,
-  .actor-state-navigation-backdrop {
+  .actor-state-navigation-backdrop,
+  .preset-directory-item::before {
     transition: none;
   }
 }
 
 :root {
-  --nova-bg: #1a1a1a;
-  --nova-bg-deep: #050505;
-  --nova-surface: #111111;
-  --nova-surface-2: #171717;
-  --nova-surface-3: #202020;
-  --nova-hover: #262626;
-  --nova-active: #2f2f2f;
-  --nova-border: #2a2a2a;
-  --nova-border-soft: #222222;
-  --nova-text: #ffffff;
-  --nova-text-muted: #a3a3a3;
-  --nova-text-faint: #737373;
-  --nova-accent: #a8adb7;
-  --nova-accent-blue: #7fa7d9;
-  --nova-accent-green: #81b38d;
-  --nova-switch-checked: #3c5d48;
-  --nova-switch-checked-border: #3c5d48;
+  --nova-bg: #000000;
+  --nova-bg-deep: #000000;
+  --nova-surface: #0a0a0a;
+  --nova-surface-2: #121212;
+  --nova-surface-3: #1a1a1a;
+  --nova-hover: #202020;
+  --nova-active: #2a2a29;
+  --nova-border: #292929;
+  --nova-border-soft: #1e1e1e;
+  --nova-text: #f7f7f4;
+  --nova-text-muted: #bdbdb8;
+  --nova-text-faint: #92928d;
+  --nova-accent: #d5d5cf;
+  --nova-accent-blue: #c39a58;
+  --nova-accent-green: #85aa90;
+  --nova-switch-checked: #405f4c;
+  --nova-switch-checked-border: #527660;
   --nova-switch-thumb: #f4fff7;
-  --nova-danger: #ff6b6b;
-  --nova-danger-foreground: #1a1a1a;
-  --nova-danger-bg: rgba(255, 107, 107, 0.12);
-  --nova-danger-border: rgba(255, 107, 107, 0.42);
-  --nova-warning: #f4d58d;
-  --nova-warning-bg: rgba(240, 198, 116, 0.22);
-  --nova-success: #b2f2bb;
-  --nova-success-muted: #8fbc8f;
-  --nova-success-bg: rgba(47, 158, 68, 0.2);
-  --nova-field-focus-border: #3a3a3a;
-  --nova-app-shell-glow: rgba(255, 255, 255, 0.035);
-  --nova-topbar-shadow: rgba(255, 255, 255, 0.025);
-  --nova-control-shadow: rgba(255, 255, 255, 0.028);
-  --nova-user-message-border: #4a4a4a;
-  --nova-user-message-bg-from: #4a4a4a;
-  --nova-user-message-bg-to: #3f3f3f;
-  --nova-user-message-text: #ffffff;
-  --nova-assistant-message-border: #303030;
-  --nova-assistant-message-bg: #141414;
-  --nova-chat-heading: #d7dbe2;
-  --nova-menu-bg: rgba(32, 33, 36, 0.95);
-  --nova-menu-item-hover-bg: rgba(74, 77, 84, 0.25);
-  --nova-selection-bg: rgba(74, 77, 84, 0.25);
-  --nova-drop-bg: #2c3a4d;
-  --nova-tree-text: #aeb4bf;
-  --nova-tree-icon: #858b96;
-  --nova-tree-folder: #a8adb7;
-  --nova-tree-chevron: #6f7682;
-  --nova-chip-bg: rgba(74, 77, 84, 0.2);
-  --nova-chip-hover-bg: rgba(74, 77, 84, 0.25);
-  --nova-style-chip-bg: rgba(139, 92, 246, 0.2);
-  --nova-style-chip-hover-bg: rgba(139, 92, 246, 0.25);
-  --nova-style-chip-text: #ddd6fe;
-  --nova-lore-chip-bg: rgba(15, 118, 110, 0.2);
-  --nova-lore-chip-hover-bg: rgba(15, 118, 110, 0.25);
-  --nova-lore-chip-text: #99f6e4;
-  --nova-code-bg: #303238;
-  --nova-code-text: #d7dbe2;
-  --nova-code-block-bg: #1f2023;
-  --nova-table-header-bg: #25262a;
-  --nova-markdown-border: #303238;
+  --nova-danger: #d37a73;
+  --nova-danger-foreground: #111111;
+  --nova-danger-bg: rgba(168, 88, 82, 0.13);
+  --nova-danger-border: rgba(190, 101, 94, 0.38);
+  --nova-warning: #c49a58;
+  --nova-warning-bg: rgba(161, 123, 67, 0.15);
+  --nova-success: #91b39b;
+  --nova-success-muted: #789881;
+  --nova-success-bg: rgba(100, 131, 111, 0.16);
+  --nova-field-focus-border: #555552;
+  --nova-app-shell-glow: transparent;
+  --nova-topbar-shadow: rgba(255, 255, 255, 0.04);
+  --nova-control-shadow: rgba(255, 255, 255, 0.035);
+  --nova-user-message-border: #3d3d3a;
+  --nova-user-message-bg-from: #2b2b29;
+  --nova-user-message-bg-to: #242422;
+  --nova-user-message-text: #f7f7f4;
+  --nova-assistant-message-border: #292929;
+  --nova-assistant-message-bg: #0d0d0d;
+  --nova-chat-heading: #efefeb;
+  --nova-menu-bg: rgba(10, 10, 10, 0.98);
+  --nova-menu-item-hover-bg: rgba(255, 255, 250, 0.08);
+  --nova-selection-bg: rgba(255, 255, 250, 0.08);
+  --nova-drop-bg: #242422;
+  --nova-tree-text: #c0c0ba;
+  --nova-tree-icon: #969690;
+  --nova-tree-folder: #b6b6b0;
+  --nova-tree-chevron: #85857f;
+  --nova-chip-bg: rgba(255, 255, 250, 0.07);
+  --nova-chip-hover-bg: rgba(255, 255, 250, 0.1);
+  --nova-style-chip-bg: rgba(255, 255, 250, 0.07);
+  --nova-style-chip-hover-bg: rgba(255, 255, 250, 0.1);
+  --nova-style-chip-text: #d8d8d2;
+  --nova-lore-chip-bg: rgba(100, 131, 111, 0.13);
+  --nova-lore-chip-hover-bg: rgba(100, 131, 111, 0.19);
+  --nova-lore-chip-text: #a9c5b0;
+  --nova-code-bg: #1c1c1b;
+  --nova-code-text: #e0e0dc;
+  --nova-code-block-bg: #101010;
+  --nova-table-header-bg: #181817;
+  --nova-markdown-border: #2b2b29;
   --nova-dialogue-highlight: #ffd166;
-  --nova-scrollbar-track: #0f0f0f;
-  --nova-scrollbar-thumb: #3f3f3f;
-  --nova-scrollbar-thumb-hover: #5a5a5a;
-  --nova-editor-ide-bg: #1a1a1a;
-  --nova-editor-ide-color: #ffffff;
-  --nova-editor-ide-accent: #303238;
+  --nova-scrollbar-track: #080808;
+  --nova-scrollbar-thumb: #343432;
+  --nova-scrollbar-thumb-hover: #50504c;
+  --nova-editor-ide-bg: #000000;
+  --nova-editor-ide-color: #f7f7f4;
+  --nova-editor-ide-accent: #242422;
   --nova-radius: 8px;
   --nova-ease: cubic-bezier(0.25, 1.1, 0.4, 1);
   --nova-motion-fast: 140ms;
@@ -305,21 +603,21 @@
 }
 
 [data-theme="light"] {
-  --nova-bg: #edf1f5;
-  --nova-bg-deep: #dfe5ec;
-  --nova-surface: #f6f8fa;
-  --nova-surface-2: #eef2f6;
-  --nova-surface-3: #e4e9f0;
-  --nova-hover: #e1e7ef;
-  --nova-active: #d7e0eb;
-  --nova-border: #cbd4df;
-  --nova-border-soft: #dce3eb;
-  --nova-text: #000000;
-  --nova-text-muted: #536071;
-  --nova-text-faint: #7a8493;
-  --nova-accent: #536a86;
-  --nova-accent-blue: #2f6fae;
-  --nova-accent-green: #3f7f54;
+  --nova-bg: #ffffff;
+  --nova-bg-deep: #ffffff;
+  --nova-surface: #ffffff;
+  --nova-surface-2: #f7f7f4;
+  --nova-surface-3: #efefeb;
+  --nova-hover: #f0f0ec;
+  --nova-active: #e7e7e2;
+  --nova-border: #d7d7d2;
+  --nova-border-soft: #e5e5e0;
+  --nova-text: #171715;
+  --nova-text-muted: #565651;
+  --nova-text-faint: #74746e;
+  --nova-accent: #343431;
+  --nova-accent-blue: #8a611f;
+  --nova-accent-green: #396a4b;
   --nova-switch-checked: #3c5d48;
   --nova-switch-checked-border: #3c5d48;
   --nova-switch-thumb: #ffffff;
@@ -332,46 +630,46 @@
   --nova-success: #156f3f;
   --nova-success-muted: #2f6f46;
   --nova-success-bg: rgba(21, 111, 63, 0.12);
-  --nova-field-focus-border: #9ba8b8;
+  --nova-field-focus-border: #8f8f88;
   --nova-app-shell-glow: transparent;
-  --nova-topbar-shadow: rgba(24, 32, 42, 0.08);
-  --nova-control-shadow: rgba(24, 32, 42, 0.055);
-  --nova-shadow: 0 18px 44px rgba(46, 58, 76, 0.16);
-  --nova-user-message-border: #b5c3d5;
-  --nova-user-message-bg-from: #e4ebf4;
-  --nova-user-message-bg-to: #d8e2ee;
-  --nova-user-message-text: #000000;
-  --nova-assistant-message-border: #d4dde7;
-  --nova-assistant-message-bg: #f6f8fa;
-  --nova-chat-heading: #1f2937;
-  --nova-menu-bg: rgba(246, 248, 250, 0.97);
-  --nova-menu-item-hover-bg: rgba(49, 65, 86, 0.09);
-  --nova-selection-bg: rgba(55, 87, 125, 0.15);
-  --nova-drop-bg: #d5e2f1;
-  --nova-tree-text: #000000;
-  --nova-tree-icon: #536071;
-  --nova-tree-folder: #2f6fae;
-  --nova-tree-chevron: #667085;
-  --nova-chip-bg: rgba(47, 111, 174, 0.12);
-  --nova-chip-hover-bg: rgba(47, 111, 174, 0.18);
-  --nova-style-chip-bg: rgba(96, 72, 176, 0.12);
-  --nova-style-chip-hover-bg: rgba(96, 72, 176, 0.18);
-  --nova-style-chip-text: #3d2f82;
-  --nova-lore-chip-bg: rgba(15, 118, 110, 0.12);
-  --nova-lore-chip-hover-bg: rgba(15, 118, 110, 0.18);
-  --nova-lore-chip-text: #075f57;
-  --nova-code-bg: #e1e7ef;
-  --nova-code-text: #1f2937;
-  --nova-code-block-bg: #e7edf4;
-  --nova-table-header-bg: #e3eaf2;
-  --nova-markdown-border: #ccd6e2;
+  --nova-topbar-shadow: rgba(24, 24, 22, 0.08);
+  --nova-control-shadow: rgba(24, 24, 22, 0.055);
+  --nova-shadow: 0 18px 44px rgba(24, 24, 22, 0.14);
+  --nova-user-message-border: #cecec8;
+  --nova-user-message-bg-from: #ecece8;
+  --nova-user-message-bg-to: #e5e5e0;
+  --nova-user-message-text: #171715;
+  --nova-assistant-message-border: #ddddda;
+  --nova-assistant-message-bg: #ffffff;
+  --nova-chat-heading: #242421;
+  --nova-menu-bg: rgba(255, 255, 255, 0.98);
+  --nova-menu-item-hover-bg: rgba(24, 24, 22, 0.07);
+  --nova-selection-bg: rgba(24, 24, 22, 0.08);
+  --nova-drop-bg: #ecece8;
+  --nova-tree-text: #242421;
+  --nova-tree-icon: #666660;
+  --nova-tree-folder: #4a4a46;
+  --nova-tree-chevron: #777770;
+  --nova-chip-bg: rgba(24, 24, 22, 0.06);
+  --nova-chip-hover-bg: rgba(24, 24, 22, 0.09);
+  --nova-style-chip-bg: rgba(24, 24, 22, 0.055);
+  --nova-style-chip-hover-bg: rgba(24, 24, 22, 0.085);
+  --nova-style-chip-text: #3c3c38;
+  --nova-lore-chip-bg: rgba(57, 106, 75, 0.09);
+  --nova-lore-chip-hover-bg: rgba(57, 106, 75, 0.14);
+  --nova-lore-chip-text: #315f40;
+  --nova-code-bg: #efefeb;
+  --nova-code-text: #242421;
+  --nova-code-block-bg: #f4f4f1;
+  --nova-table-header-bg: #eeeeea;
+  --nova-markdown-border: #d9d9d4;
   --nova-dialogue-highlight: #A04A1A;
-  --nova-scrollbar-track: #e7edf3;
-  --nova-scrollbar-thumb: #b6c1cf;
-  --nova-scrollbar-thumb-hover: #8f9cad;
-  --nova-editor-ide-bg: #f6f8fa;
-  --nova-editor-ide-color: #000000;
-  --nova-editor-ide-accent: #d7dee8;
+  --nova-scrollbar-track: #f4f4f1;
+  --nova-scrollbar-thumb: #c7c7c1;
+  --nova-scrollbar-thumb-hover: #a5a59e;
+  --nova-editor-ide-bg: #ffffff;
+  --nova-editor-ide-color: #171715;
+  --nova-editor-ide-accent: #e1e1dc;
   color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -494,9 +792,7 @@ html[data-nova-motion="off"] *::after {
 }
 
 [data-nova-app-shell="true"] {
-  background:
-    radial-gradient(circle at 16% 0%, var(--nova-app-shell-glow), transparent 26%),
-    var(--nova-bg);
+  background: var(--nova-bg);
   color: var(--nova-text);
   font-size: var(--nova-ui-font-size);
   line-height: var(--nova-ui-line-height);
@@ -644,10 +940,9 @@ html[data-nova-motion="off"] *::after {
 
 .nova-topbar {
   border-color: var(--nova-border);
-  background: color-mix(in srgb, var(--nova-surface) 92%, transparent);
+  background: var(--nova-bg-deep);
   color: var(--nova-text-muted);
   box-shadow: inset 0 -1px 0 var(--nova-topbar-shadow);
-  backdrop-filter: blur(18px);
   font-size: var(--nova-ui-font-size);
   line-height: var(--nova-ui-line-height);
 }

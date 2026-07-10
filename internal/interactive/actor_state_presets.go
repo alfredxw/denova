@@ -162,8 +162,7 @@ func actorStatePresetModule(id, name, description string, tags []string, templat
 			Templates:     appendStoryContextTemplate(templates),
 			InitialActors: defaultActorStateInitialActors(),
 		},
-		OpeningSelector: StoryDirectorOpeningSelector{Enabled: true},
-		Tags:            tags,
+		Tags: tags,
 	})
 }
 

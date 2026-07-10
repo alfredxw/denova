@@ -7,6 +7,7 @@ import { novaEase } from '@/features/motion/motion-tokens'
 import { parseNumberInput } from '../../utils'
 import type { ActorStateField, ActorStateTemplate } from '../../../../types'
 import type { ExplorerProps } from '../types'
+import { fieldNodeId } from '../build-tree'
 import { FieldTypeBadge } from '../shared/FieldTypeBadge'
 import { VisibilityBadge } from '../shared/VisibilityBadge'
 import { StateValueEditor } from '../shared/StateValueEditor'
@@ -22,23 +23,29 @@ interface FieldDetailEditorProps {
   templateIndex: number
   value: ExplorerProps['value']
   onChange: (value: ExplorerProps['value']) => void
+  onIdChange: (nextId: string) => void
 }
 
 export function FieldDetailEditor({
   field,
   fieldIndex,
+  template,
   templateIndex,
   value,
   onChange,
+  onIdChange,
 }: FieldDetailEditorProps) {
   const { t } = useTranslation()
   const updateField = (patch: Partial<ActorStateField>) => {
     const templates = [...(value.templates || [])]
     const tpl = { ...templates[templateIndex] }
     const fields = [...(tpl.fields || [])]
-    fields[fieldIndex] = { ...field, ...patch }
+    const nextField = { ...field, ...patch }
+    fields[fieldIndex] = nextField
     tpl.fields = fields
     templates[templateIndex] = tpl
+    const nextNodeId = fieldNodeId(template.id, nextField, fieldIndex)
+    if (nextNodeId !== fieldNodeId(template.id, field, fieldIndex)) onIdChange(nextNodeId)
     onChange({ ...value, templates })
   }
 

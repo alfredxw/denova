@@ -27,13 +27,13 @@ const (
 	defaultBranchPlanningTurns = 5
 )
 
-// DirectorContextMinBytes is the floor for director.md and director-related
-// model context slices so callers do not accidentally reintroduce tiny caps.
-const DirectorContextMinBytes = 64 * 1024
+// DirectorContextMaxBytes is the hard ceiling for a single director-related
+// context fragment. Callers may and should use smaller budgets.
+const DirectorContextMaxBytes = 64 * 1024
 
 const (
-	maxDirectorPlanDocBytes  = DirectorContextMinBytes
-	directorPlanVisibleBytes = DirectorContextMinBytes
+	maxDirectorPlanDocBytes  = DirectorContextMaxBytes
+	directorPlanVisibleBytes = DirectorContextMaxBytes
 )
 
 var requiredDirectorPlanHeadings = []string{
@@ -727,8 +727,8 @@ func ExtractDirectorPlanVisibleSection(content string) string {
 }
 
 func DirectorPlanVisibleContext(plan DirectorPlan, limitBytes int) string {
-	if limitBytes < DirectorContextMinBytes {
-		limitBytes = DirectorContextMinBytes
+	if limitBytes <= 0 || limitBytes > DirectorContextMaxBytes {
+		limitBytes = DirectorContextMaxBytes
 	}
 	var sb strings.Builder
 	writeDirectorPlanContextBlock(&sb, "导演规划", plan.VisibleDocs.Plan)

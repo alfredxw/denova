@@ -114,7 +114,8 @@ describe('MemoryPanel', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '状态' }))
     expect(screen.getByRole('button', { name: '状态' })).toHaveClass('bg-[var(--nova-active)]')
-    expect(screen.getByText('actors')).toBeInTheDocument()
+    expect(screen.getByText('Actor 状态')).toBeInTheDocument()
+    expect(screen.getAllByText('protagonist').length).toBeGreaterThan(0)
 
     await userEvent.click(screen.getByRole('button', { name: '记忆' }))
     expect(screen.getAllByText('顾清漪').length).toBeGreaterThan(0)

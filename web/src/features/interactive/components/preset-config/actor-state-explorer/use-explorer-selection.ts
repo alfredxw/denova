@@ -43,6 +43,18 @@ export function useExplorerSelection(value: ExplorerProps['value']) {
     setSelectedId(id)
   }, [])
 
+  const remapNodeId = useCallback((previousId: string, nextId: string) => {
+    if (previousId === nextId) return
+    setSelectedId((current) => current === previousId ? nextId : current)
+    setExpandedIds((current) => {
+      if (!current.has(previousId)) return current
+      const next = new Set(current)
+      next.delete(previousId)
+      next.add(nextId)
+      return next
+    })
+  }, [])
+
   return {
     tree,
     selectedId,
@@ -51,5 +63,6 @@ export function useExplorerSelection(value: ExplorerProps['value']) {
     toggleExpanded,
     expandAncestors,
     selectNode,
+    remapNodeId,
   }
 }

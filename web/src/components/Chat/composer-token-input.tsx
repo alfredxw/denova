@@ -229,7 +229,7 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
   }, [autoCapitalize, editor, enterKeyHint, inputMode, placeholder, rows])
 
   useEffect(() => {
-    if (!editor) return
+    if (!editor || editor.isDestroyed) return
     const current = serializeComposerDoc(editor.state.doc)
     if (current === value) {
       setEmpty(value.length === 0)

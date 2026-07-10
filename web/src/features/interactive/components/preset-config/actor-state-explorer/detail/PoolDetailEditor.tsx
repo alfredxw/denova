@@ -2,21 +2,24 @@ import { Sparkle, Plus } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { novaEase } from '@/features/motion/motion-tokens'
 import { cn } from '@/lib/utils'
-import { parseNumberInput, nextPresetId } from '../../utils'
-import type { OpeningTrait, OpeningTraitPool } from '../../../../types'
+import { nextPresetId } from '../../utils'
+import type { ActorTraitDefinition, ActorTraitPool } from '../../../../types'
 import type { ExplorerProps, TreeNode } from '../types'
+import { poolNodeId, traitNodeId } from '../build-tree'
 import { DetailResponsiveGrid } from './DetailLayout'
 
 interface PoolDetailEditorProps {
-  pool: OpeningTraitPool
+  pool: ActorTraitPool
   poolIndex: number
   selectedId: string
   tree: TreeNode[]
   value: ExplorerProps['value']
   onChange: (value: ExplorerProps['value']) => void
+  onIdChange: (nextId: string) => void
   onSelect: (id: string) => void
 }
 
@@ -26,23 +29,33 @@ export function PoolDetailEditor({
   selectedId,
   value,
   onChange,
+  onIdChange,
   onSelect,
 }: PoolDetailEditorProps) {
   const { t } = useTranslation()
   const traits = pool.traits || []
 
-  const updatePool = (patch: Partial<OpeningTraitPool>) => {
+  const updatePool = (patch: Partial<ActorTraitPool>) => {
     const pools = [...(value.trait_pools || [])]
-    pools[poolIndex] = { ...pool, ...patch }
-    onChange({ ...value, trait_pools: pools })
+    const nextPool = { ...pool, ...patch }
+    pools[poolIndex] = nextPool
+    const templates = patch.id !== undefined && patch.id !== pool.id
+      ? (value.templates || []).map((template) => ({
+          ...template,
+          trait_rules: (template.trait_rules || []).map((rule) => rule.pool_id === pool.id ? { ...rule, pool_id: nextPool.id } : rule),
+        }))
+      : value.templates
+    const nextNodeId = poolNodeId(nextPool, poolIndex)
+    if (nextNodeId !== poolNodeId(pool, poolIndex)) onIdChange(nextNodeId)
+    onChange({ ...value, templates, trait_pools: pools })
   }
 
   const addTrait = () => {
-    const newTrait: OpeningTrait = {
+    const newTrait: ActorTraitDefinition = {
       id: nextPresetId('trait'),
       name: t('settingPanel.actorState.explorer.newTrait', { count: traits.length + 1 }),
       weight: 1,
-      ops: [],
+      visibility: 'visible',
     }
     updatePool({ traits: [...traits, newTrait] })
   }
@@ -83,12 +96,12 @@ export function PoolDetailEditor({
         </div>
 
         <div className="space-y-1">
-          <label className="text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.actorState.explorer.drawCountLabel')}</label>
-          <Input
-            className="nova-field h-8 text-xs focus-visible:ring-0"
-            inputMode="numeric"
-            value={pool.draw_count !== undefined ? String(pool.draw_count) : ''}
-            onChange={(e) => updatePool({ draw_count: parseNumberInput(e.target.value) ?? 1 })}
+          <label className="text-[11px] text-[var(--nova-text-faint)]">{t('common.description')}</label>
+          <Textarea
+            className="nova-field min-h-[64px] resize-none text-xs focus-visible:ring-0"
+            value={pool.description || ''}
+            onChange={(e) => updatePool({ description: e.target.value })}
+            placeholder={t('settingPanel.actorState.explorer.poolDescriptionPlaceholder')}
           />
         </div>
       </motion.section>
@@ -119,13 +132,11 @@ export function PoolDetailEditor({
         <div className="space-y-1.5">
           <AnimatePresence initial={false}>
             {traits.map((trait, tIndex) => {
-              const nodeId = `trait:${pool.id || 'pool'}:${trait.id || tIndex}`
-              const opCount = (trait.ops || []).length
+              const nodeId = traitNodeId(pool, trait, tIndex)
               return (
                 <TraitInlineRow
                   key={trait.id || tIndex}
                   trait={trait}
-                  opCount={opCount}
                   selected={nodeId === selectedId}
                   onClick={() => onSelect(nodeId)}
                 />
@@ -145,12 +156,10 @@ export function PoolDetailEditor({
 
 function TraitInlineRow({
   trait,
-  opCount,
   selected,
   onClick,
 }: {
-  trait: OpeningTrait
-  opCount: number
+  trait: ActorTraitDefinition
   selected: boolean
   onClick: () => void
 }) {
@@ -182,11 +191,6 @@ function TraitInlineRow({
           <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">
             {t('settingPanel.actorState.explorer.weight', { count: trait.weight ?? 1 })}
           </span>
-          {opCount > 0 ? (
-            <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">
-              {opCount} ops
-            </span>
-          ) : null}
         </div>
         {trait.summary ? (
           <div className="mt-0.5 truncate text-[10px] text-[var(--nova-text-faint)]">

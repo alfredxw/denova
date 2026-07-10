@@ -1,9 +1,11 @@
 package versions
 
 import (
+	cryptorand "crypto/rand"
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -233,29 +235,171 @@ func (s *Service) restorePathsFromCommit(id string, paths []string) error {
 	if err != nil {
 		return err
 	}
-	for _, path := range paths {
-		abs, err := safeVisiblePath(s.workspace, path)
-		if err != nil {
+	root, err := os.OpenRoot(s.workspace)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	plan := make([]selectiveRestoreEntry, 0, len(paths))
+	for _, restorePath := range paths {
+		if _, err := safeVisiblePath(s.workspace, restorePath); err != nil {
 			return err
 		}
-		if _, ok := target[path]; !ok {
-			if err := os.Remove(abs); err != nil && !errors.Is(err, os.ErrNotExist) {
+		rel := filepath.ToSlash(filepath.Clean(filepath.FromSlash(restorePath)))
+		if err := validateSelectiveRestoreParent(root, rel); err != nil {
+			return fmt.Errorf("恢复路径 %s 的父目录无效: %w", rel, err)
+		}
+		entry := selectiveRestoreEntry{path: rel}
+		if _, ok := target[rel]; ok {
+			entry.targetExists = true
+			entry.targetData, err = s.readCommitFile(id, rel)
+			if err != nil {
 				return err
+			}
+		}
+		info, statErr := root.Lstat(filepath.FromSlash(rel))
+		switch {
+		case statErr == nil:
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("恢复路径不是普通文件: %s", rel)
+			}
+			entry.beforeExists = true
+			entry.beforeMode = info.Mode().Perm()
+			entry.beforeData, err = root.ReadFile(filepath.FromSlash(rel))
+			if err != nil {
+				return fmt.Errorf("读取恢复前文件 %s 失败: %w", rel, err)
+			}
+		case errors.Is(statErr, os.ErrNotExist):
+		default:
+			return statErr
+		}
+		plan = append(plan, entry)
+	}
+
+	applied := make([]selectiveRestoreEntry, 0, len(plan))
+	rollback := func(cause error) error {
+		var rollbackErr error
+		for i := len(applied) - 1; i >= 0; i-- {
+			entry := applied[i]
+			if entry.beforeExists {
+				if err := atomicWriteRestoreFile(root, entry.path, entry.beforeData, entry.beforeMode); err != nil {
+					rollbackErr = errors.Join(rollbackErr, fmt.Errorf("回滚 %s 失败: %w", entry.path, err))
+				}
+			} else if err := root.Remove(filepath.FromSlash(entry.path)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				rollbackErr = errors.Join(rollbackErr, fmt.Errorf("回滚删除 %s 失败: %w", entry.path, err))
+			}
+		}
+		if rollbackErr != nil {
+			return fmt.Errorf("%w; 选择性恢复回滚失败: %v", cause, rollbackErr)
+		}
+		return cause
+	}
+
+	for _, entry := range plan {
+		relPath := filepath.FromSlash(entry.path)
+		// Add the entry before mutation so even a post-rename fsync failure
+		// restores the file that may already have changed.
+		applied = append(applied, entry)
+		if !entry.targetExists {
+			if err := root.Remove(relPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return rollback(err)
 			}
 			continue
 		}
-		data, err := s.readCommitFile(id, path)
+		if err := atomicWriteRestoreFile(root, entry.path, entry.targetData, 0o644); err != nil {
+			return rollback(err)
+		}
+	}
+	if err := s.removeEmptyVisibleDirs(); err != nil {
+		return rollback(err)
+	}
+	return nil
+}
+
+type selectiveRestoreEntry struct {
+	path         string
+	targetData   []byte
+	targetExists bool
+	beforeData   []byte
+	beforeMode   os.FileMode
+	beforeExists bool
+}
+
+func validateSelectiveRestoreParent(root *os.Root, rel string) error {
+	parent := path.Dir(filepath.ToSlash(rel))
+	if parent == "." {
+		return nil
+	}
+	current := ""
+	for _, component := range strings.Split(parent, "/") {
+		current = path.Join(current, component)
+		info, err := root.Lstat(filepath.FromSlash(current))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		if !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+			return fmt.Errorf("%s 不是目录", current)
+		}
+		child, err := root.OpenRoot(filepath.FromSlash(current))
+		if err != nil {
 			return err
 		}
-		if err := os.WriteFile(abs, data, 0o644); err != nil {
+		if err := child.Close(); err != nil {
 			return err
 		}
 	}
-	return s.removeEmptyVisibleDirs()
+	return nil
+}
+
+func atomicWriteRestoreFile(root *os.Root, rel string, data []byte, mode os.FileMode) error {
+	parent := path.Dir(filepath.ToSlash(rel))
+	if parent != "." {
+		if err := root.MkdirAll(filepath.FromSlash(parent), 0o755); err != nil {
+			return err
+		}
+	}
+	var random [8]byte
+	if _, err := cryptorand.Read(random[:]); err != nil {
+		return err
+	}
+	tempRel := path.Join(parent, fmt.Sprintf(".%s.denova-%x.tmp", path.Base(rel), random[:]))
+	tempPath := filepath.FromSlash(tempRel)
+	targetPath := filepath.FromSlash(rel)
+	file, err := root.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode.Perm())
+	if err != nil {
+		return err
+	}
+	removeTemp := true
+	defer func() {
+		_ = file.Close()
+		if removeTemp {
+			_ = root.Remove(tempPath)
+		}
+	}()
+	if _, err := file.Write(data); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := root.Rename(tempPath, targetPath); err != nil {
+		return err
+	}
+	removeTemp = false
+	if parentFile, err := root.Open(filepath.FromSlash(parent)); err == nil {
+		defer parentFile.Close()
+		if err := parentFile.Sync(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) removeVisibleFilesAbsentFromCommit(id string) error {

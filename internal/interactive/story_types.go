@@ -7,15 +7,16 @@ import (
 )
 
 type CreateStoryRequest struct {
-	Title            string             `json:"title"`
-	Origin           string             `json:"origin"`
-	StoryTellerID    string             `json:"story_teller_id"`
-	StoryDirectorID  string             `json:"story_director_id,omitempty"`
-	ReplyTargetChars int                `json:"reply_target_chars"`
-	Opening          StoryOpeningConfig `json:"opening,omitempty"`
-	ImageSettings    StoryImageSettings `json:"image_settings,omitempty"`
-	InitialStateOps  []StateOp          `json:"initial_state_ops,omitempty"`
-	DirectorPlanSeed *DirectorPlanSeed  `json:"-"`
+	Title             string                  `json:"title"`
+	Origin            string                  `json:"origin"`
+	StoryTellerID     string                  `json:"story_teller_id"`
+	StoryDirectorID   string                  `json:"story_director_id,omitempty"`
+	ReplyTargetChars  int                     `json:"reply_target_chars"`
+	Opening           StoryOpeningConfig      `json:"opening,omitempty"`
+	ImageSettings     StoryImageSettings      `json:"image_settings,omitempty"`
+	InitialTraitRolls []InitialActorTraitRoll `json:"initial_trait_rolls,omitempty"`
+	InitialStateOps   []StateOp               `json:"-"`
+	DirectorPlanSeed  *DirectorPlanSeed       `json:"-"`
 }
 
 type AppendTurnRequest struct {

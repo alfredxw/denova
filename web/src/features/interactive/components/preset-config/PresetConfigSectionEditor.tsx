@@ -57,6 +57,7 @@ export function PresetConfigSectionEditor<T extends object>({
   const onSaveRef = useRef(onSave)
   const validRef = useRef(true)
   const monacoTheme = resolvedTheme === 'light' ? 'light' : 'vs-dark'
+  const jsonValueIsArray = Array.isArray(value)
   const valid = !jsonError && visualValid
   const flush = layout === 'flush'
 
@@ -106,7 +107,12 @@ export function PresetConfigSectionEditor<T extends object>({
     setJsonDraft(nextValue)
     try {
       const parsed = JSON.parse(nextValue)
-      if (!isPlainObject(parsed)) throw new Error(t('settingPanel.storyDirector.jsonObjectRequired'))
+      if (jsonValueIsArray && !Array.isArray(parsed)) {
+        throw new Error(t('settingPanel.presetConfig.jsonArrayRequired'))
+      }
+      if (!jsonValueIsArray && !isPlainObject(parsed)) {
+        throw new Error(t('settingPanel.storyDirector.jsonObjectRequired'))
+      }
       setJsonError('')
       onChange(parsed as T)
     } catch (err) {
@@ -126,14 +132,14 @@ export function PresetConfigSectionEditor<T extends object>({
     setFolded(nextFolded)
   }
   const modeButtonClassName = (active: boolean) => cn(
-    'h-7 rounded-full border-0 px-3 text-[11px] transition-[background-color,color,box-shadow,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]',
+    'h-7 rounded-[9px] border-0 px-3 text-[11px] transition-colors',
     active
-      ? 'bg-[var(--nova-text)] text-[var(--nova-surface)] shadow-[0_8px_20px_rgba(0,0,0,0.12)]'
+      ? 'bg-[var(--nova-active)] text-[var(--nova-text)]'
       : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
   )
   const headerActions = (
     <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-      <div className="flex h-9 items-center gap-1 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="flex h-9 items-center gap-1 rounded-[12px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1">
         <Button
           type="button"
           className={modeButtonClassName(viewMode === 'visual')}
@@ -160,7 +166,7 @@ export function PresetConfigSectionEditor<T extends object>({
       {viewMode === 'json' ? (
         <Button
           type="button"
-          className="nova-nav-item h-8 gap-1.5 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[11px] text-[var(--nova-text-muted)] transition-[background-color,color,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] active:scale-[0.98]"
+          className="nova-nav-item h-8 gap-1.5 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[11px] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
           variant="outline"
           size="sm"
           onClick={toggleFolding}
@@ -178,12 +184,12 @@ export function PresetConfigSectionEditor<T extends object>({
     <section className={cn(
       flush
         ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-bg)]'
-        : 'rounded-[26px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]',
+        : 'overflow-hidden rounded-[14px] border border-[var(--nova-border)] bg-[var(--nova-surface)]',
     )}>
       <div className={cn(
         flush
           ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-surface)]'
-          : 'overflow-hidden rounded-[21px] bg-[var(--nova-surface)] shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]',
+          : 'overflow-hidden bg-transparent',
       )}>
         {headerActionsTarget ? createPortal(headerActions, headerActionsTarget) : null}
         {showHeader ? (
@@ -207,14 +213,14 @@ export function PresetConfigSectionEditor<T extends object>({
         ) : null}
 
         {viewMode === 'visual' ? (
-          <div className={cn('preset-config-visual-container', flush ? 'min-h-0 flex-1 p-0' : 'p-2 md:p-3')} data-testid="preset-config-visual-editor">
+          <div className={cn('preset-config-visual-container', flush ? 'min-h-0 flex-1 p-0' : 'p-3')} data-testid="preset-config-visual-editor">
             {children({ value, onChange, onValidityChange: setVisualValid, resetKey })}
           </div>
         ) : (
           <div
             className={cn(
-              'nova-field overflow-hidden rounded-[18px] p-0',
-              flush ? 'm-3 min-h-44 flex-1' : 'm-3 h-[320px] min-h-44 max-h-[65vh] resize-y',
+              'nova-field overflow-hidden rounded-[12px] p-0',
+              flush ? 'm-3 min-h-44 flex-1' : 'm-3 h-[320px] min-h-44 resize-y',
             )}
             data-testid="story-director-json-editor"
           >

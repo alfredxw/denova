@@ -364,6 +364,66 @@ func TestGoGitVersionRestoreIgnoredLorePath(t *testing.T) {
 	assertChange(t, status.Changes, ".nova/lore/items.json", "modified")
 }
 
+func TestGoGitVersionRestorePathsRejectsSymlinkEscape(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	settings := DefaultAutoSettings()
+	writeFile(t, dir, "linked/secret.md", "versioned")
+	version, err := service.Create("初始版本", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	outsideFile := filepath.Join(outside, "secret.md")
+	if err := os.WriteFile(outsideFile, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "linked")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.RestoreWithPaths(version.Version.ID, []string{"linked/secret.md"}, settings); err == nil {
+		t.Fatal("RestoreWithPaths should reject a target path that escapes through a symlink")
+	}
+	data, err := os.ReadFile(outsideFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "outside" {
+		t.Fatalf("outside file was modified by restore: %q", data)
+	}
+}
+
+func TestGoGitVersionRestorePathsRollsBackOnApplyFailure(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	settings := DefaultAutoSettings()
+	writeFile(t, dir, "a.md", "versioned-a")
+	writeFile(t, dir, "zdir/b.md", "versioned-b")
+	version, err := service.Create("初始版本", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "a.md", "current-a")
+	if err := os.RemoveAll(filepath.Join(dir, "zdir")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "zdir", "not-a-directory")
+
+	if _, err := service.RestoreWithPaths(version.Version.ID, []string{"a.md", "zdir/b.md"}, settings); err == nil {
+		t.Fatal("RestoreWithPaths should fail when a later target parent is not a directory")
+	}
+	if got := readFile(t, dir, "a.md"); got != "current-a" {
+		t.Fatalf("failed restore left an earlier path partially restored: %q", got)
+	}
+	if got := readFile(t, dir, "zdir"); got != "not-a-directory" {
+		t.Fatalf("failed restore changed the blocking path: %q", got)
+	}
+}
+
 func writeFile(t *testing.T, root, rel, content string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(rel))

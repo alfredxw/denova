@@ -3,7 +3,6 @@ import { BookMarked, Bot, Building2, ChevronDown, ChevronsDownUp, ChevronsUpDown
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isSaveShortcut } from '@/lib/keyboard'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -15,10 +14,11 @@ import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { type LoreItem, workspaceAssetURL } from '@/lib/api'
 import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpeningPreset } from '../opening'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
-import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller, TellerEventPackage } from '../types'
-import { PRESET_CONFIG_HEADER_ACTIONS_TARGET_ID, PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
+import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller, TellerEventPackage } from '../types'
+import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
+import { PresetEmptyState, PresetMetadataPanel } from './preset-config/PresetEditorChrome'
 import { normalizeTRPGSystem } from './preset-config/ruleTemplates'
-import { EventPackageVisualEditor, MemoryStructureVisualEditor, OpeningSelectorVisualEditor } from './preset-config/visual-editors'
+import { EventPackageVisualEditor, MemoryStructureVisualEditor } from './preset-config/visual-editors'
 import { TRPGSystemVisualEditor } from './preset-config/TRPGSystemVisualEditor'
 import { ActorStateExplorer, type ExplorerProps } from './preset-config/actor-state-explorer'
 import { BooleanSwitchField } from './setting-panel/BooleanSwitchField'
@@ -75,7 +75,7 @@ const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
 const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const actionButtonClassName = 'nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
-const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
+const selectClassName = 'nova-field h-8 w-full text-xs focus:ring-0'
 
 export function LoreDirectory({
   items,
@@ -321,6 +321,7 @@ export function TellerDirectory({
 }) {
   const { t } = useTranslation()
   const [collapsedSections, setCollapsedSections] = useState<Partial<Record<PresetResourceKind, boolean>>>({})
+  const [query, setQuery] = useState('')
   const isConfigAgentActive = activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
   const isVisible = (kind: PresetResourceKind) => presetResourceVisibleInMode(kind, usageMode)
   const isCollapsed = (kind: PresetResourceKind) => collapsedSections[kind] ?? defaultPresetSectionCollapsed(kind, resourceKind)
@@ -328,6 +329,13 @@ export function TellerDirectory({
   const hasCollapsedVisibleSections = visibleKinds.some(isCollapsed)
   const DirectoryToggleIcon = hasCollapsedVisibleSections ? ChevronsUpDown : ChevronsDownUp
   const directoryToggleLabel = hasCollapsedVisibleSections ? t('settingPanel.directory.expandAll') : t('settingPanel.directory.collapseAll')
+  const filteredTellers = filterPresetDirectoryItems(tellers, query)
+  const filteredStoryDirectors = filterPresetDirectoryItems(storyDirectors, query)
+  const filteredImagePresets = filterPresetDirectoryItems(imagePresets, query)
+  const filteredEventPackages = filterPresetDirectoryItems(eventPackages, query)
+  const filteredRuleSystems = filterPresetDirectoryItems(ruleSystems, query)
+  const filteredActorStates = filterPresetDirectoryItems(actorStates, query)
+  const filteredMemoryStructures = filterPresetDirectoryItems(memoryStructures, query)
   const toggleSection = (kind: PresetResourceKind) => {
     setCollapsedSections((current) => ({
       ...current,
@@ -345,13 +353,19 @@ export function TellerDirectory({
   }
   useEffect(() => {
     setCollapsedSections((current) => {
-      const next = { ...current }
-      for (const kind of PRESET_DIRECTORY_ORDER) {
-        if (presetResourceVisibleInMode(kind, usageMode)) next[kind] = kind !== resourceKind
-      }
-      return next
+      if (current[resourceKind] === false) return current
+      return { ...current, [resourceKind]: false }
     })
   }, [resourceKind, usageMode])
+
+  useEffect(() => {
+    if (!query.trim()) return
+    setCollapsedSections((current) => {
+      const next = { ...current }
+      for (const kind of visibleKinds) next[kind] = false
+      return next
+    })
+  }, [query, usageMode])
 
   useEffect(() => {
     if (isConfigAgentActive || presetResourceVisibleInMode(resourceKind, usageMode)) return
@@ -387,16 +401,17 @@ export function TellerDirectory({
 
   return (
     <>
-      <div className="border-b border-[var(--nova-border)] p-2">
+      <div className="preset-directory-header border-b p-2">
         <div className="flex items-center gap-2">
           <button
             type="button"
+            disabled={saving}
             onClick={() => onSelectTeller(TELLER_CONFIG_AGENT_ENTRY_ID)}
-            className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-xs transition ${
-              activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+            className={`preset-directory-item flex min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs transition disabled:cursor-wait disabled:opacity-55 ${
+              activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID ? 'is-active text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
             }`}
           >
-            <Bot className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+            <span className="preset-directory-item-icon"><Bot className="h-3.5 w-3.5" /></span>
             <span className="min-w-0 flex-1 truncate">{t('settingPanel.tellerAgent.title')}</span>
           </button>
           <button
@@ -404,11 +419,21 @@ export function TellerDirectory({
             onClick={toggleAllSections}
             aria-label={directoryToggleLabel}
             title={directoryToggleLabel}
-            className="nova-nav-item flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] text-[var(--nova-text-muted)] transition hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--preset-signal)]"
           >
             <DirectoryToggleIcon className="h-3.5 w-3.5" />
           </button>
         </div>
+        <label className="nova-field mt-2 flex h-9 min-w-0 items-center gap-2 rounded-[10px] px-2.5">
+          <Search className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+          <span className="sr-only">{t('settingPanel.directory.search')}</span>
+          <input
+            className="min-w-0 flex-1 bg-transparent text-xs text-[var(--nova-text)] outline-none placeholder:text-[var(--nova-text-muted)]"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t('settingPanel.directory.search')}
+          />
+        </label>
       </div>
       <ScrollArea className="preset-directory-scroll h-0 min-h-0 flex-1 overflow-hidden overscroll-y-contain" data-testid="preset-directory-scroll">
         <div className="w-full min-w-0 space-y-2 p-2 pb-4">
@@ -417,16 +442,17 @@ export function TellerDirectory({
               kind="director"
               label={presetKindDirectoryLabel('director', t)}
               Icon={Compass}
-              count={storyDirectors.length}
+              count={filteredStoryDirectors.length}
               createLabel={presetKindCreateLabel('director', t)}
               saving={saving}
               collapsed={isCollapsed('director')}
               onToggle={() => toggleSection('director')}
               onCreate={onCreateStoryDirector}
             >
-              {storyDirectors.map((director) => (
+              {filteredStoryDirectors.map((director) => (
                 <PresetDirectoryItem
                   key={director.id}
+                  disabled={saving}
                   active={!isConfigAgentActive && resourceKind === 'director' && activeStoryDirectorId === director.id}
                   Icon={Compass}
                   title={director.name}
@@ -445,16 +471,17 @@ export function TellerDirectory({
               kind="teller"
               label={presetKindDirectoryLabel('teller', t)}
               Icon={SlidersHorizontal}
-              count={tellers.length}
+              count={filteredTellers.length}
               createLabel={presetKindCreateLabel('teller', t)}
               saving={saving}
               collapsed={isCollapsed('teller')}
               onToggle={() => toggleSection('teller')}
               onCreate={onCreateTeller}
             >
-              {tellers.map((teller) => (
+              {filteredTellers.map((teller) => (
                 <PresetDirectoryItem
                   key={teller.id}
+                  disabled={saving}
                   active={!isConfigAgentActive && resourceKind === 'teller' && activeTellerId === teller.id}
                   Icon={SlidersHorizontal}
                   title={teller.name}
@@ -470,16 +497,17 @@ export function TellerDirectory({
               kind="image"
               label={presetKindDirectoryLabel('image', t)}
               Icon={Sparkles}
-              count={imagePresets.length}
+              count={filteredImagePresets.length}
               createLabel={presetKindCreateLabel('image', t)}
               saving={saving}
               collapsed={isCollapsed('image')}
               onToggle={() => toggleSection('image')}
               onCreate={onCreateImagePreset}
             >
-              {imagePresets.map((preset) => (
+              {filteredImagePresets.map((preset) => (
                 <PresetDirectoryItem
                   key={preset.id}
+                  disabled={saving}
                   active={!isConfigAgentActive && resourceKind === 'image' && activeImagePresetId === preset.id}
                   Icon={Sparkles}
                   title={preset.name}
@@ -495,16 +523,17 @@ export function TellerDirectory({
               kind="event"
               label={presetKindDirectoryLabel('event', t)}
               Icon={ScrollText}
-              count={eventPackages.length}
+              count={filteredEventPackages.length}
               createLabel={presetKindCreateLabel('event', t)}
               saving={saving}
               collapsed={isCollapsed('event')}
               onToggle={() => toggleSection('event')}
               onCreate={onCreateEventPackage}
             >
-              {eventPackages.map((item) => (
+              {filteredEventPackages.map((item) => (
                 <PresetDirectoryItem
                   key={item.id}
+                  disabled={saving}
                   active={!isConfigAgentActive && resourceKind === 'event' && activeEventPackageId === item.id}
                   Icon={ScrollText}
                   title={item.name}
@@ -520,16 +549,17 @@ export function TellerDirectory({
               kind="rule"
               label={presetKindDirectoryLabel('rule', t)}
               Icon={Dice5}
-              count={ruleSystems.length}
+              count={filteredRuleSystems.length}
               createLabel={presetKindCreateLabel('rule', t)}
               saving={saving}
               collapsed={isCollapsed('rule')}
               onToggle={() => toggleSection('rule')}
               onCreate={onCreateRuleSystem}
             >
-              {ruleSystems.map((item) => (
+              {filteredRuleSystems.map((item) => (
                 <PresetDirectoryItem
                   key={item.id}
+                  disabled={saving}
                   active={!isConfigAgentActive && resourceKind === 'rule' && activeRuleSystemId === item.id}
                   Icon={Dice5}
                   title={item.name}
@@ -548,16 +578,17 @@ export function TellerDirectory({
               kind="actor-state"
               label={presetKindDirectoryLabel('actor-state', t)}
               Icon={Database}
-              count={actorStates.length}
+              count={filteredActorStates.length}
               createLabel={presetKindCreateLabel('actor-state', t)}
               saving={saving}
               collapsed={isCollapsed('actor-state')}
               onToggle={() => toggleSection('actor-state')}
               onCreate={onCreateActorState}
             >
-              {actorStates.map((item) => (
+              {filteredActorStates.map((item) => (
                 <PresetDirectoryItem
                   key={item.id}
+                  disabled={saving}
                   active={!isConfigAgentActive && resourceKind === 'actor-state' && activeActorStateId === item.id}
                   Icon={Database}
                   title={item.name}
@@ -576,16 +607,17 @@ export function TellerDirectory({
               kind="memory-structure"
               label={presetKindDirectoryLabel('memory-structure', t)}
               Icon={Database}
-              count={memoryStructures.length}
+              count={filteredMemoryStructures.length}
               createLabel={presetKindCreateLabel('memory-structure', t)}
               saving={saving}
               collapsed={isCollapsed('memory-structure')}
               onToggle={() => toggleSection('memory-structure')}
               onCreate={onCreateMemoryStructure}
             >
-              {memoryStructures.map((item) => (
+              {filteredMemoryStructures.map((item) => (
                 <PresetDirectoryItem
                   key={item.id}
+                  disabled={saving}
                   active={!isConfigAgentActive && resourceKind === 'memory-structure' && activeMemoryStructureId === item.id}
                   Icon={Database}
                   title={item.name}
@@ -627,24 +659,24 @@ function PresetDirectorySection({
 }) {
   const { t } = useTranslation()
   return (
-    <section data-preset-kind={kind} className="min-w-0">
-      <div className={`flex h-8 min-w-0 items-center gap-2 overflow-hidden rounded px-2 text-xs ${count > 0 ? 'text-[var(--nova-text-muted)]' : 'text-[var(--nova-text-faint)]'}`}>
+    <section data-preset-kind={kind} className="preset-directory-section min-w-0">
+      <div className={`preset-directory-section-header flex min-w-0 items-center gap-1 overflow-hidden px-1 text-xs transition ${count > 0 ? 'text-[var(--nova-text-muted)]' : 'text-[var(--nova-text-faint)]'}`}>
         <button
           type="button"
-          className="nova-nav-item shrink-0 rounded p-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--preset-signal)]"
           onClick={onToggle}
           aria-label={collapsed ? `${t('chat.tool.expand')}${label}` : `${t('chat.tool.collapse')}${label}`}
         >
           <ChevronDown className={`h-3.5 w-3.5 transition-transform ${collapsed ? '-rotate-90' : ''}`} />
         </button>
-        <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-        <button type="button" className="min-w-0 flex-1 truncate text-left font-medium" onClick={onToggle}>
+        <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+        <button type="button" className="min-w-0 flex-1 self-stretch truncate text-left font-medium" onClick={onToggle}>
           {label}
         </button>
         <span className="shrink-0 tabular-nums text-[11px] text-[var(--nova-text-faint)]">{count}</span>
         <button
           type="button"
-          className="nova-nav-item shrink-0 rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--nova-text-muted)] hover:bg-[var(--preset-signal-soft)] hover:text-[var(--preset-signal)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--preset-signal)]"
           disabled={saving}
           onClick={onCreate}
           aria-label={createLabel}
@@ -654,7 +686,7 @@ function PresetDirectorySection({
         </button>
       </div>
       {!collapsed && (
-        <div className="ml-5 space-y-0.5 border-l border-[var(--nova-border)] pl-2">
+        <div className="space-y-1 px-1 pb-1 pl-3">
           {children}
         </div>
       )}
@@ -664,12 +696,14 @@ function PresetDirectorySection({
 
 function PresetDirectoryItem({
   active,
+  disabled,
   Icon,
   title,
   summary,
   onSelect,
 }: {
   active: boolean
+  disabled: boolean
   Icon: LucideIcon
   title: string
   summary: string
@@ -678,15 +712,16 @@ function PresetDirectoryItem({
   return (
     <button
       type="button"
+      disabled={disabled}
       onClick={onSelect}
-      className={`flex min-h-9 w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1 text-left text-xs transition ${
-        active ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+      className={`preset-directory-item flex w-full min-w-0 items-center gap-2 overflow-hidden px-2 py-1.5 text-left text-xs transition disabled:cursor-wait disabled:opacity-55 ${
+        active ? 'is-active text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:border-[var(--preset-line)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
       }`}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+      <span className="preset-directory-item-icon"><Icon className="h-3.5 w-3.5" /></span>
       <span className="min-w-0 flex-1 overflow-hidden">
-        <span className="block truncate">{title}</span>
-        <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{summary}</span>
+        <span className="block truncate font-medium">{title}</span>
+        <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-muted)]">{summary}</span>
       </span>
     </button>
   )
@@ -694,6 +729,15 @@ function PresetDirectoryItem({
 
 function defaultPresetSectionCollapsed(kind: PresetResourceKind, resourceKind: PresetResourceKind) {
   return kind !== resourceKind
+}
+
+function filterPresetDirectoryItems<T extends { name: string; description?: string; tags?: string[] }>(items: T[], query: string) {
+  const normalizedQuery = query.trim().toLocaleLowerCase()
+  if (!normalizedQuery) return items
+  return items.filter((item) => [item.name, item.description || '', ...(item.tags || [])]
+    .join('\n')
+    .toLocaleLowerCase()
+    .includes(normalizedQuery))
 }
 
 function presetStatusLabel(item: { custom?: boolean; builtin_overridden?: boolean }, t: (key: string) => string) {
@@ -720,7 +764,7 @@ export function EventPackageEditor({
   const { t } = useTranslation()
 
   if (!draft) {
-    return <EmptyState title={t('settingPanel.editor.noEventPackageSelected')} description={t('settingPanel.editor.noEventPackageSelectedDesc')} />
+    return <PresetEmptyState title={t('settingPanel.editor.noEventPackageSelected')} description={t('settingPanel.editor.noEventPackageSelectedDesc')} />
   }
 
   return (
@@ -765,7 +809,7 @@ export function RuleSystemEditor({
   const setSectionValid = usePresetSectionValidity(draft?.id || '', onValidityChange)
 
   if (!draft) {
-    return <EmptyState title={t('settingPanel.editor.noRuleSystemSelected')} description={t('settingPanel.editor.noRuleSystemSelectedDesc')} />
+    return <PresetEmptyState title={t('settingPanel.editor.noRuleSystemSelected')} description={t('settingPanel.editor.noRuleSystemSelectedDesc')} />
   }
 
   return (
@@ -818,30 +862,19 @@ export function ActorStateEditor({
   const setSectionValid = usePresetSectionValidity(draft?.id || '', onValidityChange)
 
   if (!draft) {
-    return <EmptyState title={t('settingPanel.editor.noActorStateSelected')} description={t('settingPanel.editor.noActorStateSelectedDesc')} />
+    return <PresetEmptyState title={t('settingPanel.editor.noActorStateSelected')} description={t('settingPanel.editor.noActorStateSelectedDesc')} />
   }
 
-  // Combine actor_state and opening_selector into a single explorer value
-  const explorerValue: ExplorerProps['value'] = {
-    templates: draft.actor_state?.templates || [],
-    initial_actors: draft.actor_state?.initial_actors || [],
-    trait_pools: draft.opening_selector?.trait_pools || [],
-    initial_state_ops: draft.opening_selector?.initial_state_ops || [],
-    opening_enabled: draft.opening_selector?.enabled ?? true,
+  const explorerValue: ExplorerProps['value'] = draft.actor_state || {
+    templates: [],
+    trait_pools: [],
+    initial_actors: [],
   }
 
   const handleExplorerChange = (value: ExplorerProps['value']) => {
     setDraft({
       ...draft,
-      actor_state: {
-        templates: value.templates || [],
-        initial_actors: value.initial_actors || [],
-      },
-      opening_selector: {
-        enabled: value.opening_enabled ?? true,
-        trait_pools: value.trait_pools || [],
-        initial_state_ops: value.initial_state_ops || [],
-      },
+      actor_state: value,
     })
   }
   const linkedRuleSystems = ruleSystems.filter((rule) => rule.actor_state_id === draft.id)
@@ -852,10 +885,16 @@ export function ActorStateEditor({
       tagDraft={tagDraft}
       setDraft={setDraft}
       setTagDraft={setTagDraft}
-      metadata="none"
-      contentClassName="flex min-h-0 flex-1 p-0"
+      metadata="compact"
+      contentClassName="flex min-h-[320px] flex-1 p-0"
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {draft.migration_warnings?.length ? (
+          <div className="border-b border-[var(--nova-warning)]/25 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-muted)]">
+            <div className="font-medium text-[var(--nova-text)]">{t('settingPanel.actorState.migrationWarning')}</div>
+            {draft.migration_warnings.map((warning) => <div key={warning}>{warning}</div>)}
+          </div>
+        ) : null}
         <div className="flex min-h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1.5">
           <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">
             {linkedRuleSystems.length
@@ -885,14 +924,13 @@ export function ActorStateEditor({
           value={explorerValue}
           summary={t('settingPanel.actorState.summaryCount', {
             templates: explorerValue.templates?.length || 0,
+            pools: explorerValue.trait_pools?.length || 0,
             actors: explorerValue.initial_actors?.length || 0,
           })}
           onChange={handleExplorerChange}
           onSave={onSave}
           onValidityChange={(valid) => setSectionValid('actor_state', valid)}
           layout="flush"
-          hideHeaderText
-          headerActionsTargetId={PRESET_CONFIG_HEADER_ACTIONS_TARGET_ID}
         >
           {(props) => (
             <ActorStateExplorer
@@ -926,7 +964,7 @@ export function StoryMemoryStructureEditor({
   const { t } = useTranslation()
 
   if (!draft) {
-    return <EmptyState title={t('settingPanel.editor.noMemoryStructureSelected')} description={t('settingPanel.editor.noMemoryStructureSelectedDesc')} />
+    return <PresetEmptyState title={t('settingPanel.editor.noMemoryStructureSelected')} description={t('settingPanel.editor.noMemoryStructureSelectedDesc')} />
   }
 
   return (
@@ -935,8 +973,8 @@ export function StoryMemoryStructureEditor({
       tagDraft={tagDraft}
       setDraft={setDraft}
       setTagDraft={setTagDraft}
-      metadata="none"
-      contentClassName="grid min-h-0 flex-1 gap-5 overflow-y-auto p-4 lg:p-5"
+      metadata="compact"
+      contentClassName="grid min-h-0 flex-1 gap-4 overflow-y-auto p-3 sm:p-4"
     >
       <PresetConfigSectionEditor
         sectionId="story-memory-structure.structures"
@@ -955,53 +993,13 @@ export function StoryMemoryStructureEditor({
   )
 }
 
-export function OpeningSelectorEditor({
-  draft,
-  tagDraft,
-  setDraft,
-  setTagDraft,
-  onSave,
-  onValidityChange,
-}: {
-  draft: OpeningSelectorModule | null
-  tagDraft: string
-  setDraft: (draft: OpeningSelectorModule | null) => void
-  setTagDraft: (value: string) => void
-  onSave: () => void
-  onValidityChange?: (valid: boolean) => void
-}) {
-  const { t } = useTranslation()
-
-  if (!draft) {
-    return <EmptyState title={t('settingPanel.editor.noOpeningSelectorSelected')} description={t('settingPanel.editor.noOpeningSelectorSelectedDesc')} />
-  }
-
-  return (
-    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
-      <PresetConfigSectionEditor
-        sectionId="opening-selector.opening-selector"
-        resetKey={`${draft.id}:opening_selector`}
-        title={t('settingPanel.storyDirector.openingSelector')}
-        description={t('settingPanel.storyDirector.openingSelectorDesc')}
-        value={draft.opening_selector || { enabled: true, trait_pools: [], initial_state_ops: [] }}
-        summary={t('settingPanel.storyDirector.openingSelectorSummary', { pools: draft.opening_selector?.trait_pools?.length || 0, ops: draft.opening_selector?.initial_state_ops?.length || 0 })}
-        onChange={(opening_selector) => setDraft({ ...draft, opening_selector })}
-        onSave={onSave}
-        onValidityChange={onValidityChange}
-      >
-        {(props) => <OpeningSelectorVisualEditor {...props} />}
-      </PresetConfigSectionEditor>
-    </ModuleEditorShell>
-  )
-}
-
 function ModuleEditorShell<T extends { name: string; description: string; custom: boolean; builtin_overridden?: boolean }>({
   draft,
   tagDraft,
   setDraft,
   setTagDraft,
   metadata = 'full',
-  contentClassName = 'grid gap-5 p-4 lg:p-5',
+  contentClassName = 'grid min-h-0 flex-1 gap-4 overflow-y-auto p-3 sm:p-4',
   children,
 }: {
   draft: T
@@ -1015,51 +1013,18 @@ function ModuleEditorShell<T extends { name: string; description: string; custom
   const { t } = useTranslation()
   const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')
   return (
-    <div className={`flex min-h-0 flex-1 flex-col overflow-x-hidden bg-[var(--nova-bg)] ${metadata === 'none' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-      {metadata === 'full' ? (
-        <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-4">
-          <div className="rounded-[26px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-            <div className="grid gap-3 rounded-[21px] bg-[var(--nova-surface)] p-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] 2xl:grid-cols-[minmax(220px,1fr)_minmax(260px,1.4fr)_190px_auto]">
-              <Field label={t('settingPanel.field.name')}>
-                <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-              </Field>
-              <Field label={t('settingPanel.field.description')}>
-                <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
-              </Field>
-              <Field label={t('settingPanel.field.tags')}>
-                <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
-              </Field>
-              <div className="flex min-w-0 items-end lg:justify-end">
-                <Badge variant="outline" className="h-8 max-w-full rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[11px] font-normal text-[var(--nova-text-faint)]">
-                  <span className="truncate">{presetStatusLabel(draft, t)}</span>
-                </Badge>
-              </div>
-              <div className="rounded-[16px] border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)] 2xl:col-span-full">
-                {editHint}
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : metadata === 'compact' ? (
-        <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3">
-          <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-            <Field label={t('settingPanel.field.name')}>
-              <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-            </Field>
-            <Field label={t('settingPanel.field.description')}>
-              <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
-            </Field>
-            <Field label={t('settingPanel.field.tags')}>
-              <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
-            </Field>
-            <div className="flex min-w-0 items-end gap-2">
-              <Badge variant="outline" className="h-8 shrink-0 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[11px] font-normal text-[var(--nova-text-faint)]">
-                {presetStatusLabel(draft, t)}
-              </Badge>
-              <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]" title={editHint}>{editHint}</span>
-            </div>
-          </div>
-        </div>
+    <div className="preset-module-editor flex min-h-0 flex-1 flex-col overflow-hidden">
+      {metadata !== 'none' ? (
+        <PresetMetadataPanel
+          name={draft.name}
+          description={draft.description}
+          tags={tagDraft}
+          status={presetStatusLabel(draft, t)}
+          hint={editHint}
+          onNameChange={(name) => setDraft({ ...draft, name })}
+          onDescriptionChange={(description) => setDraft({ ...draft, description })}
+          onTagsChange={setTagDraft}
+        />
       ) : null}
       <div className={contentClassName}>
         {children}
@@ -1100,7 +1065,6 @@ function presetKindDirectoryLabel(kind: PresetResourceKind, t: (key: string) => 
   if (kind === 'rule') return t('settingPanel.ruleSystemDirectory')
   if (kind === 'actor-state') return t('settingPanel.actorStateDirectory')
   if (kind === 'memory-structure') return t('settingPanel.memoryStructureDirectory')
-  if (kind === 'opening') return t('settingPanel.openingSelectorDirectory')
   return t('settingPanel.rulePackages')
 }
 
@@ -1111,7 +1075,6 @@ function presetKindCreateLabel(kind: PresetResourceKind, t: (key: string) => str
   if (kind === 'rule') return t('settingPanel.newRuleSystem')
   if (kind === 'actor-state') return t('settingPanel.newActorState')
   if (kind === 'memory-structure') return t('settingPanel.newMemoryStructure')
-  if (kind === 'opening') return t('settingPanel.newOpeningSelector')
   return t('settingPanel.newTeller')
 }
 
@@ -1149,7 +1112,7 @@ export function ImagePresetEditor({
 }) {
   const { t } = useTranslation()
   const [activeSlotId, setActiveSlotId] = useState('')
-  const slots = draft ? normalizedImagePresetSlots(draft) : []
+  const slots = draft ? normalizedImagePresetSlots(draft, t('settingPanel.imagePreset.target.tool_request')) : []
   const activeSlot = slots.find((slot) => slot.id === activeSlotId) || slots[0] || null
   const slotIDs = slots.map((slot) => slot.id).join('|')
 
@@ -1161,7 +1124,7 @@ export function ImagePresetEditor({
   }, [draft?.id, slotIDs])
 
   if (!draft) {
-    return <EmptyState title={t('settingPanel.editor.noImagePresetSelected')} description={t('settingPanel.editor.noImagePresetSelectedDesc')} />
+    return <PresetEmptyState title={t('settingPanel.editor.noImagePresetSelected')} description={t('settingPanel.editor.noImagePresetSelectedDesc')} />
   }
 
   const setSlots = (nextSlots: ImagePresetSlot[]) => {
@@ -1194,25 +1157,22 @@ export function ImagePresetEditor({
 
   const selectedTarget = activeSlot?.target || 'tool_request'
   const contentValue = activeSlot?.content || ''
+  const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')
 
   return (
-    <div data-testid="image-preset-editor" className="image-preset-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-      <div className="image-preset-metadata-grid grid min-w-0 shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3">
-        <Field label={t('settingPanel.field.name')}>
-          <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-        </Field>
-        <Field label={t('settingPanel.field.description')}>
-          <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
-        </Field>
-        <Field label={t('settingPanel.field.tags')}>
-          <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
-        </Field>
-        <div className="flex items-end">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{presetStatusLabel(draft, t)}</span>
-        </div>
-      </div>
-      <div className="image-preset-layout grid min-h-[520px] min-w-0 flex-1">
-        <aside className="image-preset-rules flex max-h-60 min-h-0 min-w-0 flex-col overflow-hidden border-b border-[var(--nova-border)] bg-[var(--nova-surface)]">
+    <div data-testid="image-preset-editor" className="image-preset-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <PresetMetadataPanel
+        name={draft.name}
+        description={draft.description}
+        tags={tagDraft}
+        status={presetStatusLabel(draft, t)}
+        hint={editHint}
+        onNameChange={(name) => setDraft({ ...draft, name })}
+        onDescriptionChange={(description) => setDraft({ ...draft, description })}
+        onTagsChange={setTagDraft}
+      />
+      <div className="image-preset-layout grid min-h-[320px] min-w-0 flex-1 overflow-y-auto">
+        <aside className="image-preset-rules flex max-h-56 min-h-0 min-w-0 flex-col overflow-hidden border-b border-[var(--preset-line)] bg-[var(--preset-surface)]">
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
             <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.imagePreset.rulesTitle')}</div>
             <Button className={iconActionClassName} variant="outline" size="icon" onClick={addSlot} aria-label={t('settingPanel.injectRules.new')}>
@@ -1222,7 +1182,7 @@ export function ImagePresetEditor({
           <ScrollArea className="min-h-0 flex-1">
             <div className="p-2">
               {slots.map((slot) => (
-                <div key={slot.id} className={`mb-1 flex min-h-12 w-full items-center gap-2 rounded-md border px-3 py-2 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_3px_0_0_var(--nova-accent)]' : 'border-transparent text-[var(--nova-text-muted)] hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
+                <div key={slot.id} className={`mb-1 flex min-h-12 w-full items-center gap-2 rounded-[11px] border px-3 py-2 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--preset-signal)]/35 bg-[var(--preset-signal-soft)] text-[var(--nova-text)] shadow-[inset_3px_0_0_var(--preset-signal)]' : 'border-transparent text-[var(--nova-text-muted)] hover:border-[var(--preset-line)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
                   <button type="button" onClick={() => setActiveSlotId(slot.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
                     <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
                     <span className="min-w-0 flex-1">
@@ -1248,7 +1208,7 @@ export function ImagePresetEditor({
 
         {activeSlot ? (
           <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-            <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
+            <div className="shrink-0 border-b border-[var(--preset-line)] bg-[var(--preset-surface)] p-3 sm:p-4">
               <div className="image-preset-rule-grid grid min-w-0 gap-3">
                 <Field label={t('settingPanel.field.ruleName')}>
                   <Input className={inputClassName} value={activeSlot.name} onChange={(event) => updateSlotById(activeSlot.id, { name: event.target.value })} />
@@ -1258,7 +1218,7 @@ export function ImagePresetEditor({
                     <SelectTrigger className={selectClassName}>
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="nova-panel border text-[var(--nova-text)]">
                       {IMAGE_PRESET_TARGET_OPTIONS.map((option) => (
                         <SelectItem key={option.value} value={option.value}>
                           {imagePresetTargetLabel(option.value, t)}
@@ -1273,7 +1233,7 @@ export function ImagePresetEditor({
                   </Button>
                 </div>
                 <div className="image-preset-rule-summary">
-                  <div className="min-w-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5">
+                  <div className="min-w-0 rounded-[12px] border border-[var(--preset-line)] bg-[var(--preset-raised)] px-3 py-2.5">
                     <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
                       <span>{imagePresetTargetLabel(selectedTarget, t)}</span>
                       <span className="h-1 w-1 rounded-full bg-[var(--nova-text-faint)]/50" />
@@ -1284,14 +1244,14 @@ export function ImagePresetEditor({
                 </div>
               </div>
             </div>
-            <div className="min-h-[420px] flex-1 p-4">
+            <div className="min-h-[280px] flex-1 p-3 sm:p-4">
               <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
                 <span className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.imagePreset.ruleContent')}</span>
                 <span className="shrink-0 font-mono text-[10px] text-[var(--nova-text-faint)]">{contentValue.length}/{IMAGE_PRESET_PROMPT_LIMIT}</span>
               </div>
               <Textarea
                 autoResize={false}
-                className="nova-field h-[calc(100%-1.75rem)] min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
+                className="nova-field h-[calc(100%-1.75rem)] min-h-[240px] resize-none font-mono text-sm leading-7 shadow-none"
                 value={contentValue}
                 maxLength={IMAGE_PRESET_PROMPT_LIMIT}
                 onChange={(event) => updateSlotById(activeSlot.id, { content: event.target.value.slice(0, IMAGE_PRESET_PROMPT_LIMIT) })}
@@ -1307,14 +1267,14 @@ export function ImagePresetEditor({
             </div>
           </section>
         ) : (
-          <EmptyState title={t('settingPanel.injectRules.emptyTitle')} description={t('settingPanel.imagePreset.emptyRulesDesc')} />
+          <PresetEmptyState title={t('settingPanel.injectRules.emptyTitle')} description={t('settingPanel.imagePreset.emptyRulesDesc')} />
         )}
       </div>
     </div>
   )
 }
 
-function normalizedImagePresetSlots(preset: Partial<ImagePreset> | null | undefined): ImagePresetSlot[] {
+function normalizedImagePresetSlots(preset: Partial<ImagePreset> | null | undefined, fallbackName = 'tool_request'): ImagePresetSlot[] {
   if (!preset) return []
   const slots = Array.isArray(preset.slots) ? preset.slots : []
   if (slots.length > 0) {
@@ -1329,7 +1289,7 @@ function normalizedImagePresetSlots(preset: Partial<ImagePreset> | null | undefi
   const prompt = preset.prompt?.trim() || ''
   return [{
     id: 'tool_request',
-    name: '图像请求 Prompt',
+    name: fallbackName,
     target: 'tool_request',
     enabled: true,
     content: prompt.slice(0, IMAGE_PRESET_PROMPT_LIMIT),

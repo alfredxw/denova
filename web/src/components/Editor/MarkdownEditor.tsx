@@ -255,7 +255,10 @@ export function MarkdownEditor({
         },
         addKeyboardShortcuts() {
           return {
-            'Shift-Enter': () => this.editor.commands.setHardBreak(),
+            'Shift-Enter': () => {
+              if (!this.editor || this.editor.isDestroyed) return false
+              return this.editor.commands.setHardBreak()
+            },
           }
         },
         addCommands() {
@@ -331,7 +334,7 @@ export function MarkdownEditor({
 
   // 仅在切换文件或外部内容真正变化时同步，避免自动保存后重置光标。
   useLayoutEffect(() => {
-    if (!editor) return
+    if (!editor || editor.isDestroyed) return
 
     const fileChanged = lastSyncedFileRef.current !== fileName
     const contentChanged = lastSyncedContentRef.current !== content

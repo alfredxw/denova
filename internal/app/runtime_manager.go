@@ -98,6 +98,7 @@ func (s *WorkspaceRuntimeManager) SwitchWorkspace(ctx context.Context, path stri
 	if err != nil {
 		return "", err
 	}
+	a.stopWorkspaceDirectorTasks()
 
 	a.mu.Lock()
 	a.applyRuntime(runtime)
@@ -210,6 +211,7 @@ func (s *WorkspaceRuntimeManager) activateFallbackWorkspace(ctx context.Context)
 		}
 		log.Printf("[books] 切换删除后的备用书籍失败 path=%s err=%v", record.Path, err)
 	}
+	a.stopWorkspaceDirectorTasks()
 	a.mu.Lock()
 	a.clearRuntime()
 	a.mu.Unlock()

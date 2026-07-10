@@ -26,8 +26,9 @@ type interactiveDirectorMaintenanceResult struct {
 	AppliedStoryMemoryPatches int
 }
 
-func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) {
-	go func() {
+func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) <-chan struct{} {
+	tasks := directorTasksForConversation(conversation)
+	done, started := tasks.Go(func(ctx context.Context) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				err := fmt.Errorf("互动后台导演 Agent 异常中断: %v", recovered)
@@ -43,15 +44,20 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 		if conversation == nil || conversation.store == nil || cfg == nil {
 			return
 		}
-		if _, err := runInteractiveDirectorMaintenance(context.Background(), cfg, state, conversation, turn, sessionStore, interactiveDirectorTaskTurnMaintenance); err != nil {
+		if _, err := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation, turn, sessionStore, interactiveDirectorTaskTurnMaintenance); err != nil {
 			log.Printf("[interactive-director-agent] maintenance failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
 			return
 		}
-	}()
+	})
+	if !started {
+		markInteractiveDirectorMaintenanceFailed(conversation, turn, context.Canceled)
+	}
+	return done
 }
 
-func startInteractiveDirectorTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, prestartedTokens ...interactive.DirectorPlanRunToken) {
-	go func() {
+func startInteractiveDirectorTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, prestartedTokens ...interactive.DirectorPlanRunToken) <-chan struct{} {
+	tasks := directorTasksForConversation(conversation)
+	done, started := tasks.Go(func(ctx context.Context) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				err := fmt.Errorf("互动导演 Agent 异常中断: %v", recovered)
@@ -67,12 +73,27 @@ func startInteractiveDirectorTask(cfg *config.Config, state *book.State, convers
 		if conversation == nil || conversation.store == nil || cfg == nil {
 			return
 		}
-		if _, err := runInteractiveDirectorPlan(context.Background(), cfg, state, conversation, turn, sessionStore, prestartedTokens...); err != nil {
+		if _, err := runInteractiveDirectorPlan(ctx, cfg, state, conversation, turn, sessionStore, prestartedTokens...); err != nil {
 			log.Printf("[interactive-director-agent] run failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
 			markInteractiveDirectorFailed(conversation, turn, err)
 			return
 		}
-	}()
+	})
+	if !started {
+		markInteractiveDirectorFailed(conversation, turn, context.Canceled)
+	}
+	return done
+}
+
+func directorTasksForConversation(conversation *interactiveConversation) *workspaceDirectorTaskGroup {
+	if conversation != nil && conversation.directorTasks != nil {
+		return conversation.directorTasks
+	}
+	tasks := newWorkspaceDirectorTaskGroup()
+	if conversation != nil {
+		conversation.directorTasks = tasks
+	}
+	return tasks
 }
 
 func runInteractiveDirectorPlan(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, prestartedTokens ...interactive.DirectorPlanRunToken) (interactive.DirectorPlan, error) {
@@ -137,7 +158,11 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	}
 	result := interactiveDirectorMaintenanceResult{}
 	var memoryMaintenanceErr error
-	output, err := generateInteractiveDirectorForPlan(ctx, cfg, state, agent.InteractiveStoryToolContext{
+	generator := conversation.directorGenerator
+	if generator == nil {
+		generator = generateInteractiveDirector
+	}
+	output, err := generator(ctx, cfg, state, agent.InteractiveStoryToolContext{
 		Store:                    conversation.store,
 		StoryID:                  conversation.storyID,
 		BranchID:                 turn.BranchID,
@@ -157,6 +182,9 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 			}
 		},
 	}, instruction)
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
 		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
 		if runMemory {

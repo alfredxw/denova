@@ -4,7 +4,7 @@ import { GAME_ONLY_PRESET_RESOURCE_KINDS, SHARED_PRESET_RESOURCE_KINDS, presetMo
 describe('preset module ownership', () => {
   it('keeps narrative styles and image presets shared while game orchestration modules stay game-only', () => {
     expect(SHARED_PRESET_RESOURCE_KINDS).toEqual(['teller', 'image'])
-    expect(GAME_ONLY_PRESET_RESOURCE_KINDS).toEqual(['director', 'event', 'rule', 'actor-state', 'memory-structure', 'opening'])
+    expect(GAME_ONLY_PRESET_RESOURCE_KINDS).toEqual(['director', 'event', 'rule', 'actor-state', 'memory-structure'])
     expect(presetModuleOwnership('teller')).toBe('shared')
     expect(presetModuleOwnership('image')).toBe('shared')
     expect(presetModuleOwnership('director')).toBe('gameOnly')
@@ -12,7 +12,6 @@ describe('preset module ownership', () => {
     expect(presetModuleOwnership('rule')).toBe('gameOnly')
     expect(presetModuleOwnership('actor-state')).toBe('gameOnly')
     expect(presetModuleOwnership('memory-structure')).toBe('gameOnly')
-    expect(presetModuleOwnership('opening')).toBe('gameOnly')
     expect(presetResourceVisibleInMode('teller', 'writing')).toBe(true)
     expect(presetResourceVisibleInMode('image', 'writing')).toBe(true)
     expect(presetResourceVisibleInMode('event', 'writing')).toBe(false)

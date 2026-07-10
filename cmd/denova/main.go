@@ -80,6 +80,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "初始化应用失败: %v\n", err)
 		os.Exit(1)
 	}
+	defer application.Close()
 
 	// 启动 HTTP 服务
 	srv := api.NewServer(application, port)

@@ -13,8 +13,8 @@ import (
 const (
 	defaultMemoryImportance    = 3
 	defaultStoryMemoryInterval = 6
-	maxMemoryTextBytes         = DirectorContextMinBytes
-	maxStoryMemorySchemaBytes  = DirectorContextMinBytes
+	maxMemoryTextBytes         = DirectorContextMaxBytes
+	maxStoryMemorySchemaBytes  = DirectorContextMaxBytes
 	maxMemoryListItems         = 24
 	maxMemoryRecalls           = 20
 )

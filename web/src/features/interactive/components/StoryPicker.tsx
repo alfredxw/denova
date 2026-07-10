@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
-import { rollInteractiveOpening } from '../api'
+import { rollInteractiveActorTraits } from '../api'
 import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, type StoryCreateInput } from '../opening'
-import type { OpeningRollResult, StoryDirector, StorySummary, Teller } from '../types'
+import type { ActorTraitRollResult, ActorTraitSelection, StoryDirector, StorySummary, Teller } from '../types'
 
 interface StoryPickerProps {
   stories: StorySummary[]
@@ -28,43 +28,56 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
   const [origin, setOrigin] = useState('')
   const [selectedDirectorId, setSelectedDirectorId] = useState('')
   const [replyTargetChars, setReplyTargetChars] = useState(String(DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS))
-  const [openingRoll, setOpeningRoll] = useState<OpeningRollResult | null>(null)
-  const [openingSelectedTraitIds, setOpeningSelectedTraitIds] = useState<string[]>([])
+  const [traitRoll, setTraitRoll] = useState<ActorTraitRollResult | null>(null)
+  const [selectedTraitsByPool, setSelectedTraitsByPool] = useState<Record<string, string[]>>({})
   const [openingRolling, setOpeningRolling] = useState(false)
   const [openingRollError, setOpeningRollError] = useState('')
   const defaultDirector = selectedDirectorId || storyDirectors[0]?.id || 'default'
   const selectedDirector = storyDirectors.find((director) => director.id === defaultDirector) || storyDirectors[0] || null
   const directorNarrativeStyleEnabled = selectedDirector?.module_refs?.narrative_style_disabled !== true
   const directorImagePresetEnabled = selectedDirector?.module_refs?.image_preset_disabled !== true
-  const directorOpeningEnabled = selectedDirector?.module_refs?.opening_selector_disabled !== true && selectedDirector?.opening_selector?.enabled !== false
+  const actorStateEnabled = selectedDirector?.module_refs?.actor_state_disabled !== true
   const defaultTeller = (directorNarrativeStyleEnabled ? selectedDirector?.module_refs?.narrative_style_id : '') || tellers[0]?.id || 'classic'
   const derivedTeller = tellers.find((teller) => teller.id === defaultTeller) || null
-  const openingPools = directorOpeningEnabled ? selectedDirector?.opening_selector?.trait_pools || [] : []
+  const protagonistTemplate = actorStateEnabled
+    ? (selectedDirector?.actor_state?.templates || []).find((template) => template.id === 'protagonist')
+    : undefined
+  const traitPoolById = new Map((selectedDirector?.actor_state?.trait_pools || []).map((pool) => [pool.id, pool]))
+  const traitPoolRules = (protagonistTemplate?.trait_rules || []).flatMap((rule) => {
+    const pool = traitPoolById.get(rule.pool_id)
+    return pool ? [{ pool, rule }] : []
+  })
   const sidebar = layout === 'sidebar'
   const suggestedTitle = defaultStoryTitle(stories, t)
   const selectedStory = stories.find((story) => story.id === currentStoryId) || null
-  const openingTraits = openingRoll?.traits || []
-  const openingStateOps = openingRoll?.state_ops || []
+  const rolledTraits = traitRoll?.traits || []
+  const traitSelections = Object.entries(selectedTraitsByPool).map(([pool_id, trait_ids]) => ({ pool_id, trait_ids } satisfies ActorTraitSelection))
+  const hasTraitSelections = traitSelections.some((selection) => selection.trait_ids?.length)
 
   const closeCreate = () => {
     setTitle('')
     setOrigin('')
     setSelectedDirectorId('')
     setReplyTargetChars(String(DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS))
-    setOpeningRoll(null)
-    setOpeningSelectedTraitIds([])
+    setTraitRoll(null)
+    setSelectedTraitsByPool({})
     setOpeningRolling(false)
     setOpeningRollError('')
     setCreating(false)
   }
 
   const rollOpening = async () => {
-    if (openingRolling || !directorOpeningEnabled) return
+    if (openingRolling || !protagonistTemplate || traitPoolRules.length === 0) return
     setOpeningRolling(true)
     setOpeningRollError('')
     try {
-      const result = await rollInteractiveOpening({ story_director_id: defaultDirector, selected_trait_ids: openingSelectedTraitIds })
-      setOpeningRoll(result)
+      const result = await rollInteractiveActorTraits({
+        story_director_id: defaultDirector,
+        actor_id: 'protagonist',
+        template_id: protagonistTemplate.id,
+        selections: traitSelections,
+      })
+      setTraitRoll(result)
     } catch (err) {
       setOpeningRollError(err instanceof Error ? err.message : t('storyPicker.openingBuilder.rollFailed'))
     } finally {
@@ -84,20 +97,23 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
         interval_turns: 3,
         preset_id: directorImagePresetEnabled ? selectedDirector?.module_refs?.image_preset_id || 'game-cg' : 'game-cg',
       },
-      initial_state_ops: openingRoll?.state_ops,
+      initial_trait_rolls: traitRoll || hasTraitSelections
+        ? [{ actor_id: 'protagonist', seed: traitRoll?.seed || 0, selections: traitSelections }]
+        : undefined,
     })
     closeCreate()
   }
 
   const toggleOpeningTrait = (poolId: string, traitId: string, drawCount: number) => {
     if (!traitId) return
-    setOpeningSelectedTraitIds((current) => {
-      if (current.includes(traitId)) return current.filter((id) => id !== traitId)
-      const pool = openingPools.find((item) => item.id === poolId)
-      const poolTraitIds = new Set((pool?.traits || []).map((trait) => trait.id))
-      const selectedInPool = current.filter((id) => poolTraitIds.has(id)).length
-      if (drawCount > 0 && selectedInPool >= drawCount) return current
-      return [...current, traitId]
+    setTraitRoll(null)
+    setOpeningRollError('')
+    setSelectedTraitsByPool((current) => {
+      const selected = current[poolId] || []
+      const next = selected.includes(traitId)
+        ? selected.filter((id) => id !== traitId)
+        : selected.length >= drawCount ? selected : [...selected, traitId]
+      return { ...current, [poolId]: next }
     })
   }
 
@@ -198,8 +214,8 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
             <select className="nova-field h-8 w-full rounded-[var(--nova-radius)] px-2 text-xs text-[var(--nova-text)]" value={defaultDirector} onChange={(event) => {
               const nextDirectorId = event.target.value
               setSelectedDirectorId(nextDirectorId)
-              setOpeningRoll(null)
-              setOpeningSelectedTraitIds([])
+              setTraitRoll(null)
+              setSelectedTraitsByPool({})
             }}>
               {(storyDirectors.length ? storyDirectors : [{ id: 'default', name: t('storyPicker.defaultStoryDirector') } as StoryDirector]).map((director) => (
                 <option key={director.id} value={director.id}>{director.name || director.id}</option>
@@ -221,30 +237,30 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
               <span className="truncate">{t('storyPicker.openingBuilder.title')}</span>
             </div>
-            <Button type="button" variant="outline" size="xs" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)]" disabled={openingRolling || !directorOpeningEnabled} onClick={() => void rollOpening()}>
+            <Button type="button" variant="outline" size="xs" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)]" disabled={openingRolling || traitPoolRules.length === 0} onClick={() => void rollOpening()}>
               <RefreshCw className={`h-3 w-3 ${openingRolling ? 'animate-spin' : ''}`} />
-              {openingRoll ? t('storyPicker.openingBuilder.reroll') : openingSelectedTraitIds.length ? t('storyPicker.openingBuilder.applySelection') : t('storyPicker.openingBuilder.roll')}
+              {traitRoll ? t('storyPicker.openingBuilder.reroll') : hasTraitSelections ? t('storyPicker.openingBuilder.applySelection') : t('storyPicker.openingBuilder.roll')}
             </Button>
           </div>
           {openingRollError ? <div className="mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1 text-[11px] text-[var(--nova-danger)]">{openingRollError}</div> : null}
-          {openingPools.length ? (
+          {traitPoolRules.length ? (
             <div className="mt-2 space-y-2">
-              {openingPools.slice(0, 4).map((pool) => (
+              {traitPoolRules.slice(0, 4).map(({ pool, rule }) => (
                 <div key={pool.id || pool.name} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
                   <div className="mb-1 flex items-center justify-between gap-2 text-[11px] text-[var(--nova-text-faint)]">
                     <span className="min-w-0 truncate">{pool.name || pool.id || t('storyPicker.openingBuilder.availableTraits')}</span>
-                    <span className="shrink-0">{openingSelectedTraitIds.filter((id) => (pool.traits || []).some((trait) => trait.id === id)).length}/{pool.draw_count || 1}</span>
+                    <span className="shrink-0">{(selectedTraitsByPool[pool.id] || []).length}/{rule.draw_count}</span>
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {(pool.traits || []).slice(0, 12).map((trait) => {
-                      const selected = openingSelectedTraitIds.includes(trait.id || '')
+                      const selected = (selectedTraitsByPool[pool.id] || []).includes(trait.id || '')
                       return (
                         <button
                           key={trait.id || trait.name}
                           type="button"
                           className={`max-w-full truncate rounded-[var(--nova-radius)] border px-2 py-0.5 text-[11px] transition ${selected ? 'border-[var(--nova-accent)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]'}`}
                           title={trait.summary || trait.name}
-                          onClick={() => toggleOpeningTrait(pool.id || '', trait.id || '', pool.draw_count || 1)}
+                          onClick={() => toggleOpeningTrait(pool.id || '', trait.id || '', rule.draw_count)}
                         >
                           {trait.name || trait.id}
                         </button>
@@ -255,23 +271,22 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
               ))}
             </div>
           ) : null}
-          {openingRoll ? (
+          {traitRoll ? (
             <div className="mt-2 space-y-2">
               <div className="flex flex-wrap gap-1">
-	                {openingTraits.length ? openingTraits.map((trait) => (
-	                  <span key={`${trait.pool_id}:${trait.id}`} className="max-w-full truncate rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]" title={trait.summary || trait.name}>
-	                    {trait.name}
-	                  </span>
-	                )) : <span className="text-[11px] text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.noTraits')}</span>}
-	              </div>
-	              <div className="text-[11px] text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.ops', { count: openingStateOps.length })}</div>
+                {rolledTraits.length ? rolledTraits.map((trait) => (
+                  <span key={`${trait.pool_id}:${trait.trait_id}`} className="max-w-full truncate rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]" title={trait.summary || trait.name}>
+                    {trait.name}
+                  </span>
+                )) : <span className="text-[11px] text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.noTraits')}</span>}
+              </div>
             </div>
-          ) : directorOpeningEnabled ? (
+          ) : traitPoolRules.length ? (
             <div className="mt-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.empty')}</div>
           ) : (
             <div className="mt-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.disabled')}</div>
           )}
-          {openingSelectedTraitIds.length ? <div className="mt-2 text-[11px] text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.selected', { count: openingSelectedTraitIds.length })}</div> : null}
+          {hasTraitSelections ? <div className="mt-2 text-[11px] text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.selected', { count: traitSelections.reduce((sum, selection) => sum + (selection.trait_ids?.length || 0), 0) })}</div> : null}
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" size="xs" onClick={closeCreate}>

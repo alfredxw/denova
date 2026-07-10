@@ -2,7 +2,10 @@ package skills
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,11 +25,16 @@ func ReadDocument(ctx context.Context, dirs []Directory, scope Scope, name strin
 	if err != nil {
 		return Document{}, err
 	}
-	path := filepath.Join(dir.Path, name, SkillFileName)
-	data, err := os.ReadFile(path)
+	skillRoot, err := openScopedSkillRoot(dir, name)
 	if err != nil {
 		return Document{}, err
 	}
+	defer skillRoot.Close()
+	data, err := skillRoot.ReadFile(SkillFileName)
+	if err != nil {
+		return Document{}, err
+	}
+	path := filepath.Join(dir.Path, name, SkillFileName)
 	rec, err := parseRecord(ctx, dir, path, string(data))
 	if err != nil {
 		return Document{}, err
@@ -140,12 +148,17 @@ func ListSkillFiles(ctx context.Context, dirs []Directory, scope Scope, name str
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	skillDir, dir, err := skillDirectory(dirs, scope, name)
+	_, dir, err := skillDirectory(dirs, scope, name)
 	if err != nil {
 		return nil, err
 	}
+	skillRoot, err := openScopedSkillRoot(dir, name)
+	if err != nil {
+		return nil, err
+	}
+	defer skillRoot.Close()
 	var files []SkillFile
-	if err := filepath.WalkDir(skillDir, func(filePath string, entry os.DirEntry, walkErr error) error {
+	if err := fs.WalkDir(skillRoot.FS(), ".", func(filePath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -162,11 +175,7 @@ func ListSkillFiles(ctx context.Context, dirs []Directory, scope Scope, name str
 		if !info.Mode().IsRegular() {
 			return nil
 		}
-		rel, err := filepath.Rel(skillDir, filePath)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
+		rel := path.Clean(filepath.ToSlash(filePath))
 		files = append(files, skillFileFromInfo(rel, info, dir.Writable))
 		return nil
 	}); err != nil {
@@ -189,20 +198,33 @@ func ReadSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, fil
 	if err != nil {
 		return FileDocument{}, err
 	}
-	rel, abs, err := safeSkillFilePath(skillDir, filePath)
+	rel, _, err := safeSkillFilePath(skillDir, filePath)
 	if err != nil {
 		return FileDocument{}, err
 	}
-	info, err := regularSkillFileInfo(abs)
+	skillRoot, err := openScopedSkillRoot(dir, name)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	defer skillRoot.Close()
+	file, err := skillRoot.Open(filepath.FromSlash(rel))
+	if err != nil {
+		return FileDocument{}, err
+	}
+	defer file.Close()
+	info, err := regularSkillFileInfoFromFile(file, rel)
 	if err != nil {
 		return FileDocument{}, err
 	}
 	if info.Size() > maxSkillFileBytes {
 		return FileDocument{}, fmt.Errorf("skill file is too large to open: %s", rel)
 	}
-	data, err := os.ReadFile(abs)
+	data, err := io.ReadAll(io.LimitReader(file, maxSkillFileBytes+1))
 	if err != nil {
 		return FileDocument{}, err
+	}
+	if int64(len(data)) > maxSkillFileBytes {
+		return FileDocument{}, fmt.Errorf("skill file is too large to open: %s", rel)
 	}
 	if !utf8.Valid(data) {
 		return FileDocument{}, fmt.Errorf("skill file is not valid UTF-8 text: %s", rel)
@@ -226,7 +248,7 @@ func SaveSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, fil
 	if err != nil {
 		return FileDocument{}, err
 	}
-	rel, abs, err := safeSkillFilePath(skillDir, filePath)
+	rel, _, err := safeSkillFilePath(skillDir, filePath)
 	if err != nil {
 		return FileDocument{}, err
 	}
@@ -236,13 +258,22 @@ func SaveSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, fil
 	if int64(len([]byte(content))) > maxSkillFileBytes {
 		return FileDocument{}, fmt.Errorf("skill file is too large to save: %s", rel)
 	}
-	if _, err := regularSkillFileInfo(abs); err != nil {
+	skillRoot, err := openScopedSkillRoot(dir, name)
+	if err != nil {
 		return FileDocument{}, err
 	}
-	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+	defer skillRoot.Close()
+	info, err := skillRoot.Lstat(filepath.FromSlash(rel))
+	if err != nil {
 		return FileDocument{}, err
 	}
-	info, err := regularSkillFileInfo(abs)
+	if info.IsDir() || !info.Mode().IsRegular() {
+		return FileDocument{}, fmt.Errorf("skill path is not a regular file: %s", rel)
+	}
+	if err := atomicWriteSkillFile(skillRoot, rel, []byte(content), info.Mode().Perm()); err != nil {
+		return FileDocument{}, err
+	}
+	info, err = skillRoot.Stat(filepath.FromSlash(rel))
 	if err != nil {
 		return FileDocument{}, err
 	}
@@ -289,23 +320,54 @@ func writeDocument(ctx context.Context, dirs []Directory, dir Directory, name, c
 		return Document{}, ctx.Err()
 	}
 	skillDir := filepath.Join(dir.Path, name)
-	path := filepath.Join(skillDir, SkillFileName)
-	if !overwrite {
-		if _, err := os.Stat(path); err == nil {
-			return Document{}, fmt.Errorf("skill already exists: %s", name)
-		}
-	}
-	rec, err := parseRecord(ctx, dir, path, content)
+	documentPath := filepath.Join(skillDir, SkillFileName)
+	rec, err := parseRecord(ctx, dir, documentPath, content)
 	if err != nil {
 		return Document{}, err
 	}
 	if rec.skill.Name != name {
 		return Document{}, fmt.Errorf("frontmatter name %q must match skill directory %q", rec.skill.Name, name)
 	}
-	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+	if err := os.MkdirAll(dir.Path, 0o755); err != nil {
 		return Document{}, err
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	scopeRoot, err := os.OpenRoot(dir.Path)
+	if err != nil {
+		return Document{}, err
+	}
+	defer scopeRoot.Close()
+
+	created := false
+	if _, statErr := scopeRoot.Lstat(name); statErr == nil {
+		if !overwrite {
+			return Document{}, fmt.Errorf("skill already exists: %s", name)
+		}
+	} else if os.IsNotExist(statErr) {
+		if err := scopeRoot.Mkdir(name, 0o755); err != nil {
+			return Document{}, err
+		}
+		created = true
+	} else {
+		return Document{}, statErr
+	}
+
+	var skillRoot *os.Root
+	if created {
+		skillRoot, err = scopeRoot.OpenRoot(name)
+	} else {
+		skillRoot, err = openScopedSkillRoot(dir, name)
+	}
+	if err != nil {
+		if created {
+			_ = scopeRoot.Remove(name)
+		}
+		return Document{}, fmt.Errorf("open skill %q in %s scope: %w", name, dir.Scope, err)
+	}
+	defer skillRoot.Close()
+	if err := atomicWriteSkillFile(skillRoot, SkillFileName, []byte(content), 0o644); err != nil {
+		if created {
+			_ = scopeRoot.Remove(name)
+		}
 		return Document{}, err
 	}
 	doc, err := ReadDocument(ctx, dirs, dir.Scope, name)
@@ -373,6 +435,79 @@ func regularSkillFileInfo(filePath string) (os.FileInfo, error) {
 		return nil, fmt.Errorf("skill path is not a regular file: %s", filePath)
 	}
 	return info, nil
+}
+
+func regularSkillFileInfoFromFile(file *os.File, displayPath string) (os.FileInfo, error) {
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("skill path is not a regular file: %s", displayPath)
+	}
+	return info, nil
+}
+
+func openScopedSkillRoot(dir Directory, name string) (*os.Root, error) {
+	if err := ValidateName(name); err != nil {
+		return nil, err
+	}
+	scopeRoot, err := os.OpenRoot(dir.Path)
+	if err != nil {
+		return nil, err
+	}
+	defer scopeRoot.Close()
+	skillRoot, err := scopeRoot.OpenRoot(name)
+	if err != nil {
+		return nil, fmt.Errorf("skill directory escapes its %s scope: %w", dir.Scope, err)
+	}
+	info, err := skillRoot.Lstat(SkillFileName)
+	if err != nil {
+		skillRoot.Close()
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		skillRoot.Close()
+		return nil, fmt.Errorf("skill entry is not a regular file: %s", SkillFileName)
+	}
+	return skillRoot, nil
+}
+
+func atomicWriteSkillFile(root *os.Root, rel string, data []byte, mode os.FileMode) error {
+	dir := path.Dir(filepath.ToSlash(rel))
+	base := path.Base(filepath.ToSlash(rel))
+	var random [8]byte
+	if _, err := cryptorand.Read(random[:]); err != nil {
+		return err
+	}
+	tempRel := path.Join(dir, fmt.Sprintf(".%s.denova-%x.tmp", base, random[:]))
+	tempPath := filepath.FromSlash(tempRel)
+	targetPath := filepath.FromSlash(rel)
+	file, err := root.OpenFile(tempPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
+	if err != nil {
+		return err
+	}
+	removeTemp := true
+	defer func() {
+		_ = file.Close()
+		if removeTemp {
+			_ = root.Remove(tempPath)
+		}
+	}()
+	if _, err := file.Write(data); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := root.Rename(tempPath, targetPath); err != nil {
+		return err
+	}
+	removeTemp = false
+	return nil
 }
 
 func skillFileFromInfo(rel string, info os.FileInfo, writable bool) SkillFile {

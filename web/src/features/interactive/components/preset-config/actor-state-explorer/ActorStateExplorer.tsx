@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
-import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, OpeningTrait, OpeningTraitPool } from '../../../types'
+import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, ActorTraitDefinition, ActorTraitPool } from '../../../types'
 import type { ExplorerProps, TreeNode } from './types'
 import { useExplorerSelection } from './use-explorer-selection'
 import { getExpandedAncestors } from './build-tree'
@@ -21,18 +21,22 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
     toggleExpanded,
     expandAncestors,
     selectNode,
+    remapNodeId,
   } = useExplorerSelection(value)
 
-  const handleSelect = useCallback((id: string) => {
+  const selectAndReveal = useCallback((id: string) => {
     selectNode(id)
-    setNavigatorOpen(false)
-    // Expand ancestors so the selected item is visible
     const ancestors = getExpandedAncestors(tree, id)
     const ancestorIds = Array.from(ancestors)
     if (ancestorIds.length > 0) {
       expandAncestors(ancestorIds)
     }
   }, [tree, selectNode, expandAncestors])
+
+  const handleSelect = useCallback((id: string) => {
+    selectAndReveal(id)
+    setNavigatorOpen(false)
+  }, [selectAndReveal])
 
   // ── Add handlers ─────────────────────────────────────────────────
 
@@ -42,6 +46,7 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
       name: t('settingPanel.actorState.explorer.newTemplate', { count: (value.templates?.length || 0) + 1 }),
       description: '',
       fields: [],
+      trait_rules: [],
     }
     onChange({
       ...value,
@@ -74,10 +79,12 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
 
   const handleAddActor = useCallback((templateId: string) => {
     const actors = [...(value.initial_actors || [])]
+    const effectiveTemplateId = templateId || value.templates?.[0]?.id || ''
+    if (!effectiveTemplateId) return
     const newActor: ActorStateInitialActor = {
       id: nextPresetId('actor'),
       name: t('settingPanel.actorState.explorer.newActor', { count: actors.length + 1 }),
-      template_id: templateId,
+      template_id: effectiveTemplateId,
       role: 'supporting',
       state: {},
     }
@@ -88,10 +95,10 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
 
   const handleAddPool = useCallback(() => {
     const pools = [...(value.trait_pools || [])]
-    const newPool: OpeningTraitPool = {
+    const newPool: ActorTraitPool = {
       id: nextPresetId('pool'),
       name: t('settingPanel.actorState.explorer.newPool', { count: pools.length + 1 }),
-      draw_count: 1,
+      description: '',
       traits: [],
     }
     pools.push(newPool)
@@ -105,11 +112,11 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
     if (pIndex < 0) return
     const pool = { ...pools[pIndex] }
     const traits = [...(pool.traits || [])]
-    const newTrait: OpeningTrait = {
+    const newTrait: ActorTraitDefinition = {
       id: nextPresetId('trait'),
       name: t('settingPanel.actorState.explorer.newTrait', { count: traits.length + 1 }),
       weight: 1,
-      ops: [],
+      visibility: 'visible',
     }
     traits.push(newTrait)
     pool.traits = traits
@@ -148,12 +155,11 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
         break
       }
       case 'pool': {
-        const cloned: OpeningTraitPool = {
+        const cloned: ActorTraitPool = {
           ...cloneWithNewId(data.pool, 'pool'),
           traits: (data.pool.traits || []).map((t) => ({
             ...t,
             id: nextPresetId('trait'),
-            ops: (t.ops || []).map((op) => ({ ...op })),
           })),
         }
         const pools = [...(value.trait_pools || [])]
@@ -174,7 +180,8 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
     switch (data.kind) {
       case 'template': {
         const templates = (value.templates || []).filter((_, i) => i !== data.index)
-        onChange({ ...value, templates })
+        const initialActors = (value.initial_actors || []).filter((actor) => actor.template_id !== data.template.id)
+        onChange({ ...value, templates, initial_actors: initialActors })
         break
       }
       case 'field': {
@@ -192,7 +199,11 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
       }
       case 'pool': {
         const pools = (value.trait_pools || []).filter((_, i) => i !== data.poolIndex)
-        onChange({ ...value, trait_pools: pools })
+        const templates = (value.templates || []).map((template) => ({
+          ...template,
+          trait_rules: (template.trait_rules || []).filter((rule) => rule.pool_id !== data.pool.id),
+        }))
+        onChange({ ...value, templates, trait_pools: pools })
         break
       }
       case 'trait': {
@@ -200,11 +211,15 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
         const pool = { ...pools[data.poolIndex] }
         pool.traits = (pool.traits || []).filter((_, i) => i !== data.traitIndex)
         pools[data.poolIndex] = pool
-        onChange({ ...value, trait_pools: pools })
-        break
-      }
-      case 'opening-ops': {
-        onChange({ ...value, initial_state_ops: [] })
+        const remaining = pool.traits.length
+        const templates = (value.templates || []).map((template) => ({
+          ...template,
+          trait_rules: (template.trait_rules || []).flatMap((rule) => {
+            if (rule.pool_id !== pool.id) return [rule]
+            return remaining > 0 ? [{ ...rule, draw_count: Math.min(rule.draw_count, remaining) }] : []
+          }),
+        }))
+        onChange({ ...value, templates, trait_pools: pools })
         break
       }
     }
@@ -230,13 +245,13 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
       'actor-state-explorer isolate overflow-hidden',
       attached
         ? 'h-full min-h-0'
-        : 'min-h-[540px]',
+        : 'min-h-[320px]',
     )}>
       <div className={cn(
         'grid min-h-0',
         attached
           ? 'actor-state-explorer-layout h-full grid-rows-[minmax(0,1fr)] overflow-hidden'
-          : 'min-h-[540px] gap-3 lg:grid-cols-[280px_minmax(0,1fr)]',
+          : 'min-h-[320px] gap-3 lg:grid-cols-[280px_minmax(0,1fr)]',
       )}>
         {attached ? (
           <button
@@ -256,6 +271,7 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
             expandedIds={expandedIds}
             onClose={attached ? () => setNavigatorOpen(false) : undefined}
             onSelect={handleSelect}
+            onKeyboardSelect={selectAndReveal}
             onToggleExpanded={toggleExpanded}
             onAddTemplate={handleAddTemplate}
             onAddField={handleAddField}
@@ -271,6 +287,7 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
           selectedId={selectedId}
           value={value}
           onChange={onChange}
+          onNodeIdChange={remapNodeId}
           onOpenNavigation={attached ? () => setNavigatorOpen(true) : undefined}
           onSelect={handleSelect}
           onDuplicateNode={handleDuplicateNode}

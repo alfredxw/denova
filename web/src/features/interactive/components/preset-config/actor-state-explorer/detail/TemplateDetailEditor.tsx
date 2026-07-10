@@ -1,15 +1,16 @@
-import { Hash, Plus, User } from 'lucide-react'
+import { Hash, Layers, Plus } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { novaEase } from '@/features/motion/motion-tokens'
 import { nextPresetId } from '../../utils'
-import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate } from '../../../../types'
+import type { ActorStateField, ActorStateTemplate } from '../../../../types'
 import type { ExplorerProps, TreeNode } from '../types'
-import { findNode } from '../build-tree'
+import { fieldNodeId, findNode, templateNodeId } from '../build-tree'
 import { FieldTypeBadge } from '../shared/FieldTypeBadge'
 import { VisibilityBadge } from '../shared/VisibilityBadge'
 import { DetailResponsiveGrid, DetailStack } from './DetailLayout'
@@ -21,6 +22,7 @@ interface TemplateDetailEditorProps {
   tree: TreeNode[]
   value: ExplorerProps['value']
   onChange: (value: ExplorerProps['value']) => void
+  onIdChange: (nextId: string) => void
   onSelect: (id: string) => void
 }
 
@@ -31,16 +33,30 @@ export function TemplateDetailEditor({
   tree,
   value,
   onChange,
+  onIdChange,
   onSelect,
 }: TemplateDetailEditorProps) {
   const { t } = useTranslation()
   const fields = template.fields || []
-  const actors = (value.initial_actors || []).filter((a) => a.template_id === template.id)
+  const traitRules = template.trait_rules || []
+  const traitPools = value.trait_pools || []
 
   const updateTemplate = (patch: Partial<ActorStateTemplate>) => {
     const templates = [...(value.templates || [])]
-    templates[templateIndex] = { ...template, ...patch }
-    onChange({ ...value, templates })
+    const nextTemplate = { ...template, ...patch }
+    templates[templateIndex] = nextTemplate
+    if (patch.id === undefined || patch.id === template.id) {
+      onChange({ ...value, templates })
+      return
+    }
+
+    const initialActors = (value.initial_actors || []).map((actor) => (
+      actor.template_id === template.id
+        ? { ...actor, template_id: nextTemplate.id }
+        : actor
+    ))
+    onIdChange(templateNodeId(nextTemplate, templateIndex))
+    onChange({ ...value, templates, initial_actors: initialActors })
   }
 
   const addField = () => {
@@ -55,16 +71,21 @@ export function TemplateDetailEditor({
     updateTemplate({ fields: [...fields, newField] })
   }
 
-  const addActor = () => {
-    const newActor: ActorStateInitialActor = {
-      id: nextPresetId('actor'),
-      name: t('settingPanel.actorState.explorer.newActor', { count: actors.length + 1 }),
-      template_id: template.id,
-      role: 'supporting',
-      state: {},
-    }
-    const initialActors = [...(value.initial_actors || []), newActor]
-    onChange({ ...value, initial_actors: initialActors })
+  const toggleTraitPool = (poolId: string, enabled: boolean) => {
+    const nextRules = enabled
+      ? [...traitRules, { pool_id: poolId, draw_count: 1 }]
+      : traitRules.filter((rule) => rule.pool_id !== poolId)
+    updateTemplate({ trait_rules: nextRules })
+  }
+
+  const updateTraitRuleCount = (poolId: string, drawCount: number) => {
+    updateTemplate({
+      trait_rules: traitRules.map((rule) => (
+        rule.pool_id === poolId
+          ? { ...rule, draw_count: Math.max(1, Math.floor(drawCount || 1)) }
+          : rule
+      )),
+    })
   }
 
   return (
@@ -123,7 +144,7 @@ export function TemplateDetailEditor({
           <div className="space-y-1.5">
             <AnimatePresence initial={false}>
               {fields.map((field, fIndex) => {
-                const nodeId = `field:${template.id}:${field.id || field.path || fIndex}`
+                const nodeId = fieldNodeId(template.id, field, fIndex)
                 const node = findNode(tree, nodeId)
                 const isSelected = node ? nodeId === selectedId : false
                 return (
@@ -143,30 +164,68 @@ export function TemplateDetailEditor({
         </section>
 
         <section className="space-y-2">
-          {/* Actors section */}
           <SectionHeader
-            title={t('settingPanel.actorState.initialActors')}
-            count={actors.length}
-            onAdd={addActor}
-            addLabel={t('settingPanel.actorState.addInitialActor')}
+            title={t('settingPanel.actorState.explorer.templateTraitRules')}
+            count={traitRules.length}
           />
           <div className="space-y-1.5">
-            <AnimatePresence initial={false}>
-              {actors.map((actor, aIndex) => {
-                const nodeId = `actor:${actor.id || actor.template_id || 'actor'}-${aIndex}`
-                return (
-                  <ActorInlineRow
-                    key={actor.id || aIndex}
-                    actor={actor}
-                    templateName={template.name}
-                    selected={nodeId === selectedId}
-                    onClick={() => onSelect(nodeId)}
-                  />
-                )
-              })}
-            </AnimatePresence>
-            {actors.length === 0 ? (
-              <EmptyHint text={t('settingPanel.actorState.explorer.emptyTemplateActors')} />
+            {traitPools.map((pool) => {
+              const rule = traitRules.find((candidate) => candidate.pool_id === pool.id)
+              const switchLabel = t('settingPanel.actorState.explorer.togglePoolForTemplate', {
+                pool: pool.name || pool.id,
+              })
+              return (
+                <motion.div
+                  layout
+                  key={pool.id}
+                  className={cn(
+                    'rounded-[12px] border px-3 py-2.5 transition-colors',
+                    rule
+                      ? 'border-[var(--nova-accent)]/30 bg-[var(--nova-surface)]'
+                      : 'border-[var(--nova-border)] bg-[var(--nova-surface)]',
+                  )}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Layers className={cn(
+                      'h-3.5 w-3.5 shrink-0',
+                      rule ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-faint)]',
+                    )} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[12px] font-medium text-[var(--nova-text)]">
+                        {pool.name || pool.id}
+                      </div>
+                      <div className="truncate font-mono text-[10px] text-[var(--nova-text-faint)]">
+                        {pool.id} · {t('settingPanel.actorState.explorer.traitCount', { count: pool.traits?.length || 0 })}
+                      </div>
+                    </div>
+                    <Switch
+                      checked={Boolean(rule)}
+                      onCheckedChange={(checked) => toggleTraitPool(pool.id, checked)}
+                      aria-label={switchLabel}
+                      title={switchLabel}
+                    />
+                  </div>
+                  {rule ? (
+                    <div className="mt-2.5 flex items-center justify-between gap-3 border-t border-[var(--nova-border)] pt-2.5">
+                      <label className="text-[11px] text-[var(--nova-text-faint)]" htmlFor={`trait-count-${template.id}-${pool.id}`}>
+                        {t('settingPanel.actorState.explorer.drawCountForPool')}
+                      </label>
+                      <Input
+                        id={`trait-count-${template.id}-${pool.id}`}
+                        type="number"
+                        min={1}
+                        max={Math.max(1, pool.traits?.length || 1)}
+                        className="nova-field h-7 w-20 text-xs focus-visible:ring-0"
+                        value={rule.draw_count}
+                        onChange={(event) => updateTraitRuleCount(pool.id, Number(event.target.value))}
+                      />
+                    </div>
+                  ) : null}
+                </motion.div>
+              )
+            })}
+            {traitPools.length === 0 ? (
+              <EmptyHint text={t('settingPanel.actorState.explorer.emptyTraitLibrary')} />
             ) : null}
           </div>
         </section>
@@ -185,8 +244,8 @@ function SectionHeader({
 }: {
   title: string
   count: number
-  onAdd: () => void
-  addLabel: string
+  onAdd?: () => void
+  addLabel?: string
 }) {
   return (
     <div className="flex items-center justify-between">
@@ -198,16 +257,18 @@ function SectionHeader({
           {count}
         </span>
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-7 rounded-full px-2.5 text-[11px] text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
-        onClick={onAdd}
-      >
-        <Plus className="mr-1 h-3.5 w-3.5" />
-        {addLabel}
-      </Button>
+      {onAdd && addLabel ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 rounded-full px-2.5 text-[11px] text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
+          onClick={onAdd}
+        >
+          <Plus className="mr-1 h-3.5 w-3.5" />
+          {addLabel}
+        </Button>
+      ) : null}
     </div>
   )
 }
@@ -251,56 +312,6 @@ function FieldInlineRow({
         </div>
         <div className="mt-0.5 truncate font-mono text-[10px] text-[var(--nova-text-faint)]">
           {field.path}
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
-function ActorInlineRow({
-  actor,
-  templateName,
-  selected,
-  onClick,
-}: {
-  actor: ActorStateInitialActor
-  templateName?: string
-  selected: boolean
-  onClick: () => void
-}) {
-  const { t } = useTranslation()
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: -4 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4 }}
-      transition={{ duration: 0.15, ease: novaEase }}
-      className={cn(
-        'group flex cursor-pointer items-center gap-2.5 rounded-[12px] border px-3 py-2 transition-colors',
-        selected
-          ? 'border-[var(--nova-accent)]/40 bg-[var(--nova-surface)] shadow-[inset_2px_0_0_var(--nova-accent)]'
-          : 'border-[var(--nova-border)] bg-[var(--nova-surface)] hover:border-[var(--nova-accent)]/20 hover:bg-[var(--nova-hover)]',
-      )}
-      onClick={onClick}
-    >
-      <User className={cn(
-        'h-3.5 w-3.5 shrink-0',
-        selected ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-faint)]',
-      )} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <span className="truncate text-[12px] font-medium text-[var(--nova-text)]">
-            {actor.name || actor.id || t('settingPanel.actorState.explorer.unnamedActor')}
-          </span>
-          {actor.role ? (
-            <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">
-              {actor.role}
-            </span>
-          ) : null}
-        </div>
-        <div className="mt-0.5 truncate font-mono text-[10px] text-[var(--nova-text-faint)]">
-          {templateName || actor.template_id}
         </div>
       </div>
     </motion.div>

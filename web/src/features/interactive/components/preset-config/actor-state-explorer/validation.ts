@@ -1,35 +1,36 @@
-import type { StateOp } from '../../../types'
 import type { ExplorerProps } from './types'
 
-const STATE_OP_TYPES = new Set(['set', 'merge', 'push', 'pull', 'inc', 'unset'])
-
 export function isActorStateExplorerValueValid(value: ExplorerProps['value']) {
+  const templateIds = new Set<string>()
+  const poolIds = new Set<string>()
+
+  for (const pool of value.trait_pools || []) {
+    if (!pool.id || !pool.name || poolIds.has(pool.id)) return false
+    poolIds.add(pool.id)
+    const traitIds = new Set<string>()
+    for (const trait of pool.traits || []) {
+      if (!trait.id || !trait.name || traitIds.has(trait.id)) return false
+      if (!Number.isFinite(trait.weight ?? 1) || (trait.weight ?? 1) <= 0) return false
+      traitIds.add(trait.id)
+    }
+  }
+
   for (const tpl of value.templates || []) {
-    if (!tpl.id || !tpl.name) return false
+    if (!tpl.id || !tpl.name || templateIds.has(tpl.id)) return false
+    templateIds.add(tpl.id)
     for (const field of tpl.fields || []) {
       if (!field.path || !field.name) return false
     }
-  }
-  for (const actor of value.initial_actors || []) {
-    if (!actor.id || !actor.name || !actor.template_id) return false
-  }
-  for (const op of value.initial_state_ops || []) {
-    if (!isStateOpValid(op)) return false
-  }
-  for (const pool of value.trait_pools || []) {
-    for (const trait of pool.traits || []) {
-      for (const op of trait.ops || []) {
-        if (!isStateOpValid(op)) return false
-      }
+    const rulePools = new Set<string>()
+    for (const rule of tpl.trait_rules || []) {
+      const pool = (value.trait_pools || []).find((candidate) => candidate.id === rule.pool_id)
+      if (!pool || rulePools.has(rule.pool_id)) return false
+      if (!Number.isInteger(rule.draw_count) || rule.draw_count < 1 || rule.draw_count > (pool.traits?.length || 0)) return false
+      rulePools.add(rule.pool_id)
     }
   }
-  return true
-}
-
-function isStateOpValid(op: StateOp) {
-  const opName = String(op.op || '').trim()
-  const path = String(op.path || '').trim()
-  if (!STATE_OP_TYPES.has(opName)) return false
-  if (!path || path.startsWith('.') || path.endsWith('.') || path.includes('..')) return false
+  for (const actor of value.initial_actors || []) {
+    if (!actor.id || !actor.name || !actor.template_id || !templateIds.has(actor.template_id)) return false
+  }
   return true
 }

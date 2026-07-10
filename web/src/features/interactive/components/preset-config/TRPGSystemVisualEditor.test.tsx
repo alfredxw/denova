@@ -1,7 +1,8 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import type { StoryDirectorTRPGSystem } from '../../types'
+import type { ActorStateModule, StoryDirectorTRPGSystem } from '../../types'
 import { TRPGSystemVisualEditor } from './TRPGSystemVisualEditor'
 
 const system: StoryDirectorTRPGSystem = {
@@ -15,6 +16,18 @@ const system: StoryDirectorTRPGSystem = {
     must_check_examples: ['在守卫逼近时开锁。'],
     skip_check_examples: ['打开没有上锁的门。'],
   }],
+}
+
+const actorState: ActorStateModule = {
+  version: 1,
+  id: 'actors',
+  name: 'Actors',
+  description: '',
+  tags: [],
+  custom: true,
+  actor_state: {
+    templates: [{ id: 'hero', name: 'Hero', fields: [] }],
+  },
 }
 
 describe('TRPGSystemVisualEditor', () => {
@@ -31,11 +44,50 @@ describe('TRPGSystemVisualEditor', () => {
 
     expect(screen.getByRole('tab', { name: /何时检定/ })).toHaveAttribute('data-state', 'active')
     expect(screen.getByRole('tabpanel')).toHaveTextContent('行动存在风险和有意义的失败后果。')
+    const trigger = screen.getByRole('textbox', { name: '触发条件' })
+    trigger.style.height = '220px'
+    fireEvent.input(trigger, { target: { value: '新的触发条件' } })
+    expect(trigger.style.height).toBe('220px')
 
     await user.click(screen.getByRole('tab', { name: /状态联动/ }))
 
     const activePanel = screen.getByRole('tabpanel')
+    expect(within(activePanel).getByRole('combobox')).toHaveClass('w-full')
     expect(within(activePanel).getByText('当前检定只做叙事裁定')).toBeInTheDocument()
     expect(within(activePanel).getByText('绑定状态系统')).toBeInTheDocument()
+  })
+
+  it('keeps a state binding selected when its id changes', async () => {
+    let latest: StoryDirectorTRPGSystem = system
+    function Harness() {
+      const [value, setValue] = useState<StoryDirectorTRPGSystem>({
+        ...system,
+        rule_templates: [{
+          ...system.rule_templates![0],
+          state_bindings: [{ id: 'binding_one', label: 'Hero binding', actor_template_id: 'hero' }],
+        }],
+      })
+      latest = value
+      return (
+        <TRPGSystemVisualEditor
+          value={value}
+          actorStateId="actors"
+          actorStates={[actorState]}
+          onChange={setValue}
+          onValidityChange={vi.fn()}
+        />
+      )
+    }
+
+    const user = userEvent.setup()
+    render(<Harness />)
+    await user.click(screen.getByRole('tab', { name: /状态联动/ }))
+    const idInput = await screen.findByRole('textbox', { name: 'ID' })
+
+    fireEvent.change(idInput, { target: { value: 'binding_renamed' } })
+
+    expect(latest.rule_templates?.[0].state_bindings?.[0].id).toBe('binding_renamed')
+    expect(screen.getByRole('textbox', { name: 'ID' })).toHaveValue('binding_renamed')
+    expect(screen.getByTestId('trpg-state-bindings-trigger-binding_renamed')).toHaveAttribute('data-state', 'active')
   })
 })

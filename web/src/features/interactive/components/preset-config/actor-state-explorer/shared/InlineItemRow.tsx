@@ -55,7 +55,7 @@ export function InlineItemRow({
       <button
         type="button"
         ref={onDragHandleRef as unknown as React.Ref<HTMLButtonElement>}
-        className="flex h-6 w-5 shrink-0 items-center justify-center text-[var(--nova-text-faint)] opacity-0 transition-opacity group-hover:opacity-100"
+        className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
         aria-label={t('settingPanel.actorState.explorer.drag')}
         {...(dragHandleProps ?? {})}
       >
@@ -64,13 +64,13 @@ export function InlineItemRow({
 
       <div className="min-w-0 flex-1">{children}</div>
 
-      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100">
         {actions.map((action, i) => (
           <button
             key={i}
             type="button"
             className={cn(
-              'flex h-6 w-6 items-center justify-center rounded-full transition-colors hover:bg-[var(--nova-hover)]',
+              'flex size-8 items-center justify-center rounded-full transition-colors hover:bg-[var(--nova-hover)]',
               action.danger ? 'text-[var(--nova-danger)] hover:bg-[var(--nova-danger-bg)]' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]',
             )}
             onClick={(e) => {
@@ -86,7 +86,7 @@ export function InlineItemRow({
         {onRemove ? (
           <button
             type="button"
-            className="flex h-6 w-6 items-center justify-center rounded-full text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]"
+            className="flex size-8 items-center justify-center rounded-full text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]"
             onClick={(e) => {
               e.stopPropagation()
               onRemove()

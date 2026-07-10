@@ -144,6 +144,68 @@ func TestReadAndSaveSkillFile(t *testing.T) {
 	}
 }
 
+func TestReadAndSaveSkillFileRejectSymlinkEscape(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	userDir := filepath.Join(root, "skills")
+	dirs := []Directory{{Scope: ScopeUser, Path: userDir, Writable: true}}
+	skillDir := filepath.Join(userDir, "outline")
+	if err := os.MkdirAll(filepath.Join(skillDir, "references"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, SkillFileName), []byte("---\nname: outline\ndescription: test\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	outsideDir := filepath.Join(root, "outside")
+	if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outsideFile := filepath.Join(outsideDir, "secret.md")
+	if err := os.WriteFile(outsideFile, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(skillDir, "references", "file-link.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(skillDir, "directory-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, filePath := range []string{"references/file-link.md", "directory-link/secret.md"} {
+		if _, err := ReadSkillFile(ctx, dirs, ScopeUser, "outline", filePath); err == nil {
+			t.Fatalf("ReadSkillFile(%q) should reject a symlink that escapes the scope root", filePath)
+		}
+		if _, err := SaveSkillFile(ctx, dirs, ScopeUser, "outline", filePath, "changed"); err == nil {
+			t.Fatalf("SaveSkillFile(%q) should reject a symlink that escapes the scope root", filePath)
+		}
+	}
+	data, err := os.ReadFile(outsideFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "outside" {
+		t.Fatalf("outside file was modified through a symlink: %q", data)
+	}
+
+	if err := os.Remove(filepath.Join(skillDir, SkillFileName)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(skillDir, SkillFileName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SaveDocument(ctx, dirs, ScopeUser, "outline", "---\nname: outline\ndescription: changed\n---\n"); err == nil {
+		t.Fatal("SaveDocument should reject a symlinked SKILL.md entry")
+	}
+	data, err = os.ReadFile(outsideFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "outside" {
+		t.Fatalf("outside entry file was modified through SKILL.md: %q", data)
+	}
+}
+
 func TestSkillFileRejectsTraversalAndEntrySave(t *testing.T) {
 	ctx := context.Background()
 	user := filepath.Join(t.TempDir(), "skills")

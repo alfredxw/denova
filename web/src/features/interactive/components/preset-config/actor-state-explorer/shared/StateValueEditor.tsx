@@ -69,7 +69,7 @@ export function StateValueEditor({
           <button
             type="button"
             className={cn(
-              'flex h-6 items-center gap-1 rounded-full px-2 text-[10px] transition-colors',
+              'flex h-7 items-center gap-1 rounded-full px-2 text-[10px] transition-colors',
               'text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]',
             )}
             onClick={() => setViewMode('structured')}
@@ -80,7 +80,7 @@ export function StateValueEditor({
           <button
             type="button"
             className={cn(
-              'flex h-6 items-center gap-1 rounded-full px-2 text-[10px] transition-colors',
+              'flex h-7 items-center gap-1 rounded-full px-2 text-[10px] transition-colors',
               'bg-[var(--nova-text)] text-[var(--nova-surface)]',
             )}
             onClick={() => setViewMode('json')}

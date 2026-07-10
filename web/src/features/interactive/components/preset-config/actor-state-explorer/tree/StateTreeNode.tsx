@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Database, FileSpreadsheet, Hash, Layers, Plus, Sparkle, Sparkles, User, Users, Zap, type LucideIcon } from 'lucide-react'
+import { ChevronDown, ChevronRight, Database, FileSpreadsheet, Hash, Layers, Plus, Sparkle, User, Users, type LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import type { TreeNode, TreeNodeKind } from '../types'
@@ -8,10 +8,9 @@ const KIND_ICONS: Record<TreeNodeKind, LucideIcon> = {
   group: Database,
   template: FileSpreadsheet,
   field: Hash,
-  'actor-group': Users,
+  'actors-group': Users,
   actor: User,
-  'opening-group': Sparkles,
-  'opening-ops': Zap,
+  'trait-library': Layers,
   pool: Layers,
   trait: Sparkle,
 }
@@ -45,13 +44,14 @@ export function StateTreeNode({
 }: StateTreeNodeProps) {
   const { t } = useTranslation()
   // Group nodes use the group header component
-  if (node.kind === 'group' || node.kind === 'actor-group' || node.kind === 'opening-group') {
+  if (node.kind === 'group' || node.kind === 'actors-group' || node.kind === 'trait-library') {
     const expanded = expandedIds.has(node.id)
     const addHandler = getGroupAddHandler(node, { onAddTemplate, onAddField, onAddActor, onAddPool, onAddTrait })
 
     return (
-      <div className="mt-0.5 min-w-0 max-w-full overflow-hidden">
+      <div role="none" className="mt-0.5 min-w-0 max-w-full overflow-hidden">
         <StateTreeGroupHeader
+          nodeId={node.id}
           label={node.label}
           badge={node.badge}
           expanded={expanded}
@@ -129,15 +129,25 @@ function TreeItem({
   const Icon = KIND_ICONS[node.kind] || FileSpreadsheet
   const paddingLeft = 6 + indentLevel * 12
   const isField = node.kind === 'field'
+  const childrenId = `${node.id}-children`
 
   // Determine add handler for this node type (template can add fields/actors, pool can add traits)
   const addHandler = getNodeAddHandler(node, { onAddField, onAddActor, onAddTrait })
 
   return (
-    <div className="relative min-w-0 max-w-full overflow-hidden">
+    <div
+      role="treeitem"
+      data-node-id={node.id}
+      aria-label={node.label}
+      aria-selected={isSelected}
+      aria-expanded={hasChildren ? expanded : undefined}
+      aria-level={indentLevel + 1}
+      tabIndex={isSelected ? 0 : -1}
+      className="relative min-w-0 max-w-full overflow-hidden"
+    >
       <div
         className={cn(
-          'group flex min-h-8 w-full min-w-0 max-w-full items-center gap-1 overflow-hidden rounded-[10px] pr-2 transition-colors duration-200',
+          'group flex min-h-9 w-full min-w-0 max-w-full items-center gap-1 overflow-hidden rounded-[10px] pr-2 transition-colors duration-200 focus-within:bg-[var(--nova-hover)]',
           isSelected
             ? 'bg-[var(--nova-surface)] text-[var(--nova-text)] shadow-[inset_3px_0_0_var(--nova-accent),inset_0_0_0_1px_var(--nova-border)]'
             : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
@@ -148,12 +158,14 @@ function TreeItem({
         {hasChildren ? (
           <button
             type="button"
-            className="flex h-7 w-4 shrink-0 items-center justify-center text-[var(--nova-text-faint)] transition-colors hover:text-[var(--nova-text)]"
+            className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] focus-visible:text-[var(--nova-text)]"
             onClick={(e) => {
               e.stopPropagation()
               onToggleExpanded(node.id)
             }}
             aria-label={expanded ? t('settingPanel.actorState.explorer.collapse') : t('settingPanel.actorState.explorer.expand')}
+            aria-expanded={expanded}
+            aria-controls={childrenId}
           >
             <ChevronIcon expanded={expanded} />
           </button>
@@ -196,7 +208,7 @@ function TreeItem({
         {addHandler ? (
           <button
             type="button"
-            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[var(--nova-text-faint)] opacity-0 transition-opacity duration-200 hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] group-hover:opacity-100"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--nova-text-faint)] opacity-0 transition-opacity duration-200 hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
             onClick={(e) => {
               e.stopPropagation()
               addHandler()
@@ -211,7 +223,7 @@ function TreeItem({
 
       {/* Children */}
       {hasChildren && expanded ? (
-        <div className="mt-0.5 min-w-0 max-w-full overflow-hidden">
+        <div id={childrenId} role="group" className="mt-0.5 min-w-0 max-w-full overflow-hidden">
           {node.children.map((child) => (
             <StateTreeNode
               key={child.id}
@@ -243,14 +255,16 @@ function getGroupAddHandler(
   },
 ): (() => void) | undefined {
   if (node.kind === 'group') return handlers.onAddTemplate
-  if (node.kind === 'opening-group') return handlers.onAddPool
+  if (node.kind === 'trait-library') return handlers.onAddPool
+  if (node.kind === 'actors-group' && handlers.onAddActor) return () => handlers.onAddActor!('')
   return undefined
 }
 
 function getGroupAddLabel(kind: TreeNodeKind, t: ReturnType<typeof useTranslation>['t']): string {
   switch (kind) {
     case 'group': return t('settingPanel.actorState.addTemplate')
-    case 'opening-group': return t('settingPanel.actorState.explorer.addPool')
+    case 'trait-library': return t('settingPanel.actorState.explorer.addPool')
+    case 'actors-group': return t('settingPanel.actorState.addInitialActor')
     default: return t('settingPanel.actorState.explorer.addChild')
   }
 }

@@ -1,5 +1,5 @@
 import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FileTree } from '@/components/Sidebar/FileTree'
@@ -7,16 +7,8 @@ import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel } from '@/components/Chat/AgentPanel'
 import { FilePreview } from '@/components/workbench/FilePreview'
 import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
-import { VersionPanel } from '@/components/Versions/VersionPanel'
-import { HomeView } from '@/components/Home/HomeView'
-import { InteractiveLayout } from '@/features/interactive/components/InteractiveLayout'
-import { SettingPanel } from '@/features/interactive/components/SettingPanel'
 import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
-import { AgentsView } from '@/features/agents/AgentsView'
-import { AutomationsView } from '@/features/automations/AutomationsView'
-import { SkillsView } from '@/features/skills/SkillsView'
-import { SettingsView } from '@/features/settings/SettingsView'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { BookRecord, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
@@ -30,6 +22,14 @@ import { WorkbenchShell } from './WorkbenchShell'
 import { flattenFileTree, formatNumber } from './workbench-utils'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
+const InteractiveLayout = lazy(() => import('@/features/interactive/components/InteractiveLayout').then((module) => ({ default: module.InteractiveLayout })))
+const SettingPanel = lazy(() => import('@/features/interactive/components/SettingPanel').then((module) => ({ default: module.SettingPanel })))
+const VersionPanel = lazy(() => import('@/components/Versions/VersionPanel').then((module) => ({ default: module.VersionPanel })))
+const HomeView = lazy(() => import('@/components/Home/HomeView').then((module) => ({ default: module.HomeView })))
+const AgentsView = lazy(() => import('@/features/agents/AgentsView').then((module) => ({ default: module.AgentsView })))
+const AutomationsView = lazy(() => import('@/features/automations/AutomationsView').then((module) => ({ default: module.AutomationsView })))
+const SkillsView = lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView })))
+const SettingsView = lazy(() => import('@/features/settings/SettingsView').then((module) => ({ default: module.SettingsView })))
 type MainRouteId = 'settings' | 'skills' | 'agents' | 'automations' | 'books' | 'interactive' | 'versions' | 'ide-lore' | 'ide-teller' | 'ide-writing'
 type PlanningDocumentIcon = 'ideas' | 'outline' | 'plan' | 'creator' | 'progress' | 'characterState'
 
@@ -430,6 +430,7 @@ export function ModeRouter(props: ModeRouterProps) {
 
   const main = (
     <main className="relative h-full min-w-0 overflow-hidden bg-[var(--nova-bg)]">
+      <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{t('router.loading')}</div>}>
       <MainRouteLayer visible={visibleMainRoute === 'ide-writing'}>
         <TabController
           tabs={openTabs}
@@ -564,6 +565,7 @@ export function ModeRouter(props: ModeRouterProps) {
           <SettingsView onClose={onCloseSettings} />
         </MainRouteLayer>
       )}
+      </Suspense>
     </main>
   )
 

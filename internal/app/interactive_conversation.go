@@ -42,10 +42,24 @@ type interactiveConversation struct {
 	displayEvents        []interactive.DisplayEvent
 	modelContextMessages []interactive.ModelContextMessage
 	ruleResolution       *interactive.RuleResolution
+	directorTasks        *workspaceDirectorTaskGroup
+	directorGenerator    interactiveDirectorGenerator
 }
 
+type interactiveDirectorGenerator func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error)
+
 func newInteractiveConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int, cfg *config.Config) *interactiveConversation {
-	return &interactiveConversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
+	return &interactiveConversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars, directorGenerator: generateInteractiveDirector}
+}
+
+func (c *interactiveConversation) bindDirectorRuntime(tasks *workspaceDirectorTaskGroup, generators ...interactiveDirectorGenerator) *interactiveConversation {
+	if c != nil {
+		c.directorTasks = tasks
+		if len(generators) > 0 && generators[0] != nil {
+			c.directorGenerator = generators[0]
+		}
+	}
+	return c
 }
 
 func (c *interactiveConversation) withDirectorTask(task string) *interactiveConversation {
@@ -92,6 +106,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		directorPlanVisible = interactive.DirectorPlanVisibleContext(*storyCtx.Snapshot.DirectorPlan, interactiveStoryRuntimeContextBytes)
 	}
 	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, interactiveStoryRuntimeContextBytes)
+	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, interactiveStoryRuntimeContextBytes)
 	strategyPrompt := interactive.StoryDirectorStrategyPromptMarkdown(storyDirector)
 	runtimeContext := prompts.InteractiveStoryRuntimeContext(prompts.InteractiveStoryPromptInput{
 		Title:                       storyCtx.Meta.Title,
@@ -103,6 +118,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		LongTermMemory:              storyMemory,
 		DirectorPlanVisible:         directorPlanVisible,
 		StoryDirectorRules:          ruleSummary,
+		ActorState:                  actorStateRuntime,
 		StoryDirectorStrategyPrompt: strategyPrompt,
 		PreviousTurnsSummary:        turnMemory.PreviousSummary,
 	})
@@ -821,30 +837,48 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		actorStateSnapshot = map[string]any{"actors": actors}
 	}
 	allowedPaths := c.store.DirectorPlanAllowedPaths(c.storyID, storyCtx.Snapshot.BranchID)
+	budget := newDirectorContextBudget(interactiveDirectorDynamicContextBytes)
+	title := budget.take("story.title", storyCtx.Meta.Title, 512)
+	origin := budget.take("story.origin", storyCtx.Meta.Origin, 2*1024)
+	turnAudit := budget.take("turn.audit", boundedJSON(interactiveDirectorTurnAudit(turn), interactiveDirectorContextBytes), 3*1024)
+	actorStateSchema := budget.take("actor_state.schema", interactive.ActorStateSchemaContext(storyDirector.ActorState, interactiveDirectorContextBytes), 4*1024)
+	actorState := budget.take("actor_state.snapshot", boundedJSON(actorStateSnapshot, interactiveDirectorContextBytes), 3*1024)
+	memorySchema := budget.take("story_memory.schema", storyMemorySchema, 4*1024)
+	memoryContext := budget.take("story_memory.records", storyMemory, 3*1024)
+	planDocs := budget.take("director_plan.docs", boundedJSON(directorPlan.Docs, interactiveDirectorContextBytes), 3*1024)
+	history := budget.take("turn.history", turnHistory, 3*1024)
+	lore := budget.take("lore.relevant", loreContext, 3*1024)
+	memoryRules := budget.take("teller.state_memory", teller.PromptForTargets("state_memory"), 1536)
+	planningTemplates := budget.take("director.strategy.templates", boundedJSON(storyDirector.Strategy.PlanningTemplates, interactiveDirectorContextBytes), 1536)
+	planningSummary := budget.take("director.planning_summary", interactive.StoryDirectorPlanningSummary(storyDirector, interactiveDirectorContextBytes), 1536)
+	strategyContext := budget.take("director.strategy.prompt", strategyPrompt, 1536)
+	eventCatalog := budget.take("director.events", boundedJSON(interactiveDirectorEventCatalog(storyDirector), interactiveDirectorContextBytes), 1536)
 	instruction := prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{
-		Title:                       storyCtx.Meta.Title,
-		Origin:                      storyCtx.Meta.Origin,
-		StoryTellerID:               storyCtx.Meta.StoryTellerID,
-		StoryDirectorID:             storyCtx.Meta.StoryDirectorID,
-		BranchID:                    storyCtx.Snapshot.BranchID,
-		TaskHint:                    c.directorTaskHint(),
-		DirectorPlanPaths:           strings.Join(allowedPaths, "\n"),
-		DirectorPlanDocs:            boundedJSON(directorPlan.Docs, interactiveDirectorContextBytes),
-		PlanningTemplates:           boundedJSON(storyDirector.Strategy.PlanningTemplates, interactiveDirectorContextBytes),
+		Title:                       title,
+		Origin:                      origin,
+		StoryTellerID:               budget.take("story.teller_id", storyCtx.Meta.StoryTellerID, 128),
+		StoryDirectorID:             budget.take("story.director_id", storyCtx.Meta.StoryDirectorID, 128),
+		BranchID:                    budget.take("story.branch_id", storyCtx.Snapshot.BranchID, 128),
+		TaskHint:                    budget.take("director.task", c.directorTaskHint(), 1024),
+		DirectorPlanPaths:           budget.take("director_plan.paths", strings.Join(allowedPaths, "\n"), 2*1024),
+		DirectorPlanDocs:            planDocs,
+		PlanningTemplates:           planningTemplates,
 		BranchPlanningTurns:         storyDirector.Strategy.BranchPlanningTurns,
-		StoryTellerMemoryRules:      boundedText(teller.PromptForTargets("state_memory"), interactiveDirectorContextBytes),
-		LoreContext:                 loreContext,
-		TurnAuditJSON:               boundedJSON(interactiveDirectorTurnAudit(turn), interactiveDirectorContextBytes),
-		TurnHistory:                 boundedText(turnHistory, interactiveDirectorContextBytes),
-		StoryMemorySchema:           storyMemorySchema,
-		StoryMemory:                 boundedText(storyMemory, interactiveDirectorContextBytes),
-		ActorStateSchema:            boundedJSON(storyDirector.ActorState, interactiveDirectorContextBytes),
-		ActorState:                  boundedJSON(actorStateSnapshot, interactiveDirectorContextBytes),
-		StoryMemorySummary:          boundedText(storyMemory, interactiveDirectorContextBytes),
-		StoryDirectorPlan:           interactive.StoryDirectorPlanningSummary(storyDirector, interactiveDirectorContextBytes),
-		StoryDirectorStrategyPrompt: strategyPrompt,
-		DirectorEventCatalog:        boundedJSON(interactiveDirectorEventCatalog(storyDirector), interactiveDirectorContextBytes),
+		StoryTellerMemoryRules:      memoryRules,
+		LoreContext:                 lore,
+		TurnAuditJSON:               turnAudit,
+		TurnHistory:                 history,
+		StoryMemorySchema:           memorySchema,
+		StoryMemory:                 memoryContext,
+		ActorStateSchema:            actorStateSchema,
+		ActorState:                  actorState,
+		StoryMemorySummary:          "",
+		StoryDirectorPlan:           planningSummary,
+		StoryDirectorStrategyPrompt: strategyContext,
+		DirectorEventCatalog:        eventCatalog,
 	})
+	instruction = boundedDirectorInstruction(instruction)
+	log.Printf("[interactive-director-agent] context budget story_id=%s branch_id=%s turn_id=%s instruction_bytes=%d max_bytes=%d fragments=%s", c.storyID, storyCtx.Snapshot.BranchID, turn.ID, len(instruction), interactiveDirectorInstructionMaxBytes, budget.trace())
 	log.Printf(
 		"[interactive-director-agent] context composition story_id=%s branch_id=%s turn_id=%s teller_id=%s story_director_id=%s director_plan=%s allowed_paths=%d teller_memory_rules=%s lore=%s turn_audit=%s story_memory=%s story_memory_schema=%s actor_state=%s history=%s instruction=%s",
 		c.storyID,
@@ -896,8 +930,53 @@ func boundedJSON(value any, limit int) string {
 func boundedText(value string, limit int) string {
 	trimmed, truncated := trimStringToUTF8Bytes(value, limit)
 	if truncated {
-		return trimmed + "\n...（已按上下文上限截断）"
+		const marker = "\n...（已按上下文上限截断）"
+		prefix, _ := trimStringToUTF8Bytes(value, max(0, limit-len(marker)))
+		markerPart, _ := trimStringToUTF8Bytes(marker, limit-len(prefix))
+		return prefix + markerPart
 	}
+	return trimmed
+}
+
+type directorContextBudget struct {
+	remaining int
+	parts     []string
+}
+
+func newDirectorContextBudget(total int) *directorContextBudget {
+	return &directorContextBudget{remaining: max(0, total)}
+}
+
+func (b *directorContextBudget) take(source, value string, fragmentLimit int) string {
+	originalBytes := len(value)
+	limit := min(max(0, fragmentLimit), b.remaining)
+	kept := boundedText(value, limit)
+	b.remaining -= len(kept)
+	b.parts = append(b.parts, fmt.Sprintf("%s:%d->%d", source, originalBytes, len(kept)))
+	return kept
+}
+
+func (b *directorContextBudget) trace() string {
+	return strings.Join(b.parts, ",")
+}
+
+func boundedDirectorInstruction(instruction string) string {
+	if len(instruction) <= interactiveDirectorInstructionMaxBytes {
+		return instruction
+	}
+	const marker = "\n\n...（中间上下文已按 Director 总预算截断）...\n"
+	suffixStart := strings.LastIndex(instruction, "\n请完成必要工具调用")
+	suffix := ""
+	if suffixStart >= 0 {
+		suffix = instruction[suffixStart:]
+	}
+	available := interactiveDirectorInstructionMaxBytes - len(marker) - len(suffix)
+	prefix, _ := trimStringToUTF8Bytes(instruction, max(0, available))
+	result := prefix + marker + suffix
+	if len(result) <= interactiveDirectorInstructionMaxBytes {
+		return result
+	}
+	trimmed, _ := trimStringToUTF8Bytes(result, interactiveDirectorInstructionMaxBytes)
 	return trimmed
 }
 
@@ -1134,13 +1213,15 @@ type interactiveTurnMemory struct {
 }
 
 const (
-	interactiveStoryRuntimeContextBytes = interactive.DirectorContextMinBytes
-	interactiveDirectorContextBytes     = interactive.DirectorContextMinBytes
-	interactiveStoryMemorySchemaBytes   = interactive.DirectorContextMinBytes
-	interactiveDirectorLoreContextBytes = interactive.DirectorContextMinBytes
-	interactiveDirectorLoreIndexBytes   = interactive.DirectorContextMinBytes
-	interactiveDirectorLoreItemsBytes   = interactive.DirectorContextMinBytes
-	interactiveDirectorLoreItemBytes    = interactive.DirectorContextMinBytes
+	interactiveStoryRuntimeContextBytes    = 16 * 1024
+	interactiveDirectorContextBytes        = 4 * 1024
+	interactiveDirectorDynamicContextBytes = 28 * 1024
+	interactiveDirectorInstructionMaxBytes = 48 * 1024
+	interactiveStoryMemorySchemaBytes      = 4 * 1024
+	interactiveDirectorLoreContextBytes    = 4 * 1024
+	interactiveDirectorLoreIndexBytes      = 2 * 1024
+	interactiveDirectorLoreItemsBytes      = 3 * 1024
+	interactiveDirectorLoreItemBytes       = 2 * 1024
 )
 
 func buildInteractiveTurnMemory(turns []interactive.TurnEvent) interactiveTurnMemory {

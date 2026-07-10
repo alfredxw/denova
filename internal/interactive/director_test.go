@@ -145,9 +145,12 @@ func TestCompleteDirectorPlanRunDetectsManualConflict(t *testing.T) {
 func TestDirectorPlanVisibleContextExcludesPrivateSections(t *testing.T) {
 	docs := DefaultStoryDirectorPlanningTemplates()
 	plan := DirectorPlan{VisibleDocs: DirectorPlanVisibleDocs{
-		Plan: ExtractDirectorPlanVisibleSection(docs.Plan),
+		Plan: ExtractDirectorPlanVisibleSection(docs.Plan) + "\n" + strings.Repeat("可见线索", 2000),
 	}}
 	context := DirectorPlanVisibleContext(plan, 4096)
+	if len(context) > 4096 {
+		t.Fatalf("visible context exceeded caller budget: bytes=%d", len(context))
+	}
 	if !strings.Contains(context, "正文Agent可读") || !strings.Contains(context, "导演规划") {
 		t.Fatalf("visible context should include public sections:\n%s", context)
 	}

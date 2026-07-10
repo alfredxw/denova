@@ -3,12 +3,13 @@ import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, v
 import { CSS } from '@dnd-kit/utilities'
 import { GripVertical, Plus } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 
-const iconActionClassName = 'nova-nav-item rounded-full border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] transition-[background-color,color,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] active:scale-[0.96]'
+const iconActionClassName = 'nova-nav-item rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 
 interface PresetTabsListEntry {
   id: string
@@ -17,6 +18,7 @@ interface PresetTabsListEntry {
 }
 
 export function PresetTabsList<T>({ items, activeId, getId, getTitle, getSubtitle, addLabel, addControl, emptyLabel, layout = 'panel', testIdPrefix = 'preset-tabs-list', onAdd, onActiveIdChange, onItemsChange }: { items: T[]; activeId: string; getId: (item: T, index: number) => string; getTitle: (item: T, index: number) => string; getSubtitle?: (item: T, index: number) => string; addLabel: string; addControl?: ReactNode; emptyLabel: string; layout?: 'panel' | 'rail'; testIdPrefix?: string; onAdd: () => void; onActiveIdChange: (id: string) => void; onItemsChange: (items: T[]) => void }) {
+  const { t } = useTranslation()
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -45,7 +47,7 @@ export function PresetTabsList<T>({ items, activeId, getId, getTitle, getSubtitl
   }
 
   return (
-    <aside className={cn('flex min-h-0 flex-col overflow-hidden border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]', layout === 'panel' ? 'max-h-[60vh] rounded-[22px]' : 'h-full max-h-none rounded-[20px] lg:sticky lg:top-3 lg:max-h-[calc(100vh-11rem)] lg:self-start')}>
+    <aside className={cn('flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)]', layout === 'rail' && 'h-full')}>
       <div className="flex min-h-12 items-center justify-between gap-2 border-b border-[var(--nova-border)] px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-xs font-semibold text-[var(--nova-text)]">{emptyLabel}</span>
@@ -59,14 +61,14 @@ export function PresetTabsList<T>({ items, activeId, getId, getTitle, getSubtitl
       </div>
       <ScrollArea className="min-h-0 flex-1">
         {items.length === 0 ? (
-          <div className="m-3 flex min-h-32 items-center justify-center rounded-[16px] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-5 text-center text-xs leading-5 text-[var(--nova-text-faint)]">{emptyLabel}</div>
+          <div className="m-3 flex min-h-32 items-center justify-center rounded-[12px] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-5 text-center text-xs leading-5 text-[var(--nova-text-faint)]">{emptyLabel}</div>
         ) : (
           <Tabs value={activeId} onValueChange={onActiveIdChange} orientation="vertical" activationMode="automatic" className="min-h-0 gap-0">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragCancel={() => setDraggingId(null)} onDragEnd={handleDragEnd}>
               <SortableContext items={ids} strategy={verticalListSortingStrategy}>
                 <TabsList variant="line" aria-label={emptyLabel} className="flex h-auto w-full flex-col items-stretch justify-start gap-1 rounded-none bg-transparent p-2">
                   {entries.map((entry) => (
-                    <PresetTabsListItem key={entry.id} id={entry.id} title={entry.title} subtitle={entry.subtitle} active={entry.id === activeId} testIdPrefix={testIdPrefix} />
+                    <PresetTabsListItem key={entry.id} id={entry.id} title={entry.title} subtitle={entry.subtitle} active={entry.id === activeId} testIdPrefix={testIdPrefix} dragLabel={t('settingPanel.presetConfig.dragItem', { name: entry.title })} />
                   ))}
                 </TabsList>
               </SortableContext>
@@ -93,9 +95,11 @@ function PresetTabsListItem({
   subtitle,
   active,
   testIdPrefix,
+  dragLabel,
 }: PresetTabsListEntry & {
   active: boolean
   testIdPrefix: string
+  dragLabel: string
 }) {
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({ id })
   const style = {
@@ -105,10 +109,10 @@ function PresetTabsListItem({
 
   return (
     <div ref={setNodeRef} style={style} className={cn(presetTabsListItemClassName(active), isDragging && 'opacity-35')} data-testid={`${testIdPrefix}-item-${id}`}>
-      <button ref={setActivatorNodeRef} type="button" className="nova-nav-item flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--nova-text-faint)] transition-[background-color,color,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] active:scale-[0.92]" aria-label={`拖动 / Drag ${title}`} onClick={(event) => event.stopPropagation()} {...attributes} {...listeners}>
+      <button ref={setActivatorNodeRef} type="button" className="nova-nav-item flex size-8 shrink-0 items-center justify-center rounded-[9px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" aria-label={dragLabel} onClick={(event) => event.stopPropagation()} {...attributes} {...listeners}>
         <GripVertical className="size-3.5" />
       </button>
-      <TabsTrigger value={id} className="h-auto min-h-10 min-w-0 flex-1 justify-start rounded-[14px] border-0 bg-transparent px-2 py-1.5 text-left text-xs font-normal text-inherit shadow-none whitespace-normal transition-none after:hidden data-active:bg-transparent data-active:text-inherit dark:data-active:bg-transparent dark:data-active:text-inherit" data-testid={`${testIdPrefix}-trigger-${id}`}>
+      <TabsTrigger value={id} className="h-auto min-h-10 min-w-0 flex-1 justify-start rounded-[10px] border-0 bg-transparent px-2 py-1.5 text-left text-xs font-normal text-inherit shadow-none whitespace-normal transition-none after:hidden data-active:bg-transparent data-active:text-inherit dark:data-active:bg-transparent dark:data-active:text-inherit" data-testid={`${testIdPrefix}-trigger-${id}`}>
         <PresetTabsListItemText title={title} subtitle={subtitle} />
       </TabsTrigger>
     </div>
@@ -139,7 +143,7 @@ function PresetTabsListItemText({ title, subtitle }: { title: string; subtitle: 
 
 function presetTabsListItemClassName(active: boolean) {
   return cn(
-    'group flex min-h-14 items-center gap-1.5 rounded-[16px] px-1.5 py-1.5 text-xs transition-[background-color,color,box-shadow,opacity,transform] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]',
+    'group flex min-h-14 items-center gap-1.5 rounded-[12px] px-1.5 py-1.5 text-xs transition-colors',
     active
       ? 'bg-[var(--nova-surface)] text-[var(--nova-text)] shadow-[inset_0_0_0_1px_var(--nova-border),inset_3px_0_0_var(--nova-accent)]'
       : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] hover:shadow-[inset_0_0_0_1px_var(--nova-border-soft)]',

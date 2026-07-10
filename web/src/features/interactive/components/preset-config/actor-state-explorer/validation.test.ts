@@ -10,30 +10,41 @@ const baseValue: ExplorerProps['value'] = {
   }],
   initial_actors: [{ id: 'protagonist', name: '主角', template_id: 'protagonist' }],
   trait_pools: [],
-  initial_state_ops: [],
 }
 
 describe('isActorStateExplorerValueValid', () => {
-  it('keeps a newly added empty initial state op invalid until the path is filled', () => {
+  it('rejects missing pools and invalid draw counts in template trait rules', () => {
     expect(isActorStateExplorerValueValid({
       ...baseValue,
-      initial_state_ops: [{ op: 'set', path: '', value: '' }],
+      templates: [{ ...baseValue.templates![0], trait_rules: [{ pool_id: 'missing', draw_count: 1 }] }],
     })).toBe(false)
 
     expect(isActorStateExplorerValueValid({
       ...baseValue,
-      initial_state_ops: [{ op: 'set', path: 'actors.protagonist.state.resources.hp', value: 5 }],
+      templates: [{ ...baseValue.templates![0], trait_rules: [{ pool_id: 'nature', draw_count: 2 }] }],
+      trait_pools: [{ id: 'nature', name: '性格', traits: [{ id: 'patient', name: '耐心', weight: 1 }] }],
+    })).toBe(false)
+
+    expect(isActorStateExplorerValueValid({
+      ...baseValue,
+      templates: [{ ...baseValue.templates![0], trait_rules: [{ pool_id: 'nature', draw_count: 1 }] }],
+      trait_pools: [{ id: 'nature', name: '性格', traits: [{ id: 'patient', name: '耐心', weight: 1 }] }],
     })).toBe(true)
   })
 
-  it('validates trait state ops with the same path rules', () => {
+  it('validates trait identity, weight, and Actor template references', () => {
     expect(isActorStateExplorerValueValid({
       ...baseValue,
       trait_pools: [{
         id: 'pool',
         name: '词条池',
-        traits: [{ id: 'trait', name: '词条', ops: [{ op: 'inc', path: '..bad', value: 1 }] }],
+        traits: [{ id: 'trait', name: '词条', weight: 0 }],
       }],
+    })).toBe(false)
+
+    expect(isActorStateExplorerValueValid({
+      ...baseValue,
+      initial_actors: [{ id: 'protagonist', name: '主角', template_id: 'missing' }],
     })).toBe(false)
   })
 })

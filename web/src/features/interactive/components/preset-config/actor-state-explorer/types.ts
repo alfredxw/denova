@@ -1,13 +1,12 @@
-import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, OpeningTrait, OpeningTraitPool, StateOp } from '../../../types'
+import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, ActorTraitDefinition, ActorTraitPool, StoryDirectorActorStateSystem } from '../../../types'
 
 export type TreeNodeKind =
   | 'group'
   | 'template'
   | 'field'
-  | 'actor-group'
+  | 'actors-group'
   | 'actor'
-  | 'opening-group'
-  | 'opening-ops'
+  | 'trait-library'
   | 'pool'
   | 'trait'
 
@@ -27,18 +26,11 @@ export type TreeNodeData =
   | { kind: 'template'; template: ActorStateTemplate; index: number }
   | { kind: 'field'; field: ActorStateField; fieldIndex: number; template: ActorStateTemplate; templateIndex: number }
   | { kind: 'actor'; actor: ActorStateInitialActor; actorIndex: number; template?: ActorStateTemplate }
-  | { kind: 'opening-ops'; ops: StateOp[] }
-  | { kind: 'pool'; pool: OpeningTraitPool; poolIndex: number }
-  | { kind: 'trait'; trait: OpeningTrait; traitIndex: number; pool: OpeningTraitPool; poolIndex: number }
+  | { kind: 'pool'; pool: ActorTraitPool; poolIndex: number }
+  | { kind: 'trait'; trait: ActorTraitDefinition; traitIndex: number; pool: ActorTraitPool; poolIndex: number }
 
 export interface ExplorerProps {
-  value: {
-    templates?: ActorStateTemplate[]
-    initial_actors?: ActorStateInitialActor[]
-    trait_pools?: OpeningTraitPool[]
-    initial_state_ops?: StateOp[]
-    opening_enabled?: boolean
-  }
+  value: StoryDirectorActorStateSystem
   onChange: (value: ExplorerProps['value']) => void
   onValidityChange?: (valid: boolean) => void
 }

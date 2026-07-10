@@ -19,6 +19,7 @@ const items: Item[] = [
 function renderPresetTabsList(overrides: Partial<{
   activeId: string
   items: Item[]
+  layout: 'panel' | 'rail'
   onAdd: () => void
   onActiveIdChange: (id: string) => void
   onItemsChange: (items: Item[]) => void
@@ -38,6 +39,7 @@ function renderPresetTabsList(overrides: Partial<{
         getSubtitle={(item) => item.subtitle}
         addLabel="新增状态表模板"
         emptyLabel="状态表模板"
+        layout={overrides.layout}
         onAdd={onAdd}
         onActiveIdChange={(id) => {
           setActiveId(id)
@@ -47,8 +49,8 @@ function renderPresetTabsList(overrides: Partial<{
       />
     )
   }
-  render(<Harness />)
-  return { onAdd, onActiveIdChange, onItemsChange }
+  const view = render(<Harness />)
+  return { ...view, onAdd, onActiveIdChange, onItemsChange }
 }
 
 describe('PresetTabsList', () => {
@@ -70,7 +72,7 @@ describe('PresetTabsList', () => {
     const user = userEvent.setup()
     const { onActiveIdChange } = renderPresetTabsList()
 
-    await user.click(screen.getByRole('button', { name: '拖动 / Drag 主角状态' }))
+    await user.click(screen.getByRole('button', { name: '拖动 主角状态' }))
 
     expect(onActiveIdChange).not.toHaveBeenCalled()
   })
@@ -88,5 +90,13 @@ describe('PresetTabsList', () => {
     expect(screen.getAllByText('状态表模板')).toHaveLength(2)
     fireEvent.click(screen.getByRole('button', { name: '新增状态表模板' }))
     expect(onAdd).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets rail height follow its parent instead of the viewport', () => {
+    const { container } = renderPresetTabsList({ layout: 'rail' })
+    const rail = container.querySelector('aside')
+
+    expect(rail).toHaveClass('h-full', 'min-h-0', 'rounded-[14px]')
+    expect(rail?.className).not.toMatch(/sticky|100vh|max-h/)
   })
 })

@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next'
-import type { ActorStateField, ActorStateInitialActor, OpeningTrait, OpeningTraitPool } from '../../../types'
+import type { ActorStateField, ActorStateInitialActor, ActorTraitDefinition, ActorTraitPool } from '../../../types'
 import type { ExplorerProps, TreeNode } from './types'
 
 /** Build a tree view of the actor state system for navigation. */
@@ -7,15 +7,12 @@ export function buildStateTree(value: ExplorerProps['value'], t: TFunction): Tre
   const templates = value.templates || []
   const initialActors = value.initial_actors || []
   const pools = value.trait_pools || []
-  const initialOps = value.initial_state_ops || []
 
   const root: TreeNode[] = []
 
   // ── Templates group ──────────────────────────────────────────────
   const templateNodes: TreeNode[] = templates.map((template, tIndex) => {
     const fields = template.fields || []
-    const templateActors = initialActors.filter((a) => a.template_id === template.id)
-
     const fieldNodes: TreeNode[] = fields.map((field, fIndex) => ({
       id: fieldNodeId(template.id, field, fIndex),
       kind: 'field' as const,
@@ -27,65 +24,27 @@ export function buildStateTree(value: ExplorerProps['value'], t: TFunction): Tre
       data: { kind: 'field' as const, field, fieldIndex: fIndex, template, templateIndex: tIndex },
     }))
 
-    const actorGroupNode: TreeNode | null = templateActors.length > 0
-      ? {
-          id: `actor-group:${template.id}`,
-          kind: 'actor-group',
-          label: t('settingPanel.actorState.initialActors'),
-          subtitle: `${templateActors.length}`,
-          selectable: false,
-          children: templateActors.map((actor, aIndex) => ({
-            id: actorNodeId(actor, aIndex),
-            kind: 'actor' as const,
-            label: actor.name || actor.id || t('settingPanel.actorState.explorer.actorFallback', { count: aIndex + 1 }),
-            subtitle: actor.role || template.name || template.id,
-            selectable: true,
-            children: [],
-            data: { kind: 'actor' as const, actor, actorIndex: aIndex, template },
-          })),
-        }
-      : null
-
-    const children = [...fieldNodes]
-    if (actorGroupNode) children.push(actorGroupNode)
-
     return {
-      id: `template:${template.id || tIndex}`,
+      id: templateNodeId(template, tIndex),
       kind: 'template' as const,
       label: template.name || template.id || t('settingPanel.actorState.explorer.templateFallback', { count: tIndex + 1 }),
       subtitle: t('settingPanel.actorState.explorer.fieldCount', { count: fields.length }),
       selectable: true,
-      children,
+      children: fieldNodes,
       data: { kind: 'template' as const, template, index: tIndex },
     }
   })
 
-  if (templateNodes.length > 0 || true) {
-    root.push({
-      id: 'group:templates',
-      kind: 'group',
-      label: t('settingPanel.actorState.templates'),
-      badge: `${templates.length}`,
-      selectable: false,
-      children: templateNodes,
-    })
-  }
+  root.push({
+    id: 'group:templates',
+    kind: 'group',
+    label: t('settingPanel.actorState.templates'),
+    badge: `${templates.length}`,
+    selectable: false,
+    children: templateNodes,
+  })
 
-  // ── Opening group ────────────────────────────────────────────────
-  const openingChildren: TreeNode[] = []
-
-  if (initialOps.length > 0 || true) {
-    openingChildren.push({
-      id: 'opening-ops',
-      kind: 'opening-ops',
-      label: t('settingPanel.actorState.explorer.initialOps'),
-      badge: `${initialOps.length}`,
-      selectable: true,
-      children: [],
-      data: { kind: 'opening-ops' as const, ops: initialOps },
-    })
-  }
-
+  // ── Trait library ────────────────────────────────────────────────
   const poolNodes: TreeNode[] = pools.map((pool, pIndex) => {
     const traits = pool.traits || []
     const traitNodes: TreeNode[] = traits.map((trait, tIndex) => ({
@@ -93,17 +52,17 @@ export function buildStateTree(value: ExplorerProps['value'], t: TFunction): Tre
       kind: 'trait' as const,
       label: trait.name || trait.id || t('settingPanel.actorState.explorer.traitFallback', { count: tIndex + 1 }),
       subtitle: trait.summary || t('settingPanel.actorState.explorer.weight', { count: trait.weight ?? 1 }),
-      badge: `${(trait.ops || []).length} ops`,
+      badge: trait.visibility ? visibilityBadge(trait.visibility, t) : undefined,
       selectable: true,
       children: [],
       data: { kind: 'trait' as const, trait, traitIndex: tIndex, pool, poolIndex: pIndex },
     }))
 
     return {
-      id: `pool:${pool.id || pIndex}`,
+      id: poolNodeId(pool, pIndex),
       kind: 'pool' as const,
       label: pool.name || pool.id || t('settingPanel.actorState.explorer.poolFallback', { count: pIndex + 1 }),
-      subtitle: t('settingPanel.actorState.explorer.drawCount', { count: pool.draw_count ?? 1 }),
+      subtitle: pool.description || t('settingPanel.actorState.explorer.traitCount', { count: traits.length }),
       badge: `${traits.length}`,
       selectable: true,
       children: traitNodes,
@@ -111,29 +70,57 @@ export function buildStateTree(value: ExplorerProps['value'], t: TFunction): Tre
     }
   })
 
-  openingChildren.push(...poolNodes)
-
   root.push({
-    id: 'group:opening',
-    kind: 'opening-group',
-    label: t('settingPanel.actorState.explorer.opening'),
+    id: 'group:traits',
+    kind: 'trait-library',
+    label: t('settingPanel.actorState.explorer.traitLibrary'),
     badge: `${pools.length}`,
     selectable: false,
-    children: openingChildren,
+    children: poolNodes,
+  })
+
+  // ── Initial actor instances ──────────────────────────────────────
+  const actorNodes: TreeNode[] = initialActors.map((actor, actorIndex) => {
+    const template = templates.find((item) => item.id === actor.template_id)
+    return {
+      id: actorNodeId(actor, actorIndex),
+      kind: 'actor' as const,
+      label: actor.name || actor.id || t('settingPanel.actorState.explorer.actorFallback', { count: actorIndex + 1 }),
+      subtitle: actor.role || template?.name || actor.template_id,
+      selectable: true,
+      children: [],
+      data: { kind: 'actor' as const, actor, actorIndex, template },
+    }
+  })
+  root.push({
+    id: 'group:actors',
+    kind: 'actors-group',
+    label: t('settingPanel.actorState.initialActors'),
+    badge: `${initialActors.length}`,
+    selectable: false,
+    children: actorNodes,
   })
 
   return root
 }
 
-function fieldNodeId(templateId: string, field: ActorStateField, index: number): string {
+export function templateNodeId(template: { id?: string }, index: number): string {
+  return `template:${template.id || index}`
+}
+
+export function fieldNodeId(templateId: string, field: ActorStateField, index: number): string {
   return `field:${templateId}:${field.id || field.path || index}`
 }
 
-function actorNodeId(actor: ActorStateInitialActor, index: number): string {
+export function actorNodeId(actor: ActorStateInitialActor, index: number): string {
   return `actor:${actor.id || actor.template_id || 'actor'}-${index}`
 }
 
-function traitNodeId(pool: OpeningTraitPool, trait: OpeningTrait, index: number): string {
+export function poolNodeId(pool: ActorTraitPool, index: number): string {
+  return `pool:${pool.id || index}`
+}
+
+export function traitNodeId(pool: ActorTraitPool, trait: ActorTraitDefinition, index: number): string {
   return `trait:${pool.id || 'pool'}:${trait.id || index}`
 }
 

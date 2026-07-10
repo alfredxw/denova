@@ -6,7 +6,7 @@ const (
 	DefaultContextCompactionRetainedTurns = 1
 	MaxContextCompactionRetainedTurns     = 30
 	DefaultToolResultKeepRecent           = 3
-	DefaultToolResultContextBudgetKB      = 200
+	DefaultToolResultContextBudgetKB      = 32
 	DefaultToolResultPreviewChars         = 2000
 	MaxToolResultKeepRecent               = 20
 	MaxToolResultContextBudgetKB          = 4096

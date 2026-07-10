@@ -45,6 +45,9 @@ jobs:
       - name: Run Go tests
         run: go test ./...
 
+      - name: Check reachable Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
       - name: Run frontend tests
         run: pnpm --dir web test
 

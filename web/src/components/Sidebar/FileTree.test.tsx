@@ -33,6 +33,7 @@ describe('FileTree', () => {
         nodes={nodes}
         selectedFile={null}
         onSelectFile={vi.fn()}
+        onRenameItem={vi.fn()}
       />,
     )
 
@@ -41,6 +42,18 @@ describe('FileTree', () => {
     expect(trigger).not.toHaveClass('hidden')
     expect(trigger).toHaveClass('opacity-0')
     expect(trigger).toHaveClass('data-[state=open]:opacity-100')
+  })
+
+  it('does not render an action trigger when no file action is available', () => {
+    render(
+      <FileTree
+        nodes={[{ name: 'read-only.md', type: 'file' }]}
+        selectedFile={null}
+        onSelectFile={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByLabelText('更多操作')).not.toBeInTheDocument()
   })
 
   it('sorts Chinese chapter ordinals in reading order', () => {

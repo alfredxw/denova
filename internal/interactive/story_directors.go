@@ -17,7 +17,7 @@ const (
 	DefaultStoryDirectorID = "default"
 
 	maxStoryDirectorRules               = 64
-	MaxStoryDirectorStrategyPromptBytes = DirectorContextMinBytes
+	MaxStoryDirectorStrategyPromptBytes = DirectorContextMaxBytes
 	DefaultDirectorAgentMode            = DirectorAgentModeTriggered
 	DirectorAgentModeTriggered          = "triggered"
 	DirectorAgentModeEveryTurn          = "every_turn"
@@ -44,7 +44,8 @@ type StoryDirector struct {
 	EventSystem       StoryDirectorEventSystem      `json:"-"`
 	TRPGSystem        StoryDirectorTRPGSystem       `json:"trpg_system"`
 	ActorState        StoryDirectorActorStateSystem `json:"actor_state,omitempty"`
-	OpeningSelector   StoryDirectorOpeningSelector  `json:"opening_selector"`
+	OpeningSelector   StoryDirectorOpeningSelector  `json:"opening_selector,omitempty"`
+	MigrationWarnings []string                      `json:"migration_warnings,omitempty"`
 	ResolvedSnapshot  StoryDirectorResolvedSnapshot `json:"resolved_snapshot,omitempty"`
 	Tags              []string                      `json:"tags"`
 	Path              string                        `json:"path,omitempty"`
@@ -432,7 +433,7 @@ func decodeStoryDirectorJSON(data []byte) (StoryDirector, error) {
 
 func writeStoryDirectorFile(path string, director StoryDirector) error {
 	director = normalizeStoryDirector(director)
-	data, err := json.MarshalIndent(director, "", "  ")
+	data, err := marshalJSONWithoutFields(director, "opening_selector")
 	if err != nil {
 		return err
 	}
@@ -494,9 +495,17 @@ func ensureMigratedRuleSystem(library *RuleSystemLibrary, director StoryDirector
 func ensureMigratedActorState(library *ActorStateLibrary, director StoryDirector) (string, error) {
 	id := normalizeDirectorModuleID(director.ID + "-actor-state")
 	if existing, err := library.Get(id); err == nil {
+		changed := false
 		if !openingSelectorHasContent(existing.OpeningSelector) && openingSelectorHasContent(director.OpeningSelector) {
 			existing.OpeningSelector = director.OpeningSelector
 			existing.Description = firstNonEmptyString(existing.Description, "由旧故事导演内嵌 actor_state 和 opening_selector 迁移生成。")
+			changed = true
+		}
+		if len(director.MigrationWarnings) > 0 {
+			existing.MigrationWarnings = normalizeStringListLimit(append(existing.MigrationWarnings, director.MigrationWarnings...), maxTurnBriefListItems)
+			changed = true
+		}
+		if changed {
 			if _, updateErr := library.Update(id, existing, existing.UpdatedAt); updateErr != nil {
 				return "", updateErr
 			}
@@ -508,12 +517,13 @@ func ensureMigratedActorState(library *ActorStateLibrary, director StoryDirector
 		actorState = defaultActorStateSystem()
 	}
 	module, err := library.Create(ActorStateModule{
-		ID:              id,
-		Name:            director.Name + " 状态系统",
-		Description:     "由旧故事导演内嵌 actor_state 和 opening_selector 迁移生成。",
-		ActorState:      actorState,
-		OpeningSelector: director.OpeningSelector,
-		Tags:            migratedDirectorModuleTags(director.Tags),
+		ID:                id,
+		Name:              director.Name + " 状态系统",
+		Description:       "由旧故事导演内嵌 actor_state 和 opening_selector 迁移生成。",
+		ActorState:        actorState,
+		OpeningSelector:   director.OpeningSelector,
+		MigrationWarnings: director.MigrationWarnings,
+		Tags:              migratedDirectorModuleTags(director.Tags),
 	})
 	if err != nil {
 		return "", err
@@ -581,11 +591,10 @@ func DefaultStoryDirector() StoryDirector {
 			BranchPlanningTurns:      defaultBranchPlanningTurns,
 			PlanningTemplates:        DefaultStoryDirectorPlanningTemplates(),
 		},
-		EventPackages:   []TellerEventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
-		TRPGSystem:      DefaultRuleSystemModule().TRPGSystem,
-		ActorState:      defaultActorState.ActorState,
-		OpeningSelector: defaultActorState.OpeningSelector,
-		Tags:            []string{"内置", "导演"},
+		EventPackages: []TellerEventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
+		TRPGSystem:    DefaultRuleSystemModule().TRPGSystem,
+		ActorState:    defaultActorState.ActorState,
+		Tags:          []string{"内置", "导演"},
 	})
 }
 
@@ -648,6 +657,12 @@ func normalizeStoryDirector(director StoryDirector) StoryDirector {
 		director.ActorState = normalizeActorStateSystem(director.ActorState)
 	}
 	director.OpeningSelector = normalizeStoryDirectorOpeningSelector(director.OpeningSelector)
+	if !director.ModuleRefs.ActorStateDisabled && openingSelectorHasContent(director.OpeningSelector) {
+		var warnings []string
+		director.ActorState, warnings = migrateLegacyOpeningTraits(director.ActorState, director.OpeningSelector)
+		director.MigrationWarnings = normalizeStringListLimit(append(director.MigrationWarnings, warnings...), maxTurnBriefListItems)
+		director.OpeningSelector = StoryDirectorOpeningSelector{}
+	}
 	director.ResolvedSnapshot = normalizeStoryDirectorResolvedSnapshot(director.ResolvedSnapshot)
 	director.Tags = normalizeStringListLimit(director.Tags, maxTurnBriefListItems)
 	return director
@@ -717,9 +732,12 @@ func normalizeStoryDirectorOpeningSelector(config StoryDirectorOpeningSelector) 
 
 func StoryDirectorInitialStateOps(director StoryDirector) []StateOp {
 	director = normalizeStoryDirector(director)
-	ops := actorStateInitialOps(director.ActorState)
-	ops = append(ops, director.OpeningSelector.InitialStateOps...)
-	return normalizeStateOps(ops)
+	return actorStateInitialOps(director.ActorState)
+}
+
+func BuildStoryDirectorInitialStateOps(director StoryDirector, rolls []InitialActorTraitRoll) ([]StateOp, error) {
+	director = normalizeStoryDirector(director)
+	return BuildActorStateInitialOps(director.ActorState, rolls)
 }
 
 func StoryDirectorStrategyPromptMarkdown(director StoryDirector) string {
@@ -787,6 +805,9 @@ func StoryDirectorPlanningSummary(director StoryDirector, limitBytes int) string
 
 func storyDirectorActorStateSchemaSummary(system StoryDirectorActorStateSystem) StoryDirectorActorStateSystem {
 	system = normalizeActorStateSystem(system)
+	for poolIndex := range system.TraitPools {
+		system.TraitPools[poolIndex].Traits = nil
+	}
 	for templateIndex := range system.Templates {
 		fields := system.Templates[templateIndex].Fields
 		visibleFields := make([]ActorStateField, 0, len(fields))
@@ -799,6 +820,14 @@ func storyDirectorActorStateSchemaSummary(system StoryDirectorActorStateSystem) 
 		system.Templates[templateIndex].Fields = visibleFields
 	}
 	return system
+}
+
+func ActorStateSchemaContext(system StoryDirectorActorStateSystem, limitBytes int) string {
+	data, err := json.MarshalIndent(storyDirectorActorStateSchemaSummary(system), "", "  ")
+	if err != nil {
+		return ""
+	}
+	return trimBytes(string(data), limitBytes)
 }
 
 type storyDirectorStructuredStrategy struct {

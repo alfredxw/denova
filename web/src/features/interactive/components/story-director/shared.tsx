@@ -4,8 +4,8 @@ export function SectionTitle({ title, description, badge }: { title: string; des
   return (
     <div className="flex flex-wrap items-start justify-between gap-2">
       <div className="min-w-0">
-        <div className="text-xs font-medium text-[var(--nova-text)]">{title}</div>
-        <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{description}</div>
+        <div className="preset-workspace-title text-sm font-semibold text-[var(--nova-text)]">{title}</div>
+        <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">{description}</div>
       </div>
       {badge ? (
         <span className="rounded border border-[var(--nova-accent)]/35 bg-[var(--nova-accent)]/10 px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">{badge}</span>

@@ -8,6 +8,7 @@ interface PresetResourceAutosaveOptions<Draft extends { id: string; updated_at?:
   draft: Draft | null
   tagDraft: string
   active: boolean
+  scopeKey?: string
   valid?: boolean
   makePayload: (draft: Draft, tagDraft: string) => Payload
   signature: (value: Partial<Draft> | Payload | Saved, tagDraft: string) => string
@@ -21,6 +22,7 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
   draft,
   tagDraft,
   active,
+  scopeKey = '',
   valid = true,
   makePayload,
   signature,
@@ -30,8 +32,14 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
   onFlushError,
 }: PresetResourceAutosaveOptions<Draft, Payload, Saved>) {
   const timerRef = useRef<number | null>(null)
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const pendingSavesRef = useRef(new Set<Promise<Saved | null>>())
   const savedSignatureRef = useRef('')
   const baseRevisionRef = useRef('')
+  const baselineResourceIdRef = useRef('')
+  const baselineGenerationRef = useRef(0)
+  const scopeKeyRef = useRef(scopeKey)
+  const mountedRef = useRef(true)
   const draftRef = useRef(draft)
   const tagDraftRef = useRef(tagDraft)
   const validRef = useRef(valid)
@@ -42,15 +50,25 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
   const onAutoSaveErrorRef = useRef(onAutoSaveError)
   const onFlushErrorRef = useRef(onFlushError)
 
-  useEffect(() => { draftRef.current = draft }, [draft])
-  useEffect(() => { tagDraftRef.current = tagDraft }, [tagDraft])
-  useEffect(() => { validRef.current = valid }, [valid])
-  useEffect(() => { makePayloadRef.current = makePayload }, [makePayload])
-  useEffect(() => { signatureRef.current = signature }, [signature])
-  useEffect(() => { saveRef.current = save }, [save])
-  useEffect(() => { onSavedRef.current = onSaved }, [onSaved])
-  useEffect(() => { onAutoSaveErrorRef.current = onAutoSaveError }, [onAutoSaveError])
-  useEffect(() => { onFlushErrorRef.current = onFlushError }, [onFlushError])
+  draftRef.current = draft
+  tagDraftRef.current = tagDraft
+  validRef.current = valid
+  makePayloadRef.current = makePayload
+  signatureRef.current = signature
+  saveRef.current = save
+  onSavedRef.current = onSaved
+  onAutoSaveErrorRef.current = onAutoSaveError
+  onFlushErrorRef.current = onFlushError
+
+  if (scopeKeyRef.current !== scopeKey) {
+    scopeKeyRef.current = scopeKey
+    baselineGenerationRef.current += 1
+    baselineResourceIdRef.current = ''
+    baseRevisionRef.current = ''
+    savedSignatureRef.current = ''
+    saveQueueRef.current = Promise.resolve()
+    pendingSavesRef.current.clear()
+  }
 
   const cancelPending = useCallback(() => {
     if (timerRef.current === null) return
@@ -59,32 +77,73 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
   }, [])
 
   const resetBaseline = useCallback((nextDraft: Draft | null, nextTagDraft = '') => {
+    const nextResourceId = nextDraft?.id || ''
+    if (nextResourceId !== baselineResourceIdRef.current) {
+      baselineGenerationRef.current += 1
+      baselineResourceIdRef.current = nextResourceId
+    }
     baseRevisionRef.current = nextDraft?.updated_at || ''
     savedSignatureRef.current = nextDraft ? signatureRef.current(nextDraft, nextTagDraft) : ''
   }, [])
 
-  const saveNow = useCallback(async (mode: PresetResourceSaveMode) => {
+  const saveNow = useCallback((mode: PresetResourceSaveMode) => {
     if (mode === 'manual') cancelPending()
     const snapshot = draftRef.current
-    if (!snapshot || !validRef.current) return null
+    if (!snapshot || !validRef.current) return Promise.resolve(null)
 
     const tags = tagDraftRef.current
     const payload = makePayloadRef.current(snapshot, tags)
     const nextSignature = signatureRef.current(payload, tags)
-    if (mode === 'auto' && nextSignature === savedSignatureRef.current) return null
+    const baselineGeneration = baselineGenerationRef.current
+    const queuedScopeKey = scopeKeyRef.current
+    const queuedBaseRevision = baseRevisionRef.current
+    const saveResource = saveRef.current
 
-    const saved = await saveRef.current(snapshot.id, payload, baseRevisionRef.current)
-    baseRevisionRef.current = saved.updated_at || ''
-    savedSignatureRef.current = signatureRef.current(saved, (saved.tags || []).join('，'))
-    onSavedRef.current?.(saved, mode, snapshot)
-    return saved
+    const operation = saveQueueRef.current.then(async () => {
+      const baselineIsCurrent = baselineResourceIdRef.current === snapshot.id
+        && baselineGenerationRef.current === baselineGeneration
+        && scopeKeyRef.current === queuedScopeKey
+      if (mode === 'auto' && baselineIsCurrent && nextSignature === savedSignatureRef.current) return null
+
+      const baseRevision = baselineIsCurrent ? baseRevisionRef.current : queuedBaseRevision
+      const saved = await saveResource(snapshot.id, payload, baseRevision)
+      if (
+        mountedRef.current
+        && scopeKeyRef.current === queuedScopeKey
+        && baselineResourceIdRef.current === snapshot.id
+        && baselineGenerationRef.current === baselineGeneration
+      ) {
+        baseRevisionRef.current = saved.updated_at || ''
+        // Keep the submitted signature while the editor remains active. The server may
+        // normalize the response, but applying that response here could replace edits
+        // made after this request started. The saved response becomes the next baseline
+        // when the resource is opened again.
+        savedSignatureRef.current = nextSignature
+        onSavedRef.current?.(saved, mode, snapshot)
+      }
+      return saved
+    })
+
+    // A failed request must reject its caller without poisoning later queued saves.
+    saveQueueRef.current = operation.then(() => undefined, () => undefined)
+    pendingSavesRef.current.add(operation)
+    void operation.then(
+      () => pendingSavesRef.current.delete(operation),
+      () => pendingSavesRef.current.delete(operation),
+    )
+    return operation
   }, [cancelPending])
 
   const flushPending = useCallback(() => {
-    if (timerRef.current === null) return null
-    window.clearTimeout(timerRef.current)
-    timerRef.current = null
-    const result = saveNow('auto')
+    const pending = [...pendingSavesRef.current]
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+      pending.push(saveNow('auto'))
+    }
+    if (pending.length === 0) return null
+
+    const result = Promise.all(pending).then((saved) => saved.at(-1) || null)
     result.catch((error) => {
       onFlushErrorRef.current?.(error)
     })
@@ -100,16 +159,27 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
     const nextSignature = signature(draft, tagDraft)
     if (nextSignature === savedSignatureRef.current) return
     cancelPending()
+    const scheduledScopeKey = scopeKeyRef.current
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null
       void saveNow('auto').catch((error) => {
-        onAutoSaveErrorRef.current?.(error)
+        if (mountedRef.current && scopeKeyRef.current === scheduledScopeKey) {
+          onAutoSaveErrorRef.current?.(error)
+        }
       })
     }, PRESET_RESOURCE_AUTOSAVE_DELAY_MS)
     return cancelPending
-  }, [active, cancelPending, draft, saveNow, signature, tagDraft, valid])
+  }, [active, cancelPending, draft, saveNow, scopeKey, signature, tagDraft, valid])
 
-  useEffect(() => cancelPending, [cancelPending])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      baselineGenerationRef.current += 1
+      pendingSavesRef.current.clear()
+      cancelPending()
+    }
+  }, [cancelPending])
 
   return {
     cancelPending,

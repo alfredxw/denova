@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateStyleReferenceFile } from '../api'
 import type { StyleReference, StyleReferenceFileDocument, StyleRule, Teller, TellerPromptSlot } from '../types'
+import { PresetEmptyState, PresetField, PresetMetadataPanel } from './preset-config/PresetEditorChrome'
 
 const TELLER_TARGET_OPTIONS = [{ value: 'system' }, { value: 'turn_context' }, { value: 'state_memory' }] as const
 
@@ -25,7 +26,7 @@ type TellerTarget = TellerPromptSlot['target']
 const actionButtonClassName = 'nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
-const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
+const selectClassName = 'nova-field h-8 w-full text-xs focus:ring-0'
 const STYLE_SOURCE_LIMIT = 40000
 const STYLE_FILE_ACCEPT = '.txt,.md,.markdown,text/plain,text/markdown,text/x-markdown'
 const STYLE_MARKDOWN_TAG = 'style_reference_markdown'
@@ -83,7 +84,7 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
     const id = `slot-${Date.now()}`
     const slot: TellerPromptSlot = {
       id,
-      name: '新规则',
+      name: t('settingPanel.injectRules.newRuleName'),
       target: 'turn_context',
       enabled: true,
       content: '',
@@ -109,54 +110,54 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
   }
 
   if (!draft) {
-    return <EmptyState title={t('settingPanel.editor.noTellerSelected')} description={t('settingPanel.editor.noTellerSelectedDesc')} />
+    return <PresetEmptyState title={t('settingPanel.editor.noTellerSelected')} description={t('settingPanel.editor.noTellerSelectedDesc')} />
   }
 
   const selectedTarget = targetOption(activeSlot?.target || 'turn_context')
+  const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')
 
   return (
-    <div data-testid="teller-editor" className="teller-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-      <div className="teller-metadata-grid grid min-w-0 shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
-        <Field label={t('settingPanel.field.name')}>
-          <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-        </Field>
-        <Field label={t('settingPanel.field.description')}>
-          <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
-        </Field>
-        <Field label={t('settingPanel.field.randomEventRate')}>
+    <div data-testid="teller-editor" className="teller-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <PresetMetadataPanel
+        name={draft.name}
+        description={draft.description}
+        tags={tagDraft}
+        status={draft.custom ? t('settingPanel.custom') : draft.builtin_overridden ? t('settingPanel.builtInOverridden') : t('settingPanel.builtIn')}
+        hint={editHint}
+        onNameChange={(name) => setDraft({ ...draft, name })}
+        onDescriptionChange={(description) => setDraft({ ...draft, description })}
+        onTagsChange={setTagDraft}
+        extra={(
+          <PresetField label={t('settingPanel.field.randomEventRate')}>
           <Input
-            className={inputClassName}
+            className="nova-field h-9 min-w-0 text-xs shadow-none"
             aria-label={t('settingPanel.field.randomEventRate')}
             inputMode="decimal"
             value={randomEventRateInput}
             onChange={(event) => updateRandomEventRate(event.target.value)}
           />
-        </Field>
-        <Field label={t('settingPanel.field.tags')}>
-          <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
-        </Field>
-        <div className="flex items-end">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{draft.custom ? t('settingPanel.custom') : draft.builtin_overridden ? t('settingPanel.builtInOverridden') : t('settingPanel.builtIn')}</span>
-        </div>
-      </div>
+          </PresetField>
+        )}
+      />
 
-      <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
-        <div className="mb-3">
-          <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.styleRules.title')}</div>
-          <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.styleRules.desc')}</div>
-        </div>
-        <InteractiveStyleReferencesEditor
-          references={styleReferences}
-          refreshReferences={refreshStyleReferences}
-          globalRefs={draft.style_refs ?? []}
-          onGlobalRefsChange={(style_refs) => setDraft({ ...draft, style_refs })}
-          rules={draft.style_rules ?? []}
-          onRulesChange={(style_rules) => setDraft({ ...draft, style_rules })}
-        />
-      </div>
+      <div data-testid="teller-content-scroll" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        <section className="shrink-0 border-b border-[var(--preset-line)] bg-[var(--preset-surface)] p-3 sm:p-4">
+          <div className="mb-3">
+            <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.styleRules.title')}</div>
+            <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.styleRules.desc')}</div>
+          </div>
+          <InteractiveStyleReferencesEditor
+            references={styleReferences}
+            refreshReferences={refreshStyleReferences}
+            globalRefs={draft.style_refs ?? []}
+            onGlobalRefsChange={(style_refs) => setDraft({ ...draft, style_refs })}
+            rules={draft.style_rules ?? []}
+            onRulesChange={(style_rules) => setDraft({ ...draft, style_rules })}
+          />
+        </section>
 
-      <div className="teller-injection-layout grid min-h-[520px] min-w-0 flex-1">
-        <aside className="teller-injection-rules flex max-h-60 min-h-0 min-w-0 flex-col overflow-hidden border-b border-[var(--nova-border)] bg-[var(--nova-surface)]">
+        <div className="teller-injection-layout grid min-h-[320px] min-w-0 flex-1">
+        <aside className="teller-injection-rules flex max-h-56 min-h-0 min-w-0 flex-col overflow-hidden border-b border-[var(--preset-line)] bg-[var(--preset-surface)]">
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
             <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.injectRules.title')}</div>
             <Button className={iconActionClassName} variant="outline" size="icon" onClick={addSlot} aria-label={t('settingPanel.injectRules.new')}>
@@ -166,7 +167,7 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
           <ScrollArea className="min-h-0 flex-1">
             <div className="p-2">
               {(draft.slots || []).map((slot) => (
-                <div key={slot.id} className={`mb-1 flex min-h-12 w-full items-center gap-2 rounded-md border px-3 py-2 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_3px_0_0_var(--nova-accent)]' : 'border-transparent text-[var(--nova-text-muted)] hover:border-[var(--nova-border)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
+                <div key={slot.id} className={`mb-1 flex min-h-12 w-full items-center gap-2 rounded-[11px] border px-3 py-2 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--preset-signal)]/35 bg-[var(--preset-signal-soft)] text-[var(--nova-text)] shadow-[inset_3px_0_0_var(--preset-signal)]' : 'border-transparent text-[var(--nova-text-muted)] hover:border-[var(--preset-line)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
                   <button type="button" onClick={() => setActiveSlotId(slot.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
                     <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
                     <span className="min-w-0 flex-1">
@@ -187,7 +188,7 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
 
         {activeSlot ? (
           <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
-            <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
+            <div className="shrink-0 border-b border-[var(--preset-line)] bg-[var(--preset-surface)] p-3 sm:p-4">
               <div className="teller-rule-grid grid min-w-0 gap-3">
                 <Field label={t('settingPanel.field.ruleName')}>
                   <Input className={inputClassName} value={activeSlot.name} onChange={(event) => updateSlot({ name: event.target.value })} />
@@ -234,7 +235,7 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
                   </Button>
                 </div>
                 <div className="teller-rule-summary">
-                  <div className="min-w-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5">
+                  <div className="min-w-0 rounded-[12px] border border-[var(--preset-line)] bg-[var(--preset-raised)] px-3 py-2.5">
                     <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
                       <span>{targetLabel(selectedTarget.value as TellerTarget, t)}</span>
                       <span className="h-1 w-1 rounded-full bg-[var(--nova-text-faint)]/50" />
@@ -245,10 +246,10 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
                 </div>
               </div>
             </div>
-            <div className="min-h-[420px] flex-1 p-4">
+            <div className="min-h-[280px] flex-1 p-3 sm:p-4">
               <Textarea
                 autoResize={false}
-                className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
+                className="nova-field h-full min-h-[240px] resize-none font-mono text-sm leading-7 shadow-none"
                 value={activeSlot.content}
                 onChange={(event) => updateSlot({ content: event.target.value })}
                 onKeyDown={(event) => {
@@ -262,8 +263,9 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
             </div>
           </section>
         ) : (
-          <EmptyState title={t('settingPanel.injectRules.emptyTitle')} description={t('settingPanel.injectRules.emptyDesc')} />
+          <PresetEmptyState title={t('settingPanel.injectRules.emptyTitle')} description={t('settingPanel.injectRules.emptyDesc')} />
         )}
+        </div>
       </div>
     </div>
   )
@@ -961,17 +963,6 @@ function Field({ label, children, className = '' }: { label: string; children: R
       <span className="text-[11px] text-[var(--nova-text-faint)]">{label}</span>
       {children}
     </label>
-  )
-}
-
-function EmptyState({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-      <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 py-5 text-center">
-        <div className="text-sm font-medium text-[var(--nova-text)]">{title}</div>
-        <div className="mt-1 text-xs text-[var(--nova-text-faint)]">{description}</div>
-      </div>
-    </div>
   )
 }
 

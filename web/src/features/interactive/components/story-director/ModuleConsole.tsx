@@ -154,8 +154,8 @@ export function DirectorModuleConsole({
 function ModuleGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid content-start gap-1.5 self-start">
-      <div className="px-0.5 text-[10px] font-semibold uppercase tracking-wider text-[var(--nova-text-faint)]">{label}</div>
-      <div className="grid content-start gap-1 rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)]/60 p-1.5">
+      <div className="px-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-muted)]">{label}</div>
+      <div className="grid content-start gap-1 rounded-[11px] border border-[var(--preset-line)] bg-[var(--preset-raised)]/70 p-1.5">
         {children}
       </div>
     </div>
@@ -180,8 +180,8 @@ function ModuleRefRow({
     ? t('settingPanel.storyDirector.disableModule', { module: label })
     : t('settingPanel.storyDirector.enableModule', { module: label })
   return (
-    <div className={`flex items-center gap-2 rounded px-1.5 py-1 ${enabled ? '' : 'opacity-60'}`}>
-      <span className="w-24 shrink-0 text-[11px] text-[var(--nova-text-faint)]">{label}</span>
+    <div className={`flex min-h-12 items-center gap-2 rounded-lg px-2 py-1.5 ${enabled ? '' : 'opacity-60'}`}>
+      <span className="w-24 shrink-0 text-[11px] text-[var(--nova-text-muted)]">{label}</span>
       <span className="min-w-0 flex-1">
         {children}
         {summary ? <span className="mt-0.5 block truncate text-[10px] text-[var(--nova-text-faint)]" title={summary}>{summary}</span> : null}

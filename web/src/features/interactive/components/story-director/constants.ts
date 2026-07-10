@@ -53,9 +53,6 @@ export const STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS = [
   { value: 'audit_only', labelKey: 'settingPanel.storyDirector.strategy.ruleVisibility.auditOnly', descriptionKey: 'settingPanel.storyDirector.strategy.ruleVisibility.auditOnlyDesc' },
   { value: 'public_roll', labelKey: 'settingPanel.storyDirector.strategy.ruleVisibility.publicRoll', descriptionKey: 'settingPanel.storyDirector.strategy.ruleVisibility.publicRollDesc' },
 ] as const
-export const EDITOR_TABS = ['trpg', 'opening', 'events'] as const
-
-export type StoryDirectorEditorTab = typeof EDITOR_TABS[number]
 export type StrategySelectOption = {
   value: string
   labelKey: string
@@ -63,5 +60,5 @@ export type StrategySelectOption = {
 }
 
 export const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
-export const selectClassName = 'nova-field h-8 text-xs focus:ring-0'
-export const consoleSectionClassName = 'rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[color-mix(in_srgb,var(--nova-surface)_88%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] backdrop-blur'
+export const selectClassName = 'nova-field h-8 w-full text-xs focus:ring-0'
+export const consoleSectionClassName = 'rounded-[14px] border border-[var(--preset-line)] bg-[color-mix(in_srgb,var(--preset-surface)_90%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] backdrop-blur'

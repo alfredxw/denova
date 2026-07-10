@@ -1,10 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
-import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, createStoryMemoryStructure, deleteActorState, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, deleteStoryMemoryStructurePreset, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getOpeningSelectors, getRuleSystems, getStoryDirectors, getStoryMemoryStructures, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateOpeningSelector, updateRuleSystem, updateStoryDirector, updateStoryMemoryStructure } from '../api'
-import type { EventPackageModule, ImagePreset, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller } from '../types'
+import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, createStoryMemoryStructure, deleteActorState, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, deleteStoryMemoryStructurePreset, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStoryMemoryStructures, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector, updateStoryMemoryStructure } from '../api'
+import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller } from '../types'
 import { defaultRuleTemplates } from './preset-config/ruleTemplates'
 import { newRuleSystemDraft } from './setting-panel/presetResources'
 import { SettingPanel } from './SettingPanel'
@@ -99,7 +99,6 @@ vi.mock('../api', () => ({
   createEventPackage: vi.fn(),
   createImagePreset: vi.fn(),
   createInteractiveTeller: vi.fn(),
-  createOpeningSelector: vi.fn(),
   createRuleSystem: vi.fn(),
   createStoryDirector: vi.fn(),
   createStoryMemoryStructure: vi.fn(),
@@ -107,7 +106,6 @@ vi.mock('../api', () => ({
   deleteEventPackage: vi.fn(),
   deleteImagePreset: vi.fn(),
   deleteInteractiveTeller: vi.fn(),
-  deleteOpeningSelector: vi.fn(),
   deleteRuleSystem: vi.fn(),
   deleteStoryDirector: vi.fn(),
   deleteStoryMemoryStructurePreset: vi.fn(),
@@ -115,7 +113,6 @@ vi.mock('../api', () => ({
   getEventPackages: vi.fn(),
   getImagePresets: vi.fn(),
   getInteractiveTellers: vi.fn(),
-  getOpeningSelectors: vi.fn(),
   getRuleSystems: vi.fn(),
   getStoryDirectors: vi.fn(),
   getStoryMemoryStructures: vi.fn(),
@@ -125,7 +122,6 @@ vi.mock('../api', () => ({
   updateImagePreset: vi.fn(),
   updateInteractiveTeller: vi.fn(),
   updateActorState: vi.fn(),
-  updateOpeningSelector: vi.fn(),
   updateRuleSystem: vi.fn(),
   updateStoryDirector: vi.fn(),
   updateStoryMemoryStructure: vi.fn(),
@@ -163,8 +159,6 @@ describe('SettingPanel', () => {
     vi.mocked(updateEventPackage).mockReset()
     vi.mocked(getRuleSystems).mockReset()
     vi.mocked(updateRuleSystem).mockReset()
-    vi.mocked(getOpeningSelectors).mockReset()
-    vi.mocked(updateOpeningSelector).mockReset()
     vi.mocked(getStyleReferences).mockReset()
     vi.mocked(updateImagePreset).mockReset()
     vi.mocked(deleteImagePreset).mockReset()
@@ -193,8 +187,6 @@ describe('SettingPanel', () => {
       ruleSystem('dm-osr-player-skill', 'OSR 型 DM：玩家技巧优先'),
     ])
     vi.mocked(updateRuleSystem).mockImplementation(async (id, input) => ({ ...ruleSystem(id, input.name || id), ...input, id, custom: !isBuiltinRuleSystemID(id), builtin_overridden: isBuiltinRuleSystemID(id), updated_at: '2026-01-01T00:00:01Z' }) as RuleSystemModule)
-    vi.mocked(getOpeningSelectors).mockResolvedValue([openingSelector('default-opening', '默认开局选择')])
-    vi.mocked(updateOpeningSelector).mockImplementation(async (id, input) => ({ ...openingSelector(id, input.name || id), ...input, id, custom: id !== 'default-opening', builtin_overridden: id === 'default-opening', updated_at: '2026-01-01T00:00:01Z' }) as OpeningSelectorModule)
     vi.mocked(getStyleReferences).mockResolvedValue([])
   })
 
@@ -235,6 +227,7 @@ describe('SettingPanel', () => {
         custom: false,
       }),
       '',
+      '/workspace',
     )
     expect(createInteractiveTeller).not.toHaveBeenCalled()
   })
@@ -256,8 +249,59 @@ describe('SettingPanel', () => {
         name: '切换前自动保存',
       }),
       '',
+      '/workspace',
     )
     expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
+  })
+
+  it('round-trips a custom preset through autosave with its latest content and revision', async () => {
+    vi.useFakeTimers()
+    const customA = { ...teller('custom-a', '自定义 A'), updated_at: 'a-r1' }
+    const customB = { ...teller('custom-b', '自定义 B'), updated_at: 'b-r1' }
+    let resolveFirstSave!: (saved: Teller) => void
+    const firstSave = new Promise<Teller>((resolve) => { resolveFirstSave = resolve })
+    vi.mocked(updateInteractiveTeller)
+      .mockImplementationOnce(async () => firstSave)
+      .mockImplementation(async (id, input) => ({
+      ...teller(id, input.name || id),
+      ...input,
+      id,
+      custom: true,
+      updated_at: id === 'custom-a' ? 'a-r3' : 'b-r2',
+    }) as Teller)
+
+    try {
+      render(<CustomTellerRoundTripHarness initialTellers={[customA, customB]} />)
+
+      fireEvent.change(screen.getByDisplayValue('自定义 A'), { target: { value: 'A 首次保存' } })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1300) })
+      expect(updateInteractiveTeller).toHaveBeenCalledTimes(1)
+
+      fireEvent.change(screen.getByDisplayValue('A 首次保存'), { target: { value: 'A 最新内容' } })
+      await act(async () => {
+        resolveFirstSave({ ...customA, name: 'A 首次保存', updated_at: 'a-r2' })
+        await firstSave
+      })
+      expect(screen.getByDisplayValue('A 最新内容')).toBeInTheDocument()
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /自定义 B/ }))
+        await Promise.resolve()
+      })
+      expect(screen.getByRole('heading', { name: '自定义 B' })).toBeInTheDocument()
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /A 最新内容/ }))
+        await Promise.resolve()
+      })
+      expect(screen.getByDisplayValue('A 最新内容')).toBeInTheDocument()
+
+      expect(updateInteractiveTeller).toHaveBeenCalledTimes(2)
+      expect(vi.mocked(updateInteractiveTeller).mock.calls[0][2]).toBe('a-r1')
+      expect(vi.mocked(updateInteractiveTeller).mock.calls[1][2]).toBe('a-r2')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('restores an overridden built-in narrative style from the top-right action', async () => {
@@ -302,6 +346,7 @@ describe('SettingPanel', () => {
         custom: false,
       }),
       '',
+      '/workspace',
     )
     expect(createImagePreset).not.toHaveBeenCalled()
     expect(screen.getAllByText('内置覆盖').length).toBeGreaterThan(0)
@@ -425,7 +470,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => expect(updateEventPackage).toHaveBeenCalled())
-    expect(updateEventPackage).toHaveBeenCalledWith('default', expect.objectContaining({ id: 'default', custom: false }), '')
+    expect(updateEventPackage).toHaveBeenCalledWith('default', expect.objectContaining({ id: 'default', custom: false }), '', '/workspace')
     expect(createStoryDirector).not.toHaveBeenCalled()
     const payload = vi.mocked(updateEventPackage).mock.calls.at(-1)?.[1] as Partial<EventPackageModule>
     expect(payload.events?.[0]?.type_name).toBe('伏笔回收')
@@ -639,20 +684,20 @@ describe('SettingPanel', () => {
     expect(updateEventPackage).not.toHaveBeenCalled()
   })
 
-  it('edits memory structure metadata in the top bar without a tags card', async () => {
+  it('edits memory structure metadata in the shared resource identity panel', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
     await user.click(screen.getByRole('button', { name: '展开全部目录' }))
     await user.click(screen.getByRole('button', { name: /默认记忆结构/ }))
 
-    const metadata = screen.getByTestId('preset-inline-metadata')
+    const metadata = screen.getByTestId('preset-metadata')
     const nameInput = within(metadata).getByRole('textbox', { name: '名称' })
     const descriptionInput = within(metadata).getByRole('textbox', { name: '描述' })
     expect(nameInput).toHaveValue('默认记忆结构')
     expect(descriptionInput).toHaveValue('默认记忆结构 description')
-    expect(within(metadata).queryByRole('textbox', { name: '标签' })).not.toBeInTheDocument()
-    expect(screen.queryByText('编辑内置资源会保存为同 ID 覆盖；右上角可恢复内置版本。')).not.toBeInTheDocument()
+    expect(within(metadata).getByRole('textbox', { name: '标签' })).toBeInTheDocument()
+    expect(screen.getByText('编辑内置资源会保存为同 ID 覆盖；右上角可恢复内置版本。')).toBeInTheDocument()
     expect(screen.getByTestId('preset-config-visual-editor')).toHaveClass('preset-config-visual-container')
     expect(screen.getByTestId('memory-structure-editor')).toHaveClass('preset-visual-editor-shell', 'overflow-hidden')
 
@@ -667,10 +712,10 @@ describe('SettingPanel', () => {
       name: '长期记忆结构',
       description: '记录长期承接信息',
       tags: [],
-    }), '')
+    }), '', '/workspace')
   })
 
-  it('edits TRPG checks as a single DM-style dice config', async () => {
+  it('edits TRPG checks through the focused DM-style visual workflow', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
@@ -690,8 +735,7 @@ describe('SettingPanel', () => {
     expect(screen.queryByRole('button', { name: '新增规则' })).not.toBeInTheDocument()
 
     const ruleLabelInput = screen.getByRole('textbox', { name: '规则名称' })
-    await user.clear(ruleLabelInput)
-    await user.type(ruleLabelInput, '自定义 DM 检定')
+    fireEvent.change(ruleLabelInput, { target: { value: '自定义 DM 检定' } })
 
     const mustCheckExamples = '守卫逼近时强行撬锁\n攻击警戒守卫'
     const skipCheckExamples = '观察空房间\n和友善同伴闲聊'
@@ -706,8 +750,7 @@ describe('SettingPanel', () => {
 
     const modifierField = screen.getByText('修正值').closest('label') as HTMLElement
     const modifierInput = within(modifierField).getByRole('textbox')
-    await user.clear(modifierInput)
-    await user.type(modifierInput, '7')
+    fireEvent.change(modifierInput, { target: { value: '7' } })
 
     const failureField = screen.getByText('失败处理').closest('label') as HTMLElement
     await user.click(within(failureField).getByRole('combobox'))
@@ -737,6 +780,14 @@ describe('SettingPanel', () => {
     expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_difficulty')
     expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_roll_mode')
     expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('success_state_ops')
+  })
+
+  it('normalizes legacy TRPG JSON into one supported DM check', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: '展开全部目录' }))
+    await user.click(screen.getByRole('button', { name: /均衡 DM 检定/ }))
 
     await user.click(screen.getByRole('button', { name: 'JSON' }))
     fireEvent.change(screen.getByTestId('monaco-json-editor'), {
@@ -772,7 +823,7 @@ describe('SettingPanel', () => {
       },
     })
     await user.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(updateRuleSystem).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(updateRuleSystem).toHaveBeenCalledTimes(1))
     const jsonPayload = vi.mocked(updateRuleSystem).mock.calls.at(-1)?.[1] as Partial<RuleSystemModule>
     expect(jsonPayload.trpg_system?.rule_templates).toEqual([expect.objectContaining({
       id: 'legacy',
@@ -999,6 +1050,20 @@ function PresetPanelHarness({ presetUsageMode = 'game' }: { presetUsageMode?: 'w
   )
 }
 
+function CustomTellerRoundTripHarness({ initialTellers }: { initialTellers: Teller[] }) {
+  const [tellers, setTellers] = useState(initialTellers)
+  return (
+    <SettingPanel
+      mode="teller"
+      workspace="/workspace"
+      tellers={tellers}
+      storyDirectors={[storyDirector('default', '默认导演')]}
+      imagePresets={[imagePreset('game-cg', '游戏 CG')]}
+      onTellersChange={setTellers}
+    />
+  )
+}
+
 function teller(id: string, name: string): Teller {
   return {
     version: 1,
@@ -1040,7 +1105,6 @@ function storyDirector(id: string, name: string): StoryDirector {
       rule_system_id: 'default',
       actor_state_id: 'default',
       memory_structure_id: 'default',
-      opening_selector_id: 'default-opening',
       image_preset_id: 'game-cg',
     },
     strategy: { enabled: true, mainline_strength: 'balanced' },
@@ -1051,7 +1115,6 @@ function storyDirector(id: string, name: string): StoryDirector {
       events: [],
     }],
     trpg_system: { rule_templates: [] },
-    opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },
     tags: [],
     custom: id !== 'default',
   }
@@ -1085,18 +1148,6 @@ const BUILTIN_RULE_SYSTEM_IDS = new Set(['default', 'dm-fail-forward', 'dm-osr-p
 
 function isBuiltinRuleSystemID(id: string) {
   return BUILTIN_RULE_SYSTEM_IDS.has(id)
-}
-
-function openingSelector(id: string, name: string): OpeningSelectorModule {
-  return {
-    version: 1,
-    id,
-    name,
-    description: `${name} description`,
-    opening_selector: { enabled: true, trait_pools: [], initial_state_ops: [] },
-    tags: [],
-    custom: id !== 'default-opening',
-  }
 }
 
 function memoryStructure(id: string, name: string): StoryMemoryStructureModule {

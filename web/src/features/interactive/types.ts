@@ -86,7 +86,7 @@ export interface StoryDirector {
   event_packages?: TellerEventPackage[]
   trpg_system: StoryDirectorTRPGSystem
   actor_state?: StoryDirectorActorStateSystem
-  opening_selector: StoryDirectorOpeningSelector
+  opening_selector?: StoryDirectorOpeningSelector
   resolved_snapshot?: StoryDirectorResolvedSnapshot
   tags: string[]
   path?: string
@@ -111,8 +111,6 @@ export interface StoryDirectorModuleRefs {
   actor_state_disabled?: boolean
   memory_structure_id?: string
   memory_structure_disabled?: boolean
-  opening_selector_id?: string
-  opening_selector_disabled?: boolean
   image_preset_id?: string
   image_preset_disabled?: boolean
 }
@@ -136,7 +134,6 @@ interface StoryDirectorResolvedSnapshot {
   trpg_system?: StoryDirectorTRPGSystem
   actor_state?: StoryDirectorActorStateSystem
   story_memory_structures?: StoryMemoryStructure[]
-  opening_selector?: StoryDirectorOpeningSelector
 }
 
 export interface EventPackageModule {
@@ -178,7 +175,7 @@ export interface ActorStateModule {
   name: string
   description: string
   actor_state: StoryDirectorActorStateSystem
-  opening_selector?: StoryDirectorOpeningSelector
+  migration_warnings?: string[]
   tags: string[]
   path?: string
   custom: boolean
@@ -247,6 +244,7 @@ export interface StoryDirectorTRPGSystem {
 export interface StoryDirectorActorStateSystem {
   templates?: ActorStateTemplate[]
   initial_actors?: ActorStateInitialActor[]
+  trait_pools?: ActorTraitPool[]
 }
 
 export interface ActorStateTemplate {
@@ -254,6 +252,50 @@ export interface ActorStateTemplate {
   name: string
   description?: string
   fields?: ActorStateField[]
+  trait_rules?: ActorTraitRule[]
+}
+
+export interface ActorTraitRule {
+  pool_id: string
+  draw_count: number
+}
+
+export interface ActorTraitPool {
+  id: string
+  name: string
+  description?: string
+  traits?: ActorTraitDefinition[]
+}
+
+export interface ActorTraitDefinition {
+  id: string
+  name: string
+  summary?: string
+  weight?: number
+  visibility?: 'visible' | 'hidden' | 'spoiler'
+}
+
+export interface ActorTraitInstance {
+  pool_id: string
+  pool_name?: string
+  trait_id: string
+  name: string
+  summary?: string
+  visibility?: 'visible' | 'hidden' | 'spoiler'
+  source_kind?: string
+  source_id?: string
+  source_turn_id?: string
+}
+
+export interface ActorTraitSelection {
+  pool_id: string
+  trait_ids?: string[]
+}
+
+export interface InitialActorTraitRoll {
+  actor_id: string
+  selections?: ActorTraitSelection[]
+  seed?: number
 }
 
 export interface ActorStateField {
@@ -807,6 +849,22 @@ export interface OpeningRollResult {
   seed: number
   traits: OpeningRolledTrait[]
   state_ops: StateOp[]
+}
+
+export interface ActorTraitRollRequest {
+  story_director_id?: string
+  actor_id: string
+  template_id: string
+  selections?: ActorTraitSelection[]
+  seed?: number
+}
+
+export interface ActorTraitRollResult {
+  story_director_id?: string
+  actor_id: string
+  template_id: string
+  seed: number
+  traits: ActorTraitInstance[]
 }
 
 interface OpeningRolledTrait {

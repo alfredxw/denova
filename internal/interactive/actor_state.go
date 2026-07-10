@@ -18,6 +18,7 @@ const (
 type StoryDirectorActorStateSystem struct {
 	Templates     []ActorStateTemplate     `json:"templates,omitempty"`
 	InitialActors []ActorStateInitialActor `json:"initial_actors,omitempty"`
+	TraitPools    []ActorTraitPool         `json:"trait_pools,omitempty"`
 }
 
 type ActorStateTemplate struct {
@@ -25,6 +26,52 @@ type ActorStateTemplate struct {
 	Name        string            `json:"name"`
 	Description string            `json:"description,omitempty"`
 	Fields      []ActorStateField `json:"fields,omitempty"`
+	TraitRules  []ActorTraitRule  `json:"trait_rules,omitempty"`
+}
+
+// ActorTraitRule declares which reusable trait pool is available to actors
+// created from a state template and how many traits are assigned from it.
+type ActorTraitRule struct {
+	PoolID    string `json:"pool_id"`
+	DrawCount int    `json:"draw_count"`
+}
+
+// ActorTraitPool is a reusable library of traits. Draw behavior belongs to
+// ActorTraitRule so one pool can be composed differently by each template.
+type ActorTraitPool struct {
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Traits      []ActorTraitDefinition `json:"traits,omitempty"`
+}
+
+type ActorTraitDefinition struct {
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	Summary    string  `json:"summary,omitempty"`
+	Weight     float64 `json:"weight,omitempty"`
+	Visibility string  `json:"visibility,omitempty"`
+}
+
+// ActorTraitInstance is a snapshot of a definition at assignment time. Stories
+// therefore remain stable when the reusable trait library is edited later.
+type ActorTraitInstance struct {
+	PoolID       string `json:"pool_id"`
+	PoolName     string `json:"pool_name,omitempty"`
+	TraitID      string `json:"trait_id"`
+	Name         string `json:"name"`
+	Summary      string `json:"summary,omitempty"`
+	Visibility   string `json:"visibility,omitempty"`
+	SourceKind   string `json:"source_kind,omitempty"`
+	SourceID     string `json:"source_id,omitempty"`
+	SourceTurnID string `json:"source_turn_id,omitempty"`
+}
+
+type ActorTraitChange struct {
+	Op       string   `json:"op"`
+	PoolID   string   `json:"pool_id"`
+	TraitIDs []string `json:"trait_ids,omitempty"`
+	Seed     int64    `json:"seed,omitempty"`
 }
 
 type ActorStateField struct {
@@ -52,33 +99,44 @@ type ActorStateInitialActor struct {
 }
 
 type ActorStatePatch struct {
-	ActorID      string         `json:"actor_id"`
-	ActorName    string         `json:"actor_name,omitempty"`
-	TemplateID   string         `json:"template_id,omitempty"`
-	Role         string         `json:"role,omitempty"`
-	Description  string         `json:"description,omitempty"`
-	State        map[string]any `json:"state,omitempty"`
-	Reason       string         `json:"reason,omitempty"`
-	SourceTurnID string         `json:"source_turn_id,omitempty"`
+	ActorID      string             `json:"actor_id"`
+	ActorName    string             `json:"actor_name,omitempty"`
+	TemplateID   string             `json:"template_id,omitempty"`
+	Role         string             `json:"role,omitempty"`
+	Description  string             `json:"description,omitempty"`
+	State        map[string]any     `json:"state,omitempty"`
+	TraitChanges []ActorTraitChange `json:"trait_changes,omitempty"`
+	Reason       string             `json:"reason,omitempty"`
+	SourceTurnID string             `json:"source_turn_id,omitempty"`
 }
 
 type ActorStatePatchResult struct {
-	AppliedActors []string  `json:"applied_actors"`
-	Ops           []StateOp `json:"ops"`
+	AppliedActors  []string                        `json:"applied_actors"`
+	CreatedActors  []string                        `json:"created_actors,omitempty"`
+	AssignedTraits map[string][]ActorTraitInstance `json:"assigned_traits,omitempty"`
+	Ops            []StateOp                       `json:"ops"`
 }
 
 func ValidateActorStatePatches(system StoryDirectorActorStateSystem, patches []ActorStatePatch, sourceTurnID string) (ActorStatePatchResult, error) {
+	return ValidateActorStatePatchesAgainstState(system, nil, patches, sourceTurnID)
+}
+
+// ValidateActorStatePatchesAgainstState validates patches against the current
+// replayed story state so actor creation, immutable template identity, and
+// trait lifecycle changes are handled consistently.
+func ValidateActorStatePatchesAgainstState(system StoryDirectorActorStateSystem, currentState map[string]any, patches []ActorStatePatch, sourceTurnID string) (ActorStatePatchResult, error) {
 	if len(patches) == 0 {
 		return ActorStatePatchResult{}, fmt.Errorf("Actor 状态更新不能为空")
 	}
 	if len(patches) > maxTurnBriefListItems {
 		patches = patches[:maxTurnBriefListItems]
 	}
-	result := ActorStatePatchResult{AppliedActors: []string{}, Ops: []StateOp{}}
+	result := ActorStatePatchResult{AppliedActors: []string{}, CreatedActors: []string{}, AssignedTraits: map[string][]ActorTraitInstance{}, Ops: []StateOp{}}
+	workingState := cloneActorStateRoot(currentState)
 	seenActors := map[string]bool{}
 	for _, patch := range patches {
 		patch.SourceTurnID = firstNonEmptyString(patch.SourceTurnID, sourceTurnID)
-		normalized, ops, err := validateActorStatePatch(system, patch)
+		normalized, ops, created, traits, err := validateActorStatePatch(system, workingState, patch)
 		if err != nil {
 			return ActorStatePatchResult{}, err
 		}
@@ -86,13 +144,26 @@ func ValidateActorStatePatches(system StoryDirectorActorStateSystem, patches []A
 			seenActors[normalized.ActorID] = true
 			result.AppliedActors = append(result.AppliedActors, normalized.ActorID)
 		}
+		if created {
+			result.CreatedActors = append(result.CreatedActors, normalized.ActorID)
+		}
+		if traits != nil {
+			result.AssignedTraits[normalized.ActorID] = traits
+		}
 		result.Ops = append(result.Ops, ops...)
+		for _, op := range ops {
+			applyStateOp(workingState, op)
+		}
 	}
 	result.Ops = normalizeStateOps(result.Ops)
+	if len(result.AssignedTraits) == 0 {
+		result.AssignedTraits = nil
+	}
 	return result, nil
 }
 
 func normalizeActorStateSystem(system StoryDirectorActorStateSystem) StoryDirectorActorStateSystem {
+	system.TraitPools = normalizeActorTraitPools(system.TraitPools)
 	system.Templates = normalizeActorStateTemplates(system.Templates)
 	system.InitialActors = normalizeActorStateInitialActors(system.InitialActors, system.Templates)
 	return system
@@ -116,6 +187,7 @@ func normalizeActorStateTemplates(templates []ActorStateTemplate) []ActorStateTe
 		template.Name = trimBytes(firstNonEmptyString(template.Name, template.ID), 128)
 		template.Description = trimBytes(template.Description, maxTurnBriefTextBytes)
 		template.Fields = normalizeActorStateFields(template.Fields)
+		template.TraitRules = normalizeActorTraitRules(template.TraitRules)
 		out = append(out, template)
 	}
 	return out
@@ -221,7 +293,7 @@ func normalizeActorStateMap(values map[string]any) map[string]any {
 }
 
 func actorStateEmpty(system StoryDirectorActorStateSystem) bool {
-	return len(system.Templates) == 0 && len(system.InitialActors) == 0
+	return len(system.Templates) == 0 && len(system.InitialActors) == 0 && len(system.TraitPools) == 0
 }
 
 func defaultActorStateSystem() StoryDirectorActorStateSystem {
@@ -237,47 +309,11 @@ func defaultActorStateSystem() StoryDirectorActorStateSystem {
 }
 
 func actorStateInitialOps(system StoryDirectorActorStateSystem) []StateOp {
-	system = normalizeActorStateSystem(system)
-	if actorStateEmpty(system) {
+	ops, err := BuildActorStateInitialOps(system, nil)
+	if err != nil {
 		return nil
 	}
-	templates := map[string]ActorStateTemplate{}
-	for _, template := range system.Templates {
-		templates[template.ID] = template
-	}
-	ops := []StateOp{}
-	for _, actor := range system.InitialActors {
-		template, ok := templates[actor.TemplateID]
-		if !ok {
-			continue
-		}
-		ops = append(ops,
-			StateOp{Op: "set", Path: actorStateActorPath(actor.ID, "id"), Value: actor.ID},
-			StateOp{Op: "set", Path: actorStateActorPath(actor.ID, "name"), Value: actor.Name},
-			StateOp{Op: "set", Path: actorStateActorPath(actor.ID, "template_id"), Value: actor.TemplateID},
-			StateOp{Op: "set", Path: actorStateActorPath(actor.ID, "role"), Value: actor.Role},
-		)
-		if strings.TrimSpace(actor.Description) != "" {
-			ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(actor.ID, "description"), Value: actor.Description})
-		}
-		for _, field := range template.Fields {
-			if field.Default != nil {
-				ops = append(ops, StateOp{Op: "set", Path: actorStateFieldPath(actor.ID, field.Path), Value: field.Default})
-			}
-			if field.Type == "number" && field.Max != nil {
-				ops = append(ops, StateOp{Op: "set", Path: actorStateFieldPath(actor.ID, field.Path+"_max"), Value: *field.Max})
-			}
-		}
-		keys := make([]string, 0, len(actor.State))
-		for key := range actor.State {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			ops = append(ops, StateOp{Op: "set", Path: actorStateFieldPath(actor.ID, key), Value: actor.State[key]})
-		}
-	}
-	return normalizeStateOps(ops)
+	return ops
 }
 
 func actorStateActorPath(actorID, field string) string {
@@ -334,59 +370,135 @@ func actorStateTemplateByID(system StoryDirectorActorStateSystem, id string) Act
 	return ActorStateTemplate{}
 }
 
-func validateActorStatePatch(system StoryDirectorActorStateSystem, patch ActorStatePatch) (ActorStatePatch, []StateOp, error) {
+func validateActorStatePatch(system StoryDirectorActorStateSystem, currentState map[string]any, patch ActorStatePatch) (ActorStatePatch, []StateOp, bool, []ActorTraitInstance, error) {
 	system = normalizeActorStateSystem(system)
 	patch.ActorID = normalizeActorStateID(patch.ActorID)
 	if patch.ActorID == "" {
-		return patch, nil, fmt.Errorf("Actor 状态更新缺少 actor_id")
+		return patch, nil, false, nil, fmt.Errorf("Actor 状态更新缺少 actor_id")
+	}
+	existingActor := getPath(currentState, actorStateRoot+"."+patch.ActorID)
+	created := existingActor == nil
+	if !created {
+		if _, ok := existingActor.(map[string]any); !ok {
+			return patch, nil, false, nil, fmt.Errorf("Actor 状态对象结构无效: %s", patch.ActorID)
+		}
+	}
+	existingTemplateID := ""
+	if rawTemplateID, ok := getPath(currentState, actorStateActorPath(patch.ActorID, "template_id")).(string); ok {
+		existingTemplateID = normalizeActorStateID(rawTemplateID)
 	}
 	patch.TemplateID = normalizeActorStateID(patch.TemplateID)
-	if patch.TemplateID == "" {
-		patch.TemplateID = "protagonist"
+	if created && patch.TemplateID == "" {
+		return patch, nil, false, nil, fmt.Errorf("创建 Actor 状态对象必须提供 template_id: %s", patch.ActorID)
+	}
+	bindLegacyTemplate := !created && existingTemplateID == ""
+	if !created {
+		if bindLegacyTemplate && patch.TemplateID == "" {
+			return patch, nil, false, nil, fmt.Errorf("旧 Actor 状态对象缺少 template_id，更新时必须显式绑定: %s", patch.ActorID)
+		}
+		if !bindLegacyTemplate && patch.TemplateID == "" {
+			patch.TemplateID = existingTemplateID
+		} else if !bindLegacyTemplate && patch.TemplateID != existingTemplateID {
+			return patch, nil, false, nil, fmt.Errorf("已有 Actor 的状态模板不可隐式更换: actor=%s current=%s requested=%s", patch.ActorID, existingTemplateID, patch.TemplateID)
+		}
 	}
 	template := actorStateTemplateByID(system, patch.TemplateID)
 	if template.ID == "" {
-		return patch, nil, fmt.Errorf("Actor 状态模板不存在: %s", patch.TemplateID)
+		return patch, nil, false, nil, fmt.Errorf("Actor 状态模板不存在: %s", patch.TemplateID)
 	}
 	fieldByPath := map[string]ActorStateField{}
 	for _, field := range template.Fields {
 		fieldByPath[field.Path] = field
 	}
-	if len(patch.State) == 0 {
-		return patch, nil, fmt.Errorf("Actor 状态更新缺少 state")
+	if len(patch.State) == 0 && len(patch.TraitChanges) == 0 && !created && !bindLegacyTemplate {
+		return patch, nil, false, nil, fmt.Errorf("Actor 状态更新缺少 state 或 trait_changes")
 	}
 	reason := trimBytes(patch.Reason, maxTurnBriefTextBytes)
 	sourceTurnID := trimBytes(patch.SourceTurnID, 128)
-	ops := []StateOp{
-		{Op: "set", Path: actorStateActorPath(patch.ActorID, "id"), Value: patch.ActorID, Reason: reason, SourceTurnID: sourceTurnID},
-		{Op: "set", Path: actorStateActorPath(patch.ActorID, "template_id"), Value: patch.TemplateID, Reason: reason, SourceTurnID: sourceTurnID},
-	}
-	if strings.TrimSpace(patch.ActorName) != "" {
-		ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "name"), Value: trimBytes(patch.ActorName, 128), Reason: reason, SourceTurnID: sourceTurnID})
-	}
-	if strings.TrimSpace(patch.Role) != "" {
-		ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "role"), Value: trimBytes(patch.Role, 128), Reason: reason, SourceTurnID: sourceTurnID})
-	}
-	if strings.TrimSpace(patch.Description) != "" {
-		ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "description"), Value: trimBytes(patch.Description, maxTurnBriefTextBytes), Reason: reason, SourceTurnID: sourceTurnID})
-	}
-	keys := make([]string, 0, len(patch.State))
-	for key := range patch.State {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		field, ok := fieldByPath[strings.TrimSpace(key)]
-		if !ok {
-			return patch, nil, fmt.Errorf("Actor 状态字段不在模板中: actor=%s template=%s field=%s", patch.ActorID, patch.TemplateID, key)
-		}
-		value, err := normalizeActorStateValue(field, patch.State[key])
+	ops := []StateOp{}
+	if created {
+		baseOps, err := buildNewActorStateOps(template, patch.ActorID, patch.ActorName, patch.Role, patch.Description, patch.State, reason, sourceTurnID)
 		if err != nil {
-			return patch, nil, err
+			return patch, nil, false, nil, err
 		}
-		ops = append(ops, StateOp{Op: "set", Path: actorStateFieldPath(patch.ActorID, field.Path), Value: value, Reason: reason, SourceTurnID: sourceTurnID})
+		ops = append(ops, baseOps...)
+	} else {
+		if bindLegacyTemplate {
+			ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "template_id"), Value: patch.TemplateID, Reason: reason, SourceTurnID: sourceTurnID})
+		}
+		if strings.TrimSpace(patch.ActorName) != "" {
+			ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "name"), Value: trimBytes(patch.ActorName, 128), Reason: reason, SourceTurnID: sourceTurnID})
+		}
+		if strings.TrimSpace(patch.Role) != "" {
+			ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "role"), Value: trimBytes(patch.Role, 128), Reason: reason, SourceTurnID: sourceTurnID})
+		}
+		if strings.TrimSpace(patch.Description) != "" {
+			ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(patch.ActorID, "description"), Value: trimBytes(patch.Description, maxTurnBriefTextBytes), Reason: reason, SourceTurnID: sourceTurnID})
+		}
 	}
-	return patch, normalizeStateOps(ops), nil
+	if !created {
+		keys := make([]string, 0, len(patch.State))
+		for key := range patch.State {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			field, ok := fieldByPath[strings.TrimSpace(key)]
+			if !ok {
+				return patch, nil, false, nil, fmt.Errorf("Actor 状态字段不在模板中: actor=%s template=%s field=%s", patch.ActorID, patch.TemplateID, key)
+			}
+			value, err := normalizeActorStateValue(field, patch.State[key])
+			if err != nil {
+				return patch, nil, false, nil, err
+			}
+			ops = append(ops, StateOp{Op: "set", Path: actorStateFieldPath(patch.ActorID, field.Path), Value: value, Reason: reason, SourceTurnID: sourceTurnID})
+		}
+	}
+	traits := actorTraitInstancesFromState(currentState, patch.ActorID)
+	if created {
+		result, err := rollActorTraits(system, ActorTraitRollRequest{ActorID: patch.ActorID, TemplateID: patch.TemplateID}, "actor_create", sourceTurnID)
+		if err != nil {
+			return patch, nil, false, nil, err
+		}
+		traits = result.Traits
+	}
+	changedTraits := created && len(traits) > 0
+	if len(patch.TraitChanges) > 0 {
+		nextTraits, changed, err := applyActorTraitChanges(system, template, patch.ActorID, traits, patch.TraitChanges, sourceTurnID)
+		if err != nil {
+			return patch, nil, false, nil, err
+		}
+		traits = nextTraits
+		changedTraits = changedTraits || changed
+	}
+	if changedTraits {
+		ops = append(ops, StateOp{
+			Op:           "set",
+			Path:         actorStateActorPath(patch.ActorID, "traits"),
+			Value:        traits,
+			Reason:       reason,
+			SourceTurnID: sourceTurnID,
+			SourceKind:   StateOpSourceActorTrait,
+			SourceID:     firstNonEmptyString(actorTraitSourceID(traits), fmt.Sprintf("actor-traits:%s", patch.ActorID)),
+		})
+	}
+	var reportedTraits []ActorTraitInstance
+	if len(patch.TraitChanges) > 0 {
+		reportedTraits = make([]ActorTraitInstance, len(traits))
+		copy(reportedTraits, traits)
+	} else if created && len(traits) > 0 {
+		reportedTraits = traits
+	}
+	return patch, normalizeStateOps(ops), created, reportedTraits, nil
+}
+
+func actorTraitSourceID(traits []ActorTraitInstance) string {
+	for index := len(traits) - 1; index >= 0; index-- {
+		if strings.TrimSpace(traits[index].SourceID) != "" {
+			return strings.TrimSpace(traits[index].SourceID)
+		}
+	}
+	return ""
 }
 
 func normalizeActorStateValue(field ActorStateField, value any) (any, error) {
